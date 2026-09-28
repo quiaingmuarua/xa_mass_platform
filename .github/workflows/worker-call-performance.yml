@@ -41,6 +41,16 @@ on:
         required: true
         type: number
         default: 100
+      lane_case:
+        description: "Lane A/B only: one case (e.g. task-any-1000, sat-task-any) compared against baseline_ref"
+        required: false
+        type: string
+        default: ''
+      lane_record:
+        description: "Lane only: store this run's record on the perf-lane-data branch for trend comparison"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -131,7 +141,7 @@ jobs:
   # Path comparisons stay inside a job, so every ratio is measured on one host.
   lane-build:
     name: Performance Lane Build
-    if: github.event_name == 'workflow_dispatch' && inputs.suite == 'lane'
+    if: github.event_name == 'workflow_dispatch' && inputs.suite == 'lane' && inputs.baseline_ref == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -221,9 +231,11 @@ jobs:
   lane-summary:
     name: Performance Lane Summary
     needs: lane
-    if: always() && github.event_name == 'workflow_dispatch' && inputs.suite == 'lane'
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.suite == 'lane' && inputs.baseline_ref == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: write  # Only for appending this run's record to the perf-lane-data branch.
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-python@v7.0.0
@@ -233,11 +245,39 @@ jobs:
         with:
           pattern: lane-*-${{ github.run_attempt }}
           path: build/lane-jobs
-      - name: Merge lane jobs
+      - name: Read lane history from the data branch
+        run: |
+          if git fetch --depth=1 origin perf-lane-data; then
+            git worktree add --detach build/lane-data FETCH_HEAD
+          else
+            echo "No perf-lane-data branch yet; trend comparison starts empty."
+          fi
+      - name: Merge lane jobs and compare with history
         run: |
           python integrations/worker-call-performance/run_worker_call_performance.py \
             --merge-lane build/lane-jobs --merge-jobs rate-500,rate-1000,rate-2000,saturation \
-            --output-root build/worker-call-performance-proof/lane-merged
+            --lane-history build/lane-data/runs --output-root build/worker-call-performance-proof/lane-merged
+      - name: Record this run on the data branch
+        if: inputs.lane_record
+        run: |
+          record="$GITHUB_WORKSPACE/build/worker-call-performance-proof/lane-merged/evidence/run-record.json"
+          name="$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+          if [ ! -e build/lane-data/.git ]; then
+            git worktree add --detach build/lane-data HEAD
+            git -C build/lane-data checkout -q --orphan perf-lane-data
+            git -C build/lane-data rm -rf -q .
+          fi
+          mkdir -p build/lane-data/runs
+          cp "$record" "build/lane-data/runs/$name"
+          cd build/lane-data
+          git add runs
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Record performance lane run ${GITHUB_RUN_ID} (${GITHUB_REF_NAME})"
+          for attempt in 1 2 3; do
+            if git push -q origin HEAD:refs/heads/perf-lane-data; then exit 0; fi
+            git fetch -q --depth=50 origin perf-lane-data && git rebase -q FETCH_HEAD
+          done
+          exit 1
       - name: Publish merged summary
         if: always()
         run: |
@@ -248,5 +288,52 @@ jobs:
         with:
           name: lane-merged-${{ github.run_attempt }}
           path: build/worker-call-performance-proof/lane-merged/evidence/**
+          if-no-files-found: error
+          retention-days: 7
+
+  lane-ab:
+    name: Performance Lane A/B
+    if: github.event_name == 'workflow_dispatch' && inputs.suite == 'lane' && inputs.baseline_ref != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.x'
+          cache: pip
+          cache-dependency-path: .github/scripts/requirements.txt
+      - name: Install proof dependencies
+        run: python -m pip install -r .github/scripts/requirements.txt
+      - name: Read lane history for the comparison band
+        run: |
+          if git fetch --depth=1 origin perf-lane-data; then
+            git worktree add --detach build/lane-data FETCH_HEAD
+          fi
+      - name: Run sequential per-case A/B
+        env:
+          BASELINE_REF: ${{ inputs.baseline_ref }}
+          LANE_CASE: ${{ inputs.lane_case }}
+        run: |
+          python integrations/worker-call-performance/run_worker_call_performance.py --suite lane \
+            --baseline-ref "$BASELINE_REF" --lane-case "$LANE_CASE" --lane-history build/lane-data/runs \
+            --output-root build/worker-call-performance-proof/lane-ab
+      - name: Publish A/B summary
+        if: always()
+        run: |
+          summary=build/worker-call-performance-proof/lane-ab/evidence/summary.md
+          if [ -f "$summary" ]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: lane-ab-${{ github.run_attempt }}
+          path: build/worker-call-performance-proof/lane-ab/**/evidence/**
           if-no-files-found: error
           retention-days: 7

@@ -525,6 +525,61 @@ class LaneWorldConfigTest(unittest.TestCase):
         self.assertNotIn("| Milestone |", runner.lane_markdown(merged))
         self.assertNotIn("| Role |", runner.lane_markdown(merged))
 
+    def test_lane_entry_warmup_and_ab_options(self):
+        self.assertEqual(dict(repetition=2, mode="open", rate=1000, path="task-targeted", case="task-targeted-1000"),
+                         runner.lane_entry("task-targeted-1000", 2))
+        self.assertEqual("saturation", runner.lane_entry("sat-task-any")["mode"])
+        for unknown in ("task-any-700", "sat-direct", "direct"):
+            with self.assertRaises(ValueError):
+                runner.lane_entry(unknown)
+        self.assertEqual("task-any-2000", runner.lane_warmup_case((500, 2000), ("open",)))
+        self.assertEqual("task-any-1000", runner.lane_warmup_case((500,), ("saturation",)))
+        for extra in (["--baseline-ref", "HEAD"], ["--lane-case", "task-any-500"],
+                      ["--baseline-ref", "HEAD", "--lane-case", "task-any-700"]):
+            with patch.object(runner.sys, "argv", ["runner", "--suite", "lane", *extra]), \
+                    patch("sys.stderr"), self.assertRaises(SystemExit):
+                runner.main()
+        with patch.object(runner.sys, "argv", ["runner", "--suite", "task", "--lane-case", "task-any-500"]), \
+                patch("sys.stderr"), self.assertRaises(SystemExit):
+            runner.main()
+
+    def test_merge_with_meta_records_the_run_and_reports_trend(self):
+        case = dict(repetition=1, mode="open", rate=500, path="task-any", case="task-any-500", status="passed",
+                    completedPerSecond=500.0, successWithinWait=1.0, successfulCallLatencyMillis={"p99": 300.0, "p50": 200.0})
+        summary = dict(status="passed", cases=[case], caseCounts={"passed": 1}, timingsMillis={"casesCompleted": 1},
+                       calibration={"cpuParallelOpsPerSecond": 1e6, "redisPingMicros": 40.0},
+                       warmup={"case": "task-any-500", "status": "passed"})
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            path = root / "lane-rate-500-1" / "lane-summary.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps(summary), encoding="utf-8")
+            history_dir = root / "history" / "runs"
+            history_dir.mkdir(parents=True)
+            (history_dir / "old.json").write_text(json.dumps({"runId": "old", "ref": "main"}), encoding="utf-8")
+            history = runner.load_history(root / "history")
+            merged = runner.merge_lane(root, ("rate-500",), history,
+                                       dict(runId="now", ref="main", createdAt="2026-10-01T19:00:00Z"))
+        self.assertEqual(1, len(history))
+        self.assertEqual([], runner.load_history(Path(folder) / "absent"))
+        self.assertEqual(1e6, merged["record"]["calibration"]["rate-500"]["cpuParallelOpsPerSecond"])
+        self.assertEqual(300.0, merged["record"]["cases"]["task-any-500"]["metrics"]["p99LatencyMillis"]["median"])
+        self.assertEqual("insufficient-history", merged["trend"]["status"])
+        value = runner.lane_markdown(merged)
+        self.assertIn("1,000,000", value)
+        self.assertIn("Trend: **insufficient-history**", value)
+
+    def test_ab_markdown_reports_pairs_band_and_decision(self):
+        value = runner.lane_ab_markdown(dict(status="passed", case="task-any-1000", metric="p99LatencyMillis",
+            versions={"A": "a" * 40, "B": "b" * 40}, band={"relative": .1, "provisional": True},
+            pairs=[dict(pair=1, version="A", runStatus="passed", caseStatus="passed", p99LatencyMillis=300.0),
+                   dict(pair=1, version="B", runStatus="passed", caseStatus="saturated", p99LatencyMillis=None)],
+            decision={"decision": "continue", "deltas": [.05]}))
+        self.assertIn("Decision: **continue**", value)
+        self.assertIn("Band ±10.0% (provisional)", value)
+        self.assertIn("| 1 | B | passed | saturated | — |", value)
+        self.assertIn("+5.0%", value)
+
     def test_lane_markdown_separates_invalid_and_failed_cases(self):
         cases = [dict(repetition=1, case="task-any-500", status="passed", invalidReasons=[], successWithinWait=.95,
                       completedPerSecond=500.0, successfulCallLatencyMillis={"p50": 20.0, "p99": 90.0},

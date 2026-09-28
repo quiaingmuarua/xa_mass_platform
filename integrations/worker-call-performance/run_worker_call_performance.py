@@ -23,6 +23,8 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from integrations.worker_proof_support.scenario_inventory import materialize_inventory
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import lane_trend  # noqa: E402  (sibling module; this directory name is not a package)
 
 CASES = ("any-100", "any-500", "any-1000", "any-2000", "targeted-500", "mixed-500")
 DIRECT_CASES = ("direct-100", "direct-500", "direct-1000", "direct-2000", "direct-5000")
@@ -702,6 +704,36 @@ def lane_plan(rates, repetitions, modes=LANE_MODES):
     return plan
 
 
+def lane_entry(case, repetition=1):
+    """Plan entry for one lane case name: path-rate (open) or sat-path (saturation)."""
+    if case.startswith("sat-") and case[4:] in LANE_SATURATION_PATHS:
+        return dict(repetition=repetition, mode="saturation", rate=None, path=case[4:], case=case)
+    path, _, rate = case.rpartition("-")
+    if path in LANE_PATHS and rate.isdigit() and int(rate) in LANE_RATES:
+        return dict(repetition=repetition, mode="open", rate=int(rate), path=path, case=case)
+    raise ValueError(f"Unknown lane case {case}")
+
+
+def lane_warmup_case(rates, modes):
+    """Job-level warmup: one discarded case at the job's highest open rate, or 1000/s for saturation-only jobs."""
+    return f"task-any-{max(rates)}" if "open" in modes else "task-any-1000"
+
+
+def calibrate_host(client, harness_output):
+    """Stage 0: Redis round-trip and a fixed JVM CPU workload, measured before any lane process starts."""
+    started = time.perf_counter()
+    for _ in range(5000):
+        client.ping()
+    redis_micros = (time.perf_counter() - started) / 5000 * 1e6
+    output = harness_output / "calibrate"
+    command(["java", *JVM, "-cp", ROOT / "integrations/worker-call-performance/build/install/xa-mass-worker-call-performance/lib/*",
+             "com.xa.mass.integration.workercallperformance.WorkerCallPerformanceMain", "--phase=calibrate",
+             f"--output={output}"], timeout=120)
+    calibration = json.loads((output / "calibrate.json").read_text(encoding="utf-8"))
+    calibration["redisPingMicros"] = redis_micros
+    return {key: value for key, value in calibration.items() if key not in ("phase", "status")}
+
+
 def lane_window_cost(path, started, ended):
     """Server CPU and Redis command deltas across one case measurement window."""
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
@@ -788,8 +820,8 @@ def attribute_lane(private, evidence, records):
     return {key: result[key] for key in ("complete", "dataLoss", "dispatchEvents")}
 
 
-def run_lane(root, output, deadline, rates=LANE_RATES, repetitions=1, attribution=True, modes=LANE_MODES):
-    """Start the world once, then run each case between quiesce gates (DESIGN-performance-lane.md, S1-S2)."""
+def run_lane(root, output, deadline, plan, attribution=True, warmup_case=None, calibrate=True):
+    """Start the world once, then run each case between quiesce gates (DESIGN-performance-lane.md, S1-S5)."""
     import redis
     evidence = output / "evidence"
     private = output / "private"
@@ -801,8 +833,8 @@ def run_lane(root, output, deadline, rates=LANE_RATES, repetitions=1, attributio
     processes = {}
     cleanup_errors = []
     records = []
-    result = {"lane": "performance", "status": "failed", "scope": scope, "rates": list(rates), "modes": list(modes),
-              "repetitions": repetitions, "attribution": attribution, "timingsMillis": {}, "cases": records}
+    result = {"lane": "performance", "status": "failed", "scope": scope, "plan": plan, "warmupCase": warmup_case,
+              "attribution": attribution, "timingsMillis": {}, "cases": records}
     timings = result["timingsMillis"]
     started = time.monotonic()
     elapsed = lambda: int((time.monotonic() - started) * 1000)
@@ -829,6 +861,9 @@ def run_lane(root, output, deadline, rates=LANE_RATES, repetitions=1, attributio
                 time.sleep(.25)
         if client.info("server")["redis_version"] != "7.4.10":
             raise RuntimeError("Unexpected Redis version")
+        if calibrate:
+            result["calibration"] = calibrate_host(client, harness_output)
+            timings["calibrated"] = elapsed()
         sampler = Sampler(evidence / "process-resources.jsonl", client)
         sampler.thread.start()
         env = {k: v for k, v in os.environ.items() if not k.startswith(("XA_MASS_", "SPRING_"))
@@ -844,7 +879,7 @@ def run_lane(root, output, deadline, rates=LANE_RATES, repetitions=1, attributio
         write_json(evidence / "effective-config.json", {"serverOverrides": flags, "jvmOptions": JVM, "serverRecording": recording,
             "groups": list(LANE_GROUPS), "workersPerGroup": LANE_WORKERS_PER_GROUP, "project": LANE_PROJECT,
             "assignmentBatchLimit": LANE_ASSIGNMENT_BATCH_LIMIT, "hostGroups": lane_host_groups(),
-            "plan": lane_plan(rates, repetitions, modes),
+            "plan": plan, "warmupCase": warmup_case,
             "configurationSourceSha256": fingerprint(root), "configurationSources": configuration_sources(root),
             "sourceHead": command(["git", "rev-parse", "HEAD"], cwd=root), "redisImage": REDIS_IMAGE})
         write_json(evidence / "artifact-fingerprints.json", artifact_fingerprints(root, jar))
@@ -867,18 +902,25 @@ def run_lane(root, output, deadline, rates=LANE_RATES, repetitions=1, attributio
         result["bootstrap"] = run_lane_harness("bootstrap", harness_output, private, env, processes, sampler, deadline)
         timings["bootstrapped"] = elapsed()
         world = harness_output / "bootstrap.json"
-        plan = lane_plan(rates, repetitions, modes)
-        for index, entry in enumerate(plan):
-            case_output = harness_output / f"r{entry['repetition']}" / entry["case"]
+        warmup = [dict(lane_entry(warmup_case, 0), warmup=True)] if warmup_case else []
+        for index, entry in enumerate(warmup + plan):
+            case_output = harness_output / ("warmup" if entry.get("warmup") else f"r{entry['repetition']}") / entry["case"]
             try:
                 run_lane_harness("quiesce", case_output, private, env, processes, sampler, deadline, f"--world={world}")
             except RuntimeError:
                 # F6: a polluted world makes this and every later case incomparable.
-                records.extend(dict(later, status="invalid", invalidReasons=["quiesce-timeout"]) for later in plan[index:])
+                records.extend(dict(later, status="invalid", invalidReasons=["quiesce-timeout"])
+                               for later in (warmup + plan)[index:] if not later.get("warmup"))
                 break
             case = run_lane_harness("case", case_output, private, env, processes, sampler, deadline,
                                     f"--case={entry['case']}", f"--repetition={entry['repetition']}", f"--world={world}",
                                     accepted=("passed", "invalid", "saturated"))
+            if entry.get("warmup"):
+                # Discarded: it only brings the JIT and connection pools to the job's load before measurement.
+                result["warmup"] = {"case": entry["case"], "status": case.get("status"),
+                                    "p99LatencyMillis": (case.get("metrics", {}).get("successfulCallLatencyMillis") or {}).get("p99")}
+                timings["warmedUp"] = elapsed()
+                continue
             cost = None
             if case.get("measurementEndedEpochMillis"):
                 cost = lane_window_cost(evidence / "process-resources.jsonl", case["measurementStartedEpochMillis"],
@@ -925,7 +967,23 @@ def run_lane(root, output, deadline, rates=LANE_RATES, repetitions=1, attributio
     return result
 
 
-def merge_lane(evidence_root, jobs):
+def load_history(directory):
+    """Run records previously stored on the data branch; an absent directory is an empty history."""
+    if not directory or not Path(directory).is_dir():
+        return []
+    return [json.loads(path.read_text(encoding="utf-8")) for path in sorted(Path(directory).rglob("*.json"))]
+
+
+def run_meta():
+    """Identity of this workflow run for its data-branch record."""
+    return {"runId": os.environ.get("GITHUB_RUN_ID", "local"), "attempt": os.environ.get("GITHUB_RUN_ATTEMPT", "1"),
+            "ref": os.environ.get("GITHUB_REF_NAME") or command(["git", "rev-parse", "--abbrev-ref", "HEAD"]),
+            "sha": os.environ.get("GITHUB_SHA") or command(["git", "rev-parse", "HEAD"]),
+            "event": os.environ.get("GITHUB_EVENT_NAME", "local"),
+            "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+
+def merge_lane(evidence_root, jobs, history=None, meta=None):
     """Combine the per-job lane summaries of one workflow run; a missing or failed job fails the merge."""
     found = {}
     for path in sorted(Path(evidence_root).rglob("lane-summary.json")):
@@ -944,10 +1002,15 @@ def merge_lane(evidence_root, jobs):
         cases += [dict(case, job=job) for case in summary.get("cases", [])]
         summaries.append({"job": job, "status": summary["status"], "caseCounts": summary.get("caseCounts", {}),
                           "casesCompletedMillis": summary.get("timingsMillis", {}).get("casesCompleted"),
-                          "runnerFailure": summary.get("runnerFailure"), "resourcePeaks": summary.get("resourcePeaks", {})})
+                          "runnerFailure": summary.get("runnerFailure"), "resourcePeaks": summary.get("resourcePeaks", {}),
+                          "calibration": summary.get("calibration"), "warmup": summary.get("warmup")})
     status = "passed" if all(s["status"] == "passed" for s in summaries) else "failed"
-    return {"lane": "performance", "status": status, "jobs": summaries, "cases": cases,
-            "caseCounts": dict(Counter(case["status"] for case in cases)), "pathRatios": lane_path_ratios(cases)}
+    merged = {"lane": "performance", "status": status, "jobs": summaries, "cases": cases,
+              "caseCounts": dict(Counter(case["status"] for case in cases)), "pathRatios": lane_path_ratios(cases)}
+    if meta is not None:
+        merged["record"] = lane_trend.run_record(merged, meta)
+        merged["trend"] = lane_trend.compare(merged["record"], history or [])
+    return merged
 
 
 def lane_markdown(result):
@@ -975,14 +1038,33 @@ def lane_markdown(result):
                      f"| {pct(attribution.get('strictAcquisitionStaleRatio'))} | {pct(r.get('leaseHeldPeakRatio'))} "
                      f"| {num(cost.get('redisCommandsPerCompleted'), '.1f')} |")
     if result.get("jobs"):
-        lines += ["", "| Job | Status | Cases | Case time s | Server peak threads / FDs |", "| --- | --- | --- | --- | --- |"]
+        lines += ["", "| Job | Status | Cases | Case time s | Host CPU ops/s (4 threads) | Redis ping µs | Warmup | Server peak threads / FDs |",
+                  "| --- | --- | --- | --- | --- | --- | --- | --- |"]
         for job in result["jobs"]:
             server = job.get("resourcePeaks", {}).get("server", {})
             elapsed = job.get("casesCompletedMillis")
+            calibration = job.get("calibration") or {}
+            warmup = job.get("warmup") or {}
+            speed = calibration.get("cpuParallelOpsPerSecond")
+            ping = calibration.get("redisPingMicros")
             lines.append(f"| {job['job']} | {job['status']} | {job.get('caseCounts', {})} "
-                         f"| {elapsed / 1000:.0f} | {server.get('peakNativeThreads', '—')} / {server.get('peakFileDescriptors', '—')} |"
-                         if elapsed is not None else
-                         f"| {job['job']} | {job['status']} | {job.get('caseCounts', {})} | — | — |")
+                         f"| {f'{elapsed / 1000:.0f}' if elapsed is not None else '—'} "
+                         f"| {f'{speed:,.0f}' if speed else '—'} | {f'{ping:.0f}' if ping else '—'} "
+                         f"| {warmup.get('case', '—')} {warmup.get('status', '')} "
+                         f"| {server.get('peakNativeThreads', '—')} / {server.get('peakFileDescriptors', '—')} |")
+    if result.get("trend"):
+        trend = result["trend"]
+        lines += ["", f"Trend: **{trend['status']}** against {trend['historyRuns']} comparable run(s) "
+                  f"(needs {lane_trend.MIN_HISTORY} from the same ref and lane config version {lane_trend.LANE_CONFIG_VERSION})."]
+        for job, host in trend.get("hosts", {}).items():
+            factor = host.get("speedFactor")
+            lines.append(f"- Host {job}: speed factor {factor:.2f}, {'qualified' if host['qualified'] else 'not judged'}"
+                         if factor else f"- Host {job}: no calibration reference")
+        suspects = [f for f in trend.get("findings", []) if f["verdict"] == "suspect"]
+        lines += [f"- Suspect {f['case']} {f.get('metric', f.get('reason'))}: current {f.get('current')} "
+                  f"vs history {f.get('historyMin', f.get('history'))}..{f.get('historyMax', '')}" for f in suspects]
+        if trend["status"] == "compared" and not suspects:
+            lines.append("- No suspect case.")
     if result.get("pathRatios"):
         lines += ["", "Task path relative to Direct on the same host (passed cases only):", "",
                   "| Rep | Rate | Path | p99 latency ratio | Completion ratio |", "| --- | --- | --- | --- | --- |"]
@@ -1171,6 +1253,8 @@ def main():
     parser.add_argument("--lane-modes", type=lane_modes, help="Lane only: comma-separated subset of open,saturation")
     parser.add_argument("--merge-lane", type=Path, help="Merge the per-job lane evidence found below this directory")
     parser.add_argument("--merge-jobs", help="Comma-separated lane job names expected by --merge-lane")
+    parser.add_argument("--lane-history", type=Path, help="Directory of data-branch run records for trend and A/B bands")
+    parser.add_argument("--lane-case", help="Lane A/B only: the single case compared against --baseline-ref")
     parser.add_argument("--lane-attribution", choices=("on", "off"), default="on",
                         help="Lane only: Server Dispatch Owner events for per-case attribution")
     options = parser.parse_args()
@@ -1179,17 +1263,26 @@ def main():
         if not jobs:
             parser.error("--merge-lane requires --merge-jobs")
         output = fresh_output(options.output_root)
-        merged = merge_lane(options.merge_lane, jobs)
+        merged = merge_lane(options.merge_lane, jobs, load_history(options.lane_history), run_meta())
+        write_json(output / "evidence/run-record.json", merged["record"])
         write_json(output / "evidence/lane-summary.json", merged)
         (output / "evidence/summary.md").write_text(lane_markdown(merged), encoding="utf-8")
         print(json.dumps({"status": merged["status"], "cases": merged["caseCounts"]}), flush=True)
         return 0 if merged["status"] == "passed" else 1
-    if options.suite == "lane" and (options.baseline_ref or options.case or options.diagnostics != "off"
+    if options.suite == "lane" and (options.case or options.diagnostics != "off"
                                     or options.diagnostic_pair or options.assignment_batch_limit != 100):
-        parser.error("The lane fixes its own configuration; baseline, case, diagnostics "
+        parser.error("The lane fixes its own configuration; legacy case, diagnostics "
                      "and assignment ceiling options do not apply")
-    if options.suite != "lane" and (options.lane_rates or options.lane_modes or options.lane_attribution != "on"):
-        parser.error("--lane-rates, --lane-modes and --lane-attribution apply only to --suite lane")
+    if options.suite == "lane" and bool(options.baseline_ref) != bool(options.lane_case):
+        parser.error("Lane A/B needs both --baseline-ref and --lane-case")
+    if options.lane_case:
+        try:
+            lane_entry(options.lane_case)
+        except ValueError as error:
+            parser.error(str(error))
+    if options.suite != "lane" and (options.lane_rates or options.lane_modes or options.lane_attribution != "on"
+                                    or options.lane_case):
+        parser.error("--lane-rates, --lane-modes, --lane-case and --lane-attribution apply only to --suite lane")
     try:
         if options.suite != "lane":
             validate_repetitions(options.suite, options.repetitions, options.baseline_ref, options.diagnostics, options.diagnostic_pair)
@@ -1219,6 +1312,8 @@ def main():
         command(["docker", "pull", REDIS_IMAGE])
         image_id = command(["docker", "image", "inspect", REDIS_IMAGE, "--format", "{{.Id}}"])
     output = fresh_output(options.output_root)
+    if options.suite == "lane" and options.lane_case:
+        return main_lane_ab(options, output, run_started, reference)
     if options.suite == "lane":
         return main_lane(options, output, run_started, reference, os_release, java, image_id)
     versions = {"B": command(["git", "rev-parse", "HEAD"])}
@@ -1291,8 +1386,8 @@ def main_lane(options, output, run_started, reference, os_release, java, image_i
     rates = options.lane_rates or LANE_RATES
     modes = options.lane_modes or LANE_MODES
     plan = lane_plan(rates, options.repetitions, modes)
-    result = run_lane(ROOT, output, run_started + LANE_WORLD_SECONDS + len(plan) * LANE_CASE_SECONDS,
-                      rates, options.repetitions, options.lane_attribution == "on", modes)
+    result = run_lane(ROOT, output, run_started + LANE_WORLD_SECONDS + (len(plan) + 1) * LANE_CASE_SECONDS,
+                      plan, options.lane_attribution == "on", lane_warmup_case(rates, modes))
     result.update(referenceHost=reference, os=os_release, java=java.strip(), cpuCount=os.cpu_count(),
                   machine=platform.machine(), kernel=platform.release(), redisImageId=image_id,
                   harnessCommit=command(["git", "rev-parse", "HEAD"]),
@@ -1302,6 +1397,83 @@ def main_lane(options, output, run_started, reference, os_release, java, image_i
     print(json.dumps({"status": result["status"], "cases": result.get("caseCounts"),
                       "evidence": str(output / "evidence/lane-summary.json")}), flush=True)
     return 0 if result["status"] == "passed" else 1
+
+
+def main_lane_ab(options, output, run_started, reference):
+    """Per-case sequential A/B on one host: ABBA-ordered pairs until the history band decides (2..5 pairs)."""
+    case = options.lane_case
+    metric = lane_trend.primary_metric(case)
+    extract = lane_trend.METRICS[metric][0]
+    history = load_history(options.lane_history)
+    band = lane_trend.band(case, history, "main")
+    versions = {"B": command(["git", "rev-parse", "HEAD"]),
+                "A": command(["git", "rev-parse", "--verify", options.baseline_ref + "^{commit}"])}
+    baseline = output / "baseline-checkout"
+    final = {"lane": "performance-ab", "status": "failed", "case": case, "metric": metric, "band": band,
+             "versions": versions, "referenceHost": reference, "pairs": []}
+    try:
+        command(["git", "worktree", "add", "--detach", baseline, versions["A"]])
+        build(baseline)
+        if not options.skip_build:
+            build(ROOT, harness=True)
+        roots = {"A": baseline, "B": ROOT}
+        warmup = case if not case.startswith("sat-") else "task-any-1000"
+        deadline = run_started + 110 * 60
+        values = []
+        for pair in range(lane_trend.AB_MAX_PAIRS):
+            order = ("A", "B") if pair % 2 == 0 else ("B", "A")
+            observed = {}
+            for version in order:
+                print(f"lane ab pair={pair + 1} version={version} case={case}", flush=True)
+                run = run_lane(roots[version], output / f"pair-{pair + 1}" / version, deadline,
+                               [lane_entry(case, pair + 1)], attribution=False, warmup_case=warmup, calibrate=False)
+                row = next(iter(run.get("cases", [])), {})
+                observed[version] = extract(row) if row.get("status") == "passed" else None
+                final["pairs"].append({"pair": pair + 1, "version": version, "runStatus": run["status"],
+                                       "caseStatus": row.get("status"), metric: extract(row)})
+                if run["status"] != "passed":
+                    raise RuntimeError(f"Lane run failed for version {version} in pair {pair + 1}")
+            values.append((observed["A"], observed["B"]))
+            final["decision"] = lane_trend.ab_decide(case, values, band["relative"])
+            print("lane ab decision " + json.dumps(final["decision"]), flush=True)
+            if final["decision"]["decision"] != "continue":
+                break
+        final["status"] = "passed"
+    except Exception as error:
+        final.update(status="failed", failure=type(error).__name__ + ": " + str(error))
+    finally:
+        if baseline.exists():
+            try:
+                command(["git", "worktree", "remove", "--force", baseline], timeout=30)
+            except subprocess.CalledProcessError:
+                final["baselineCheckoutRetained"] = True
+        write_json(output / "evidence/lane-ab-summary.json", final)
+        (output / "evidence/summary.md").write_text(lane_ab_markdown(final), encoding="utf-8")
+    print(json.dumps({"status": final["status"], "decision": final.get("decision", {}).get("decision")}), flush=True)
+    return 0 if final["status"] == "passed" else 1
+
+
+def lane_ab_markdown(final):
+    band = final.get("band", {})
+    decision = final.get("decision", {})
+    band_source = "provisional" if band.get("provisional") else f"from {band.get('runs')} runs"
+    lines = ["# Performance Lane A/B", "",
+             f"Status: **{final['status']}**. Case `{final['case']}`, metric `{final['metric']}`. "
+             f"Decision: **{decision.get('decision', 'none')}**.", "",
+             f"A = `{final['versions']['A'][:12]}`, B = `{final['versions']['B'][:12]}`. Band ±{band.get('relative', 0):.1%} "
+             f"({band_source}).", "",
+             "| Pair | Version | Run | Case status | Value |", "| --- | --- | --- | --- | --- |"]
+    for row in final.get("pairs", []):
+        value = row.get(final["metric"])
+        lines.append(f"| {row['pair']} | {row['version']} | {row['runStatus']} | {row.get('caseStatus')} "
+                     f"| {f'{value:.1f}' if isinstance(value, (int, float)) else '—'} |")
+    if decision.get("deltas"):
+        lines += ["", "Per-pair change of B against A (positive is worse): "
+                  + ", ".join(f"{delta:+.1%}" for delta in decision["deltas"])]
+    if final.get("failure"):
+        lines += ["", f"Failure: {final['failure']}"]
+    lines += ["", "No difference within the band is not a speedup claim; a decision needs two consecutive pairs.", ""]
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

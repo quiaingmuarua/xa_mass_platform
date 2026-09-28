@@ -135,7 +135,8 @@ Status: proposal（设计评审稿，尚未实现；实现前以现有 [README](
 
 | Stage | 内容 | 失败处理 |
 | --- | --- | --- |
-| 0 标定（约 20 s） | 固定 CPU 小基准与 Redis 往返基准 | 超出合格区间：标记 host-unqualified，整个 job 重排一次 |
+| 0 标定（约 10 s） | Harness JVM 上固定的 MD5 负载（单线程与 4 线程，各预热 1 s、测 2 s）；5000 次顺序 Redis PING 的往返时间 | 结果随该 job 的用例记录；趋势比较中与历史中位数偏差超过 25% 的 job 标记 `host-unqualified`，不作判定（不自动重排） |
+| 0.5 job 预热 | 启动后先跑一个丢弃的用例：开环 job 用本 job 最高速率的 `task-any`，只有饱和模式的 job 用 `task-any-1000` | 结果只记录在 `warmup`，不进入用例统计 |
 | 1 启动（约 60 s） | 2000 个 Worker 连接、HOT、Properties 就绪 | 120 s 超时即失败 |
 | 2 冒烟（约 1 min） | `task-any` 500/s 一次，检查正确性底线 | 失败则停止，不跑后续矩阵 |
 | 3 矩阵 | 本 job 负责的用例 | 按 7.2 快速失败 |
@@ -161,14 +162,21 @@ Status: proposal（设计评审稿，尚未实现；实现前以现有 [README](
 - `lane`（matrix，`fail-fast: false`）：`rate-500`、`rate-1000`、`rate-2000` 各在一台 runner 上跑 3 条开环路径，`saturation` 跑两个饱和用例；路径顺序按重复次数轮换（ABC / BCA / CAB）。各 job 下载同一份构建产物，以 `--skip-build` 运行，上传 `lane-<job>-<attempt>`。
 - `lane-summary`：下载各 job 证据，按预期 job 列表合并（`--merge-lane`）。任一 job 缺失或失败时，合并结果为失败；路径比值在合并时重新计算，仍只比较同一 job 内的用例。
 - 耗时预估（重复 3 次）：构建约 3 min；最慢的开环 job 约 9 个用例 x 约 80 s ≈ 12 min；总墙钟约 16 min，略高于原定 15 min，以首次运行实测为准。
-- 基线版本 JAR 按 commit SHA 缓存、机器标定（Stage 0）与 PR 冒烟尚未实现：前两者随 S5 的 A/B 与趋势比较一起做，PR 冒烟仍待决定。
+- 机器标定（Stage 0）与 job 级预热已在 S5 前加入。基线版本 JAR 按 commit SHA 缓存尚未实现：A/B 每次在同一 runner 上重新编译基线（约 2 min）。PR 冒烟仍待决定。
 
 ## 8. 趋势与比较
 
-- **Nightly 趋势**：每晚把每个用例 3 次重复的中位数和极差写入基线存储（位置待定，见第 10 节）。与同一用例最近 7 次 nightly 比较：中位数超出历史 `[min, max]` 且超出本次极差时，标记 **suspect**。附上调度归因指标，不判失败。
+实现见 `lane_trend.py`（纯函数）与 runner 的 `--merge-lane`、`--lane-history`、`--lane-case`。
+
+- **运行记录**：合并步骤为每次运行生成紧凑记录 `run-record.json`：运行身份（run id、ref、sha、事件、时间）、`laneConfigVersion`、每个 job 的主机标定、每个用例各重复的状态计数，以及通过（`passed`）的重复里各指标的中位数、最小值、最大值。`lane_record=true` 时，summary job 把记录追加到数据分支 `perf-lane-data` 的 `runs/` 目录（只有该 job 有写权限）。
+- **Nightly 趋势**：
+  - 只和同一 ref、同一 `laneConfigVersion` 的最近 7 次记录比较，不足 7 次时报告 `insufficient-history`。分支上的运行不会影响 `main` 的趋势。
+  - 所有数值先按主机标定换算到历史中位数主机速度（延迟与周转乘以速度比，吞吐除以速度比）；本次 job 与历史中位数速度偏差超过 25% 时不作判定。
+  - 当前中位数减去（或加上）本次半极差后，仍落在历史 `[min, max]` 之外、且方向变差，标记 **suspect**。用例多数状态和历史不同（例如 `passed` 变成 `saturated`）也标记 suspect。只报告，不判失败。
 - **手动 A/B（按用例、按需停止）**：
-  - 只选定用例，A、B 在同一 runner 上按 ABBA 交替，每跑完一组判断一次，最少 2 组、最多 5 组。
-  - 差异落在 nightly 历史的同版本波动带内，判"无差异"并提前结束；差异方向一致且超出波动带，判"有差异"；否则继续加组。
+  - 用 `baseline_ref` 加 `lane_case` 触发。单个 runner 上 A、B 各自启动环境，按 ABBA 顺序交替跑选定用例，每个环境都先做 job 级预热；每跑完一组判断一次，最少 2 组、最多 5 组。
+  - 主指标：开环为成功调用 p99，饱和为每 Worker 周转时间。波动带取 `main` 最近记录中该用例主指标的相对极差中位数（下限 5%）；不足 3 条记录时用 10% 并标注 provisional。
+  - 最近 2 组都在带内：`no-difference`；都在带外且同向：`worse` / `better`；5 组后仍无结论：`inconclusive`。用例不是 `passed` 的组不计入判定。
   - 结论只说明差异是否存在，不作为速度提升的证明。
 - 取消现有固定阈值（成功率 5 个百分点、p99 20%）。2026-09-28 的 A/B 显示，同版本三次重复的波动已大于这两个阈值。
 

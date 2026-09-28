@@ -30,6 +30,10 @@ public final class WorkerCallPerformanceMain {
                 throw new IllegalArgumentException("Invalid option");
         }
         if (options.containsKey("--phase")) {
+            if ("calibrate".equals(options.get("--phase"))) {
+                LaneCalibration.run(options);
+                return;
+            }
             if ("case".equals(options.get("--phase"))) {
                 if (LaneSaturation.handles(options.get("--case"))) LaneSaturation.run(options);
                 else LaneCase.run(options);
