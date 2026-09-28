@@ -31,7 +31,7 @@ RPC_TASK_CASES = ("rpc-any-500", "rpc-any-1000", "rpc-any-2000", "rpc-targeted-1
 RPC_CASES = RPC_TASK_CASES + DIAGNOSIS_CASES
 NIGHTLY_CASES = RPC_CASES + ("mixed-500",)
 SUITES = {"task": CASES, "direct": DIRECT_CASES, "direct-diagnosis": DIAGNOSIS_CASES,
-          "rpc-diagnosis": RPC_CASES, "nightly": NIGHTLY_CASES}
+          "rpc-diagnosis": RPC_CASES, "nightly": NIGHTLY_CASES, "lane": ()}
 ORDER = (("A", "B"), ("B", "A"), ("A", "B"))
 GROUP = "scenario-string-utils-workers"
 REDIS_IMAGE = "redis:7.4.10"
@@ -363,6 +363,13 @@ def markdown_summary(final):
     return "\n".join(lines)
 
 
+def lane_rates(value):
+    rates = tuple(int(part) for part in value.split(","))
+    if not rates or len(set(rates)) != len(rates) or any(rate not in (500, 1000, 2000) for rate in rates):
+        raise argparse.ArgumentTypeError("lane rates must be distinct values from 500,1000,2000")
+    return rates
+
+
 def assignment_limit(value):
     limit = int(value)
     if not 1 <= limit <= 1000:
@@ -548,6 +555,387 @@ def run_case(root, case, output, version, deadline, diagnostics="off", assignmen
     return result
 
 
+# Performance lane world (DESIGN-performance-lane.md, slice S1). The legacy suites above retire in S6.
+LANE_GROUPS = ("perf-a", "perf-b")
+LANE_PROJECT = "perf-lane"
+LANE_WORKERS_PER_GROUP = 1000
+LANE_ASSIGNMENT_BATCH_LIMIT = 1000
+LANE_EVENTS = ("extension.worker.string.md5", "extension.worker.lab.delay")
+LANE_ADAPTER = "xa.mass.worker-delivery.adapter.instances.scenario-websocket."
+LANE_WORLD_SECONDS = 6 * 60
+# Configurable resources: raised so they do not bind, or audited as already non-binding.
+# "evidence" names how the lane shows the value was not the binding constraint.
+LANE_KNOB_AUDIT = (
+    {"knob": "xa.mass.kernel-pacer.assignment-batch-limit", "laneValue": str(LANE_ASSIGNMENT_BATCH_LIMIT),
+     "productionDefault": "100", "disposition": "raised",
+     "reason": "Single-Task check budget is about 10 x B Items/s; 1000 is the configured maximum.",
+     "evidence": "Dispatch checked-Item counts per round stay below B (S2)."},
+    {"knob": LANE_ADAPTER + "report-queue-capacity", "laneValue": "10000", "productionDefault": "1000",
+     "disposition": "raised", "reason": "Report admission must not drop or back-pressure Results at 2000/s.",
+     "evidence": "No Report queue drop or capacity rejection (S2)."},
+    {"knob": "xa.mass.task-rpc.max-probe-items-per-round", "laneValue": "1000", "productionDefault": "256",
+     "disposition": "raised", "reason": "256 Items per 100ms probe round is about 2560/s, too close to 2000/s; 1000 is the maximum.",
+     "evidence": "Probe batches stay below the limit (S2)."},
+    {"knob": "xa.mass.task-rpc.refill-by-worker-group[<group>]", "laneValue": "any / {} / 1000",
+     "productionDefault": "per profile", "disposition": "raised",
+     "reason": "Pool watermark per Group at least B, so Refill supply does not trail assignment.",
+     "evidence": "Candidate takes rarely come back empty (S2 validity)."},
+    {"knob": "xa.mass.task-rpc.max-waiters / max-pending-observations", "laneValue": "10000 / 100000",
+     "productionDefault": "10000 / 100000", "disposition": "audited",
+     "reason": "At 2000/s with a 1s wait about 2000 waiters exist.", "evidence": "No waiter-capacity rejection (S2)."},
+    {"knob": "xa.mass.direct-call.*", "laneValue": "3000 / 10000 / 1000 / 10000",
+     "productionDefault": "3000 / 10000 / 1000 / 10000", "disposition": "audited",
+     "reason": "Direct wait, per-Adapter command and pending bounds exceed 2000/s with a 1s wait.",
+     "evidence": "No occupied-slot or HTTP 429 outcome in Direct cases (S2)."},
+    {"knob": "server.tomcat.threads.max / spring.threads.virtual.enabled", "laneValue": "200 / false",
+     "productionDefault": "200 / false", "disposition": "audited",
+     "reason": "items:call and direct-calls complete through DeferredResult, so waiting holds no servlet thread.",
+     "evidence": "HTTP executor observations in diagnostics mode (S2)."},
+    {"knob": "Harness maximum in-flight", "laneValue": "4096", "productionDefault": "n/a", "disposition": "audited",
+     "reason": "2000/s with at most 1s wait keeps about 2000 requests in flight.", "evidence": "No not-sent request (generator validity)."},
+    {"knob": "Workers per Group / Handler", "laneValue": "1000 / MD5", "productionDefault": "n/a", "disposition": "raised",
+     "reason": "Near-zero Handler time keeps Workers idle most of the time at 2000/s.",
+     "evidence": "Minimum HOT Workers during the window stays at least twice the executing count (S2)."},
+)
+# Mechanism constants are measured, never raised (Owner: Pacer and Kernel Score).
+LANE_MECHANISM_CONSTANTS = {
+    "dispatchIntervalMillis": 50, "initializationIntervalMillis": 100, "taskScoreSlotMillis": 100,
+    "refillIntervalMillis": 50, "refillRoundBudget": 1000, "recycleGroupBudget": 100,
+    "resultBatchLimit": 100, "resultSuccessConcurrency": "6..10", "resultGlobalConcurrency": 10,
+    "resultIdleIntervalMillis": 100, "itemClaimLeaseMillis": 5000, "producers": "single-flight",
+    # Server delivery contract (DirectCallService.MAX_CONSUME_LIMIT): an Adapter consume above 100 is rejected
+    # with HTTP 400, so the scenario profile's command-consume-limit 100 is already the maximum.
+    "adapterCommandConsumeLimit": 100,
+}
+
+
+def lane_server_flags():
+    flags = {key: value for key, value in SERVER_FLAGS.items()
+             if not key.startswith(("xa.mass.project-assembly.", "xa.mass.worker-assembly."))}
+    flags["xa.mass.project-assembly.projects[0].project-id"] = LANE_PROJECT
+    flags["xa.mass.worker-assembly.group-config-json"] = json.dumps({group: {
+        "attributes": {"capability": "string-utils"}, "eventCodes": list(LANE_EVENTS)} for group in LANE_GROUPS})
+    for index, group in enumerate(LANE_GROUPS):
+        flags[f"xa.mass.project-assembly.projects[0].worker-group-ids[{index}]"] = group
+        flags[f"xa.mass.worker-matching.groups[{group}].pools[0]"] = "any"
+        flags[f"xa.mass.worker-matching.groups[{group}].functions[0]"] = "worker.any"
+        flags[f"xa.mass.task-rpc.refill-by-worker-group[{group}][0]"] = json.dumps(
+            {"poolName": "any", "target": {}, "count": LANE_ASSIGNMENT_BATCH_LIMIT})
+    for audit in LANE_KNOB_AUDIT:
+        if audit["disposition"] == "raised" and audit["knob"].startswith("xa.mass.") and "<" not in audit["knob"]:
+            flags[audit["knob"]] = audit["laneValue"]
+    return flags
+
+
+def lane_host_groups():
+    return {group: {"events": list(LANE_EVENTS), "count": LANE_WORKERS_PER_GROUP, "propertiesTemplate": {},
+                    "newEnvironment": False, "requestTimeoutMillis": 60_000,
+                    "reconnectPolicy": {"maxUnstableAttempts": 600, "reconnectIntervalMillis": 500,
+                                        "stableConnectionDurationMillis": 10_000}} for group in LANE_GROUPS}
+
+
+def resource_peaks(path):
+    """Whole-run peaks per role, including startup and quiesce samples."""
+    peaks = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        row = json.loads(line)
+        if row["role"] == "redis":
+            continue
+        peak = peaks.setdefault(row["role"], {"samples": 0, "peakNativeThreads": 0, "peakFileDescriptors": 0, "peakRssBytes": 0})
+        peak["samples"] += 1
+        peak["peakNativeThreads"] = max(peak["peakNativeThreads"], row["nativeThreads"])
+        peak["peakFileDescriptors"] = max(peak["peakFileDescriptors"], row["openFileDescriptors"])
+        peak["peakRssBytes"] = max(peak["peakRssBytes"], row["rssBytes"])
+    return peaks
+
+
+def run_lane_harness(phase, harness_output, private, env, processes, sampler, deadline, *extra, accepted=("passed",)):
+    """One bounded Harness phase while Server and Host must stay alive; returns its safe summary."""
+    role = f"harness-{phase}-{len(processes)}"
+    harness_output.mkdir(parents=True, exist_ok=True)
+    processes[role] = start_process(["java", *JVM, "-cp", ROOT / "integrations/worker-call-performance/build/install/xa-mass-worker-call-performance/lib/*",
+        "com.xa.mass.integration.workercallperformance.WorkerCallPerformanceMain", f"--phase={phase}",
+        f"--output={harness_output}", *extra], private / f"{role}.log", env)
+    sampler.register(role, processes[role])
+    while processes[role].poll() is None:
+        if time.monotonic() >= deadline or sampler.failure or any(processes[r].poll() is not None for r in ("server", "host")):
+            raise RuntimeError(f"Deadline, resource evidence or process survival failed during {phase}")
+        time.sleep(.25)
+    path = harness_output / ("case.json" if phase == "case" else f"{phase}.json")
+    phase_summary = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"status": "failed"}
+    if phase_summary.get("status") not in accepted:
+        if phase == "case":
+            return phase_summary
+        raise RuntimeError(f"Lane {phase} failed; inspect {path.relative_to(harness_output.parents[1])}")
+    return phase_summary
+
+
+LANE_PATHS = ("task-any", "task-targeted", "direct")
+LANE_RATES = (500, 1000, 2000)
+LANE_CASE_SECONDS = 180
+
+
+def lane_plan(rates, repetitions):
+    """Every rate runs all three paths on one host; path order rotates per repetition (ABC, BCA, CAB)."""
+    plan = []
+    for repetition in range(1, repetitions + 1):
+        shift = (repetition - 1) % len(LANE_PATHS)
+        order = LANE_PATHS[shift:] + LANE_PATHS[:shift]
+        plan += [(repetition, rate, path) for rate in rates for path in order]
+    return plan
+
+
+def lane_window_cost(path, started, ended):
+    """Server CPU and Redis command deltas across one case measurement window."""
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    result = {}
+    for role, cpu in (("server", lambda row: row["cpuSeconds"]),
+                      ("redis", lambda row: row["cpuUserSeconds"] + row["cpuSystemSeconds"])):
+        window = [row for row in rows if row["role"] == role and started <= row["epochMillis"] <= ended]
+        if len(window) < 2:
+            return None
+        first, last = window[0], window[-1]
+        seconds = (last["epochMillis"] - first["epochMillis"]) / 1000
+        result[role + "CpuSeconds"] = cpu(last) - cpu(first)
+        result[role + "CoveredSeconds"] = seconds
+        if role == "redis":
+            result["redisCommands"] = last["totalCommandsProcessed"] - first["totalCommandsProcessed"]
+    return result
+
+
+def lane_case_record(repetition, rate, path, case, cost):
+    metrics = case.get("metrics", {})
+    record = {"repetition": repetition, "rate": rate, "path": path, "case": f"{path}-{rate}",
+              "status": case.get("status", "failed"), "invalidReasons": case.get("invalidReasons", []),
+              "failureReason": case.get("failureReason"), "fastFail": case.get("fastFail"),
+              "measurementStartedEpochMillis": case.get("measurementStartedEpochMillis"),
+              "measurementEndedEpochMillis": case.get("measurementEndedEpochMillis"),
+              "completedPerSecond": case.get("completedPerSecond"),
+              "successWithinWait": metrics.get("successRate"),
+              "successfulCallLatencyMillis": metrics.get("successfulCallLatencyMillis"),
+              "generatorLimited": metrics.get("generatorLimited"),
+              "acceptedResultsAfterDrain": metrics.get("acceptedResultsAfterDrain"),
+              "workerSamples": len(case.get("workerSamples", []))}
+    completed = (case.get("completedPerSecond") or 0) * LANE_MEASUREMENT_SECONDS
+    if cost:
+        record["cost"] = dict(cost, redisCommandsPerCompleted=cost["redisCommands"] / completed if completed else None,
+                              serverCpuMillisPerCompleted=1000 * cost["serverCpuSeconds"] / completed if completed else None)
+    return record
+
+
+def lane_path_ratios(records):
+    """Task paths relative to Direct on the same host, rate and repetition; passed cases only."""
+    ratios = []
+    for repetition in sorted({r["repetition"] for r in records}):
+        for rate in sorted({r["rate"] for r in records}):
+            cell = {r["path"]: r for r in records if r["repetition"] == repetition and r["rate"] == rate and r["status"] == "passed"}
+            direct = cell.get("direct")
+            for path in ("task-any", "task-targeted"):
+                task = cell.get(path)
+                if not direct or not task:
+                    continue
+                dp, tp = direct["successfulCallLatencyMillis"]["p99"], task["successfulCallLatencyMillis"]["p99"]
+                ratios.append({"repetition": repetition, "rate": rate, "path": path,
+                               "p99LatencyRatio": tp / dp if dp else None,
+                               "completionRatio": task["completedPerSecond"] / direct["completedPerSecond"]
+                               if direct["completedPerSecond"] else None})
+    return ratios
+
+
+LANE_MEASUREMENT_SECONDS = 30
+
+
+def attribute_lane(private, evidence, records):
+    windows = [{"name": f"r{r['repetition']}/{r['case']}", "startEpochMillis": r["measurementStartedEpochMillis"],
+                "endEpochMillis": r["measurementEndedEpochMillis"]} for r in records if r.get("measurementEndedEpochMillis")]
+    recording = private / "server.jfr"
+    if not windows or not recording.is_file():
+        return {"complete": False, "reason": "no recording or no measured window"}
+    write_json(private / "attribution-windows.json", windows)
+    destination = evidence / "attribution.json"
+    command(["java", "-Xmx512m", "-cp", MODULE / "build/install/xa-mass-worker-call-performance/lib/*",
+             "com.xa.mass.integration.workercallperformance.LaneAttribution", recording,
+             private / "attribution-windows.json", destination], timeout=120)
+    result = json.loads(destination.read_text(encoding="utf-8"))
+    for record in records:
+        record["attribution"] = result["cases"].get(f"r{record['repetition']}/{record['case']}")
+    return {key: result[key] for key in ("complete", "dataLoss", "dispatchEvents")}
+
+
+def run_lane(root, output, deadline, rates=LANE_RATES, repetitions=1, attribution=True):
+    """Start the world once, then run each case between quiesce gates (DESIGN-performance-lane.md, S1-S2)."""
+    import redis
+    evidence = output / "evidence"
+    private = output / "private"
+    harness_output = evidence / "harness"
+    for path in (evidence, private, harness_output):
+        path.mkdir(parents=True)
+    scope = "test_worker_call_performance_" + uuid.uuid4().hex[:16]
+    container = client = sampler = None
+    processes = {}
+    cleanup_errors = []
+    records = []
+    result = {"lane": "performance", "status": "failed", "scope": scope, "rates": list(rates),
+              "repetitions": repetitions, "attribution": attribution, "timingsMillis": {}, "cases": records}
+    timings = result["timingsMillis"]
+    started = time.monotonic()
+    elapsed = lambda: int((time.monotonic() - started) * 1000)
+    try:
+        for port in (18082, 18083, 18086):
+            with socket.socket() as probe:
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                probe.bind(("127.0.0.1", port))
+        container = command(["docker", "run", "--rm", "-d", "--label", f"xa-mass-proof={scope}",
+                             "-p", "127.0.0.1::6379", REDIS_IMAGE])
+        if not re.fullmatch(r"[0-9a-f]{64}", container):
+            container = None
+            raise RuntimeError("Docker did not return an exact container identity")
+        port = int(command(["docker", "port", container, "6379/tcp"]).split(":")[-1])
+        redis_url = f"redis://127.0.0.1:{port}/15"
+        client = redis.Redis.from_url(redis_url, decode_responses=True, socket_timeout=2)
+        for attempt in range(40):
+            try:
+                client.ping()
+                break
+            except redis.ConnectionError:
+                if attempt == 39:
+                    raise
+                time.sleep(.25)
+        if client.info("server")["redis_version"] != "7.4.10":
+            raise RuntimeError("Unexpected Redis version")
+        sampler = Sampler(evidence / "process-resources.jsonl", client)
+        sampler.thread.start()
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("XA_MASS_", "SPRING_"))
+               and k not in {"JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"}}
+        env.update(XA_MASS_REDIS_URL=redis_url, XA_MASS_REDIS_SCOPE=scope, XA_MASS_KERNEL_PACER_PRESET="DEFAULT")
+        flags = lane_server_flags()
+        flags.update({"xa.mass.redis.url": redis_url, "xa.mass.redis.scope": scope})
+        jars = [p for p in (root / server_distribution(root) / "build/libs").glob("xa-mass-server-jvm-*.jar") if not p.name.endswith("-plain.jar")]
+        jar = max(jars, key=lambda p: p.stat().st_mtime_ns)
+        recording = ([f"-XX:StartFlightRecording=name=lane,settings={MODULE / 'lane-attribution.jfc'},"
+                      f"filename={private / 'server.jfr'},maxsize=240m,dumponexit=true"] if attribution else [])
+        write_json(evidence / "knob-audit.json", {"resources": list(LANE_KNOB_AUDIT), "mechanismConstants": LANE_MECHANISM_CONSTANTS})
+        write_json(evidence / "effective-config.json", {"serverOverrides": flags, "jvmOptions": JVM, "serverRecording": recording,
+            "groups": list(LANE_GROUPS), "workersPerGroup": LANE_WORKERS_PER_GROUP, "project": LANE_PROJECT,
+            "assignmentBatchLimit": LANE_ASSIGNMENT_BATCH_LIMIT, "hostGroups": lane_host_groups(),
+            "plan": [dict(repetition=r, rate=rate, path=path) for r, rate, path in lane_plan(rates, repetitions)],
+            "configurationSourceSha256": fingerprint(root), "configurationSources": configuration_sources(root),
+            "sourceHead": command(["git", "rev-parse", "HEAD"], cwd=root), "redisImage": REDIS_IMAGE})
+        write_json(evidence / "artifact-fingerprints.json", artifact_fingerprints(root, jar))
+        processes["server"] = start_process(["java", *JVM, *recording, "-jar", jar,
+                                             *(f"--{key}={value}" for key, value in flags.items())], private / "server.log", env)
+        sampler.register("server", processes["server"])
+        wait_http("http://127.0.0.1:18082/actuator/health/readiness", processes["server"], sampler, min(deadline, time.monotonic() + 180))
+        timings["serverReady"] = elapsed()
+        inventory = private / "data/scenario-workers"  # Simulator-owned root naming
+        materialize_inventory(inventory, {group: tuple({"runtime": "java", "capability": "string-utils"}
+                                                       for _ in range(LANE_WORKERS_PER_GROUP)) for group in LANE_GROUPS})
+        config_path = private / "worker-simulator.json"
+        write_json(config_path, {"runtimeApiBaseUrl": "http://127.0.0.1:18082", "sandboxRoot": str(inventory.resolve()),
+                                 "controlPort": 18086, "workerGroups": lane_host_groups()})
+        processes["host"] = start_process(["java", *JVM, "-cp", root / "worker_simulator_jvm/build/install/xa-mass-worker-simulator/lib/*",
+            "com.xa.mass.workersimulator.WorkerSimulatorMain", "--config", str(config_path)], private / "host.log", env)
+        sampler.register("host", processes["host"])
+        wait_http("http://127.0.0.1:18086/lab/v1/workers", processes["host"], sampler, min(deadline, time.monotonic() + 180))
+        timings["hostListening"] = elapsed()
+        result["bootstrap"] = run_lane_harness("bootstrap", harness_output, private, env, processes, sampler, deadline)
+        timings["bootstrapped"] = elapsed()
+        world = harness_output / "bootstrap.json"
+        plan = lane_plan(rates, repetitions)
+        for index, (repetition, rate, path) in enumerate(plan):
+            case_output = harness_output / f"r{repetition}" / f"{path}-{rate}"
+            try:
+                run_lane_harness("quiesce", case_output, private, env, processes, sampler, deadline, f"--world={world}")
+            except RuntimeError:
+                # F6: a polluted world makes this and every later case incomparable.
+                records.extend({"repetition": r, "rate": q, "path": p, "case": f"{p}-{q}", "status": "invalid",
+                                "invalidReasons": ["quiesce-timeout"]} for r, q, p in plan[index:])
+                break
+            case = run_lane_harness("case", case_output, private, env, processes, sampler, deadline,
+                                    f"--case={path}-{rate}", f"--repetition={repetition}", f"--world={world}",
+                                    accepted=("passed", "invalid"))
+            cost = None
+            if case.get("measurementEndedEpochMillis"):
+                cost = lane_window_cost(evidence / "process-resources.jsonl", case["measurementStartedEpochMillis"],
+                                        case["measurementEndedEpochMillis"])
+            records.append(lane_case_record(repetition, rate, path, case, cost))
+            print("lane case " + json.dumps({k: records[-1][k] for k in ("repetition", "case", "status", "invalidReasons", "failureReason")}), flush=True)
+        timings["casesCompleted"] = elapsed()
+        if sampler.failure or any(sampler.counts[r] < 1 for r in ("server", "host", "redis")):
+            raise RuntimeError("Resource evidence incomplete")
+        result["status"] = "failed" if any(r["status"] == "failed" for r in records) else "passed"
+    except Exception as error:
+        result.update(status="failed", runnerFailure=type(error).__name__ + ": " + str(error))
+    finally:
+        if sampler:
+            try:
+                sampler.stop()
+            except Exception as error:
+                cleanup_errors.append(type(error).__name__)
+            if sampler.failure:
+                result.update(status="failed", resourceFailure=sampler.failure)
+            result["resourcePeaks"] = resource_peaks(evidence / "process-resources.jsonl")
+        for process in reversed(tuple(processes.values())):
+            try:
+                stop_process(process)
+            except Exception as error:
+                cleanup_errors.append(type(error).__name__)
+        if client:
+            client.close()
+        if container:
+            try:
+                command(["docker", "rm", "--force", container], timeout=20)
+            except Exception as error:
+                cleanup_errors.append(type(error).__name__)
+        if attribution and records:
+            try:
+                result["attribution"] = attribute_lane(private, evidence, records)
+            except Exception as error:
+                result["attribution"] = {"complete": False, "failureType": type(error).__name__}
+        result["pathRatios"] = lane_path_ratios(records)
+        result["caseCounts"] = dict(Counter(r["status"] for r in records))
+        if cleanup_errors:
+            result.update(status="failed", cleanupErrors=cleanup_errors)
+        write_json(evidence / "lane-summary.json", result)
+    return result
+
+
+def lane_markdown(result):
+    timings = result.get("timingsMillis", {})
+    lines = ["# Performance Lane", "", f"Status: **{result['status']}**. Cases: {result.get('caseCounts', {})}.", "",
+             f"{len(LANE_GROUPS)} Groups x {LANE_WORKERS_PER_GROUP} Workers, one Adapter, assignment ceiling "
+             f"{LANE_ASSIGNMENT_BATCH_LIMIT}. Offered load splits evenly across the Groups.", "",
+             "| Rep | Case | Status | Success within 1s | Completed/s | Success p50 / p99 ms | Checked Items/s | Shortfall | STALE | Redis cmds / completed |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for r in result.get("cases", []):
+        latency = r.get("successfulCallLatencyMillis") or {}
+        attribution = r.get("attribution") or {}
+        cost = r.get("cost") or {}
+        status = r["status"] + (f" ({', '.join(r['invalidReasons'])})" if r.get("invalidReasons") else "") \
+            + (f" ({r['failureReason']})" if r.get("failureReason") else "")
+        pct = lambda value: f"{value:.2%}" if isinstance(value, (int, float)) else "—"
+        num = lambda value, fmt: format(value, fmt) if isinstance(value, (int, float)) else "—"
+        lines.append(f"| {r['repetition']} | {r['case']} | {status} | {pct(r.get('successWithinWait'))} "
+                     f"| {num(r.get('completedPerSecond'), '.1f')} | {num(latency.get('p50'), '.1f')} / {num(latency.get('p99'), '.1f')} "
+                     f"| {num(attribution.get('checkedItemsPerSecond'), '.0f')} | {pct(attribution.get('candidateShortfallRatio'))} "
+                     f"| {pct(attribution.get('strictAcquisitionStaleRatio'))} | {num(cost.get('redisCommandsPerCompleted'), '.1f')} |")
+    if result.get("pathRatios"):
+        lines += ["", "Task path relative to Direct on the same host (passed cases only):", "",
+                  "| Rep | Rate | Path | p99 latency ratio | Completion ratio |", "| --- | --- | --- | --- | --- |"]
+        lines += [f"| {x['repetition']} | {x['rate']} | {x['path']} | {x['p99LatencyRatio']:.2f} | {x['completionRatio']:.2f} |"
+                  for x in result["pathRatios"] if x["p99LatencyRatio"] is not None and x["completionRatio"] is not None]
+    lines += ["", "| Milestone | Elapsed s |", "| --- | --- |"]
+    lines += [f"| {name} | {value / 1000:.1f} |" for name, value in timings.items()]
+    lines += ["", "| Role | Peak threads | Peak FDs | Peak RSS MiB |", "| --- | --- | --- | --- |"]
+    lines += [f"| {role} | {peak['peakNativeThreads']} | {peak['peakFileDescriptors']} | {peak['peakRssBytes'] / 2**20:.0f} |"
+              for role, peak in result.get("resourcePeaks", {}).items() if not role.startswith("harness-")]
+    if result.get("runnerFailure"):
+        lines += ["", f"Failure: {result['runnerFailure']}"]
+    lines += ["", "Invalid means a configurable resource or the generator bound the case; its numbers are not comparable. "
+              "Failed means a correctness floor or fast-fail rule was violated. Performance values never fail the lane.", ""]
+    return "\n".join(lines)
+
+
 def jfr_options(private, role, diagnostics):
     if diagnostics == "off":
         return []
@@ -706,9 +1094,19 @@ def main():
     parser.add_argument("--assignment-batch-limit", type=assignment_limit, default=100,
                         help="Instance assignment ceiling (1..1000); supply still follows Matching deficits")
     parser.add_argument("--allow-nonreference-host", action="store_true", help="Local diagnostics only; no reference performance claim")
+    parser.add_argument("--lane-rates", type=lane_rates, help="Lane only: comma-separated subset of 500,1000,2000")
+    parser.add_argument("--lane-attribution", choices=("on", "off"), default="on",
+                        help="Lane only: Server Dispatch Owner events for per-case attribution")
     options = parser.parse_args()
+    if options.suite == "lane" and (options.baseline_ref or options.case or options.diagnostics != "off"
+                                    or options.diagnostic_pair or options.assignment_batch_limit != 100):
+        parser.error("The lane fixes its own configuration; baseline, case, diagnostics "
+                     "and assignment ceiling options do not apply")
+    if options.suite != "lane" and (options.lane_rates or options.lane_attribution != "on"):
+        parser.error("--lane-rates and --lane-attribution apply only to --suite lane")
     try:
-        validate_repetitions(options.suite, options.repetitions, options.baseline_ref, options.diagnostics, options.diagnostic_pair)
+        if options.suite != "lane":
+            validate_repetitions(options.suite, options.repetitions, options.baseline_ref, options.diagnostics, options.diagnostic_pair)
         purpose, orders = execution_mode(options.baseline_ref, options.diagnostics, options.diagnostic_pair)
         if options.repetitions == 3:
             purpose, orders = "same_version_repetitions", (("B",),) * 3
@@ -721,7 +1119,7 @@ def main():
         parser.error("Linux with Docker and /proc is required")
     os_release = platform.freedesktop_os_release()
     reference = os_release.get("ID") == "ubuntu" and os_release.get("VERSION_ID") == "24.04"
-    if options.suite in ("direct-diagnosis", "rpc-diagnosis", "nightly"):
+    if options.suite in ("direct-diagnosis", "rpc-diagnosis", "nightly", "lane"):
         reference = reference and os.cpu_count() == 4
     if not reference and not options.allow_nonreference_host:
         parser.error("Reference environment is Ubuntu 24.04; use --allow-nonreference-host only for diagnostics")
@@ -735,6 +1133,8 @@ def main():
         command(["docker", "pull", REDIS_IMAGE])
         image_id = command(["docker", "image", "inspect", REDIS_IMAGE, "--format", "{{.Id}}"])
     output = fresh_output(options.output_root)
+    if options.suite == "lane":
+        return main_lane(options, output, run_started, reference, os_release, java, image_id)
     versions = {"B": command(["git", "rev-parse", "HEAD"])}
     roots = {"B": ROOT}
     baseline = None
@@ -797,6 +1197,24 @@ def main():
         (output / "evidence/summary.md").write_text(markdown_summary(final), encoding="utf-8")
     print(json.dumps({"status": final["status"], "runs": len(runs), "evidence": str(output / "evidence/summary.json")}), flush=True)
     return 0 if final["status"] == "passed" else 1
+
+
+def main_lane(options, output, run_started, reference, os_release, java, image_id):
+    if not options.skip_build:
+        build(ROOT, harness=True)
+    rates = options.lane_rates or LANE_RATES
+    plan = lane_plan(rates, options.repetitions)
+    result = run_lane(ROOT, output, run_started + LANE_WORLD_SECONDS + len(plan) * LANE_CASE_SECONDS,
+                      rates, options.repetitions, options.lane_attribution == "on")
+    result.update(referenceHost=reference, os=os_release, java=java.strip(), cpuCount=os.cpu_count(),
+                  machine=platform.machine(), kernel=platform.release(), redisImageId=image_id,
+                  harnessCommit=command(["git", "rev-parse", "HEAD"]),
+                  worktreeDirty=bool(command(["git", "status", "--porcelain"])))
+    write_json(output / "evidence/lane-summary.json", result)
+    (output / "evidence/summary.md").write_text(lane_markdown(result), encoding="utf-8")
+    print(json.dumps({"status": result["status"], "cases": result.get("caseCounts"),
+                      "evidence": str(output / "evidence/lane-summary.json")}), flush=True)
+    return 0 if result["status"] == "passed" else 1
 
 
 if __name__ == "__main__":

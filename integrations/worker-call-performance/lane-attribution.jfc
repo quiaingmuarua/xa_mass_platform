@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration version="2.0" label="XA Mass performance lane attribution" description="Dispatch Owner stage events only; no sampling" provider="XA Mass">
+  <event name="xa.mass.TaskDispatch"><setting name="enabled">true</setting></event>
+  <event name="jdk.DataLoss"><setting name="enabled">true</setting></event>
+</configuration>

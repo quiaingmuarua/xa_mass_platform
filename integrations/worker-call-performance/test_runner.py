@@ -393,5 +393,121 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(["direct-100"], [row["case"] for row in value["cases"]])
 
 
+class LaneWorldConfigTest(unittest.TestCase):
+    def test_lane_raises_resource_knobs_and_keeps_adapter_invariants(self):
+        flags = runner.lane_server_flags()
+        adapter = runner.LANE_ADAPTER
+        self.assertEqual("1000", flags["xa.mass.kernel-pacer.assignment-batch-limit"])
+        self.assertEqual("1000", flags["xa.mass.task-rpc.max-probe-items-per-round"])
+        self.assertEqual("10000", flags[adapter + "report-queue-capacity"])
+        # The Server delivery contract caps an Adapter consume at 100; the lane must not raise it.
+        self.assertNotIn(adapter + "command-consume-limit", flags)
+        self.assertEqual(100, runner.LANE_MECHANISM_CONSTANTS["adapterCommandConsumeLimit"])
+        self.assertEqual("DEFAULT", flags["xa.mass.kernel-pacer.preset"])
+        for audit in runner.LANE_KNOB_AUDIT:
+            self.assertIn(audit["disposition"], ("raised", "audited"))
+            self.assertTrue(audit["reason"] and audit["evidence"])
+            if audit["disposition"] == "raised" and audit["knob"] in flags:
+                self.assertEqual(audit["laneValue"], flags[audit["knob"]])
+
+    def test_lane_world_replaces_the_scenario_project_with_two_groups(self):
+        flags = runner.lane_server_flags()
+        self.assertEqual("perf-lane", flags["xa.mass.project-assembly.projects[0].project-id"])
+        self.assertEqual(list(runner.LANE_GROUPS), [flags[f"xa.mass.project-assembly.projects[0].worker-group-ids[{i}]"]
+                                                    for i in range(len(runner.LANE_GROUPS))])
+        self.assertNotIn(runner.GROUP, json.dumps({k: v for k, v in flags.items() if "assembly" in k}))
+        self.assertEqual(set(runner.LANE_GROUPS), set(json.loads(flags["xa.mass.worker-assembly.group-config-json"])))
+        for group in runner.LANE_GROUPS:
+            self.assertEqual("any", flags[f"xa.mass.worker-matching.groups[{group}].pools[0]"])
+            supply = json.loads(flags[f"xa.mass.task-rpc.refill-by-worker-group[{group}][0]"])
+            self.assertGreaterEqual(supply["count"], runner.LANE_ASSIGNMENT_BATCH_LIMIT)
+        hosts = runner.lane_host_groups()
+        self.assertEqual({group: 1000 for group in runner.LANE_GROUPS}, {g: v["count"] for g, v in hosts.items()})
+
+    def test_resource_peaks_cover_every_process_sample_and_skip_redis(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "samples.jsonl"
+            rows = [dict(role="server", nativeThreads=40, openFileDescriptors=100, rssBytes=10),
+                    dict(role="server", nativeThreads=60, openFileDescriptors=90, rssBytes=30),
+                    dict(role="redis", totalCommandsProcessed=1),
+                    dict(role="host", nativeThreads=30, openFileDescriptors=2100, rssBytes=20)]
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            peaks = runner.resource_peaks(path)
+        self.assertEqual({"server", "host"}, set(peaks))
+        self.assertEqual(dict(samples=2, peakNativeThreads=60, peakFileDescriptors=100, peakRssBytes=30), peaks["server"])
+
+    def test_lane_rejects_options_that_belong_to_legacy_suites(self):
+        for extra in (["--case", "any-100"], ["--baseline-ref", "HEAD"], ["--assignment-batch-limit", "500"],
+                      ["--diagnostics", "jfr"], ["--lane-rates", "700"], ["--lane-rates", "500,500"]):
+            with patch.object(runner.sys, "argv", ["runner", "--suite", "lane", *extra]), \
+                    patch("sys.stderr"), self.assertRaises(SystemExit):
+                runner.main()
+
+    def test_lane_only_options_are_rejected_for_legacy_suites(self):
+        for extra in (["--lane-rates", "500"], ["--lane-attribution", "off"]):
+            with patch.object(runner.sys, "argv", ["runner", "--suite", "task", *extra]),                     patch("sys.stderr"), self.assertRaises(SystemExit):
+                runner.main()
+
+    def test_lane_plan_runs_every_path_per_rate_and_rotates_path_order(self):
+        plan = runner.lane_plan((500, 2000), 3)
+        self.assertEqual(18, len(plan))
+        first = [path for rep, rate, path in plan if rep == 1 and rate == 500]
+        second = [path for rep, rate, path in plan if rep == 2 and rate == 500]
+        third = [path for rep, rate, path in plan if rep == 3 and rate == 2000]
+        self.assertEqual(["task-any", "task-targeted", "direct"], first)
+        self.assertEqual(["task-targeted", "direct", "task-any"], second)
+        self.assertEqual(["direct", "task-any", "task-targeted"], third)
+        self.assertEqual((500, 1000, 2000), runner.lane_rates("500,1000,2000"))
+
+    def test_path_ratios_compare_passed_task_cases_with_direct_on_the_same_cell(self):
+        def record(path, status="passed", p99=100.0, completed=500.0, rate=500, repetition=1):
+            return dict(repetition=repetition, rate=rate, path=path, status=status, completedPerSecond=completed,
+                        successfulCallLatencyMillis={"p99": p99})
+        ratios = runner.lane_path_ratios([record("direct", p99=50, completed=500), record("task-any", p99=150, completed=400),
+                                          record("task-targeted", status="invalid"), record("task-any", rate=1000)])
+        self.assertEqual([dict(repetition=1, rate=500, path="task-any", p99LatencyRatio=3.0, completionRatio=0.8)], ratios)
+
+    def test_case_record_normalizes_cost_per_completed_call(self):
+        case = dict(status="invalid", invalidReasons=["generator-limited"], completedPerSecond=100.0,
+                    measurementStartedEpochMillis=1, measurementEndedEpochMillis=2,
+                    metrics=dict(successRate=.9, successfulCallLatencyMillis={"p50": 10, "p99": 20}, generatorLimited=True))
+        record = runner.lane_case_record(2, 1000, "task-any", case,
+                                         dict(serverCpuSeconds=6.0, redisCommands=30_000, redisCpuSeconds=1.0,
+                                              serverCoveredSeconds=30, redisCoveredSeconds=30))
+        self.assertEqual("task-any-1000", record["case"])
+        self.assertEqual(10.0, record["cost"]["redisCommandsPerCompleted"])
+        self.assertEqual(2.0, record["cost"]["serverCpuMillisPerCompleted"])
+        self.assertEqual(["generator-limited"], record["invalidReasons"])
+
+    def test_window_cost_uses_only_samples_inside_the_measurement(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "samples.jsonl"
+            rows = [dict(role="server", epochMillis=t, cpuSeconds=t / 1000) for t in (0, 1000, 31_000, 40_000)]
+            rows += [dict(role="redis", epochMillis=t, cpuUserSeconds=t / 2000, cpuSystemSeconds=0,
+                          totalCommandsProcessed=t) for t in (0, 1000, 31_000, 40_000)]
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            cost = runner.lane_window_cost(path, 1000, 31_000)
+            self.assertIsNone(runner.lane_window_cost(path, 32_000, 33_000))
+        self.assertEqual(30.0, cost["serverCpuSeconds"])
+        self.assertEqual(30_000, cost["redisCommands"])
+        self.assertEqual(15.0, cost["redisCpuSeconds"])
+
+    def test_lane_markdown_separates_invalid_and_failed_cases(self):
+        cases = [dict(repetition=1, case="task-any-500", status="passed", invalidReasons=[], successWithinWait=.95,
+                      completedPerSecond=500.0, successfulCallLatencyMillis={"p50": 20.0, "p99": 90.0},
+                      attribution=dict(checkedItemsPerSecond=1200, candidateShortfallRatio=.01, strictAcquisitionStaleRatio=.002),
+                      cost=dict(redisCommandsPerCompleted=12.5)),
+                 dict(repetition=1, case="direct-2000", status="invalid", invalidReasons=["generator-limited"]),
+                 dict(repetition=1, case="task-targeted-2000", status="failed", invalidReasons=[], failureReason="drain-stalled")]
+        value = runner.lane_markdown(dict(status="failed", caseCounts={"passed": 1, "invalid": 1, "failed": 1}, cases=cases,
+            timingsMillis={"serverReady": 12_000}, resourcePeaks={"host": dict(samples=3, peakNativeThreads=50,
+            peakFileDescriptors=2100, peakRssBytes=2**29)}))
+        self.assertIn("| 1 | task-any-500 | passed | 95.00% | 500.0 | 20.0 / 90.0 | 1200 | 1.00% | 0.20% | 12.5 |", value)
+        self.assertIn("invalid (generator-limited)", value)
+        self.assertIn("failed (drain-stalled)", value)
+        self.assertIn("| host | 50 | 2100 | 512 |", value)
+        self.assertIn("Performance values never fail the lane", value)
+
+
 if __name__ == "__main__":
     unittest.main()

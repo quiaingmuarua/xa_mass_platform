@@ -138,29 +138,65 @@ final class CallLoad {
         }
     }
 
+    /** Fast-fail checkpoint for the generator-limited rule: not-sent or schedule-lag p99 above 100ms. */
+    static final long EARLY_CHECK_NANOS = 10_000_000_000L;
+    static final long LATE_SEND_NANOS = 100_000_000L;
+
     static Batch schedule(int rate, int seconds, int capacity, String prefix, Executor executor, Sender sender) {
-        return schedule(rate, seconds, capacity, prefix, executor, sender, System::nanoTime, CallLoad::awaitDeadline);
+        return schedule(rate, seconds, capacity, prefix, executor, sender, System::nanoTime, CallLoad::awaitDeadline, null);
+    }
+
+    /** As {@link #schedule}, but stops offering load once {@code stop} holds a fast-fail reason. */
+    static Batch schedule(int rate, int seconds, int capacity, String prefix, Executor executor, Sender sender,
+                          java.util.concurrent.atomic.AtomicReference<String> stop) {
+        return schedule(rate, seconds, capacity, prefix, executor, sender, System::nanoTime, CallLoad::awaitDeadline, stop);
     }
 
     static Batch schedule(int rate, int seconds, int capacity, String prefix, Executor executor, Sender sender,
                           LongSupplier clock, LongConsumer waitUntil) {
+        return schedule(rate, seconds, capacity, prefix, executor, sender, clock, waitUntil, null);
+    }
+
+    static Batch schedule(int rate, int seconds, int capacity, String prefix, Executor executor, Sender sender,
+                          LongSupplier clock, LongConsumer waitUntil,
+                          java.util.concurrent.atomic.AtomicReference<String> stop) {
         if (rate < 1 || seconds < 1 || capacity < 1 || (long) rate * seconds > 300_000)
             throw new IllegalArgumentException("Invalid finite load bounds");
         int count = rate * seconds;
         var done = new CountDownLatch(count);
         var slots = new Semaphore(capacity);
         var samples = new ArrayList<Sample>(count);
+        var sentCount = new java.util.concurrent.atomic.LongAdder();
+        var lateCount = new java.util.concurrent.atomic.LongAdder();
+        long notSent = 0;
+        boolean checked = false;
         long start = clock.getAsLong();
+        int offered = count;
         for (int i = 0; i < count; i++) {
             long planned = start + i * 1_000_000_000L / rate;
+            if (stop != null) {
+                if (!checked && planned - start >= EARLY_CHECK_NANOS) {
+                    checked = true;
+                    long sent = sentCount.sum();
+                    if (notSent > 0 || (sent > 0 && lateCount.sum() * 100 > sent))
+                        stop.compareAndSet(null, "generator-limited");
+                }
+                if (stop.get() != null) {
+                    offered = i;
+                    for (int skipped = i; skipped < count; skipped++) done.countDown();
+                    break;
+                }
+            }
             var sample = new Sample(prefix + "-" + i, planned);
             samples.add(sample);
             waitUntil.accept(planned);
-            if (!slots.tryAcquire()) { done.countDown(); continue; }
+            if (!slots.tryAcquire()) { notSent++; done.countDown(); continue; }
             int index = i;
             try {
                 executor.execute(() -> {
                     sample.sent = clock.getAsLong();
+                    sentCount.increment();
+                    if (sample.sent - sample.planned > LATE_SEND_NANOS) lateCount.increment();
                     try {
                         var reply = sender.send(sample.id, index);
                         sample.httpStatus = reply.httpStatus();
@@ -172,6 +208,7 @@ final class CallLoad {
                     } catch (ProtocolFailure error) {
                         sample.httpStatus = 200;
                         sample.outcome = Outcome.PROTOCOL_ERROR;
+                        if (stop != null) stop.compareAndSet(null, "protocol-error");
                     } catch (java.net.http.HttpTimeoutException error) {
                         sample.outcome = Outcome.UNKNOWN;
                         sample.detail = "client-timeout";
@@ -190,8 +227,9 @@ final class CallLoad {
                 slots.release(); done.countDown();
             }
         }
-        waitUntil.accept(start + seconds * 1_000_000_000L);
-        return new Batch(List.copyOf(samples), start, seconds * 1_000_000_000L, done);
+        long window = offered == count ? seconds * 1_000_000_000L : Math.max(1, offered * 1_000_000_000L / rate);
+        waitUntil.accept(start + window);
+        return new Batch(List.copyOf(samples), start, window, done);
     }
 
     static void awaitDeadline(long deadline) {

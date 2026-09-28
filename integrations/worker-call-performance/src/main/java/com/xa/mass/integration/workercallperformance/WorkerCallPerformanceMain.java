@@ -25,9 +25,18 @@ public final class WorkerCallPerformanceMain {
         var options = new LinkedHashMap<String, String>();
         for (String arg : args) {
             var pair = arg.split("=", 2);
-            if (pair.length != 2 || !Set.of("--case", "--output", "--runtime-url", "--lab-url", "--assignment-batch-limit")
-                    .contains(pair[0]) || options.putIfAbsent(pair[0], pair[1]) != null)
+            if (pair.length != 2 || !Set.of("--case", "--output", "--runtime-url", "--lab-url", "--assignment-batch-limit",
+                    "--phase", "--world", "--repetition").contains(pair[0]) || options.putIfAbsent(pair[0], pair[1]) != null)
                 throw new IllegalArgumentException("Invalid option");
+        }
+        if (options.containsKey("--phase")) {
+            if ("case".equals(options.get("--phase"))) {
+                LaneCase.run(options);
+                return;
+            }
+            if (options.containsKey("--case")) throw new IllegalArgumentException("Lane world phases take no case");
+            LaneWorld.run(options);
+            return;
         }
         int assignmentBatchLimit = Integer.parseInt(options.getOrDefault("--assignment-batch-limit", "100"));
         if (assignmentBatchLimit < 1 || assignmentBatchLimit > 1_000)

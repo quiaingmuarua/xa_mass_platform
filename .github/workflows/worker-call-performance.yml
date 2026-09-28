@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: "RPC attribution, legacy fixtures, or seven RPC cases plus original mixed witness"
+        description: "RPC attribution, legacy fixtures, seven RPC cases plus original mixed witness, or the redesigned lane (DESIGN-performance-lane.md)"
         required: true
         type: choice
         default: rpc-diagnosis
@@ -16,6 +16,7 @@ on:
           - direct-diagnosis
           - rpc-diagnosis
           - nightly
+          - lane
       repetitions:
         description: "Same-version RPC repetitions; three rotates paths on one host and requires JFR off"
         type: choice
