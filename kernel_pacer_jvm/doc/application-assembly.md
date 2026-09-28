@@ -340,7 +340,7 @@ cleared when their Group leaves the roots, and advance before fallible work. Mat
 hints without reserving stock. Target counts are watermarks: Matching does not
 truncate already-supplied qualified candidates at those counts; admission still
 honors its batch budget and actual capacity. Candidate age is 60 seconds in production/Scenario
-Lab and 10ms in Runtime Boundary; Pool TTL is independently 60 seconds and checked
+Lab and 1 second in Runtime Boundary; Pool TTL is independently 60 seconds and checked
 when entries are polled. Matching counts resident entries, including duplicates and
 old entries not yet reclaimed; these remain shortage hints rather than executable
 Worker counts. Capacity pressure can reclaim expired queue heads during the existing

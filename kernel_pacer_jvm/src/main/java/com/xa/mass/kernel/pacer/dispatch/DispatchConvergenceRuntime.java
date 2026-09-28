@@ -27,6 +27,9 @@ public final class DispatchConvergenceRuntime {
     private static final long LAB_INTERVAL_MILLIS = 20;
     private static final long BOUNDARY_RECHECK_DELAY_MILLIS = 10;
     private static final long BOUNDARY_HOT_PROBE_STALE_AFTER_MILLIS = 10;
+    // Well above the 50ms Refill interval: a candidate keeps its old HOT time, so a
+    // shorter age recycles every candidate in the next round before Dispatch takes it.
+    private static final long BOUNDARY_CANDIDATE_RECYCLE_AFTER_MILLIS = 1_000;
 
     private final DispatchMainScheduler mainScheduler;
     private Thread schedulerThread;
@@ -77,7 +80,7 @@ public final class DispatchConvergenceRuntime {
         WorkerCandidateSelectionPolicy candidateSelection =
                 new WorkerCandidateSelectionPolicy(workerCatalog, workerMatching);
         WorkerEligibilityRefillPolicy refill=new WorkerEligibilityRefillPolicy(workerScores, workerMatching, assignmentHotFloor, assignmentBatchLimit,
-                preset == PolicyPreset.RUNTIME_BOUNDARY_PROOF ? 10 : WorkerEligibilityRefillPolicy.CANDIDATE_RECYCLE_AFTER_MILLIS,
+                candidateRecycleAfterMillisForPreset(preset),
                 System::currentTimeMillis);
         TaskInitializationPolicy initialization =
                 new TaskInitializationPolicy(
@@ -207,6 +210,13 @@ public final class DispatchConvergenceRuntime {
                     RUNTIME_BOUNDARY_PROOF ->
                     AssignmentDispatchConfig.defaults();
         };
+    }
+
+    static long candidateRecycleAfterMillisForPreset(PolicyPreset preset) {
+        return Objects.requireNonNull(preset, "preset")
+                == PolicyPreset.RUNTIME_BOUNDARY_PROOF
+                ? BOUNDARY_CANDIDATE_RECYCLE_AFTER_MILLIS
+                : WorkerEligibilityRefillPolicy.CANDIDATE_RECYCLE_AFTER_MILLIS;
     }
 
     static WorkerServiceabilityDispatchConfig

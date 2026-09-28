@@ -20,6 +20,17 @@ class DispatchConvergenceRuntimeTest {
     }
 
     @Test
+    void runtimeBoundaryCandidateAgeOutlastsSeveralRefillRounds() {
+        assertEquals(1_000, DispatchConvergenceRuntime
+                .candidateRecycleAfterMillisForPreset(PolicyPreset.RUNTIME_BOUNDARY_PROOF));
+        for (PolicyPreset preset : List.of(PolicyPreset.DEFAULT,
+                PolicyPreset.SERVICEABILITY_DEFAULT, PolicyPreset.SCENARIO_LAB)) {
+            assertEquals(60_000, DispatchConvergenceRuntime
+                    .candidateRecycleAfterMillisForPreset(preset));
+        }
+    }
+
+    @Test
     void keepsFiniteServiceabilityPresetValuesInsideTheDispatchPackage() {
         WorkerServiceabilityDispatchConfig recoveryOnly =
                 DispatchConvergenceRuntime.serviceabilityConfigForPreset(

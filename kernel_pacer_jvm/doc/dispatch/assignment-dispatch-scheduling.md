@@ -59,8 +59,14 @@ Each Group receives at most one batch of each operation per round.
 The observation stage records the requested raw-row limit. No Worker offset,
 extra thread, supplementary scan or durable cursor is introduced.
 Recycling and refill honor the same optional floor; DEFAULT retains no Assignment
-scan floor. Runtime Boundary uses 10ms candidate age; production and Scenario Lab
+scan floor. Runtime Boundary uses 1-second candidate age; production and Scenario Lab
 use 60 seconds. This is distinct from Pool TTL and Serviceability HOT staleness.
+
+Age is measured from the candidate's retained HOT time, not from candidateization.
+Due HOT is already at least one 100ms slot old, so an age below the 50ms Refill
+interval would recycle every candidate in the next round and invalidate its Pool
+entry before most Dispatch takes. The Runtime Boundary value stays well above
+that interval so its fixed workload bounds measure scheduling, not that race.
 
 Both heads count raw rows, including corruption, against their budgets. Successful
 candidateize moves a member to another mark band. Recycling advances generation,
