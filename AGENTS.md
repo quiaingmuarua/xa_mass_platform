@@ -203,7 +203,7 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
 - Task supply declarations name Pools; Item `WorkerQuery` values independently
   name fixed functions. Empty supply is valid. Functions cannot imply supply,
   and direct Identity/Phone functions are not Pool names.
-- Pacer depends only on `WorkerMatching`. It forwards Group/Pool names, immutable
+- Pacer's candidate port is `WorkerMatching`. It forwards Group/Pool names, immutable
   queries and call-local message IDs without normalizing fields, interpreting
   business conditions, reading facts or constructing index coordinates.
   Matching must not accept Task IDs, retain Task configuration/message IDs or
@@ -215,6 +215,12 @@ owns query inputs, Pool maintenance, indexes, capacity and failure semantics.
 - Server Properties callers use `WorkerProperties`; Task admission uses
   `WorkerMatchingCatalog`; Pacer uses only `WorkerMatching`. Facts types belong to
   Properties. Catalog owns no Facts encoding, storage dependency or close operation.
+- MatchingComposition owns the independent `NetworkEvidenceTimestamps` Group HASH
+  on its shared connection. Only source/Binding/age-validated network observations
+  advance it; no Facts prerequisite, Platform JSON copy or candidate invalidation.
+  Keep its per-chunk preflight/write atomicity separate from Score transitions:
+  filter failure is diagnosed and fails open, and later Score failure never
+  rolls back a timestamp. No rebuild, TTL, retry or cross-queue consistency claim.
 - Refill counts are shortage watermarks, not admission quotas or inventory caps.
   Pacer bounds supply by observed deficits; Matching qualifies supplied identities
   within the call budget and actual capacity without clipping to target counts.
@@ -298,6 +304,11 @@ Policy documents own workflow, capacity and lifecycle.
 - Serviceability reads current HOT/RECOVERY heads without cross-round cursors or
   cooldowns. Score Owner uses Redis time and exact CAS to schedule the next
   recheck before Probe offer. Network evidence is consumed in every preset.
+- The network Result Policy owns bounded Binding/source checks and Group grouping
+  before the injected timestamp-filter function. Kernel serviceability events
+  accept Group and Worker-time Maps without Binding reads or Matching dependencies.
+  Preserve the serial lane, original evidence times and best-effort fail-open;
+  do not join timestamp persistence with Score Lua or add a second confirmation.
 - The instance assignment ceiling belongs to Pacer: it bounds Item checks and
   demand-driven candidate reads, never target inventory. Charge requested raw rows
   against the round budget; keep recycling and supply rotation independent.

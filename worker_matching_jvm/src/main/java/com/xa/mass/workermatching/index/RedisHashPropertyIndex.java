@@ -32,7 +32,7 @@ public final class RedisHashPropertyIndex implements PropertyIndex {
         return keyspace.base() + ":matching:worker:index:" + encode(group) + ":" + encode(property);
     }
 
-    private static String encode(String value) {
+    static String encode(String value) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 

@@ -165,10 +165,6 @@
       "observed_at_millis",
       "opaque_result_payload"
     ],
-    "NetworkObservation": [
-      "endpoint_manager_id",
-      "observed_at_millis"
-    ],
     "DeliveryReport": [
       "src",
       "source_id",

@@ -62,10 +62,16 @@ class MatchingCompositionTest {
         verify(commands, times(2)).hmget(anyString(), eq("number"));
         verify(commands, times(2)).hmget(anyString(), eq("w"));
         verifyNoMoreInteractions(commands);
+        when(commands.eval(anyString(), eq(io.lettuce.core.ScriptOutputType.MULTI), any(String[].class),
+                eq("w"), eq("1000"))).thenReturn(List.of("w"));
+        assertSame(composition.networkEvidenceTimestamps(), composition.networkEvidenceTimestamps());
+        assertEquals(Set.of("w"), composition.networkEvidenceTimestamps().filterAndAdvance("g", Map.of("w", 1000L)));
         verify(client, times(1)).connect(StringCodec.UTF8);
         composition.close(); composition.close();
         verify(connection, times(1)).close();
         verify(client, never()).shutdown();
+        assertThrows(IllegalStateException.class,
+                () -> composition.networkEvidenceTimestamps().filterAndAdvance("g", Map.of("w", 1001L)));
     }
 
     @Test void startupAndCloseDoNotOpenRedisOrRebuildIndexes() {

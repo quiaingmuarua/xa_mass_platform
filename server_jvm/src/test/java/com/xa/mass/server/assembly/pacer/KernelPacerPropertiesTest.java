@@ -4,6 +4,7 @@ import com.xa.mass.kernel.assignment.WorkerMatching;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
@@ -16,6 +17,8 @@ import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
+import com.xa.mass.workermatching.MatchingComposition;
+import com.xa.mass.workermatching.index.NetworkEvidenceTimestamps;
 import java.net.URI;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -27,8 +30,11 @@ class KernelPacerPropertiesTest {
                     .withUserConfiguration(KernelPacerConfiguration.class)
                     .withBean(WorkerMatching.class,
                             () -> mock(WorkerMatching.class))
-
-
+                    .withBean(MatchingComposition.class, () -> {
+                        var composition = mock(MatchingComposition.class);
+                        when(composition.networkEvidenceTimestamps()).thenReturn(mock(NetworkEvidenceTimestamps.class));
+                        return composition;
+                    })
                     .withBean(
                             WorkerCommandRuntime.class,
                             () -> mock(WorkerCommandRuntime.class)

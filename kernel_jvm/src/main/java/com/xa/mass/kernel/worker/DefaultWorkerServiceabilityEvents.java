@@ -1,7 +1,6 @@
 package com.xa.mass.kernel.worker;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
-import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -13,19 +12,13 @@ import java.util.Objects;
 public final class DefaultWorkerServiceabilityEvents
         implements WorkerServiceabilityEvents {
 
-    private final WorkerResourceCatalog workerCatalog;
     private final WorkerScoreCore workerScores;
     private final long activationFloorMillis;
 
     public DefaultWorkerServiceabilityEvents(
-            WorkerResourceCatalog workerCatalog,
             WorkerScoreCore workerScores,
             long activationFloorMillis
     ) {
-        this.workerCatalog = Objects.requireNonNull(
-                workerCatalog,
-                "workerCatalog"
-        );
         this.workerScores = Objects.requireNonNull(
                 workerScores,
                 "workerScores"
@@ -37,8 +30,9 @@ public final class DefaultWorkerServiceabilityEvents
     }
 
     @Override
-    public void onAvailable(Map<String, NetworkObservation> observedAtByWorkerId) {
+    public void onAvailable(String workerGroupId, Map<String, Long> observedAtByWorkerId) {
         apply(
+                workerGroupId,
                 validatedEvidence(observedAtByWorkerId),
                 WorkerScorePolarity.HOT_ACQUIRE
         );
@@ -46,9 +40,10 @@ public final class DefaultWorkerServiceabilityEvents
 
     @Override
     public void onRouteUnavailable(
-            Map<String, NetworkObservation> observedAtByWorkerId
+            String workerGroupId, Map<String, Long> observedAtByWorkerId
     ) {
         apply(
+                workerGroupId,
                 validatedEvidence(observedAtByWorkerId),
                 WorkerScorePolarity.RECOVERY_RECHECK
         );
@@ -56,70 +51,50 @@ public final class DefaultWorkerServiceabilityEvents
 
     @Override
     public void onProbeUnavailable(
-            Map<String, NetworkObservation> observedAtByWorkerId
+            String workerGroupId, Map<String, Long> observedAtByWorkerId
     ) {
         apply(
+                workerGroupId,
                 validatedEvidence(observedAtByWorkerId),
                 WorkerScorePolarity.RECOVERY_RECHECK
         );
     }
 
     private void apply(
-            LinkedHashMap<String, NetworkObservation> evidence,
+            String workerGroupId,
+            LinkedHashMap<String, Long> evidence,
             WorkerScorePolarity targetPolarity
     ) {
+        requireNonBlank(workerGroupId, "workerGroupId");
         if (evidence.isEmpty()) {
             return;
         }
-        LinkedHashMap<String, LinkedHashMap<String, Long>> evidenceByGroup =
-                new LinkedHashMap<>();
-        List<String> workerIds = new ArrayList<>(evidence.keySet());
-        int bindingLimit = WorkerResourceCatalog.MAX_WORKER_BATCH_SIZE;
-        for (int offset = 0; offset < workerIds.size(); offset += bindingLimit) {
-            List<String> ids = workerIds.subList(offset, Math.min(offset + bindingLimit, workerIds.size()));
-            Map<String, WorkerDescriptor> bindings = workerCatalog.getWorkerDescriptors(ids);
-            for (String workerId : ids) {
-                NetworkObservation observation = evidence.get(workerId);
-                WorkerDescriptor binding = bindings.get(workerId);
-                if (binding != null && binding.endpointManagerId().equals(observation.endpointManagerId())) {
-                    evidenceByGroup.computeIfAbsent(binding.workerGroupId(), ignored -> new LinkedHashMap<>())
-                            .put(workerId, observation.observedAtMillis());
-                }
-            }
-        }
-
         int limit = WorkerScoreCore.MAX_SCORE_BATCH_SIZE;
-        evidenceByGroup.forEach((workerGroupId, groupEvidence) -> {
-            List<Map.Entry<String, Long>> entries = new ArrayList<>(
-                    groupEvidence.entrySet()
+        List<Map.Entry<String, Long>> entries = new ArrayList<>(evidence.entrySet());
+        for (int offset = 0; offset < entries.size(); offset += limit) {
+            LinkedHashMap<String, Long> chunk = new LinkedHashMap<>();
+            entries.subList(
+                    offset,
+                    Math.min(offset + limit, entries.size())
+            ).forEach(entry -> chunk.put(entry.getKey(), entry.getValue()));
+            workerScores.rewriteCurrentPolarityWithinTimeFence(
+                    workerGroupId,
+                    chunk,
+                    targetPolarity,
+                    targetPolarity == WorkerScorePolarity.HOT_ACQUIRE ? activationFloorMillis : 0
             );
-            for (int offset = 0; offset < entries.size(); offset += limit) {
-                LinkedHashMap<String, Long> chunk = new LinkedHashMap<>();
-                entries.subList(
-                        offset,
-                        Math.min(offset + limit, entries.size())
-                ).forEach(entry -> chunk.put(
-                        entry.getKey(),
-                        entry.getValue()
-                ));
-                workerScores.rewriteCurrentPolarityWithinTimeFence(
-                        workerGroupId,
-                        chunk,
-                        targetPolarity,
-                        targetPolarity == WorkerScorePolarity.HOT_ACQUIRE ? activationFloorMillis : 0
-                );
-            }
-        });
+        }
     }
 
-    private static LinkedHashMap<String, NetworkObservation> validatedEvidence(
-            Map<String, NetworkObservation> source
+    private static LinkedHashMap<String, Long> validatedEvidence(
+            Map<String, Long> source
     ) {
         Objects.requireNonNull(source, "observedAtByWorkerId");
-        LinkedHashMap<String, NetworkObservation> copied = new LinkedHashMap<>();
-        source.forEach((workerId, observation) -> {
+        LinkedHashMap<String, Long> copied = new LinkedHashMap<>();
+        source.forEach((workerId, time) -> {
             requireNonBlank(workerId, "workerId");
-            copied.put(workerId, Objects.requireNonNull(observation, "observation"));
+            if (time == null || time <= 0) throw new IllegalArgumentException("Evidence time must be positive");
+            copied.put(workerId, time);
         });
         return copied;
     }

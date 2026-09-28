@@ -117,6 +117,7 @@ Provider ownership is deliberately mixed but explicit:
 | Worker resources and scheduling operations | Matching owns Properties; Kernel owns identity/Group/Endpoint metadata and Score |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Result Convergence | `kernel_pacer_jvm` fixed Task success/failure/observation and Network Evidence lanes in every preset over Java owners |
+| Network evidence timestamp filter | MatchingComposition owns the independent Group HASH and shared connection; Server injects its method reference into Pacer, which validates Binding/source before filtering and invoking Kernel events |
 | Worker Serviceability Dispatch bridge | shared Task-source Kernel lane plus lowest-priority Server Adapter snapshot construction |
 | Worker Identity / Endpoint directory | Server identity HASH; local default/URI configuration |
 | Persistent Worker Binding | Kernel WorkerResourceCatalog, one Worker ID HASH |

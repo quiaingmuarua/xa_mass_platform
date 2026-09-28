@@ -16,6 +16,7 @@ import com.xa.mass.server.task.TaskItemOutcomeProperties;
 import com.xa.mass.server.worker.observation.WorkerPropertyProjection;
 import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
 import com.xa.mass.workermatching.WorkerProperties;
+import com.xa.mass.workermatching.MatchingComposition;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,6 +63,7 @@ public class KernelPacerConfiguration {
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
             WorkerMatching workerMatching,
+            MatchingComposition matchingComposition,
             ObjectProvider<WorkerObservationConsumer> observations
     ) {
         validatePresetScope(properties.preset(), redisProperties.scope());
@@ -82,6 +84,7 @@ public class KernelPacerConfiguration {
                 workerCommands,
                 serviceability,
                 workerMatching,
+                matchingComposition.networkEvidenceTimestamps()::filterAndAdvance,
                 consumer != null && consumer.enabled() ? consumer::accept : ignored -> {}
         );
     }

@@ -584,7 +584,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {"adapter", "system-polling"})
-    void networkMechanismRequiresBindingAndPreservesLeaseMarkedAndPause(String endpoint) {
+    void validatedNetworkEvidencePreservesLeaseMarkedAndPause(String endpoint) {
         catalog.registerWorkerGroup(group("g", Map.of(), Set.of()));
         catalog.registerWorkers("g", List.of("cold", "lease", "pause", "binding-only"), endpoint);
         redis.zrem(scoreKey("g"), "binding-only");
@@ -593,16 +593,9 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long pause = workerScore(-1, PAUSE_TIME_SLOT, 1);
         redis.zadd(scoreKey("g"), lease, "lease");
         redis.zadd(scoreKey("g"), pause, "pause");
-        var events = new com.xa.mass.kernel.worker.DefaultWorkerServiceabilityEvents(catalog, scoreCore, System.currentTimeMillis());
-        var wrong = new com.xa.mass.kernel.worker.WorkerServiceabilityEvents.NetworkObservation("wrong", now * 100);
-        events.onAvailable(Map.of("cold", wrong, "lease", wrong, "pause", wrong));
-        assertThat(redis.zscore(scoreKey("g"), "cold")).isEqualTo(-1.0);
-        assertThat(redis.zscore(scoreKey("g"), "lease")).isEqualTo((double) lease);
-
-        // No retained first observation exists. A later actual observation alone activates.
-        var valid = new com.xa.mass.kernel.worker.WorkerServiceabilityEvents.NetworkObservation(endpoint, now * 100);
-        events.onAvailable(Map.of("cold", valid, "lease", valid, "pause", valid,
-                "binding-only", valid, "missing", valid));
+        var events = new com.xa.mass.kernel.worker.DefaultWorkerServiceabilityEvents(scoreCore, System.currentTimeMillis());
+        events.onAvailable("g", Map.of("cold", now * 100, "lease", now * 100, "pause", now * 100,
+                "binding-only", now * 100, "missing", now * 100));
         assertThat(redis.zscore(scoreKey("g"), "cold")).isEqualTo((double) workerScore(1, now, 0));
         assertThat(redis.zscore(scoreKey("g"), "lease")).isEqualTo((double) -lease);
         assertThat(redis.zscore(scoreKey("g"), "pause")).isEqualTo((double) -pause);

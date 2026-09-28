@@ -12,6 +12,13 @@ class WorkerMatchingArchitectureTest {
 
     private static final Path SOURCE = Path.of("src/main/java");
 
+    @Test void networkTimestampsAreIndependentOfFactsAndCandidateMechanisms() throws IOException {
+        String source = Files.readString(SOURCE.resolve("com/xa/mass/workermatching/index/NetworkEvidenceTimestamps.java"));
+        for (String forbidden : List.of("WorkerProperties", "FactsIndexStore", "WorkerCandidatePool", "WorkerScoreCore",
+                "'ZADD'", "'EXPIRE'", "'SCAN'", "new Thread"))
+            assertFalse(source.contains(forbidden), "Network timestamps must not depend on " + forbidden);
+    }
+
     @Test void resourceAndFunctionDependenciesStaySeparate() throws IOException {
         assertPackageDependencies("pool", List.of("io.lettuce", ".index.", ".storage.", "com.xa.mass.workermatching.buckets.", "WorkerFacts",
                 ".functions.", ".refill.", "executorName", "QueryFunction", "PoolRefillPolicy"));

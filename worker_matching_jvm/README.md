@@ -10,13 +10,14 @@ query contracts rather than the entire behavioral domain.
 
 Matching saves accepted Worker attributes, maintains property indexes, and supplies
 bounded candidates through Pool or Index resources. Its public entrypoints follow
-three caller paths:
+four caller paths:
 
 | Path | Entrypoint and flow |
 | --- | --- |
 | Properties update/observation | Server calls `WorkerProperties` for complete Worker replacement, independent Platform patch and bounded Facts reads. `FactsIndexStore` implements the interface directly. |
 | Pool supply | Pacer calls `WorkerMatching.observeRefillDeficits/refill`; `PoolRefillCoordinator` organizes targets and rotation, policies qualify offered identities, and Pools retain candidates. |
 | Query consumption | Server admits queries through `WorkerMatchingCatalog`; Pacer calls `WorkerMatching.take`. `DefaultWorkerMatchingCatalog` validates, groups and correlates fixed function calls to Pool or Index resources. |
+| Network observation filtering | Pacer validates source, age and Binding, then calls the composition-supplied `NetworkEvidenceTimestamps.filterAndAdvance` function before Kernel serviceability events. |
 
 `WorkerMatchingCatalog` extends the three-operation Pacer port with query and supply
 normalization only. Properties types and mutation results belong to `WorkerProperties`;
@@ -28,6 +29,44 @@ and correlation, Refill coordination/qualification, and in-memory candidate stor
 shared resources. Facts and property HASHes persist across restart; Pool entries and
 Refill cursors remain local. This interface split changes no keys, formats or atomic
 write rules and requires no new scope or deployment configuration.
+
+## Network Evidence Timestamps
+
+`MatchingComposition` also owns one concrete `NetworkEvidenceTimestamps` resource,
+using the same lazy Redis connection and close lifecycle as Facts/index storage.
+It has one independent HASH per Group:
+
+```text
+xa_mass:<scope>:matching:worker:platform-index:<encoded-group>:evidenceTimestamp
+workerId -> observedAtMillis
+```
+
+Group encoding is the existing property HASH key encoding. This record is not copied
+into Platform Properties, and requires neither Facts nor Pool configuration.
+`filterAndAdvance(group, observedAtByWorkerId)` captures validated positive times
+and returns an immutable set of accepted identities in input order. Missing history
+compares as zero; older times fail, equal times pass without a write, newer times
+advance. The stored value is the latest observation that passed this filter, not
+proof of a successful Score transition.
+
+One fixed Lua reads, validates and then updates only this HASH. Each storage call
+handles at most 100 identities; larger caller-bounded maps are chunked here. Corrupt
+HASH types or stored times fail the chunk without repairing records or partially
+writing that chunk. Earlier successful chunks remain committed. Integer comparison
+retains full positive Java-long precision. There is no WorkerScore, Facts, property
+index or candidate mutation in this operation.
+
+Pacer treats filter failure as a diagnosed fail-open and continues its original
+network event path. The timestamp update and Kernel Score operation are separate
+commits; later STALE/INVALID results or exceptions do not undo the timestamp.
+Accepted processing can still interleave after filtering. This is a best-effort
+prefilter, not a cross-queue ordering fence or an atomic evidence/Score transition.
+Records survive composition restart with the scope; there is no scan, rebuild,
+TTL, automatic deletion, retry, or new background worker. Execution Results,
+generic Properties changes and Direct Call network views do not advance this HASH.
+
+Source interpretation and failure flow remain in the
+[Pacer Serviceability Policy](../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md#evidence-forms).
 
 Matching uses an immutable, construction-time name-to-function table for Item
 consumption. Functions interpret local JSON inputs and choose resource access.

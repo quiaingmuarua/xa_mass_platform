@@ -48,6 +48,7 @@ Network evidence      xa_mass:<scope>:worker:serviceability:evidence_results
 Matching Worker facts xa_mass:<scope>:matching:worker:facts:<workerGroupId>
 Matching Platform     xa_mass:<scope>:matching:worker:platform-properties:<workerGroupId>
 Matching indexes      xa_mass:<scope>:matching:worker:index:<encoded-group>:<namespace>
+Matching net history  xa_mass:<scope>:matching:worker:platform-index:<encoded-group>:evidenceTimestamp
 
 Delivery commands     xa_mass:<scope>:delivery:commands:<endpointManagerId>
 Result routing        xa_mass:<scope>:result:routing:<outcomeClass>
@@ -58,6 +59,9 @@ resource, scheduling, delivery, and runtime-shape documents. Matching index suff
 and Phone member sets are detailed in the [Matching Owner](../../../worker_matching_jvm/README.md#persistent-properties-and-indexes).
 Pool candidates, including Country buckets, are process-local; no per-Task
 candidate or Country ZSET key participates in the current path.
+The network history HASH is Matching-owned and independent of both Properties
+and WorkerScore. Its [prefilter contract](../../../worker_matching_jvm/README.md#network-evidence-timestamps)
+does not create an atomic evidence/Score transition.
 
 ## Profile And Proof Scopes
 

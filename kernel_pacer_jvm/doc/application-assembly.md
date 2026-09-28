@@ -54,12 +54,23 @@ compensation, new Producer or additional clock sampling is introduced.
 
 ## Mechanical Owners
 
-Matching exposes only its three-operation `WorkerMatching` port to Pacer: observe
+Matching's candidate port for Pacer is the three-operation `WorkerMatching`: observe
 refill deficits, supply candidate fences, and take query results. Its Catalog
 delegates supply organization and both local cursors to `PoolRefillCoordinator`.
 Server-only Properties reads/writes use the separate `WorkerProperties` port.
 Both interfaces are assembled under one MatchingComposition lifetime; this split
 does not change Pacer Producers, Group rotation or Score operations.
+
+The assembly also requires a standard `BiFunction<String, Map<String, Long>, Set<String>>`
+for network evidence filtering. Server passes MatchingComposition's timestamp
+resource method reference. The network Policy validates age, Binding and Endpoint
+before calling it, then sends explicit Group/Worker-time Maps to Kernel events.
+Pacer imports no Matching implementation; Server selects the resource without
+performing filtering or scheduling. Timestamp persistence and Score transitions
+are independent. Filter exceptions are diagnosed and fail open without retry;
+Score failures never roll back the filter. The
+[Serviceability Policy](dispatch/worker-serviceability-scheduling.md#evidence-forms)
+defines this best-effort boundary.
 
 `KernelPacerRuntime.assemble` also accepts one non-blocking
 `Consumer<KernelPacerRuntime.WorkerObservation>`. The nested immutable record

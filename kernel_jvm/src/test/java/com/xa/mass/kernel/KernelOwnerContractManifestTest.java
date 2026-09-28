@@ -69,7 +69,6 @@ class KernelOwnerContractManifestTest {
             Map.entry("ProjectTaskPage", TaskResourceCatalog.ProjectTaskPage.class),
                         Map.entry("WorkerCandidate", WorkerMatching.WorkerCandidate.class),
             Map.entry("TaskItemOutcomeObservation", TaskItemResultEvents.TaskItemOutcomeObservation.class),
-            Map.entry("NetworkObservation", WorkerServiceabilityEvents.NetworkObservation.class),
             Map.entry("WorkerRegistrationResult", WorkerResourceCatalog.WorkerRegistrationResult.class),
             Map.entry(
                     "DeliveryReport",

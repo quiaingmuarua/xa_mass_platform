@@ -250,20 +250,35 @@ snapshot, connection, expiry or polling evidence.
 
 Evidence in the future or older than `evidenceMaxAgeMillis` (default 30s) is
 dropped. Within one consumed round, the latest timestamp wins per Worker; equal
-timestamps use the later Report. The policy publishes only three bounded
-semantic facts: available, route unavailable, and probe unavailable. Each carries
-the producing Endpoint and observation timestamp.
-Across consumed rounds there is no retained evidence timestamp or strict
-monotonic fence: Reports apply in arrival order and an older late Report may
-temporarily reverse a newer observation. A later connection transition or
-Probe supplies fresh evidence and drives eventual convergence. This mechanism
-does not claim an uninterrupted monotonic state history.
-`DeliveryReport`, JSON, forward values and Adapter Event Names stop at that
-policy. `WorkerServiceabilityEvents` reads each bounded Binding batch once,
-checks the producing Endpoint against the stored Binding and obtains Group. It
-then delegates current-score interpretation to Score Owner. Missing Bindings,
-scores, or malformed Reports are dropped. There is no retry or retained
-current-state projection.
+timestamps use the later Report. The Policy then reads bounded Binding pages once,
+checks the producing Endpoint against the stored Binding, and groups accepted
+identities by the Binding's Group. Missing/corrupt Bindings, wrong Endpoints and
+malformed or expired Reports never reach filtering or Kernel events.
+
+Before Score handling, Policy calls the required composition-supplied
+`BiFunction<String, Map<String, Long>, Set<String>> networkEvidenceFilter` with
+Group and immutable observation times. Matching's
+[Network Evidence Timestamps](../../../worker_matching_jvm/README.md#network-evidence-timestamps)
+resource persists a per-Group HASH: older observations are filtered, equal times
+still pass, and newer times advance. Connected/disconnected, Probe snapshots,
+Polling and Adapter delivery-expired evidence all use this record. Probe evidence
+retains its check-start timestamp; it is not retimed at consumption.
+
+Filtering and Score updates are separate commits. A filter RuntimeException is
+diagnosed once for that Group batch and the original observations continue to
+Kernel; no rollback, reread or retry occurs, including after partially successful
+storage chunks. A later Score failure or STALE/INVALID result does not undo the
+record. Accepted processing may still interleave after filtering: this is a
+best-effort prefilter, not strict cross-queue ordering or an atomic Score fence.
+The existing serial network lane and loss/close boundaries remain unchanged.
+
+Policy publishes three semantic events: available, route unavailable, and probe
+unavailable, each carrying an explicit Group and Worker-to-time Map.
+`DeliveryReport`, JSON, producing Endpoint, forward values and Adapter Event Names
+stop at Policy. `WorkerServiceabilityEvents` delegates current-score interpretation
+to Score Owner without Binding reads or Matching dependencies. Missing Scores are
+not created. Execution Results and UI Direct Call network observations do not
+advance the timestamp record.
 
 ## Polling Observation And Cold Activation
 
@@ -292,7 +307,7 @@ candidate mark as part of generation refresh; repeated same-polarity polling doe
 
 ## Score Convergence
 
-`DefaultWorkerServiceabilityEvents` checks Binding Endpoint and Group, then calls
+After Policy's Binding/source validation and prefilter, `DefaultWorkerServiceabilityEvents` calls
 `rewriteCurrentPolarityWithinTimeFence` with evidence times, target polarity and
 mechanical minimum time. The policy does not read/decode Worker Score.
 

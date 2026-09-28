@@ -13,7 +13,8 @@ import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskItemResultEvents;
 import com.xa.mass.kernel.worker.WorkerExecutionResultEvents;
 import com.xa.mass.kernel.worker.WorkerServiceabilityEvents;
-import com.xa.mass.kernel.worker.WorkerServiceabilityEvents.NetworkObservation;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.util.List;
@@ -41,13 +42,15 @@ class ResultConvergenceRuntimeTest {
         );
         when(handoff.consumeNetworkEvidenceResults(anyInt()))
                 .thenReturn(List.of(report)).thenReturn(List.of());
+        var catalog = mock(WorkerResourceCatalog.class);
+        when(catalog.getWorkerDescriptors(List.of("worker-1"))).thenReturn(Map.of(
+                "worker-1", new WorkerDescriptor("worker-1", "g", "system-polling")));
         var runtime = ResultConvergenceRuntime.assemble(preset,
                 mock(TaskEvidenceRuntime.class), mock(TaskItemResultEvents.class),
-                mock(WorkerExecutionResultEvents.class), events, handoff);
+                mock(WorkerExecutionResultEvents.class), events, catalog, (group, times) -> times.keySet(), handoff);
         try {
             runtime.start();
-            verify(events, timeout(2000)).onAvailable(Map.of(
-                    "worker-1", new NetworkObservation("system-polling", now)));
+            verify(events, timeout(2000)).onAvailable("g", Map.of("worker-1", now));
         } finally {
             runtime.stop(2000);
         }
@@ -67,7 +70,8 @@ class ResultConvergenceRuntimeTest {
         when(evidence.consumeTaskEvidence(TaskEvidenceRuntime.TaskEvidenceType.OUTCOME_OBSERVATION, 100))
                 .thenReturn(List.of(report)).thenReturn(List.of());
         var runtime = ResultConvergenceRuntime.assemble(preset, evidence, items, workers,
-                mock(WorkerServiceabilityEvents.class), mock(WorkerServiceabilityRuntime.class));
+                mock(WorkerServiceabilityEvents.class), mock(WorkerResourceCatalog.class),
+                (group, times) -> times.keySet(), mock(WorkerServiceabilityRuntime.class));
         try {
             runtime.start();
             verify(items, timeout(2000)).onItemOutcomesObserved("task", List.of(

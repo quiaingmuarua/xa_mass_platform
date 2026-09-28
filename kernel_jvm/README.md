@@ -49,6 +49,10 @@ to initialize missing cold members. Descriptors are read snapshots. Existing
 same-Group bindings win over changed defaults; Endpoint migration is not
 implemented. Score membership is registration existence, not online evidence.
 Every Pacer preset consumes network observations for best-effort activation.
+Pacer validates their source against Binding and supplies Group/Worker-time Maps
+to Kernel serviceability events. Matching owns the auxiliary timestamp prefilter;
+Kernel has no evidence-history store or Matching dependency, and its Score writes
+are independent of that filter's commit.
 
 Worker Score uses package-private encoding arithmetic and fixed atomic Redis
 operations inside its existing provider. Pacer supplies recheck delay; Worker

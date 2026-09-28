@@ -18,7 +18,10 @@ import com.xa.mass.kernel.worker.DefaultWorkerServiceabilityEvents;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 /**
@@ -120,6 +123,7 @@ public final class KernelPacerRuntime {
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
             WorkerMatching workerMatching,
+            BiFunction<String, Map<String, Long>, Set<String>> networkEvidenceFilter,
             Consumer<WorkerObservation> workerObservations
     ) {
         if (assignmentBatchLimit < 1 || assignmentBatchLimit > 1_000) {
@@ -141,10 +145,11 @@ public final class KernelPacerRuntime {
                                 workerScores
                         ),
                         new DefaultWorkerServiceabilityEvents(
-                                workerCatalog,
                                 workerScores,
                                 policy.activationFloorMillis()
                         ),
+                        workerCatalog,
+                        networkEvidenceFilter,
                         serviceability
                 );
         DispatchConvergenceRuntime dispatchConvergence =

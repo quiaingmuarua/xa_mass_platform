@@ -7,9 +7,13 @@ import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskItemResultEvents;
 import com.xa.mass.kernel.worker.WorkerExecutionResultEvents;
 import com.xa.mass.kernel.worker.WorkerServiceabilityEvents;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.BiFunction;
 
 /**
  * Module-internal lifecycle bridge for the Result Convergence package.
@@ -40,6 +44,8 @@ public final class ResultConvergenceRuntime {
             TaskItemResultEvents taskItemEvents,
             WorkerExecutionResultEvents workerExecutionEvents,
             WorkerServiceabilityEvents workerServiceabilityEvents,
+            WorkerResourceCatalog workerCatalog,
+            BiFunction<String, Map<String, Long>, Set<String>> networkEvidenceFilter,
             WorkerServiceabilityRuntime serviceability
     ) {
         Objects.requireNonNull(preset, "preset");
@@ -90,6 +96,8 @@ public final class ResultConvergenceRuntime {
         WorkerServiceabilityResultPolicy evidencePolicy =
                 new WorkerServiceabilityResultPolicy(
                         workerServiceabilityEvents,
+                        workerCatalog,
+                        networkEvidenceFilter,
                         serviceabilityConfig
                 );
         lanes.add(new ResultLane(

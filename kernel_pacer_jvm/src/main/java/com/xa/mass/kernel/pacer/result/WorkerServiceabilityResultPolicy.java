@@ -6,21 +6,27 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SERVER_WORKER_POLL_OBSERVED;
 
 import com.xa.mass.kernel.worker.WorkerServiceabilityEvents;
-import com.xa.mass.kernel.worker.WorkerServiceabilityEvents.NetworkObservation;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
         .DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
         .DeliveryReport;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.LongSupplier;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 final class WorkerServiceabilityResultPolicy {
+
+    private static final System.Logger LOG = System.getLogger(WorkerServiceabilityResultPolicy.class.getName());
 
     private static final String CONNECTION_EVIDENCE_FORWARD =
             "worker-serviceability-evidence:v1";
@@ -29,16 +35,22 @@ final class WorkerServiceabilityResultPolicy {
     private static final String CONNECTED = "CONNECTED";
 
     private final WorkerServiceabilityEvents workerEvents;
+    private final WorkerResourceCatalog workerCatalog;
+    private final BiFunction<String, Map<String, Long>, Set<String>> networkEvidenceFilter;
     private final WorkerServiceabilityResultConfig config;
     private final LongSupplier currentTimeMillis;
     private final JsonMapper json;
 
     WorkerServiceabilityResultPolicy(
             WorkerServiceabilityEvents workerEvents,
+            WorkerResourceCatalog workerCatalog,
+            BiFunction<String, Map<String, Long>, Set<String>> networkEvidenceFilter,
             WorkerServiceabilityResultConfig config
     ) {
         this(
                 workerEvents,
+                workerCatalog,
+                networkEvidenceFilter,
                 config,
                 System::currentTimeMillis,
                 JsonMapper.builder().build()
@@ -47,10 +59,14 @@ final class WorkerServiceabilityResultPolicy {
 
     WorkerServiceabilityResultPolicy(
             WorkerServiceabilityEvents workerEvents,
+            WorkerResourceCatalog workerCatalog,
+            BiFunction<String, Map<String, Long>, Set<String>> networkEvidenceFilter,
             WorkerServiceabilityResultConfig config,
             LongSupplier currentTimeMillis,
             JsonMapper json
     ) {
+        this.workerCatalog = Objects.requireNonNull(workerCatalog, "workerCatalog");
+        this.networkEvidenceFilter = Objects.requireNonNull(networkEvidenceFilter, "networkEvidenceFilter");
         this.workerEvents = java.util.Objects.requireNonNull(
                 workerEvents,
                 "workerEvents"
@@ -90,25 +106,58 @@ final class WorkerServiceabilityResultPolicy {
             return;
         }
 
-        LinkedHashMap<String, NetworkObservation> available = new LinkedHashMap<>();
-        LinkedHashMap<String, NetworkObservation> routeUnavailable = new LinkedHashMap<>();
-        LinkedHashMap<String, NetworkObservation> probeUnavailable = new LinkedHashMap<>();
-        latestEvidence.forEach((workerId, evidence) -> {
-            Map<String, NetworkObservation> target = switch (evidence.kind()) {
+        var byGroup = new LinkedHashMap<String, LinkedHashMap<String, WorkerEvidence>>();
+        var ids = new ArrayList<>(latestEvidence.keySet());
+        int bindingLimit = WorkerResourceCatalog.MAX_WORKER_BATCH_SIZE;
+        for (int offset = 0; offset < ids.size(); offset += bindingLimit) {
+            var page = ids.subList(offset, Math.min(offset + bindingLimit, ids.size()));
+            var bindings = workerCatalog.getWorkerDescriptors(page);
+            for (String id : page) {
+                var evidence = latestEvidence.get(id);
+                var binding = bindings.get(id);
+                if (binding != null && binding.endpointManagerId().equals(evidence.endpointManagerId())) {
+                    byGroup.computeIfAbsent(binding.workerGroupId(), ignored -> new LinkedHashMap<>())
+                            .put(id, evidence);
+                }
+            }
+        }
+        byGroup.forEach(this::applyGroup);
+    }
+
+    private void applyGroup(String group, LinkedHashMap<String, WorkerEvidence> evidenceById) {
+        var times = new LinkedHashMap<String, Long>();
+        evidenceById.forEach((id, evidence) -> times.put(id, evidence.observedAtMillis()));
+        Set<String> admitted;
+        try {
+            admitted = Objects.requireNonNull(networkEvidenceFilter.apply(group, Collections.unmodifiableMap(times)),
+                    "Network evidence filter returned null");
+        } catch (RuntimeException failure) {
+            LOG.log(System.Logger.Level.WARNING,
+                    "operation=serviceability.filterEvidence count=" + times.size() + " continuing without filter", failure);
+            admitted = times.keySet();
+        }
+
+        var available = new LinkedHashMap<String, Long>();
+        var routeUnavailable = new LinkedHashMap<String, Long>();
+        var probeUnavailable = new LinkedHashMap<String, Long>();
+        for (var entry : evidenceById.entrySet()) {
+            if (!admitted.contains(entry.getKey())) continue;
+            WorkerEvidence evidence = entry.getValue();
+            Map<String, Long> target = switch (evidence.kind()) {
                 case AVAILABLE -> available;
                 case ROUTE_UNAVAILABLE -> routeUnavailable;
                 case PROBE_UNAVAILABLE -> probeUnavailable;
             };
-            target.put(workerId, new NetworkObservation(evidence.endpointManagerId(), evidence.observedAtMillis()));
-        });
+            target.put(entry.getKey(), evidence.observedAtMillis());
+        }
         if (!available.isEmpty()) {
-            workerEvents.onAvailable(available);
+            workerEvents.onAvailable(group, available);
         }
         if (!routeUnavailable.isEmpty()) {
-            workerEvents.onRouteUnavailable(routeUnavailable);
+            workerEvents.onRouteUnavailable(group, routeUnavailable);
         }
         if (!probeUnavailable.isEmpty()) {
-            workerEvents.onProbeUnavailable(probeUnavailable);
+            workerEvents.onProbeUnavailable(group, probeUnavailable);
         }
     }
 

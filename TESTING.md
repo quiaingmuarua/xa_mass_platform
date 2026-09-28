@@ -127,6 +127,17 @@ for Prepare, Catalog registration and Binding reads. Runtime Boundary observes
 cold Prepare followed by verified connection or Polling activation. These proofs
 do not promise activation after lost evidence or atomic Binding/Score commits.
 
+Network timestamp filtering has separate proof boundaries. Matching Redis Owner
+tests cover ordered/equal/older times, Group isolation, 100-identity storage chunks,
+concurrent monotonic updates, corruption preflight, partial chunk success and
+same-scope restart without Facts, Pool or Score effects. Pacer tests own validation
+before filtering, source/Binding checks, shared evidence-kind history and fail-open
+without retry. Runtime Boundary sends still-fresh older disconnected/Probe evidence
+after connected evidence through real HTTP/network consumption, then restarts Server
+on the same scope and checks retained filtering. Newer unavailability and corrupt
+filter fail-open still exercise the original Score path. These claims do not imply
+strict cross-queue ordering or atomic timestamp/Score commits.
+
 Properties/Candidate invalidation is a Redis Owner claim: one Redis-timed batch
 advances past HOT generation and clears candidate mark; past non-cold RECOVERY
 retains mark. Exact execution acquisition rejects old fences, and execution-first

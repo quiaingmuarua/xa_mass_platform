@@ -183,7 +183,7 @@ class KernelPacerModuleBoundaryTest {
     }
 
     @Test
-    void resultPoliciesPublishEventsWithoutMechanicalOwnerAccess()
+    void resultPoliciesPublishEventsWithoutScoreOwnerAccess()
             throws IOException {
         Path root = repositoryRoot();
         Path resultRoot = root.resolve(
@@ -194,7 +194,6 @@ class KernelPacerModuleBoundaryTest {
                 "WorkerScoreCore",
                 "TaskItemScoreBandCore",
                 "TaskRuntime",
-                "WorkerResourceCatalog",
                 "workerLeaseScore()",
                 "releaseScoreHolds",
                 "releaseObservedHotScoreHolds",
@@ -210,6 +209,23 @@ class KernelPacerModuleBoundaryTest {
         );
 
         assertEquals(List.of(), violations);
+    }
+
+    @Test
+    void networkPolicyOwnsBindingValidationButKernelEventsDoNot() throws IOException {
+        Path root = repositoryRoot();
+        Path resultRoot = root.resolve("kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/result");
+        try (var files = Files.walk(resultRoot)) {
+            var readers = files.filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> read(path).contains(".getWorkerDescriptors("))
+                    .map(path -> path.getFileName().toString()).toList();
+            assertEquals(List.of("WorkerServiceabilityResultPolicy.java"), readers);
+        }
+        String mechanism = read(root.resolve("kernel_jvm/src/main/java/com/xa/mass/kernel/worker/"
+                + "DefaultWorkerServiceabilityEvents.java"));
+        assertFalse(mechanism.contains("WorkerResourceCatalog"));
+        assertFalse(mechanism.contains("NetworkEvidenceTimestamps"));
+        assertFalse(mechanism.contains("networkEvidenceFilter"));
     }
 
     @Test

@@ -10,6 +10,7 @@ import com.xa.mass.workermatching.functions.AnyQueryFunction;
 import com.xa.mass.workermatching.functions.AssignmentWindowQueryFunction;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workermatching.index.RedisHashPropertyIndex;
+import com.xa.mass.workermatching.index.NetworkEvidenceTimestamps;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.workermatching.refill.AnyPoolPolicy;
@@ -24,6 +25,7 @@ import java.util.function.LongSupplier;
 /** Fixed resource wiring; resource construction and startup precede every Pacer caller. */
 public final class MatchingComposition implements AutoCloseable {
     private final FactsIndexStore storage;
+    private final NetworkEvidenceTimestamps networkEvidenceTimestamps;
     private final LongSupplier clock;
     private final CandidateBudget budget = new CandidateBudget();
     private final Map<String, MatchingGroup> groups;
@@ -38,6 +40,7 @@ public final class MatchingComposition implements AutoCloseable {
     public MatchingComposition(FactsIndexStore storage, Map<String, MatchingGroup> groups, LongSupplier clock) {
         this.storage = Objects.requireNonNull(storage);
         try {
+            this.networkEvidenceTimestamps = new NetworkEvidenceTimestamps(storage::commands, storage.keyspace());
             this.clock = Objects.requireNonNull(clock);
             this.groups = Map.copyOf(groups);
             var enabledPools = new HashSet<String>();
@@ -133,6 +136,8 @@ public final class MatchingComposition implements AutoCloseable {
     }
 
     public WorkerProperties properties() { return storage; }
+
+    public NetworkEvidenceTimestamps networkEvidenceTimestamps() { return networkEvidenceTimestamps; }
 
     @Override public synchronized void close() {
         if (closed) return;
