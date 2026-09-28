@@ -84,6 +84,7 @@ Status: proposal（设计评审稿，尚未实现；实现前以现有 [README](
 - 每个 Group 新建一个有限 Task，在批准前追加完全部 Item（批次 100、16 路并发，耗时记为 `seedMillis`）。批准两个 Task 的时刻即窗口开始，窗口 30 s。
 - 窗口结束时先记录两个 Group 仍持有租约的 Worker 数，再关闭两个 Task，等待租约全部释放后，用 `results:export`（仅成功结果）统计完成数。平台没有公开的 Item 计数 API，这是唯一不绕过 Owner 的计数方式。
 - 完成速率 = 完成数 / 窗口秒数；窗口结束时仍持有的租约可能在关闭后才完成，因此报告 `± 持有租约数 / 窗口秒数` 作为误差上界。
+- Handler 接近 0 时，饱和状态下全部 Worker 都会持有租约，Worker 数必然成为上限（2026-09-28 参考机：约 5700/s）。这是本模式的预期状态，不判 `invalid`。主结果是**每个 Worker 的周转时间** = Worker 数 x 窗口秒数 / 完成数，即一次租约周期（获取、投递、执行、Result、释放、再次到期）的平台耗时，与 Worker 数无关。同时报告完成速率和每秒检查的 Item 数（此时 B=1000 的每轮检查上限也可能生效）。
 
 ## 4. 指标
 
@@ -154,10 +155,13 @@ Status: proposal（设计评审稿，尚未实现；实现前以现有 [README](
 
 ### 7.3 Job 划分（路径比较只在同一台 runner 内进行）
 
-- `build`：编译一次 Server、Host、Harness，上传为 artifact。基线版本 JAR 按 commit SHA 缓存。
-- `rate-500`、`rate-1000`、`rate-2000`：每个 job 在同一 runner 上跑 3 条路径。路径顺序按重复次数轮换（ABC / BCA / CAB）。
-- `saturation`：两个饱和用例，同样轮换顺序。
-- nightly 每个用例重复 3 次，每个 job 约 9–10 min，总墙钟约 12 min。PR 冒烟重复 1 次。
+已在 `worker-call-performance.yml` 中实现（S4），通过手动触发 `suite=lane` 运行；定时任务切换到本 lane 放在 S6。放在现有 workflow 中而不是新文件，是因为 GitHub 只允许手动触发默认分支上已存在的 workflow。
+
+- `lane-build`：先跑 Harness 与 runner 单测，再编译一次 Server、Host、Harness，上传为 artifact `performance-lane-build-<attempt>`（保留 1 天）。
+- `lane`（matrix，`fail-fast: false`）：`rate-500`、`rate-1000`、`rate-2000` 各在一台 runner 上跑 3 条开环路径，`saturation` 跑两个饱和用例；路径顺序按重复次数轮换（ABC / BCA / CAB）。各 job 下载同一份构建产物，以 `--skip-build` 运行，上传 `lane-<job>-<attempt>`。
+- `lane-summary`：下载各 job 证据，按预期 job 列表合并（`--merge-lane`）。任一 job 缺失或失败时，合并结果为失败；路径比值在合并时重新计算，仍只比较同一 job 内的用例。
+- 耗时预估（重复 3 次）：构建约 3 min；最慢的开环 job 约 9 个用例 x 约 80 s ≈ 12 min；总墙钟约 16 min，略高于原定 15 min，以首次运行实测为准。
+- 基线版本 JAR 按 commit SHA 缓存、机器标定（Stage 0）与 PR 冒烟尚未实现：前两者随 S5 的 A/B 与趋势比较一起做，PR 冒烟仍待决定。
 
 ## 8. 趋势与比较
 

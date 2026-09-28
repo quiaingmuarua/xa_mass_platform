@@ -31,4 +31,11 @@ class LaneSaturationTest {
                 .containsExactly("w0", "w1", "w2", "w0");
         assertThat(LaneSaturation.ITEMS_PER_GROUP % LaneSaturation.APPEND_BATCH).isZero();
     }
+
+    @Test
+    void turnaroundIsTheAverageLeaseCycleOfEveryWorker() {
+        // 2000 Workers completing 171,720 Items in 30s: each Worker cycles every ~349ms.
+        assertThat(LaneSaturation.perWorkerTurnaroundMillis(171_720, 30.0)).isCloseTo(349.4, org.assertj.core.data.Offset.offset(.1));
+        assertThat(LaneSaturation.perWorkerTurnaroundMillis(0, 30.0)).isNull();
+    }
 }

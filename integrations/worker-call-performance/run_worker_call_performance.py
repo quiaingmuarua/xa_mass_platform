@@ -732,6 +732,8 @@ def lane_case_record(entry, case, cost):
               "admittedPerSecond": case.get("admittedPerSecond"),
               "completedPerSecondErrorBound": case.get("completedPerSecondErrorBound"),
               "heldLeasesAtWindowEnd": case.get("heldLeasesAtWindowEnd"),
+              "perWorkerTurnaroundMillis": case.get("perWorkerTurnaroundMillis"),
+              "workersBound": case.get("workersBound"),
               "seedMillis": case.get("seedMillis"),
               "leaseHeldPeakRatio": case.get("leaseHeldPeakRatio"),
               "successWithinWait": metrics.get("successRate"),
@@ -923,6 +925,31 @@ def run_lane(root, output, deadline, rates=LANE_RATES, repetitions=1, attributio
     return result
 
 
+def merge_lane(evidence_root, jobs):
+    """Combine the per-job lane summaries of one workflow run; a missing or failed job fails the merge."""
+    found = {}
+    for path in sorted(Path(evidence_root).rglob("lane-summary.json")):
+        # Downloaded artifact directories carry the workflow attempt: lane-<job>-<attempt>.
+        job = next((name for name in jobs if any(re.fullmatch(rf"lane-{re.escape(name)}(-\d+)?", part)
+                                                  for part in path.parts)), None)
+        if job is None or job in found:
+            raise RuntimeError(f"Unexpected or duplicate lane summary: {path}")
+        found[job] = json.loads(path.read_text(encoding="utf-8"))
+    cases, summaries = [], []
+    for job in jobs:
+        summary = found.get(job)
+        if summary is None:
+            summaries.append({"job": job, "status": "missing"})
+            continue
+        cases += [dict(case, job=job) for case in summary.get("cases", [])]
+        summaries.append({"job": job, "status": summary["status"], "caseCounts": summary.get("caseCounts", {}),
+                          "casesCompletedMillis": summary.get("timingsMillis", {}).get("casesCompleted"),
+                          "runnerFailure": summary.get("runnerFailure"), "resourcePeaks": summary.get("resourcePeaks", {})})
+    status = "passed" if all(s["status"] == "passed" for s in summaries) else "failed"
+    return {"lane": "performance", "status": status, "jobs": summaries, "cases": cases,
+            "caseCounts": dict(Counter(case["status"] for case in cases)), "pathRatios": lane_path_ratios(cases)}
+
+
 def lane_markdown(result):
     timings = result.get("timingsMillis", {})
     lines = ["# Performance Lane", "", f"Status: **{result['status']}**. Cases: {result.get('caseCounts', {})}.", "",
@@ -936,7 +963,8 @@ def lane_markdown(result):
         cost = r.get("cost") or {}
         status = r["status"] + (f" ({', '.join(r['invalidReasons'])})" if r.get("invalidReasons") else "") \
             + (f" ({r['failureReason']})" if r.get("failureReason") else "") \
-            + (f" (admitted {r['admittedPerSecond']:.0f}/s)" if r["status"] == "saturated" and r.get("admittedPerSecond") else "")
+            + (f" (admitted {r['admittedPerSecond']:.0f}/s)" if r["status"] == "saturated" and r.get("admittedPerSecond") else "") \
+            + (f" (turnaround {r['perWorkerTurnaroundMillis']:.0f} ms)" if isinstance(r.get("perWorkerTurnaroundMillis"), (int, float)) else "")
         pct = lambda value: f"{value:.2%}" if isinstance(value, (int, float)) else "—"
         num = lambda value, fmt: format(value, fmt) if isinstance(value, (int, float)) else "—"
         completed = num(r.get("completedPerSecond"), ".1f") + (
@@ -946,6 +974,15 @@ def lane_markdown(result):
                      f"| {num(attribution.get('checkedItemsPerSecond'), '.0f')} | {pct(attribution.get('candidateShortfallRatio'))} "
                      f"| {pct(attribution.get('strictAcquisitionStaleRatio'))} | {pct(r.get('leaseHeldPeakRatio'))} "
                      f"| {num(cost.get('redisCommandsPerCompleted'), '.1f')} |")
+    if result.get("jobs"):
+        lines += ["", "| Job | Status | Cases | Case time s | Server peak threads / FDs |", "| --- | --- | --- | --- | --- |"]
+        for job in result["jobs"]:
+            server = job.get("resourcePeaks", {}).get("server", {})
+            elapsed = job.get("casesCompletedMillis")
+            lines.append(f"| {job['job']} | {job['status']} | {job.get('caseCounts', {})} "
+                         f"| {elapsed / 1000:.0f} | {server.get('peakNativeThreads', '—')} / {server.get('peakFileDescriptors', '—')} |"
+                         if elapsed is not None else
+                         f"| {job['job']} | {job['status']} | {job.get('caseCounts', {})} | — | — |")
     if result.get("pathRatios"):
         lines += ["", "Task path relative to Direct on the same host (passed cases only):", "",
                   "| Rep | Rate | Path | p99 latency ratio | Completion ratio |", "| --- | --- | --- | --- | --- |"]
@@ -959,7 +996,9 @@ def lane_markdown(result):
     if result.get("runnerFailure"):
         lines += ["", f"Failure: {result['runnerFailure']}"]
     lines += ["", "Saturation cases (sat-*) seed a deep backlog per Group and count Items completed within the window; "
-              "the ± bound is the leases still held when the window closed.", ""]
+              "the ± bound is the leases still held when the window closed. With a near-zero Handler every Worker is "
+              "expected to stay busy, so the turnaround (Workers x window / completed) is the platform time of one "
+              "Worker lease cycle.", ""]
     lines += ["Saturated means the offered rate exceeds the path capacity: responses outlasted their wait until "
               "arrivals met the in-flight cap; admitted/s is not a completion ceiling (the saturation mode measures that). "
               "Invalid means the generator lagged or a Group ran out of idle Workers; its numbers are not comparable. "
@@ -1127,9 +1166,21 @@ def main():
     parser.add_argument("--allow-nonreference-host", action="store_true", help="Local diagnostics only; no reference performance claim")
     parser.add_argument("--lane-rates", type=lane_rates, help="Lane only: comma-separated subset of 500,1000,2000")
     parser.add_argument("--lane-modes", type=lane_modes, help="Lane only: comma-separated subset of open,saturation")
+    parser.add_argument("--merge-lane", type=Path, help="Merge the per-job lane evidence found below this directory")
+    parser.add_argument("--merge-jobs", help="Comma-separated lane job names expected by --merge-lane")
     parser.add_argument("--lane-attribution", choices=("on", "off"), default="on",
                         help="Lane only: Server Dispatch Owner events for per-case attribution")
     options = parser.parse_args()
+    if options.merge_lane:
+        jobs = tuple(job for job in (options.merge_jobs or "").split(",") if job)
+        if not jobs:
+            parser.error("--merge-lane requires --merge-jobs")
+        output = fresh_output(options.output_root)
+        merged = merge_lane(options.merge_lane, jobs)
+        write_json(output / "evidence/lane-summary.json", merged)
+        (output / "evidence/summary.md").write_text(lane_markdown(merged), encoding="utf-8")
+        print(json.dumps({"status": merged["status"], "cases": merged["caseCounts"]}), flush=True)
+        return 0 if merged["status"] == "passed" else 1
     if options.suite == "lane" and (options.baseline_ref or options.case or options.diagnostics != "off"
                                     or options.diagnostic_pair or options.assignment_batch_limit != 100):
         parser.error("The lane fixes its own configuration; baseline, case, diagnostics "

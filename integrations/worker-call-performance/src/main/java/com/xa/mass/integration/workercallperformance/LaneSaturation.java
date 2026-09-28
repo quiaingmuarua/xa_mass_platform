@@ -19,7 +19,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Saturation-mode performance-lane case: each Group receives a fresh finite Task with a deep
  * pre-seeded backlog; approval opens a fixed window with no HTTP load, and closing the Tasks ends
  * it. Completed Items are counted from the success-only export of the closed Tasks, bounded by
- * the leases still held when the window closed.
+ * the leases still held when the window closed. With a near-zero Handler every Worker is expected
+ * to hold a lease at saturation, so the primary result is the per-Worker turnaround: the platform
+ * time of one lease cycle (acquire, deliver, execute, Result, release, due again).
  */
 final class LaneSaturation {
     enum Path { TASK_ANY, TASK_TARGETED;
@@ -107,8 +109,9 @@ final class LaneSaturation {
             long total = completed.values().stream().mapToLong(Long::longValue).sum();
             summary.put("completedPerSecond", total / seconds);
             summary.put("completedPerSecondErrorBound", heldAtEnd / seconds);
+            summary.put("perWorkerTurnaroundMillis", perWorkerTurnaroundMillis(total, seconds));
+            summary.put("workersBound", !LaneCase.workersAvailable(workerSamples));
             if (completed.values().stream().anyMatch(count -> count >= ITEMS_PER_GROUP)) invalid.add("items-exhausted");
-            if (!LaneCase.workersAvailable(workerSamples)) invalid.add("workers-exhausted");
             summary.put("status", invalid.isEmpty() ? "passed" : "invalid");
             summary.put("stage", "complete");
         } catch (Exception error) {
@@ -122,6 +125,12 @@ final class LaneSaturation {
             Files.writeString(output.resolve("case.json"), Jsons.toJson(summary), StandardOpenOption.CREATE_NEW);
         }
         if (failure != null) throw new IllegalStateException("Lane saturation case failed; inspect safe summary", failure);
+    }
+
+    /** Average platform time of one Worker lease cycle while every Worker stays busy. */
+    static Double perWorkerTurnaroundMillis(long completed, double seconds) {
+        int workers = LaneWorld.GROUPS.size() * LaneWorld.WORKERS_PER_GROUP;
+        return completed == 0 ? null : workers * seconds * 1000 / completed;
     }
 
     private static String createTask(CallApi api, String group, Path path) throws Exception {

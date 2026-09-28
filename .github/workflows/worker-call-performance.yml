@@ -52,6 +52,7 @@ concurrency:
 jobs:
   worker-call-performance:
     name: Worker Call Performance
+    if: github.event_name != 'workflow_dispatch' || inputs.suite != 'lane'
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && (inputs.baseline_ref != '' || inputs.repetitions == '3') && 120 || 45 }}
     steps:
@@ -123,5 +124,129 @@ jobs:
           path: |
             build/worker-call-performance-proof/**/evidence/**
             integrations/worker-call-performance/build/test-results/test/**
+          if-no-files-found: error
+          retention-days: 7
+
+  # Performance lane (DESIGN-performance-lane.md): build once, then one job per rate plus saturation.
+  # Path comparisons stay inside a job, so every ratio is measured on one host.
+  lane-build:
+    name: Performance Lane Build
+    if: github.event_name == 'workflow_dispatch' && inputs.suite == 'lane'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.x'
+          cache: pip
+          cache-dependency-path: .github/scripts/requirements.txt
+      - name: Install proof dependencies
+        run: python -m pip install -r .github/scripts/requirements.txt
+      - name: Verify Harness and runner contracts
+        run: |
+          ./gradlew --no-daemon :integrations:worker-call-performance:test
+          python -m unittest discover -s integrations/worker-call-performance -p 'test_*.py'
+      - name: Build Server, Host and Harness once
+        run: ./gradlew --no-daemon :server_boot_jvm:bootJar :worker_simulator_jvm:installDist :integrations:worker-call-performance:installDist
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: performance-lane-build-${{ github.run_attempt }}
+          path: |
+            server_boot_jvm/build/libs/*.jar
+            worker_simulator_jvm/build/install/**
+            integrations/worker-call-performance/build/install/**
+          if-no-files-found: error
+          retention-days: 1
+
+  lane:
+    name: Performance Lane ${{ matrix.job }}
+    needs: lane-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - job: rate-500
+            args: --lane-modes open --lane-rates 500
+          - job: rate-1000
+            args: --lane-modes open --lane-rates 1000
+          - job: rate-2000
+            args: --lane-modes open --lane-rates 2000
+          - job: saturation
+            args: --lane-modes saturation
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.x'
+          cache: pip
+          cache-dependency-path: .github/scripts/requirements.txt
+      - name: Install proof dependencies
+        run: python -m pip install -r .github/scripts/requirements.txt
+      - uses: actions/download-artifact@v8.0.0
+        with:
+          name: performance-lane-build-${{ github.run_attempt }}
+      - name: Run lane cases
+        env:
+          REPETITIONS: ${{ inputs.repetitions || '1' }}
+          LANE_ARGS: ${{ matrix.args }}
+        run: |
+          # shellcheck disable=SC2086 # LANE_ARGS is a fixed matrix value with separate options.
+          python integrations/worker-call-performance/run_worker_call_performance.py --suite lane --skip-build \
+            --repetitions "$REPETITIONS" $LANE_ARGS --output-root "build/worker-call-performance-proof/lane-${{ matrix.job }}"
+      - name: Publish job summary
+        if: always()
+        run: |
+          summary="build/worker-call-performance-proof/lane-${{ matrix.job }}/evidence/summary.md"
+          if [ -f "$summary" ]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: lane-${{ matrix.job }}-${{ github.run_attempt }}
+          path: build/worker-call-performance-proof/lane-${{ matrix.job }}/evidence/**
+          if-no-files-found: error
+          retention-days: 7
+
+  lane-summary:
+    name: Performance Lane Summary
+    needs: lane
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.suite == 'lane'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.x'
+      - uses: actions/download-artifact@v8.0.0
+        with:
+          pattern: lane-*-${{ github.run_attempt }}
+          path: build/lane-jobs
+      - name: Merge lane jobs
+        run: |
+          python integrations/worker-call-performance/run_worker_call_performance.py \
+            --merge-lane build/lane-jobs --merge-jobs rate-500,rate-1000,rate-2000,saturation \
+            --output-root build/worker-call-performance-proof/lane-merged
+      - name: Publish merged summary
+        if: always()
+        run: |
+          summary=build/worker-call-performance-proof/lane-merged/evidence/summary.md
+          if [ -f "$summary" ]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: lane-merged-${{ github.run_attempt }}
+          path: build/worker-call-performance-proof/lane-merged/evidence/**
           if-no-files-found: error
           retention-days: 7

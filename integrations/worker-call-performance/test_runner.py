@@ -500,6 +500,29 @@ class LaneWorldConfigTest(unittest.TestCase):
         self.assertEqual(30_000, cost["redisCommands"])
         self.assertEqual(15.0, cost["redisCpuSeconds"])
 
+    def test_merge_combines_jobs_and_fails_on_a_missing_or_failed_job(self):
+        def job(status, cases):
+            return dict(status=status, cases=cases, caseCounts={}, timingsMillis={"casesCompleted": 600_000},
+                        resourcePeaks={"server": dict(peakNativeThreads=200, peakFileDescriptors=3000)})
+        direct = dict(repetition=1, mode="open", rate=500, path="direct", case="direct-500", status="passed",
+                      completedPerSecond=500.0, successfulCallLatencyMillis={"p99": 100.0})
+        task = dict(direct, path="task-any", case="task-any-500", successfulCallLatencyMillis={"p99": 300.0})
+        saturation = dict(repetition=1, mode="saturation", rate=None, path="task-any", case="sat-task-any", status="passed")
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name, summary in (("rate-500", job("passed", [direct, task])), ("saturation", job("passed", [saturation]))):
+                path = root / f"lane-{name}-1" / "lane-summary.json"
+                path.parent.mkdir(parents=True)
+                path.write_text(json.dumps(summary), encoding="utf-8")
+            merged = runner.merge_lane(root, ("rate-500", "saturation"))
+            missing = runner.merge_lane(root, ("rate-500", "rate-1000", "saturation"))
+        self.assertEqual("passed", merged["status"])
+        self.assertEqual({"passed": 3}, merged["caseCounts"])
+        self.assertEqual(["rate-500", "rate-500", "saturation"], [case["job"] for case in merged["cases"]])
+        self.assertEqual(3.0, merged["pathRatios"][0]["p99LatencyRatio"])
+        self.assertEqual("failed", missing["status"])
+        self.assertIn("| rate-1000 | missing |", runner.lane_markdown(missing))
+
     def test_lane_markdown_separates_invalid_and_failed_cases(self):
         cases = [dict(repetition=1, case="task-any-500", status="passed", invalidReasons=[], successWithinWait=.95,
                       completedPerSecond=500.0, successfulCallLatencyMillis={"p50": 20.0, "p99": 90.0},
@@ -510,14 +533,14 @@ class LaneWorldConfigTest(unittest.TestCase):
                       leaseHeldPeakRatio=.946),
                  dict(repetition=1, case="task-targeted-2000", status="failed", invalidReasons=[], failureReason="drain-stalled"),
                  dict(repetition=1, case="sat-task-any", status="passed", invalidReasons=[], completedPerSecond=1580.0,
-                      completedPerSecondErrorBound=12.5)]
+                      completedPerSecondErrorBound=12.5, perWorkerTurnaroundMillis=351.2)]
         value = runner.lane_markdown(dict(status="failed", caseCounts={"passed": 1, "invalid": 1, "saturated": 1, "failed": 1}, cases=cases,
             timingsMillis={"serverReady": 12_000}, resourcePeaks={"host": dict(samples=3, peakNativeThreads=50,
             peakFileDescriptors=2100, peakRssBytes=2**29)}))
         self.assertIn("| 1 | task-any-500 | passed | 95.00% | 500.0 | 20.0 / 90.0 | 1200 | 1.00% | 0.20% | — | 12.5 |", value)
         self.assertIn("invalid (generator-lag)", value)
         self.assertIn("saturated (admitted 1500/s)", value)
-        self.assertIn("| 1 | sat-task-any | passed | — | 1580.0 ± 12.5 |", value)
+        self.assertIn("| 1 | sat-task-any | passed (turnaround 351 ms) | — | 1580.0 ± 12.5 |", value)
         self.assertIn("94.60%", value)
         self.assertIn("failed (drain-stalled)", value)
         self.assertIn("| host | 50 | 2100 | 512 |", value)
