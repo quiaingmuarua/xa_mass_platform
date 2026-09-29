@@ -105,7 +105,7 @@ time the existing Task Call activation, Item HASH write, Item Score initializati
 and successful Result write. These calls remain separate, with their existing
 partial-failure boundaries. Events contain durations, bounded counts and optional
 1/64 SHA-256 correlations; they add no storage, registry, Redis read or public
-mechanical operation. The [performance proof](../integrations/worker-call-performance/README.md#rpc-mainline-diagnosis)
+mechanical operation. The [performance proof](../integrations/worker-call-performance/README.md#jfr-diagnostics)
 owns offline joins and their incomplete/overlap limits. An observed Result write
 does not establish the later separate TaskItem Score promotion.
 

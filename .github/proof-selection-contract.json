@@ -6,7 +6,7 @@
       "lanes": [
         "jvm_contracts"
       ],
-      "reason": "Bounded same-JVM sampled joins are Harness contracts; aligned RPC load and repetitions remain exclusively in worker_call_performance."
+      "reason": "Bounded same-JVM sampled joins are Harness contracts; lane load, repetitions and trend remain exclusively in worker_call_performance."
     },
     {
       "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/dispatch/DispatchStageEvent.java",
@@ -34,7 +34,7 @@
       "lanes": [
         "jvm_contracts"
       ],
-      "reason": "The finite JFR settings belong to the existing call-performance proof, not an additional runtime claim."
+      "reason": "The finite JFR settings belong to the performance lane diagnostics mode, not an additional runtime claim."
     },
     {
       "path": "integrations/worker-call-performance/src/main/java/com/xa/mass/integration/workercallperformance/WorkerCallPerformanceMain.java",
@@ -48,7 +48,7 @@
       "lanes": [
         "jvm_contracts"
       ],
-      "reason": "Deterministic runner and comparison contracts run without repeating performance in PR lanes."
+      "reason": "Deterministic runner, trend and A/B decision contracts run without repeating performance in PR lanes."
     },
     {
       "path": ".github/workflows/worker-call-performance.yml",

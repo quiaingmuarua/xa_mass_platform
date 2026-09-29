@@ -213,7 +213,7 @@ existing refill/refill-observation/candidateize/round/check/candidate/confirmati
 and Result consume/process/release
 calls. Counts describe attempts or batches, not unique completed Items. Owner-local
 events add no registry, queue, Redis operation or Score interpretation; sampled
-correlation is joined only by the offline [call proof](../../integrations/worker-call-performance/README.md#rpc-mainline-diagnosis).
+correlation is joined only by the offline [call proof](../../integrations/worker-call-performance/README.md#jfr-diagnostics).
 In particular, `WORKER_RELEASE` counts a normally returned Worker event call,
 not successful per-Worker Score transitions. The current semantic event discards
 the mechanical release statuses; release success cannot be inferred from this

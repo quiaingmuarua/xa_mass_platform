@@ -520,7 +520,7 @@ admission/drain/requeue/drop counts. They expose no Adapter/Worker identity,
 payload, result or URL, add no Queue or sampling thread, and preserve the
 existing retry, drop and shutdown sequence. Remote duration covers its existing
 HTTP facade call; Queue depth is a non-atomic diagnostic snapshot. The
-[Call Performance reader](../../integrations/worker-call-performance/README.md#rpc-mainline-diagnosis)
+[Call Performance reader](../../integrations/worker-call-performance/README.md#jfr-diagnostics)
 exports a bounded whitelist separately from formal throughput measurements.
 TASK and SERVER lane counters support the aligned Task/Direct experiment without
 changing either lane's admission, consumption concurrency or retry policy. They

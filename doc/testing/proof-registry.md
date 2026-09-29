@@ -175,18 +175,19 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
 ## worker_call_performance
 
 - **Primary owner:** `:integrations:worker-call-performance` and its separate workflow.
-- **Claim:** fixed offered Task Call and caller-targeted Direct Call load,
-  successful response and latency distributions, and saturation. Task Call also
-  measures coexistence with one Pool-backed background Task and bounded Result
-  follow-up; Direct Call retains timeout/rejection/unknown outcomes without
-  inventing a persistent Result lookup. Generator limitations stay explicit.
-- **Deliberate nonclaims:** absolute production SLA, larger-world correctness,
-  fault recovery, actual executor, Handler concurrency, fairness and soak.
-  Redis Owner separately proves client-command cost and mailbox concurrency.
-- **Diagnosis:** fixed 30-second surge and 90-second sustained windows distinguish
-  API responses from successful execution. Optional owner/JVM JFR explains cost
-  and actual Server HTTP execution without asserting Worker Handler concurrency;
-  limited windows and incomplete diagnostic coverage remain explicit.
+- **Claim:** with configurable resources raised so they do not bind, open-loop
+  latency and success of the Any, targeted and Direct call paths at 500, 1,000 and
+  2,000 calls/s, Task path capacity as per-Worker turnaround under a deep backlog,
+  and path ratios on one host. Every accepted Task Item must reach an observed
+  Result. Cases are passed, saturated, invalid or failed; only failed fails the lane.
+- **Deliberate nonclaims:** turnover under scarce resources, Group fairness,
+  absolute production SLA, larger-world correctness, fault recovery, actual
+  executor, Handler concurrency and soak. Redis Owner separately proves
+  client-command cost and mailbox concurrency.
+- **Diagnosis:** per-case Dispatch attribution from default-off Owner events,
+  host calibration per job, a nightly trend against the last seven records and
+  per-case sequential A/B. Optional Server/Host JFR explains cost without
+  asserting Worker Handler concurrency; incomplete coverage remains explicit.
 - **Contract:** [Complete scenario](../../integrations/worker-call-performance/README.md).
 
 ## android_host

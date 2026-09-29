@@ -1,45 +1,42 @@
 name: Worker Call Performance
 
+# Performance lane (integrations/worker-call-performance/README.md): nightly trend and manual
+# measurement build once, run one job per rate plus saturation, and merge; manual A/B compares
+# one case against a baseline on a single runner.
 on:
   schedule:
     - cron: '0 19 * * *' # 03:00 Asia/Shanghai
   workflow_dispatch:
     inputs:
-      suite:
-        description: "RPC attribution, legacy fixtures, or seven RPC cases plus original mixed witness"
-        required: true
-        type: choice
-        default: rpc-diagnosis
-        options:
-          - task
-          - direct
-          - direct-diagnosis
-          - rpc-diagnosis
-          - nightly
       repetitions:
-        description: "Same-version RPC repetitions; three rotates paths on one host and requires JFR off"
+        description: "Repetitions per case (path order rotates); nightly uses 3"
         type: choice
-        default: '1'
+        default: '3'
         options:
           - '1'
           - '3'
       diagnostics:
-        description: "Private JFR diagnosis (separate from formal A/B comparisons)"
-        required: true
+        description: "Private Server/Host JFR with per-case export (diagnosis only; not an A/B input)"
         type: choice
         default: 'off'
         options:
           - 'off'
           - jfr
       baseline_ref:
-        description: "Immutable baseline: three formal pairs, or one separate A/B pair in JFR mode"
+        description: "A/B only: immutable baseline commit compared on lane_case"
         required: false
         type: string
-      assignment_batch_limit:
-        description: "Instance assignment ceiling (1..1000); refill remains demand-driven"
-        required: true
-        type: number
-        default: 100
+        default: ''
+      lane_case:
+        description: "A/B only: one case (e.g. task-any-1000, sat-task-any) compared against baseline_ref"
+        required: false
+        type: string
+        default: ''
+      lane_record:
+        description: "Store this run's record on the perf-lane-data branch for trend comparison (nightly always records)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -49,14 +46,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  worker-call-performance:
-    name: Worker Call Performance
+  lane-build:
+    name: Performance Lane Build
+    if: github.event_name == 'schedule' || inputs.baseline_ref == ''
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && (inputs.baseline_ref != '' || inputs.repetitions == '3') && 120 || 45 }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
       - uses: actions/setup-java@v5.7.0
         with:
           distribution: temurin
@@ -73,54 +69,180 @@ jobs:
         run: |
           ./gradlew --no-daemon :integrations:worker-call-performance:test
           python -m unittest discover -s integrations/worker-call-performance -p 'test_*.py'
-      - name: Run independent call performance proof
+      - name: Build Server, Host and Harness once
+        run: ./gradlew --no-daemon :server_boot_jvm:bootJar :worker_simulator_jvm:installDist :integrations:worker-call-performance:installDist
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: performance-lane-build-${{ github.run_attempt }}
+          path: |
+            server_boot_jvm/build/libs/*.jar
+            worker_simulator_jvm/build/install/**
+            integrations/worker-call-performance/build/install/**
+          if-no-files-found: error
+          retention-days: 1
+
+  lane:
+    name: Performance Lane ${{ matrix.job }}
+    needs: lane-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - job: rate-500
+            args: --lane-modes open --lane-rates 500
+          - job: rate-1000
+            args: --lane-modes open --lane-rates 1000
+          - job: rate-2000
+            args: --lane-modes open --lane-rates 2000
+          - job: saturation
+            args: --lane-modes saturation
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.x'
+          cache: pip
+          cache-dependency-path: .github/scripts/requirements.txt
+      - name: Install proof dependencies
+        run: python -m pip install -r .github/scripts/requirements.txt
+      - uses: actions/download-artifact@v8.0.0
+        with:
+          name: performance-lane-build-${{ github.run_attempt }}
+      - name: Run lane cases
+        env:
+          REPETITIONS: ${{ inputs.repetitions || '3' }}
+          DIAGNOSTICS: ${{ inputs.diagnostics || 'off' }}
+          LANE_ARGS: ${{ matrix.args }}
+        run: |
+          # shellcheck disable=SC2086 # LANE_ARGS is a fixed matrix value with separate options.
+          python integrations/worker-call-performance/run_worker_call_performance.py --skip-build \
+            --repetitions "$REPETITIONS" --diagnostics "$DIAGNOSTICS" $LANE_ARGS \
+            --output-root "build/worker-call-performance-proof/lane-${{ matrix.job }}"
+      - name: Publish job summary
+        if: always()
+        run: |
+          summary="build/worker-call-performance-proof/lane-${{ matrix.job }}/evidence/summary.md"
+          if [ -f "$summary" ]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: lane-${{ matrix.job }}-${{ github.run_attempt }}
+          path: build/worker-call-performance-proof/lane-${{ matrix.job }}/evidence/**
+          if-no-files-found: error
+          retention-days: 7
+
+  lane-summary:
+    name: Performance Lane Summary
+    needs: lane
+    if: always() && (github.event_name == 'schedule' || inputs.baseline_ref == '')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write  # Only for appending this run's record to the perf-lane-data branch.
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.x'
+      - uses: actions/download-artifact@v8.0.0
+        with:
+          pattern: lane-*-${{ github.run_attempt }}
+          path: build/lane-jobs
+      - name: Read lane history from the data branch
+        run: |
+          if git fetch --depth=1 origin perf-lane-data; then
+            git worktree add --detach build/lane-data FETCH_HEAD
+          else
+            echo "No perf-lane-data branch yet; trend comparison starts empty."
+          fi
+      - name: Merge lane jobs and compare with history
+        run: |
+          python integrations/worker-call-performance/run_worker_call_performance.py \
+            --merge-lane build/lane-jobs --merge-jobs rate-500,rate-1000,rate-2000,saturation \
+            --lane-history build/lane-data/runs --output-root build/worker-call-performance-proof/lane-merged
+      - name: Record this run on the data branch
+        if: github.event_name == 'schedule' || inputs.lane_record
+        run: |
+          record="$GITHUB_WORKSPACE/build/worker-call-performance-proof/lane-merged/evidence/run-record.json"
+          name="$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+          if [ ! -e build/lane-data/.git ]; then
+            git worktree add --detach build/lane-data HEAD
+            git -C build/lane-data checkout -q --orphan perf-lane-data
+            git -C build/lane-data rm -rf -q .
+          fi
+          mkdir -p build/lane-data/runs
+          cp "$record" "build/lane-data/runs/$name"
+          cd build/lane-data
+          git add runs
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Record performance lane run ${GITHUB_RUN_ID} (${GITHUB_REF_NAME})"
+          for attempt in 1 2 3; do
+            if git push -q origin HEAD:refs/heads/perf-lane-data; then exit 0; fi
+            git fetch -q --depth=50 origin perf-lane-data && git rebase -q FETCH_HEAD
+          done
+          exit 1
+      - name: Publish merged summary
+        if: always()
+        run: |
+          summary=build/worker-call-performance-proof/lane-merged/evidence/summary.md
+          if [ -f "$summary" ]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: lane-merged-${{ github.run_attempt }}
+          path: build/worker-call-performance-proof/lane-merged/evidence/**
+          if-no-files-found: error
+          retention-days: 7
+
+  lane-ab:
+    name: Performance Lane A/B
+    if: github.event_name == 'workflow_dispatch' && inputs.baseline_ref != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.x'
+          cache: pip
+          cache-dependency-path: .github/scripts/requirements.txt
+      - name: Install proof dependencies
+        run: python -m pip install -r .github/scripts/requirements.txt
+      - name: Read lane history for the comparison band
+        run: |
+          if git fetch --depth=1 origin perf-lane-data; then
+            git worktree add --detach build/lane-data FETCH_HEAD
+          fi
+      - name: Run sequential per-case A/B
         env:
           BASELINE_REF: ${{ inputs.baseline_ref }}
-          CALL_SUITE: ${{ inputs.suite || 'task' }}
-          SCHEDULED_RUN: ${{ github.event_name == 'schedule' }}
-          DIAGNOSTICS: ${{ inputs.diagnostics || 'off' }}
-          REPETITIONS: ${{ inputs.repetitions || '1' }}
-          ASSIGNMENT_BATCH_LIMIT: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.assignment_batch_limit) || '100' }}
+          LANE_CASE: ${{ inputs.lane_case }}
         run: |
-          # RPC 2k has not passed Result-closure acceptance. Keep the
-          # previously accepted schedule until the new manual manifest passes.
-          if [ "$SCHEDULED_RUN" = true ]; then
-            status=0
-            for suite in task direct-diagnosis; do
-              if ! python integrations/worker-call-performance/run_worker_call_performance.py \
-                --suite "$suite" --diagnostics off \
-                --output-root "build/worker-call-performance-proof/$suite"; then
-                status=1
-              fi
-            done
-            exit "$status"
-          fi
-          args=(--suite "$CALL_SUITE" --diagnostics "$DIAGNOSTICS" --repetitions "$REPETITIONS" --assignment-batch-limit "$ASSIGNMENT_BATCH_LIMIT")
-          if [ -n "$BASELINE_REF" ]; then
-            args+=(--baseline-ref "$BASELINE_REF")
-            if [ "$DIAGNOSTICS" = jfr ]; then
-              args+=(--diagnostic-pair)
-            fi
-          fi
-          python integrations/worker-call-performance/run_worker_call_performance.py "${args[@]}"
-      - name: Publish independent performance summary
+          python integrations/worker-call-performance/run_worker_call_performance.py \
+            --baseline-ref "$BASELINE_REF" --lane-case "$LANE_CASE" --lane-history build/lane-data/runs \
+            --output-root build/worker-call-performance-proof/lane-ab
+      - name: Publish A/B summary
         if: always()
         run: |
-          if [ -f build/worker-call-performance-proof/evidence/summary.md ]; then
-            cat build/worker-call-performance-proof/evidence/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-          for suite in task direct-diagnosis; do
-            if [ -f "build/worker-call-performance-proof/$suite/evidence/summary.md" ]; then
-              cat "build/worker-call-performance-proof/$suite/evidence/summary.md" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          done
-      - name: Upload safe performance evidence
+          summary=build/worker-call-performance-proof/lane-ab/evidence/summary.md
+          if [ -f "$summary" ]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v7.0.1
         if: always()
-        uses: actions/upload-artifact@v7.0.1
         with:
-          name: worker-call-performance-${{ github.run_attempt }}
-          path: |
-            build/worker-call-performance-proof/**/evidence/**
-            integrations/worker-call-performance/build/test-results/test/**
+          name: lane-ab-${{ github.run_attempt }}
+          path: build/worker-call-performance-proof/lane-ab/**/evidence/**
           if-no-files-found: error
           retention-days: 7

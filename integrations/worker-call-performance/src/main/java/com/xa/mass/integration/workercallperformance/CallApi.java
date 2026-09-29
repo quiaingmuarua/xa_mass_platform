@@ -16,6 +16,11 @@ final class CallApi implements AutoCloseable {
     static final String GROUP = "scenario-string-utils-workers";
     static final String INPUT = "x".repeat(64);
     enum ExpectedResult { MD5, DELAY }
+
+    /** A temporarily unavailable Runtime Owner (HTTP 503); readiness polling may observe again. */
+    static final class Unavailable extends IllegalStateException {
+        Unavailable(String message) { super(message); }
+    }
     private final java.util.concurrent.ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final HttpClient http = HttpClient.newBuilder().executor(executor)
             .connectTimeout(Duration.ofSeconds(5)).version(HttpClient.Version.HTTP_1_1).build();
@@ -34,8 +39,9 @@ final class CallApi implements AutoCloseable {
 
     private Map<String, Object> json(String url, Object body, Duration timeout) throws Exception {
         var response = send(url, body, timeout);
-        if (response.statusCode() != 200) throw new IllegalStateException(
-                "Observation/action HTTP " + response.statusCode() + " at " + URI.create(url).getPath());
+        String failure = "Observation/action HTTP " + response.statusCode() + " at " + URI.create(url).getPath();
+        if (response.statusCode() == 503) throw new Unavailable(failure);
+        if (response.statusCode() != 200) throw new IllegalStateException(failure);
         return Jsons.parseObject(response.body());
     }
 
@@ -76,8 +82,12 @@ final class CallApi implements AutoCloseable {
     }
 
     CallLoad.Reply directCall(String worker) throws Exception {
+        return directCall(GROUP, worker);
+    }
+
+    CallLoad.Reply directCall(String group, String worker) throws Exception {
         var response = send(runtime + "/api/v1/worker-delivery/endpoint-managers/scenario-websocket/direct-calls",
-                Map.of("workerGroupId", GROUP, "workerPayloads", Map.of(worker, Jsons.toJson(Map.of("value", INPUT))),
+                Map.of("workerGroupId", group, "workerPayloads", Map.of(worker, Jsons.toJson(Map.of("value", INPUT))),
                         "messageType", "extension.worker.string.md5", "waitTimeoutMillis", 1_000));
         int status = response.statusCode();
         if (status == 429) return new CallLoad.Reply(status, CallLoad.Outcome.REJECTED, null, "http-429");
@@ -125,6 +135,17 @@ final class CallApi implements AutoCloseable {
             return new CallLoad.Reply(200, CallLoad.Outcome.UNKNOWN, id, reason);
         // Missing/bad Binding or shutdown in this fixed live world is a failed prerequisite.
         throw new CallLoad.ProtocolFailure("Unexpected Direct status or reason");
+    }
+
+    /** Number of success lines in the streamed export of a terminal Task; payloads are not retained. */
+    long exportCount(String task) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create(runtime + "/api/v1/tasks/" + task + "/results:export"))
+                .timeout(Duration.ofSeconds(120)).POST(HttpRequest.BodyPublishers.noBody()).build();
+        var response = http.send(request, HttpResponse.BodyHandlers.ofLines());
+        try (var lines = response.body()) {
+            if (response.statusCode() != 200) throw new IllegalStateException("Export HTTP " + response.statusCode());
+            return lines.filter(line -> !line.isBlank()).count();
+        }
     }
 
     Map<String, String> results(String task, List<String> ids) throws Exception {

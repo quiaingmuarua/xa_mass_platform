@@ -45,8 +45,7 @@ class CallApiTest {
                 (id, index) -> new CallLoad.Reply(200, CallLoad.Outcome.NOT_OBSERVED), clock::get, clock::set);
         long ended = batch.samples().getFirst().ended;
         try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused")) {
-            WorkerCallPerformanceMain.settle(api, "task", batch, 1);
-            WorkerCallPerformanceMain.requireHealthy(batch);
+            LaneCase.drain(api, java.util.Map.of("perf-a", "task", "perf-b", "task"), batch, 1);
             assertThat(batch.samples().getFirst().outcome).isEqualTo(CallLoad.Outcome.NOT_OBSERVED);
             assertThat(batch.samples().getFirst().observed).isEqualTo("succeeded");
             assertThat(batch.samples().getFirst().ended).isEqualTo(ended);
