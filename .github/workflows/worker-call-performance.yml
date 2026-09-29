@@ -98,7 +98,7 @@ jobs:
           - job: rate-2000
             args: --lane-modes open --lane-rates 2000
           - job: saturation
-            args: --lane-modes saturation
+            args: --lane-modes saturation --experiment-config integrations/worker-call-performance/configs/lane-saturation.json
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-java@v5.7.0

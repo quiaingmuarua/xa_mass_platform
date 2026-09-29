@@ -30,11 +30,57 @@ class CapacityRunnerTest(unittest.TestCase):
 
     def test_capacity_input_cannot_be_mixed_with_ci_history_or_reference_cases(self):
         runner = test_runner.runner
-        for extra in (["--lane-history", "build/history"], ["--lane-modes", "saturation"],
+        for extra in (["--lane-history", "build/history"], ["--lane-modes", "open,saturation"],
                       ["--merge-lane", "build/jobs"]):
             with patch.object(runner.sys, "argv", ["runner", "--experiment-config", "capacity.json", *extra]), \
                     patch("sys.stderr"), self.assertRaises(SystemExit):
                 runner.main()
+
+    def test_configured_lane_passes_the_resolved_profile_and_keeps_raw_recordings_private(self):
+        runner = test_runner.runner
+        config = json.loads((runner.MODULE / "configs/lane-saturation.json").read_text())
+        original_read = Path.read_text
+        for bound in (False, True):
+            with self.subTest(worker_bound=bound), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                jar = root / "server_boot_jvm/build/libs/server.jar"
+                jar.parent.mkdir(parents=True)
+                jar.touch()
+                output = root / "build/lane"
+                output.mkdir(parents=True)
+                def resolve(args, **kwargs):
+                    self.assertIn("--phase=experiment-config", args)
+                    runner.write_json(output / "evidence/experiment.json", config)
+                def execute(module, case_root, resolved, actual, profile, stage, path, repetition, cpus, diagnostics):
+                    self.assertEqual(config, actual)
+                    self.assertEqual(config["profiles"][0], profile)
+                    self.assertEqual([2, 3, 4, 5], cpus)
+                    self.assertEqual(output / "evidence/experiment.json", resolved)
+                    (case_root / "private").mkdir(parents=True)
+                    (case_root / "private/server.jfr").write_bytes(b"private")
+                    case = dict(case="sat-" + path, status="invalid" if bound else "passed", workersBound=bound,
+                                invalidReasons=["workers-exhausted"] if bound else [], completedPerSecond=8123.5, workerSamples=[],
+                                resourcePeaks={}, resourceCosts={})
+                    runner.write_json(case_root / "evidence/result.json", case)
+                    return case
+                def read(path, *args, **kwargs):
+                    return "MemTotal: 16000000 kB\n" if path.as_posix() == "/proc/meminfo" else original_read(path, *args, **kwargs)
+                with patch.dict(runner.sys.modules, {runner.__name__: runner}), \
+                        patch.object(runner, "ROOT", root), patch.object(runner, "command", side_effect=resolve), \
+                        patch.object(runner, "artifact_fingerprints", return_value={"server": "fixture"}), \
+                        patch.object(runner.os, "sched_getaffinity", return_value=set(range(2, 10)), create=True), \
+                        patch.object(Path, "read_text", read), \
+                        patch.object(capacity_experiment, "run_case", side_effect=execute) as run:
+                    result = runner.run_saturation_lane(output, runner.lane_plan((), 1, ("saturation",)), root / "input.json")
+                self.assertEqual("failed" if bound else "passed", result["status"])
+                self.assertEqual(1 if bound else 2, run.call_count)
+                self.assertEqual(8123.5, result["cases"][0]["completedPerSecond"])
+                self.assertEqual([], list((output / "evidence").rglob("*.jfr")))
+                self.assertEqual(2000, result["workersPerGroup"])
+                report = runner.lane_markdown(result)
+                self.assertIn("2000 | 4 | 1024 / 1024 / 1024 | 15 / 30 | 600000", report)
+                if bound:
+                    self.assertEqual(["workers-exhausted"], result["cases"][0]["invalidReasons"])
 
     def test_harness_receives_the_exact_shared_config_and_profile(self):
         command = capacity_experiment.harness_command(test_runner.runner, "bootstrap", Path("output"),

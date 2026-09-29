@@ -9,7 +9,7 @@ import math
 import statistics
 
 # Bump when case semantics, fixture or metrics change; records of another version are never compared.
-LANE_CONFIG_VERSION = 2
+LANE_CONFIG_VERSION = 3
 HISTORY_WINDOW = 7
 MIN_HISTORY = 7
 # A job whose host calibration deviates more than this from the history median is not judged.
@@ -55,7 +55,9 @@ def run_record(merged, meta):
                        "statuses": dict(Counter(r.get("status") for r in rows)),
                        "metrics": {metric: _stats([METRICS[metric][0](r) for r in passed]) for metric in names}}
     calibration = {job["job"]: job.get("calibration") for job in merged.get("jobs", []) if job.get("calibration")}
-    return dict(meta, laneConfigVersion=LANE_CONFIG_VERSION, status=merged.get("status"),
+    configurations = {job["job"]: job.get("configurationId") for job in merged.get("jobs", [])}
+    reference = all(job.get("referenceHost", True) for job in merged.get("jobs", []))
+    return dict(meta, laneConfigVersion=LANE_CONFIG_VERSION, configurations=configurations, referenceHost=reference, status=merged.get("status"),
                 calibration=calibration, cases=cases)
 
 
@@ -74,7 +76,9 @@ def normalize(value, metric, speed, reference):
 
 def history_for(record, history):
     comparable = [h for h in history if h.get("ref") == record.get("ref")
-                  and h.get("laneConfigVersion") == LANE_CONFIG_VERSION and h.get("runId") != record.get("runId")]
+                  and h.get("laneConfigVersion") == LANE_CONFIG_VERSION and h.get("runId") != record.get("runId")
+                  and h.get("referenceHost", True) and record.get("referenceHost", True)
+                  and h.get("configurations", {}) == record.get("configurations", {})]
     return sorted(comparable, key=lambda h: h.get("createdAt", ""), reverse=True)[:HISTORY_WINDOW]
 
 
@@ -135,7 +139,12 @@ def band(case, history, ref):
     metric = primary_metric(case)
     spreads = []
     for h in history:
-        if h.get("ref") != ref or h.get("laneConfigVersion") != LANE_CONFIG_VERSION:
+        if h.get("ref") != ref or h.get("laneConfigVersion") != LANE_CONFIG_VERSION or not h.get("referenceHost", True):
+            continue
+        # Legacy A/B retains its own fixed world. A configured saturation job is a different
+        # fixture and cannot provide that world's noise band.
+        job = (h.get("cases", {}).get(case) or {}).get("job")
+        if h.get("configurations", {}).get(job) is not None:
             continue
         stats = ((h.get("cases", {}).get(case) or {}).get("metrics") or {}).get(metric)
         if stats and stats["median"]:

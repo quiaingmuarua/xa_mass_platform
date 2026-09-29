@@ -116,6 +116,7 @@ final class LaneSaturation {
             summary.put("validationEndedEpochMillis", System.currentTimeMillis());
             summary.put("evidenceStatus", "pending");
             summary.put("workersBound", !LaneCase.workersAvailable(workerSamples));
+            if (settings.referenceLane() && !LaneCase.workersAvailable(workerSamples)) invalid.add("workers-exhausted");
             if (completed.values().stream().anyMatch(count -> count >= settings.items())) invalid.add("items-exhausted");
             summary.put("status", invalid.isEmpty() ? "passed" : "invalid");
             summary.put("stage", "complete");

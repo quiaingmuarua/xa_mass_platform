@@ -260,6 +260,10 @@ Use the lowest-cost proof that owns the changed claim:
    experiment: a WSL resource scan followed by five 120-second Any repetitions
    and targeted controls. Its JFR completion/export reconciliation and local
    resource evidence do not enter the fixed CI trend or establish a production SLA.
+   CI saturation explicitly selects `configs/lane-saturation.json`: four CPUs,
+   4,000 total Workers, 1GiB JVM heaps, 600,000 Items per Group and 15s warmup
+   before each 30s measurement. Its independent repetitions reuse the packaged
+   experiment lifecycle; open-loop jobs retain their existing matrix.
 
 Inspect selection for a branch without running a proof:
 

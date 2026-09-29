@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 2,
+  "name": "lane-saturation-4k",
+  "purpose": "lane",
+  "ttlMillis": 1800000,
+  "settleSeconds": 60,
+  "caseTimeoutSeconds": 300,
+  "screening": {"warmupSeconds": 15, "measurementSeconds": 30, "itemsPerGroup": 600000},
+  "profiles": [{"name": "c4-w2000", "cpuCount": 4, "workersPerGroup": 2000}],
+  "resources": {"serverHeapMiB": 1024, "hostHeapMiB": 1024, "harnessHeapMiB": 1024, "redisMemoryMiB": 2048, "redisMaxmemoryMiB": 1536, "fileDescriptors": 8192, "nativeThreads": 512}
+}

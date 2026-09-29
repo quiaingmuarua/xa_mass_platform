@@ -149,4 +149,24 @@ class CapacityEvidenceTest {
         rows.removeFirst();
         assertThat(ExperimentReport.summarize(config, rows)).containsEntry("targetStatus", "inconclusive");
     }
+
+    @Test void referenceSaturationUsesOneExplicitProfileWithoutLongAcceptance() throws Exception {
+        var config = ExperimentConfig.read("configs/lane-saturation.json");
+        var settings = config.settings("c4-w2000", "screening");
+        assertThat(settings.workers()).isEqualTo(2000);
+        assertThat(settings.items()).isEqualTo(600000);
+        assertThat(settings.warmupSeconds()).isEqualTo(15);
+        assertThat(settings.seconds()).isEqualTo(30);
+        assertThat(settings.referenceLane()).isTrue();
+        assertThat(ExperimentConfig.read("configs/capacity-10k.json").settings("c4-w1000", "screening").referenceLane()).isFalse();
+        assertThat(((Number) config.object("resources").get("serverHeapMiB")).intValue()).isEqualTo(1024);
+        assertThat(((Number) config.object("resources").get("fileDescriptors")).intValue()).isEqualTo(8192);
+        var multiple = new LinkedHashMap<>(config.values());
+        multiple.put("profiles", List.of(config.profiles().getFirst(),
+                Map.of("name", "other", "cpuCount", 4, "workersPerGroup", 4000)));
+        assertThatThrownBy(() -> new ExperimentConfig(multiple)).isInstanceOf(IllegalArgumentException.class);
+        var invalid = new LinkedHashMap<>(config.values());
+        invalid.put("screening", Map.of("warmupSeconds", 15, "measurementSeconds", 30, "itemsPerGroup", 600001));
+        assertThatThrownBy(() -> new ExperimentConfig(invalid)).isInstanceOf(IllegalArgumentException.class);
+    }
 }

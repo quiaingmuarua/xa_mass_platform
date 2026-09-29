@@ -10,28 +10,33 @@ import java.util.Set;
 
 /** The Harness owns the finite experiment configuration; the runner consumes its resolved JSON. */
 final class ExperimentConfig {
-    record Settings(int workers, int warmupSeconds, int seconds, int items, long ttlMillis, int settleSeconds) {}
+    record Settings(int workers, int warmupSeconds, int seconds, int items, long ttlMillis, int settleSeconds, boolean referenceLane) {}
     private final Map<String, Object> values;
 
     ExperimentConfig(Map<String, Object> values) {
         this.values = new LinkedHashMap<>(values);
         if (integer(values, "schemaVersion", 2, 2) != 2) throw new IllegalArgumentException("Experiment version");
-        if (!Set.of("capacity", "smoke").contains(CallApi.string(values, "purpose")))
+        if (!Set.of("capacity", "smoke", "lane").contains(CallApi.string(values, "purpose")))
             throw new IllegalArgumentException("Unknown experiment purpose");
+        boolean lane = "lane".equals(values.get("purpose"));
         CallApi.string(values, "name");
-        integer(values, "targetQps", 1, 100_000);
+        if (!lane) integer(values, "targetQps", 1, 100_000);
         integer(values, "ttlMillis", 60_000, 1_800_000);
         integer(values, "settleSeconds", 1, 60);
         integer(values, "caseTimeoutSeconds", 60, 1200);
-        for (String stage : List.of("screening", "confirmation")) {
+        for (String stage : lane ? List.of("screening") : List.of("screening", "confirmation")) {
             var window = object(stage);
             integer(window, "warmupSeconds", 0, 60);
             integer(window, "measurementSeconds", 1, 120);
             int items = integer(window, "itemsPerGroup", 100, 2_000_000);
             if (items % 100 != 0) throw new IllegalArgumentException("Items must be a multiple of 100");
         }
-        integer(object("confirmation"), "anyRepetitions", 1, 5);
-        integer(object("confirmation"), "targetedRepetitions", 0, 3);
+        if (!lane) {
+            integer(object("confirmation"), "anyRepetitions", 1, 5);
+            integer(object("confirmation"), "targetedRepetitions", 0, 3);
+        }
+        if (lane && profiles().size() != 1)
+            throw new IllegalArgumentException("Reference lane requires exactly one fixed profile");
         var names = new java.util.HashSet<String>();
         for (var profile : profiles()) {
             if (!names.add(CallApi.string(profile, "name"))) throw new IllegalArgumentException("Duplicate profile");
@@ -73,10 +78,10 @@ final class ExperimentConfig {
         return new Settings(integer(profile(profile), "workersPerGroup", 1, 4000),
                 integer(window, "warmupSeconds", 0, 60), integer(window, "measurementSeconds", 1, 120),
                 integer(window, "itemsPerGroup", 100, 2_000_000), integer(values, "ttlMillis", 60_000, 1_800_000),
-                integer(values, "settleSeconds", 1, 60));
+                integer(values, "settleSeconds", 1, 60), "lane".equals(values.get("purpose")));
     }
     static Settings settings(Map<String, String> options) throws Exception {
-        if (!options.containsKey("--experiment-config")) return new Settings(1000, 0, 30, 150_000, 900_000, 30);
+        if (!options.containsKey("--experiment-config")) return new Settings(1000, 0, 30, 150_000, 900_000, 30, false);
         return read(options.get("--experiment-config")).settings(options.get("--experiment-profile"),
                 options.getOrDefault("--experiment-stage", "screening"));
     }

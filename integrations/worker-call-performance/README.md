@@ -18,16 +18,23 @@ enter the trend comparison.
 
 ## World And Configuration
 
-Each job starts one world and reuses it for every case: Ubuntu 24.04 with four
+Open-loop jobs start one world and reuse it for every case: Ubuntu 24.04 with four
 logical CPUs, Java 21, Docker Redis 7.4.10, the DEFAULT Pacer preset, two Groups
 (`perf-a`, `perf-b`) of 1,000 Java Workers each in one Host JVM, one WebSocket
 Adapter and Project `perf-lane`. Bootstrap waits until every Worker is running,
 connected, HOT and has published Properties.
 
-Configurable resources are raised or audited so they do not bind. The runner's
-`LANE_KNOB_AUDIT` is the authoritative table and every run writes it to
-`evidence/knob-audit.json` with the reason and the evidence that shows the value
-did not bind.
+The saturation job uses [lane-saturation.json](configs/lane-saturation.json):
+four CPUs, two Groups of 2,000 Workers (4,000 total), and 1GiB maximum heaps
+for Server, Host and Harness. Redis has a 2GiB container limit and 1.5GiB
+`maxmemory`, with `noeviction`. FD/thread guards remain 8,192/512. These are
+explicit experiment settings, not minimum production resource requirements.
+CPU affinity applies to every experiment JVM and the Redis container.
+
+Configurable resources are raised or audited so they do not bind. Open-loop
+settings come from the runner's `LANE_KNOB_AUDIT`; configured saturation uses
+the resolved experiment file. Each job records its settings in
+`evidence/knob-audit.json` and preserves resource samples for the audit.
 
 | Resource | Production default | Lane value |
 | --- | --- | --- |
@@ -35,7 +42,7 @@ did not bind.
 | Pool watermark `task-rpc.refill-by-worker-group[<group>]` | per profile | `any / {} / 1000` per Group |
 | Adapter `report-queue-capacity` | 1000 | 10000 |
 | `task-rpc.max-probe-items-per-round` | 256 | 1000 (maximum) |
-| Workers / Handler | — | 2 x 1000 / MD5 |
+| Workers / Handler | — | open: 2 x 1000; saturation: 2 x 2000 / MD5 |
 
 Waiter and Direct Call bounds, Tomcat threads (calls complete through
 DeferredResult) and the 4,096 in-flight Harness bound are audited and unchanged.
@@ -52,8 +59,8 @@ consume limit of 100. The Server delivery contract
 | Stage | Content |
 | --- | --- |
 | Calibration | Before any lane process starts: a fixed JVM MD5 workload on one and four threads (1s warmup, 2s measurement) and 5,000 sequential Redis PINGs. The values travel with the job's cases. |
-| World | Redis, Server and Host once per job; Harness bootstrap. |
-| Job warmup | One discarded case: `task-any` at the job's highest open rate, or `task-any-1000` for a saturation-only job. |
+| World | Open jobs reuse Redis, Server and Host; configured saturation creates them per case. Harness bootstrap verifies the complete Worker inventory. |
+| Job warmup | Open jobs discard `task-any` at the highest offered rate. Configured saturation warms each fresh world for 15s under its measured backlog. |
 | Cases | Each case follows a quiesce gate: every Worker connected and idle due HOT on two observations one second apart, within 30s. A timeout makes this and every later case invalid. |
 
 Open-loop cases offer one call per planned arrival and split the total rate
@@ -67,16 +74,30 @@ and a 5s client timeout.
 | `task-targeted` | 500, 1000, 2000 | `items:call` with the `workerId` function |
 | `direct` | 500, 1000, 2000 | Adapter-scoped `direct-calls`; the transport control |
 
-Reference saturation cases (`sat-task-any`, `sat-task-targeted`) seed 150,000
-Items per Group before approval. After approval they measure a 30s window without
-HTTP submissions. Closing and draining happen after the fixed window. The Java
+Reference saturation cases (`sat-task-any`, `sat-task-targeted`) seed 600,000
+Items per Group before approval, warm for 15s, then measure a 30s window without
+HTTP submissions. Each repetition has independent Redis, Server, Host and JFR;
+the existing workflow repetition input still controls both paths (default 3).
+Closing and draining happen after the fixed window. The Java
 reader counts non-sampled, successful `RESULT_STORED` batch events in that
 window and reconciles full-lifecycle claims, publications and stores against
 unique, payload-validated public `results:export` rows. Missing coverage, event
 loss, inconsistent counts or a drained backlog make the case invalid. This is
 the successful Owner-call return point, not a Redis commit timestamp.
 
-Path order rotates per repetition (ABC, BCA, CAB). The workflow builds once, runs
+The workflow passes `--lane-modes saturation --experiment-config
+integrations/worker-call-performance/configs/lane-saturation.json`. Java validates
+the single `purpose=lane` profile; the existing Python experiment lifecycle
+passes that resolved file to every phase. The merged report shows the actual
+Worker count, CPU, heaps, backlog and windows for each job. A sampled Group
+without an idle Worker invalidates the reference saturation configuration;
+the local resource scan may retain that observation as `workersBound` instead.
+Resource/evidence failures stop later repetitions and fail the configured job.
+Raw recordings, logs and inventories remain outside published evidence.
+The old CLI without an experiment config and manual A/B keep their original
+2,000-Worker world and 150,000-Item backlog; their configuration identity differs.
+
+Path order rotates per repetition within each job. The workflow builds once, runs
 `rate-500`, `rate-1000`, `rate-2000` and `saturation` as parallel jobs, and merges
 them. Path ratios compare cases inside one job, so on one host.
 
@@ -181,7 +202,9 @@ Outputs include `experiment-summary.json`, `summary.md`, `resource-scan.svg`,
 the resolved configuration, artifact/environment fingerprints, ten-second
 throughput, aligned resource costs, GC and per-case reconciliation. Raw JFR,
 logs and inventories remain private. Local records are excluded from CI trends.
-Statistics version 2 separates these completion semantics from earlier records.
+Measurement version 2 separates these completion semantics from earlier records.
+CI lane configuration version 3 identifies the new 4,000-Worker saturation
+fixture; the full resolved configuration hash also gates history comparison.
 An unmet target bounds the tested environment, not absolute platform capacity.
 
 ## JFR Diagnostics
@@ -231,8 +254,9 @@ outcomes.
   median, minimum and maximum of each metric over passed repetitions. Nightly
   runs, and manual runs with `lane_record`, append it to the `perf-lane-data`
   branch; only the summary job has write permission.
-- Nightly trend: compares with the last seven records of the same ref and lane
-  config version, else reports `insufficient-history`. Values are normalized to
+- Nightly trend: compares with the last seven records of the same ref, lane
+  config version and resolved job configuration hashes, else reports
+  `insufficient-history`. Values are normalized to
   the history's median host speed; a job whose calibration deviates more than 25%
   is not judged. A median that stays outside the history range in the worse
   direction after allowing this run's half spread, or a changed majority status,
@@ -250,6 +274,9 @@ outcomes.
 
 ```bash
 python integrations/worker-call-performance/run_worker_call_performance.py --repetitions 3
+python integrations/worker-call-performance/run_worker_call_performance.py \
+  --lane-modes saturation --experiment-config integrations/worker-call-performance/configs/lane-saturation.json \
+  --repetitions 3 --output-root build/lane-saturation
 python integrations/worker-call-performance/run_worker_call_performance.py \
   --lane-modes open --lane-rates 1000 --diagnostics jfr --output-root build/lane-jfr
 python integrations/worker-call-performance/run_worker_call_performance.py \

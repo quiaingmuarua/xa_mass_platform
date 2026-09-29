@@ -39,6 +39,17 @@ class LaneTrendTest(unittest.TestCase):
         self.assertEqual("insufficient-history", result["status"])
         self.assertEqual(6, result["historyRuns"])
 
+    def test_changed_saturation_resources_cannot_enter_the_same_history(self):
+        current = history_run("now", 20)
+        current["configurations"] = {"saturation": "4k-workers-1g"}
+        same = history_run("same", 19)
+        same["configurations"] = dict(current["configurations"])
+        changed = history_run("changed", 18)
+        changed["configurations"] = {"saturation": "2k-workers"}
+        self.assertEqual([same], trend.history_for(current, [same, changed]))
+        same["referenceHost"] = False
+        self.assertEqual([], trend.history_for(current, [same]))
+
     def test_normalized_regression_is_suspect_but_host_speed_difference_is_not(self):
         history = [history_run(str(i), i, p99=300 + i) for i in range(1, 8)]
         # A 20% slower host with 20% higher latency normalizes back into the history range.

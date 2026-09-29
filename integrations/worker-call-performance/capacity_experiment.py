@@ -37,7 +37,7 @@ def harness_command(runner, phase, output, config, *extra, heap=1024):
             f"--phase={phase}", f"--output={output}", f"--experiment-config={config}", *extra]
 
 
-def run_case(runner, root, config_path, config, profile, stage, path, repetition, cpu_ids):
+def run_case(runner, root, config_path, config, profile, stage, path, repetition, cpu_ids, diagnostics="off"):
     import redis
     root.mkdir()
     evidence, private = root / "evidence", root / "private"
@@ -47,6 +47,7 @@ def run_case(runner, root, config_path, config, profile, stage, path, repetition
     deadline = time.monotonic() + config["caseTimeoutSeconds"]
     scope = "test_worker_call_capacity_" + uuid.uuid4().hex[:16]
     processes, errors = {}, []
+    calibration = None
     container = client = sampler = None
     case = dict(status="failed", evidenceStatus="incomplete", invalidReasons=[])
     args = (f"--experiment-profile={profile['name']}", f"--experiment-stage={stage}")
@@ -106,11 +107,15 @@ def run_case(runner, root, config_path, config, profile, stage, path, repetition
                 time.sleep(.25)
         if client.info("server")["redis_version"] != "7.4.10":
             raise RuntimeError("Unexpected Redis version")
+        if config["purpose"] == "lane" and path == "task-any" and repetition == 1:
+            calibration = runner.calibrate_host(client, evidence, cpu_ids=cpu_ids)
         sampler = runner.Sampler(evidence / "process-resources.jsonl", client, resources["fileDescriptors"],
                                  resources["nativeThreads"], watch_swap=True)
         sampler.thread.start()
         flags = runner.lane_server_flags()
         flags.update({"xa.mass.redis.url": redis_url, "xa.mass.redis.scope": scope})
+        if diagnostics == "jfr":
+            flags["xa.mass.diagnostics.enabled"] = "true"
         env.update(XA_MASS_REDIS_URL=redis_url, XA_MASS_REDIS_SCOPE=scope, XA_MASS_KERNEL_PACER_PRESET="DEFAULT")
         jars = [p for p in (runner.ROOT / "server_boot_jvm/build/libs").glob("*.jar") if not p.name.endswith("-plain.jar")]
         if len(jars) != 1:
@@ -119,6 +124,8 @@ def run_case(runner, root, config_path, config, profile, stage, path, repetition
         recording = ["-XX:FlightRecorderOptions=maxchunksize=8m",
                      f"-XX:StartFlightRecording=name=capacity,settings={runner.MODULE / 'lane-attribution.jfc'},"
                      f"filename={private / 'server.jfr'},maxsize=240m,dumponexit=true"]
+        if diagnostics == "jfr":
+            recording = runner.jfr_options(private, "server", diagnostics)
         runner.write_json(evidence / "effective-config.json", dict(experiment=config, profile=profile, stage=stage,
             cpuIds=cpu_ids, serverOverrides=flags, jvmOptions={**{r: jvm(r) for r in ("server", "host")},
                 "harness": [f"-Xmx{resources['harnessHeapMiB']}m", "-XX:+ExitOnOutOfMemoryError"]},
@@ -135,7 +142,7 @@ def run_case(runner, root, config_path, config, profile, stage, path, repetition
         host_config = private / "worker-simulator.json"
         runner.write_json(host_config, dict(runtimeApiBaseUrl="http://127.0.0.1:18082", sandboxRoot=str(inventory.resolve()),
             controlPort=18086, workerGroups=runner.lane_host_groups(profile["workersPerGroup"])))
-        launch("host", ["java", *jvm("host"), "-cp",
+        launch("host", ["java", *jvm("host"), *runner.jfr_options(private, "host", diagnostics), "-cp",
             runner.ROOT / "worker_simulator_jvm/build/install/xa-mass-worker-simulator/lib/*",
             "com.xa.mass.workersimulator.WorkerSimulatorMain", "--config", host_config])
         runner.wait_http("http://127.0.0.1:18086/lab/v1/workers", processes["host"], sampler,
@@ -187,8 +194,13 @@ def run_case(runner, root, config_path, config, profile, stage, path, repetition
     if errors:
         case.update(status="invalid", evidenceStatus="incomplete")
         case["invalidReasons"] = [*case.get("invalidReasons", []), *errors]
-    case.update(profile=profile["name"], experimentStage=stage, path=path, repetition=repetition,
+    case.update(profile=profile["name"], experimentStage="lane" if config["purpose"] == "lane" else stage, path=path, repetition=repetition,
                 cpuIds=cpu_ids, workersPerGroup=profile["workersPerGroup"])
+    if diagnostics == "jfr" and case.get("measurementStartedEpochMillis"):
+        case["diagnostics"] = runner.export_diagnostics(private, evidence / "diagnostics",
+            case["measurementStartedEpochMillis"], case["measurementSeconds"], "TASK")
+    if calibration is not None:
+        case["calibration"] = calibration
     if (evidence / "process-resources.jsonl").is_file():
         case["resourcePeaks"] = runner.resource_peaks(evidence / "process-resources.jsonl")
     runner.write_json(evidence / "result.json", case)
@@ -219,6 +231,8 @@ def run(options, runner):
     runner.command(harness_command(runner, "experiment-config", evidence, options.experiment_config.resolve()))
     config_path = evidence / "experiment.json"
     config = json.loads(config_path.read_text())
+    if config["purpose"] == "lane":
+        raise ValueError("Reference saturation configuration requires --lane-modes saturation")
     available = sorted(os.sched_getaffinity(0))
     environment = dict(os=platform.freedesktop_os_release(), kernel=platform.release(), java=java,
         availableCpuIds=available, redisImage=runner.REDIS_IMAGE, redisImageId=image_id, referenceHost=False,

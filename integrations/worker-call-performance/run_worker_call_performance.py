@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import shutil
 import signal
 import socket
 import subprocess
@@ -422,14 +423,15 @@ def lane_warmup_case(rates, modes):
     return f"task-any-{max(rates)}" if "open" in modes else "task-any-1000"
 
 
-def calibrate_host(client, harness_output):
+def calibrate_host(client, harness_output, cpu_ids=None):
     """Stage 0: Redis round-trip and a fixed JVM CPU workload, measured before any lane process starts."""
     started = time.perf_counter()
     for _ in range(5000):
         client.ping()
     redis_micros = (time.perf_counter() - started) / 5000 * 1e6
     output = harness_output / "calibrate"
-    command(["java", *JVM, "-cp", ROOT / "integrations/worker-call-performance/build/install/xa-mass-worker-call-performance/lib/*",
+    affinity = ["taskset", "--cpu-list", ",".join(map(str, cpu_ids))] if cpu_ids is not None else []
+    command([*affinity, "java", *JVM, "-cp", ROOT / "integrations/worker-call-performance/build/install/xa-mass-worker-call-performance/lib/*",
              "com.xa.mass.integration.workercallperformance.WorkerCallPerformanceMain", "--phase=calibrate",
              f"--output={output}"], timeout=120)
     calibration = json.loads((output / "calibrate.json").read_text(encoding="utf-8"))
@@ -700,6 +702,68 @@ def load_history(directory):
     return [json.loads(path.read_text(encoding="utf-8")) for path in sorted(Path(directory).rglob("*.json"))]
 
 
+def run_saturation_lane(output, plan, config_path, diagnostics="off"):
+    """Reuse the packaged experiment lifecycle with one Java-validated CI profile; no QPS calculation."""
+    import capacity_experiment
+    evidence = output / "evidence"
+    evidence.mkdir()
+    command(capacity_experiment.harness_command(sys.modules[__name__], "experiment-config", evidence, config_path.resolve()))
+    resolved = evidence / "experiment.json"
+    config = json.loads(resolved.read_text(encoding="utf-8"))
+    if config["purpose"] != "lane":
+        raise ValueError("The CI saturation lane requires a purpose=lane configuration")
+    manifest = capacity_experiment.verify_bundle(ROOT)
+    profile = config["profiles"][0]
+    available = sorted(os.sched_getaffinity(0))
+    if profile["cpuCount"] > len(available):
+        raise ValueError("Insufficient CPUs for the saturation configuration")
+    cpu_ids = available[:profile["cpuCount"]]
+    config_id = hashlib.sha256(json.dumps(config, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    result = dict(lane="performance", status="failed", plan=plan, cases=[], experiment=config,
+                  configurationId=config_id, workersPerGroup=profile["workersPerGroup"], cpuIds=cpu_ids,
+                  timingsMillis={}, resourcePeaks={})
+    if manifest is not None:
+        result["artifactManifest"] = manifest
+    write_json(evidence / "effective-config.json", dict(experiment=config, cpuIds=cpu_ids, configurationId=config_id))
+    jar = next(p for p in (ROOT / "server_boot_jvm/build/libs").glob("*.jar") if not p.name.endswith("-plain.jar"))
+    write_json(evidence / "artifact-fingerprints.json", artifact_fingerprints(ROOT, jar))
+    write_json(evidence / "knob-audit.json", dict(resources=config["resources"], workersPerGroup=profile["workersPerGroup"],
+        mechanismConstants=LANE_MECHANISM_CONSTANTS, meminfo=Path("/proc/meminfo").read_text()))
+    started = time.monotonic()
+    case_roots = output / "cases"
+    case_roots.mkdir()
+    for entry in plan:
+        root = case_roots / f"r{entry['repetition']}-{entry['case']}"
+        case = capacity_experiment.run_case(sys.modules[__name__], root, resolved, config, profile,
+                                            "screening", entry["path"], entry["repetition"], cpu_ids, diagnostics)
+        record = lane_case_record(entry, case, None)
+        record.update({key: value for key, value in case.items() if key != "workerSamples"})
+        costs = case.get("resourceCosts", {})
+        record["cost"] = dict(redisCommandsPerCompleted=costs.get("redis", {}).get("commandsPerCompleted"),
+                              serverCpuMillisPerCompleted=costs.get("server", {}).get("cpuMillisPerCompleted"))
+        result["cases"].append(record)
+        if case.get("calibration"):
+            result["calibration"] = case["calibration"]
+        for role, peak in case.get("resourcePeaks", {}).items():
+            current = result["resourcePeaks"].setdefault(role, {})
+            for name, value in peak.items():
+                current[name] = max(current.get(name, 0), value)
+        # Only the existing public evidence subtree is published; JFR, logs and inventory stay
+        # outside evidence even though every repetition now has its own world and recording.
+        destination = evidence / "harness" / f"r{entry['repetition']}" / entry["case"]
+        shutil.copytree(root / "evidence", destination)
+        write_json(destination / "result.json", case)
+        if case.get("status") != "passed":
+            result["runnerFailure"] = "Saturation configuration or evidence invalid; remaining cases not run"
+            break
+    result["timingsMillis"]["casesCompleted"] = int((time.monotonic() - started) * 1000)
+    result["caseCounts"] = dict(Counter(case["status"] for case in result["cases"]))
+    if len(result["cases"]) == len(plan) and all(case["status"] == "passed" for case in result["cases"]):
+        result["status"] = "passed"
+    write_json(evidence / "lane-summary.json", result)
+    return result
+
+
 def run_meta():
     """Identity of this workflow run for its data-branch record."""
     return {"runId": os.environ.get("GITHUB_RUN_ID", "local"), "attempt": os.environ.get("GITHUB_RUN_ATTEMPT", "1"),
@@ -729,7 +793,11 @@ def merge_lane(evidence_root, jobs, history=None, meta=None):
         summaries.append({"job": job, "status": summary["status"], "caseCounts": summary.get("caseCounts", {}),
                           "casesCompletedMillis": summary.get("timingsMillis", {}).get("casesCompleted"),
                           "runnerFailure": summary.get("runnerFailure"), "resourcePeaks": summary.get("resourcePeaks", {}),
-                          "calibration": summary.get("calibration"), "warmup": summary.get("warmup")})
+                          "calibration": summary.get("calibration"), "warmup": summary.get("warmup"),
+                          "experiment": summary.get("experiment"), "configurationId": summary.get("configurationId"),
+                          "cpuCount": summary.get("cpuCount"),
+                          "referenceHost": summary.get("referenceHost", False),
+                          "workersPerGroup": summary.get("workersPerGroup", LANE_WORKERS_PER_GROUP)})
     status = "passed" if all(s["status"] == "passed" for s in summaries) else "failed"
     merged = {"lane": "performance", "status": status, "jobs": summaries, "cases": cases,
               "caseCounts": dict(Counter(case["status"] for case in cases)), "pathRatios": lane_path_ratios(cases)}
@@ -742,7 +810,7 @@ def merge_lane(evidence_root, jobs, history=None, meta=None):
 def lane_markdown(result):
     timings = result.get("timingsMillis", {})
     lines = ["# Performance Lane", "", f"Status: **{result['status']}**. Cases: {result.get('caseCounts', {})}.", "",
-             f"{len(LANE_GROUPS)} Groups x {LANE_WORKERS_PER_GROUP} Workers, one Adapter, assignment ceiling "
+             f"{len(LANE_GROUPS)} Groups, one Adapter, assignment ceiling "
              f"{LANE_ASSIGNMENT_BATCH_LIMIT}. Offered load splits evenly across the Groups.", "",
              "| Rep | Case | Status | HTTP success ratio | Completed/s | Success p50 / p99 ms | Checked Items/s | Shortfall | Acquisition rejected | Lease-held peak | Redis cmds / completed |",
              "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
@@ -776,6 +844,20 @@ def lane_markdown(result):
                          f"| {f'{speed:,.0f}' if speed else '—'} | {f'{ping:.0f}' if ping else '—'} "
                          f"| {warmup.get('case', '—')} {warmup.get('status', '')} "
                          f"| {server.get('peakNativeThreads', '—')} / {server.get('peakFileDescriptors', '—')} |")
+    worlds = result.get("jobs") or [dict(result, job="saturation" if result.get("experiment") else "lane")]
+    lines += ["", "| Job configuration | Workers / Group | CPU | Server / Host / Harness heap MiB | Warmup / measure s | Items / Group | Redis limit / maxmemory MiB |",
+              "| --- | --- | --- | --- | --- | --- | --- |"]
+    for world in worlds:
+        config = world.get("experiment")
+        if config:
+            profile, window, resource = config["profiles"][0], config["screening"], config["resources"]
+            lines.append(f"| {world['job']} ({config['name']}) | {profile['workersPerGroup']} | {profile['cpuCount']} "
+                         f"| {resource['serverHeapMiB']} / {resource['hostHeapMiB']} / {resource['harnessHeapMiB']} "
+                         f"| {window['warmupSeconds']} / {window['measurementSeconds']} | {window['itemsPerGroup']} "
+                         f"| {resource['redisMemoryMiB']} / {resource['redisMaxmemoryMiB']} |")
+        else:
+            lines.append(f"| {world['job']} (legacy world) | {world.get('workersPerGroup', LANE_WORKERS_PER_GROUP)} "
+                         f"| {world.get('cpuCount') or '—'} | 1024 / 1024 / 1024 | per case | per case | unconstrained |")
     if result.get("trend"):
         trend = result["trend"]
         lines += ["", f"Trend: **{trend['status']}** against {trend['historyRuns']} comparable run(s) "
@@ -877,10 +959,13 @@ def main():
     parser.add_argument("--merge-lane", type=Path, help="Merge the per-job lane evidence found below this directory")
     parser.add_argument("--merge-jobs", help="Comma-separated lane job names expected by --merge-lane")
     parser.add_argument("--skip-build", action="store_true")
-    parser.add_argument("--experiment-config", type=Path, help="Java-owned local capacity experiment configuration")
+    parser.add_argument("--experiment-config", type=Path, help="Java-owned experiment configuration; purpose=lane with --lane-modes saturation")
     parser.add_argument("--allow-nonreference-host", action="store_true", help="Local diagnostics only; no reference claim")
     options = parser.parse_args()
-    if options.experiment_config:
+    configured_lane = options.experiment_config and options.lane_modes == ("saturation",)
+    if configured_lane and any((options.baseline_ref, options.lane_case, options.lane_rates, options.merge_lane, options.merge_jobs)):
+        parser.error("Configured saturation runs only the saturation lane")
+    if options.experiment_config and not configured_lane:
         if any((options.baseline_ref, options.lane_case, options.lane_history, options.merge_lane,
                 options.merge_jobs, options.lane_rates, options.lane_modes, options.diagnostics != "off")):
             parser.error("Experiments cannot enter reference lanes, A/B or CI history")
@@ -933,12 +1018,16 @@ def main_lane(options, output, run_started, reference, os_release, java, image_i
     rates = options.lane_rates or LANE_RATES
     modes = options.lane_modes or LANE_MODES
     plan = lane_plan(rates, options.repetitions, modes)
-    result = run_lane(ROOT, output, run_started + LANE_WORLD_SECONDS + (len(plan) + 1) * LANE_CASE_SECONDS,
-                      plan, options.lane_attribution == "on", lane_warmup_case(rates, modes), diagnostics=options.diagnostics)
+    if options.experiment_config:
+        result = run_saturation_lane(output, plan, options.experiment_config, options.diagnostics)
+    else:
+        result = run_lane(ROOT, output, run_started + LANE_WORLD_SECONDS + (len(plan) + 1) * LANE_CASE_SECONDS,
+                          plan, options.lane_attribution == "on", lane_warmup_case(rates, modes), diagnostics=options.diagnostics)
+    manifest = result.get("artifactManifest")
     result.update(referenceHost=reference, os=os_release, java=java.strip(), cpuCount=os.cpu_count(),
                   machine=platform.machine(), kernel=platform.release(), redisImageId=image_id,
-                  harnessCommit=command(["git", "rev-parse", "HEAD"]),
-                  worktreeDirty=bool(command(["git", "status", "--porcelain"])))
+                  harnessCommit=manifest["sourceHead"] if manifest else command(["git", "rev-parse", "HEAD"]),
+                  worktreeDirty=manifest["worktreeDirty"] if manifest else bool(command(["git", "status", "--porcelain"])))
     write_json(output / "evidence/lane-summary.json", result)
     (output / "evidence/summary.md").write_text(lane_markdown(result), encoding="utf-8")
     print(json.dumps({"status": result["status"], "cases": result.get("caseCounts"),
