@@ -16,3 +16,65 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 tasks.named('test') { useJUnitPlatform() }
+
+def experimentRoot = layout.buildDirectory.dir('experiment/xa-mass-call-experiment')
+def bootJar = project(':server_boot_jvm').tasks.named('bootJar')
+def hostInstall = project(':worker_simulator_jvm').tasks.named('installDist')
+
+tasks.register('stageExperiment', Sync) {
+    dependsOn bootJar, hostInstall, tasks.named('installDist')
+    into experimentRoot
+    from(bootJar) { into 'server_boot_jvm/build/libs' }
+    from(project(':worker_simulator_jvm').layout.buildDirectory.dir('install')) {
+        into 'worker_simulator_jvm/build/install'
+    }
+    from(layout.buildDirectory.dir('install')) { into 'integrations/worker-call-performance/build/install' }
+    from(projectDir) {
+        include '*.py', '*.jfc', 'configs/*.json', 'README.md', 'requirements.txt'
+        exclude 'test_*.py'
+        into 'integrations/worker-call-performance'
+    }
+    from(rootProject.file('integrations/worker_proof_support')) {
+        include 'scenario_inventory.py', '__init__.py'
+        into 'integrations/worker_proof_support'
+    }
+    from('run-experiment.sh') { rename { 'run.sh' }; filePermissions { unix('rwxr-xr-x') } }
+    outputs.upToDateWhen { false }
+    doLast {
+        def git = { List<String> arguments ->
+            providers.exec {
+                workingDir rootProject.projectDir
+                commandLine(['git'] + arguments)
+            }.standardOutput.asText.get().trim()
+        }
+        File root = experimentRoot.get().asFile
+        new File(root, 'experiment-manifest.json').text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([
+            schemaVersion: 2, sourceHead: git(['rev-parse', 'HEAD']),
+            worktreeDirty: !git(['status', '--porcelain']).isEmpty(),
+            javaVersion: 21, redisImage: 'redis:7.4.10',
+            bootJar: 'server_boot_jvm/build/libs/' + bootJar.get().archiveFileName.get(),
+            hostClasspath: 'worker_simulator_jvm/build/install/xa-mass-worker-simulator/lib/*',
+            harnessClasspath: 'integrations/worker-call-performance/build/install/xa-mass-worker-call-performance/lib/*'
+        ])) + '\n'
+        def lines = []
+        fileTree(root).matching { exclude 'SHA256SUMS' }.files.sort { it.path }.each { file ->
+            def digest = java.security.MessageDigest.getInstance('SHA-256')
+            file.withInputStream { stream ->
+                byte[] buffer = new byte[1024 * 1024]
+                int read
+                while ((read = stream.read(buffer)) != -1) digest.update(buffer, 0, read)
+            }
+            lines.add(digest.digest().encodeHex().toString() + '  ' + root.toPath().relativize(file.toPath()).toString().replace('\\', '/'))
+        }
+        new File(root, 'SHA256SUMS').text = lines.join('\n') + '\n'
+    }
+}
+
+tasks.register('experimentDist', Zip) {
+    group = 'distribution'
+    description = 'Packages the self-contained local capacity experiment (Java 21 and Docker required).'
+    dependsOn tasks.named('stageExperiment')
+    archiveBaseName = 'xa-mass-call-experiment'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    from(experimentRoot) { into 'xa-mass-call-experiment' }
+}

@@ -80,7 +80,7 @@ def process_sample(pid):
 
 
 class Sampler:
-    def __init__(self, path, redis_client):
+    def __init__(self, path, redis_client, fd_limit=8192, thread_limit=512, watch_swap=False):
         self.path, self.redis = path, redis_client
         self.processes = {}
         self.lock = threading.Lock()
@@ -88,6 +88,8 @@ class Sampler:
         self.failure = None
         self.counts = Counter()
         self.previous = {}
+        self.fd_limit, self.thread_limit = fd_limit, thread_limit
+        self.swap_start = swap_counters() if watch_swap else None
         self.thread = threading.Thread(target=self.run, name="performance-resource-sampler", daemon=True)
 
     def register(self, role, process):
@@ -120,8 +122,10 @@ class Sampler:
                         sample.update(role=role, pid=process.pid, epochMillis=int(time.time() * 1000))
                         output.write(json.dumps(sample) + "\n")
                         self.counts[role] += 1
-                        if sample["nativeThreads"] >= 512 or sample["openFileDescriptors"] >= 8192:
+                        if sample["nativeThreads"] >= self.thread_limit or sample["openFileDescriptors"] >= self.fd_limit:
                             raise RuntimeError(f"Resource ceiling exceeded for {role}")
+                    if self.swap_start is not None and swap_counters() != self.swap_start:
+                        raise RuntimeError("WSL swap activity during experiment")
                     # Aggregate diagnostics only: no domain keys, command arguments or payloads.
                     stats = self.redis.info("stats")
                     memory = self.redis.info("memory")
@@ -154,9 +158,19 @@ def stop_process(process):
             process.wait(timeout=5)
 
 
-def start_process(args, path, env):
+def swap_counters():
+    values = dict(line.split() for line in Path("/proc/vmstat").read_text().splitlines())
+    return (int(values["pswpin"]), int(values["pswpout"]))
+
+
+def start_process(args, path, env, cpu_ids=None, fd_limit=None):
+    prefix = []
+    if fd_limit:
+        prefix += ["prlimit", f"--nofile={fd_limit}:{fd_limit}", "--"]
+    if cpu_ids:
+        prefix += ["taskset", "--cpu-list", ",".join(map(str, cpu_ids))]
     with path.open("x", encoding="utf-8") as output:
-        return subprocess.Popen([str(x) for x in args], cwd=ROOT, env=env,
+        return subprocess.Popen([*prefix, *(str(x) for x in args)], cwd=ROOT, env=env,
                                 stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
 
 
@@ -175,6 +189,8 @@ def wait_http(url, process, sampler, deadline):
 
 
 def server_distribution(root):
+    if (root / "experiment-manifest.json").is_file():
+        return "server_boot_jvm"
     main = "src/main/java/com/xa/mass/server/XaMassServerApplication.java"
     if (root / "server_boot_jvm" / main).is_file():
         return "server_boot_jvm"
@@ -323,8 +339,8 @@ def lane_server_flags():
     return flags
 
 
-def lane_host_groups():
-    return {group: {"events": list(LANE_EVENTS), "count": LANE_WORKERS_PER_GROUP, "propertiesTemplate": {},
+def lane_host_groups(workers=LANE_WORKERS_PER_GROUP):
+    return {group: {"events": list(LANE_EVENTS), "count": workers, "propertiesTemplate": {},
                     "newEnvironment": False, "requestTimeoutMillis": 60_000,
                     "reconnectPolicy": {"maxUnstableAttempts": 600, "reconnectIntervalMillis": 500,
                                         "stableConnectionDurationMillis": 10_000}} for group in LANE_GROUPS}
@@ -449,9 +465,7 @@ def lane_case_record(entry, case, cost):
               "measurementEndedEpochMillis": case.get("measurementEndedEpochMillis"),
               "completedPerSecond": case.get("completedPerSecond"),
               "admittedPerSecond": case.get("admittedPerSecond"),
-              "completedPerSecondErrorBound": case.get("completedPerSecondErrorBound"),
-              "heldLeasesAtWindowEnd": case.get("heldLeasesAtWindowEnd"),
-              "perWorkerTurnaroundMillis": case.get("perWorkerTurnaroundMillis"),
+              "completedCount": case.get("completedCount"),
               "workersBound": case.get("workersBound"),
               "seedMillis": case.get("seedMillis"),
               "leaseHeldPeakRatio": case.get("leaseHeldPeakRatio"),
@@ -460,10 +474,9 @@ def lane_case_record(entry, case, cost):
               "generatorLimited": metrics.get("generatorLimited"),
               "acceptedResultsAfterDrain": metrics.get("acceptedResultsAfterDrain"),
               "workerSamples": len(case.get("workerSamples", []))}
-    completed = (case.get("completedPerSecond") or 0) * LANE_MEASUREMENT_SECONDS
     if cost:
-        record["cost"] = dict(cost, redisCommandsPerCompleted=cost["redisCommands"] / completed if completed else None,
-                              serverCpuMillisPerCompleted=1000 * cost["serverCpuSeconds"] / completed if completed else None)
+        # An eventual drain count is not a count inside the sampled resource interval.
+        record["cost"] = dict(cost, redisCommandsPerCompleted=None, serverCpuMillisPerCompleted=None)
     return record
 
 
@@ -485,9 +498,6 @@ def lane_path_ratios(records):
                                "completionRatio": task["completedPerSecond"] / direct["completedPerSecond"]
                                if direct["completedPerSecond"] else None})
     return ratios
-
-
-LANE_MEASUREMENT_SECONDS = 30
 
 
 def attribute_lane(private, evidence, records):
@@ -524,6 +534,7 @@ def run_lane(root, output, deadline, plan, attribution=True, warmup_case=None, c
               "attribution": attribution, "timingsMillis": {}, "cases": records}
     timings = result["timingsMillis"]
     started = time.monotonic()
+    capacity_recording = any(entry.get("mode") == "saturation" for entry in plan)
     elapsed = lambda: int((time.monotonic() - started) * 1000)
     try:
         for port in (18082, 18083, 18086):
@@ -566,7 +577,7 @@ def run_lane(root, output, deadline, plan, attribution=True, warmup_case=None, c
         # Diagnostics mode records the complete diagnostics.jfc (a superset of the attribution events).
         recording = (jfr_options(private, "server", diagnostics) if diagnostics == "jfr" else
                      [f"-XX:StartFlightRecording=name=lane,settings={MODULE / 'lane-attribution.jfc'},"
-                      f"filename={private / 'server.jfr'},maxsize=240m,dumponexit=true"] if attribution else [])
+                      f"filename={private / 'server.jfr'},maxsize=240m,dumponexit=true"] if attribution or capacity_recording else [])
         write_json(evidence / "knob-audit.json", {"resources": list(LANE_KNOB_AUDIT), "mechanismConstants": LANE_MECHANISM_CONSTANTS})
         write_json(evidence / "effective-config.json", {"serverOverrides": flags, "jvmOptions": JVM, "serverRecording": recording,
             "groups": list(LANE_GROUPS), "workersPerGroup": LANE_WORKERS_PER_GROUP, "project": LANE_PROJECT,
@@ -647,11 +658,31 @@ def run_lane(root, output, deadline, plan, attribution=True, warmup_case=None, c
                 command(["docker", "rm", "--force", container], timeout=20)
             except Exception as error:
                 cleanup_errors.append(type(error).__name__)
-        if (attribution or diagnostics == "jfr") and records:
+        if (attribution or capacity_recording or diagnostics == "jfr") and records:
             try:
                 result["attribution"] = attribute_lane(private, evidence, records)
             except Exception as error:
                 result["attribution"] = {"complete": False, "failureType": type(error).__name__}
+        for record in records:
+            if record.get("mode") != "saturation" or record.get("status") not in ("passed", "invalid"):
+                continue
+            case_folder = harness_output / f"r{record['repetition']}" / record["case"]
+            if not (case_folder / "case.json").is_file():
+                continue
+            try:
+                command(["java", "-Xmx1g", "-cp", MODULE / "build/install/xa-mass-worker-call-performance/lib/*",
+                         "com.xa.mass.integration.workercallperformance.WorkerCallPerformanceMain",
+                         "--phase=experiment-analyze", f"--output={case_folder}",
+                         f"--input={case_folder / 'case.json'}", f"--recording={private / 'server.jfr'}",
+                         f"--resources={evidence / 'process-resources.jsonl'}"], timeout=180)
+                measured = json.loads((case_folder / "capacity-case.json").read_text())
+                record.update({key: value for key, value in measured.items() if key != "workerSamples"})
+                costs = measured.get("resourceCosts", {})
+                record["cost"] = dict(redisCommandsPerCompleted=costs.get("redis", {}).get("commandsPerCompleted"),
+                                      serverCpuMillisPerCompleted=costs.get("server", {}).get("cpuMillisPerCompleted"))
+            except Exception as error:
+                record.update(status="invalid", evidenceStatus="incomplete",
+                              invalidReasons=[*record.get("invalidReasons", []), "capacity-analysis-" + type(error).__name__])
         if diagnostics == "jfr":
             result["diagnostics"] = diagnose_lane(private, evidence, records)
         result["pathRatios"] = lane_path_ratios(records)
@@ -713,7 +744,7 @@ def lane_markdown(result):
     lines = ["# Performance Lane", "", f"Status: **{result['status']}**. Cases: {result.get('caseCounts', {})}.", "",
              f"{len(LANE_GROUPS)} Groups x {LANE_WORKERS_PER_GROUP} Workers, one Adapter, assignment ceiling "
              f"{LANE_ASSIGNMENT_BATCH_LIMIT}. Offered load splits evenly across the Groups.", "",
-             "| Rep | Case | Status | Success within 1s | Completed/s | Success p50 / p99 ms | Checked Items/s | Shortfall | STALE | Lease-held peak | Redis cmds / completed |",
+             "| Rep | Case | Status | HTTP success ratio | Completed/s | Success p50 / p99 ms | Checked Items/s | Shortfall | Acquisition rejected | Lease-held peak | Redis cmds / completed |",
              "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for r in result.get("cases", []):
         latency = r.get("successfulCallLatencyMillis") or {}
@@ -721,16 +752,14 @@ def lane_markdown(result):
         cost = r.get("cost") or {}
         status = r["status"] + (f" ({', '.join(r['invalidReasons'])})" if r.get("invalidReasons") else "") \
             + (f" ({r['failureReason']})" if r.get("failureReason") else "") \
-            + (f" (admitted {r['admittedPerSecond']:.0f}/s)" if r["status"] == "saturated" and r.get("admittedPerSecond") else "") \
-            + (f" (turnaround {r['perWorkerTurnaroundMillis']:.0f} ms)" if isinstance(r.get("perWorkerTurnaroundMillis"), (int, float)) else "")
+            + (f" (admitted {r['admittedPerSecond']:.0f}/s)" if r["status"] == "saturated" and r.get("admittedPerSecond") else "")
         pct = lambda value: f"{value:.2%}" if isinstance(value, (int, float)) else "—"
         num = lambda value, fmt: format(value, fmt) if isinstance(value, (int, float)) else "—"
-        completed = num(r.get("completedPerSecond"), ".1f") + (
-            f" ± {r['completedPerSecondErrorBound']:.1f}" if r.get("completedPerSecondErrorBound") is not None else "")
+        completed = num(r.get("completedPerSecond"), ".1f")
         lines.append(f"| {r['repetition']} | {r['case']} | {status} | {pct(r.get('successWithinWait'))} "
                      f"| {completed} | {num(latency.get('p50'), '.1f')} / {num(latency.get('p99'), '.1f')} "
                      f"| {num(attribution.get('checkedItemsPerSecond'), '.0f')} | {pct(attribution.get('candidateShortfallRatio'))} "
-                     f"| {pct(attribution.get('strictAcquisitionStaleRatio'))} | {pct(r.get('leaseHeldPeakRatio'))} "
+                     f"| {pct(attribution.get('workerAcquisitionRejectedRatio'))} | {pct(r.get('leaseHeldPeakRatio'))} "
                      f"| {num(cost.get('redisCommandsPerCompleted'), '.1f')} |")
     if result.get("jobs"):
         lines += ["", "| Job | Status | Cases | Case time s | Host CPU ops/s (4 threads) | Redis ping µs | Warmup | Server peak threads / FDs |",
@@ -775,10 +804,9 @@ def lane_markdown(result):
                   for role, peak in peaks.items()]
     if result.get("runnerFailure"):
         lines += ["", f"Failure: {result['runnerFailure']}"]
-    lines += ["", "Saturation cases (sat-*) seed a deep backlog per Group and count Items completed within the window; "
-              "the ± bound is the leases still held when the window closed. With a near-zero Handler every Worker is "
-              "expected to stay busy, so the turnaround (Workers x window / completed) is the platform time of one "
-              "Worker lease cycle.", ""]
+    lines += ["", "Saturation cases count successful Result-store completion events inside the window and reconcile "
+              "full-lifecycle claims, publications and stores with unique validated public exports. Warmup and drain "
+              "are excluded; missing or inconsistent evidence is invalid. Resource cost denominators use the same sampled interval.", ""]
     lines += ["Saturated means the offered rate exceeds the path capacity: responses outlasted their wait until "
               "arrivals met the in-flight cap; admitted/s is not a completion ceiling (the saturation mode measures that). "
               "Invalid means the generator lagged or a Group ran out of idle Workers; its numbers are not comparable. "
@@ -849,8 +877,15 @@ def main():
     parser.add_argument("--merge-lane", type=Path, help="Merge the per-job lane evidence found below this directory")
     parser.add_argument("--merge-jobs", help="Comma-separated lane job names expected by --merge-lane")
     parser.add_argument("--skip-build", action="store_true")
+    parser.add_argument("--experiment-config", type=Path, help="Java-owned local capacity experiment configuration")
     parser.add_argument("--allow-nonreference-host", action="store_true", help="Local diagnostics only; no reference claim")
     options = parser.parse_args()
+    if options.experiment_config:
+        if any((options.baseline_ref, options.lane_case, options.lane_history, options.merge_lane,
+                options.merge_jobs, options.lane_rates, options.lane_modes, options.diagnostics != "off")):
+            parser.error("Experiments cannot enter reference lanes, A/B or CI history")
+        import capacity_experiment
+        return capacity_experiment.run(options, sys.modules[__name__])
     if options.merge_lane:
         jobs = tuple(job for job in (options.merge_jobs or "").split(",") if job)
         if not jobs:

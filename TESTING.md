@@ -256,6 +256,10 @@ Use the lowest-cost proof that owns the changed claim:
    A/B (`baseline_ref` with `lane_case`) for comparison; do not duplicate
    throughput or Worker-size tiers across lanes. `--diagnostics jfr` is manual
    attribution with private recordings and whitelist export; A/B keeps it off.
+   The same performance module owns the packaged local `capacity-10k`
+   experiment: a WSL resource scan followed by five 120-second Any repetitions
+   and targeted controls. Its JFR completion/export reconciliation and local
+   resource evidence do not enter the fixed CI trend or establish a production SLA.
 
 Inspect selection for a branch without running a proof:
 

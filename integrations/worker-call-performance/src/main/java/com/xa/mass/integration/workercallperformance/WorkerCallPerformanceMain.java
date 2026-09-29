@@ -6,7 +6,8 @@ import java.util.Set;
 /** Performance lane Harness entry: one bounded phase per process, driven by the Python runner. */
 public final class WorkerCallPerformanceMain {
     private static final Set<String> OPTIONS = Set.of("--phase", "--case", "--output", "--world", "--repetition",
-            "--runtime-url", "--lab-url");
+            "--runtime-url", "--lab-url", "--experiment-config", "--experiment-profile", "--experiment-stage",
+            "--recording", "--input", "--resources");
 
     private WorkerCallPerformanceMain() {}
 
@@ -20,6 +21,9 @@ public final class WorkerCallPerformanceMain {
         String phase = options.get("--phase");
         if (phase == null || !options.containsKey("--output")) throw new IllegalArgumentException("phase and output required");
         switch (phase) {
+            case "experiment-config" -> ExperimentConfig.resolve(options);
+            case "experiment-analyze" -> CapacityEvidence.run(options);
+            case "experiment-report" -> ExperimentReport.run(options);
             case "calibrate" -> LaneCalibration.run(options);
             case "case" -> {
                 if (LaneSaturation.handles(options.get("--case"))) LaneSaturation.run(options);

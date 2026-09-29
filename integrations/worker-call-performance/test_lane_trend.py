@@ -8,11 +8,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lane_trend as trend  # noqa: E402
 
 
-def case_row(case, status="passed", p99=300.0, p50=200.0, success=1.0, completed=1000.0, turnaround=None, job="rate-1000"):
+def case_row(case, status="passed", p99=300.0, p50=200.0, success=1.0, completed=1000.0, job="rate-1000"):
     row = dict(case=case, job=job, mode="saturation" if case.startswith("sat-") else "open", status=status,
                successfulCallLatencyMillis={"p99": p99, "p50": p50}, successWithinWait=success, completedPerSecond=completed)
-    if turnaround is not None:
-        row["perWorkerTurnaroundMillis"] = turnaround
     return row
 
 
@@ -26,13 +24,13 @@ class LaneTrendTest(unittest.TestCase):
     def test_record_aggregates_passed_repetitions_per_case(self):
         merged = {"status": "passed", "jobs": [{"job": "saturation", "calibration": {"cpuParallelOpsPerSecond": 9.0}}],
                   "cases": [case_row("task-any-2000", status="saturated"), case_row("task-any-2000", p99=320),
-                            case_row("sat-task-any", turnaround=400.0, job="saturation"),
-                            case_row("sat-task-any", turnaround=440.0, job="saturation")]}
+                            case_row("sat-task-any", job="saturation"),
+                            case_row("sat-task-any", job="saturation")]}
         record = trend.run_record(merged, {"runId": "1", "ref": "main"})
         self.assertEqual(trend.LANE_CONFIG_VERSION, record["laneConfigVersion"])
         self.assertEqual({"saturated": 1, "passed": 1}, record["cases"]["task-any-2000"]["statuses"])
         self.assertEqual(1, record["cases"]["task-any-2000"]["metrics"]["p99LatencyMillis"]["n"])
-        self.assertEqual(420.0, record["cases"]["sat-task-any"]["metrics"]["perWorkerTurnaroundMillis"]["median"])
+        self.assertEqual(1000.0, record["cases"]["sat-task-any"]["metrics"]["completedPerSecond"]["median"])
         self.assertEqual({"saturation": {"cpuParallelOpsPerSecond": 9.0}}, record["calibration"])
 
     def test_trend_needs_seven_comparable_runs_from_the_same_ref(self):
@@ -74,11 +72,11 @@ class LaneTrendTest(unittest.TestCase):
 
     def test_ab_stops_early_only_when_every_pair_agrees(self):
         self.assertEqual("p50LatencyMillis", trend.primary_metric("task-any-1000"))
-        self.assertEqual("perWorkerTurnaroundMillis", trend.primary_metric("sat-task-any"))
+        self.assertEqual("completedPerSecond", trend.primary_metric("sat-task-any"))
         self.assertEqual("continue", trend.ab_decide("task-any-1000", [(216, 217)], .1)["decision"])
         self.assertEqual("no-difference", trend.ab_decide("task-any-1000", [(216.0, 216.6), (219.5, 216.7)], .1)["decision"])
         self.assertEqual("worse", trend.ab_decide("task-any-1000", [(216, 260), (216, 255)], .1)["decision"])
-        self.assertEqual("better", trend.ab_decide("sat-task-any", [(400, 300), (410, 320)], .1)["decision"])
+        self.assertEqual("better", trend.ab_decide("sat-task-any", [(300, 400), (320, 410)], .1)["decision"])
         # The 2026-09-28 identical-code p99 run: the last two pairs alone looked worse, all five disagree.
         p99_like = [(378, 397), (384, 517), (418, 370), (387, 430), (389, 522)]
         self.assertEqual("inconclusive", trend.ab_decide("task-any-1000", p99_like, .1)["decision"])

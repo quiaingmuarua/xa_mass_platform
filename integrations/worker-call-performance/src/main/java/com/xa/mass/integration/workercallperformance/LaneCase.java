@@ -226,10 +226,14 @@ final class LaneCase {
 
     /** Largest share of a Group Workers holding a lease in any usable sample. */
     static double leaseHeldPeakRatio(List<Map<String, Object>> samples) {
+        return leaseHeldPeakRatio(samples, LaneWorld.WORKERS_PER_GROUP);
+    }
+
+    static double leaseHeldPeakRatio(List<Map<String, Object>> samples, int workersPerGroup) {
         double peak = 0;
         for (var sample : usable(samples))
             for (String group : LaneWorld.GROUPS)
-                peak = Math.max(peak, count(sample, group, "held-hot") / (double) LaneWorld.WORKERS_PER_GROUP);
+                peak = Math.max(peak, count(sample, group, "held-hot") / (double) workersPerGroup);
         return peak;
     }
 

@@ -148,6 +148,36 @@ final class CallApi implements AutoCloseable {
         }
     }
 
+    long exportVerified(String task, String prefix, int items) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create(runtime + "/api/v1/tasks/" + task + "/results:export"))
+                .timeout(Duration.ofSeconds(180)).POST(HttpRequest.BodyPublishers.noBody()).build();
+        var response = http.send(request, HttpResponse.BodyHandlers.ofLines());
+        try (var lines = response.body()) {
+            if (response.statusCode() != 200) throw new IllegalStateException("Export HTTP " + response.statusCode());
+            var seen = new java.util.BitSet(items);
+            var iterator = lines.iterator();
+            while (iterator.hasNext()) {
+                String line = iterator.next();
+                if (!line.isBlank()) verifyExportRow(Jsons.parseObject(line), prefix, items, seen);
+            }
+            return seen.cardinality();
+        }
+    }
+
+    static void verifyExportRow(Map<String, Object> row, String prefix, int items, java.util.BitSet seen) {
+        if (!row.keySet().equals(Set.of("messageId", "opaqueResultPayload")))
+            throw new CallLoad.ProtocolFailure("Unexpected export fields");
+        String id = string(row, "messageId");
+        if (!id.startsWith(prefix)) throw new CallLoad.ProtocolFailure("Foreign export Item");
+        int index;
+        try { index = Integer.parseInt(id.substring(prefix.length())); }
+        catch (NumberFormatException invalid) { throw new CallLoad.ProtocolFailure("Invalid export Item"); }
+        if (index < 0 || index >= items || !id.equals(prefix + index) || seen.get(index))
+            throw new CallLoad.ProtocolFailure("Duplicate or out-of-range export Item");
+        checkedResult(Map.of("status", "succeeded", "opaqueResultPayload", string(row, "opaqueResultPayload")), ExpectedResult.MD5);
+        seen.set(index);
+    }
+
     Map<String, String> results(String task, List<String> ids) throws Exception {
         return results(task, ids, ExpectedResult.MD5);
     }

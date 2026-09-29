@@ -9,7 +9,7 @@ import math
 import statistics
 
 # Bump when case semantics, fixture or metrics change; records of another version are never compared.
-LANE_CONFIG_VERSION = 1
+LANE_CONFIG_VERSION = 2
 HISTORY_WINDOW = 7
 MIN_HISTORY = 7
 # A job whose host calibration deviates more than this from the history median is not judged.
@@ -24,16 +24,15 @@ METRICS = {
     "p50LatencyMillis": (lambda r: (r.get("successfulCallLatencyMillis") or {}).get("p50"), True, True),
     "successWithinWait": (lambda r: r.get("successWithinWait"), False, False),
     "completedPerSecond": (lambda r: r.get("completedPerSecond"), False, True),
-    "perWorkerTurnaroundMillis": (lambda r: r.get("perWorkerTurnaroundMillis"), True, True),
 }
 OPEN_METRICS = ("p99LatencyMillis", "p50LatencyMillis", "successWithinWait", "completedPerSecond")
-SATURATION_METRICS = ("perWorkerTurnaroundMillis", "completedPerSecond")
+SATURATION_METRICS = ("completedPerSecond",)
 
 
 def primary_metric(case):
     """A/B decision metric. One 30s window's p99 varies about +-35% on the same version, while p50
     stays within about 1.5%, so open-loop decisions use p50 and report pooled p99 separately."""
-    return "perWorkerTurnaroundMillis" if case.startswith("sat-") else "p50LatencyMillis"
+    return "completedPerSecond" if case.startswith("sat-") else "p50LatencyMillis"
 
 
 def _stats(values):

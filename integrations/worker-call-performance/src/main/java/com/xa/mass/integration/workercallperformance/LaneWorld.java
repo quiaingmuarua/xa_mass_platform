@@ -40,7 +40,7 @@ final class LaneWorld {
         try (var api = new CallApi(options.getOrDefault("--runtime-url", "http://127.0.0.1:18082"),
                 options.getOrDefault("--lab-url", "http://127.0.0.1:18086"))) {
             switch (phase) {
-                case "bootstrap" -> summary.putAll(bootstrap(api));
+                case "bootstrap" -> summary.putAll(bootstrap(api, ExperimentConfig.settings(options).workers()));
                 case "quiesce" -> summary.putAll(quiesce(api, readWorld(Path.of(require(options, "--world")))));
                 default -> throw new IllegalArgumentException("Unknown lane phase");
             }
@@ -56,8 +56,8 @@ final class LaneWorld {
         if (failure != null) throw new IllegalStateException("Lane world " + phase + " failed; inspect safe summary", failure);
     }
 
-    private static Map<String, Object> bootstrap(CallApi api) throws Exception {
-        var ids = readyGroups(api);
+    private static Map<String, Object> bootstrap(CallApi api, int workers) throws Exception {
+        var ids = readyGroups(api, workers);
         var groups = new LinkedHashMap<String, Object>();
         var project = CallApi.object(api.get("/api/v1/projects/" + PROJECT).get("managedTaskIds"));
         for (String group : GROUPS) {
@@ -68,16 +68,17 @@ final class LaneWorld {
                 throw new CallLoad.ProtocolFailure("Registration Group changed");
             groups.put(group, Map.of("managedTaskId", CallApi.string(project, group), "workerIds", ids.get(group)));
         }
-        return Map.of("groups", groups, "workersPerGroup", WORKERS_PER_GROUP, "endpoint", ENDPOINT);
+        return Map.of("groups", groups, "workersPerGroup", workers, "endpoint", ENDPOINT,
+                "propertiesObservation", workers <= 1000 ? "complete-known-fixture" : "bounded-sample");
     }
 
     /** Waits until every Worker is RUNNING in the Lab, connected, idle HOT and has published facts. */
-    private static Map<String, List<String>> readyGroups(CallApi api) throws Exception {
+    private static Map<String, List<String>> readyGroups(CallApi api, int workers) throws Exception {
         long deadline = System.nanoTime() + BOOTSTRAP_TIMEOUT_NANOS;
         int unavailable = 0;
         do {
             try {
-                var ids = labWorkers(api);
+                var ids = labWorkers(api, workers);
                 if (ids != null && ready(api, ids)) return ids;
             } catch (CallApi.Unavailable busy) {
                 // Runtime View may be briefly unavailable while 2,000 connections are verified.
@@ -85,7 +86,7 @@ final class LaneWorld {
             }
             Thread.sleep(500);
         } while (System.nanoTime() < deadline);
-        throw new IllegalStateException(GROUPS.size() * WORKERS_PER_GROUP
+        throw new IllegalStateException(GROUPS.size() * workers
                 + " lane Workers did not become ready; unavailable observations " + unavailable);
     }
 
@@ -100,8 +101,8 @@ final class LaneWorld {
     }
 
     /** Sorted RUNNING Worker IDs per Group, or null while the Lab has not assigned every identity. */
-    private static Map<String, List<String>> labWorkers(CallApi api) throws Exception {
-        if (!(api.workers().get("workers") instanceof List<?> workers) || workers.size() != GROUPS.size() * WORKERS_PER_GROUP)
+    private static Map<String, List<String>> labWorkers(CallApi api, int expected) throws Exception {
+        if (!(api.workers().get("workers") instanceof List<?> workers) || workers.size() != GROUPS.size() * expected)
             throw new CallLoad.ProtocolFailure("Unexpected Lab Worker count");
         var ids = new LinkedHashMap<String, List<String>>();
         GROUPS.forEach(group -> ids.put(group, new ArrayList<>()));
@@ -112,22 +113,23 @@ final class LaneWorld {
             if ("RUNNING".equals(worker.get("runtimeState")) && worker.get("workerId") instanceof String id) group.add(id);
         }
         for (var group : ids.values()) {
-            if (group.size() != WORKERS_PER_GROUP || Set.copyOf(group).size() != WORKERS_PER_GROUP) return null;
+            if (group.size() != expected || Set.copyOf(group).size() != expected) return null;
             group.sort(null);
         }
         return ids;
     }
 
     private static boolean facts(CallApi api, String group, List<String> ids) throws Exception {
-        var preview = api.post("/api/v1/runtime-view/worker-groups/" + group + "/workers:preview", ids.size());
-        if (!(preview.get("workers") instanceof List<?> entries) || entries.size() != ids.size()) return false;
+        int limit = Math.min(1000, ids.size());
+        var preview = api.post("/api/v1/runtime-view/worker-groups/" + group + "/workers:preview", limit);
+        if (!(preview.get("workers") instanceof List<?> entries) || entries.size() != limit) return false;
         var seen = new java.util.HashSet<Object>();
         for (var entry : entries) {
             var worker = CallApi.object(entry);
             if (!(worker.get("workerProperties") instanceof Map<?, ?> properties) || properties.isEmpty()) return false;
             seen.add(worker.get("workerId"));
         }
-        return seen.equals(Set.copyOf(ids));
+        return seen.size() == limit && Set.copyOf(ids).containsAll(seen);
     }
 
     /**
@@ -135,8 +137,12 @@ final class LaneWorld {
      * RECOVERY or PAUSE. The state must hold for consecutive observations one second apart.
      */
     private static Map<String, Object> quiesce(CallApi api, Map<String, List<String>> world) throws Exception {
+        return quiesce(api, world, 30);
+    }
+
+    static Map<String, Object> quiesce(CallApi api, Map<String, List<String>> world, int seconds) throws Exception {
         long started = System.nanoTime();
-        long deadline = started + QUIESCE_TIMEOUT_NANOS;
+        long deadline = started + seconds * 1_000_000_000L;
         int passes = 0;
         int observations = 0;
         Map<String, Map<String, Long>> lastNotQuiet = Map.of();
@@ -199,10 +205,14 @@ final class LaneWorld {
     }
 
     static Map<String, List<String>> readWorld(Path bootstrap) throws Exception {
-        var groups = CallApi.object(Jsons.parseObject(Files.readString(bootstrap)).get("groups"));
+        var root = Jsons.parseObject(Files.readString(bootstrap));
+        int workers = root.containsKey("workersPerGroup")
+                ? ExperimentConfig.integer(root, "workersPerGroup", 1, 4000) : WORKERS_PER_GROUP;
+        var groups = CallApi.object(root.get("groups"));
         var world = new LinkedHashMap<String, List<String>>();
         for (String group : GROUPS) {
-            if (!(CallApi.object(groups.get(group)).get("workerIds") instanceof Collection<?> ids) || ids.size() != WORKERS_PER_GROUP)
+            if (!(CallApi.object(groups.get(group)).get("workerIds") instanceof Collection<?> ids)
+                    || ids.size() != workers || Set.copyOf(ids).size() != workers)
                 throw new CallLoad.ProtocolFailure("Bootstrap world is incomplete");
             world.put(group, ids.stream().map(String.class::cast).toList());
         }

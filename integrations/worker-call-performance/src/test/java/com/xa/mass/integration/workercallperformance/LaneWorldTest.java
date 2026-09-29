@@ -17,6 +17,31 @@ import org.junit.jupiter.api.io.TempDir;
 class LaneWorldTest {
 
     @Test
+    void expandedInventoryUsesCompleteIdentityPagesWithinThePublicLimit() throws Exception {
+        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            var page = Jsons.parseArray(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            if (page.isEmpty() || page.size() > 100) {
+                exchange.sendResponseHeaders(400, -1);
+            } else {
+                requests.incrementAndGet();
+                var states = new LinkedHashMap<String, Object>();
+                page.forEach(id -> states.put((String) id, "hot-score-overdue"));
+                byte[] bytes = Jsons.toJson(Map.of("statesByWorkerId", states)).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+            }
+            exchange.close();
+        });
+        server.start();
+        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused")) {
+            assertThat(LaneWorld.observeScheduling(api, "perf-a", ids("w", 4000))).hasSize(4000);
+            assertThat(requests).hasValue(40);
+        } finally { server.stop(0); }
+    }
+
+    @Test
     void quietCountsOnlyStatesThatDifferFromTheIdleOne() {
         var counts = new LinkedHashMap<String, Long>();
         LaneWorld.count(counts, Map.of("w1", "hot-score-overdue", "w2", "held-hot", "w3", "recovery", "w4", "held-hot"),

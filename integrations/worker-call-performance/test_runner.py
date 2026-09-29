@@ -270,8 +270,8 @@ class LaneWorldConfigTest(unittest.TestCase):
                                          dict(serverCpuSeconds=6.0, redisCommands=30_000, redisCpuSeconds=1.0,
                                               serverCoveredSeconds=30, redisCoveredSeconds=30))
         self.assertEqual("task-any-1000", record["case"])
-        self.assertEqual(10.0, record["cost"]["redisCommandsPerCompleted"])
-        self.assertEqual(2.0, record["cost"]["serverCpuMillisPerCompleted"])
+        self.assertIsNone(record["cost"]["redisCommandsPerCompleted"])
+        self.assertIsNone(record["cost"]["serverCpuMillisPerCompleted"])
         self.assertEqual(["generator-lag"], record["invalidReasons"])
 
     def test_window_cost_uses_only_samples_inside_the_measurement(self):
@@ -377,21 +377,21 @@ class LaneWorldConfigTest(unittest.TestCase):
     def test_lane_markdown_separates_invalid_and_failed_cases(self):
         cases = [dict(repetition=1, case="task-any-500", status="passed", invalidReasons=[], successWithinWait=.95,
                       completedPerSecond=500.0, successfulCallLatencyMillis={"p50": 20.0, "p99": 90.0},
-                      attribution=dict(checkedItemsPerSecond=1200, candidateShortfallRatio=.01, strictAcquisitionStaleRatio=.002),
+                      attribution=dict(checkedItemsPerSecond=1200, candidateShortfallRatio=.01, workerAcquisitionRejectedRatio=.002),
                       cost=dict(redisCommandsPerCompleted=12.5)),
                  dict(repetition=1, case="direct-2000", status="invalid", invalidReasons=["generator-lag"]),
                  dict(repetition=1, case="task-any-2000", status="saturated", invalidReasons=[], admittedPerSecond=1500.2,
                       leaseHeldPeakRatio=.946),
                  dict(repetition=1, case="task-targeted-2000", status="failed", invalidReasons=[], failureReason="drain-stalled"),
                  dict(repetition=1, case="sat-task-any", status="passed", invalidReasons=[], completedPerSecond=1580.0,
-                      completedPerSecondErrorBound=12.5, perWorkerTurnaroundMillis=351.2)]
+                      measurementVersion=2)]
         value = runner.lane_markdown(dict(status="failed", caseCounts={"passed": 1, "invalid": 1, "saturated": 1, "failed": 1}, cases=cases,
             timingsMillis={"serverReady": 12_000}, resourcePeaks={"host": dict(samples=3, peakNativeThreads=50,
             peakFileDescriptors=2100, peakRssBytes=2**29)}))
         self.assertIn("| 1 | task-any-500 | passed | 95.00% | 500.0 | 20.0 / 90.0 | 1200 | 1.00% | 0.20% | — | 12.5 |", value)
         self.assertIn("invalid (generator-lag)", value)
         self.assertIn("saturated (admitted 1500/s)", value)
-        self.assertIn("| 1 | sat-task-any | passed (turnaround 351 ms) | — | 1580.0 ± 12.5 |", value)
+        self.assertIn("| 1 | sat-task-any | passed | — | 1580.0 |", value)
         self.assertIn("94.60%", value)
         self.assertIn("failed (drain-stalled)", value)
         self.assertIn("| host | 50 | 2100 | 512 |", value)

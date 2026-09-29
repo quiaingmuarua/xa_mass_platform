@@ -25,7 +25,7 @@ class LaneSaturationTest {
         var targeted = LaneSaturation.items(LaneSaturation.Path.TASK_TARGETED, "perf-b", ids, "p", 0);
 
         assertThat(any).hasSize(LaneSaturation.APPEND_BATCH);
-        assertThat(any.getFirst()).containsEntry("messageId", "p-perf-a-200").containsEntry("ttlMillis", 900_000)
+        assertThat(any.getFirst()).containsEntry("messageId", "p-perf-a-200").containsEntry("ttlMillis", 900_000L)
                 .containsEntry("workerSelector", Map.of("executorName", "worker.any", "input", Map.of()));
         assertThat(targeted.subList(0, 4)).extracting(item -> CallApi.object(item.get("workerSelector")).get("input"))
                 .containsExactly("w0", "w1", "w2", "w0");
@@ -33,9 +33,8 @@ class LaneSaturationTest {
     }
 
     @Test
-    void turnaroundIsTheAverageLeaseCycleOfEveryWorker() {
-        // 2000 Workers completing 171,720 Items in 30s: each Worker cycles every ~349ms.
-        assertThat(LaneSaturation.perWorkerTurnaroundMillis(171_720, 30.0)).isCloseTo(349.4, org.assertj.core.data.Offset.offset(.1));
-        assertThat(LaneSaturation.perWorkerTurnaroundMillis(0, 30.0)).isNull();
+    void experimentUsesItsTtlWithoutChangingSelectorOrPayload() {
+        assertThat(LaneSaturation.items(LaneSaturation.Path.TASK_ANY, "perf-a", List.of("w"), "p", 0, 1_800_000)
+                .getFirst()).containsEntry("ttlMillis", 1_800_000L);
     }
 }

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 2,
+  "name": "capacity-smoke",
+  "purpose": "smoke",
+  "targetQps": 1,
+  "ttlMillis": 1800000,
+  "settleSeconds": 60,
+  "caseTimeoutSeconds": 600,
+  "screening": {"warmupSeconds": 3, "measurementSeconds": 10, "itemsPerGroup": 10000},
+  "confirmation": {"warmupSeconds": 3, "measurementSeconds": 10, "itemsPerGroup": 10000, "anyRepetitions": 1, "targetedRepetitions": 1},
+  "profiles": [{"name": "c4-w50", "cpuCount": 4, "workersPerGroup": 50}],
+  "resources": {"serverHeapMiB": 1024, "hostHeapMiB": 1024, "harnessHeapMiB": 512, "redisMemoryMiB": 1024, "redisMaxmemoryMiB": 768, "fileDescriptors": 32768, "nativeThreads": 512}
+}

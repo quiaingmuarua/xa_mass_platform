@@ -51,8 +51,8 @@ public final class LaneAttribution {
             result.put("assignedItems", assigned);
             // Claimable Items that received no candidate in their round; a cost signal, not a failure.
             result.put("candidateShortfallRatio", claimable == 0 ? 0.0 : (claimable - assigned) / (double) claimable);
-            result.put("strictAcquisitionAttempts", confirmAttempts);
-            result.put("strictAcquisitionStaleRatio", confirmAttempts == 0 ? 0.0 : confirmRejected / (double) confirmAttempts);
+            result.put("workerAcquisitionAttempts", confirmAttempts);
+            result.put("workerAcquisitionRejectedRatio", confirmAttempts == 0 ? 0.0 : confirmRejected / (double) confirmAttempts);
             result.put("refillRounds", refillRounds);
             result.put("refillAdmitted", refillAdded);
             result.put("candidateizeRatio", candidateizeRequested == 0 ? 0.0 : candidateized / (double) candidateizeRequested);

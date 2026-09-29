@@ -70,7 +70,7 @@ jobs:
           ./gradlew --no-daemon :integrations:worker-call-performance:test
           python -m unittest discover -s integrations/worker-call-performance -p 'test_*.py'
       - name: Build Server, Host and Harness once
-        run: ./gradlew --no-daemon :server_boot_jvm:bootJar :worker_simulator_jvm:installDist :integrations:worker-call-performance:installDist
+        run: ./gradlew --no-daemon :integrations:worker-call-performance:experimentDist
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: performance-lane-build-${{ github.run_attempt }}
@@ -78,6 +78,7 @@ jobs:
             server_boot_jvm/build/libs/*.jar
             worker_simulator_jvm/build/install/**
             integrations/worker-call-performance/build/install/**
+            integrations/worker-call-performance/build/distributions/*.zip
           if-no-files-found: error
           retention-days: 1
 

@@ -67,15 +67,14 @@ and a 5s client timeout.
 | `task-targeted` | 500, 1000, 2000 | `items:call` with the `workerId` function |
 | `direct` | 500, 1000, 2000 | Adapter-scoped `direct-calls`; the transport control |
 
-Saturation cases (`sat-task-any`, `sat-task-targeted`) seed 150,000 Items per
-Group into fresh finite Tasks before approval, so the window has no HTTP load and
-no generator limit. Approval opens a 30s window. At its end the runner records the
-leases still held, closes both Tasks, waits for held leases to settle and counts
-completions from the success-only `results:export`; no public Item-count API
-exists. The held leases bound the count's error. With a near-zero Handler every
-Worker is expected to stay busy, so the primary result is the per-Worker
-turnaround (Workers x window / completed): the platform time of one lease cycle.
-A drained backlog makes the case invalid.
+Reference saturation cases (`sat-task-any`, `sat-task-targeted`) seed 150,000
+Items per Group before approval. After approval they measure a 30s window without
+HTTP submissions. Closing and draining happen after the fixed window. The Java
+reader counts non-sampled, successful `RESULT_STORED` batch events in that
+window and reconciles full-lifecycle claims, publications and stores against
+unique, payload-validated public `results:export` rows. Missing coverage, event
+loss, inconsistent counts or a drained backlog make the case invalid. This is
+the successful Owner-call return point, not a Redis commit timestamp.
 
 Path order rotates per repetition (ABC, BCA, CAB). The workflow builds once, runs
 `rate-500`, `rate-1000`, `rate-2000` and `saturation` as parallel jobs, and merges
@@ -103,17 +102,87 @@ success; this finite fault-free oracle is not a replay guarantee.
 
 ## Metrics And Attribution
 
-Each case reports success within the wait, completed calls per offered second,
-successful call p50/p95/p99 from planned arrival, Redis commands and Server CPU
-milliseconds per completed call, and the peak share of Workers holding a lease.
+Open cases retain their response-success ratio, eventual completions per offered
+second and successful-response latency distributions. These are not a strict
+client deadline success rate or completions inside the arrival window.
+Saturation reports window completion throughput. Resource costs use completions
+inside the resource sampler's own interval; missing matching counts stay null.
+Lease-held peaks are observations, not Handler utilization or measured turnaround.
 
-Attribution enables only the Server's default-off `xa.mass.TaskDispatch` Owner
-events (`lane-attribution.jfc`, no sampling); `LaneAttribution` aggregates them
+Attribution enables the Server's existing Dispatch, Submission and Result Owner
+events plus CPU coverage and GC (`lane-attribution.jfc`, no stack sampling).
+`LaneAttribution` aggregates Dispatch events
 per case window offline: Dispatch rounds and round time, checked Items/s, the
 candidate shortfall (claimable Items without a candidate in their round), the
-strict-acquisition STALE ratio and Refill admissions. `--lane-attribution off`
-exists to measure its overhead. The candidate shortfall is reported, not used for
+Worker acquisition rejection ratio and Refill admissions. Rejection includes
+strict and identity acquisition; it is not a STALE-only counter.
+`--lane-attribution off` disables optional attribution for open cases; saturation
+always retains the completion evidence needed by its oracle. Shortfall is not used for
 validity: targeted shortfall includes busy targets.
+
+## Local 10k Capacity Experiment
+
+The separate `capacity-10k` profile tests one Runtime and two Groups, with Any
+as the primary path and targeted calls as controls. It changes resource
+configuration only. DEFAULT Pacer, assignment ceiling 1000, Any watermark 1000
+per Group, dispatch/refill intervals, Result lanes and Adapter consume limit
+remain unchanged. It does not measure Item Call capacity.
+
+Build once with `:integrations:worker-call-performance:experimentDist`. The
+`xa-mass-call-experiment-*.zip` archive contains Server, Host, Harness, Python
+process choreography, configurations, provenance and `SHA256SUMS`. Extract it
+on a Linux filesystem (WSL ext4, not `/mnt/d`). Java 21, Python with
+`redis>=5,<8`, Docker, `taskset`, `prlimit` and Redis 7.4.10 are prerequisites.
+No checkout, Git or Gradle is used when running the archive:
+
+```bash
+bash run.sh --experiment-config integrations/worker-call-performance/configs/capacity-smoke.json --output-root build/smoke
+bash run.sh --experiment-config integrations/worker-call-performance/configs/capacity-10k.json --output-root build/capacity
+```
+
+Java validates one experiment JSON and resolves the profile/window settings;
+Python passes the same file to every phase and only manages processes, resource
+samples and output files. CPU sets are nested subsets of the runner's allowed
+CPUs and apply to Server, Host, Harness and Docker Redis. Process FD limits are
+32768 and native-thread protection stays 512. Maximum heaps are Server 4GiB,
+Host 3GiB and Harness 1GiB; Redis has an 8GiB container limit, 6GiB maxmemory
+and no eviction. Each case has a fresh world and a 20-minute process deadline.
+Only processes and disposable containers created by that case are cleaned.
+
+Screen Any at (CPUs, Workers/Group): (4,1000), (8,1000), (16,1000),
+(16,2000), (16,4000). Each screen pre-seeds 600,000 Items per Group, warms
+15 seconds and measures 30 seconds. Select the highest valid throughput profile
+and freeze it for five Any and three interleaved targeted runs. Each confirmation
+pre-seeds 2,000,000 Items per Group, warms 30 seconds and measures 120 seconds.
+Append batches stay 100 with concurrency 16; Item TTL is 30 minutes. After
+measurement, close both Tasks, wait at most 60 seconds for quiet Workers, and
+verify each export identity and MD5 payload. Unexecuted backlog is expected.
+
+Known Worker IDs come from the Lab inventory. Runtime network/scheduling checks
+use pages of 100 IDs. Properties Preview is limited to 1000 and is only a sample
+above that fleet size; it does not enumerate the fleet or prove every Properties
+publication.
+
+The evidence oracle reconciles CLAIMED, COMMAND_PUBLISHED and RESULT_STORED with
+the unique export count over the whole case, while counting only measurement
+events for QPS. Sampled copies are excluded. JFR data loss, gaps over three
+seconds in periodic coverage, missing lifecycle coverage, failure events,
+inconsistent counts, drained backlog, swap activity, resource protection or
+process exit prevent a valid result. Stage counts describe observations at Owner
+returns; they are not additional production truth or replay guarantees.
+
+Formal acceptance requires all five Any runs and all four 30-second subwindows
+of each run to reach 10,000 completed Items/s. Valid runs below that threshold
+produce `not-met`; missing or invalid evidence produces `inconclusive`.
+The small smoke configuration produces `smoke-passed`, never a 10k claim.
+Targeted throughput is a control and does not change Any acceptance.
+
+Outputs include `experiment-summary.json`, `summary.md`, `resource-scan.svg`,
+the resolved configuration, artifact/environment fingerprints, ten-second
+throughput, aligned resource costs, GC and per-case reconciliation. Raw JFR,
+logs and inventories remain private. Local records are excluded from CI trends.
+Statistics version 2 separates these completion semantics from earlier records.
+An unmet target bounds the tested environment, not absolute platform capacity.
 
 ## JFR Diagnostics
 
@@ -171,7 +240,7 @@ outcomes.
 - Manual A/B (`baseline_ref` and `lane_case`): one runner builds the baseline and
   the current version, starts a fresh warmed world per version and alternates
   ABBA pairs of one case. The decision metric is p50 for open-loop cases and
-  per-Worker turnaround for saturation; one 30s window's p99 varies about +-35% on
+  completed Items/s for saturation; one 30s window's p99 varies about +-35% on
   the same version, so pooled p99 across pairs is reported but not decisive. The
   band is the median relative spread of that case on `main` records (floor 5%),
   or a provisional 10% before three records. Every comparable pair must agree

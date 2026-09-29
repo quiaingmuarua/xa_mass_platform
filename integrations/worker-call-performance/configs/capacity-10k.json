@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 2,
+  "name": "capacity-10k",
+  "purpose": "capacity",
+  "targetQps": 10000,
+  "ttlMillis": 1800000,
+  "settleSeconds": 60,
+  "caseTimeoutSeconds": 1200,
+  "screening": {"warmupSeconds": 15, "measurementSeconds": 30, "itemsPerGroup": 600000},
+  "confirmation": {"warmupSeconds": 30, "measurementSeconds": 120, "itemsPerGroup": 2000000, "anyRepetitions": 5, "targetedRepetitions": 3},
+  "profiles": [
+    {"name": "c4-w1000", "cpuCount": 4, "workersPerGroup": 1000},
+    {"name": "c8-w1000", "cpuCount": 8, "workersPerGroup": 1000},
+    {"name": "c16-w1000", "cpuCount": 16, "workersPerGroup": 1000},
+    {"name": "c16-w2000", "cpuCount": 16, "workersPerGroup": 2000},
+    {"name": "c16-w4000", "cpuCount": 16, "workersPerGroup": 4000}
+  ],
+  "resources": {"serverHeapMiB": 4096, "hostHeapMiB": 3072, "harnessHeapMiB": 1024, "redisMemoryMiB": 8192, "redisMaxmemoryMiB": 6144, "fileDescriptors": 32768, "nativeThreads": 512}
+}
