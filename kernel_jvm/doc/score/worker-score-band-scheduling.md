@@ -180,9 +180,12 @@ it from network connection alone.
 ### Release And Polarity Move
 
 `releaseScoreHolds` accepts only the exact signed observation and preserves its
-polarity/mark. It samples the clock before preparing targets, and the requested
-release time cannot precede that current slot start. Release cannot move to a
-later slot; the previous same-slot mark=1 accepted-NOOP boundary remains.
+polarity/mark. It samples the clock before preparing targets. Callers sample the
+requested release time earlier, so a time from an already passed slot is raised
+to the current slot instead of being rejected; a release therefore never writes
+before the current slot and cannot recreate an older fence. Release cannot move
+past the held slot: an already expired hold is INVALID and stays due. The previous
+same-slot mark=1 accepted-NOOP boundary remains.
 `releaseObservedHotScoreHolds` additionally accepts the exact negative of the
 original HOT fence and writes HOT at release time. Java maps its accepted NOOP
 to TRANSITIONED. Other changes reject the old fence. `toggleCurrentPolarity`

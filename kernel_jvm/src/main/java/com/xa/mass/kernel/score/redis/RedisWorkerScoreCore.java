@@ -640,12 +640,12 @@ public final class RedisWorkerScoreCore
             }
             ordered.put(id, score);
         });
-        // A release never writes before the current slot, so it cannot recreate an older fence.
-        if (!validTimeMillis(releaseTimeMillis)
-                || releaseTimeMillis < nowMillis / SLOT_MILLIS * SLOT_MILLIS) {
+        if (!validTimeMillis(releaseTimeMillis) || !validTimeMillis(nowMillis)) {
             return uniformResults(ordered.keySet(), WorkerScoreTransitionStatus.INVALID);
         }
-        long releaseSlot = releaseTimeMillis / SLOT_MILLIS;
+        // Callers sample their time before this Owner does. A slot that has already passed is raised
+        // to the current one, so a release never writes before the current slot or recreates an older fence.
+        long releaseSlot = Math.max(releaseTimeMillis, nowMillis) / SLOT_MILLIS;
         LinkedHashMap<String, WorkerScoreTransitionResult> immediate = new LinkedHashMap<>();
         LinkedHashMap<String, long[]> targets = new LinkedHashMap<>();
         ordered.forEach((id, observed) -> {

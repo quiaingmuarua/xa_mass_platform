@@ -593,7 +593,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long pause = workerScore(-1, PAUSE_TIME_SLOT, 1);
         redis.zadd(scoreKey("g"), lease, "lease");
         redis.zadd(scoreKey("g"), pause, "pause");
-        var events = new com.xa.mass.kernel.worker.DefaultWorkerServiceabilityEvents(scoreCore, System.currentTimeMillis());
+        // The activation floor is the evidence slot itself, independent of when this line runs.
+        var events = new com.xa.mass.kernel.worker.DefaultWorkerServiceabilityEvents(scoreCore, now * SLOT_MILLIS);
         events.onAvailable("g", Map.of("cold", now * 100, "lease", now * 100, "pause", now * 100,
                 "binding-only", now * 100, "missing", now * 100));
         assertThat(redis.zscore(scoreKey("g"), "cold")).isEqualTo((double) workerScore(1, now, 0));
@@ -899,17 +900,6 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(staleRetry.get("first-worker").status())
                 .isEqualTo(WorkerScoreTransitionStatus.STALE);
 
-        long currentFirst = readCoordinates(
-                "group-1",
-                List.of("first-worker")
-        ).get("first-worker").score();
-        assertThat(scoreCore.releaseScoreHolds(
-                "group-1",
-                Map.of("first-worker", currentFirst),
-                ownerClockMillis() - SLOT_MILLIS
-        ).get("first-worker").status()).isEqualTo(
-                WorkerScoreTransitionStatus.INVALID
-        );
         assertThat(scoreCore.releaseScoreHolds(
                 "group-1",
                 Map.of(
@@ -924,6 +914,35 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         ).get("pause-base-worker").status()).isEqualTo(
                 WorkerScoreTransitionStatus.INVALID
         );
+    }
+
+    @Test
+    void releaseRaisesACallerTimeFromAPassedSlotToTheOwnerSlot() {
+        long clock = ownerClockMillis() / SLOT_MILLIS * SLOT_MILLIS + 50_000;
+        long slot = clock / SLOT_MILLIS;
+        long held = workerScore(1, slot + 50, 0);
+        long candidateHeld = workerScore(1, slot + 50, 1);
+        long expired = workerScore(1, slot - 5, 0);
+        redis.zadd(scoreKey("release-lag"), held, "held");
+        redis.zadd(scoreKey("release-lag"), candidateHeld, "candidate");
+        redis.zadd(scoreKey("release-lag"), expired, "expired");
+        redis.zadd(scoreKey("release-lag"), -held, "disconnected");
+        try (var owner = new RedisWorkerScoreCore(redisClient, keyspace, () -> clock + 30)) {
+            // The caller sampled its time in the previous slot; its batch then crossed a slot boundary.
+            long lagging = clock - 70;
+            var results = owner.releaseScoreHolds("release-lag",
+                    Map.of("held", held, "candidate", candidateHeld, "expired", expired), lagging);
+            assertThat(results.get("held")).isEqualTo(new WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.TRANSITIONED, workerScore(1, slot, 0)));
+            assertThat(results.get("candidate")).isEqualTo(new WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.TRANSITIONED, workerScore(1, slot, 1)));
+            // A hold that already expired is due; it is never moved to a later slot.
+            assertThat(results.get("expired").status()).isEqualTo(WorkerScoreTransitionStatus.INVALID);
+            assertThat(redis.zscore(scoreKey("release-lag"), "expired")).isEqualTo((double) expired);
+            assertThat(owner.releaseObservedHotScoreHolds("release-lag", Map.of("disconnected", held), lagging)
+                    .get("disconnected")).isEqualTo(new WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.TRANSITIONED, workerScore(1, slot, 0)));
+        }
     }
 
     @Test
