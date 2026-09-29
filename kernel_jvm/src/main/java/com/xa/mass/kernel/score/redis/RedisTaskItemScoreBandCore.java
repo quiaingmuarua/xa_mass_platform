@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongSupplier;
 
 public final class RedisTaskItemScoreBandCore
         implements TaskItemScoreBandCore, AutoCloseable {
@@ -75,11 +76,20 @@ public final class RedisTaskItemScoreBandCore
 
     private final RedisClient redisClient;
     private final RedisKeyspace keyspace;
+    private final LongSupplier currentTimeMillis;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisTaskItemScoreBandCore(
             RedisClient redisClient,
             RedisKeyspace keyspace
+    ) {
+        this(redisClient, keyspace, System::currentTimeMillis);
+    }
+
+    public RedisTaskItemScoreBandCore(
+            RedisClient redisClient,
+            RedisKeyspace keyspace,
+            LongSupplier currentTimeMillis
     ) {
         if (redisClient == null) {
             throw new IllegalArgumentException("redisClient must be present");
@@ -88,6 +98,10 @@ public final class RedisTaskItemScoreBandCore
         this.keyspace = java.util.Objects.requireNonNull(
                 keyspace,
                 "keyspace"
+        );
+        this.currentTimeMillis = java.util.Objects.requireNonNull(
+                currentTimeMillis,
+                "currentTimeMillis"
         );
     }
 
@@ -275,7 +289,7 @@ public final class RedisTaskItemScoreBandCore
         if (isBlank(taskId) || limit <= 0) {
             return Map.of();
         }
-        long nowMillis = redisTimeMillis();
+        long nowMillis = currentTimeMillis.getAsLong();
         if (!validTimeMillis(nowMillis)) {
             return Map.of();
         }
@@ -319,7 +333,7 @@ public final class RedisTaskItemScoreBandCore
         if (taskIds.isEmpty()) {
             return Map.of();
         }
-        long nowMillis = redisTimeMillis();
+        long nowMillis = currentTimeMillis.getAsLong();
         if (!validTimeMillis(nowMillis)) {
             LinkedHashMap<String, Boolean> unavailable = new LinkedHashMap<>();
             taskIds.forEach(taskId -> unavailable.put(taskId, false));
@@ -630,12 +644,6 @@ public final class RedisTaskItemScoreBandCore
                 timeSlot,
                 Math.toIntExact(suffix)
         );
-    }
-
-    private long redisTimeMillis() {
-        List<String> parts = commands().time();
-        return Long.parseLong(parts.get(0)) * 1_000L
-                + Long.parseLong(parts.get(1)) / 1_000L;
     }
 
     private RedisCommands<String, String> commands() {

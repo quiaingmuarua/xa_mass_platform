@@ -15,6 +15,21 @@ Pacer owns candidate recycling, supply budgets, recheck delay and network policy
 Matching owns qualification and local Pool TTL. Neither owns another Score store.
 The [HOT protocol](worker-hot-acquire-lease-protocol.md) specifies the fence handoff.
 
+## Clock
+
+The Owner reads one injected millisecond clock; production assembly uses the
+process wall clock, the same source Pacer uses. Redis `TIME` is not a scheduling
+source, and no Worker Score script reads it. Each operation samples the clock
+once, before any Redis command, and derives the current slot N, due bounds and
+time targets in Java. Java samples slightly before the script executes, so due
+checks are conservative by the round-trip time.
+
+Every time-advancing write targets a slot strictly later than the stored slot,
+so clock skew between writers of one scope cannot recreate an older fence; it
+only changes when coordinates become due. Writers of one scope therefore need
+synchronized clocks for liveness, not for fence safety. A Runtime restarted on a
+host whose clock lags the previous writer delays due work by that lag.
+
 ## Score Model
 
 ```text
@@ -51,10 +66,10 @@ No offset, durable cursor, supplementary scan or scan cooldown is retained.
 
 | Read | Range and order | Raw cost |
 | --- | --- | --- |
-| observeDueHotScoreCandidates | HOT mark=0, from optional floor, strictly before Redis current slot; ascending time/member | One read-only TIME + ZRANGE Lua, limit 1..100 |
-| observeHotCandidateScoresBefore | HOT mark=1, optional floor through exclusive cutoff, strictly due; ascending time/member | One read-only TIME + ZRANGE Lua, limit 1..100 |
+| observeDueHotScoreCandidates | HOT mark=0, from optional floor, strictly before the clock's current slot; ascending time/member | One ZRANGEBYSCORE with Java bounds, caller limit |
+| observeHotCandidateScoresBefore | HOT mark=1, optional floor through exclusive cutoff, strictly due; ascending time/member | One ZRANGEBYSCORE with Java bounds, limit 1..100 |
 | observeHotCandidatesBefore | Both HOT marks below exclusive cutoff, descending logical time | Two bounded ranges, at most 2 * limit temporary rows |
-| observeRecoveryRecheckCandidates | Both RECOVERY marks after cold, strictly before sampled Redis current slot; earliest time first | Existing external TIME, two bounded ranges, at most 2 * limit temporary rows |
+| observeRecoveryRecheckCandidates | Both RECOVERY marks after cold, strictly before the clock's current slot; earliest time first | Two bounded ranges, at most 2 * limit temporary rows |
 
 Serviceability merges the two mark ranges by logical time, then by mark in the
 previous logical ordering, then by reverse Redis member order for equal scores.
@@ -74,48 +89,56 @@ slots as HELD_HOT and past slots as HOT_SCORE_OVERDUE. These names do not establ
 Binding, qualification, connectivity or authorization to claim an Item.
 
 `pauseScheduling` performs one atomic read/write, preserving polarity and writing
-MAX_TIME_SLOT with mark=0. It does not create missing members or sample TIME.
+MAX_TIME_SLOT with mark=0. It does not create missing members. A corrupt stored
+value is CONFLICT and is not written.
 `resumeScheduling` point-reads once; non-paused values are UNCHANGED. A paused
 value is released with its original exact fence, without re-read or retry. Initial
 absence is MISSING; deletion/change after the read is CONFLICT. Actual resume
-retains ZMSCORE + TIME + EVAL. Server maps semantic outcomes to the existing HTTP
-fields and errors; it has no mirrored decoder.
+uses ZMSCORE + EVAL and one clock sample. Server maps semantic outcomes to the
+existing HTTP fields and errors; it has no mirrored decoder.
 
 ## Java Composition And Fixed Atomic Operations
 
-Public combinations prepare Java inputs and call private Redis primitives. No
-Store layer, generic Patch, operation list, event-mode Lua or dynamic script is
-used. Shared fixed functions read an exact fence once, compare, write if changed
-and encode batch results; time-dependent scripts share the Redis clock helper.
+Public combinations prepare every coordinate, bound and target in Java and call
+two fixed write scripts. No Store layer, generic Patch, event-mode Lua or dynamic
+script is used, and neither script decodes the encoding or reads `TIME`.
 
-| Fixed operation | Atomic rule |
+| Script | Atomic rule |
 | --- | --- |
-| Initialize absent | NX of Java-prepared cold Score; return actual new members |
-| Exact replace | Accept exact original, or the one supplied negative counterpart for completed release |
-| Candidateize | Exact due HOT mark=0; write Java-prepared candidate fence with unchanged time |
-| Recycle candidate | Exact due HOT mark=1; write ordinary HOT at Redis current slot |
-| Observed execution acquisition | Validate requested future time, exact HOT and due; write Java-prepared deadline, mark=0 |
-| Current execution acquisition | Validate requested future time, read current HOT and due; write deadline, mark=0 |
-| Relative deferral | Exact and due; compute one Redis-relative target per batch, mark=0 |
-| Pause | Preserve polarity; write MAX time, mark=0 |
-| Advance past times | For legal past values outside cold RECOVERY, write Redis current time; clear HOT mark, preserve RECOVERY mark and polarity |
-| Current polarity correction | Apply fixed evidence-time fence and optional minimum activation time |
+| Exact CAS batch | Tuples (id, expected, target, optional counterpart). An exact match of expected or counterpart writes the Java target; an equal target is NOOP; anything else is STALE with the stored echo |
+| Interval rewrite batch | Java sends ordered inclusive score intervals, each WRITE value, SIGN (value times the stored absolute score), NOOP or STALE. The first interval containing the stored integer decides. Equal rule tables are sent once per batch. Non-integer or unmatched values are INVALID and never written |
 
-Candidateization accepts caller-bounded same-Group observations in one Lua;
+The fixed NX script initializes absent members at the Java-prepared cold Score
+and returns the actually created members.
+
+| Operation | Script | Java preparation |
+| --- | --- | --- |
+| Candidateize | Exact CAS | Observation decodes as HOT mark=0 and is due; target HOT 1/T with unchanged time |
+| Recycle candidate | Exact CAS | Observation decodes as HOT mark=1 and is due; target HOT 0/N |
+| Observed execution acquisition | Exact CAS | Requested slot > N; observation is HOT, either mark, and due; target HOT 0/requested |
+| Current execution acquisition | Interval | Requested slot > N; due HOT of either mark writes the deadline; other HOT and all RECOVERY are STALE |
+| Relative deferral | Exact CAS | Valid common target; observation is due and not cold RECOVERY; target RECOVERY 0/floor((now + delay) / 100) |
+| Pause | Interval | Legal HOT writes +MAX, legal RECOVERY writes -MAX, both mark=0 |
+| Advance past times | Interval | Past HOT writes HOT 0/N; past non-cold RECOVERY writes N with its mark; other legal values are NOOP |
+| Current polarity correction | Interval, one table per distinct evidence slot | See [Current Polarity Within A Time Fence](#current-polarity-within-a-time-fence) |
+| Release, toggle, park, resume | Exact CAS | Complete Java target; completed HOT release also sends the negative counterpart |
+
+Java rejects an invalid common target for the whole batch before Redis access.
+An observation Java already finds not due is STALE without Redis access and
+without an echo; the exact comparison itself always happens in the script.
+
+Candidateize and recycle send the complete caller-bounded batch in one Lua;
 ordinary HOT reads use the caller's positive raw-row limit. Neither inherits a
-Pacer policy ceiling. Execution leases retain 100-member Lua chunks; independent
-registration, network evidence and Properties budgets remain at their own entries.
-Per-member release pipelines and TIME sampling positions remain. Candidateize,
-recycle and Properties each sample TIME once per batch; pause samples none.
-There are no preceding point reads or conflict retries. Serviceability's two
-mark ranges explicitly increase bounded read work; other paths retain their
-existing command shapes.
+Pacer policy ceiling. Execution acquisitions and release use 100-member Lua
+chunks; deferral, network evidence and Properties invalidation are bounded to 100
+at their entries. There are no preceding point reads or conflict retries.
+Serviceability's two mark ranges explicitly increase bounded read work.
 
 ## Score Primitives
 
 ### Candidate Generation And Execution
 
-Let N be Redis execution time's slot. Candidateize and both execution acquisitions
+Let N be the clock's current slot. Candidateize and both execution acquisitions
 require T < N; equality is not due. Candidateize also requires an exact HOT mark=0
 observation and writes HOT 1/T. Recycling exact HOT mark=1 writes HOT 0/N. Pacer
 selects the age threshold; Owner only enforces its mechanical input and due check.
@@ -157,14 +180,14 @@ it from network connection alone.
 ### Release And Polarity Move
 
 `releaseScoreHolds` accepts only the exact signed observation and preserves its
-polarity/mark. It samples Redis time before preparing targets, and the requested
+polarity/mark. It samples the clock before preparing targets, and the requested
 release time cannot precede that current slot start. Release cannot move to a
 later slot; the previous same-slot mark=1 accepted-NOOP boundary remains.
 `releaseObservedHotScoreHolds` additionally accepts the exact negative of the
 original HOT fence and writes HOT at release time. Java maps its accepted NOOP
 to TRANSITIONED. Other changes reject the old fence. `toggleCurrentPolarity`
 reuses exact replacement, flips polarity, clears mark and retains time. Java
-prepares the complete target without TIME; a zero target is INVALID. This exact
+prepares the complete target; a zero target is INVALID. This exact
 operation serves the excluded-Endpoint toggle/park composition, not network
 generation refresh.
 
@@ -172,17 +195,17 @@ generation refresh.
 
 `deferObservedToRecovery(group, observations, delayMillis)` accepts at most 100
 members. Empty input is empty. Invalid common delay yields per-member INVALID
-without Redis; invalid observations are processed individually. Lua computes:
+without Redis; invalid observations are processed individually. Java computes one
+target from a single clock sample:
 
 ```text
-targetSlot = floor((redisNowMillis + delayMillis) / 100)
+targetSlot = floor((nowMillis + delayMillis) / 100)
 targetScore = -targetSlot
 ```
 
-Addition precedes rounding. Exact comparison precedes execution-time target
-validity and due checks, even though target preparation happens once per batch.
-Missing/changed or current/future observations are STALE; illegal coordinates,
-cold RECOVERY input and out-of-range targets are INVALID. MAX itself is legal.
+Addition precedes rounding. An out-of-range common target makes every member
+INVALID before Redis access. Missing/changed or current/future observations are
+STALE; illegal coordinates and cold RECOVERY input are INVALID. MAX itself is legal.
 Successful deferral clears candidate mark. Only then may Pacer submit a Probe;
 failed offers, ALREADY_REQUESTED, CAPACITY or lost evidence never roll time back.
 
@@ -195,7 +218,7 @@ means deletion. Valid network evidence may reactivate cold membership.
 
 `rewriteCurrentPolarityWithinTimeFence` receives supplied times, target polarity
 and minimumTimeMillis (zero disables the startup activation condition), never an
-event name. Let T be storedSlot, E be suppliedSlot, N be Redis currentSlot and F be
+event name. Let T be storedSlot, E be suppliedSlot, N be the clock's current slot and F be
 minimumSlot. One atomic read per member applies these rules:
 
 ```text
@@ -224,18 +247,22 @@ coordinate written at N must cross the next slot before candidateization or exec
 Old Pool entries need no repair or rollback. Normal Refill can resupply a due restored
 HOT without waiting for 60-second candidate recycling.
 
-The existing batch uses one EVAL and one script-local TIME with no pre-read or retry.
-Malformed-score reply differences remain; refreshing a fractional stored coordinate
-must not silently repair it into an integer. Upstream Binding/source/age checks remain.
+Java expands these rules into interval rules for each distinct E. Within every
+emitted interval the admitted target is constant: slots up to min(E, N) - 1 write
+min(E, N), and the slot min(E, N) itself (only when E < N) writes that slot + 1.
+The batch uses one EVAL per 100 members with no pre-read or retry. A fractional
+stored coordinate is INVALID and is not written. Upstream Binding/source/age checks remain.
 These are best-effort evidence timestamps, not a total network event version or replay log.
 
 ## Failure And Atomicity Boundaries
 
 Each mutation is atomic on one Group key. Binding, Matching facts, invalidation,
-Probe offers, Item claim and Result writes remain separate. Existing INVALID,
-STALE, NOOP, TRANSITIONED, score echoes and corruption exceptions remain except
-for the explicitly changed candidate/execution semantics. Fractional raw echoes
-in deferral or unchanged polarity correction still fail integer parsing.
+Probe offers, Item claim and Result writes remain separate. Transition results
+are INVALID, STALE, NOOP or TRANSITIONED. STALE and NOOP echo the stored integer
+when a member exists; INVALID never carries a score. A corrupt stored value
+(non-integer, zero or outside both marks) is INVALID and never written by any
+transition, and it does not fail the other members of its batch. Range reads
+keep the corruption behavior described under Read-Only Observations.
 
 Pacer uses 15-second Recovery eligibility and a separate 60-second HOT stale
 threshold with a 1-second Producer interval. Candidate age is separately 60 seconds;
@@ -248,6 +275,10 @@ The high-mark layout is incompatible with the old low-bit encoding. Deploy into
 a new scope; do not mix processes or reinterpret old data. This change adds no
 migration, compatibility decoder, version key or automatic cleanup. Test fixtures
 use fresh test_* scopes and only scoped SCAN + UNLINK cleanup.
+
+Moving the clock from Redis `TIME` to the Owner clock and the Lua simplification
+keep the stored encoding, so existing scopes remain readable. Processes writing
+one scope should run the same version so every writer uses the same time source.
 
 Encoding and structural tests keep arithmetic/I/O in the Owner. Redis Owner
 proof covers exact competition, current-slot exclusions, evidence ordering,

@@ -88,6 +88,11 @@ cold registration uses no Redis TIME or Score readback. Redis-sensitive
 claims require the named real-Redis proof in [`TESTING.md`](../TESTING.md).
 Operations outside the production caller closure remain explicit gaps.
 
+Kernel Redis Owners read one injected millisecond clock, the process wall clock
+in production and the same source Pacer uses. Redis `TIME` is not a scheduling
+source; scripts receive time only as Java-prepared arguments. Clock skew between
+writers of one scope affects when coordinates become due, not fence uniqueness.
+
 TaskItem Score has one schedulable ACTIVE tag (1) and generic TERMINAL tags
 (2..9). Existing scores only increase; terminal states can continue advancing
 without rescheduling the Item or reopening its Task. The Server supplies the

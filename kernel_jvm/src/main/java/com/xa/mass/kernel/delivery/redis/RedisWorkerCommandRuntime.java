@@ -15,6 +15,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongSupplier;
 
 public final class RedisWorkerCommandRuntime
         implements WorkerCommandRuntime, AutoCloseable {
@@ -75,12 +76,22 @@ public final class RedisWorkerCommandRuntime
     private final RedisClient redisClient;
     private final WorkerDeliveryCodec codec;
     private final RedisKeyspace keyspace;
+    private final LongSupplier currentTimeMillis;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisWorkerCommandRuntime(
             RedisClient redisClient,
             WorkerDeliveryCodec codec,
             RedisKeyspace keyspace
+    ) {
+        this(redisClient, codec, keyspace, System::currentTimeMillis);
+    }
+
+    public RedisWorkerCommandRuntime(
+            RedisClient redisClient,
+            WorkerDeliveryCodec codec,
+            RedisKeyspace keyspace,
+            LongSupplier currentTimeMillis
     ) {
         if (redisClient == null || codec == null) {
             throw new IllegalArgumentException(
@@ -92,6 +103,10 @@ public final class RedisWorkerCommandRuntime
         this.keyspace = java.util.Objects.requireNonNull(
                 keyspace,
                 "keyspace"
+        );
+        this.currentTimeMillis = java.util.Objects.requireNonNull(
+                currentTimeMillis,
+                "currentTimeMillis"
         );
     }
 
@@ -109,7 +124,7 @@ public final class RedisWorkerCommandRuntime
         if (workerCommandsByWorkerId.isEmpty()) {
             return Map.of();
         }
-        long nowMillis = redisTimeMillis();
+        long nowMillis = currentTimeMillis.getAsLong();
         String key = commandKey(endpointManagerId);
         LinkedHashMap<String, String> encoded = new LinkedHashMap<>();
         workerCommandsByWorkerId.forEach((workerId, command) -> {
@@ -173,7 +188,7 @@ public final class RedisWorkerCommandRuntime
             return Map.of();
         }
 
-        long nowMillis = redisTimeMillis();
+        long nowMillis = currentTimeMillis.getAsLong();
         List<String> workerIds = new ArrayList<>(
                 workerCommandsByWorkerId.size()
         );
@@ -258,7 +273,7 @@ public final class RedisWorkerCommandRuntime
         }
         return activeCommand(
                 String.valueOf(values.get(1)),
-                redisTimeMillis()
+                currentTimeMillis.getAsLong()
         );
     }
 
@@ -307,7 +322,7 @@ public final class RedisWorkerCommandRuntime
         }
 
         Map<String, DeliveryCommand> active = new LinkedHashMap<>();
-        long nowMillis = redisTimeMillis();
+        long nowMillis = currentTimeMillis.getAsLong();
         for (int index = 0; index < consumed.size(); index += 2) {
             String workerId = String.valueOf(consumed.get(index));
             DeliveryCommand command = activeCommand(
@@ -331,17 +346,6 @@ public final class RedisWorkerCommandRuntime
             return null;
         }
         return command;
-    }
-
-    private long redisTimeMillis() {
-        List<String> parts = commands().time();
-        if (parts.size() != 2) {
-            throw new IllegalStateException(
-                    "Redis TIME returned an invalid response"
-            );
-        }
-        return Long.parseLong(parts.get(0)) * 1_000L
-                + Long.parseLong(parts.get(1)) / 1_000L;
     }
 
     private RedisCommands<String, String> commands() {

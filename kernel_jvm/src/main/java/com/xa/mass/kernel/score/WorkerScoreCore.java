@@ -77,14 +77,15 @@ public interface WorkerScoreCore {
     Map<String, Long> observeHotCandidateScoresBefore(
             String homeBucketId, @Nullable Long floorMillis, long cutoffMillis, int limit);
 
-    /** Exact due HOT mark=1 becomes ordinary HOT at Redis execution time. */
+    /** Exact due HOT mark=1 becomes ordinary HOT at the Owner clock's current slot. */
     Map<String, WorkerScoreTransitionResult> recycleObservedHotCandidates(
             String homeBucketId, Map<String, Long> observedScores);
 
     /**
      * Atomically acquires current strictly due HOT, either mark, into mark=0 execution holds.
      * Current/future, RECOVERY and missing members are STALE; corrupt values are INVALID.
-     * Empty input is a no-op. Each Lua processes at most 100 unique IDs without pre-reading.
+     * Empty input is a no-op. Each Lua processes at most 100 unique IDs without pre-reading;
+     * non-integer stored values are INVALID and never written.
      */
     Map<String, WorkerScoreTransitionResult> acquireCurrentHotScoreLeases(
             String homeBucketId,
@@ -93,7 +94,7 @@ public interface WorkerScoreCore {
     );
 
     /**
-     * Advances past times except cold RECOVERY to Redis now for 1..100 unique IDs.
+     * Advances past times except cold RECOVERY to the Owner clock's current slot for 1..100 unique IDs.
      * Clears the HOT candidate mark; preserves RECOVERY mark and both polarities.
      * Current/future coordinates are unchanged.
      */
@@ -110,7 +111,7 @@ public interface WorkerScoreCore {
     );
 
     /**
-     * Defers up to 100 exact due observations using one delay from Redis execution time.
+     * Defers up to 100 exact due observations using one delay from the Owner clock.
      * Empty input returns no results; an invalid common delay returns INVALID per member
      * without accessing Redis.
      */
@@ -121,9 +122,9 @@ public interface WorkerScoreCore {
     /**
      * Corrects polarity when the stored slot is current/future or no later than the
      * supplied slot. Current/future coordinates retain time and mark. A past polarity
-     * change clears mark and advances to max(storedSlot + 1, min(suppliedSlot, redisNowSlot)).
+     * change clears mark and advances to max(storedSlot + 1, min(suppliedSlot, nowSlot)).
      * Same-polarity evidence is a no-op except for past coordinates below the minimum:
-     * evidence and Redis time must reach that minimum before activation can refresh
+     * evidence and the Owner clock must reach that minimum before activation can refresh
      * the generation. Zero disables this activation condition.
      */
     Map<String, WorkerScoreTransitionResult>

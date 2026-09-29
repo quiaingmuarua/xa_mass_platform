@@ -66,7 +66,7 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
 
     @Test
     void authoritativeTaskAppendReplacesAnUnconsumedDirectCommand() {
-        long deadline = redisTimeMillis() + 60_000;
+        long deadline = ownerClockMillis() + 60_000;
         DeliveryCommand direct = DeliveryCommand.create(
                 DeliveryEndpoint.SERVER,
                 DeliveryEndpoint.WORKER,
@@ -117,7 +117,7 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
         )).isEqualTo(task);
     }
 
-    private long redisTimeMillis() {
-        var time=redis.time(); return Long.parseLong(time.get(0))*1000+Long.parseLong(time.get(1))/1000;
+    private long ownerClockMillis() {
+        return System.currentTimeMillis();
     }
 }

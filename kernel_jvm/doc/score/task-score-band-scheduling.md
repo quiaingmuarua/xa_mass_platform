@@ -64,11 +64,11 @@ remain stable across Kernel restarts.
 ## NORMAL Coordinate
 
 An INITIAL Task is promoted only when it has a due ACTIVE Item. Promotion uses
-Redis TIME and writes:
+the Owner clock and writes:
 
 ```text
 band   = RUNNING_VISIBLE
-time   = max(redisNowAligned, NORMAL_TIME_MIN_MILLIS)
+time   = max(nowAligned, NORMAL_TIME_MIN_MILLIS)
 suffix = 0
 ```
 
@@ -174,7 +174,7 @@ TaskInitializationPolicy.initialize(initial taskId -> opaque score)
 -> not ready: keep the fixed INITIAL slot and priority suffix
 ```
 
-The batch promotion chooses one NORMAL coordinate from Redis TIME before its
+The batch promotion chooses one NORMAL coordinate from the Owner clock before its
 single batch Lua. That Lua only compares exact observations against the fixed
 INITIAL range and writes the supplied target score; it does not construct or
 decode Score fields. Each Task still has an independent exact-score result.

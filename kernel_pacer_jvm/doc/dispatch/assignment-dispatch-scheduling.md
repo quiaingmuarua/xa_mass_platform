@@ -39,7 +39,7 @@ candidate fences as Map<workerId, Long>, not held-lease DTOs or deadlines.
 The 50ms completion-relative Refill Producer operates over Main's bounded Group roots:
 
 1. Observe a bounded old mark=1 head in each selected Group and exact-recycle it
-   to mark=0 at Redis execution time, even when there is no Pool shortage.
+   to mark=0 at the Owner clock's current slot, even when there is no Pool shortage.
 2. For Groups needing supply, observe at most
    `min(B, observed deficit, remaining round budget)` raw rows from the due mark=0
    head at Assignment's optional floor, then

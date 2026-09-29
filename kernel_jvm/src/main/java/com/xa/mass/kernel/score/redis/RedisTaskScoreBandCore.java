@@ -14,6 +14,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongSupplier;
 
 public final class RedisTaskScoreBandCore
         implements TaskScoreBandCore, AutoCloseable {
@@ -151,9 +152,7 @@ public final class RedisTaskScoreBandCore
             local task_id = ARGV[1]
             local idle_park_score = tonumber(ARGV[2])
             local running_pause_max_score = tonumber(ARGV[3])
-            local slot_millis = tonumber(ARGV[4])
-            local suffix_factor = tonumber(ARGV[5])
-            local running_min = tonumber(ARGV[6])
+            local next_score = tonumber(ARGV[4])
 
             local stored = redis.call("ZSCORE", key, task_id)
             if not stored then
@@ -162,14 +161,7 @@ public final class RedisTaskScoreBandCore
 
             local stored_score = tonumber(stored)
             if stored_score == idle_park_score then
-              local redis_time = redis.call("TIME")
-              local now_millis = tonumber(redis_time[1]) * 1000
-                  + math.floor(tonumber(redis_time[2]) / 1000)
-              local now_time_slot = math.floor(now_millis / slot_millis)
-              local next_score = running_min
-                  + now_time_slot * suffix_factor
-              if next_score <= running_min
-                  or next_score >= idle_park_score then
+              if not next_score then
                 return {"invalid", stored_score}
               end
 
@@ -188,11 +180,20 @@ public final class RedisTaskScoreBandCore
 
     private final RedisClient redisClient;
     private final RedisKeyspace keyspace;
+    private final LongSupplier currentTimeMillis;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisTaskScoreBandCore(
             RedisClient redisClient,
             RedisKeyspace keyspace
+    ) {
+        this(redisClient, keyspace, System::currentTimeMillis);
+    }
+
+    public RedisTaskScoreBandCore(
+            RedisClient redisClient,
+            RedisKeyspace keyspace,
+            LongSupplier currentTimeMillis
     ) {
         if (redisClient == null) {
             throw new IllegalArgumentException(
@@ -203,6 +204,10 @@ public final class RedisTaskScoreBandCore
         this.keyspace = java.util.Objects.requireNonNull(
                 keyspace,
                 "keyspace"
+        );
+        this.currentTimeMillis = java.util.Objects.requireNonNull(
+                currentTimeMillis,
+                "currentTimeMillis"
         );
     }
 
@@ -273,7 +278,7 @@ public final class RedisTaskScoreBandCore
                             + MAX_TASK_SCHEDULING_BATCH_SIZE
             );
         }
-        long dueTimeSlot = redisTimeMillis() / SLOT_MILLIS - 1;
+        long dueTimeSlot = currentTimeMillis.getAsLong() / SLOT_MILLIS - 1;
         if (dueTimeSlot < MIN_TIME_SLOT) {
             return Map.of();
         }
@@ -387,7 +392,7 @@ public final class RedisTaskScoreBandCore
             );
         }
         long nextTimeSlot = Math.max(
-                redisTimeMillis() / SLOT_MILLIS,
+                currentTimeMillis.getAsLong() / SLOT_MILLIS,
                 NORMAL_TIME_SLOT_MIN
         );
         long nextScore = score(
@@ -473,7 +478,7 @@ public final class RedisTaskScoreBandCore
             return transition(TaskScoreTransitionStatus.INVALID);
         }
 
-        long nowMillis = redisTimeMillis();
+        long nowMillis = currentTimeMillis.getAsLong();
         long currentTimeSlot = nowMillis / SLOT_MILLIS;
         if (currentTimeSlot <= MIN_TIME_SLOT) {
             return transition(TaskScoreTransitionStatus.INVALID);
@@ -634,6 +639,10 @@ public final class RedisTaskScoreBandCore
     @Override
     public TaskScoreTransitionResult tryReleaseIdlePark(String taskId) {
         requireNonBlank(taskId, "taskId");
+        long runningMin = score(RUNNING_VISIBLE_TAG, MIN_TIME_SLOT, MIN_SUFFIX);
+        long nextScore = runningMin
+                + currentTimeMillis.getAsLong() / SLOT_MILLIS * SUFFIX_FACTOR;
+        boolean validNext = nextScore > runningMin && nextScore < idleParkScore();
         return scriptResult(commands().eval(
                 TRY_RELEASE_IDLE_PARK_SCRIPT,
                 ScriptOutputType.MULTI,
@@ -645,13 +654,7 @@ public final class RedisTaskScoreBandCore
                         PAUSE_TIME_SLOT,
                         MAX_SUFFIX
                 )),
-                Long.toString(SLOT_MILLIS),
-                Long.toString(SUFFIX_FACTOR),
-                Long.toString(score(
-                        RUNNING_VISIBLE_TAG,
-                        MIN_TIME_SLOT,
-                        MIN_SUFFIX
-                ))
+                validNext ? Long.toString(nextScore) : ""
         ));
     }
 
@@ -708,7 +711,7 @@ public final class RedisTaskScoreBandCore
             return transition(TaskScoreTransitionStatus.INVALID);
         }
 
-        long releaseTimeSlot = redisTimeMillis() / SLOT_MILLIS;
+        long releaseTimeSlot = currentTimeMillis.getAsLong() / SLOT_MILLIS;
         if (releaseTimeSlot > observed.timeSlot()) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
@@ -887,12 +890,6 @@ public final class RedisTaskScoreBandCore
                     error
             );
         }
-    }
-
-    private long redisTimeMillis() {
-        List<String> parts = commands().time();
-        return Long.parseLong(parts.get(0)) * 1_000
-                + Long.parseLong(parts.get(1)) / 1_000;
     }
 
     private RedisCommands<String, String> commands() {

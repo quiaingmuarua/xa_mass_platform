@@ -64,7 +64,8 @@ class AssignmentBatchIntegrationTest {
             f.commands.clear();
             assertThat(refill.refill(List.of("g"), List.of(task))).isEqualTo(limit);
             // Two bounded head reads and one candidateization Lua, also at 1,000 identities.
-            assertThat(Collections.frequency(f.commands, "EVAL")).isEqualTo(3);
+            assertThat(Collections.frequency(f.commands, "ZRANGEBYSCORE")).isEqualTo(2);
+            assertThat(Collections.frequency(f.commands, "EVAL")).isEqualTo(1);
             var observed = new ArrayList<WorkerObservation>();
             f.commands.clear();
             assertThat(f.dispatch(limit, observed, System::currentTimeMillis).dispatchTasks(List.of(f.observed(task)))).isEqualTo(limit);

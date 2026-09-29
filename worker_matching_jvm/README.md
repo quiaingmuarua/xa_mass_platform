@@ -669,7 +669,7 @@ existing statuses and nested JSON shape semantics. Neither pre-reads in Java nor
 retries conflicts. There is no uniqueness rejection or automatic fallback search.
 
 Server separately asks Worker Score Owner to advance past times after APPLIED
-facts writes. Past HOT atomically becomes mark=0 at Redis current time; past
+facts writes. Past HOT atomically becomes mark=0 at the Owner clock's current slot; past
 non-cold RECOVERY retains mark when advancing. Both preserve polarity; cold
 RECOVERY and current/future holds do not change. The cold exception preserves
 initial network activation.
@@ -713,7 +713,7 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
   qualifies before capacity refusal; no resident-identity pre-read skips that work.
 - Any needs no qualification read and never discovers substitute IDs.
 - Final execution: one Lua per at-most-100-member chunk of each nonempty strict/current partition,
-  each with Redis TIME. That storage chunk is not a logical assignment ceiling. Only strictly due HOT can gain execution. Address, Item claim,
+  each against one Owner-clock sample. That storage chunk is not a logical assignment ceiling. Only strictly due HOT can gain execution. Address, Item claim,
   publication and Result paths retain their separate costs.
 
 These are command budgets, not throughput promises. Diagnostics report actual

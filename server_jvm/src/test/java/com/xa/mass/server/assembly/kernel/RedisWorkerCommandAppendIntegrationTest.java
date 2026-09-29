@@ -90,7 +90,6 @@ class RedisWorkerCommandAppendIntegrationTest {
             else assertThat(result.values()).containsOnly(occupied
                     ? WorkerCommandAppendStatus.REPLACED : WorkerCommandAppendStatus.APPENDED);
             var expected = new ArrayList<String>();
-            if (count > 0) expected.add("TIME");
             for (int offset = 0; offset < count; offset += 100) expected.add("EVAL");
             assertThat(calls).containsExactlyElementsOf(expected);
         } finally {

@@ -38,7 +38,7 @@ class WorkerCandidateGenerationIntegrationTest {
     }
     String key(String group) { return scope.keyspace().base() + ":worker:score:" + group; }
     long now() {
-        var time = redis.time(); return Long.parseLong(time.get(0)) * 1000 + Long.parseLong(time.get(1)) / 1000;
+        return System.currentTimeMillis();
     }
     long put(String group, String id, int sign, long slot, int mark) {
         long score = sign * absoluteScore(slot, mark); redis.zadd(key(group), score, id); return score;

@@ -128,12 +128,12 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test void projectDirectoryRetainsFirstCreationTimeAndClosedTasks() {
-        long before = redisTimeMillis();
+        long before = ownerClockMillis();
         assertThat(runtime.createTask(descriptor("indexed", 0)).status()).isEqualTo(TaskCreationStatus.CREATED);
         var page = catalog.listProjectTasks("test-project", 100);
         assertThat(page.tasks()).hasSize(1);
         long first = page.tasks().getFirst().createdAtMillis();
-        assertThat(first).isBetween(before, redisTimeMillis());
+        assertThat(first).isBetween(before, ownerClockMillis());
         assertThat(runtime.createTask(descriptor("indexed", 0)).status()).isEqualTo(TaskCreationStatus.CONFLICT);
         lifecycle.closeTask("indexed");
         assertThat(catalog.listProjectTasks("test-project", 100)).isEqualTo(page);
@@ -312,7 +312,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @Test
     void appendAndSuccessResultMatchTaskOwnerShape() {
-        long createdAt = redisTimeMillis();
+        long createdAt = ownerClockMillis();
         storeTask("task-1");
         TaskItem item = new TaskItem(
                 "message-1",
@@ -363,7 +363,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(redis.exists(
                 keyspace.base() + ":task:task-1:results:success"
         )).isZero();
-        assertThat(itemScoreCore.promoteItemOutcomes("task-1", outcomeTargets(List.of("message-1"), 6, redisTimeMillis())).get("message-1").status()).isEqualTo(
+        assertThat(itemScoreCore.promoteItemOutcomes("task-1", outcomeTargets(List.of("message-1"), 6, ownerClockMillis())).get("message-1").status()).isEqualTo(
                 TaskItemScoreBandCore.TaskItemScoreTransitionStatus
                         .TRANSITIONED
         );
@@ -397,7 +397,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @Test
     void taskItemTargetsRoundTripWithoutMatchingSemantics() {
-        long createdAt = redisTimeMillis();
+        long createdAt = ownerClockMillis();
         storeTask("on-demand-targets");
         TaskItem targeted = new TaskItem(
                 "message-targeted",
@@ -424,7 +424,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test void opaquePropertySelectorRoundTripsWithoutKernelInterpretation() {
-        long now = redisTimeMillis();
+        long now = ownerClockMillis();
         var selector = new WorkerQuery("test.opaque", Map.of("worker.test.region", List.of("east", "west")));
         var item = new TaskItem("indexed", "event", now, Map.of(), 0, now + 60_000, selector);
         storeTask("indexed-task");
@@ -450,7 +450,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @Test
     void legacyAndMissingSelectorStorageCannotBecomeAny() {
-        long now = redisTimeMillis();
+        long now = ownerClockMillis();
         var common = new LinkedHashMap<String, Object>();
         common.put("eventCode", "event");
         common.put("payload", Map.of());
@@ -613,10 +613,10 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 List.of(new TaskItem(
                         "message-1",
                         "event",
-                        redisTimeMillis(),
+                        ownerClockMillis(),
                         Map.of(),
                         5,
-                        redisTimeMillis() + 60_000,
+                        ownerClockMillis() + 60_000,
                         new WorkerQuery("worker.any", Map.of())
                 ))
         ).get("message-1").status()).isEqualTo(
@@ -697,7 +697,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 idleParkScore(),
                 "task-commands"
         );
-        long now = redisTimeMillis();
+        long now = ownerClockMillis();
         TaskItem item = new TaskItem(
                 "call-message",
                 "extension.worker.string.md5",
@@ -804,7 +804,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                     );
                     return runtime.appendItems(taskId, submittedItems);
                 });
-        long now = redisTimeMillis();
+        long now = ownerClockMillis();
         TaskItem item = new TaskItem(
                 "message-during-park",
                 "extension.worker.string.md5",
@@ -1017,7 +1017,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(scoreCore.rewriteSameBandTimeMillis(
                 "priority-0",
                 TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE,
-                redisTimeMillis() + 1_000
+                ownerClockMillis() + 1_000
         ).status()).isEqualTo(
                 TaskScoreBandCore.TaskScoreTransitionStatus.STALE
         );
@@ -1072,7 +1072,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         }
         redis.zadd(scoreKey, taskScore(
                 TaskScoreBandCore.RUNNING_VISIBLE_TAG,
-                redisTimeMillis() / TaskScoreBandCore.SLOT_MILLIS + 600,
+                ownerClockMillis() / TaskScoreBandCore.SLOT_MILLIS + 600,
                 0
         ), "future-hold");
         redis.zadd(scoreKey, idleParkScore(), "idle-park");
@@ -1153,7 +1153,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void schedulingTaskScanReadsDueNormalThenInitialInDescendingOrder() {
         String scoreKey = keyspace.base() + ":task:score";
-        long nowSlot = redisTimeMillis() / TaskScoreBandCore.SLOT_MILLIS;
+        long nowSlot = ownerClockMillis() / TaskScoreBandCore.SLOT_MILLIS;
         redis.zadd(scoreKey, taskScore(
                 TaskScoreBandCore.RUNNING_VISIBLE_TAG,
                 nowSlot - 2,
@@ -1217,7 +1217,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void runningObservationReadsInitialThroughIdleParkAscendingWithoutPause() {
         String scoreKey = keyspace.base() + ":task:score";
-        long nowSlot = redisTimeMillis() / TaskScoreBandCore.SLOT_MILLIS;
+        long nowSlot = ownerClockMillis() / TaskScoreBandCore.SLOT_MILLIS;
         redis.zadd(scoreKey, taskScore(
                 TaskScoreBandCore.RUNNING_VISIBLE_TAG,
                 nowSlot + 200,
@@ -1286,7 +1286,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void schedulingTaskScanFiltersInvalidScoresWithoutRefill() {
         String scoreKey = keyspace.base() + ":task:score";
-        long nowSlot = redisTimeMillis() / TaskScoreBandCore.SLOT_MILLIS;
+        long nowSlot = ownerClockMillis() / TaskScoreBandCore.SLOT_MILLIS;
         long newestScore = taskScore(
                 TaskScoreBandCore.RUNNING_VISIBLE_TAG,
                 nowSlot - 1,
@@ -1318,7 +1318,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void schedulingTaskScanAppliesOneHundredMemberOwnerLimit() {
         String scoreKey = keyspace.base() + ":task:score";
-        long nowSlot = redisTimeMillis() / TaskScoreBandCore.SLOT_MILLIS;
+        long nowSlot = ownerClockMillis() / TaskScoreBandCore.SLOT_MILLIS;
         for (int index = 0; index < 101; index++) {
             redis.zadd(scoreKey, taskScore(
                     TaskScoreBandCore.RUNNING_VISIBLE_TAG,
@@ -1596,7 +1596,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void reappendPreservesTerminalAndLateSuccessAdvancesFailedWithoutReopeningTask() {
         runtime.createTask(descriptor("outcomes", 0));
-        long now = redisTimeMillis();
+        long now = ownerClockMillis();
         var item = new TaskItem("item", "event", now, Map.of(), 0, now + 60_000, new WorkerQuery("worker.any", Map.of()));
         runtime.appendItems("outcomes", List.of(item));
         runtime.storeTaskItemFailedResults("outcomes", List.of("item"));
@@ -1764,10 +1764,9 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         );
     }
 
-    private long redisTimeMillis() {
-        List<String> parts = redis.time();
-        return Long.parseLong(parts.get(0)) * 1_000
-                + Long.parseLong(parts.get(1)) / 1_000;
+    /** The Kernel owners' clock; Redis TIME is not a scheduling source. */
+    private long ownerClockMillis() {
+        return System.currentTimeMillis();
     }
     private static Map<String, TaskItemScoreBandCore.TaskItemOutcomeTarget> outcomeTargets(
             List<String> ids, int tag, long time

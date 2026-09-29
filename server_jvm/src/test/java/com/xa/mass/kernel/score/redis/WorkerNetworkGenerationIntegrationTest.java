@@ -51,8 +51,7 @@ class WorkerNetworkGenerationIntegrationTest {
 
     private String key() { return scope.keyspace().base() + ":worker:score:g"; }
     private long now() {
-        var parts = redis.time();
-        return Long.parseLong(parts.get(0)) * 1000 + Long.parseLong(parts.get(1)) / 1000;
+        return System.currentTimeMillis();
     }
     private long put(String id, int sign, long slot, int mark) {
         long score = sign * absoluteScore(slot, mark);
@@ -198,11 +197,13 @@ class WorkerNetworkGenerationIntegrationTest {
         }
     }
 
-    @Test void generationRefreshDoesNotRepairFractionalStoredCoordinates() {
+    @Test void generationRefreshRejectsFractionalStoredCoordinatesWithoutWriting() {
         long slot = now() / SLOT_MILLIS - 20;
-        redis.zadd(key(), absoluteScore(slot, 1) + 0.5, "fractional");
-        scores.rewriteCurrentPolarityWithinTimeFence("g", Map.of("fractional", (slot + 10) * SLOT_MILLIS),
-                WorkerScorePolarity.RECOVERY_RECHECK, 0);
-        assertThat(redis.zscore(key(), "fractional")).isEqualTo(-(slot + 10 + 0.5));
+        double fractional = absoluteScore(slot, 1) + 0.5;
+        redis.zadd(key(), fractional, "fractional");
+        assertThat(scores.rewriteCurrentPolarityWithinTimeFence("g", Map.of("fractional", (slot + 10) * SLOT_MILLIS),
+                WorkerScorePolarity.RECOVERY_RECHECK, 0).get("fractional"))
+                .isEqualTo(new WorkerScoreTransitionResult(INVALID, null));
+        assertThat(redis.zscore(key(), "fractional")).isEqualTo(fractional);
     }
 }
