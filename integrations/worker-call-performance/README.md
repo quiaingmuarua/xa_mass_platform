@@ -25,9 +25,10 @@ Adapter and Project `perf-lane`. Bootstrap waits until every Worker is running,
 connected, HOT and has published Properties.
 
 The saturation job uses [lane-saturation.json](configs/lane-saturation.json):
-four CPUs, two Groups of 2,000 Workers (4,000 total), and 1GiB maximum heaps
+four CPUs, two Groups of 3,000 Workers (6,000 total), and 1GiB maximum heaps
 for Server, Host and Harness. Redis has a 2GiB container limit and 1.5GiB
-`maxmemory`, with `noeviction`. FD/thread guards remain 8,192/512. These are
+`maxmemory`, with `noeviction`. Saturation FD/thread guards are 16,384/512;
+open-loop guards remain 8,192/512. These are
 explicit experiment settings, not minimum production resource requirements.
 CPU affinity applies to every experiment JVM and the Redis container.
 
@@ -42,7 +43,7 @@ the resolved experiment file. Each job records its settings in
 | Pool watermark `task-rpc.refill-by-worker-group[<group>]` | per profile | `any / {} / 1000` per Group |
 | Adapter `report-queue-capacity` | 1000 | 10000 |
 | `task-rpc.max-probe-items-per-round` | 256 | 1000 (maximum) |
-| Workers / Handler | — | open: 2 x 1000; saturation: 2 x 2000 / MD5 |
+| Workers / Handler | — | open: 2 x 1000; saturation: 2 x 3000 / MD5 |
 
 Waiter and Direct Call bounds, Tomcat threads (calls complete through
 DeferredResult) and the 4,096 in-flight Harness bound are audited and unchanged.
@@ -114,7 +115,8 @@ Fast-fail rules stop early only on these signals: in-flight refusal or generator
 lag at the 10-second checkpoint (stop offering; `saturated` or `invalid`), a
 protocol or correlation error (immediate), 30 seconds without a new Result while
 Items remain, an observed Result rate that cannot close within the budget, thread
-or FD caps (512 / 8,192 per process) and unexpected process exits.
+or FD caps (open-loop defaults: 512 / 8,192 per process; experiment files set their own
+guards) and unexpected process exits.
 
 Every HTTP-accepted Task Item must have an observed Result within the drain
 budget: 180 seconds within the single-Task check budget of `10 x B` Items/s,
@@ -203,9 +205,66 @@ the resolved configuration, artifact/environment fingerprints, ten-second
 throughput, aligned resource costs, GC and per-case reconciliation. Raw JFR,
 logs and inventories remain private. Local records are excluded from CI trends.
 Measurement version 2 separates these completion semantics from earlier records.
-CI lane configuration version 3 identifies the new 4,000-Worker saturation
-fixture; the full resolved configuration hash also gates history comparison.
+CI lane configuration version 3 identifies configured saturation fixtures;
+the full resolved configuration hash separates Worker/resource settings in history.
 An unmet target bounds the tested environment, not absolute platform capacity.
+
+### Fixed-resource Worker Comparison
+
+[worker-scale-4k.json](configs/worker-scale-4k.json) and
+[worker-scale-8k.json](configs/worker-scale-8k.json) compare two Groups of 2,000
+and 4,000 Workers on the same four CPUs. Both use 1GiB heaps for every JVM,
+a 2GiB Redis container with 1.5GiB maxmemory, and identical backlog and windows
+to the CI saturation profile. Both use an FD guard of 16,384 so 8,000
+connections have headroom; this limit does not allocate that many descriptors.
+CI saturation uses 6,000 total Workers; the 4k and 8k files remain explicit controls.
+
+[worker-scale-6k.json](configs/worker-scale-6k.json) supplies an intermediate
+point of 3,000 Workers per Group with the same resources and measurement settings.
+Use it to check whether candidate supply becomes sufficient before 8,000 Workers;
+one successful screen does not establish the minimum stable fleet size.
+
+Use the same extracted package and host for both configurations. Run 4k, 8k,
+8k, 4k in that order, with a fresh output directory each time; every invocation
+includes one Any and one targeted case in independent worlds:
+
+```bash
+for run in a1-4k b1-8k b2-8k a2-4k; do
+  workers="${run##*-}"
+  bash run.sh --lane-modes saturation \
+    --experiment-config "integrations/worker-call-performance/configs/worker-scale-${workers}.json" \
+    --allow-nonreference-host --repetitions 1 --output-root "build/worker-scale/${run}" || break
+done
+```
+
+Keep outputs on the Linux filesystem. These local runs are excluded from CI
+history. Compare the paired throughput together with CPU calibration, actual
+CPU/RSS/FD use, Redis memory and evidence validity. A resource or evidence failure
+stops the sequence and must be retained. Thirty-second screens do not establish
+the 10k target; a candidate still needs the five 120-second Any confirmations.
+
+Record CPU topology as well as affinity. To compare another four-CPU set, prefix
+the entire entry command with `taskset --cpu-list 0,2,4,6`; the runner selects
+from that inherited set and applies it to every JVM and Redis. Use fresh outputs
+and report this as a separate affinity control. WSL-reported core/thread topology
+does not prove a fixed mapping to physical Windows cores.
+The recorded affinity covers the experiment JVMs and Redis container. On a
+larger WSL VM, Docker port proxies and host services can run outside that set;
+their CPU cost is absent from the per-role JVM/Redis table. A four-CPU affinity
+profile is therefore not a VM-wide four-CPU quota or a whole-host cost claim.
+
+[capacity-10k-compact-6k.json](configs/capacity-10k-compact-6k.json) freezes the
+intermediate fleet for formal local acceptance: four CPUs, 6,000 total Workers
+and 1GiB heaps. It retains the five 120-second Any runs and three targeted
+controls, with 30-second warmup and 2,000,000 Items per Group. Redis alone grows
+to a 4GiB container / 3GiB maxmemory budget to hold the larger pre-seeded backlog;
+this is a workload capacity setting, not an asserted throughput improvement.
+Run it through the capacity entry, without `--lane-modes`:
+
+```bash
+bash run.sh --experiment-config integrations/worker-call-performance/configs/capacity-10k-compact-6k.json \
+  --output-root build/capacity-compact-6k
+```
 
 ## JFR Diagnostics
 

@@ -76,9 +76,9 @@ class CapacityRunnerTest(unittest.TestCase):
                 self.assertEqual(1 if bound else 2, run.call_count)
                 self.assertEqual(8123.5, result["cases"][0]["completedPerSecond"])
                 self.assertEqual([], list((output / "evidence").rglob("*.jfr")))
-                self.assertEqual(2000, result["workersPerGroup"])
+                self.assertEqual(3000, result["workersPerGroup"])
                 report = runner.lane_markdown(result)
-                self.assertIn("2000 | 4 | 1024 / 1024 / 1024 | 15 / 30 | 600000", report)
+                self.assertIn("3000 | 4 | 1024 / 1024 / 1024 | 15 / 30 | 600000", report)
                 if bound:
                     self.assertEqual(["workers-exhausted"], result["cases"][0]["invalidReasons"])
 

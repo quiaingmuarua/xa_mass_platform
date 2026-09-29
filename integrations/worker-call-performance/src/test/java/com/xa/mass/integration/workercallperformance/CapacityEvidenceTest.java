@@ -152,15 +152,15 @@ class CapacityEvidenceTest {
 
     @Test void referenceSaturationUsesOneExplicitProfileWithoutLongAcceptance() throws Exception {
         var config = ExperimentConfig.read("configs/lane-saturation.json");
-        var settings = config.settings("c4-w2000", "screening");
-        assertThat(settings.workers()).isEqualTo(2000);
+        var settings = config.settings("c4-w3000", "screening");
+        assertThat(settings.workers()).isEqualTo(3000);
         assertThat(settings.items()).isEqualTo(600000);
         assertThat(settings.warmupSeconds()).isEqualTo(15);
         assertThat(settings.seconds()).isEqualTo(30);
         assertThat(settings.referenceLane()).isTrue();
         assertThat(ExperimentConfig.read("configs/capacity-10k.json").settings("c4-w1000", "screening").referenceLane()).isFalse();
         assertThat(((Number) config.object("resources").get("serverHeapMiB")).intValue()).isEqualTo(1024);
-        assertThat(((Number) config.object("resources").get("fileDescriptors")).intValue()).isEqualTo(8192);
+        assertThat(((Number) config.object("resources").get("fileDescriptors")).intValue()).isEqualTo(16384);
         var multiple = new LinkedHashMap<>(config.values());
         multiple.put("profiles", List.of(config.profiles().getFirst(),
                 Map.of("name", "other", "cpuCount", 4, "workersPerGroup", 4000)));

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "name": "lane-saturation-6k",
+  "name": "worker-scale-6k",
   "purpose": "lane",
   "ttlMillis": 1800000,
   "settleSeconds": 60,
