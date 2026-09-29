@@ -1420,6 +1420,7 @@ def main_lane_ab(options, output, run_started, reference):
         warmup = case if not case.startswith("sat-") else "task-any-1000"
         deadline = run_started + 110 * 60
         values = []
+        latencies = {}
         for pair in range(lane_trend.AB_MAX_PAIRS):
             order = ("A", "B") if pair % 2 == 0 else ("B", "A")
             observed = {}
@@ -1433,11 +1434,16 @@ def main_lane_ab(options, output, run_started, reference):
                                        "caseStatus": row.get("status"), metric: extract(row)})
                 if run["status"] != "passed":
                     raise RuntimeError(f"Lane run failed for version {version} in pair {pair + 1}")
+                latencies.setdefault(version, []).extend(successful_latencies(
+                    output / f"pair-{pair + 1}" / version / "evidence/harness" / f"r{pair + 1}" / case / "samples.jsonl"))
             values.append((observed["A"], observed["B"]))
             final["decision"] = lane_trend.ab_decide(case, values, band["relative"])
             print("lane ab decision " + json.dumps(final["decision"]), flush=True)
             if final["decision"]["decision"] != "continue":
                 break
+        # Secondary, never decisive: tail latency over every pair's samples of each version.
+        final["pooledP99LatencyMillis"] = {version: lane_trend.pooled_percentile(values, .99)
+                                           for version, values in latencies.items()}
         final["status"] = "passed"
     except Exception as error:
         final.update(status="failed", failure=type(error).__name__ + ": " + str(error))
@@ -1451,6 +1457,18 @@ def main_lane_ab(options, output, run_started, reference):
         (output / "evidence/summary.md").write_text(lane_ab_markdown(final), encoding="utf-8")
     print(json.dumps({"status": final["status"], "decision": final.get("decision", {}).get("decision")}), flush=True)
     return 0 if final["status"] == "passed" else 1
+
+
+def successful_latencies(path):
+    """Planned-arrival-to-response latency of successful calls; the same basis as successfulCallLatencyMillis."""
+    if not path.is_file():
+        return []
+    latencies = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        row = json.loads(line)
+        if row.get("outcome") == "succeeded" and row.get("endedOffsetMillis", -1) >= 0:
+            latencies.append(row["endedOffsetMillis"] - row["plannedOffsetMillis"])
+    return latencies
 
 
 def lane_ab_markdown(final):
@@ -1470,9 +1488,13 @@ def lane_ab_markdown(final):
     if decision.get("deltas"):
         lines += ["", "Per-pair change of B against A (positive is worse): "
                   + ", ".join(f"{delta:+.1%}" for delta in decision["deltas"])]
+    pooled = final.get("pooledP99LatencyMillis") or {}
+    if pooled.get("A") is not None and pooled.get("B") is not None:
+        lines += ["", f"Pooled p99 over all pairs (secondary, not decisive): A {pooled['A']:.1f} ms, B {pooled['B']:.1f} ms."]
     if final.get("failure"):
         lines += ["", f"Failure: {final['failure']}"]
-    lines += ["", "No difference within the band is not a speedup claim; a decision needs two consecutive pairs.", ""]
+    lines += ["", "A decision needs at least two pairs and every comparable pair must agree. "
+              "No difference within the band is not a speedup claim.", ""]
     return "\n".join(lines)
 
 

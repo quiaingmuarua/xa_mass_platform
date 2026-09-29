@@ -72,14 +72,23 @@ class LaneTrendTest(unittest.TestCase):
         self.assertEqual(0.05, value["relative"])
         self.assertEqual(4, value["runs"])
 
-    def test_ab_stops_early_on_consistent_evidence(self):
-        self.assertEqual("continue", trend.ab_decide("task-any-1000", [(300, 305)], .1)["decision"])
-        self.assertEqual("no-difference", trend.ab_decide("task-any-1000", [(300, 305), (300, 290)], .1)["decision"])
-        self.assertEqual("worse", trend.ab_decide("task-any-1000", [(300, 360), (300, 350)], .1)["decision"])
+    def test_ab_stops_early_only_when_every_pair_agrees(self):
+        self.assertEqual("p50LatencyMillis", trend.primary_metric("task-any-1000"))
+        self.assertEqual("perWorkerTurnaroundMillis", trend.primary_metric("sat-task-any"))
+        self.assertEqual("continue", trend.ab_decide("task-any-1000", [(216, 217)], .1)["decision"])
+        self.assertEqual("no-difference", trend.ab_decide("task-any-1000", [(216.0, 216.6), (219.5, 216.7)], .1)["decision"])
+        self.assertEqual("worse", trend.ab_decide("task-any-1000", [(216, 260), (216, 255)], .1)["decision"])
         self.assertEqual("better", trend.ab_decide("sat-task-any", [(400, 300), (410, 320)], .1)["decision"])
-        mixed = [(300, 360), (300, 250), (300, 360), (300, 250), (300, 360)]
-        self.assertEqual("inconclusive", trend.ab_decide("task-any-1000", mixed, .1)["decision"])
-        self.assertEqual("continue", trend.ab_decide("task-any-1000", [(300, None), (300, 305)], .1)["decision"])
+        # The 2026-09-28 identical-code p99 run: the last two pairs alone looked worse, all five disagree.
+        p99_like = [(378, 397), (384, 517), (418, 370), (387, 430), (389, 522)]
+        self.assertEqual("inconclusive", trend.ab_decide("task-any-1000", p99_like, .1)["decision"])
+        self.assertEqual("continue", trend.ab_decide("task-any-1000", [(216, None), (216, 217)], .1)["decision"])
+
+    def test_pooled_percentile_uses_nearest_rank(self):
+        self.assertIsNone(trend.pooled_percentile([], .99))
+        self.assertEqual(99, trend.pooled_percentile(list(range(1, 101)), .99))
+        self.assertEqual(50, trend.pooled_percentile(list(range(1, 101)), .5))
+        self.assertEqual(100, trend.pooled_percentile(list(range(1, 101)), 1))
 
 
 if __name__ == "__main__":

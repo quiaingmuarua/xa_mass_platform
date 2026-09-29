@@ -570,15 +570,26 @@ class LaneWorldConfigTest(unittest.TestCase):
         self.assertIn("Trend: **insufficient-history**", value)
 
     def test_ab_markdown_reports_pairs_band_and_decision(self):
-        value = runner.lane_ab_markdown(dict(status="passed", case="task-any-1000", metric="p99LatencyMillis",
+        value = runner.lane_ab_markdown(dict(status="passed", case="task-any-1000", metric="p50LatencyMillis",
             versions={"A": "a" * 40, "B": "b" * 40}, band={"relative": .1, "provisional": True},
-            pairs=[dict(pair=1, version="A", runStatus="passed", caseStatus="passed", p99LatencyMillis=300.0),
-                   dict(pair=1, version="B", runStatus="passed", caseStatus="saturated", p99LatencyMillis=None)],
-            decision={"decision": "continue", "deltas": [.05]}))
+            pairs=[dict(pair=1, version="A", runStatus="passed", caseStatus="passed", p50LatencyMillis=300.0),
+                   dict(pair=1, version="B", runStatus="passed", caseStatus="saturated", p50LatencyMillis=None)],
+            decision={"decision": "continue", "deltas": [.05]}, pooledP99LatencyMillis={"A": 390.0, "B": 402.5}))
         self.assertIn("Decision: **continue**", value)
         self.assertIn("Band ±10.0% (provisional)", value)
         self.assertIn("| 1 | B | passed | saturated | — |", value)
         self.assertIn("+5.0%", value)
+        self.assertIn("A 390.0 ms, B 402.5 ms", value)
+
+    def test_successful_latencies_match_the_harness_success_basis(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "samples.jsonl"
+            rows = [dict(outcome="succeeded", plannedOffsetMillis=10.0, endedOffsetMillis=225.5),
+                    dict(outcome="not_observed", plannedOffsetMillis=20.0, endedOffsetMillis=1020.0),
+                    dict(outcome="succeeded", plannedOffsetMillis=30.0, endedOffsetMillis=-1)]
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            self.assertEqual([215.5], runner.successful_latencies(path))
+        self.assertEqual([], runner.successful_latencies(Path(folder) / "absent.jsonl"))
 
     def test_lane_markdown_separates_invalid_and_failed_cases(self):
         cases = [dict(repetition=1, case="task-any-500", status="passed", invalidReasons=[], successWithinWait=.95,

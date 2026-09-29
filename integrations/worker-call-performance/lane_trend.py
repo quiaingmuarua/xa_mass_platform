@@ -5,6 +5,7 @@ Pure functions only: the runner owns processes and the workflow owns the data br
 from __future__ import annotations
 
 from collections import Counter
+import math
 import statistics
 
 # Bump when case semantics, fixture or metrics change; records of another version are never compared.
@@ -30,7 +31,9 @@ SATURATION_METRICS = ("perWorkerTurnaroundMillis", "completedPerSecond")
 
 
 def primary_metric(case):
-    return "perWorkerTurnaroundMillis" if case.startswith("sat-") else "p99LatencyMillis"
+    """A/B decision metric. One 30s window's p99 varies about +-35% on the same version, while p50
+    stays within about 1.5%, so open-loop decisions use p50 and report pooled p99 separately."""
+    return "perWorkerTurnaroundMillis" if case.startswith("sat-") else "p50LatencyMillis"
 
 
 def _stats(values):
@@ -146,7 +149,9 @@ def band(case, history, ref):
 def ab_decide(case, pairs, relative_band):
     """Sequential A/B: each pair is (A value, B value) of the primary metric or None when not comparable.
 
-    Returns "no-difference", "worse", "better" or "continue"/"inconclusive". Positive deltas mean B is worse.
+    Every comparable pair must agree: all within the band is "no-difference"; all beyond it in the
+    same direction is "worse" or "better". Any disagreement asks for another pair, and after the
+    maximum the result is "inconclusive". Positive deltas mean B is worse.
     """
     lower = METRICS[primary_metric(case)][1]
     deltas = []
@@ -157,12 +162,21 @@ def ab_decide(case, pairs, relative_band):
         deltas.append(change if lower else -change)
     decision = "continue"
     if len(deltas) >= AB_MIN_PAIRS:
-        if all(abs(d) <= relative_band for d in deltas[-AB_MIN_PAIRS:]):
+        if all(abs(d) <= relative_band for d in deltas):
             decision = "no-difference"
-        elif all(d > relative_band for d in deltas[-AB_MIN_PAIRS:]):
+        elif all(d > relative_band for d in deltas):
             decision = "worse"
-        elif all(d < -relative_band for d in deltas[-AB_MIN_PAIRS:]):
+        elif all(d < -relative_band for d in deltas):
             decision = "better"
     if decision == "continue" and len(pairs) >= AB_MAX_PAIRS:
         decision = "inconclusive"
     return {"decision": decision, "deltas": deltas, "band": relative_band}
+
+
+def pooled_percentile(latencies, fraction):
+    """Nearest-rank percentile over samples pooled from every pair of one version."""
+    if not latencies:
+        return None
+    ordered = sorted(latencies)
+    # Same nearest rank as the Harness: ceil(n x fraction) - 1.
+    return ordered[max(0, math.ceil(len(ordered) * fraction) - 1)]
