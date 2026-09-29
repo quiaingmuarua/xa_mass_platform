@@ -112,6 +112,7 @@
       "filter_initial_task_scores",
       "get_score_states",
       "initialize_score",
+      "observe_normal_running_tasks_ascending",
       "observe_running_tasks_ascending",
       "park_observed_idle_task",
       "preview_score_states",

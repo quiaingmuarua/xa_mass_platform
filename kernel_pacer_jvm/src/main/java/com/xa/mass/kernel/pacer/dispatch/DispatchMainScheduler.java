@@ -119,6 +119,38 @@ final class DispatchMainScheduler {
         return List.copyOf(tasks);
     }
 
+    /**
+     * Refill roots are NORMAL RUNNING Tasks below idle park, independent of due time. A Task
+     * that Dispatch just rewrote into the current slot keeps its supply declarations, so its
+     * Workers are never offered while its targets are absent. Descriptors already loaded for
+     * Dispatch are reused.
+     */
+    private List<TaskDescriptor> loadSupplyTasks(List<ObservedTask> normalTasks) {
+        Map<String, Long> runningScores = Objects.requireNonNull(
+                taskScores.observeNormalRunningTasksAscending(TASK_BATCH_LIMIT),
+                "Task score owner returned null NORMAL RUNNING scores"
+        );
+        LinkedHashMap<String, TaskDescriptor> descriptors = new LinkedHashMap<>();
+        normalTasks.forEach(task -> descriptors.put(task.descriptor().taskId(), task.descriptor()));
+        List<String> missingTaskIds = runningScores.keySet().stream()
+                .filter(taskId -> !descriptors.containsKey(taskId))
+                .toList();
+        if (!missingTaskIds.isEmpty()) {
+            descriptors.putAll(Objects.requireNonNull(
+                    taskCatalog.loadTaskAllocationDescriptors(missingTaskIds),
+                    "Task catalog returned null descriptors"
+            ));
+        }
+        List<TaskDescriptor> tasks = new ArrayList<>();
+        for (String taskId : runningScores.keySet()) {
+            TaskDescriptor descriptor = descriptors.get(taskId);
+            if (descriptor != null && taskId.equals(descriptor.taskId())) {
+                tasks.add(descriptor);
+            }
+        }
+        return List.copyOf(tasks);
+    }
+
     private List<String> loadServiceabilityGroups(
             List<ObservedTask> normalTasks
     ) {
@@ -249,6 +281,9 @@ final class DispatchMainScheduler {
                 logFailure("taskProjection", null, 0, failure);
                 return List.of();
             }
+            if (normalEligible.remove(DispatchProducerId.ELIGIBILITY_REFILL)) {
+                scheduleRefill(normalTasks);
+            }
             scheduleNormalProducers(normalEligible, normalTasks);
             return normalTasks;
         }
@@ -310,29 +345,39 @@ final class DispatchMainScheduler {
             );
         }
 
+        /** A supply-root failure defers only Refill. */
+        private void scheduleRefill(List<ObservedTask> normalTasks) {
+            List<TaskDescriptor> supplyTasks;
+            try {
+                supplyTasks = loadSupplyTasks(normalTasks);
+            } catch (RuntimeException failure) {
+                deferProducer(Objects.requireNonNull(
+                        runtimes.get(DispatchProducerId.ELIGIBILITY_REFILL),
+                        "producer runtime"
+                ));
+                logFailure("supplySource", DispatchProducerId.ELIGIBILITY_REFILL, 0, failure);
+                return;
+            }
+            LinkedHashSet<String> groupIds = new LinkedHashSet<>();
+            supplyTasks.forEach(task -> groupIds.add(task.workerGroupId()));
+            List<String> workerGroupIds = List.copyOf(groupIds);
+            startProducer(DispatchProducerId.ELIGIBILITY_REFILL, supplyTasks.size(), () -> {
+                long started=DispatchStageEvent.start();
+                int added=0;
+                boolean failed=true;
+                try {
+                    added=refill.refill(workerGroupIds, supplyTasks);
+                    failed=false;
+                } finally {
+                    DispatchStageEvent.batch(started,"REFILL_ROUND",supplyTasks.size(),added,failed);
+                }
+            });
+        }
+
         private void scheduleNormalProducers(
                 Set<DispatchProducerId> eligible,
                 List<ObservedTask> normalTasks
         ) {
-            LinkedHashSet<String> groupIds = new LinkedHashSet<>();
-            normalTasks.forEach(task -> groupIds.add(
-                    task.descriptor().workerGroupId()
-            ));
-            List<String> workerGroupIds = List.copyOf(groupIds);
-
-            if (eligible.contains(DispatchProducerId.ELIGIBILITY_REFILL)) {
-                startProducer(DispatchProducerId.ELIGIBILITY_REFILL, normalTasks.size(), () -> {
-                    long started=DispatchStageEvent.start();
-                    int added=0;
-                    boolean failed=true;
-                    try {
-                        added=refill.refill(workerGroupIds, normalTasks.stream().map(ObservedTask::descriptor).toList());
-                        failed=false;
-                    } finally {
-                        DispatchStageEvent.batch(started,"REFILL_ROUND",normalTasks.size(),added,failed);
-                    }
-                });
-            }
             if (eligible.contains(DispatchProducerId.TASK_DISPATCH)) {
                 startProducer(
                         DispatchProducerId.TASK_DISPATCH,

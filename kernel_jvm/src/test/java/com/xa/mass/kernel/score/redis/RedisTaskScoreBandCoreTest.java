@@ -42,6 +42,12 @@ class RedisTaskScoreBandCoreTest {
                     IllegalArgumentException.class,
                     () -> scoreCore.observeRunningTasksAscending(101)
             );
+            for (int limit : new int[]{0, 101}) {
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> scoreCore.observeNormalRunningTasksAscending(limit)
+                );
+            }
         } finally {
             redisClient.shutdown();
         }

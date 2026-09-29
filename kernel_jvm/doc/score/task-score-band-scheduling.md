@@ -91,6 +91,15 @@ mutates Score and returns the same opaque ordered map. Malformed rows count
 against the limit and are skipped without a replacement read. It is not an
 Assignment source and grants no claim on the Tasks it observes.
 
+`observe_normal_running_tasks_ascending(limit)` is the bounded Refill root
+observation. It reads RUNNING scores in ascending order from the first NORMAL
+slot up to, but excluding, the private idle park, independent of due time: it
+includes Tasks Dispatch just rewrote into the current slot and future
+coordinates, and excludes INITIAL, idle park, PAUSE, PRE_REVIEW and terminal
+scores. It accepts `1..100`, is one ZRANGEBYSCORE, never mutates Score, and
+skips malformed rows against the limit without a replacement read. It grants no
+claim on the Tasks it observes.
+
 ## Owner Surface
 
 Read operations:

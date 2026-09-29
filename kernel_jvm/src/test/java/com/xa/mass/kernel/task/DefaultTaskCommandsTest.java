@@ -370,6 +370,11 @@ class DefaultTaskCommandsTest {
         }
 
         @Override
+        public Map<String, Long> observeNormalRunningTasksAscending(int limit) {
+            throw unsupported();
+        }
+
+        @Override
         public Map<String, Long> filterInitialTaskScores(
                 Map<String, Long> observedTaskScores
         ) {

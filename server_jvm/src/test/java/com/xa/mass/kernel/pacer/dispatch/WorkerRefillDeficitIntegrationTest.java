@@ -29,6 +29,95 @@ import org.junit.jupiter.api.Test;
 /** Actual Pacer policy, Matching stock and Redis fences; no duplicate refill algorithm. */
 @Tag("redis-owner")
 class WorkerRefillDeficitIntegrationTest {
+    /**
+     * Dispatch rewrites a visited Task into the current Task slot, hiding it from the due
+     * projection. Main must still supply its declarations to Refill; otherwise a round driven
+     * by another Task's shortage candidateizes this Task's Workers and Matching rejects them,
+     * parking them as unusable candidates until aged recycling.
+     */
+    @Test
+    void refillKeepsSupplyOfATaskHiddenInItsCurrentDispatchSlot() {
+        var scope = RedisTestScope.create("refill_hidden_task");
+        var client = RedisClient.create(REDIS_URL);
+        String group = "g";
+        var us = new RefillTarget("country", new EligibilityQuery(Map.of("worker.country", List.of("US"))), 100);
+        var ca = new RefillTarget("country", new EligibilityQuery(Map.of("worker.country", List.of("CA"))), 100);
+        var dueTask = new TaskDescriptor("due-task", "test-project", group, TaskIdleDisposition.CLOSE_WHEN_IDLE,
+                Map.of("priority", "0", "maxRetryTimes", "1"), List.of(us), null, Map.of());
+        var hiddenTask = new TaskDescriptor("hidden-task", "test-project", group, TaskIdleDisposition.CLOSE_WHEN_IDLE,
+                Map.of("priority", "0", "maxRetryTimes", "1"), List.of(ca), null, Map.of());
+        long sampled = System.currentTimeMillis();
+        try (var connection = client.connect();
+                var taskScores = new com.xa.mass.kernel.score.redis.RedisTaskScoreBandCore(
+                        client, scope.keyspace(), () -> sampled);
+                var scores = new RedisWorkerScoreCore(client, scope.keyspace());
+                var matchingComposition = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
+                        new MatchingGroup(Set.of("country"), Set.of("worker.country"), null)))) {
+            var matching = matchingComposition.catalog();
+            var redis = connection.sync();
+            try {
+                long taskSlot = sampled / com.xa.mass.kernel.score.TaskScoreBandCore.SLOT_MILLIS;
+                String taskKey = scope.keyspace().base() + ":task:score";
+                redis.zadd(taskKey, taskScore(taskSlot - 1), "due-task");
+                redis.zadd(taskKey, taskScore(taskSlot), "hidden-task");
+                var facts = new LinkedHashMap<String, Map<String, String>>();
+                for (int i = 0; i < 10; i++) {
+                    String id = "w%02d".formatted(i);
+                    redis.zadd(scope.keyspace().base() + ":worker:score:" + group, dueOrdinaryScore(sampled), id);
+                    facts.put(id, Map.of("country", i < 5 ? "US" : "CA"));
+                }
+                matchingComposition.properties().upsertWorkerFactsBatch(group, facts);
+
+                var catalog = org.mockito.Mockito.mock(com.xa.mass.kernel.task.TaskResourceCatalog.class);
+                org.mockito.Mockito.when(catalog.loadTaskAllocationDescriptors(org.mockito.ArgumentMatchers.anyList()))
+                        .thenAnswer(invocation -> {
+                            var loaded = new LinkedHashMap<String, TaskDescriptor>();
+                            for (Object id : (List<?>) invocation.getArgument(0)) {
+                                if (id.equals("due-task")) loaded.put("due-task", dueTask);
+                                if (id.equals("hidden-task")) loaded.put("hidden-task", hiddenTask);
+                            }
+                            return loaded;
+                        });
+                var dispatch = org.mockito.Mockito.mock(TaskDispatchPolicy.class);
+                var refill = new WorkerEligibilityRefillPolicy(scores, matching, null, 100, () -> sampled);
+                var scheduler = new DispatchMainScheduler(taskScores, catalog,
+                        org.mockito.Mockito.mock(TaskInitializationPolicy.class), dispatch, refill, null,
+                        AssignmentDispatchConfig.defaults(), null);
+                var inline = new java.util.concurrent.AbstractExecutorService() {
+                    @Override public void execute(Runnable command) { command.run(); }
+                    @Override public void shutdown() { }
+                    @Override public List<Runnable> shutdownNow() { return List.of(); }
+                    @Override public boolean isShutdown() { return false; }
+                    @Override public boolean isTerminated() { return false; }
+                    @Override public boolean awaitTermination(long timeout, java.util.concurrent.TimeUnit unit) {
+                        return true;
+                    }
+                };
+                scheduler.new SchedulerRun(inline, () -> 0).step();
+
+                // Dispatch saw only the due Task; Refill kept the hidden Task's declaration.
+                org.mockito.Mockito.verify(dispatch).dispatchTasks(List.of(new ObservedTask(dueTask, taskScore(taskSlot - 1))));
+                var hiddenQuery = new WorkerQuery("worker.country", List.of("CA"));
+                var taken = matching.take(group, Map.of("i0", hiddenQuery, "i1", hiddenQuery, "i2", hiddenQuery,
+                        "i3", hiddenQuery, "i4", hiddenQuery));
+                assertThat(taken).hasSize(5);
+                taken.values().forEach(candidate -> assertThat(scores.acquireObservedHotScoreLeases(group,
+                        Map.of(candidate.workerId(), candidate.expectedScore()), sampled + 30_000)
+                        .get(candidate.workerId()).status()).isEqualTo(TRANSITIONED));
+            } finally {
+                scope.cleanup(redis);
+            }
+        } finally {
+            client.shutdown();
+        }
+    }
+
+    private static long taskScore(long timeSlot) {
+        return com.xa.mass.kernel.score.TaskScoreBandCore.RUNNING_VISIBLE_TAG
+                * com.xa.mass.kernel.score.TaskScoreBandCore.DEFAULT_TAG_FACTOR
+                + timeSlot * com.xa.mass.kernel.score.TaskScoreBandCore.SUFFIX_FACTOR;
+    }
+
     @Test
     void laterPoolDemandDoesNotCopyStockAndDirectAcquisitionNeedsNoPoolNotification() {
         var scope = RedisTestScope.create("refill_later_pool");

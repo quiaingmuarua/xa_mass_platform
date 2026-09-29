@@ -1284,6 +1284,37 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test
+    void normalRunningObservationIgnoresDueTimeAndExcludesInitialAndIdlePark() {
+        String scoreKey = keyspace.base() + ":task:score";
+        long nowSlot = ownerClockMillis() / TaskScoreBandCore.SLOT_MILLIS;
+        redis.zadd(scoreKey, taskScore(TaskScoreBandCore.RUNNING_VISIBLE_TAG, nowSlot + 200, 0), "running-future");
+        // A Task just rewritten by Dispatch sits in the current slot: not due, still running.
+        redis.zadd(scoreKey, taskScore(TaskScoreBandCore.RUNNING_VISIBLE_TAG, nowSlot, 0), "running-current");
+        redis.zadd(scoreKey, taskScore(TaskScoreBandCore.RUNNING_VISIBLE_TAG, nowSlot - 1, 0), "running-due");
+        redis.zadd(scoreKey, taskScore(TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                TaskScoreBandCore.NORMAL_TIME_SLOT_MIN, 0), "normal-minimum");
+        redis.zadd(scoreKey, idleParkScore(), "idle-park");
+        redis.zadd(scoreKey, taskScore(TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                TaskScoreBandCore.INITIAL_TIME_SLOT, TaskScoreBandCore.MAX_SUFFIX), "initial");
+        redis.zadd(scoreKey, taskScore(TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                TaskScoreBandCore.PAUSE_TIME_SLOT, TaskScoreBandCore.MAX_SUFFIX), "pause");
+        redis.zadd(scoreKey, taskScore(TaskScoreBandCore.RUNNING_VISIBLE_TAG, nowSlot + 100, 0) + 0.5D,
+                "invalid-fractional");
+        redis.zadd(scoreKey, taskScore(TaskScoreBandCore.PRE_REVIEW_TAG, nowSlot - 1, 0), "pre-review");
+        redis.zadd(scoreKey, TaskScoreBandCore.TERMINAL_SCORE_MAX, "terminal");
+        var before = redis.zrangeWithScores(scoreKey, 0, -1);
+
+        assertThat(scoreCore.observeNormalRunningTasksAscending(100).keySet())
+                .containsExactly("normal-minimum", "running-due", "running-current", "running-future");
+        // The limit applies to raw rows; a skipped malformed row is not replaced.
+        assertThat(scoreCore.observeNormalRunningTasksAscending(4).keySet())
+                .containsExactly("normal-minimum", "running-due", "running-current");
+        assertThat(scoreCore.observeNormalRunningTasksAscending(100).get("running-current"))
+                .isEqualTo(taskScore(TaskScoreBandCore.RUNNING_VISIBLE_TAG, nowSlot, 0));
+        assertThat(redis.zrangeWithScores(scoreKey, 0, -1)).isEqualTo(before);
+    }
+
+    @Test
     void schedulingTaskScanFiltersInvalidScoresWithoutRefill() {
         String scoreKey = keyspace.base() + ":task:score";
         long nowSlot = ownerClockMillis() / TaskScoreBandCore.SLOT_MILLIS;

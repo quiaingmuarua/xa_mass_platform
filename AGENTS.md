@@ -292,7 +292,8 @@ Policy documents own workflow, capacity and lifecycle.
   Spring; it does not host an alternative scheduler or Task fallback.
 - Main supplies the complete bounded Task/Group roots to single-flight Producers.
   Busy Producers skip snapshots; discovery stays vertical beneath those roots.
-  Refill and dispatch share Main's already-read NORMAL descriptors.
+  Dispatch uses due NORMAL Tasks; Refill uses bounded NORMAL RUNNING Tasks below
+  idle park, independent of due time, reusing Dispatch's already-read descriptors.
 - Only the package-private assignment closure constructs claimed Commands, after
   Worker execution admission and exact Item claim. Both strict observed and
   current identity acquisition require due HOT and TRANSITIONED; the returned execution
