@@ -848,7 +848,7 @@ HTTP executor snapshots use JFR's periodic lifecycle and are removed on context
 shutdown; Server creates no sampling thread. Platform-pool metrics are
 inapplicable for virtual-thread execution. Diagnostics do not change admission,
 callback ordering or failure classification. The finite measurement and safe
-export contract belongs to [Call Performance](../integrations/worker-call-performance/README.md#rpc-mainline-diagnosis).
+export contract belongs to [Call Performance](../integrations/worker-call-performance/README.md#jfr-diagnostics).
 Sampled Task correlations are stateless SHA-256 identifiers at 1/64; no identity
 or payload is a metric label. Offline joins stay inside one Server JVM, explicitly
 retain incomplete/overlapping evidence and do not infer TaskItem finality.

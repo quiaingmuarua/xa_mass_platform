@@ -542,6 +542,9 @@ artifact limits and assertions; read that contract before changing the proof.
   [Call Performance](integrations/worker-call-performance/README.md) retain their
   separate scheduled/manual claims. Preserve preconditions, bounded observations,
   resource/latency evidence and explicit nonclaims; scale does not create proof.
+  Call Performance raises configurable resources so they do not bind and measures
+  mechanism limits; performance values feed its trend and never fail it, and a
+  resource bound makes a case invalid rather than a slower number.
 - [Android Proof](integrations/android-worker-proof/README.md) keeps assertions in
   Java and external choreography in shell. Invalid contracts/identity drift fail
   immediately; retry only permitted observation failures. Emulator controls

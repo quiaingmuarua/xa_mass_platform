@@ -1,520 +1,209 @@
 # Worker Call Performance
 
-Primary claim: offered online call load, observed completion, latency distributions
-and saturation behavior of the existing Task Call and caller-targeted Direct
-Call paths. Task Call also measures coexistence with one finite explicit Any Pool Task.
-Each suite's fixed Worker count is a measurement fixture, not another
-correctness, recovery or scale tier.
+Primary claim: with configurable resources set so they do not bind, the
+performance of each call path at fixed offered rates, the capacity of the Task
+paths, and the difference between paths on one host. The lane does not measure
+turnover efficiency under scarce resources.
 
-The [2026-09-08 reference baseline](baselines/2026-09-08-baseline.md) records the
-first three-pair comparison. Its same-key append candidate was withdrawn after
-targeted-call regression; the lane and Owner proofs remain. The baseline retains
-the rejected patch for isolated replay and does not describe active production behavior.
+| Not claimed here | Owner |
+| --- | --- |
+| Worker reuse, candidate recycling or Pool exhaustion under scarcity | Dynamic Matching, Convergence Health |
+| Group isolation or fairness under contention | Convergence Health or a dedicated scheduling proof |
+| Disconnect, restart, failure retry and recovery | Loaded Recovery, Worker Correctness |
+| Production SLA, device capacity, cross-machine latency, soak | Outside repository CI |
+| Configuration trade-offs such as assignment ceiling 100 against 1000 | A separate configuration experiment |
 
-The [Direct load-step attribution report](baselines/2026-09-08-direct-step-attribution.md)
-separates the fixed surge and sustained windows, records HTTP configuration
-candidates and preserves the scope of each causal conclusion.
+Correctness floors can fail the lane. Performance values never fail it; they
+enter the trend comparison.
 
-The [RPC mainline attribution report](baselines/2026-09-09-rpc-mainline-attribution.md)
-records three same-version Task/Direct repetitions, independent JFR diagnosis
-and the eight-case acceptance run under unchanged production configuration.
-It separates API response rate from successful calls and retains the 2k Task
-Result-closure failures that prevent enabling the new scheduled composition.
+## World And Configuration
 
-The [2026-09-21 Task ANY attribution](baselines/2026-09-21-task-any-attribution.md)
-combines current CI recordings with local CPU-placement experiments and an
-aligned 1,000-Worker Task/Direct control. It identifies the Task Score slot gate,
-observed lease-release rejection and CI contention separately. Local diagnostic
-runs do not replace reference-host acceptance or establish a candidate benefit.
+Each job starts one world and reuses it for every case: Ubuntu 24.04 with four
+logical CPUs, Java 21, Docker Redis 7.4.10, the DEFAULT Pacer preset, two Groups
+(`perf-a`, `perf-b`) of 1,000 Java Workers each in one Host JVM, one WebSocket
+Adapter and Project `perf-lane`. Bootstrap waits until every Worker is running,
+connected, HOT and has published Properties.
 
-The [2026-09-23 assignment-ceiling comparison](baselines/2026-09-23-assignment-ceiling.md)
-records six same-artifact 100/1000 runs and separate JFR/resource diagnostics.
-All six were generator-limited, so the configurable ceiling is mechanically
-proved but neither a 2k capacity claim nor a measured benefit is established.
+Configurable resources are raised or audited so they do not bind. The runner's
+`LANE_KNOB_AUDIT` is the authoritative table and every run writes it to
+`evidence/knob-audit.json` with the reason and the evidence that shows the value
+did not bind.
 
-The [2026-09-23 targeted 2k closure diagnosis](baselines/2026-09-23-targeted-2k-closure.md)
-attributes a failed `rpc-targeted-2000` closure to connected Workers that stayed
-unassignable and blocked the newest-first Item window, and records the derived
-Result closure budget below. It does not change or fix that scheduling behavior.
-
-Targeted Task calls use the independent `workerId` function and direct execution admission.
-Historical targeted-ID Pool measurements are not equivalent to this path; compare
-source fingerprints and query contracts before using an old result as a baseline.
-Finite background Tasks explicitly declare `any / {} / 1000` supply.
-
-## RPC Mainline Diagnosis
-
-`--suite rpc-diagnosis` measures the primary `items:call` Any Pool path and
-uses Direct Call as a control for the shared HTTP/Transport path. It retains the DEFAULT 50ms completion-relative Dispatch interval. The instance
-assignment ceiling defaults to 100 and can be selected with
-`--assignment-batch-limit 1..1000`; effective configuration records the value.
-Other workload and resource settings remain fixed.
-
-| Case | API and selector | Offered calls/s |
+| Resource | Production default | Lane value |
 | --- | --- | --- |
-| `rpc-any-500` | Task ANY | 500 |
-| `rpc-any-1000` | Task ANY | 1,000 |
-| `rpc-any-2000` | Task ANY | 2,000 |
-| `rpc-targeted-1000` | Task explicit Worker, round-robin | 1,000 |
-| `rpc-targeted-2000` | Task explicit Worker, round-robin | 2,000 |
-| `direct-step-1000` | Direct explicit Worker, round-robin | 1,000 |
-| `direct-step-2000` | Direct explicit Worker, round-robin | 2,000 |
+| Assignment ceiling `xa.mass.kernel-pacer.assignment-batch-limit` | 100 | 1000 (maximum) |
+| Pool watermark `task-rpc.refill-by-worker-group[<group>]` | per profile | `any / {} / 1000` per Group |
+| Adapter `report-queue-capacity` | 1000 | 10000 |
+| `task-rpc.max-probe-items-per-round` | 256 | 1000 (maximum) |
+| Workers / Handler | — | 2 x 1000 / MD5 |
 
-Every main case uses Ubuntu 24.04 with four logical CPUs, Java 21, Redis 7.4.10,
-one Group, 1,000 real connections in one Worker Simulator JVM and one WebSocket
-Adapter. Task calls share the Group's managed Task with explicit Any supply. Sorted known IDs,
-64-byte MD5 input, single-item requests, one-second HTTP wait, five-second client
-timeout and 4,096 in-flight bound match across the paths. Each case starts fresh,
-warms at 100/s for 20 seconds and closes warmup before continuous 120-second
-measurement. It reports whole, first-30-second and last-90-second cohorts plus
-five-second buckets, with separate actual-response flux and generator limits.
-Task TTL remains 120 seconds. Direct has no follow-up. Missing accepted Task
-Results fail the case; observed failed Results are counted separately from
-successful throughput. The follow-up budget is described under
-[Result closure budget](#result-closure-budget).
+Waiter and Direct Call bounds, Tomcat threads (calls complete through
+DeferredResult) and the 4,096 in-flight Harness bound are audited and unchanged.
 
-### Result closure budget
+Mechanism constants are measured, never raised: the 50ms Dispatch and Refill
+intervals, the 100ms Task Score slot, Refill round budgets, Result lane batch and
+concurrency, the 5s Item claim lease, single-flight Producers and the Adapter
+consume limit of 100. The Server delivery contract
+(`DirectCallService.MAX_CONSUME_LIMIT`) rejects larger Adapter consumes with HTTP
+400. When a mechanism constant binds, that is a finding.
 
-Every HTTP-accepted Task Item must still have an observed Result; only the time
-allowed for that closure depends on the documented single-Task check budget of
-`10 x B` Items/s (`B` = assignment ceiling). Cases offered within that budget
-keep the fixed 180-second follow-up. Above it, Dispatch settles at most that budget
-per second and every accepted Item has expired one Item TTL after the window, so
-the Harness waits `max(180, 120 + ceil(accepted / (10 x B)))` seconds. At the
-default ceiling this changes only the 2k RPC Task cases (about 345 seconds for
-about 224,000 accepted Items); the scheduled 100-Worker Task suite and every case
-at ceiling 1000 keep 180 seconds. Evidence records `drainBudgetSeconds` and the
-last follow-up observation. This relaxes the closure deadline, not the closure
-oracle: a lost Result still fails, and observed failed Results are never success.
+## Execution
 
-Targeted RPC cases also record `targetsWithoutSuccessAfter60Seconds`: target
-Workers whose accepted Items planned from 60 seconds on all ended without
-success. It is diagnostic, not a gate. A nonzero value marks Workers that stayed
-unassignable while connected; see the
-[targeted 2k closure diagnosis](baselines/2026-09-23-targeted-2k-closure.md).
-Results before this cutover used the fixed 180 seconds for every case.
+| Stage | Content |
+| --- | --- |
+| Calibration | Before any lane process starts: a fixed JVM MD5 workload on one and four threads (1s warmup, 2s measurement) and 5,000 sequential Redis PINGs. The values travel with the job's cases. |
+| World | Redis, Server and Host once per job; Harness bootstrap. |
+| Job warmup | One discarded case: `task-any` at the job's highest open rate, or `task-any-1000` for a saturation-only job. |
+| Cases | Each case follows a quiesce gate: every Worker connected and idle due HOT on two observations one second apart, within 30s. A timeout makes this and every later case invalid. |
 
-`--repetitions 3` runs the same immutable version on one host, with JFR off.
-Each repetition starts with ANY 500. At both 1k and 2k, the path orders are
-Direct/targeted/ANY, targeted/ANY/Direct, then ANY/Direct/targeted. This is an
-attribution experiment, not a production candidate comparison; baseline-ref
-and diagnostic-pair are rejected. One repetition also supports separate JFR.
+Open-loop cases offer one call per planned arrival and split the total rate
+evenly across both Groups; targeted and Direct calls rotate through each Group's
+Workers. Each case warms at 100/s for 30s, then measures 30s with a 1s HTTP wait
+and a 5s client timeout.
 
-```bash
-python integrations/worker-call-performance/run_worker_call_performance.py \
-  --suite rpc-diagnosis --repetitions 3 --output-root build/rpc-repetitions
-python integrations/worker-call-performance/run_worker_call_performance.py \
-  --suite rpc-diagnosis --diagnostics jfr --output-root build/rpc-jfr
-python integrations/worker-call-performance/run_worker_call_performance.py \
-  --suite nightly --output-root build/rpc-nightly
-```
+| Path | Rates | Call |
+| --- | --- | --- |
+| `task-any` | 500, 1000, 2000 | `items:call` on each Group's managed Task, Any Pool |
+| `task-targeted` | 500, 1000, 2000 | `items:call` with the `workerId` function |
+| `direct` | 500, 1000, 2000 | Adapter-scoped `direct-calls`; the transport control |
 
-The nightly manifest contains these seven main cases plus **only** the original
-`mixed-500`: 100 Workers, 30 seconds, 50,000 explicit Any Pool Items, 100ms Handler,
-sharing the full Worker pool. This independent coexistence witness is not included in
-aligned path-cost ratios. The runner checks exact case membership and continues
-collecting remaining case evidence after a case failure. It never calls this
-single mixed case a complete historical Task suite. Historical `task`, `direct`
-and `direct-diagnosis` suites retain their original fixtures. The new eight-case
-manifest remains manual until Result-closure acceptance passes. The first
-formal RPC run failed its six 2k Task cases under the former fixed 180-second
-budget; the existing scheduled composition therefore stays **Task six cases
-followed by Direct diagnosis two cases**. The derived closure budget does not by
-itself enable the new manifest on the schedule.
-Case completion logs contain only status, generator limitation and the aggregate
-accepted-Result remainder; unavailable counts remain null. A missing/duplicate
-manifest is reported separately from a complete manifest containing failed cases.
-`completeSuite` records full-suite selection, not successful execution; the final
-status and each case's validation evidence determine acceptance.
-Single/nightly execution has a 45-minute budget; three repetitions have 120
-minutes, including setup and cleanup. Measurements are not shortened to fit.
+Saturation cases (`sat-task-any`, `sat-task-targeted`) seed 150,000 Items per
+Group into fresh finite Tasks before approval, so the window has no HTTP load and
+no generator limit. Approval opens a 30s window. At its end the runner records the
+leases still held, closes both Tasks, waits for held leases to settle and counts
+completions from the success-only `results:export`; no public Item-count API
+exists. The held leases bound the count's error. With a near-zero Handler every
+Worker is expected to stay busy, so the primary result is the per-Worker
+turnaround (Workers x window / completed): the platform time of one lease cycle.
+A drained backlog makes the case invalid.
 
-Default-off Owner JFR adds submission/activation, Item HASH and Score
+Path order rotates per repetition (ABC, BCA, CAB). The workflow builds once, runs
+`rate-500`, `rate-1000`, `rate-2000` and `saturation` as parallel jobs, and merges
+them. Path ratios compare cases inside one job, so on one host.
+
+## Case Status And Validity
+
+| Status | Meaning |
+| --- | --- |
+| `passed` | Offered load within path capacity and no resource bound. |
+| `saturated` | Arrivals met the in-flight cap because responses outlasted their wait: the rate exceeds the path capacity. The report gives the admitted rate, not a completion ceiling. Exhausted idle Workers are then a consequence and recorded as `workersExhausted`. |
+| `invalid` | The generator lagged (schedule-lag p99 above 100ms without in-flight refusal), a Group had no idle HOT Worker in a sample, a quiesce gate timed out, or a saturation backlog drained. Numbers are not comparable. |
+| `failed` | A correctness floor or fast-fail rule was violated; the lane fails. |
+
+Fast-fail rules stop early only on these signals: in-flight refusal or generator
+lag at the 10-second checkpoint (stop offering; `saturated` or `invalid`), a
+protocol or correlation error (immediate), 30 seconds without a new Result while
+Items remain, an observed Result rate that cannot close within the budget, thread
+or FD caps (512 / 8,192 per process) and unexpected process exits.
+
+Every HTTP-accepted Task Item must have an observed Result within the drain
+budget: 180 seconds within the single-Task check budget of `10 x B` Items/s,
+otherwise `120 + accepted / (10 x B)` seconds. An observed failed Result is not
+success; this finite fault-free oracle is not a replay guarantee.
+
+## Metrics And Attribution
+
+Each case reports success within the wait, completed calls per offered second,
+successful call p50/p95/p99 from planned arrival, Redis commands and Server CPU
+milliseconds per completed call, and the peak share of Workers holding a lease.
+
+Attribution enables only the Server's default-off `xa.mass.TaskDispatch` Owner
+events (`lane-attribution.jfc`, no sampling); `LaneAttribution` aggregates them
+per case window offline: Dispatch rounds and round time, checked Items/s, the
+candidate shortfall (claimable Items without a candidate in their round), the
+strict-acquisition STALE ratio and Refill admissions. `--lane-attribution off`
+exists to measure its overhead. The candidate shortfall is reported, not used for
+validity: targeted shortfall includes busy targets.
+
+## JFR Diagnostics
+
+`--diagnostics jfr` records bounded JFR for the Server and Host with
+`diagnostics.jfc`, enables the Server's optional `xa.mass.diagnostics.enabled`
+servlet/executor observations and exports each case window through
+`JfrDiagnostics`. Owner events additionally require their explicit JFR settings;
+normal operation has neither HTTP observation beans nor enabled Owner events.
+Recordings use 240 MiB plus an 8 MiB chunk allowance and the reader rejects files
+above 256 MiB. Raw recordings stay under `private`, outside the artifact
+whitelist. The offline reader depends only on the JDK and the Delivery Contract
+and exports fixed event fields and bounded stack aggregates; it never exports
+environment, properties, URLs, identity, bodies, results, exception messages or
+arbitrary event fields. Diagnostics mode is not an A/B input.
+
+Default-off Owner JFR covers submission/activation, Item HASH and Score
 initialization, Dispatch round/check/deferral, refill/candidateize and
-confirmation-rejection batches, candidate/confirm/claim/publish,
-TASK Result consume/process/store/release and Task RPC admission/probe/observation
-stages. It uses existing arguments and returned counts, never another Redis
-read, queue, public endpoint, Worker label or Score interpretation. Probe
-lateness records each activated batch's oldest actual DelayQueue due time (the
-batch maximum, not per-Item latency); probe frequency is
-not modeled as a fixed batch size divided by 100ms.
+confirmation-rejection batches, candidate/confirm/claim/publish, TASK Result
+consume/process/store/release and Task RPC admission/probe/observation stages,
+plus servlet execution, asynchronous completion, Server Binding/offer/consume,
+Adapter remote calls, Report admission/drain/drop and Queue depth, and the HTTP
+executor. Events use existing arguments and returned counts, never another Redis
+read, queue, public endpoint, Worker label or Score interpretation, and preserve
+callback, timeout, drop, retry and shutdown behavior. Probe lateness records each
+activated batch's oldest actual DelayQueue due time, not per-Item latency.
 
 Per-Item events use SHA-256 of UTF-8 `taskId + NUL + messageId`; the low six bits
 of the first byte select 1/64. Only the offline reader joins these hashes, within
-the Server JVM. It retains at most 10,000 keys and 64 events per key and exports
+the Server JVM, retaining at most 10,000 keys and 64 events per key and exporting
 aggregates, not per-Item traces. Duplicate, missing, retried, overlapping and
 overflowed chains stay explicit. Each interval uses its own two unique,
-nonoverlapping edges; a missing HTTP observation does not discard its earlier
-dispatch or Result intervals. Timeout positions use only unambiguous same-JVM
-edge ordering; missing evidence remains unclassified. Stage edges bracket Owner
-calls, not Redis commit instants. No
-cross-process monotonic-clock subtraction or percentile subtraction is valid.
-Post-measurement Result evidence may close a sampled chain without changing the
-original HTTP outcome. Recording coverage and sampled-chain completeness are
-reported separately. Raw JFR remains private and bounded to 256 MiB per process.
+nonoverlapping edges; timeout positions use only unambiguous same-JVM edge
+ordering. Stage edges bracket Owner calls, not Redis commit instants, and no
+cross-process clock or percentile subtraction is valid. Five-second buckets and
+power-of-two histogram bounds are approximate and never replace the Harness
+latency distributions. Missing coverage, gaps over three seconds, data loss,
+overflow or reader failure make diagnosis incomplete without changing business
+outcomes.
 
-The structural single-Task budget is at most `B / (0.05 + round_seconds)` checked
-Items per second for continuously full rounds, where `B` is the assignment ceiling
-(default 100). The 100ms Task Score slot is an additional gate, not removed by
-this setting. Checked Items, assignment attempts
-and unique successful calls differ. The budget proof exercises real scheduling
-decisions with a controlled clock/executor, including a slow single-flight round;
-it does not assert a platform SLA or a Worker-count capacity tier.
+## Trend And A/B
 
-## Owners And World
+`lane_trend.py` holds the pure comparison logic.
 
-The Python runner owns fresh Docker Redis containers, Runtime/Host/Harness
-processes, safe resource sampling and comparison. Java owns public HTTP actions,
-offered load, correlation, observation and acceptance. It depends only on the
-Delivery Contract; it neither calls implementations nor reads Redis domain data.
-Inventory generation reuses `worker_proof_support`, without transferring any
-existing lane's primary claim.
-
-Reference runs use Ubuntu 24.04, Java 21, Redis 7.4.10 and the explicitly selected
-DEFAULT Pacer preset. The historical Task suite has one Group with 100 Java Workers behind one WebSocket
-Adapter. Host assembly uses existing MD5 and 100ms Lab delay capabilities. Every
-case has a fresh Redis container, scope, Server and Host. Bootstrap waits for all
-100 known Lab identities, connected routes, HOT scheduling observations and
-persistent Properties. Bootstrap is a prerequisite, not a second identity proof.
-
-All Java processes use `-Xms256m -Xmx1g -XX:+ExitOnOutOfMemoryError`.
-The evidence records JVM options, server overrides, complete configuration sources and hashes,
-Git versions, OS/kernel, CPU count and the Redis image identity. DEFAULT
-production queue, retry and Task Call settings remain represented by the checked
-profile and explicit runner configuration. Private inventory, process logs and
-capability files are excluded from CI artifacts.
-
-## Fixed Cases
-
-| Case | Online offered load | Background |
-| --- | --- | --- |
-| `any-100` | 100 calls/s, ANY | None |
-| `any-500` | 500 calls/s, ANY | None |
-| `any-1000` | 1,000 calls/s, ANY | None |
-| `any-2000` | 2,000 calls/s, ANY | None |
-| `targeted-500` | 500 calls/s, explicit Worker IDs in round-robin order | None |
-| `mixed-500` | 500 calls/s, ANY | One explicit Any Pool Task, 50,000 Items, 100ms delay, full shared Worker pool |
-
-Each case warms up at 100 calls/s for 20 seconds, observes successful warmup
-closure, then measures for 30 seconds. A call submits one Item with a fresh
-Message ID and a fixed 64-byte MD5 input. HTTP wait is 1 second, client timeout
-5 seconds and Item TTL 120 seconds. These are fixture values, not a production
-SLA. Calls use the configured Project/Group managed Task with explicit Any supply.
-
-The background Task is fully seeded and approved once after warmup, and must
-produce a successful Result within 60 seconds. A bounded observer checks its
-presence, nonterminal preview and unobserved Items in a fixed 1,000-ID sample
-spanning all 50,000 Items during measurement. It does not assume insertion order.
-The same conditions must still hold at the end. Failure stops the case; it does
-not create additional work or retry mutation. Background Items use a 600-second
-TTL. Neither Task reserves Worker capacity. The current Dispatch recent-service
-hint prevents fixed-order monopolization; this case does not impose equal shares
-or an online-call priority guarantee. After the fixed drain budget every accepted
-online Item must have a succeeded Result: an observed failed Result fails this
-coexistence case, even though it satisfies the other Task cases' measurement-only
-closure contract. There is no response-rate or latency threshold.
-
-Task fixture version 4 records the explicit Any/full-pool world and this
-successful coexistence closure oracle. The retired version-1 background used a
-50-candidate cache bound; comparisons across that cutover must not treat the
-competition conditions as identical. No cache or capacity bound is restored.
-
-## Measurement And Acceptance
-
-The following Result-drain contract applies to the Task Call suite. The separate
-Direct Call fixture below has its own outcome semantics inside this same
-performance lane.
-
-The finite open-loop scheduler retains each planned arrival time. Sending never
-waits for HTTP capacity: at most 4,096 tasks may be in flight, and a refused
-admission is recorded as not sent. The explicit virtual-thread executor and
-HTTP client belong to the Harness and end with that process. Each application
-submission is issued once, including ambiguous HTTP/transport failures.
-
-Safe per-call rows retain Message ID, planned/sent/ended offsets, HTTP status,
-response outcome and separately observed Result status. They contain no payload.
-Counters distinguish planned, sent, HTTP 200 accepted, response success, response
-failure, not_observed, unknown submission, not sent and protocol error. Their
-denominator remains visible. HTTP 200 is not counted as successful execution.
-
-Response p50/p95/p99 use nearest rank from actual send to response. The separate
-scheduled-response and successful-call distributions start at the planned
-arrival, including generator delay. Their sample counts are explicit;
-an empty distribution has zero samples and is not a latency observation.
-Actual send rate, successful response rate inside the measurement window and
-successful cohort count divided by offered-window duration are distinct fields.
-Any not-sent request or schedule-lag p99 above 100ms marks the case generator
-limited. Such evidence cannot establish server capacity or compare candidates.
-
-After the measurement, public `results:load` pages contain at most 1,000 known
-IDs. The historical Task suite keeps a 180-second observation budget; RPC cases
-use the [Result closure budget](#result-closure-budget). Followup observation never
-rewrites the original call outcome or latency. Its elapsed time is a sampled
-observation bound recorded separately. An observed failed Result is not success;
-not_observed does not infer TaskItem finality. Unknown submissions may remain
-unknown, and their IDs remain in evidence. Every HTTP-accepted Item must have
-an observed Result by the end of the budget. This is a finite fault-free
-scenario oracle, not an unconditional delivery/replay guarantee.
-
-Protocol/correlation errors, missing accepted Results, failed preconditions,
-unexpected process exits and incomplete evidence fail the case. Linux `/proc`
-samples every second must remain below 512 native threads and 8,192 FDs per Java
-process. CPU/RSS are recorded without absolute SLA thresholds. Redis INFO
-stats/commandstats/memory/cpu are aggregate cost diagnostics only; they include
-internal script commands and are not a client round-trip count. Real Redis Owner
-tests independently own the append operation's client-command budget.
-Measurement summaries select resource samples inside the 30-second window,
-record the covered duration, and report mean CPU cores and peak RSS/threads/FDs.
-The complete resource stream also retains startup and drain samples for the caps.
-
-The runner stops writers and sampling, bounds process shutdown, and removes only
-its exact Docker container. Containers are disposable; no shared Redis cleanup,
-KEYS or database-wide flush is used. Incomplete cleanup cannot become a passed
-run. Startup/build time is outside measurements. Each case's safe summary is
-preserved even if its Harness fails.
-
-## Execution And Comparison
+- Run record: the merge step writes `run-record.json` with run identity,
+  `laneConfigVersion`, host calibration per job, per-case status counts and the
+  median, minimum and maximum of each metric over passed repetitions. Nightly
+  runs, and manual runs with `lane_record`, append it to the `perf-lane-data`
+  branch; only the summary job has write permission.
+- Nightly trend: compares with the last seven records of the same ref and lane
+  config version, else reports `insufficient-history`. Values are normalized to
+  the history's median host speed; a job whose calibration deviates more than 25%
+  is not judged. A median that stays outside the history range in the worse
+  direction after allowing this run's half spread, or a changed majority status,
+  is reported as suspect. The trend never fails the lane.
+- Manual A/B (`baseline_ref` and `lane_case`): one runner builds the baseline and
+  the current version, starts a fresh warmed world per version and alternates
+  ABBA pairs of one case. The decision metric is p50 for open-loop cases and
+  per-Worker turnaround for saturation; one 30s window's p99 varies about +-35% on
+  the same version, so pooled p99 across pairs is reported but not decisive. The
+  band is the median relative spread of that case on `main` records (floor 5%),
+  or a provisional 10% before three records. Every comparable pair must agree
+  (at least two): all within the band is `no-difference`, all beyond it in one
+  direction is `worse` or `better`; otherwise another pair runs, up to five, then
+  `inconclusive`. A decision is not a speedup claim.
 
 ```bash
-python -m pip install -r .github/scripts/requirements.txt
-python integrations/worker-call-performance/run_worker_call_performance.py
+python integrations/worker-call-performance/run_worker_call_performance.py --repetitions 3
 python integrations/worker-call-performance/run_worker_call_performance.py \
-  --baseline-ref <commit> --output-root build/call-performance-comparison
+  --lane-modes open --lane-rates 1000 --diagnostics jfr --output-root build/lane-jfr
+python integrations/worker-call-performance/run_worker_call_performance.py \
+  --baseline-ref <commit> --lane-case task-any-1000 --output-root build/lane-ab
 ```
 
-Outputs must be fresh directories below repository `build`. `--case` selects one
-diagnostic case and marks the suite incomplete. `--allow-nonreference-host` is
-for Linux local diagnostics and records that the host is not the reference
-environment. `--skip-build` reuses existing artifacts for local iteration.
-Reference acceptance uses all cases, a clean checkout and no diagnostic flags.
+Outputs must be fresh directories below repository `build`. `--allow-nonreference-host`
+marks local diagnostics; `--skip-build` reuses existing artifacts. Each Java
+process uses `-Xms256m -Xmx1g`; evidence records configuration sources, hashes,
+Git versions, OS/kernel, CPU count and the Redis image identity.
 
-Comparison builds immutable baseline A and current B once, then runs A/B, B/A,
-A/B with the exact same current Harness and fixed configuration. All cases use
-fresh processes and Redis. Three comparable pairs establish a comparison;
-missing, failed or generator-limited pairs make it inconclusive. Two pairs with
-success-rate loss greater than five percentage points, or p99 growth greater
-than 20% at success rates within five points, mark the candidate regressed.
-Large success-rate improvements are not penalized merely for including slower
-successful samples. Missing success latency is not converted to a zero ratio.
-No detected regression is not a claim of speedup. Regression exits nonzero;
-the engineer withdraws the candidate rather than adding compensating tuning.
+## Open Questions
 
-The current Server JAR comes only from `server_boot_jvm`. An explicitly
-selected immutable comparison checkout is built from the Server entrypoint in
-that checkout; older baselines retain their original build layout and sources.
+- The task paths at 2,000/s sit at the reference runner's capacity: three of four
+  2026-09-28 runs saturated at 1,380-1,700 admitted/s, one passed.
+- The two first identical-code A/B runs showed higher pooled p99 for B
+  (for example 530ms against 415ms) with identical Server code. It does not affect
+  the p50 decision but may indicate a systematic difference between the two
+  builds' worlds.
 
-The dedicated workflow owns full performance execution, independently of the
-ordinary Proof Gate. JVM Contracts compiles this module and runs deterministic
-Harness/runner tests. Full performance stays nightly/manual; other lanes retain
-their existing claims. Single-version and comparison workflows have 45-minute
-and 120-minute budgets, with safe evidence retained for seven days.
-The nightly schedule is 03:00 Asia/Shanghai (19:00 UTC) and uses the current
-default-branch version; manual runs can select an immutable comparison baseline.
+## History
 
-The lane does not claim cross-machine network latency, production SLA, Handler
-concurrency, exact executor identity, Task fairness, process-fault recovery,
-long-running retention/soak, or larger active Task/Group cardinality. Those
-claims require their own named evidence rather than a larger Worker fixture.
-
-## Direct Call With 1,000 Workers
-
-The [2026-09-08 Direct Call report](baselines/2026-09-08-direct-baseline.md)
-records the first reference run: all 30,000 calls at 1,000/s succeeded within
-one second, with 130.85ms successful p99. Higher offered rates degraded and
-were generator limited; they do not establish a server capacity limit.
-
-`--suite direct` measures the existing caller-targeted DIRECT_CALL path with one
-Group, exactly 1,000 Java Workers and one WebSocket Adapter. The Lab Host creates
-1,000 real Worker connections in one process; this is not 1,000 physical devices.
-The caller rotates through the known sorted Worker IDs, sending one HTTP request
-per Worker invocation to the public Adapter-scoped `direct-calls` API. Server
-does not select Workers. No Task Items or background work are submitted.
-
-The five fixed offered rates are 100, 500, 1,000, 2,000 and 5,000 calls/s. Each
-case uses fresh processes and Redis, DEFAULT Pacer, the same fixed 64-byte MD5
-input, 20 seconds of warmup at 100/s, and 30 seconds of measurement. Direct wait
-is 1 second and client timeout is 5 seconds; maximum in-flight remains 4,096.
-The 5,000/s case plans 150,000 calls, within the common scheduler's 300,000-call
-bound. The original six Task fixtures remain available manually.
-Preparation checks the exact 1,000 Lab identities and bounded public
-network pages of 100; all warmup calls must succeed, covering every Worker twice.
-Connected routes are checked again before and after measurement. Scheduling and
-Properties readiness are not Direct Call admission prerequisites.
-
-Direct evidence distinguishes successful observed replies (`platform.worker.command.succeeded`),
-observed non-success replies, unobserved timeouts, occupied-slot/HTTP-429
-rejections, uncertain submission/HTTP effects, not sent and protocol errors.
-Codes and reasons are counted separately. HTTP 200 does not imply admission or
-successful execution. Each response must name exactly the requested Worker;
-its aggregate status, fields, MD5 result and unique server Direct Call ID are
-checked. Missing/bad Binding, shutdown, wrong results and protocol errors fail
-this fixed-world fixture. Resource bounds and generator-limitation rules are
-the same as the Task suite. Direct timeouts and rejections are measured outcomes,
-not hard failures disguised as successful execution.
-
-DIRECT_CALL has no persistent Result lookup: there is no `results:load`, drain,
-replay or automatic retry. Timeout does not cancel an offered Command and does
-not establish execution failure. Unknown and timeout samples stay unclosed in
-safe evidence. Result/finality and Task recovery claims do not apply. In addition
-to original-response latency, successful cohort throughput and actual successes
-within the measurement window, the summary reports successes returned within
-one second of their planned arrival divided by both sent and planned requests.
-Successful p99 excludes unsuccessful/unknown requests, so read it alongside
-these fractions. A passed run means valid measurement, not an RPC SLA.
-
-```bash
-python integrations/worker-call-performance/run_worker_call_performance.py \
-  --suite direct --output-root build/direct-call-performance-proof
-```
-
-The manual workflow accepts `suite=direct`. Scheduled runs retain the accepted
-Task six cases followed by Direct diagnosis two cases while the new RPC manifest
-awaits acceptance.
-Worker count fixes this requested Direct Call scenario rather than introducing
-another correctness/recovery scale tier. Different Worker fixtures and separate
-hosts prevent inferring a Direct-versus-Task speedup ratio from their raw QPS.
-
-## Direct Load-Step Diagnosis
-
-`--suite direct-diagnosis` keeps the same 1,000-Worker Direct world and adds two
-fixed cases: `direct-step-1000` and `direct-step-2000`. Each warms at 100/s for
-20 seconds, then offers its target rate continuously for 120 seconds with the
-same client. The first 30 seconds are the surge window; the next 90 seconds are
-the sustained observation window. These boundaries never wait for convergence.
-Every five-second bucket and every original sample remains in the evidence.
-The finite scheduler permits at most 300,000 planned calls; existing Task and
-Direct fixtures retain their previous offered rates and durations. The new
-reference suite additionally requires exactly four logical CPUs. Local runs
-with another CPU count require the existing nonreference diagnostic flag.
-
-Window outcome counts and exact latency percentiles use the cohort whose
-planned arrival falls in the half-open window. Actual sends and HTTP/success
-responses inside the window also include requests from earlier cohorts, and
-exclude responses after its end. Thus HTTP response QPS, successful-cohort QPS
-and actual successful-response QPS remain distinct. HTTP 200 still does not
-mean successful admission or execution. Rejection reasons, 429, timeout,
-uncertain effects, not sent, and in-flight counts at both boundaries are explicit.
-Each window independently applies the fixed not-sent / 100ms schedule-lag p99
-generator limit. A limited surge does not rewrite the sustained window, and
-neither window erases the whole-run limited flag. Samples reaching 512 native
-threads or 8,192 FDs fail the proof; CPU/RSS remain cost observations.
-
-`--diagnostics jfr` records bounded JFR for Server, Host and Harness. The runner
-enables the Server's optional `xa.mass.diagnostics.enabled` servlet/executor
-observations. Owner events additionally require their explicit JFR settings;
-normal operation has neither HTTP observation beans nor enabled Owner events.
-Recordings use 240 MiB plus an 8 MiB chunk allowance, and the reader separately
-rejects files larger than 256 MiB. Raw recordings remain under `private`, outside
-the artifact whitelist. An offline Java reader, depending only on the JDK and
-Delivery Contract, exports fixed event fields and bounded stack aggregates.
-It never exports environment, properties, URLs, identity, bodies, results,
-exception messages or arbitrary JFR event fields. CPU/GC/JIT/lock/socket/allocation
-and pinning samples are diagnostic observations, not new mechanical truth.
-
-Custom observations cover initial servlet execution, asynchronous completion,
-Server Binding/offer/consume duration and counts, Adapter remote-call duration,
-Report admission/drain/drop counts and Queue depth, and the HTTP executor.
-Servlet completion is not the client's receive timestamp. Platform executor
-metrics are null when inapplicable; virtual execution is separately observed on
-the real initial request thread. Queue snapshots are diagnostic and do not
-reconstruct a Command's execution history. Default-off observations add no
-business queue, Registry, public endpoint or Redis read. They preserve callback,
-timeout, best-effort drop, retry and bounded shutdown behavior.
-
-The reader exports five-second activity buckets and power-of-two duration
-histogram upper bounds; these approximate diagnostic percentiles do not replace
-the exact Harness latency distributions. Missing CPU or Server Owner/executor
-coverage, gaps over three seconds, JFR data loss, bounded stack or aggregation
-overflow, or reader failure make diagnosis
-incomplete without changing the recorded business outcomes. Stack sampling and
-any bounded stack overflow stay explicit. Formal comparisons reject JFR mode.
-For a mechanism comparison on the same host, explicitly combine
-`--diagnostic-pair --baseline-ref <D> --diagnostics jfr`. This runs one fresh A/B
-pair and records `purpose=diagnostic_pair`; it never runs or emits the formal
-benefit classifier. In the manual workflow, selecting JFR with a baseline ref
-selects this separate diagnostic mode. Its evidence is never pooled with the
-three formal pairs.
-
-```bash
-python integrations/worker-call-performance/run_worker_call_performance.py \
-  --suite direct-diagnosis --output-root build/direct-diagnosis
-python integrations/worker-call-performance/run_worker_call_performance.py \
-  --suite direct-diagnosis --diagnostics jfr --output-root build/direct-jfr
-```
-
-### Configuration Candidate Acceptance
-
-The diagnosis-only baseline D explicitly represents the existing HTTP defaults:
-virtual threads disabled, Tomcat maximum 200, minimum resident 10. Candidate B1
-changes only the minimum to 200. If B1 is not retained, B2 starts from D and
-changes only `spring.threads.virtual.enabled` to true. They are not combined;
-queue bounds, batch sizes, waiting windows and Pacer settings are unchanged.
-The first candidate meeting the acceptance contract ends this bounded round.
-
-Use the existing immutable `--baseline-ref` comparison for D/B, B/D, D/B on one
-host, with identical current Harness and JFR off. The new comparison considers
-the surge and sustained windows of both fixed cases. A benefit needs three
-valid pairs and an improvement in at least two: success fraction increases by
-at least five percentage points, or at success fractions within one point,
-successful p99 or Server CPU seconds per HTTP response decreases at least 15%.
-CPU per response uses sampled mean CPU divided by the actual window response
-rate; the sampled coverage remains visible. The established two-pair regression
-rules remain: success loses over five points, or p99 grows over 20% while success
-fractions are within five points. A benefit cannot hide another guard window's
-regression. Incomplete or generator-limited guard windows keep overall acceptance
-inconclusive. No clear benefit and no detected regression do not establish gain.
-
-Eligibility also requires mechanism evidence, all path-selected existing proofs,
-the original six Task cases in three pairs, and full Loaded Recovery for the
-final candidate. Limited Task cases retain their own inconclusive result.
-Without an eligible candidate, retain D and record confirmed causes, correlated
-clues and unresolved questions. These thresholds select a finite experiment;
-they do not establish production SLA, physical-device capacity or long soak.
-
-The 03:00 performance schedule retains Task six cases and Direct diagnosis two
-cases with JFR off. The new eight-case RPC mainline `--suite nightly` is a manual
-acceptance target; enable it only after its fixed acceptance conditions pass.
-Historical Direct replay, JFR, candidate comparisons and same-version repetitions remain manual.
-No extra proof lane or PR QPS gate is introduced. Safe artifacts remain seven days.
-
-## Project fixture
-
-The proof uses the explicit `scenario-workers` Project. Custom Group overlays also
-replace the Project list, retaining the original managed Task count. Managed Call
-clients read `GET /api/v1/projects/scenario-workers` once during preparation and
-reuse its Group-to-Task mapping; they do not derive IDs or rely on Group registration
-side effects. Finite creation requests include projectId. Existing workload,
-fault, deadline and outcome assertions are unchanged; no query is added to a
-performance measurement window.
-
-## Assignment ceiling comparison
-
-Use one freshly built Server/Host/Harness artifact set and the existing
-`rpc-any-2000` case: 1000 Workers, 20-second warmup, 120-second measurement and
-the [Result closure budget](#result-closure-budget), which gives ceiling 100 a
-longer closure deadline than ceiling 1000 (the 2026-09-23 runs used 180 seconds
-for both). Compare throughput and outcome evidence, not pass/fail alone. Run ceilings 100/1000, 1000/100, 100/1000
-with JFR off and a fresh output directory, processes and Redis scope for each
-case. This is a same-version configuration experiment, not a baseline-ref code
-comparison or a change to scheduled defaults. The original `any-2000` has only
-100 Workers and cannot alone witness a 1000-Worker batch.
-
-```bash
-python integrations/worker-call-performance/run_worker_call_performance.py \
-  --suite rpc-diagnosis --case rpc-any-2000 --assignment-batch-limit 1000 \
-  --output-root build/assignment-1000
-```
-
-Repeat both ceilings separately with `--diagnostics jfr` for attribution. The
-manual workflow exposes the same ceiling; scheduled runs keep 100. Old fixed-100
-baselines remain usable at 100 and reject unsupported non-default overrides.
-Effective evidence includes the ceiling, Git HEAD, configuration and hashes of
-the actual Server, Host and Harness JARs. A worktree change does not change HEAD,
-so artifact hashes are required to identify the measured implementation.
-
-Compare successful throughput in the measurement window, eventual Results,
-latency percentiles, backlog, Redis client-command costs and complete resource
-sampling. HTTP response rate alone is not successful throughput. A failed or
-incomplete observation remains failed/inconclusive; a larger ceiling is not an
-automatic performance benefit or a 2k/s SLA. Local nonreference hosts retain the
-existing diagnostic-only classification.
+The `baselines/` reports record the retired task, direct, direct-diagnosis,
+rpc-diagnosis and nightly suites (100 or 1,000 Workers, one Group, assignment
+ceiling 100 unless stated). They are version-scoped evidence and are not
+comparable with this lane's cases.

@@ -116,7 +116,7 @@ final class LaneCase {
             if (spec.path() != Path.DIRECT) {
                 summary.put("stage", "drain");
                 long accepted = measured.samples().stream().filter(CallLoad.Sample::accepted).count();
-                int budget = WorkerCallPerformanceMain.drainBudgetSeconds(spec.rate(), accepted, ASSIGNMENT_BATCH_LIMIT);
+                int budget = drainBudgetSeconds(spec.rate(), accepted, ASSIGNMENT_BATCH_LIMIT);
                 summary.put("drainBudgetSeconds", budget);
                 drain(api, tasks, measured, budget);
                 if (measured.samples().stream().anyMatch(s -> s.accepted() && s.observed.equals("not_observed")))
@@ -157,6 +157,17 @@ final class LaneCase {
             Files.writeString(output.resolve("case.json"), Jsons.toJson(summary), StandardOpenOption.CREATE_NEW);
         }
         if (failure != null) throw new IllegalStateException("Lane case failed; inspect safe summary", failure);
+    }
+
+    /**
+     * Result closure budget. Within the single-Task check budget (10 x assignment ceiling per
+     * second) the fixed 180 seconds remain; above it Dispatch settles at most that budget per
+     * second, so closure waits the Item TTL plus accepted Items divided by the budget.
+     */
+    static int drainBudgetSeconds(int offeredRate, long accepted, int assignmentBatchLimit) {
+        long checksPerSecond = 10L * assignmentBatchLimit;
+        if (offeredRate <= checksPerSecond) return 180;
+        return (int) Math.max(180, 120 + Math.ceilDiv(accepted, checksPerSecond));
     }
 
     /** Alternates Groups per planned call; targeted and Direct paths rotate through each Group's Workers. */

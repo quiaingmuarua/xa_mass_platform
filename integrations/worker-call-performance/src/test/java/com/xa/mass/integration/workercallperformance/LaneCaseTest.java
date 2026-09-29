@@ -104,6 +104,13 @@ class LaneCaseTest {
     }
 
     @Test
+    void drainBudgetStaysFixedWithinTheSingleTaskCheckBudgetAndDerivesItAbove() {
+        assertThat(LaneCase.drainBudgetSeconds(2_000, 60_000, 1_000)).isEqualTo(180);
+        assertThat(LaneCase.drainBudgetSeconds(2_000, 224_447, 100)).isEqualTo(345);
+        assertThat(LaneCase.drainBudgetSeconds(2_000, 60_000, 100)).isEqualTo(180);
+    }
+
+    @Test
     void completionThroughputCountsSucceededResultsPerOfferedSecond() {
         var clock = new AtomicLong(1_000_000_000L);
         var batch = CallLoad.schedule(10, 2, 4, "lane", Runnable::run,

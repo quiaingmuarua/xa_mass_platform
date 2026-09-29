@@ -207,7 +207,7 @@ pinning，也不支持将本次退化归给 pinning。以上属于阶段定位�
 ### 候选验收
 
 收益判据、退化判据和资源硬上限沿用
-[性能 Owner](../README.md#configuration-candidate-acceptance)。
+[性能 Owner](../README.md#history)。
 任何用于定量验收的窗口必须没有未发出请求，且发送滞后 p99 不超过 100ms。
 窗口受限不会覆盖其他窗口的原始数据，也不能凭另一个窗口的收益掩盖回归或
 未证实的保护窗口。本轮只保留有明确证据的 HTTP 配置；没有合格候选就保留 D。

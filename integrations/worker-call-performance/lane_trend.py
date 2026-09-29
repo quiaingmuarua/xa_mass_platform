@@ -1,4 +1,4 @@
-"""Performance lane run records, nightly trend comparison and per-case A/B decisions (DESIGN-performance-lane.md, S5).
+"""Performance lane run records, nightly trend comparison and per-case A/B decisions (README.md#trend-and-ab).
 
 Pure functions only: the runner owns processes and the workflow owns the data branch.
 """

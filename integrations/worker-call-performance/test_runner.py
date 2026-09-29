@@ -13,40 +13,7 @@ runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
 
 
-def complete_runs():
-    return [{"pair": pair, "version": version, "case": case, "status": "passed",
-             "generatorLimited": False, "successRate": .9,
-             "successfulCallLatencyMillis": {"p99": 100, "samples": 1000}}
-            for pair in range(3) for version in ("A", "B") for case in runner.CASES]
-
-
-def diagnosis_runs():
-    return [dict(pair=pair, version=version, case=case, status="passed", generatorLimited=False,
-                 windows={name: dict(generatorLimited=False, successRate=.99,
-                     successfulCallLatencyMillis={"p99": 100, "samples": 1000}, serverCpuSecondsPerHttpResponse=.001)
-                     for name in ("surge", "sustained")})
-            for pair in range(3) for version in ("A", "B") for case in runner.DIAGNOSIS_CASES]
-
-
 class RunnerTest(unittest.TestCase):
-    def test_assignment_limit_and_effective_override(self):
-        for value in (1, 100, 101, 333, 1000):
-            self.assertEqual(value, runner.assignment_limit(str(value)))
-            self.assertEqual({"xa.mass.kernel-pacer.assignment-batch-limit": str(value)},
-                             runner.assignment_overrides(runner.ROOT, value))
-        for value in (0, -1, 1001):
-            with self.assertRaises(runner.argparse.ArgumentTypeError):
-                runner.assignment_limit(str(value))
-        with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
-            config = root / "server_boot_jvm/src/main/resources"
-            config.mkdir(parents=True)
-            for name in ("application.yaml", "application-scenario-workers.yaml"):
-                (config / name).write_text("legacy: fixed", encoding="utf-8")
-            self.assertEqual({}, runner.assignment_overrides(root, 100))
-            with self.assertRaisesRegex(RuntimeError, "does not support"):
-                runner.assignment_overrides(root, 1000)
-
     def test_configuration_fingerprints_use_complete_current_or_historical_groups(self):
         names = ("application.yaml", "application-scenario-workers.yaml")
         self.assertEqual({f"server_boot_jvm/src/main/resources/{name}" for name in names},
@@ -123,91 +90,6 @@ class RunnerTest(unittest.TestCase):
                 self.assertIn(":server_boot_jvm:bootJar", launch.call_args.args[0])
                 self.assertIn(":integrations:worker-call-performance:installDist", launch.call_args.args[0])
 
-    def test_rpc_rotates_only_paths_and_retains_the_exact_seven_case_manifest(self):
-        expected = ("direct-step", "rpc-targeted", "rpc-any")
-        for repetition in range(3):
-            cases = runner.repetition_cases(repetition)
-            self.assertEqual("rpc-any-500", cases[0])
-            self.assertCountEqual(runner.RPC_CASES, cases)
-            order = expected[repetition:] + expected[:repetition]
-            self.assertEqual(tuple(f"{p}-1000" for p in order), cases[1:4])
-            self.assertEqual(tuple(f"{p}-2000" for p in order), cases[4:7])
-        self.assertEqual(runner.RPC_CASES + ("mixed-500",), runner.SUITES["nightly"])
-        self.assertEqual(8, len(set(runner.NIGHTLY_CASES)))
-
-    def test_rpc_formal_repetitions_cannot_be_candidate_or_diagnostic_comparisons(self):
-        runner.validate_repetitions("rpc-diagnosis", 3, None, "off", False)
-        runner.validate_repetitions("rpc-diagnosis", 1, None, "jfr", False)
-        for args in (("rpc-diagnosis", 3, None, "jfr", False), ("nightly", 3, None, "off", False),
-                     ("task", 3, None, "off", False), ("rpc-diagnosis", 1, "baseline", "off", False),
-                     ("nightly", 1, None, "jfr", False)):
-            with self.assertRaises(ValueError): runner.validate_repetitions(*args)
-
-    def test_nightly_manifest_rejects_missing_duplicate_or_failed_cases(self):
-        runs = [dict(pair=0, case=case, status="passed") for case in runner.NIGHTLY_CASES]
-        runner.require_manifest(runs, runner.NIGHTLY_CASES, 1)
-        for changed in (runs[:-1], runs + [runs[-1]], [dict(pair=0, case="mixed-500", status="passed")]):
-            with self.assertRaisesRegex(RuntimeError, "Incomplete or duplicate"):
-                runner.require_manifest(changed, runner.NIGHTLY_CASES, 1)
-        failed = runs[:-1] + [dict(runs[-1], status="failed", acceptedResultsAfterDrain={"not_observed": 3})]
-        with self.assertRaisesRegex(RuntimeError, "validation failed: repetition 1: mixed-500"):
-            runner.require_manifest(failed, runner.NIGHTLY_CASES, 1)
-        summary = runner.markdown_summary(dict(suite="nightly", status="failed", referenceHost=True,
-                                               completeSuite=True, runs=failed))
-        self.assertIn("3 accepted Items remain unobserved", summary)
-        self.assertIn("Full suite selected: True", summary)
-
-    def test_jfr_pair_is_explicit_and_cannot_enter_the_formal_three_pair_schedule(self):
-        self.assertEqual(("comparison", runner.ORDER), runner.execution_mode("immutable", "off", False))
-        self.assertEqual(("diagnostic_pair", (("A", "B"),)), runner.execution_mode("immutable", "jfr", True))
-        self.assertEqual(("measurement", (("B",),)), runner.execution_mode(None, "off", False))
-        for args in (("immutable", "jfr", False), (None, "jfr", True), ("immutable", "off", True)):
-            with self.assertRaises(ValueError):
-                runner.execution_mode(*args)
-
-    def test_diagnosis_needs_three_valid_pairs_and_two_repeated_benefits(self):
-        runs = diagnosis_runs()
-        self.assertEqual("no_clear_benefit", runner.diagnosis_comparison(runs)["status"])
-        candidates = [r for r in runs if r["version"] == "B" and r["case"] == "direct-step-2000"]
-        candidates[0]["windows"]["sustained"]["successfulCallLatencyMillis"]["p99"] = 85
-        self.assertEqual("no_clear_benefit", runner.diagnosis_comparison(runs)["status"])
-        candidates[1]["windows"]["sustained"]["serverCpuSecondsPerHttpResponse"] = .00085
-        self.assertEqual("eligible_candidate", runner.diagnosis_comparison(runs)["status"])
-        candidates[2]["windows"]["sustained"]["generatorLimited"] = True
-        self.assertEqual("inconclusive", runner.diagnosis_comparison(runs)["status"])
-
-    def test_a_sustained_benefit_cannot_hide_surge_regression_or_a_limited_guard(self):
-        runs = diagnosis_runs()
-        for row in runs:
-            row["generatorLimited"] = True  # Whole-case flag never overwrites a fixed window's evidence.
-            if row["version"] == "B":
-                row["windows"]["sustained"]["successfulCallLatencyMillis"]["p99"] = 70
-        self.assertEqual("eligible_candidate", runner.diagnosis_comparison(runs)["status"])
-        for row in runs:
-            if row["version"] == "A":
-                row["windows"]["surge"]["generatorLimited"] = True
-        value = runner.diagnosis_comparison(runs)
-        self.assertEqual("inconclusive", value["status"])
-        self.assertTrue(any(w["status"] == "improved" for w in value["windows"]))
-        for row in runs:
-            row["windows"]["surge"]["generatorLimited"] = False
-            if row["version"] == "B":
-                row["windows"]["surge"]["successRate"] = .93
-        self.assertEqual("regressed", runner.diagnosis_comparison(runs)["status"])
-
-    def test_diagnosis_keeps_success_change_and_latency_denominators_separate(self):
-        runs = diagnosis_runs()
-        for row in runs:
-            for window in row["windows"].values():
-                window["successRate"] = .90 if row["version"] == "A" else .95
-                window["successfulCallLatencyMillis"]["p99"] = 100 if row["version"] == "A" else 120
-        self.assertEqual("eligible_candidate", runner.diagnosis_comparison(runs)["status"])
-        for row in runs:
-            if row["version"] == "B":
-                for window in row["windows"].values():
-                    window["successfulCallLatencyMillis"]["p99"] = 121
-        self.assertEqual("regressed", runner.diagnosis_comparison(runs)["status"])
-
     def test_diagnostic_recordings_are_private_bounded_and_off_by_default(self):
         private = Path("build/fixture/private")
         self.assertEqual([], runner.jfr_options(private, "server", "off"))
@@ -218,44 +100,11 @@ class RunnerTest(unittest.TestCase):
         self.assertNotIn("evidence", option)
         with tempfile.TemporaryDirectory() as directory:
             evidence = Path(directory) / "evidence"
-            value = runner.export_diagnostics(Path(directory) / "private", evidence, 1000, 120)
+            value = runner.export_diagnostics(Path(directory) / "private", evidence, 1000, 30, "TASK")
             self.assertFalse(value["complete"])
+            self.assertEqual({"server", "host"}, set(value["roles"]))
+            self.assertTrue((evidence / "host-diagnostics.json").is_file())
             self.assertFalse(json.loads((evidence / "server-diagnostics.json").read_text())["complete"])
-
-    def test_compare_requires_two_pairs_and_keeps_inconclusive_distinct(self):
-        runs = complete_runs()
-        self.assertEqual("no_detected_regression", runner.comparison(runs)["status"])
-        changes = [r for r in runs if r["version"] == "B" and r["case"] == "any-100"]
-        changes[0]["successRate"] = .8
-        self.assertEqual("no_detected_regression", runner.comparison(runs)["status"])
-        changes[1]["successRate"] = .8
-        self.assertEqual("regressed", runner.comparison(runs)["status"])
-        changes[1]["generatorLimited"] = True
-        self.assertEqual("inconclusive", runner.comparison(runs)["status"])
-
-    def test_latency_comparison_does_not_penalize_a_large_success_improvement(self):
-        runs = complete_runs()
-        for row in runs:
-            if row["version"] == "B":
-                row["successfulCallLatencyMillis"]["p99"] = 121
-        self.assertEqual("regressed", runner.comparison(runs)["status"])
-        for row in runs:
-            if row["version"] == "B":
-                row["successRate"] = .99
-        self.assertEqual("no_detected_regression", runner.comparison(runs)["status"])
-        self.assertEqual("inconclusive", runner.comparison([])["status"])
-
-    def test_missing_success_latencies_are_inconclusive_unless_completion_clearly_regressed(self):
-        runs = complete_runs()
-        for row in runs:
-            row["successRate"] = 0
-            row["successfulCallLatencyMillis"] = {"samples": 0, "p99": 0}
-        self.assertEqual("inconclusive", runner.comparison(runs)["status"])
-        for row in runs:
-            if row["version"] == "A":
-                row["successRate"] = .9
-                row["successfulCallLatencyMillis"] = {"samples": 900, "p99": 100}
-        self.assertEqual("regressed", runner.comparison(runs)["status"])
 
     def test_proc_parsing_handles_spaces_in_process_name(self):
         stat = "5 (java worker thread) " + " ".join(["S"] + ["0"] * 10 + ["250", "150"] + ["0"] * 10)
@@ -334,65 +183,6 @@ class RunnerTest(unittest.TestCase):
                 if not exited:
                     self.assertIn("PermissionError", sampler.failure)
 
-    def test_resource_summary_excludes_startup_and_keeps_redis_commands_aggregate(self):
-        rows = []
-        for timestamp, cpu, memory in ((0, 0, 99999), (1000, 2, 100), (3000, 3, 150), (10000, 10, 99999)):
-            for role in ("server", "host", "harness"):
-                rows.append(dict(role=role, epochMillis=timestamp, cpuSeconds=cpu, rssBytes=memory,
-                                 nativeThreads=20, openFileDescriptors=40))
-            rows.append(dict(role="redis", epochMillis=timestamp, cpuUserSeconds=cpu, cpuSystemSeconds=0,
-                             usedMemory=memory, usedMemoryRss=memory,
-                             commandStats={"cmdstat_hset": {"calls": timestamp}}))
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "samples.jsonl"
-            path.write_text("\n".join(json.dumps(row) for row in rows))
-            result = runner.resource_summary(path, 1000, 3)
-            self.assertEqual(.5, result["server"]["meanCpuCores"])
-            self.assertEqual(150, result["server"]["peakRssBytes"])
-            self.assertEqual(2000, result["redis"]["aggregateCommandCallDeltas"]["cmdstat_hset"])
-            with self.assertRaises(RuntimeError):
-                runner.resource_summary(path, 20000)
-
-    def test_rpc_summary_records_derived_drain_budget_and_unassignable_targets(self):
-        window = dict(sent=10, planned=10, httpResponsesDuringWindowPerSecond=1.0, successRate=1.0,
-                      successfulCohortPerSecond=1.0, acceptedSuccessRateAfterDrain=.5,
-                      successfulCallLatencyMillis={"p99": 1}, generatorLimited=True)
-        row = dict(window, pair=0, version="B", case="rpc-targeted-2000", status="failed",
-                   drainBudgetSeconds=345, followupObservationMaxMillis=344_900,
-                   targetsWithoutSuccessAfter60Seconds=2, acceptedResultsAfterDrain={"not_observed": 7})
-        value = runner.markdown_summary(dict(suite="rpc-diagnosis", status="failed", referenceHost=True,
-                                             completeSuite=False, assignmentBatchLimit=100, runs=[row]))
-        self.assertIn("| 1 | rpc-targeted-2000 | 345 | 344.9 | 2 |", value)
-        self.assertIn("7 accepted Items remain unobserved after the 345-second drain budget", value)
-        self.assertIn("not a gate", value)
-
-    def test_failed_bootstrap_summary_does_not_invent_measurements(self):
-        value = runner.markdown_summary(dict(status="failed", referenceHost=True, completeSuite=True,
-                runs=[dict(pair=0, version="A", case="any-100", status="failed")]))
-        self.assertIn("failed", value)
-        self.assertNotIn("100.00%", value)
-
-    def test_direct_suite_keeps_task_nightly_cases_and_does_not_invent_drain(self):
-        self.assertEqual(6, len(runner.SUITES["task"]))
-        self.assertEqual(("direct-100", "direct-500", "direct-1000", "direct-2000", "direct-5000"), runner.SUITES["direct"])
-        row = dict(pair=0, version="B", case="direct-100", offeredRate=100,
-                   sent=3000, planned=3000, successfulCohortPerSecond=90, successRate=.9,
-                   withinOneSecondRateOfSent=.8, successfulCallLatencyMillis={"p99": 1200}, generatorLimited=False)
-        value = runner.markdown_summary(dict(suite="direct", status="passed", referenceHost=True, completeSuite=True, runs=[row]))
-        self.assertIn("90.00%", value)
-        self.assertIn("80.00%", value)
-        self.assertIn("no results:load", value)
-        self.assertNotIn("Result success after drain", value)
-
-    def test_direct_comparison_only_compares_the_named_direct_fixture(self):
-        runs = complete_runs()
-        for row in runs:
-            row["case"] = "direct-100"
-        value = runner.comparison(runs, ("direct-100",))
-        self.assertEqual("no_detected_regression", value["status"])
-        self.assertEqual(["direct-100"], [row["case"] for row in value["cases"]])
-
-
 class LaneWorldConfigTest(unittest.TestCase):
     def test_lane_raises_resource_knobs_and_keeps_adapter_invariants(self):
         flags = runner.lane_server_flags()
@@ -400,6 +190,7 @@ class LaneWorldConfigTest(unittest.TestCase):
         self.assertEqual("1000", flags["xa.mass.kernel-pacer.assignment-batch-limit"])
         self.assertEqual("1000", flags["xa.mass.task-rpc.max-probe-items-per-round"])
         self.assertEqual("10000", flags[adapter + "report-queue-capacity"])
+        self.assertEqual("scenario-workers", flags["spring.profiles.active"])
         # The Server delivery contract caps an Adapter consume at 100; the lane must not raise it.
         self.assertNotIn(adapter + "command-consume-limit", flags)
         self.assertEqual(100, runner.LANE_MECHANISM_CONSTANTS["adapterCommandConsumeLimit"])
@@ -415,7 +206,7 @@ class LaneWorldConfigTest(unittest.TestCase):
         self.assertEqual("perf-lane", flags["xa.mass.project-assembly.projects[0].project-id"])
         self.assertEqual(list(runner.LANE_GROUPS), [flags[f"xa.mass.project-assembly.projects[0].worker-group-ids[{i}]"]
                                                     for i in range(len(runner.LANE_GROUPS))])
-        self.assertNotIn(runner.GROUP, json.dumps({k: v for k, v in flags.items() if "assembly" in k}))
+        self.assertNotIn("scenario-string-utils-workers", json.dumps({k: v for k, v in flags.items() if "assembly" in k}))
         self.assertEqual(set(runner.LANE_GROUPS), set(json.loads(flags["xa.mass.worker-assembly.group-config-json"])))
         for group in runner.LANE_GROUPS:
             self.assertEqual("any", flags[f"xa.mass.worker-matching.groups[{group}].pools[0]"])
@@ -436,16 +227,12 @@ class LaneWorldConfigTest(unittest.TestCase):
         self.assertEqual({"server", "host"}, set(peaks))
         self.assertEqual(dict(samples=2, peakNativeThreads=60, peakFileDescriptors=100, peakRssBytes=30), peaks["server"])
 
-    def test_lane_rejects_options_that_belong_to_legacy_suites(self):
-        for extra in (["--case", "any-100"], ["--baseline-ref", "HEAD"], ["--assignment-batch-limit", "500"],
-                      ["--diagnostics", "jfr"], ["--lane-rates", "700"], ["--lane-rates", "500,500"]):
-            with patch.object(runner.sys, "argv", ["runner", "--suite", "lane", *extra]), \
-                    patch("sys.stderr"), self.assertRaises(SystemExit):
-                runner.main()
-
-    def test_lane_only_options_are_rejected_for_legacy_suites(self):
-        for extra in (["--lane-rates", "500"], ["--lane-attribution", "off"]):
-            with patch.object(runner.sys, "argv", ["runner", "--suite", "task", *extra]),                     patch("sys.stderr"), self.assertRaises(SystemExit):
+    def test_invalid_lane_options_are_rejected_before_any_process_starts(self):
+        for extra in (["--suite", "task"], ["--case", "any-100"], ["--assignment-batch-limit", "500"],
+                      ["--lane-rates", "700"], ["--lane-rates", "500,500"], ["--lane-modes", "open,open"],
+                      ["--baseline-ref", "HEAD", "--lane-case", "task-any-500", "--repetitions", "3"],
+                      ["--baseline-ref", "HEAD", "--lane-case", "task-any-500", "--diagnostics", "jfr"]):
+            with patch.object(runner.sys, "argv", ["runner", *extra]), patch("sys.stderr"), self.assertRaises(SystemExit):
                 runner.main()
 
     def test_lane_plan_runs_every_path_per_rate_and_rotates_path_order(self):
@@ -536,12 +323,8 @@ class LaneWorldConfigTest(unittest.TestCase):
         self.assertEqual("task-any-1000", runner.lane_warmup_case((500,), ("saturation",)))
         for extra in (["--baseline-ref", "HEAD"], ["--lane-case", "task-any-500"],
                       ["--baseline-ref", "HEAD", "--lane-case", "task-any-700"]):
-            with patch.object(runner.sys, "argv", ["runner", "--suite", "lane", *extra]), \
-                    patch("sys.stderr"), self.assertRaises(SystemExit):
+            with patch.object(runner.sys, "argv", ["runner", *extra]), patch("sys.stderr"), self.assertRaises(SystemExit):
                 runner.main()
-        with patch.object(runner.sys, "argv", ["runner", "--suite", "task", "--lane-case", "task-any-500"]), \
-                patch("sys.stderr"), self.assertRaises(SystemExit):
-            runner.main()
 
     def test_merge_with_meta_records_the_run_and_reports_trend(self):
         case = dict(repetition=1, mode="open", rate=500, path="task-any", case="task-any-500", status="passed",
