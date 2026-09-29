@@ -138,7 +138,7 @@ on the same scope and checks retained filtering. Newer unavailability and corrup
 filter fail-open still exercise the original Score path. These claims do not imply
 strict cross-queue ordering or atomic timestamp/Score commits.
 
-Properties/Candidate invalidation is a Redis Owner claim: one Redis-timed batch
+Properties/Candidate invalidation is a Redis Owner claim: one Owner-clock batch
 advances past HOT generation and clears candidate mark; past non-cold RECOVERY
 retains mark. Exact execution acquisition rejects old fences, and execution-first
 ordering preserves future result fences.
@@ -564,9 +564,9 @@ and Dynamic Matching retain their existing workload and time limits.
 
 Redis Owner checks that current-slot evidence can correct HOT/RECOVERY polarity
 while preserving time and mark; execution acquisition still requires strictly past time.
-Redis-timed cases cover evidence and execution ordering, concurrent CAS,
+Owner-clock cases cover evidence and execution ordering, concurrent CAS,
 100-Worker command cost, PAUSE and past-slot freshness rejection. Accepted past
-polarity changes advance generation, clear mark and cap the target at Redis now;
+polarity changes advance generation, clear mark and cap the target at the Owner clock;
 same-slot evidence advances one slot so the old candidate fence cannot recur.
 Ordinary same-polarity Polling leaves generation unchanged. Below-floor activation
 requires post-floor evidence and is the only same-polarity refresh.

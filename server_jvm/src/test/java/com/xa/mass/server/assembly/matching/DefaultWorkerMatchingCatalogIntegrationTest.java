@@ -172,7 +172,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         for(String task:List.of("a","b"))declareTask(task,"g",BucketPoolFixture.ID,List.of(target));
         commandTypes.clear();var prepared=declarations("a","b");assertThat(commandTypes).isEmpty();
         commandTypes.clear();assertThat(refillDeclarations(prepared)).isEqualTo(100);
-        assertThat(commandTypes).containsExactly("EVAL","EVAL","EVAL_RO");
+        assertThat(commandTypes).containsExactly("ZRANGEBYSCORE","EVAL","EVAL_RO");
         commandTypes.clear();assertThat(refillDeclarations(prepared)).isZero();
         var selector=Map.of("test.bucket",List.of("red","blue"));
         var first=takeItems(catalog,prepared.get("a").workerGroupId(),function(prepared.get("a")),selector,40);
@@ -519,7 +519,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         var prepared=declarations("task"); commandTypes.clear();refillStages.clear();
         assertThat(refillDeclarations(prepared)).isEqualTo(100);
         // Observation and first acquisition both precede the supplied-ID projection.
-        assertThat(commandTypes).containsExactly("EVAL","EVAL","HMGET");
+        assertThat(commandTypes).containsExactly("ZRANGEBYSCORE","EVAL","HMGET");
         assertThat(refillStages).containsExactly("observe","candidateize","qualification");
         commandTypes.clear();
         assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),function(prepared.get("task")),List.of("CN"),100)).hasSize(100);
@@ -536,7 +536,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         declareTask("task","g","worker.country",targets);
         var prepared=declarations("task"); commandTypes.clear();
         assertThat(refillDeclarations(prepared)).isEqualTo(100);
-        assertThat(commandTypes).containsExactly("EVAL","EVAL","HMGET");
+        assertThat(commandTypes).containsExactly("ZRANGEBYSCORE","EVAL","HMGET");
         commandTypes.clear();
         assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),function(prepared.get("task")),Map.of(),100)).hasSize(100);
         assertThat(commandTypes).isEmpty();
@@ -831,7 +831,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         assertThat(redis.get(indexKey())).isEqualTo("obsolete-corrupt-index");
         hot("g",List.of("w"));declare("country","worker.country");
         commandTypes.clear();assertThat(refill("country")).isEqualTo(1);
-        assertThat(commandTypes).containsExactly("EVAL","EVAL","HMGET");
+        assertThat(commandTypes).containsExactly("ZRANGEBYSCORE","EVAL","HMGET");
         assertThat(takeItems(catalog,"g","worker.country",List.of("CN"),1)).extracting(WorkerCandidate::workerId).containsExactly("w");
     }
     @Test void corruptWorkerFactsFailCountryBeforeAnyAdmission() {

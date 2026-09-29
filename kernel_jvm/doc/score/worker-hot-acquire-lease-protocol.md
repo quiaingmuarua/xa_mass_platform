@@ -34,7 +34,7 @@ be old; it is a generation coordinate, not an admission timestamp. Pacer request
 `min(instance assignment ceiling, positive Matching deficit, remaining round budget)`
 raw candidates per Group, charging requested rows against 1000 per round. The
 ceiling defaults to 100 and permits 1..1000; it creates no refill demand. Separate
-100-per-Group/1000-per-round maintenance recycles old mark=1 into HOT 0/RedisNow.
+100-per-Group/1000-per-round maintenance recycles old mark=1 into HOT 0 at the Owner clock's current slot.
 Supply and recycling retain independent bounded Group rotation hints.
 Recycling advances generation to invalidate
 old fences and prevent the same old head from immediately recycling again.
@@ -63,7 +63,7 @@ no global discovery or unlimited fairness guarantee is added.
 
 ## Execution Before Claim
 
-At Redis execution time both operations require strictly past HOT, either mark.
+Against the Owner clock both operations require strictly past HOT, either mark.
 Current/future HOT and RECOVERY are ineligible. The requested deadline itself must
 be strictly future. Acquisition changes time and writes mark=0 in one atomic step.
 It cannot take over an already active execution lease or PAUSE.
@@ -72,7 +72,7 @@ Pool functions return their nonzero candidate fence in WorkerCandidate. Pacer
 returns it unchanged to acquireObservedHotScoreLeases. Identity/Phone functions
 return expectedScore=0 hints, consumed by Pacer and sent as IDs to the separate
 acquireCurrentHotScoreLeases operation. Kernel has no zero wildcard. Both operations
-sample TIME once per bounded Lua, without pre-reading or conflict retry.
+sample the Owner clock once per call, without pre-reading or conflict retry.
 A strict candidate failure never falls back to current acquisition or another take.
 
 Shared Pool copies and Direct assignment compete for one execution slot. Only
@@ -88,7 +88,7 @@ restores scheduling eligibility without compensation.
 
 Properties writes remain separate commits from Score invalidation. After APPLIED
 Worker or Platform facts, Server best-effort calls advancePastScoreTimesToNow once
-per Group. Past HOT atomically becomes mark=0 at Redis current time. Past non-cold
+per Group. Past HOT atomically becomes mark=0 at the Owner clock's current slot. Past non-cold
 RECOVERY advances time while retaining its mark; polarity is preserved in both
 cases. Cold RECOVERY, current, future and PAUSE coordinates are NOOP.
 The cold exception keeps initial Properties from invalidating a pending CONNECTED
@@ -107,7 +107,7 @@ govern Pool admission. Direct assignment can independently acquire a due Worker.
 Network evidence corrects current/future polarity while retaining time and mark,
 so execution/recheck coordinates and PAUSE survive reconnect. For past coordinates,
 evidence older than the stored slot is STALE. An actual polarity change clears mark
-and writes max(storedSlot + 1, min(evidenceSlot, redisNowSlot)). Same-slot evidence
+and writes max(storedSlot + 1, min(evidenceSlot, nowSlot)). Same-slot evidence
 remains admissible, but requalification can no longer reproduce the earlier Pool
 fence. Normal Refill can replenish consumed stale stock without waiting for aged
 candidate recycling; no Pool entry is restored and strict failures still do not fall
@@ -115,7 +115,7 @@ back to identity acquisition.
 
 Same-polarity evidence is unchanged, including repeated valid Polling. The sole
 activation exception is a past HOT target below startup floor: both evidence and
-Redis time must reach floor before the generation can refresh, even if polarity
+the Owner clock must reach floor before the generation can refresh, even if polarity
 already is HOT. Failure to reach floor returns STALE without writing. Network
 evidence remains best-effort rather than a reliable ordered log; execution evidence
 never infers connection polarity.
@@ -141,7 +141,7 @@ pause is unchanged. Resume reads once and exact-releases the original paused
 coordinate; deletion or change produces conflict without retry.
 
 Serviceability retains HOT-first, then Recovery only after an empty raw HOT result.
-Successful exact deferral writes RECOVERY mark=0 at Redis now + delay before Probe
+Successful exact deferral writes RECOVERY mark=0 at the Owner clock + delay before Probe
 offer. The 15-second delay is next eligibility, not guaranteed execution time.
 Offer failure never rolls it back. Candidate recycling and Probe checks may compete
 through exact CAS; no priority coordination is added. Excluded Endpoints retain the

@@ -1061,7 +1061,7 @@ Matching owns the persistent facts, not Server. Replacement removes omitted
 keys without retaining registration fields inside Properties; independent
 identity, Binding and Worker records remain intact. Subsequent refill rounds read
 the new facts. Invalidation calls advancePastScoreTimesToNow. Past HOT atomically
-advances to Redis execution time with mark=0; past non-cold RECOVERY advances while
+advances to the Owner clock's current slot with mark=0; past non-cold RECOVERY advances while
 retaining mark. Both preserve polarity.
 Cold RECOVERY, current/future holds and missing members are not changed. The cold
 exception preserves pending initial network activation. Cached old fences fail

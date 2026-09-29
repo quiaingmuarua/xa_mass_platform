@@ -33,6 +33,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.LongSupplier;
 import java.util.TreeMap;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
@@ -58,8 +59,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             if redis.call("EXISTS", key) == 1 then
               return 0
             end
-            local now = redis.call("TIME")
-            local createdAt = now[1] * 1000 + math.floor(now[2] / 1000)
+            local createdAt = ARGV[9]
             redis.call(
               "HSET",
               key,
@@ -144,6 +144,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     private final TaskItemScoreBandCore itemScoreBand;
     private final ObjectMapper mapper = JsonMapper.builder().build();
     private final RedisKeyspace keyspace;
+    private final LongSupplier currentTimeMillis;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisTaskRuntime(
@@ -151,6 +152,16 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             TaskScoreBandCore scoreBand,
             TaskItemScoreBandCore itemScoreBand,
             RedisKeyspace keyspace
+    ) {
+        this(redisClient, scoreBand, itemScoreBand, keyspace, System::currentTimeMillis);
+    }
+
+    public RedisTaskRuntime(
+            RedisClient redisClient,
+            TaskScoreBandCore scoreBand,
+            TaskItemScoreBandCore itemScoreBand,
+            RedisKeyspace keyspace,
+            LongSupplier currentTimeMillis
     ) {
         if (redisClient == null) {
             throw new IllegalArgumentException("redisClient must be present");
@@ -167,6 +178,10 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         this.keyspace = java.util.Objects.requireNonNull(
                 keyspace,
                 "keyspace"
+        );
+        this.currentTimeMillis = java.util.Objects.requireNonNull(
+                currentTimeMillis,
+                "currentTimeMillis"
         );
     }
 
@@ -332,7 +347,8 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 fields.get("projectId"),
                 taskId,
                 fields.get("metadataJson"),
-                fields.getOrDefault("name", "")
+                fields.getOrDefault("name", ""),
+                Long.toString(currentTimeMillis.getAsLong())
         );
         return result != null && result == 1L;
     }
@@ -373,7 +389,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                     TaskItemAppendStatus.NOT_FOUND
             );
         }
-        long nowMillis = redisTimeMillis();
+        long nowMillis = currentTimeMillis.getAsLong();
         var records = new LinkedHashMap<String, String>();
         var dueMillis = new LinkedHashMap<String, Long>();
         var results = new LinkedHashMap<String, TaskItemAppendResult>();
@@ -829,12 +845,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 results.get(messageId)
         ));
         return ordered;
-    }
-
-    private long redisTimeMillis() {
-        List<String> parts = commands().time();
-        return Long.parseLong(parts.get(0)) * 1_000
-                + Long.parseLong(parts.get(1)) / 1_000;
     }
 
     private RedisCommands<String, String> commands() {

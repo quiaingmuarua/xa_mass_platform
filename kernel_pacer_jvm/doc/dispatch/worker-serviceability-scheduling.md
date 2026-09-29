@@ -51,7 +51,7 @@ current/future   not acquirable; execution/recheck hold or PAUSE
 ```
 
 Registration uses the fixed negative cold coordinate. Valid CONNECTED can activate
-a past coordinate below floor only when evidence and Redis time reach floor. This
+a past coordinate below floor only when evidence and the Owner clock reach floor. This
 also reactivates historical HOT after restart. Normal same-polarity evidence does
 not refresh time or mark. A past polarity change advances generation and clears mark;
 current/future coordinates retain time and mark. The precise rule is below.
@@ -159,15 +159,15 @@ outside that range. There is no attempt count, attempt limit or exhaustion.
 
 | Observed state | Exact transition before offer | Request |
 | --- | --- | --- |
-| eligible HOT (HOT-probing presets) | RECOVERY(next time=Redis now+delay) | Probe |
-| due RECOVERY | RECOVERY(next time=Redis now+delay) | Probe |
+| eligible HOT (HOT-probing presets) | RECOVERY(next time=Owner clock+delay) | Probe |
+| due RECOVERY | RECOVERY(next time=Owner clock+delay) | Probe |
 
 The Producer interval remains 1 second. recheckDelayMillis defaults to 15 seconds
 in every preset except Runtime Boundary; hotProbeStaleAfterMillis independently
 remains 60 seconds for the HOT cutoff and is unused in RECOVERY-only mode.
 The Runtime Boundary preset retains separate 10ms values for both checks.
-Pacer supplies the fixed delay. Score Owner encodes floor((Redis now+delay)/100)
-inside the exact batch Lua and clears mark. Only storedSlot < redisNowSlot
+Pacer supplies the fixed delay. Score Owner encodes floor((now+delay)/100) from
+one clock sample for the exact batch Lua and clears mark. Only storedSlot < nowSlot
 is due, so rounding down cannot permit an early check.
 
 A connected Worker whose deferred recheck is still in the future returns to HOT
@@ -179,7 +179,7 @@ already accept, not an extra hold.
 **15 seconds is eligibility delay, not a promised Probe time or periodic schedule.**
 Main's Group input, Producer scheduling, HOT-first ordering and the 100-successful-
 hold budget determine actual progress. A delayed round starts the next delay
-from its Redis execution time. An eligible Recovery member is not cold-parked
+from its own clock sample. An eligible Recovery member is not cold-parked
 because of its age or how often it has been checked.
 
 The policy reads `observeHotCandidatesBefore` when HOT probing is enabled,
@@ -208,9 +208,9 @@ An empty read is retried on the next normal Producer round. The Task score batch
 is never mutated or held by Serviceability.
 
 Removing the former Score-state point read saves one ZMSCORE per non-empty
-candidate Group. HOT now reads two mark ranges; RECOVERY retains
-one TIME followed by two mark ranges. Owner merges and truncates the raw rows. Deferral remains one EVAL, with one
-internal TIME and one common target time base. Serviceability range reads keep
+candidate Group. HOT and RECOVERY each read two mark ranges. Owner merges and
+truncates the raw rows. Deferral remains one EVAL, with one Owner-clock sample and
+one common target time base. Serviceability range reads keep
 their existing exception for fractional Scores; Refill instead omits corrupt
 rows within its raw-row budget. Neither path fetches replacement rows.
 
@@ -336,9 +336,9 @@ DISCONNECTED / delivery expired / Probe miss -> RECOVERY, minimum=0
 
 Current/future stored coordinates accept valid evidence and preserve time and mark.
 Past coordinates accept only evidence from the same or a later slot. A past polarity
-change clears mark and advances to max(storedSlot + 1, min(evidenceSlot, redisNowSlot)).
+change clears mark and advances to max(storedSlot + 1, min(evidenceSlot, nowSlot)).
 Normal same-polarity evidence is NOOP. A past HOT target below floor is the activation
-exception: both evidence and Redis time must reach floor, otherwise the write is STALE.
+exception: both evidence and the Owner clock must reach floor, otherwise the write is STALE.
 Activation also refreshes a historical same-polarity HOT generation after restart.
 A future recheck restored to HOT must still become strictly due before acquisition.
 
@@ -358,7 +358,7 @@ no replay, global offline guarantee or extra queue is added.
 
 Serviceability reads both high-mark time ranges, at most limit raw rows each,
 merges by logical time and truncates to limit before conversion. HOT uses two
-range commands; RECOVERY retains its external TIME plus two ranges. Corrupt
+range commands, and so does RECOVERY. Corrupt
 fractional rows keep the existing exception behavior and consume raw budget.
 Candidate recycling and Probe deferral compete with exact CAS; no priority
 coordination is added. Refill alone still produces no network evidence.

@@ -46,7 +46,7 @@ TaskInitializationPolicy.initialize(initial taskId -> opaque score)
   -> one promoteObservedInitialTasks(ready exact scores)
 ```
 
-Batch promotion uses one Redis TIME-derived target and resets every successful
+Batch promotion uses one Owner-clock target and resets every successful
 Task to the same ordinary RUNNING coordinate with suffix zero. Its Lua receives
 the target and INITIAL range as arguments; it only performs range checks and
 exact CAS. Each Task transition is independently `TRANSITIONED`, `STALE`, or

@@ -34,9 +34,10 @@ creation-time snapshot. Re-registration compares the full expected descriptor;
 normal lookup does not recompute current defaults.
 
 Descriptor creation is create-only in one Lua. The same Lua preflights descriptor
-HASH and project ZSET types, reads Redis TIME and writes the descriptor plus
+HASH and project ZSET types and writes the descriptor plus
 `xa_mass:<scope>:task:project:<projectId>` membership (`taskId -> creation millis`)
-with NX. Existing creation times never refresh. The directory retains closed Tasks.
+with NX; the creation millis come from the Owner clock as a script argument.
+Existing creation times never refresh. The directory retains closed Tasks.
 `listProjectTasks(projectId,limit)` returns newest first with 1..1000 rows and a
 one-member truncation lookahead. getProjectTask(projectId,taskId) uses one ZSCORE
 for point membership and the same first-created timestamp, without list scanning. Missing projections remain independently missing;

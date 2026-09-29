@@ -67,7 +67,7 @@ exact compare-delete; it is not FIFO or stable enumeration. A concurrent
 replacement is preserved, but consumed commands have no pending/ack state.
 Expired or corrupt mailbox values are removed without delivery.
 
-Authoritative append reads Redis TIME once and validates and encodes the complete
+Authoritative append samples the Owner clock once and validates and encodes the complete
 input before writing. It then writes at most 100 Workers per same-key Lua call,
 using HSET's field-creation result to return APPENDED or REPLACED in caller
 iteration order. Occupied fields are replaced within that call; non-overwriting

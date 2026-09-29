@@ -302,7 +302,7 @@ Policy documents own workflow, capacity and lifecycle.
   advances old candidate time. Preserve raw-row/corrupt-head budgets and Group
   rotation. Pool TTL governs take only; failures do not compensate Score writes.
 - Serviceability reads current HOT/RECOVERY heads without cross-round cursors or
-  cooldowns. Score Owner uses Redis time and exact CAS to schedule the next
+  cooldowns. Score Owner uses its process clock and exact CAS to schedule the next
   recheck before Probe offer. Network evidence is consumed in every preset.
 - The network Result Policy owns bounded Binding/source checks and Group grouping
   before the injected timestamp-filter function. Kernel serviceability events

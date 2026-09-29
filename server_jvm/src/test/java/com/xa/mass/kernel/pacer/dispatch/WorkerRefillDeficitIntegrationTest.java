@@ -53,8 +53,7 @@ class WorkerRefillDeficitIntegrationTest {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
-                var time = redis.time();
-                long sampled = Long.parseLong(time.get(0)) * 1000 + Long.parseLong(time.get(1)) / 1000;
+                long sampled = System.currentTimeMillis();
                 var facts = new LinkedHashMap<String, Map<String, String>>();
                 for (int i = 0; i < 12; i++) {
                     String id = "w%02d".formatted(i);
@@ -71,7 +70,7 @@ class WorkerRefillDeficitIntegrationTest {
                 commands.clear();
                 assertThat(pacer.refill(List.of(group), List.of(countryTask, messagingTask))).isZero();
                 // Only the aged and ordinary heads are read: no retained qualification or Score write.
-                assertThat(commands.stream().filter("EVAL"::equals).count()).isEqualTo(2);
+                assertThat(commands.stream().filter("ZRANGEBYSCORE"::equals).count()).isEqualTo(2);
                 assertThat(readScores(redis, scope.keyspace(), group, List.copyOf(facts.keySet()))).isEqualTo(before);
                 assertThat(matching.take(group, Map.of("messaging", new WorkerQuery("worker.messaging.available",
                         Map.of("country", List.of("US")))))).isEmpty();
@@ -119,8 +118,7 @@ class WorkerRefillDeficitIntegrationTest {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
-                var time = redis.time();
-                long sampled = Long.parseLong(time.get(0)) * 1000 + Long.parseLong(time.get(1)) / 1000;
+                long sampled = System.currentTimeMillis();
                 redis.zadd(scope.keyspace().base() + ":worker:score:" + group, dueOrdinaryScore(sampled), "w");
                 matchingComposition.properties().upsertWorkerFactsBatch(group, Map.of("w", Map.of("phone", "number", "country", "CN", "messaging.enabled", "true")));
                 var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, 100, () -> sampled);
@@ -174,8 +172,7 @@ class WorkerRefillDeficitIntegrationTest {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
-                var time = redis.time();
-                long sampled = Long.parseLong(time.get(0)) * 1000 + Long.parseLong(time.get(1)) / 1000;
+                long sampled = System.currentTimeMillis();
                 redis.zadd(scope.keyspace().base() + ":worker:score:" + group, dueOrdinaryScore(sampled), "w");
                 matchingComposition.properties().upsertWorkerFactsBatch(group, Map.of("w", Map.of("country", "US", "messaging.enabled", "true")));
                 var clock = new java.util.concurrent.atomic.AtomicLong(sampled);
@@ -224,8 +221,7 @@ class WorkerRefillDeficitIntegrationTest {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
-                var parts = redis.time();
-                long sampled = Long.parseLong(parts.get(0)) * 1000 + Long.parseLong(parts.get(1)) / 1000;
+                long sampled = System.currentTimeMillis();
                 long original = dueOrdinaryScore(sampled);
                 redis.zadd(scope.keyspace().base() + ":worker:score:" + group, original, "w");
                 // A fixed round clock excludes aged recycling from both production Refill calls.
@@ -299,8 +295,7 @@ class WorkerRefillDeficitIntegrationTest {
             var matching = matchingComposition.catalog();
             var redis=connection.sync();
             try {
-                var time=redis.time();
-                long now=Long.parseLong(time.get(0))*1000+Long.parseLong(time.get(1))/1000;
+                long now = System.currentTimeMillis();
                 long original=dueOrdinaryScore(now);
                 String key=scope.keyspace().base()+":worker:score:"+group;
                 var residents=new LinkedHashMap<String,Long>();
@@ -323,7 +318,8 @@ class WorkerRefillDeficitIntegrationTest {
                 var pacer=new WorkerEligibilityRefillPolicy(scores,matching,null,100,()->now);
                 commands.clear();
                 assertThat(pacer.refill(List.of(group),tasks)).isEqualTo(deficit);
-                assertThat(Collections.frequency(commands,"EVAL")).isEqualTo(3); // old head + due head + exact candidateize
+                assertThat(Collections.frequency(commands,"ZRANGEBYSCORE")).isEqualTo(2); // old head + due head
+                assertThat(Collections.frequency(commands,"EVAL")).isEqualTo(1); // exact candidateize
                 assertThat(commands).doesNotContain("ZMSCORE","TIME");
 
                 var current=readScores(redis,scope.keyspace(),group,List.copyOf(additional.keySet()));
@@ -350,7 +346,8 @@ class WorkerRefillDeficitIntegrationTest {
                         .containsAll(residents.keySet()).containsAll(changed);
                 commands.clear();
                 assertThat(pacer.refill(List.of(group),tasks)).isEqualTo(residentCount);
-                assertThat(Collections.frequency(commands,"EVAL")).isEqualTo(3);
+                assertThat(Collections.frequency(commands,"ZRANGEBYSCORE")).isEqualTo(2);
+                assertThat(Collections.frequency(commands,"EVAL")).isEqualTo(1);
                 var next=matching.take(group,queries);
                 assertThat(next.values()).extracting(candidate->candidate.workerId())
                         .containsExactlyInAnyOrderElementsOf(unchanged.keySet());

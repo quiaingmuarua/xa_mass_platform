@@ -17,6 +17,8 @@ final class WorkerScoreEncoding {
     static final int CANDIDATE_MARK = 1;
     static final long MARK_BASE = MAX_TIME_SLOT + 1;
     static final long COLD_PARK_TIME_SLOT = MIN_TIME_SLOT + 1;
+    /** Largest legal absolute coordinate; both polarities are contiguous from 1. */
+    static final long MAX_ABSOLUTE_SCORE = MARK_BASE + MAX_TIME_SLOT;
 
     private WorkerScoreEncoding() {
     }
@@ -52,6 +54,15 @@ final class WorkerScoreEncoding {
             int mark
     ) {
         return mark * MARK_BASE + timeSlot;
+    }
+
+    /** Signed coordinate; RECOVERY is negative. */
+    static long score(int polarity, int mark, long timeSlot) {
+        return polarity * absoluteScore(timeSlot, mark);
+    }
+
+    static long timeSlot(WorkerScoreState state) {
+        return state.timeMillis() / SLOT_MILLIS;
     }
 
     static boolean validTimeMillis(long timeMillis) {

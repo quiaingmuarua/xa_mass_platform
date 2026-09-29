@@ -320,8 +320,8 @@ hold round budget. It reads current HOT heads, falling back to RECOVERY only for
 empty raw HOT result in that Group. Range observations go directly through Binding
 validation to the exact write; no Score-state point read is used. Pacer supplies
 opaque observed Scores and one fixed batch delay to `deferObservedToRecovery`;
-Score Owner writes the next eligible recheck time using Redis time before the Probe offer.
-HOT reads two mark ranges, RECOVERY keeps TIME plus two ranges; each is bounded
+Score Owner writes the next eligible recheck time using its clock before the Probe offer.
+HOT and RECOVERY each read two mark ranges; each is bounded
 by limit, then merged and truncated to limit raw rows. Deferral keeps one EVAL;
 there is no Score-state point read. There are
 no per-Group scan cursors or empty-range restart timers. Recheck delay defaults to
