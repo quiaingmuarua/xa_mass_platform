@@ -219,7 +219,7 @@ class RunnerTest(unittest.TestCase):
         client = Mock()
         client.slowlog_get.return_value = [
             {"id": 2, "start_time": 1790750002, "duration": 9100, "command": "hset xa_mass:test_x:task:items m-1 {\"secret\":1}"},
-            {"id": 1, "start_time": 1790750001, "duration": 6200, "command": "EVALSHA abc 1 xa_mass:test_x:score worker-7"}]
+            {"id": 1, "start_time": 1790750001, "duration": 6200, "command": b"EVALSHA abc 1 xa_mass:test_x:score worker-7"}]
         client.execute_command.side_effect = lambda *args: {
             ("LATENCY", "LATEST"): [["command", 1790750002, 9, 12]],
             ("LATENCY", "HISTORY", "command"): [[1790750001, 6], [1790750002, 9]]}[args]
@@ -246,6 +246,22 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual({"complete": False, "failureType": "ConnectionError"},
                              runner.write_redis_latency(broken, destination))
             self.assertTrue(destination.is_file())
+
+
+    def test_network_sample_keeps_whitelisted_kernel_totals(self):
+        files = {
+            "/proc/net/snmp": "Ip: Forwarding\nIp: 1\nTcp: RtoMin RetransSegs OutSegs InErrs\nTcp: 200 7 900 1\n",
+            "/proc/net/netstat": "TcpExt: TCPTimeouts TCPLossProbes SecretField\nTcpExt: 3 4 99\n",
+            "/proc/net/softnet_stat": "0000000a 00000002 00000001\n0000000b 00000001 00000000\n",
+            "/proc/net/dev": "Inter-|\n face |\n    lo: 10 20 0 5 0 0 0 0 30 40 0 6 0 0 0 0\n  eth0: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16\n"}
+        with patch.object(Path, "read_text", lambda path, *args, **kwargs: files[path.as_posix()]):
+            sample = runner.network_sample()
+        self.assertEqual({"RetransSegs": 7, "OutSegs": 900, "InErrs": 1}, sample["tcp"])
+        self.assertEqual({"TCPTimeouts": 3, "TCPLossProbes": 4}, sample["tcpExt"])
+        self.assertEqual({"dropped": 3, "timeSqueeze": 1}, sample["softnet"])
+        self.assertEqual({"rxDrop": 5, "txDrop": 6}, sample["loopback"])
+        with patch.object(Path, "read_text", side_effect=FileNotFoundError):
+            self.assertEqual({"failureType": "FileNotFoundError"}, runner.network_sample())
 
 
 class LaneWorldConfigTest(unittest.TestCase):

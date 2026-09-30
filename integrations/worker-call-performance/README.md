@@ -303,7 +303,11 @@ above 5ms (`SLOWLOG`, `LATENCY`) and exports only command names, Redis epoch
 seconds and execution durations to `diagnostics/redis-latency.json`; keys,
 arguments and values stay inside Redis. The resource sampler additionally writes
 host-wide CPU jiffies including steal, running processes and the one-minute load
-to `diagnostics/machine-cpu.jsonl`, separate from `process-resources.jsonl`.
+to `diagnostics/machine-cpu.jsonl`, separate from `process-resources.jsonl`, with
+whitelisted kernel network totals: TCP retransmitted segments, retransmission
+timeouts and loss probes, backlog/receive-queue/listen drops, softnet drops and
+time squeezes, and loopback drops. Transfer stalls quantized near the 200ms minimum
+TCP retransmission timeout should coincide with these counters moving.
 Without diagnostics none of these settings or files exist.
 
 Default-off Owner JFR covers submission/activation, Item HASH and Score

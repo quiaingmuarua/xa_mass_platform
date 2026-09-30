@@ -80,8 +80,42 @@ def process_sample(pid):
                       len(list((proc / "fd").iterdir())), os.sysconf("SC_CLK_TCK"))
 
 
+TCP_COUNTERS = ("RetransSegs", "OutSegs", "InErrs")
+TCP_EXT_COUNTERS = ("TCPTimeouts", "TCPLossProbes", "TCPLostRetransmit", "TCPFastRetrans", "TCPSlowStartRetrans",
+                    "TCPSpuriousRTOs", "TCPBacklogDrop", "TCPRcvQDrop", "TCPZeroWindowDrop", "ListenOverflows",
+                    "ListenDrops", "TCPDelivered")
+
+
+def proc_counters(text, prefix, names):
+    """Named counters from /proc/net/snmp or netstat header/value line pairs; absent names are omitted."""
+    lines = [line.split() for line in text.splitlines() if line.startswith(prefix + ":")]
+    counters = {}
+    for header, values in zip(lines[::2], lines[1::2]):
+        counters.update({name: int(value) for name, value in zip(header[1:], values[1:]) if name in names})
+    return counters
+
+
+def network_sample():
+    """Host-wide TCP retransmission/drop counters and loopback/softnet drops: kernel totals only."""
+    sample = {}
+    try:
+        sample["tcp"] = proc_counters(Path("/proc/net/snmp").read_text(), "Tcp", TCP_COUNTERS)
+        sample["tcpExt"] = proc_counters(Path("/proc/net/netstat").read_text(), "TcpExt", TCP_EXT_COUNTERS)
+        rows = [line.split() for line in Path("/proc/net/softnet_stat").read_text().splitlines() if line.strip()]
+        sample["softnet"] = {"dropped": sum(int(row[1], 16) for row in rows),
+                             "timeSqueeze": sum(int(row[2], 16) for row in rows)}
+        for line in Path("/proc/net/dev").read_text().splitlines():
+            name, _, values = line.partition(":")
+            if name.strip() == "lo":
+                fields = values.split()
+                sample["loopback"] = {"rxDrop": int(fields[3]), "txDrop": int(fields[11])}
+    except (OSError, ValueError, IndexError) as error:
+        sample["failureType"] = type(error).__name__
+    return sample
+
+
 def machine_sample():
-    """Host-wide cumulative CPU jiffies (including steal) and run-queue length; no process identities."""
+    """Host-wide cumulative CPU jiffies (including steal), run-queue length and network drop counters."""
     fields = ("user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal")
     sample = {"epochMillis": int(time.time() * 1000)}
     for line in Path("/proc/stat").read_text().splitlines():
@@ -91,6 +125,7 @@ def machine_sample():
         elif parts and parts[0] == "procs_running":
             sample["procsRunning"] = int(parts[1])
     sample["loadAverage1"] = float(Path("/proc/loadavg").read_text().split()[0])
+    sample["network"] = network_sample()
     return sample
 
 
@@ -107,11 +142,18 @@ def enable_redis_latency(client):
     client.execute_command("LATENCY", "RESET")
 
 
+def redis_command_name(command):
+    """The first token only; redis-py may return the logged command as bytes even with decoded responses."""
+    if isinstance(command, bytes):
+        command = command.decode("utf-8", "replace")
+    return str(command).split(" ", 1)[0].upper()[:32]
+
+
 def redis_latency(client):
     """Command names, durations and times only: keys, arguments and values never leave Redis."""
     entries = client.slowlog_get(REDIS_SLOWLOG_ENTRIES)
     commands = sorted((dict(epochSeconds=int(entry["start_time"]), durationMicros=int(entry["duration"]),
-                            command=str(entry["command"]).split(" ", 1)[0].upper()[:32]) for entry in entries),
+                            command=redis_command_name(entry["command"])) for entry in entries),
                       key=lambda row: row["epochSeconds"])
     history = {}
     for row in client.execute_command("LATENCY", "LATEST"):
