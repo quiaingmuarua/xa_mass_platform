@@ -32,6 +32,8 @@ public final class JfrDiagnostics {
             "RESULT_FAILURE_DECODE", "TASK_RESULT_CONSUME");
     private static final List<String> STACK_PREFIXES = List.of("com.xa.mass.", "java.", "jdk.", "sun.",
             "org.springframework.", "org.apache.", "io.lettuce.", "io.netty.", "tools.jackson.", "com.fasterxml.", "okhttp3.", "okio.");
+    private static final Set<String> SLOW_CALL_CONTEXT = Set.of("jdk.ThreadPark", "jdk.SocketRead", "jdk.SocketWrite",
+            "jdk.JavaMonitorEnter", "jdk.ExecutionSample", "jdk.GCPhasePause", "jdk.CPULoad");
     private static final int MAX_GROUPS = 4096;
     private static final int MAX_STACKS = 8192;
 
@@ -58,6 +60,7 @@ public final class JfrDiagnostics {
         var executorCoverage = new ArrayList<Long>();
         var measuredEvents = new TreeMap<String, Long>();
         var traces = new TaskTraceSummary();
+        var slowCalls = new SlowCallDiagnostics(started, seconds);
         long droppedStackSamples = 0, dataLoss = 0;
         boolean overflow = false;
         long earliest = Long.MAX_VALUE, latest = Long.MIN_VALUE;
@@ -77,6 +80,7 @@ public final class JfrDiagnostics {
                 long elapsed = event.hasField("elapsedNanos") ? event.getLong("elapsedNanos") : event.getDuration().toNanos();
                 // Servlet elapsed events are committed at the end; assign their start to the diagnostic bucket.
                 long activityStarted = event.hasField("elapsedNanos") ? timestamp - elapsed / 1_000_000 : timestamp;
+                if (SLOW_CALL_CONTEXT.contains(type)) slowCalls.observe(event, type, activityStarted, siteStack(event));
                 if (event.hasField("key") && !event.getString("key").isEmpty()) {
                     if (role.equals("server") && event.hasField("startedNanos")) {
                         String stage = event.getString("stage");
@@ -90,6 +94,7 @@ public final class JfrDiagnostics {
                 if (offset >= 0) measuredEvents.merge(type, 1L, Long::sum);
                 long bucket = Math.floorDiv(offset, 5000) * 5;
                 String category = category(event);
+                if (offset >= 0) slowCalls.call(event, category, activityStarted, elapsed);
                 String key = bucket + ":" + category;
                 Aggregate aggregate = groups.get(key);
                 if (aggregate == null && groups.size() == MAX_GROUPS) { overflow = true; continue; }
@@ -136,6 +141,7 @@ public final class JfrDiagnostics {
         result.put("buckets", groups.values().stream().map(Aggregate::summary).toList());
         result.put("stacks", stacks);
         if (role.equals("server") && callPath.equals("TASK")) result.put("taskTrace", traces.summarize(started, seconds));
+        result.put("slowCalls", slowCalls.summary());
         return result;
     }
 
@@ -171,6 +177,23 @@ public final class JfrDiagnostics {
             if (frames.size() == 8) break;
         }
         return String.join(" <- ", frames);
+    }
+
+    /** The first non-JDK frames, where a parked or sampled thread was called from; whitelist applies. */
+    private static String siteStack(RecordedEvent event) {
+        var trace = event.getStackTrace();
+        if (trace == null || trace.getFrames().isEmpty()) return null;
+        var frames = new ArrayList<String>();
+        for (var frame : trace.getFrames()) {
+            var method = frame.getMethod();
+            if (method == null) continue;
+            String type = method.getType().getName();
+            if (frames.isEmpty() && (type.startsWith("java.") || type.startsWith("jdk.") || type.startsWith("sun."))) continue;
+            frames.add(STACK_PREFIXES.stream().anyMatch(type::startsWith)
+                    ? type.replaceAll("[/.]0x[0-9a-fA-F]+", "") + "." + method.getName() : "[omitted]");
+            if (frames.size() == 6) break;
+        }
+        return frames.isEmpty() ? safeStack(event) : String.join(" <- ", frames);
     }
 
     private static final class Aggregate {
