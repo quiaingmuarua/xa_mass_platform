@@ -76,9 +76,9 @@ class CapacityRunnerTest(unittest.TestCase):
                 self.assertEqual(1 if bound else 2, run.call_count)
                 self.assertEqual(8123.5, result["cases"][0]["completedPerSecond"])
                 self.assertEqual([], list((output / "evidence").rglob("*.jfr")))
-                self.assertEqual(3000, result["workersPerGroup"])
+                self.assertEqual(4000, result["workersPerGroup"])
                 report = runner.lane_markdown(result)
-                self.assertIn("3000 | 4 | 1024 / 1024 / 1024 | 15 / 30 | 600000", report)
+                self.assertIn("4000 | 4 | 1024 / 1024 / 1024 | 15 / 30 | 600000", report)
                 if bound:
                     self.assertEqual(["workers-exhausted"], result["cases"][0]["invalidReasons"])
 
@@ -120,7 +120,7 @@ class CapacityRunnerTest(unittest.TestCase):
             # ABBA pairs alternate the baseline checkout's and the current checkout's Server/Host.
             self.assertEqual([(1, baseline), (1, root), (2, root), (2, baseline)], calls)
             summary = json.loads((output / "evidence/lane-ab-summary.json").read_text())
-            self.assertEqual(("passed", "no-difference", 3000),
+            self.assertEqual(("passed", "no-difference", 4000),
                              (summary["status"], summary["decision"]["decision"], summary["experiment"]["workersPerGroup"]))
             self.assertEqual([], [p for p in output.rglob("evidence/**/*.jfr")])
 
