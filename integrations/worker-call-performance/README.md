@@ -25,11 +25,16 @@ Adapter and Project `perf-lane`. Bootstrap waits until every Worker is running,
 connected, HOT and has published Properties.
 
 The saturation job uses [lane-saturation.json](configs/lane-saturation.json):
-four CPUs, two Groups of 3,000 Workers (6,000 total), and 1GiB maximum heaps
+four CPUs, two Groups of 4,000 Workers (8,000 total), and 1GiB maximum heaps
 for Server, Host and Harness. Redis has a 2GiB container limit and 1.5GiB
 `maxmemory`, with `noeviction`. Saturation FD/thread guards are 16,384/512;
 open-loop guards remain 8,192/512. These are
 explicit experiment settings, not minimum production resource requirements.
+The fleet was raised from 3,000 per Group on 2026-09-30: after the faster Adapter
+batches, Dispatch assigned faster than Result release returned leases, and a
+same-host A/B sampled a Group with no idle Worker for several seconds at about
+7,400 Items/s. A bound fleet invalidates the case, so the configured resource
+was raised rather than the measurement accepted.
 CPU affinity applies to every experiment JVM and the Redis container.
 
 Configurable resources are raised or audited so they do not bind. Open-loop
@@ -43,7 +48,7 @@ the resolved experiment file. Each job records its settings in
 | Pool watermark `task-rpc.refill-by-worker-group[<group>]` | per profile | `any / {} / 1000` per Group |
 | Adapter `report-queue-capacity` | 1000 | 10000 |
 | `task-rpc.max-probe-items-per-round` | 256 | 1000 (maximum) |
-| Workers / Handler | — | open: 2 x 1000; saturation: 2 x 3000 / MD5 |
+| Workers / Handler | — | open: 2 x 1000; saturation: 2 x 4000 / MD5 |
 
 Waiter and Direct Call bounds, Tomcat threads (calls complete through
 DeferredResult) and the 4,096 in-flight Harness bound are audited and unchanged.
@@ -95,8 +100,9 @@ without an idle Worker invalidates the reference saturation configuration;
 the local resource scan may retain that observation as `workersBound` instead.
 Resource/evidence failures stop later repetitions and fail the configured job.
 Raw recordings, logs and inventories remain outside published evidence.
-The old CLI without an experiment config and manual A/B keep their original
-2,000-Worker world and 150,000-Item backlog; their configuration identity differs.
+The old CLI without an experiment config keeps its original 2,000-Worker world and
+150,000-Item backlog; its configuration identity differs. A saturation A/B uses the
+same configured world as this job (see Trend And A/B).
 
 Path order rotates per repetition within each job. The workflow builds once, runs
 `rate-500`, `rate-1000`, `rate-2000` and `saturation` as parallel jobs, and merges
@@ -217,7 +223,7 @@ and 4,000 Workers on the same four CPUs. Both use 1GiB heaps for every JVM,
 a 2GiB Redis container with 1.5GiB maxmemory, and identical backlog and windows
 to the CI saturation profile. Both use an FD guard of 16,384 so 8,000
 connections have headroom; this limit does not allocate that many descriptors.
-CI saturation uses 6,000 total Workers; the 4k and 8k files remain explicit controls.
+CI saturation now uses the 8,000-Worker fleet; the 4k and 6k files remain explicit controls.
 
 [worker-scale-6k.json](configs/worker-scale-6k.json) supplies an intermediate
 point of 3,000 Workers per Group with the same resources and measurement settings.
@@ -322,7 +328,13 @@ outcomes.
   is reported as suspect. The trend never fails the lane.
 - Manual A/B (`baseline_ref` and `lane_case`): one runner builds the baseline and
   the current version, starts a fresh warmed world per version and alternates
-  ABBA pairs of one case. The decision metric is p50 for open-loop cases and
+  ABBA pairs of one case. An open-loop case uses the lane world. A `sat-*` case
+  requires `--experiment-config` and runs the saturation job's configured world
+  (`lane-saturation.json`: 4,000 Workers per Group, 600,000-Item backlog) through
+  the same experiment lifecycle, with each version's Server and Host and the
+  current harness; the workflow passes that file for `sat-*` cases. A worker-bound
+  or incomplete saturation world fails the A/B instead of entering a pair, and the
+  earlier 1,000-Worker-per-Group saturation A/B results are not comparable. The decision metric is p50 for open-loop cases and
   completed Items/s for saturation; one 30s window's p99 varies about +-35% on
   the same version, so pooled p99 across pairs is reported but not decisive. The
   band is the median relative spread of that case on `main` records (floor 5%),
@@ -340,6 +352,10 @@ python integrations/worker-call-performance/run_worker_call_performance.py \
   --lane-modes open --lane-rates 1000 --diagnostics jfr --output-root build/lane-jfr
 python integrations/worker-call-performance/run_worker_call_performance.py \
   --baseline-ref <commit> --lane-case task-any-1000 --output-root build/lane-ab
+python integrations/worker-call-performance/run_worker_call_performance.py \
+  --baseline-ref <commit> --lane-case sat-task-any \
+  --experiment-config integrations/worker-call-performance/configs/lane-saturation.json \
+  --output-root build/lane-ab-saturation
 ```
 
 Outputs must be fresh directories below repository `build`. `--allow-nonreference-host`

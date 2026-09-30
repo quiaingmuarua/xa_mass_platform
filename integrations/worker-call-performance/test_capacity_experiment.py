@@ -76,11 +76,53 @@ class CapacityRunnerTest(unittest.TestCase):
                 self.assertEqual(1 if bound else 2, run.call_count)
                 self.assertEqual(8123.5, result["cases"][0]["completedPerSecond"])
                 self.assertEqual([], list((output / "evidence").rglob("*.jfr")))
-                self.assertEqual(3000, result["workersPerGroup"])
+                self.assertEqual(4000, result["workersPerGroup"])
                 report = runner.lane_markdown(result)
-                self.assertIn("3000 | 4 | 1024 / 1024 / 1024 | 15 / 30 | 600000", report)
+                self.assertIn("4000 | 4 | 1024 / 1024 / 1024 | 15 / 30 | 600000", report)
                 if bound:
                     self.assertEqual(["workers-exhausted"], result["cases"][0]["invalidReasons"])
+
+    def test_saturation_ab_runs_the_configured_world_with_each_versions_artifacts(self):
+        runner = test_runner.runner
+        config = json.loads((runner.MODULE / "configs/lane-saturation.json").read_text())
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            output = root / "build/lane-ab"
+            output.mkdir(parents=True)
+            def git(args, **kwargs):
+                if "--phase=experiment-config" in args:
+                    runner.write_json(output / "evidence/experiment.json", config)
+                    return ""
+                if args[:2] == ["git", "rev-parse"]:
+                    return "a" * 40 if "--verify" in args else "b" * 40
+                if args[:3] == ["git", "worktree", "add"]:
+                    Path(args[4]).mkdir(parents=True)
+                return ""
+            calls = []
+            def execute(module, case_root, resolved, actual, profile, stage, path, repetition, cpus,
+                        diagnostics="off", artifacts=None):
+                self.assertEqual((config, config["profiles"][0], "screening", "any"), (actual, profile, stage, path[5:]))
+                calls.append((repetition, artifacts))
+                (case_root / "private").mkdir(parents=True)
+                (case_root / "private/server.jfr").write_bytes(b"private")
+                case = dict(case="sat-" + path, status="passed", completedPerSecond=8000.0, invalidReasons=[])
+                runner.write_json(case_root / "evidence/result.json", case)
+                return case
+            options = runner.argparse.Namespace(lane_case="sat-task-any", baseline_ref="main", lane_history=None,
+                                                skip_build=True, experiment_config=root / "lane.json")
+            with patch.dict(runner.sys.modules, {runner.__name__: runner}), \
+                    patch.object(runner, "ROOT", root), patch.object(runner, "command", side_effect=git), \
+                    patch.object(runner, "build"), \
+                    patch.object(runner.os, "sched_getaffinity", return_value=set(range(4)), create=True), \
+                    patch.object(capacity_experiment, "run_case", side_effect=execute):
+                self.assertEqual(0, runner.main_lane_ab(options, output, runner.time.monotonic(), True))
+            baseline = output / "baseline-checkout"
+            # ABBA pairs alternate the baseline checkout's and the current checkout's Server/Host.
+            self.assertEqual([(1, baseline), (1, root), (2, root), (2, baseline)], calls)
+            summary = json.loads((output / "evidence/lane-ab-summary.json").read_text())
+            self.assertEqual(("passed", "no-difference", 4000),
+                             (summary["status"], summary["decision"]["decision"], summary["experiment"]["workersPerGroup"]))
+            self.assertEqual([], [p for p in output.rglob("evidence/**/*.jfr")])
 
     def test_harness_receives_the_exact_shared_config_and_profile(self):
         command = capacity_experiment.harness_command(test_runner.runner, "bootstrap", Path("output"),

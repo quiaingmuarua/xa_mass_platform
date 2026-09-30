@@ -232,9 +232,14 @@ jobs:
           BASELINE_REF: ${{ inputs.baseline_ref }}
           LANE_CASE: ${{ inputs.lane_case }}
         run: |
+          # A saturation A/B runs the saturation job's configured world.
+          config=()
+          case "$LANE_CASE" in
+            sat-*) config=(--experiment-config integrations/worker-call-performance/configs/lane-saturation.json) ;;
+          esac
           python integrations/worker-call-performance/run_worker_call_performance.py \
             --baseline-ref "$BASELINE_REF" --lane-case "$LANE_CASE" --lane-history build/lane-data/runs \
-            --output-root build/worker-call-performance-proof/lane-ab
+            "${config[@]}" --output-root build/worker-call-performance-proof/lane-ab
       - name: Publish A/B summary
         if: always()
         run: |

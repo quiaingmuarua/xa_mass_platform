@@ -152,8 +152,8 @@ class CapacityEvidenceTest {
 
     @Test void referenceSaturationUsesOneExplicitProfileWithoutLongAcceptance() throws Exception {
         var config = ExperimentConfig.read("configs/lane-saturation.json");
-        var settings = config.settings("c4-w3000", "screening");
-        assertThat(settings.workers()).isEqualTo(3000);
+        var settings = config.settings("c4-w4000", "screening");
+        assertThat(settings.workers()).isEqualTo(4000);
         assertThat(settings.items()).isEqualTo(600000);
         assertThat(settings.warmupSeconds()).isEqualTo(15);
         assertThat(settings.seconds()).isEqualTo(30);
