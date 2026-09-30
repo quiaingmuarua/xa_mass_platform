@@ -45,7 +45,15 @@ class ServerEmbeddedWorkerDeliveryAdapterContextTest {
                 () -> Integer.toString(ADAPTER_PORT)
         );
         registry.add(
-                prefix + ".command-backoff",
+                prefix + ".command-backoff-min",
+                () -> "1h"
+        );
+        registry.add(
+                prefix + ".command-backoff-step",
+                () -> "0ms"
+        );
+        registry.add(
+                prefix + ".command-backoff-max",
                 () -> "1h"
         );
         registry.add(

@@ -34,7 +34,9 @@ xa:
             type: WEBSOCKET
             listen-host: 127.0.0.1
             listen-port: 18083
-            command-backoff: 100ms
+            command-backoff-min: 10ms
+            command-backoff-step: 10ms
+            command-backoff-max: 100ms
             command-consume-limit: 100
             command-retry-capacity: 1000
             report-backoff: 1s

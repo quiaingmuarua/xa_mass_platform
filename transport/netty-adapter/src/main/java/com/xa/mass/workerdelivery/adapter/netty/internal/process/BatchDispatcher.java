@@ -20,7 +20,10 @@ public final class BatchDispatcher<T> {
     private final LinkedBlockingQueue<T> queue;
     private final int softCapacity;
     private final int batchSize;
-    private final long backoffMillis;
+    private final long backoffMinMillis;
+    private final long backoffStepMillis;
+    private final long backoffMaxMillis;
+    private final Sleeper sleeper;
     private final AdapterBatchProcessor<T> processor;
     private final Supplier<List<T>> freshSource;
     private final String adapterId;
@@ -28,15 +31,20 @@ public final class BatchDispatcher<T> {
     private final Thread thread;
     private boolean accepting = true;
     private volatile boolean stopped;
+    /** Current empty-poll wait; only the consumer thread reads or writes it. */
+    private long idleBackoffMillis;
 
     private BatchDispatcher(
             String adapterId,
             String dispatcherId,
             int softCapacity,
             int batchSize,
-            Duration backoff,
+            Duration backoffMin,
+            Duration backoffStep,
+            Duration backoffMax,
             Supplier<List<T>> freshSource,
-            AdapterBatchProcessor<T> processor
+            AdapterBatchProcessor<T> processor,
+            Sleeper sleeper
     ) {
         this.adapterId = requireNonBlank(adapterId, "adapterId");
         this.dispatcherId = requireNonBlank(
@@ -57,7 +65,16 @@ public final class BatchDispatcher<T> {
         }
         this.softCapacity = softCapacity;
         this.batchSize = batchSize;
-        backoffMillis = requirePositiveMillis(backoff, "backoff");
+        backoffMinMillis = requirePositiveMillis(backoffMin, "backoffMin");
+        backoffStepMillis = requireNonNegativeMillis(backoffStep, "backoffStep");
+        backoffMaxMillis = requirePositiveMillis(backoffMax, "backoffMax");
+        if (backoffMaxMillis < backoffMinMillis) {
+            throw new IllegalArgumentException(
+                    "backoffMax must not be below backoffMin"
+            );
+        }
+        idleBackoffMillis = backoffMinMillis;
+        this.sleeper = Objects.requireNonNull(sleeper, "sleeper");
         this.freshSource = Objects.requireNonNull(
                 freshSource,
                 "freshSource"
@@ -76,18 +93,40 @@ public final class BatchDispatcher<T> {
             String dispatcherId,
             int softCapacity,
             int batchSize,
-            Duration backoff,
+            Duration backoffMin,
+            Duration backoffStep,
+            Duration backoffMax,
             Supplier<List<T>> freshSource,
             AdapterBatchProcessor<T> processor
+    ) {
+        return pulling(adapterId, dispatcherId, softCapacity, batchSize,
+                backoffMin, backoffStep, backoffMax, freshSource, processor,
+                Thread::sleep);
+    }
+
+    static <T> BatchDispatcher<T> pulling(
+            String adapterId,
+            String dispatcherId,
+            int softCapacity,
+            int batchSize,
+            Duration backoffMin,
+            Duration backoffStep,
+            Duration backoffMax,
+            Supplier<List<T>> freshSource,
+            AdapterBatchProcessor<T> processor,
+            Sleeper sleeper
     ) {
         return new BatchDispatcher<>(
                 adapterId,
                 dispatcherId,
                 softCapacity,
                 batchSize,
-                backoff,
+                backoffMin,
+                backoffStep,
+                backoffMax,
                 freshSource,
-                processor
+                processor,
+                sleeper
         );
     }
 
@@ -177,8 +216,18 @@ public final class BatchDispatcher<T> {
                 failed = true;
             }
 
-            if (!fresh || failed) {
-                awaitBackoff();
+            if (failed) {
+                // Failures wait the full backoff and restart the idle ramp from it.
+                idleBackoffMillis = backoffMaxMillis;
+                awaitBackoff(backoffMaxMillis);
+            } else if (!fresh) {
+                awaitBackoff(idleBackoffMillis);
+                idleBackoffMillis = Math.min(
+                        idleBackoffMillis + backoffStepMillis,
+                        backoffMaxMillis
+                );
+            } else {
+                idleBackoffMillis = backoffMinMillis;
             }
         }
     }
@@ -342,9 +391,9 @@ public final class BatchDispatcher<T> {
         );
     }
 
-    private void awaitBackoff() throws InterruptedException {
+    private void awaitBackoff(long millis) throws InterruptedException {
         if (isActive()) {
-            Thread.sleep(backoffMillis);
+            sleeper.sleep(millis);
         }
     }
 
@@ -362,11 +411,25 @@ public final class BatchDispatcher<T> {
         return value.toMillis();
     }
 
+    private static long requireNonNegativeMillis(Duration value, String name) {
+        Objects.requireNonNull(value, name);
+        if (value.isNegative()) {
+            throw new IllegalArgumentException(name + " must not be negative");
+        }
+        return value.toMillis();
+    }
+
     private static String requireNonBlank(String value, String name) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(name + " must be non-blank");
         }
         return value;
+    }
+
+    /** Interruptible local wait; tests may record the requested waits. */
+    @FunctionalInterface
+    interface Sleeper {
+        void sleep(long millis) throws InterruptedException;
     }
 
     public enum DispatchStatus {

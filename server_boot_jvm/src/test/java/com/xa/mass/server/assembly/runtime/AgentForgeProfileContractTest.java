@@ -46,7 +46,11 @@ class AgentForgeProfileContractTest {
         assertThat(allPropertyNames(sources))
                 .contains(
                         "xa.mass.worker-delivery.adapter.instances."
-                                + "agentforge-websocket.command-backoff",
+                                + "agentforge-websocket.command-backoff-min",
+                        "xa.mass.worker-delivery.adapter.instances."
+                                + "agentforge-websocket.command-backoff-step",
+                        "xa.mass.worker-delivery.adapter.instances."
+                                + "agentforge-websocket.command-backoff-max",
                         "xa.mass.worker-delivery.adapter.instances."
                                 + "agentforge-websocket.report-queue-capacity",
                         "xa.mass.worker-delivery.adapter.instances."

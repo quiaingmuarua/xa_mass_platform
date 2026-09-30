@@ -37,7 +37,10 @@ class NettyWorkerDeliveryAdapterConfigTest {
 
     @Test
     void validatesDispatcherFields() {
-        assertInvalid(values -> values.commandBackoff = Duration.ZERO);
+        assertInvalid(values -> values.commandBackoffMin = Duration.ZERO);
+        assertInvalid(values -> values.commandBackoffStep = Duration.ofMillis(-1));
+        assertInvalid(values -> values.commandBackoffMax = Duration.ZERO);
+        assertInvalid(values -> values.commandBackoffMax = Duration.ofMillis(5));
         assertInvalid(values -> values.commandConsumeLimit = 0);
         assertInvalid(values -> values.commandConsumeLimit = 1001);
         assertInvalid(values -> values.commandRetryCapacity = 0);
@@ -104,7 +107,9 @@ class NettyWorkerDeliveryAdapterConfigTest {
                 NettyWorkerDeliveryAdapterConfig.Type.WEBSOCKET;
         private String listenHost = "127.0.0.1";
         private int listenPort = 18083;
-        private Duration commandBackoff = Duration.ofMillis(10);
+        private Duration commandBackoffMin = Duration.ofMillis(10);
+        private Duration commandBackoffStep = Duration.ofMillis(10);
+        private Duration commandBackoffMax = Duration.ofMillis(100);
         private int commandConsumeLimit = 100;
         private int commandRetryCapacity = 1000;
         private Duration reportBackoff = Duration.ofMillis(10);
@@ -121,7 +126,9 @@ class NettyWorkerDeliveryAdapterConfigTest {
                     type,
                     listenHost,
                     listenPort,
-                    commandBackoff,
+                    commandBackoffMin,
+                    commandBackoffStep,
+                    commandBackoffMax,
                     commandConsumeLimit,
                     commandRetryCapacity,
                     reportBackoff,

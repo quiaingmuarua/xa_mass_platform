@@ -64,7 +64,7 @@ class AdapterProcessManagerTest {
                         "delivery-command",
                         2,
                         2,
-                        Duration.ofMillis(20),
+                        Duration.ofMillis(20), Duration.ZERO, Duration.ofMillis(20),
                         () -> List.of(item("worker-1")),
                         batch -> {
                             processed.countDown();
@@ -122,7 +122,7 @@ class AdapterProcessManagerTest {
                         "delivery-command",
                         2,
                         2,
-                        Duration.ofSeconds(1),
+                        Duration.ofSeconds(1), Duration.ZERO, Duration.ofSeconds(1),
                         () -> List.of(item("worker-1")),
                         batch -> {
                             entered.countDown();

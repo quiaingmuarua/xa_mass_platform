@@ -141,7 +141,7 @@ class BatchDispatcherTest {
                 "delivery-command",
                 2,
                 2,
-                Duration.ofSeconds(1),
+                Duration.ofSeconds(1), Duration.ZERO, Duration.ofSeconds(1),
                 List::of,
                 batch -> BatchProcessResult.completed()
         );
@@ -164,7 +164,7 @@ class BatchDispatcherTest {
                 "delivery-command",
                 2,
                 2,
-                Duration.ofSeconds(10),
+                Duration.ofSeconds(10), Duration.ZERO, Duration.ofSeconds(10),
                 () -> {
                     called.countDown();
                     return List.of();
@@ -198,13 +198,50 @@ class BatchDispatcherTest {
     }
 
     @Test
+    void emptyPollsRampLinearlyResetOnFreshWorkAndFailuresWaitTheMaximum() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger polls = new java.util.concurrent.atomic.AtomicInteger();
+        // empty x5, fresh, empty x2, failure, empty
+        List<String> script = List.of("e", "e", "e", "e", "e", "f", "e", "e", "x", "e");
+        List<Long> waits = new java.util.concurrent.CopyOnWriteArrayList<>();
+        CountDownLatch done = new CountDownLatch(1);
+        BatchDispatcher<String> dispatcher = BatchDispatcher.pulling(
+                "adapter-1",
+                "delivery-command",
+                8,
+                4,
+                Duration.ofMillis(10),
+                Duration.ofMillis(10),
+                Duration.ofMillis(40),
+                () -> {
+                    String step = script.get(Math.min(polls.getAndIncrement(), script.size() - 1));
+                    if (step.equals("x")) throw new IllegalStateException("remote unavailable");
+                    return step.equals("f") ? List.of("command") : List.of();
+                },
+                batch -> BatchProcessResult.completed(),
+                millis -> {
+                    waits.add(millis);
+                    if (waits.size() == 9) {
+                        done.countDown();
+                        throw new InterruptedException("recorded enough waits");
+                    }
+                }
+        );
+        dispatcher.start();
+        assertThat(done.await(2, TimeUnit.SECONDS)).isTrue();
+        dispatcher.thread().join(2_000);
+
+        // 10..40 capped, fresh work waits nothing and resets, a failure waits and keeps the maximum.
+        assertThat(waits).containsExactly(10L, 20L, 30L, 40L, 40L, 10L, 20L, 40L, 40L);
+    }
+
+    @Test
     void rejectsInvalidBounds() {
         assertThatThrownBy(() -> BatchDispatcher.pulling(
                 "adapter-1",
                 "delivery-command",
                 0,
                 1,
-                Duration.ofMillis(1),
+                Duration.ofMillis(1), Duration.ZERO, Duration.ofMillis(1),
                 List::of,
                 batch -> BatchProcessResult.completed()
         )).isInstanceOf(IllegalArgumentException.class);
@@ -213,7 +250,7 @@ class BatchDispatcherTest {
                 "delivery-command",
                 1,
                 1,
-                Duration.ZERO,
+                Duration.ZERO, Duration.ZERO, Duration.ofMillis(1),
                 List::of,
                 batch -> BatchProcessResult.completed()
         )).isInstanceOf(IllegalArgumentException.class);
@@ -228,7 +265,7 @@ class BatchDispatcherTest {
                 "delivery-command",
                 8,
                 4,
-                Duration.ofMillis(10),
+                Duration.ofMillis(10), Duration.ZERO, Duration.ofMillis(10),
                 source,
                 processor
         );

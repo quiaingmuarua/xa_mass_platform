@@ -103,7 +103,8 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
         String prefix = "xa.mass.worker-delivery.adapter.instances." + ADAPTER;
         Map.ofEntries(Map.entry("type", "WEBSOCKET"), Map.entry("listen-host", "127.0.0.1"),
                 Map.entry("listen-port", Integer.toString(ADAPTER_PORT)),
-                Map.entry("command-backoff", "20ms"), Map.entry("command-consume-limit", "100"),
+                Map.entry("command-backoff-min", "20ms"), Map.entry("command-backoff-step", "0ms"),
+                Map.entry("command-backoff-max", "20ms"), Map.entry("command-consume-limit", "100"),
                 Map.entry("command-retry-capacity", "1000"), Map.entry("report-backoff", "20ms"),
                 Map.entry("report-queue-capacity", "1000"), Map.entry("send-time-limit", "5s"),
                 Map.entry("reconnect-verification-retention", "10m"),

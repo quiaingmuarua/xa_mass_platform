@@ -16,7 +16,9 @@ xa:
             type: WEBSOCKET
             listen-host: 127.0.0.1
             listen-port: ${XA_MASS_AGENTFORGE_ADAPTER_PORT:18183}
-            command-backoff: 100ms
+            command-backoff-min: 10ms
+            command-backoff-step: 10ms
+            command-backoff-max: 100ms
             command-consume-limit: 100
             command-retry-capacity: 1000
             report-backoff: 1s

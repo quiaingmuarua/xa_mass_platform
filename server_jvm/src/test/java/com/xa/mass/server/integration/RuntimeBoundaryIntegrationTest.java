@@ -2349,7 +2349,9 @@ class RuntimeBoundaryIntegrationTest {
             DynamicPropertyRegistry registry,
             String prefix
     ) {
-        registry.add(prefix + ".command-backoff", () -> "20ms");
+        registry.add(prefix + ".command-backoff-min", () -> "20ms");
+        registry.add(prefix + ".command-backoff-step", () -> "0ms");
+        registry.add(prefix + ".command-backoff-max", () -> "20ms");
         registry.add(prefix + ".command-consume-limit", () -> "100");
         registry.add(prefix + ".command-retry-capacity", () -> "1000");
         registry.add(prefix + ".report-backoff", () -> "20ms");

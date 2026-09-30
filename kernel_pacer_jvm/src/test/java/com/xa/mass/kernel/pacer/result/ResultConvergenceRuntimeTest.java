@@ -84,15 +84,18 @@ class ResultConvergenceRuntimeTest {
 
     @Test
     void keepsFiniteResultPresetValuesInsideTheResultPackage() {
-        assertConfig(PolicyPreset.DEFAULT, 100, 100, 10);
-        assertConfig(PolicyPreset.SERVICEABILITY_DEFAULT, 100, 100, 10);
-        assertConfig(PolicyPreset.SCENARIO_LAB, 20, 100, 10);
-        assertConfig(PolicyPreset.RUNTIME_BOUNDARY_PROOF, 100, 20, 100);
+        // TASK lanes: idle min/step/max; Network Evidence stays a fixed interval.
+        assertConfig(PolicyPreset.DEFAULT, 10, 10, 100, 100, 10);
+        assertConfig(PolicyPreset.SERVICEABILITY_DEFAULT, 10, 10, 100, 100, 10);
+        assertConfig(PolicyPreset.SCENARIO_LAB, 20, 0, 20, 100, 10);
+        assertConfig(PolicyPreset.RUNTIME_BOUNDARY_PROOF, 100, 0, 100, 20, 100);
     }
 
     private static void assertConfig(
             PolicyPreset preset,
-            long taskInterval,
+            long taskIdleMin,
+            long taskIdleStep,
+            long taskIdleMax,
             long evidenceInterval,
             int evidenceLimit
     ) {
@@ -103,10 +106,9 @@ class ResultConvergenceRuntimeTest {
                         preset
                 );
 
-        assertEquals(
-                taskInterval,
-                convergence.taskResultIdleIntervalMillis()
-        );
+        assertEquals(taskIdleMin, convergence.taskResultIdleMinMillis());
+        assertEquals(taskIdleStep, convergence.taskResultIdleStepMillis());
+        assertEquals(taskIdleMax, convergence.taskResultIdleMaxMillis());
         assertEquals(
                 evidenceInterval,
                 convergence.networkEvidenceIdleIntervalMillis()

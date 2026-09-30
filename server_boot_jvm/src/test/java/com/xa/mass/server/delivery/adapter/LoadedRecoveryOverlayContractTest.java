@@ -48,7 +48,13 @@ class LoadedRecoveryOverlayContractTest {
             NettyWorkerDeliveryAdapterConfig config = context.getBean(
                     ServerWorkerDeliveryAdapterProperties.class
             ).instances().get("scenario-websocket");
-            assertThat(config.commandBackoff()).isEqualTo(
+            assertThat(config.commandBackoffMin()).isEqualTo(
+                    Duration.ofMillis(10)
+            );
+            assertThat(config.commandBackoffStep()).isEqualTo(
+                    Duration.ofMillis(10)
+            );
+            assertThat(config.commandBackoffMax()).isEqualTo(
                     Duration.ofMillis(100)
             );
             assertThat(config.commandRetryCapacity()).isEqualTo(1000);

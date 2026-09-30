@@ -261,7 +261,7 @@ Its fixed lanes consume Task EXECUTION_SUCCESS, Task EXECUTION_FAILURE,
 Network Evidence, and Task OUTCOME_OBSERVATION in every preset.
 `TaskEvidenceRuntime` retains the execution LISTs and adds one observation LIST.
 The observation lane follows the existing priorities, with target concurrency 1,
-maximum 10, batch size 100 and the shared Task evidence idle interval. It uses
+maximum 10, batch size 100 and the shared Task evidence idle backoff. It uses
 the same coordinator and global ten-slot capacity.
 Weighted-fair targets and maxima remain Kernel-internal policy. Result lanes
 and Dispatch Resource Producers do not share queues, lifecycle state, topology,

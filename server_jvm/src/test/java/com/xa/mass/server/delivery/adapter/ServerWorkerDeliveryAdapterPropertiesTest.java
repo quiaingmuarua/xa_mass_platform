@@ -73,7 +73,13 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                     assertThat(websocket.type()).isEqualTo(
                             NettyWorkerDeliveryAdapterConfig.Type.WEBSOCKET
                     );
-                    assertThat(websocket.commandBackoff()).isEqualTo(
+                    assertThat(websocket.commandBackoffMin()).isEqualTo(
+                            Duration.ofMillis(10)
+                    );
+                    assertThat(websocket.commandBackoffStep()).isEqualTo(
+                            Duration.ofMillis(10)
+                    );
+                    assertThat(websocket.commandBackoffMax()).isEqualTo(
                             Duration.ofMillis(100)
                     );
                     assertThat(websocket.shutdownTimeout()).isEqualTo(
@@ -215,7 +221,9 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                 prefix + "type=" + type,
                 prefix + "listen-host=127.0.0.1",
                 prefix + "listen-port=" + listenPort,
-                prefix + "command-backoff=100ms",
+                prefix + "command-backoff-min=10ms",
+                prefix + "command-backoff-step=10ms",
+                prefix + "command-backoff-max=100ms",
                 prefix + "command-consume-limit=100",
                 prefix + "command-retry-capacity=1000",
                 prefix + "report-backoff=1s",

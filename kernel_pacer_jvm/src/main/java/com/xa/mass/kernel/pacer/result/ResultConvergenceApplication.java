@@ -265,14 +265,15 @@ final class ResultConvergenceApplication {
             } catch (RuntimeException failure) {
                 if (lane.id() != ResultLaneId.NETWORK_EVIDENCE)
                     ResultStageEvent.batch(consumedAt, "TASK_RESULT_CONSUME", lane.batchLimit(), 0, true);
-                deferLane(runtime);
+                deferAfterFailure(runtime);
                 logFailure(lane, "consume", 0, failure);
                 continue;
             }
             if (batch.isEmpty()) {
-                deferLane(runtime);
+                deferWhileIdle(runtime);
                 continue;
             }
+            runtime.idleBackoffMillis = lane.idleBackoffMinMillis();
             List<DeliveryReport> immutableBatch = List.copyOf(batch);
             runtime.inflight++;
             globalInFlight++;
@@ -393,7 +394,7 @@ final class ResultConvergenceApplication {
         if (completion.failure() instanceof Error fatal) {
             throw fatal;
         }
-        deferLane(runtime);
+        deferAfterFailure(runtime);
         logFailure(
                 runtime.lane,
                 "policy",
@@ -430,17 +431,22 @@ final class ResultConvergenceApplication {
         return completions.poll(waitNanos, TimeUnit.NANOSECONDS);
     }
 
-    private static void deferLane(LaneRuntime runtime) {
-        runtime.nextEligibleNanos = Math.max(
-                runtime.nextEligibleNanos,
-                nextEligible(runtime.lane)
-        );
+    /** An empty read waits the current idle interval, then lengthens it by one step. */
+    private static void deferWhileIdle(LaneRuntime runtime) {
+        defer(runtime, runtime.idleBackoffMillis);
+        runtime.idleBackoffMillis = runtime.lane.nextIdleBackoffMillis(runtime.idleBackoffMillis);
     }
 
-    private static long nextEligible(ResultLane lane) {
-        return Math.addExact(
-                System.nanoTime(),
-                lane.idlePollIntervalNanos()
+    /** A consume or policy failure waits the maximum and restarts the idle ramp from it. */
+    private static void deferAfterFailure(LaneRuntime runtime) {
+        runtime.idleBackoffMillis = runtime.lane.idleBackoffMaxMillis();
+        defer(runtime, runtime.idleBackoffMillis);
+    }
+
+    private static void defer(LaneRuntime runtime, long waitMillis) {
+        runtime.nextEligibleNanos = Math.max(
+                runtime.nextEligibleNanos,
+                Math.addExact(System.nanoTime(), ResultLane.nanos(waitMillis))
         );
     }
 
@@ -527,9 +533,11 @@ final class ResultConvergenceApplication {
         private final ResultLane lane;
         private int inflight;
         private long nextEligibleNanos;
+        private long idleBackoffMillis;
 
         private LaneRuntime(ResultLane lane) {
             this.lane = lane;
+            this.idleBackoffMillis = lane.idleBackoffMinMillis();
         }
     }
 

@@ -100,8 +100,15 @@ ten in-flight batches globally. Among eligible lanes below their maximum, it
 selects the smallest `inflight / target` ratio by integer cross multiplication;
 the fixed priority is only the tie-breaker. It directly attempts the existing
 bounded destructive consume, without `LLEN`, peek or a second queue state. An
-empty read or consumer exception delays only that lane by its existing idle
-interval, leaving unused capacity available to the others.
+empty read delays only that lane by its current idle interval, leaving unused
+capacity available to the others, and then lengthens that interval by one step
+up to the lane maximum. A non-empty batch resets the lane to its minimum. A
+consumer exception or a failed batch policy delays the lane by its maximum and
+continues the ramp from there. The coordinator owns each lane's current interval
+with its other counters; there is no timer or shared backoff state. The DEFAULT
+and SERVICEABILITY_DEFAULT presets ramp the three Task evidence lanes from 10ms by
+10ms to 100ms; Network Evidence keeps a fixed 100ms interval, and the Lab and
+Runtime Boundary presets keep their fixed intervals.
 
 Every non-empty batch runs on its own named JVM virtual thread. SUCCESS, FAILURE and OUTCOME_OBSERVATION may each borrow every otherwise unused slot up to ten. Their Batch
 completion order is deliberately unspecified: Redis FIFO guarantees consumption

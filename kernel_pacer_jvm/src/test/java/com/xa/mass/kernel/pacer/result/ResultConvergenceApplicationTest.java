@@ -308,6 +308,54 @@ class ResultConvergenceApplicationTest {
     }
 
     @Test
+    void idleLaneRampsLinearlyResetsOnWorkAndWaitsTheMaximumAfterFailure() throws Exception {
+        // e=empty, n=one report, x=consume failure; the ninth consume ends the script.
+        List<String> script = List.of("e", "e", "e", "n", "e", "e", "x", "e", "e");
+        List<Long> consumedAt = new java.util.concurrent.CopyOnWriteArrayList<>();
+        CountDownLatch finished = new CountDownLatch(1);
+        ResultLane lane = new ResultLane(
+                ResultLaneId.TASK_SUCCESS,
+                100,
+                10,
+                100,
+                400,
+                1,
+                1,
+                ignored -> {
+                    int index = consumedAt.size();
+                    consumedAt.add(System.nanoTime());
+                    if (index + 1 >= script.size()) {
+                        finished.countDown();
+                        return List.of();
+                    }
+                    return switch (script.get(index)) {
+                        case "n" -> List.of(report());
+                        case "x" -> throw new IllegalStateException("evidence store unavailable");
+                        default -> List.of();
+                    };
+                },
+                ignored -> { }
+        );
+        ResultConvergenceApplication application = application(1, lane);
+        application.start();
+        try {
+            assertTrue(finished.await(5, TimeUnit.SECONDS));
+        } finally {
+            application.stop(1_000);
+        }
+        long[] gaps = new long[consumedAt.size() - 1];
+        for (int i = 0; i < gaps.length; i++) {
+            gaps[i] = TimeUnit.NANOSECONDS.toMillis(consumedAt.get(i + 1) - consumedAt.get(i));
+        }
+        // Empty reads ramp 10 -> 110 -> 210ms; the coordinator never reads earlier.
+        assertTrue(gaps[0] >= 10 && gaps[1] >= 110 && gaps[2] >= 210, java.util.Arrays.toString(gaps));
+        // A non-empty batch resets the ramp: the next empty read waits the minimum, not 310ms.
+        assertTrue(gaps[3] < 200 && gaps[4] >= 10 && gaps[4] < 200, java.util.Arrays.toString(gaps));
+        // A consume failure waits the maximum and later empty reads stay at the maximum.
+        assertTrue(gaps[6] >= 400 && gaps[7] >= 400, java.util.Arrays.toString(gaps));
+    }
+
+    @Test
     void fatalPolicyErrorFailsTheApplication() throws Exception {
         ResultLane lane = new ResultLane(
                 ResultLaneId.TASK_SUCCESS,

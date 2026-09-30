@@ -177,7 +177,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains("LinkedBlockingQueue<")
                 .contains(".drainTo(")
                 .contains("while (")
-                .contains("Thread.sleep")
+                .contains("Thread::sleep")
                 .contains("new Thread(")
                 .contains("thread.setDaemon(true)")
                 .contains("volatile boolean stopped")
