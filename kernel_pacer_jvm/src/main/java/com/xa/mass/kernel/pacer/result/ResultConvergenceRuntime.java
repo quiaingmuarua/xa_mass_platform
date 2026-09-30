@@ -1,8 +1,10 @@
 package com.xa.mass.kernel.pacer.result;
 
+import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.delivery.TaskEvidenceRuntime.TaskEvidenceType;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
+import com.xa.mass.kernel.pacer.KernelPacerRuntime.ResultObservation;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskItemResultEvents;
 import com.xa.mass.kernel.worker.WorkerExecutionResultEvents;
@@ -14,6 +16,7 @@ import java.util.Objects;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 
 /**
  * Module-internal lifecycle bridge for the Result Convergence package.
@@ -46,7 +49,8 @@ public final class ResultConvergenceRuntime {
             WorkerServiceabilityEvents workerServiceabilityEvents,
             WorkerResourceCatalog workerCatalog,
             BiFunction<String, Map<String, Long>, Set<String>> networkEvidenceFilter,
-            WorkerServiceabilityRuntime serviceability
+            WorkerServiceabilityRuntime serviceability,
+            Consumer<ResultObservation> resultObservations
     ) {
         Objects.requireNonNull(preset, "preset");
         Objects.requireNonNull(taskEvidence, "taskEvidence");
@@ -64,7 +68,10 @@ public final class ResultConvergenceRuntime {
         ResultConvergenceConfig convergence = configForPreset(preset);
         TaskResultBatchPolicy taskPolicy = new TaskResultBatchPolicy(
                 taskItemEvents,
-                workerExecutionEvents
+                workerExecutionEvents,
+                System::currentTimeMillis,
+                new ResultContextCodec(),
+                resultObservations
         );
         List<ResultLane> lanes = new ArrayList<>();
         lanes.add(new ResultLane(

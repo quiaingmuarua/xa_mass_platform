@@ -99,6 +99,40 @@ class TaskResultBatchPolicyTest {
     }
 
     @Test
+    void storedSuccessEmitsOneNoticePerTaskAndAFailingNoticeNeverStopsRelease() {
+        var items = org.mockito.Mockito.mock(TaskItemResultEvents.class);
+        var workers = org.mockito.Mockito.mock(WorkerExecutionResultEvents.class);
+        List<com.xa.mass.kernel.pacer.KernelPacerRuntime.ResultObservation> notices = new ArrayList<>();
+        var policy = new TaskResultBatchPolicy(items, workers, () -> 1_000L, new ResultContextCodec(), notice -> {
+            notices.add(notice);
+            throw new IllegalStateException("notice consumer failed");
+        });
+
+        policy.handleSuccess(List.of(report("200", "first", 11)));
+
+        assertEquals(List.of(new com.xa.mass.kernel.pacer.KernelPacerRuntime.ResultObservation(
+                "task-1", List.of("message-1"))), notices);
+        org.mockito.Mockito.verify(workers).onTaskSucceeded(
+                "group-1", Map.of("worker-1", WorkerLeaseReference.fromEncodedScore(11)), 1_000L);
+    }
+
+    @Test
+    void aFailedResultStoreEmitsNoNotice() {
+        var items = org.mockito.Mockito.mock(TaskItemResultEvents.class);
+        org.mockito.Mockito.doThrow(new IllegalStateException("store unavailable")).when(items)
+                .onItemsSucceeded(org.mockito.ArgumentMatchers.eq("task-1"), org.mockito.ArgumentMatchers.anyMap(),
+                        org.mockito.ArgumentMatchers.anyLong());
+        List<com.xa.mass.kernel.pacer.KernelPacerRuntime.ResultObservation> notices = new ArrayList<>();
+        var policy = new TaskResultBatchPolicy(items, org.mockito.Mockito.mock(WorkerExecutionResultEvents.class),
+                () -> 1_000L, new ResultContextCodec(), notices::add);
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> policy.handleSuccess(List.of(report("200", "first", 11))));
+
+        assertEquals(List.of(), notices);
+    }
+
+    @Test
     void dropsMalformedContextAndWrongDestinationWithoutEvents() {
         List<String> calls = new ArrayList<>();
         TaskResultBatchPolicy policy = new TaskResultBatchPolicy(

@@ -158,6 +158,7 @@ guard this Java production layering.
 TaskItemResultEvents.onItemsSucceeded
   -> store self-describing code=200 Results in one TaskRuntime HASH operation
   -> separately request TERMINAL(tag=6) promotion for the same Item IDs
+  -> after it returns, emit one best-effort ResultObservation for the Task
 
 WorkerExecutionResultEvents.onTaskSucceeded
   -> apply the correlated successful-execution event per WorkerGroup

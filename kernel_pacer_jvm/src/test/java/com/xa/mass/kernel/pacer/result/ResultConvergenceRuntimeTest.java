@@ -47,7 +47,8 @@ class ResultConvergenceRuntimeTest {
                 "worker-1", new WorkerDescriptor("worker-1", "g", "system-polling")));
         var runtime = ResultConvergenceRuntime.assemble(preset,
                 mock(TaskEvidenceRuntime.class), mock(TaskItemResultEvents.class),
-                mock(WorkerExecutionResultEvents.class), events, catalog, (group, times) -> times.keySet(), handoff);
+                mock(WorkerExecutionResultEvents.class), events, catalog, (group, times) -> times.keySet(), handoff,
+                ignored -> { });
         try {
             runtime.start();
             verify(events, timeout(2000)).onAvailable("g", Map.of("worker-1", now));
@@ -71,7 +72,7 @@ class ResultConvergenceRuntimeTest {
                 .thenReturn(List.of(report)).thenReturn(List.of());
         var runtime = ResultConvergenceRuntime.assemble(preset, evidence, items, workers,
                 mock(WorkerServiceabilityEvents.class), mock(WorkerResourceCatalog.class),
-                (group, times) -> times.keySet(), mock(WorkerServiceabilityRuntime.class));
+                (group, times) -> times.keySet(), mock(WorkerServiceabilityRuntime.class), ignored -> { });
         try {
             runtime.start();
             verify(items, timeout(2000)).onItemOutcomesObserved("task", List.of(

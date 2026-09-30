@@ -50,6 +50,21 @@ public final class KernelPacerRuntime {
         }
     }
 
+    /**
+     * Best-effort notice that these Items' Result content or Dispatch-terminal failure
+     * marker was just stored. It carries no Result, is not Result truth and may be lost;
+     * readers still load stored Results through their Owner.
+     */
+    public record ResultObservation(
+            String taskId,
+            List<String> messageIds
+    ) {
+        public ResultObservation {
+            Objects.requireNonNull(taskId, "taskId");
+            messageIds = List.copyOf(messageIds);
+        }
+    }
+
     public enum PolicyPreset {
         DEFAULT,
         SERVICEABILITY_DEFAULT,
@@ -124,7 +139,8 @@ public final class KernelPacerRuntime {
             WorkerServiceabilityRuntime serviceability,
             WorkerMatching workerMatching,
             BiFunction<String, Map<String, Long>, Set<String>> networkEvidenceFilter,
-            Consumer<WorkerObservation> workerObservations
+            Consumer<WorkerObservation> workerObservations,
+            Consumer<ResultObservation> resultObservations
     ) {
         if (assignmentBatchLimit < 1 || assignmentBatchLimit > 1_000) {
             throw new IllegalArgumentException("assignmentBatchLimit must be in 1..1000");
@@ -150,7 +166,8 @@ public final class KernelPacerRuntime {
                         ),
                         workerCatalog,
                         networkEvidenceFilter,
-                        serviceability
+                        serviceability,
+                        resultObservations
                 );
         DispatchConvergenceRuntime dispatchConvergence =
                 DispatchConvergenceRuntime.assemble(
@@ -168,7 +185,8 @@ public final class KernelPacerRuntime {
                         serviceability,
                         new ResultContextCodec(),
                         workerMatching,
-                        workerObservations
+                        workerObservations,
+                        resultObservations
                 );
         return new KernelPacerRuntime(
                 shutdownTimeout,

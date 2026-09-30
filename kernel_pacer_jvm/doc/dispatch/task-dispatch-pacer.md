@@ -26,7 +26,8 @@ For each Task, the policy:
 1. observes at most `assignment-batch-limit` raw ACTIVE Item candidates (default 100, 1..1000);
 2. loads the corresponding minimal TaskItems;
 3. stores the fixed failed Result before promoting exhausted or expired Items
-   to `TERMINAL(tag=5)` for the complete observed batch, including 1000 failures;
+   to `TERMINAL(tag=5)` for the complete observed batch, including 1000 failures,
+   and emits one best-effort `ResultObservation` after the store;
 4. identifies claimable Items in observation order;
 5. obtains Worker candidates using the descriptor Group and Item queries;
 6. delegates exact Worker confirmation, Item claim, and Command publication;

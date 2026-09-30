@@ -86,6 +86,17 @@ no Pacer thread, queue, deduplication, replay or new Kernel operation.
 The [Server consumer](../../server_jvm/README.md#worker-allocation-observations)
 owns asynchronous delivery and any downstream projection.
 
+`assemble` also accepts one non-blocking
+`Consumer<KernelPacerRuntime.ResultObservation>`: Task ID and message IDs only.
+The TASK SUCCESS policy emits it after `onItemsSucceeded` stores a Task's Results;
+Dispatch emits it after storing Dispatch-terminal failure markers. It carries no
+Result content, is not Result truth and may be lost; sink exceptions are ignored
+and never change Result handling, Worker release or Dispatch. It adds no Pacer
+thread, queue, retry or Kernel operation. The Server wakes in-process
+[`items:call` waiters](../../server_jvm/README.md) with it; they still complete
+only from a stored-Result read, so remote instances or lost notices keep the probe
+interval.
+
 The finite Java caller closure is:
 
 ```text

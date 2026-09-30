@@ -145,6 +145,30 @@ class AssignmentPacersTest {
         order.verify(itemScores).promoteItemOutcomes("task-1", outcomeTargets(List.of("message-budget", "message-expired"), 5, 1_000L));
     }
 
+    @Test
+    void terminalFailureStoreEmitsANoticeThatCannotChangeDispatch() {
+        TaskItemScoreBandCore itemScores = mock(TaskItemScoreBandCore.class);
+        TaskRuntime taskRuntime = mock(TaskRuntime.class);
+        LinkedHashMap<String, TaskItemScoreObservation> observed = new LinkedHashMap<>();
+        observed.put("message-budget", new TaskItemScoreObservation(101L, 0));
+        when(itemScores.acquireItemScoreCandidates("task-1", 100)).thenReturn(observed);
+        List<com.xa.mass.kernel.pacer.KernelPacerRuntime.ResultObservation> notices = new java.util.ArrayList<>();
+        var policy = new TaskDispatchPolicy(mock(TaskScoreBandCore.class), itemScores, taskRuntime,
+                mock(TaskAssignmentDispatcher.class), mock(TaskIdleSettlement.class),
+                mock(WorkerCandidateSelectionPolicy.class), 100, 5, () -> 1_000L, notice -> {
+                    notices.add(notice);
+                    throw new IllegalStateException("notice consumer failed");
+                });
+
+        assertEquals(0, policy.dispatchTasks(List.of(due("task-1", TaskIdleDisposition.PARK_WHEN_IDLE, 10))));
+
+        InOrder order = org.mockito.Mockito.inOrder(taskRuntime, itemScores);
+        order.verify(taskRuntime).storeTaskItemFailedResults("task-1", List.of("message-budget"));
+        order.verify(itemScores).promoteItemOutcomes("task-1", outcomeTargets(List.of("message-budget"), 5, 1_000L));
+        assertEquals(List.of(new com.xa.mass.kernel.pacer.KernelPacerRuntime.ResultObservation(
+                "task-1", List.of("message-budget"))), notices);
+    }
+
     private static TaskDispatchPolicy dispatch(
             TaskScoreBandCore taskScores,
             TaskItemScoreBandCore itemScores,
