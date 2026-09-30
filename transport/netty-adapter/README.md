@@ -363,9 +363,23 @@ before serving another retained slice. A non-empty fresh batch is processed
 directly and does not enter or depend on retry Queue capacity. It continues
 immediately,
 without a fixed delay or batch-count ceiling, so sustained fresh traffic cannot
-starve retained Commands. An empty response or a supplier/Processor
-`RuntimeException` waits `commandBackoff` as an interruptible
-local backoff. An unexpected Processor exception drops that current batch
+starve retained Commands. An empty response waits the current idle backoff as an
+interruptible local sleep, then lengthens it linearly:
+
+```text
+non-empty fresh batch -> idle backoff = commandBackoffMin, no wait
+empty fresh batch     -> wait idle backoff, then
+                         idle backoff = min(idle backoff + commandBackoffStep, commandBackoffMax)
+supplier/Processor RuntimeException
+                      -> idle backoff = commandBackoffMax, wait it
+```
+
+A retained retry slice does not count as fresh work, so retries of undeliverable
+Commands follow the same ramp. `commandBackoffStep = 0` with equal minimum and
+maximum is a fixed backoff. Bursty Commands therefore wait tens of milliseconds
+instead of the full maximum, while an idle Adapter still polls at most once per
+maximum. The idle interval lives on the consumer thread only; there is no
+scheduler, timer or shared backoff object. An unexpected Processor exception drops that current batch
 rather than replaying Commands after a possible partial physical delivery;
 normal `RETRY_LATER` still appends only the selected items to the Queue tail.
 There is no inner retry loop, attempt counter, or second call to `process` for

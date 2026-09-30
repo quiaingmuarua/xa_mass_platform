@@ -330,6 +330,8 @@ class NettyAdapterContractTest {
                         "127.0.0.1",
                         port,
                         Duration.ofMillis(10),
+                        Duration.ZERO,
+                        Duration.ofMillis(10),
                         100,
                         1000,
                         Duration.ofMillis(10),

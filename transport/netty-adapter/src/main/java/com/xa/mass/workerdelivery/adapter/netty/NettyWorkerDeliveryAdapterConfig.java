@@ -8,7 +8,9 @@ public record NettyWorkerDeliveryAdapterConfig(
         Type type,
         String listenHost,
         int listenPort,
-        Duration commandBackoff,
+        Duration commandBackoffMin,
+        Duration commandBackoffStep,
+        Duration commandBackoffMax,
         int commandConsumeLimit,
         int commandRetryCapacity,
         Duration reportBackoff,
@@ -32,10 +34,25 @@ public record NettyWorkerDeliveryAdapterConfig(
                     "listenPort must be between 1 and 65535"
             );
         }
-        commandBackoff = requirePositiveMillis(
-                commandBackoff,
-                "commandBackoff"
+        commandBackoffMin = requirePositiveMillis(
+                commandBackoffMin,
+                "commandBackoffMin"
         );
+        Objects.requireNonNull(commandBackoffStep, "commandBackoffStep");
+        if (commandBackoffStep.isNegative()) {
+            throw new IllegalArgumentException(
+                    "commandBackoffStep must not be negative"
+            );
+        }
+        commandBackoffMax = requirePositiveMillis(
+                commandBackoffMax,
+                "commandBackoffMax"
+        );
+        if (commandBackoffMax.compareTo(commandBackoffMin) < 0) {
+            throw new IllegalArgumentException(
+                    "commandBackoffMax must not be below commandBackoffMin"
+            );
+        }
         requireRetryQueueCapacity(
                 commandRetryCapacity,
                 1,

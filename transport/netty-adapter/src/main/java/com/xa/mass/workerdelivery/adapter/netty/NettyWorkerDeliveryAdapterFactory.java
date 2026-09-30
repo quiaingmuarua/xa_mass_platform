@@ -114,7 +114,9 @@ public final class NettyWorkerDeliveryAdapterFactory {
                         "delivery-command",
                         requiredConfig.commandRetryCapacity(),
                         requiredConfig.commandConsumeLimit(),
-                        requiredConfig.commandBackoff(),
+                        requiredConfig.commandBackoffMin(),
+                        requiredConfig.commandBackoffStep(),
+                        requiredConfig.commandBackoffMax(),
                         () -> acquireCommands(
                                 requiredAdapterId,
                                 requiredConfig.commandConsumeLimit()

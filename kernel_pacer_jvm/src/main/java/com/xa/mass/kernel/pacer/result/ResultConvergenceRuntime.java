@@ -70,7 +70,9 @@ public final class ResultConvergenceRuntime {
         lanes.add(new ResultLane(
                 ResultLaneId.TASK_SUCCESS,
                 ResultConvergenceConfig.TASK_RESULT_BATCH_LIMIT,
-                convergence.taskResultIdleIntervalMillis(),
+                convergence.taskResultIdleMinMillis(),
+                convergence.taskResultIdleStepMillis(),
+                convergence.taskResultIdleMaxMillis(),
                 ResultConvergenceConfig.TASK_SUCCESS_TARGET_CONCURRENCY,
                 ResultConvergenceConfig.TASK_SUCCESS_MAX_CONCURRENCY,
                 limit -> taskEvidence.consumeTaskEvidence(
@@ -82,7 +84,9 @@ public final class ResultConvergenceRuntime {
         lanes.add(new ResultLane(
                 ResultLaneId.TASK_FAILURE,
                 ResultConvergenceConfig.TASK_RESULT_BATCH_LIMIT,
-                convergence.taskResultIdleIntervalMillis(),
+                convergence.taskResultIdleMinMillis(),
+                convergence.taskResultIdleStepMillis(),
+                convergence.taskResultIdleMaxMillis(),
                 ResultConvergenceConfig.TASK_FAILURE_TARGET_CONCURRENCY,
                 ResultConvergenceConfig.TASK_FAILURE_MAX_CONCURRENCY,
                 limit -> taskEvidence.consumeTaskEvidence(
@@ -112,7 +116,9 @@ public final class ResultConvergenceRuntime {
         lanes.add(new ResultLane(
                 ResultLaneId.TASK_OBSERVATION,
                 ResultConvergenceConfig.TASK_RESULT_BATCH_LIMIT,
-                convergence.taskResultIdleIntervalMillis(),
+                convergence.taskResultIdleMinMillis(),
+                convergence.taskResultIdleStepMillis(),
+                convergence.taskResultIdleMaxMillis(),
                 ResultConvergenceConfig.TASK_OBSERVATION_TARGET_CONCURRENCY,
                 ResultConvergenceConfig.TASK_OBSERVATION_MAX_CONCURRENCY,
                 limit -> taskEvidence.consumeTaskEvidence(TaskEvidenceType.OUTCOME_OBSERVATION, limit),
@@ -146,11 +152,11 @@ public final class ResultConvergenceRuntime {
         return switch (Objects.requireNonNull(preset, "preset")) {
             case DEFAULT, SERVICEABILITY_DEFAULT ->
                     ResultConvergenceConfig.defaults();
-            case SCENARIO_LAB -> new ResultConvergenceConfig(
+            case SCENARIO_LAB -> ResultConvergenceConfig.fixed(
                     LAB_INTERVAL_MILLIS,
                     ResultConvergenceConfig.DEFAULT_IDLE_INTERVAL_MILLIS
             );
-            case RUNTIME_BOUNDARY_PROOF -> new ResultConvergenceConfig(
+            case RUNTIME_BOUNDARY_PROOF -> ResultConvergenceConfig.fixed(
                     ResultConvergenceConfig.DEFAULT_IDLE_INTERVAL_MILLIS,
                     LAB_INTERVAL_MILLIS
             );
