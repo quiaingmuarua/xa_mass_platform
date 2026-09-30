@@ -61,8 +61,14 @@ class DispatchConvergenceLifecycleTest {
                 any(), any()
         );
 
-        doAnswer(ignored -> complete(rounds, allVirtual, finishRound))
-                .when(fixture.refill).refill(any(), any());
+        AtomicReference<List<String>> refillGroups = new AtomicReference<>();
+        AtomicReference<List<String>> refillTasks = new AtomicReference<>();
+        doAnswer(invocation -> {
+            refillGroups.set(invocation.getArgument(0));
+            List<TaskDescriptor> tasks = invocation.getArgument(1);
+            refillTasks.set(tasks.stream().map(TaskDescriptor::taskId).toList());
+            return complete(rounds, allVirtual, finishRound);
+        }).when(fixture.refill).refill(any(), any());
 
         fixture.runtime.start();
         try {
@@ -87,6 +93,17 @@ class DispatchConvergenceLifecycleTest {
                     ),
                     dispatchedTasks.get()
             );
+            verify(fixture.taskScores).observeNormalRunningTasksAscending(100);
+            // Refill reuses due descriptors and loads only the missing NORMAL RUNNING roots.
+            verify(fixture.taskCatalog).loadTaskAllocationDescriptors(List.of(
+                    "task-invalid",
+                    "task-hidden"
+            ));
+            assertEquals(
+                    List.of("task-repeat-group", "task-second", "task-first", "task-hidden"),
+                    refillTasks.get()
+            );
+            assertEquals(List.of("group-1", "group-2", "group-hidden"), refillGroups.get());
             verify(fixture.taskScores).observeRunningTasksAscending(100);
             // Only RUNNING roots missing from the due NORMAL projection are loaded again.
             verify(fixture.taskCatalog).loadTaskAllocationDescriptors(List.of(
@@ -423,6 +440,15 @@ class DispatchConvergenceLifecycleTest {
         runningAscending.put("task-parked", 999L);
         when(fixture.taskScores.observeRunningTasksAscending(100))
                 .thenReturn(runningAscending);
+        // Refill roots ignore due time: task-hidden was just rewritten into the current slot.
+        LinkedHashMap<String, Long> normalRunning = new LinkedHashMap<>();
+        normalRunning.put("task-invalid", 101L);
+        normalRunning.put("task-repeat-group", 102L);
+        normalRunning.put("task-second", 103L);
+        normalRunning.put("task-first", 104L);
+        normalRunning.put("task-hidden", 105L);
+        when(fixture.taskScores.observeNormalRunningTasksAscending(100))
+                .thenReturn(normalRunning);
         when(fixture.taskCatalog.loadTaskAllocationDescriptors(any()))
                 .thenReturn(Map.of(
                         "task-first",
@@ -454,6 +480,11 @@ class DispatchConvergenceLifecycleTest {
                         descriptor(
                                 "task-parked",
                                 "group-parked"
+                        ),
+                        "task-hidden",
+                        descriptor(
+                                "task-hidden",
+                                "group-hidden"
                         )
                 ));
     }

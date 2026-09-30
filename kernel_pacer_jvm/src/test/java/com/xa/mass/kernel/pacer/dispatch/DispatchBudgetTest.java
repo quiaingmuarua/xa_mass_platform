@@ -24,6 +24,7 @@ class DispatchBudgetTest {
         var dispatch=mock(TaskDispatchPolicy.class);
         when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task",123L,"initial",100L));
         when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of("initial",100L));
+        when(scores.observeNormalRunningTasksAscending(100)).thenReturn(Map.of("task",123L));
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task",descriptor()));
 
         var initialization=mock(TaskInitializationPolicy.class);
@@ -57,6 +58,43 @@ class DispatchBudgetTest {
         verify(dispatch).dispatchTasks(List.of(new ObservedTask(descriptor(),123L)));
     }
 
+    @Test void refillKeepsRunningTasksThatAreNotDueInThisRound() {
+        var scores=mock(TaskScoreBandCore.class);
+        var catalog=mock(TaskResourceCatalog.class);
+        var refill=mock(WorkerEligibilityRefillPolicy.class);
+        var dispatch=mock(TaskDispatchPolicy.class);
+        // Dispatch just rewrote the only Task into the current slot, so no Task is due.
+        when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of());
+        when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
+        when(scores.observeNormalRunningTasksAscending(100)).thenReturn(Map.of("task",123L));
+        when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task",descriptor()));
+        var scheduler=new DispatchMainScheduler(scores,catalog,mock(TaskInitializationPolicy.class),
+                dispatch,refill,null,AssignmentDispatchConfig.defaults(),null);
+        var executor=new ManualExecutor();
+        scheduler.new SchedulerRun(executor,()->0).step();
+        while(!executor.pending.isEmpty())executor.pending.removeFirst().run();
+        verify(refill).refill(List.of("group"),List.of(descriptor()));
+        verifyNoInteractions(dispatch);
+    }
+
+    @Test void failedSupplyRootsDeferOnlyRefill() {
+        var scores=mock(TaskScoreBandCore.class);
+        var catalog=mock(TaskResourceCatalog.class);
+        var refill=mock(WorkerEligibilityRefillPolicy.class);
+        var dispatch=mock(TaskDispatchPolicy.class);
+        when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task",123L));
+        when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
+        when(scores.observeNormalRunningTasksAscending(100)).thenThrow(new IllegalStateException("Redis unavailable"));
+        when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task",descriptor()));
+        var scheduler=new DispatchMainScheduler(scores,catalog,mock(TaskInitializationPolicy.class),
+                dispatch,refill,null,AssignmentDispatchConfig.defaults(),null);
+        var executor=new ManualExecutor();
+        scheduler.new SchedulerRun(executor,()->0).step();
+        while(!executor.pending.isEmpty())executor.pending.removeFirst().run();
+        verify(dispatch).dispatchTasks(List.of(new ObservedTask(descriptor(),123L)));
+        verifyNoInteractions(refill);
+    }
+
     private static TaskRuntime.TaskDescriptor descriptor() {
         return new TaskRuntime.TaskDescriptor("task", "test-project", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "10", "maxRetryTimes", "1"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of());
     }
@@ -67,6 +105,7 @@ class DispatchBudgetTest {
         var dispatch = mock(TaskDispatchPolicy.class);
         when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task", 123L));
         when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
+        when(scores.observeNormalRunningTasksAscending(100)).thenReturn(Map.of("task", 123L));
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task", descriptor()));
         var scheduler = new DispatchMainScheduler(scores, catalog, mock(TaskInitializationPolicy.class),
                 dispatch, mock(WorkerEligibilityRefillPolicy.class), null, AssignmentDispatchConfig.defaults(), null);

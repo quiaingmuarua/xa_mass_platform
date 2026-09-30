@@ -224,18 +224,25 @@ The fixed Producers are:
 | Producer | Main-planned root input | Responsibility |
 | --- | --- | --- |
 | TASK_INITIALIZATION | INITIAL RUNNING | one due-Item check and exact batch promotion to NORMAL |
-| ELIGIBILITY_REFILL | NORMAL Task descriptors | Group shortage observation, independent aged-candidate recycle, due-head candidateization and Matching admission; no Item read |
+| ELIGIBILITY_REFILL | NORMAL RUNNING Task descriptors below idle park, independent of due time | Group shortage observation, independent aged-candidate recycle, due-head candidateization and Matching admission; no Item read |
 | TASK_DISPATCH | NORMAL RUNNING descriptors | consume inventory, acquire execution, Item finality/claim, Command publication, Task pacing/idle lifecycle |
 | WORKER_SERVICEABILITY | ordered unique WorkerGroup IDs from ascending RUNNING Tasks, INITIAL through idle park | offer Adapter route probes |
 
-Main shares the already-read NORMAL Task descriptors. Matching performs only
+Refill roots come from one bounded `observeNormalRunningTasksAscending` read.
+A Task that Dispatch just rewrote into the current Task slot is not due, but it
+keeps its supply declarations: otherwise a round driven by another Task's
+shortage would candidateize its Workers, Matching would reject them, and they
+would stay unusable candidates until aged recycling. Idle-parked Tasks are not
+roots, so an idle managed Task does not hold Workers in Pools. Main reuses the
+descriptors already read for Dispatch and loads only the missing ones; a failure
+of this read or load defers only Refill. Matching performs only
 named eligibility calls, with no Task configuration read. Candidate work is not
 a prerequisite for dispatch expiry/exhaustion or idle settlement. Refill is
 single-flight and targets shared Group/Pool stock. It has no Task-private cache,
 queue or additional Task discovery. See [Matching](../../worker_matching_jvm/README.md).
 
 A Task Source or INITIAL-classification failure defers every currently eligible
-Producer. Descriptor loading failure defers only NORMAL Producers; already
+Producer. Descriptor loading failure for the due projection defers only NORMAL Producers; already
 formed Initialization input may still run. Empty input or a Producer
 `RuntimeException` defers only that Producer by its own interval. A JVM
 `Error`, rejected execution, or unexpected Main Scheduler exit fails Dispatch

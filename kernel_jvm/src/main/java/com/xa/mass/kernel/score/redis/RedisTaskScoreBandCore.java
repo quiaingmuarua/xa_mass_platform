@@ -311,6 +311,27 @@ public final class RedisTaskScoreBandCore
 
     @Override
     public Map<String, Long> observeRunningTasksAscending(int limit) {
+        return observeAscending(
+                score(RUNNING_VISIBLE_TAG, INITIAL_TIME_SLOT, MIN_SUFFIX),
+                idleParkScore(),
+                limit
+        );
+    }
+
+    @Override
+    public Map<String, Long> observeNormalRunningTasksAscending(int limit) {
+        return observeAscending(
+                score(RUNNING_VISIBLE_TAG, NORMAL_TIME_SLOT_MIN, MIN_SUFFIX),
+                idleParkScore() - 1,
+                limit
+        );
+    }
+
+    private Map<String, Long> observeAscending(
+            long minimumScore,
+            long maximumScore,
+            int limit
+    ) {
         if (limit < 1 || limit > MAX_TASK_SCHEDULING_BATCH_SIZE) {
             throw new IllegalArgumentException(
                     "limit must be between 1 and "
@@ -320,8 +341,8 @@ public final class RedisTaskScoreBandCore
         List<ScoredValue<String>> rows = commands()
                 .zrangebyscoreWithScores(
                         scoreKey(),
-                        score(RUNNING_VISIBLE_TAG, INITIAL_TIME_SLOT, MIN_SUFFIX),
-                        idleParkScore(),
+                        minimumScore,
+                        maximumScore,
                         0,
                         limit
                 );

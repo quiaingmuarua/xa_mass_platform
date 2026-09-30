@@ -163,6 +163,9 @@ Task dispatch
 ```
 
 The Main Scheduler supplies every Producer's root Task/Group identities.
+Dispatch roots are due NORMAL Tasks. Refill roots are NORMAL RUNNING Tasks below
+idle park regardless of due time, so a Task hidden in its current dispatch slot
+keeps its supply declarations and its Workers are never offered without them.
 Finite Tasks require explicit approval before INITIAL processing; managed Calls
 use their Group's registered reusable Task. Task lifecycle and descriptor storage
 belong to the [Task Owner](../../kernel_jvm/doc/resource-model/task-resource-model.md).

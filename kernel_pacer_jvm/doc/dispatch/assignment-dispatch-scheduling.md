@@ -36,7 +36,11 @@ this does not permit copying generations already admitted to another Pool.
 alone establishes a future execution lease.** Matching receives only successful
 candidate fences as Map<workerId, Long>, not held-lease DTOs or deadlines.
 
-The 50ms completion-relative Refill Producer operates over Main's bounded Group roots:
+The 50ms completion-relative Refill Producer operates over Main's bounded Group
+roots. Its Tasks are NORMAL RUNNING Tasks below idle park, independent of due
+time, so every running Task's declarations take part in each round. A candidate
+Matching rejects stays at mark=1 until aged recycling; a declaration missing from
+a round would strand that Task's Workers for the recycle age. The steps are:
 
 1. Observe a bounded old mark=1 head in each selected Group and exact-recycle it
    to mark=0 at the Owner clock's current slot, even when there is no Pool shortage.
