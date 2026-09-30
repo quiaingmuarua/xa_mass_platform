@@ -379,19 +379,20 @@ final class DispatchMainScheduler {
                 List<ObservedTask> normalTasks
         ) {
             if (eligible.contains(DispatchProducerId.TASK_DISPATCH)) {
-                startProducer(
+                startBacklogProducer(
                         DispatchProducerId.TASK_DISPATCH,
                         normalTasks.size(),
                         () -> {
                             long started = DispatchStageEvent.start();
-                            int published = 0;
+                            TaskDispatchPolicy.DispatchRound round = TaskDispatchPolicy.DispatchRound.NONE;
                             boolean failed = true;
                             try {
-                                published = dispatch.dispatchTasks(normalTasks);
+                                round = dispatch.dispatchTasks(normalTasks);
                                 failed = false;
                             } finally {
-                                DispatchStageEvent.batch(started, "DISPATCH_ROUND", normalTasks.size(), published, failed);
+                                DispatchStageEvent.batch(started, "DISPATCH_ROUND", normalTasks.size(), round.published(), failed);
                             }
+                            return round.backlogged();
                         }
                 );
             }
@@ -401,6 +402,21 @@ final class DispatchMainScheduler {
                 DispatchProducerId producerId,
                 int batchSize,
                 Runnable producer
+        ) {
+            startBacklogProducer(producerId, batchSize, () -> {
+                producer.run();
+                return false;
+            });
+        }
+
+        /**
+         * A producer that reports backlog becomes eligible again on completion instead of
+         * after its interval; it stays single-flight and a failure always takes the interval.
+         */
+        private void startBacklogProducer(
+                DispatchProducerId producerId,
+                int batchSize,
+                java.util.function.BooleanSupplier producer
         ) {
             ProducerRuntime runtime = Objects.requireNonNull(
                     runtimes.get(producerId),
@@ -424,8 +440,9 @@ final class DispatchMainScheduler {
             try {
                 executor.submit(() -> {
                     Throwable failure = null;
+                    boolean backlogged = false;
                     try {
-                        producer.run();
+                        backlogged = producer.getAsBoolean();
                     } catch (RuntimeException runtimeFailure) {
                         failure = runtimeFailure;
                     } catch (Error fatalFailure) {
@@ -435,7 +452,8 @@ final class DispatchMainScheduler {
                         completions.offer(new ProducerCompletion(
                                 runtime.id,
                                 batchSize,
-                                failure
+                                failure,
+                                backlogged && failure == null
                         ));
                     }
                 });
@@ -482,7 +500,13 @@ final class DispatchMainScheduler {
                 );
             }
             runtime.inflight = false;
-            deferProducer(runtime);
+            if (completion.backlogged()) {
+                // Work waits behind a full, progressing round: start the next one now.
+                runtime.waitingForTaskSource = false;
+                runtime.nextEligibleNanos = nanoTime.getAsLong();
+            } else {
+                deferProducer(runtime);
+            }
             if (completion.failure() == null) {
                 return;
             }
@@ -640,7 +664,8 @@ final class DispatchMainScheduler {
     private record ProducerCompletion(
             DispatchProducerId id,
             int batchSize,
-            Throwable failure
+            Throwable failure,
+            boolean backlogged
     ) {
     }
 }

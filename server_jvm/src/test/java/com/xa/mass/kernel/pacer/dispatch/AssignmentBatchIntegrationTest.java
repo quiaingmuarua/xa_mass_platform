@@ -91,7 +91,7 @@ class AssignmentBatchIntegrationTest {
                     assertThat(state.remainingBudget()).isEqualTo(1);
                 });
             }
-            assertThat(f.dispatch(limit, observed, System::currentTimeMillis).dispatchTasks(List.of(f.observed(task)))).isZero();
+            assertThat(f.dispatch(limit, observed, System::currentTimeMillis).dispatchTasks(List.of(f.observed(task))).published()).isZero();
         });
     }
 
@@ -112,7 +112,7 @@ class AssignmentBatchIntegrationTest {
             once.forEach((id, result) -> exhausted.put(id, result.score()));
             assertThat(f.itemScores.rewriteObservedItemScores(task.taskId(), exhausted, now - 500, -1).values())
                     .allSatisfy(result -> assertThat(result.status().wireValue()).isEqualTo("transitioned"));
-            assertThat(f.dispatch(limit, new ArrayList<>(), () -> now + 20_000).dispatchTasks(List.of(f.observed(task)))).isZero();
+            assertThat(f.dispatch(limit, new ArrayList<>(), () -> now + 20_000).dispatchTasks(List.of(f.observed(task))).published()).isZero();
             var results = f.tasks.loadTaskItemResults(task.taskId(), items.stream().map(TaskItem::messageId).toList());
             assertThat(results).hasSize(limit);
             assertThat(results.values()).allSatisfy(result -> assertThat(result).isEqualTo(TaskItemResult.failed()));

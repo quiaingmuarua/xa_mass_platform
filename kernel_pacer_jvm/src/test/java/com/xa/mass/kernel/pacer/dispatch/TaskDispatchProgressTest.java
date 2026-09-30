@@ -78,7 +78,7 @@ class TaskDispatchProgressTest {
         rig.policy.dispatchTasks(tasks);
         rig.availableGroups.add("shared");
         rig.rejectPublication = true;
-        assertEquals(0, rig.policy.dispatchTasks(tasks));
+        assertEquals(0, rig.policy.dispatchTasks(tasks).published());
         rig.rejectPublication = false;
         rig.availableGroups.add("shared");
         rig.policy.dispatchTasks(tasks);

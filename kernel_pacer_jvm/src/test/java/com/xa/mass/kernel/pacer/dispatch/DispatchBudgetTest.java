@@ -22,6 +22,7 @@ class DispatchBudgetTest {
         var index=mock(WorkerMatching.class);
         var hold=mock(WorkerEligibilityRefillPolicy.class);
         var dispatch=mock(TaskDispatchPolicy.class);
+        when(dispatch.dispatchTasks(anyList())).thenReturn(TaskDispatchPolicy.DispatchRound.NONE);
         when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task",123L,"initial",100L));
         when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of("initial",100L));
         when(scores.observeNormalRunningTasksAscending(100)).thenReturn(Map.of("task",123L));
@@ -46,6 +47,7 @@ class DispatchBudgetTest {
         var catalog=mock(TaskResourceCatalog.class);
         var refill=mock(WorkerEligibilityRefillPolicy.class);
         var dispatch=mock(TaskDispatchPolicy.class);
+        when(dispatch.dispatchTasks(anyList())).thenReturn(TaskDispatchPolicy.DispatchRound.NONE);
         when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task",123L));
         when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task",descriptor()));
@@ -63,6 +65,7 @@ class DispatchBudgetTest {
         var catalog=mock(TaskResourceCatalog.class);
         var refill=mock(WorkerEligibilityRefillPolicy.class);
         var dispatch=mock(TaskDispatchPolicy.class);
+        when(dispatch.dispatchTasks(anyList())).thenReturn(TaskDispatchPolicy.DispatchRound.NONE);
         // Dispatch just rewrote the only Task into the current slot, so no Task is due.
         when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of());
         when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
@@ -82,6 +85,7 @@ class DispatchBudgetTest {
         var catalog=mock(TaskResourceCatalog.class);
         var refill=mock(WorkerEligibilityRefillPolicy.class);
         var dispatch=mock(TaskDispatchPolicy.class);
+        when(dispatch.dispatchTasks(anyList())).thenReturn(TaskDispatchPolicy.DispatchRound.NONE);
         when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task",123L));
         when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
         when(scores.observeNormalRunningTasksAscending(100)).thenThrow(new IllegalStateException("Redis unavailable"));
@@ -103,6 +107,7 @@ class DispatchBudgetTest {
         var scores = mock(TaskScoreBandCore.class);
         var catalog = mock(TaskResourceCatalog.class);
         var dispatch = mock(TaskDispatchPolicy.class);
+        when(dispatch.dispatchTasks(anyList())).thenReturn(TaskDispatchPolicy.DispatchRound.NONE);
         when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task", 123L));
         when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
         when(scores.observeNormalRunningTasksAscending(100)).thenReturn(Map.of("task", 123L));
@@ -129,6 +134,65 @@ class DispatchBudgetTest {
         assertEquals(2, executor.pending.size());
         while (!executor.pending.isEmpty()) executor.pending.removeFirst().run();
         verify(dispatch, times(2)).dispatchTasks(anyList());
+    }
+
+    @Test void aBackloggedRoundStartsTheNextRoundAtOnceWhileOtherProducersKeepTheirInterval() {
+        var scores = mock(TaskScoreBandCore.class);
+        var catalog = mock(TaskResourceCatalog.class);
+        var dispatch = mock(TaskDispatchPolicy.class);
+        when(dispatch.dispatchTasks(anyList())).thenReturn(
+                new TaskDispatchPolicy.DispatchRound(2000, true),
+                new TaskDispatchPolicy.DispatchRound(1, false));
+        when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task", 123L));
+        when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
+        when(scores.observeNormalRunningTasksAscending(100)).thenReturn(Map.of("task", 123L));
+        when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task", descriptor()));
+        var refill = mock(WorkerEligibilityRefillPolicy.class);
+        var scheduler = new DispatchMainScheduler(scores, catalog, mock(TaskInitializationPolicy.class),
+                dispatch, refill, null, AssignmentDispatchConfig.defaults(), null);
+        var clock = new AtomicLong(1_000_000_000L);
+        var executor = new ManualExecutor();
+        var run = scheduler.new SchedulerRun(executor, clock::get);
+        run.step();
+        assertEquals(2, executor.pending.size()); // Refill and the first Dispatch round.
+        while (!executor.pending.isEmpty()) executor.pending.removeFirst().run();
+
+        run.step(); // Same instant: only the backlogged Dispatch is eligible again.
+        assertEquals(1, executor.pending.size());
+        executor.pending.removeFirst().run();
+        verify(dispatch, times(2)).dispatchTasks(anyList());
+        verify(refill, times(1)).refill(anyList(), anyList());
+
+        run.step(); // The second round had no backlog, so its interval applies again.
+        assertTrue(executor.pending.isEmpty());
+        clock.addAndGet(49_999_999L);
+        run.step();
+        assertTrue(executor.pending.isEmpty());
+        clock.incrementAndGet();
+        run.step();
+        assertEquals(2, executor.pending.size());
+    }
+
+    @Test void aFailedDispatchRoundAlwaysTakesTheInterval() {
+        var scores = mock(TaskScoreBandCore.class);
+        var catalog = mock(TaskResourceCatalog.class);
+        var dispatch = mock(TaskDispatchPolicy.class);
+        when(dispatch.dispatchTasks(anyList())).thenThrow(new IllegalStateException("Redis unavailable"));
+        when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task", 123L));
+        when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
+        when(scores.observeNormalRunningTasksAscending(100)).thenReturn(Map.of("task", 123L));
+        when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task", descriptor()));
+        var scheduler = new DispatchMainScheduler(scores, catalog, mock(TaskInitializationPolicy.class),
+                dispatch, mock(WorkerEligibilityRefillPolicy.class), null, AssignmentDispatchConfig.defaults(), null);
+        var executor = new ManualExecutor();
+        var run = scheduler.new SchedulerRun(executor, () -> 1_000_000_000L);
+        run.step();
+        while (!executor.pending.isEmpty()) executor.pending.removeFirst().run();
+
+        run.step();
+
+        assertTrue(executor.pending.isEmpty());
+        verify(dispatch, times(1)).dispatchTasks(anyList());
     }
 
     @org.junit.jupiter.params.ParameterizedTest

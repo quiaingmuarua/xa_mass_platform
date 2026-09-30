@@ -352,6 +352,7 @@ class DispatchConvergenceLifecycleTest {
                 TaskInitializationPolicy.class
         );
         TaskDispatchPolicy dispatch = mock(TaskDispatchPolicy.class);
+        when(dispatch.dispatchTasks(org.mockito.ArgumentMatchers.anyList())).thenReturn(TaskDispatchPolicy.DispatchRound.NONE);
         WorkerServiceabilityDispatchPolicy serviceability = mock(
                 WorkerServiceabilityDispatchPolicy.class
         );

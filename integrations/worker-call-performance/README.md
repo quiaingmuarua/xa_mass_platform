@@ -54,7 +54,7 @@ Waiter and Direct Call bounds, Tomcat threads (calls complete through
 DeferredResult) and the 4,096 in-flight Harness bound are audited and unchanged.
 
 Mechanism constants are measured, never raised: the 50ms Dispatch and Refill
-intervals, the 100ms Task Score slot, Refill round budgets, Result lane batch and
+intervals (Dispatch skips its interval after a backlogged round), the 100ms Task Score slot, Refill round budgets, Result lane batch and
 concurrency, the 5s Item claim lease, single-flight Producers and the scenario
 profile's Adapter consume limit of 500 (the Server delivery contract,
 `DirectCallService.MAX_CONSUME_LIMIT`, admits up to 1000). When a mechanism

@@ -36,6 +36,12 @@ For each Task, the policy:
 If no claimable Item remains, `TaskIdleSettlement` performs the complete ACTIVE
 recheck and exact close or private idle park.
 
+The round returns its published count and whether it is backlogged: some Task
+observed a full `assignment-batch-limit` batch and still published. The Main
+Scheduler then starts the next round on completion instead of after the 50ms
+interval ([assembly](../application-assembly.md)); a full batch without progress
+is not backlog.
+
 ## Named Query Functions
 
 Main supplies complete immutable NORMAL Task descriptors to refill and

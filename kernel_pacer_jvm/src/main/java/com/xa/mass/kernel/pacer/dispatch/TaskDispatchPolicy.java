@@ -114,7 +114,15 @@ final class TaskDispatchPolicy {
         );
     }
 
-    int dispatchTasks(List<ObservedTask> tasks) {
+    /**
+     * One Dispatch round: published Commands, and whether some Task returned a full
+     * candidate batch and still published, so more Items are waiting behind this round.
+     */
+    record DispatchRound(int published, boolean backlogged) {
+        static final DispatchRound NONE = new DispatchRound(0, false);
+    }
+
+    DispatchRound dispatchTasks(List<ObservedTask> tasks) {
         Objects.requireNonNull(tasks, "tasks");
         long dispatchTimeMillis = currentTimeMillis.getAsLong();
         long claimUntilMillis = Math.addExact(
@@ -126,6 +134,7 @@ final class TaskDispatchPolicy {
         List<ObservedTask> orderedTasks = orderForDispatch(tasks, servedTaskIds);
         recentlyServedTaskIds = List.copyOf(servedTaskIds);
         int published = 0;
+        boolean backlogged = false;
         for (ObservedTask task : orderedTasks) {
             long checkedAt = DispatchStageEvent.start();
             Map<String, TaskItemScoreObservation> observed =
@@ -210,6 +219,9 @@ final class TaskDispatchPolicy {
                         claimUntilMillis
                 );
                 published += taskPublished;
+                // A full batch with progress means more Items wait; a full batch without
+                // progress (no Worker) is not backlog, so the round keeps its interval.
+                backlogged |= taskPublished > 0 && observed.size() >= assignmentBatchLimit;
                 if (taskPublished > 0) {
                     servedTaskIds.remove(task.taskId());
                     servedTaskIds.add(task.taskId());
@@ -223,7 +235,7 @@ final class TaskDispatchPolicy {
                 );
             }
         }
-        return published;
+        return new DispatchRound(published, backlogged);
     }
 
     private static List<ObservedTask> orderForDispatch(

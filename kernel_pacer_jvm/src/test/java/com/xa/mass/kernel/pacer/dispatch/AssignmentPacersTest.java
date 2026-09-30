@@ -92,7 +92,7 @@ class AssignmentPacersTest {
                         "task-1",
                         TaskIdleDisposition.PARK_WHEN_IDLE,
                         10))
-        ));
+        ).published());
 
         verify(selection).takeCandidates(
                 "group-1", selectors, Set.of()
@@ -136,13 +136,41 @@ class AssignmentPacersTest {
                         "task-1",
                         TaskIdleDisposition.PARK_WHEN_IDLE,
                         10))
-        ));
+        ).published());
 
         InOrder order = org.mockito.Mockito.inOrder(taskRuntime, itemScores);
         order.verify(taskRuntime).storeTaskItemFailedResults(
                 "task-1", List.of("message-budget", "message-expired")
         );
         order.verify(itemScores).promoteItemOutcomes("task-1", outcomeTargets(List.of("message-budget", "message-expired"), 5, 1_000L));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"2,2,true", "2,0,false", "1,1,false"})
+    void backlogMeansAFullCandidateBatchThatStillPublished(int observedCount, int published, boolean backlogged) {
+        TaskItemScoreBandCore itemScores = mock(TaskItemScoreBandCore.class);
+        TaskRuntime taskRuntime = mock(TaskRuntime.class);
+        TaskAssignmentDispatcher dispatcher = mock(TaskAssignmentDispatcher.class);
+        WorkerCandidateSelectionPolicy selection = mock(WorkerCandidateSelectionPolicy.class);
+        LinkedHashMap<String, TaskItemScoreObservation> observed = new LinkedHashMap<>();
+        Map<String, TaskItem> items = new LinkedHashMap<>();
+        Map<String, RoutedWorkerCandidate> candidates = new LinkedHashMap<>();
+        for (int i = 0; i < observedCount; i++) {
+            TaskItem item = item("message-" + i, List.of());
+            observed.put(item.messageId(), new TaskItemScoreObservation(101L + i, 1));
+            items.put(item.messageId(), item);
+            candidates.put(item.messageId(), worker("worker-" + i, 201L + i));
+        }
+        when(itemScores.acquireItemScoreCandidates("task-1", 2)).thenReturn(observed);
+        when(taskRuntime.loadTaskItems("task-1", List.copyOf(observed.keySet()))).thenReturn(items);
+        when(selection.takeCandidates(eq("group-1"), any(), eq(Set.of()))).thenReturn(candidates);
+        when(dispatcher.dispatch(any(), any(), anyLong())).thenReturn(published);
+        var policy = new TaskDispatchPolicy(mock(TaskScoreBandCore.class), itemScores, taskRuntime, dispatcher,
+                mock(TaskIdleSettlement.class), selection, 2, 5, () -> 1_000L, ignored -> { });
+
+        var round = policy.dispatchTasks(List.of(due("task-1", TaskIdleDisposition.PARK_WHEN_IDLE, 10)));
+
+        assertEquals(new TaskDispatchPolicy.DispatchRound(published, backlogged), round);
     }
 
     @Test
@@ -160,7 +188,7 @@ class AssignmentPacersTest {
                     throw new IllegalStateException("notice consumer failed");
                 });
 
-        assertEquals(0, policy.dispatchTasks(List.of(due("task-1", TaskIdleDisposition.PARK_WHEN_IDLE, 10))));
+        assertEquals(0, policy.dispatchTasks(List.of(due("task-1", TaskIdleDisposition.PARK_WHEN_IDLE, 10))).published());
 
         InOrder order = org.mockito.Mockito.inOrder(taskRuntime, itemScores);
         order.verify(taskRuntime).storeTaskItemFailedResults("task-1", List.of("message-budget"));

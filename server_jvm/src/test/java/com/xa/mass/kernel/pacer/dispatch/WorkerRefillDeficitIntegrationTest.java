@@ -79,6 +79,7 @@ class WorkerRefillDeficitIntegrationTest {
                             return loaded;
                         });
                 var dispatch = org.mockito.Mockito.mock(TaskDispatchPolicy.class);
+                org.mockito.Mockito.when(dispatch.dispatchTasks(org.mockito.ArgumentMatchers.anyList())).thenReturn(TaskDispatchPolicy.DispatchRound.NONE);
                 var refill = new WorkerEligibilityRefillPolicy(scores, matching, null, 100, () -> sampled);
                 var scheduler = new DispatchMainScheduler(taskScores, catalog,
                         org.mockito.Mockito.mock(TaskInitializationPolicy.class), dispatch, refill, null,

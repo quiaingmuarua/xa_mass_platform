@@ -194,16 +194,24 @@ in every preset; Boot binds `XA_MASS_KERNEL_PACER_ASSIGNMENT_BATCH_LIMIT`.
 Server passes the value to the Pacer assembly, which validates it before creating
 resources. Internal policies inherit it without repeating configuration admission.
 Under DEFAULT, next eligibility is set 50ms after the Main Scheduler processes producer completion;
-the interval does not start at dispatch launch. Slow producers remain single-flight
-and do not catch up with overlapping rounds. A continuously full single Task is
-therefore bounded above by `B / (0.05 + round_seconds)` checked Items/s, before
-scan/observation delay and unsuccessful assignments. This is a policy budget,
-not a platform QPS guarantee. Group-managed calls share that Task budget.
-`DispatchBudgetTest` proves the bounded check and completion-relative scheduling
-with controlled execution and time. The completion interval remains preset-owned; only the assignment ceiling is configurable.
+the interval does not start at dispatch launch. The exception is a backlogged round:
+some Task returned a full `B`-Item candidate batch and still published. Items then
+wait behind the round, so Task Dispatch is eligible again as soon as its completion
+is processed. A full batch without progress (no Worker candidate), a failed round or
+any other Producer keeps its interval, so backlog never becomes a busy loop. Slow
+producers remain single-flight and do not catch up with overlapping rounds. A
+continuously full single Task is therefore bounded above by `B / round_seconds`
+checked Items/s while it stays backlogged, before scan/observation delay and
+unsuccessful assignments. This is a policy budget, not a platform QPS guarantee.
+Group-managed calls share that Task budget. `DispatchBudgetTest` proves the bounded
+check, completion-relative scheduling and backlog continuation with controlled
+execution and time. The completion interval remains preset-owned; only the
+assignment ceiling is configurable.
 
 The completion interval is not the only eligibility gate. Task Score scheduling
-excludes the current 100ms Task Score slot, and Task Dispatch rewrites each visited
+excludes the current 100ms Task Score slot, so a backlogged round shorter than one
+slot finds no due Task on its next observation and takes the ordinary interval.
+Task Dispatch rewrites each visited
 claimable Task to the round's start time. With aligned clocks and successful
 rewrites, a continuously loaded single Task therefore normally becomes visible
 at most once per slot: roughly `10 * B` checked Items/s (1,000 at the default 100-Item
