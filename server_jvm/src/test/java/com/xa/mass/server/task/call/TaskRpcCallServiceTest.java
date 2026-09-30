@@ -490,8 +490,8 @@ class TaskRpcCallServiceTest {
         when(matching.normalizeQuery(anyString(),any())).thenAnswer(call -> call.getArgument(1));
 
         return new TaskRpcCallService(
-                new TaskCallSubmissionService(submission, taskCatalog, taskItems, matching),
-                taskRuntime, registry, properties
+                new TaskCallSubmissionService(submission, taskCatalog, taskItems, matching, taskRuntime),
+                registry, properties
         );
     }
 

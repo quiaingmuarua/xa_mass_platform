@@ -3,13 +3,11 @@ package com.xa.mass.server.task.call;
 import com.xa.mass.server.task.call.TaskCallSubmissionService;
 import com.xa.mass.server.task.call.TaskRpcStageEvent;
 
-import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -18,15 +16,13 @@ import org.springframework.web.context.request.async.DeferredResult;
 @Service
 public final class TaskRpcCallService {
     private final TaskCallSubmissionService submissions;
-    private final TaskRuntime taskRuntime;
     private final TaskRpcWaitRegistry registry;
     private final long defaultWaitTimeoutMillis;
     private final long maxWaitTimeoutMillis;
 
-    public TaskRpcCallService(TaskCallSubmissionService submissions, TaskRuntime taskRuntime,
+    public TaskRpcCallService(TaskCallSubmissionService submissions,
             TaskRpcWaitRegistry registry, TaskRpcProperties properties) {
         this.submissions = submissions;
-        this.taskRuntime = taskRuntime;
         this.registry = registry;
         this.defaultWaitTimeoutMillis = properties.defaultWaitTimeoutMillis();
         this.maxWaitTimeoutMillis = properties.maxWaitTimeoutMillis();
@@ -34,13 +30,10 @@ public final class TaskRpcCallService {
 
     public DeferredResult<Map<String, TaskItemResultResponse>> call(String taskId, TaskRpcCallRequest request) {
         long timeoutMillis = resolveTimeout(request.waitTimeoutMillis());
-        List<String> messageIds = submissions.submit(taskId, request.items());
-        long immediateStarted = TaskRpcStageEvent.start();
-        Map<String, TaskItemResult> observed = loadImmediateResults(
-                taskId,
-                messageIds
-        );
-        TaskRpcStageEvent.batch(immediateStarted, "IMMEDIATE_PROBE", messageIds.size(), observed.size(), false);
+        TaskCallSubmissionService.SubmittedCall submitted = submissions.submitCall(taskId, request.items());
+        List<String> messageIds = submitted.messageIds();
+        Map<String, TaskItemResult> observed = submitted.observed();
+        long immediateStarted = submitted.observationStarted();
         DeferredResult<Map<String, TaskItemResultResponse>> deferred =
                 new DeferredResult<>(timeoutMillis);
         if (allObserved(messageIds, observed)) {
@@ -79,29 +72,6 @@ public final class TaskRpcCallService {
             );
         }
         return timeout;
-    }
-
-    private Map<String, TaskItemResult> loadImmediateResults(
-            String taskId,
-            List<String> messageIds
-    ) {
-        try {
-            Map<String, TaskItemResult> loaded =
-                    taskRuntime.loadTaskItemResults(
-                            taskId,
-                            messageIds
-                    );
-            var observed = new LinkedHashMap<String, TaskItemResult>();
-            messageIds.forEach(messageId -> {
-                TaskItemResult result = loaded.get(messageId);
-                if (result != null) {
-                    observed.put(messageId, result);
-                }
-            });
-            return observed;
-        } catch (RuntimeException ignored) {
-            return Map.of();
-        }
     }
 
     private static boolean allObserved(
