@@ -37,8 +37,11 @@ def harness_command(runner, phase, output, config, *extra, heap=1024):
             f"--phase={phase}", f"--output={output}", f"--experiment-config={config}", *extra]
 
 
-def run_case(runner, root, config_path, config, profile, stage, path, repetition, cpu_ids, diagnostics="off"):
+def run_case(runner, root, config_path, config, profile, stage, path, repetition, cpu_ids, diagnostics="off",
+             artifacts=None):
+    """One fresh world; `artifacts` selects the checkout whose Server and Host run (default: current)."""
     import redis
+    artifacts = artifacts or runner.ROOT
     root.mkdir()
     evidence, private = root / "evidence", root / "private"
     evidence.mkdir()
@@ -117,7 +120,7 @@ def run_case(runner, root, config_path, config, profile, stage, path, repetition
         if diagnostics == "jfr":
             flags["xa.mass.diagnostics.enabled"] = "true"
         env.update(XA_MASS_REDIS_URL=redis_url, XA_MASS_REDIS_SCOPE=scope, XA_MASS_KERNEL_PACER_PRESET="DEFAULT")
-        jars = [p for p in (runner.ROOT / "server_boot_jvm/build/libs").glob("*.jar") if not p.name.endswith("-plain.jar")]
+        jars = [p for p in (artifacts / "server_boot_jvm/build/libs").glob("*.jar") if not p.name.endswith("-plain.jar")]
         if len(jars) != 1:
             raise RuntimeError("Expected exactly one packaged Boot JAR")
         jvm = lambda role: ["-Xms256m", f"-Xmx{resources[role + 'HeapMiB']}m", "-XX:+ExitOnOutOfMemoryError"]
@@ -143,7 +146,7 @@ def run_case(runner, root, config_path, config, profile, stage, path, repetition
         runner.write_json(host_config, dict(runtimeApiBaseUrl="http://127.0.0.1:18082", sandboxRoot=str(inventory.resolve()),
             controlPort=18086, workerGroups=runner.lane_host_groups(profile["workersPerGroup"])))
         launch("host", ["java", *jvm("host"), *runner.jfr_options(private, "host", diagnostics), "-cp",
-            runner.ROOT / "worker_simulator_jvm/build/install/xa-mass-worker-simulator/lib/*",
+            artifacts / "worker_simulator_jvm/build/install/xa-mass-worker-simulator/lib/*",
             "com.xa.mass.workersimulator.WorkerSimulatorMain", "--config", host_config])
         runner.wait_http("http://127.0.0.1:18086/lab/v1/workers", processes["host"], sampler,
                          min(deadline, time.monotonic() + 180))

@@ -701,22 +701,28 @@ def load_history(directory):
     return [json.loads(path.read_text(encoding="utf-8")) for path in sorted(Path(directory).rglob("*.json"))]
 
 
-def run_saturation_lane(output, plan, config_path, diagnostics="off"):
-    """Reuse the packaged experiment lifecycle with one Java-validated CI profile; no QPS calculation."""
+def resolve_saturation_config(evidence, config_path):
+    """Java-validated purpose=lane configuration, its single profile and the CPUs it runs on."""
     import capacity_experiment
-    evidence = output / "evidence"
-    evidence.mkdir()
     command(capacity_experiment.harness_command(sys.modules[__name__], "experiment-config", evidence, config_path.resolve()))
     resolved = evidence / "experiment.json"
     config = json.loads(resolved.read_text(encoding="utf-8"))
     if config["purpose"] != "lane":
         raise ValueError("The CI saturation lane requires a purpose=lane configuration")
-    manifest = capacity_experiment.verify_bundle(ROOT)
     profile = config["profiles"][0]
     available = sorted(os.sched_getaffinity(0))
     if profile["cpuCount"] > len(available):
         raise ValueError("Insufficient CPUs for the saturation configuration")
-    cpu_ids = available[:profile["cpuCount"]]
+    return resolved, config, profile, available[:profile["cpuCount"]]
+
+
+def run_saturation_lane(output, plan, config_path, diagnostics="off"):
+    """Reuse the packaged experiment lifecycle with one Java-validated CI profile; no QPS calculation."""
+    import capacity_experiment
+    evidence = output / "evidence"
+    evidence.mkdir()
+    resolved, config, profile, cpu_ids = resolve_saturation_config(evidence, config_path)
+    manifest = capacity_experiment.verify_bundle(ROOT)
     config_id = hashlib.sha256(json.dumps(config, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     result = dict(lane="performance", status="failed", plan=plan, cases=[], experiment=config,
                   configurationId=config_id, workersPerGroup=profile["workersPerGroup"], cpuIds=cpu_ids,
@@ -958,13 +964,15 @@ def main():
     parser.add_argument("--merge-lane", type=Path, help="Merge the per-job lane evidence found below this directory")
     parser.add_argument("--merge-jobs", help="Comma-separated lane job names expected by --merge-lane")
     parser.add_argument("--skip-build", action="store_true")
-    parser.add_argument("--experiment-config", type=Path, help="Java-owned experiment configuration; purpose=lane with --lane-modes saturation")
+    parser.add_argument("--experiment-config", type=Path,
+                        help="Java-owned experiment configuration; purpose=lane with --lane-modes saturation or a sat-* A/B")
     parser.add_argument("--allow-nonreference-host", action="store_true", help="Local diagnostics only; no reference claim")
     options = parser.parse_args()
     configured_lane = options.experiment_config and options.lane_modes == ("saturation",)
+    configured_ab = bool(options.experiment_config and options.lane_case)
     if configured_lane and any((options.baseline_ref, options.lane_case, options.lane_rates, options.merge_lane, options.merge_jobs)):
         parser.error("Configured saturation runs only the saturation lane")
-    if options.experiment_config and not configured_lane:
+    if options.experiment_config and not configured_lane and not configured_ab:
         if any((options.baseline_ref, options.lane_case, options.lane_history, options.merge_lane,
                 options.merge_jobs, options.lane_rates, options.lane_modes, options.diagnostics != "off")):
             parser.error("Experiments cannot enter reference lanes, A/B or CI history")
@@ -990,6 +998,9 @@ def main():
             parser.error(str(error))
         if options.lane_rates or options.lane_modes or options.repetitions != 1 or options.diagnostics != "off":
             parser.error("A/B runs exactly one case; rates, modes, repetitions and diagnostics do not apply")
+        # A saturation A/B measures the same configured world as the saturation job, never the open-loop world.
+        if options.lane_case.startswith("sat-") != bool(options.experiment_config):
+            parser.error("A sat-* A/B needs the lane --experiment-config; an open-loop A/B takes none")
     if sys.platform != "linux":
         parser.error("Linux with Docker and /proc is required")
     os_release = platform.freedesktop_os_release()
@@ -1035,8 +1046,14 @@ def main_lane(options, output, run_started, reference, os_release, java, image_i
 
 
 def main_lane_ab(options, output, run_started, reference):
-    """Per-case sequential A/B on one host: ABBA-ordered pairs until the history band decides (2..5 pairs)."""
+    """Per-case sequential A/B on one host: ABBA-ordered pairs until the history band decides (2..5 pairs).
+
+    Open-loop cases run the lane world per version. Saturation cases run the configured saturation
+    world of the saturation job, with each version's Server and Host and the current harness.
+    """
+    import capacity_experiment
     case = options.lane_case
+    configured = case.startswith("sat-")
     metric = lane_trend.primary_metric(case)
     extract = lane_trend.METRICS[metric][0]
     history = load_history(options.lane_history)
@@ -1052,7 +1069,13 @@ def main_lane_ab(options, output, run_started, reference):
         if not options.skip_build:
             build(ROOT, harness=True)
         roots = {"A": baseline, "B": ROOT}
-        warmup = case if not case.startswith("sat-") else "task-any-1000"
+        warmup = case if not configured else None
+        if configured:
+            evidence = output / "evidence"
+            evidence.mkdir(parents=True, exist_ok=True)
+            resolved, config, profile, cpu_ids = resolve_saturation_config(evidence, options.experiment_config)
+            final["experiment"] = dict(name=config["name"], profile=profile["name"],
+                                       workersPerGroup=profile["workersPerGroup"], cpuIds=cpu_ids)
         deadline = run_started + 110 * 60
         values = []
         latencies = {}
@@ -1061,16 +1084,30 @@ def main_lane_ab(options, output, run_started, reference):
             observed = {}
             for version in order:
                 print(f"lane ab pair={pair + 1} version={version} case={case}", flush=True)
-                run = run_lane(roots[version], output / f"pair-{pair + 1}" / version, deadline,
-                               [lane_entry(case, pair + 1)], attribution=False, warmup_case=warmup, calibrate=False)
-                row = next(iter(run.get("cases", [])), {})
+                if configured:
+                    case_root = output / f"pair-{pair + 1}" / version
+                    case_root.parent.mkdir(parents=True, exist_ok=True)
+                    row = capacity_experiment.run_case(sys.modules[__name__], case_root, resolved, config, profile,
+                        "screening", lane_entry(case)["path"], pair + 1, cpu_ids, artifacts=roots[version])
+                    # A worker-bound or incomplete saturation world cannot enter a comparison.
+                    run_status = "passed" if row.get("status") == "passed" else "failed"
+                    if row.get("calibration"):
+                        final.setdefault("calibration", {})[f"{pair + 1}{version}"] = row["calibration"]
+                else:
+                    run = run_lane(roots[version], output / f"pair-{pair + 1}" / version, deadline,
+                                   [lane_entry(case, pair + 1)], attribution=False, warmup_case=warmup, calibrate=False)
+                    row = next(iter(run.get("cases", [])), {})
+                    run_status = run["status"]
                 observed[version] = extract(row) if row.get("status") == "passed" else None
-                final["pairs"].append({"pair": pair + 1, "version": version, "runStatus": run["status"],
+                final["pairs"].append({"pair": pair + 1, "version": version, "runStatus": run_status,
                                        "caseStatus": row.get("status"), metric: extract(row)})
-                if run["status"] != "passed":
-                    raise RuntimeError(f"Lane run failed for version {version} in pair {pair + 1}")
-                latencies.setdefault(version, []).extend(successful_latencies(
-                    output / f"pair-{pair + 1}" / version / "evidence/harness" / f"r{pair + 1}" / case / "samples.jsonl"))
+                if run_status != "passed":
+                    reasons = "; ".join(row.get("invalidReasons") or [])
+                    raise RuntimeError(f"Lane run failed for version {version} in pair {pair + 1}"
+                                       + (f": {reasons}" if reasons else ""))
+                if not configured:
+                    latencies.setdefault(version, []).extend(successful_latencies(
+                        output / f"pair-{pair + 1}" / version / "evidence/harness" / f"r{pair + 1}" / case / "samples.jsonl"))
             values.append((observed["A"], observed["B"]))
             final["decision"] = lane_trend.ab_decide(case, values, band["relative"])
             print("lane ab decision " + json.dumps(final["decision"]), flush=True)

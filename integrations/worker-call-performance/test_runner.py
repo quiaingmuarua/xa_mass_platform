@@ -322,7 +322,10 @@ class LaneWorldConfigTest(unittest.TestCase):
         self.assertEqual("task-any-2000", runner.lane_warmup_case((500, 2000), ("open",)))
         self.assertEqual("task-any-1000", runner.lane_warmup_case((500,), ("saturation",)))
         for extra in (["--baseline-ref", "HEAD"], ["--lane-case", "task-any-500"],
-                      ["--baseline-ref", "HEAD", "--lane-case", "task-any-700"]):
+                      ["--baseline-ref", "HEAD", "--lane-case", "task-any-700"],
+                      # A saturation A/B needs the configured world; an open-loop A/B takes none.
+                      ["--baseline-ref", "HEAD", "--lane-case", "sat-task-any"],
+                      ["--baseline-ref", "HEAD", "--lane-case", "task-any-1000", "--experiment-config", "lane.json"]):
             with patch.object(runner.sys, "argv", ["runner", *extra]), patch("sys.stderr"), self.assertRaises(SystemExit):
                 runner.main()
 

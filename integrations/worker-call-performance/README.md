@@ -95,8 +95,9 @@ without an idle Worker invalidates the reference saturation configuration;
 the local resource scan may retain that observation as `workersBound` instead.
 Resource/evidence failures stop later repetitions and fail the configured job.
 Raw recordings, logs and inventories remain outside published evidence.
-The old CLI without an experiment config and manual A/B keep their original
-2,000-Worker world and 150,000-Item backlog; their configuration identity differs.
+The old CLI without an experiment config keeps its original 2,000-Worker world and
+150,000-Item backlog; its configuration identity differs. A saturation A/B uses the
+same configured world as this job (see Trend And A/B).
 
 Path order rotates per repetition within each job. The workflow builds once, runs
 `rate-500`, `rate-1000`, `rate-2000` and `saturation` as parallel jobs, and merges
@@ -322,7 +323,13 @@ outcomes.
   is reported as suspect. The trend never fails the lane.
 - Manual A/B (`baseline_ref` and `lane_case`): one runner builds the baseline and
   the current version, starts a fresh warmed world per version and alternates
-  ABBA pairs of one case. The decision metric is p50 for open-loop cases and
+  ABBA pairs of one case. An open-loop case uses the lane world. A `sat-*` case
+  requires `--experiment-config` and runs the saturation job's configured world
+  (`lane-saturation.json`: 3,000 Workers per Group, 600,000-Item backlog) through
+  the same experiment lifecycle, with each version's Server and Host and the
+  current harness; the workflow passes that file for `sat-*` cases. A worker-bound
+  or incomplete saturation world fails the A/B instead of entering a pair, and the
+  earlier 1,000-Worker-per-Group saturation A/B results are not comparable. The decision metric is p50 for open-loop cases and
   completed Items/s for saturation; one 30s window's p99 varies about +-35% on
   the same version, so pooled p99 across pairs is reported but not decisive. The
   band is the median relative spread of that case on `main` records (floor 5%),
@@ -340,6 +347,10 @@ python integrations/worker-call-performance/run_worker_call_performance.py \
   --lane-modes open --lane-rates 1000 --diagnostics jfr --output-root build/lane-jfr
 python integrations/worker-call-performance/run_worker_call_performance.py \
   --baseline-ref <commit> --lane-case task-any-1000 --output-root build/lane-ab
+python integrations/worker-call-performance/run_worker_call_performance.py \
+  --baseline-ref <commit> --lane-case sat-task-any \
+  --experiment-config integrations/worker-call-performance/configs/lane-saturation.json \
+  --output-root build/lane-ab-saturation
 ```
 
 Outputs must be fresh directories below repository `build`. `--allow-nonreference-host`
