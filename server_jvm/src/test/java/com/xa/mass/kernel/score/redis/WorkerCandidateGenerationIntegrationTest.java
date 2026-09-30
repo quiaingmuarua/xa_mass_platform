@@ -45,15 +45,15 @@ class WorkerCandidateGenerationIntegrationTest {
     }
 
     @Test void allFourHeadsAdvanceSameTimeMembersWithoutCursors() {
-        long time = now() / 100 - 1000;
+        long time = now() / SLOT_MILLIS - 1000;
         for (String group : List.of("ordinary", "candidate", "hot", "recovery")) {
             int mark = group.equals("candidate") ? 1 : 0;
             for (int i = 0; i < 250; i++) put(group, "w%03d".formatted(i), group.equals("recovery") ? -1 : 1, time, mark);
             for (int expected : List.of(100, 100, 50)) {
                 Map<String, Long> batch = switch (group) {
-                    case "ordinary" -> scores.observeDueHotScoreCandidates(group, time * 100, 100);
-                    case "candidate" -> scores.observeHotCandidateScoresBefore(group, time * 100, (time + 1) * 100, 100);
-                    case "hot" -> scores.observeHotCandidatesBefore(group, (time + 1) * 100, 100);
+                    case "ordinary" -> scores.observeDueHotScoreCandidates(group, time * SLOT_MILLIS, 100);
+                    case "candidate" -> scores.observeHotCandidateScoresBefore(group, time * SLOT_MILLIS, (time + 1) * SLOT_MILLIS, 100);
+                    case "hot" -> scores.observeHotCandidatesBefore(group, (time + 1) * SLOT_MILLIS, 100);
                     default -> scores.observeRecoveryRecheckCandidates(group, 100);
                 };
                 assertThat(batch).hasSize(expected);
@@ -65,11 +65,11 @@ class WorkerCandidateGenerationIntegrationTest {
                 assertThat(changed.values()).allSatisfy(result -> assertThat(result.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED));
                 if (group.equals("ordinary")) changed.forEach((id, result) -> {
                     var state = decodeState(id, result.score());
-                    assertThat(state.timeMillis()).isEqualTo(time * 100);
+                    assertThat(state.timeMillis()).isEqualTo(time * SLOT_MILLIS);
                     assertThat(state.mark()).isEqualTo(1);
                 });
                 if (group.equals("candidate")) changed.forEach((id, result) -> {
-                    assertThat(decodeState(id, result.score()).timeMillis()).isGreaterThan(time * 100);
+                    assertThat(decodeState(id, result.score()).timeMillis()).isGreaterThan(time * SLOT_MILLIS);
                     assertThat(scores.recycleObservedHotCandidates(group, Map.of(id, batch.get(id))).get(id).status())
                             .isEqualTo(WorkerScoreTransitionStatus.STALE);
                 });
@@ -78,7 +78,7 @@ class WorkerCandidateGenerationIntegrationTest {
     }
 
     @Test void propertiesMakeHotCandidatesRefillableWithoutRecyclingAndNeverReviveOldFences() throws Exception {
-        long time = now() / 100 - 10;
+        long time = now() / SLOT_MILLIS - 10;
         long original = put("g", "w", 1, time, 0);
         long candidate = scores.candidateizeObservedHotScores("g", Map.of("w", original)).get("w").score();
         var invalidated = scores.advancePastScoreTimesToNow("g", List.of("w")).get("w");
@@ -147,7 +147,7 @@ class WorkerCandidateGenerationIntegrationTest {
     }
 
     @Test void directAndTwoPoolFencesCompeteForOnlyOneExecution() throws Exception {
-        long original = put("g", "w", 1, now() / 100 - 20, 0);
+        long original = put("g", "w", 1, now() / SLOT_MILLIS - 20, 0);
         long candidate = scores.candidateizeObservedHotScores("g", Map.of("w", original)).get("w").score();
         long deadline = now() + 5000;
         var start = new CountDownLatch(1);
@@ -237,10 +237,10 @@ class WorkerCandidateGenerationIntegrationTest {
     }
 
     @Test void logicalTimeOrderSpansBothMarkRangesAndRawBudgetDoesNotRefill() {
-        long time = now() / 100 - 100;
+        long time = now() / SLOT_MILLIS - 100;
         put("hot", "older-candidate", 1, time - 1, 1);
         put("hot", "newer-ordinary", 1, time, 0);
-        assertThat(scores.observeHotCandidatesBefore("hot", (time + 1) * 100, 1).keySet()).containsExactly("newer-ordinary");
+        assertThat(scores.observeHotCandidatesBefore("hot", (time + 1) * SLOT_MILLIS, 1).keySet()).containsExactly("newer-ordinary");
         put("recovery", "older-candidate", -1, time - 1, 1);
         put("recovery", "newer-ordinary", -1, time, 0);
         put("recovery", "cold-candidate", -1, 1, 1);
@@ -252,7 +252,7 @@ class WorkerCandidateGenerationIntegrationTest {
     }
 
     @Test void pauseAndRecoveryFutureWritesAlwaysLeaveTheCandidateLane() {
-        long time = now() / 100 - 10;
+        long time = now() / SLOT_MILLIS - 10;
         put("g", "pause", -1, time, 1);
         assertThat(scores.pauseScheduling("g", "pause")).isEqualTo(WorkerSchedulingChangeStatus.APPLIED);
         assertThat(redis.zscore(key("g"), "pause")).isEqualTo((double) -MAX_TIME_SLOT);

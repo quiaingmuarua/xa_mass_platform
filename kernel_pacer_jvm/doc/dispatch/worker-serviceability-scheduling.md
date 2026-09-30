@@ -166,7 +166,7 @@ The Producer interval remains 1 second. recheckDelayMillis defaults to 15 second
 in every preset except Runtime Boundary; hotProbeStaleAfterMillis independently
 remains 60 seconds for the HOT cutoff and is unused in RECOVERY-only mode.
 The Runtime Boundary preset retains separate 10ms values for both checks.
-Pacer supplies the fixed delay. Score Owner encodes floor((now+delay)/100) from
+Pacer supplies the fixed delay. Score Owner encodes floor((now+delay)/10) from
 one clock sample for the exact batch Lua and clears mark. Only storedSlot < nowSlot
 is due, so rounding down cannot permit an early check.
 

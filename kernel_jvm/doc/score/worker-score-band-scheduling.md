@@ -33,8 +33,8 @@ host whose clock lags the previous writer delays due work by that lag.
 ## Score Model
 
 ```text
-timeSlot = floor(timeMillis / 100)
-MAX_TIME_SLOT = 99_999_999_999
+timeSlot = floor(timeMillis / 10)
+MAX_TIME_SLOT = 999_999_999_999
 MARK_BASE = MAX_TIME_SLOT + 1
 score = polarity * (mark * MARK_BASE + timeSlot)
 
@@ -117,7 +117,7 @@ and returns the actually created members.
 | Recycle candidate | Exact CAS | Observation decodes as HOT mark=1 and is due; target HOT 0/N |
 | Observed execution acquisition | Exact CAS | Requested slot > N; observation is HOT, either mark, and due; target HOT 0/requested |
 | Current execution acquisition | Interval | Requested slot > N; due HOT of either mark writes the deadline; other HOT and all RECOVERY are STALE |
-| Relative deferral | Exact CAS | Valid common target; observation is due and not cold RECOVERY; target RECOVERY 0/floor((now + delay) / 100) |
+| Relative deferral | Exact CAS | Valid common target; observation is due and not cold RECOVERY; target RECOVERY 0/floor((now + delay) / 10) |
 | Pause | Interval | Legal HOT writes +MAX, legal RECOVERY writes -MAX, both mark=0 |
 | Advance past times | Interval | Past HOT writes HOT 0/N; past non-cold RECOVERY writes N with its mark; other legal values are NOOP |
 | Current polarity correction | Interval, one table per distinct evidence slot | See [Current Polarity Within A Time Fence](#current-polarity-within-a-time-fence) |
@@ -202,7 +202,7 @@ without Redis; invalid observations are processed individually. Java computes on
 target from a single clock sample:
 
 ```text
-targetSlot = floor((nowMillis + delayMillis) / 100)
+targetSlot = floor((nowMillis + delayMillis) / 10)
 targetScore = -targetSlot
 ```
 
@@ -279,8 +279,21 @@ a new scope; do not mix processes or reinterpret old data. This change adds no
 migration, compatibility decoder, version key or automatic cleanup. Test fixtures
 use fresh test_* scopes and only scoped SCAN + UNLINK cleanup.
 
+Worker Score slots are 10ms, independent of the 100ms Task and TaskItem Score
+slots. MAX_TIME_SLOT keeps the representable range through 9,999,999,999,990ms
+and the largest absolute Score below 2^53, so Redis doubles and Lua numbers stay
+exact. The 10ms layout is incompatible with the earlier 100ms layout: deploy into
+a new scope, with no decoder or migration.
+
+Because 10ms slots no longer align with the 100ms Task slot, a released Worker is
+usually due while its Task is still hidden in the current dispatch slot. Refill
+therefore takes due-independent NORMAL RUNNING Task roots
+([Assignment and Dispatch](../../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md));
+reverting those roots to the due projection would strand such Workers as
+rejected candidates until aged recycling.
+
 Moving the clock from Redis `TIME` to the Owner clock and the Lua simplification
-keep the stored encoding, so existing scopes remain readable. Processes writing
+kept the stored encoding. Processes writing
 one scope should run the same version so every writer uses the same time source.
 
 Encoding and structural tests keep arithmetic/I/O in the Owner. Redis Owner

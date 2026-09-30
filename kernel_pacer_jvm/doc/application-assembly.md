@@ -192,7 +192,7 @@ not a platform QPS guarantee. Group-managed calls share that Task budget.
 with controlled execution and time. The completion interval remains preset-owned; only the assignment ceiling is configurable.
 
 The completion interval is not the only eligibility gate. Task Score scheduling
-excludes the current 100ms Redis slot, and Task Dispatch rewrites each visited
+excludes the current 100ms Task Score slot, and Task Dispatch rewrites each visited
 claimable Task to the round's start time. With aligned clocks and successful
 rewrites, a continuously loaded single Task therefore normally becomes visible
 at most once per slot: roughly `10 * B` checked Items/s (1,000 at the default 100-Item
