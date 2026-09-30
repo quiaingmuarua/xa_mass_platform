@@ -19,7 +19,7 @@ xa:
             command-backoff-min: 10ms
             command-backoff-step: 10ms
             command-backoff-max: 100ms
-            command-consume-limit: 100
+            command-consume-limit: 500
             command-retry-capacity: 1000
             report-backoff: 1s
             report-queue-capacity: 1000

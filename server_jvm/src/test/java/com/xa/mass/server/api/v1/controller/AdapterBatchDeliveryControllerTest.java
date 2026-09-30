@@ -149,7 +149,7 @@ class AdapterBatchDeliveryControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(Jsons.toJson(
                                 Collections.nCopies(
-                                        101,
+                                        501,
                                         Jsons.parseObject(successResult())
                                 )
                         )))

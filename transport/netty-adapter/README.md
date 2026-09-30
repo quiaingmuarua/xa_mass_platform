@@ -545,7 +545,7 @@ are aggregate delivery evidence, not a count of unique completed TaskItems.
 both their non-blocking multi-producer admission boundary and their one shared
 consumer. Each accepted Report is decoded once before admission. The configured
 `reportQueueCapacity` is the external soft limit of each lane, so the aggregate
-external capacity is four times that value. The TASK Queue alone reserves 100
+external capacity is four times that value. The TASK Queue alone reserves 500
 additional physical positions for the single in-flight batch to return.
 SERVER, SYSTEM and KERNEL admission drops use owner-local cumulative sampling rather
 than one warning per Report, so a 10k disconnect wave cannot create a matching
@@ -553,13 +553,16 @@ warning storm.
 
 One aggregate availability signal blocks the Report thread while all lanes are
 empty. Ingress to any lane wakes it. A rotating cursor selects one non-empty
-lane, `poll()` obtains its first item, and `drainTo(...)` takes at most 99 more
-from that same lane. Every remote batch is therefore non-empty, FIFO within its
-lane, at most 100 items, and homogeneous by `dst`; continuously busy TASK cannot
-permanently starve SERVER, SYSTEM or KERNEL.
+lane, `poll()` obtains its first item, and `drainTo(...)` fills the rest of that
+lane's batch limit from the same lane: 500 for TASK and 100 for SERVER, SYSTEM and
+KERNEL. Every remote batch is therefore non-empty, FIFO within its lane, within
+its lane limit, and homogeneous by `dst`; continuously busy TASK cannot
+permanently starve SERVER, SYSTEM or KERNEL. TASK carries the Result evidence
+that releases Worker leases, so its larger batch keeps one Report thread ahead of
+completion traffic when each HTTP round trip slows under Server load.
 
 ```text
-select one non-empty lane, then drain up to the 100-Report batch limit
+select one non-empty lane, then drain up to its batch limit (TASK 500, others 100)
   -> call WorkerDeliveryRemoteApi.results:append once with Report objects
 success or semantic rejection -> complete the batch
 TASK remote unavailable        -> append exact batch to TASK tail, then backoff
@@ -584,13 +587,15 @@ TASK remote unavailability appends the exact batch to its Queue tail, so Reports
 already queued may pass it. TASK has no retry counter or deadline: it is
 important, non-superseding completion evidence, while loss of the same Server
 normally also stops fresh Command acquisition. Memory and work remain bounded
-by the finite external Queue, one in-flight batch, the 100-item retry reserve,
+by the finite external Queue, one in-flight batch, the 500-item retry reserve,
 one HTTP call, fixed backoff, and Adapter lifetime. This is continuous
 best-effort retransmission, not durable delivery; a lost response or partial
 Server application can still produce duplicates. SERVER replies and SYSTEM/KERNEL
 evidence are best-effort and are dropped after any failed submission.
 
-The fixed remote batch limit remains 100 and is independent of queue capacity.
+The fixed remote batch limits (TASK 500; SERVER, SYSTEM and KERNEL 100) are
+independent of queue capacity. KERNEL stays at 100 because Kernel Serviceability
+admits at most 100 network evidence items per append.
 While the remote owner accepts batches, the resident Dispatcher continuously
 drains without a configured per-cycle limit. HTTP, logging, and backoff stay
 outside the short per-lane admission gates. `reportBackoff` is used only after a

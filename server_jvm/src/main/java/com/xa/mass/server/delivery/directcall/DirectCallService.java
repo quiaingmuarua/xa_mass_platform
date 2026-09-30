@@ -37,7 +37,7 @@ import org.springframework.web.context.request.async.DeferredResult;
 public final class DirectCallService {
 
     private static final int MAX_BATCH_SIZE = 100;
-    private static final int MAX_CONSUME_LIMIT = 100;
+    private static final int MAX_CONSUME_LIMIT = 1000;
     private static final System.Logger LOGGER = System.getLogger(
             DirectCallService.class.getName()
     );
@@ -494,7 +494,7 @@ public final class DirectCallService {
     private void requireDirectConsume(String adapterId, int limit) {
         requireDirectAdapter(adapterId);
         if (limit <= 0 || limit > MAX_CONSUME_LIMIT) {
-            throw invalid("consume limit must be within 1..100");
+            throw invalid("consume limit must be within 1..1000");
         }
     }
 
