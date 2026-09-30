@@ -80,9 +80,65 @@ def process_sample(pid):
                       len(list((proc / "fd").iterdir())), os.sysconf("SC_CLK_TCK"))
 
 
+def machine_sample():
+    """Host-wide cumulative CPU jiffies (including steal) and run-queue length; no process identities."""
+    fields = ("user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal")
+    sample = {"epochMillis": int(time.time() * 1000)}
+    for line in Path("/proc/stat").read_text().splitlines():
+        parts = line.split()
+        if parts and parts[0] == "cpu":
+            sample["cpuJiffies"] = dict(zip(fields, map(int, parts[1:1 + len(fields)])))
+        elif parts and parts[0] == "procs_running":
+            sample["procsRunning"] = int(parts[1])
+    sample["loadAverage1"] = float(Path("/proc/loadavg").read_text().split()[0])
+    return sample
+
+
+REDIS_SLOW_MICROS = 5000
+REDIS_SLOWLOG_ENTRIES = 4096
+
+
+def enable_redis_latency(client):
+    """Diagnostics only: the disposable container logs commands and latency events above 5ms."""
+    client.config_set("slowlog-log-slower-than", REDIS_SLOW_MICROS)
+    client.config_set("slowlog-max-len", REDIS_SLOWLOG_ENTRIES)
+    client.config_set("latency-monitor-threshold", REDIS_SLOW_MICROS // 1000)
+    client.slowlog_reset()
+    client.execute_command("LATENCY", "RESET")
+
+
+def redis_latency(client):
+    """Command names, durations and times only: keys, arguments and values never leave Redis."""
+    entries = client.slowlog_get(REDIS_SLOWLOG_ENTRIES)
+    commands = sorted((dict(epochSeconds=int(entry["start_time"]), durationMicros=int(entry["duration"]),
+                            command=str(entry["command"]).split(" ", 1)[0].upper()[:32]) for entry in entries),
+                      key=lambda row: row["epochSeconds"])
+    history = {}
+    for row in client.execute_command("LATENCY", "LATEST"):
+        event = str(row[0])[:32]
+        history[event] = [[int(at), int(millis)] for at, millis in client.execute_command("LATENCY", "HISTORY", row[0])]
+    return {"complete": True, "slowLogThresholdMicros": REDIS_SLOW_MICROS,
+            "latencyThresholdMillis": REDIS_SLOW_MICROS // 1000,
+            "possiblyTruncated": len(entries) >= REDIS_SLOWLOG_ENTRIES,
+            "meaning": "Redis execution time only, not client queueing or network; times are Redis epoch seconds.",
+            "slowCommands": commands, "latencyHistory": history}
+
+
+def write_redis_latency(client, destination):
+    """Diagnostics evidence never changes a case outcome; a read failure is recorded as incomplete."""
+    try:
+        evidence = redis_latency(client)
+    except Exception as error:
+        evidence = {"complete": False, "failureType": type(error).__name__}
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    write_json(destination, evidence)
+    return evidence
+
+
 class Sampler:
-    def __init__(self, path, redis_client, fd_limit=8192, thread_limit=512, watch_swap=False):
+    def __init__(self, path, redis_client, fd_limit=8192, thread_limit=512, watch_swap=False, machine_path=None):
         self.path, self.redis = path, redis_client
+        self.machine_path = machine_path
         self.processes = {}
         self.lock = threading.Lock()
         self.stopped = threading.Event()
@@ -99,8 +155,12 @@ class Sampler:
 
     def run(self):
         try:
+            machine = self.machine_path.open("x", encoding="utf-8") if self.machine_path else None
             with self.path.open("x", encoding="utf-8") as output:
                 while not self.stopped.is_set():
+                    if machine:
+                        machine.write(json.dumps(machine_sample()) + "\n")
+                        machine.flush()
                     with self.lock:
                         processes = tuple(self.processes.items())
                     for role, process in processes:
@@ -139,6 +199,8 @@ class Sampler:
                     self.counts["redis"] += 1
                     output.flush()
                     self.stopped.wait(1)
+            if machine:
+                machine.close()
         except Exception as error:
             self.failure = type(error).__name__ + ": " + str(error)
 
@@ -563,7 +625,11 @@ def run_lane(root, output, deadline, plan, attribution=True, warmup_case=None, c
         if calibrate:
             result["calibration"] = calibrate_host(client, harness_output)
             timings["calibrated"] = elapsed()
-        sampler = Sampler(evidence / "process-resources.jsonl", client)
+        if diagnostics == "jfr":
+            enable_redis_latency(client)
+            (evidence / "diagnostics").mkdir(parents=True, exist_ok=True)
+        sampler = Sampler(evidence / "process-resources.jsonl", client,
+                          machine_path=evidence / "diagnostics/machine-cpu.jsonl" if diagnostics == "jfr" else None)
         sampler.thread.start()
         env = {k: v for k, v in os.environ.items() if not k.startswith(("XA_MASS_", "SPRING_"))
                and k not in {"JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"}}
@@ -652,6 +718,8 @@ def run_lane(root, output, deadline, plan, attribution=True, warmup_case=None, c
                 stop_process(process)
             except Exception as error:
                 cleanup_errors.append(type(error).__name__)
+        if client and diagnostics == "jfr":
+            write_redis_latency(client, evidence / "diagnostics/redis-latency.json")
         if client:
             client.close()
         if container:
