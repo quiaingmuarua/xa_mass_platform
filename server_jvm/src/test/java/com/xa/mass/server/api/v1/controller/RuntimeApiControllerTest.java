@@ -268,8 +268,8 @@ class RuntimeApiControllerTest {
         TaskRpcProperties rpcProperties = rpcProperties();
         taskRpcRegistry = new TaskRpcWaitRegistry(rpcProperties);
         TaskRpcCallService taskRpc = new TaskRpcCallService(
-                new TaskCallSubmissionService(taskCallSubmission, taskCatalog, taskItems, matchingCatalog),
-                taskRuntime, taskRpcRegistry, rpcProperties
+                new TaskCallSubmissionService(taskCallSubmission, taskCatalog, taskItems, matchingCatalog, taskRuntime),
+                taskRpcRegistry, rpcProperties
         );
         var projects = new com.xa.mass.server.project.ProjectDirectory(
                 new com.xa.mass.server.project.ProjectAssemblyProperties(List.of(

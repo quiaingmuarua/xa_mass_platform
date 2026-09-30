@@ -332,7 +332,20 @@ The approved product reuses existing input/Result values rather than mirroring
 the HTTP contract or bypassing application admission.
 
 `items:call` accepts `1..100` Items, submits the bounded batch once and
-synchronously waits within the caller's `waitTimeoutMillis`. The response is a
+synchronously waits within the caller's `waitTimeoutMillis`.
+
+Each call is validated and Matching-normalized on its own. The Server caches the
+immutable Task descriptor (bounded, reset at capacity); a missing Task is not cached
+and a removed Task still fails at Kernel submission. Concurrent calls to one Task
+then use a per-Task group commit: a call finding no submission in flight submits
+alone with no added wait, calls arriving meanwhile queue, and the queue head submits
+the next batch for itself and the calls behind it before handing the lane on. A batch
+keeps arrival order, holds at most 100 Items, never splits a call, and starts a new
+batch before a call that repeats an earlier call's message ID, so repeated IDs keep
+sequential semantics. The batch makes one Kernel Task Call submission (one idle-park
+release before and after, one append) and one immediate Result read; every call
+interprets only its own Item outcomes and observations, and a whole-batch failure
+fails each call in it as it would have alone. Waiter registration is per call. The response is a
 Message-ID-keyed result map. Once submission is accepted it returns HTTP `200`;
 each observed entry is `succeeded` or `failed`, while timeout, saturated
 observation capacity, or Registry shutdown marks only the remainder

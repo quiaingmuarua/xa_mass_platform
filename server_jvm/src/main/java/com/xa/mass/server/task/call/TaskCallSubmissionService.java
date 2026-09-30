@@ -10,6 +10,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.error.ServerErrorCode;
@@ -19,25 +20,54 @@ import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
-/** Shared bounded admission for HTTP Call and in-process product callers. */
+/**
+ * Shared bounded admission for HTTP Call and in-process product callers.
+ *
+ * <p>Each call is validated and normalized on its own. Concurrent calls to one Task
+ * then share one Kernel submission and one immediate Result read through the
+ * per-Task {@link TaskCallSubmissionBatcher}; a call alone submits directly.</p>
+ */
 @Service
 public final class TaskCallSubmissionService {
+    /** Bound of the immutable Task descriptor cache; reaching it resets the cache. */
+    static final int DESCRIPTOR_CACHE_CAPACITY = 1024;
+
     private final TaskCallItemSubmission taskCallSubmission;
     private final TaskResourceCatalog taskCatalog;
     private final TaskItemMapper taskItems;
     private final WorkerMatchingCatalog matching;
+    private final TaskRuntime taskRuntime;
+    /** Descriptors are immutable; a removed Task still fails at Kernel submission. */
+    private final ConcurrentHashMap<String, TaskDescriptor> descriptors = new ConcurrentHashMap<>();
+    private final TaskCallSubmissionBatcher batcher = new TaskCallSubmissionBatcher(this::submitBatch);
 
     public TaskCallSubmissionService(TaskCallItemSubmission taskCallSubmission,
             TaskResourceCatalog taskCatalog, TaskItemMapper taskItems,
-            WorkerMatchingCatalog matching) {
+            WorkerMatchingCatalog matching, TaskRuntime taskRuntime) {
         this.taskCallSubmission = taskCallSubmission;
         this.taskCatalog = taskCatalog;
         this.taskItems = taskItems;
         this.matching = matching;
+        this.taskRuntime = taskRuntime;
+    }
+
+    /** One submitted call: its message IDs, Results already observed and their read start. */
+    record SubmittedCall(List<String> messageIds, Map<String, TaskItemResult> observed, long observationStarted) {
     }
 
     public List<String> submit(String taskId, List<TaskItemRequest> items) {
+        return submit(taskId, items, false).messageIds();
+    }
+
+    /** Submits a synchronous Item Call and reads its already stored Results once. */
+    SubmittedCall submitCall(String taskId, List<TaskItemRequest> items) {
+        return submit(taskId, items, true);
+    }
+
+    private SubmittedCall submit(String taskId, List<TaskItemRequest> items, boolean observe) {
         if (taskId == null || taskId.isBlank()) {
             throw invalid("taskId must be non-blank");
         }
@@ -59,13 +89,9 @@ public final class TaskCallSubmissionService {
         }
         // No mutation until every original input has passed Matching admission.
         List<String> messageIds = List.copyOf(latest.keySet());
-        List<TaskItem> submittedItems = List.copyOf(latest.values());
-        TaskCallSubmissionResult submission;
-        long submissionStarted = TaskRpcStageEvent.start();
-        boolean submitted = false;
+        TaskCallSubmissionBatcher.BatchOutcome outcome;
         try {
-            submission = taskCallSubmission.submit(taskId, submittedItems);
-            submitted = submission != null && submission.status() == TaskCallSubmissionStatus.SUBMITTED;
+            outcome = batcher.submit(taskId, List.copyOf(latest.values()), observe);
         } catch (RuntimeException error) {
             throw new ServerException(
                     ServerErrorCode.TASK_DATA_UNAVAILABLE,
@@ -73,9 +99,8 @@ public final class TaskCallSubmissionService {
                     null,
                     error
             );
-        } finally {
-            TaskRpcStageEvent.items(submissionStarted, "SUBMISSION", taskId, messageIds, submitted ? messageIds.size() : 0, !submitted);
         }
+        TaskCallSubmissionResult submission = outcome.submission();
         if (submission == null) {
             throw new ServerException(
                     ServerErrorCode.TASK_DATA_UNAVAILABLE,
@@ -86,10 +111,60 @@ public final class TaskCallSubmissionService {
         }
         requireAcceptedSubmission(submission, messageIds);
 
-        return messageIds;
+        var observed = new LinkedHashMap<String, TaskItemResult>();
+        messageIds.forEach(messageId -> {
+            TaskItemResult result = outcome.observed().get(messageId);
+            if (result != null) {
+                observed.put(messageId, result);
+            }
+        });
+        return new SubmittedCall(messageIds, observed, outcome.observationStarted());
+    }
+
+    /** One Kernel submission and, when requested, one Result read for a whole batch. */
+    private TaskCallSubmissionBatcher.BatchOutcome submitBatch(String taskId, List<TaskItem> items, boolean observe) {
+        List<String> messageIds = items.stream().map(TaskItem::messageId).toList();
+        TaskCallSubmissionResult submission = null;
+        long submissionStarted = TaskRpcStageEvent.start();
+        boolean submitted = false;
+        try {
+            submission = taskCallSubmission.submit(taskId, items);
+            submitted = submission != null && submission.status() == TaskCallSubmissionStatus.SUBMITTED;
+        } finally {
+            TaskRpcStageEvent.items(submissionStarted, "SUBMISSION", taskId, messageIds, submitted ? messageIds.size() : 0, !submitted);
+        }
+        long observationStarted = TaskRpcStageEvent.start();
+        if (!observe || !submitted) {
+            return new TaskCallSubmissionBatcher.BatchOutcome(submission, Map.of(), observationStarted);
+        }
+        Map<String, TaskItemResult> observed;
+        try {
+            observed = taskRuntime.loadTaskItemResults(taskId, messageIds);
+        } catch (RuntimeException ignored) {
+            observed = Map.of();
+        }
+        TaskRpcStageEvent.batch(observationStarted, "IMMEDIATE_PROBE", messageIds.size(), observed.size(), false);
+        return new TaskCallSubmissionBatcher.BatchOutcome(submission, observed, observationStarted);
     }
 
     private TaskDescriptor requireCallableTask(String taskId) {
+        TaskDescriptor descriptor = descriptors.get(taskId);
+        if (descriptor == null) {
+            descriptor = loadDescriptor(taskId);
+        }
+        if (descriptor.idleDisposition()
+                != TaskIdleDisposition.PARK_WHEN_IDLE) {
+            throw new ServerException(
+                    ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
+                    "taskRpc.validateTask",
+                    "Task does not support synchronous Item Call",
+                    null
+            );
+        }
+        return descriptor;
+    }
+
+    private TaskDescriptor loadDescriptor(String taskId) {
         TaskDescriptor descriptor;
         try {
             descriptor = taskCatalog.loadTaskAllocationDescriptors(
@@ -111,15 +186,10 @@ public final class TaskCallSubmissionService {
                     null
             );
         }
-        if (descriptor.idleDisposition()
-                != TaskIdleDisposition.PARK_WHEN_IDLE) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
-                    "taskRpc.validateTask",
-                    "Task does not support synchronous Item Call",
-                    null
-            );
+        if (descriptors.size() >= DESCRIPTOR_CACHE_CAPACITY) {
+            descriptors.clear();
         }
+        descriptors.put(taskId, descriptor);
         return descriptor;
     }
 
