@@ -342,6 +342,83 @@ class TaskRpcWaitRegistryTest {
     }
 
     @Test
+    void wakeMakesAWaitingItemDueNowAndItCompletesThroughTheProbe() throws Exception {
+        TaskRuntime taskRuntime = mock(TaskRuntime.class);
+        TaskRpcProperties properties = slowProperties();
+        TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
+        TaskRpcResultProbe probe = new TaskRpcResultProbe(taskRuntime, registry, properties);
+        DeferredResult<Map<String, TaskItemResultResponse>> deferred = deferred();
+        assertThat(register(registry, "task-1", "message-1", deferred)).isTrue();
+        when(taskRuntime.loadTaskItemResults(eq("task-1"), anyList()))
+                .thenReturn(Map.of())
+                .thenReturn(Map.of("message-1", TaskItemResult.succeeded("stored")));
+        probe.probe(registry.takeDueBatch(10));
+
+        // Like the probe thread in production, one taker already waits on the ten-second item.
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var due = executor.submit(() -> registry.takeDueBatch(10));
+            Thread.sleep(200);
+            assertThat(due.isDone()).isFalse();
+
+            registry.wake("task-1", List.of("message-1", "never-registered"));
+
+            var requests = due.get(2, java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(requests).containsExactly(request("task-1", "message-1"));
+            probe.probe(requests);
+        }
+        assertSucceeded(deferred, "message-1");
+        assertEmpty(registry);
+    }
+
+    @Test
+    void wakeDuringAnInFlightProbeProbesAgainRightAfterIt() throws Exception {
+        TaskRuntime taskRuntime = mock(TaskRuntime.class);
+        TaskRpcProperties properties = slowProperties();
+        TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
+        TaskRpcResultProbe probe = new TaskRpcResultProbe(taskRuntime, registry, properties);
+        DeferredResult<Map<String, TaskItemResultResponse>> deferred = deferred();
+        assertThat(register(registry, "task-1", "message-1", deferred)).isTrue();
+        when(taskRuntime.loadTaskItemResults(eq("task-1"), anyList())).thenReturn(Map.of());
+        var inFlight = registry.takeDueBatch(10);
+
+        // The Result is stored after this probe began reading; the notice must not be lost.
+        registry.wake("task-1", List.of("message-1"));
+        probe.probe(inFlight);
+
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            assertThat(executor.submit(() -> registry.takeDueBatch(10)).get(2, java.util.concurrent.TimeUnit.SECONDS))
+                    .containsExactly(request("task-1", "message-1"));
+        }
+        assertThat(deferred.hasResult()).isFalse();
+    }
+
+    @Test
+    void wakeWithoutWaitersOrForOtherItemsChangesNothing() throws Exception {
+        TaskRpcWaitRegistry empty = new TaskRpcWaitRegistry(slowProperties());
+        empty.wake("task-1", List.of("message-1"));
+        assertThat(empty.waiterCount()).isZero();
+
+        TaskRuntime taskRuntime = mock(TaskRuntime.class);
+        TaskRpcProperties properties = slowProperties();
+        TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
+        TaskRpcResultProbe probe = new TaskRpcResultProbe(taskRuntime, registry, properties);
+        assertThat(register(registry, "task-1", "message-1", deferred())).isTrue();
+        when(taskRuntime.loadTaskItemResults(eq("task-1"), anyList())).thenReturn(Map.of());
+        probe.probe(registry.takeDueBatch(10));
+
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var due = executor.submit(() -> registry.takeDueBatch(10));
+            registry.wake("task-2", List.of("message-1"));
+            registry.wake("task-1", List.of("message-2"));
+            Thread.sleep(200);
+            assertThat(due.isDone()).isFalse();
+            registry.shutdown();
+            due.cancel(true);
+        }
+        assertThat(registry.waiterCount()).isZero();
+    }
+
+    @Test
     void failedTaskGroupIsRescheduledWithoutBlockingOtherTasks()
             throws Exception {
         TaskRuntime taskRuntime = mock(TaskRuntime.class);
@@ -500,6 +577,11 @@ class TaskRpcWaitRegistryTest {
             int maxProbeItemsPerRound
     ) {
         return new TaskRpcProperties(30_000, 60_000, maxWaiters, maxPendingObservations, maxProbeItemsPerRound, 50, 100, 250, java.util.Map.of());
+    }
+
+    /** A ten-second probe interval: anything due sooner was made due by a wake. */
+    private static TaskRpcProperties slowProperties() {
+        return new TaskRpcProperties(30_000, 60_000, 10, 10, 10, 10_000, 10_000, 10_000, java.util.Map.of());
     }
 
     private static TaskRpcProperties fastProperties() {

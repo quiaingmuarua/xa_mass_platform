@@ -345,7 +345,14 @@ batch before a call that repeats an earlier call's message ID, so repeated IDs k
 sequential semantics. The batch makes one Kernel Task Call submission (one idle-park
 release before and after, one append) and one immediate Result read; every call
 interprets only its own Item outcomes and observations, and a whole-batch failure
-fails each call in it as it would have alone. Waiter registration is per call. The response is a
+fails each call in it as it would have alone. Waiter registration is per call.
+
+Waiters complete only from a stored-Result read by the probe thread. Pacer's
+best-effort `ResultObservation` (after TASK success Results or Dispatch-terminal
+failures are stored) makes matching in-process waiters due immediately, or probes
+an in-flight Item again right after its current read; with no waiters it returns
+without taking the registry lock. A lost notice, a Result stored by another
+instance, or a failed read keeps the existing 50/100/250ms probe intervals. The response is a
 Message-ID-keyed result map. Once submission is accepted it returns HTTP `200`;
 each observed entry is `succeeded` or `failed`, while timeout, saturated
 observation capacity, or Registry shutdown marks only the remainder

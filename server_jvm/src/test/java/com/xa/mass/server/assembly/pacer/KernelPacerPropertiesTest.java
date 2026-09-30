@@ -71,6 +71,12 @@ class KernelPacerPropertiesTest {
                             WorkerResourceCatalog.class,
                             () -> mock(WorkerResourceCatalog.class)
                     )
+                    .withBean(
+                            com.xa.mass.server.task.call.TaskRpcWaitRegistry.class,
+                            () -> new com.xa.mass.server.task.call.TaskRpcWaitRegistry(
+                                    new com.xa.mass.server.task.call.TaskRpcProperties(
+                                            30_000, 60_000, 10, 10, 10, 50, 100, 250, java.util.Map.of()))
+                    )
                     .withPropertyValues(
                             "xa.mass.kernel-pacer.enabled=false",
                             "xa.mass.kernel-pacer.preset=DEFAULT",

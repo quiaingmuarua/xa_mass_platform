@@ -287,6 +287,10 @@ Policy documents own workflow, capacity and lifecycle.
   Assignment emits only after execution acquisition and exact Item claim, before
   Command encoding/publication. Keep source event strings opaque; notification
   failure cannot control dispatch or create retry/replay or tracing state.
+- Its nested `ResultObservation` (Task ID, message IDs) is the same kind of passive
+  hint, emitted after TASK success Results or Dispatch-terminal failure markers are
+  stored. It carries no Result and is not Result truth; readers still load stored
+  Results, and a lost notice only leaves their existing probe interval.
 - Keep one fixed Result application and one fixed Dispatch application with
   separate capacity and lifecycle ownership. Server adapts this runtime to
   Spring; it does not host an alternative scheduler or Task fallback.

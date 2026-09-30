@@ -1,6 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.WorkerQuery;
+import com.xa.mass.kernel.pacer.KernelPacerRuntime.ResultObservation;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreObservation;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 final class TaskDispatchPolicy {
@@ -29,6 +31,7 @@ final class TaskDispatchPolicy {
     private final LongSupplier currentTimeMillis;
     private final int failedOutcomeTag;
     private final int assignmentBatchLimit;
+    private final Consumer<ResultObservation> resultObservations;
     // Bounded ordering hint only. Immutable snapshots also tolerate a cancelled
     // producer finishing during a Pacer restart; it may only replace this hint.
     private volatile List<String> recentlyServedTaskIds = List.of();
@@ -67,6 +70,23 @@ final class TaskDispatchPolicy {
             int failedOutcomeTag,
             LongSupplier currentTimeMillis
     ) {
+        this(taskScores, itemScores, taskRuntime, assignmentDispatcher, idleSettlement, candidateSelection,
+                assignmentBatchLimit, failedOutcomeTag, currentTimeMillis, ignored -> { });
+    }
+
+    TaskDispatchPolicy(
+            TaskScoreBandCore taskScores,
+            TaskItemScoreBandCore itemScores,
+            TaskRuntime taskRuntime,
+            TaskAssignmentDispatcher assignmentDispatcher,
+            TaskIdleSettlement idleSettlement,
+            WorkerCandidateSelectionPolicy candidateSelection,
+            int assignmentBatchLimit,
+            int failedOutcomeTag,
+            LongSupplier currentTimeMillis,
+            Consumer<ResultObservation> resultObservations
+    ) {
+        this.resultObservations = Objects.requireNonNull(resultObservations, "resultObservations");
         this.taskScores = Objects.requireNonNull(taskScores, "taskScores");
         this.itemScores = Objects.requireNonNull(itemScores, "itemScores");
         this.taskRuntime = Objects.requireNonNull(taskRuntime, "taskRuntime");
@@ -137,6 +157,7 @@ final class TaskDispatchPolicy {
                         failedIds
                 );
                 DispatchStageEvent.items(failureStarted, "FAILED_RESULT_STORED", task.taskId(), failedIds, failedIds.size(), false);
+                observeStored(task.taskId(), failedIds);
                 Map<String, TaskItemScoreBandCore.TaskItemOutcomeTarget> targets = new LinkedHashMap<>();
                 failedIds.forEach(id -> targets.put(id,
                         new TaskItemScoreBandCore.TaskItemOutcomeTarget(failedOutcomeTag, dispatchTimeMillis)));
@@ -248,5 +269,14 @@ final class TaskDispatchPolicy {
                 || item != null
                 && item.expireAtMillis() != null
                 && observedAtMillis >= item.expireAtMillis();
+    }
+
+    /** A lost or failing notice never changes Dispatch; waiters keep their own probe. */
+    private void observeStored(String taskId, List<String> messageIds) {
+        try {
+            resultObservations.accept(new ResultObservation(taskId, messageIds));
+        } catch (RuntimeException ignored) {
+            // Best-effort hint only: no retry, replay or tracing state.
+        }
     }
 }

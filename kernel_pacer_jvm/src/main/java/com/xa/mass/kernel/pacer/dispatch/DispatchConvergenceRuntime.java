@@ -4,6 +4,7 @@ import com.xa.mass.kernel.assignment.WorkerMatching;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
+import com.xa.mass.kernel.pacer.KernelPacerRuntime.ResultObservation;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.WorkerObservation;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -56,7 +57,8 @@ public final class DispatchConvergenceRuntime {
             WorkerServiceabilityRuntime serviceability,
             ResultContextCodec resultContextCodec,
             WorkerMatching workerMatching,
-            Consumer<WorkerObservation> workerObservations
+            Consumer<WorkerObservation> workerObservations,
+            Consumer<ResultObservation> resultObservations
     ) {
         Objects.requireNonNull(preset, "preset");
         Objects.requireNonNull(
@@ -107,7 +109,9 @@ public final class DispatchConvergenceRuntime {
                 idleSettlement,
                 candidateSelection,
                 assignmentBatchLimit,
-                failedOutcomeTag
+                failedOutcomeTag,
+                System::currentTimeMillis,
+                resultObservations
         );
         WorkerServiceabilityDispatchPolicy serviceabilityDispatch =
                 serviceabilityConfig == null

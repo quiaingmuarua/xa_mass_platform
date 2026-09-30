@@ -27,6 +27,8 @@ public final class TaskRpcWaitRegistry {
     private final DelayQueue<DueItem> dueItems = new DelayQueue<>();
     private final Map<ItemKey, ItemWaitGroup> groups = new LinkedHashMap<>();
     private int waiterCount;
+    /** Lock-free mirror of waiterCount so a Result notice with no waiters costs no lock. */
+    private volatile int activeWaiters;
     private int pendingObservationCount;
     private long nextGeneration;
     private boolean closed;
@@ -104,6 +106,7 @@ public final class TaskRpcWaitRegistry {
                 }
             }
             waiterCount++;
+            activeWaiters = waiterCount;
             pendingObservationCount += pending.size();
             admittedPending = pending.size();
         }
@@ -150,6 +153,33 @@ public final class TaskRpcWaitRegistry {
         waiters.forEach(waiter -> waiter.completeResult(key, result));
     }
 
+    /**
+     * Best-effort in-process hint that these Results were just stored: waiting Items become
+     * due now, and an Item whose probe is in flight is probed again right after it. Completion
+     * still comes only from a probe read, so a lost or remote-instance notice keeps the interval.
+     */
+    public void wake(String taskId, List<String> messageIds) {
+        if (activeWaiters == 0 || messageIds.isEmpty()) {
+            return;
+        }
+        synchronized (this) {
+            if (closed) {
+                return;
+            }
+            for (String messageId : messageIds) {
+                ItemWaitGroup group = groups.get(new ItemKey(taskId, messageId));
+                if (group == null || group.waiters.isEmpty()) {
+                    continue;
+                }
+                if (group.inFlight) {
+                    group.wakeRequested = true;
+                } else {
+                    schedule(group, 0);
+                }
+            }
+        }
+    }
+
     public synchronized void finishProbe(
             String taskId,
             String messageId,
@@ -161,6 +191,8 @@ public final class TaskRpcWaitRegistry {
             return;
         }
         group.inFlight = false;
+        boolean woken = group.wakeRequested;
+        group.wakeRequested = false;
         if (group.waiters.isEmpty()) {
             groups.remove(key);
         } else if (!group.scheduled) {
@@ -168,7 +200,7 @@ public final class TaskRpcWaitRegistry {
                     group,
                     retryDelayMillis > 0
                             ? retryDelayMillis
-                            : intervalForWaiterAgeMillis(
+                            : woken ? 0 : intervalForWaiterAgeMillis(
                                     oldestWaiterAgeMillis(group)
                             )
             );
@@ -257,6 +289,7 @@ public final class TaskRpcWaitRegistry {
         pendingObservationCount -= removedAssociations;
         if (releaseWaiter) {
             waiterCount--;
+            activeWaiters = waiterCount;
         }
     }
 
@@ -383,6 +416,7 @@ public final class TaskRpcWaitRegistry {
         private long generation;
         private boolean scheduled;
         private boolean inFlight;
+        private boolean wakeRequested;
 
         private ItemWaitGroup(ItemKey key) {
             this.key = key;

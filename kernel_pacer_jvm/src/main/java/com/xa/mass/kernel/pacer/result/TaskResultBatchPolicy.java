@@ -17,7 +17,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import com.xa.mass.kernel.pacer.KernelPacerRuntime.ResultObservation;
 
 final class TaskResultBatchPolicy {
 
@@ -25,6 +27,7 @@ final class TaskResultBatchPolicy {
     private final WorkerExecutionResultEvents workerEvents;
     private final LongSupplier currentTimeMillis;
     private final ResultContextCodec contextCodec;
+    private final Consumer<ResultObservation> resultObservations;
 
     TaskResultBatchPolicy(
             TaskItemResultEvents taskItemEvents,
@@ -44,6 +47,20 @@ final class TaskResultBatchPolicy {
             LongSupplier currentTimeMillis,
             ResultContextCodec contextCodec
     ) {
+        this(taskItemEvents, workerEvents, currentTimeMillis, contextCodec, ignored -> { });
+    }
+
+    TaskResultBatchPolicy(
+            TaskItemResultEvents taskItemEvents,
+            WorkerExecutionResultEvents workerEvents,
+            LongSupplier currentTimeMillis,
+            ResultContextCodec contextCodec,
+            Consumer<ResultObservation> resultObservations
+    ) {
+        this.resultObservations = java.util.Objects.requireNonNull(
+                resultObservations,
+                "resultObservations"
+        );
         this.taskItemEvents = java.util.Objects.requireNonNull(
                 taskItemEvents,
                 "taskItemEvents"
@@ -86,6 +103,7 @@ final class TaskResultBatchPolicy {
             } finally {
                 ResultStageEvent.items(storedAt, "RESULT_PROCESS", taskId, payloads.keySet(), stored ? payloads.size() : 0, !stored);
             }
+            observeStored(taskId, payloads.keySet());
         });
         long releasedAt = ResultStageEvent.start();
         boolean released = false;
@@ -94,6 +112,15 @@ final class TaskResultBatchPolicy {
             released = true;
         } finally {
             ResultStageEvent.batch(releasedAt, "WORKER_RELEASE", decoded.decodedCount(), released ? decoded.decodedCount() : 0, !released);
+        }
+    }
+
+    /** A lost or failing notice never changes Result handling; readers keep their own probe. */
+    private void observeStored(String taskId, java.util.Collection<String> messageIds) {
+        try {
+            resultObservations.accept(new ResultObservation(taskId, List.copyOf(messageIds)));
+        } catch (RuntimeException ignored) {
+            // Best-effort hint only: no retry, replay or tracing state.
         }
     }
 
