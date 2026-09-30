@@ -1369,7 +1369,7 @@ class RuntimeBoundaryIntegrationTest {
                 workerId,
                 WorkerScorePolarity.RECOVERY_RECHECK
         );
-        assertThat(timeMillis(initial)).isEqualTo(100);
+        assertThat(timeMillis(initial)).isEqualTo(coldTimeMillis());
 
         assertThat(mark(initial)).isZero();
         assertThat(workerScores.observeDueHotScoreCandidates(workerGroupId, null, 100)).isEmpty();

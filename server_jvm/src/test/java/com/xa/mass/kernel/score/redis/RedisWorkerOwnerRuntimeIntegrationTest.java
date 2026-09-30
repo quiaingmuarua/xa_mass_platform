@@ -48,6 +48,9 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     private RedisCommands<String, String> redis;
     private RedisWorkerScoreCore scoreCore;
     private RedisWorkerResourceCatalog catalog;
+    /** Owner clock shared by every Owner in a test; negative follows the wall clock. */
+    private final java.util.concurrent.atomic.AtomicLong frozenClockMillis =
+            new java.util.concurrent.atomic.AtomicLong(-1);
 
     @BeforeEach
     void setUp() {
@@ -56,7 +59,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         redisClient = RedisClient.create(REDIS_URL);
         connection = redisClient.connect(StringCodec.UTF8);
         redis = connection.sync();
-        scoreCore = new RedisWorkerScoreCore(redisClient, keyspace);
+        scoreCore = new RedisWorkerScoreCore(redisClient, keyspace, this::ownerClockMillis);
         catalog = new RedisWorkerResourceCatalog(redisClient, scoreCore, keyspace);
     }
 
@@ -177,7 +180,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long held = workerScore(1, (now - 30_000) / SLOT_MILLIS, 0);
         redis.zadd(scoreKey("hint"), held, "w");
         var start = new CountDownLatch(1);
-        try (var competing = new RedisWorkerScoreCore(redisClient, keyspace);
+        try (var competing = new RedisWorkerScoreCore(redisClient, keyspace, this::ownerClockMillis);
              var executor = Executors.newFixedThreadPool(2)) {
             var first = executor.submit(() -> {
                 start.await();
@@ -234,7 +237,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long now = ownerClockMillis(), due = workerScore(1, now / SLOT_MILLIS - 10, 0);
         redis.zadd(scoreKey("direct-refill"), due, "w");
         var start = new CountDownLatch(1);
-        try (var competing = new RedisWorkerScoreCore(redisClient, keyspace); var executor = Executors.newFixedThreadPool(2)) {
+        try (var competing = new RedisWorkerScoreCore(redisClient, keyspace, this::ownerClockMillis); var executor = Executors.newFixedThreadPool(2)) {
             var direct = executor.submit(() -> {
                 start.await(); return scoreCore.acquireCurrentHotScoreLeases("direct-refill", List.of("w"), now + 60_000).get("w");
             });
@@ -257,7 +260,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
     void executionRejectsCurrentSlotUntilRedisCrossesItsBoundary(boolean hint) throws InterruptedException {
         for (int attempt = 0; attempt < 20; attempt++) {
-            awaitRedisTime((ownerClockMillis() / SLOT_MILLIS + 1) * SLOT_MILLIS);
+            advanceOwnerClockTo((ownerClockMillis() / SLOT_MILLIS + 1) * SLOT_MILLIS);
             long now = ownerClockMillis();
             long held = workerScore(1, now / SLOT_MILLIS, 0);
             redis.zadd(scoreKey("boundary"), held, "w");
@@ -298,7 +301,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(results.keySet()).containsExactlyElementsOf(expected.keySet());
         assertThat(transitionedScores(results)).hasSize(200).doesNotContainKey("w101");
         assertThat(results.get("w101")).isEqualTo(new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.STALE, rejectedScore));
-        assertThat(results.get("w200").score()).isEqualTo(workerScore(1, (now + 5000) / 100, 0));
+        assertThat(results.get("w200").score()).isEqualTo(workerScore(1, (now + 5000) / SLOT_MILLIS, 0));
     }
 
     private Map<String, WorkerScoreState> readCoordinates(String group, List<String> ids) {
@@ -595,8 +598,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         redis.zadd(scoreKey("g"), pause, "pause");
         // The activation floor is the evidence slot itself, independent of when this line runs.
         var events = new com.xa.mass.kernel.worker.DefaultWorkerServiceabilityEvents(scoreCore, now * SLOT_MILLIS);
-        events.onAvailable("g", Map.of("cold", now * 100, "lease", now * 100, "pause", now * 100,
-                "binding-only", now * 100, "missing", now * 100));
+        events.onAvailable("g", Map.of("cold", now * SLOT_MILLIS, "lease", now * SLOT_MILLIS, "pause", now * SLOT_MILLIS,
+                "binding-only", now * SLOT_MILLIS, "missing", now * SLOT_MILLIS));
         assertThat(redis.zscore(scoreKey("g"), "cold")).isEqualTo((double) workerScore(1, now, 0));
         assertThat(redis.zscore(scoreKey("g"), "lease")).isEqualTo((double) -lease);
         assertThat(redis.zscore(scoreKey("g"), "pause")).isEqualTo((double) -pause);
@@ -627,7 +630,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         try (var owner = new RedisWorkerScoreCore(redisClient, keyspace, () -> {
             assertThat(commands).containsExactly("ZMSCORE");
             clockReads.incrementAndGet();
-            return 15_055;
+            return 150 * SLOT_MILLIS + 5;
         })) {
             var listener = commandListener(commands);
             redisClient.addListener(listener);
@@ -638,7 +641,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 observation = owner.observeSchedulingStates("observe", List.copyOf(expected.keySet()));
             } finally { redisClient.removeListener(listener); }
             assertThat(clockReads).hasValue(1);
-            assertThat(observation.readAtMillis()).isEqualTo(15_055);
+            assertThat(observation.readAtMillis()).isEqualTo(150 * SLOT_MILLIS + 5);
             assertThat(observation.statesByWorkerId()).containsExactlyEntriesOf(expected);
             assertThatThrownBy(() -> observation.statesByWorkerId().clear()).isInstanceOf(UnsupportedOperationException.class);
             assertThat(commands).containsExactly("ZMSCORE");
@@ -720,8 +723,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void nonAlignedRangeInputsHaveTheSameHeadAndPreserveTieOrder() {
         long now = ownerClockMillis();
-        long cutoff = (now / 100 - 10) * 100;
-        for (String id : List.of("a", "b", "c")) redis.zadd(scoreKey("unaligned"), cutoff / 100 - 1, id);
+        long cutoff = (now / SLOT_MILLIS - 10) * SLOT_MILLIS;
+        for (String id : List.of("a", "b", "c")) redis.zadd(scoreKey("unaligned"), cutoff / SLOT_MILLIS - 1, id);
         var expected = scoreCore.observeHotCandidatesBefore("unaligned", cutoff, 100);
         assertThat(expected.keySet()).containsExactly("c", "b", "a");
         for (long offset : new long[]{1, 55, 99}) {
@@ -730,7 +733,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                     .containsExactlyEntriesOf(scoreCore.observeDueHotScoreCandidates("unaligned", cutoff - 100, 100));
         }
         assertThatThrownBy(() -> expected.put("extra", 1L)).isInstanceOf(UnsupportedOperationException.class);
-        for (String id : List.of("a", "b", "c")) redis.zadd(scoreKey("unaligned"), -cutoff / 100, id);
+        for (String id : List.of("a", "b", "c")) redis.zadd(scoreKey("unaligned"), -cutoff / SLOT_MILLIS, id);
         var recovery = scoreCore.observeRecoveryRecheckCandidates("unaligned", 100);
         assertThat(recovery.keySet()).containsExactly("c", "b", "a");
         assertThatThrownBy(() -> recovery.clear()).isInstanceOf(UnsupportedOperationException.class);
@@ -927,9 +930,9 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         redis.zadd(scoreKey("release-lag"), candidateHeld, "candidate");
         redis.zadd(scoreKey("release-lag"), expired, "expired");
         redis.zadd(scoreKey("release-lag"), -held, "disconnected");
-        try (var owner = new RedisWorkerScoreCore(redisClient, keyspace, () -> clock + 30)) {
+        try (var owner = new RedisWorkerScoreCore(redisClient, keyspace, () -> clock + SLOT_MILLIS / 2)) {
             // The caller sampled its time in the previous slot; its batch then crossed a slot boundary.
-            long lagging = clock - 70;
+            long lagging = clock - SLOT_MILLIS / 2;
             var results = owner.releaseScoreHolds("release-lag",
                     Map.of("held", held, "candidate", candidateHeld, "expired", expired), lagging);
             assertThat(results.get("held")).isEqualTo(new WorkerScoreTransitionResult(
@@ -1008,7 +1011,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @Test
     void readOnlyHeadRetainsScoreAndMemberOrderWithinOneCommand() {
-        long due = workerScore(1, ownerClockMillis() / 100 - 100, 0);
+        long due = workerScore(1, ownerClockMillis() / SLOT_MILLIS - 100, 0);
         var ids = java.util.stream.IntStream.range(0, 250)
                 .mapToObj(i -> "worker-%03d".formatted(i)).toList();
         ids.forEach(id -> redis.zadd(scoreKey("g"), due, id));
@@ -1036,7 +1039,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @Test
     void observationFiltersCorruptRowsWithinTheRawLimitWithoutReplacementReads() {
-        long slot = ownerClockMillis() / 100;
+        long slot = ownerClockMillis() / SLOT_MILLIS;
         long eligible = workerScore(1, slot - 10, 0);
         redis.zadd(scoreKey("g"), eligible, "ordinary");
         redis.zadd(scoreKey("g"), eligible + 0.25, "corrupt");
@@ -1068,8 +1071,9 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void observationHonorsFloorAndExcludesTheCurrentSlotFuturePauseAndRecovery() {
         scoreCore.observeDueHotScoreCandidates("g", null, 100);
+        advanceOwnerClockTo(ownerClockMillis());
         for (int attempt = 0; attempt < 8; attempt++) {
-            long slot = ownerClockMillis() / 100;
+            long slot = ownerClockMillis() / SLOT_MILLIS;
             long eligible = workerScore(1, slot - 10, 0);
             redis.zadd(scoreKey("g"), eligible, "ordinary");
             redis.zadd(scoreKey("g"), eligible + 1, "next-ordinary");
@@ -1078,10 +1082,10 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             redis.zadd(scoreKey("g"), workerScore(1, slot, 0), "current");
             redis.zadd(scoreKey("g"), workerScore(1, slot + 100, 0), "occupied");
             redis.zadd(scoreKey("g"), workerScore(1, PAUSE_TIME_SLOT, 0), "pause");
-            var observed = scoreCore.observeDueHotScoreCandidates("g", (slot - 10) * 100, 100);
-            if (ownerClockMillis() / 100 != slot) continue; // Resample only a missed time window.
+            var observed = scoreCore.observeDueHotScoreCandidates("g", (slot - 10) * SLOT_MILLIS, 100);
+            if (ownerClockMillis() / SLOT_MILLIS != slot) continue; // Resample only a missed time window.
             assertThat(observed).containsExactly(Map.entry("ordinary", eligible), Map.entry("next-ordinary", eligible + 1));
-            assertThat(scoreCore.observeDueHotScoreCandidates("g", (slot + 1000) * 100, 100)).isEmpty();
+            assertThat(scoreCore.observeDueHotScoreCandidates("g", (slot + 1000) * SLOT_MILLIS, 100)).isEmpty();
             return;
         }
         throw new AssertionError("Could not observe the current Redis slot within eight attempts");
@@ -1145,8 +1149,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void recycledCandidateMovesBehindOlderUncandidateizedWorkers() throws Exception {
         long now = ownerClockMillis();
-        long first = workerScore(1, now / 100 - 100, 0);
-        long waiting = workerScore(1, now / 100 - 90, 0);
+        long first = workerScore(1, now / SLOT_MILLIS - 100, 0);
+        long waiting = workerScore(1, now / SLOT_MILLIS - 90, 0);
         redis.zadd(scoreKey("g"), first, "first"); redis.zadd(scoreKey("g"), waiting, "waiting");
         long candidate = scoreCore.candidateizeObservedHotScores("g", Map.of("first", first)).get("first").score();
         long recycled = scoreCore.recycleObservedHotCandidates("g", Map.of("first", candidate)).get("first").score();
@@ -1218,13 +1222,13 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long afterSlot = ownerClockMillis() / SLOT_MILLIS;
         assertThat(held.get("hot").timeMillis()
                 / SLOT_MILLIS).isBetween(
-                        beforeSlot + 600,
-                        afterSlot + 600
+                        beforeSlot + 60_000 / SLOT_MILLIS,
+                        afterSlot + 60_000 / SLOT_MILLIS
                 );
         assertThat(held.get("recovery").timeMillis()
                 / SLOT_MILLIS).isBetween(
-                        beforeSlot + 2400,
-                        afterSlot + 2400
+                        beforeSlot + 240_000 / SLOT_MILLIS,
+                        afterSlot + 240_000 / SLOT_MILLIS
                 );
         assertScoreShape(
                 held.get("hot"),
@@ -1368,36 +1372,30 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         };
         redisClient.addListener(listener);
         try {
-            for (int attempt = 0; attempt < 8; attempt++) {
-                long slot = ownerClockMillis() / 100 + 10;
-                var original = new LinkedHashMap<String, Long>();
-                var evidence = new LinkedHashMap<String, Long>();
-                for (int index = 0; index < 100; index++) {
-                    String id = "worker-" + index;
-                    long score = workerScore(-polarityValue(target), slot, index % 2);
-                    original.put(id, score);
-                    evidence.put(id, (slot - 1) * 100);
-                    redis.zadd(scoreKey("g"), score, id);
-                }
-                // Warm the lazy Owner connection before measuring commands and the target slot.
-                scoreCore.observeSchedulingStates("g", List.of("worker-0"));
-                awaitRedisTime(slot * 100 + 2);
-                long before = ownerClockMillis();
-                Map<String, WorkerScoreTransitionResult> first, repeated, currentPreserved, reversed;
-                var ahead = new LinkedHashMap<>(evidence);
-                ahead.replaceAll((id, timestamp) -> (slot + 1) * 100);
-                WorkerScorePolarity opposite = target == WorkerScorePolarity.HOT_ACQUIRE
-                        ? WorkerScorePolarity.RECOVERY_RECHECK : WorkerScorePolarity.HOT_ACQUIRE;
+            long slot = ownerClockMillis() / SLOT_MILLIS + 10;
+            var original = new LinkedHashMap<String, Long>();
+            var evidence = new LinkedHashMap<String, Long>();
+            for (int index = 0; index < 100; index++) {
+                String id = "worker-" + index;
+                long score = workerScore(-polarityValue(target), slot, index % 2);
+                original.put(id, score);
+                evidence.put(id, (slot - 1) * SLOT_MILLIS);
+                redis.zadd(scoreKey("g"), score, id);
+            }
+            var ahead = new LinkedHashMap<>(evidence);
+            ahead.replaceAll((id, timestamp) -> (slot + 1) * SLOT_MILLIS);
+            WorkerScorePolarity opposite = target == WorkerScorePolarity.HOT_ACQUIRE
+                    ? WorkerScorePolarity.RECOVERY_RECHECK : WorkerScorePolarity.HOT_ACQUIRE;
+            // Every call observes the same current slot through the Owner clock.
+            try (var owner = new RedisWorkerScoreCore(redisClient, keyspace, () -> slot * SLOT_MILLIS + 2)) {
+                owner.observeSchedulingStates("g", List.of("worker-0"));
                 commands.clear();
-                first = scoreCore.rewriteCurrentPolarityWithinTimeFence("g", evidence, target, 0L);
-                repeated = scoreCore.rewriteCurrentPolarityWithinTimeFence("g", evidence, target, 0L);
+                var first = owner.rewriteCurrentPolarityWithinTimeFence("g", evidence, target, 0L);
+                var repeated = owner.rewriteCurrentPolarityWithinTimeFence("g", evidence, target, 0L);
                 // The Owner preserves current coordinates; future-report admission remains upstream.
-                currentPreserved = scoreCore.rewriteCurrentPolarityWithinTimeFence("g", ahead, target, 0L);
-                reversed = scoreCore.rewriteCurrentPolarityWithinTimeFence("g", evidence, opposite, 0L);
-                long after = ownerClockMillis();
+                var currentPreserved = owner.rewriteCurrentPolarityWithinTimeFence("g", ahead, target, 0L);
+                var reversed = owner.rewriteCurrentPolarityWithinTimeFence("g", evidence, opposite, 0L);
                 assertThat(commands).containsExactly("EVAL", "EVAL", "EVAL", "EVAL");
-                if (before / 100 != slot || after / 100 != slot) continue;
-
                 assertThat(first).hasSize(100);
                 original.forEach((id, score) -> {
                     assertThat(first.get(id).status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
@@ -1409,9 +1407,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                     assertThat(reversed.get(id).status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
                     assertThat(reversed.get(id).score()).isEqualTo(score);
                 });
-                return;
             }
-            throw new AssertionError("Could not execute the evidence batch within one Redis slot in eight attempts");
         } finally {
             redisClient.removeListener(listener);
         }
@@ -1420,18 +1416,18 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @ParameterizedTest
     @org.junit.jupiter.params.provider.EnumSource(WorkerScorePolarity.class)
     void serviceabilityPastCoordinatesKeepFreshnessChecksAndPauseProtection(WorkerScorePolarity target) {
-        long nowSlot = ownerClockMillis() / 100;
+        long nowSlot = ownerClockMillis() / SLOT_MILLIS;
         long pastSlot = nowSlot - 20;
         long past = workerScore(-polarityValue(target), pastSlot, 1);
         long pause = workerScore(-polarityValue(target), PAUSE_TIME_SLOT, 1);
         for (String id : List.of("older", "same", "newer")) redis.zadd(scoreKey("g"), past, id);
         redis.zadd(scoreKey("g"), pause, "pause");
         var result = scoreCore.rewriteCurrentPolarityWithinTimeFence("g", Map.of(
-                "older", (pastSlot - 1) * 100,
-                "same", pastSlot * 100,
-                "newer", (pastSlot + 1) * 100,
-                "pause", pastSlot * 100,
-                "missing", pastSlot * 100), target, (target == WorkerScorePolarity.HOT_ACQUIRE ? pastSlot : 0) * 100);
+                "older", (pastSlot - 1) * SLOT_MILLIS,
+                "same", pastSlot * SLOT_MILLIS,
+                "newer", (pastSlot + 1) * SLOT_MILLIS,
+                "pause", pastSlot * SLOT_MILLIS,
+                "missing", pastSlot * SLOT_MILLIS), target, (target == WorkerScorePolarity.HOT_ACQUIRE ? pastSlot : 0) * SLOT_MILLIS);
 
         assertThat(result.get("older").status()).isEqualTo(WorkerScoreTransitionStatus.STALE);
         assertThat(redis.zscore(scoreKey("g"), "older")).isEqualTo((double) past);
@@ -1446,26 +1442,26 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @Test
     void serviceabilityCurrentSlotDisconnectAndConfirmationHaveOnlySerializedOutcomes() throws Exception {
-        try (var competing = new RedisWorkerScoreCore(redisClient, keyspace);
+        try (var competing = new RedisWorkerScoreCore(redisClient, keyspace, this::ownerClockMillis);
              var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             competing.observeSchedulingStates("g", List.of("w"));
             for (int attempt = 0; attempt < 8; attempt++) {
-                long slot = ownerClockMillis() / 100 + 10;
+                long slot = ownerClockMillis() / SLOT_MILLIS + 10;
                 long held = workerScore(1, slot, 0);
                 redis.zadd(scoreKey("g"), held, "w");
                 var start = new CountDownLatch(1);
                 var confirmation = executor.submit(() -> {
                     start.await();
-                    return competing.acquireObservedHotScoreLeases("g", Map.of("w", held), (slot + 50) * 100).get("w");
+                    return competing.acquireObservedHotScoreLeases("g", Map.of("w", held), (slot + 50) * SLOT_MILLIS).get("w");
                 });
                 var disconnection = executor.submit(() -> {
                     start.await();
-                    return scoreCore.rewriteCurrentPolarityWithinTimeFence("g", Map.of("w", (slot - 1) * 100),
+                    return scoreCore.rewriteCurrentPolarityWithinTimeFence("g", Map.of("w", (slot - 1) * SLOT_MILLIS),
                             WorkerScorePolarity.RECOVERY_RECHECK, 0L).get("w");
                 });
                 long before;
                 try {
-                    awaitRedisTime(slot * 100 + 2);
+                    advanceOwnerClockTo(slot * SLOT_MILLIS + 2);
                     before = ownerClockMillis();
                 } finally {
                     start.countDown();
@@ -1473,7 +1469,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 var confirmed = confirmation.get(5, TimeUnit.SECONDS);
                 var disconnected = disconnection.get(5, TimeUnit.SECONDS);
                 long after = ownerClockMillis();
-                if (before / 100 != slot || after / 100 != slot) continue;
+                if (before / SLOT_MILLIS != slot || after / SLOT_MILLIS != slot) continue;
 
                 assertThat(disconnected.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
                 assertThat(confirmed.status()).isIn(WorkerScoreTransitionStatus.TRANSITIONED, WorkerScoreTransitionStatus.STALE);
@@ -1485,14 +1481,9 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         throw new AssertionError("Could not observe the concurrent transitions within one Redis slot in eight attempts");
     }
 
-    private void awaitRedisTime(long targetMillis) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (System.nanoTime() < deadline) {
-            long remaining = targetMillis - ownerClockMillis();
-            if (remaining <= 0) return;
-            Thread.sleep(Math.min(10, remaining));
-        }
-        throw new AssertionError("Redis clock did not reach the test window within five seconds");
+    /** Moves the shared Owner clock to the target, then holds it there for the rest of the test. */
+    private void advanceOwnerClockTo(long targetMillis) {
+        frozenClockMillis.set(Math.max(ownerClockMillis(), targetMillis));
     }
 
     @Test
@@ -1570,7 +1561,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(ints = {1, -1})
     void serviceabilityAdvancesAllEqualScoreWorkersFromTheSameHead(int polarity) {
-        long nowSlot = ownerClockMillis() / 100;
+        long nowSlot = ownerClockMillis() / SLOT_MILLIS;
         long observed = workerScore(polarity, nowSlot - 100, 1);
         var remaining = new java.util.HashSet<String>();
         for (int i = 0; i < 250; i++) {
@@ -1580,7 +1571,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         }
         for (int expectedSize : new int[]{100, 100, 50}) {
             var head = polarity == 1
-                    ? scoreCore.observeHotCandidatesBefore("group-recheck-head", nowSlot * 100, 100)
+                    ? scoreCore.observeHotCandidatesBefore("group-recheck-head", nowSlot * SLOT_MILLIS, 100)
                     : scoreCore.observeRecoveryRecheckCandidates("group-recheck-head", 100);
             assertThat(head).hasSize(expectedSize);
             var targets = new LinkedHashMap<String, Long>();
@@ -1595,16 +1586,16 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                     assertThat(result.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED));
         }
         assertThat(remaining).isEmpty();
-        assertThat(scoreCore.observeHotCandidatesBefore("group-recheck-head", nowSlot * 100, 100)).isEmpty();
+        assertThat(scoreCore.observeHotCandidatesBefore("group-recheck-head", nowSlot * SLOT_MILLIS, 100)).isEmpty();
         assertThat(scoreCore.observeRecoveryRecheckCandidates("group-recheck-head", 100)).isEmpty();
     }
 
     @Test
     void recoveryReadIncludesOldCoordinatesAndRespectsCurrentSlotAndColdFloor() throws Exception {
         for (int attempt = 0; attempt < 8; attempt++) {
-            awaitRedisTime((ownerClockMillis() / 100 + 1) * 100);
+            advanceOwnerClockTo((ownerClockMillis() / SLOT_MILLIS + 1) * SLOT_MILLIS);
             long now = ownerClockMillis();
-            long slot = now / 100;
+            long slot = now / SLOT_MILLIS;
             String group = "recheck-boundary-" + attempt;
             long floor = slot - 864_000;
             var scores = Map.of(
@@ -1626,7 +1617,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             var invalidTarget = scoreCore.deferObservedToRecovery(group,
                     Map.of("due-mark", scores.get("due-mark")),
                     PAUSE_TIME_MILLIS - now + 100);
-            if (ownerClockMillis() / 100 != slot) continue;
+            if (ownerClockMillis() / SLOT_MILLIS != slot) continue;
             assertThat(head.keySet())
                     .containsExactly("first-valid", "older-than-day", "one-day", "due-mark");
             for (String id : List.of("current", "future", "pause")) {
@@ -1635,7 +1626,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             assertThat(invalidTarget.get("due-mark").status()).isEqualTo(WorkerScoreTransitionStatus.INVALID);
             scores.forEach((id, score) -> assertThat(redis.zscore(scoreKey(group), id)).isEqualTo(score.doubleValue()));
             // No sweep restart is required: the unchanged current-slot member becomes visible once due.
-            awaitRedisTime((slot + 1) * 100);
+            advanceOwnerClockTo((slot + 1) * SLOT_MILLIS);
             assertThat(scoreCore.observeRecoveryRecheckCandidates(group, 100).keySet()).contains("current");
             return;
         }
@@ -1646,11 +1637,11 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @org.junit.jupiter.params.provider.ValueSource(ints = {1, -1})
     void concurrentServiceabilityHoldsHaveOneWinnerAndCannotAdvanceAgainBeforeDue(int polarity)
             throws Exception {
-        long observed = workerScore(polarity, ownerClockMillis() / 100 - 10, 1);
+        long observed = workerScore(polarity, ownerClockMillis() / SLOT_MILLIS - 10, 1);
         redis.zadd(scoreKey("recheck-race"), observed, "w");
         var target = Map.of("w", observed);
         var start = new CountDownLatch(1);
-        try (var competing = new RedisWorkerScoreCore(redisClient, keyspace);
+        try (var competing = new RedisWorkerScoreCore(redisClient, keyspace, this::ownerClockMillis);
              var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var first = executor.submit(() -> {
                 start.await();
@@ -1679,7 +1670,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void recheckDelayStartsAtTheOwnerClockSample() {
         long sampled = ownerClockMillis() + 12_345;
-        long oldRecovery = workerScore(-1, sampled / 100 - 10, 1);
+        long oldRecovery = workerScore(-1, sampled / SLOT_MILLIS - 10, 1);
         redis.zadd(scoreKey("recheck-time"), oldRecovery, "w");
         var commands = new java.util.concurrent.CopyOnWriteArrayList<String>();
         var listener = commandListener(commands);
@@ -1692,7 +1683,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             redisClient.removeListener(listener);
         }
         var held = readCoordinates("recheck-time", List.of("w")).get("w");
-        assertThat(held.timeMillis()).isEqualTo((sampled + 60_000) / 100 * 100);
+        assertThat(held.timeMillis()).isEqualTo((sampled + 60_000) / SLOT_MILLIS * SLOT_MILLIS);
         assertThat(held.mark()).isZero();
     }
 
@@ -1815,7 +1806,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                     assertThat(state.mark()).isEqualTo(sign > 0 && slot < now ? 0 : mark);
                     assertThat(state.polarity()).isEqualTo(sign > 0 ? WorkerScorePolarity.HOT_ACQUIRE : WorkerScorePolarity.RECOVERY_RECHECK);
                     if (coldRecovery) assertThat(state.timeMillis()).isEqualTo(slot * SLOT_MILLIS);
-                    else assertThat(state.timeMillis()).isBetween(Math.max(slot, now) * 100, Math.max(slot, ownerClockMillis() / 100) * 100);
+                    else assertThat(state.timeMillis()).isBetween(Math.max(slot, now) * SLOT_MILLIS, Math.max(slot, ownerClockMillis() / SLOT_MILLIS) * SLOT_MILLIS);
                     assertThat(redis.zscore(scoreKey("g"), "w")).isEqualTo(result.score().doubleValue());
                 }
             }
@@ -1834,7 +1825,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void propertiesInvalidationKeepsCurrentSlotCoordinatesUnchanged() throws InterruptedException {
         for (int attempt = 0; attempt < 20; attempt++) {
-            awaitRedisTime((ownerClockMillis() / SLOT_MILLIS + 1) * SLOT_MILLIS);
+            advanceOwnerClockTo((ownerClockMillis() / SLOT_MILLIS + 1) * SLOT_MILLIS);
             long slot = ownerClockMillis() / SLOT_MILLIS;
             var originals = new LinkedHashMap<String, Long>();
             for (int sign : List.of(-1, 1)) {
@@ -1934,7 +1925,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long held = workerScore(1, (now - 30_000) / SLOT_MILLIS, candidateMark ? 1 : 0);
         redis.zadd(scoreKey("g"), held, "w");
         CountDownLatch start = new CountDownLatch(1);
-        try (var competing = new RedisWorkerScoreCore(redisClient, keyspace);
+        try (var competing = new RedisWorkerScoreCore(redisClient, keyspace, this::ownerClockMillis);
              var executor = Executors.newFixedThreadPool(2)) {
             var first = executor.submit(() -> { start.await();
                 return scoreCore.acquireObservedHotScoreLeases("g", Map.of("w", held), now + 60_000).get("w").status(); });
@@ -1958,7 +1949,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long now=ownerClockMillis();
         var due=new LinkedHashMap<String,Long>();
         for(int i=0;i<100;i++) {
-            long value=workerScore(1,now/100-10,0);
+            long value=workerScore(1,now/ SLOT_MILLIS-10,0);
             due.put("w"+i,value);redis.zadd(scoreKey("g"),value,"w"+i);
         }
         var commands=new java.util.concurrent.CopyOnWriteArrayList<String>();
@@ -1975,8 +1966,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             assertThat(execution).hasSize(100);assertThat(commands).containsExactly("EVAL");
             for(String id:due.keySet()) {
                 assertThat(candidate.get(id) / MARK_BASE).isEqualTo(1);
-                assertThat(candidate.get(id)).isEqualTo(workerScore(1, now / 100 - 10, 1));
-                assertThat(execution.get(id)).isEqualTo(workerScore(1, (now + 3000) / 100, 0));
+                assertThat(candidate.get(id)).isEqualTo(workerScore(1, now / SLOT_MILLIS - 10, 1));
+                assertThat(execution.get(id)).isEqualTo(workerScore(1, (now + 3000) / SLOT_MILLIS, 0));
             }
             assertThat(scoreCore.acquireObservedHotScoreLeases("g",due,now+6000).values())
                     .allSatisfy(r->assertThat(r.status()).isEqualTo(WorkerScoreTransitionStatus.STALE));
@@ -2009,7 +2000,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void relativeDeferralAllowsTheMaximumSlotAndRejectsOnlyLargerTargets() throws Exception {
         for (int attempt = 0; attempt < 8; attempt++) {
-            awaitRedisTime((ownerClockMillis() / SLOT_MILLIS + 1) * SLOT_MILLIS);
+            advanceOwnerClockTo((ownerClockMillis() / SLOT_MILLIS + 1) * SLOT_MILLIS);
             long before = ownerClockMillis();
             String group = "relative-max-" + attempt;
             var observations = new LinkedHashMap<String, Long>();
@@ -2039,10 +2030,10 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @org.junit.jupiter.params.provider.ValueSource(ints = {0, 1})
     void availableEvidenceRestoresOrdinaryHotAtANewGeneration(int mark) {
         long now = ownerClockMillis();
-        long recovery = workerScore(-1, now / 100 - 300, mark);
+        long recovery = workerScore(-1, now / SLOT_MILLIS - 300, mark);
         redis.zadd(scoreKey("evidence-candidate"), recovery, "w");
-        long evidenceSlot = now / 100 - 2;
-        var activated = scoreCore.rewriteCurrentPolarityWithinTimeFence("evidence-candidate", Map.of("w", evidenceSlot * 100),
+        long evidenceSlot = now / SLOT_MILLIS - 2;
+        var activated = scoreCore.rewriteCurrentPolarityWithinTimeFence("evidence-candidate", Map.of("w", evidenceSlot * SLOT_MILLIS),
                 WorkerScorePolarity.HOT_ACQUIRE, now - 60_000).get("w");
         assertThat(activated.score()).isEqualTo(workerScore(1, evidenceSlot, 0));
         assertThat(decodeState("w", activated.score()).mark()).isZero();
@@ -2058,7 +2049,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @Test
     void executionAcquisitionAcceptsDueMarkedScoresButRejectsOccupiedPausedOrChangedObservations() {
-        long now=ownerClockMillis(),slot=now/100;
+        long now=ownerClockMillis(),slot=now/ SLOT_MILLIS;
         var observed=new LinkedHashMap<String,Long>();
         observed.put("ordinary",workerScore(1,slot-10,0));
         observed.put("candidate",workerScore(1,slot-10,1));
@@ -2078,10 +2069,10 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @Test
     void concurrentExecutionAcquisitionsOfOneObservationHaveOneWinner() throws Exception {
-        long now=ownerClockMillis(),observed=workerScore(1,(now-1000)/100,1);
+        long now=ownerClockMillis(),observed=workerScore(1,(now-1000)/ SLOT_MILLIS,1);
         redis.zadd(scoreKey("g"),observed,"w");
         var start=new CountDownLatch(1);
-        try(var competing=new RedisWorkerScoreCore(redisClient,keyspace);var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+        try(var competing=new RedisWorkerScoreCore(redisClient, keyspace, this::ownerClockMillis);var executor=Executors.newVirtualThreadPerTaskExecutor()) {
             var a=executor.submit(()->{start.await();return scoreCore.acquireObservedHotScoreLeases("g",Map.of("w",observed),now+1000).get("w").status();});
             var b=executor.submit(()->{start.await();return competing.acquireObservedHotScoreLeases("g",Map.of("w",observed),now+2000).get("w").status();});
             start.countDown();
@@ -2093,12 +2084,12 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings={"expired-request","became-due","not-yet-due"})
     void leaseTimeIsCheckedAgainstTheOwnerClockSample(String mode) {
-        long clock=ownerClockMillis()/100*100+50_000;
-        long fence=workerScore(1,mode.equals("not-yet-due")?clock/100:clock/100-1,0);
+        long clock=ownerClockMillis()/ SLOT_MILLIS* SLOT_MILLIS+50_000;
+        long fence=workerScore(1,mode.equals("not-yet-due")?clock/ SLOT_MILLIS:clock/ SLOT_MILLIS-1,0);
         redis.zadd(scoreKey("g"),fence,"w");
         try (var owner=new RedisWorkerScoreCore(redisClient,keyspace,()->clock)) {
             var result=owner.acquireObservedHotScoreLeases("g",Map.of("w",fence),
-                    mode.equals("expired-request")?clock+99:clock+5_000).get("w");
+                    mode.equals("expired-request")?clock+SLOT_MILLIS-1:clock+5_000).get("w");
             var expected=switch(mode) {
                 case "expired-request" -> WorkerScoreTransitionStatus.INVALID;
                 case "became-due" -> WorkerScoreTransitionStatus.TRANSITIONED;
@@ -2112,7 +2103,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @Test
     void corruptFractionalMembersAreInvalidWithoutWritingOrFailingTheirBatch() {
-        long slot = ownerClockMillis() / 100;
+        long slot = ownerClockMillis() / SLOT_MILLIS;
         long observation = workerScore(1, slot - 10, 0);
         double corrupt = observation + 0.5;
         redis.zadd(scoreKey("corrupt-echo"), corrupt, "w");
@@ -2123,9 +2114,9 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(deferred.get("w")).isEqualTo(invalid);
         assertThat(deferred.get("valid").status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
         assertThat(scoreCore.rewriteCurrentPolarityWithinTimeFence("corrupt-echo",
-                Map.of("w", (slot - 5) * 100), WorkerScorePolarity.HOT_ACQUIRE, 0L).get("w")).isEqualTo(invalid);
+                Map.of("w", (slot - 5) * SLOT_MILLIS), WorkerScorePolarity.HOT_ACQUIRE, 0L).get("w")).isEqualTo(invalid);
         assertThat(scoreCore.rewriteCurrentPolarityWithinTimeFence("corrupt-echo",
-                Map.of("w", (slot - 20) * 100), WorkerScorePolarity.RECOVERY_RECHECK, 0L).get("w")).isEqualTo(invalid);
+                Map.of("w", (slot - 20) * SLOT_MILLIS), WorkerScorePolarity.RECOVERY_RECHECK, 0L).get("w")).isEqualTo(invalid);
         assertThat(scoreCore.toggleCurrentPolarity("corrupt-echo", "w", observation)).isEqualTo(invalid);
         assertThat(redis.zscore(scoreKey("corrupt-echo"), "w")).isEqualTo(corrupt);
     }
@@ -2133,19 +2124,19 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(ints = {1, -1})
     void pastPolarityChangeRefreshesGenerationWithOrWithoutAnActivationMinimum(int polarity) {
-        long slot = ownerClockMillis() / 100;
+        long slot = ownerClockMillis() / SLOT_MILLIS;
         var target = polarity == 1 ? WorkerScorePolarity.HOT_ACQUIRE : WorkerScorePolarity.RECOVERY_RECHECK;
         for (boolean withMinimum : new boolean[]{false, true}) {
             String id = "minimum-" + withMinimum;
             long observed = workerScore(-polarity, slot - 10, 1);
             redis.zadd(scoreKey("mechanical-polarity"), observed, id);
-            var times = Map.of(id, (slot - 5) * 100);
+            var times = Map.of(id, (slot - 5) * SLOT_MILLIS);
             var result = scoreCore.rewriteCurrentPolarityWithinTimeFence(
-                    "mechanical-polarity", times, target, withMinimum ? (slot - 5) * 100 : 0L).get(id);
+                    "mechanical-polarity", times, target, withMinimum ? (slot - 5) * SLOT_MILLIS : 0L).get(id);
             assertThat(result.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
             assertThat(result.score()).isEqualTo(workerScore(polarity, slot - 5, 0));
             assertThat(scoreCore.rewriteCurrentPolarityWithinTimeFence(
-                    "mechanical-polarity", times, target, withMinimum ? (slot - 5) * 100 : 0L).get(id).status())
+                    "mechanical-polarity", times, target, withMinimum ? (slot - 5) * SLOT_MILLIS : 0L).get(id).status())
                     .isEqualTo(WorkerScoreTransitionStatus.NOOP);
         }
     }
@@ -2153,7 +2144,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     @Test
     void acquisitionRejectsExpiredRequestedTargetBeforeRedisAccess() {
         long now = ownerClockMillis();
-        long observed = workerScore(1, (now + 60_000) / 100, 0);
+        long observed = workerScore(1, (now + 60_000) / SLOT_MILLIS, 0);
         redis.zadd(scoreKey("requested-target"), observed, "w");
         var commands = new java.util.concurrent.CopyOnWriteArrayList<String>();
         var listener = commandListener(commands);
@@ -2173,7 +2164,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @Test
     void exactReplacementRejectsEveryChangedFieldAndCompletionMapsAcceptedNoop() {
-        long slot = ownerClockMillis() / 100 + 600;
+        long slot = ownerClockMillis() / SLOT_MILLIS + 600;
         long observed = workerScore(1, slot, 1);
         var changed = Map.of("time", observed + 2,
                 "mark", observed - MARK_BASE, "polarity", -observed);
@@ -2185,35 +2176,31 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         }
         var observations = new LinkedHashMap<String, Long>();
         changed.keySet().forEach(id -> observations.put(id, observed));
-        var completion = scoreCore.releaseObservedHotScoreHolds("exact-fields", observations, slot * 100);
+        var completion = scoreCore.releaseObservedHotScoreHolds("exact-fields", observations, slot * SLOT_MILLIS);
         assertThat(completion.get("polarity").status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
         for (String id : List.of("time", "mark")) {
             assertThat(completion.get(id).status()).isEqualTo(WorkerScoreTransitionStatus.STALE);
             assertThat(redis.zscore(scoreKey("exact-fields"), id)).isEqualTo(changed.get(id).doubleValue());
         }
         redis.zadd(scoreKey("exact-fields"), observed, "same");
-        assertThat(scoreCore.releaseScoreHolds("exact-fields", Map.of("same", observed), slot * 100)
+        assertThat(scoreCore.releaseScoreHolds("exact-fields", Map.of("same", observed), slot * SLOT_MILLIS)
                 .get("same").status()).isEqualTo(WorkerScoreTransitionStatus.NOOP);
-        assertThat(scoreCore.releaseObservedHotScoreHolds("exact-fields", Map.of("same", observed), slot * 100)
+        assertThat(scoreCore.releaseObservedHotScoreHolds("exact-fields", Map.of("same", observed), slot * SLOT_MILLIS)
                 .get("same").status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
     }
 
     @Test
-    void subSlotDelayAddsBeforeRoundingAndResetsCandidateMark() throws Exception {
-        for (int attempt = 0; attempt < 8; attempt++) {
-            awaitRedisTime((ownerClockMillis() / 100 + 1) * 100 + 75);
-            long before = ownerClockMillis();
-            long observed = workerScore(1, before / 100 - 10, 1);
-            String group = "relative-rounding-" + attempt;
-            redis.zadd(scoreKey(group), observed, "w");
-            var result = scoreCore.deferObservedToRecovery(group, Map.of("w", observed), 37).get("w");
-            long after = ownerClockMillis();
-            if (before / 100 != after / 100 || before % 100 < 75) continue;
+    void subSlotDelayAddsBeforeRoundingAndResetsCandidateMark() {
+        long slot = ownerClockMillis() / SLOT_MILLIS;
+        // Two milliseconds before the next slot: only (now + delay) crosses the boundary.
+        long clock = (slot + 1) * SLOT_MILLIS - 2;
+        long observed = workerScore(1, slot - 10, 1);
+        redis.zadd(scoreKey("relative-rounding"), observed, "w");
+        try (var owner = new RedisWorkerScoreCore(redisClient, keyspace, () -> clock)) {
+            var result = owner.deferObservedToRecovery("relative-rounding", Map.of("w", observed), 3).get("w");
             assertThat(result.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
-            assertThat(result.score()).isEqualTo(workerScore(-1, before / 100 + 1, 0));
-            return;
+            assertThat(result.score()).isEqualTo(workerScore(-1, slot + 1, 0));
         }
-        throw new AssertionError("Could not check sub-slot delay within one Redis slot in eight attempts");
     }
 
     @Test
@@ -2222,11 +2209,11 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         long before = ownerClockMillis();
         var observations = new LinkedHashMap<String, Long>();
         for (int i = 0; i < 96; i++) {
-            long observed = workerScore(i % 2 == 0 ? 1 : -1, before / 100 - 100, i / 2 % 2);
+            long observed = workerScore(i % 2 == 0 ? 1 : -1, before / SLOT_MILLIS - 100, i / 2 % 2);
             observations.put("w-" + i, observed);
             redis.zadd(scoreKey(group), observed, "w-" + i);
         }
-        long due = workerScore(1, before / 100 - 100, 0);
+        long due = workerScore(1, before / SLOT_MILLIS - 100, 0);
         observations.put("invalid", 0L);
         observations.put("cold", -1L);
         observations.put("missing", due);
@@ -2251,7 +2238,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(commands).containsExactly("EVAL");
         assertThat(results.keySet()).containsExactlyElementsOf(observations.keySet());
         long targetSlot = Math.abs(results.get("w-0").score()) % MARK_BASE;
-        assertThat(targetSlot).isBetween((before + 15_037) / 100, (after + 15_037) / 100);
+        assertThat(targetSlot).isBetween((before + 15_037) / SLOT_MILLIS, (after + 15_037) / SLOT_MILLIS);
         for (int i = 0; i < 96; i++) {
             var result = results.get("w-" + i);
             assertThat(result.status()).isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
@@ -2276,7 +2263,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     void rangeObservationsCannotDeferMembersChangedOrDeletedAfterTheRead(int polarity) {
         String group = "changed-after-observation";
         long now = ownerClockMillis();
-        long observed = workerScore(polarity, now / 100 - 100, 0);
+        long observed = workerScore(polarity, now / SLOT_MILLIS - 100, 0);
         var ids = List.of("deleted", "time-changed", "mark-changed", "polarity-changed", "paused", "unchanged");
         ids.forEach(id -> redis.zadd(scoreKey(group), observed, id));
         var head = polarity == 1
@@ -2287,8 +2274,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         fences.putAll(head);
         redis.zrem(scoreKey(group), "deleted");
         var changed = Map.of(
-                "time-changed", workerScore(polarity, now / 100 - 50, 0),
-                "mark-changed", workerScore(polarity, now / 100 - 100, 1),
+                "time-changed", workerScore(polarity, now / SLOT_MILLIS - 50, 0),
+                "mark-changed", workerScore(polarity, now / SLOT_MILLIS - 100, 1),
                 "polarity-changed", -observed,
                 "paused", workerScore(polarity, PAUSE_TIME_SLOT, 0));
         changed.forEach((id, score) -> redis.zadd(scoreKey(group), score, id));
@@ -2310,8 +2297,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     void recheckRejectsAnInvalidTargetBeforeRedisAccess() {
         String group = "recheck-result-order";
         long now = ownerClockMillis();
-        long due = workerScore(1, now / 100 - 100, 0);
-        long future = workerScore(-1, now / 100 + 1_000, 1);
+        long due = workerScore(1, now / SLOT_MILLIS - 100, 0);
+        long future = workerScore(-1, now / SLOT_MILLIS + 1_000, 1);
         redis.zadd(scoreKey(group), due, "due");
         redis.zadd(scoreKey(group), future, "future");
         redis.zadd(scoreKey(group), due + 1, "changed");
@@ -2339,7 +2326,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     void hotLeaseRequestExpiryPrecedesMissingOrChangedExactFences(boolean confirm) {
         String group = "lease-rejection-order";
         long now = ownerClockMillis();
-        long observed = workerScore(1, now / 100 + (confirm ? 1_000 : -100), 0);
+        long observed = workerScore(1, now / SLOT_MILLIS + (confirm ? 1_000 : -100), 0);
         redis.zadd(scoreKey(group), observed + 1, "changed");
         var fences = Map.of("changed", observed, "missing", observed);
 
@@ -2360,7 +2347,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     void serviceabilityFractionalRangeRowsKeepTheirExceptionAndDoNotReadReplacements(int polarity) {
         String group = "fractional-range";
         long now = ownerClockMillis();
-        double corrupt = workerScore(polarity, now / 100 - 100, 0) + 0.5;
+        double corrupt = workerScore(polarity, now / SLOT_MILLIS - 100, 0) + 0.5;
         redis.zadd(scoreKey(group), corrupt, "corrupt");
         redis.zadd(scoreKey(group), corrupt - 1.5, "unread");
         var commands = new java.util.concurrent.CopyOnWriteArrayList<String>();
@@ -2421,7 +2408,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     /** The Kernel owners' clock; Redis TIME is not a scheduling source. */
     private long ownerClockMillis() {
-        return System.currentTimeMillis();
+        long frozen = frozenClockMillis.get();
+        return frozen >= 0 ? frozen : System.currentTimeMillis();
     }
 
     private static long workerScore(

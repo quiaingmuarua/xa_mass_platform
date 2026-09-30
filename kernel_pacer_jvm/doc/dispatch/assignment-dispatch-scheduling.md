@@ -67,7 +67,7 @@ scan floor. Runtime Boundary uses 1-second candidate age; production and Scenari
 use 60 seconds. This is distinct from Pool TTL and Serviceability HOT staleness.
 
 Age is measured from the candidate's retained HOT time, not from candidateization.
-Due HOT is already at least one 100ms slot old, so an age below the 50ms Refill
+Due HOT is already at least one 10ms Worker Score slot old, so an age below the 50ms Refill
 interval would recycle every candidate in the next round and invalidate its Pool
 entry before most Dispatch takes. The Runtime Boundary value stays well above
 that interval so its fixed workload bounds measure scheduling, not that race.

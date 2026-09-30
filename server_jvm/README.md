@@ -623,7 +623,7 @@ The response contains one shared `readAt` plus a complete
 `paused`, `recovery`, `cold`, or `missing`. They do not expose raw Score and do
 not claim to know the active Java Kernel process's HOT eligibility epoch.
 `hot-score-overdue` means only that a positive HOT Score precedes the current
-100ms slot; it is weaker than the Kernel's floor-aware candidate range.
+10ms Worker Score slot; it is weaker than the Kernel's floor-aware candidate range.
 Provider failure returns the existing Runtime View unavailable error rather
 than inventing a Worker state.
 

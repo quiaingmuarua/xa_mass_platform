@@ -34,6 +34,11 @@ public final class WorkerScoreRedisFixture {
         return WorkerScoreEncoding.decodeState("fixture", score).polarity() == expected;
     }
 
+    /** Time of the fixed cold registration coordinate. */
+    public static long coldTimeMillis() {
+        return WorkerScoreEncoding.COLD_PARK_TIME_SLOT * WorkerScoreEncoding.SLOT_MILLIS;
+    }
+
     public static long slotStart(long millis) {
         return millis / WorkerScoreEncoding.SLOT_MILLIS * WorkerScoreEncoding.SLOT_MILLIS;
     }

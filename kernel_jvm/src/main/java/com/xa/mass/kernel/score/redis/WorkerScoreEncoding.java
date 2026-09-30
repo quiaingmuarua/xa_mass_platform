@@ -7,8 +7,9 @@ final class WorkerScoreEncoding {
     static final long ZERO_SCORE = 0;
     static final long MIN_BASE = 1;
     static final long MIN_TIME_SLOT = 0;
-    static final long SLOT_MILLIS = 100;
-    static final long MAX_TIME_SLOT = 99_999_999_999L;
+    static final long SLOT_MILLIS = 10;
+    /** 10ms slots through 9_999_999_999_990ms; the absolute range stays below 2^53. */
+    static final long MAX_TIME_SLOT = 999_999_999_999L;
     static final long PAUSE_TIME_SLOT = MAX_TIME_SLOT;
     static final long MIN_TIME_MILLIS = 0;
     static final long MAX_TIME_MILLIS = MAX_TIME_SLOT * SLOT_MILLIS;
