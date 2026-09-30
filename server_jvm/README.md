@@ -660,7 +660,9 @@ Server may consume up to 100 coalesced Kernel Serviceability requests and add
 one Adapter snapshot Command. Only a Worker Command map key is its workerId;
 Adapter and Kernel Command keys are response-local and opaque.
 
-Adapter `results:append` accepts `1..100` strict `DeliveryReport` JSON objects.
+Adapter `results:append` accepts `1..500` strict `DeliveryReport` JSON objects for
+TASK and `1..100` for SERVER, SYSTEM and KERNEL; an oversize batch fails before
+any Owner call. TASK evidence enters Kernel with one list write.
 The complete batch must have one supported `dst`; Server rejects a mixed or
 unsupported batch before calling any semantic Owner, then routes the whole
 batch to TASK Result, SERVER Direct Call, or KERNEL Serviceability handling.
@@ -674,7 +676,7 @@ Owner-local source, correlation, outcome and forward failures remain per-item
 rejections. Queue capacity remains an Adapter-local memory bound and is not an
 HTTP batch-size declaration. If Kernel Serviceability cannot admit the complete
 valid evidence subset, Server returns `503`.
-`commands:consume` accepts the JSON integer limit and returns the entry-keyed
+`commands:consume` accepts the JSON integer limit `1..1000` and returns the entry-keyed
 Command Map directly. `results:append` accepts the Report object array directly;
 only its accepted/rejected count response remains a named structure. All Report
 destinations share this path; adding a destination does not add an endpoint.

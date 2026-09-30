@@ -50,10 +50,10 @@ DeferredResult) and the 4,096 in-flight Harness bound are audited and unchanged.
 
 Mechanism constants are measured, never raised: the 50ms Dispatch and Refill
 intervals, the 100ms Task Score slot, Refill round budgets, Result lane batch and
-concurrency, the 5s Item claim lease, single-flight Producers and the Adapter
-consume limit of 100. The Server delivery contract
-(`DirectCallService.MAX_CONSUME_LIMIT`) rejects larger Adapter consumes with HTTP
-400. When a mechanism constant binds, that is a finding.
+concurrency, the 5s Item claim lease, single-flight Producers and the scenario
+profile's Adapter consume limit of 500 (the Server delivery contract,
+`DirectCallService.MAX_CONSUME_LIMIT`, admits up to 1000). When a mechanism
+constant binds, that is a finding.
 
 ## Execution
 

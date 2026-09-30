@@ -191,9 +191,9 @@ class LaneWorldConfigTest(unittest.TestCase):
         self.assertEqual("1000", flags["xa.mass.task-rpc.max-probe-items-per-round"])
         self.assertEqual("10000", flags[adapter + "report-queue-capacity"])
         self.assertEqual("scenario-workers", flags["spring.profiles.active"])
-        # The Server delivery contract caps an Adapter consume at 100; the lane must not raise it.
+        # The lane measures the scenario profile's consume limit and must not raise it.
         self.assertNotIn(adapter + "command-consume-limit", flags)
-        self.assertEqual(100, runner.LANE_MECHANISM_CONSTANTS["adapterCommandConsumeLimit"])
+        self.assertEqual(500, runner.LANE_MECHANISM_CONSTANTS["adapterCommandConsumeLimit"])
         self.assertEqual("DEFAULT", flags["xa.mass.kernel-pacer.preset"])
         for audit in runner.LANE_KNOB_AUDIT:
             self.assertIn(audit["disposition"], ("raised", "audited"))

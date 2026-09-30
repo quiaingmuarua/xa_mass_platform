@@ -41,6 +41,9 @@ import java.util.Set;
 
 public final class WorkerDeliveryService {
 
+    /** TASK Result evidence per Adapter batch; it enters Kernel with one list write. */
+    public static final int MAX_ADAPTER_TASK_RESULT_BATCH_SIZE = 500;
+    /** SERVER, SYSTEM and KERNEL Reports per Adapter batch. */
     public static final int MAX_ADAPTER_RESULT_BATCH_SIZE = 100;
 
     private static final String OPAQUE_COMMAND_ENTRY_PREFIX = "entry:";
@@ -504,10 +507,10 @@ public final class WorkerDeliveryService {
     ) {
         if (reports == null
                 || reports.isEmpty()
-                || reports.size() > MAX_ADAPTER_RESULT_BATCH_SIZE) {
+                || reports.size() > MAX_ADAPTER_TASK_RESULT_BATCH_SIZE) {
             throw invalid(
                     operation,
-                    "Adapter result batch must contain 1..100 Reports"
+                    "Adapter result batch must contain 1..500 Reports"
             );
         }
         List<DeliveryReport> batch;
@@ -533,6 +536,13 @@ public final class WorkerDeliveryService {
                         "Adapter Report batch must have one destination"
                 );
             }
+        }
+        if (destination != DeliveryEndpoint.TASK
+                && batch.size() > MAX_ADAPTER_RESULT_BATCH_SIZE) {
+            throw invalid(
+                    operation,
+                    "Adapter SERVER, SYSTEM and KERNEL batches must contain 1..100 Reports"
+            );
         }
         return batch;
     }

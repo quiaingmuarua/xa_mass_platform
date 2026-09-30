@@ -71,8 +71,10 @@ class DeliveryReportDispatcherTest {
     @ParameterizedTest
     @EnumSource(value = DeliveryEndpoint.class,
             names = {"TASK", "SERVER", "SYSTEM", "KERNEL"})
-    void drainsReportsInBatchesOfOneHundred(DeliveryEndpoint destination)
+    void drainsReportsInTheirDestinationBatchLimit(DeliveryEndpoint destination)
             throws Exception {
+        // TASK drains 500 per append; SERVER, SYSTEM and KERNEL keep 100.
+        int limit = destination == DeliveryEndpoint.TASK ? 500 : 100;
         List<Integer> sizes = new CopyOnWriteArrayList<>();
         CountDownLatch submitted = new CountDownLatch(3);
         WorkerDeliveryRemoteApi remoteApi = mock(WorkerDeliveryRemoteApi.class);
@@ -81,8 +83,8 @@ class DeliveryReportDispatcherTest {
             submitted.countDown();
             return null;
         }).when(remoteApi).appendReports(anyString(), anyList());
-        DeliveryReportDispatcher dispatcher = dispatcher(300, remoteApi);
-        for (int index = 0; index < 205; index++) {
+        DeliveryReportDispatcher dispatcher = dispatcher(2 * limit + 5, remoteApi);
+        for (int index = 0; index < 2 * limit + 5; index++) {
             assertThat(dispatcher.tryDispatch(report(
                     destination,
                     "report-" + index
@@ -93,7 +95,7 @@ class DeliveryReportDispatcherTest {
         assertThat(submitted.await(2, TimeUnit.SECONDS)).isTrue();
         stop(dispatcher);
 
-        assertThat(sizes).containsExactly(100, 100, 5);
+        assertThat(sizes).containsExactly(limit, limit, 5);
     }
 
     @Test

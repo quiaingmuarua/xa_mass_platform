@@ -316,10 +316,9 @@ LANE_MECHANISM_CONSTANTS = {
     "dispatchIntervalMillis": 50, "initializationIntervalMillis": 100, "taskScoreSlotMillis": 100,
     "refillIntervalMillis": 50, "refillRoundBudget": 1000, "recycleGroupBudget": 100,
     "resultBatchLimit": 100, "resultSuccessConcurrency": "6..10", "resultGlobalConcurrency": 10,
-    "resultIdleIntervalMillis": 100, "itemClaimLeaseMillis": 5000, "producers": "single-flight",
-    # Server delivery contract (DirectCallService.MAX_CONSUME_LIMIT): an Adapter consume above 100 is rejected
-    # with HTTP 400, so the scenario profile's command-consume-limit 100 is already the maximum.
-    "adapterCommandConsumeLimit": 100,
+    "resultIdleIntervalMillis": "10..100", "itemClaimLeaseMillis": 5000, "producers": "single-flight",
+    # The scenario profile's command-consume-limit; the lane measures it and never raises it.
+    "adapterCommandConsumeLimit": 500,
 }
 
 

@@ -988,10 +988,40 @@ class WorkerDeliveryServiceTest {
     }
 
     @Test
+    void adapterTaskBatchAppendsFiveHundredReportsInOneOwnerCall() {
+        List<DeliveryReport> reports = Collections.nCopies(
+                500,
+                result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", "")
+        );
+        when(resultRuntime.appendTaskEvidence(TaskEvidenceType.EXECUTION_SUCCESS, reports))
+                .thenReturn(500);
+
+        var counts = service.appendAdapterReports("endpoint-1", reports);
+
+        assertThat(counts.acceptedCount()).isEqualTo(500);
+        verify(resultRuntime).appendTaskEvidence(TaskEvidenceType.EXECUTION_SUCCESS, reports);
+    }
+
+    @Test
+    void adapterKernelBatchAboveOneHundredFailsBeforeOwnerSideEffects() {
+        DeliveryReport kernel = DeliveryReport.create(DeliveryEndpoint.ADAPTER, "endpoint-1", DeliveryEndpoint.KERNEL, "platform.adapter.worker-connection.changed", "", "{\"workerId\":\"worker-1\",\"state\":\"CONNECTED\","
+                        + "\"observedAtMillis\":123}", "worker-serviceability-evidence:v1");
+        assertThatThrownBy(() -> service.appendAdapterReports(
+                "endpoint-1",
+                Collections.nCopies(101, kernel)
+        ))
+                .isInstanceOf(ServerException.class)
+                .extracting(error -> ((ServerException) error).errorCode())
+                .isEqualTo(ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST);
+
+        verifyNoInteractions(resultRuntime, directCalls, serviceability);
+    }
+
+    @Test
     void oversizedAdapterBatchFailsBeforeOwnerSideEffects() {
         assertThatThrownBy(() -> service.appendAdapterReports(
                 "endpoint-1",
-                Collections.nCopies(101, result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", ""))
+                Collections.nCopies(501, result(COMMAND_ID, DeliveryEndpoint.WORKER, "platform.worker.command.succeeded", ""))
         ))
                 .isInstanceOf(ServerException.class)
                 .extracting(error -> ((ServerException) error).errorCode())
