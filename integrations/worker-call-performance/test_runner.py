@@ -183,6 +183,87 @@ class RunnerTest(unittest.TestCase):
                 if not exited:
                     self.assertIn("PermissionError", sampler.failure)
 
+    def test_diagnostics_sampler_records_machine_cpu_separately_and_default_writes_none(self):
+        stat = "cpu  10 1 5 100 2 0 1 3 0 0\ncpu0 1 0 1 1 0 0 0 0 0 0\nprocs_running 6\n"
+        original = Path.read_text
+        def read(path, *args, **kwargs):
+            if path.as_posix() == "/proc/stat":
+                return stat
+            if path.as_posix() == "/proc/loadavg":
+                return "3.50 2.00 1.00 5/300 99\n"
+            return original(path, *args, **kwargs)
+        for machine in (False, True):
+            with self.subTest(machine=machine), tempfile.TemporaryDirectory() as directory:
+                redis = Mock()
+                redis.info.side_effect = [{"total_commands_processed": 10}, {"used_memory": 10, "used_memory_rss": 20},
+                                         {"used_cpu_user": 1, "used_cpu_sys": 1}, {}]
+                machine_path = Path(directory) / "machine-cpu.jsonl" if machine else None
+                sampler = runner.Sampler(Path(directory) / "resources.jsonl", redis, machine_path=machine_path)
+                redis.info.side_effect = lambda section: (sampler.stopped.set() or {}) if section == "commandstats" else {
+                    "stats": {"total_commands_processed": 10}, "memory": {"used_memory": 10, "used_memory_rss": 20},
+                    "cpu": {"used_cpu_user": 1, "used_cpu_sys": 1}}[section]
+                with patch.object(Path, "read_text", read):
+                    sampler.run()
+                self.assertIsNone(sampler.failure)
+                roles = {json.loads(line)["role"] for line in (Path(directory) / "resources.jsonl").read_text().splitlines()}
+                self.assertEqual({"redis"}, roles)
+                if machine:
+                    row = json.loads(machine_path.read_text().splitlines()[0])
+                    self.assertEqual({"user": 10, "nice": 1, "system": 5, "idle": 100, "iowait": 2, "irq": 0,
+                                      "softirq": 1, "steal": 3}, row["cpuJiffies"])
+                    self.assertEqual((6, 3.5), (row["procsRunning"], row["loadAverage1"]))
+                else:
+                    self.assertEqual(["resources.jsonl"], sorted(p.name for p in Path(directory).iterdir()))
+
+    def test_redis_latency_keeps_command_names_times_and_durations_only(self):
+        client = Mock()
+        client.slowlog_get.return_value = [
+            {"id": 2, "start_time": 1790750002, "duration": 9100, "command": "hset xa_mass:test_x:task:items m-1 {\"secret\":1}"},
+            {"id": 1, "start_time": 1790750001, "duration": 6200, "command": b"EVALSHA abc 1 xa_mass:test_x:score worker-7"}]
+        client.execute_command.side_effect = lambda *args: {
+            ("LATENCY", "LATEST"): [["command", 1790750002, 9, 12]],
+            ("LATENCY", "HISTORY", "command"): [[1790750001, 6], [1790750002, 9]]}[args]
+        evidence = runner.redis_latency(client)
+        client.slowlog_get.assert_called_once_with(runner.REDIS_SLOWLOG_ENTRIES)
+        self.assertEqual([dict(epochSeconds=1790750001, durationMicros=6200, command="EVALSHA"),
+                          dict(epochSeconds=1790750002, durationMicros=9100, command="HSET")], evidence["slowCommands"])
+        self.assertEqual({"command": [[1790750001, 6], [1790750002, 9]]}, evidence["latencyHistory"])
+        self.assertFalse(evidence["possiblyTruncated"])
+        self.assertNotIn("secret", json.dumps(evidence))
+        self.assertNotIn("xa_mass", json.dumps(evidence))
+        self.assertNotIn("worker-7", json.dumps(evidence))
+        enabling = Mock()
+        runner.enable_redis_latency(enabling)
+        enabling.config_set.assert_any_call("slowlog-log-slower-than", 5000)
+        enabling.config_set.assert_any_call("slowlog-max-len", 4096)
+        enabling.config_set.assert_any_call("latency-monitor-threshold", 5)
+        enabling.slowlog_reset.assert_called_once_with()
+        enabling.execute_command.assert_called_once_with("LATENCY", "RESET")
+        with tempfile.TemporaryDirectory() as directory:
+            broken = Mock()
+            broken.slowlog_get.side_effect = ConnectionError("gone")
+            destination = Path(directory) / "diagnostics/redis-latency.json"
+            self.assertEqual({"complete": False, "failureType": "ConnectionError"},
+                             runner.write_redis_latency(broken, destination))
+            self.assertTrue(destination.is_file())
+
+
+    def test_network_sample_keeps_whitelisted_kernel_totals(self):
+        files = {
+            "/proc/net/snmp": "Ip: Forwarding\nIp: 1\nTcp: RtoMin RetransSegs OutSegs InErrs\nTcp: 200 7 900 1\n",
+            "/proc/net/netstat": "TcpExt: TCPTimeouts TCPLossProbes SecretField\nTcpExt: 3 4 99\n",
+            "/proc/net/softnet_stat": "0000000a 00000002 00000001\n0000000b 00000001 00000000\n",
+            "/proc/net/dev": "Inter-|\n face |\n    lo: 10 20 0 5 0 0 0 0 30 40 0 6 0 0 0 0\n  eth0: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16\n"}
+        with patch.object(Path, "read_text", lambda path, *args, **kwargs: files[path.as_posix()]):
+            sample = runner.network_sample()
+        self.assertEqual({"RetransSegs": 7, "OutSegs": 900, "InErrs": 1}, sample["tcp"])
+        self.assertEqual({"TCPTimeouts": 3, "TCPLossProbes": 4}, sample["tcpExt"])
+        self.assertEqual({"dropped": 3, "timeSqueeze": 1}, sample["softnet"])
+        self.assertEqual({"rxDrop": 5, "txDrop": 6}, sample["loopback"])
+        with patch.object(Path, "read_text", side_effect=FileNotFoundError):
+            self.assertEqual({"failureType": "FileNotFoundError"}, runner.network_sample())
+
+
 class LaneWorldConfigTest(unittest.TestCase):
     def test_lane_raises_resource_knobs_and_keeps_adapter_invariants(self):
         flags = runner.lane_server_flags()

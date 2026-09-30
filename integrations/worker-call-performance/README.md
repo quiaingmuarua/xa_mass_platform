@@ -286,6 +286,30 @@ and exports fixed event fields and bounded stack aggregates; it never exports
 environment, properties, URLs, identity, bodies, results, exception messages or
 arbitrary event fields. Diagnostics mode is not an A/B input.
 
+Each export also lists `slowCalls`: for fixed Owner stages (Server `results:append`
+and `commands:consume` handling, the Adapter's remote calls, Result
+consume/process/release and the Dispatch round, append, claim and confirm), the ten
+slowest calls per stage plus every call of at least 100ms, capped at 200. A call
+reports its window offset, duration, batch size, its masked thread name (digits
+become `#`) and what that thread did meanwhile: parked, socket and monitor time
+from the 10ms-threshold JFR events, 20ms CPU samples, and the most weighted park
+and CPU call sites from the first non-JDK frames (whitelisted). Overlapping GC
+pauses and the nearest machine/process CPU load cover the whole process. Parked on
+Lettuce with no slow Redis command points at client-side queueing; a thread neither
+parked nor sampled on a saturated machine points at CPU scheduling.
+
+Diagnostics mode also makes each disposable Redis log commands and latency events
+above 5ms (`SLOWLOG`, `LATENCY`) and exports only command names, Redis epoch
+seconds and execution durations to `diagnostics/redis-latency.json`; keys,
+arguments and values stay inside Redis. The resource sampler additionally writes
+host-wide CPU jiffies including steal, running processes and the one-minute load
+to `diagnostics/machine-cpu.jsonl`, separate from `process-resources.jsonl`, with
+whitelisted kernel network totals: TCP retransmitted segments, retransmission
+timeouts and loss probes, backlog/receive-queue/listen drops, softnet drops and
+time squeezes, and loopback drops. Transfer stalls quantized near the 200ms minimum
+TCP retransmission timeout should coincide with these counters moving.
+Without diagnostics none of these settings or files exist.
+
 Default-off Owner JFR covers submission/activation, Item HASH and Score
 initialization, Dispatch round/check/deferral, refill/candidateize and
 confirmation-rejection batches, candidate/confirm/claim/publish, TASK Result

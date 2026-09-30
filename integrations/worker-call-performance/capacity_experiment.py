@@ -112,8 +112,12 @@ def run_case(runner, root, config_path, config, profile, stage, path, repetition
             raise RuntimeError("Unexpected Redis version")
         if config["purpose"] == "lane" and path == "task-any" and repetition == 1:
             calibration = runner.calibrate_host(client, evidence, cpu_ids=cpu_ids)
+        if diagnostics == "jfr":
+            runner.enable_redis_latency(client)
+            (evidence / "diagnostics").mkdir(parents=True, exist_ok=True)
         sampler = runner.Sampler(evidence / "process-resources.jsonl", client, resources["fileDescriptors"],
-                                 resources["nativeThreads"], watch_swap=True)
+                                 resources["nativeThreads"], watch_swap=True,
+                                 machine_path=evidence / "diagnostics/machine-cpu.jsonl" if diagnostics == "jfr" else None)
         sampler.thread.start()
         flags = runner.lane_server_flags()
         flags.update({"xa.mass.redis.url": redis_url, "xa.mass.redis.scope": scope})
@@ -173,6 +177,8 @@ def run_case(runner, root, config_path, config, profile, stage, path, repetition
                 runner.stop_process(process)
             except Exception as error:
                 errors.append("Cleanup " + type(error).__name__)
+        if client and diagnostics == "jfr":
+            runner.write_redis_latency(client, evidence / "diagnostics/redis-latency.json")
         if client:
             try:
                 client.close()
