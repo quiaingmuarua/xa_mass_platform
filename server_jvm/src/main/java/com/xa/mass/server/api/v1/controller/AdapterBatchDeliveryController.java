@@ -120,7 +120,7 @@ public class AdapterBatchDeliveryController {
                     content = @Content(array = @ArraySchema(
                             minItems = 1,
                             maxItems = WorkerDeliveryService
-                                    .MAX_ADAPTER_TASK_RESULT_BATCH_SIZE,
+                                    .MAX_ADAPTER_RESULT_BATCH_SIZE,
                             schema = @Schema(
                                     implementation = WorkerResultRequest.class
                             )
@@ -129,7 +129,7 @@ public class AdapterBatchDeliveryController {
             @RequestBody
             @NotNull @Size(
                     min = 1,
-                    max = WorkerDeliveryService.MAX_ADAPTER_TASK_RESULT_BATCH_SIZE
+                    max = WorkerDeliveryService.MAX_ADAPTER_RESULT_BATCH_SIZE
             )
             List<@Valid @NotNull WorkerResultRequest> results
     ) {

@@ -1776,7 +1776,7 @@
                 "items" : {
                   "$ref" : "#/components/schemas/WorkerResultRequest"
                 },
-                "maxItems" : 500,
+                "maxItems" : 100,
                 "minItems" : 1,
                 "type" : "array"
               }

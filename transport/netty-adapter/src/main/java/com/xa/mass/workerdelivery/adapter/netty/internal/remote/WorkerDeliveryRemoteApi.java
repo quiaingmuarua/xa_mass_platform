@@ -28,9 +28,6 @@ import java.util.concurrent.ThreadFactory;
 /** Immutable Server HTTP facade shared by one Adapter process factory. */
 public final class WorkerDeliveryRemoteApi {
 
-    /** TASK Result evidence per append; the Server applies it with one list write. */
-    public static final int MAX_TASK_RESULTS_PER_APPEND = 500;
-    /** SERVER, SYSTEM and KERNEL Reports per append. */
     public static final int MAX_RESULTS_PER_APPEND = 100;
 
     private static final ThreadFactory HTTP_THREAD_FACTORY = Thread.ofVirtual()
@@ -205,10 +202,12 @@ public final class WorkerDeliveryRemoteApi {
     private List<DeliveryReport> requireHomogeneousReportBatch(
             List<DeliveryReport> reports
     ) {
-        if (reports == null || reports.isEmpty()) {
+        if (reports == null
+                || reports.isEmpty()
+                || reports.size() > MAX_RESULTS_PER_APPEND) {
             throw protocolFailure(
                     REPORT_ENCODE_OPERATION,
-                    "DeliveryReport batch must not be empty"
+                    "DeliveryReport batch must contain 1..100 results"
             );
         }
         List<DeliveryReport> batch;
@@ -238,20 +237,7 @@ public final class WorkerDeliveryRemoteApi {
                 );
             }
         }
-        if (batch.size() > maxReportsPerAppend(destination)) {
-            throw protocolFailure(
-                    REPORT_ENCODE_OPERATION,
-                    "DeliveryReport batch exceeds its destination limit"
-            );
-        }
         return batch;
-    }
-
-    /** The append batch limit for one homogeneous Report destination. */
-    public static int maxReportsPerAppend(DeliveryEndpoint destination) {
-        return destination == DeliveryEndpoint.TASK
-                ? MAX_TASK_RESULTS_PER_APPEND
-                : MAX_RESULTS_PER_APPEND;
     }
 
     private String encodeReportBatch(List<DeliveryReport> reports) {
