@@ -17,9 +17,8 @@ import java.util.concurrent.locks.ReentrantLock;
 /** Owns the four finite Report lanes and their one resident consumer. */
 public final class DeliveryReportDispatcher {
 
-    /** Physical TASK positions reserved for the one in-flight batch to return. */
-    private static final int TASK_RETRY_RESERVE =
-            WorkerDeliveryRemoteApi.MAX_TASK_RESULTS_PER_APPEND;
+    private static final int BATCH_SIZE =
+            WorkerDeliveryRemoteApi.MAX_RESULTS_PER_APPEND;
     private static final int LANE_COUNT = 4;
     private static final System.Logger LOGGER = System.getLogger(
             DeliveryReportDispatcher.class.getName()
@@ -59,7 +58,7 @@ public final class DeliveryReportDispatcher {
                     "softCapacity must be positive"
             );
         }
-        long taskPhysicalCapacity = (long) softCapacity + TASK_RETRY_RESERVE;
+        long taskPhysicalCapacity = (long) softCapacity + BATCH_SIZE;
         if (taskPhysicalCapacity > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("softCapacity is too large");
         }
@@ -201,10 +200,9 @@ public final class DeliveryReportDispatcher {
             if (first == null) {
                 continue;
             }
-            int batchLimit = WorkerDeliveryRemoteApi.maxReportsPerAppend(destination);
-            ArrayList<DeliveryReport> reports = new ArrayList<>(Math.min(batchLimit, queue.size() + 1));
+            ArrayList<DeliveryReport> reports = new ArrayList<>(BATCH_SIZE);
             reports.add(first);
-            queue.drainTo(reports, batchLimit - 1);
+            queue.drainTo(reports, BATCH_SIZE - 1);
             nextLane = (laneIndex + 1) % LANE_COUNT;
             if (ReportQueueEvent.recordingEnabled()) ReportQueueEvent.record(destination, "DRAINED", queue.size(), reports.size());
             return new ReportBatch(destination, List.copyOf(reports));

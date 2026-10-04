@@ -230,19 +230,8 @@ class WorkerDeliveryRemoteApiTest {
                     () -> remoteApi.appendReports(
                             "adapter-1",
                             Collections.nCopies(
-                                    501,
-                                    report(TASK, "report")
-                            )
-                    ),
-                    REMOTE_API_PROTOCOL_ERROR,
-                    "deliveryReport.encodeRemoteRequest"
-            );
-            assertFailure(
-                    () -> remoteApi.appendReports(
-                            "adapter-1",
-                            Collections.nCopies(
                                     101,
-                                    report(KERNEL, "report")
+                                    report(TASK, "report")
                             )
                     ),
                     REMOTE_API_PROTOCOL_ERROR,

@@ -680,9 +680,9 @@ Server may consume up to 100 coalesced Kernel Serviceability requests and add
 one Adapter snapshot Command. Only a Worker Command map key is its workerId;
 Adapter and Kernel Command keys are response-local and opaque.
 
-Adapter `results:append` accepts `1..500` strict `DeliveryReport` JSON objects for
-TASK and `1..100` for SERVER, SYSTEM and KERNEL; an oversize batch fails before
-any Owner call. TASK evidence enters Kernel with one list write.
+Adapter `results:append` accepts `1..100` strict `DeliveryReport` JSON objects
+for every destination; an oversize batch fails before any Owner call. TASK
+evidence enters Kernel with one list write.
 The complete batch must have one supported `dst`; Server rejects a mixed or
 unsupported batch before calling any semantic Owner, then routes the whole
 batch to TASK Result, SERVER Direct Call, or KERNEL Serviceability handling.
