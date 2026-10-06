@@ -105,12 +105,13 @@ SMS is unsupported on direct visits. An ordinary Server without SMS serves the
 same console pages but their catalog check reports the feature as disabled.
 The Boot executable owns the finite page forwards, including trailing slashes; unknown
 API and asset paths remain errors. Scenario APIs, Groups and jobs remain gated by
-`preview`, which enables SMS and Messages together. The shared assets do not enable those resources.
+`preview`, which enables SMS, Messages and App Checks together. The shared assets
+do not enable those resources.
 
 For SMS development, run the shared scenario launcher and set `VITE_RUNTIME_PROXY_TARGET`
 to its Server origin (default `http://127.0.0.1:18500`) before starting the same
 frontend Vite server. The same `/api` proxy carries platform and SMS requests.
-Runtime and SMS Preview ZIPs both package this `dist`; the Server JAR contains no
+Runtime and Scenario Preview ZIPs both package this `dist`; the Server JAR contains no
 separate SMS frontend.
 
 ## Messages business pages
@@ -285,6 +286,15 @@ not fabricate a response.
 
 ## Task page
 
+In API mode, `Project Tasks` loads a caller-entered Project on explicit request
+through `GET /api/v1/projects/{projectId}`, then reads its newest Task window through
+`GET /api/v1/projects/{projectId}/tasks?limit=100`. It preserves missing Task/Score
+projections and displays `truncated`; it has no pagination or total. This read does
+not provision resources or substitute the global Score Preview when it fails.
+The selected Project supplies the finite workbench's allowed Groups. Mock mode
+does not query Projects. The [Server Project contract](../server_jvm/README.md#profile-projects-and-managed-tasks)
+owns admission and the independent projections returned by these reads.
+
 `Task Runtime Preview` reads the highest `1..1000` Task Score coordinates and
 displays their Task and WorkerGroup descriptor projections in Owner order. It
 has no total, cursor, paging, stable-window or completeness meaning. The page
@@ -321,17 +331,19 @@ sends a direct Item array and reads the direct outcome Map.
 `Finite Task Workbench` is a drawer layered over the preview and is available
 only in API mode:
 
-1. Validate a local UTF-8 `.txt` file (non-empty, at most 1 MiB and 10,000
+1. Load the configured Project through `Project Tasks`.
+2. Validate a local UTF-8 `.txt` file (non-empty, at most 1 MiB and 10,000
    lines).
-2. Lazily load the bounded WorkerGroup Preview, then select a Group, advisory
-   Event Name, and Payload key.
-3. Create one ordinary finite Task through `POST /api/v1/tasks`.
-4. Convert each line into one standard TaskItem and append chunks of at most
+3. Lazily load the bounded WorkerGroup Preview, then select one of the Project's
+   Groups, an advisory Event Name, and Payload key.
+4. Create one ordinary finite Task through `POST /api/v1/tasks`, including the
+   selected `projectId`.
+5. Convert each line into one standard TaskItem and append chunks of at most
    100 Items. The direct Message-ID-keyed response uses shared action outcomes:
    accepted Items are `applied`, and a locally rejected Item carries
    `rejected + code/message`.
-5. Require explicit approval before calling the Task approve endpoint.
-6. Export successful Results manually through
+6. Require explicit approval before calling the Task approve endpoint.
+7. Export successful Results manually through
    `POST /api/v1/tasks/{taskId}/results:export`; `400/12010` is shown as not
    ready and never triggers automatic polling. The request has no terminal
    wait budget or JSON body.
@@ -340,10 +352,11 @@ Create/append, approve and successful export each request a fresh Task Runtime
 Preview, but failure to refresh never rolls back the completed write. The
 browser records only confirmed stages: `Created`, `Items Appended`,
 `Approved`, and `Export Ready`. It never simulates `RUNNING` or `TERMINAL` from
-elapsed time. Append failure stops the flow before approval. Ordinary finite
-Task records live only in the current browser session, so a refresh cannot
-rediscover them until a future Task list/query API exists. Mock mode disables
-the mutating flow and sends no Task request.
+elapsed time. Append failure stops the flow before approval. Local file metadata
+and confirmed workbench stages live only in the current browser session and are
+lost on refresh. Persisted Tasks remain queryable through `Project Tasks`; that
+bounded window does not reconstruct the imported file or resume its submission.
+Mock mode disables the mutating flow and sends no Task request.
 
 ## Verification
 

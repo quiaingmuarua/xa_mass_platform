@@ -80,8 +80,9 @@ admitted callback, and Core adds no cross-Attempt or cross-run Handler fence.
 Worker Core creates and closes no thread, executor, or scheduler.
 Preparation failure or Client reconnect exhaustion ends that run; only another
 explicit Host `start()` prepares again. Active stop revokes the run before
-closing its Client outside the run-state gate; the Java WebSocket Client does
-not wait for callback completion. Reconnect and physical connection state are
+closing its Client outside the run-state gate. The target is non-blocking stop;
+the [known Android stop difference](android-worker/README.md#known-android-stop-difference)
+records the current callback wait. Reconnect and physical connection state are
 not Worker lifecycle events or queries. Worker
 owns no pause or delivery-admission state; those remain Kernel and Adapter
 concerns. No Endpoint URI or Worker business message is persisted.
@@ -96,26 +97,22 @@ applies when Server answers a remote Command consume request; it does not
 reorder commands already in the Adapter queue or preempt a Worker Handler
 already running on the connection callback lane.
 
-Within the connection owner, one per-Worker Route entry is pending, connected,
-or retained disconnected verification evidence. Only disconnected
-verification evidence is TTL/capacity cached; active connections are never
-cache-evicted, and Channel metadata contains only the claimed workerId for
-callback correlation. The separate flat string Properties projection is
-capacity bounded, not time deleted; retained verification evidence gates
-visibility, and eviction makes the projection unknown. After verified activation
-Adapter requests one full baseline; Java/Android Hosts can then send full
-`properties.replaced` or incremental `properties.updated` observations using
-their same Provider. Both carry direct string KV Maps: update merges supplied
-keys, replacement removes omitted keys. Only these events write the local cache;
-ordinary snapshot Results keep their wrapped payload and only forward. Connection and
-Properties expose independent snapshots without an atomic join or shared
-version. Neither cache is scheduling, Binding or Worker lifecycle truth.
-Each accepted Properties installation offers one complete
-`ADAPTER -> SYSTEM platform.adapter.worker-properties.observed` Report. Server
-checks source, Binding and Group, then asks Matching to replace persistent
-Worker Properties. The existing Report owner provides bounded, one-shot
-best-effort delivery; no Prepare, Candidate revocation or scheduler wakeup is
-part of that path. See the [Adapter Owner](netty-adapter/README.md) for loss bounds.
+The connection owner retains one per-Worker Route entry; only disconnected
+verification evidence is TTL/capacity cached. The independent
+[Adapter Properties projection](netty-adapter/README.md#worker-properties-projection)
+has its own bounded cache and no atomic join with Route state. Neither
+projection establishes Binding, Worker lifecycle or scheduling truth.
+
+Properties follow one path: the Host's
+[Core reporting API](worker-core/README.md#properties-reporting) sends the
+[fixed observation events](EVENTS.md#worker-produced-property-observation),
+Adapter installs a complete local projection and offers one SYSTEM observation,
+then [Server admission](../server_jvm/README.md#runtime-worker-properties-admission)
+uses Matching's `WorkerProperties` contract and independently requests
+best-effort candidate invalidation after changed facts. Transport owns the
+local cache and delivery loss boundaries; Matching and Kernel retain their
+respective Properties and Score authority. Prepare creates no Matching facts,
+and publication adds no ACK, replay or unconditional repair guarantee.
 
 See:
 

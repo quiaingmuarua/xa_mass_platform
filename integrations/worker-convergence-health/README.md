@@ -84,8 +84,11 @@ submission counts, not Handler invocation or observed Result counts, and the
 scenario does not require every offered Item to succeed.
 
 **Restart acceptance:** the managed Phone Task may already be idle after its
-wave-six witness succeeds. Serviceability receives only Groups from Main's current
-NORMAL Task roots; elapsed recheck time does not discover an idle Group. Network
+wave-six witness succeeds. Main supplies Serviceability from a separate bounded
+RUNNING Task page, including INITIAL and idle-parked Tasks, independently of the
+due Dispatch page. This retains known Task-rooted Groups; it is not global Group
+discovery. See the [Pacer assembly](../../kernel_pacer_jvm/doc/application-assembly.md)
+for the distinct Dispatch, Refill and Serviceability roots. Network
 evidence remains best-effort and may be lost, delayed or superseded. The restart
 sample therefore records state counts and identities, or an observation failure,
 without delaying the next work. It adds no replay, Properties repair or mutation
@@ -157,10 +160,11 @@ handoff, evidence times, exact confirmation, evidence transitions and successful
 release, without recording payload content. This is a healthy subsequent handoff
 witness, not a guarantee under continuing evidence loss.
 
-The Redis Owner lane separately fixes the 100ms evidence/lease boundary:
-current-slot evidence may correct polarity while preserving the stored
-coordinate and mark. Accepted past polarity changes clear mark and advance
-generation without passing Redis now; normal same-polarity Polling leaves it
+The Redis Owner lane separately fixes the Worker's 10ms evidence/lease boundary
+(Task and Item Score slots remain 100ms):
+network evidence may correct a stored current-slot Score's polarity while
+preserving its coordinate and mark. Accepted past polarity changes clear mark and advance
+generation without passing the Owner's process clock; normal same-polarity Polling leaves it
 unchanged. A separate actual Pacer/Matching witness proves that reconnect can
 refill consumed stale stock without waiting for aged candidate recycling.
 Execution acquisition itself requires strictly past time. The Owner also checks past-slot rejection, PAUSE,

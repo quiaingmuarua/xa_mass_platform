@@ -155,15 +155,11 @@ observation. There is no application heartbeat, so a silent half-open
 connection converges only after the network stack, close, failure, or a write
 detects it.
 
-A properties entry reports Adapter-written `updatedAtMillis` and the complete
-cached `properties`. Both fields are null when the Adapter has no visible
-projection. Successive writes to a retained entry strictly increase the
-millisecond value, but after route identity loss, capacity eviction, or Adapter
-restart the next observation is a new baseline rather than a comparable global
-version. The cache has no independent freshness window: retained route
-verification evidence gates visibility, while a separate encoded-data budget
-may evict properties without affecting the connection. This cache is neither
-Worker resource truth nor evidence of Binding validity or schedulability.
+A Properties snapshot entry carries Adapter-written `updatedAtMillis` and
+complete cached `properties`, with both null when the projection is unknown.
+It is independent of the connection snapshot and provides no shared version or
+freshness guarantee. The [Adapter Properties Owner](netty-adapter/README.md#worker-properties-projection)
+defines retained-entry time ordering, visibility and cache lifetime.
 
 ### Worker-produced property observation
 
@@ -186,34 +182,17 @@ an empty replacement establishes an empty baseline. `set`, `remove`, and
 `properties` are ordinary property names when their values are strings, not
 control fields. The complete Report frame is limited to 1,000,000 UTF-8 bytes.
 
-Only the exact current verified Channel can write this cache. Full replaces the
-baseline; update requires an existing baseline. Pre-identity, pending verification,
-stale Channel and invalid input are local drops. Baseline-less updates do not
-trigger compensation. Ordinary snapshot Results no longer update the cache.
-
-After each verified activation (including cached-verification reconnect), Adapter
-requests one full `properties.snapshot` directly on that Channel. Java/Android
-Hosts can call `reportProperties()` or update their one Provider then call
-`reportProperties(updates)`; Manager delegates by replica key. Automatic baseline
-reuses the successful snapshot output without reading the Provider again; explicit
-TASK/SERVER queries still return `{"properties":{...}}`. No SDK copy,
-history, ACK or retry is maintained by the SDK. A missed full
-requires a later explicit full or connection baseline, not automatic repair.
-
-The cache keeps immutable complete Properties, CRC32C over key-sorted JSON,
-observation time and encoded weight. Fingerprint equality never suppresses a
-valid write; metadata is not a field version or scheduling truth.
-
-Connection and properties are separate queries with no atomic join or common
-version. `CONNECTED` does not prove properties exist or are recent, and cached
-properties may remain while the route is `DISCONNECTED` but still verified. A
-management caller that needs a combined view invokes both events and joins
-their ordered workerId maps.
+The [Adapter Properties Owner](netty-adapter/README.md#worker-properties-projection)
+defines exact-Channel admission, baseline requirements, atomic cache installation
+and loss boundaries. The [Core reporting API](worker-core/README.md#properties-reporting)
+defines Provider use, explicit full/update calls and automatic snapshot output
+conversion. Ordinary TASK/SERVER snapshot Results retain their wrapped query
+payload and never act as either of these observation events.
 
 ### Adapter-produced complete Properties observation
 
-After installing either valid Worker event and rechecking the exact Channel,
-Adapter attempts one publication from that immutable complete cache value:
+Adapter is the producer of this complete observation; the `workerId` inside
+its payload identifies the observed Worker:
 
 ```text
 messageType = platform.adapter.worker-properties.observed
@@ -225,24 +204,20 @@ forward     = ""
 payload     = {"workerId":"...","properties":{"network.type":"cellular"}}
 ```
 
-This is not a callable Handler, raw Worker update, connection evidence or ACK.
-The complete encoded Report has the same 1,000,000 UTF-8 byte limit. Empty
-Properties clear the persistent Map; empty string values remain present. There
-are no timestamp, version, CRC or retry fields. Each valid installation offers
-once, including unchanged full reports and reconnect baselines. Missing baseline,
-rollback or invalid Channel/input offers nothing.
+The payload contains exactly `workerId` and `properties`. `workerId` is a
+non-blank string and `properties` is a complete string KV Map with the rules
+above. An empty Map is a complete empty observation; empty string values remain
+present. The complete encoded Report is limited to 1,000,000 UTF-8 bytes.
+There are no timestamp, version, CRC or retry fields. This observation is
+neither a callable Handler nor a Direct Call reply, connection event or ACK.
 
-The existing SYSTEM Queue submits homogeneous object batches through
-`results:append`. Oversize, encoding, queue and HTTP failures drop publication
-without undoing the cache or closing the Worker. There is no retry or automatic
-repair without new input. Server validates event source/shape, current Binding
-and Group, then creates or replaces Worker facts through the Matching Catalog. Unknown
-SYSTEM events are per-item rejections, never Direct Call completions.
-Later Matching Demands read the facts. APPLIED writes request the existing
-Score invalidation; this does not fan out to Candidate caches or change
-identity and Binding. Prepare creates no Matching facts; the
-first observation uses this same event. No observation-order fence or special
-retention of registration keys is provided.
+The [Adapter publication contract](netty-adapter/README.md#worker-properties-projection)
+owns which installed value is offered and what survives delivery failure.
+[Server Properties admission](../server_jvm/README.md#runtime-worker-properties-admission)
+validates the event, uses the Matching `WorkerProperties` contract, and requests
+candidate invalidation separately after changed facts. Persistent Properties
+and Score transitions remain with their respective Owners. Unknown SYSTEM
+events are per-item rejections and never complete Direct Call waiters.
 
 ## Extension Boundary
 

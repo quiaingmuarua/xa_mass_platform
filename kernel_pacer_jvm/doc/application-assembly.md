@@ -14,12 +14,14 @@ Java Server
            -> NETWORK_EVIDENCE virtual batch             every preset
            -> TASK_OBSERVATION virtual batches           every preset
         -> DispatchConvergenceRuntime
-           -> one Task Score scan and INITIAL subset filter
            -> DispatchMainScheduler fixed input planning
+              -> due Task Score scan and INITIAL subset filter
+              -> due-independent NORMAL RUNNING refill roots
+              -> due-independent RUNNING Serviceability roots
               -> TASK_INITIALIZATION resource producer
               -> ELIGIBILITY_REFILL resource producer
               -> TASK_DISPATCH resource producer
-              -> WORKER_SERVICEABILITY resource producer optional
+              -> WORKER_SERVICEABILITY resource producer
 ```
 
 ## Production Configuration
@@ -111,9 +113,10 @@ WorkerCommandRuntime / TaskEvidenceRuntime
 WorkerServiceabilityRuntime
 ```
 
-Main-selected NORMAL RUNNING Tasks supply refill targets, dispatch input and
-Serviceability Groups. Main shares complete immutable Task descriptors. Refill groups
-those declarations, asks Matching for Group shortage hints, and passes explicit
+Main supplies distinct bounded Task roots for Dispatch, Refill and
+Serviceability as defined below. It passes complete immutable descriptors where
+needed and derives Serviceability Groups from its own RUNNING root observation.
+Refill groups Task supply declarations, asks Matching for Group shortage hints, and passes explicit
 Group/Pool targets with each candidateized Group batch. Matching removes admitted
 identities before offering the remainder to the next Pool. Dispatch calls Matching with the
 Task's Group and messageId-to-WorkerQuery Maps, receiving messageId-to-WorkerCandidate
@@ -142,8 +145,16 @@ server_jvm -> kernel_pacer_jvm -> kernel_jvm
 
 ## Dispatch Convergence
 
-`DispatchMainScheduler` obtains two projections from one bounded Task Score
-scan and plans the root input of the fixed Resource Producers:
+`DispatchMainScheduler` plans three bounded Task observations when their
+Producers are eligible:
+
+| Task observation | Root input | Consumer |
+| --- | --- | --- |
+| `acquireSchedulingTasks(100)` plus INITIAL filtering | Due RUNNING, split into INITIAL and NORMAL | Initialization and Task Dispatch |
+| `observeNormalRunningTasksAscending(100)` | NORMAL RUNNING below idle park, independent of due time | Refill |
+| `observeRunningTasksAscending(100)` | RUNNING from INITIAL through idle park, independent of due time | Serviceability |
+
+The due observation returns two projections:
 
 ```text
 NORMAL projection
@@ -155,8 +166,10 @@ INITIAL projection
 
 The Score Owner returns one ordered `taskId -> opaque score` map and separately
 filters its INITIAL subset. The Main Scheduler treats the remaining identities
-as NORMAL, loads only their Descriptors once, validates identity, and performs
-no Task Score point recheck. INITIAL needs no Descriptor wrapper. These values
+as NORMAL, loads their Descriptors once for the due projection, validates identity,
+and performs no Task Score point recheck. Initialization needs no Descriptor
+wrapper. Refill and Serviceability each reuse those due NORMAL Descriptors and
+load the missing identities from their own roots. These values
 are round evidence, not locks; every later mutation still uses exact owner
 fences.
 
@@ -167,9 +180,9 @@ not. It has no persistent cursor, additional discovery or capacity reservation.
 
 `DispatchConvergenceRuntime` owns one non-daemon Main Scheduler thread.
 `DispatchMainScheduler` owns one virtual thread per non-empty eligible Producer
-round. Every Producer is single-flight. The Main Scheduler reads the original
-Task Source at most once per eligible sweep, then supplies each Producer only
-its complete root input. A busy Producer skips that source snapshot and retains
+round. Every Producer is single-flight. The Main Scheduler reads each applicable
+Task source at most once per eligible sweep, then supplies each Producer only
+its complete root input. A busy Producer skips its source snapshot and retains
 no memory hint; unchanged Task score lets a later observation rediscover the
 Task.
 
@@ -252,9 +265,11 @@ a prerequisite for dispatch expiry/exhaustion or idle settlement. Refill is
 single-flight and targets shared Group/Pool stock. It has no Task-private cache,
 queue or additional Task discovery. See [Matching](../../worker_matching_jvm/README.md).
 
-A Task Source or INITIAL-classification failure defers every currently eligible
-Producer. Descriptor loading failure for the due projection defers only NORMAL Producers; already
-formed Initialization input may still run. Empty input or a Producer
+A due Task Source or INITIAL-classification failure defers the eligible
+Initialization, Refill and Task Dispatch Producers; Serviceability still uses
+its independent root read. Descriptor loading failure for the due projection
+defers Refill and Task Dispatch; already formed Initialization input may still
+run. Empty input or a Producer
 `RuntimeException` defers only that Producer by its own interval. A JVM
 `Error`, rejected execution, or unexpected Main Scheduler exit fails Dispatch
 Convergence and therefore Kernel readiness.
@@ -375,15 +390,15 @@ The event Mechanism chooses target polarity and minimum activation time for the 
 Score operation. Provider construction and close ownership stay unchanged; the
 package-private encoding helper has no separate lifecycle or assembly.
 
-The Serviceability boundary proves that the Main Scheduler derives the ordered
-WorkerGroup input from the same due RUNNING Task source and that Adapter
-Evidence converges through the Result Application. Focused Pacer tests and
-Runtime Boundary proof own this contract.
+Focused Main Scheduler tests prove that Serviceability derives ordered
+WorkerGroups from its independent RUNNING roots, including INITIAL and
+idle-parked Tasks. Runtime Boundary proves Adapter Evidence convergence through
+the Result Application. These remain separate proof claims.
 
 ## Guardrails
 
-- Do not restore Candidate demand hints, a second Task scan, or a pending Batch
-  queue inside Dispatch Convergence.
+- Keep Task discovery in Main's three bounded Owner observations. Do not add
+  Producer-local Task discovery, Candidate demand hints or a pending Batch queue.
 - Do not add a dynamic Pacer/Producer registry, public policy SPI, or fallback
   owner.
 - Do not assemble Pacer subpackage types from Server;

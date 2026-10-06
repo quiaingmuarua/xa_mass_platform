@@ -87,7 +87,8 @@ owned mechanism is outside the kernel contract and does not become Item truth.
 
 ## TaskItem Model
 
-The Item record carries only caller/intake facts:
+The Item record carries only caller/intake facts, as defined by the
+[Task Resource Model](../resource-model/task-resource-model.md):
 
 ```text
 TaskItem
@@ -97,6 +98,7 @@ TaskItem
   priority = 5
   createdAtMillis
   expireAtMillis = createdAtMillis + defaultItemTtlMillis
+  workerSelector: WorkerQuery(executorName, input)
 ```
 
 `messageId` is unique inside one Task. `eventCode` selects the worker-local
@@ -109,11 +111,14 @@ from `0` through `10`; `5` is the canonical default. An omitted `expireAtMillis`
 365-day runtime default. A later configurable value remains TaskRuntime owner
 policy and must not become score encoding.
 
+`workerSelector` is required and non-null. Kernel retains the immutable query;
+Matching interprets its function and input independently of Task Pool supply.
+
 Only `(taskId, messageId)` is stable Item identity. The HASH value is the
 latest-write TaskItem record for that identity. Re-appending the same
-`messageId` may replace payload, event code, priority, creation time, expiry, or
-any caller-defined payload reference without creating a second scheduling
-identity.
+`messageId` may replace payload, event code, priority, creation time, expiry,
+`workerSelector` or any caller-defined payload reference without creating a
+second scheduling identity.
 
 Item `priority` is distinct from `TaskDescriptor.config["priority"]`. Both use
 the common lower-value-first convention. Task priority is `0..99`; Item
@@ -196,8 +201,9 @@ Promotion uses one Lua for the complete prepared input, including a 1000-Item
 Dispatch failure batch; the independent state-read budget remains 100. Each Item may
 have a different terminal tag and time. Java validates each target and encodes
 its score with suffix 0; invalid entries return INVALID without blocking valid
-entries. An invalid Task ID or oversized batch rejects the entire batch. One same-key Lua
-handles the entire batch; for each ID it reads and validates the stored score
+entries. An invalid Task ID returns INVALID for every supplied member without
+Redis access. Promotion adds no separate batch-size ceiling. One same-key Lua
+handles the prepared input; for each ID it reads and validates the stored score
 before comparing `targetScore > currentScore` and optionally writing.
 
 | Condition | Per-Item result |
@@ -205,7 +211,7 @@ before comparing `targetScore > currentScore` and optionally writing.
 | Legal target greater than current score | `TRANSITIONED`, new score |
 | Legal equal or smaller target | `NOOP`, current score |
 | Missing member | `NOT_FOUND`, no score |
-| Invalid ID, tag, time or oversized batch | `INVALID`, no score and no writes |
+| Invalid Item ID, missing target or invalid tag/time | `INVALID`, no score and no write for that Item |
 | Non-integer, out-of-range or terminal nonzero-suffix stored score | `CORRUPT`, no score and no write |
 
 A higher tag advances even with an earlier time. A lower tag cannot advance

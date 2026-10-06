@@ -18,12 +18,14 @@ not implemented. A changed default cannot overwrite an existing Binding, and
 a connection to a different Adapter is rejected. The address is not a permanent
 identity constraint.
 
-Kernel does not store or interpret Worker/Platform Properties or Rules.
+Kernel does not store or interpret Worker/Platform Properties or Matching queries.
 Prepare does not write Matching facts. An admitted Adapter Properties
-observation may create the first Matching facts later. Named Rules require indexed facts; default identity selection needs no Matching
-facts. Both require eligible
-Worker Score coordinates before assignment. `WorkerGroup.eventCodes` is
-create-only directory metadata, not proof of loaded handlers.
+observation may create the first Matching facts later. Identity and Any need no
+Facts; Country, Messaging and Proof qualify offered Facts, while Phone functions
+use an independent property HASH. Their resource and qualification requirements
+belong to the [Matching Owner](../../../worker_matching_jvm/README.md).
+Every candidate still requires eligible Worker Score coordinates before assignment.
+`WorkerGroup.eventCodes` is create-only directory metadata, not proof of loaded handlers.
 
 ## Registration
 
@@ -90,7 +92,7 @@ throughput or latency guarantees.
 ## Network Activation
 
 Every Worker starts cold, including Polling. The Score Owner uses
-RECOVERY_RECHECK / timeSlot=1 / mark=0 (score -2), outside
+RECOVERY_RECHECK / timeSlot=1 / mark=0 (score -1), outside
 ordinary allocation, stale-HOT and recovery-recheck scan ranges.
 
 All Pacer presets consume network evidence. Verified Adapter connections and

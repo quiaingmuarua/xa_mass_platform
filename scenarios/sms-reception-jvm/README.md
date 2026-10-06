@@ -64,18 +64,19 @@ python -m pip install -r requirements.txt
 python run_preview.py
 ```
 
-SMS 和 Messages 共用这一 ZIP。它包含 Spring 宿主生成的单一 Server JAR、模拟 Host 和 SDK、统一前端、发行配置及启动脚本。
+SMS、Messages 和 App Checks 共用这一 ZIP。它包含 Spring 宿主生成的单一 Server JAR、模拟 Host 和 SDK、统一前端、发行配置及启动脚本。
 SMS 页面与 Runtime、Reference 共用一次前端构建，统一资源位于 `frontend/dist`；Server JAR 不嵌入独立 SMS 前端。
-场景版本不改变平台版本。`preview-manifest.json` 记录同次构建的版本、HEAD、固定启用的两个场景及
+场景版本不改变平台版本。`preview-manifest.json` 记录同次构建的版本、HEAD、固定启用的三个场景及
 Server、Host、前端、启动脚本和发行配置的指纹。ZIP 不携带验收脚本、报告或私有运行数据。
-启动顺序是 Server 健康且 SMS、Messages 均完成初始化、Host 身份建立、实际 WebSocket 路由验证。
+启动顺序是 Server 健康且三个场景均完成初始化、Host 身份建立、实际 WebSocket 路由验证。
 默认端口为 Server 18500、Adapter 18503、Host 18504。
-启动器固定启用 `preview`，同时装配 SMS 和 Messages。宿主的
+启动器固定启用 `preview`，同时装配三个场景。宿主的
 `server_boot_jvm/src/main/resources/application-preview.yaml` 是配置的唯一来源，
 发行任务将它复制到 `config/application-preview.yaml`。配置集中定义 Server、Redis、
-`products-websocket` Adapter 和 Endpoint，并为混合国家 Group `demo-sim` 启用 Country／Messaging Pool 及独立 Phone Index。
-根页面 `/` 仍是 Runtime 入口；发行层将三个 SMS 页面及尾斜杠转发到统一控制台。
-不启用该 profile 时，不注册两个场景的 API、Group 或后台任务。静态页面仍可提供；控制台通过 catalog 状态隐藏未启用入口，直达页面显示未启用。
+`products-websocket` Adapter 和 Endpoint，并为 SMS/Messages 共享的混合国家 Group `demo-sim` 启用 Country／Messaging Pool 及独立 Phone Index。
+App Checks 使用两个独立 App Groups；完整拓扑由 [Boot](../../server_boot_jvm/README.md#platform-and-preview) 维护。
+根页面 `/` 仍是 Runtime 入口；Boot 将三个 SMS 页面及尾斜杠转发到统一控制台。
+不启用该 profile 时，不装配这三个场景的 API、资源声明或后台任务。静态页面仍可提供；控制台通过 catalog 状态隐藏未启用入口，直达页面显示未启用。
 启动时复用 catalog 做一次五秒期限的可用性观察；其他读取错误保留未确认并提供手动重试。
 公开 Mock Demo 隐藏 SMS 且不请求场景 API；未知 API 和静态资源保持错误。
 任一进程退出即结束场景，不自动恢复旧状态。
@@ -107,8 +108,8 @@ Worker 与 Adapter 均指向同一 Server，默认端口 18500。场景服务调
 每个 scope 仅允许一个启用 Pacer 的 Server；本版不支持多实例订单幂等或重启恢复。
 
 场景生命周期在平台装配之后消费宿主提供的唯一 `demo-sim` Group 与完整事件声明，并取得托管 Task ID。
-宿主先初始化 Group 和 Project managed Tasks，两个场景只读取已配置资源。构造器没有资源准备或线程启动副作用；宿主准备失败即终止本次启动。
-关闭时先拒绝两个场景的新命令、停止提交与观察任务，再关闭平台资源；SMS 线程共用最多 5 秒的关闭预算，不刷新或重放队列。
+宿主先初始化 Group 和 Project managed Tasks，各场景只读取已配置资源。构造器没有资源准备或线程启动副作用；宿主准备失败即终止本次启动。
+关闭时先拒绝各场景的新命令、停止提交与观察，再关闭平台资源；SMS 线程共用最多 5 秒的关闭预算，不刷新或重放队列。
 
 产品直接调用 `ProjectDirectory`、`TaskCallSubmissionService` 和
 `TaskDataService`。提交入口校验完整批次，包括会被同 ID 覆盖的输入；Result 读取也保留数量
@@ -134,7 +135,7 @@ Preview 显式启用 country Pool 和 `worker.country` 函数。托管 Task 的�
 取消 Item 使用 `WorkerQuery("workerId", 实际Worker身份)`。输入构造见
 [ListenerService](src/main/java/com/xa/mass/scenario/sms/ListenerService.java)，
 固定组装见 [Preview 配置](../../server_boot_jvm/src/main/resources/application-preview.yaml)。
-Preview 不启用 Any Pool；通用探针消费 Country Pool，定向探针使用独立身份查询。
+Preview 的 `demo-sim` 不启用 Any Pool；通用探针消费 Country Pool，定向探针使用独立身份查询。
 
 监听只是 Host 业务状态，不持有 Kernel lease。初始执行成功只表明监听已建立。
 Backend 从 `succeeded` Result 的完整业务内容读取接码状态，不从 TaskItem terminal tag
@@ -285,7 +286,7 @@ P95/P99、活跃监听峰值及 Server 和 Host 两个 JVM 的 RSS/线程峰值�
 
 当前验收写入产品目录的 `build/acceptance/`，仅 `summary.json`、`summary.md` 和安全归档检查用于 CI 汇总；
 private 日志不进入 CI 工件。业务验收脚本留在源码中，调用统一 Preview 启动器，
-由验收脚本预先生成安装 SMS 能力的 Worker 库存；Server 的 preview 配置仍组装两个业务场景。
+由验收脚本预先生成安装 SMS 能力的 Worker 库存；Server 的 preview 配置仍组装三个业务场景。
 `--root <解压后的统一 Preview 目录>` 加载 ZIP 内启动脚本、HTTP 客户端和真实产物，
 不回退到源码启动器，不在 ZIP 内构建。摘要记录实际加载的启动脚本指纹。
 `.github/workflows/sms-reception-preview.yml` 运行产品单元测试、统一前端检查、同进程组合边界、小规模真实链路以及解压 ZIP 后的真实功能链路；

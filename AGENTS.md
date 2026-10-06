@@ -456,9 +456,11 @@ and [Android Worker](transport/android-worker/README.md) own their local mechani
 - Properties publish explicitly through Adapter/Server admission. Core owns no
   aggregation, batch HTTP, publication scheduler, thread or executor lifecycle;
   an injected Control Executor does not change that boundary.
-- Stop revokes the run before closing Client outside the state gate. It does not
-  wait for an admitted Handler/callback to finish. Prepare-time stop discards the
-  result; endpoint termination requires a later explicit Host start.
+- Stop must revoke the run before closing Client outside the state gate. The
+  lifecycle contract requires returning without waiting for an admitted
+  Handler/callback to finish. The [known Android implementation difference](transport/android-worker/README.md#known-android-stop-difference)
+  is pending repair, not a platform exception to that contract. Prepare-time stop
+  discards the result; endpoint termination requires a later explicit Host start.
 - Do not add pause/admission state, cross-attempt/run Handler fences, Command
   queues, in-flight registries or result caches.
 - Definitions are immutable and keyed by exact full Event Name. Host extensions

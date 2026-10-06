@@ -277,7 +277,12 @@ expiry; physical Channel resources, not the disconnected-cache budget, bound
 them. Disconnected evidence is removed by TTL or capacity pressure and then
 projects as `UNKNOWN`. Cache eviction never emits availability evidence.
 
-Each Adapter also owns one `WorkerPropertiesCache` beside the Registry. It is
+The independent [Properties projection](#worker-properties-projection) is
+visible through its own snapshot event and has no atomic join with Route state.
+
+## Worker Properties Projection
+
+Each Adapter owns one `WorkerPropertiesCache` beside the Registry. It is
 not route truth: `platform.worker.properties.updated` and
 `platform.worker.properties.replaced` from the exact current verified Channel
 are its only write paths. Replacement installs a complete immutable Map;
@@ -310,6 +315,85 @@ inaccessible residue is removed lazily and remains bounded by the independent
 encoded properties bytes and may evict a connected Worker's properties without
 changing its route. Management reads are quiet; only a valid current-Channel
 full snapshot or incremental report refreshes an entry.
+
+Worker connection state and cached properties are deliberately separate query
+surfaces. A properties entry is known only when both `updatedAtMillis` and
+`properties` are non-null. Route identity loss, properties capacity eviction,
+or Adapter restart produces null fields. Adapter configuration supplies the
+independent retention and capacity limits:
+
+```yaml
+reconnect-verification-retention: 10m
+maximum-disconnected-workers: 100000
+maximum-encoded-properties-bytes: 67108864
+```
+
+The two snapshot events do not call each other and have no atomic join or
+shared version. `CONNECTED`, cached properties, current Binding and scheduling
+eligibility remain independent facts. A caller needing a combined view invokes
+both events and joins by workerId. `updatedAtMillis` is comparable only within
+one retained entry lifetime; after UNKNOWN or Adapter restart, the next value is
+a new baseline.
+
+After committing each verified activation, including retained verification
+reconnect, Adapter requests one `platform.worker.properties.snapshot`
+directly on that exact Channel. The Command is ADAPTER -> WORKER, payload `null`,
+empty forward, with the configured `sendTimeLimit` deadline. It runs outside
+Route mutation, never enters a retry Queue and failure never closes a healthy
+connection. There is no request registry or compensation. Entries are keyed by
+workerId and do not repeat the caller-owned WorkerGroup. Both caches use
+caller-thread maintenance only: no loader, refresh, listener, scheduler or
+cleanup thread is installed.
+
+The [Worker observation events](../EVENTS.md#worker-produced-property-observation)
+select full replacement or merge. Their payload validation completes before
+mutation. Update copies the existing full baseline and applies `putAll`;
+replacement installs the supplied Map, removing omitted keys. Both retain the
+per-Worker atomic installation and conditional rollback if the Channel ceases
+to be current.
+
+Before identity, during verification, from a replaced Channel, or for an invalid
+payload, the report is dropped locally. An update after capacity eviction is also
+dropped without a compensating snapshot request. Host explicit full reporting
+or the next successful connection baseline can restore it. Report encoding is
+bounded to the existing 1,000,000-byte frame limit.
+
+The Worker observation events are consumed locally without acknowledgement or
+verbatim forwarding. Ordinary TASK/SERVER snapshot Results still forward but
+never refresh the cache. The [Core Properties contract](../worker-core/README.md#properties-reporting)
+owns automatic baseline conversion and explicit Host reporting.
+
+After a valid cache installation and current-Channel recheck, the connection
+mechanism uses that exact immutable `ObservationWrite.written` value to offer
+one [complete Adapter observation](../EVENTS.md#adapter-produced-complete-properties-observation).
+Full, incremental, initial and reconnect baselines all use this one path.
+Rollback, missing baseline and invalid input produce no publication.
+Fingerprint equality does not suppress a valid write
+or explicit full resubmission; no throttle or publication timestamp is stored.
+
+The complete encoded upstream Report must fit 1,000,000 UTF-8 bytes. A merged
+Map may exceed that even though each Worker update fit its own frame; encoding
+failure or oversize drops only this publication. SYSTEM admission FULL/CLOSED
+or HTTP failure likewise preserves the local cache and connection. HTTP stays
+on the existing Report thread, outside Route/cache mutations. There is no
+pending/latest snapshot, retry, ACK or quiet-period repair. A new explicit full
+or later connection baseline can recover a lost publication.
+
+A later valid Worker update also publishes the complete retained cache, not
+just its changed keys. Thus a prior full observation lost only on the upstream
+hop does not make Server combine the next update with its older Properties;
+changes and omitted-key deletions already installed in Adapter travel together.
+Worker-to-Adapter loss remains a separate best-effort boundary: retaining a
+complete cache is not proof that it equals the Host's latest complete data.
+
+[Server Properties admission](../../server_jvm/README.md#runtime-worker-properties-admission)
+checks the Adapter producer, Binding and Group before writing through Matching's
+`WorkerProperties` contract and independently requesting best-effort candidate
+invalidation. Those effects remain downstream: Adapter has no Matching, Redis
+or Score access and emits no connection evidence from a Properties write.
+Prepare creates no Matching facts; a lost first observation can leave a
+prepared Worker without them. Publication carries no ordering version or
+reliable-convergence guarantee.
 
 ## Delivery Processes
 
@@ -436,94 +520,6 @@ and asks the physical Server to close that Channel (`1000` for WebSocket, TCP
 close for Socket). It preserves the process-local verification cache, so the
 existing Client reconnect path can install a new active Channel without
 another route verification.
-
-Worker connection state and cached properties are deliberately separate query
-surfaces. A properties entry is known only when both `updatedAtMillis` and
-`properties` are non-null. Route identity loss, properties capacity eviction,
-or Adapter restart produces null fields. Adapter configuration owns two finite
-policy blocks:
-
-```yaml
-reconnect-verification-retention: 10m
-maximum-disconnected-workers: 100000
-maximum-encoded-properties-bytes: 67108864
-```
-
-The two snapshot events do not call each other and have no atomic join or
-shared version. `CONNECTED`, cached properties, current Binding and scheduling
-eligibility remain independent facts. A caller needing a combined view invokes
-both events and joins by workerId. `updatedAtMillis` is comparable only within
-one retained entry lifetime; after UNKNOWN or Adapter restart, the next value is
-a new baseline. After committing each verified activation, including retained
-verification reconnect, Adapter requests one `platform.worker.properties.snapshot`
-directly on that exact Channel. The Command is ADAPTER -> WORKER, payload `null`,
-empty forward, with the configured `sendTimeLimit` deadline. It runs outside
-Route mutation, never enters a retry Queue and failure never closes a healthy
-connection. There is no request registry or compensation. Entries are keyed by workerId and do not
-repeat the caller-owned WorkerGroup. Both caches use caller-thread maintenance
-only: no loader, refresh, listener, scheduler or cleanup thread is installed.
-
-The fixed Worker-produced `WORKER -> ADAPTER` events
-`platform.worker.properties.updated` and `platform.worker.properties.replaced`
-accept empty forward and a direct string KV Map payload; diagnosticCode is diagnostic only. Only
-the Event Name selects merge or replacement. Update copies the full baseline
-and applies `putAll`; replacement installs the supplied full Map, removing
-omitted keys. Both retain the existing per-Worker atomic installation and
-conditional rollback if the Channel ceases to be current.
-
-Keys are non-blank literal strings and values are non-null strings (empty
-allowed). Empty values are not deletion markers; removal requires a full
-replacement. Nested objects, arrays, numbers and booleans are rejected, not
-coerced. `set`, `remove`, and `properties` with string values are ordinary keys.
-Empty updates preserve content; empty replacements establish empty baselines.
-
-Before identity, during verification, after replacement, or for an invalid
-payload, the report is dropped locally. An update after capacity eviction is also
-dropped without a compensating snapshot request. Host explicit full reporting
-or the next successful connection baseline can restore it. Report encoding is
-bounded to the existing 1,000,000-byte frame limit.
-
-Neither Worker event is a callable Handler, forwarded verbatim to Report queues,
-or acknowledged. Ordinary TASK/SERVER snapshot Results retain their
-`{"properties":{...}}` query payload and still forward but never refresh the cache.
-Automatic baseline reuses that successful snapshot output as one `replaced`
-Report without a second Provider read. Java and Android use their one Host Provider for full reports;
-the SDK does not store or merge Host properties.
-
-After a valid cache installation and current-Channel recheck, the connection
-mechanism uses that exact immutable `ObservationWrite.written` value to offer
-one `ADAPTER -> SYSTEM platform.adapter.worker-properties.observed` Report.
-The payload is `{"workerId":"...","properties":{...}}`, with `sourceId=adapterId`,
-empty diagnostic and empty forward. Full, incremental, initial and reconnect
-baselines all use this one path. Rollback, missing baseline and invalid input
-produce no publication. Fingerprint equality does not suppress a valid write
-or explicit full resubmission; no throttle or publication timestamp is stored.
-
-The complete encoded upstream Report must fit 1,000,000 UTF-8 bytes. A merged
-Map may exceed that even though each Worker update fit its own frame; encoding
-failure or oversize drops only this publication. SYSTEM admission FULL/CLOSED
-or HTTP failure likewise preserves the local cache and connection. HTTP stays
-on the existing Report thread, outside Route/cache mutations. There is no
-pending/latest snapshot, retry, ACK or quiet-period repair. A new explicit full
-or later connection baseline can recover a lost publication.
-
-A later valid Worker update also publishes the complete retained cache, not
-just its changed keys. Thus a prior full observation lost only on the upstream
-hop does not make Server combine the next update with its older Properties;
-changes and omitted-key deletions already installed in Adapter travel together.
-Worker-to-Adapter loss remains a separate best-effort boundary: retaining a
-complete cache is not proof that it equals the Host's latest complete data.
-
-Server's one delivery reception use case verifies the Adapter producer, current
-Binding and Worker Group before Matching creates or replaces its persistent
-Worker Properties. Independent Platform Properties management does not handle
-these observations. Transport owns no Matching
-or Redis access. Properties reporting never creates Worker identity/resources,
-rewrites score, revokes Candidates or emits connection evidence. Prepare never
-writes these facts, including for new Workers. A lost first observation may
-leave a prepared Worker without facts. Concurrent observation batches have no
-ordering fence; effective storage writes decide the current facts. Field
-timestamps, versions and reliable convergence remain out of scope.
 
 ### Result ingress loop
 

@@ -105,44 +105,18 @@ load Properties
 
 Temporary disconnects reuse the prepared URI. Reconnect exhaustion returns
 the Worker to `STOPPED`; only an explicit later `start()` performs another
-Prepare. Initial and runtime Properties reach Matching through Adapter
-observations and Server admission; Prepare never refreshes those facts. The
-Worker caches no Endpoint URI, Command, or Result. A lost first publication can
-leave no Matching facts until a later full report or connection baseline;
-there is no automatic upstream repair. Polling has no such Properties path and
-new Polling Workers can use independent Identity queries or an explicitly supplied Any Pool without facts.
+Prepare. The Worker caches no Endpoint URI, Command, or Result. Initial and
+runtime Properties use the shared reporting path below.
 
 ## Proactive Properties
 
-The existing Host Provider supplies one consistent flat `Map<String, String>`
-snapshot. Keys must be non-blank; values must be strings (including empty
-strings). Producers explicitly encode numeric/boolean facts as strings; Transport
-does not flatten or coerce them.
-
-`reportProperties()` reads that Provider once and sends a full
-`platform.worker.properties.replaced` Map. `reportProperties(updates)` sends
-`platform.worker.properties.updated` without mutating the Host:
-update the Host's data first, then call it. The SDK retains no extra Map or
-history. Both return only Client acceptance; inactive, disconnected, stopped or
-closed sends return false, Provider failure returns false, and invalid update
-arguments throw. Encoding is bounded to a 1,000,000-byte Report. No Prepare,
-retry, ACK, watcher or second Provider is introduced.
-
-Adapter requests one full snapshot after each verified connection/reconnection;
-Core unwraps the successful snapshot output into one `properties.replaced`
-Report without another Provider read. Both Report payloads are direct string KV
-Maps: update merges supplied keys, replacement removes omitted keys. Empty
-strings stay present; deletion requires a Host-side removal and full replacement.
-Empty Maps are legal, and `set`, `remove`, and `properties` are ordinary keys.
-Explicit TASK/SERVER snapshot calls still return correlated `{"properties":{...}}`
-Results. Loss may require an explicit full
-report or a later connection baseline; this is not guaranteed eventual delivery.
-Adapter publishes its complete installed observation via SYSTEM and Server
-admission to Matching. A later Demand can read new persistent facts without
-another Prepare. Server requests best-effort candidate invalidation after actual
-facts changes; Kernel exact confirmation enforces that fence without deleting
-Cache entries. The SDK owns no part of upstream publication, persistence or
-scheduling invalidation.
+`JavaWorker.reportProperties()` and `reportProperties(updates)` use the Host's
+existing Provider and current run's Client through the
+[Core Properties reporting contract](../worker-core/README.md#properties-reporting).
+That contract owns Provider reads, argument/failure behavior, local acceptance
+and run revocation; the [event catalog](../EVENTS.md#worker-produced-property-observation)
+owns payload semantics. Reporting borrows this Platform's existing networking
+resources and adds no Java Worker executor or publication lifecycle.
 
 JavaWorkerManager exposes these methods with a first `replicaKey` argument,
 delegating only to that Worker; there is no group broadcast.

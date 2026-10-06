@@ -73,7 +73,7 @@ using HSET's field-creation result to return APPENDED or REPLACED in caller
 iteration order. Occupied fields are replaced within that call; non-overwriting
 offer remains separate. The 100-field bound limits each script, not the caller's
 complete input. Empty input sends no commands; nonempty input costs
-`1 + ceil(workerCount / 100)` client commands for both new and occupied slots.
+`ceil(workerCount / 100)` client commands for both new and occupied slots.
 Earlier batches remain applied if a later batch fails. A failed or ambiguous
 script response may follow writes; neither a chunk nor the complete input has
 a rollback guarantee. There is no automatic retry, compensation deletion or
@@ -106,7 +106,7 @@ mailbox once with remaining capacity, and only then may add a Kernel
 Serviceability snapshot Command. Source priority does not reorder a Command
 already consumed by Transport.
 
-Optional Kernel Serviceability supplies bounded Adapter probe requests and
+Kernel Serviceability supplies bounded Adapter probe requests and
 consumes Adapter Route, snapshot and delivery-expiry evidence. Transport emits
 that evidence without interpreting Score policy. Expired TASK delivery offers
 its TASK rejection and KERNEL evidence independently; cross-lane admission is

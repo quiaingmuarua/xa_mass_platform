@@ -77,8 +77,8 @@ Queue members are destructive best-effort evidence, not pending/ack truth.
 ## Fixed Lanes And Shared Batch Capacity
 
 `ResultConvergenceApplication` installs four finite lanes in every preset.
-Network Evidence consumption is independent of optional periodic Serviceability
-probes:
+Network Evidence consumption runs in every preset alongside RECOVERY rechecks;
+the preset controls additional HOT probing:
 
 | Priority | Lane | Owner source | Batch limit | Target | Max |
 | ---: | --- | --- | ---: | ---: | ---: |

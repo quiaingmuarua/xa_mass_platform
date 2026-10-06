@@ -217,6 +217,49 @@ the only protocol event that directly ends the current run. It is consumed by
 Transport and produces no DeliveryReport; it never enters the business
 Dispatcher.
 
+## Properties Reporting
+
+Java and Android use one Host `WorkerPropertiesProvider` for preparation,
+snapshot Commands and explicit reporting. It supplies a consistent complete
+`Map<String, String>`; the [Properties event schema](../EVENTS.md#worker-produced-property-observation)
+defines accepted keys, values, merge/replacement semantics and the encoded
+Report limit. The Provider must not expose the assembly-owned `clientWorkerKey`.
+Core retains no Properties copy, patch history, watcher or second Provider.
+
+`reportProperties()` reads the Provider once and sends
+`platform.worker.properties.replaced`. The update overload
+`reportProperties(Map<String, String> updates)` sends only its arguments as
+`platform.worker.properties.updated`; the Host first updates its own complete
+snapshot. The Controller captures its current Transport under the run gate,
+then performs Provider reads, encoding and sending outside it. Inactive,
+disconnected, stopped, closed or otherwise unaccepted sends return false.
+Invalid update arguments throw; Provider failures return false with safe
+diagnostics and do not end the run. The return value is local Client acceptance.
+No ACK, Prepare, retry or publication queue is added.
+
+On an ADAPTER-origin `platform.worker.properties.snapshot` Command, a successful
+output becomes one `WORKER -> ADAPTER platform.worker.properties.replaced`
+Report. Core extracts the Map from that output without another Provider read
+or an additional ordinary Result. TASK/SERVER snapshot calls keep their wrapped
+`{"properties":{...}}` Result, destination and correlation. Client `onOpen`
+still sends only identity; there is no local ready state or identity ACK.
+
+Every send uses the captured run's Client. A stop can revoke that run while
+Provider work or sending is in progress; the old Client rejects late sends
+best effort and never transfers them to a new run. Concurrent reports have no
+cross-Attempt ordering promise. Core does not retain or retry a rejected or
+lost report and has no upstream publisher, Matching dependency or scheduling
+side effect.
+
+The [Adapter Properties Owner](../netty-adapter/README.md#worker-properties-projection)
+owns verified baseline requests, local cache admission and upstream loss.
+[Server admission](../../server_jvm/README.md#runtime-worker-properties-admission)
+owns persistent replacement through `WorkerProperties` and separate candidate
+invalidation. A prepared Worker can remain without Matching facts after lost
+publication. Polling has no equivalent Properties observation path; a new
+Polling Worker can use an independent Identity query or explicitly supplied
+Any Pool without a facts baseline.
+
 ## One Worker Run
 
 One accepted `WorkerRunController.start()` represents one complete run:
@@ -246,50 +289,9 @@ the Endpoint Binding, initializes minimal Kernel resources, and returns one
 Commands during preparation. It requires `workerId` to be non-blank but does
 not parse its Server-owned format.
 
-Prepare carries the existing Map for Server-owned identity resolution; it does
-not persist Worker Properties. First and later observations pass through Adapter
-and Server admission into Matching. Local observation uses the same Host
-Provider (`Map<String, String>`): non-blank keys, non-null
-string values, empty strings allowed, and dots treated literally. Nested JSON,
-arrays, numbers and booleans are rejected without coercion.
-
-Java/Android `reportProperties()` reads that Provider once and sends
-`platform.worker.properties.replaced`; the update overload
-`reportProperties(Map<String, String> updates)` sends only its arguments as
-`platform.worker.properties.updated`. The Host updates its own consistent
-snapshot before sending an update.
-Core retains no Properties copy, patch history, retry or queue. The Controller
-captures its current Transport under the run gate, then performs Provider reads,
-encoding and sending outside it. Inactive or unaccepted sends return false.
-Invalid update arguments throw; Provider failures return false with safe
-diagnostics and do not end the run.
-
-On each verified connection Adapter sends one ADAPTER-origin
-`platform.worker.properties.snapshot` Command. A successful output becomes a
-single `WORKER -> ADAPTER platform.worker.properties.replaced` report: Core
-extracts the Map from the successful snapshot output, without reading the Provider
-again or sending an additional ordinary Result. TASK/SERVER snapshot calls keep
-their `{"properties":{...}}` Result payload, destination and correlation.
-Client onOpen still sends only identity; no ready state or ACK is added.
-If the first request or upstream publication is lost, a new identity may remain
-without Matching facts until explicit full reporting or a later connection
-baseline. Polling has no equivalent Properties observation path; its new
-Workers can use independent Identity queries or an explicitly supplied Any Pool without a facts baseline.
-
-Both report payloads are direct string KV Maps. `updated` overwrites supplied
-keys and retains the rest; `replaced` replaces the whole Map and removes omitted
-keys. Empty values stay present, and incremental deletion is not supported.
-Empty updates preserve content; empty replacements establish an empty baseline.
-`set`, `remove`, and `properties` are ordinary keys, not control fields. The
-complete encoded Report must fit 1,000,000 UTF-8 bytes. A rejected
-or lost report is not retained or retried. Already-admitted work may finish
-after stop; the closed Client rejects its late send best effort. Concurrent
-reports have no cross-Attempt ordering promise; explicit full reporting or a
-later reconnect baseline can calibrate the Adapter cache. Adapter offers its
-complete installed observation through SYSTEM; Server validates it before
-Matching persists Worker facts. Core has no upstream publisher, retry, Matching
-dependency or scheduling side effect. Loss still requires new Host input or a
-later connection baseline; there is no unconditional eventual-delivery promise.
+Prepare carries the existing Map for Server-owned identity resolution and does
+not persist Matching facts. Live observation uses the separate
+[Properties reporting path](#properties-reporting).
 
 Preparation failure or Endpoint termination ends the run. Core does not retry
 Preparation, schedule restart, or persist the Endpoint URI. A Host may
@@ -302,10 +304,12 @@ installed from that result. This is control-call convergence, not a paused
 Worker. After a Transport is installed, `stop()` first commits `STOPPED` and
 detaches the current Transport, then closes its Client outside the state gate.
 It does not enter the Control Executor or wait for Adapter acknowledgement.
-The Java WebSocket Client also does not wait for a Handler or Transport
-callback: an admitted Handler may finish later and its Result uses the old
-Client best-effort. `close()` is terminal, closes Preparation and the current
-Client, and Core adds no callback-completion fence or cross-run pending Result.
+The target is non-blocking active stop, allowing an admitted Handler to finish
+later and use the old Client best-effort. Java WebSocket follows that target;
+Android's current callback wait is recorded as a
+[known implementation difference](../android-worker/README.md#known-android-stop-difference).
+`close()` is terminal, closes Preparation and the current Client, and Core adds
+no callback-completion fence or cross-run pending Result.
 
 ## Lifecycle
 
@@ -348,12 +352,14 @@ the platform assembly; closing one Client closes only that connection.
 
 `TextMessageClient.Listener` exposes only `onOpen`, `onMessage`, and
 `onEndpointTerminated`. A Client suppresses callbacks not yet admitted from
-superseded physical connections. `close()` establishes no callback-
-completion fence; callbacks already admitted may finish naturally, including
-a callback that closes its own Client. The Java WebSocket implementation
-returns immediately after committing terminal state and requesting socket
-teardown. Different physical Attempts are not globally serialized. `send()`
-reports only whether the current network stack accepted the frame.
+superseded physical connections. The target close contract establishes no
+callback-completion fence: admitted callbacks may finish naturally, including a
+callback that closes its own Client. Java WebSocket returns after committing
+terminal state and requesting socket teardown. The
+[known Android stop difference](../android-worker/README.md#known-android-stop-difference)
+documents its current callback wait against that target. Core adds no global
+serialization across physical Attempts. `send()` reports only whether the
+current network stack accepted the frame.
 
 `TextMessageReconnectPolicy` defaults to 20 unstable attempts, a 500
 millisecond interval, and a 10 second stable window. The threadless

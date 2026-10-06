@@ -20,6 +20,39 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   pass together. Matching guards separate the Properties port, pure Catalog query
   coordination and the local Refill coordinator; composition tests establish one
   stable interface pair and one independently closed Matching connection.
+- **Admission and resource coverage:** immutable `WorkerQuery` capture and strict
+  decoding; complete Catalog admission before resource access, one normalization
+  per input, first-appearance function batching and input-ordered correlation.
+  Tests retain unsupported-input rejection, call-local ID reuse and no replacement
+  take after Pacer address/exclusion filtering. Pool tests cover immutable entry
+  identity (including equal-value reinsertion), partial consumption, concurrent
+  capacity, lazy expiry, Group isolation and local pressure cleanup. Earlier
+  function/Pool effects survive later failure; failed refill qualification changes
+  no stock for that Pool. Assignment-window take has a separate destructive-read
+  boundary. Composition covers no-Pool Identity/Phone, no startup I/O,
+  immutable property configuration, idempotent close and failure cleanup without
+  closing the Server-owned client. Literal Proof values remain distinct from
+  omitted conditions; ALL/PAGED refill, rotation and empty-demand cursor cleanup
+  do not introduce background expiry or identity deduplication.
+- **Pacer coverage:** independent Dispatch, Refill and Serviceability roots and
+  single-flight lifecycles; raw-row charging, deficit bounds, non-divisor round
+  remainders and independent supply/recycling rotation. Execution tests retain
+  strict/current partitioning, no fallback or compensation, and Item claim only
+  after TRANSITIONED using the returned fence. Candidates are generated before
+  qualification, admitted once across Pools and never replaced by discovery.
+- **Observation coverage:** notification follows execution acquisition and Item
+  claim but precedes publication, with sink failure isolated from dispatch.
+  Server tests reject unmatched Group/event notices before queue admission and
+  diagnostic counting; retain bounded saturation, immutable routing and one
+  enqueue with per-handler-instance batching in receipt order. Properties
+  projections preserve first-appearance Worker order, duplicate/unsorted times,
+  local patch visibility, overlapping-field precedence, bounded reads and one
+  patch per Worker per drain. Read/compute/write and handler failures remain
+  isolated without replay. Lifecycle proofs cover duplicate registration, stop
+  checks before subsequent handlers/writes, close timeout and restart only after
+  the old thread exits; pure handlers own no receiver lifecycle. App Checks owns
+  window arithmetic, invalid stored values, older observations and restart
+  continuation. These are lossy observations, not execution counts or quotas.
 - **Deliberate nonclaims:** Redis behavior, process boundaries and system
   convergence.
 - **Contract:** [Selection and commands](../../TESTING.md#lane-index).
@@ -38,13 +71,14 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   future hold survives; RECOVERY mark and cold-registration protection remain.
   Shared Pool and Direct callers have one execution-acquisition winner and stale
   stock cannot release it. Pool tests fix per-entry admission TTL, independent repeated fences,
-  capacity accounting, lazy cleanup and concurrent at-most-once entry consumption. Current/future network
-  evidence preserves time/mark. An accepted past polarity change advances generation
+   capacity accounting, lazy cleanup and concurrent at-most-once entry consumption.
+   Network evidence applied to stored current/future Score coordinates preserves
+   their time/mark. An accepted past polarity change advances generation
   and clears mark, including a one-slot advance for same-slot evidence; ordinary
   same-polarity Polling is unchanged. Below-floor activation additionally requires
   post-floor evidence. Pause writes MAX/0; relative targets
   accept MAX and reject larger slots. Recovery keeps unlimited age/attempts and
-  Redis-relative delay; Pacer owns timing and budget policy. Refill filters corrupt
+   Owner-clock-relative delay; Pacer owns timing and budget policy. Refill filters corrupt
   raw rows, while Serviceability retains strict fractional conversion; neither
   supplements a bounded head. Serviceability merges two mark ranges before final
   raw-budget truncation. Candidateize precedes qualification, with no substitute
@@ -83,7 +117,32 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   Assignment-ceiling composition additionally executes 101/1000 candidate and
   Item batches through qualification, address lookup, lease, claim and mailbox
   publication. It verifies full failed-Result/Score settlement for expired and
-  exhausted batches, without widening independent registration/Properties inputs.
+   exhausted batches, without widening independent registration/Properties inputs.
+- **Descriptor and admission coverage:** create-only descriptors and passive
+  Project attribution/directory writes commit atomically; first-creation times,
+  ordering/truncation, concurrent Project isolation and corruption rejection
+  remain bounded. Facts/HASH preflight covers complete replacement, collisions,
+  conditional deletion and independent Platform patches, including single-property
+  configuration and no-demand restart retention. Direct Phone lookup is
+  non-consuming and bounded; Identity and ordinary Pool take/deficit observation
+  add no Redis access. Qualification separately owns its Facts-read budget,
+  including one atomic assignment-window snapshot for a 1000-candidate batch;
+  read failure does not restore consumed stock. Public Facts observation retains
+  row-local behavior while malformed qualification fails before Pool admission.
+- **Timestamp coverage:** the independent Group timestamp HASH retains ordered,
+  equal and older evidence semantics, Group isolation, chunk-wide corruption
+  preflight, partial success across chunks, concurrent monotonic writes and
+  same-scope restart without Facts or Pool prerequisites. Pacer tests separately
+  own Binding/source validation before filtering, shared evidence-kind history
+  and fail-open without retry. Timestamp and Score commits are not atomic.
+- **Result and fence limits:** state reads retain their independent 100-ID bound;
+  outcome promotion accepts complete caller-bounded input. Result replacement
+  and Score finality remain independent maxima and commits. Exact execution
+  tests reject current/future HOT, RECOVERY, missing and corrupt candidates;
+  network evidence may change a stored current-slot Score's polarity without
+  granting execution.
+  Controlled timing tests may resample a missed window, never a wrong result
+  inside the window. No proof establishes cross-owner rollback or loss repair.
 - **Deliberate nonclaims:** HTTP, Adapter, Worker or process recovery.
 - **Contract:** [Server verification](../../server_jvm/README.md#verification).
 
@@ -101,12 +160,20 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   and subsequent Item execution witness the continuous observation boundary.
   Group refill witnesses use actual Workers across two Groups and four Tasks,
   including shared and different Rules within one Group, to prove supplied-batch
-  acquisition-before-qualification and successful finite execution. They do not measure throughput.
+   candidateization-before-qualification and successful finite execution. They do not measure throughput.
   An isolated DEFAULT-preset witness loses the first disconnect evidence, then
   requires actual Adapter TASK expiry, correlated rejection and consumed network
   evidence to drive RECOVERY; reconnect completes the same Item within the existing
-  15-second wait, without a shortened recycle threshold. No Probe or
-  synthetic expiry Report substitutes for that path. Safe bounded traces accompany failures.
+   15-second wait, without a shortened recycle threshold. No Probe or
+   synthetic expiry Report substitutes for that path. Safe bounded traces accompany failures.
+- **Additional boundary witnesses:** explicit Any execution without Facts,
+  no-Pool identity queries and ordinary empty-supply Tasks retain real Worker
+  traversal. Timestamp filtering rejects still-fresh older network observations,
+  persists through Server restart and fails open on corruption without joining
+  Score commits. Finite HTTP execution fixtures cover default, prestarted and
+  virtual pools: success, occupied-slot rejection, timeout, late-report rejection
+  and Owner shutdown each produce one servlet completion. These do not widen the
+  named process-world claims below.
 - **Deliberate nonclaims:** fleet scale, Host restart, workload health and
   capacity, guaranteed activation after evidence loss, atomic registration,
   atomic Score/Result commits or observation replay.
@@ -248,6 +315,17 @@ World, workload, mutation order and oracles belong to the linked scenario Owner.
   Boot also witnesses actual throwing Handler calls, late success, bounded Result
   preview and Server restart reads. Source and fresh ZIP use the same public API oracle.
   This makes no exact-distribution, fixed-executor or single-execution claim.
+- **Projection and window witnesses:** Boot gates success, failure and late
+  Reports behind a Handler barrier, comparing actual allocation identities/times
+  with Platform Properties before Results arrive and retaining properties after
+  restart. A real assignment-window scenario requires nonempty qualification
+  rejection followed by execution after a window transition and candidate
+  recycling; empty stock or a busy Worker alone is not rejection evidence.
+  Deterministic function tests own exact boundaries and delayed/missing projection
+  cases; Redis Owner owns snapshot budgets and read-failure consumption. The
+  [App Checks Owner](../../scenarios/app-checks-jvm/README.md#装配与证明) retains
+  workload, thresholds and deadlines. Neither witness proves reliable counting
+  or a strict admission quota.
 - **Claim:** SMS and Messages share actual Workers, one Server/Adapter/resource
   set and neutral Group declarations; finite message execution and later recipient
   observations remain correlated after Task completion or explicit closure.

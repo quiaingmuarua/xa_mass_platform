@@ -73,8 +73,13 @@ final post-work value as `postWorkActiveNotHotStates`, and a convergence timeout
 message includes it. These counts are diagnostic only; they do not change any
 threshold. Earlier nightlies show a small post-work set of connected but non-HOT
 Workers after graceful restart (15 to 60 of 10,000), and the 2026-09-23 run
-failed with 592. Without NORMAL Tasks after the drain, Main no longer supplies
-this Group to Serviceability, so such Workers have no further recovery path.
+failed with 592. That baseline attributed the remaining states to the absence of
+NORMAL Task roots after the drain. Current Main supplies Serviceability from a
+separate bounded RUNNING page, including INITIAL and idle-parked Tasks; the
+[Pacer assembly](../../kernel_pacer_jvm/doc/application-assembly.md) owns this
+root contract. The historical measurements remain unchanged, and this source
+comparison does not establish that the recorded failure passes on the current
+implementation. The diagnostic counts do not become new acceptance gates.
 
 Each loaded workload creates ten Tasks and appends 5,000 valid Items to each
 in 50 requests. A complete active-network scan establishes the required

@@ -149,9 +149,9 @@ Server creation
   -> complete Kernel Task descriptor; Item selector validated by Matching
 
 Kernel Main Scheduler
-  -> bounded due RUNNING observation -> INITIAL initialization
-  -> complete NORMAL descriptors shared with Producers
-  -> refill, Task dispatch and optional Serviceability
+  -> due RUNNING observation -> INITIAL initialization / NORMAL Task dispatch
+  -> due-independent NORMAL RUNNING observation below idle park -> refill
+  -> due-independent RUNNING observation through idle park -> Serviceability
 
 Task dispatch
   -> due Items; TTL/exhaustion settlement
@@ -166,6 +166,11 @@ The Main Scheduler supplies every Producer's root Task/Group identities.
 Dispatch roots are due NORMAL Tasks. Refill roots are NORMAL RUNNING Tasks below
 idle park regardless of due time, so a Task hidden in its current dispatch slot
 keeps its supply declarations and its Workers are never offered without them.
+Serviceability derives Groups from a separate ascending RUNNING observation,
+including INITIAL and idle-parked Tasks regardless of due time. Each observation
+is bounded; Refill and Serviceability reuse due NORMAL descriptors and load
+their missing roots. The [Task Score Owner](../../kernel_jvm/doc/score/task-score-band-scheduling.md#normal-coordinate)
+defines all three ranges.
 Finite Tasks require explicit approval before INITIAL processing; managed Calls
 use their Group's registered reusable Task. Task lifecycle and descriptor storage
 belong to the [Task Owner](../../kernel_jvm/doc/resource-model/task-resource-model.md).
@@ -227,8 +232,9 @@ owns the projection format and interruption windows. The
 [HOT Lease Protocol](../../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
 owns the opaque fence across candidate generation, assignment and release.
 
-Optional [Serviceability](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
-combines bounded demanded-Group probes and Adapter evidence. Dispatch advances
+[Serviceability](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
+combines bounded root-Group probes and Adapter evidence. Every preset rechecks
+due RECOVERY; the preset controls additional HOT probing. Dispatch advances
 its exact observation before offering a probe; Result interpretation invokes
 the dedicated time-fenced Score operation. Server and Transport route this
 evidence rather than implement Score transitions, and Task result evidence

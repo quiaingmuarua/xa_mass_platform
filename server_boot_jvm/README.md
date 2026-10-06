@@ -173,9 +173,10 @@ configuration in nested platform/Scenario libraries and reject test configuratio
 
 Matching resources are explicit per Group. The scenario-workers profile enables
 any/worker.any for both Lab Groups and preserves their 1000 managed watermarks.
-Preview enables country/messaging and both Phone query functions; SMS managed supply is
-country/{} /100. Groups without a task-rpc refill override save empty managed
-supply and may use Identity without a Pool.
+Preview's `demo-sim` enables country/messaging and both Phone query functions;
+its Project managed Tasks retain country/{} /100 supply. The two App Groups enable
+any/worker.any and worker.assignment.available. Groups without a task-rpc refill
+override save empty managed supply and may use Identity without a Pool.
 
 ## Project topology
 

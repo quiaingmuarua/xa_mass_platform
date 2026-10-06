@@ -89,9 +89,10 @@ The API 33 proof also builds three fixed Debug-derived Lab variants:
 | `lab3` | `com.xa.mass.integration.androidworker.lab3` | 18186 |
 
 They keep the same WorkerGroup and Runtime endpoints. Separate application
-sandboxes provide separate persistent client keys; the existing `packageName`
-Worker Property is their scheduling discriminator. This is a fixed proof
-topology, not a general replica facility.
+sandboxes provide separate persistent client keys. The proof targets each
+observed Worker ID directly and independently checks its `packageName` Property
+against the application ID. This is a fixed proof topology, not a general
+replica facility.
 
 ## Device-local capability and Host API
 
@@ -140,7 +141,8 @@ adb forward --remove tcp:18084
 
 Redis must be available at `redis://localhost:6379/15`. Start the shared Lab
 profile; Java Server selects the checked `SCENARIO_LAB` preset and starts the
-four Java Kernel Pacer applications:
+sole public `KernelPacerRuntime`. Its fixed Result and Dispatch applications
+are described by the [Pacer assembly Owner](../../kernel_pacer_jvm/doc/application-assembly.md):
 
 ```powershell
 .\gradlew.bat :server_boot_jvm:bootRun `
@@ -209,8 +211,8 @@ The fixed Triad supplement proves:
 
 1. three application IDs establish three distinct Worker identities in one
    WorkerGroup;
-2. identity-bounded Allocation Rules require each App's
-   `worker.packageName` before directing one DELAY Item to it;
+2. a `workerId` query directs one DELAY Item to each observed identity, with
+   `packageName` checked independently as App-to-Worker evidence;
 3. force-stopping `lab2` does not remove service from `lab1` or `lab3`;
 4. restarting `lab2` restores its original worker ID and scheduling service.
 

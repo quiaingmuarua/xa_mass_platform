@@ -97,7 +97,8 @@ TaskItem Score has one schedulable ACTIVE tag (1) and generic TERMINAL tags
 (2..9). Existing scores only increase; terminal states can continue advancing
 without rescheduling the Item or reopening its Task. The Server supplies the
 execution failure/success tags to the fixed Pacer assembly. Terminal updates
-use one bounded Lua and state reads one `ZMSCORE`, each for at most 100 IDs.
+use one Lua for the complete caller-bounded input; state reads use one
+`ZMSCORE` for at most 100 IDs.
 Result content remains a separate projection, conditionally replaced by higher
 tag and then later reported milliseconds within one bounded same-key Lua.
 Observations promote Score before optional content and never release Worker

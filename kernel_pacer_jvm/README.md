@@ -26,8 +26,8 @@ production entry. Its `assemble(...)` method accepts the bounded mechanical
 owners needed by the two production applications plus one of its four checked
 `PolicyPreset` values: `DEFAULT`, `SERVICEABILITY_DEFAULT`, `SCENARIO_LAB`, or
 `RUNTIME_BOUNDARY_PROOF`. The Runtime
-owns fixed policy selection, one immutable HOT eligibility floor when
-periodic Serviceability is enabled, thread startup/rollback, reverse bounded shutdown
+owns fixed policy selection, one immutable activation floor used by network
+events in every preset and by HOT-probing scans, thread startup/rollback, reverse bounded shutdown
 and aggregate failure state. It never closes the supplied owners.
 
 Implementation is grouped by mechanism instead of flattened into one package:
@@ -63,10 +63,12 @@ producer scheduling and startup/rollback; keep those values there.
 | Application | Responsibility | Detailed Owner |
 | --- | --- | --- |
 | Result Convergence | Parse and group four fixed evidence classes, then publish TaskItem/Worker semantic events | [Result routing](doc/result/result-routing-scheduling.md) |
-| Dispatch Convergence | Share Main's bounded root input with initialization, refill, Task dispatch and optional Serviceability | [Assignment and Dispatch](doc/dispatch/assignment-dispatch-scheduling.md) |
+| Dispatch Convergence | Supply bounded roots for initialization, refill, Task dispatch and Serviceability | [Assignment and Dispatch](doc/dispatch/assignment-dispatch-scheduling.md) |
 
-Main reads Task state and descriptors once for its bounded round. Producers do
-not accumulate pending snapshots or discover outside those roots. Refill obtains
+Main uses separate bounded Task observations for due Initialization/Dispatch,
+due-independent Refill and due-independent Serviceability. The latter two reuse
+due NORMAL descriptors and load their missing roots. Producers do not accumulate
+pending snapshots or discover outside those roots. Refill obtains
 candidate generations before Matching qualification and independently recycles
 old candidates; Item dispatch independently
 uses fixed Matching functions and verifies candidates before exact claim and

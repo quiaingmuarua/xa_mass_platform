@@ -111,6 +111,7 @@ count_running_tasks()
 acquire_scheduling_tasks(limit)
 filter_initial_task_scores(observed_task_scores)
 observe_running_tasks_ascending(limit)
+observe_normal_running_tasks_ascending(limit)
 ```
 
 Lifecycle operations:
@@ -262,6 +263,8 @@ as a timestamp. NORMAL RUNNING keeps the existing `running_visible` view.
 - Do not restore an ADMISSION band or generic cross-band rewrite.
 - Do not interpret the fixed INITIAL slot as wall-clock evidence or its suffix
   as a general RUNNING lane.
-- Do not admit INITIAL Tasks into allocation, dispatch, or serviceability.
+- Do not admit INITIAL Tasks into Refill or Task Dispatch. Serviceability may
+  derive Groups from INITIAL through idle-parked RUNNING roots without claiming
+  or dispatching those Tasks.
 - Do not treat the RUNNING soft-limit read as a reservation or hard invariant.
 - Do not move TaskItem retry or Worker lease truth into Task score.

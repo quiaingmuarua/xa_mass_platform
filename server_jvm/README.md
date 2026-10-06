@@ -38,34 +38,8 @@ retry, recovery, Task finality, query/eligibility interpretation, Adapter
 connection routing or Worker event execution. See the root
 [architecture entrypoint](../README.md).
 
-Every configured transport type requires one explicit default, while multiple
-WebSocket or Socket Endpoints of that type may remain addressable:
-
-```yaml
-xa.mass.worker-endpoints:
-  defaults:
-    POLLING: system-polling
-    WEBSOCKET: adapter-a
-  endpoints:
-    system-polling:
-      transport-type: POLLING
-      public-uri: http://127.0.0.1:18082
-    adapter-a:
-      transport-type: WEBSOCKET
-      public-uri: ws://127.0.0.1:18083/api/v1/worker-delivery/websocket
-```
-
-No Worker-ID hashing chooses the default. A changed default does not migrate
-existing bindings. Unknown or wrong-type defaults fail startup. The old config
-prefix has no alias. Prepare HTTP requests and responses remain unchanged.
-
-Each valid point poll verifies Catalog Binding, then best-effort appends
-`platform.server.worker-poll.observed` from SERVER/system-polling to KERNEL
-before Command consumption. Server creates the timestamp. Empty polls count;
-queue capacity or append failure drops observation without changing the poll
-result. Public Adapter ingress rejects forged SERVER observations. All presets
-consume the shared evidence lane; DEFAULT adds RECOVERY-only rechecks. No Server
-dedup cache, activation ACK or replay is installed.
+Server owns explicit Endpoint defaults and the bounded Polling evidence handoff;
+see [Endpoint Defaults and Polling Evidence](#endpoint-defaults-and-polling-evidence).
 
 ## Runtime Shape
 
@@ -127,12 +101,12 @@ Provider ownership is deliberately mixed but explicit:
 | Assignment Dispatch | `kernel_pacer_jvm` resolves bounded Task queries and acquires eligible identities, then owns exact confirmation, uniqueness, lease and claim |
 | Operations outside current production callers | Explicit JVM gaps |
 
-WorkerGroup registration creates no Server mapping or second Task catalog. In
-addition to the create-only Group declaration, it derives one internal Task
-coordinate, creates the fixed `PARK_WHEN_IDLE` descriptor
-through Kernel owners, and approves it. Calls submit one Item through the
-Kernel Task Call command and observe its Result projection through one shared
-probe; both `succeeded` and `failed` complete the bounded wait, while only an
+WorkerGroup registration creates only the Group declaration, without a Task or
+second Server catalog. Startup provisions and approves `PARK_WHEN_IDLE` Tasks
+for configured [Project/Group pairs](#profile-projects-and-managed-tasks).
+Calls submit Items through the Kernel Task Call command and observe their
+Result projections through one shared probe; both `succeeded` and `failed`
+complete the bounded wait, while only an
 absent Result remains `not_observed`. This projection does not establish the
 TaskItem Score finality observed by Kernel lifecycle paths.
 Finite Task input remains caller-owned and is appended through the ordinary
@@ -471,17 +445,18 @@ assuming every non-2xx response means no execution occurred.
 ## WorkerGroup And Worker Preparation
 
 WorkerGroup is a predeclared control-plane resource. The public registration
-route is create-only and also provisions its Task Call:
+route is create-only and creates no Task:
 
 ```text
 POST /api/v1/worker-groups/{workerGroupId}:register
 ```
 
-An equivalent `attributes + eventCodes` declaration with an exact approved
-Task Call returns `already_registered`; a different Group declaration returns
+An equivalent `attributes + eventCodes` declaration returns
+`already_registered`; a different Group declaration returns
 `400/15006` and never updates the stored Group. Attributes and Event Names are
 directory metadata, not Worker Matching facts, Dispatch evidence, or
-per-Worker capability truth.
+per-Worker capability truth. Managed Task provisioning belongs to configured
+[Project/Group pairs](#profile-projects-and-managed-tasks).
 
 Runtime View offers bounded explicit-coordinate and preview reads:
 
@@ -538,7 +513,9 @@ every registration coordinate before side effects, then reads Group once and res
 identity write. One Identity Lua resolves the entire batch, one Catalog Binding
 Lua creates or reads actual Group/Endpoint pairs, and one Score Owner Lua
 initializes absent cold members. There is no per-Worker synchronous round trip
-or identity confirmation reread.
+or identity confirmation reread. A normal Prepare uses four client commands
+including the Group read; Kernel Catalog registration uses two. This is a command
+budget, not a throughput or latency claim.
 The response is an ordered list of the ordinary Prepare response DTO. Only a
 complete response returns `200`; completed side effects are not rolled back,
 so callers may retry through the same derived coordinates. Failure does not
@@ -607,11 +584,9 @@ PATCH /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/platform-properti
 Pause, resume and Properties patch return `{"status":"applied"}` when the
 requested mutation changes owner state and `{"status":"unchanged"}` when the
 resource is already at the requested value. A Properties patch still accepts
-the direct JSON Properties object; it mutates Matching facts and never writes
-Worker Score.
-Platform Properties patch requires an existing Matching Worker facts row.
-Before the first observation it returns the existing `400/15008` outcome;
-it must not be used as a read-only probe for successful Prepare.
+the direct JSON Properties object. Its Facts prerequisite, nullable-field
+semantics and separate best-effort candidate invalidation are defined in
+[Runtime Worker Properties Admission](#runtime-worker-properties-admission).
 Missing resources, invalid changes and state conflicts use the public
 `15008..15010` business codes and never expose the Kernel Owner reason.
 Properties Owner failure uses `503/15011`; scheduling Owner failure keeps
@@ -626,11 +601,12 @@ or state classification. This projection is independent of Adapter connection,
 Binding and Task execution evidence.
 
 Pause and resume call the Kernel pauseScheduling/resumeScheduling operations.
-Kernel owns the maximum-time PAUSED projection, atomic MAX,1 pause, exact resume
-fence and time sampling. Server maps
+Kernel owns the
+[pause/resume transitions and time sampling](../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md#pause-and-recovery).
+Server maps
 APPLIED/UNCHANGED to ActionOutcome and MISSING/CONFLICT to the existing errors;
-provider failures retain the scheduling-unavailable response. Properties mutation
-still owns APPLIED-only best-effort invalidation, independently of these controls.
+provider failures retain the scheduling-unavailable response. These controls are
+independent of [Properties admission](#runtime-worker-properties-admission).
 
 ```text
 POST /api/v1/runtime-view/worker-groups/{workerGroupId}/
@@ -682,7 +658,9 @@ Adapter and Kernel Command keys are response-local and opaque.
 
 Adapter `results:append` accepts `1..100` strict `DeliveryReport` JSON objects
 for every destination; an oversize batch fails before any Owner call. TASK
-evidence enters Kernel with one list write.
+Reports are classified as execution success, execution failure or outcome
+observation. Each nonempty evidence-type subset enters its Kernel lane with one
+list write, in that order; a later append failure does not roll back earlier writes.
 The complete batch must have one supported `dst`; Server rejects a mixed or
 unsupported batch before calling any semantic Owner, then routes the whole
 batch to TASK Result, SERVER Direct Call, or KERNEL Serviceability handling.
@@ -693,9 +671,9 @@ use case; unknown events are individually rejected. Even a matching Direct Call
 Direct Call Commands use `src=SERVER`; their Worker/Adapter replies target SERVER.
 The single HTTP endpoint and homogeneous-batch validation remain unchanged.
 Owner-local source, correlation, outcome and forward failures remain per-item
-rejections. Queue capacity remains an Adapter-local memory bound and is not an
-HTTP batch-size declaration. If Kernel Serviceability cannot admit the complete
-valid evidence subset, Server returns `503`.
+rejections. Adapter queue capacity is independent of the HTTP batch-size bound.
+A failed or incomplete TASK evidence append, or failure to admit the complete
+valid KERNEL evidence subset, returns `503` for the existing upstream retry path.
 `commands:consume` accepts the JSON integer limit `1..1000` and returns the entry-keyed
 Command Map directly. `results:append` accepts the Report object array directly;
 only its accepted/rejected count response remains a named structure. All Report
@@ -784,10 +762,11 @@ Delivery rejection still uses the same
 `404`, `409` or `422` response.
 
 The [SMS business module](../scenarios/sms-reception-jvm/README.md) depends on the
-the configured Project directory, Task submission and Task data services here.
-Server Boot composition imports its configuration beside Server configuration in the same
-context. Only `sms-reception` enables its API, jobs and Group registration.
-The unified console shares the Server origin; distribution owns its SMS page
+configured Project directory, Task submission and Task data services here.
+[Server Boot composition](../server_boot_jvm/README.md#platform-and-preview) imports
+SMS, Messages and App Checks beside Server configuration under `preview`.
+Scenarios consume the prepared Project directory without registering Groups.
+The unified console shares the Server origin; Boot owns its finite page
 forwards while `/` keeps the Runtime entry. Frontend availability does not enable
 product resources. The product creates no Redis clients or platform loops.
 Product callers stop before platform resources. Failed initialization fails
@@ -832,25 +811,16 @@ owner-local provider packages.
 stable `WorkerMatchingCatalog` and `WorkerProperties` interface Beans with independent
 destruction disabled. Task admission uses Catalog; Properties reception, Platform
 mutation and Runtime Facts display use only `WorkerProperties`. Pacer still sees
-only `WorkerMatching`. Properties APPLIED results continue to trigger separate
-best-effort Score invalidation in the Server use case.
-Composition creates enabled Pool and property lookup resources with one lazy Matching
-Redis connection. Startup does not read or rebuild indexes. Failed assembly and
-Composition destruction close that connection idempotently without shutting down
-the Server-owned RedisClient. Server does not assemble separate index lifecycles.
-Resource dependencies and atomic Facts/index writes belong to the
+only `WorkerMatching`. Public Properties behavior is defined in
+[Runtime Worker Properties Admission](#runtime-worker-properties-admission).
+Composition owns one lazy Matching Redis connection. Failed assembly and
+Composition destruction close it idempotently without shutting down the
+Server-owned RedisClient. Server does not assemble separate index lifecycles.
+Resource dependencies, startup retention and Facts/index writes belong to the
 [Matching Owner](../worker_matching_jvm/README.md#fixed-resource-composition).
 
-Worker Prepare composes Server identity resolution and Kernel
-`WorkerResourceCatalog.registerWorkers`. Catalog owns the unique persistent
-Binding and initializes missing members through Score Owner. A normal 1..100
-Worker Prepare uses four client commands: Group HMGET, Identity Lua, Binding
-Lua and Score Lua; Catalog alone uses two. This is a command budget, not a
-throughput/latency claim. `WorkerEndpointDirectory` binds the Endpoint configuration
-directly and retains its single immutable address model; it has no Redis connection.
-First and later Adapter observations create or replace Matching Properties
-without re-Prepare or Kernel Worker registration. Transparent Client reconnect
-performs no Prepare operation.
+The [Prepare use case](#workergroup-and-worker-preparation) composes Server Identity
+and Kernel Binding/Score operations independently of Properties admission.
 
 ### Worker Delivery
 
@@ -938,7 +908,9 @@ two projections. After verified connection/reconnection, Adapter requests one
 full Worker snapshot. Cache installation offers a distinct SYSTEM observation,
 never a KERNEL Properties Report.
 
-#Every configured transport type requires one explicit default, while multiple
+#### Endpoint Defaults and Polling Evidence
+
+Every configured transport type requires one explicit default, while multiple
 WebSocket or Socket Endpoints of that type may remain addressable:
 
 ```yaml
@@ -958,6 +930,8 @@ xa.mass.worker-endpoints:
 No Worker-ID hashing chooses the default. A changed default does not migrate
 existing bindings. Unknown or wrong-type defaults fail startup. The old config
 prefix has no alias. Prepare HTTP requests and responses remain unchanged.
+`WorkerEndpointDirectory` binds this configuration directly as one immutable
+address model and owns no Redis connection.
 
 Each valid point poll verifies Catalog Binding, then best-effort appends
 `platform.server.worker-poll.observed` from SERVER/system-polling to KERNEL
@@ -1062,7 +1036,7 @@ The same `WorkerDeliveryService` reception use case collapses valid snapshots
 by Worker to the last valid input in that HTTP batch, retaining input counts.
 It reads Group and Endpoint in one bounded `WorkerResourceCatalog` Binding
 read, rejects unknown/unbound/wrong-Adapter Workers, groups by Group, and calls
-`WorkerMatchingCatalog.upsertWorkerFactsBatch` directly. No intermediate
+`WorkerProperties.upsertWorkerFactsBatch` directly. No intermediate
 resource mutation service or separate Properties Report API participates.
 Prepare and registration do not participate. After each Group facts write,
 APPLIED members alone request one bounded Score invalidation through the
@@ -1074,22 +1048,23 @@ rolling back earlier Group writes; the operation is
 unavailable error code. SYSTEM then drops the batch, not retries it.
 
 `WorkerResourceCommandService.patchPlatformProperties` remains the independent
-management use case for `platform.*`. Its HTTP PATCH and nullable JSON values
-never modify the Worker-owned `worker.*` Map. Adapter observations always
+management use case for `platform.*`. Its HTTP PATCH accepts a direct JSON object;
+null removes a supplied field. It requires an existing Matching Worker facts row:
+before the first observation it returns `400/15008`, so it is not a read-only
+probe for successful Prepare. Platform patches never modify the Worker-owned
+`worker.*` Map. Adapter observations always
 replace the complete Worker Map and leave Platform Properties unchanged.
 An APPLIED Platform patch requests the same Score invalidation with one Worker.
 
 Matching owns the persistent facts, not Server. Replacement removes omitted
 keys without retaining registration fields inside Properties; independent
-identity, Binding and Worker records remain intact. Subsequent refill rounds read
-the new facts. Invalidation calls advancePastScoreTimesToNow. Past HOT atomically
-advances to the Owner clock's current slot with mark=0; past non-cold RECOVERY advances while
-retaining mark. Both preserve polarity.
-Cold RECOVERY, current/future holds and missing members are not changed. The cold
-exception preserves pending initial network activation. Cached old fences fail
-strict execution acquisition after a successful generation change. Scheduling is
-not explicitly awakened; normal Refill can observe invalidated HOT after the
-current slot passes, without waiting for candidate recycling.
+identity, Binding and Worker records remain intact. Facts validation, index
+maintenance and storage atomicity belong to
+[Matching](../worker_matching_jvm/README.md#facts-writes-and-index-maintenance).
+Server requests invalidation through `WorkerSchedulingService` without waking
+scheduling. Exact Score changes, cold/current/future protections and subsequent
+candidate requalification belong to the
+[HOT lease protocol](../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md#properties-and-network-evidence).
 
 Facts commit before Score invalidation. Execution acquisition can win in between;
 its future hold then survives invalidation and keeps its result-release fence.
@@ -1097,8 +1072,6 @@ Invalidation failure preserves the successful facts response and emits an aggreg
 diagnostic. An UNCHANGED retry does not replay invalidation. There is no ACK,
 outbox, property-version transaction or background repair. Dispatch requires its
 own TRANSITIONED execution acquisition, never an inferred state observation.
-See the [HOT lease protocol](../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
-for exact transitions and coordinated upgrade behavior.
 
 Concurrent observation batches have no timestamp/version
 fence; effective storage writes determine facts. A failed first publication can
@@ -1106,10 +1079,12 @@ leave no facts, and a failed later publication can leave old facts. A later
 explicit complete report or connection baseline can supply new input. No
 quiet-network eventual repair, ACK, throttling or publication history is provided.
 If a full observation was installed in Adapter but lost upstream, a later
-Worker update publishes the Adapter's complete merged Map, including changes
-and deletions from that lost publication. Server never merges that update with
-its older facts. This does not repair Worker-to-Adapter input loss or guarantee
-that the Adapter cache always equals the latest Host state.
+complete publication may include the lost changes. Adapter cache, connection
+baseline and publication rules belong to its
+[Worker Properties Projection](../transport/netty-adapter/README.md#worker-properties-projection).
+Server never merges an incoming snapshot with its older facts. This path does
+not repair Worker-to-Adapter input loss or guarantee that the Adapter cache
+always equals the latest Host state.
 
 Server-level route verification defaults to a `100000` request queue and a
 `5s` Binding-read timeout. Queue rejection, timeout, shutdown, or Binding-owner
@@ -1121,9 +1096,9 @@ not retry them. Worker connection retry remains the recovery owner.
 The default profile starts no Adapter and declares no Scenario WorkerGroup. An
 explicit profile or external configuration may:
 
-1. register create-only advisory WorkerGroup declarations and their
-   deterministic Task Calls;
-2. construct and start configured Adapters.
+1. register create-only advisory WorkerGroup declarations;
+2. prepare and approve managed Tasks for configured Project/Group pairs;
+3. construct and start configured Adapters.
 
 Server does not parse Worker files, construct business Definitions or own
 individual Worker lifecycle, and it never starts a Scenario Worker process.
@@ -1167,34 +1142,8 @@ The default Adapter section defines only remote API connection defaults. An
 Adapter instance is an explicit deployment declaration and must also have a
 matching Endpoint directory entry.
 
-Every configured transport type requires one explicit default, while multiple
-WebSocket or Socket Endpoints of that type may remain addressable:
-
-```yaml
-xa.mass.worker-endpoints:
-  defaults:
-    POLLING: system-polling
-    WEBSOCKET: adapter-a
-  endpoints:
-    system-polling:
-      transport-type: POLLING
-      public-uri: http://127.0.0.1:18082
-    adapter-a:
-      transport-type: WEBSOCKET
-      public-uri: ws://127.0.0.1:18083/api/v1/worker-delivery/websocket
-```
-
-No Worker-ID hashing chooses the default. A changed default does not migrate
-existing bindings. Unknown or wrong-type defaults fail startup. The old config
-prefix has no alias. Prepare HTTP requests and responses remain unchanged.
-
-Each valid point poll verifies Catalog Binding, then best-effort appends
-`platform.server.worker-poll.observed` from SERVER/system-polling to KERNEL
-before Command consumption. Server creates the timestamp. Empty polls count;
-queue capacity or append failure drops observation without changing the poll
-result. Public Adapter ingress rejects forged SERVER observations. All presets
-consume the shared evidence lane; DEFAULT adds RECOVERY-only rechecks. No Server
-dedup cache, activation ACK or replay is installed.
+The canonical `xa.mass.worker-endpoints` example and its Binding and Polling
+rules are in [Endpoint Defaults and Polling Evidence](#endpoint-defaults-and-polling-evidence).
 
 ## Run
 

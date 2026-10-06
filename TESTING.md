@@ -31,23 +31,13 @@ checks the four host configurations, absence of application configuration in
 nested platform/Scenario libraries, and absence of test configuration. Moving
 configuration ownership retains the original proof-path selections.
 
-The [SMS Reception business workload](scenarios/sms-reception-jvm/README.md#检查与验收)
-owns its listening-order invariants and finite scenario acceptance. Business
-workloads expose interactions and failure patterns beyond the focused fixtures;
-discovered platform defects should gain regressions in the owning proof, while
-the workload retains the business-level witness. Its dedicated
-workflow runs product JVM and unified frontend checks, executable-owned
-`smsCompositionIntegrationTest` with platform Task/Result HTTP routes blocked,
-and the three-Worker real path through the composed Server and separate Host.
-The fixed 1,000-Worker product workload is an explicit local acceptance command;
-it does not replace or expand the platform proof lanes below.
-
-The SMS Preview workflow uses the shared Distribution launcher with the preview
-scenarios enabled, app_count=0 and only SMS workload submitted.
-It compares the unified Scenario Preview archive against the current frontend build,
-then runs the source SMS acceptance oracle against a fresh extraction's launcher
-and artifacts without a Node or Gradle build step. Launcher lifecycle and archive
-tests live in `distribution/server/src/test/python`; SMS assertions remain in the scenario.
+Business workloads retain their scenario assertions while platform regressions
+belong to the owning proof. Select the dedicated SMS Preview workflow for SMS
+composition, console and source/fresh-ZIP delivery changes; its claims and limits
+are registered under [SMS Preview](doc/testing/proof-registry.md#sms_reception_preview).
+The [SMS Owner](scenarios/sms-reception-jvm/README.md#检查与验收) owns the complete
+workload and observation bounds. Launcher and archive tests belong to Distribution.
+The larger product workload remains explicit/manual, outside ordinary Proof Gate.
 
 ```powershell
 python -m pip install -r distribution/server/requirements-preview.txt
@@ -56,35 +46,17 @@ python scenarios/sms-reception-jvm/run_acceptance.py --scenario lifecycle
 python scenarios/sms-reception-jvm/run_acceptance.py --scenario concurrency
 ```
 
-[App Checks](scenarios/app-checks-jvm/README.md#装配与证明) extends the same finite
-scenario lane with four App Workers, hash-based one-shot outcomes, actual Handler
-exceptions and independent result recomputation. Boot proves bounded preview and
-Server restart reads. Its runner runs source and fresh Preview ZIP without frontend
-changes or a new performance workload; SMS/Messages retain app_count=0 fixtures.
+[App Checks](scenarios/app-checks-jvm/README.md#装配与证明) uses the existing finite
+scenario lane for composition, allocation projection, assignment-window and
+source/fresh-ZIP execution changes. Its Owner defines fixtures and observation
+bounds; [Product Coexistence](doc/testing/proof-registry.md#product_coexistence)
+registers the claims without promoting projections to reliable counters or quotas.
 
-The App Checks assignment-window witness uses one real Worker and a threshold of
-one: it observes the actual allocation projection, a nonempty qualification read
-with rejected take, and execution after a real window transition plus normal
-candidate recycling. Empty stock or a busy Worker alone cannot prove rejection.
-Recovery observation is bounded at 180 seconds; deterministic function tests own
-exact time boundaries and delayed/missing projection semantics. Redis Owner covers
-snapshot command budgets, retained strict fences and read-failure consumption.
-Non-window Boot regressions and the process runner explicitly use threshold 1000,
-retain all original workloads/oracles and still execute the window function.
-Preview defaults remain 60 seconds / 10 observations, without a strict quota claim.
-
-[Scenario Coexistence](integrations/scenario-coexistence/README.md) adds a selected
-Proof Gate lane for 12 shared Workers: real finite sends, SMS listening on the
-same Worker, receipts after Task completion/closure, duplicates, ordering and
-Worker run isolation. Ordinary Messages US/ANY Pool queries run in a separate
-12-Worker scope with only Messaging demand; its managed Tasks remain INITIAL.
-Functional and Pool selection run against both source artifacts and a fresh ZIP;
-lifecycle runs against source artifacts. Independent CI steps retain later proof
-results after an earlier failure, while every required failure still fails the job.
-This lane makes no cross-Pool fairness or starvation-freedom claim.
-The executable's `scenarioCompositionIntegrationTest` owns
-platform/preview assembly plus real partial submission and delayed execution
-evidence. The fixed 1k dual workload is explicit/manual, never part of ordinary CI:
+[Scenario Coexistence](integrations/scenario-coexistence/README.md) runs functional,
+Pool-selection and lifecycle scenarios against source artifacts; fresh ZIP repeats
+functional and Pool selection. Its independent CI steps retain later outcomes
+after a failure while every required failure still fails the job. The larger dual
+workload is explicit/manual:
 
 ```powershell
 python integrations/scenario-coexistence/run_proof.py --build --scenario functional
@@ -120,113 +92,27 @@ imply all-offered success. A larger world does not replace correctness or create
 a throughput, latency or resource claim. Shared Inventory materialization does
 not transfer scenario or oracle ownership.
 
-Worker registration proofs distinguish persistent Binding, Score membership and
-network availability. Redis Owner proves cold NX initialization, concurrent
-Binding selection, partial-stage retries and the 4/2/1 client-command budgets
-for Prepare, Catalog registration and Binding reads. Runtime Boundary observes
-cold Prepare followed by verified connection or Polling activation. These proofs
-do not promise activation after lost evidence or atomic Binding/Score commits.
+For the affected mechanism, follow its Owner and the registered proof boundary:
 
-Network timestamp filtering has separate proof boundaries. Matching Redis Owner
-tests cover ordered/equal/older times, Group isolation, 100-identity storage chunks,
-concurrent monotonic updates, corruption preflight, partial chunk success and
-same-scope restart without Facts, Pool or Score effects. Pacer tests own validation
-before filtering, source/Binding checks, shared evidence-kind history and fail-open
-without retry. Runtime Boundary sends still-fresh older disconnected/Probe evidence
-after connected evidence through real HTTP/network consumption, then restarts Server
-on the same scope and checks retained filtering. Newer unavailability and corrupt
-filter fail-open still exercise the original Score path. These claims do not imply
-strict cross-queue ordering or atomic timestamp/Score commits.
+| Affected mechanism | Contract and proof entry |
+| --- | --- |
+| Prepare, Binding and Project descriptors | [Server](server_jvm/README.md#workergroup-and-worker-preparation), [Redis Owner](doc/testing/proof-registry.md#redis_owner), [Runtime Boundary](doc/testing/proof-registry.md#runtime_boundary) |
+| Worker network evidence, candidate generations and execution fences | [Worker Score Owner](kernel_jvm/doc/score/worker-score-band-scheduling.md), [Redis Owner](doc/testing/proof-registry.md#redis_owner) |
+| Matching admission, Properties, indexes and Pool resources | [Matching Owner](worker_matching_jvm/README.md#cost-failure-and-proof), [JVM Contracts](doc/testing/proof-registry.md#jvm_contracts), [Redis Owner](doc/testing/proof-registry.md#redis_owner) |
+| Item outcomes and independent Result content | [Item Score](kernel_jvm/doc/score/task-item-score-band-scheduling.md), [Result Owner](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md), [Runtime Boundary](doc/testing/proof-registry.md#runtime_boundary) |
+| Allocation observations and assignment windows | [Observation selection](#allocation-observations-and-app-checks-projection) |
 
-Properties/Candidate invalidation is a Redis Owner claim: one Owner-clock batch
-advances past HOT generation and clears candidate mark; past non-cold RECOVERY
-retains mark. Exact execution acquisition rejects old fences, and execution-first
-ordering preserves future result fences.
-Server tests own APPLIED-only best-effort invalidation. Facts and Score remain
-separate commits without guaranteed repair.
-
-Observed and current execution acquisition compete for strictly due HOT with
-either mark. Current/future HOT, RECOVERY, missing and corrupt members cannot gain
-execution. Pacer tests prove strict/current partitioning, no fallback, partial-call
-failure without compensation and TRANSITIONED-only claim using the returned fence.
-Runtime Boundary retains Pool, identity-hint and ordinary empty-supply witnesses.
-Direct lookup needs no candidate hold and cannot preempt an active execution lease.
-
-TaskItem generic terminal progression is a Redis Owner claim: tags 2..9,
-strict maximum-score writes, same-tag slot advancement, exact ACTIVE claim
-races, corrupt-score rejection, NX reappend, and the one-Lua/one-ZMSCORE batch
-budgets. Server tests own application name validation and the separate
-`items:states` query; its real Redis budget is one Task catalog read plus one
-Score read. Redis Owner also proves conditional Result replacement by tag and
-reported milliseconds, same-slot content updates, corruption rejection, and the
-one-Score-Lua plus zero-or-one-Result-Lua observation budget. Runtime Boundary
-uses actual Worker Handlers over WebSocket, Socket and Polling to witness send
-completion followed by delivered, read and repeated reply observations, latest
-content queries and subsequent execution. These proofs preserve the independent
-Result/Score commit boundary; they do not claim replay or loss repair.
+Proof Registry preserves claims and nonclaims; these links are selection aids,
+not another definition of transitions, storage budgets or evidence guarantees.
 
 ## Selection Decision
 
-Project topology binding and startup order belong to Server/Boot tests. Redis
-Owner proves descriptor/project-directory atomic writes, first-creation timestamps,
-concurrent Project isolation, bounded ordering/truncation and corrupt-data rejection.
-Project data is passive in Kernel tests; it requires no profile or Spring context.
-Runtime clients resolve the configured Project/Group managed Task mapping once
-before workload admission. Fixture migration preserves existing Worker counts,
-Items, timeouts and execution assertions; Group registration alone creates no Task.
-
-Task configuration and index proof belongs to Redis Owner: complete create-only
-descriptors, concurrent configuration integrity and strict corruption rejection,
-fixed one-Lua Worker Facts/HASH updates, independent Platform patches and restart
-retention without index rebuilding. Matching tests prove the Pool maintenance interface and fixed query functions, unsupported condition
-rejection, idempotent query normalization, shared MAX targets, actual Item quantities,
-original fences and atomic destructive consumption. Catalog tests own messageId
-correlation, equivalent/interleaved queries, shortages, immutable input-ordered
-results, whole-batch admission before consumption and independent reuse of IDs
-across calls. Redis Owner proves the Country path adds no Redis access during take.
-Kernel tests own immutable
-WorkerQuery capture and strict envelope JSON; Server tests own flat target configuration
-and HTTP admission. Redis Owner rejects old property conditions without rewriting
-records or substituting ANY.
-The separately assembled Bucket Rule reads a bounded Worker/Platform Facts snapshot
-and qualifies the offered identities through the public policy contract. Its
-Redis Owner cases cover batch costs, corrupt-Facts rejection and generation invalidation;
-Runtime Boundary supplies actual Worker execution for two sharing Tasks. Default
-finite-ID target saturation and named-Rule identity rejection have focused proofs.
-Pacer tests prove refill without Item reads, independently scheduled consumption,
-round exclusions and opaque exact fences. Pacer tests also prove one unchanged
-messageId-to-query submission and no reassignment or replacement take after address
-or round-exclusion filtering. Runtime Boundary runs actual Workers
-serving two Tasks from the same Eligibility and preserves independent Task closure.
-Its Group-batch witness also uses six Workers in two Groups, four Tasks and 800
-Items: two Tasks share a Rule, another uses a different Rule in the same Group,
-and the second Group consumes default stock. Actual executors and the observed
-Pacer batches prove qualification and Group isolation; the boundary witness checks
-that every supplied fence is already held before Matching starts. Redis Owner and
-Pacer tests distinguish acquisition-before-projection from the old reverse order,
-including unmatched leases, partial acquisition, sealing invalidation and command
-order. A controlled clock proves that Matching cannot reset the candidate deadline.
-Matching unit tests own bounded target paging, incremental admission counts,
-concurrent refill/take, immutable results and local versus global expiry maintenance.
-Refill deficit proofs preserve numeric Group shortages across the Matching/Pacer
-boundary: raw reads use the smaller of shortage and 100, while every Group
-attempt still reserves 100 of the 1000-round budget. Real Pacer/Matching/Redis
-composition proves that stock 99 against target 100 candidateizes only one of
-100 ordinary Workers; the other 99 remain discoverable on the next normal round
-without aged recycling. The stock-80 case likewise candidateizes exactly 20.
-Matching tests prove 200 residents against target 100 remain valid, zero-deficit
-offers still receive full qualification, and batch budgets and hard capacity
-continue to bound admissions. Target counts do not truncate qualified offers.
-A declined candidate is not rolled back or replaced by
-a supplementary scan. These proofs retain all external convergence deadlines.
-Controlled races prove entry identity checks (including equal-value reinsertion),
-partial take after a lost entry, no restart after unrelated Group changes and hard
-capacity under concurrent refill. Observed target watermarks may be exceeded or
-left short; these tests do not require a pool-wide optimistic transaction.
-A later Rule failure must preserve earlier admissions; invalid input or a Rule-local
-read/matching failure must admit no candidates for that Rule. The separate Facts
-script still preflights all enabled index writes atomically. These are not cross-owner
-transactions, performance promises or loss-repair guarantees.
+Project topology and startup changes select Server/Boot contracts; persistent
+Project descriptors and directory changes additionally select Redis Owner.
+Query admission and Pool changes select Matching contracts, with Redis Owner
+for Facts/index atomicity and Runtime Boundary for actual Worker traversal.
+The [registered claims](doc/testing/proof-registry.md) identify the exact boundary;
+Integration Owners retain their fixed workload and observation limits.
 
 Use the lowest-cost proof that owns the changed claim:
 
@@ -256,14 +142,10 @@ Use the lowest-cost proof that owns the changed claim:
    A/B (`baseline_ref` with `lane_case`) for comparison; do not duplicate
    throughput or Worker-size tiers across lanes. `--diagnostics jfr` is manual
    attribution with private recordings and whitelist export; A/B keeps it off.
-   The same performance module owns the packaged local `capacity-10k`
-   experiment: a WSL resource scan followed by five 120-second Any repetitions
-   and targeted controls. Its JFR completion/export reconciliation and local
-   resource evidence do not enter the fixed CI trend or establish a production SLA.
-   CI saturation explicitly selects `configs/lane-saturation.json`: four CPUs,
-   8,000 total Workers, 1GiB JVM heaps, 600,000 Items per Group and 15s warmup
-   before each 30s measurement. Its independent repetitions reuse the packaged
-   experiment lifecycle; open-loop jobs retain their existing matrix.
+   The same module owns the local capacity experiment and CI saturation settings.
+   Use its [world/configuration](integrations/worker-call-performance/README.md#world-and-configuration)
+   and [local experiment](integrations/worker-call-performance/README.md#local-10k-capacity-experiment)
+   contracts instead of copying resource values into correctness-lane selection.
 
 Inspect selection for a branch without running a proof:
 
@@ -284,19 +166,13 @@ Correctness and Android Worker Proof after the Binding ownership move.
 
 ## Assignment ceiling proof
 
-The instance Pacer assignment ceiling defaults to 100 and permits 1..1000.
-Pacer tests cover raw-row charging, small/zero deficits, non-divisor round
-remainders, and independent supply/recycling rotation. Redis Owner exercises
-101 and 1000 Items through real candidateization, Matching qualification,
-address reads, lease acquisition, claim and Command publication, plus whole
-batches of expired/exhausted Item failure settlement. Qualification retains one
-atomic Worker/Platform snapshot. WorkerObservation tests retain the Properties
-Owner's read budget across a 1000-identity notification. Existing tracked and
-Runtime proofs retain their independent claims.
-
-The performance lane fixes the assignment ceiling at 1,000 so configuration does
-not bind; a ceiling trade-off is a separate configuration experiment. The lane
-adds no heavy ordinary CI lane and cannot replace selected correctness proofs.
+Assignment-ceiling or round-budget changes select focused Pacer tests and the
+[Redis Owner composition](doc/testing/proof-registry.md#redis_owner) for the full
+qualification-to-publication and failure-settlement path. The
+[Pacer assembly](kernel_pacer_jvm/doc/application-assembly.md) owns the ceiling
+and resource budgets. Observation changes also select the Server Properties
+handler contracts. Performance configuration experiments remain separate from
+these correctness claims and add no heavy ordinary CI lane.
 
 ## Lane Index
 
@@ -387,129 +263,44 @@ Proof result. GitHub jobs explicitly skip cleanup for their disposable Redis
 Service container. A proof that needs a Server or Worker Simulator owns those
 process lifecycles and stops all writers before a local cleanup attempt.
 
-The Runtime Boundary starts the Java Server for its full traversal. A separate
-finite HTTP configuration test starts isolated contexts for the default pool,
-prestarted pool and virtual execution; real HTTP and Redis establish Direct
-success, occupied-slot rejection, timeout, late-report rejection and Owner
-shutdown, with exactly one servlet completion per request. Worker Correctness and
-Worker Convergence Health start Server and Worker Simulator as independent
-processes. Worker Loaded Capacity + Recovery Stability is a separate
-nightly/manual workflow and is not part of the pull-request Proof Gate.
+Runtime Boundary starts its Server context; Worker Correctness, Dynamic Matching
+and Convergence Health own independent Server/Host processes. Use their linked
+[Integration contracts](doc/testing/proof-registry.md) for process preconditions,
+mutation order, workload, private evidence and observation deadlines. A successful
+Harness does not replace a lane's independent runner audit. Loaded Recovery keeps
+its separate nightly/manual workflow outside the pull-request Proof Gate.
 
-Worker Correctness runs `initial -> live-properties -> Host restart -> restart`.
-The live phase uses Lab HTTP to persist and publish through the running Worker,
-then checks Adapter cache and Server Runtime independently. Its separate safe
-evidence includes the runner's unchanged Host PID, unchanged control records
-and zero additional Prepare requests, after proving that initial Prepare is
-visible in the private HTTP access log. See its Owner for fixed deadlines and
-full snapshot oracles; focused Host/Harness tests do not replace this real
-process proof. Selection includes Server `worker/resource/**` admission, with
-representative Host, Adapter Properties entry and Server admission paths checked
-by the selection contract.
-
-Worker Dynamic Matching uses 2x500 Workers in an independent selected Proof Gate
-lane. Its three background Tasks overlap Worker `properties.update/replace` inputs and Platform Properties changes.
-Four witness Tasks prove ineligible waiting and eligible execution on the 100
-actual target replicas. Seven Tasks and 150,400 Results must close together with
-the independent Host journal, unchanged processes/controls and zero Prepare
-delta. Its Owner fixes negative windows, observation and drain budgets. Safe
-summaries exclude inventory, full Properties, raw journal and private Harness
-correlations. A successful Harness still requires the runner's independent audit.
-
-Android Host owns deterministic SDK, capability, Demo and proof-Harness tests
-plus Android library assembly. Android APK Assembly independently builds the
-Debug and three fixed Lab APKs. It is required when Android Host or Android
-Worker Proof is selected, uploads artifacts only for the Emulator, and may run
-in parallel with Host tests. Android Worker Proof is a separate single-emulator
-platform lane: its Java Harness owns Correctness and Convergence assertions,
-including one DELAY Handler process-loss recovery, while its shell owns only
-ADB, Server, App, and Redis-scope process choreography. Contract-invalid
-observations fail immediately; only temporary HTTP transport failures remain
-eligible for bounded polling. Android is not a secondary witness for the Java
-Worker proof.
+Android Host owns deterministic tests and library assembly. Android APK Assembly
+is independently required when Host or Android Worker Proof is selected and may
+run in parallel with Host tests; its artifacts serve the Emulator lane.
+[Android Worker Proof](integrations/android-worker-proof/README.md) owns the
+Java Harness assertions and shell process choreography. It is not a second
+execution of the Java Worker proof.
 
 ## Shared Eligibility refill and dispatch
 
 ### Allocation observations and App Checks projection
 
-Pacer focused tests prove the five-field notification after both execution
-acquisition and Item claim, event/Worker grouping, and notification before Command
-encoding/publication. Sink errors do not alter dispatch. Server tests cover exact
-Group/event selection before queue admission: unmatched traffic cannot consume
-waiting capacity, trigger Facts reads or change diagnostic counters. Latch-controlled
-tests retain matched whole-batch saturation and prove first-appearance projection
-grouping for interleaved events, unsorted/duplicate times, local patch visibility
-and overlapping-field precedence. They also cover bounded Properties reads, one
-patch per Worker per drain, isolation of read/compute/write failures and lifecycle
-cleanup. A different-field projection uses the same
-Properties handler without changing Pacer. Function dispatch tests use consumers
-with no Properties dependencies and prove one enqueue with multiple handlers,
-immutable routing/input snapshots, instance-based batching across Groups/events,
-receipt order including duplicate notices, handler failure isolation, and the
-existing drain budget. They also cover duplicate registration, stopping before
-subsequent handlers, close timeout and restart only after the previous thread exits.
-Direct Properties-handler tests retain local patch/deletion visibility, whole-Worker
-failure isolation and stop checks before writes without starting a queue/thread.
-App Checks tests own fixed-window arithmetic,
-invalid persisted values, older observations and restart continuation.
-
-The existing `:server_boot_jvm:scenarioCompositionIntegrationTest` now also gates
-success, failure and late App Checks Reports behind a test-only Handler barrier.
-Before release, actual Platform Properties must match the bounded source
-allocation witness while no Result has arrived. After release it keeps the
-original business assertions and proves persisted properties survive restart.
-The proof compares notification times/identities, not Item or Result totals.
-The ordinary App Checks process acceptance retains its execution oracle. Neither
-proof establishes reliable counting or window-based Matching admission.
+Changes to notification timing or dispatch isolation select focused Pacer tests.
+Routing, queue admission, projection grouping and receiver lifecycle select Server
+contracts; projection arithmetic selects App Checks tests. The
+[JVM Contracts registry](doc/testing/proof-registry.md#jvm_contracts) owns these
+claims, and the [Server Owner](server_jvm/README.md#worker-allocation-observations)
+owns the mechanism. Scenario composition and real assignment-window qualification
+also select the [existing finite scenario proof](doc/testing/proof-registry.md#product_coexistence);
+its execution witness does not establish reliable counting or strict quotas.
 
 ### Existing Matching proof ownership
 
-Redis Owner proves complete Task descriptors, preserved source coordinates, bounded qualified Messaging Phone lookup,
-live Worker/Platform projection, corrupted metadata rejection and command budgets:
-no Matching Task configuration access, local target resolution and direct Group/Pool operations without
-executable binding views or refill callbacks, bounded named refill command counts
-from the Matching Owner contract, and zero Redis access for Pool take and deficit
-observation. Supplied candidates still require bounded qualification even when
-their target watermark is satisfied. Candidateization and execution acquisition use bounded exact CAS
-batches. Properties time invalidation rejects old fences; a new generation is
-qualified again. A restarted Matching catalog cannot adopt old stock.
-
-Focused tests cover direct named refill/take without Task registration or prior
-shortage observation, Group isolation, MAX targets across Tasks, overlapping query stock, bounded
-capacities, concurrent entry consumption, overlapping target qualification and source
-failure after candidateization. Container tests cover single-bucket FIFO, immutable
-repeated identities/fences, partial acceptance, approximate resident counts, lazy TTL
-and capacity-pressure recovery of idle stock. Proof tuple tests preserve all partial
-queries and literal/missing values without multiple memberships. Catalog duplicate
-association filtering remains independent of the container's duplicate entries. Pacer tests keep refill independent of Item observation and dispatch
-independent of Pool source reads/acquisition. Runtime Boundary uses actual WebSocket,
-Socket and Polling Workers, including multiple Tasks consuming one shared pool.
-Dynamic Matching preserves its 1,000 Worker/150,400 Item workload with explicit
-proof-Rule refill targets. Ordinary Messages declares ANY/country Pool supply;
-directed Messages uses qualified Phone queries with empty supply.
-The existing mixed Call workload supplies coexistence and aggregate Redis cost
-evidence; a local nonreference run is not a throughput improvement claim.
-
-The independent property HASH has Redis Owner proofs for exact value replacement,
-conditional old-field removal, last-writer collisions, Group/property isolation,
-Platform independence, full-batch preflight and concurrent writes. Restart preserves
-the existing winner without Facts scans or reconstruction. Retired reverse HASHes
-and value SETs are ignored even when corrupt. A direct Phone batch uses one HMGET
-for at most 100 unique values, returning at most one identity per value.
-Mixed Pool/Identity/Phone tests retain whole-batch admission and first
-association wins. Identity uses no Redis in Matching; Pacer still verifies existence
-and Group before Kernel execution acquisition.
-
-Qualified Messaging Phone shares that index, then reads only returned identities
-with one strict Facts HMGET. Focused and Redis tests cover ordered association,
-country/enabled/phone filtering, between-read phone changes, no-Pool configuration,
-shared index retention and partial failure. No fallback to overwritten identities
-or resampling follows a filter miss.
-Actual Pacer/Matching/Redis composition proves a Country-cached Worker can be
-acquired by qualified Direct lookup while its old Pool fence cannot execute or
-release the new hold. Product functional/lifecycle keeps the original directed
-send deadlines and subsequent receipt/restart assertions. This migration does
-not establish a fix for the separately recorded Dynamic Matching drain failure.
+Use [Matching's proof entry](worker_matching_jvm/README.md#cost-failure-and-proof)
+for local query, Pool, Properties and index changes, then the
+[Redis Owner](doc/testing/proof-registry.md#redis_owner) for atomicity, command
+budgets and actual Pacer/Matching composition. Runtime Boundary owns protocol
+traversal; [Dynamic Matching](integrations/worker-dynamic-matching/README.md) owns
+loaded live-facts execution, and [Coexistence](integrations/scenario-coexistence/README.md)
+owns business observations. A qualified Phone migration or another focused pass
+does not by itself establish a fix for the separately recorded Dynamic Matching
+drain failure or a performance improvement.
 
 ## CI Gate
 
@@ -527,106 +318,29 @@ Properties or Task results.
 ## Deliberate Nonclaims
 
 There is no coverage threshold, flaky-test retry, browser visual matrix,
-multi-JDK matrix, Android API matrix, general topology Cartesian product,
-throughput benchmark or soak lane. WebSocket, Socket and Polling combinations
-remain protocol/Runtime Boundary claims; the convergence health world does not
-repeat them. Physical Android device behavior remains a separate manual proof.
+multi-JDK matrix, Android API matrix, general topology Cartesian product or
+soak lane. Correctness lanes do not establish throughput or latency SLAs.
+The separate [Worker Call Performance lane](integrations/worker-call-performance/README.md)
+measures throughput, latency and saturation; measured performance values are not
+correctness thresholds. Protocol combinations remain Runtime Boundary claims.
+Physical Android device behavior remains a separate manual proof.
 
 ### Candidate Generation Before Rule Qualification
 
-Pacer supplies only successful candidateized fences. Redis Owner offers A while
-B remains indexed and proves Matching cannot discover B. Unmatched candidates,
-capacity failure, failed projection and lost returns recover through normal
-bounded recycling, with no compensation or replay. Each admitted generation leaves
-the input for later Pools; actual admissions count against the call budget. Earlier Pool admission
-survives a later Pool failure.
-
-The actual Pacer/Matching/Redis composition proves later Pool demand cannot copy
-Country stock. Direct Phone lookup still finds the cached Worker and execution
-acquisition leaves the Pool entry unchanged; its old fence cannot acquire or
-release the new hold. Concurrent Pool/Direct callers have one execution winner.
-Normal recycling creates a new generation which can enter another Pool while the
-old entry remains cached. Focused tests prove accepted IDs never reach subsequent
-qualification, rejected IDs remain eligible for later Pools, and fresh batches
-retain Pool rotation. Scenario Coexistence keeps its existing business assertions
-and deadlines; overlapping business demand does not authorize stock copying.
-
-Owner proof covers high-mark encoding, strict current-slot exclusion, Properties
-ordering, network floor activation, pause MAX/0, relative deferral and one execution
-winner across Pool/Direct callers. Ordinary candidate, aged candidate, Serviceability
-HOT and Recovery heads each reach 250 equal-score members in 100/100/50 batches.
-Stale stock cannot claim or release a newer hold. Local Pool tests prove admission-
-time TTL for independent occurrences, capacity accounting for duplicate entries,
-bucket FIFO, lazy pressure cleanup and concurrent at-most-once entry consumption. TTL limits take, not already-taken exact acquisition. Runtime Boundary
-and Dynamic Matching retain their existing workload and time limits.
+Candidateization, qualification and exact execution fences retain their
+[assignment Owner](kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#candidate-generation-boundary).
+Select [Redis Owner](doc/testing/proof-registry.md#redis_owner) for actual
+Pacer/Matching composition and focused Matching tests for local stock semantics.
+The registered claims preserve loss, partial success and no-compensation limits;
+repeating a larger workload does not replace those proofs.
 
 ### Network Evidence And Candidate Generations
 
-Redis Owner checks that current-slot evidence can correct HOT/RECOVERY polarity
-while preserving time and mark; execution acquisition still requires strictly past time.
-Owner-clock cases cover evidence and execution ordering, concurrent CAS,
-100-Worker command cost, PAUSE and past-slot freshness rejection. Accepted past
-polarity changes advance generation, clear mark and cap the target at the Owner clock;
-same-slot evidence advances one slot so the old candidate fence cannot recur.
-Ordinary same-polarity Polling leaves generation unchanged. Below-floor activation
-requires post-floor evidence and is the only same-polarity refresh.
-Actual Pacer, Matching and Redis Owner composition consumes stale Pool stock,
-reconnects and refills a new generation without waiting for the 60-second recycle.
-The isolated DEFAULT Runtime witness retains its 15-second reconnect deadline
-and cannot depend on a HOT Probe or a shortened recycle threshold; RECOVERY-only
-rechecks may follow, but never precede, its expiry evidence.
-Only a missed timing window may be resampled; a wrong in-window result fails.
-Worker Convergence Health retains its original outage fixture and timeout;
-these checks do not promise strict network ordering or evidence replay. After
-Server restart, 999 reconnects and unchanged identities remain gates; idle-fleet
-Score observations are diagnostic, while the directed Worker and successful
-execution witnesses remain required. This does not claim idle Group discovery.
-
-Matching consumption uses the fixed function table and `WorkerQuery` envelope.
-Kernel query tests own immutable JSON bounds and strict decoding; Matching tests
-own whole-batch admission, scalar functions, function ordering, Group isolation,
-range counts and entry commit races. Range-access counters use a controlled clock
-and report expiry separately; they are not performance or capacity evidence.
-QueryFunction tests exercise direct strategy implementations: each input is normalized
-once per Matching take, all admission precedes execution, and one batch per function
-keeps message association and first-appearance selection order. The Catalog request
-budget rejects oversized inputs before a strategy runs; pure normalization never
-accesses injected resources. Shared Pool take and late-invalid-input tests retain
-their inventory and original-fence assertions.
-Redis Owner retains qualification command budgets and zero-Redis Pool resource polling;
-the assignment-window function additionally performs one atomic Facts snapshot for its
-entire nonempty candidate batch, including 1000 identities.
-Runtime Boundary and Scenario Coexistence cover the new envelope through real
-Workers. Use new scopes; old direct-selector Items are deliberately unreadable.
-
-Matching Pool convergence is covered by the existing lanes: explicit Any without
-Facts, no-Pool Identity/Phone Tasks, Country union/overlapping watermarks and full
-bounded targets, one offered-ID Facts HMGET, local range take and strict candidate
-invalidation. Messaging/Proof target paging and Facts/Phone atomic writes remain
-separate regressions. Country fixtures no longer rely on the retired Country ZSET. Convergence
-checkpoints use a single Identity target after stopping the backup; the independent
-Proof Pool witness retains qualification and strict-fence coverage.
-
-Matching resource separation uses those same proof lanes. Focused assembly tests
-cover no-Pool Identity/Phone composition, one lazy shared connection, immutable
-property configuration, startup without Redis I/O and idempotent Composition close. Architecture
-tests enforce actual package dependency restrictions for Pool, Index, refill and
-function implementations. Redis Owner covers Phone updates and restart retention
-without Task demand, non-consuming shared lookup, Pool capacity/expiry independence,
-single-property enablement and HASH preflight protection. Matching convergence
-adds name-independent ALL/PAGED batching, explicit Pool rotation, a strict atomic
-Worker/Platform snapshot and zero access to poisoned retired Messaging/Proof keys.
-Messaging uses one offered-ID HMGET; Proof uses one EVAL_RO with two HMGETs.
-Properties entrypoint separation retains those same lanes: pure Pool/Identity Catalog
-tests use no Redis Store; Server property callers depend only on `WorkerProperties`.
-Composition tests verify stable interface instances, shared Properties/index connection,
-failure cleanup and that closing Matching never shuts down the Server-owned RedisClient.
-Refill coordinator regressions retain target paging, Pool rotation, single-Pool
-admission and partial success. Empty demand cleans cursors, not expired inventory;
-expiry remains poll-driven or capacity-pressure-driven.
-Malformed active Facts fail before the current Pool changes stock; public Facts
-observation retains its previous row-local behavior. Literal proof values (*, ~,
-separators, quotes and Unicode) no longer collide with omitted conditions.
-Concurrent Worker/Platform writes, strict-fence/Direct competition and real Worker
-proofs retain their assertions; these tests claim no new capacity
-or performance result.
+Use the [Worker Score Owner](kernel_jvm/doc/score/worker-score-band-scheduling.md)
+and [network timestamp Owner](worker_matching_jvm/README.md#network-evidence-timestamps)
+for the two independent commits. Select Redis Owner for exact transitions,
+timestamp persistence and command budgets, Pacer contracts for evidence admission,
+and Runtime Boundary for actual expiry/reconnect and filter-restart witnesses.
+The [Convergence Owner](integrations/worker-convergence-health/README.md) separately
+retains its established-fault observations and nonclaims. No lane implies strict
+cross-queue ordering, reliable replay or an atomic Facts/Score transaction.

@@ -6,10 +6,11 @@ It consumes the sole Boot JAR produced by
 [Server Boot composition](../../server_boot_jvm/README.md). It has no Java
 entrypoint, Spring composition, application services or platform Owner operations.
 
-The JAR contains the complete Server library and both business Scenario libraries.
-The executable's `preview` profile enables both on one platform. The Runtime archive
-packages the unified Console for Runtime, Reference, SMS and Messages, plus the
-current-build diagnostic dictionary. It excludes the independent Worker Simulator.
+The JAR contains the complete Server library and the SMS, Messages and App Checks
+Scenario libraries. The executable's `preview` profile enables all three on one
+platform. The Runtime archive packages the unified Console for Runtime, Reference
+and all three scenarios, plus the current-build diagnostic dictionary. It excludes
+the independent Worker Simulator.
 Redis remains external; the JAR embeds no separate business frontend.
 The compiled frontend also carries the committed, Server-verified OpenAPI
 snapshot at `frontend/dist/reference/openapi.json`; unlike the diagnostic
@@ -61,19 +62,21 @@ Only Profiles listed in the schema-v5 Runtime manifest are supported. The
 `agentforge` preset uses Server/Adapter ports 18182/18183, Redis scope
 `profile_agentforge`, Adapter ID `agentforge-websocket`, and no configured
 WorkerGroup. `scenario-workers` retains the 18082/18083 Lab assembly.
-`preview` enables both business scenarios on one mixed-country `demo-sim` Group.
-The executable supplies complete shared event declarations; scenarios consume
-them through existing Group registration. One context retains one Pacer, Matching
-catalog and set of Redis Owners.
+`preview` enables SMS and Messages on one mixed-country `demo-sim` Group and
+App Checks on `app-a-sim` and `app-b-sim`. The executable supplies the Group/event
+and Project declarations; Server initializes Groups and Project managed Tasks
+before scenarios consume the prepared directory. One context retains one Pacer,
+Matching composition and set of Redis Owners. The
+[Boot Owner](../../server_boot_jvm/README.md#platform-and-preview) defines this topology.
 
 The [Scenario Preview variant](PREVIEW.md) includes the independent Host
-process and its finite launcher. It always enables SMS and Messages. Build it with
+process and its finite launcher. It enables the same three scenarios. Build it with
 `:distribution:server:previewZip`, without requiring a platform release version.
 The Runtime ZIP continues to exclude the Host. The executable owns
 all four canonical application configurations. Delivery copies the preview profile
 without another maintained default. Archive verification requires the host resources
 and rejects deployment or test configuration in nested platform/Scenario libraries.
-Ordinary platform profiles enable neither business scenario.
+Ordinary platform profiles enable none of these business scenarios.
 
 The executable owns finite Console page forwards in platform and preview instances.
 Unknown APIs/assets remain errors. Catalog observations control navigation and

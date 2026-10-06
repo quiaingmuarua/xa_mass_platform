@@ -6,7 +6,7 @@ depends on `transport:worker-core` and OkHttp, but not on
 
 The shared Core [reporting Handler overload](../worker-core/README.md#later-task-outcome-observations)
 also supports Android business callbacks after send execution completes. Its
-Reporter uses the current run's WebSocket and becomes unavailable after stop;
+Reporter uses its original run's WebSocket and becomes unavailable after stop;
 Android adds no observation queue, thread or retry.
 
 It owns `AndroidWorker`, its package-private Platform resources, persistent
@@ -63,35 +63,13 @@ lifetime; Activity lifecycle is not part of the Worker contract.
 
 ## Proactive Properties
 
-The existing Host Provider supplies one consistent flat `Map<String, String>`
-snapshot. Keys must be non-blank; values must be strings (including empty
-strings). Producers explicitly encode numeric/boolean facts as strings; Transport
-does not flatten or coerce them.
-
-`reportProperties()` reads that Provider once and sends a full
-`platform.worker.properties.replaced` Map. `reportProperties(updates)` sends
-`platform.worker.properties.updated` without mutating the Host:
-update the Host's data first, then call it. The SDK retains no extra Map or
-history. Both return only Client acceptance; inactive, disconnected, stopped or
-closed sends return false, Provider failure returns false, and invalid update
-arguments throw. Encoding is bounded to a 1,000,000-byte Report. No Prepare,
-retry, ACK, watcher or second Provider is introduced.
-
-Adapter requests one full snapshot after each verified connection/reconnection;
-Core unwraps the successful snapshot output into one `properties.replaced`
-Report without another Provider read. Both Report payloads are direct string KV
-Maps: update merges supplied keys, replacement removes omitted keys. Empty
-strings stay present; deletion requires a Host-side removal and full replacement.
-Empty Maps are legal, and `set`, `remove`, and `properties` are ordinary keys.
-Explicit TASK/SERVER snapshot calls still return correlated `{"properties":{...}}`
-Results. Loss may require an explicit full
-report or a later connection baseline; this is not guaranteed eventual delivery.
-Adapter publishes its complete installed observation via SYSTEM and Server
-admission to Matching. A later Demand can read new persistent facts without
-another Prepare. Server requests best-effort candidate invalidation after actual
-facts changes; Kernel exact confirmation enforces that fence without deleting
-Cache entries. The SDK owns no part of upstream publication, persistence or
-scheduling invalidation.
+`AndroidWorker.reportProperties()` and `reportProperties(updates)` use the
+Application-context Provider supplied at construction and the current run's
+WebSocket. The [Core Properties reporting contract](../worker-core/README.md#properties-reporting)
+owns Provider reads, argument/failure behavior, local acceptance and run
+revocation; the [event catalog](../EVENTS.md#worker-produced-property-observation)
+owns payload semantics. Android borrows its existing Client and adds no
+Properties HandlerThread, publication scheduler or stored snapshot.
 
 ## Platform Resources
 
@@ -114,23 +92,28 @@ reconnect HandlerThread. Definitions shared by Worker instances must still be
 thread-safe.
 
 `ConnectionAttempt` object identity suppresses callbacks from a superseded
-physical connection even when reconnect uses the same Endpoint URI. External
-Client close waits for the current callback; callback code may close its own
-Client reentrantly. Closing one Client does not quit the shared Looper or close
-shared OkHttp resources.
+physical connection even when reconnect uses the same Endpoint URI. The current
+callback gate also affects teardown, as recorded in the
+[known stop difference](#known-android-stop-difference). Closing one Client
+does not quit the shared Looper or close shared OkHttp resources.
 
 The single-Worker budget is one network HandlerThread and one Control thread,
 plus OkHttp's internal threads. A per-Client Handler is not a thread.
 
 ## Lifecycle
 
+### Start
+
+`start()` submits one Preparation to the Control executor and returns without
+waiting for it; the Host may call it from the Main Looper. Preparation failure
+ends that start attempt. The accepted run follows:
+
 ```text
-start from any Host thread, including the Main Looper
-  -> submit one startup request to the internal Control executor
+queued startup request
   -> load and defensively copy one complete Properties map
   -> one Prepare request resolves Worker ID and Endpoint
   -> install one Core TextMessageWorkerTransport
-  -> return while WebSocket connection proceeds asynchronously
+  -> concrete Client connects asynchronously
 
 temporary disconnect
   -> reconnect to the current URI within the Client budget
@@ -144,17 +127,24 @@ endpoint retry exhausted
 ```
 
 Prepare uses the existing input only for Server-owned identity and access
-preparation; it never creates or refreshes Matching Properties. The first
-connection baseline and explicit runtime reports pass through Adapter and
-Server admission into Matching. A Host can update its Provider and call
-`reportProperties()` or the update overload during the same run. Publication
-is best-effort: a failed first report may leave no Matching facts until a new
-full report or later connection baseline, without affecting the prepared identity.
+preparation; Properties publication follows the
+[Core reporting path](../worker-core/README.md#properties-reporting).
 
-Prepare failure ends that single start attempt. `start()` and
-`stop()` return after submitting their request, so Android hosts do not need a
-lifecycle Executor wrapper. `close()` is synchronous and may wait for the
-current protocol callback before it releases the Controller and Platform.
+### Stop
+
+During Preparation, `stop()` marks its eventual result for discard and keeps
+that one call single-flight until it returns. With an active Transport, it
+commits `STOPPED` and detaches the run before closing the Client outside the
+Core state gate. The target is for active stop to return without waiting for
+an admitted Handler. The [known Android stop difference](#known-android-stop-difference)
+describes why the current caller may still wait during Client teardown.
+
+### Close
+
+`close()` is terminal and synchronous: it revokes the run, closes Preparation
+and the Client, then releases the Platform. Current Client teardown may wait
+for an admitted protocol callback. Closing the object does not preserve
+Commands, Results or Reporters for another Worker.
 
 `WorkerLifecycle` exposes only `STOPPED / RUNNING`. Physical WebSocket state
 and reconnect attempts are private Client state, not Adapter, Kernel, or
@@ -163,6 +153,31 @@ Looper automatically.
 
 Applications decide whether Android Backup may migrate the stable client key.
 The repository demo excludes the Android Worker preference file from backup.
+
+## Known Android Stop Difference
+
+The shared target remains non-blocking active stop: revoke the run before
+Client teardown and let already-admitted Handlers finish independently. Android
+currently differs from that target. `AndroidWorker.stop()` calls Core directly;
+Core commits `STOPPED` and detaches the Transport, then calls Client close on
+the caller's thread. `AndroidOkHttpTextWebSocketClient.close()` marks the Client
+closed and cancels its socket before waiting for `callbackGate`. The same gate
+covers the complete synchronous Transport callback, including its Handler.
+
+Consequently `snapshot()` can already report `STOPPED` while the `stop()` caller
+and its subsequent lifecycle notification wait for that Handler. There is no
+callback-wait timeout. A Handler can close its own Client reentrantly. This
+known implementation gap must remain visible until the Android lifecycle is
+reconciled with the shared target; callers must not infer a non-blocking return
+from the committed run state. Blocking or UI-sensitive Host code must account
+for the current wait.
+
+The evidence is the [Core stop order](../worker-core/src/main/java/com/xa/mass/worker/runtime/WorkerRunController.java),
+the [Android Client callback and close gates](src/main/java/com/xa/mass/worker/android/AndroidOkHttpTextWebSocketClient.java),
+and `externalCloseWaitsForCurrentCallback` in the
+[Client Owner test](src/test/java/com/xa/mass/worker/android/AndroidOkHttpTextWebSocketClientTest.java).
+Those establish the source contract and test expectation; they do not establish
+device-specific blocking symptoms.
 
 ## Verification
 
