@@ -12,7 +12,7 @@ token, dynamic-permission, fake-user, or fabricated-user path.
 The checked `packageManager` and CI still execute pnpm 11.9.0; `engines` only
 describes the supported local and hosting range.
 
-- `server_jvm` on `127.0.0.1:18082` for API mode
+- A [Server runtime](../distribution/server/README.md#source-launch) on `127.0.0.1:18082` for API mode
 
 ```text
 pnpm install --frozen-lockfile
@@ -23,6 +23,9 @@ pnpm dev --host 127.0.0.1
 The default data source is the real API. Vite proxies relative `/api` requests
 to `VITE_RUNTIME_PROXY_TARGET`; Server CORS is not enabled. Explicit Mock mode
 is available through `pnpm dev:mock` and never activates as a fallback.
+For live business pages, start [Scenario Preview](../distribution/server/PREVIEW.md#source-launch)
+and set `VITE_RUNTIME_PROXY_TARGET=http://127.0.0.1:18500` before starting Vite.
+The same `/api` proxy carries Runtime and business requests.
 
 The Code Dictionary is a current-build projection, so generate it before a
 local Vite session. The OpenAPI Reference is a committed build-time projection;
@@ -103,16 +106,9 @@ Runtime configuration errors do not prevent SMS or Reference pages from loading.
 Public Mock Demo hides the SMS entry, makes no SMS requests, and explains that
 SMS is unsupported on direct visits. An ordinary Server without SMS serves the
 same console pages but their catalog check reports the feature as disabled.
-The Boot executable owns the finite page forwards, including trailing slashes; unknown
-API and asset paths remain errors. Scenario APIs, Groups and jobs remain gated by
-`preview`, which enables SMS, Messages and App Checks together. The shared assets
-do not enable those resources.
-
-For SMS development, run the shared scenario launcher and set `VITE_RUNTIME_PROXY_TARGET`
-to its Server origin (default `http://127.0.0.1:18500`) before starting the same
-frontend Vite server. The same `/api` proxy carries platform and SMS requests.
-Runtime and Scenario Preview ZIPs both package this `dist`; the Server JAR contains no
-separate SMS frontend.
+[Boot](../server_boot_jvm/README.md#pages-and-configuration) owns page forwards
+and profile gating; [Distribution](../distribution/server/README.md) packages this
+same console. Static page delivery never enables a business API.
 
 ## Messages business pages
 
@@ -170,14 +166,11 @@ Server page forward. The old Campaign and metrics pages have been removed.
 API failure never switches data source. Catalog gates availability independently
 of SMS; Mock hides SMS and never calls catalog.
 
-API lists at most 100 Project Tasks with a truncation notice, loaded-only filters
-and manual refresh. Name/configuration come from Task, creation time from its
-Project directory, Task state from Task Score, and quantities from Item Score.
-Send total is the current ZSET member count; sent=6..9, delivered=7..9, read=8..9,
-replied=9, failed=5. Counts never derive from preview rows or a client cache.
-The detail shows at most 100 produced Results, including failures and content
-parse errors. It promises neither latest/file order nor a common snapshot with
-Score counts. Task terminality does not stop observation of subsequent receipts.
+API lists show a truncation notice for the bounded Project window. Counts come
+from the API, never preview rows or a client cache; their business meaning and
+independent sources belong to [Messages](../scenarios/message-campaigns-jvm/README.md#数量与结果读取).
+Detail rows preserve failures and content parse errors. Counts and Result
+content have no common snapshot; Task terminality does not stop later receipts.
 
 API creation completes append and automatic approval before returning taskId.
 Unconfirmed submission preserves the draft and offers a known Task link, without
@@ -189,15 +182,15 @@ Recipient country and sender range are independent (CN and ANY defaults).
 An optional sender phone adds an intersecting condition. UTF-8 files remain local,
 at most 1 MiB/1000 numbers, with BOM and LF/CRLF/CR, original line errors and duplicate
 rejection; finite Task files retain their separate 10000-line limit. Lab interprets
-the submitted JSON body. Use [Scenario Preview](../distribution/server/PREVIEW.md)
-with `VITE_RUNTIME_PROXY_TARGET=http://127.0.0.1:18500` for real business execution.
+the submitted JSON body.
 
 ## App Checks Task workspace
 
 `/app-checks` and `/app-checks/tasks/:taskId` share one API/Mock workspace for the
 `app-checks` Project. Its independent Catalog probe controls navigation: 404 means
-not enabled, while network/5xx failures allow explicit retry. Boot serves the exact
-list/detail paths in both profiles; static delivery never enables a scenario.
+not enabled, while network/5xx failures allow explicit retry. Page forwarding
+follows [Boot configuration](../server_boot_jvm/README.md#pages-and-configuration);
+catalog observation controls this workspace's availability.
 
 The list displays at most 100 Tasks with loaded-only search, App/state filters and
 preserved return position. Managed and missing-metadata Tasks remain visible.

@@ -334,6 +334,12 @@ distributed leader election.
 
 ## Proof Boundary
 
+The Redis Owner lane's
+[AssignmentBatchIntegrationTest](../../server_jvm/src/test/java/com/xa/mass/kernel/pacer/dispatch/AssignmentBatchIntegrationTest.java)
+exercises 101/1000-Item logical batches across 100-member storage chunks. It
+checks qualification through mailbox publication and complete failed-Result/Score
+settlement for expired or exhausted batches without widening unrelated inputs.
+
 Runtime Boundary starts one Java Spring context and real Redis, with no
 auxiliary Kernel process, and proves:
 
@@ -399,12 +405,16 @@ the Result Application. These remain separate proof claims.
 
 - Keep Task discovery in Main's three bounded Owner observations. Do not add
   Producer-local Task discovery, Candidate demand hints or a pending Batch queue.
-- Do not add a dynamic Pacer/Producer registry, public policy SPI, or fallback
-  owner.
+- Do not add a dynamic Pacer/Producer registry, public policy SPI, reflection,
+  ServiceLoader, or fallback owner.
 - Do not assemble Pacer subpackage types from Server;
   `KernelPacerRuntime` is the only externally supported Pacer entry. The
   Result and Dispatch lifecycle bridges exist only for internal cross-package
   composition and are guarded against imports outside `kernel_pacer_jvm`.
+- Keep the instance assignment ceiling in Pacer and request admission in
+  Matching. Internal helpers must not repeat upstream logical size ceilings;
+  storage chunks and hard capacity retain their local Owners. Do not create a
+  cross-module batch constant or shared limit object.
 - Do not decode opaque Score structure outside its owner.
 - Do not move candidate selection, Worker lease, Item claim, retry, recovery,
   or Task finality into Server.

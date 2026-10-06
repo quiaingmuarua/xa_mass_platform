@@ -31,65 +31,21 @@ Task 执行和后续 Outcome 观察完成接码。只使用模拟短信，不连
 
 ## 启动与交付
 
-构建需要仓库现有 Java 21、Node 22.19+（低于 25）、Corepack 和 Python 3.11+。
-运行需要 Java 21、Python 3.11+ 和可连接的 Redis 7。Redis 默认为
-`redis://127.0.0.1:6379/15`，可用 `XA_MASS_REDIS_URL` 覆盖。不会启动、升级或停止已有 Redis。
-
-在仓库根目录运行：
+准备 [Preview 运行依赖](../../distribution/server/PREVIEW.md#source-launch)，在仓库根目录运行：
 
 ```powershell
 python -m pip install -r distribution/server/requirements-preview.txt
 python run_local_runtime.py --profile preview
 ```
 
-打开 `http://127.0.0.1:18500/sms`，模拟器页面为 `http://127.0.0.1:18504/lab`。默认共 60 个模拟号码，seed=0；
-可用 `--count 100 --seed 712` 生成另一份可复现人口。国家为等权抽样，不保证精确配额或小样本覆盖全部国家。
-已有库存不会因 seed 改变而重建。`Ctrl+C` 结束本轮场景。
-验收 runner 使用共享 proof inventory 工具预先物化 1/1/1 或 700/200/100 的精确库存，
-保留原号码、国家顺序及文件坐标；不依赖随机模板、挑选 seed 或减少原验收要求。
-`--port 18410` 同时将 Server、Adapter 和 Host 切换到
-18410、18413、18414。端口被占用时明确失败，不停止占用服务。
+打开 `http://127.0.0.1:18500/sms` 申请监听，再到 `http://127.0.0.1:18504/lab`
+向所选号码输入短信，回到业务页观察结果。申请、取消和未确认结果的含义见下文；
+[前端 Owner](../../frontend/README.md#sms-business-pages) 维护页面刷新、catalog 和本地状态。
 
-构建预览 ZIP：
-
-```powershell
-.\gradlew.bat :distribution:server:previewZip
-```
-
-输出 `distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip`。
-解压后在包目录运行以下命令，无需 Node 或 Gradle：
-
-```powershell
-python -m pip install -r requirements.txt
-python run_preview.py
-```
-
-SMS、Messages 和 App Checks 共用这一 ZIP。它包含 Spring 宿主生成的单一 Server JAR、模拟 Host 和 SDK、统一前端、发行配置及启动脚本。
-SMS 页面与 Runtime、Reference 共用一次前端构建，统一资源位于 `frontend/dist`；Server JAR 不嵌入独立 SMS 前端。
-场景版本不改变平台版本。`preview-manifest.json` 记录同次构建的版本、HEAD、固定启用的三个场景及
-Server、Host、前端、启动脚本和发行配置的指纹。ZIP 不携带验收脚本、报告或私有运行数据。
-启动顺序是 Server 健康且三个场景均完成初始化、Host 身份建立、实际 WebSocket 路由验证。
-默认端口为 Server 18500、Adapter 18503、Host 18504。
-启动器固定启用 `preview`，同时装配三个场景。宿主的
-`server_boot_jvm/src/main/resources/application-preview.yaml` 是配置的唯一来源，
-发行任务将它复制到 `config/application-preview.yaml`。配置集中定义 Server、Redis、
-`products-websocket` Adapter 和 Endpoint，并为 SMS/Messages 共享的混合国家 Group `demo-sim` 启用 Country／Messaging Pool 及独立 Phone Index。
-App Checks 使用两个独立 App Groups；完整拓扑由 [Boot](../../server_boot_jvm/README.md#platform-and-preview) 维护。
-根页面 `/` 仍是 Runtime 入口；Boot 将三个 SMS 页面及尾斜杠转发到统一控制台。
-不启用该 profile 时，不装配这三个场景的 API、资源声明或后台任务。静态页面仍可提供；控制台通过 catalog 状态隐藏未启用入口，直达页面显示未启用。
-启动时复用 catalog 做一次五秒期限的可用性观察；其他读取错误保留未确认并提供手动重试。
-公开 Mock Demo 隐藏 SMS 且不请求场景 API；未知 API 和静态资源保持错误。
-任一进程退出即结束场景，不自动恢复旧状态。
-
-每次启动使用新的 `test_products_<UUID>` Redis scope。所有自有进程停止后，退出仅以 `SCAN` + `UNLINK`
-清理该精确前缀，保留其他 scope。硬杀启动器可能留下进程和数据；正常退出是清理前提。
-日志及本轮 PID/scope 元数据保存在 Preview 根目录的 `build/runs/`，不记录短信正文或 Result 内容。
-
-同一 Worker 同时安装 [Messages](../message-campaigns-jvm/README.md)、SMS 和共享字符串能力；
-SMS 的监听、匹配、取消和结果语义保持独立，没有 Messages 模块依赖。
-[Scenario Preview](../../distribution/server/PREVIEW.md) 维护启动和打包；
-[Spring 宿主](../../server_boot_jvm/README.md) 维护 profile 装配与配置源。
-本场景保留业务契约和专属验收；只施加 SMS workload 时，Messages 不产生业务记录。
+[Preview](../../distribution/server/PREVIEW.md) 独占库存参数、端口覆盖、进程退出与精确 scope 清理，
+以及 [ZIP 构建和解压运行](../../distribution/server/PREVIEW.md#archive-delivery)。
+[Boot](../../server_boot_jvm/README.md#platform-and-preview) 独占 profile、共享 Group/Project 和配置。
+SMS 的监听、匹配、取消和结果语义独立；只施加 SMS workload 时，Messages 不产生业务记录。
 
 ## 模块和执行路径
 
@@ -99,26 +55,19 @@ SMS 的监听、匹配、取消和结果语义保持独立，没有 Messages 模
 | [统一前端](../../frontend/README.md#sms-business-pages) | `src/sms/`：工作台、分页记录、业务指标；共享布局与主题，只调用同源 SMS API |
 | [Worker Simulator](../../worker_simulator_jvm/README.md#sms-scenario) | 共用 Java Host 的 SMS 场景：SIM 库、模板匹配、全进程去重、Reporter 生命周期及单 HTML 控制台 |
 
-[Spring 宿主](../../server_boot_jvm/README.md) 显式导入
-[Server 配置](../../server_jvm/README.md) 和统一 preview 配置，创建一个 Spring 上下文。
-`sms-reception-jvm -> server_jvm` 为单向依赖，Server 不依赖场景；场景只允许引用批准的服务和 DTO。
-SMS 不创建 Redis 客户端、Owner、Pacer 或 Adapter，复用平台实例。
-平台继续提供完整 Prepare、Worker poll/results、Adapter consume/append 和 Direct Call。
-Worker 与 Adapter 均指向同一 Server，默认端口 18500。场景服务调用不经过平台业务 HTTP。
-每个 scope 仅允许一个启用 Pacer 的 Server；本版不支持多实例订单幂等或重启恢复。
-
-场景生命周期在平台装配之后消费宿主提供的唯一 `demo-sim` Group 与完整事件声明，并取得托管 Task ID。
-宿主先初始化 Group 和 Project managed Tasks，各场景只读取已配置资源。构造器没有资源准备或线程启动副作用；宿主准备失败即终止本次启动。
-关闭时先拒绝各场景的新命令、停止提交与观察，再关闭平台资源；SMS 线程共用最多 5 秒的关闭预算，不刷新或重放队列。
+场景通过 [Server 允许的应用服务](../../server_jvm/README.md#worker-and-scenario-assembly)
+消费已准备的 Project 目录，不经过平台业务 HTTP。本版不支持多实例订单幂等或重启恢复；
+每个 scope 只运行一个启用 Pacer 的 Server。构造器没有资源准备或线程启动副作用。
+SMS 关闭先拒绝新命令、停止提交与观察，线程共用最多 5 秒预算，不刷新或重放队列；
+平台资源随后关闭。
 
 产品直接调用 `ProjectDirectory`、`TaskCallSubmissionService` 和
 `TaskDataService`。提交入口校验完整批次，包括会被同 ID 覆盖的输入；Result 读取也保留数量
 和字段约束。复用现有 Task 请求与 Result 类型，不调用 Controller，不读取 Redis 或调度实现。
 平台 HTTP Call 复用同一提交服务，独立保留原有即时查询和异步等待。
 
-Host 每个号码对应一个 Worker；全部国家共用 `demo-sim` 的一个 JavaWorkerManager。
-SDK 按库存文件名＋行号使用 SCENARIO_LAB 批量准备身份；Properties 经真实 Adapter 观察进入 Matching，Prepare 不保存完整属性。
-Worker SDK 和 Adapter 的原有 HTTP/WebSocket 边界继续保留。
+Host 每个号码对应一个 Worker；身份、库存和 Properties 发布遵循
+[Simulator 生命周期](../../worker_simulator_jvm/README.md#runtime-lifecycle)。
 
 ```text
 应用申请 -> 同一个托管 Task -> Server 有限提交服务
@@ -130,12 +79,11 @@ Host 页面／验收脚本输入短信 -> Host 选择唯一获胜监听 -> 原 r
 取消意图 -> 观察实际 workerId -> 同一 Task 的定向取消命令 -> Host 裁决
 ```
 
-Preview 显式启用 country Pool 和 `worker.country` 函数。托管 Task 的供给声明是
-`RefillTarget("country", EligibilityQuery({}), 100)`；每个监听 Item 独立携带所请求国家，
-取消 Item 使用 `WorkerQuery("workerId", 实际Worker身份)`。输入构造见
+每个监听 Item 使用 `worker.country` 并独立携带所请求国家，
+取消 Item 使用 `WorkerQuery("workerId", 实际Worker身份)`。托管 Task 的 Country 供给由
+[Boot](../../server_boot_jvm/README.md#platform-and-preview) 声明，不由 Item 查询推导。输入构造见
 [ListenerService](src/main/java/com/xa/mass/scenario/sms/ListenerService.java)，
-固定组装见 [Preview 配置](../../server_boot_jvm/src/main/resources/application-preview.yaml)。
-Preview 的 `demo-sim` 不启用 Any Pool；通用探针消费 Country Pool，定向探针使用独立身份查询。
+通用探针消费 Country Pool，定向探针使用独立身份查询。
 
 监听只是 Host 业务状态，不持有 Kernel lease。初始执行成功只表明监听已建立。
 Backend 从 `succeeded` Result 的完整业务内容读取接码状态，不从 TaskItem terminal tag
@@ -198,7 +146,8 @@ Backend 只重读 Result，不修补平台事实，不保证最终到达。
 | `POST /api/v1/sms/listeners/{id}/cancel` | 记录取消意图并返回当前状态 |
 | `GET /api/v1/sms/metrics` | 申请、各状态、错误、队列、建立和短信观察延迟 P95/P99 |
 
-旧产品路径不保留别名。平台静态 OpenAPI 保持平台契约；启用 SMS 的实例实时 OpenAPI 同时包含平台与产品路由。
+旧产品路径不保留别名。静态与实时 OpenAPI 的范围见
+[Boot 页面契约](../../server_boot_jvm/README.md#pages-and-configuration)。
 产品异常处理局限于自己的 Controller。本预览尚无登录体系，同源部署本身不是订单授权或租户隔离。
 
 模拟控制仅由统一 Worker Simulator 的独立端口提供；产品 Server 不代理这些请求。
@@ -238,24 +187,22 @@ Backend 活跃数量只包含已观察到建立且尚无终态的监听；建立
 
 ```powershell
 .\gradlew.bat :worker_simulator_jvm:test :scenarios:sms-reception-jvm:test
-corepack pnpm@11.9.0 --dir frontend lint
-corepack pnpm@11.9.0 --dir frontend typecheck
-corepack pnpm@11.9.0 --dir frontend test
 .\gradlew.bat :server_boot_jvm:test :server_boot_jvm:smsCompositionIntegrationTest
 python -m unittest discover -s scenarios/sms-reception-jvm -p 'test_*.py'
-python -m unittest discover -s distribution/server/src/test/python -p 'test_*preview*.py'
 python scenarios/sms-reception-jvm/run_acceptance.py --build --scenario functional
 python scenarios/sms-reception-jvm/run_acceptance.py --scenario lifecycle
 python scenarios/sms-reception-jvm/run_acceptance.py --scenario concurrency
-python .github/scripts/check_docs.py
-python .github/scripts/check_proof_selection.py
-git diff --check
 ```
 
-发行模块的组合证明创建真实 Server 上下文，主动阻断平台 Task 提交／Result 查询 HTTP 路由，
-SMS 通过宿主 Project 目录取得 managed Task，再通过应用服务和真实 Java Worker 完成执行及后续观察。该证明检查共享资源仅一份，
-三个页面可直接访问，实时 OpenAPI 同时包含平台与产品路由；关闭 SMS profile 时，SMS API 不存在，统一页面呈现未启用状态；平台 profile 不声明混合 Group 或业务 Project。
-单元测试另外覆盖构造无副作用、失败启动清理、产品先于平台停止、退出拒绝和依赖边界。
+[Boot 组合证明](../../server_boot_jvm/README.md#build-and-verification) 阻断平台 Task 提交／Result
+查询 HTTP，验证 SMS 经应用服务和真实 Worker 完成执行与后续观察；单元测试覆盖构造无副作用、
+失败启动清理、产品先于平台停止、退出拒绝和依赖边界。
+[前端检查](../../frontend/README.md#verification) 和
+[发行检查](../../distribution/server/PREVIEW.md#verification) 各归其 Owner。
+
+Runner 使用共享 proof inventory 工具预先物化 CN/US/GB = 1/1/1 或 700/200/100 的精确
+SMS-only 库存，保留号码、国家顺序及文件坐标，显式 `app_count=0`。不挑选 seed 或修补配额；
+Host 重启复用相同库存和 scope。Server 仍使用 Boot 的完整 preview 装配。
 
 功能 world 为每国家 1 个真实连接的 Java Worker。依次验证无监听、A/B/C 共号、优先级、
 相同优先级顺序、幂等冲突、短信去重、普通 Task 重复执行、无匹配、取消、窗口外和有限自动流。
@@ -285,10 +232,9 @@ Task，不证明公平性或容量。独立 `lifecycle` 场景验证停止、身
 P95/P99、活跃监听峰值及 Server 和 Host 两个 JVM 的 RSS/线程峰值。到期不算接码成功。
 
 当前验收写入产品目录的 `build/acceptance/`，仅 `summary.json`、`summary.md` 和安全归档检查用于 CI 汇总；
-private 日志不进入 CI 工件。业务验收脚本留在源码中，调用统一 Preview 启动器，
-由验收脚本预先生成安装 SMS 能力的 Worker 库存；Server 的 preview 配置仍组装三个业务场景。
-`--root <解压后的统一 Preview 目录>` 加载 ZIP 内启动脚本、HTTP 客户端和真实产物，
-不回退到源码启动器，不在 ZIP 内构建。摘要记录实际加载的启动脚本指纹。
+private 日志不进入 CI 工件。源码验收使用 `--build`；`--root <解压后的统一 Preview 目录>`
+按 [打包验收契约](../../distribution/server/PREVIEW.md#verification) 加载 ZIP 产物，
+不回退源码或在 ZIP 内构建。摘要记录实际加载的启动脚本指纹。
 `.github/workflows/sms-reception-preview.yml` 运行产品单元测试、统一前端检查、同进程组合边界、小规模真实链路以及解压 ZIP 后的真实功能链路；
 functional、lifecycle 和 ZIP functional 分别使用 18400、18420、18440 作为 Server 基址，
 Adapter 为基址 +3，Host 为基址 +4，避免连续阶段复用同一组端口影响启动准入。
@@ -297,22 +243,18 @@ Adapter 为基址 +3，Host 为基址 +4，避免连续阶段复用同一组端�
 本场景证明有限业务、Country Pool 与 Phone Index 闭环，不声明平台容量上限；不证明真实设备收信、
 app 索引、黑名单、可靠投递、租户隔离或业务订阅的重启恢复，也不扩大既有平台容量场景。
 
-归档检查比较 ZIP 中的全部前端文件与当前 `frontend/dist`（生成的诊断字典单独交付），
-并验证 Server 指纹、不含独立 SMS 页面资源和源码构建工具：
+先按 [Preview 交付说明](../../distribution/server/PREVIEW.md#archive-delivery) 构建、检查并解压新 ZIP，
+再从仓库运行相同业务验收：
 
 ```powershell
-.\gradlew.bat :distribution:server:previewZip
-python distribution/server/src/test/python/verify_preview_archive.py --archive distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip --frontend frontend/dist
 python scenarios/sms-reception-jvm/run_acceptance.py --scenario functional --root <解压后的统一Preview目录>
 ```
 
-CI 通过源码验收脚本加载新 ZIP 的启动器，启动无需 Node 或 Gradle；Java 21、Python 和 Redis 7
-仍是 Preview 运行依赖。真实浏览器验收使用同一 ZIP 页面完成申请、Host 原始短信输入及结果观察，
+真实浏览器验收使用同一 ZIP 页面完成申请、Host 原始短信输入及结果观察，
 并检查 Runtime 切换、页内标签、深浅主题和窄屏布局。
 
 ## Project ownership
 
-The preview profile declares `sms` and its supported Groups. Runtime startup
-prepares Groups and Project managed Tasks before scenario startup. This scenario
-only reads the Project directory; it never registers a Group or Project.
-Listeners use the Project/Group managed Task.
+Listeners use the `sms` Project/Group managed Task prepared by
+[Boot composition](../../server_boot_jvm/README.md#platform-and-preview).
+The scenario only reads that directory; it never registers Groups or Projects.

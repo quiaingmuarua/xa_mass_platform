@@ -3,45 +3,16 @@
 Status: current Kernel authority and documentation entrypoint.
 
 Follow the root [reading path](../../README.md#reading-path) for Runtime orientation.
-This index locates Kernel mechanisms, Pacer policy and adjacent Owners:
-
-```text
-kernel_jvm
-  stable mechanical Owners, Redis providers, Scores and resources
-
-kernel_pacer_jvm
-  scheduling Policy, convergence loops and finite lifecycle
-
-worker_matching_jvm
-  Worker facts, fixed query functions, Pool maintenance and bounded identity evidence
-
-server_jvm
-  Spring assembly and public Runtime API
-```
-
-Kernel owns scheduling order, execution admission and mechanical state
-transitions. Worker Matching selects bounded candidate evidence from facts
-and candidate resources. Server validates, coordinates writes, assembles
-lifecycles and exposes those owners; Transport delivers already-targeted
-Commands and executes endpoint-local handlers.
-
-These are implementation owners. The complete
-[Matching / Execution / Convergence model](scheduling-overview.md#system-behavior-model)
-explains their shared behavior and the feedback into both work and resource
-state. Use the relevant Owner below and the mainline's
+This index locates mechanical Owners and Pacer policy. The complete
+[behavior model](scheduling-overview.md#system-behavior-model) owns cross-owner
+flow and work/resource feedback. Use the affected Owner below and the mainline's
 [production and proof pointers](scheduling-overview.md#production-and-proof-pointers)
 to trace the affected caller, assembly and assertion.
 
 ## Trust Order
 
-Use production code and the owning tests to establish current behavior.
-[AGENTS](../../AGENTS.md#trust-order) defines the repository trust and change
-rules. Correct stale prose within scope; a code change requires authorization
-for that behavior. Historical evidence remains version-scoped.
-
-Read [Worker Delivery Boundary](worker-delivery-dispatch.md) when the investigation
-crosses Command or observation handoffs. Local transitions, storage shapes and
-lifecycles remain in the affected Owner documents.
+[AGENTS](../../AGENTS.md#trust-order) defines the applicable source/test authority,
+change rules and version-scoped use of historical evidence.
 
 ## Owner Documents
 
@@ -77,23 +48,15 @@ Cross-module documents:
 
 ## Cross-Owner Reading
 
-[Scheduling Mainline](scheduling-overview.md) owns the global behavioral model,
-its internal/external feedback paths, independent Score owners and vertical
-scale boundary.
-[Worker Delivery Boundary](worker-delivery-dispatch.md) follows already-decided
-Commands and returning evidence through Server and Transport. The Owner links
-above maintain the detailed transitions, storage and policies.
+Use [Scheduling Mainline](scheduling-overview.md) for work/resource flow and scale,
+and [Worker Delivery Boundary](worker-delivery-dispatch.md) for Command/observation
+handoffs and failure windows. Local transitions, storage and lifecycle stay with
+the Owners above.
 
 ## Verification
 
-Deterministic owner and Pacer checks:
-
-```text
-./gradlew :kernel_jvm:test :kernel_pacer_jvm:test
-```
-
-Redis concurrency, Runtime Boundary and end-to-end claims require their named
-lanes in [TESTING.md](../../TESTING.md). The Java public contract snapshot is
+Select Owner, Redis, Runtime Boundary or end-to-end proof through
+[TESTING.md](../../TESTING.md#lane-index). The Java public contract snapshot is
 guarded by
 [`kernel_owner_contract_manifest.json`](../../kernel_jvm/src/test/resources/kernel_owner_contract_manifest.json).
 

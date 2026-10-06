@@ -20,25 +20,28 @@ their platform behavior. `preview` imports [SMS Reception](../scenarios/sms-rece
 [App Checks](../scenarios/app-checks-jvm/README.md). There is one
 fixed preview assembly, without per-business deployment profiles or selection.
 
-Preview enables independent `worker.phone` and qualified `worker.messaging.phone`
-queries for `demo-sim`, alongside its Pool Rules. Directed Messages need no Messaging
-Pool stock. Direct `workerId` is available in every Group; Matching owns
-the [query and index contracts](../worker_matching_jvm/README.md#identity-and-phone-query-functions).
+`application-preview.yaml` owns this fixed Project/Group composition:
 
-`application-preview.yaml` declares the common `demo-sim` Group, its complete
-String/SMS/Messages events and the `sms` and `messages` Projects. It also declares
-the `app-checks` Project with `app-a-sim` and `app-b-sim`; each App Group
-enables `any` Pool, `worker.any` and `extension.worker.app.registration.check`.
+| Project | Groups | Declared events and Matching resources |
+| --- | --- | --- |
+| `sms`, `messages` | shared `demo-sim` | String/SMS/Messages events; Country and Messaging Pools; independent `worker.phone` and qualified `worker.messaging.phone` queries |
+| `app-checks` | `app-a → app-a-sim`, `app-b → app-b-sim` | `extension.worker.app.registration.check`; Any Pool, `worker.any` and `worker.assignment.available` |
+
+The `demo-sim` Project managed Tasks retain `country / {} / 100` supply;
+that Group does not enable Any Pool.
+Each App Group configures `assignment-window.window-millis=60000` and
+`max-assignments=10`. Direct `workerId` is available in every Group; phone-directed
+Messages declares no Pool supply. Matching owns the
+[query and index contracts](../worker_matching_jvm/README.md#identity-and-phone-query-functions).
 Server prepares Groups and Project managed Tasks before Adapter startup. Scenarios consume the
 immutable Project directory; they no longer register Groups. A declaration is not evidence
 that the real Worker installed those handlers.
 
-The scenario libraries consume only their approved Server services and DTOs;
-they neither depend on each other nor create platform Owners. Each starts after
-the platform lifecycle is ready. Failure of any scenario startup fails the whole
-context. Scenarios stop admission, submission and observation before platform
-resources close, including after partial initialization. Shutdown stays bounded
-and scenarios never clean a Redis scope.
+Boot assembles each scenario to start after the platform lifecycle is ready; a scenario
+startup failure fails the context. The
+[Server Scenario boundary](../server_jvm/README.md#worker-and-scenario-assembly)
+owns permitted service calls, partial-initialization cleanup and closing business
+admission/submission/observation before platform resources.
 
 Boot configuration lives outside the platform's package scan. Server tests and
 OpenAPI export use their own platform-only test bootstrap, without a dependency
@@ -46,13 +49,14 @@ on this executable or the scenarios.
 
 ## Pages and configuration
 
-The shared Console keeps `/sms`, `/messages` and `/app-checks` with their finite page
-forwards in platform and preview instances. Catalog observation controls feature
+Boot forwards `/sms`, `/sms/listeners`, `/sms/metrics`, `/messages`,
+`/messages/tasks/{taskId}`, `/app-checks` and `/app-checks/tasks/{taskId}`
+to the shared Console, including trailing slashes, in platform and preview
+instances. The root `/` remains the Runtime entry. Catalog observation controls feature
 availability; static assets never enable business. Unknown API and asset paths
-remain errors. Runtime/Reference and each business page keep separate data and
+remain errors. The [Frontend Owner](../frontend/README.md) owns page data and
 polling lifetimes. Platform OpenAPI snapshots exclude scenarios; preview's live
-OpenAPI includes all three business namespaces. App Checks lists Tasks and serves
-`/app-checks/tasks/{taskId}` directly; page delivery does not enable its API.
+OpenAPI includes all three business namespaces.
 
 All production `application*.yaml` files live in this module's `src/main/resources`.
 The Server library supplies binding, validation and lifecycle implementation;
@@ -64,31 +68,21 @@ standard environment, command-line and `spring.config.additional-location` input
 | --- | --- | --- |
 | Default | `application.yaml` | Server 18082, Redis `redis://localhost:6379/15`, scope `profile_default`, DEFAULT Pacer, no Adapter or Group seeds |
 | `scenario-workers` | `application-scenario-workers.yaml` over the base | Server 18082, Adapter 18083, scope `profile_scenario_workers`, SCENARIO_LAB and three advisory Groups |
-| `agentforge` | `application-agentforge.yaml` over the base | Server 18182, Adapter 18183, scope `profile_agentforge`, DEFAULT and no Group seeds |
-| `preview` | `application-preview.yaml` over the base | Server 18500, Adapter 18503, required `XA_MASS_REDIS_SCOPE`, DEFAULT and all three business Scenarios |
+| `agentforge` | `application-agentforge.yaml` over the base | Server 18182, `agentforge-websocket` Adapter 18183, scope `profile_agentforge`, DEFAULT and no Group seeds |
+| `preview` | `application-preview.yaml` over the base | Server 18500, `products-websocket` Adapter 18503, required `XA_MASS_REDIS_SCOPE`, DEFAULT and all three business Scenarios |
 
-The preview profile is also copied into [Scenario Preview](../distribution/server/PREVIEW.md)
-from this source. Archive checks require its external copy to match the packaged
-host resource. The launcher starts the independent Simulator after Server health,
-all catalogs and actual Worker routes are verified. External overrides do not
-create a second maintained default configuration.
+The `scenario-workers` Project references its two JVM Lab Groups and advisory
+Android demo Group, provisioning three independent managed Task Calls. Its two
+Lab Groups enable `any/worker.any` with managed watermarks of 1000.
+AgentForge registers its own Groups through the public API; the profile does not
+embed AgentForge or Scenario capabilities. Groups without a task-rpc refill
+override save empty managed supply and may use Identity without a Pool.
+
+[Preview delivery](../distribution/server/PREVIEW.md#archive-delivery) copies the
+preview profile from this source and verifies it against the packaged resource.
+External overrides do not create a second maintained default configuration.
 
 ## Run
-
-The checked `scenario-workers` profile provides one WebSocket Adapter, two JVM
-Scenario WorkerGroup declarations and the advisory external Android demo
-Group. Its `scenario-workers` Project references all three Groups and startup provisions
-three independent managed Task Calls. Server readiness does not depend on a Worker Host. The root
-`run_local_runtime.py` defaults to this Profile, starts Server first and starts
-the standalone JVM Host only after readiness. Its finite vertical Worker proof
-is owned by
-[`integrations/worker-correctness`](../integrations/worker-correctness/README.md).
-
-The checked `agentforge` profile is a separate downstream deployment preset.
-It starts exactly one `agentforge-websocket` Adapter at 18183, exposes Server
-at 18182, uses `profile_agentforge`, and has an empty configured Group manifest.
-AgentForge registers its own Groups through the public API; this Profile does
-not start or embed AgentForge or Scenario capability code.
 
 Start the Java Runtime API from the repository root. Server selects the
 checked `DEFAULT` policy preset, constructs the one `KernelPacerRuntime`, and
@@ -98,54 +92,18 @@ its Spring adapter starts that Runtime before later lifecycle components:
 ./gradlew :server_boot_jvm:bootRun
 ```
 
-Start the checked local Scenario profile from the repository root:
+Select another checked profile explicitly, for example:
 
 ```text
 ./gradlew :server_boot_jvm:bootRun \
   --args="--spring.profiles.active=scenario-workers"
 ```
 
-This selects `SCENARIO_LAB` and starts Group/Task seeds, Pacer and Adapter, but
-no JVM Worker. For the complete local Lab use the one-command process launcher.
-Omitting `--profile` defaults to `scenario-workers`:
-
-```text
-python run_local_runtime.py
-```
-
-It builds and starts Server first, waits for readiness, then starts the
-standalone Worker Simulator against `data/scenario-workers`. Existing
-Worker files remain persistent local state. Stopping Host closes its network
-resources without stopping Server or deleting Workers, WorkerGroups or managed
-Task Calls.
-
-The same source launcher can start the checked clean downstream Profile:
-
-```text
-python run_local_runtime.py --profile agentforge
-```
-
-That path builds and serves the same frontend, then starts Server, Pacer and the
-single AgentForge WebSocket Adapter. It does not build or start the Scenario
-Worker Host. Unknown Profiles are rejected.
-
-The same root entry builds and starts the combined SMS/Messages Preview:
-
-```powershell
-python run_local_runtime.py --profile preview
-```
-
-It delegates to the [shared Preview launcher](../distribution/server/PREVIEW.md),
-including its isolated scope, two-process lifecycle and optional inventory parameters.
-
-For a repository-independent deployment, extract the
-[`distribution/server`](../distribution/server/) Runtime ZIP and start its Boot
-JAR directly from the Runtime root with Java 21, external Redis and explicit
-Profile and frontend arguments. The schema-v5 manifest lists the supported
-`scenario-workers`, `agentforge` and `preview` Profiles. The Runtime ZIP does not contain
-the repository-local Worker Simulator; use `run_local_runtime.py` or the
-module's Gradle task when that Lab is required. Source `bootRun` remains
-available for repository development.
+This starts the selected Server composition, without a Worker Host. Server
+readiness does not depend on that Host. Use Distribution's
+[source launcher](../distribution/server/README.md#source-launch) for the complete
+local Lab or Preview, and its [Runtime archive instructions](../distribution/server/README.md#runtime-archive)
+for repository-independent deployment.
 
 ## Build and verification
 
@@ -168,15 +126,10 @@ pure binding and invalid-input tests remain with Server. Platform/preview
 composition tests never load a source YAML through an additional file location.
 Server tests and OpenAPI export use their explicit test fixtures, with disabled
 Pacers and unreachable Redis unless the real boundary proof supplies its own
-connection, unique scope and endpoints. Both archive verifiers reject application
-configuration in nested platform/Scenario libraries and reject test configuration.
-
-Matching resources are explicit per Group. The scenario-workers profile enables
-any/worker.any for both Lab Groups and preserves their 1000 managed watermarks.
-Preview's `demo-sim` enables country/messaging and both Phone query functions;
-its Project managed Tasks retain country/{} /100 supply. The two App Groups enable
-any/worker.any and worker.assignment.available. Groups without a task-rpc refill
-override save empty managed supply and may use Identity without a Pool.
+connection, unique scope and endpoints. Distribution owns
+[archive configuration checks](../distribution/server/PREVIEW.md#archive-delivery);
+[Worker Correctness](../integrations/worker-correctness/README.md) owns the
+finite vertical Worker proof.
 
 ## Project topology
 

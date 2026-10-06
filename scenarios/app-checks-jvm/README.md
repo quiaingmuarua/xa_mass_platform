@@ -3,8 +3,9 @@
 Status: current one-shot application check scenario owner.
 
 `app-checks` 是 Preview 的后端场景：同一国家的一批号码和一个模拟描述，创建
-`CLOSE_WHEN_IDLE` Task，追加 Items 后自动批准。`app-a` 使用 `app-a-sim`，
-`app-b` 使用 `app-b-sim`。国家只校验号码，不筛选 Worker 国家。
+`CLOSE_WHEN_IDLE` Task，追加 Items 后自动批准。App/Group 映射由
+[Boot](../../server_boot_jvm/README.md#platform-and-preview) 装配并通过 catalog 返回。
+国家只校验号码，不筛选 Worker 国家。
 Console 的 `/app-checks` 页面直接使用以下 API；详情可通过
 `/app-checks/tasks/{taskId}` 打开，Server 重启后继续读取原 Task。
 
@@ -104,7 +105,7 @@ delay = min + value(domain="delay") mod (max - min + 1)
 
 ## 分配窗口投影
 
-Preview 为 `app-a-sim`、`app-b-sim` 各装配一个纯属性投影，只接收
+Boot 为每个 App Group 装配本场景的纯属性投影，只接收
 `observationEventName=worker.assigned` 且
 `messageEventName=extension.worker.app.registration.check` 的通知。
 Pacer 在执行租约和 Item claim 均成功后、Command 编码和发布前发出通知。
@@ -113,8 +114,8 @@ Pacer 在执行租约和 Item claim 均成功后、Command 编码和发布前发
 投影只写两个 Platform Properties：`lastAssignedAt` 和 `windowAssignmentCount`。
 前者是最近观察到的分配时间（毫秒），后者是该时间所在固定窗口中的观察数量。
 窗口长度读取各 Group 的 `xa.mass.worker-matching.groups.<group>.assignment-window.window-millis`，
-与 Matching 使用同一份启动配置，Preview 默认为 60 秒，窗口编号为
-`floor(observedAtMillis / 60000)`。同窗口累加、时间取最大值；新窗口重新计数；
+与 Matching 使用同一份启动配置；窗口编号为 `floor(observedAtMillis / windowMillis)`。
+同窗口累加、时间取最大值；新窗口重新计数；
 更旧窗口不回退。两个字段均不存在时初始化；字段不完整、非整数、负数或溢出时
 整个 Worker 投影跳过并由 Server 计入处理失败诊断，不静默修复。其他属性不修改。
 
@@ -129,43 +130,31 @@ Properties Handler 合并读取与写入；场景不依赖 Pacer 或通用 Funct
 
 ## 分配窗口筛选
 
-Preview 的两个 App Group 各自配置 `assignment-window.max-assignments: 10`。
-新查询仅接受 `{}`，阈值由 Group 装配决定。函数从现有 Any Pool 消费本次有界候选，
-批量读取其 Platform Properties，并原样返回合格候选的严格围栏。当前窗口达到阈值时
-筛掉；过去窗口按零次观察处理；两个字段都不存在时允许初次分配。Facts 缺失、
-不完整或非法字段、未来窗口均不分配，不写回修复。完整失败和读取预算见
+新 Item 使用 `worker.assignment.available({})`；窗口和阈值由
+[Boot 的 Group 配置](../../server_boot_jvm/README.md#platform-and-preview) 决定。
+该函数用现有 Any Pool 候选和 Platform Properties 判断资格；完整字段解释、失败与预算见
 [Matching Owner](../../worker_matching_jvm/README.md#observed-assignment-window)。
 
-筛掉的候选不归还、不补取，继续由既有 60 秒候选老化回收和补货推进。
-跨窗口意味着重新符合条件，不承诺立即执行。观察异步、可丢失，不能把 10 当成严格
+跨窗口意味着重新符合条件，不承诺立即执行。观察异步、可丢失，不能把配置阈值当成严格
 执行上限；失败和迟到结果不会扣减统计。范围是 Group 内的单 Worker，没有跨设备
 IP／账号配额。其他显式函数不受这一策略拦截。窗口长度改变使用新 scope，不迁移旧值。
 
 ## 页面与结果核对
 
-页面沿用任务列表、创建抽屉和详情。列表最多 100 条；号码文件为 UTF-8、最大 1 MiB，
-每行一个同国家号码、最多 1000 个。名称自动生成为
-`check-{appId}-{country}-{count}-{本地提交时间}`；Task ID 与 salt 仍由 Server 生成。
-支持四种范围示例，切换范围保留 delayMs；全部追加确认后自动批准。
-不确定提交保留草稿和已知 Task ID，不自动重建或重试。
+启动 [Preview](../../distribution/server/PREVIEW.md#source-launch)，打开 `/app-checks`，
+选择 App 和号码国家，导入号码并填写注册/未注册/失败区间与延迟。完整追加后自动批准，
+再到详情观察结果；不确定提交保留已知 Task ID，不重新创建或自动重试。
 
-详情分别展示 Task 状态、Score 数量及最多 100 条 Result。未注册是执行成功；执行失败
-没有注册答案，业务解析错误不改判执行状态。列表和详情仅进入及手动刷新时读取；不增加
-分页、导出、自动观察或统计缓存。统计不能由预览行数推算。
-
-“核对当前预览”使用存量 salt、实际 workerId、号码和原模拟描述，按上面的 SHA-256
-协议在浏览器复算注册答案、Group 和模拟延迟。BigInt 保留无符号精度，模拟延迟不是
-端到端耗时。失败或资料缺失记录标为无法核对；不增加 API，不写回平台，不证明执行次数。
-新快照清除旧核对。Web Crypto 不可用时明确禁用，不进行远程代算。
-显式 Mock 与 API 共用页面，Mock 样例及本地创建无网络请求，不作为 API 失败回退。
+“核对当前预览”按上面的 SHA-256 协议，用存量 salt、实际 Worker、号码和模拟描述复算；
+它只核对已展示内容，不证明执行次数或失败原因，模拟延迟也不是端到端耗时。
+[前端 Owner](../../frontend/README.md#app-checks-task-workspace) 维护文件导入、草稿、刷新、
+API/Mock 和浏览器核对的可用性及本地状态。
 
 ## 装配与证明
 
-[Boot](../../server_boot_jvm/README.md) 仅在 preview 装配该场景及两个 Group，
-普通 platform profile 不启用 API。每个 App Group 默认 20 个 Worker；
-[Preview](../../distribution/server/PREVIEW.md) 的 `--app-count` 控制每组数量，
-0 从本次 Host 配置排除两个 Group。`--count` 仍只控制 demo-sim。
-已有库存按原规则复用，不修改 demo-sim，也不清理业务数据。
+生产装配见 [Boot](../../server_boot_jvm/README.md#platform-and-preview)；
+Host 数量参数和库存复用见 [Preview](../../distribution/server/PREVIEW.md#inventory-and-process-lifecycle)。
+以下 `--build` 验证源码 staging，`--root` 验证新解压 ZIP；后者不回退源码启动器或在包内构建。
 
 ```powershell
 .\gradlew.bat :scenarios:app-checks-jvm:test :worker_simulator_jvm:test :server_boot_jvm:test

@@ -5,7 +5,8 @@ connection, and complete WebSocket / line-Socket physical Server owners.
 
 The production owner cut is frozen. Hardening may refine an owner's local
 behavior and proof, but must not introduce a dynamic lifecycle registry,
-shared Server base, Session, Bridge, or protocol-extension framework.
+shared Server base, Session, Bridge, reflection, ServiceLoader, or
+protocol-extension framework.
 
 This module is a plain `java-library`. It does not depend on Spring, Server,
 Kernel, Redis, score, or Pacer code. It reaches the Server Worker Delivery

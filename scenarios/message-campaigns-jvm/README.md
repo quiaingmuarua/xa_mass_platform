@@ -2,8 +2,8 @@
 
 Status: current Messages business owner.
 
-Messages 是 `messages` Project 下有限 Task 的业务视图。与
-[SMS Reception](../sms-reception-jvm/README.md) 共享平台、Adapter 和真实 Worker。
+Messages 是 `messages` Project 下有限 Task 的业务视图；共享资源拓扑由
+[Boot](../../server_boot_jvm/README.md#platform-and-preview) 装配。
 
 ## 归属与流程变化
 
@@ -106,14 +106,13 @@ Preview 保留 extension.worker.message.send 的授权协议例外，不支持�
 
 ## 页面
 
-`/messages` 和 `/messages/tasks/{taskId}` 共用 MessageTaskSource 下的 API/Mock 组件。
-API 不回退 Mock；Mock 明确标识且零网络请求。创建抽屉保留草稿，成功清空并进入详情，
-未确认时保留输入和已知 Task 链接，不自动重试。前端生成显示名称，不生成真实 Task ID。
-进入页面/手动刷新才读取，无统计定时器；错误保留已知数据。
+启动 [Preview](../../distribution/server/PREVIEW.md#source-launch)，打开 `/messages`，
+选择收件国家、发送范围与可选发送号码，导入收件号码并填写 Lab JSON 指令。创建完成后
+到 `/messages/tasks/{taskId}` 观察执行与后续回执；不确定提交遵循
+[幂等与失败契约](#幂等容量与失败)，不能重新创建来修补未知结果。
 
-UTF-8 文件限 1 MiB/1000 号码，支持 BOM、LF/CRLF/CR，浏览器读取，错误保留原草稿及行号。
-有限 Task 的通用 10000 行工具保持独立限制。本页面没有分页或导出入口；平台原有成功
-Result JSONL 导出能力不变。Campaign 持久化、独立统计存储和自动修复不在本 Owner 内。
+[前端 Owner](../../frontend/README.md#messages-business-pages) 维护文件导入、草稿、API/Mock、
+手动刷新和有界预览。Campaign 持久化、独立统计存储和自动修复不在本 Owner 内。
 
 ## 检查与验收
 
@@ -133,6 +132,6 @@ Redis Owner 证明展示字段 create-only、创建时间不刷新和数量命�
 
 ## Project ownership
 
-Preview profile 声明 messages 及支持的 Group。启动先准备 Group 和 Project managed Task。
-场景只消费目录，不注册 Group/Project；所有新消息任务使用 projectId=messages。
+场景只消费 [Boot 准备的目录](../../server_boot_jvm/README.md#platform-and-preview)，不注册
+Group/Project；所有新消息任务使用 projectId=messages。
 无需迁移或清理业务数据；新增展示字段缺失表示未知，读取不会补写。

@@ -88,18 +88,13 @@ explain independent finality, failure windows and later observations.
 [Message Campaigns](scenarios/message-campaigns-jvm/README.md) and
 [App Checks](scenarios/app-checks-jvm/README.md) validate realistic business
 workloads: listening orders, message delivery/later receipts, and
-one-shot lookups with assignment-window observations. Their Spring configuration
-libraries consume Server application services; each scenario owns its business
-assertions. They are current validation surfaces, not a commitment to separate
-product deployments.
-
-[Server Boot](server_boot_jvm/README.md) enables these scenarios in `preview`,
-sharing one platform resource set. The [Preview launcher](distribution/server/PREVIEW.md)
-starts Server and the independent [Worker Simulator](worker_simulator_jvm/README.md)
-as separate processes. The [coexistence proof](integrations/scenario-coexistence/README.md)
-checks SMS and Messages over shared Workers. The Simulator and
-[Android Host](xa-android/README.md) exercise the real Worker SDK, with their own
-device facts, capabilities and lifecycle.
+one-shot lookups with assignment-window observations. Each owns its business
+state and assertions; these validation surfaces do not commit to separate product
+deployments. [Boot](server_boot_jvm/README.md#platform-and-preview) owns their
+shared Preview assembly, and [Coexistence](integrations/scenario-coexistence/README.md)
+owns the shared-Worker business proof. The independent
+[Worker Simulator](worker_simulator_jvm/README.md) and
+[Android Host](xa-android/README.md) exercise real Worker SDK capabilities and lifecycle.
 
 [Projects](server_jvm/README.md#profile-projects-and-managed-tasks) provide
 business attribution, configured Group associations and managed Call entrypoints.
@@ -109,28 +104,18 @@ scheduling and delivery truth.
 
 ## Runtime And Deployment
 
-The [Boot executable](server_boot_jvm/README.md) starts Server configuration,
-which assembles one KernelPacerRuntime and the Matching catalog. Only one
-Server per Kernel Redis scope may enable the Pacer lifecycle; there is no
-distributed Pacer leader election. Profile selects assembly and policy preset;
-Redis scope selects the data boundary. The executable owns all production
-application YAML; Server binds the values and owns resource lifecycle. Provider and lifecycle details belong
-to the Server and Pacer documents.
+Use [Boot](server_boot_jvm/README.md) for main, profiles and page/Scenario assembly;
+[Server Distribution](distribution/server/README.md) for artifacts, prerequisites
+and delivery commands; and [Preview](distribution/server/PREVIEW.md) for the
+Server/Simulator launcher. Worker SDKs are [published separately](distribution/worker-sdk/README.md).
+Server never starts Worker processes. AgentForge consumes release artifacts and
+public APIs. Within one Redis scope, only one Server may enable Pacer; the
+[Pacer lifecycle contract](kernel_pacer_jvm/doc/application-assembly.md#lifecycle) defines this boundary.
 
-The Server Runtime ZIP contains the Boot Server and compiled frontend and
-requires external Redis and Java 21. Worker SDKs are published separately.
-Worker Simulator has an independent process lifecycle and one `--config` entry
-for Lab, SMS and Messages over shared inventory. Configuration examples ship in
-its install distribution and Scenario Preview; the production Runtime ZIP
-excludes it. Server never starts Worker processes. AgentForge consumes release
-artifacts and public APIs instead of copying source modules.
-
-For local work, `python run_local_runtime.py` builds the frontend and starts
-the Scenario Lab. `--profile agentforge` selects the clean Server/Adapter
-preset without Worker Simulator. `--profile preview` builds and starts the business
-scenarios and their shared Simulator through the [Preview launcher](distribution/server/PREVIEW.md).
-Profile coordinates and commands are documented
-by [Server](server_jvm/README.md#run) and [distribution](distribution/server/README.md).
+For local work, `python run_local_runtime.py` starts the Scenario Lab;
+`--profile preview` starts the business Preview and `--profile agentforge` selects
+the clean Server/Adapter preset. The linked delivery documents own the complete
+build, configuration and launch procedures.
 
 The [public UI demo](https://frontend-kylerrun-s-projects.vercel.app) uses Mock
 data. Real Runtime observation requires a running Server; its live API

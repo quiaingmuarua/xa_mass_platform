@@ -331,6 +331,7 @@ Hosts move UI or blocking observation work to their own platform execution
 mechanism.
 
 There is no local Command injection or Properties-refresh lifecycle method.
+Do not add in-flight registries or Result caches to Core.
 Platform and extension capabilities use statically assembled
 `WorkerEventDefinition` values delivered through ordinary `DeliveryCommand`
 messages. SERVER and TASK Commands share the same immutable Event Name map and

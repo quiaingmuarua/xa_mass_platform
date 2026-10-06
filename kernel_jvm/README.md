@@ -120,6 +120,23 @@ does not establish the later separate TaskItem Score promotion.
 `kernel_jvm` has no Spring, HTTP, Pacer thread or policy configuration
 dependency. It never depends on `kernel_pacer_jvm` or `server_jvm`.
 
+Public operations remain caller-driven and bounded. A new operation needs an
+explicit production caller and focused proof; do not widen Task operations only
+to broaden an API. Redis operations stay in their owning package, never in
+Server connection or health code.
+
+A Policy may call an existing mechanical Owner where its event contract permits.
+Add a finite internal Mechanism only to compose a legal transition or protect an
+exact fence, not to proxy an Owner operation. Priority, Matching, deficits, retry
+cadence and lifecycle remain in Policy. Semantic Result events compose existing
+Owners without new Redis state or another truth path; their
+[event boundaries](../kernel_pacer_jvm/doc/result/result-routing-scheduling.md#application-and-guardrails)
+remain applicable.
+
+A second language implementation requires an authorized migration with one
+production Owner and explicit cutover proof. It must not introduce a second
+Kernel runtime or dependency on another Kernel implementation.
+
 The
 [`kernel_owner_contract_manifest.json`](src/test/resources/kernel_owner_contract_manifest.json)
 is the Java public-contract snapshot guard. It is not source generation or an

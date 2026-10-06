@@ -31,32 +31,15 @@ proof provides a current validation result.
 
 ## Owner Documents
 
-- [Java Kernel authority](kernel/README.md)
-- [Kernel mechanical owners](../kernel_jvm/README.md)
-- [Kernel Pacer policy](../kernel_pacer_jvm/README.md)
-- [Worker Matching owner](../worker_matching_jvm/README.md): bounded Facts qualification,
-  local Pool stock and independent Phone Index, including qualified Direct Messages.
-- [Runtime API Server](../server_jvm/README.md)
-- [Server Boot and profiles](../server_boot_jvm/README.md)
-- [Transport](../transport/README.md)
-- [Transport Platform Event Catalog](../transport/EVENTS.md)
-- [Scenario Workers](../worker_simulator_jvm/README.md)
-- [Android surfaces](../xa-android/README.md)
-- [Worker Correctness](../integrations/worker-correctness/README.md)
-- [Worker Dynamic Matching](../integrations/worker-dynamic-matching/README.md)
-- [Worker Convergence Health](../integrations/worker-convergence-health/README.md)
-- [Proof Registry](testing/proof-registry.md)
-- [Worker Loaded Recovery](../integrations/worker-loaded-recovery/README.md)
-- [Android Worker Proof](../integrations/android-worker-proof/README.md)
-- [Frontend](../frontend/README.md)
-- [SMS Reception business workload](../scenarios/sms-reception-jvm/README.md)
-- [Message Campaigns business workload](../scenarios/message-campaigns-jvm/README.md)
-- [App Checks business workload](../scenarios/app-checks-jvm/README.md)
-- [Scenario Preview delivery](../distribution/server/PREVIEW.md)
-- [Scenario Coexistence](../integrations/scenario-coexistence/README.md)
-
-Module READMEs explain only their assembly, public entrypoints, local owner
-mechanism and verification.
+| Area | Owner entrypoints |
+| --- | --- |
+| Scheduling and resources | [Kernel mechanism/policy index](kernel/README.md), [Matching](../worker_matching_jvm/README.md) |
+| Runtime API and executable | [Server](../server_jvm/README.md), [Boot profiles and assembly](../server_boot_jvm/README.md) |
+| Delivery and Worker SDKs | [Transport index](../transport/README.md), [Event Catalog](../transport/EVENTS.md) |
+| Worker Hosts | [Simulator](../worker_simulator_jvm/README.md), [Android](../xa-android/README.md) |
+| Business scenarios | [SMS](../scenarios/sms-reception-jvm/README.md), [Messages](../scenarios/message-campaigns-jvm/README.md), [App Checks](../scenarios/app-checks-jvm/README.md) |
+| UI and delivery | [Frontend](../frontend/README.md), [Runtime distribution](../distribution/server/README.md), [Preview launch](../distribution/server/PREVIEW.md) |
+| Integration evidence | [Proof Registry](testing/proof-registry.md) links every lane to its responsible Integration/Scenario document. |
 
 ## Historical Change Records
 

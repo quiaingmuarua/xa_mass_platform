@@ -2,368 +2,187 @@
 
 Status: current high-level proof ownership registry.
 
-Owner and boundary tests remain next to their production Owners. This file
-registers only high-level lanes whose process world, cost and claim need a
-stable repository-wide identity.
-
-Worker Correctness, Worker Dynamic Matching, Worker Convergence Health and Worker Loaded Capacity +
-Recovery Stability are claim identities, not size tiers. Their Worker and Item
-counts are fixed World and Workload fixtures chosen for those claims.
-
-Commands, prerequisites and selection belong to [TESTING.md](../../TESTING.md).
-World, workload, mutation order and oracles belong to the linked scenario Owner.
+This registry assigns stable claim identities, not size tiers. Owner tests stay
+beside production code. [TESTING](../../TESTING.md) owns commands, prerequisites
+and CI selection; the linked Integration/Scenario Owners own world, workload,
+fault sequences, thresholds and oracles. Counts and timing fixtures do not
+expand a lane's claim. Evidence links identify assertions, not a fresh passing run.
 
 ## jvm_contracts
 
-- **Primary owner:** each touched JVM module; CI only aggregates.
-- **Claim:** Java contracts, architecture guards and deterministic Owner tests
-  pass together. Matching guards separate the Properties port, pure Catalog query
-  coordination and the local Refill coordinator; composition tests establish one
-  stable interface pair and one independently closed Matching connection.
-- **Admission and resource coverage:** immutable `WorkerQuery` capture and strict
-  decoding; complete Catalog admission before resource access, one normalization
-  per input, first-appearance function batching and input-ordered correlation.
-  Tests retain unsupported-input rejection, call-local ID reuse and no replacement
-  take after Pacer address/exclusion filtering. Pool tests cover immutable entry
-  identity (including equal-value reinsertion), partial consumption, concurrent
-  capacity, lazy expiry, Group isolation and local pressure cleanup. Earlier
-  function/Pool effects survive later failure; failed refill qualification changes
-  no stock for that Pool. Assignment-window take has a separate destructive-read
-  boundary. Composition covers no-Pool Identity/Phone, no startup I/O,
-  immutable property configuration, idempotent close and failure cleanup without
-  closing the Server-owned client. Literal Proof values remain distinct from
-  omitted conditions; ALL/PAGED refill, rotation and empty-demand cursor cleanup
-  do not introduce background expiry or identity deduplication.
-- **Pacer coverage:** independent Dispatch, Refill and Serviceability roots and
-  single-flight lifecycles; raw-row charging, deficit bounds, non-divisor round
-  remainders and independent supply/recycling rotation. Execution tests retain
-  strict/current partitioning, no fallback or compensation, and Item claim only
-  after TRANSITIONED using the returned fence. Candidates are generated before
-  qualification, admitted once across Pools and never replaced by discovery.
-- **Observation coverage:** notification follows execution acquisition and Item
-  claim but precedes publication, with sink failure isolated from dispatch.
-  Server tests reject unmatched Group/event notices before queue admission and
-  diagnostic counting; retain bounded saturation, immutable routing and one
-  enqueue with per-handler-instance batching in receipt order. Properties
-  projections preserve first-appearance Worker order, duplicate/unsorted times,
-  local patch visibility, overlapping-field precedence, bounded reads and one
-  patch per Worker per drain. Read/compute/write and handler failures remain
-  isolated without replay. Lifecycle proofs cover duplicate registration, stop
-  checks before subsequent handlers/writes, close timeout and restart only after
-  the old thread exits; pure handlers own no receiver lifecycle. App Checks owns
-  window arithmetic, invalid stored values, older observations and restart
-  continuation. These are lossy observations, not execution counts or quotas.
-- **Deliberate nonclaims:** Redis behavior, process boundaries and system
-  convergence.
-- **Contract:** [Selection and commands](../../TESTING.md#lane-index).
+**Primary Owner:** each touched JVM module; CI aggregates their deterministic
+contracts and architecture guards.
+
+| Proven boundary | Conditions that distinguish the claim |
+| --- | --- |
+| Matching admission and correlation | Complete Catalog admission precedes resource access; immutable queries are normalized once and correlated in input order. Unsupported inputs fail, IDs remain call-local, and address/exclusion filtering does not trigger replacement takes. |
+| Pool and function effects | Immutable occurrences include equal-value reinsertion; concurrent consumption/capacity, Group isolation and lazy expiry remain local. Earlier function/Pool effects survive later failure. Failed refill qualification admits no stock; assignment-window qualification follows a destructive take and cannot restore it. |
+| Fixed Matching composition | Properties, Catalog and refill coordination retain distinct responsibilities, one stable interface pair and independently closed connection. No-Pool Identity/Phone need no startup I/O; failed startup never closes the Server-owned client. Literal Proof values, ALL/PAGED rotation and empty-demand cursor cleanup do not imply deduplication or background expiry. |
+| Pacer assignment and budgets | Independent roots and single-flight Producers preserve raw-row charging, deficit bounds, round remainders and independent supply/recycling rotation. Candidateization precedes qualification, each successful candidateization is supplied once and admitted to at most one Pool, and no substitute discovery occurs. Strict/current acquisition remain separate; only TRANSITIONED with the returned fence permits Item claim, without fallback or compensation. |
+| Observation handoff | Notification follows execution acquisition and Item claim but precedes publication; sink failure cannot control dispatch. Unmatched Group/event notices are rejected before queue admission/diagnostics. Bounded saturation, immutable routing, one enqueue and per-handler-instance batching preserve receipt order. |
+| Projection and receiver lifecycle | Worker ordering, duplicate/unsorted times, local patch visibility and overlapping-field precedence survive grouping into bounded reads and one patch per Worker per drain. Read/compute/write/handler failures are isolated without replay. Duplicate registration, stop checks before later handlers/writes, close timeout and restart only after old-thread exit are tested; pure handlers own no lifecycle. |
+| App Checks projection | Window arithmetic, invalid stored values, older observations and restart continuation preserve a lossy projection; it is neither an execution counter nor an admission quota. |
+
+**Evidence:** [Matching proof](../../worker_matching_jvm/README.md#cost-failure-and-proof),
+[Pacer assembly](../../kernel_pacer_jvm/doc/application-assembly.md#proof-boundary),
+[Server observations](../../server_jvm/README.md#worker-allocation-observations),
+[App Checks](../../scenarios/app-checks-jvm/README.md#装配与证明).
+**Nonclaims:** Redis behavior, process boundaries and system convergence.
 
 ## redis_owner
 
-- **Primary owner:** Java Redis providers and the Server Identity registry.
-- **Claim:** atomic owner operations preserve scores, resources, identities,
-  bindings and result transitions against real Redis. Worker registration adds
-  cold NX, concurrent default-Endpoint selection, partial-stage retry and bounded
-  client-command cost oracles. Candidate generation proofs establish high-mark
-  encoding, exact candidateize without time renewal, bounded aged recycling,
-  four 250-member heads advancing 100/100/50 and current-slot exclusions.
-  Properties advances past HOT time and clears candidate mark; requalification
-  needs no aged recycle and cannot restore the old fence. An execution-first
-  future hold survives; RECOVERY mark and cold-registration protection remain.
-  Shared Pool and Direct callers have one execution-acquisition winner and stale
-  stock cannot release it. Pool tests fix per-entry admission TTL, independent repeated fences,
-   capacity accounting, lazy cleanup and concurrent at-most-once entry consumption.
-   Network evidence applied to stored current/future Score coordinates preserves
-   their time/mark. An accepted past polarity change advances generation
-  and clears mark, including a one-slot advance for same-slot evidence; ordinary
-  same-polarity Polling is unchanged. Below-floor activation additionally requires
-  post-floor evidence. Pause writes MAX/0; relative targets
-  accept MAX and reject larger slots. Recovery keeps unlimited age/attempts and
-   Owner-clock-relative delay; Pacer owns timing and budget policy. Refill filters corrupt
-  raw rows, while Serviceability retains strict fractional conversion; neither
-  supplements a bounded head. Serviceability merges two mark ranges before final
-  raw-budget truncation. Candidateize precedes qualification, with no substitute
-  discovery. Facts/index writes and generation invalidation remain independent.
-  Actual Pacer/Matching/Redis composition proves deficit-bounded candidateization:
-  stock 99 and target 100 changes one of 100 ordinary Worker fences, leaving the
-  other 99 available after normal inventory consumption without aged recycling.
-  Stock 80 against target 100 similarly changes exactly 20 fences. Matching
-  watermarks do not cap inventory or truncate supplied qualified candidates;
-  batch budgets, real capacity, TTL and generation checks remain authoritative.
-  The same production composition proves that reconnect refills consumed stale
-  Pool stock at a new generation without waiting for the 60-second recycle.
-  It also proves that later Pool demand cannot copy existing Country stock, while
-  Direct Phone lookup can independently acquire the cached Worker without any Pool
-  notification. Qualified Messaging Phone also uses this path, after one bounded
-  current Facts read; it requires no Messaging Pool supply or inventory. Tests cover
-  phone changes between reads, no-Pool configuration and strict corruption failure.
-  Old Pool fences cannot acquire or release the execution hold;
-  concurrent Pool/Direct acquisition has one winner. Recycling allows a new
-  generation to enter another Pool while the stale entry remains. Local tests
-  prove single-Pool admission, batch bucket consumption and poll-time age filtering. Scenario
-  Coexistence retains its existing business assertions and deadlines.
-  Matching qualification reads only offered Facts: Messaging uses one HMGET and
-  Proof one atomic two-HMGET snapshot. Retired qualification keys, even with wrong
-  types, do not participate in writes, startup or refill. Property HASH proofs cover
-  atomic Facts updates, last-writer collisions, conditional deletion, one-HMGET
-  lookup and restart retention without rebuilding. Focused tests cover name-independent batching, explicit
-  rotation and literal-safe Proof views.
-  TaskItem outcome proof covers
-  generic tags 2..9, maximum-score promotion, exact ACTIVE claim races,
-  corruption rejection, terminal-preserving NX, and one-command bounded
-  promotion/state reads. Server state-query counting excludes Result reads.
-  Ordered Result writes preserve maximum tag then reported milliseconds,
-  including same-slot replies. Heterogeneous 100-Item observations cost one
-  Score Lua plus zero or one Result Lua; missing/corrupt Items create no content.
-  Assignment-ceiling composition additionally executes 101/1000 candidate and
-  Item batches through qualification, address lookup, lease, claim and mailbox
-  publication. It verifies full failed-Result/Score settlement for expired and
-   exhausted batches, without widening independent registration/Properties inputs.
-- **Descriptor and admission coverage:** create-only descriptors and passive
-  Project attribution/directory writes commit atomically; first-creation times,
-  ordering/truncation, concurrent Project isolation and corruption rejection
-  remain bounded. Facts/HASH preflight covers complete replacement, collisions,
-  conditional deletion and independent Platform patches, including single-property
-  configuration and no-demand restart retention. Direct Phone lookup is
-  non-consuming and bounded; Identity and ordinary Pool take/deficit observation
-  add no Redis access. Qualification separately owns its Facts-read budget,
-  including one atomic assignment-window snapshot for a 1000-candidate batch;
-  read failure does not restore consumed stock. Public Facts observation retains
-  row-local behavior while malformed qualification fails before Pool admission.
-- **Timestamp coverage:** the independent Group timestamp HASH retains ordered,
-  equal and older evidence semantics, Group isolation, chunk-wide corruption
-  preflight, partial success across chunks, concurrent monotonic writes and
-  same-scope restart without Facts or Pool prerequisites. Pacer tests separately
-  own Binding/source validation before filtering, shared evidence-kind history
-  and fail-open without retry. Timestamp and Score commits are not atomic.
-- **Result and fence limits:** state reads retain their independent 100-ID bound;
-  outcome promotion accepts complete caller-bounded input. Result replacement
-  and Score finality remain independent maxima and commits. Exact execution
-  tests reject current/future HOT, RECOVERY, missing and corrupt candidates;
-  network evidence may change a stored current-slot Score's polarity without
-  granting execution.
-  Controlled timing tests may resample a missed window, never a wrong result
-  inside the window. No proof establishes cross-owner rollback or loss repair.
-- **Deliberate nonclaims:** HTTP, Adapter, Worker or process recovery.
-- **Contract:** [Server verification](../../server_jvm/README.md#verification).
+**Primary Owner:** Java Redis providers and the Server Identity registry.
+Real Redis establishes Owner-local atomicity, exact fences and bounded command
+cost; it does not combine independent commits.
+
+| Proven boundary | Conditions that distinguish the claim |
+| --- | --- |
+| Registration and Task descriptors | Cold NX registration, concurrent default-Endpoint selection and retry after partial Prepare stages preserve identity. Create-only descriptors and passive Project attribution/index creation commit together; first-creation ordering, bounded reads, concurrent Project isolation and corruption rejection remain explicit. |
+| Worker generation and execution | Exact candidateization does not renew time; bounded aged heads progress without admitting the current slot. Properties invalidation advances past HOT and clears its mark, while cold registration, RECOVERY marks and an execution-first future hold remain protected. Pool/Direct races have one acquisition winner; stale stock can neither acquire nor release that hold. Both strict and current acquisition reject current/future HOT, RECOVERY, missing and corrupt entries. |
+| Network transitions and recovery | Evidence applied to a stored current/future Score preserves its time/mark; polarity change alone grants no execution. Accepted past polarity changes advance generation and clear the mark, including same-slot evidence, while ordinary same-polarity Polling is unchanged. Below-floor activation needs post-floor evidence. Pause and relative targets retain representable bounds; Recovery has no age/attempt cutoff and uses the Owner clock. |
+| Bounded heads and supply | Refill filters corrupt raw rows; Serviceability retains strict conversion and merges mark ranges before final raw-budget truncation. Neither supplements a bounded head. Actual Pacer/Matching composition proves deficit-bounded candidateization before qualification. Watermarks do not cap inventory or clip supplied qualified candidates; request budgets, capacity, TTL and exact fences still apply. |
+| Pool generations and Direct queries | Reconnect can supply a new generation without aged recycling; later Pool demand cannot copy existing stock. Recycling may admit a new generation elsewhere while old stock remains stale. Entries have independent admission TTL and at-most-once consumption. Phone and qualified Messaging Phone bypass stock, require no Pool supply and send no acquisition notification; changed lookup values and corrupt Facts do not permit substitution. |
+| Facts and indexes | Qualification reads only offered identities; Proof/assignment-window reads use bounded atomic Worker/Platform snapshots. Atomic Facts/property-HASH writes retain complete replacement, last-writer collisions and conditional deletion. Platform patches are independent. Retired keys are ignored; restart retains mappings without rebuild or Task demand. These commits remain separate from Score invalidation. |
+| Consumption and read failure | Identity and ordinary Pool take/deficit observation add no Redis access; Phone lookup is bounded and non-consuming. Public Facts reads permit row-local outcomes, but malformed refill qualification fails before admission. Assignment-window reads occur after stock consumption, and failure cannot restore it. |
+| Item outcomes and Results | Exact ACTIVE claim races, terminal-preserving NX, generic terminal tags, strict maximum promotion and corruption rejection remain distinct. Promotion is caller-bounded; state reads keep their independent bound. Result ordering uses tag then reported time, including same-slot updates. Missing/corrupt Items create no content; Result replacement and Score finality have independent maxima and commits. |
+| Assignment composition | Admitted batches traverse qualification, address lookup, execution lease, Item claim and mailbox publication; expired/exhausted Items settle failure Result and Score. The instance assignment ceiling does not widen registration or Properties inputs. |
+| Network timestamp persistence | Group isolation, equal/older evidence, chunk-wide corruption preflight, cross-chunk partial success and concurrent monotonic writes survive restart without Facts/Pool prerequisites. Pacer validates source/Binding before filtering and fails open without retry. A timestamp commit neither joins nor rolls back a later Score commit. |
+
+**Evidence:** [Worker Score proof](../../kernel_jvm/doc/score/worker-score-band-scheduling.md#cutover-and-proof),
+[Task resource](../../kernel_jvm/doc/resource-model/task-resource-model.md),
+[Item Score](../../kernel_jvm/doc/score/task-item-score-band-scheduling.md),
+[Result Owner](../../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md),
+[Matching proof](../../worker_matching_jvm/README.md#cost-failure-and-proof) and
+[Server verification](../../server_jvm/README.md#verification).
+Controlled timing tests may resample a missed window, never a wrong result
+inside the window.
+
+**Nonclaims:** HTTP/Adapter/Worker traversal, process recovery, cross-owner
+rollback or loss repair.
 
 ## runtime_boundary
 
-- **Primary owner:** Server assembly over Kernel, Pacer, Matching and Transport ports.
-- **Claim:** one Java Server context closes the public Task, Result,
-  DIRECT_CALL and Worker Serviceability boundaries through WebSocket, Socket
-  and Polling witnesses. Prepare establishes identity and cold registration
-  without Matching facts; network evidence activates scheduling availability;
-  text-protocol observations independently create facts, and Polling executes
-  explicit Any Pool without them. Preview can expose an identity before a baseline.
-  Actual Handlers return send success before reporting delivered/read/replied
-  through all three transports; state queries, repeatable latest-reply reads
-  and subsequent Item execution witness the continuous observation boundary.
-  Group refill witnesses use actual Workers across two Groups and four Tasks,
-  including shared and different Rules within one Group, to prove supplied-batch
-   candidateization-before-qualification and successful finite execution. They do not measure throughput.
-  An isolated DEFAULT-preset witness loses the first disconnect evidence, then
-  requires actual Adapter TASK expiry, correlated rejection and consumed network
-  evidence to drive RECOVERY; reconnect completes the same Item within the existing
-   15-second wait, without a shortened recycle threshold. No Probe or
-   synthetic expiry Report substitutes for that path. Safe bounded traces accompany failures.
-- **Additional boundary witnesses:** explicit Any execution without Facts,
-  no-Pool identity queries and ordinary empty-supply Tasks retain real Worker
-  traversal. Timestamp filtering rejects still-fresh older network observations,
-  persists through Server restart and fails open on corruption without joining
-  Score commits. Finite HTTP execution fixtures cover default, prestarted and
-  virtual pools: success, occupied-slot rejection, timeout, late-report rejection
-  and Owner shutdown each produce one servlet completion. These do not widen the
-  named process-world claims below.
-- **Deliberate nonclaims:** fleet scale, Host restart, workload health and
-  capacity, guaranteed activation after evidence loss, atomic registration,
-  atomic Score/Result commits or observation replay.
-- **Contract:** [Runtime Boundary owner](../../server_jvm/README.md#verification).
+**Primary Owner:** Server assembly over Kernel, Pacer, Matching and Transport ports.
+
+| Proven boundary | Conditions that distinguish the claim |
+| --- | --- |
+| Public Task/Result/Direct/Serviceability paths | One Java Server context traverses real WebSocket, Socket and Polling Workers. Prepare establishes identity/cold membership without Facts; network evidence and Properties have independent effects. Preview may expose identity before baseline, and explicit Any Polling executes without Facts. |
+| Continuous Task observations | Actual Handlers return send success before later delivered/read/replied observations. Item-state queries, repeatable latest replies and subsequent execution establish the boundary through all three transports. |
+| Matching traversal | Shared/different supply and query paths across Groups prove supplied-batch candidateization before qualification and finite execution. No-Pool identity queries and empty-supply Tasks retain real Worker traversal. |
+| Lost-disconnect recovery | The DEFAULT witness first loses real disconnect evidence, then requires actual Adapter TASK expiry, correlated rejection and consumed network evidence to enter RECOVERY. Reconnect completes the same Item; a Probe, synthetic expiry Report or shortened recycle threshold cannot substitute for that sequence. |
+| Filtering and HTTP completion | Still-fresh older network observations that Score time admission could accept are filtered across Server restart; corruption fails open without joining Score commits. Default, prestarted and virtual HTTP execution cover success, occupied-slot rejection, timeout, late-report rejection and shutdown, each with one servlet completion. |
+
+**Evidence:** [Server verification and test entries](../../server_jvm/README.md#verification).
+**Nonclaims:** fleet scale, Host restart, workload health/capacity, activation
+guaranteed after evidence loss, atomic registration or Score/Result commits,
+or observation replay.
 
 ## worker_correctness
 
-- **Primary owner:** `:integrations:worker-correctness`.
-- **Claim:** exact Lab-to-Worker identity, route, Properties, extension and
-  successful Result closure; running Host file mutations reach Adapter cache
-  and Server/Matching Runtime Properties without another Prepare, followed by
-  identity preservation across graceful Host restart.
-- **Deliberate nonclaims:** capability-specific payload values, executing
-  Worker, fault convergence, reliable SYSTEM delivery under faults, production
-  latency SLA, throughput and topology combinations.
-- **Contract:** [Complete scenario](../../integrations/worker-correctness/README.md).
+- **Primary Owner:** [Worker Correctness](../../integrations/worker-correctness/README.md).
+- **Boundary:** exact Lab/Worker identity, route, Properties, extension and successful Result closure.
+- **Required witness:** running-Host file mutations reach Adapter and Server/Matching snapshots independently without another Prepare; graceful Host restart retains identity.
+- **Evidence:** the Owner's workload and independent runner assertions.
+- **Nonclaims:** capability payload values, executing Worker, fault convergence, reliable SYSTEM delivery under faults, production latency SLA, throughput or topology combinations.
 
 ## worker_dynamic_matching
 
-- **Primary owner:** `:integrations:worker-dynamic-matching`.
-- **Claim:** continuous Matching query execution overlaps live Worker and Platform
-  Properties changes; independent Adapter/Runtime snapshots converge, blocked
-  witnesses stay unexecuted, eligible witnesses execute on actual target
-  replicas, and all submitted Results close with completed execution witnesses
-  without new Prepare or process/Worker restart.
-- **Deliberate nonclaims:** atomic facts/Score cutover, exact invalidation/acquisition
-  ordering, cancellation of confirmed work, exactly-once execution, reliable
-  SYSTEM replay, fault recovery, Task fairness, throughput, latency SLA or soak.
-- **Contract:** [Complete scenario](../../integrations/worker-dynamic-matching/README.md).
+- **Primary Owner:** [Worker Dynamic Matching](../../integrations/worker-dynamic-matching/README.md).
+- **Boundary:** continuous query execution overlaps live Worker/Platform Properties changes without Prepare or process/Worker restart.
+- **Required witness:** Adapter/Runtime snapshots converge independently; blocked witnesses remain unexecuted, eligible witnesses execute on actual target replicas, and every submitted Result closes with an execution witness.
+- **Evidence:** the Owner's live-mutation workload and Result/Host-journal oracle.
+- **Nonclaims:** atomic Facts/Score cutover, exact invalidation/acquisition order, cancellation of confirmed work, exactly-once execution, reliable SYSTEM replay, recovery, fairness, throughput, latency SLA or soak.
 
 ## worker_convergence_health
 
-- **Primary owner:** `:integrations:worker-convergence-health`.
-- **Claim:** Adapter and Kernel scheduling converge after established state
-  mutations and one Server restart. Execution-time Host loss establishes the
-  physical outage, followed by checkpoint/work recovery after reconnect and
-  retained named Results across a later Host loss. Host-down and post-Server-restart
-  fleet Score samples are diagnostic. Reconnect identities, the directed Worker's
-  HOT check and named successful executions remain mandatory.
-- **Deliberate nonclaims:** exact intermediate order, latency SLA, retry count,
-  absence of transient serviceability regression, all-offered success,
-  fleet-wide scheduling unavailability after one best-effort disconnect report,
-  idle-fleet HOT restoration without active Task roots, monotonic network evidence,
-  background fault Result status or execution count, TaskItem Score finality
-  across the interruption window, executing Worker, random coverage,
-  throughput and soak.
-- **Contract:** [Complete scenarios](../../integrations/worker-convergence-health/README.md).
+- **Primary Owner:** [Worker Convergence Health](../../integrations/worker-convergence-health/README.md).
+- **Boundary:** Adapter/Kernel convergence after established state mutations and Server restart.
+- **Required witness:** establish physical Host loss during execution before judging recovery; reconnect must recover named checkpoints/work, with named successful Results retained across later loss. Fleet Score samples after Host loss/Server restart are diagnostic; reconnect identities, the directed Worker's HOT check and named executions are mandatory.
+- **Evidence:** the Owner's fault-establishment order and independent runner observations.
+- **Nonclaims:** exact intermediate order/retry count, latency SLA, no transient regression, all-offered success, fleet unavailability from one lost disconnect notice, idle-fleet HOT without active roots, monotonic network evidence, background fault Result status/execution count, Item finality across interruption, executing Worker, random coverage, throughput or soak.
 
 ## worker_loaded_recovery
 
-- **Primary owner:** `:integrations:worker-loaded-recovery` and its separate
-  workflow.
-- **Claim:** sustained loaded operation after deterministic Worker contraction,
-  repeated graceful and hard Server recovery, exact terminal Task exports and
-  bounded process resource drift.
-- **Resource witness:** periodic sampling must remain healthy through finalization.
-  Sampler failure or a coverage gap fails the lane even when workload/recovery
-  assertions pass; sparse checkpoints and partial maxima do not establish resource
-  stability. Confirmed process-exit read races are recorded without masking errors
-  on a still-live process.
-- **Deliberate nonclaims:** every prepared or retained Worker online, Task fairness, fixed
-  execution ratio, completion order, throughput, latency, Handler concurrency,
-  topology breadth and soak.
-- **Contract:** [Complete scenario](../../integrations/worker-loaded-recovery/README.md).
+- **Primary Owner:** [Worker Loaded Recovery](../../integrations/worker-loaded-recovery/README.md), with a separate workflow.
+- **Boundary:** sustained work after deterministic Worker contraction, repeated graceful/hard Server recovery, exact terminal exports and bounded process resource drift.
+- **Required witness:** periodic resource sampling remains healthy through finalization. Sampler failure or a coverage gap fails the lane even if work/recovery passes; sparse checkpoints and partial maxima cannot prove stability. Confirmed process-exit read races must not mask errors on a live process.
+- **Evidence:** the Owner's workload, recovery sequence and resource oracle.
+- **Nonclaims:** every prepared/retained Worker online, fairness, fixed execution ratio/order, throughput/latency, Handler concurrency, topology breadth or soak.
 
 ## worker_call_performance
 
-- **Primary owner:** `:integrations:worker-call-performance` and its separate workflow.
-- **Claim:** with configurable resources raised so they do not bind, open-loop
-  latency and success of the Any, targeted and Direct call paths at 500, 1,000 and
-  2,000 calls/s, Task path capacity as per-Worker turnaround under a deep backlog,
-  and path ratios on one host. Every accepted Task Item must reach an observed
-  Result. Cases are passed, saturated, invalid or failed; only failed fails the lane.
-- **Deliberate nonclaims:** turnover under scarce resources, Group fairness,
-  absolute production SLA, larger-world correctness, fault recovery, actual
-  executor, Handler concurrency and soak. Redis Owner separately proves
-  client-command cost and mailbox concurrency.
-- **Diagnosis:** per-case Dispatch attribution from default-off Owner events,
-  host calibration per job, a nightly trend against the last seven records and
-  per-case sequential A/B. Optional Server/Host JFR explains cost without
-  asserting Worker Handler concurrency; incomplete coverage remains explicit.
-- **Contract:** [Complete scenario](../../integrations/worker-call-performance/README.md).
+- **Primary Owner:** [Worker Call Performance](../../integrations/worker-call-performance/README.md), with a separate workflow.
+- **Boundary:** open-loop Any, targeted and Direct latency/success, deep-backlog Task turnaround per Worker, and same-host path ratios with configurable resources raised so they do not bind.
+- **Required witness:** every accepted Task Item reaches an observed Result. Cases distinguish passed, saturated, invalid and failed; only failed fails the lane. Unmet measurement prerequisites produce invalid, not a comparable result; in-flight-cap saturation reports admitted rate rather than a completion ceiling.
+- **Evidence:** the Owner's rates/configuration, calibration, per-case attribution, trend and sequential A/B procedures. Optional JFR leaves incomplete coverage explicit and proves no Handler concurrency.
+- **Nonclaims:** scarce-resource turnover, Group fairness, production SLA, larger-world correctness, recovery, actual executor, Handler concurrency or soak. Redis Owner separately owns command cost/mailbox races; measured performance is not a correctness threshold.
 
 ## android_host
 
-- **Primary owner:** Android Worker and XA Android modules.
-- **Claim:** Android library assembly, identity persistence, capability
-  Definitions, local lifecycle, Control HTTP and Java proof clients remain
-  compatible.
-- **Deliberate nonclaims:** real process, Doze, vendor policy and physical
-  device behavior.
-- **Contract:** [Android owners](../../xa-android/README.md).
+- **Primary Owner:** [Android Worker](../../transport/android-worker/README.md) and [XA Android](../../xa-android/README.md).
+- **Boundary:** library assembly, identity persistence, capability Definitions, local lifecycle, Control HTTP and Java proof-client compatibility.
+- **Required condition:** local tests do not establish the non-blocking stop target; the [known Android stop difference](../../transport/android-worker/README.md#known-android-stop-difference) remains open.
+- **Evidence:** the linked Owners' deterministic tests and assembly checks.
+- **Nonclaims:** real process, Doze, vendor policy or physical-device behavior.
 
 ## android_emulator
 
-- **Primary owner:** `:integrations:android-worker-proof`; the shell owns only
-  external process choreography.
-- **Claim:** one Debug App proves exact lifecycle correctness, route recovery,
-  Handler-time process loss, endpoint exhaustion and explicit identity-stable
-  recovery. A fixed App Triad adds same-Group identity isolation, explicit
-  Worker ID targeting and partial process outage.
-- **Deliberate nonclaims:** throughput, Handler concurrency, exact connection
-  attempts, transient Score sequence, TaskItem Score finality across the
-  process-loss window, UI behavior, arbitrary replica counts, dynamic
-  Properties mutation end to end, multi-device compatibility, cached-process
-  survival, Doze/OEM policy and physical-device background behavior.
-- **Contract:** [Complete scenarios](../../integrations/android-worker-proof/README.md).
+- **Primary Owner:** [Android Worker Proof](../../integrations/android-worker-proof/README.md); shell owns external process choreography only.
+- **Boundary:** Debug App lifecycle, route recovery, Handler-time process loss, endpoint exhaustion and explicit identity-stable recovery; fixed App Triad adds same-Group identity isolation, explicit Worker ID targeting and partial outage.
+- **Required witness:** real process/route and targeted identity evidence, rather than Properties affinity inferred as scheduling identity.
+- **Evidence:** the Owner's Debug App and Triad scenarios.
+- **Nonclaims:** throughput, Handler concurrency, exact connection attempts/transient Scores, Item finality across process loss, UI, arbitrary replicas, dynamic Properties mutation end to end, multi-device compatibility, cached-process survival, Doze/OEM policy or physical-device background behavior.
 
 ## frontend
 
-- **Primary owner:** `frontend/`.
-- **Claim:** Runtime projections, finite Task workbench and static API Reference
-  remain lint-clean, type-safe, tested and buildable.
-- **Deliberate nonclaims:** browser compatibility and visual regression.
-- **Contract:** [Frontend owner](../../frontend/README.md).
+- **Primary Owner:** [Frontend](../../frontend/README.md).
+- **Boundary:** Runtime projections, finite Task workbench and static API Reference.
+- **Required evidence:** Owner lint, type, test and build checks; a successful build alone does not replace the other checks.
+- **Nonclaims:** browser compatibility or visual regression.
 
 ## runtime_distribution
 
-- **Primary owner:** `distribution/server` and `distribution/worker-sdk`.
-- **Claim:** publishable archives work outside the checkout and contain only
-  declared runtime/publication boundaries.
-- **Deliberate nonclaims:** OCI deployment and Redis lifecycle.
-- **Contract:** [Server distribution](../../distribution/server/README.md) and [Worker SDK distribution](../../distribution/worker-sdk/README.md).
+- **Primary Owner:** [Server Distribution](../../distribution/server/README.md) and [Worker SDK Distribution](../../distribution/worker-sdk/README.md).
+- **Boundary:** publishable archives work outside the checkout and contain only declared runtime/publication boundaries.
+- **Required evidence:** Owner archive/launch checks from extracted artifacts, without checkout fallback.
+- **Nonclaims:** OCI deployment or Redis lifecycle.
 
 ## docs_contract
 
-- **Primary owner:** `.github/scripts/check_docs.py`.
-- **Claim:** current entrypoints, local file and chapter links, Overview
-  navigation and retired vocabulary remain converged.
-- **Deliberate nonclaims:** implementation behavior.
-- **Contract:** [Checker](../../.github/scripts/check_docs.py) and [unit tests](../../.github/scripts/test_check_docs.py).
+- **Primary Owner:** [Docs checker](../../.github/scripts/check_docs.py).
+- **Boundary:** current entrypoints, local files/anchors, Overview navigation and selected retired vocabulary.
+- **Required evidence:** checker plus [checker unit tests](../../.github/scripts/test_check_docs.py); semantic agreement still needs Owner/caller review.
+- **Nonclaims:** implementation behavior.
 
 ## product_coexistence
 
-- **Primary owner:** [Scenario Coexistence](../../integrations/scenario-coexistence/README.md).
-- **Additional finite scenario:** [App Checks](../../scenarios/app-checks-jvm/README.md#装配与证明)
-  owns hash-based registered/unregistered/exception outcomes on two App Groups.
-  Four real App Workers prove Group correlation and independent recomputation;
-  Boot also witnesses actual throwing Handler calls, late success, bounded Result
-  preview and Server restart reads. Source and fresh ZIP use the same public API oracle.
-  This makes no exact-distribution, fixed-executor or single-execution claim.
-- **Projection and window witnesses:** Boot gates success, failure and late
-  Reports behind a Handler barrier, comparing actual allocation identities/times
-  with Platform Properties before Results arrive and retaining properties after
-  restart. A real assignment-window scenario requires nonempty qualification
-  rejection followed by execution after a window transition and candidate
-  recycling; empty stock or a busy Worker alone is not rejection evidence.
-  Deterministic function tests own exact boundaries and delayed/missing projection
-  cases; Redis Owner owns snapshot budgets and read-failure consumption. The
-  [App Checks Owner](../../scenarios/app-checks-jvm/README.md#装配与证明) retains
-  workload, thresholds and deadlines. Neither witness proves reliable counting
-  or a strict admission quota.
-- **Claim:** SMS and Messages share actual Workers, one Server/Adapter/resource
-  set and neutral Group declarations; finite message execution and later recipient
-  observations remain correlated after Task completion or explicit closure.
-  SMS selects Country Pool stock; phone-directed Messages uses qualified Direct
-  lookup with empty supply. Ordinary Messages US/ANY selection is witnessed in a
-  separate scope with only Messaging demand and INITIAL managed Tasks, retaining
-  real execution identity and sender/recipient country assertions.
-  Duplicate/reordered receipts and Worker restart preserve latest content and run
-  isolation. Platform/preview executable composition and fresh unified Preview
-  delivery remain consistent with public Console availability.
-- **Failure witnesses:** partial real append retains uncertain submission without
-  approval/recreation; a real delayed synchronous execution Result cannot erase
-  a newer recipient reply. The process runner uses only business/Runtime/Lab APIs.
-- **Deliberate nonclaims:** reliable receipts across failure, restart recovery,
-  third-party sending, chat history, capacity maximum, fixed throughput, per-Task
-  or cross-Pool fairness, or starvation-freedom under insufficient supply.
-- **Selection:** each small scenario has 12 Workers. Source functional, Pool selection
-  and lifecycle participate in Proof Gate; fresh ZIP repeats functional and Pool
-  selection. Independent steps retain other outcomes after a proof fails, with
-  every required failure still failing CI. Safe summaries retain completed stages
-  and identify the failing stage without private message content. Fixed 1,000-Worker
-  simultaneous SMS/message load is explicit local or workflow_dispatch acceptance.
-  Generic Score and Result transition truth remains with Redis Owner/Runtime Boundary.
+**Primary Owner:** [Scenario Coexistence](../../integrations/scenario-coexistence/README.md).
+[App Checks](../../scenarios/app-checks-jvm/README.md#装配与证明) owns its additional
+finite scenario within this lane.
+
+| Proven boundary | Conditions that distinguish the claim |
+| --- | --- |
+| Shared business execution | SMS and Messages share actual Workers and one platform resource set. SMS consumes Country Pool stock; directed Messages uses qualified Phone lookup with empty supply. Ordinary Messages US/ANY selection uses only Messaging Pool demand with managed Tasks still INITIAL, proving actual executor/country relationships without competing supply or a cross-Pool fairness claim. |
+| Later observations and uncertainty | Receipts remain correlated after Task completion/closure; duplicate/reordered receipts and Worker restart preserve latest content and run isolation. Partial real append leaves submission uncertain without approval/recreation. A delayed execution Result cannot erase a newer recipient reply. |
+| App Checks execution | Hashed registered/unregistered/throwing outcomes use actual App Workers across Groups, with Group correlation and independent recomputation. Late success, bounded Result preview and restart reads use the same public-API oracle in source and fresh ZIP. |
+| Projection before Results | Handler barriers establish actual allocation identities/times and Platform Properties before success/failure/late Reports; properties survive restart. This is evidence of projection, not reliable execution counting. |
+| Assignment-window qualification | A real nonempty qualification rejection must precede execution after a window transition and candidate recycling. Empty stock or a busy Worker is insufficient evidence. Deterministic functions own exact/delayed/missing-projection cases; Redis Owner owns snapshot budgets and read-failure consumption. |
+
+**Evidence:** the linked scenario workloads, thresholds, deadlines and public
+business/Runtime/Lab API oracles. [TESTING](../../TESTING.md) owns source/ZIP
+selection and explicit larger-workload commands. Generic Score/Result transitions
+remain Redis Owner/Runtime Boundary claims.
+
+**Nonclaims:** reliable receipts across failure, business-state restart recovery,
+third-party sending, chat history, maximum capacity, fixed throughput, per-Task or
+cross-Pool fairness, starvation freedom under insufficient supply, reliable
+projection counts or strict quotas. App Checks additionally makes no exact
+distribution, fixed-executor or single-execution claim.
 
 ## sms_reception_preview
 
-- **Primary owner:** [SMS Reception](../../scenarios/sms-reception-jvm/README.md#检查与验收).
-- **Claim:** shared console navigation observes SMS enablement; page tabs and
-  polling preserve business state without depending on Runtime stores. Distribution
-  serves one frontend in either profile while SMS APIs, Groups and jobs remain
-  profile-owned. Real Server/Host functional and lifecycle scenarios retain the
-  listening and later-outcome business witnesses. Archive checks compare the
-  current unified assets and reject embedded SMS assets. The source SMS oracle
-  loads the shared Preview's packaged launcher from a fresh extraction and submits
-  only SMS workload with the Preview scenarios enabled and App Workers excluded,
-  without a build step or a fallback to the checkout launcher. Launch
-  lifecycle and archive checks belong to Distribution; business witnesses stay here.
-- **Deliberate nonclaims:** Mock SMS execution, product authentication, business
-  persistence across restart or new platform scheduling/capacity guarantees.
-- **Contract:** [Console](../../frontend/README.md#sms-business-pages) and the
-  existing SMS Preview workflow; the fixed 1k workload remains separate acceptance.
+- **Primary Owner:** [SMS Reception acceptance](../../scenarios/sms-reception-jvm/README.md#检查与验收).
+- **Boundary:** shared console enablement/navigation and business tab/polling state remain independent of Runtime truth; real Server/Host listening and later outcomes survive the named functional/lifecycle sequences.
+- **Required delivery witness:** APIs, Groups and jobs remain profile-owned; Distribution serves unified assets and rejects embedded SMS assets. The SMS oracle submits SMS-only work through a freshly extracted Preview's packaged launcher, with Preview scenarios enabled and App Workers excluded, without build tools or checkout-launcher fallback.
+- **Evidence:** SMS owns business assertions; [Distribution](../../distribution/server/PREVIEW.md) owns archive/launch lifecycle; [Frontend](../../frontend/README.md#sms-business-pages) owns page behavior. [TESTING](../../TESTING.md) selects the workflow and separate larger acceptance workload.
+- **Nonclaims:** Mock SMS execution, authentication, business persistence across restart or new scheduling/capacity guarantees.
