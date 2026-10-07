@@ -9,19 +9,23 @@ Use this skill after a roadmap slice, phase, or full roadmap appears complete.
 The goal is to find old paths that would let the architecture decay after the
 main work lands.
 
-This skill is scan-first. Do not edit files unless the user asks to fix the
-residue.
+This skill is scan-first. Review-only requests stay read-only; an authorized
+implementation plan already covers its necessary residue fixes. Reuse its
+scope and evidence without requiring another plan, file or approval.
 
 ## Mode Rule
 
 - **Scan mode**: report findings only. Use when the user asks to scan, audit,
   review completion, classify, or check residue.
-- **Fix mode**: edit files only when the user explicitly asks to fix residue.
+- **Fix mode**: edit residue within authorized work, including its enclosing
+  implementation plan; review-only requests remain read-only.
 - **Completion gate mode**: when used at the end of a roadmap goal, scan first;
   only mark the goal complete if no blocking residue remains.
 
-If a scan finds that the roadmap itself is wrong or the owner boundary is
-unclear, hand back to `roadmap-refinement` instead of fixing blindly.
+Correct stale factual details within the authorized scope and continue. Use
+`roadmap-refinement` only for an unresolved mechanism decision; it does not
+require a new plan or interrupt independent authorized work. Ask only when a
+material choice cannot be resolved from the current contract and evidence.
 
 ## Scan Inputs
 
@@ -50,8 +54,9 @@ Choose the scan scope before searching.
 | full-roadmap scan | roadmap appears complete | full completion gate, status/proof/archive/guard checks |
 | portfolio scan | many roadmaps need classification | roadmap state table, stale status, replacement links, archive readiness |
 
-Do not fail a slice scan because future-slice residue still exists. Do fail a
-full-roadmap scan if any future-slice residue remains.
+Do not fail a slice scan because a later authorized slice remains. A full scan
+covers all agreed completion criteria; explicitly deferred non-goals do not
+become blocking residue.
 
 ## Residue Classes
 
@@ -64,7 +69,7 @@ Classify every hit:
 | doc residue | docs describe removed or stale path | fix or archive |
 | compatibility alias | old and new paths both live | blocking unless external compatibility is required |
 | fallback path | code silently falls back to old owner/source | blocking for boundary work |
-| projection promoted to mainline | read model, diagnostic snapshot, trace evidence, or report output drives mutation, scheduling, lifecycle, retry, result, or delivery decisions | blocking finding |
+| projection promoted to truth | a read model, diagnostic snapshot, trace or report gains authority outside its explicit Owner contract | blocking finding; distinguish permitted observation-based qualification from reliable counts or quotas |
 | super-fat model | a DTO/model carries facts owned by multiple modules across mutation, hot path, or public default surfaces | blocking on mutation/hot path; medium on explicit diagnostics |
 | premature lifecycle owner | lifecycle/status/state fields harden before mechanism owner, writer, consumer, failure semantics, migration behavior, and proof are stable | blocking for boundary work |
 | CI compatibility preservation | tests, fixtures, guards, or build rules preserve removed behavior to keep CI green | blocking when it protects old strategy or owner truth |
@@ -101,8 +106,10 @@ Classify every hit:
    - it checks the stated violation condition, not only happy path behavior
    - the roadmap verification commands include or reference the guard
 10. Check for facts that crossed lanes during the migration:
-    - projection, diagnostics, trace, or reports used as write truth
-    - evidence fields that now drive policy or lifecycle decisions
+    - projection, diagnostics, trace or reports used as write truth outside
+      their explicit Owner contract
+    - evidence fields that gain policy or lifecycle authority outside their
+      explicit Owner contract
     - lifecycle/status fields introduced before the mechanism owner stabilized
     - super-fat DTOs that make two owners carry the same fact
 11. Run or recommend the roadmap's verification commands. Missing, stale, or
@@ -180,7 +187,7 @@ Conclusion: <complete / complete after fixes / not complete>
 Severity meanings:
 
 - **Blocking**: production residue, duplicate owner, fallback path,
-  compatibility alias, projection promoted to mainline, premature lifecycle
+  compatibility alias, projection promoted to truth outside its contract, premature lifecycle
   owner, CI compatibility preservation, or stale status that would mislead
   execution.
 - **Medium**: test/doc residue likely to confuse future work, but not a live
@@ -189,15 +196,17 @@ Severity meanings:
 
 ## Fix Mode Rules
 
-When the user asks to fix residue:
+When residue fixes are authorized, including by the enclosing implementation plan:
 
 - Fix only residue connected to the requested roadmap/slice.
-- Do not redesign the owner boundary; return to roadmap refinement if needed.
+- Do not redesign an Owner boundary under cleanup. Resolve a material mechanism
+  choice before that change, while continuing independent authorized fixes.
 - Remove old paths instead of preserving aliases unless external compatibility
   is explicitly required.
 - Update guards when the target owner invariant is stable enough to freeze.
   Prefer negative guards against old symbols, forbidden imports, fallback
-  paths, projection-to-mainline leaks, and fat DTOs. Do not guard provisional
+  paths, unauthorized projection authority, and fat DTOs. Search hits alone do
+  not establish a violation. Do not guard provisional
   lifecycle states or temporary implementation class names.
 - Update docs/indexes when status or active references change.
 - Run focused verification after edits.
@@ -241,12 +250,15 @@ Before declaring a roadmap complete:
 - Promised guards exist and test the stated violation conditions.
 - Guards protect stable owner invariants or forbidden regressions, not
   provisional implementation names or temporary lifecycle states.
-- No projection, diagnostic, trace, report, or compatibility read model drives
-  runtime mutation, scheduling, delivery, retry, result, or lifecycle truth.
+- No projection, diagnostic, trace, report or compatibility read model acquires
+  runtime authority outside its explicit Owner contract. Permitted lossy
+  qualification is not proof of a reliable counter, quota or execution result.
 - No super-fat DTO remains in mutation or hot-path contracts when the roadmap
   claims a narrow owner seam.
 - Verification commands pass.
-- Skipped commands are acceptable only for named infrastructure limitations,
+- Run the checks selected by the changed claim; prose-only edits do not activate
+  runtime proof or require new fixed-wording/line-count tests.
+- Skipped required commands are acceptable only for named infrastructure limitations,
   such as Docker or an external database being unavailable. Missing test
   classes, stale commands, compilation failures, or actual test failures are
   blocking residue.

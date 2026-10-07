@@ -21,15 +21,28 @@ Task, and many Workers inside finite Groups.
 
 ## Reading Path
 
-1. Read the summary above, then the complete
-   [behavior model](doc/kernel/scheduling-overview.md#system-behavior-model):
-   the work/resource loop, feedback sources and participating Owners.
-2. Use the module map below or the [Kernel Owner index](doc/kernel/README.md)
-   to find the affected contract. Follow its production caller and assembly,
-   using the mainline's [code/proof pointers](doc/kernel/scheduling-overview.md#production-and-proof-pointers).
-3. Use [Proof Registry](doc/testing/proof-registry.md) for claims and nonclaims,
-   then [TESTING](TESTING.md) for commands and CI selection. Read the relevant
-   business scenario when its workload is involved.
+Check HEAD, the worktree and requested scope first. Choose the route below;
+reuse established session evidence and refresh only what changed.
+
+| Task | Read | Stop expanding when |
+| --- | --- | --- |
+| First overall handoff | This summary, the complete [behavior mainline](doc/kernel/scheduling-overview.md), then Owner/proof navigation | State ownership, main calls, failure boundaries and evidence locations are clear. Do not open every Owner, integration or historical record. |
+| Cross-owner mechanism change | This summary and authority map; the three [overview chapters](doc/kernel/scheduling-overview.md#system-behavior-model); affected Dispatch, Results, Scale or [Delivery](doc/kernel/worker-delivery-dispatch.md) sections; applicable Owners, callers, assembly and proof | Every affected input, state writer, consumer, call order and failure window has been checked. Follow adjacent modules only where they participate in that chain. |
+| Local change | The responsible Owner's applicable contract, the change site and its direct callers/consumers, then relevant validation | The local effect is understood. Escalate to the cross-owner route if state, authority or lifecycle propagation crosses that boundary. A local prose/link change does not require the scheduling model or runtime proof. |
+
+The three overview chapters are **System Behavior Model**, **Convergence Sources
+And State** and **Behavior Domains And Owners**; they end before **Independent
+Scheduling Truth**. The full mainline is required for an overall handoff, not
+as a precondition for every new task.
+
+Use the module map below or [Kernel index](doc/kernel/README.md) to locate an
+Owner, and [code/proof pointers](doc/kernel/scheduling-overview.md#production-and-proof-pointers)
+to trace its implementation. The complete applicable contract includes the
+relevant chapters and their mandatory linked constraints, not every chapter in
+the file. [Proof Registry](doc/testing/proof-registry.md) defines each lane's
+claims; [TESTING](TESTING.md) owns commands and selection. Open only the affected
+lane and scenario. These indexes are alternative navigation surfaces, not a
+serial reading checklist.
 
 The [Documentation Index](doc/README.md) identifies each document's role.
 [AGENTS](AGENTS.md) governs changes, including the

@@ -1,6 +1,6 @@
 # Worker Serviceability Runtime Redis Shape
 
-Status: active Java Kernel Redis ABI for network evidence and optional
+Status: active Java Kernel Redis ABI for network evidence and
 Worker Serviceability probes.
 
 ## Keys
@@ -62,6 +62,8 @@ destructive consume can lose work, and Adapter-local queue pressure can also
 drop evidence. Redis LIST capacity alone does not turn evidence into a terminal
 semantic rejection. Request or result loss does not mutate Score. A cold registered Worker stays
 cold until a new valid connection or Polling observation; it has no cold scan
-or activation replay. Eligible HOT/recovery coordinates may still receive later
-periodic probes in presets that enable them. These keys are not Worker
+or activation replay. Every preset can recheck eligible RECOVERY coordinates;
+HOT probing depends on the preset, through the bounded Task roots in the
+[Serviceability policy](../../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md).
+These keys are not Worker
 connection, Binding, lifecycle, or scheduling truth.

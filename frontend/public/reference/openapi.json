@@ -44,7 +44,7 @@
           "waitTimeoutMillis" : {
             "format" : "int64",
             "maximum" : 10000,
-            "minimum" : 0,
+            "minimum" : 1,
             "type" : "integer"
           },
           "workerGroupId" : {
@@ -261,7 +261,7 @@
           },
           "ttlMillis" : {
             "format" : "int64",
-            "minimum" : 0,
+            "minimum" : 1,
             "type" : "integer"
           },
           "workerSelector" : {
@@ -357,7 +357,7 @@
           "waitTimeoutMillis" : {
             "format" : "int64",
             "maximum" : 60000,
-            "minimum" : 0,
+            "minimum" : 1,
             "type" : "integer"
           }
         },

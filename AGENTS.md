@@ -2,21 +2,13 @@
 
 Status: current repository change contract.
 
-Use the root [reading path](README.md#reading-path) to move from the Runtime
-summary to the complete behavior model, then the affected Owner, callers and
-proof. This file governs how agents change the repository; it is not the
-canonical mechanism narrative.
+This file governs repository changes; it is not the mechanism narrative.
+Use the root [reading path](README.md#reading-path) to select the reading scope
+for an overall handoff, cross-owner change or local edit.
 
 ## Applying This Contract
 
-Start a new investigation with this reading sequence:
-
-1. Check the current Git HEAD, worktree and requested scope; preserve unrelated edits.
-2. Read the root summary and [global behavior model](doc/kernel/scheduling-overview.md#system-behavior-model)
-   to establish the work/resource loop.
-3. Identify the affected input, state effect and subsequent consumer.
-4. Read the responsible Owner, production callers, assembly and corresponding
-   [proof](TESTING.md) before changing their behavior.
+Check the current Git HEAD, worktree and requested scope; preserve unrelated edits.
 
 Reuse context already established in the session and refresh what the current
 change affects. A small local edit does not require another whole-repository scan.
@@ -33,9 +25,11 @@ keep the full narrative in the linked mainline.
   contract together with its callers, Owner document and proof. Words such as
   "fixed" or "frozen" do not prohibit that authorized migration, and permission
   to harden an implementation does not authorize unrelated boundary changes.
-- Owner links lead to the complete applicable contract. Keep mechanism flow,
-  storage shape, configuration values and scenario thresholds there; retain
-  change constraints here. Read the linked detail when changing that mechanism.
+- The complete applicable contract means the relevant Owner sections and their
+  mandatory linked clauses, not every chapter of each linked document. Follow
+  those clauses for the affected input, state effect and consumer. Keep mechanism
+  flow, storage shape, configuration values and scenario thresholds in Owners;
+  retain repository-wide change constraints here.
 - Skills and historical memory provide working guidance, not current project
   truth or permission to expand the task. Retrieve historical versions only
   when the requested investigation needs them; do not restore retired designs
@@ -128,8 +122,9 @@ only when the task covers that behavior.
   already owns a bounded retry path; do not misclassify it as semantic input
   rejection.
 - Do not add bridge layers, compatibility aliases, mirrored DTOs, fallback
-  owners or speculative modules. The bounded Pacer lifecycle bridges below
-  are the explicit internal assembly exception.
+  owners or speculative modules. The bounded Pacer lifecycle bridges in the
+  [public boundary](kernel_pacer_jvm/README.md#public-boundary) are the explicit
+  internal assembly exception.
 - Keep module-coded exceptions local: `errorCode + owner.method operation +
   message + cause`. Context belongs in safe logs and traces.
 - JVM-only modules use `System.Logger`. Android-consumed Java 11 modules use
@@ -141,174 +136,111 @@ only when the task covers that behavior.
 
 ## Java Kernel
 
-[Kernel documents](doc/kernel/README.md) locate the complete mechanical and
-Policy contracts; the [scheduling mainline](doc/kernel/scheduling-overview.md)
-owns cross-owner flow, independent scheduling truth and the
-[vertical scale and liveness contract](doc/kernel/scheduling-overview.md#scale-and-liveness).
-Read the affected Score and resource Owners before changing transitions. In
-particular, the [Result Owner](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md)
-owns independent content/finality commits and their partial-failure limits.
-The [Kernel boundaries](kernel_jvm/README.md#boundaries) govern Policy/Mechanism
-placement and any authorized second-language migration.
+[Kernel documents](doc/kernel/README.md) index mechanical and Policy contracts.
+For cross-owner flow, read the affected parts of the
+[scheduling mainline](doc/kernel/scheduling-overview.md), including
+[scale and liveness](doc/kernel/scheduling-overview.md#scale-and-liveness) when applicable.
+Score/content changes also require the relevant mechanical Owner and
+[Result commit contract](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
 
 ## Kernel JVM
 
-[Mechanical Owners](kernel_jvm/README.md) own bounded public operations,
-immutable Task/Item data, passive Matching inputs, semantic event composition,
-Score transitions and Redis shapes. Follow the
-[production caller closure](kernel_jvm/README.md#production-call-closure) and
-[change boundaries](kernel_jvm/README.md#boundaries); API convenience does not
-justify widening Task operations or moving an Owner's Redis operations.
+[Mechanical Owners](kernel_jvm/README.md) own Task/Item data, semantic events,
+Scores and Redis state. Before changing operations or dependencies, read the
+[production caller closure](kernel_jvm/README.md#production-call-closure),
+[boundaries](kernel_jvm/README.md#boundaries) and affected Score/resource contract.
 
 ## Worker Matching JVM
 
-[Matching Owner](worker_matching_jvm/README.md) is the complete contract for
-independent supply declarations and Item queries, Properties, query admission,
-Pool maintenance, indexes and partial success. Read its
-[fixed resource composition](worker_matching_jvm/README.md#fixed-resource-composition)
-when changing Catalog, Properties, resources or lifecycle, and the
-[assignment-window contract](worker_matching_jvm/README.md#observed-assignment-window)
-when changing projected qualification. The independent
-[network timestamp contract](worker_matching_jvm/README.md#network-evidence-timestamps)
-defines filter atomicity and fail-open separately from Score transitions.
-Keep interpretation and local resource invariants at their named Owners; Pacer
-receives bounded candidate evidence, not Matching implementation authority.
+[Matching Owner](worker_matching_jvm/README.md) owns supply/query admission,
+Properties, Pool resources, indexes and candidate evidence. Changes require the
+relevant query/refill and failure clauses; resource or lifecycle changes also
+require [fixed composition](worker_matching_jvm/README.md#fixed-resource-composition).
+Use the [assignment-window](worker_matching_jvm/README.md#observed-assignment-window)
+and [network timestamp](worker_matching_jvm/README.md#network-evidence-timestamps)
+contracts for those paths.
 
 ## Kernel Pacer JVM
 
-[Pacer assembly](kernel_pacer_jvm/doc/application-assembly.md) and its linked
-Policy documents own roots, Producers, capacity, notifications and lifecycle.
-`KernelPacerRuntime` is the only externally supported production entry; the
-Result and Dispatch lifecycle bridges are the narrow module-internal exception,
-not additional external runtimes. Read the
-[assembly guardrails](kernel_pacer_jvm/doc/application-assembly.md#guardrails),
-[assignment contract](kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md)
-and [Result event boundary](kernel_pacer_jvm/doc/result/result-routing-scheduling.md#application-and-guardrails)
-before changing their call order, limits, fences or failure behavior.
+[Pacer assembly](kernel_pacer_jvm/doc/application-assembly.md) owns production
+policy, roots, Producers, budgets and lifecycle. Read the affected Policy and
+[assembly guardrails](kernel_pacer_jvm/doc/application-assembly.md#guardrails):
+[assignment](kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md) for
+candidate-to-Command flow, and [Result event boundaries](kernel_pacer_jvm/doc/result/result-routing-scheduling.md#application-and-guardrails)
+for returning evidence.
 
 ## Server JVM
 
 [Server Owner](server_jvm/README.md) owns API admission, application use cases
 and resource assembly; [Server Boot](server_boot_jvm/README.md) owns main,
-packaging and production configuration. Read Server's
-[response contract](server_jvm/README.md#api-reference-and-response-contract),
-[Task admission](server_jvm/README.md#task-admission),
-[Properties admission](server_jvm/README.md#runtime-worker-properties-admission)
-and [assembly boundaries](server_jvm/README.md#assembly-boundaries) for the
-operation being changed. These contracts include independent commits,
-observation loss, ownership of waiting and the permitted Scenario caller surface.
-Server remains an importable configuration library over existing Owners.
+packaging and production configuration. Read the affected operation contract,
+its [response rules](server_jvm/README.md#api-reference-and-response-contract), and
+[assembly boundaries](server_jvm/README.md#assembly-boundaries) for dependency or
+lifecycle changes.
 
 ## Worker Delivery Contract
 
-[Delivery Contract](transport/worker-delivery-contract/README.md) and
-[Event Catalog](transport/EVENTS.md) own DTOs, encoding, producer/target admission
-and event meaning. Keep this Java 11 boundary transport-neutral; event semantics,
-opaque correlation and Command target identity must retain their named Owners.
-Read both contracts before changing an event or wire shape.
+[Delivery Contract](transport/worker-delivery-contract/README.md) owns the Java 11
+transport-neutral DTOs and encoding; [Event Catalog](transport/EVENTS.md) owns event
+meaning and producer/target admission. Read both relevant contracts before changing
+an event or wire shape.
 
 ## Netty Adapter
 
-[Adapter Owner](transport/netty-adapter/README.md) owns fixed composition,
-Factory/Remote API, connection verification and routes, Properties projection,
-physical networking and bounded shutdown. Changes to delivery must preserve the
-complete [Command consumption](transport/netty-adapter/README.md#command-consumption-loop)
+[Adapter Owner](transport/netty-adapter/README.md) owns composition, remote API,
+connection/routes, Properties projection, physical networking and shutdown.
+Delivery changes require the [Command loop](transport/netty-adapter/README.md#command-consumption-loop)
 and [Report admission/retry](transport/netty-adapter/README.md#result-ingress-loop)
-contracts, including their distinct progress, loss and duplication boundaries.
-Read [lifecycle](transport/netty-adapter/README.md#lifecycle) when changing any
-owned thread, executor, Channel or close path; Transport gains no scheduling authority.
+clauses they affect; resource/lifecycle changes require the
+[lifecycle contract](transport/netty-adapter/README.md#lifecycle).
 
 ## Worker Core And Platform Workers
 
 [Worker Core](transport/worker-core/README.md), [Java Worker](transport/java-worker/README.md)
 and [Android Worker](transport/android-worker/README.md) own their separate local
-mechanisms. Read the [run contract](transport/worker-core/README.md#one-worker-run),
-[Properties contract](transport/worker-core/README.md#properties-reporting) and
-[retained Reporter contract](transport/worker-core/README.md#later-task-outcome-observations)
-before changing Host control, installed Definitions or callbacks.
+mechanisms. Use the [run](transport/worker-core/README.md#one-worker-run),
+[Properties](transport/worker-core/README.md#properties-reporting) and
+[Reporter](transport/worker-core/README.md#later-task-outcome-observations) contracts
+for the affected path.
 
-Stop must revoke the run before closing Client outside the state gate and return
-without waiting for an admitted Handler/callback. The
-[known Android implementation difference](transport/android-worker/README.md#known-android-stop-difference)
-is pending repair, not a platform exception. Preserve that target when changing
-platform lifecycle; RUNNING alone does not establish connectivity.
+For lifecycle changes, preserve the stop target: revoke the run before closing
+Client outside the state gate and return without waiting for an admitted
+Handler/callback. Read the [known Android implementation difference](transport/android-worker/README.md#known-android-stop-difference);
+it remains pending repair, not a platform exception.
 
 ## Scenario And Android Capabilities
 
-[Worker Simulator](worker_simulator_jvm/README.md) owns the standalone finite
-Host, installed capabilities and device state. Its
+[Worker Simulator](worker_simulator_jvm/README.md) owns the finite Host,
+installed capabilities and device state. Read the affected
 [configuration](worker_simulator_jvm/README.md#one-configuration-one-entry),
-[persistent inventory](worker_simulator_jvm/README.md#persistent-worker-lab),
-[lifecycle](worker_simulator_jvm/README.md#runtime-lifecycle) and
-[device inputs](worker_simulator_jvm/README.md#device-inputs) define validation,
-serialization, publication and restart limits. Server must not own that Host.
-[Android capabilities](xa-android/README.md) own device behavior and data access;
-Application/Activity assembly must not move Worker identity, networking or
-scheduling authority into capabilities. Local Lab/Host effects remain distinct
-from independent Runtime convergence evidence.
+[inventory](worker_simulator_jvm/README.md#persistent-worker-lab),
+[lifecycle](worker_simulator_jvm/README.md#runtime-lifecycle) or
+[device-input](worker_simulator_jvm/README.md#device-inputs) contract.
+[Android](xa-android/README.md) provides the capability and Application/Activity
+ownership entrypoints.
 
 ## Integration And Frontend
 
-[Proof Registry](doc/testing/proof-registry.md) identifies Primary Owners.
-Each linked Integration README owns its full workload, bounds, failure model,
-artifact limits and assertions; read that contract before changing the proof.
-
-- Integrations use public Runtime APIs without implementation imports or Report
-  injection. Device/Host state establishes local effects, not network/scheduling
-  truth. Runtime Preview samples must not become fleet enumeration.
-- Python runners own external processes, not database protocols. Use the shared
-  Redis cleanup utility with redis-py and exact test scopes; cleanup is hygiene
-  and cannot replace proof outcome. Disposable Redis jobs skip cleanup. Keep
-  each high-level failure sequence behind its own runner entrypoint.
-- [Worker Correctness](integrations/worker-correctness/README.md) owns managed-call
-  exact statuses, opaque Results and live Properties/Host restart. Runner audits
-  must establish process/control/Prepare conditions before accepting phase success.
-- [Dynamic Matching](integrations/worker-dynamic-matching/README.md) owns loaded
-  query execution under live facts. Actual executor identity comes from the
-  construction-time Handler closure; request tokens only correlate. Keep finite
-  journal overflow explicit and private evidence outside artifacts.
-- [Convergence Health](integrations/worker-convergence-health/README.md) owns named
-  witnesses after established mutations. Unknown submission/NOT_OBSERVED is not
-  failure or success; do not require all offered load to succeed, count FAILED
-  as success, poll export or retry mutations to install a preferred world.
-- [Loaded Recovery](integrations/worker-loaded-recovery/README.md) and
-  [Call Performance](integrations/worker-call-performance/README.md) retain their
-  separate scheduled/manual claims. Preserve preconditions, bounded observations,
-  resource/latency evidence and explicit nonclaims; scale does not create proof.
-  Call Performance raises configurable resources so they do not bind and measures
-  mechanism limits; performance values feed its trend and never fail it, and a
-  resource bound makes a case invalid rather than a slower number.
-- [Android Proof](integrations/android-worker-proof/README.md) keeps assertions in
-  Java and external choreography in shell. Invalid contracts/identity drift fail
-  immediately; retry only permitted observation failures. Emulator controls
-  do not prove background survival or another Worker platform.
-- [Frontend](frontend/README.md) owns public-API observation, finite Task files,
-  Adapter-scoped Direct Debug and explicit isolated Mock. Preserve its distinct
-  state axes and bounded-preview limits; UI recomputation is not execution truth.
-- The [human overview](frontend/public/overview.htm) projects the existing
-  architecture; retain its information architecture and navigation. Mechanism,
-  API, capacity and fixture details remain in Owner/proof documents.
-- [Distribution](distribution/server/README.md) consumes existing executables and
-  SDKs; [Preview delivery](distribution/server/PREVIEW.md) owns its launcher and
-  source/ZIP contract. Neither adds fallback ownership or scheduling behavior.
+[Proof Registry](doc/testing/proof-registry.md) owns lane claims and nonclaims;
+[TESTING](TESTING.md#shared-infrastructure) owns shared proof boundaries and
+execution rules. Before changing a proof, read its Registry entry and the linked
+Integration Owner's affected workload, fault, evidence and assertion clauses.
+[Frontend](frontend/README.md) owns public-API observation, Mock and UI boundaries;
+its [human overview](frontend/public/overview.htm) is an architecture projection.
+[Distribution](distribution/server/README.md) and [Preview delivery](distribution/server/PREVIEW.md)
+own executable/SDK packaging and source/ZIP launch contracts.
 
 ## Business Scenario Composition
 
 [SMS Reception](scenarios/sms-reception-jvm/README.md),
 [Message Campaigns](scenarios/message-campaigns-jvm/README.md) and
-[App Checks](scenarios/app-checks-jvm/README.md) own their business API, finite
-state, idempotency and observation. Device ownership remains in
-[Worker Simulator](worker_simulator_jvm/README.md#messages-and-shared-products).
-Read the [Server Scenario boundary](server_jvm/README.md#worker-and-scenario-assembly)
-before changing application calls, dependencies or lifecycle, and
-[Boot](server_boot_jvm/README.md) for profile composition.
-
-Business changes must retain each Owner's uncertain-submission, retained-Result,
-original Reporter and observation limits; they do not authorize platform repair
-or changes to Matching ownership. App Checks projection and window qualification
-remain separate contracts, not a reliable quota. The
-[Preview delivery Owner](distribution/server/PREVIEW.md) owns source/ZIP launch;
-[Coexistence](integrations/scenario-coexistence/README.md) owns the business proof.
+[App Checks](scenarios/app-checks-jvm/README.md) own business API, state,
+idempotency and observation; [Worker Simulator](worker_simulator_jvm/README.md#messages-and-shared-products)
+owns their device side. Read the affected business contract,
+[Server Scenario boundary](server_jvm/README.md#worker-and-scenario-assembly) for
+application/dependency/lifecycle changes, and [Boot](server_boot_jvm/README.md)
+for profile composition. [Coexistence](integrations/scenario-coexistence/README.md)
+is the business proof entrypoint.
 
 ## Verification
 

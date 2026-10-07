@@ -4,11 +4,9 @@ Status: current repository document index.
 
 ## Start Here
 
-Follow the [Repository reading path](../README.md#reading-path): Runtime summary,
-then the [behavior model](kernel/scheduling-overview.md#system-behavior-model),
-the affected Owner, production callers/assembly and corresponding proof. This
-index locates documents; each investigation reads the relevant branches, not
-the whole list. Business scenarios follow the platform model.
+The [Repository reading path](../README.md#reading-path) defines task-specific
+routes and stopping conditions. This index locates document roles and Owners;
+follow the relevant branch without treating the whole list as required reading.
 Use the [Human Architecture Overview](../frontend/public/overview.htm) as a
 visual projection of the same boundaries.
 

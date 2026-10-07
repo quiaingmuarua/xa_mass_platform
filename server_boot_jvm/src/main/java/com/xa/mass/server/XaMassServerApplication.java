@@ -3,7 +3,7 @@ package com.xa.mass.server;
 import com.xa.mass.serverboot.ServerBootConfiguration;
 import org.springframework.boot.SpringApplication;
 
-/** The sole executable Server entry; preview adds both business scenarios. */
+/** The sole executable Server entry; preview adds three business scenarios. */
 public final class XaMassServerApplication {
     private XaMassServerApplication() {}
 

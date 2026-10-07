@@ -51,6 +51,9 @@ Each Group has five 100-record files. Each String file contains 40 stable A,
 40 stable B and 20 mutable targets, retaining same-file isolation controls
 throughout the 1,000-Worker world. The Host journal is bounded at 655,360 records,
 covering 300,800 normal entry/completion records with duplicate-attempt headroom.
+Journal overflow remains explicit: any page reporting `overflowed=true` fails
+the proof. Truncated execution evidence cannot establish the executor claim;
+the Harness also rejects sequence gaps rather than continuing from partial history.
 
 All Tasks are fully seeded before their approval. The three background Tasks
 are approved consecutively and must each show execution and successful Results

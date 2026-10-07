@@ -43,6 +43,8 @@ from this run's Host configuration, even if those inventory directories already
 exist. It neither deletes inventory nor removes the profile's Groups or APIs.
 `--count` continues to control only demo-sim. Readiness observes all configured inventory
 through the generic Lab Worker endpoint and verifies their actual Adapter routes.
+This gate waits for Host RUNNING and connected routes, not Properties publication,
+Matching eligibility or successful business execution.
 Inventory persists at `<preview-root>/data/scenario-workers` (the source default
 is `distribution/server/data/scenario-workers`); `--sandbox-root`
 selects another root with that suffix. Existing Group directories, including empty

@@ -9,8 +9,8 @@ import java.util.Set;
 
 final class AndroidWorkerProofOptions {
 
-    // A due rank-0 RECOVERY probe reserves 2 * 60s before the final
-    // DELAY witness (up to 30s); connected evidence preserves that deadline.
+    // Retained phase observation budget, including recovery and the final DELAY witness.
+    // The Pacer owns recheck timing; this limit does not derive from Score coordinates.
     private static final long DEFAULT_MAXIMUM_WAIT_MILLIS = 180_000L;
 
     private static final Set<String> ALLOWED = Set.of(

@@ -173,8 +173,10 @@ WorkerEventDefinition.extension(
 `messaging` represents the Host's business integration; the Host owns association
 and callback cleanup. Core keeps no Reporter collection. Java and Android use
 the same Core overload and implementation, without a Task mode or creation flag.
-The ordinary return still produces execution success and completes the execution
-lease. Later reports refer to that same Item without managing Worker leases.
+The ordinary return still produces execution-success evidence. Downstream Result
+processing requests release of the correlated execution lease; returning from
+the Handler does not acknowledge delivery or release. Later reports refer to
+that same Item without managing Worker leases.
 
 `report(tag, observedAtMillis, nullablePayload)` accepts tags 6..9, a positive
 reported epoch-millisecond time, and optional nonblank content. Server also

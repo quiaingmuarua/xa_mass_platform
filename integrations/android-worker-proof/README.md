@@ -88,13 +88,15 @@ reads may be observed again until the phase deadline. Mutation requests are
 issued once and an ambiguous transport failure fails the phase. Invalid JSON,
 unexpected HTTP status, invalid state or identity drift fails immediately.
 Defaults are 180 seconds for the whole phase and 5 seconds for one request,
-with `requestTimeout <= maximumWait`. A due rank-0 RECOVERY probe schedules its
-next coordinate at `Redis now + 2 * 60 seconds`. Connected evidence restores HOT
-polarity while preserving this future coordinate. The phase budget covers that
-120-second hold, the final DELAY witness (up to 30 seconds), and the bounded
-setup and observation work. It is not reset for each observation and does not
-change production retry timing. See the
-[Serviceability retry contract](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md).
+with `requestTimeout <= maximumWait`. The launcher selects `scenario-workers`,
+whose default SCENARIO_LAB Pacer defers a due RECOVERY coordinate from the Score
+Owner's process clock before offering its Probe. Connected evidence restores HOT
+polarity while preserving a still-current/future coordinate; it does not bypass
+the due check. The [Serviceability retry contract](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
+owns the recheck delay and Score time rules. The phase budget covers those
+transitions, the final DELAY witness (up to 30 seconds), and bounded setup and
+observation work. It is not reset for each observation and does not change
+production retry timing.
 A phase can exit at most one in-progress
 request timeout after its maximum wait budget.
 

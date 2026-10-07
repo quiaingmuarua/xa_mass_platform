@@ -2,13 +2,12 @@
 
 Status: current system behavior model, cross-owner scheduling flow and scale boundary.
 
-XA Mass is a closed-loop execution Runtime for heterogeneous, changing Workers.
-It connects business work with resources under explicit scheduling and execution
-authority, and uses execution feedback and external observations to update work
-progress and subsequent resource selection. This page owns the complete
+This page owns the complete
 Matching / Execution / Convergence model and its mapping to implementation owners.
 The [Kernel index](README.md) links the local contracts; encoding, individual
 round limits and legal transitions stay with those owners.
+The [root reading path](../../README.md#reading-path) selects when to read the
+complete page or only its affected sections.
 
 ## System Behavior Model
 
@@ -130,6 +129,9 @@ remains authoritative for the exact invariant. [Liveness](#scale-and-liveness)
 is a property of the whole loop: compatible resources and pending work must
 continue making progress under the documented scheduling conditions.
 
+The cross-owner overview ends here. The remaining sections describe specific
+scheduling paths, scale and proof navigation.
+
 ## Independent Scheduling Truth
 
 Task, TaskItem and Worker Scores are independent, opaque scheduling
@@ -172,7 +174,8 @@ is bounded; Refill and Serviceability reuse due NORMAL descriptors and load
 their missing roots. The [Task Score Owner](../../kernel_jvm/doc/score/task-score-band-scheduling.md#normal-coordinate)
 defines all three ranges.
 Finite Tasks require explicit approval before INITIAL processing; managed Calls
-use their Group's registered reusable Task. Task lifecycle and descriptor storage
+use the reusable Task prepared for their configured Project/Group pair. External
+Group registration creates no Task. Task lifecycle and descriptor storage
 belong to the [Task Owner](../../kernel_jvm/doc/resource-model/task-resource-model.md).
 Producers discover only vertical resources under those inputs. Busy Producers
 skip that snapshot; they do not accumulate a pending source queue. Assembly and

@@ -138,16 +138,19 @@ The Adapter consumes this Adapter-directed Report locally and takes the opaque
 route identity from `sourceId`; the payload is exactly `null`. The first
 workerId occurrence in one Adapter process is passed through the injected
 Server route-verification port. Server may batch those single-item requests
-when reading current Endpoint Bindings. Success is cached process-locally, so
-later physical reconnects for that workerId activate a replacement Channel
-without another Server read. There is no ACK or verification HTTP route.
+when reading current Endpoint Bindings. While a current verified Channel or retained
+verification evidence exists, a later physical reconnect for that workerId
+activates a replacement Channel without another Server read. Evidence expiry
+or eviction requires fresh verification; the [Adapter connection Owner](../netty-adapter/README.md#connection-protocol)
+owns that lifetime. There is no ACK or verification HTTP route.
 Polling sends no identity Report; Server verifies its persisted
 `system-polling` route on each point request.
 Identity reporting does not create or update Endpoint Binding and is not
 authentication, heartbeat, Worker resource mutation, or endpoint migration.
 
-The optional Kernel Worker Serviceability policy queries current Adapter route
-state through the same DTOs:
+The [Kernel Worker Serviceability policy](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
+queries current Adapter route state through the same DTOs. Every preset enables
+network evidence and RECOVERY rechecks; additional HOT probing is preset-specific:
 
 ```text
 Command

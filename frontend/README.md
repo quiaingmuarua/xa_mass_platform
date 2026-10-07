@@ -77,6 +77,9 @@ dictionary JSON is available at
 `/reference/platform-diagnostic-codes.json`. The overview source is
 `frontend/public/overview.htm`; generated `dist` and dictionary content are not
 committed.
+Changes to the [human overview](public/overview.htm) preserve its existing
+information architecture and navigation. Complete mechanism, API, capacity and
+fixture contracts remain in their Owner and proof documents.
 
 ## Build ownership
 

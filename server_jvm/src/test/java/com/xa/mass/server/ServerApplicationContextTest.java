@@ -1,6 +1,9 @@
 package com.xa.mass.server;
 
 import com.xa.mass.server.api.v1.contract.task.TaskItemStateResponse;
+import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
+import com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest;
+import com.xa.mass.server.api.v1.contract.delivery.directcall.DirectCallHttpContract.DirectCallRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -49,6 +52,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Set;
 import java.util.List;
+import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.health.actuate.endpoint.HealthEndpointGroups;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,6 +61,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.JsonNode;
 
 @ActiveProfiles("test")
 @SpringBootTest(classes = com.xa.mass.server.testsupport.ServerTestConfiguration.class,
@@ -81,6 +86,9 @@ class ServerApplicationContextTest {
 
     @Autowired
     private HealthEndpointGroups healthEndpointGroups;
+
+    @Autowired
+    private Validator validator;
 
     @LocalServerPort
     private int port;
@@ -483,6 +491,11 @@ class ServerApplicationContextTest {
         assertThat(itemStateType.get(0).asText()).isEqualTo("object");
         assertThat(itemStateType.get(1).asText()).isEqualTo("null");
 
+        var schemas = document.path("components").path("schemas");
+        assertPositiveOptionalBound(schemas, TaskItemRequest.class, "ttlMillis", null);
+        assertPositiveOptionalBound(schemas, TaskRpcCallRequest.class, "waitTimeoutMillis", 60_000L);
+        assertPositiveOptionalBound(schemas, DirectCallRequest.class, "waitTimeoutMillis", 10_000L);
+
         Path snapshot = Path.of(
                 System.getProperty("xa.mass.repository.root")
         ).resolve("frontend/public/reference/openapi.json");
@@ -500,6 +513,34 @@ class ServerApplicationContextTest {
                                 + ":server_jvm:exportOpenApiSnapshot"
                 )
                 .isEqualTo(OpenApiSnapshotSupport.canonicalize(response.body()));
+    }
+
+    private void assertPositiveOptionalBound(
+            JsonNode schemas, Class<?> requestType, String property, Long maximum
+    ) {
+        var requestSchema = schemas.path(requestType.getSimpleName());
+        var propertySchema = requestSchema.path("properties").path(property);
+        assertThat(propertySchema.path("type").asText()).isEqualTo("integer");
+        assertThat(propertySchema.path("format").asText()).isEqualTo("int64");
+        assertThat(propertySchema.path("minimum").asLong()).isEqualTo(1);
+        requestSchema.path("required").forEach(required ->
+                assertThat(required.asText()).isNotEqualTo(property));
+
+        assertThat(validator.validateValue(requestType, property, 0L))
+                .extracting(violation -> violation.getPropertyPath().toString())
+                .containsExactly(property);
+        assertThat(validator.validateValue(requestType, property, 1L)).isEmpty();
+        assertThat(validator.validateValue(requestType, property, null)).isEmpty();
+        if (maximum == null) {
+            assertThat(propertySchema.has("maximum")).isFalse();
+            assertThat(validator.validateValue(requestType, property, Long.MAX_VALUE)).isEmpty();
+        } else {
+            assertThat(propertySchema.path("maximum").asLong()).isEqualTo(maximum);
+            assertThat(validator.validateValue(requestType, property, maximum)).isEmpty();
+            assertThat(validator.validateValue(requestType, property, maximum + 1))
+                    .extracting(violation -> violation.getPropertyPath().toString())
+                    .containsExactly(property);
+        }
     }
 
     private static Set<String> expectedResponseCodes(String tag, String path) {

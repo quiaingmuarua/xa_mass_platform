@@ -480,7 +480,8 @@ SYSTEM is a platform-event destination, not Direct Call correlation. Its fixed
 use case; unknown events are individually rejected. Even a matching Direct Call
 `forward` cannot complete a waiter via SYSTEM.
 Direct Call Commands use `src=SERVER`; their Worker/Adapter replies target SERVER.
-Source, correlation, outcome and forward failures retain Owner-local rejection.
+The Direct Call registry checks the pending correlation, Adapter and target
+producer before accepting a reply; TASK ingress follows the separate rules below.
 Adapter queue capacity is independent of the HTTP batch-size bound.
 A failed or incomplete TASK evidence append, or failure to admit the complete
 valid KERNEL evidence subset, returns `503` for the existing upstream retry path.
@@ -499,8 +500,11 @@ and physical Channels remain owned by `transport/netty-adapter`.
 
 Long-lived Worker identity carries `workerId` in the Report source and exact
 `null` payload. Adapter routing and retained verification use only workerId;
-WorkerGroup remains outside the Transport route. The optional Kernel
-Serviceability Dispatch lane writes Adapter-partitioned probe requests. Server
+WorkerGroup remains outside the Transport route. Kernel Serviceability writes
+Adapter-partitioned probe requests in every preset: `DEFAULT` rechecks due
+RECOVERY Workers, while the other presets also enable HOT probes. The
+[Serviceability policy](../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
+owns these preset differences. Server
 destructively consumes a bounded request set only at the lowest Command-response
 priority and constructs one `KERNEL -> ADAPTER`
 `platform.adapter.worker-connections.snapshot` Command. The ordinary Adapter
@@ -512,17 +516,22 @@ WorkerGroup, and never invokes the Worker score owner.
 These Kernel-owned best-effort handoffs are not current connectivity truth;
 Pacer consumes the evidence and owns its Score policy.
 
-For `dst=TASK`, Worker Delivery validates producer identity and exact event
-contracts before mapping to the Kernel-owned lanes. WORKER plus
+For `dst=TASK`, Worker Delivery checks producer type and exact event contracts
+before mapping to the Kernel-owned lanes. WORKER plus
 `platform.worker.command.succeeded` maps to `TaskEvidenceType.EXECUTION_SUCCESS`;
 WORKER plus `platform.worker.command.failed` maps to FAILURE. Path-matching
 ADAPTER plus `platform.adapter.command.delivery-failed` also maps to FAILURE
 only with exactly `{"workerId":"...","reason":"DEADLINE_EXCEEDED"}`.
 WORKER plus `platform.worker.task-outcome.observed` maps to OUTCOME_OBSERVATION
 after the [strict outcome payload admission](#later-task-outcomes). Other
-event/producer combinations are rejected. Polling point results accept
-only the matching Worker producer. Server never parses the opaque ResultContext.
-Kernel Result Routing receives the selected lane and does not reclassify it.
+event/producer combinations are rejected. Polling point results additionally
+verify the path Worker's Binding and require its identity in `sourceId`.
+Adapter-batch Worker execution Reports do not perform that Binding lookup or
+compare `sourceId` with the Worker encoded in `forward`. Server never parses the
+opaque ResultContext. Kernel Result Routing decodes `forward` and uses its
+identities and fences for execution evidence, without comparing its Worker ID
+to the Report source; later outcome observations explicitly check that identity
+match. The selected execution lane is not reclassified by Kernel.
 `diagnosticCode` is required string diagnostics, allows empty and arbitrary
 values, and never controls acceptance, classification or correlation. Adapter
 delivery-expiry still emits a separate `dst=KERNEL`
@@ -842,9 +851,9 @@ GET /actuator/health/readiness
 ```
 
 Liveness covers the JVM process. Readiness requires Worker Matching, Result
-Convergence, Dispatch Convergence and Kernel Redis to remain available. The
-optional Serviceability lane is part of Dispatch Convergence rather than a
-separate lifecycle. The `kernel` health contributor exposes only the aggregate
+Convergence, Dispatch Convergence and Kernel Redis to remain available.
+Serviceability is part of Dispatch Convergence in every preset, with no separate
+lifecycle. The `kernel` health contributor exposes only the aggregate
 lifecycle and the two Java convergence-application states; `workerMatching`
 reports its bounded consumer state separately.
 

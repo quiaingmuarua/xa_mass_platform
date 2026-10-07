@@ -2,12 +2,9 @@
 
 Status: current Kernel authority and documentation entrypoint.
 
-Follow the root [reading path](../../README.md#reading-path) for Runtime orientation.
-This index locates mechanical Owners and Pacer policy. The complete
-[behavior model](scheduling-overview.md#system-behavior-model) owns cross-owner
-flow and work/resource feedback. Use the affected Owner below and the mainline's
-[production and proof pointers](scheduling-overview.md#production-and-proof-pointers)
-to trace the affected caller, assembly and assertion.
+Follow the root [reading path](../../README.md#reading-path) for the route appropriate
+to the task. This index locates mechanical Owners and Pacer policy; its links are
+branches to select, not a sequence to read in full.
 
 ## Trust Order
 

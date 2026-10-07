@@ -2,6 +2,7 @@ package com.xa.mass.server.api.v1.contract.task;
 
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotNull;
@@ -13,7 +14,7 @@ public record TaskRpcCallRequest(
         @NotNull
         @Size(min = 1, max = 100)
         List<@NotNull @Valid TaskItemRequest> items,
-        @Positive @Max(60_000) Long waitTimeoutMillis
+        @Positive @Max(60_000) @Schema(minimum = "1") Long waitTimeoutMillis
 ) {
     public TaskRpcCallRequest {
         if (items != null) {

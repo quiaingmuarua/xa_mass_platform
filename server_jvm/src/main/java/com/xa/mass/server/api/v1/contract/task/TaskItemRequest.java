@@ -15,7 +15,7 @@ public record TaskItemRequest(
         @NotBlank String eventCode,
         @NotNull Map<String, Object> payload,
         @Min(0) @Max(10) Integer priority,
-        @Positive Long ttlMillis,
+        @Positive @Schema(minimum = "1") Long ttlMillis,
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "Named Matching function and its local JSON input. "
                 + "Required for finite append and managed Call. The Group-enabled function is independent of Task Pool supply declarations. "
                 + "worker.any accepts only {} and requires explicit any Pool/function enablement and shared supply; "

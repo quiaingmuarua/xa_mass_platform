@@ -2,9 +2,10 @@
 
 `:xa-android:capability-http` is a device-local Lab probe for immutable Android
 extension Definitions. It exposes the Host-supplied finite collection through
-HTTP bound only to `127.0.0.1` on the selected port. The Worker Demo passes
-port `18084`, the same three business Definitions used by its Android Worker,
-and three additional local-only Host lifecycle Definitions.
+HTTP bound only to `127.0.0.1` on the selected port. The
+[Worker Demo](../worker-demo/README.md#device-local-capability-and-host-api)
+supplies its build-variant port, the same business and Lab Definitions used by
+its Android Worker, and three additional local-only Host lifecycle Definitions.
 
 The probe proves that a Definition's parameter resolver, handler, and result
 run inside the installed App process. A Host may use the same dispatcher for

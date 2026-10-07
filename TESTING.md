@@ -147,6 +147,15 @@ Use the lowest-cost proof that owns the changed claim:
    and [local experiment](integrations/worker-call-performance/README.md#local-10k-capacity-experiment)
    contracts instead of copying resource values into correctness-lane selection.
 
+An edit limited to API documentation metadata (for example `@Schema` bounds)
+and its generated OpenAPI snapshot does not change DTO shape or runtime admission.
+For local verification, export the snapshot and run the focused Server OpenAPI
+contract/validation tests plus Docs Contract. Path-based CI selection remains
+conservative: Java paths can still select runtime lanes, and the Proof Gate still
+requires every selected lane. The local check set is not a claim that those CI
+lanes ran, or permission to bypass them. Runtime validation/DTO behavior changes
+retain the ordinary Owner and Boundary proof requirements above.
+
 Inspect selection for a branch without running a proof:
 
 ```powershell
@@ -256,10 +265,18 @@ boundaries even if their happy paths overlap.
 
 ## Shared Infrastructure
 
+High-level Integration Harnesses use public Runtime and local device/Host APIs,
+without production implementation imports or Report injection. Device/Host state
+establishes a local mutation only; Network and Scheduling remain independent
+observations. Bounded Runtime Preview samples must not become fleet enumeration.
+
 Real Redis proofs use unique `test_*` scopes; the scope is the isolation
 contract. Cleanup is best-effort resource hygiene for persistent local Redis,
 uses bounded `SCAN` and `UNLINK` for only that exact scope, and never changes a
-Proof result. GitHub jobs explicitly skip cleanup for their disposable Redis
+Proof result. Python runners use the shared
+[scope cleanup utility](.github/scripts/cleanup_redis_test_scope.py); Redis protocol
+handling stays in `redis-py`, as required by the [runner contract](#lane-index).
+GitHub jobs explicitly skip cleanup for their disposable Redis
 Service container. A proof that needs a Server or Worker Simulator owns those
 process lifecycles and stops all writers before a local cleanup attempt.
 

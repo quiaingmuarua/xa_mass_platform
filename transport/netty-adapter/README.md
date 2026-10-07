@@ -241,7 +241,8 @@ Channel claimed for callback correlation; it does not say whether verification
 succeeded and is not a second route index or wire field.
 Per-Worker `ConcurrentMap.compute` transitions prevent an old Channel's late
 callback from changing a replacement route while still allowing its valid
-in-flight Result before physical close.
+ordinary execution Result before physical close. Later Task outcome observations
+require the current verified Channel.
 The connection mechanism selects a route and asks its physical Server to write
 a normalized command string. The WebSocket Server emits a text frame; the
 Socket Server emits one UTF-8 line. Those Servers also map semantic close
@@ -250,8 +251,8 @@ the current Channel for that workerId. Deactivation compares exact Channel
 identity, so a delayed close from an old Channel cannot remove its replacement
 or verified route.
 Different Adapter instances never share a Session, cache, or Channel registry.
-Results already sent by an old connection are still eligible evidence; Kernel
-Result Routing decides whether their `forward` context remains valid.
+Ordinary execution Results already sent by an old connection are still eligible
+evidence; Kernel Result Routing decides whether their `forward` context remains valid.
 
 The mechanism emits one best-effort
 `platform.adapter.worker-connection.changed` Report when an exact Route
@@ -266,9 +267,10 @@ duplicate removal, and stale old-Channel callbacks produce no evidence. A full
 or closed Result queue drops this evidence without closing the Worker Channel.
 WorkerGroup remains outside Route state and payload.
 
-Successful route verification is retained for ten minutes by default after a
-disconnect. A reconnect inside that window activates locally without renewing
-the evidence. A current connected route remains trusted for its physical
+Route verification has a ten-minute retention horizon by default, measured from
+successful verification, not from disconnect. A disconnected route retains only
+the remainder of that window; reconnect activates locally without renewing the
+evidence. A current connected route remains trusted for its physical
 lifetime even after that time; a new Channel replaces it locally and preserves
 the original verification time. Once no current Channel remains, expired
 evidence is discarded and the next identity verifies remotely. Only
@@ -289,8 +291,8 @@ not route truth: `platform.worker.properties.updated` and
 are its only write paths. Replacement installs a complete immutable Map;
 update merges supplied keys into an already-retained baseline. Neither exposes
 an intermediate cleared or partially modified Map to readers.
-A replaced old Channel may still submit valid in-flight
-evidence, but it cannot refresh this projection. Properties survive ordinary
+A replaced old Channel may still submit valid ordinary execution Results,
+but it cannot refresh this projection. Properties survive ordinary
 disconnect and reconnect while route verification evidence is retained. Each
 entry contains a flat immutable complete string Properties Map, metadata
 (`propertiesFingerprint`, Adapter-written `updatedAtMillis`), and an internal
@@ -518,9 +520,9 @@ the process-local verification cache, so the next identity starts from
 reported disconnected only after the network stack, close, failure, or a write
 detects it. Close-current atomically moves the observed route to disconnected
 and asks the physical Server to close that Channel (`1000` for WebSocket, TCP
-close for Socket). It preserves the process-local verification cache, so the
-existing Client reconnect path can install a new active Channel without
-another route verification.
+close for Socket). While its verification evidence remains fresh, the existing
+Client reconnect path can install a new active Channel without another route
+verification. Expired evidence requires verification again.
 
 ### Result ingress loop
 

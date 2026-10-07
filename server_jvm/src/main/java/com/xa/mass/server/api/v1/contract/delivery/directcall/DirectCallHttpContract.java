@@ -3,6 +3,7 @@ package com.xa.mass.server.api.v1.contract.delivery.directcall;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonValue;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -24,7 +25,7 @@ public final class DirectCallHttpContract {
             Map<@NotBlank String, @NotNull String> workerPayloads,
             @NotBlank String messageType,
             @Nullable String opaquePayload,
-            @Positive @Max(10_000) Long waitTimeoutMillis
+            @Positive @Max(10_000) @Schema(minimum = "1") Long waitTimeoutMillis
     ) {
         public DirectCallRequest {
             if (workerPayloads != null) {

@@ -111,7 +111,9 @@ events. Their detailed semantics are owned by the
 All Adapter events are callable through the ordinary `SERVER -> ADAPTER`
 Direct Call path. The Kernel may call only
 `platform.adapter.worker-connections.snapshot`, using `KERNEL -> ADAPTER`, for
-the optional Worker Serviceability convergence policy. The resulting
+the [Worker Serviceability policy](../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md).
+That Owner defines RECOVERY rechecks in every preset and additional HOT probing
+where enabled. The resulting
 `ADAPTER -> KERNEL` Report is ordinary Delivery evidence; Transport does not
 interpret or write Worker score.
 
@@ -135,7 +137,8 @@ delivery-expired Report accompanies the correlated command.delivery-failed TASK 
 TASK-to-Worker Command misses its Adapter delivery deadline. It does not claim
 that the Channel is disconnected. Both carry no WorkerGroup, Binding,
 Properties, generation, or score. Several Reports may be submitted together by
-the existing Result Process. Queue pressure drops best-effort evidence without
+the existing [Report Dispatcher](netty-adapter/README.md#result-ingress-loop).
+Queue pressure drops best-effort evidence without
 closing the Worker Channel.
 How Kernel weighs this evidence or maps it to a scheduling coordinate is
 policy, not part of the Transport event contract.

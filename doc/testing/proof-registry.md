@@ -4,7 +4,8 @@ Status: current high-level proof ownership registry.
 
 This registry assigns stable claim identities, not size tiers. Owner tests stay
 beside production code. [TESTING](../../TESTING.md) owns commands, prerequisites
-and CI selection; the linked Integration/Scenario Owners own world, workload,
+and CI selection, including the [shared Integration boundaries](../../TESTING.md#shared-infrastructure);
+the linked Integration/Scenario Owners own world, workload,
 fault sequences, thresholds and oracles. Counts and timing fixtures do not
 expand a lane's claim. Evidence links identify assertions, not a fresh passing run.
 
@@ -82,7 +83,7 @@ or observation replay.
 - **Primary Owner:** [Worker Correctness](../../integrations/worker-correctness/README.md).
 - **Boundary:** exact Lab/Worker identity, route, Properties, extension and successful Result closure.
 - **Required witness:** running-Host file mutations reach Adapter and Server/Matching snapshots independently without another Prepare; graceful Host restart retains identity.
-- **Evidence:** the Owner's workload and independent runner assertions.
+- **Evidence:** the Owner's workload and independent runner assertions, including process, control-record and Prepare-traffic preconditions before phase success.
 - **Nonclaims:** capability payload values, executing Worker, fault convergence, reliable SYSTEM delivery under faults, production latency SLA, throughput or topology combinations.
 
 ## worker_dynamic_matching
@@ -90,7 +91,7 @@ or observation replay.
 - **Primary Owner:** [Worker Dynamic Matching](../../integrations/worker-dynamic-matching/README.md).
 - **Boundary:** continuous query execution overlaps live Worker/Platform Properties changes without Prepare or process/Worker restart.
 - **Required witness:** Adapter/Runtime snapshots converge independently; blocked witnesses remain unexecuted, eligible witnesses execute on actual target replicas, and every submitted Result closes with an execution witness.
-- **Evidence:** the Owner's live-mutation workload and Result/Host-journal oracle.
+- **Evidence:** the Owner's live-mutation workload and Result/Host-journal oracle. Handler construction fixes actual executor identity; tokens only correlate. Journal overflow or sequence gaps fail the proof, and raw records/correlation mappings stay outside uploaded artifacts.
 - **Nonclaims:** atomic Facts/Score cutover, exact invalidation/acquisition order, cancellation of confirmed work, exactly-once execution, reliable SYSTEM replay, recovery, fairness, throughput, latency SLA or soak.
 
 ## worker_convergence_health

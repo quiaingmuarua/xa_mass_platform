@@ -105,8 +105,8 @@ load Properties
 
 Temporary disconnects reuse the prepared URI. Reconnect exhaustion returns
 the Worker to `STOPPED`; only an explicit later `start()` performs another
-Prepare. The Worker caches no Endpoint URI, Command, or Result. Initial and
-runtime Properties use the shared reporting path below.
+Prepare. The Worker persists no Endpoint URI and caches no Command or Result.
+Initial and runtime Properties use the shared reporting path below.
 
 ## Proactive Properties
 

@@ -33,8 +33,9 @@ implementation code.
 
 The Application creates and starts one `AndroidWorker` for
 `android-demo-workers`. Android Worker owns the long-lived `clientWorkerKey`
-and WorkerGroup coordinate, performs one Prepare per explicit start, and
-reconnects through the shared Worker Core mechanism. The platform-issued
+and WorkerGroup coordinate and performs one Prepare per explicit start. Its
+[Android Client](../../transport/android-worker/README.md#platform-resources)
+owns transparent reconnect within that run. The platform-issued
 Worker ID is held only for the current run and resolved again by Server from
 the same client key on a later start. The App stores no Worker ID or Endpoint
 URI and does not interpret network connection state as Worker online truth.
