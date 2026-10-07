@@ -294,6 +294,23 @@ run in parallel with Host tests; its artifacts serve the Emulator lane.
 Java Harness assertions and shell process choreography. It is not a second
 execution of the Java Worker proof.
 
+### Worker Project Fixture
+
+Worker Correctness, Dynamic Matching, Convergence Health, Loaded Recovery and
+Android Worker Proof use the explicit `scenario-workers` Project. Runners that
+replace Group manifests must also replace the complete Project list under
+[Boot's topology contract](server_boot_jvm/README.md#project-topology), preserving
+the lane's intended managed Task topology. Each lane owns its workload, fault,
+deadline and outcome assertions.
+
+Finite Task creation includes `projectId`. Correctness, Convergence Health and
+Android clients lazily read `GET /api/v1/projects/scenario-workers` on first
+managed-ID use and cache its Group-to-Task mapping per client instance; they do
+not derive IDs or rely on Group registration side effects. Dynamic Matching and
+Loaded Recovery create finite Tasks and do not make that Project read.
+The separate [Worker Call Performance](integrations/worker-call-performance/README.md)
+lane owns its preparation and measurement windows.
+
 ## Shared Eligibility refill and dispatch
 
 ### Allocation observations and App Checks projection

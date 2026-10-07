@@ -251,9 +251,6 @@ claim.
 
 ## Report Event Semantics
 
-The shared Core emits `platform.worker.command.succeeded` or
-`platform.worker.command.failed`, preserving opaque Handler output and the
-Command forward. `diagnosticCode` is diagnostic only (empty for success).
-Properties and identity use their distinct Report names, not callable Handler
-entries. See the [Delivery contract](../worker-delivery-contract/README.md#report-semantics)
-for coordinated Server, Adapter, SDK and client upgrade requirements.
+Report generation follows the [Core message path](../worker-core/README.md#message-path)
+and [Event Catalog](../EVENTS.md#report-event-contracts). Protocol changes require
+the [coordinated upgrade](../worker-delivery-contract/README.md#coordinated-upgrade).

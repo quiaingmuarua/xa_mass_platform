@@ -144,10 +144,4 @@ for claim boundaries and [TESTING.md](../../TESTING.md) for lane selection.
 
 ## Project fixture
 
-The proof uses the explicit `scenario-workers` Project. Custom Group overlays also
-replace the Project list, retaining the original managed Task count. Managed Call
-clients read `GET /api/v1/projects/scenario-workers` once during preparation and
-reuse its Group-to-Task mapping; they do not derive IDs or rely on Group registration
-side effects. Finite creation requests include projectId. Existing workload,
-fault, deadline and outcome assertions are unchanged; no query is added to a
-performance measurement window.
+Use the shared [`scenario-workers` Project fixture](../../TESTING.md#worker-project-fixture).
