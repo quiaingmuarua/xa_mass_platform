@@ -1,468 +1,531 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Plus, Refresh } from "@element-plus/icons-vue";
+import { ElDialog } from "element-plus";
+import "element-plus/es/components/dialog/style/css";
 import AppCheckCreate from "./AppCheckCreate.vue";
-import {
-  stateLabel,
-  taskStateLabels,
-  type Catalog,
-  type CheckDetail,
-  type CheckTask
-} from "./model";
+import AppCheckList from "./AppCheckList.vue";
+import AppCheckPreviewDrawer from "./AppCheckPreviewDrawer.vue";
+import { appLabel, countryLabel, type Catalog, type CheckTask } from "./model";
 import type { AppCheckTaskSource } from "./task-source";
 import {
-  cryptoAvailable,
-  verificationLabels,
-  verifyPreview,
-  type Verification
-} from "./verify";
-
-const props = defineProps<{ source: AppCheckTaskSource; catalog: Catalog }>();
+  createWorkbenchSession,
+  freshDraft,
+  quantity,
+  type WorkbenchSession,
+  type PreviewState,
+  type TaskAction,
+  type ExportFilter
+} from "./workbench";
+const props = defineProps<{
+  source: AppCheckTaskSource;
+  catalog: Catalog;
+  session?: WorkbenchSession;
+}>();
+const session = props.session ?? createWorkbenchSession();
 const route = useRoute(),
   router = useRouter();
 const taskId = computed(() =>
   typeof route.params.taskId === "string" ? route.params.taskId : undefined
 );
-const tasks = ref<CheckTask[]>([]),
-  truncated = ref(false),
-  detail = shallowRef<CheckDetail>();
-const query = ref(""),
-  appFilter = ref("all"),
-  stateFilter = ref("all"),
-  creating = ref(false);
+const creating = computed(() => route.query.view === "create");
+const tasks = shallowRef<CheckTask[]>([]),
+  previews = ref<Record<string, PreviewState>>({});
 const listBusy = ref(false),
-  detailBusy = ref(false),
   listError = ref(""),
-  detailError = ref("");
-const verification = shallowRef(new Map<string, Verification>()),
-  verifying = ref(false),
-  verifyError = ref("");
-const title = ref<HTMLElement>();
+  listReadAt = ref(0),
+  truncated = ref(false);
+const notice = ref(""),
+  createdTaskId = ref<string>();
+const current = shallowRef<CheckTask>(),
+  detailStale = ref(true);
+const listView = ref<InstanceType<typeof AppCheckList>>();
+const previewView = ref<InstanceType<typeof AppCheckPreviewDrawer>>();
+const actionTask = shallowRef<CheckTask>(),
+  confirmation = ref<"approve" | "close">();
+const displayConfirmation = ref<"approve" | "close">("approve");
+const actionBusy = ref(false),
+  actionError = ref("");
+const confirmationFocus = ref<HTMLElement>(),
+  exportFocus = ref<HTMLElement>();
+const exportOpen = ref(false),
+  exportFilter = ref<ExportFilter>("all"),
+  counts = ref<Record<ExportFilter, number>>();
+const exportLoading = ref(false),
+  exportError = ref("");
+const exportFile = ref<{ url: string; fileName: string; count: number }>();
 let disposed = false,
   listGeneration = 0,
-  detailGeneration = 0,
-  verifyGeneration = 0,
-  listScroll = 0;
-let lastOpened: string | undefined;
-const cryptoSupported = cryptoAvailable();
-const filtered = computed(() =>
-  tasks.value.filter((task) => {
-    const search = query.value.trim().toLowerCase();
-    return (
-      (!search || `${task.name ?? ""} ${task.taskId}`.toLowerCase().includes(search)) &&
-      (appFilter.value === "all" || task.appId === appFilter.value) &&
-      (stateFilter.value === "all" ||
-        (task.state ?? "unavailable") === stateFilter.value)
-    );
-  })
+  exportGeneration = 0;
+let previewTrigger: HTMLElement | undefined, dialogTrigger: HTMLElement | undefined;
+let previewCanGoBack = false,
+  dialogOrigin = "";
+const backgroundPath = computed(() =>
+  creating.value ? "/app-checks?view=create" : "/app-checks"
 );
-const results = computed(() => detail.value?.results.slice(0, 100) ?? []);
-const summary = computed(() => {
-  const counts = { matched: 0, mismatch: 0, unavailable: 0 };
-  for (const row of verification.value.values()) counts[row.status]++;
-  return counts;
-});
-const countFields = [
-  ["totalCount", "查询总数"],
-  ["activeCount", "ACTIVE"],
-  ["succeededCount", "执行成功"],
-  ["failedCount", "当前失败"]
-] as const;
-const date = (value: number) =>
-  new Date(value).toLocaleString("zh-CN", { hour12: false });
-const failureMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "读取失败，请重试。";
+const operationsBusy = computed(() => actionBusy.value || session.draft.busy);
+watch(
+  confirmation,
+  (action) => {
+    if (action) displayConfirmation.value = action;
+  },
+  { flush: "sync" }
+);
+const confirmTitle = computed(() =>
+  displayConfirmation.value === "approve"
+    ? "核对并启动任务"
+    : actionTask.value?.state === "pre_review"
+      ? "取消这个任务？"
+      : "中止这个任务？"
+);
+function newDraft() {
+  session.draft = {
+    ...freshDraft(),
+    appId: props.catalog.apps[0].appId,
+    country: props.catalog.countries[0]
+  };
+}
+function dismissNotice() {
+  notice.value = "";
+  createdTaskId.value = undefined;
+}
 async function loadList() {
-  const generation = ++listGeneration;
+  const token = ++listGeneration;
   listBusy.value = true;
   listError.value = "";
   try {
     const value = await props.source.listTasks();
-    if (disposed || generation !== listGeneration) return;
+    if (disposed || token !== listGeneration) return;
     tasks.value = value.tasks.slice(0, 100);
+    listReadAt.value = Date.now();
     truncated.value = value.truncated || value.tasks.length > 100;
+    previews.value = Object.fromEntries(
+      tasks.value.map((task) => [
+        task.taskId,
+        props.source.previewState?.(task.taskId) ?? {}
+      ])
+    );
   } catch (error) {
-    if (!disposed && generation === listGeneration)
-      listError.value = failureMessage(error);
+    if (!disposed && token === listGeneration)
+      listError.value = error instanceof Error ? error.message : "任务读取失败";
   } finally {
-    if (!disposed && generation === listGeneration) listBusy.value = false;
+    if (token === listGeneration) listBusy.value = false;
   }
 }
-async function loadDetail(id: string) {
-  const generation = ++detailGeneration;
-  verifyGeneration++;
-  verifying.value = false;
-  detailBusy.value = true;
-  detailError.value = "";
+function rememberList() {
+  if (!creating.value && !taskId.value) session.listScroll = window.scrollY;
+}
+function openTask(id: string, trigger?: HTMLElement) {
+  rememberList();
+  if (!taskId.value) previewTrigger = trigger;
+  void router.push({
+    path: "/app-checks/tasks/" + encodeURIComponent(id),
+    query: creating.value ? { view: "create" } : {}
+  });
+}
+function closePreview() {
+  if (!taskId.value) return;
+  if (previewCanGoBack) router.back();
+  else void router.replace(backgroundPath.value);
+}
+function focusBackground(trigger?: HTMLElement) {
+  if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+  else if (creating.value)
+    document
+      .querySelector<HTMLElement>("#app-check-create select")
+      ?.focus({ preventScroll: true });
+  else listView.value?.focusHeading();
+}
+function restorePreviewFocus() {
+  if (disposed || taskId.value) return;
+  focusBackground(previewTrigger);
+  previewTrigger = undefined;
+}
+function restoreDialogFocus() {
+  if (disposed || route.fullPath !== dialogOrigin) return;
+  if (dialogTrigger?.isConnected) dialogTrigger.focus({ preventScroll: true });
+  else if (taskId.value) previewView.value?.focusHeading();
+  else focusBackground();
+}
+function openCreate() {
+  rememberList();
+  dismissNotice();
+  void router.push("/app-checks?view=create");
+}
+function created(id: string) {
+  newDraft();
+  createdTaskId.value = id;
+  notice.value =
+    props.source.mode === "mock"
+      ? "任务已创建，等待核对并启动。"
+      : "任务已创建，可预览查询结果。";
+  void router.push("/app-checks");
+}
+function endUnconfirmedDraft() {
+  const draft = session.draft;
+  if (!draft.uncertain || draft.busy) return;
+  session.unconfirmedSubmissions.push({
+    requestId: draft.requestId,
+    knownTaskId: draft.knownTaskId,
+    appId: draft.appId,
+    country: draft.country,
+    expectedCount: draft.report?.numbers.length ?? 0,
+    sourceFile: draft.fileName || "粘贴号码",
+    submittedAt: draft.createdAtMillis,
+    endedAt: Date.now()
+  });
+  newDraft();
+  notice.value = "已结束本地草稿并保留关联信息，原提交仍需单独核对。";
+}
+function clearExportFile() {
+  if (exportFile.value) URL.revokeObjectURL(exportFile.value.url);
+  exportFile.value = undefined;
+}
+async function openExport(task: CheckTask) {
+  actionTask.value = task;
+  exportFilter.value = "all";
+  counts.value = undefined;
+  exportError.value = "";
+  clearExportFile();
+  exportOpen.value = true;
+  exportLoading.value = true;
+  const token = ++exportGeneration;
   try {
-    const value = await props.source.loadTask(id);
-    if (disposed || generation !== detailGeneration || taskId.value !== id) return;
-    detail.value = value;
-    verification.value = new Map();
-    verifyError.value = "";
+    const value = await props.source.exportCounts?.(task.taskId);
+    if (token === exportGeneration && !disposed && exportOpen.value)
+      counts.value = value;
   } catch (error) {
-    if (!disposed && generation === detailGeneration && taskId.value === id)
-      detailError.value = failureMessage(error);
+    if (token === exportGeneration && !disposed)
+      exportError.value = error instanceof Error ? error.message : "导出数量读取失败";
   } finally {
-    if (!disposed && generation === detailGeneration) detailBusy.value = false;
+    if (token === exportGeneration) exportLoading.value = false;
   }
 }
-function openTask(id: string) {
-  lastOpened = id;
-  listScroll = window.scrollY;
-  void router.push(`/app-checks/tasks/${encodeURIComponent(id)}`);
+function requestAction(task: CheckTask, action: TaskAction, trigger?: HTMLElement) {
+  if (action === "preview") {
+    openTask(task.taskId, trigger);
+    return;
+  }
+  if (
+    operationsBusy.value ||
+    (taskId.value ? detailStale.value : listBusy.value || !!listError.value)
+  )
+    return;
+  actionTask.value = task;
+  actionError.value = "";
+  dialogOrigin = route.fullPath;
+  dialogTrigger = trigger;
+  if (action === "export") {
+    if (props.source.exportTask && task.state === "terminal") void openExport(task);
+  } else if (action === "approve" && props.source.approveTask)
+    confirmation.value = action;
+  else if (action === "close" && props.source.closeTask) confirmation.value = action;
 }
-async function verify() {
-  const snapshot = detail.value;
-  if (!snapshot || verifying.value || detailBusy.value || !cryptoSupported) return;
-  const generation = ++verifyGeneration;
-  verifying.value = true;
-  verifyError.value = "";
+async function refreshVisible(targetId: string) {
+  const reads: Promise<unknown>[] = [];
+  if (!creating.value) reads.push(loadList());
+  if (taskId.value === targetId)
+    reads.push(previewView.value?.refresh() ?? Promise.resolve());
+  await Promise.all(reads);
+}
+async function perform(action: "approve" | "close") {
+  const target = actionTask.value;
+  if (!target || actionBusy.value) return;
+  const method =
+    action === "approve" ? props.source.approveTask : props.source.closeTask;
+  if (!method) return;
+  const origin = route.fullPath;
+  actionBusy.value = true;
+  actionError.value = "";
+  dismissNotice();
   try {
-    const value = await verifyPreview(snapshot);
-    if (!disposed && generation === verifyGeneration && detail.value === snapshot)
-      verification.value = value;
+    await method.call(props.source, target.taskId);
+    if (disposed) return;
+    confirmation.value = undefined;
+    if (route.fullPath === origin)
+      notice.value =
+        action === "approve"
+          ? "任务已核对并启动。"
+          : target.state === "pre_review"
+            ? "任务已取消。"
+            : "任务已中止，已有结果已保留。";
+    await refreshVisible(target.taskId);
   } catch (error) {
-    if (!disposed && generation === verifyGeneration)
-      verifyError.value = failureMessage(error);
+    if (!disposed && route.fullPath === origin)
+      actionError.value =
+        error instanceof Error ? error.message : "操作失败，请刷新后核对。";
   } finally {
-    if (!disposed && generation === verifyGeneration) verifying.value = false;
+    actionBusy.value = false;
   }
 }
+async function demo(action: "advance" | "complete" | "late") {
+  const target = current.value;
+  if (!target || operationsBusy.value || detailStale.value) return;
+  const origin = route.fullPath;
+  actionBusy.value = true;
+  actionError.value = "";
+  dismissNotice();
+  try {
+    if (action === "complete") await props.source.completeTask?.(target.taskId);
+    else await props.source.advanceTask?.(target.taskId, action === "late");
+    if (!disposed) await refreshVisible(target.taskId);
+  } catch (error) {
+    if (!disposed && route.fullPath === origin)
+      actionError.value = error instanceof Error ? error.message : "演示操作失败";
+  } finally {
+    actionBusy.value = false;
+  }
+}
+async function generateExport() {
+  const target = actionTask.value;
+  if (!target || !props.source.exportTask || exportLoading.value) return;
+  const token = ++exportGeneration,
+    selected = exportFilter.value;
+  exportLoading.value = true;
+  exportError.value = "";
+  clearExportFile();
+  try {
+    const file = await props.source.exportTask(target.taskId, selected);
+    if (disposed || token !== exportGeneration || !exportOpen.value) return;
+    exportFile.value = {
+      url: URL.createObjectURL(file.blob),
+      fileName: file.fileName,
+      count: file.count
+    };
+    if (taskId.value === target.taskId) await previewView.value?.refresh();
+  } catch (error) {
+    if (!disposed && token === exportGeneration)
+      exportError.value = error instanceof Error ? error.message : "导出失败";
+  } finally {
+    if (token === exportGeneration) exportLoading.value = false;
+  }
+}
+watch(exportFilter, clearExportFile);
+watch(exportOpen, (open) => {
+  if (!open) {
+    exportGeneration++;
+    exportLoading.value = false;
+    clearExportFile();
+  }
+});
 watch(
-  taskId,
-  async (id, previous) => {
-    detailGeneration++;
-    verifyGeneration++;
-    verifying.value = false;
-    detail.value = undefined;
-    detailError.value = "";
-    verification.value = new Map();
-    verifyError.value = "";
-    if (id) {
-      await loadDetail(id);
-      await nextTick();
-      if (!disposed && taskId.value === id) title.value?.focus({ preventScroll: true });
-    } else {
-      await loadList();
-      await nextTick();
-      if (!disposed && !taskId.value && previous) {
-        document
-          .getElementById(`check-task-${lastOpened}`)
-          ?.focus({ preventScroll: true });
-        window.scrollTo({ top: listScroll, left: 0, behavior: "instant" });
-      }
+  creating,
+  async (value, previous) => {
+    if (value) return;
+    await loadList();
+    await nextTick();
+    if (disposed || creating.value || taskId.value) return;
+    if (createdTaskId.value && listView.value?.revealTask(createdTaskId.value)) return;
+    if (previous) {
+      window.scrollTo({ top: session.listScroll, left: 0, behavior: "instant" });
+      listView.value?.focusHeading();
     }
   },
   { immediate: true }
 );
+watch(
+  () => route.fullPath,
+  (_path, previous) => {
+    if (taskId.value) {
+      previewCanGoBack = previous === backgroundPath.value;
+      if (
+        !previewTrigger &&
+        document.activeElement instanceof HTMLElement &&
+        document.activeElement !== document.body
+      )
+        previewTrigger = document.activeElement;
+    }
+    current.value = undefined;
+    detailStale.value = true;
+    actionError.value = "";
+    confirmation.value = undefined;
+    exportOpen.value = false;
+  },
+  { flush: "sync" }
+);
 onBeforeUnmount(() => {
   disposed = true;
   listGeneration++;
-  detailGeneration++;
-  verifyGeneration++;
+  exportGeneration++;
+  clearExportFile();
 });
 </script>
-
 <template>
   <div class="checks-workspace" data-testid="app-check-workspace">
-    <div class="checks-context">
-      PROJECT <strong>app-checks</strong
-      ><span v-if="source.mode === 'mock'" class="checks-mock"
-        >Mock 数据 · 本地会话样例</span
+    <div v-if="notice && !taskId" role="status" class="checks-notice">
+      <span>{{ notice }}</span>
+      <button
+        v-if="createdTaskId"
+        class="checks-link"
+        @click="openTask(createdTaskId, $event.currentTarget as HTMLElement)"
       >
+        预览新任务
+      </button>
+      <button class="checks-link" aria-label="关闭操作提示" @click="dismissNotice">
+        关闭
+      </button>
     </div>
-    <template v-if="!taskId">
-      <header class="checks-heading">
-        <div>
-          <h1>应用注册查询</h1>
-          <p class="checks-hint">批量查询一个应用的号码注册状态，观察真实执行结果。</p>
-        </div>
-        <div class="checks-actions">
-          <el-button :icon="Refresh" :loading="listBusy" @click="loadList"
-            >刷新</el-button
-          ><el-button type="primary" :icon="Plus" @click="creating = true"
-            >创建查询任务</el-button
-          >
-        </div>
-      </header>
-      <p v-if="listError" role="alert" class="checks-error">{{ listError }}</p>
-      <section class="checks-surface">
-        <div class="checks-toolbar">
-          <el-input
-            v-model="query"
-            aria-label="搜索查询任务"
-            placeholder="搜索名称或 Task ID"
-            clearable
-          /><el-select v-model="appFilter" aria-label="筛选应用"
-            ><el-option label="全部应用" value="all" /><el-option
-              v-for="app in catalog.apps"
-              :key="app.appId"
-              :label="app.appId"
-              :value="app.appId" /></el-select
-          ><el-select v-model="stateFilter" aria-label="筛选任务状态"
-            ><el-option label="全部状态" value="all" /><el-option
-              v-for="(label, value) in taskStateLabels"
-              :key="value"
-              :label="label"
-              :value="value" /><el-option label="状态不可用" value="unavailable"
-          /></el-select>
-        </div>
-        <p class="checks-table-note">
-          筛选当前已加载的 {{ tasks.length }} 个任务，最多 100 条。<span
-            v-if="truncated"
-            >列表已截断，未展示全部任务。</span
-          >
-        </p>
-        <div
-          class="checks-table-scroll"
-          tabindex="0"
-          aria-label="查询任务列表，可横向滚动"
-        >
-          <table class="checks-table">
-            <thead>
-              <tr>
-                <th>任务</th>
-                <th>App／国家</th>
-                <th>创建时间</th>
-                <th>Task 状态</th>
-                <th>总数</th>
-                <th>ACTIVE</th>
-                <th>执行成功</th>
-                <th>当前失败</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="task in filtered" :key="task.taskId">
-                <td>
-                  <button
-                    :id="`check-task-${task.taskId}`"
-                    class="checks-task-link"
-                    @click="openTask(task.taskId)"
-                  >
-                    {{ task.name ?? task.taskId }}</button
-                  ><small v-if="task.name">{{ task.taskId }}</small
-                  ><span v-if="task.managed" class="checks-badge">Managed Task</span
-                  ><span v-else-if="!task.appId" class="checks-badge"
-                    >业务信息缺失</span
-                  >
-                </td>
-                <td>
-                  {{ task.appId ?? "—" }}<small>{{ task.country ?? "—" }}</small>
-                </td>
-                <td>{{ date(task.createdAtMillis) }}</td>
-                <td>
-                  <span class="checks-badge">{{ stateLabel(task.state) }}</span>
-                </td>
-                <td>{{ task.totalCount ?? "—" }}</td>
-                <td>{{ task.activeCount ?? "—" }}</td>
-                <td>{{ task.succeededCount ?? "—" }}</td>
-                <td>{{ task.failedCount ?? "—" }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <p v-if="!filtered.length" class="checks-empty">
-          {{
-            listBusy
-              ? "正在读取任务…"
-              : tasks.length
-                ? "当前筛选下没有任务。"
-                : listError
-                  ? "任务列表尚未读取成功。"
-                  : "还没有查询任务，从创建开始。"
-          }}
-        </p>
-      </section>
-    </template>
-    <template v-else>
-      <router-link to="/app-checks" class="checks-back">← 返回应用注册查询</router-link>
-      <header class="checks-heading">
-        <div>
-          <h1 ref="title" tabindex="-1">{{ detail?.task.name ?? taskId }}</h1>
-          <p class="checks-hint checks-id">{{ taskId }}</p>
-        </div>
-        <el-button :icon="Refresh" :loading="detailBusy" @click="loadDetail(taskId)"
-          >刷新</el-button
-        >
-      </header>
-      <p v-if="detailError" role="alert" class="checks-error">{{ detailError }}</p>
-      <p v-if="!detail && detailBusy" class="checks-empty">正在读取任务…</p>
-      <template v-if="detail">
-        <section class="checks-surface checks-information">
-          <div class="checks-actions">
-            <span class="checks-badge">{{ stateLabel(detail.task.state) }}</span
-            ><span v-if="detail.task.managed" class="checks-badge">Managed Task</span>
-          </div>
-          <dl class="checks-facts">
-            <div>
-              <dt>App</dt>
-              <dd>{{ detail.task.appId ?? "—" }}</dd>
-            </div>
-            <div>
-              <dt>号码国家</dt>
-              <dd>{{ detail.task.country ?? "—" }}</dd>
-            </div>
-            <div>
-              <dt>WorkerGroup</dt>
-              <dd>{{ detail.task.workerGroupId ?? "—" }}</dd>
-            </div>
-            <div>
-              <dt>创建时间</dt>
-              <dd>{{ date(detail.task.createdAtMillis) }}</dd>
-            </div>
-          </dl>
-          <details>
-            <summary>模拟配置与复算参数</summary>
-            <p v-if="detail.task.configurationError" class="checks-error">
-              {{ detail.task.configurationError }}
-            </p>
-            <pre>{{
-              detail.task.simulation
-                ? JSON.stringify(detail.task.simulation, null, 2)
-                : "未提供模拟配置"
-            }}</pre>
-            <p class="checks-id">salt：{{ detail.task.salt ?? "—" }}</p>
-            <p>salt UTC 日期：{{ detail.task.saltDate ?? "—" }}</p>
-          </details>
-        </section>
-        <section aria-label="Item Score 数量观测">
-          <div class="checks-counts">
-            <div
-              v-for="[field, label] in countFields"
-              :key="field"
-              class="checks-surface checks-count"
-            >
-              <span>{{ label }}</span
-              ><strong>{{ detail.task[field] ?? "—" }}</strong>
-            </div>
-          </div>
-          <p class="checks-hint">
-            数量来自 Item Score。已注册与未注册都计入执行成功；这些数量与下方 Result
-            内容独立观测。
-          </p>
-        </section>
-        <section class="checks-surface">
-          <div class="checks-results-heading">
-            <div>
-              <h2>执行结果</h2>
-              <p class="checks-hint">
-                最多 100 条 Result 预览，不承诺文件顺序或完整覆盖。<span
-                  v-if="detail.resultsTruncated || detail.results.length > 100"
-                  >本次未完整展示。</span
-                >
-              </p>
-            </div>
-            <el-button
-              :loading="verifying"
-              :disabled="!cryptoSupported || detailBusy || !results.length"
-              @click="verify"
-              >核对当前预览</el-button
-            >
-          </div>
-          <p v-if="!cryptoSupported" class="checks-table-note">
-            当前浏览器不支持 Web Crypto，请使用 HTTPS 或本机地址核对。
-          </p>
-          <p v-if="verifyError" role="alert" class="checks-error checks-table-note">
-            {{ verifyError }}
-          </p>
-          <p v-if="verification.size" class="checks-table-note" role="status">
-            当前预览：复算一致 {{ summary.matched }} · 不一致 {{ summary.mismatch }} ·
-            无法核对
-            {{ summary.unavailable }}。仅检查这份内容，不证明完整调度或执行次数。
-          </p>
-          <div
-            class="checks-table-scroll"
-            tabindex="0"
-            aria-label="结果预览，可横向滚动"
-          >
-            <table class="checks-table">
-              <thead>
-                <tr>
-                  <th>号码</th>
-                  <th>执行结果</th>
-                  <th>注册答案</th>
-                  <th>实际 Worker</th>
-                  <th>模拟延迟</th>
-                  <th>核对</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in results" :key="row.messageId">
-                  <td>
-                    {{ row.number ?? "—" }}
-                    <details>
-                      <summary>关联信息</summary>
-                      <small>messageId：{{ row.messageId }}</small
-                      ><small>Group：{{ row.workerGroupId ?? "—" }}</small>
-                    </details>
-                  </td>
-                  <td>
-                    <span
-                      class="checks-badge"
-                      :class="{ 'checks-negative': row.resultStatus === 'failed' }"
-                      >{{
-                        row.resultStatus === "succeeded" ? "执行成功" : "执行失败"
-                      }}</span
-                    >
-                  </td>
-                  <td>
-                    <template v-if="row.resultStatus === 'failed'">无注册答案</template
-                    ><span v-else-if="row.contentError" class="checks-error"
-                      >内容解析错误：{{ row.contentError }}</span
-                    ><template v-else>{{
-                      row.registered === true
-                        ? "已注册"
-                        : row.registered === false
-                          ? "未注册"
-                          : "—"
-                    }}</template>
-                  </td>
-                  <td class="checks-id">{{ row.workerId ?? "—" }}</td>
-                  <td>
-                    {{
-                      row.simulatedDelayMillis === undefined
-                        ? "—"
-                        : `${row.simulatedDelayMillis} ms`
-                    }}
-                  </td>
-                  <td>
-                    <template v-if="verification.has(row.messageId)"
-                      ><span
-                        class="checks-badge"
-                        :class="{
-                          'checks-negative':
-                            verification.get(row.messageId)?.status === 'mismatch'
-                        }"
-                        >{{
-                          verificationLabels[verification.get(row.messageId)!.status]
-                        }}</span
-                      ><small>{{ verification.get(row.messageId)?.reason }}</small
-                      ><small
-                        v-if="verification.get(row.messageId)?.bucket !== undefined"
-                        >桶 {{ verification.get(row.messageId)?.bucket }} · 预期
-                        {{ verification.get(row.messageId)?.expectedDelay }} ms</small
-                      ></template
-                    ><span v-else>未核对</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p v-if="!results.length" class="checks-empty">当前未观察到 Result。</p>
-          <p class="checks-table-note">
-            模拟延迟是 Handler
-            的配置等待时间。调度结束后仍可刷新读取迟到结果；失败记录不用于推断注册状态。
-          </p>
-        </section>
-      </template>
-    </template>
-    <AppCheckCreate
-      v-model="creating"
+    <p v-if="actionError && !confirmation && !taskId" role="alert" class="checks-error">
+      {{ actionError }}
+    </p>
+    <AppCheckList
+      v-if="!creating"
+      ref="listView"
       :source="source"
       :catalog="catalog"
-      @created="(id) => router.push(`/app-checks/tasks/${encodeURIComponent(id)}`)"
+      :tasks="tasks"
+      :previews="previews"
+      :session="session"
+      :busy="listBusy"
+      :action-busy="actionBusy"
+      :submission-busy="session.draft.busy"
+      :error="listError"
+      :read-at="listReadAt"
+      :truncated="truncated"
+      :highlighted-task-id="createdTaskId"
+      @create="openCreate"
+      @refresh="loadList"
+      @action="requestAction"
     />
+    <AppCheckCreate
+      v-else
+      :source="source"
+      :catalog="catalog"
+      :session="session"
+      :active="creating"
+      @back="router.push('/app-checks')"
+      @created="created"
+      @end-unconfirmed="endUnconfirmedDraft"
+    />
+    <AppCheckPreviewDrawer
+      ref="previewView"
+      :source="source"
+      :task-id="taskId"
+      :action-busy="actionBusy"
+      :submission-busy="session.draft.busy"
+      :action-error="confirmation ? '' : actionError"
+      :notice="notice"
+      @close="closePreview"
+      @closed="restorePreviewFocus"
+      @action="requestAction"
+      @demo="demo"
+      @dismiss-notice="dismissNotice"
+      @loaded="
+        (task, stale) => {
+          current = task;
+          detailStale = stale;
+        }
+      "
+    />
+    <ElDialog
+      :model-value="!!confirmation"
+      :title="confirmTitle"
+      width="520px"
+      :close-on-click-modal="!actionBusy"
+      :close-on-press-escape="!actionBusy"
+      :show-close="!actionBusy"
+      @update:model-value="
+        (value) => {
+          if (!value) confirmation = undefined;
+        }
+      "
+      @closed="restoreDialogFocus"
+      @opened="confirmation && confirmationFocus?.focus()"
+    >
+      <template v-if="actionTask">
+        <p ref="confirmationFocus" class="checks-dialog-task" tabindex="-1">
+          {{ actionTask.name || actionTask.taskId }}
+        </p>
+        <p>
+          {{ appLabel(actionTask.appId) }} · {{ countryLabel(actionTask.country) }} ·
+          {{ quantity(actionTask.totalCount) }} 个号码
+        </p>
+        <p class="checks-hint">
+          {{
+            displayConfirmation === "approve"
+              ? "请核对应用、地区和号码数量。确认启动后将进入查询。"
+              : actionTask.state === "pre_review"
+                ? "取消后不能启动，已导入的号码不会开始查询。"
+                : "停止后续演示查询，保留已有结果；已开始的执行仍可能返回结果。中止后不能重新启动。"
+          }}
+        </p>
+        <p v-if="actionError" role="alert" class="checks-error">{{ actionError }}</p>
+      </template>
+      <template #footer>
+        <el-button :disabled="actionBusy" @click="confirmation = undefined"
+          >返回</el-button
+        >
+        <el-button
+          :type="displayConfirmation === 'close' ? 'danger' : 'primary'"
+          :loading="actionBusy"
+          @click="confirmation && perform(confirmation)"
+        >
+          {{
+            displayConfirmation === "approve"
+              ? "确认启动"
+              : actionTask?.state === "pre_review"
+                ? "确认取消任务"
+                : "确认中止任务"
+          }}
+        </el-button>
+      </template>
+    </ElDialog>
+    <ElDialog
+      v-model="exportOpen"
+      title="导出查询结果"
+      width="min(520px, calc(100vw - 32px))"
+      :close-on-click-modal="!exportLoading"
+      :close-on-press-escape="!exportLoading"
+      :show-close="!exportLoading"
+      @closed="restoreDialogFocus"
+      @opened="exportOpen && exportFocus?.focus()"
+    >
+      <p ref="exportFocus" class="checks-dialog-task" tabindex="-1">
+        {{ actionTask?.name }}
+      </p>
+      <p class="checks-hint">
+        仅包含有效成功结果，查询失败、内容异常和未完成号码不会导出。
+      </p>
+      <label class="checks-field"
+        >导出范围<select
+          v-model="exportFilter"
+          aria-label="导出范围"
+          :disabled="exportLoading"
+        >
+          <option value="all">全部有效成功结果</option>
+          <option value="registered">已注册</option>
+          <option value="unregistered">未注册</option>
+        </select></label
+      >
+      <div class="checks-export-count">
+        <span>本次导出</span
+        ><strong>{{
+          counts ? quantity(counts[exportFilter]) + " 条" : "数量暂不可用"
+        }}</strong
+        ><small>CSV · 号码 / 注册状态 / 应用 / 地区</small>
+      </div>
+      <p v-if="exportError" role="alert" class="checks-error">{{ exportError }}</p>
+      <div v-if="exportFile" role="status" class="checks-download-ready">
+        <strong>文件已生成</strong
+        ><span>{{ exportFile.fileName }} · {{ quantity(exportFile.count) }} 条</span
+        ><a
+          :href="exportFile.url"
+          :download="exportFile.fileName"
+          class="checks-download-link"
+          >下载 CSV</a
+        >
+      </div>
+      <template #footer
+        ><el-button :disabled="exportLoading" @click="exportOpen = false"
+          >关闭</el-button
+        ><el-button
+          type="primary"
+          :loading="exportLoading"
+          :disabled="!source.exportTask"
+          @click="generateExport"
+          >{{ exportFile ? "重新生成 CSV" : "生成 CSV 文件" }}</el-button
+        ></template
+      >
+    </ElDialog>
   </div>
 </template>

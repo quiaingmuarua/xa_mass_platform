@@ -1,6 +1,7 @@
 import { inject, shallowRef, type InjectionKey } from "vue";
 import type { Catalog } from "./model";
 import { AppCheckApiError, type AppCheckTaskSource } from "./task-source";
+import { createWorkbenchSession } from "./workbench";
 
 type Availability =
   | { status: "loading" | "disabled" }
@@ -43,6 +44,7 @@ export function createAppCheckContext(source: AppCheckTaskSource) {
   }
   return {
     source,
+    session: createWorkbenchSession(),
     state,
     load,
     dispose() {

@@ -73,7 +73,11 @@ export const router = createRouter({
     // The Messages workspace restores its loaded-list position and focused row.
     if (to.path === "/messages" && from.path.startsWith("/messages/tasks/"))
       return false;
-    if (to.path === "/app-checks" && from.path.startsWith("/app-checks/tasks/"))
+    // Task previews are overlays; their routes do not scroll the background.
+    if (
+      (to.path === "/app-checks" || to.path.startsWith("/app-checks/tasks/")) &&
+      (from.path === "/app-checks" || from.path.startsWith("/app-checks/tasks/"))
+    )
       return false;
     return { left: 0, top: 0 };
   }

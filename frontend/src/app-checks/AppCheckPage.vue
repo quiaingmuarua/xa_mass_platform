@@ -10,6 +10,7 @@ const state = context.state;
     v-if="state.status === 'enabled'"
     :source="context.source"
     :catalog="state.catalog"
+    :session="context.session"
   />
   <section v-else class="checks-surface checks-unavailable" aria-live="polite">
     <h1>应用注册查询</h1>

@@ -65,7 +65,7 @@ describe("App Checks admission and independent recomputation", () => {
   );
   it("uses submission local time for display name, without minting task identity", () => {
     expect(checkName("app-a", "CN", 12, new Date(2026, 8, 18, 9, 4, 2))).toBe(
-      "check-app-a-CN-12-20260918-090402"
+      "App A · 中国 · 12 个号码 · 2026-09-18 09:04:02"
     );
   });
   it("matches Java/Python vectors, unsigned high bits and UTF-8 byte lengths", async () => {
@@ -132,6 +132,39 @@ describe("App Checks admission and independent recomputation", () => {
 });
 
 describe("App Checks data boundary", () => {
+  it("keeps prototype review and complete CSV export inside Mock", async () => {
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    const source = new MockAppCheckTaskSource();
+    const numbers = Array.from(
+      { length: 1001 },
+      (_, i) => `+86138${String(i).padStart(8, "0")}`
+    );
+    const { taskId } = await source.createTask({ ...create, numbers });
+    expect((await source.loadTask(taskId)).task.state).toBe("pre_review");
+    await expect(source.exportTask(taskId, "all")).rejects.toThrow();
+    await source.approveTask(taskId);
+    await source.completeTask(taskId);
+    expect((await source.loadTask(taskId)).results).toHaveLength(100);
+    const exported = await source.exportTask(taskId, "all");
+    expect(exported.count).toBe(997);
+    expect(
+      (await source.exportTask(taskId, "registered")).count +
+        (await source.exportTask(taskId, "unregistered")).count
+    ).toBe(exported.count);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(new ApiAppCheckTaskSource()).not.toHaveProperty("approveTask");
+    expect(new ApiAppCheckTaskSource()).not.toHaveProperty("exportTask");
+  });
+  it("does not send prototype file metadata to the unchanged API", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response('{"taskId":"task"}'));
+    vi.stubGlobal("fetch", fetcher);
+    await new ApiAppCheckTaskSource().createTask({
+      ...create,
+      sourceFile: "numbers.txt"
+    });
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual(create);
+  });
   it("Mock catalog, creation, list and refresh are network-free, bounded and session-local", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);

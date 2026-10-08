@@ -189,42 +189,154 @@ the submitted JSON body.
 
 ## App Checks Task workspace
 
-`/app-checks` and `/app-checks/tasks/:taskId` share one API/Mock workspace for the
-`app-checks` Project. Its independent Catalog probe controls navigation: 404 means
-not enabled, while network/5xx failures allow explicit retry. Page forwarding
-follows [Boot configuration](../server_boot_jvm/README.md#pages-and-configuration);
-catalog observation controls this workspace's availability.
+The App Checks workbench is the first business Task workflow sample. It keeps
+the existing Console theme/navigation and does not change the Tasks, Messages
+or SMS workspaces. Its Catalog probe independently controls availability:
+404 means disabled; transient errors allow explicit retry.
 
-The list displays at most 100 Tasks with loaded-only search, App/state filters and
-preserved return position. Managed and missing-metadata Tasks remain visible.
-Creation selects an App and a number country, imports UTF-8 text (1 MiB, at most
-1000 numbers) or edits lines, then validates the simulation JSON. The pure phone
-file utilities are shared with Messages; finite Task files keep their 10000 limit.
-Range examples preserve delay. Display names use `check-{app}-{country}-{count}-`
-plus local submission time; Server supplies Task IDs and salt. Creation appends and
-automatically approves through the existing API. Unknown submissions retain the
-frozen draft and known Task link across drawer close/reopen, without retry.
+The desktop workspace uses a Task list, one action menu per row and a 760px
+result-preview drawer. `/app-checks/tasks/:taskId` opens that drawer over the
+list; there is no separate detail workspace. Full-page creation remains
+`/app-checks?view=create`, so existing Boot page forwarding is sufficient.
+Known Task links in submission recovery add `?view=create` to the Task path,
+keeping the draft mounted behind the drawer. Opening, closing and navigating
+between previews retain the background, filters, scroll position and draft,
+without reloading the list. Closing restores the trigger's focus; closing a
+direct Task link returns to the list. A Task read by known ID is not appended to
+the loaded collection or counted in its state tabs. The Console context retains
+drafts and filters for the current session; refreshing the application clears
+them. Phone inputs are not persisted to browser storage.
 
-Details keep Task state, Item Score counts and Result content independent. Registered
-and unregistered answers both mean successful execution. Failed results carry no
-answer; content errors preserve the execution status. The table is a bounded preview
-of at most 100 Results, without pagination, export or whole-Task business totals.
-Reads happen on entry/manual refresh; errors preserve the known snapshot and late
-responses cannot overwrite another Task.
+### List and creation
 
-Manual preview verification uses Web Crypto SHA-256 and BigInt, using saved salt,
-actual returned Worker, number, simulation and Group. It compares the answer and
-configured delay, with matched/mismatch/unavailable rows. Failures cannot be
-recomputed without their original executing identity. Verification makes no API
-calls, does not audit scheduling or attempts, and is discarded on a new snapshot.
-Unsupported Web Crypto disables the action without remote fallback.
+The list shows finite business Tasks from the existing bounded 100-Task response.
+Search, App/country/date filters and state-tab counts operate only on
+this loaded set, never the whole Project. The table has bounded scrolling, a fixed
+header and a fixed action column. Truncated reads are marked explicitly; scrolling
+never loads additional Tasks. The header shows the last successful read time;
+failed refreshes retain that time and mark the snapshot stale. Refresh replaces the snapshot. There are no page
+controls, cursors or history traversal. Internal managed Tasks and entries
+without business metadata remain outside this workspace. State tabs show all,
+pending review, processing and ended Tasks; unavailable state belongs only to
+all. Dates sit in collapsed advanced filters, with an active-filter marker.
+List and drawer share one action menu: pending review can start or cancel,
+processing can preview or stop, and ended Tasks can preview or export. Unknown
+state offers preview only. Clicking a Task name opens the same preview.
+Startup, cancellation and stopping require confirmation with App, country and
+number count. In-flight actions reject duplicate submission; failures retain
+the observed state. Unsupported API operations show their unavailable reason.
 
-Explicit Mock provides the same flow, a fixed valid vector, intentional mismatches,
-failed/invalid/empty/truncated/missing-data and read-error samples. New Tasks live
-only in this console session, with no timer-driven fake execution. All Mock Catalog,
-create/read/refresh/verify operations make zero service requests. API never falls
-back to Mock. Browser acceptance exercises source and fresh Preview ZIP with real
-App Workers; existing backend failure/late-result/restart proofs remain in place.
+Creation is one page containing App, country and number import, with one submit
+action. Names are generated from App, country, deduplicated count and a stable
+submission timestamp; there is no editable name or separate review step. Mock startup
+confirmation remains a separate action after creation. Successful creation
+returns to the list, refreshes its bounded snapshot and preserves filters. A
+visible new Task is highlighted; a dismissible success notice also links its
+preview when the current filters or read range exclude it.
+UTF-8 TXT, CSV and pasted lines share existing number/country validation. CSV
+supports BOM, escaped quotes and quoted newlines, with explicit header/column
+selection. A dedicated module Web Worker performs parsing and validation; new
+inputs and leaving the page cancel old work. Switching the input-method tab does
+not replace the current numbers: the source label always names the actual file or
+pasted content. Reading/revalidating replacements blocks submission; invalid input
+never submits a valid subset. Creation displays only counts and
+a concise error, with no number-detail table or problem-file export.
+
+Empty lines and surrounding whitespace are removed, and duplicate numbers are
+automatically collapsed. A leading '+' is optional in App Checks input:
+plain country-code digits and their '+'-prefixed form deduplicate to one number.
+Validation and submission retain the canonical '+'-prefixed string used by the
+existing JSON API and Worker protocol; no country code is guessed or added.
+Templates and input examples omit '+'. The summary shows read count, duplicates and final
+submission count. Any invalid format or country-prefix mismatch rejects the
+whole batch with an error count and first physical error line; no valid subset
+is submitted. Users correct and re-import the source. The server still performs
+its own admission validation. Original input coordinates remain available only
+during validation; accepted Mock import history stores the source file and summary,
+without copying raw rows or retaining an input-detail browsing path.
+Rejected file replacement preserves the previous content, which must be
+revalidated before use.
+
+API mode retains its existing 1 MiB/file and Catalog number limit, unchanged
+request body and automatic approval. Its final button states that creation starts
+execution. Simulation input comes from Catalog and is absent from the business
+form. Unknown submissions retain their frozen draft/request identity and any
+known Task link without automatically retrying. The recovery panel can read the
+known Task through the existing detail API and display observed counts/state;
+Task existence is not treated as complete submission or approval. After manual
+acknowledgement, ending the local draft opens an empty draft with a new request
+identity. It never retries, closes or repairs the original Task. Original request/
+Task identities and input summary are retained in session-only association records
+that can be saved as JSON; phone values and original rows are not copied there.
+Pending submissions cannot be ended until their original call settles. Shared Messages and finite Task
+file limits are unchanged.
+
+### Preview drawer, management and results
+
+The drawer shows identity, observed state, last successful read time and the
+shared action menu, with preview itself omitted. Progress stays in the list row.
+Pending-review Tasks initially show the import summary; other Tasks show result
+previews. Import summary, activity and technical information are expandable
+sections, with auxiliary data read only when expanded. Task state, Item Score counts and Result content remain
+independent. Registered and unregistered answers are both successful execution;
+failures have no registration answer. Invalid content and missing answers have
+their own result filters. Closing a Task does not force progress to 100%.
+
+Entry/manual refresh reads snapshots; no automatic polling is added. Failed
+refreshes preserve known data, visibly mark it stale and disable state mutations.
+Navigation invalidates late detail/import/verification responses and prevents old
+detail reads from stealing focus in the newly opened Task. Mock and API
+both show at most 100 Results returned by the current `loadTask` snapshot in a
+bounded scrolling table. Result filters are computed locally from that snapshot;
+there is no separate result-query method or pagination. The UI shows preview and
+matched counts beside the result filters, honors the truncation flag, and scopes empty searches to the
+preview. Task progress and counts still come from Task observations, independently
+of preview filters. Refresh replaces, rather than accumulates, Results.
+
+Import information contains only the source file, read count, duplicate count and
+submitted count. Missing summaries are unavailable and are never reconstructed
+from Task counts or Results. API exposes no extrapolated whole-Task registration
+totals or fabricated import/activity history. Known creation time remains visible.
+
+Technical information retains Task/Worker identities, simulation, salt and manual
+Web Crypto SHA-256/BigInt verification of up to 100 snapshot Results. It compares
+business answers, Group and configured delay, not scheduling or attempts. Missing
+evidence is unavailable; verification is invalidated by refresh. There is no
+remote hashing fallback.
+
+### Explicit Mock product prototype
+
+Mock supports 100,000 numbers/10 MiB, separate creation and startup confirmation,
+cancellation before startup, and stopping after startup. Stopping preserves
+results and unfinished counts; only Mock metadata supplies completion,
+cancellation and stop reasons. Terminal Tasks cannot restart. There is no
+pause/resume or configuration-copy capability.
+
+Demo controls live inside the drawer's collapsed technical section: advance a
+batch, finish remaining queries, and observe one previously started execution
+only for stopped Tasks with unfinished Items. Nothing progresses on a
+timer. The task list and result preview use the same 100-record read bounds as
+API. Complete local results remain private to demo execution and export. Recent
+actual Mock operations (up to 100) and available import summaries appear on the
+expanded drawer sections without continuation.
+
+Terminal-only CSV exports include all valid successes, registered successes or
+unregistered successes. The dialog reads complete local counts, generates a
+file and exposes its download link. Export excludes failures, invalid content
+and missing answers, uses the complete fixture independently of preview size,
+search or filters, and protects spreadsheet text cells.
+
+Management, import/activity reading and export capabilities are optional
+data-source methods available only in Mock. Real API export is not connected in
+this iteration. API displays unsupported actions honestly and
+does not call new routes or fall back to Mock. Create/read/manage/export/verify
+in Mock make zero service requests.
+
+Future API integration must reuse generic Task approval/close/export services;
+separating creation from approval requires a scenario admission change. Explicit
+ending reasons and persistent import summaries are separate
+follow-up contracts. Historical browsing can be reconsidered with Storage DB;
+this iteration adds no full-query or continuation interfaces.
 
 ## API Reference
 

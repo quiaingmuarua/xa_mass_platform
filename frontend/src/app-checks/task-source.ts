@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { ImportSnapshot } from "./import-model";
+import type { PreviewState, ExportFilter, TaskActivity } from "./workbench";
 import {
   catalogSchema,
   detailSchema,
@@ -15,6 +17,19 @@ export interface AppCheckTaskSource {
   listTasks(): Promise<{ tasks: CheckTask[]; truncated: boolean }>;
   loadTask(taskId: string): Promise<CheckDetail>;
   createTask(input: CreateCheckTask): Promise<{ taskId: string }>;
+  // Explicit Mock interactions for the design preview; the API capabilities remain unchanged.
+  approveTask?(taskId: string): Promise<void>;
+  closeTask?(taskId: string): Promise<void>;
+  advanceTask?(taskId: string, late?: boolean): Promise<void>;
+  completeTask?(taskId: string): Promise<void>;
+  previewState?(taskId: string): PreviewState;
+  loadImport?(taskId: string): Promise<ImportSnapshot | undefined>;
+  loadActivity?(taskId: string): Promise<TaskActivity[]>;
+  exportCounts?(taskId: string): Promise<Record<ExportFilter, number>>;
+  exportTask?(
+    taskId: string,
+    filter: "all" | "registered" | "unregistered"
+  ): Promise<{ blob: Blob; fileName: string; count: number }>;
 }
 export class AppCheckApiError extends Error {
   constructor(
@@ -72,9 +87,17 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
   }
   async createTask(input: CreateCheckTask) {
     try {
+      const requestBody = {
+        requestId: input.requestId,
+        name: input.name,
+        appId: input.appId,
+        country: input.country,
+        numbers: input.numbers,
+        simulation: input.simulation
+      };
       return z
         .object({ taskId: z.string().min(1) })
-        .parse(await request("/tasks", input));
+        .parse(await request("/tasks", requestBody));
     } catch (error) {
       if (
         error instanceof AppCheckApiError &&
