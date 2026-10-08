@@ -140,7 +140,7 @@ absent Groups have no observed demand. Pacer limits its raw candidate read to th
 smaller of that count and its per-Group ceiling, then calls
 `refill(group, declarations, candidateScores)` for candidateized Groups. Matching selects
 Pool maintenance by resource name, normalizes targets and MAX-merges them.
-Composition supplies the rotation base order: proof-facts, country, any, messaging.
+Composition supplies the rotation base order: proof-facts, country, assignment-window, any, messaging.
 The Refill coordinator interprets the policy's fixed targetBatching capability, never its name:
 Country uses ALL; the other fixed policies use PAGED.
 Input limits are 100 Groups and 10,000 declarations, with no 100 Group/Pool-coordinate
@@ -198,9 +198,10 @@ execution exception ends the call without rolling back earlier consumption.
 `WorkerCandidate(workerId, expectedScore)` carries no inventory deadline. All
 production Pool strategies return their original nonzero fence. Refill takes a
 Map of opaque fences; storage creates and checks its own admission TTL.
-The Pool resource poll reads no Redis or Facts. A consuming function may then
-qualify that stock through bounded Facts reads, as the assignment-window function
-does below. Function results are candidates only; Kernel retains execution admission.
+The Pool resource poll and Pool-consuming functions read no Redis or Facts.
+The assignment-window Pool qualifies stock during refill; its consuming function
+uses that admitted snapshot. Function results are candidates only; Kernel retains
+execution admission.
 
 Identity and Phone functions return `expectedScore=0` as an identity hint. Catalog
 preserves that value without reading WorkerScore, filling in a fence or downgrading
@@ -244,7 +245,7 @@ limits and entry/expiry/capacity checks retain their independent owners.
 | Current function name | Local input |
 | --- | --- |
 | `worker.any` | Only `{}`; explicitly enabled `any` Pool, no Facts required |
-| `worker.assignment.available` | Only `{}`; Any stock qualified against the Group's configured Platform assignment window |
+| `worker.assignment.available` | Only `{}`; consumes independent `assignment-window` stock qualified at refill |
 | `worker.country` | `{}` or a nonempty country list such as `["CN","US"]` |
 | `worker.messaging.available` | `{}` or an object with optional `country` list; consumes Messaging Pool stock |
 | `worker.messaging.phone` | Object with required nonblank `phone` and optional `country` list; qualified Direct lookup |
@@ -266,34 +267,43 @@ choice have no aliases or replacement multi-ID function.
 
 ### Observed assignment window
 
-`worker.assignment.available` combines the existing Any Pool with a bounded
-Worker/Platform Facts snapshot. It is explicitly enabled per Group and requires
-`pools: [any]` plus `assignment-window: {window-millis: 60000, max-assignments: 10}`.
-Both configuration values must be positive; missing configuration fails assembly.
-Other Groups receive no implicit policy. Inputs cannot override these values.
+`assignment-window` is an independent Pool, with its own stock and refill policy.
+Enable `pools: [assignment-window]` and configure
+`assignment-window-pool: {window-millis: 60000, max-assignments: 10}` in that Group.
+The settings belong only to this Group/Pool pair. Both values must be positive;
+missing settings, settings without an enabled Pool, and the retired Group-level
+`assignment-window` configuration field fail startup. Enabling
+`worker.assignment.available` additionally requires this Pool. Neither supply
+targets nor Item inputs may override the settings; both accept only `{}`.
 
-The function polls at most the requested count once, preserves the first original
-nonzero fence for each identity, and reads those distinct identities in one atomic
-Facts-owner snapshot. It does not split a Catalog-admitted batch into pages.
-After reading, one clock sample determines the current fixed window. It
-returns qualifying candidates in stock order against the first input message IDs.
+Refill reads only the offered identities once through the atomic Worker/Platform
+Facts snapshot, without splitting the Catalog-admitted batch into pages. After
+reading, one clock sample determines the fixed window for the complete batch.
+All qualification finishes before eligible entries enter the single `available`
+bucket, retaining their original nonzero fences. No Properties or Score is changed.
 Missing Facts are skipped. With Facts present, absent `lastAssignedAt` and
 `windowAssignmentCount` means no observed assignments. A previous window has an
 effective count of zero; a current window qualifies below the configured threshold;
 a future window is skipped. Incomplete, negative, non-integer or overflowing fields
 are skipped per Worker with an aggregate diagnostic. Nothing repairs or resets them.
 
-Polling already consumed stock before the read. A storage/JSON decoding failure
-fails the function without restoring any stock. Rejection never polls replacements,
-renews a fence, returns an identity hint or modifies properties. Existing candidate
-recycling remains responsible for supply: crossing a window changes qualification,
-but a rejected candidate may still wait for the existing 60-second aging interval,
-refill and scheduling. No immediate boundary execution is promised.
+Storage/JSON decoding failure admits none of this Pool's batch; earlier admissions
+by other Pools remain committed. Rejection never polls replacements, renews a fence,
+returns an identity hint or rolls back candidateization. Existing 60-second candidate
+aging and ordinary refill remain responsible for recovery. Time alone does not fill
+the Pool, and no immediate execution at a window boundary is promised.
 
-This is best-effort assignment observation, not a reserved or atomic quota.
-Asynchronous projection delay/loss and changes after the snapshot can permit more
-assignments than the threshold. The function is an explicit query capability,
-not a Group-wide gate on other functions. `worker.any` keeps its original semantics.
+`worker.assignment.available` only polls this Pool and associates entries with Item
+requests. It reads no Facts, clock or window configuration, and never falls back to
+Any. Catalog retains its call-local Worker uniqueness check. Any stock is independent;
+`worker.any` keeps its unconditional semantics. Both Pools share the existing supply
+rotation, with each new candidate generation admitted by at most one Pool per batch.
+
+Qualification now means **the admission-time snapshot**, not a take-time check.
+Asynchronous projection delay/loss, later property changes and retained stock can
+permit assignments beyond the threshold. Existing best-effort candidate invalidation,
+stock TTL and exact Kernel execution admission remain independent; none proves that
+business eligibility is current at take. This is not a reserved or atomic quota.
 Window length stays fixed within a scope; changing it requires a new scope because
 persisted counts do not contain the old window definition. No migration is performed.
 
@@ -372,6 +382,7 @@ Pool/Identity Catalog tests construct their resources without a Redis Store.
 | Pool | Maintenance |
 | --- | --- |
 | `any` | Empty target only, unconditional candidate stock; no Facts or property views |
+| `assignment-window` | One atomic Worker/Platform snapshot and one clock sample per refill; a single qualified bucket |
 | `country` | Valid Worker country Facts and local country buckets |
 | `messaging` | enabled messaging and country buckets; empty or country-only targets |
 | `proof-facts` | complete proof tuple buckets with rule-owned partial matching |
@@ -411,7 +422,7 @@ validated, rebuilt nor deleted. Phone remains the independent discovery index.
 ## Messaging and Proof Facts Qualification
 
 Every policy reads only the remaining Catalog-admitted identities, at most 1000. Any makes
-no read. Country and Messaging each use one Worker Facts HMGET. Proof uses one
+no read. Country and Messaging each use one Worker Facts HMGET. Proof and assignment-window each use one
 fixed EVAL_RO containing two HMGETs, so Worker and Platform rows share a Redis
 execution snapshot. A missing Worker row is ineligible; missing Platform is an
 empty map. Malformed present Facts fail before this Pool changes inventory. This
@@ -695,10 +706,9 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
 - Group shortage observation: zero Redis commands; local target aggregation and
   capacity-pressure cleanup only when a requested Group-Pool has no room. Country uses one bucket-count snapshot for
   all targets; other policies receive only visited target pages.
-- Pool resource counts and polling, and existing unqualified Pool functions:
-  zero Redis commands or Facts reads. Assignment-window take adds one EVAL_RO
-  snapshot (two HMGETs) for the complete polled distinct identity set; empty
-  stock adds no read. It never expands the Item request budget to find substitutes.
+- Pool resource counts, polling and Pool query functions, including assignment-window:
+  zero Redis commands or Facts reads. A miss never expands the Item request budget
+  or reads Properties to find substitutes.
 - Identity take: zero Redis commands. Nonempty Phone take: one HMGET for the Catalog-admitted
   unique exact values, returning at most one identity per value, without a lease read.
 - Qualified Messaging Phone take: the same bounded lookup plus at most one HMGET
@@ -708,7 +718,7 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
   separate 100-per-Group/1000-per-round budget and its own Group rotation hint.
 - Each Group needing fresh supply: one mark=0 due-head Lua, one exact candidateize
   Lua for a nonempty head, then one HMGET for Country/Messaging or one EVAL_RO
-  (two HMGETs) for Proof, only when that policy needs qualification. A full-stock
+  (two HMGETs) for Proof/assignment-window, only when that policy needs qualification. A full-stock
   deficit suppresses normal Pacer supply. If a batch is supplied anyway, it still
   qualifies before capacity refusal; no resident-identity pre-read skips that work.
 - Any needs no qualification read and never discovers substitute IDs.

@@ -44,6 +44,11 @@ const labels: Record<TaskAction, string> = {
 };
 function unavailable(action: TaskAction) {
   if (action === "preview") return "";
+  if (
+    (action === "import" || action === "approve") &&
+    props.task.inputUnavailableReason
+  )
+    return props.task.inputUnavailableReason;
   if (action === "import" && props.task.inputVersion !== "2")
     return "旧任务不支持追加导入";
   if (action === "approve" && !props.task.totalCount) return "请先导入号码";

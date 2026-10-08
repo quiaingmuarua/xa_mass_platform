@@ -60,9 +60,10 @@ class ScenarioCompositionIntegrationTest {
             if (preview) {
                 var matching = context.getBean(com.xa.mass.server.assembly.matching.MatchingProperties.class);
                 for (String group : List.of("app-a-sim", "app-b-sim")) {
-                    assertThat(matching.groups().get(group).assignmentWindow().windowMillis()).isEqualTo(60_000);
-                    assertThat(matching.groups().get(group).assignmentWindow().maxAssignments()).isEqualTo(10);
+                    assertThat(matching.groups().get(group).assignmentWindowPool().windowMillis()).isEqualTo(60_000);
+                    assertThat(matching.groups().get(group).assignmentWindowPool().maxAssignments()).isEqualTo(10);
                     assertThat(matching.groups().get(group).functions()).contains("worker.assignment.available", "worker.any");
+                    assertThat(matching.groups().get(group).pools()).contains("assignment-window", "any");
                 }
                 assertThat(context.getBean(AppCheckTaskService.class).isRunning()).isTrue();
                 var groups = context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("app-a-sim", "app-b-sim"));

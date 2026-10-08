@@ -54,9 +54,15 @@ Runtime 默认有效期（当前 365 天），不从批准时重新计时。已�
 保留原时间、有效期、Score 和结果；不同内容拒绝覆盖。显式重传可用已存 Item 原值调用
 既有 append 补齐缺失的初始 Score；Score 存在而执行数据缺失等其他不一致按数据异常处理。
 
-Task priority=50、maxRetryTimes=3；Item priority=5。供给仍为 `any / {} / 100`，
+Task priority=50、maxRetryTimes=3；Item priority=5。供给为 `assignment-window / {} / 100`，
 新 Item 仍使用 `worker.assignment.available({})`。这些数字各自属于原 Owner 的边界。
-旧任务及其 salt、随机 Item ID 不迁移；仍可读取、关闭和导出，不能追加 v2 号码。
+v1 任务及其 salt、随机 Item ID 不迁移；仍可读取、关闭和导出，不能追加 v2 号码。
+
+窗口 Pool 切换不改变号码输入版本、v2 salt、号码身份或创建指纹。
+descriptor 仍声明旧 Any 供给的任务只能读取、关闭和导出，不能继续导入或批准；
+响应通过 `inputUnavailableReason` 告知原因。相同创建请求仍关联原 Task ID，不自动重建。
+部署前先完成或关闭旧的待审核／运行中任务，确认切换前置条件；不自动关闭用户任务、
+重写 descriptor 或清理现有 scope。新任务显式声明独立窗口 Pool。
 
 同一 Server 实例通过既有 OperationGuard 串行化一个 Task 的导入、普通追加、批准和关闭；
 一个同步导入的全部批次共享持有期。最多两个文件同时导入，结束释放容量，满时写入前背压。
@@ -126,7 +132,7 @@ Pacer 在执行租约和 Item claim 均成功后、Command 编码和发布前发
 
 投影只写两个 Platform Properties：`lastAssignedAt` 和 `windowAssignmentCount`。
 前者是最近观察到的分配时间（毫秒），后者是该时间所在固定窗口中的观察数量。
-窗口长度读取各 Group 的 `xa.mass.worker-matching.groups.<group>.assignment-window.window-millis`，
+窗口长度读取各 Group 的 `xa.mass.worker-matching.groups.<group>.assignment-window-pool.window-millis`，
 与 Matching 使用同一份启动配置；窗口编号为 `floor(observedAtMillis / windowMillis)`。
 同窗口累加、时间取最大值；新窗口重新计数；
 更旧窗口不回退。两个字段均不存在时初始化；字段不完整、非整数、负数或溢出时
@@ -136,7 +142,7 @@ Pacer 在执行租约和 Item claim 均成功后、Command 编码和发布前发
 后续发送、执行失败不会扣减；重试再次分配会再次通知。Server 队列丢弃、进程退出、
 Facts 缺失或属性写入失败均可能造成缺口，没有补发、最终一致性或精确额度保证。
 不定时清零，空闲时保留最近窗口；重启读取已写入值，不补齐未处理通知。
-新建 Item 的 Matching 函数读取这两个字段，投影只提供选择和纯计算，由 Server 的同一个
+窗口 Pool 的补给策略读取这两个字段，投影只提供选择和纯计算，由 Server 的同一个
 Properties Handler 合并读取与写入；场景不依赖 Pacer 或通用 FunctionHandler。
 固定路由、异步交接及既有 patch/候选失效的完整边界见
 [Server](../../server_jvm/README.md#worker-allocation-observations)。
@@ -145,12 +151,16 @@ Properties Handler 合并读取与写入；场景不依赖 Pacer 或通用 Funct
 
 新 Item 使用 `worker.assignment.available({})`；窗口和阈值由
 [Boot 的 Group 配置](../../server_boot_jvm/README.md#platform-and-preview) 决定。
-该函数用现有 Any Pool 候选和 Platform Properties 判断资格；完整字段解释、失败与预算见
+独立 assignment-window Pool 在补给阶段用 Worker/Platform 快照判断资格，查询函数只取库存；完整字段解释、失败与预算见
 [Matching Owner](../../worker_matching_jvm/README.md#observed-assignment-window)。
 
 跨窗口意味着重新符合条件，不承诺立即执行。观察异步、可丢失，不能把配置阈值当成严格
 执行上限；失败和迟到结果不会扣减统计。范围是 Group 内的单 Worker，没有跨设备
 IP／账号配额。其他显式函数不受这一策略拦截。窗口长度改变使用新 scope，不迁移旧值。
+
+资格以补给时的快照为准，入池之后消费不读取 Facts 或再次计算窗口；候选库存由该 Pool
+独立持有，`worker.any` 使用另一份 Any 库存。属性变化、失效提示、TTL 与 Kernel 精确
+执行准入仍各自独立，不能据此承诺取用时业务条件最新。
 
 ## 页面与结果核对
 
@@ -189,7 +199,7 @@ python scenarios/app-checks-jvm/run_acceptance.py --root <freshly-extracted-prev
 Worker 关联复算窗口，不用 Item 数量或 Result 数量推算。该见证不进入生产代码。
 
 窗口专用 Boot 用例使用一个实际 Worker、60 秒窗口、阈值 1：真实分配通知推进属性后，
-通过实际 Facts 快照读取和空 take 结果见证筛选拒绝；跨窗后等待正常 60 秒候选回收、
+通过实际 Facts 快照读取和零准入的 refill 结果见证筛选拒绝，并断言 take 的 Facts 读取为零；跨窗后等待正常 60 秒候选回收、
 补货与执行，不手动清零、恢复库存或改 Score。恢复观察最多 180 秒，字段边界另由
 受控时钟单元测试证明。投影延迟允许继续选择，测试不把阈值当成严格配额。
 
@@ -203,3 +213,25 @@ Preview 的默认 60 秒／10 次保持。进程 runner 复用现有 Preview 启
 CI 使用现有 `product_coexistence` lane 执行源码及新解压 ZIP；原 SMS/Messages
 proof 显式 `app_count=0`，负载和断言保持原样。公开产物只包含阶段、数量和校验摘要，
 原始日志与业务内容留在 private；每次使用唯一 test scope 并仅 SCAN/UNLINK 该 scope。
+
+## 可选 Pool 基准
+
+现有 runner 的 `--benchmark` 模式连续运行三次独立 scope：20 个 App A Worker、
+1,360 个号码、全注册成功、零模拟延迟、60 秒窗口／阈值 1,000。计时从批准开始到观察到
+Task 终态，保持相同轮询方式；导入、启动和编译不计入完成时间。不新增 CI lane。
+
+```text
+python scenarios/app-checks-jvm/run_acceptance.py --benchmark --baseline --root <217393902-preview> --output <baseline-output> --port 18720
+python scenarios/app-checks-jvm/run_acceptance.py --benchmark --root <current-preview> --output <current-output> --port 18720
+```
+
+`--baseline` 仅是基准运行器对已固定旧产物的配置选择，不进入生产配置解析。
+两个版本按相同启动方式展开 Boot JAR，并用相同的 benchmark-only Java 观察器启动原
+Boot composition。观察器只记录 App A 的 refill/take 调用耗时、失败数和固定 Facts
+快照命令次数，不保留 Command 参数或业务内容；其计量入口只存在于该独立 loopback
+测试进程，不进入生产 JAR、部署或场景 API。没有额外观察线程或生产计数状态。
+
+summary 保存 Server/Host/Frontend 和观察器指纹、Java/系统信息以及三次阶段计量。
+旧版本应只在 take 阶段读取 Facts，新版本应只在 refill 阶段读取；无法归属的读取或
+阶段失败使基准失败。阶段耗时包含观察器开销，不等同于整个 Dispatch 或无观测器的延迟。
+低阈值的窗口恢复由 Boot 专用用例单独证明；不以这个基准声称严格配额或生产吞吐改善。

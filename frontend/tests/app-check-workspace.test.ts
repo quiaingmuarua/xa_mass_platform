@@ -1014,6 +1014,18 @@ describe("App Checks product workspace", () => {
     await openMenu();
     expect(menuItem("导出结果").getAttribute("aria-disabled")).toBe("true");
   });
+  it("shows the legacy supply reason for import and approval while leaving cancellation available", async () => {
+    const detail = await source.loadTask("check-review");
+    detail.task.inputUnavailableReason = "旧供给配置任务不支持继续导入或启动";
+    vi.spyOn(source, "loadTask").mockResolvedValue(detail);
+    await mount("/app-checks/tasks/check-review");
+    await openMenu();
+    for (const action of ["导入号码", "核对并启动"]) {
+      expect(menuItem(action).getAttribute("aria-disabled")).toBe("true");
+      expect(menuItem(action).textContent).toContain("旧供给配置");
+    }
+    expect(menuItem("取消任务").getAttribute("aria-disabled")).not.toBe("true");
+  });
   it("drops stale detail and verification responses after navigation", async () => {
     const delayed = deferred<CheckDetail>();
     const read = vi.spyOn(source, "loadTask").mockReturnValueOnce(delayed.promise);

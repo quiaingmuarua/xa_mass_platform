@@ -92,7 +92,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         String name = specification.appId() + " · " + specification.country() + " · " + clock.instant();
         try {
             return creation.createForRequest(new TaskCreateRequest(PROJECT, APPS.get(specification.appId()), 50, 3,
-                    List.of(RefillTarget.of("any", new EligibilityQuery(Map.of()), 100)), name, metadata),
+                    List.of(RefillTarget.of("assignment-window", new EligibilityQuery(Map.of()), 100)), name, metadata),
                     specification.requestId(), specification.fingerprint());
         } catch (TaskCreationUnconfirmedException unknown) {
             throw new RequestFailure(503, "创建结果未确认，请核对已知任务；不会自动重建", unknown.taskId());
@@ -106,6 +106,17 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         return entry;
     }
 
+    private static boolean hasWindowSupply(ProjectTaskQueryService.Entry entry) {
+        return entry.task().refill().stream().anyMatch(target -> target.poolName().equals("assignment-window")
+                && target.target().query().isEmpty());
+    }
+
+    private static final String OLD_SUPPLY = "旧供给配置任务不支持继续导入或启动，请关闭后创建新任务";
+
+    private static void requireWindowSupply(ProjectTaskQueryService.Entry entry) {
+        if (!hasWindowSupply(entry)) throw new RequestFailure(409, OLD_SUPPLY, entry.taskId());
+    }
+
     public ImportReceipt importNumbers(String taskId, InputStream input) {
         synchronized (gate) {
             requireRunning();
@@ -115,6 +126,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         try {
             return operations.taskMutation(taskId, () -> {
                 var entry = requireCheck(taskId);
+                requireWindowSupply(entry);
                 if (!"pre_review".equals(entry.scoreBand()) || !"2".equals(entry.task().metadata().get("inputVersion")))
                     throw new RequestFailure(409, "只有新版本待审核任务支持导入", taskId);
                 long added = 0, existing = 0;
@@ -160,6 +172,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     public ActionOutcome approve(String taskId, long expectedCount) {
         return operations.taskMutation(taskId, () -> {
             var entry = requireCheck(taskId);
+            requireWindowSupply(entry);
             if (!"pre_review".equals(entry.scoreBand())) throw new RequestFailure(409, "任务不在待审核状态，请刷新核对", taskId);
             long actual = data.observeItemScoreCounts(List.of(taskId)).get(taskId).total();
             if (expectedCount <= 0 || actual != expectedCount)
@@ -270,6 +283,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         row.put("managed", entry.task() != null && "PARK_WHEN_IDLE".equals(entry.task().idleDisposition()));
         if (entry.task() != null && entry.task().name() != null) row.put("name", entry.task().name());
         if (isCheckTask(entry)) {
+            if (!hasWindowSupply(entry)) row.put("inputUnavailableReason", OLD_SUPPLY);
             var metadata = entry.task().metadata();
             for (String field : List.of("appId", "country", "salt", "saltDate", "inputVersion"))
                 if (metadata.containsKey(field)) row.put(field, metadata.get(field));

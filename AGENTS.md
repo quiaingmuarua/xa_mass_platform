@@ -160,6 +160,10 @@ Use the [assignment-window](worker_matching_jvm/README.md#observed-assignment-wi
 and [network timestamp](worker_matching_jvm/README.md#network-evidence-timestamps)
 contracts for those paths.
 
+Window eligibility belongs to refill of its independent Pool. Consumption uses
+admitted snapshot evidence without another Facts read; do not restore the retired
+Any-stock post-filter or promote observed counts to reserved quotas.
+
 ## Kernel Pacer JVM
 
 [Pacer assembly](kernel_pacer_jvm/doc/application-assembly.md) owns production

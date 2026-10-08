@@ -768,7 +768,7 @@ concurrent external writes to the same fields can still overwrite observations.
 There is no counter Lua, CAS, persistent queue, flush or recovery scan. Existing
 APPLIED patch handling still performs separate best-effort candidate invalidation.
 The notification path does not make eligibility decisions. The fixed
-[Matching assignment-window function](../worker_matching_jvm/README.md#observed-assignment-window)
+[Matching assignment-window Pool](../worker_matching_jvm/README.md#observed-assignment-window)
 can consume the projected fields during a subsequent query. Its Group configuration
 supplies the same window length to the App Checks projection; Server only binds
 the configuration and performs the existing observation/property operations.

@@ -9,6 +9,7 @@ import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.WorkerObservation;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
+import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.redis.*;
 import com.xa.mass.kernel.task.TaskRuntime.*;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
@@ -22,6 +23,7 @@ import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -29,7 +31,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 @Tag("redis-owner")
 class AssignmentBatchIntegrationTest {
     @ParameterizedTest
-    @org.junit.jupiter.params.provider.CsvSource({"101,worker.assignment.available,any", "1000,worker.assignment.available,any", "1000,worker.messaging.available,messaging"})
+    @org.junit.jupiter.params.provider.CsvSource({"101,worker.assignment.available,assignment-window", "1000,worker.assignment.available,assignment-window", "1000,worker.messaging.available,messaging"})
     void oneRoundRefillsQualifiesClaimsAndPublishesTheWholeBatch(int limit, String function, String pool) {
         withOwners((f) -> {
             var ids = IntStream.range(0, limit).mapToObj(i -> "w%04d".formatted(i)).toList();
@@ -66,10 +68,11 @@ class AssignmentBatchIntegrationTest {
             // Two bounded head reads and one candidateization Lua, also at 1,000 identities.
             assertThat(Collections.frequency(f.commands, "ZRANGEBYSCORE")).isEqualTo(2);
             assertThat(Collections.frequency(f.commands, "EVAL")).isEqualTo(1);
+            assertThat(Collections.frequency(f.commands, "EVAL_RO")).isEqualTo(function.equals("worker.assignment.available") ? 1 : 0);
             var observed = new ArrayList<WorkerObservation>();
             f.commands.clear();
             assertThat(f.dispatch(limit, observed, System::currentTimeMillis).dispatchTasks(List.of(f.observed(task)))).isEqualTo(limit);
-            assertThat(Collections.frequency(f.commands, "EVAL_RO")).isEqualTo(function.equals("worker.assignment.available") ? 1 : 0);
+            assertThat(Collections.frequency(f.commands, "EVAL_RO")).isZero();
             assertThat(Collections.frequency(f.commands, "HMGET")).isEqualTo(2); // Items and addresses
             assertThat(observed).hasSize(1);
             assertThat(observed.getFirst().workerIds()).containsExactlyInAnyOrderElementsOf(ids);
@@ -122,6 +125,30 @@ class AssignmentBatchIntegrationTest {
         });
     }
 
+    @Test void admittedWindowSnapshotCannotBypassAChangedWorkerScore() {
+        withOwners(f -> {
+            f.catalog.registerWorkerGroup(new WorkerGroupDescriptor("g", Map.of(), Set.of("event")));
+            f.catalog.registerWorkers("g", List.of("w"), "adapter");
+            f.matching.properties().upsertWorkerFactsBatch("g", Map.of("w", Map.of()));
+            long now = System.currentTimeMillis();
+            try (var connection = f.client.connect()) {
+                connection.sync().zadd(f.scope.keyspace().base() + ":worker:score:g", dueOrdinaryScore(now), "w");
+            }
+            var task = f.task("stale-window", 1, "assignment-window");
+            f.appendAndStart(task, List.of(new TaskItem("m", "event", now - 2000, Map.of(), 0, null,
+                    new WorkerQuery("worker.assignment.available", Map.of()))));
+            var refill = new WorkerEligibilityRefillPolicy(f.workerScores, f.matching.catalog(), null, 1, System::currentTimeMillis);
+            assertThat(refill.refill(List.of("g"), List.of(task))).isEqualTo(1);
+            assertThat(f.workerScores.pauseScheduling("g", "w")).isEqualTo(WorkerScoreCore.WorkerSchedulingChangeStatus.APPLIED);
+            var observations = new ArrayList<WorkerObservation>();
+            f.commands.clear();
+            assertThat(f.dispatch(1, observations, System::currentTimeMillis).dispatchTasks(List.of(f.observed(task)))).isZero();
+            assertThat(observations).isEmpty();
+            assertThat(f.commands).doesNotContain("EVAL_RO");
+            assertThat(f.itemScores.observeItemScoreCounts(List.of(task.taskId())).get(task.taskId()).countsByTag()).containsEntry(1, 1L);
+        });
+    }
+
     private static void withOwners(java.util.function.Consumer<Fixture> proof) {
         var scope = RedisTestScope.create("assignment_batch");
         var client = RedisClient.create(REDIS_URL);
@@ -136,8 +163,8 @@ class AssignmentBatchIntegrationTest {
              var catalog = new RedisWorkerResourceCatalog(client, workerScores, scope.keyspace());
              var delivery = new RedisWorkerCommandRuntime(client, new com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec(), scope.keyspace());
              var matching = MatchingComposition.create(client, scope.keyspace(), Map.of("g", new MatchingGroup(
-                     Set.of("any", "messaging"), Set.of("worker.any", "worker.assignment.available", "worker.messaging.phone", "worker.messaging.available"),
-                     new MatchingGroup.AssignmentWindow(60_000, 10))))) {
+                     Set.of("any", "assignment-window", "messaging"), Set.of("worker.any", "worker.assignment.available", "worker.messaging.phone", "worker.messaging.available"),
+                     new MatchingGroup.AssignmentWindowPool(60_000, 10))))) {
             proof.accept(new Fixture(scope, client, taskScores, itemScores, tasks, workerScores, catalog, delivery, matching, commands));
         } finally {
             try (var connection = client.connect()) { scope.cleanup(connection.sync()); }

@@ -77,6 +77,7 @@ export const taskSchema = z.object({
   configurationError: z.string().optional(),
   sourceFile: z.string().optional(),
   inputVersion: z.string().optional(),
+  inputUnavailableReason: z.string().optional(),
   reviewedAt: integer.optional(),
   totalCount: integer.optional(),
   activeCount: integer.optional(),

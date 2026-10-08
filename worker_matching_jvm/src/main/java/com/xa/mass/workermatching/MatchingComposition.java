@@ -14,6 +14,7 @@ import com.xa.mass.workermatching.index.NetworkEvidenceTimestamps;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.workermatching.refill.AnyPoolPolicy;
+import com.xa.mass.workermatching.refill.AssignmentWindowPoolPolicy;
 import com.xa.mass.workermatching.refill.CountryPoolPolicy;
 import com.xa.mass.workermatching.refill.MessagingPoolPolicy;
 import com.xa.mass.workermatching.refill.ProofFactsPoolPolicy;
@@ -45,15 +46,11 @@ public final class MatchingComposition implements AutoCloseable {
             this.groups = Map.copyOf(groups);
             var enabledPools = new HashSet<String>();
             var enabledFunctions = new HashSet<String>();
-            var windows = new LinkedHashMap<String, MatchingGroup.AssignmentWindow>();
-            var dependencies = Map.of("worker.any", "any", "worker.assignment.available", "any", "worker.country", "country",
+            var windows = new LinkedHashMap<String, MatchingGroup.AssignmentWindowPool>();
+            var dependencies = Map.of("worker.any", "any", "worker.assignment.available", "assignment-window", "worker.country", "country",
                     "worker.messaging.available", "messaging", "proof.worker.facts", "proof-facts");
             groups.forEach((group, config) -> {
-                if (config.functions().contains("worker.assignment.available")) {
-                    if (config.assignmentWindow() == null)
-                        throw new IllegalArgumentException("Assignment window required for Group " + group);
-                    windows.put(group, config.assignmentWindow());
-                }
+                if (config.pools().contains("assignment-window")) windows.put(group, config.assignmentWindowPool());
                 for (String name : config.functions()) {
                     String required = dependencies.get(name);
                     if (required != null && !config.pools().contains(required))
@@ -66,7 +63,7 @@ public final class MatchingComposition implements AutoCloseable {
             var policies = new LinkedHashMap<String, PoolRefillPolicy>();
             var functions = new LinkedHashMap<String, QueryFunction>();
             functions.put("workerId", new IdentityQueryFunction());
-            for (String name : List.of("any", "country", "messaging", "proof-facts")) {
+            for (String name : List.of("any", "assignment-window", "country", "messaging", "proof-facts")) {
                 if (!enabledPools.contains(name)) continue;
                 var pool = new WorkerCandidatePool(clock, budget);
                 pools.put(name, pool);
@@ -74,6 +71,10 @@ public final class MatchingComposition implements AutoCloseable {
                     case "any" -> {
                         policies.put(name, new AnyPoolPolicy(pool));
                         functions.put("worker.any", new AnyQueryFunction(pool));
+                    }
+                    case "assignment-window" -> {
+                        policies.put(name, new AssignmentWindowPoolPolicy(pool, storage::readFactsSnapshot, clock, windows));
+                        functions.put("worker.assignment.available", new AssignmentWindowQueryFunction(pool));
                     }
                     case "country" -> {
                         policies.put(name, new CountryPoolPolicy(pool, storage::readWorkerFacts));
@@ -90,8 +91,6 @@ public final class MatchingComposition implements AutoCloseable {
                     default -> throw new IllegalStateException("Unexpected built-in Pool");
                 }
             }
-            if (!windows.isEmpty()) functions.put("worker.assignment.available",
-                    new AssignmentWindowQueryFunction(pools.get("any"), storage::readFactsSnapshot, clock, windows));
             if (enabledFunctions.contains("worker.phone") || enabledFunctions.contains("worker.messaging.phone")) {
                 var phone = new RedisHashPropertyIndex(storage::commands, storage.keyspace(), "phone");
                 if (enabledFunctions.contains("worker.phone")) functions.put("worker.phone", new PhoneQueryFunction(phone));
@@ -101,7 +100,7 @@ public final class MatchingComposition implements AutoCloseable {
             this.pools = Map.copyOf(pools);
             this.policies = Map.copyOf(policies);
             this.functions = Map.copyOf(functions);
-            this.poolOrder = List.of("proof-facts", "country", "any", "messaging").stream()
+            this.poolOrder = List.of("proof-facts", "country", "assignment-window", "any", "messaging").stream()
                     .filter(policies::containsKey).toList();
             if (!groups.keySet().containsAll(storage.indexedGroups()))
                 throw new IllegalArgumentException("Index Group unavailable");

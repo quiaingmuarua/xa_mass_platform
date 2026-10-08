@@ -3,6 +3,8 @@ package com.xa.mass.scenario.appchecks;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreCounts;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.assignment.WorkerQuery;
+import com.xa.mass.kernel.assignment.RefillTarget;
+import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.runtimeview.TaskView;
 import com.xa.mass.server.api.v1.contract.task.*;
@@ -46,7 +48,8 @@ class AppCheckTaskServiceTest {
     ProjectTaskQueryService.Entry entry(String id, String state, boolean modern) {
         var metadata = new HashMap<>(Map.of("scenario", "app-checks", "appId", "app-a", "country", "CN", "simulation", Jsons.toJson(simulation()), "salt", "fixed"));
         if (modern) metadata.put("inputVersion", "2");
-        return new ProjectTaskQueryService.Entry(id, 1, new TaskView(id, "app-checks", "app-a-sim", "CLOSE_WHEN_IDLE", List.of(), Map.of(), "test", metadata), state);
+        return new ProjectTaskQueryService.Entry(id, 1, new TaskView(id, "app-checks", "app-a-sim", "CLOSE_WHEN_IDLE",
+                List.of(RefillTarget.of(modern ? "assignment-window" : "any", new EligibilityQuery(Map.of()), 100)), Map.of(), "test", metadata), state);
     }
     static Map<String, Object> simulation() {
         return Map.of("ranges", Map.of("registered", List.of(0, 500), "unregistered", List.of(500, 900), "failed", List.of(900, 1000)), "delayMs", List.of(2000, 5000));
@@ -60,7 +63,7 @@ class AppCheckTaskServiceTest {
         try (var service = service()) {
             for (int i = 0; i < 51; i++) { var input = request(); input.put("requestId", "r" + i); service.create(input); }
             verify(creation, times(51)).createForRequest(argThat(req -> req.metadata().get("inputVersion").equals("2")
-                    && !req.metadata().containsKey("numbers") && req.refill().getFirst().poolName().equals("any")), anyString(), anyString());
+                    && !req.metadata().containsKey("numbers") && req.refill().getFirst().poolName().equals("assignment-window")), anyString(), anyString());
             verifyNoInteractions(data, lifecycle);
             var invalid = request(); invalid.put("numbers", List.of("+86123"));
             assertThatThrownBy(() -> service.create(invalid)).hasMessageContaining("Unknown");
@@ -126,7 +129,8 @@ class AppCheckTaskServiceTest {
     @Test void oldTasksRemainReadableButCannotAcceptNewNumberIdentities() {
         try (var service = service()) {
             when(queries.get("app-checks", "task")).thenReturn(entry("task", "pre_review", false));
-            assertThatThrownBy(() -> service.importNumbers("task", file("86123"))).hasMessageContaining("新版本");
+            assertThatThrownBy(() -> service.importNumbers("task", file("86123"))).hasMessageContaining("旧供给配置");
+            assertThatThrownBy(() -> service.approve("task", 1)).hasMessageContaining("旧供给配置");
             service.closeTask("task"); verify(lifecycle).close("task");
         }
     }
@@ -170,6 +174,25 @@ class AppCheckTaskServiceTest {
             assertThat(rows.get(2)).containsEntry("resultStatus", "failed").doesNotContainKey("registered");
             assertThat(response).containsEntry("resultsTruncated", true);
             verifyNoInteractions(creation, lifecycle);
+        }
+    }
+    @Test void numberInputVersionDoesNotMakeRetiredAnySupplyWritable() {
+        try (var service = service()) {
+            var original = entry("task", "pre_review", true).task();
+            var old = new TaskView(original.taskId(), original.projectId(), original.workerGroupId(), original.idleDisposition(),
+                    List.of(RefillTarget.of("any", new EligibilityQuery(Map.of()), 100)), original.config(), original.name(), original.metadata());
+            when(queries.get("app-checks", "task")).thenReturn(new ProjectTaskQueryService.Entry("task", 1, old, "pre_review"));
+            when(data.observeItemScoreCounts(List.of("task"))).thenReturn(Map.of("task", new TaskItemScoreCounts(0, Map.of(1, 0L, 5, 0L, 6, 0L, 7, 0L, 8, 0L, 9, 0L))));
+            when(data.previewTaskResults("task")).thenReturn(new TaskDataService.ResultPreview(List.of(), false));
+            assertThat((Map<String, Object>) service.get("task").get("task")).containsEntry("inputVersion", "2")
+                    .containsKey("inputUnavailableReason");
+            assertThatThrownBy(() -> service.importNumbers("task", file("86123"))).hasMessageContaining("旧供给配置");
+            assertThatThrownBy(() -> service.approve("task", 1)).hasMessageContaining("旧供给配置");
+            assertThat(service.create(request()).taskId()).isEqualTo("task");
+            service.closeTask("task");
+            verify(lifecycle).close("task");
+            verify(lifecycle, never()).approve(anyString());
+            verify(data, never()).importFiniteTaskItems(anyString(), anyList());
         }
     }
     @Test void exportsOnlyAssociatedBusinessAnswersAndDeletesTheIntermediateFile() throws Exception {

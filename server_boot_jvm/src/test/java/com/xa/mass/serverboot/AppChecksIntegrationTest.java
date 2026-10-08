@@ -57,7 +57,7 @@ class AppChecksIntegrationTest {
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
             while (world.selections.rejectedAt.get() == 0 && System.nanoTime() < deadline) Thread.sleep(20);
             long rejectedAt = world.selections.rejectedAt.get();
-            assertThat(rejectedAt).as("a nonempty candidate page was read and rejected by Matching; reads=%s takes=%s empty=%s",
+            assertThat(rejectedAt).as("a nonempty offered batch was rejected during Pool refill; reads=%s takes=%s empty=%s",
                     world.selections.snapshots.get(), world.selections.takes.get(), world.selections.empty.get()).isPositive();
             assertThat(rejectedAt / 60_000).isEqualTo(firstWindow);
             assertThat(world.observations.snapshot()).hasSize(1);
@@ -69,6 +69,8 @@ class AppChecksIntegrationTest {
             assertThat(world.observations.snapshot()).hasSize(2);
             assertThat(world.observations.snapshot().getLast().observedAtMillis() / 60_000).isGreaterThan(firstWindow);
             assertThat(rows(result).getFirst()).containsEntry("workerId", ids.getFirst());
+            assertThat(world.selections.takeSnapshots.get()).isZero();
+            assertThat(world.selections.refillSnapshots.get()).isPositive();
         }
     }
 
@@ -78,27 +80,42 @@ class AppChecksIntegrationTest {
         final AtomicLong rejectedAt = new AtomicLong();
         final AtomicLong takes = new AtomicLong();
         final AtomicLong empty = new AtomicLong();
+        final AtomicLong takeSnapshots = new AtomicLong(), refillSnapshots = new AtomicLong();
+        final ThreadLocal<String> phase = new ThreadLocal<>();
         @Override public Object postProcessAfterInitialization(Object bean, String name) {
             if (bean instanceof RedisClient client) client.addListener(new CommandListener() {
                 @Override public void commandStarted(CommandStartedEvent event) {
                     if (event.getCommand().getType().toString().equals("EVAL_RO")
-                            && event.getCommand().getArgs().toCommandString().contains(":matching:worker:platform-properties:app-a-sim"))
+                            && event.getCommand().getArgs().toCommandString().contains(":matching:worker:platform-properties:app-a-sim")) {
                         snapshots.incrementAndGet();
+                        if ("take".equals(phase.get())) takeSnapshots.incrementAndGet();
+                        if ("refill".equals(phase.get())) refillSnapshots.incrementAndGet();
+                    }
                 }
             });
             if (!(bean instanceof WorkerMatchingCatalog catalog)) return bean;
             var witnessed = spy(catalog);
             doAnswer(call -> {
-                long before = snapshots.get();
-                @SuppressWarnings("unchecked") var result = (Map<String, WorkerCandidate>) call.callRealMethod();
-                Map<String, WorkerQuery> inputs = call.getArgument(1);
-                if (!inputs.isEmpty()) { takes.incrementAndGet(); if (result.isEmpty()) empty.incrementAndGet(); }
-                if ("app-a-sim".equals(call.getArgument(0)) && !inputs.isEmpty()
-                        && inputs.values().stream().allMatch(query -> query.executorName().equals("worker.assignment.available"))
-                        && result.isEmpty() && snapshots.get() > before)
-                    rejectedAt.compareAndSet(0, System.currentTimeMillis());
-                return result;
+                phase.set("take");
+                try {
+                    @SuppressWarnings("unchecked") var result = (Map<String, WorkerCandidate>) call.callRealMethod();
+                    Map<String, WorkerQuery> inputs = call.getArgument(1);
+                    if (!inputs.isEmpty()) { takes.incrementAndGet(); if (result.isEmpty()) empty.incrementAndGet(); }
+                    return result;
+                } finally { phase.remove(); }
             }).when(witnessed).take(anyString(), anyMap());
+            doAnswer(call -> {
+                phase.set("refill");
+                try {
+                    long before = refillSnapshots.get();
+                    int accepted = (int) call.callRealMethod();
+                    Map<String, Long> offered = call.getArgument(2);
+                    if ("app-a-sim".equals(call.getArgument(0)) && !offered.isEmpty()
+                            && accepted == 0 && refillSnapshots.get() > before)
+                        rejectedAt.compareAndSet(0, System.currentTimeMillis());
+                    return accepted;
+                } finally { phase.remove(); }
+            }).when(witnessed).refill(anyString(), anyList(), anyMap());
             return witnessed;
         }
     }
@@ -229,6 +246,30 @@ class AppChecksIntegrationTest {
         }
     }
 
+    @Test @Timeout(45)
+    void legacyAnySupplyRemainsReadableClosableAndExportableButCannotImportOrApprove() throws Exception {
+        try (var world = new World()) {
+            var legacy = new com.xa.mass.server.api.v1.contract.task.TaskCreateRequest("app-checks", "app-a-sim", 50, 3,
+                    List.of(com.xa.mass.kernel.assignment.RefillTarget.of("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 100)),
+                    "legacy Any supply", Map.of("scenario", "app-checks", "appId", "app-a", "country", "CN", "inputVersion", "2", "salt", "retained"));
+            String id = world.context.getBean(com.xa.mass.server.task.TaskCreationService.class).create(legacy).taskId();
+            String route = "/api/v1/app-checks/tasks/" + id;
+            assertThat(task(world.get(route))).containsEntry("state", "pre_review").containsEntry("inputVersion", "2")
+                    .containsKey("inputUnavailableReason");
+            assertThat(world.post(route + "/numbers:import", "86123", "text/plain").statusCode()).isEqualTo(409);
+            assertThat(world.post(route + "/approve", "1", "application/json").statusCode()).isEqualTo(409);
+            assertThat(world.post(route + "/close", "", "application/json").statusCode()).isEqualTo(200);
+            assertThat(task(world.get(route))).containsEntry("state", "terminal");
+            var exported = world.post(route + "/results:export", "", "application/json");
+            assertThat(exported.statusCode()).isEqualTo(200);
+            assertThat(exported.headers().firstValue("X-Export-Count")).contains("0");
+            var descriptor = world.context.getBean(com.xa.mass.kernel.task.TaskResourceCatalog.class)
+                    .loadTaskAllocationDescriptors(List.of(id)).get(id);
+            assertThat(descriptor.refill().getFirst().poolName()).isEqualTo("any");
+            assertThat(descriptor.metadata().get("salt")).isEqualTo("retained");
+        }
+    }
+
     static String numberIdentity(String number) throws Exception {
         var bytes = new ByteArrayOutputStream();
         try (var tuple = new DataOutputStream(bytes)) {
@@ -276,8 +317,8 @@ class AppChecksIntegrationTest {
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(observations));
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(selections));
             arguments = new String[]{"--spring.profiles.active=preview", "--server.port=" + port,
-                    "--xa.mass.worker-matching.groups.app-a-sim.assignment-window.max-assignments=" + maxAssignments,
-                    "--xa.mass.worker-matching.groups.app-b-sim.assignment-window.max-assignments=" + maxAssignments,
+                    "--xa.mass.worker-matching.groups.app-a-sim.assignment-window-pool.max-assignments=" + maxAssignments,
+                    "--xa.mass.worker-matching.groups.app-b-sim.assignment-window-pool.max-assignments=" + maxAssignments,
                     "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                     "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,

@@ -25,12 +25,16 @@ fixed preview assembly, without per-business deployment profiles or selection.
 | Project | Groups | Declared events and Matching resources |
 | --- | --- | --- |
 | `sms`, `messages` | shared `demo-sim` | String/SMS/Messages events; Country and Messaging Pools; independent `worker.phone` and qualified `worker.messaging.phone` queries |
-| `app-checks` | `app-a → app-a-sim`, `app-b → app-b-sim` | `extension.worker.app.registration.check`; Any Pool, `worker.any` and `worker.assignment.available` |
+| `app-checks` | `app-a → app-a-sim`, `app-b → app-b-sim` | `extension.worker.app.registration.check`; independent Any and assignment-window Pools, `worker.any` and `worker.assignment.available` |
 
 The `demo-sim` Project managed Tasks retain `country / {} / 100` supply;
 that Group does not enable Any Pool.
-Each App Group configures `assignment-window.window-millis=60000` and
-`max-assignments=10`. Direct `workerId` is available in every Group; phone-directed
+Each App Group enables `assignment-window` and configures its
+`assignment-window-pool.window-millis=60000` and `max-assignments=10`.
+App Checks declares only that Pool's supply. Any remains available for other
+explicit callers, without a default Group-wide window gate. The old field fails
+strict configuration binding; window length stays fixed within an existing scope.
+Direct `workerId` is available in every Group; phone-directed
 Messages declares no Pool supply. Matching owns the
 [query and index contracts](../worker_matching_jvm/README.md#identity-and-phone-query-functions).
 Server prepares Groups and Project managed Tasks before Adapter startup. Scenarios consume the

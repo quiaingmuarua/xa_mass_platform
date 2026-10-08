@@ -277,6 +277,11 @@ Successful import receipts and source summaries are likewise session-only; after
 refresh the UI reports unavailable history rather than reconstructing it from
 execution counts. Shared Messages and finite Task file limits are unchanged.
 
+When the API returns `inputUnavailableReason` for a Task using retired supply,
+the import and approval menu entries show that reason and stay disabled.
+Preview, closure and terminal export remain available. The UI does not infer
+supply compatibility from the number input version. Pool settings are not editable here.
+
 ### Preview drawer, management and results
 
 The drawer shows identity, observed state, last successful read time and the

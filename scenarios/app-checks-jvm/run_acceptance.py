@@ -17,12 +17,15 @@ PREVIEW = SCENARIO.parents[1] / "distribution/server"
 
 
 @contextmanager
-def regression_window_configuration():
+def regression_window_configuration(*, baseline=False, window_millis=None):
     """Keep the content/closure workload finite; the Boot window proof owns low-threshold recovery."""
     previous = os.environ.get("SPRING_APPLICATION_JSON")
     configuration = json.loads(previous) if previous else {}
+    field = "assignment-window" if baseline else "assignment-window-pool"
     for group in ("app-a-sim", "app-b-sim"):
-        configuration[f"xa.mass.worker-matching.groups.{group}.assignment-window.max-assignments"] = 1000
+        configuration[f"xa.mass.worker-matching.groups.{group}.{field}.max-assignments"] = 1000
+        if window_millis is not None:
+            configuration[f"xa.mass.worker-matching.groups.{group}.{field}.window-millis"] = window_millis
     os.environ["SPRING_APPLICATION_JSON"] = json.dumps(configuration)
     try:
         yield
@@ -57,7 +60,7 @@ def creation_input(case):
     return {key: case[key] for key in ("requestId", "appId", "country", "simulation")}
 
 
-def create_import_approve(run, http, case):
+def create_import_approve(run, http, case, *, approve=True):
     task_id = http(run.url, "/api/v1/app-checks/tasks", creation_input(case))["taskId"]
     route = f"/api/v1/app-checks/tasks/{task_id}"
     require(http(run.url, route)["task"]["totalCount"] == 0, "Creation imported work implicitly")
@@ -67,7 +70,8 @@ def create_import_approve(run, http, case):
     with urllib.request.urlopen(request, timeout=15) as response:
         receipt = json.load(response)
     require(receipt["addedCount"] == len(case["numbers"]), "Import did not confirm every input")
-    http(run.url, route + "/approve", len(case["numbers"]))
+    if approve:
+        http(run.url, route + "/approve", len(case["numbers"]))
     return task_id
 
 
@@ -151,7 +155,11 @@ def main():
     parser.add_argument("--root", type=Path, default=PREVIEW)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--port", type=int, default=18620)
+    parser.add_argument("--benchmark", action="store_true", help="Run three isolated 20-Worker/1360-number measurements")
+    parser.add_argument("--baseline", action="store_true", help="Benchmark only: use the pinned pre-migration configuration")
     args = parser.parse_args()
+    if args.baseline and not args.benchmark:
+        parser.error("--baseline requires --benchmark")
     root = args.root.resolve()
     if args.build and root != PREVIEW.resolve():
         parser.error("--build requires the source Preview; omit it for an extracted ZIP")
@@ -161,6 +169,12 @@ def main():
     if args.build:
         preview.build()
     output = (args.output or SCENARIO / "build/acceptance" / time.strftime("%Y%m%d-%H%M%S")).resolve()
+    if args.benchmark:
+        from pool_benchmark import benchmark
+        result = benchmark(preview, root, output, args.port, args.baseline, regression_window_configuration,
+                           create_import_approve, request, require)
+        print(json.dumps(result, indent=2), flush=True)
+        return
     inventory = output / "private" / ("inventory-" + uuid.uuid4().hex) / "data/scenario-workers"
     run = preview.Preview(1, args.port, root=root, output=output / "private", sandbox_root=inventory, app_count=2)
     result = {"passed": False}

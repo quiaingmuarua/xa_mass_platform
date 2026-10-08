@@ -42,8 +42,8 @@ class ScenarioLifecycleTest {
             context.getEnvironment().setActiveProfiles("preview");
             context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource(
                     "window-fixture", java.util.Map.of(
-                    "xa.mass.worker-matching.groups.app-a-sim.assignment-window.window-millis", "60000",
-                    "xa.mass.worker-matching.groups.app-b-sim.assignment-window.window-millis", "60000")));
+                    "xa.mass.worker-matching.groups.app-a-sim.assignment-window-pool.window-millis", "60000",
+                    "xa.mass.worker-matching.groups.app-b-sim.assignment-window-pool.window-millis", "60000")));
             context.getBeanFactory().addBeanPostProcessor(new BeanPostProcessor() {
                 @Override public Object postProcessAfterInitialization(Object bean, String name) {
                     if (bean instanceof ListenerService || bean instanceof MessageTaskService || bean instanceof AppCheckTaskService)

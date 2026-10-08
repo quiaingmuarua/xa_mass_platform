@@ -16,13 +16,13 @@ import org.springframework.context.annotation.*;
 public class AppCheckScenarioConfiguration {
     @Bean
     WorkerPropertyProjection appAAssignmentProjection(
-            @Value("${xa.mass.worker-matching.groups.app-a-sim.assignment-window.window-millis}") long windowMillis) {
+            @Value("${xa.mass.worker-matching.groups.app-a-sim.assignment-window-pool.window-millis}") long windowMillis) {
         return assignmentProjection("app-a-sim", new AppCheckAssignmentWindow(windowMillis));
     }
 
     @Bean
     WorkerPropertyProjection appBAssignmentProjection(
-            @Value("${xa.mass.worker-matching.groups.app-b-sim.assignment-window.window-millis}") long windowMillis) {
+            @Value("${xa.mass.worker-matching.groups.app-b-sim.assignment-window-pool.window-millis}") long windowMillis) {
         return assignmentProjection("app-b-sim", new AppCheckAssignmentWindow(windowMillis));
     }
 
