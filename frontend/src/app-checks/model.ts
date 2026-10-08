@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { ImportSnapshot } from "./import-model";
 
 const integer = z.number().int().nonnegative();
 const bounds = (max: number) =>
@@ -77,6 +76,7 @@ export const taskSchema = z.object({
   simulation: z.unknown().optional(),
   configurationError: z.string().optional(),
   sourceFile: z.string().optional(),
+  inputVersion: z.string().optional(),
   reviewedAt: integer.optional(),
   totalCount: integer.optional(),
   activeCount: integer.optional(),
@@ -111,9 +111,8 @@ export const catalogSchema = z.object({
     .min(1),
   countries: z.array(z.enum(["CN", "US", "GB"])).min(1),
   limits: z.object({
-    tasks: integer.positive(),
-    items: integer.positive(),
-    numbersPerTask: integer.positive().max(100000)
+    numbersPerImport: integer.positive().max(100000),
+    importFileBytes: integer.positive()
   }),
   simulationExample: simulationSchema
 });
@@ -123,13 +122,9 @@ export type CheckResult = z.infer<typeof resultSchema>;
 export type CheckDetail = z.infer<typeof detailSchema>;
 export interface CreateCheckTask {
   requestId: string;
-  name: string;
   appId: string;
   country: Country;
-  numbers: string[];
   simulation: Simulation;
-  sourceFile?: string;
-  importSnapshot?: ImportSnapshot;
 }
 export const appLabel = (app?: string) =>
   ({ "app-a": "App A", "app-b": "App B" })[app ?? ""] ?? app ?? "—";
@@ -146,29 +141,6 @@ export function taskProgress(task: CheckTask): number {
     100,
     Math.round(((task.succeededCount + task.failedCount) / task.totalCount) * 100)
   );
-}
-export function checkName(
-  app: string,
-  country: string,
-  count: number,
-  at: Date
-): string {
-  const pad = (v: number) => String(v).padStart(2, "0");
-  const date = [at.getFullYear(), pad(at.getMonth() + 1), pad(at.getDate())].join("-");
-  const time = [pad(at.getHours()), pad(at.getMinutes()), pad(at.getSeconds())].join(
-    ":"
-  );
-  return (
-    appLabel(app) +
-    " · " +
-    countryLabel(country) +
-    " · " +
-    count.toLocaleString("zh-CN") +
-    " 个号码 · " +
-    date +
-    " " +
-    time
-  ).slice(0, 128);
 }
 export const stateLabel = (state: CheckTask["state"]) =>
   state === null ? "状态不可用" : taskStateLabels[state];

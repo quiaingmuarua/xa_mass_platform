@@ -7,8 +7,12 @@ import type { AppCheckTaskSource } from "./task-source";
 import { quantity, timestamp, type CheckDraft } from "./workbench";
 import TaskStatus from "./TaskStatus.vue";
 
-const props = defineProps<{ draft: CheckDraft; source: AppCheckTaskSource }>();
-const emit = defineEmits<{ back: []; end: [] }>();
+const props = defineProps<{
+  draft: CheckDraft;
+  source: AppCheckTaskSource;
+  createContext?: boolean;
+}>();
+const emit = defineEmits<{ back: []; end: []; inspect: [] }>();
 const observed = shallowRef<CheckTask>();
 const reading = ref(false),
   error = ref(""),
@@ -92,8 +96,9 @@ onBeforeUnmount(() => {
             v-if="draft.knownTaskId"
             :to="{
               path: '/app-checks/tasks/' + encodeURIComponent(draft.knownTaskId),
-              query: { view: 'create' }
+              query: createContext === false ? {} : { view: 'create' }
             }"
+            @click="emit('inspect')"
             >打开已知任务</router-link
           ><span v-else>暂未取得任务编号；列表中没有匹配项也不能确认创建失败。</span>
         </dd>

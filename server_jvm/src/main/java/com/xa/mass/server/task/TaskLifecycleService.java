@@ -7,6 +7,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.operation.OperationGuard;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
@@ -16,16 +17,23 @@ public final class TaskLifecycleService {
 
     private final TaskLifecycleCommands lifecycle;
     private final TaskResourceCatalog catalog;
+    private final OperationGuard operations;
 
     public TaskLifecycleService(
             TaskLifecycleCommands lifecycle,
-            TaskResourceCatalog catalog
+            TaskResourceCatalog catalog,
+            OperationGuard operations
     ) {
         this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
         this.catalog = Objects.requireNonNull(catalog, "catalog");
+        this.operations = Objects.requireNonNull(operations, "operations");
     }
 
     public ActionOutcome approve(String taskId) {
+        return operations.taskMutation(taskId, () -> approveObserved(taskId));
+    }
+
+    private ActionOutcome approveObserved(String taskId) {
         String operation = "taskLifecycle.approve";
         requireFiniteTask(taskId, operation);
         TaskLifecycleCommands.TaskApprovalResult result;
@@ -56,6 +64,10 @@ public final class TaskLifecycleService {
     }
 
     public ActionOutcome close(String taskId) {
+        return operations.taskMutation(taskId, () -> closeObserved(taskId));
+    }
+
+    private ActionOutcome closeObserved(String taskId) {
         String operation = "taskLifecycle.close";
         requireFiniteTask(taskId, operation);
         TaskLifecycleCommands.TaskCloseResult result;

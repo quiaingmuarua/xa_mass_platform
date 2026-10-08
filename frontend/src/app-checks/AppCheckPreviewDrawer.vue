@@ -351,7 +351,13 @@ defineExpose({ refresh, focusHeading });
             <ImportSummary
               :summary="imported.summary"
               :final-count="imported.summary.validCount"
-          /></template>
+            />
+            <p v-if="imported.receipt" class="checks-hint">
+              本次导入已确认新增 {{ quantity(imported.receipt.addedCount) }} 个，已存在
+              {{ quantity(imported.receipt.existingCount) }}
+              个。来源与摘要仅保留于本次控制台会话。
+            </p>
+          </template>
           <p v-else-if="auxiliary.import.loaded" class="checks-hint">
             当前数据源未提供导入摘要。不会从任务数量或查询结果重建输入历史。
           </p>

@@ -177,6 +177,33 @@ Items are unreadable. No query is inferred from supply declarations. See
 [TaskDataService](src/main/java/com/xa/mass/server/task/TaskDataService.java) and
 [TaskCallSubmissionService](src/main/java/com/xa/mass/server/task/call/TaskCallSubmissionService.java).
 
+### Request-correlated creation and finite import
+
+`TaskCreationService.createForRequest` is an application entry for App Checks; the
+ordinary HTTP Task creation contract is unchanged. It derives `task-` plus SHA-256
+from length-prefixed UTF-8 `["xa-mass/task-create/v1", projectId, requestId]`.
+The scenario supplies a fingerprint of normalized creation inputs, excluding
+first-created display defaults. Existing immutable metadata records the request
+and fingerprint. A matching descriptor, Project membership and readable Task
+Score returns the same identity across service restarts. Conflicts reject; partial
+or unavailable observations retain that identity as unconfirmed without repair.
+No new keys, request registry or scheduling authority are introduced.
+
+`OperationGuard.taskMutation` shares one instance-local Task admission among file
+import, ordinary finite append, approval and closure. Synchronous nested calls on
+the owning thread retain the outer admission; another thread conflicts. The
+existing general export guard remains non-reentrant. No distributed lock or
+cross-Server guarantee is implied.
+
+`TaskDataService.importFiniteTaskItems` admits at most 100 Items to a PRE_REVIEW
+finite Task using Runtime default TTL. It reads existing Items and Score states,
+skips matching complete identities without rewriting them, and rejects content
+conflicts. Explicit re-import uses the original stored Item to initialize a
+missing Score through the existing append operation. A Score without Item data
+is unavailable, not reconstructed. Ordinary append semantics remain unchanged.
+`loadTaskItems` supplies bounded 100-ID reads to business export without Redis
+access from scenarios. None of these operations scans for substitute identities.
+
 ### Managed Task Call
 
 The Server caches the immutable Task descriptor

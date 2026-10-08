@@ -1,5 +1,5 @@
 import type { AppCheckTaskSource } from "./task-source";
-import { csvCell, type ImportSnapshot } from "./import-model";
+import { csvCell, inspectImport, type ImportSnapshot } from "./import-model";
 import { type PreviewState, type ExportFilter, type TaskActivity } from "./workbench";
 import {
   type Catalog,
@@ -15,7 +15,7 @@ export const mockCatalog: Catalog = {
   version: "0.1.0-preview",
   apps: ["app-a", "app-b"].map((appId) => ({ appId, workerGroupId: `${appId}-sim` })),
   countries: ["CN", "US", "GB"],
-  limits: { tasks: 50, items: 1000000, numbersPerTask: 100000 },
+  limits: { numbersPerImport: 100000, importFileBytes: 10 * 1024 * 1024 },
   simulationExample: { ranges: rangeExamples.混合, delayMs: [2000, 5000] }
 };
 const epoch = Date.UTC(2026, 9, 8, 2);
@@ -26,6 +26,7 @@ function task(taskId: string, changes: Partial<CheckTask> = {}): CheckTask {
     createdAtMillis: epoch,
     workerGroupId: "app-a-sim",
     managed: false,
+    inputVersion: "2",
     state: "terminal",
     appId: "app-a",
     country: "CN",
@@ -276,24 +277,16 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     return structuredClone({ ...record, results: record.results.slice(0, 100) });
   }
   async createTask(input: CreateCheckTask) {
-    const identity = JSON.stringify({
-      ...input,
-      importSnapshot: input.importSnapshot?.summary
-    });
+    const identity = JSON.stringify(input);
     const prior = this.requests.get(input.requestId);
     if (prior) {
       if (prior.input !== identity) throw new Error("requestId 已用于其他内容");
       return { taskId: prior.taskId };
     }
-    if (
-      !input.numbers.length ||
-      input.numbers.length > mockCatalog.limits.numbersPerTask
-    )
-      throw new Error("演示任务号码数量超出范围");
     const taskId = "mock-check-" + ++this.sequence;
     this.records.set(taskId, {
       task: task(taskId, {
-        name: input.name,
+        name: `${input.appId} · ${input.country} · ${new Date().toISOString()}`,
         appId: input.appId,
         workerGroupId: input.appId + "-sim",
         country: input.country,
@@ -302,26 +295,83 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         salt: undefined,
         saltDate: undefined,
         state: "pre_review",
-        sourceFile: input.sourceFile,
-        totalCount: input.numbers.length,
-        activeCount: input.numbers.length,
+        totalCount: 0,
+        activeCount: 0,
         succeededCount: 0
       }),
       results: [],
       resultsTruncated: false
     });
-    this.imported.set(taskId, [...input.numbers]);
-    if (input.importSnapshot) {
-      const { sourceFile, summary } = input.importSnapshot;
-      this.imports.set(taskId, structuredClone({ sourceFile, summary }));
-    }
+    this.imported.set(taskId, []);
     this.requests.set(input.requestId, { input: identity, taskId });
-    this.recordActivity(taskId, "创建任务", "号码已提交，等待核对并启动");
+    this.recordActivity(taskId, "创建任务", "空任务已创建，等待导入号码");
     return { taskId };
   }
-  async approveTask(id: string) {
+  async importNumbers(id: string, file: Blob, summary?: ImportSnapshot) {
+    const record = this.require(id);
+    if (record.task.state !== "pre_review" || record.task.inputVersion !== "2")
+      throw new Error("只有新版本待审核任务支持导入");
+    if (file.size > mockCatalog.limits.importFileBytes)
+      throw new Error("号码文件不能超过 10 MiB");
+    const text =
+      typeof file.text === "function"
+        ? await file.text()
+        : await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result));
+            reader.onerror = () => reject(reader.error);
+            reader.readAsText(file, "UTF-8");
+          });
+    if (record.task.state !== "pre_review")
+      throw new Error("任务状态已变化，请刷新后核对");
+    const report = inspectImport(text, {
+      format: "txt",
+      country: record.task.country!,
+      limit: mockCatalog.limits.numbersPerImport,
+      header: false,
+      column: 0
+    });
+    if (report.blocked || report.overLimit || !report.numbers.length)
+      throw new Error("号码文件校验失败，未写入任何号码");
+    const prior =
+      this.imported.get(id) ??
+      Array.from({ length: record.task.totalCount ?? 0 }, (_, i) =>
+        record.task.country === "US"
+          ? "+1202" + String(5500000 + i)
+          : "+86138" + String(i).padStart(8, "0")
+      );
+    const known = new Set(prior);
+    let added = 0,
+      existing = 0;
+    for (const number of report.numbers) {
+      if (known.has(number)) existing++;
+      else {
+        known.add(number);
+        prior.push(number);
+        added++;
+      }
+    }
+    this.imported.set(id, prior);
+    record.task.totalCount = prior.length;
+    record.task.activeCount = prior.length;
+    const receipt = {
+      taskId: id,
+      inputCount: report.inputCount,
+      emptyCount: report.emptyCount,
+      duplicateCount: report.duplicateCount,
+      uniqueCount: report.numbers.length,
+      addedCount: added,
+      existingCount: existing
+    };
+    if (summary) this.imports.set(id, structuredClone({ ...summary, receipt }));
+    this.recordActivity(id, "导入号码", `新增 ${added} 个，已存在 ${existing} 个`);
+    return receipt;
+  }
+  async approveTask(id: string, expectedCount: number) {
     const record = this.require(id);
     if (record.task.state !== "pre_review") throw new Error("当前任务不在待审核状态");
+    if (!expectedCount || expectedCount !== record.task.totalCount)
+      throw new Error("号码数量已变化或为空，请重新核对");
     record.task.state = "running_visible";
     record.task.reviewedAt = Date.now();
     this.recordActivity(id, "核对并启动", "开始演示查询");

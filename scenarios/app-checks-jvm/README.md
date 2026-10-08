@@ -2,71 +2,84 @@
 
 Status: current one-shot application check scenario owner.
 
-`app-checks` 是 Preview 的后端场景：同一国家的一批号码和一个模拟描述，创建
-`CLOSE_WHEN_IDLE` Task，追加 Items 后自动批准。App/Group 映射由
-[Boot](../../server_boot_jvm/README.md#platform-and-preview) 装配并通过 catalog 返回。
-国家只校验号码，不筛选 Worker 国家。
-Console 的 `/app-checks` 页面直接使用以下 API；详情可通过
-`/app-checks/tasks/{taskId}` 打开，Server 重启后继续读取原 Task。
+`app-checks` 是 Preview 的 one-shot 查询场景。创建空的 `CLOSE_WHEN_IDLE`
+Task、导入号码、核对启动和关闭是独立操作，复用 Server 的 Task 应用能力。
+App/Group 映射由 [Boot](../../server_boot_jvm/README.md#platform-and-preview) 装配。
+国家只校验号码格式和前缀，不筛选 Worker 国家或证明号码归属地。
 
-**业务执行契约：已注册和未注册都属于执行成功；失败区间让真实 Handler 抛异常。**
-新 Item 使用下述 Matching 分配窗口策略；Kernel、Pacer、SDK、Adapter 的既有
-调度和执行机制保持，没有新增 Task 模式、Redis key、Evidence 队列、回执或业务结果缓存。
+已注册和未注册均属于执行成功；失败区间让真实 Handler 抛异常。Kernel、Pacer、
+Matching、SDK 和 Worker 协议保持原样，没有新增业务 Redis key 或导入后台任务。
 
 ## API 和 Task 数据
 
 | API | 内容 |
 | --- | --- |
-| `GET /api/v1/app-checks/catalog` | Project、App/Group 映射、国家、容量和描述示例 |
-| `POST /api/v1/app-checks/tasks` | 请求内创建、追加、自动批准；201 返回 `{"taskId":"..."}` |
-| `GET /api/v1/app-checks/tasks?limit=100` | Project 倒序列表，最多 100，无分页 |
-| `GET /api/v1/app-checks/tasks/{taskId}` | Task、数量观测、最多 100 条 Result 预览 |
+| `GET /api/v1/app-checks/catalog` | Project、App/Group、国家、单次导入限制及模拟示例 |
+| `POST /api/v1/app-checks/tasks` | 创建空待审核任务，201 返回 `{"taskId":"..."}` |
+| `POST /api/v1/app-checks/tasks/{taskId}/numbers:import` | `text/plain` UTF-8 号码文件；全文件校验后每批最多 100 个 Item |
+| `POST /api/v1/app-checks/tasks/{taskId}/approve` | JSON 整数为用户确认的号码数量；与当前数量一致且非零才批准 |
+| `POST /api/v1/app-checks/tasks/{taskId}/close` | 取消或中止有限任务，复用通用关闭能力 |
+| `POST /api/v1/app-checks/tasks/{taskId}/results:export?filter=all` | 终态 CSV；filter 为 all、registered 或 unregistered |
+| `GET /api/v1/app-checks/tasks?limit=100` | 最近一批 Project 任务，最多 100，无分页 |
+| `GET /api/v1/app-checks/tasks/{taskId}` | 有限场景 Task、数量观测和最多 100 条 Result 预览 |
 
-创建示例：
+创建输入只包含以下配置，不接受号码数组或自定义名称：
 
 ```json
 {
   "requestId": "check-cn-app-a-001",
-  "name": "App A CN 查号",
   "appId": "app-a",
   "country": "CN",
-  "numbers": ["+8613800000001", "+8613800000002"],
   "simulation": {
-    "ranges": {
-      "registered": [0, 500],
-      "unregistered": [500, 900],
-      "failed": [900, 1000]
-    },
+    "ranges": {"registered": [0, 500], "unregistered": [500, 900], "failed": [900, 1000]},
     "delayMs": [2000, 5000]
   }
 }
 ```
 
-`requestId` 必填，`name` 可选，均为非空字符串且最多 128 字符。每 Task 1..1000
-个号码，去首尾空白后拒绝重复。号码为 `+` 后 2..15 位数字，首位非零，符合 CN
-`+86`、US `+1` 或 GB `+44` 前缀，前缀后至少一位。只检查格式，不证明真实地区或可达性。
+Server 以版本化命名空间、Project、requestId 的长度前缀 UTF-8 SHA-256 生成稳定
+Task ID，并在现有不可变 descriptor 保存请求身份与输入指纹。同身份同配置读取原
+Task；不同配置冲突。已有 descriptor、Project 目录和 Task Score 不完整时返回未确认，
+不另建或补造资源。关联在原 Task 资源保留期间跨 Server 重启成立，清理 scope 后不承诺。
+没有原先累计 50 请求、50,000 号码的内存账本。自动名称、salt 和日期首次创建后固定。
 
-Server 生成 Task/Item ID。Task priority=50、maxRetryTimes=3；Item priority=5、
-TTL=10 分钟。Task 声明 `any` Pool、空 target、水位 100；新 Item 使用
-`worker.assignment.available({})`。已有 `worker.any` Item 保留原语义，不改写历史任务。
-名称存在 descriptor；metadata 保存 `scenario、appId、country、simulation、salt、saltDate`。
-号码和执行参数只在 Items，不保存号码列表副本或数量。
+导入仅允许 `inputVersion=2` 的待审核 Task。每个文件最多 10 MiB、100,000 个去重号码，
+前端将 TXT、CSV 或粘贴统一转换为逐行 UTF-8 文件；后端独立校验 UTF-8、号码和国家前缀，
+允许省略 `+`，去首尾空白、忽略空行并去重。无效文件整批拒绝，返回错误数量和首个错误行，
+不会写入有效子集。请求局部原始与规范化临时文件在结束或失败后清理，不构成导入历史。
 
-完整校验后才进入幂等和容量准入。最多两个新提交并发，进程内最多 50 个请求、
-50,000 个号码。相同 requestId 和规范化内容共享一次提交，不同内容 409，容量不足
-在副作用前 429。每次追加最多 100，全部确认后批准。写入不明返回 503 和已知 Task ID，
-保留同一次提交结果；不重建、不重试、不补偿删除。关闭停止准入并最多等待 5 秒。
-幂等不跨 Server 重启，持久 Task/Items/Results 查询不依赖幂等记录。
+号码的稳定 Item ID 为 `number-` 加长度前缀元组 `["app-checks/v2/number", normalizedNumber]`
+的 SHA-256，作用域为 Task。批次复用固定事件、任务盐和 Matching 查询，TTL 留空以采用
+Runtime 默认有效期（当前 365 天），不从批准时重新计时。已存在且内容一致的 Item 跳过，
+保留原时间、有效期、Score 和结果；不同内容拒绝覆盖。显式重传可用已存 Item 原值调用
+既有 append 补齐缺失的初始 Score；Score 存在而执行数据缺失等其他不一致按数据异常处理。
 
-列表保留 managed Task 和无业务 metadata 的 Task，只给明确的 app-checks 有限 Task
-解释业务配置和数量。详情严格校验 Project。`totalCount` 来自 Item Score 成员总数，
-`activeCount` 来自 tag 1，`succeededCount` 为 tag 6..9，`failedCount` 为 tag 5。
-已注册/未注册都计执行成功；不从预览推算全任务注册分布。
+Task priority=50、maxRetryTimes=3；Item priority=5。供给仍为 `any / {} / 100`，
+新 Item 仍使用 `worker.assignment.available({})`。这些数字各自属于原 Owner 的边界。
+旧任务及其 salt、随机 Item ID 不迁移；仍可读取、关闭和导出，不能追加 v2 号码。
 
-Result 预览复用一次 Owner HSCAN 和对应 Item 批量读取，最多 100 条且不补扫，
-`resultsTruncated` 表示未完整展示。`resultStatus` 与可选 `registered` 分开；失败行
-没有业务答案。无法解析或号码/Group 关联不符时保留原执行状态并返回 `contentError`。
-结果不保证文件顺序或最新顺序；统计、Task 状态和 Result 不承诺共同快照。
+同一 Server 实例通过既有 OperationGuard 串行化一个 Task 的导入、普通追加、批准和关闭；
+一个同步导入的全部批次共享持有期。最多两个文件同时导入，结束释放容量，满时写入前背压。
+不承诺跨实例串行。写入中断保留已确认批次，503 附带 taskId、confirmedAddedCount 和
+existingCount；当前未确认批次不算拒绝，不自动重传、回滚或启动。用户可以显式重传、
+补充其他文件、取消，或核对 Owner 当前实际数量后启动部分输入。审批不要求原文件事务完成。
+关闭不会把未完成项计作成功，也不会阻止已有执行产生迟到结果。场景服务停机停止新准入并最多等待
+正在导入的请求 5 秒，每个新批次检查停止信号。
+
+导入成功回执给出 inputCount、emptyCount、duplicateCount、uniqueCount、addedCount 和
+existingCount，均针对收到的号码文件。前端原始 CSV 的行数及去重数属于客户端校验摘要。
+来源和回执仅在控制台会话保存；API 不根据 Task 数量重建来源或操作历史。
+
+列表仍包含 Project 目录中的 managed/无业务 metadata 行，由前端过滤；详情和写入验证
+Project、场景和有限 Task 类型。总量来自 Item Score 成员数，active 为 tag 1，failed 为
+ tag 5，succeeded 为 tags 6..9。Result 预览只读一次 Owner HSCAN，最多 100 条，不补扫，
+不保证文件顺序或最新顺序。失败行没有注册答案；内容或 Item/Group 关联异常保留执行状态并
+标记 contentError。统计、Task 状态和 Result 不是共同快照。
+
+CSV 复用通用终态成功结果导出，再按每批最多 100 个 Item 做业务关联校验及筛选，包含号码、
+注册状态、应用、地区，保护文本单元格并正确转义。失败、异常内容和缺少注册答案的记录不导出。
+文件生成完成后才通过 `X-Export-Count` 返回准确行数，不额外扫描以预估数量。原始 JSONL 与
+CSV 临时文件都在失败或传输结束时清理。导出独立于预览筛选；迟到结果可使下一次导出内容变化。
 
 ## Simulator 协议与可复算性
 
@@ -76,11 +89,11 @@ Result 预览复用一次 Owner HSCAN 和对应 Item 批量读取，最多 100 �
 0 ≤ min ≤ max ≤ 30000，相等为固定延迟。simulation 最多 4096 字符，缺失或未知字段拒绝。
 API 和 Worker 各自在自己的远程输入边界校验，不新增共享协议模块。
 
-首次受理按 UTC 日期生成 salt：对 UTF-8 字段元组
-`["app-checks/v1/salt", appId, country, normalizedNumberCount, "YYYY-MM-DD"]`
-逐字段加四字节大端字节长度，SHA-256 完整摘要转小写十六进制。数量用十进制字符串。
-salt 与日期保存后固定；请求重试、查询和执行重试不重新生成。相同 App、国家、数量和
-日期得到相同 salt，名称、requestId、Task ID 不参与。
+v2 创建首次受理按 UTC 日期生成 salt：对 UTF-8 元组
+`["app-checks/v2/salt", appId, country, requestId, "YYYY-MM-DD"]` 逐字段加四字节
+大端长度，计算 SHA-256 小写十六进制。号码数量不再参与。salt/date 在 descriptor 固定，
+重复创建返回原任务，不用请求重试时的新日期覆盖。v1 存量任务仍读取原 salt，Worker 的
+outcome/delay 算法和固定向量不变。
 
 Handler 进入时捕获实际 workerId，Group 来自构造绑定。结果及延迟分别计算：
 
@@ -142,8 +155,8 @@ IP／账号配额。其他显式函数不受这一策略拦截。窗口长度改
 ## 页面与结果核对
 
 启动 [Preview](../../distribution/server/PREVIEW.md#source-launch)，打开 `/app-checks`，
-选择 App 和号码国家，导入号码并填写注册/未注册/失败区间与延迟。完整追加后自动批准，
-再到详情观察结果；不确定提交保留已知 Task ID，不重新创建或自动重试。
+选择 App 和号码国家，前端依次创建空任务、上传号码文件，用户核对实际数量后启动。
+列表菜单管理任务，抽屉预览结果；未确认创建或导入保留请求身份及已知 Task ID，不自动重试。
 
 “核对当前预览”按上面的 SHA-256 协议，用存量 salt、实际 Worker、号码和模拟描述复算；
 它只核对已展示内容，不证明执行次数或失败原因，模拟延迟也不是端到端耗时。
@@ -164,7 +177,8 @@ python scenarios/app-checks-jvm/run_acceptance.py --build --port 18620
 python scenarios/app-checks-jvm/run_acceptance.py --root <freshly-extracted-preview> --port 18640
 ```
 
-单元测试证明准入、固定 hash、半开边界、异常、中断、提交幂等及部分失败。Boot 的
+单元测试证明轻量创建、稳定身份、十万号码有界导入、全文件校验、部分失败、互斥及重复输入处理。
+真实 Redis/HTTP 另外验证十万号码写入、跨文件去重、原时间保持、默认有效期、重启幂等、审核数量检查和关闭。Boot 的
 真实 Redis/HTTP/Worker 测试用两个 Group 各两个 Worker，证明 101 条预览有界、真实
 异常调用、未注册成功、Group 隔离、6 秒迟到成功及 Server 重启读取。调用见证仅在测试
 装配中，溢出失败，不增加生产尝试日志或场景队列。

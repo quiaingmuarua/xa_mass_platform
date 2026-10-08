@@ -1,3 +1,4 @@
+import { importedTask } from "./app-check-fixture";
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, h, nextTick, type App } from "vue";
@@ -10,6 +11,7 @@ import {
 } from "../src/app-checks/mock-task-source";
 import {
   AppCheckCreationUnconfirmed,
+  AppCheckImportUnconfirmed,
   type AppCheckTaskSource
 } from "../src/app-checks/task-source";
 import type { CheckDetail } from "../src/app-checks/model";
@@ -181,6 +183,97 @@ function deferred<T>() {
 }
 
 describe("App Checks product workspace", () => {
+  it("reimports an unconfirmed file into the original task without creating again", async () => {
+    const create = vi.spyOn(source, "createTask");
+    const imports = vi
+      .spyOn(source, "importNumbers")
+      .mockRejectedValueOnce(new AppCheckImportUnconfirmed("mock-check-1"));
+    const { router, session } = await mount();
+    await openCreate();
+    input("号码列表", "8613800000001\n8613800000002");
+    await settle();
+    await submit();
+    expect(session.draft).toMatchObject({
+      knownTaskId: "mock-check-1",
+      submissionPhase: "import",
+      uncertain: true
+    });
+    expect(
+      document.querySelector<HTMLSelectElement>('[aria-label="应用"]')!.disabled
+    ).toBe(true);
+    expect(create).toHaveBeenCalledTimes(1);
+    button("重新导入当前号码").click();
+    await settle();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(imports).toHaveBeenCalledTimes(2);
+    expect((await source.loadTask("mock-check-1")).task.totalCount).toBe(2);
+    expect(router.currentRoute.value.path).toBe("/app-checks");
+  });
+  it("adds a file through the pending task menu and confirms existing numbers separately", async () => {
+    const { taskId } = await importedTask(source, {
+      requestId: "append-ui",
+      appId: "app-a",
+      country: "CN",
+      simulation: mockCatalog.simulationExample,
+      numbers: ["+8613800000001"]
+    });
+    const create = vi.spyOn(source, "createTask");
+    const approve = vi.spyOn(source, "approveTask");
+    await mount(`/app-checks/tasks/${taskId}`);
+    await command("导入号码");
+    expect(document.activeElement?.closest(".el-dialog")).not.toBeNull();
+    button("粘贴号码").click();
+    await settle();
+    input("号码列表", "8613800000001\n8613800000002");
+    await settle();
+    document
+      .querySelector("#app-check-import")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await settle();
+    expect((await source.loadTask(taskId)).task).toMatchObject({
+      state: "pre_review",
+      totalCount: 2,
+      activeCount: 2
+    });
+    expect((await source.loadImport(taskId))?.receipt).toMatchObject({
+      addedCount: 1,
+      existingCount: 1
+    });
+    expect(create).not.toHaveBeenCalled();
+    expect(approve).not.toHaveBeenCalled();
+  });
+  it("keeps an unconfirmed append draft attached to its original task when another import is opened", async () => {
+    const config = {
+      appId: "app-a",
+      country: "CN" as const,
+      simulation: mockCatalog.simulationExample
+    };
+    const first = await source.createTask({ ...config, requestId: "first-import" });
+    const second = await source.createTask({ ...config, requestId: "second-import" });
+    const imports = vi
+      .spyOn(source, "importNumbers")
+      .mockRejectedValueOnce(new AppCheckImportUnconfirmed(first.taskId));
+    await mount();
+    await command("导入号码", first.taskId);
+    button("粘贴号码").click();
+    await settle();
+    input("号码列表", "8613800000001");
+    await settle();
+    document
+      .querySelector("#app-check-import")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await settle();
+    document.querySelector<HTMLButtonElement>(".el-dialog__headerbtn")!.click();
+    await settle();
+    await command("导入号码", second.taskId);
+    expect(document.body.textContent).toContain("请先核对此任务的未确认导入");
+    expect(field("号码列表").value).toBe("8613800000001");
+    button("重新导入当前号码").click();
+    await settle();
+    expect(imports.mock.calls.map(([id]) => id)).toEqual([first.taskId, first.taskId]);
+    expect((await source.loadTask(first.taskId)).task.totalCount).toBe(1);
+    expect((await source.loadTask(second.taskId)).task.totalCount).toBe(0);
+  });
   it("keeps unavailable state only in all tasks and offers independent preview", async () => {
     const task = (await source.loadTask("check-mixed")).task;
     vi.spyOn(source, "listTasks").mockResolvedValue({
@@ -328,9 +421,8 @@ describe("App Checks product workspace", () => {
   });
   it("scrolls the loaded task set without reads and restores filters, position and focus", async () => {
     for (let i = 0; i < 25; i++)
-      await source.createTask({
+      await importedTask(source, {
         requestId: "scroll-" + i,
-        name: "滚动批次 " + i,
         appId: "app-a",
         country: "CN",
         numbers: ["+8613800000001"],
@@ -338,7 +430,7 @@ describe("App Checks product workspace", () => {
       });
     const read = vi.spyOn(source, "listTasks");
     const { router } = await mount();
-    input("搜索查询任务", "滚动批次");
+    input("搜索查询任务", "mock-check-");
     await settle();
     expect(document.querySelectorAll(".checks-task-table tbody tr")).toHaveLength(25);
     expect(document.body.textContent).not.toMatch(/每页|上一页|下一页/);
@@ -355,7 +447,7 @@ describe("App Checks product workspace", () => {
     await settle();
     await router.push("/app-checks");
     await settle();
-    expect(field("搜索查询任务").value).toBe("滚动批次");
+    expect(field("搜索查询任务").value).toBe("mock-check-");
     expect(document.querySelectorAll(".checks-task-table tbody tr")).toHaveLength(25);
     expect(document.activeElement?.id).toBe(id);
     const restored = tableViewport();
@@ -376,10 +468,8 @@ describe("App Checks product workspace", () => {
     for (let i = 0; i < 101; i++) {
       const created = await source.createTask({
         requestId: "bounded-" + i,
-        name: "当前批次 " + i,
         appId: "app-a",
         country: "CN",
-        numbers: ["+8613800000001"],
         simulation: mockCatalog.simulationExample
       });
       createdIds.push(created.taskId);
@@ -390,7 +480,7 @@ describe("App Checks product workspace", () => {
     expect(document.querySelectorAll(".checks-task-table tbody tr")).toHaveLength(100);
     expect(document.body.textContent).toContain("列表未完整加载");
     expect(document.body.textContent).toContain("当前载入 100 个");
-    input("搜索查询任务", "当前批次 0");
+    input("搜索查询任务", (await source.loadTask(createdIds[0])).task.name!);
     await settle();
     expect(document.querySelectorAll(".checks-task-table tbody tr")).toHaveLength(0);
     input("搜索查询任务", "");
@@ -475,10 +565,9 @@ describe("App Checks product workspace", () => {
       "当前仍为已粘贴"
     );
     await submit();
-    expect(create.mock.calls[0][0]).toMatchObject({
-      sourceFile: "replacement.txt",
-      numbers: ["+8613800000003", "+8613800000004"]
-    });
+    expect(create.mock.calls[0][0]).not.toHaveProperty("numbers");
+    const { taskId } = await create.mock.results[0].value;
+    expect((await source.loadImport(taskId))?.sourceFile).toBe("replacement.txt");
   });
   it("shows preview scope beside the filters without deriving overall quantities from it", async () => {
     await mount("/app-checks/tasks/check-delivered");
@@ -498,7 +587,7 @@ describe("App Checks product workspace", () => {
   it("offers one row menu with actions for the observed task state", async () => {
     const { router } = await mount();
     for (const [id, labels] of [
-      ["check-review", ["核对并启动", "取消任务"]],
+      ["check-review", ["导入号码", "核对并启动", "取消任务"]],
       ["check-live", ["预览结果", "中止任务"]],
       ["check-delivered", ["预览结果", "导出结果"]]
     ] as const) {
@@ -583,15 +672,14 @@ describe("App Checks product workspace", () => {
       { length: 1001 },
       (_, i) => "+86138" + String(i).padStart(8, "0")
     );
-    const { taskId } = await source.createTask({
+    const { taskId } = await importedTask(source, {
       requestId: "preview-export",
-      name: "预览导出",
       appId: "app-a",
       country: "CN",
       numbers,
       simulation: mockCatalog.simulationExample
     });
-    await source.approveTask(taskId);
+    await source.approveTask(taskId, numbers.length);
     await source.completeTask(taskId);
     const read = vi.spyOn(source, "loadTask");
     const exported = vi.spyOn(source, "exportTask");
@@ -692,6 +780,15 @@ describe("App Checks product workspace", () => {
   it("creates a preserved draft in one step with an automatic name and deduplicated numbers", async () => {
     const pending = deferred<{ taskId: string }>();
     const create = vi.spyOn(source, "createTask").mockReturnValue(pending.promise);
+    vi.spyOn(source, "importNumbers").mockResolvedValue({
+      taskId: "check-review",
+      inputCount: 1,
+      emptyCount: 0,
+      duplicateCount: 0,
+      uniqueCount: 1,
+      addedCount: 1,
+      existingCount: 0
+    });
     const { router } = await mount();
     await openCreate();
     input("号码列表", " 8613800000001 \n+8613800000001");
@@ -708,8 +805,6 @@ describe("App Checks product workspace", () => {
     await submit();
     expect(create).toHaveBeenCalledTimes(1);
     expect(create.mock.calls[0][0]).toMatchObject({
-      name: expect.stringMatching(/^App A · 中国 · 1 个号码 · /),
-      numbers: ["+8613800000001"],
       simulation: mockCatalog.simulationExample
     });
     pending.resolve({ taskId: "check-review" });
@@ -735,7 +830,11 @@ describe("App Checks product workspace", () => {
     await settle();
     expect(document.body.textContent).toContain("自动去重");
     expect(document.querySelector("#app-check-create table")).toBeNull();
-    expect(button("创建待审核任务").disabled).toBe(false);
+    expect(
+      document.querySelector<HTMLButtonElement>(
+        "#app-check-create button[type=submit]"
+      )!.disabled
+    ).toBe(false);
     button("上传文件").click();
     await settle();
     const file = document.querySelector<HTMLInputElement>('input[type="file"]')!;
@@ -766,7 +865,11 @@ describe("App Checks product workspace", () => {
     await closeDraft();
     button("创建任务").click();
     await settle();
-    expect(button("创建待审核任务").disabled).toBe(true);
+    expect(
+      document.querySelector<HTMLButtonElement>(
+        "#app-check-create button[type=submit]"
+      )!.disabled
+    ).toBe(true);
     await submit();
     expect(create).toHaveBeenCalledTimes(1);
   });
@@ -785,7 +888,11 @@ describe("App Checks product workspace", () => {
       await submit();
       const originalRequestId = create.mock.calls[0][0].requestId;
       expect(session.draft.uncertain).toBe(true);
-      expect(button("创建待审核任务").disabled).toBe(true);
+      expect(
+        document.querySelector<HTMLButtonElement>(
+          "#app-check-create button[type=submit]"
+        )!.disabled
+      ).toBe(true);
       expect(read).not.toHaveBeenCalled();
       if (knownTaskId) {
         button("读取关联任务").click();
@@ -796,7 +903,11 @@ describe("App Checks product workspace", () => {
         ).toContain("任务已记录 1 个号码");
         expect(document.body.textContent).toContain("本次提交仍待人工核对");
         expect(session.draft.uncertain).toBe(true);
-        expect(button("创建待审核任务").disabled).toBe(true);
+        expect(
+          document.querySelector<HTMLButtonElement>(
+            "#app-check-create button[type=submit]"
+          )!.disabled
+        ).toBe(true);
       }
       button("结束本次草稿").click();
       await settle();
@@ -836,7 +947,11 @@ describe("App Checks product workspace", () => {
       button("创建任务").click();
       await settle();
       expect(session.unconfirmedSubmissions[0].requestId).toBe(originalRequestId);
-      expect(button("创建待审核任务").disabled).toBe(true);
+      expect(
+        document.querySelector<HTMLButtonElement>(
+          "#app-check-create button[type=submit]"
+        )!.disabled
+      ).toBe(true);
     }
   );
   it("does not end a draft while its original submission is still pending", async () => {
@@ -858,7 +973,11 @@ describe("App Checks product workspace", () => {
     expect(session.draft.uncertain).toBe(true);
     expect(session.draft.knownTaskId).toBe("check-empty");
     expect(button("结束本次草稿").disabled).toBe(false);
-    expect(button("创建待审核任务").disabled).toBe(true);
+    expect(
+      document.querySelector<HTMLButtonElement>(
+        "#app-check-create button[type=submit]"
+      )!.disabled
+    ).toBe(true);
     expect(create).toHaveBeenCalledTimes(1);
   });
   it("keeps creation and approval separate in Mock, without any network request", async () => {
@@ -872,7 +991,7 @@ describe("App Checks product workspace", () => {
     expect(approve).not.toHaveBeenCalled();
     button("确认启动").click();
     await settle();
-    expect(approve).toHaveBeenCalledWith("check-review");
+    expect(approve).toHaveBeenCalledWith("check-review", 24000);
     expect((await source.loadTask("check-review")).task.state).toBe("running_visible");
     expect(document.body.textContent).toContain("任务已核对并启动");
     expect(field("搜索查询号码")).not.toBeNull();

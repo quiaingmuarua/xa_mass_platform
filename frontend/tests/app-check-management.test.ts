@@ -1,3 +1,4 @@
+import { importedTask } from "./app-check-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MockAppCheckTaskSource,
@@ -8,7 +9,6 @@ import { ApiAppCheckTaskSource } from "../src/app-checks/task-source";
 
 const input = {
   requestId: "workflow",
-  name: "batch",
   appId: "app-a",
   country: "CN" as const,
   numbers: Array.from(
@@ -23,9 +23,9 @@ describe("App Checks management prototype", () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     const source = new MockAppCheckTaskSource(),
-      { taskId } = await source.createTask(input);
+      { taskId } = await importedTask(source, input);
     await expect(source.advanceTask(taskId)).rejects.toThrow();
-    await source.approveTask(taskId);
+    await source.approveTask(taskId, input.numbers.length);
     await source.advanceTask(taskId);
     const partial = await source.loadTask(taskId);
     expect(partial.task.activeCount).toBe(900);
@@ -41,7 +41,7 @@ describe("App Checks management prototype", () => {
     await expect(source.advanceTask(taskId)).rejects.toThrow();
     await expect(source.completeTask(taskId)).rejects.toThrow();
     await expect(source.closeTask(taskId)).rejects.toThrow();
-    await expect(source.approveTask(taskId)).rejects.toThrow();
+    await expect(source.approveTask(taskId, input.numbers.length)).rejects.toThrow();
     await source.advanceTask(taskId, true);
     expect(source.previewState(taskId).endReason).toBe("stopped");
     expect((await source.loadTask(taskId)).task.activeCount).toBe(899);
@@ -50,7 +50,7 @@ describe("App Checks management prototype", () => {
   });
   it("cancels pending tasks without claiming that any number completed", async () => {
     const source = new MockAppCheckTaskSource(),
-      { taskId } = await source.createTask(input);
+      { taskId } = await importedTask(source, input);
     await source.closeTask(taskId);
     expect(source.previewState(taskId).endReason).toBe("cancelled");
     expect((await source.loadTask(taskId)).task).toMatchObject({
@@ -64,9 +64,9 @@ describe("App Checks management prototype", () => {
   });
   it("bounds preview snapshots and independently exports complete valid successful answers", async () => {
     const source = new MockAppCheckTaskSource(),
-      { taskId } = await source.createTask(input);
+      { taskId } = await importedTask(source, input);
     await expect(source.exportTask(taskId, "all")).rejects.toThrow("任务结束后");
-    await source.approveTask(taskId);
+    await source.approveTask(taskId, input.numbers.length);
     await expect(source.exportTask(taskId, "all")).rejects.toThrow("任务结束后");
     await source.completeTask(taskId);
     const snapshot = await source.loadTask(taskId);
@@ -85,6 +85,7 @@ describe("App Checks management prototype", () => {
     expect(counts.registered + counts.unregistered).toBe(counts.all);
     expect((await source.loadActivity(taskId)).map((row) => row.label)).toEqual([
       "创建任务",
+      "导入号码",
       "核对并启动",
       "查询结束"
     ]);
@@ -122,9 +123,9 @@ describe("App Checks management prototype", () => {
       sourceFile: "source.txt",
       importSnapshot: importSnapshot(report, "source.txt")
     };
-    const { taskId } = await source.createTask(created);
+    const { taskId } = await importedTask(source, created);
     const saved = await source.loadImport(taskId);
-    expect(saved).toEqual({
+    expect(saved).toMatchObject({
       sourceFile: "source.txt",
       summary: {
         inputCount: 3,
@@ -142,18 +143,16 @@ describe("App Checks management prototype", () => {
     expect((await source.loadImport(taskId))?.summary.validCount).toBe(1);
     const missing = await source.createTask({
       ...input,
-      requestId: "no-summary",
-      sourceFile: "unknown.txt"
+      requestId: "no-summary"
     });
     expect(await source.loadImport(missing.taskId)).toBeUndefined();
     const fetcher = vi.fn().mockResolvedValue(new Response('{"taskId":"remote"}'));
     vi.stubGlobal("fetch", fetcher);
     await new ApiAppCheckTaskSource().createTask(created);
     const body = JSON.parse(fetcher.mock.calls[0][1].body);
-    expect(body.numbers).toEqual(["+8613800000001"]);
+    expect(body).not.toHaveProperty("numbers");
     expect(body).not.toHaveProperty("sourceFile");
     expect(body).not.toHaveProperty("importSnapshot");
-    for (const method of ["closeTask", "loadImport", "previewState"])
-      expect(new ApiAppCheckTaskSource()).not.toHaveProperty(method);
+    expect(new ApiAppCheckTaskSource()).not.toHaveProperty("previewState");
   });
 });

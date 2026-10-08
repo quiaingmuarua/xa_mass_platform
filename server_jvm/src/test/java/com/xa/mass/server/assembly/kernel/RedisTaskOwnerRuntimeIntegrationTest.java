@@ -1434,7 +1434,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     void publicFiniteTaskControlUsesJavaOwnersWithoutPythonHttp() {
         TaskControlController controller = new TaskControlController(
                 mock(TaskCreationService.class),
-                new TaskLifecycleService(lifecycle, catalog)
+                new TaskLifecycleService(lifecycle, catalog, new com.xa.mass.server.operation.OperationGuard())
         );
         var created = runtime.createTask(new TaskDescriptor("public-task", "test-project", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "2", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of()));
 
@@ -1607,7 +1607,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
             var service = new com.xa.mass.server.task.TaskDataService(runtime, catalog,
                     new com.xa.mass.server.task.TaskItemMapper(), itemScoreCore,
                     new com.xa.mass.server.task.TaskItemOutcomeProperties(Map.of()),
-                    org.mockito.Mockito.mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class));
+                    org.mockito.Mockito.mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), new com.xa.mass.server.operation.OperationGuard());
             assertThat(service.loadTaskItemStates("outcomes", ids).values())
                     .allMatch(state -> state.tag() == 6 && state.outcomeName().equals("succeeded"));
             assertThat(calls).containsExactly("HGETALL", "ZMSCORE");

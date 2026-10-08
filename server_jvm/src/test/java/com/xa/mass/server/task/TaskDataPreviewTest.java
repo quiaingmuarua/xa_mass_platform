@@ -15,7 +15,7 @@ class TaskDataPreviewTest {
     final TaskResourceCatalog catalog = mock(TaskResourceCatalog.class);
     final TaskItemScoreBandCore scores = mock(TaskItemScoreBandCore.class);
     final TaskDataService service = new TaskDataService(runtime, catalog, new TaskItemMapper(), scores,
-            new TaskItemOutcomeProperties(Map.of()), mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class));
+            new TaskItemOutcomeProperties(Map.of()), mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class), mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), new com.xa.mass.server.operation.OperationGuard());
 
     @Test void oneScanAndOneItemReadClampAnOversizedHashPageAndKeepFailures() {
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task",

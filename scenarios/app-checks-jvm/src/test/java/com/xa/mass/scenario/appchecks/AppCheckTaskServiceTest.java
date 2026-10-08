@@ -8,9 +8,14 @@ import com.xa.mass.server.api.v1.contract.runtimeview.TaskView;
 import com.xa.mass.server.api.v1.contract.task.*;
 import com.xa.mass.server.project.*;
 import com.xa.mass.server.task.*;
+import com.xa.mass.server.operation.OperationGuard;
+import com.xa.mass.server.task.result.TaskResultsExportService;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.time.*;
 import java.util.*;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.concurrent.*;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
@@ -23,160 +28,124 @@ class AppCheckTaskServiceTest {
     final TaskCreationService creation = mock(TaskCreationService.class);
     final TaskDataService data = mock(TaskDataService.class);
     final TaskLifecycleService lifecycle = mock(TaskLifecycleService.class);
+    final OperationGuard operations = new OperationGuard();
+    final TaskResultsExportService exports = mock(TaskResultsExportService.class);
 
     AppCheckTaskService service() {
-        when(creation.create(any())).thenReturn(new TaskCreateResponse("task"));
-        when(data.appendFiniteTaskItems(anyString(), anyList())).thenAnswer(call -> {
+        when(creation.createForRequest(any(), anyString(), anyString())).thenReturn(new TaskCreateResponse("task"));
+        when(data.importFiniteTaskItems(anyString(), anyList())).thenAnswer(call -> {
             List<TaskItemRequest> items = call.getArgument(1);
             var result = new LinkedHashMap<String, ActionOutcome>();
-            items.forEach(item -> result.put(item.messageId(), ActionOutcome.applied()));
-            return result;
+            items.forEach(item -> result.put(item.messageId(), ActionOutcome.applied())); return result;
         });
-        var service = new AppCheckTaskService(projects, queries, creation, data, lifecycle,
+        when(queries.get(eq("app-checks"), anyString())).thenAnswer(call -> entry(call.getArgument(1), "pre_review", true));
+        var service = new AppCheckTaskService(projects, queries, creation, data, lifecycle, operations, exports,
                 Clock.fixed(Instant.parse("2026-09-18T01:00:00Z"), ZoneOffset.UTC));
         service.start(); return service;
     }
+    ProjectTaskQueryService.Entry entry(String id, String state, boolean modern) {
+        var metadata = new HashMap<>(Map.of("scenario", "app-checks", "appId", "app-a", "country", "CN", "simulation", Jsons.toJson(simulation()), "salt", "fixed"));
+        if (modern) metadata.put("inputVersion", "2");
+        return new ProjectTaskQueryService.Entry(id, 1, new TaskView(id, "app-checks", "app-a-sim", "CLOSE_WHEN_IDLE", List.of(), Map.of(), "test", metadata), state);
+    }
     static Map<String, Object> simulation() {
-        return Map.of("ranges", Map.of("registered", List.of(0, 500), "unregistered", List.of(500, 900), "failed", List.of(900, 1000)),
-                "delayMs", List.of(2000, 5000));
+        return Map.of("ranges", Map.of("registered", List.of(0, 500), "unregistered", List.of(500, 900), "failed", List.of(900, 1000)), "delayMs", List.of(2000, 5000));
     }
-    static Map<String, Object> request(int count) {
-        return new LinkedHashMap<>(Map.of("requestId", "request", "appId", "app-a", "country", "CN", "name", "lookup",
-                "simulation", simulation(), "numbers", IntStream.range(0, count).mapToObj(i -> "+8613800" + String.format("%06d", i)).toList()));
+    static Map<String, Object> request() {
+        return new LinkedHashMap<>(Map.of("requestId", "request", "appId", "app-a", "country", "CN", "simulation", simulation()));
     }
+    static InputStream file(String text) { return new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)); }
 
-    @Test void completeValidationPrecedesTaskCreation() {
+    @Test void createsOnlyAnEmptyTaskAndDoesNotRetainAFiftyRequestBudget() {
         try (var service = service()) {
-            for (Object invalid : List.of(List.of(), List.of("+1"), List.of("+44123"), List.of("+86123", " +86123 "), List.of("unknown"))) {
-                var input = request(1); input.put("numbers", invalid);
-                assertThatThrownBy(() -> service.create(input)).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class,
-                        error -> assertThat(error.status).isEqualTo(400));
-            }
-            var tooMany = request(1001);
-            assertThatThrownBy(() -> service.create(tooMany)).isInstanceOf(AppCheckTaskService.RequestFailure.class);
-            var unsupported = request(1); unsupported.put("appId", "app-c");
-            assertThatThrownBy(() -> service.create(unsupported)).hasMessageContaining("appId");
-            var missing = request(1); missing.remove("simulation");
-            assertThatThrownBy(() -> service.create(missing)).hasMessageContaining("simulation");
-            var unknown = request(1); unknown.put("workerId", "forged");
-            assertThatThrownBy(() -> service.create(unknown)).hasMessageContaining("Unknown");
-            verifyNoInteractions(creation, data, lifecycle);
-            assertThat(AppCheckSpecification.parse(request(1000)).numbers()).hasSize(1000);
+            for (int i = 0; i < 51; i++) { var input = request(); input.put("requestId", "r" + i); service.create(input); }
+            verify(creation, times(51)).createForRequest(argThat(req -> req.metadata().get("inputVersion").equals("2")
+                    && !req.metadata().containsKey("numbers") && req.refill().getFirst().poolName().equals("any")), anyString(), anyString());
+            verifyNoInteractions(data, lifecycle);
+            var invalid = request(); invalid.put("numbers", List.of("+86123"));
+            assertThatThrownBy(() -> service.create(invalid)).hasMessageContaining("Unknown");
+            when(creation.createForRequest(any(), anyString(), anyString())).thenThrow(new TaskCreationUnconfirmedException("stable", null));
+            assertThatThrownBy(() -> service.create(request())).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class,
+                    error -> assertThat(error.taskId).isEqualTo("stable"));
         }
     }
-
-    @Test void rejectsInvalidAndOversizedSimulation() {
-        for (Object description : List.of(Map.of(), Map.of("ranges", Map.of(), "delayMs", List.of(0, 0)),
-                Map.of("ranges", Map.of("registered", List.of(0, 501), "unregistered", List.of(500, 900), "failed", List.of(900, 1000)), "delayMs", List.of(0, 0)),
-                Map.of("ranges", ((Map<?, ?>) simulation().get("ranges")), "delayMs", List.of(-1, 0)),
-                Map.of("ranges", ((Map<?, ?>) simulation().get("ranges")), "delayMs", List.of(0, 30001)),
-                Map.of("ranges", ((Map<?, ?>) simulation().get("ranges")), "delayMs", List.of("x".repeat(4096), 0)))) {
-            var request = request(1); request.put("simulation", description);
-            assertThatThrownBy(() -> AppCheckSpecification.parse(request)).isInstanceOf(IllegalArgumentException.class);
-        }
-    }
-
-    @Test void createsCompleteTaskAndBatchesBeforeApprovalWithoutChangingIdempotentSalt() {
-        try (var service = service()) {
-            assertThat(service.create(request(201)).taskId()).isEqualTo("task");
-            var order = inOrder(creation, data, lifecycle);
-            var creationArgument = org.mockito.ArgumentCaptor.forClass(TaskCreateRequest.class);
-            order.verify(creation).create(creationArgument.capture());
-            var created = creationArgument.getValue();
-            assertThat(created.projectId()).isEqualTo("app-checks");
-            assertThat(created.workerGroupId()).isEqualTo("app-a-sim");
-            assertThat(created.metadata()).containsEntry("saltDate", "2026-09-18").containsEntry("scenario", "app-checks")
-                    .doesNotContainKeys("numbers", "totalCount");
-            assertThat(created.refill().getFirst().poolName()).isEqualTo("any");
-            String salt = created.metadata().get("salt");
-            order.verify(data, times(2)).appendFiniteTaskItems(eq("task"), argThat(items -> items.size() == 100
-                    && items.stream().allMatch(i -> i.payload().get("salt").equals(salt) && i.ttlMillis() == 600_000L
-                    && i.eventCode().equals(AppCheckTaskService.EVENT) && i.workerSelector().executorName().equals("worker.assignment.available")
-                    && i.workerSelector().input().equals(Map.of()))));
-            order.verify(data).appendFiniteTaskItems(eq("task"), argThat(items -> items.size() == 1));
-            order.verify(lifecycle).approve("task");
-            assertThat(service.create(request(201)).taskId()).isEqualTo("task");
-            verify(creation, times(1)).create(any());
-            assertThatThrownBy(() -> service.create(request(200))).hasMessageContaining("different content");
-        }
-    }
-
-    @Test void normalizationAndSaltDoNotDependOnNameDescriptionOrRequestId() {
-        var first = AppCheckSpecification.parse(request(1));
-        var other = request(1); other.put("requestId", "other"); other.remove("name"); other.put("numbers", List.of(" +8613800000000 "));
+    @Test void creationFingerprintAndVersionedSaltAreStableWithoutInputNumbers() {
+        var first = AppCheckSpecification.parse(request());
+        var other = request(); other.put("requestId", "other");
         var second = AppCheckSpecification.parse(other);
-        LocalDate date = LocalDate.of(2026, 9, 18);
-        assertThat(first.salt(date)).isEqualTo(second.salt(date));
-        assertThat(first.salt(date.plusDays(1))).isNotEqualTo(first.salt(date));
-        other.put("appId", "app-b");
-        assertThat(AppCheckSpecification.parse(other).salt(date)).isNotEqualTo(first.salt(date));
+        assertThat(first.fingerprint()).isEqualTo(second.fingerprint());
+        assertThat(first.salt(LocalDate.of(2026, 9, 18))).isNotEqualTo(second.salt(LocalDate.of(2026, 9, 18)));
+        other.put("simulation", Map.of());
+        assertThatThrownBy(() -> AppCheckSpecification.parse(other)).isInstanceOf(IllegalArgumentException.class);
     }
-
-    @Test void unknownCreateOrAppendPreservesTaskIdAndNeverReplays() {
+    @Test void importsOneHundredThousandNumbersInBoundedBatchesWithoutApproval() {
         try (var service = service()) {
-            doThrow(new IllegalStateException("response lost")).when(data).appendFiniteTaskItems(anyString(), anyList());
-            for (int attempt = 0; attempt < 2; attempt++) assertThatThrownBy(() -> service.create(request(1)))
-                    .isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class, error -> assertThat(error.taskId).isEqualTo("task"));
-            verify(creation, times(1)).create(any()); verify(data, times(1)).appendFiniteTaskItems(anyString(), anyList());
-            verify(lifecycle, never()).approve(anyString());
-            when(creation.create(any())).thenThrow(new TaskCreationUnconfirmedException("generated", new IllegalStateException()));
-            var other = request(1); other.put("requestId", "unknown-create");
-            assertThatThrownBy(() -> service.create(other)).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class,
-                    error -> assertThat(error.taskId).isEqualTo("generated"));
+            String text = IntStream.range(0, 100000).mapToObj(i -> "86138" + String.format("%08d", i)).collect(java.util.stream.Collectors.joining("\n"));
+            var report = service.importNumbers("task", file(text + "\n+8613800000000\n\n"));
+            assertThat(report.uniqueCount()).isEqualTo(100000);
+            assertThat(report.addedCount()).isEqualTo(100000);
+            assertThat(report.duplicateCount()).isEqualTo(1);
+            assertThatThrownBy(() -> service.importNumbers("task", file(text + "\n8613900000000"))).hasMessageContaining("100,000");
+            verify(data, times(1000)).importFiniteTaskItems(eq("task"), argThat(batch -> batch.size() == 100
+                    && batch.stream().allMatch(item -> item.ttlMillis() == null && item.payload().get("salt").equals("fixed"))));
+            verifyNoInteractions(creation, lifecycle);
         }
     }
-
-    @Test void uncertainApprovalIsRetainedWithoutResubmittingItems() {
+    @Test void validatesTheWholeFileBeforeWritesAndAlwaysDeletesTheSpool() throws Exception {
         try (var service = service()) {
-            when(lifecycle.approve("task")).thenThrow(new IllegalStateException("approval response lost"));
-            for (int i = 0; i < 2; i++) assertThatThrownBy(() -> service.create(request(1)))
-                    .isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class, error -> {
-                        assertThat(error.status).isEqualTo(503); assertThat(error.taskId).isEqualTo("task");
-                    });
-            verify(creation, times(1)).create(any());
-            verify(data, times(1)).appendFiniteTaskItems(anyString(), anyList());
-            verify(lifecycle, times(1)).approve("task");
+            assertThatThrownBy(() -> service.importNumbers("task", file("86123\nwrong"))).hasMessageContaining("第 2 行");
+            assertThatThrownBy(() -> service.importNumbers("task", new ByteArrayInputStream(new byte[]{(byte)0xc3, 0x28}))).hasMessageContaining("UTF-8");
+            assertThatThrownBy(() -> service.importNumbers("task", file("1".repeat(AppCheckNumberFile.MAX_BYTES + 1)))).hasMessageContaining("10 MiB");
+            verify(data, never()).importFiniteTaskItems(anyString(), anyList());
+            var spool = AppCheckNumberFile.read(file("\uFEFF86123\r\n +86123 \r\n"), "CN");
+            assertThat(spool.duplicateCount()).isEqualTo(1);
+            var path = spool.file(); spool.close(); assertThat(path).doesNotExist();
         }
     }
-
-    @Test void retainedRequestCapacityRejectsBeforeEffectsButStillAllowsDuplicates() {
+    @Test void stopsAtAnUnconfirmedBatchAndAllowsApprovalOfTheObservedPartialSet() {
         try (var service = service()) {
-            for (int i = 0; i < 50; i++) {
-                var input = request(1); input.put("requestId", "capacity-" + i); service.create(input);
-            }
-            clearInvocations(creation, data, lifecycle);
-            assertThatThrownBy(() -> service.create(request(1))).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class,
-                    error -> assertThat(error.status).isEqualTo(429));
-            var duplicate = request(1); duplicate.put("requestId", "capacity-0");
-            assertThat(service.create(duplicate).taskId()).isEqualTo("task");
-            verifyNoInteractions(creation, data, lifecycle);
-            service.stop();
-            assertThatThrownBy(() -> service.create(duplicate)).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class,
-                    error -> assertThat(error.status).isEqualTo(503));
+            when(data.importFiniteTaskItems(anyString(), anyList())).thenAnswer(call -> {
+                List<TaskItemRequest> items = call.getArgument(1);
+                var outcomes = new LinkedHashMap<String, ActionOutcome>();
+                items.forEach(item -> outcomes.put(item.messageId(), ActionOutcome.applied()));
+                return outcomes;
+            })
+                    .thenThrow(new IllegalStateException());
+            String text = IntStream.range(0, 101).mapToObj(i -> "86138" + String.format("%08d", i)).collect(java.util.stream.Collectors.joining("\n"));
+            assertThatThrownBy(() -> service.importNumbers("task", file(text))).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class,
+                    error -> { assertThat(error.status).isEqualTo(503); assertThat(error.taskId).isEqualTo("task");
+                        assertThat(error.confirmedAdded).isEqualTo(100L); assertThat(error.existing).isZero(); });
+            verify(data, times(2)).importFiniteTaskItems(eq("task"), anyList());
+            when(data.observeItemScoreCounts(List.of("task"))).thenReturn(Map.of("task", new TaskItemScoreCounts(100, Map.of(1, 100L))));
+            assertThatThrownBy(() -> service.approve("task", 101)).hasMessageContaining("数量");
+            service.approve("task", 100); verify(lifecycle).approve("task");
+            when(queries.get("app-checks", "task")).thenReturn(entry("task", "terminal", true));
+            assertThatThrownBy(() -> service.importNumbers("task", file("86123"))).hasMessageContaining("待审核");
         }
     }
-
-    @Test void duplicatesShareInFlightWorkAndThirdNewRequestGetsBackpressure() throws Exception {
+    @Test void oldTasksRemainReadableButCannotAcceptNewNumberIdentities() {
+        try (var service = service()) {
+            when(queries.get("app-checks", "task")).thenReturn(entry("task", "pre_review", false));
+            assertThatThrownBy(() -> service.importNumbers("task", file("86123"))).hasMessageContaining("新版本");
+            service.closeTask("task"); verify(lifecycle).close("task");
+        }
+    }
+    @Test void importConcurrencyIsReleasedAfterEachFile() throws Exception {
         try (var service = service(); var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var entered = new CountDownLatch(2); var release = new CountDownLatch(1);
-            when(creation.create(any())).thenAnswer(call -> { entered.countDown();
-                assertThat(release.await(5, TimeUnit.SECONDS)).isTrue(); return new TaskCreateResponse("task"); });
-            try {
-                var first = executor.submit(() -> service.create(request(1)));
-                var duplicate = executor.submit(() -> service.create(request(1)));
-                var secondInput = request(1); secondInput.put("requestId", "second");
-                var second = executor.submit(() -> service.create(secondInput));
-                assertThat(entered.await(3, TimeUnit.SECONDS)).isTrue();
-                var third = request(1); third.put("requestId", "third");
-                assertThatThrownBy(() -> service.create(third)).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class,
-                        error -> assertThat(error.status).isEqualTo(429));
-                release.countDown();
-                assertThat(first.get(3, TimeUnit.SECONDS)).isEqualTo(duplicate.get(3, TimeUnit.SECONDS)); second.get(3, TimeUnit.SECONDS);
-                verify(creation, times(2)).create(any());
+            when(data.importFiniteTaskItems(anyString(), anyList())).thenAnswer(call -> {
+                entered.countDown(); assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
+                List<TaskItemRequest> items = call.getArgument(1);
+                return Map.of(items.getFirst().messageId(), ActionOutcome.applied());
+            });
+            var a = executor.submit(() -> service.importNumbers("a", file("86123")));
+            var b = executor.submit(() -> service.importNumbers("b", file("86123")));
+            try { assertThat(entered.await(2, TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(() -> service.importNumbers("c", file("86123"))).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class, e -> assertThat(e.status).isEqualTo(429));
             } finally { release.countDown(); }
+            a.get(); b.get(); assertThat(service.importNumbers("c", file("86123")).addedCount()).isEqualTo(1);
         }
     }
-
     @Test void queriesStoredTruthWithoutLocalSubmissionAndPreservesBadContentRows() {
         try (var service = service()) {
             var task = new TaskView("stored", "app-checks", "app-a-sim", "CLOSE_WHEN_IDLE", List.of(), Map.of(), "stored name",
@@ -201,6 +170,39 @@ class AppCheckTaskServiceTest {
             assertThat(rows.get(2)).containsEntry("resultStatus", "failed").doesNotContainKey("registered");
             assertThat(response).containsEntry("resultsTruncated", true);
             verifyNoInteractions(creation, lifecycle);
+        }
+    }
+    @Test void exportsOnlyAssociatedBusinessAnswersAndDeletesTheIntermediateFile() throws Exception {
+        try (var service = service()) {
+            when(queries.get("app-checks", "task")).thenReturn(entry("task", "terminal", true));
+            var items = new LinkedHashMap<String, TaskItem>();
+            var records = new ArrayList<String>();
+            for (String id : List.of("registered", "unregistered", "bad-json", "no-answer", "wrong-number", "no-item", "no-number", "wrong-id")) {
+                var payload = id.equals("no-number") ? Map.<String, Object>of() : Map.<String, Object>of("number", "+86123");
+                if (!id.equals("no-item")) items.put(id, new TaskItem(id.equals("wrong-id") ? "another" : id,
+                        AppCheckTaskService.EVENT, 1L, payload, 5, 600_000L, new WorkerQuery("worker.any", Map.of())));
+                var content = new LinkedHashMap<String, Object>(Map.of("number", "+86123", "workerGroupId", "app-a-sim",
+                        "workerId", "worker", "registered", !id.equals("unregistered"), "simulatedDelayMillis", 2));
+                if (id.equals("no-answer")) content.remove("registered");
+                if (id.equals("no-number")) content.remove("number");
+                if (id.equals("wrong-number")) content.put("number", "+86124");
+                records.add(Jsons.toJson(Map.of("messageId", id, "opaqueResultPayload", id.equals("bad-json") ? "not-json" : Jsons.toJson(content))));
+            }
+            when(data.loadTaskItems(eq("task"), anyList())).thenReturn(items);
+            for (String filter : List.of("all", "registered", "unregistered")) {
+                var source = Files.createTempFile("app-check-export-test-", ".jsonl");
+                Files.write(source, records, StandardCharsets.UTF_8);
+                when(exports.export("task")).thenReturn(new TaskResultsExportService.TaskResultsExport(source));
+                var csv = service.export("task", filter);
+                try {
+                    assertThat(source).doesNotExist();
+                    assertThat(csv.count()).isEqualTo(filter.equals("all") ? 2L : 1L);
+                    var lines = Files.readAllLines(csv.file(), StandardCharsets.UTF_8);
+                    assertThat(lines).hasSize((int) csv.count() + 1);
+                    assertThat(lines.get(1)).startsWith("\"'+86123\",");
+                    if (!filter.equals("all")) assertThat(lines.get(1)).contains(filter.equals("registered") ? "已注册" : "未注册");
+                } finally { Files.deleteIfExists(source); Files.deleteIfExists(csv.file()); }
+            }
         }
     }
 }

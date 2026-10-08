@@ -174,6 +174,12 @@ class AppChecksIntegrationTest {
             assertThat(rows(late)).allSatisfy(row -> assertThat(row).containsEntry("simulatedDelayMillis", 6000L));
             assertThat(world.attempts).anyMatch(attempt -> attempt.number().equals(rows(late).getFirst().get("number"))
                     && !attempt.failed() && attempt.elapsedNanos() >= TimeUnit.SECONDS.toNanos(6));
+            var csv = world.post("/api/v1/app-checks/tasks/" + registered + "/results:export?filter=registered", "", "application/json");
+            assertThat(csv.statusCode()).isEqualTo(200);
+            assertThat(csv.headers().firstValue("X-Export-Count")).contains("101");
+            assertThat(csv.body().lines().count()).isEqualTo(102);
+            var emptyCsv = world.post("/api/v1/app-checks/tasks/" + failed + "/results:export", "", "application/json");
+            assertThat(emptyCsv.headers().firstValue("X-Export-Count")).contains("0");
             var original = task(negative);
             world.restart();
             var retained = world.get("/api/v1/app-checks/tasks/" + unregistered);
@@ -181,6 +187,54 @@ class AppChecksIntegrationTest {
             assertThat(rows(retained)).containsExactlyInAnyOrderElementsOf(rows(negative));
             assertThat(world.get("/api/v1/app-checks/tasks?limit=100").get("tasks")).isInstanceOf(List.class);
         }
+    }
+
+    @Test @Timeout(180)
+    void emptyCreationLargeImportIdempotencyAndManualClosureUseRealOwners() throws Exception {
+        try (var world = new World()) {
+            String path = "/api/v1/app-checks/tasks";
+            var body = Map.of("requestId", "large-import", "appId", "app-a", "country", "CN", "simulation",
+                    Map.of("ranges", Map.of("registered", List.of(0, 1000), "unregistered", List.of(1000, 1000), "failed", List.of(1000, 1000)), "delayMs", List.of(0, 0)));
+            String json = Jsons.toJson(body);
+            var created = world.post(path, json, "application/json");
+            assertThat(created.statusCode()).isEqualTo(201);
+            String id = (String) Jsons.parseObject(created.body()).get("taskId");
+            String target = path + "/" + id;
+            assertThat(task(world.get(target))).containsEntry("state", "pre_review").containsEntry("totalCount", 0L);
+            assertThat(world.post(target + "/approve", "0", "application/json").statusCode()).isEqualTo(409);
+            assertThat(world.post(target + "/numbers:import", "86123\nwrong", "text/plain").statusCode()).isEqualTo(400);
+            assertThat(task(world.get(target))).containsEntry("totalCount", 0L);
+            String numbers = IntStream.range(0, 100000).mapToObj(i -> "86138" + String.format("%08d", i)).collect(java.util.stream.Collectors.joining("\n"));
+            var imported = world.post(target + "/numbers:import", numbers, "text/plain");
+            assertThat(imported.statusCode()).as(imported.body()).isEqualTo(200);
+            assertThat(Jsons.parseObject(imported.body())).containsEntry("addedCount", 100000L);
+            var owner = world.context.getBean(com.xa.mass.kernel.task.TaskRuntime.class);
+            // Discover only caller-known IDs through the App Checks import identity convention.
+            String message = "number-" + numberIdentity("+8613800000000");
+            var original = owner.loadTaskItems(id, List.of(message)).get(message);
+            assertThat(original.expireAtMillis() - original.createdAtMillis()).isEqualTo(Duration.ofDays(365).toMillis());
+            var duplicate = world.post(target + "/numbers:import", "+8613800000000\n8613800000000\n8613911111111", "text/plain");
+            assertThat(Jsons.parseObject(duplicate.body())).containsEntry("addedCount", 1L).containsEntry("existingCount", 1L).containsEntry("duplicateCount", 1L);
+            assertThat(owner.loadTaskItems(id, List.of(message)).get(message)).isEqualTo(original);
+            world.restart();
+            var repeated = world.post(path, json, "application/json");
+            assertThat(repeated.statusCode()).isEqualTo(201);
+            assertThat(Jsons.parseObject(repeated.body()).get("taskId")).isEqualTo(id);
+            assertThat(task(world.get(target))).containsEntry("totalCount", 100001L).containsEntry("state", "pre_review");
+            assertThat(world.post(target + "/approve", "100000", "application/json").statusCode()).isEqualTo(409);
+            assertThat(world.post(target + "/approve", "100001", "application/json").statusCode()).isEqualTo(200);
+            assertThat(world.post(target + "/close", "", "application/json").statusCode()).isEqualTo(200);
+            assertThat(task(world.get(target))).containsEntry("activeCount", 100001L).containsEntry("state", "terminal");
+            assertThat(world.post(target + "/approve", "100001", "application/json").statusCode()).isEqualTo(409);
+        }
+    }
+
+    static String numberIdentity(String number) throws Exception {
+        var bytes = new ByteArrayOutputStream();
+        try (var tuple = new DataOutputStream(bytes)) {
+            for (String value : List.of("app-checks/v2/number", number)) { byte[] encoded = value.getBytes(StandardCharsets.UTF_8); tuple.writeInt(encoded.length); tuple.write(encoded); }
+        }
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
     }
 
     @SuppressWarnings("unchecked") static Map<String, Object> task(Map<String, Object> detail) { return (Map<String, Object>) detail.get("task"); }
@@ -294,15 +348,22 @@ class AppChecksIntegrationTest {
         }
         String create(String request, String app, int count, int registered, int unregistered, int delay) throws Exception {
             int offset = ++sequence * 1000;
-            var body = Map.of("requestId", request, "name", request, "appId", app, "country", "CN",
-                    "numbers", IntStream.range(offset, offset + count).mapToObj(i -> "+8613800" + String.format("%06d", i)).toList(),
+            var numbers = IntStream.range(offset, offset + count).mapToObj(i -> "+8613800" + String.format("%06d", i)).toList();
+            var body = Map.of("requestId", request, "appId", app, "country", "CN",
                     "simulation", Map.of("ranges", Map.of("registered", List.of(0, registered), "unregistered", List.of(registered, unregistered),
                             "failed", List.of(unregistered, 1000)), "delayMs", List.of(delay, delay)));
             var response = http.send(HttpRequest.newBuilder(base.resolve("/api/v1/app-checks/tasks"))
                     .timeout(Duration.ofSeconds(10)).header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(Jsons.toJson(body))).build(), HttpResponse.BodyHandlers.ofString());
             assertThat(response.statusCode()).isEqualTo(201);
-            return (String) Jsons.parseObject(response.body()).get("taskId");
+            String id = (String) Jsons.parseObject(response.body()).get("taskId");
+            assertThat(post("/api/v1/app-checks/tasks/" + id + "/numbers:import", String.join("\n", numbers), "text/plain").statusCode()).isEqualTo(200);
+            assertThat(post("/api/v1/app-checks/tasks/" + id + "/approve", Integer.toString(count), "application/json").statusCode()).isEqualTo(200);
+            return id;
+        }
+        HttpResponse<String> post(String path, String body, String contentType) throws Exception {
+            return http.send(HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(90))
+                    .header("Content-Type", contentType).POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
         }
         Map<String, Object> settled(String id, int total) throws Exception {
             return settled(id, total, 45);

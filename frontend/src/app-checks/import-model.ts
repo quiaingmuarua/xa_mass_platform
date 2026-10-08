@@ -31,6 +31,16 @@ export interface ImportReport {
 export interface ImportSnapshot {
   sourceFile: string;
   summary: Omit<ImportReport, "rows" | "numbers" | "columns">;
+  receipt?: ImportReceipt;
+}
+export interface ImportReceipt {
+  taskId: string;
+  inputCount: number;
+  emptyCount: number;
+  duplicateCount: number;
+  uniqueCount: number;
+  addedCount: number;
+  existingCount: number;
 }
 
 // Physical starting lines identify the first invalid record without a review table.

@@ -170,7 +170,7 @@ class TaskCallSubmissionServiceTest {
         var runtime = mock(TaskRuntime.class);
         var catalog = mock(TaskResourceCatalog.class);
         var service = new TaskDataService(runtime, catalog, new TaskItemMapper(),
-                mock(TaskItemScoreBandCore.class), new TaskItemOutcomeProperties(Map.of()), mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class));
+                mock(TaskItemScoreBandCore.class), new TaskItemOutcomeProperties(Map.of()), mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class), mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), new com.xa.mass.server.operation.OperationGuard());
         var cases = new ArrayList<List<String>>();
         cases.add(null);
         cases.add(List.of());

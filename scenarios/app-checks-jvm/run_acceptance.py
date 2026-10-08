@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import time
 import uuid
+import urllib.request
 
 SCENARIO = Path(__file__).resolve().parent
 PREVIEW = SCENARIO.parents[1] / "distribution/server"
@@ -47,9 +48,27 @@ def hash_value(domain, worker_id, salt, number):
 
 
 def request(label, app, offset, count, ranges, delay):
-    return {"requestId": label, "name": label, "appId": app, "country": "CN",
+    return {"requestId": label, "appId": app, "country": "CN",
             "numbers": [f"+8613800{index:06d}" for index in range(offset, offset + count)],
             "simulation": {"ranges": dict(zip(("registered", "unregistered", "failed"), ranges)), "delayMs": delay}}
+
+
+def creation_input(case):
+    return {key: case[key] for key in ("requestId", "appId", "country", "simulation")}
+
+
+def create_import_approve(run, http, case):
+    task_id = http(run.url, "/api/v1/app-checks/tasks", creation_input(case))["taskId"]
+    route = f"/api/v1/app-checks/tasks/{task_id}"
+    require(http(run.url, route)["task"]["totalCount"] == 0, "Creation imported work implicitly")
+    request = urllib.request.Request(run.url + route + "/numbers:import",
+                                     data="\n".join(case["numbers"]).encode("utf-8"),
+                                     headers={"Content-Type": "text/plain;charset=UTF-8"}, method="POST")
+    with urllib.request.urlopen(request, timeout=15) as response:
+        receipt = json.load(response)
+    require(receipt["addedCount"] == len(case["numbers"]), "Import did not confirm every input")
+    http(run.url, route + "/approve", len(case["numbers"]))
+    return task_id
 
 
 def functional(run, http):
@@ -76,9 +95,9 @@ def functional(run, http):
         request("mixed", "app-b", 300, 16, ([0, 500], [500, 900], [900, 1000]), [10, 50]),
     ]
     # Submit before observing closure: Tasks coexist within and across Groups.
-    tasks = [(case, http(run.url, "/api/v1/app-checks/tasks", case)["taskId"]) for case in cases]
+    tasks = [(case, create_import_approve(run, http, case)) for case in cases]
     require(len({task for _, task in tasks}) == len(cases), "Task identities collided")
-    require(http(run.url, "/api/v1/app-checks/tasks", cases[0])["taskId"] == tasks[0][1], "Submission identity changed")
+    require(http(run.url, "/api/v1/app-checks/tasks", creation_input(cases[0]))["taskId"] == tasks[0][1], "Submission identity changed")
     summaries = []
     for case, task_id in tasks:
         detail = {}

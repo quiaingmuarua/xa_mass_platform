@@ -5,6 +5,8 @@ import com.xa.mass.kernel.assignment.WorkerQuery;
 import org.springframework.stereotype.Service;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
+import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.server.operation.OperationGuard;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
@@ -33,6 +35,8 @@ public final class TaskDataService {
     private final TaskItemMapper taskItems;
     private final TaskItemScoreBandCore itemScores;
     private final TaskItemOutcomeProperties outcomes;
+    private final TaskScoreBandCore taskScores;
+    private final OperationGuard operations;
 
     public TaskDataService(
             TaskRuntime taskRuntime,
@@ -40,7 +44,9 @@ public final class TaskDataService {
             TaskItemMapper taskItems,
             TaskItemScoreBandCore itemScores,
             TaskItemOutcomeProperties outcomes,
-            com.xa.mass.workermatching.WorkerMatchingCatalog matchingCatalog
+            com.xa.mass.workermatching.WorkerMatchingCatalog matchingCatalog,
+            TaskScoreBandCore taskScores,
+            OperationGuard operations
     ) {
         this.taskRuntime = taskRuntime;
         this.taskCatalog = taskCatalog;
@@ -48,12 +54,18 @@ public final class TaskDataService {
         this.itemScores = itemScores;
         this.outcomes = outcomes;
         this.matchingCatalog = matchingCatalog;
+        this.taskScores = taskScores;
+        this.operations = operations;
     }
 
     public Map<String, ActionOutcome> appendFiniteTaskItems(
             String taskId,
             List<TaskItemRequest> requestedItems
     ) {
+        return operations.taskMutation(taskId, () -> appendFiniteTaskItemsObserved(taskId, requestedItems));
+    }
+
+    private Map<String, ActionOutcome> appendFiniteTaskItemsObserved(String taskId, List<TaskItemRequest> requestedItems) {
         if (taskId == null || taskId.isBlank() || requestedItems == null || requestedItems.isEmpty() || requestedItems.size() > 100)
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.appendItems", "Expected taskId and 1..100 Items", null);
         for (TaskItemRequest item : requestedItems) {
@@ -205,6 +217,75 @@ public final class TaskDataService {
         try { return itemScores.observeItemScoreCounts(taskIds); }
         catch (RuntimeException error) {
             throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.observeCounts", null, error);
+        }
+    }
+
+    /** Caller owns a whole-file Task mutation; nested batches retain that same admission. */
+    public Map<String, ActionOutcome> importFiniteTaskItems(String taskId, List<TaskItemRequest> requestedItems) {
+        return operations.taskMutation(taskId, () -> {
+            if (requestedItems == null || requestedItems.isEmpty() || requestedItems.size() > 100
+                    || requestedItems.stream().anyMatch(item -> item == null || item.messageId() == null || item.messageId().isBlank()
+                    || item.eventCode() == null || item.eventCode().isBlank() || item.payload() == null || item.workerSelector() == null
+                    || item.priority() < 0 || item.priority() > 10 || item.ttlMillis() != null))
+                throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.importItems", "Expected 1..100 Items using default TTL", null);
+            try {
+                var descriptor = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
+                if (descriptor == null || !isPublicFiniteTask(descriptor))
+                    throw new ServerException(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, "taskData.importItems", null, null);
+                var taskState = taskScores.getScoreStates(List.of(taskId)).get(taskId);
+                if (taskState == null) throw new IllegalStateException("Task state is unavailable");
+                if (taskState.band() != TaskScoreBandCore.TaskScoreBand.PRE_REVIEW)
+                    throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "taskData.importItems", "Task must await review", null);
+                var inputs = latestItems(requestedItems);
+                if (inputs.size() != requestedItems.size()) throw new IllegalArgumentException("Duplicate input identity");
+                var ids = List.copyOf(inputs.keySet());
+                var existing = taskRuntime.loadTaskItems(taskId, ids);
+                var states = itemScores.getItemScoreStates(taskId, ids);
+                var writes = new ArrayList<TaskItem>();
+                var result = new LinkedHashMap<String, ActionOutcome>();
+                long now = taskItems.nowMillis();
+                for (var input : inputs.values()) {
+                    var normalized = matchingCatalog.normalizeQuery(descriptor.workerGroupId(), input.workerSelector());
+                    var item = existing.get(input.messageId());
+                    var state = states.get(input.messageId());
+                    if (item == null) {
+                        if (state != null) throw new IllegalStateException("Item Score has no execution data");
+                        writes.add(taskItems.finiteItem(input, now, normalized));
+                    } else {
+                        if (!item.eventCode().equals(input.eventCode()) || !sameJson(item.payload(), input.payload())
+                                || item.priority() != input.priority()
+                                || !item.workerSelector().executorName().equals(normalized.executorName())
+                                || !sameJson(item.workerSelector().input(), normalized.input()))
+                            throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "taskData.importItems", "Existing Item content differs", null);
+                        if (state != null) result.put(input.messageId(), ActionOutcome.unchanged());
+                        else writes.add(item); // Explicit re-import reuses the original absolute expiry and creation time.
+                    }
+                }
+                if (!writes.isEmpty()) result.putAll(appendResponse(taskRuntime.appendItems(taskId, writes)));
+                return Collections.unmodifiableMap(result);
+            } catch (ServerException known) { throw known;
+            } catch (RuntimeException error) {
+                throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.importItems", null, error);
+            }
+        });
+    }
+
+    private static boolean sameJson(Object left, Object right) {
+        // Stored JSON can materialize an integral value as Integer rather than the caller's Long.
+        return com.xa.mass.workerdelivery.json.Jsons.parseObject(com.xa.mass.workerdelivery.json.Jsons.toJson(Collections.singletonMap("value", left)))
+                .equals(com.xa.mass.workerdelivery.json.Jsons.parseObject(com.xa.mass.workerdelivery.json.Jsons.toJson(Collections.singletonMap("value", right))));
+    }
+
+    public Map<String, TaskItem> loadTaskItems(String taskId, List<String> messageIds) {
+        if (taskId == null || taskId.isBlank() || messageIds == null || messageIds.isEmpty() || messageIds.size() > 100
+                || messageIds.stream().anyMatch(id -> id == null || id.isBlank()))
+            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.loadItems", "Expected 1..100 IDs", null);
+        try {
+            requireQueryableTask(taskId, "taskData.loadItems");
+            return taskRuntime.loadTaskItems(taskId, messageIds);
+        } catch (ServerException known) { throw known;
+        } catch (RuntimeException error) {
+            throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.loadItems", null, error);
         }
     }
 

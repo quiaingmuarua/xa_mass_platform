@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ImportSnapshot } from "./import-model";
+import type { ImportSnapshot, ImportReceipt } from "./import-model";
 import type { PreviewState, ExportFilter, TaskActivity } from "./workbench";
 import {
   catalogSchema,
@@ -17,8 +17,13 @@ export interface AppCheckTaskSource {
   listTasks(): Promise<{ tasks: CheckTask[]; truncated: boolean }>;
   loadTask(taskId: string): Promise<CheckDetail>;
   createTask(input: CreateCheckTask): Promise<{ taskId: string }>;
+  importNumbers?(
+    taskId: string,
+    file: Blob,
+    summary?: ImportSnapshot
+  ): Promise<ImportReceipt>;
   // Explicit Mock interactions for the design preview; the API capabilities remain unchanged.
-  approveTask?(taskId: string): Promise<void>;
+  approveTask?(taskId: string, expectedCount: number): Promise<void>;
   closeTask?(taskId: string): Promise<void>;
   advanceTask?(taskId: string, late?: boolean): Promise<void>;
   completeTask?(taskId: string): Promise<void>;
@@ -45,6 +50,29 @@ export class AppCheckCreationUnconfirmed extends Error {
     super("提交结果未确认。请核对任务列表，不会自动重试或重新创建。");
   }
 }
+export class AppCheckImportUnconfirmed extends Error {
+  constructor(
+    public readonly taskId: string,
+    message = "导入结果未确认，请核对实际数量或显式重新导入。"
+  ) {
+    super(message);
+  }
+}
+async function requireResponse(response: Response): Promise<Response> {
+  if (!response.ok) {
+    const value = z
+      .object({ message: z.string().optional(), taskId: z.string().optional() })
+      .safeParse(await response.json().catch(() => null));
+    throw new AppCheckApiError(
+      response.status,
+      value.success
+        ? (value.data.message ?? `请求失败 (${response.status})`)
+        : `请求失败 (${response.status})`,
+      value.success ? value.data.taskId : undefined
+    );
+  }
+  return response;
+}
 async function request(
   path: string,
   body?: unknown,
@@ -56,22 +84,11 @@ async function request(
     body: body === undefined ? undefined : JSON.stringify(body),
     signal
   });
-  if (!response.ok) {
-    const failure = z
-      .object({ message: z.string().optional(), taskId: z.string().optional() })
-      .safeParse(await response.json().catch(() => null));
-    throw new AppCheckApiError(
-      response.status,
-      failure.success
-        ? (failure.data.message ?? `请求失败 (${response.status})`)
-        : `请求失败 (${response.status})`,
-      failure.success ? failure.data.taskId : undefined
-    );
-  }
-  return response.json();
+  return (await requireResponse(response)).json();
 }
 export class ApiAppCheckTaskSource implements AppCheckTaskSource {
   readonly mode = "api";
+  private readonly imports = new Map<string, ImportSnapshot>();
   async catalog(signal?: AbortSignal) {
     return catalogSchema.parse(await request("/catalog", undefined, signal));
   }
@@ -89,10 +106,8 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
     try {
       const requestBody = {
         requestId: input.requestId,
-        name: input.name,
         appId: input.appId,
         country: input.country,
-        numbers: input.numbers,
         simulation: input.simulation
       };
       return z
@@ -110,5 +125,70 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
         error instanceof AppCheckApiError ? error.taskId : undefined
       );
     }
+  }
+  async importNumbers(
+    taskId: string,
+    file: Blob,
+    summary?: ImportSnapshot
+  ): Promise<ImportReceipt> {
+    try {
+      const response = await requireResponse(
+        await fetch(
+          `/api/v1/app-checks/tasks/${encodeURIComponent(taskId)}/numbers:import`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=UTF-8" },
+            body: file
+          }
+        )
+      );
+      const count = z.number().int().nonnegative();
+      const receipt = z
+        .object({
+          taskId: z.literal(taskId),
+          inputCount: count,
+          emptyCount: count,
+          duplicateCount: count,
+          uniqueCount: count,
+          addedCount: count,
+          existingCount: count
+        })
+        .parse(await response.json());
+      if (summary) this.imports.set(taskId, structuredClone({ ...summary, receipt }));
+      return receipt;
+    } catch (error) {
+      if (
+        error instanceof AppCheckApiError &&
+        error.status < 500 &&
+        error.status !== 408
+      )
+        throw error;
+      throw new AppCheckImportUnconfirmed(
+        taskId,
+        error instanceof Error ? error.message : undefined
+      );
+    }
+  }
+  async loadImport(taskId: string) {
+    const saved = this.imports.get(taskId);
+    return saved ? structuredClone(saved) : undefined;
+  }
+  async approveTask(taskId: string, expectedCount: number) {
+    await request(`/tasks/${encodeURIComponent(taskId)}/approve`, expectedCount);
+  }
+  async closeTask(taskId: string) {
+    await request(`/tasks/${encodeURIComponent(taskId)}/close`, {});
+  }
+  async exportTask(taskId: string, filter: ExportFilter) {
+    const response = await requireResponse(
+      await fetch(
+        `/api/v1/app-checks/tasks/${encodeURIComponent(taskId)}/results:export?filter=${filter}`,
+        { method: "POST" }
+      )
+    );
+    const header = response.headers.get("X-Export-Count");
+    if (header === null) throw new Error("导出数量未确认");
+    const count = z.number().int().nonnegative().parse(Number(header));
+    return { blob: await response.blob(), fileName: `${taskId}-${filter}.csv`, count };
   }
 }

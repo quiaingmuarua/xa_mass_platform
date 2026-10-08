@@ -1,6 +1,7 @@
+import { importedTask } from "./app-check-fixture";
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checkName, parseSimulation, rangeExamples } from "../src/app-checks/model";
+import { parseSimulation, rangeExamples } from "../src/app-checks/model";
 import { hashValue, verifyPreview } from "../src/app-checks/verify";
 import {
   MockAppCheckTaskSource,
@@ -63,11 +64,6 @@ describe("App Checks admission and independent recomputation", () => {
   ])("rejects illegal description %#", (input) =>
     expect(() => parseSimulation(input)).toThrow()
   );
-  it("uses submission local time for display name, without minting task identity", () => {
-    expect(checkName("app-a", "CN", 12, new Date(2026, 8, 18, 9, 4, 2))).toBe(
-      "App A · 中国 · 12 个号码 · 2026-09-18 09:04:02"
-    );
-  });
   it("matches Java/Python vectors, unsigned high bits and UTF-8 byte lengths", async () => {
     expect(await hashValue("outcome", "worker-a", "fixed-salt", "+8613800000001")).toBe(
       3163400851481352025n
@@ -132,6 +128,55 @@ describe("App Checks admission and independent recomputation", () => {
 });
 
 describe("App Checks data boundary", () => {
+  it("connects file import, quantity approval, close and CSV without a separate count scan", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{"taskId":"t"}'))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            taskId: "t",
+            inputCount: 1,
+            emptyCount: 0,
+            duplicateCount: 0,
+            uniqueCount: 1,
+            addedCount: 1,
+            existingCount: 0
+          })
+        )
+      )
+      .mockResolvedValueOnce(new Response('{"status":"applied"}'))
+      .mockResolvedValueOnce(new Response('{"status":"applied"}'))
+      .mockResolvedValueOnce(
+        new Response("号码,注册状态,应用,地区\n'86123,已注册,app-a,CN", {
+          headers: { "X-Export-Count": "1" }
+        })
+      );
+    vi.stubGlobal("fetch", fetcher);
+    const source = new ApiAppCheckTaskSource();
+    await source.createTask(create);
+    const file = new Blob(["86123"]);
+    await source.importNumbers("t", file);
+    await source.approveTask("t", 1);
+    await source.closeTask("t");
+    expect(await source.exportTask("t", "registered")).toMatchObject({
+      fileName: "t-registered.csv",
+      count: 1
+    });
+    expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
+      "/api/v1/app-checks/tasks",
+      "/api/v1/app-checks/tasks/t/numbers:import",
+      "/api/v1/app-checks/tasks/t/approve",
+      "/api/v1/app-checks/tasks/t/close",
+      "/api/v1/app-checks/tasks/t/results:export?filter=registered"
+    ]);
+    expect(fetcher.mock.calls[1][1]).toMatchObject({
+      method: "POST",
+      body: file,
+      headers: { "Content-Type": "text/plain;charset=UTF-8" }
+    });
+    expect(fetcher.mock.calls[2][1].body).toBe("1");
+  });
   it("keeps prototype review and complete CSV export inside Mock", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
@@ -140,10 +185,10 @@ describe("App Checks data boundary", () => {
       { length: 1001 },
       (_, i) => `+86138${String(i).padStart(8, "0")}`
     );
-    const { taskId } = await source.createTask({ ...create, numbers });
+    const { taskId } = await importedTask(source, { ...create, numbers });
     expect((await source.loadTask(taskId)).task.state).toBe("pre_review");
     await expect(source.exportTask(taskId, "all")).rejects.toThrow();
-    await source.approveTask(taskId);
+    await source.approveTask(taskId, numbers.length);
     await source.completeTask(taskId);
     expect((await source.loadTask(taskId)).results).toHaveLength(100);
     const exported = await source.exportTask(taskId, "all");
@@ -153,17 +198,19 @@ describe("App Checks data boundary", () => {
         (await source.exportTask(taskId, "unregistered")).count
     ).toBe(exported.count);
     expect(fetcher).not.toHaveBeenCalled();
-    expect(new ApiAppCheckTaskSource()).not.toHaveProperty("approveTask");
-    expect(new ApiAppCheckTaskSource()).not.toHaveProperty("exportTask");
+    expect(new ApiAppCheckTaskSource()).toHaveProperty("approveTask");
+    expect(new ApiAppCheckTaskSource()).toHaveProperty("exportTask");
   });
   it("does not send prototype file metadata to the unchanged API", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response('{"taskId":"task"}'));
     vi.stubGlobal("fetch", fetcher);
-    await new ApiAppCheckTaskSource().createTask({
-      ...create,
-      sourceFile: "numbers.txt"
+    await new ApiAppCheckTaskSource().createTask(create);
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({
+      requestId: create.requestId,
+      appId: create.appId,
+      country: create.country,
+      simulation: create.simulation
     });
-    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual(create);
   });
   it("Mock catalog, creation, list and refresh are network-free, bounded and session-local", async () => {
     const fetcher = vi.fn();

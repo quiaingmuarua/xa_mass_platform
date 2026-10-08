@@ -10,34 +10,21 @@ import java.time.LocalDate;
 import java.util.*;
 
 /** API admission and immutable submission identity; the Worker validates its separate input boundary. */
-record AppCheckSpecification(String requestId, String name, String appId, String country,
-                             List<String> numbers, Map<String, Object> simulation) {
-    static final int MAX_NUMBERS = 1000;
+record AppCheckSpecification(String requestId, String appId, String country, Map<String, Object> simulation) {
     static final Map<String, String> PREFIXES = Map.of("CN", "+86", "US", "+1", "GB", "+44");
 
     static AppCheckSpecification parse(Map<String, Object> input) {
-        if (input == null || !Set.of("requestId", "name", "appId", "country", "numbers", "simulation").containsAll(input.keySet()))
+        if (input == null || !Set.of("requestId", "appId", "country", "simulation").containsAll(input.keySet()))
             throw new IllegalArgumentException("Unknown application check fields");
         String app = text(input.get("appId"), 128);
         if (!AppCheckTaskService.APPS.containsKey(app)) throw new IllegalArgumentException("Unsupported appId");
         String country = text(input.get("country"), 2);
         String prefix = PREFIXES.get(country);
         if (prefix == null) throw new IllegalArgumentException("Unsupported country");
-        if (!(input.get("numbers") instanceof List<?> numbers) || numbers.isEmpty() || numbers.size() > MAX_NUMBERS)
-            throw new IllegalArgumentException("Expected 1..1000 unique international numbers");
-        var normalized = new LinkedHashSet<String>();
-        for (Object entry : numbers) {
-            String number = text(entry, 128).strip();
-            if (!number.matches("\\+[1-9][0-9]{1,14}") || !number.startsWith(prefix) || number.length() <= prefix.length())
-                throw new IllegalArgumentException("Invalid number or country prefix");
-            if (!normalized.add(number)) throw new IllegalArgumentException("Duplicate number");
-        }
-        return new AppCheckSpecification(text(input.get("requestId"), 128),
-                input.get("name") == null ? null : text(input.get("name"), 128), app, country,
-                List.copyOf(normalized), simulation(input.get("simulation")));
+        return new AppCheckSpecification(text(input.get("requestId"), 128), app, country, simulation(input.get("simulation")));
     }
 
-    private static Map<String, Object> simulation(Object value) {
+    static Map<String, Object> simulation(Object value) {
         if (!(value instanceof Map<?, ?> description) || !description.keySet().equals(Set.of("ranges", "delayMs")))
             throw new IllegalArgumentException("Expected simulation ranges and delayMs");
         if (Jsons.toJson(description).length() > 4096) throw new IllegalArgumentException("Simulation exceeds 4096 characters");
@@ -84,9 +71,17 @@ record AppCheckSpecification(String requestId, String name, String appId, String
     }
 
     String salt(LocalDate date) {
+        return digest("app-checks/v2/salt", appId, country, requestId, date.toString());
+    }
+
+    String fingerprint() {
+        return digest("app-checks/v2/create", appId, country, Jsons.toJson(simulation));
+    }
+
+    static String digest(String... values) {
         try {
             var digest = MessageDigest.getInstance("SHA-256");
-            for (String value : List.of("app-checks/v1/salt", appId, country, Integer.toString(numbers.size()), date.toString())) {
+            for (String value : values) {
                 byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
                 digest.update(ByteBuffer.allocate(4).putInt(bytes.length).array());
                 digest.update(bytes);

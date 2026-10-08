@@ -4,7 +4,7 @@ import type { ImportReport } from "./import-model";
 
 export type ExportFilter = "all" | "registered" | "unregistered";
 export type ResultFilter = ExportFilter | "failed" | "invalid" | "unknown";
-export type TaskAction = "preview" | "approve" | "close" | "export";
+export type TaskAction = "preview" | "import" | "approve" | "close" | "export";
 export interface PreviewState {
   endReason?: "completed" | "cancelled" | "stopped";
 }
@@ -27,6 +27,7 @@ export interface CheckDraft {
   requestId: string;
   uncertain: boolean;
   knownTaskId?: string;
+  submissionPhase: "create" | "import";
   busy: boolean;
   error: string;
 }
@@ -56,6 +57,7 @@ export function freshDraft(): CheckDraft {
     column: 0,
     requestId: requestIdentity(),
     uncertain: false,
+    submissionPhase: "create",
     busy: false,
     error: ""
   };

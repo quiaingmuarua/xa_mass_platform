@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { computed, markRaw, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { ArrowLeft, UploadFilled } from "@element-plus/icons-vue";
-import { appLabel, countryLabel, checkName, type Catalog } from "./model";
-import { AppCheckCreationUnconfirmed, type AppCheckTaskSource } from "./task-source";
+import { appLabel, countryLabel, type Catalog, type CheckTask } from "./model";
+import {
+  AppCheckCreationUnconfirmed,
+  AppCheckImportUnconfirmed,
+  type AppCheckTaskSource
+} from "./task-source";
 import { createImportReader } from "./import-reader";
 import { importSnapshot, type ImportOptions } from "./import-model";
 import ImportSummary from "./ImportSummary.vue";
@@ -20,8 +24,14 @@ const props = defineProps<{
   catalog: Catalog;
   session: WorkbenchSession;
   active: boolean;
+  targetTask?: CheckTask;
 }>();
-const emit = defineEmits<{ back: []; created: [taskId: string]; endUnconfirmed: [] }>();
+const emit = defineEmits<{
+  back: [];
+  created: [taskId: string];
+  endUnconfirmed: [];
+  inspect: [];
+}>();
 const draft = computed(() => props.session.draft);
 const reading = ref(false),
   importError = ref(""),
@@ -32,19 +42,10 @@ const reader = createImportReader();
 let generation = 0,
   disposed = false,
   timer: ReturnType<typeof setTimeout> | undefined;
-const preview = computed(() => props.source.mode === "mock");
-const fileLimit = computed(() => (preview.value ? 10 : 1) * 1024 * 1024);
+const fileLimit = computed(() => props.catalog.limits.importFileBytes);
 const blocked = computed(() => draft.value.busy || draft.value.uncertain);
 const report = computed(() => draft.value.report);
 const csvColumns = ref(report.value?.columns ?? ["第 1 列"]);
-const displayName = computed(() =>
-  checkName(
-    draft.value.appId,
-    draft.value.country,
-    report.value?.numbers.length ?? 0,
-    new Date(draft.value.createdAtMillis)
-  )
-);
 const firstInvalid = computed(() =>
   report.value?.rows.find((row) => row.kind === "invalid")
 );
@@ -61,7 +62,7 @@ function options(): ImportOptions {
   return {
     format: draft.value.format,
     country: draft.value.country,
-    limit: props.catalog.limits.numbersPerTask,
+    limit: props.catalog.limits.numbersPerImport,
     header: draft.value.header,
     column: draft.value.column
   };
@@ -163,29 +164,39 @@ async function submit() {
   current.busy = true;
   current.error = "";
   try {
-    const response = await props.source.createTask({
-      requestId: current.requestId,
-      name: displayName.value,
-      appId: current.appId,
-      country: current.country,
-      numbers: [...report.value.numbers],
-      simulation: structuredClone(props.catalog.simulationExample),
-      sourceFile: current.fileName || undefined,
-      importSnapshot: importSnapshot(report.value, current.fileName || "粘贴号码")
-    });
-    if (disposed) {
+    if (!props.source.importNumbers) throw new Error("当前数据源未接入号码导入");
+    if (!current.knownTaskId) {
+      const response = await props.source.createTask({
+        requestId: current.requestId,
+        appId: current.appId,
+        country: current.country,
+        simulation: structuredClone(props.catalog.simulationExample)
+      });
       current.knownTaskId = response.taskId;
-      current.error = "任务已创建，请打开已知任务核对。";
-      current.uncertain = true;
-      return;
     }
-    emit("created", response.taskId);
+    current.submissionPhase = "import";
+    if (!disposed && props.active) {
+      await props.source.importNumbers(
+        current.knownTaskId,
+        new Blob([report.value.numbers.join("\n")], {
+          type: "text/plain;charset=UTF-8"
+        }),
+        importSnapshot(report.value, current.fileName || "粘贴号码")
+      );
+    }
+    if (disposed || !props.active) {
+      current.error = "离开页面时导入未确认，请核对已知任务；再次导入将复用这个任务。";
+      current.uncertain = true;
+    } else emit("created", current.knownTaskId);
   } catch (error) {
-    current.uncertain = error instanceof AppCheckCreationUnconfirmed;
-    current.knownTaskId =
-      error instanceof AppCheckCreationUnconfirmed ? error.taskId : undefined;
+    current.uncertain =
+      error instanceof AppCheckCreationUnconfirmed ||
+      error instanceof AppCheckImportUnconfirmed;
+    if (error instanceof AppCheckCreationUnconfirmed)
+      current.knownTaskId = error.taskId;
     current.error = error instanceof Error ? error.message : "创建失败，已保留草稿";
-    if (!current.uncertain) current.requestId = requestIdentity();
+    if (!current.uncertain && !current.knownTaskId)
+      current.requestId = requestIdentity();
   } finally {
     current.busy = false;
   }
@@ -220,6 +231,10 @@ function downloadTemplate() {
     "号码导入模板.csv"
   );
 }
+function focusHeading() {
+  if (props.active) heading.value?.focus();
+}
+defineExpose({ focusHeading });
 watch(
   () => props.active,
   async (active) => {
@@ -231,9 +246,15 @@ watch(
       draft.value.appId = props.catalog.apps[0].appId;
       draft.value.country = props.catalog.countries[0];
     }
+    if (props.targetTask) {
+      draft.value.appId = props.targetTask.appId!;
+      draft.value.country = props.targetTask.country!;
+      draft.value.knownTaskId = props.targetTask.taskId;
+      draft.value.submissionPhase = "import";
+    }
     if (draft.value.text && !report.value && !blocked.value) void inspect();
     await nextTick();
-    heading.value?.focus();
+    focusHeading();
   },
   { immediate: true }
 );
@@ -249,22 +270,46 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="checks-create-page">
-    <button class="checks-back" :disabled="draft.busy" @click="emit('back')">
+    <button
+      v-if="!targetTask"
+      class="checks-back"
+      :disabled="draft.busy"
+      @click="emit('back')"
+    >
       <ArrowLeft />返回任务列表，保留草稿
     </button>
     <header class="checks-heading">
       <div>
-        <h1 ref="heading" tabindex="-1">创建查询任务</h1>
-        <p class="checks-hint">选择应用和地区，导入号码即可创建。任务名称自动生成。</p>
+        <h1 ref="heading" tabindex="-1">
+          {{ targetTask ? "导入号码" : "创建查询任务" }}
+        </h1>
+        <p class="checks-hint">
+          {{
+            targetTask
+              ? targetTask.name
+              : "选择应用和地区，创建并导入号码。任务名称自动生成，核对后启动。"
+          }}
+        </p>
       </div>
     </header>
     <SubmissionRecovery
       v-if="draft.uncertain"
       :draft="draft"
       :source="source"
+      :create-context="!targetTask"
       @back="emit('back')"
       @end="emit('endUnconfirmed')"
+      @inspect="emit('inspect')"
     />
+    <el-button
+      v-if="draft.uncertain && draft.submissionPhase === 'import' && draft.knownTaskId"
+      :disabled="draft.busy || reading"
+      @click="
+        draft.uncertain = false;
+        submit();
+      "
+      >重新导入当前号码</el-button
+    >
     <details
       v-if="session.unconfirmedSubmissions.length"
       class="checks-surface checks-submission-receipts"
@@ -305,14 +350,18 @@ onBeforeUnmount(() => {
       </ul>
     </details>
     <form
-      id="app-check-create"
+      :id="targetTask ? 'app-check-import' : 'app-check-create'"
       class="checks-surface checks-create-form"
       @submit.prevent="submit"
     >
       <fieldset :disabled="blocked" class="checks-fieldset">
         <div class="checks-two-columns">
           <label class="checks-field"
-            >查询应用<select v-model="draft.appId" aria-label="应用">
+            >查询应用<select
+              v-model="draft.appId"
+              aria-label="应用"
+              :disabled="!!draft.knownTaskId"
+            >
               <option v-for="app in catalog.apps" :key="app.appId" :value="app.appId">
                 {{ appLabel(app.appId) }}
               </option>
@@ -322,6 +371,7 @@ onBeforeUnmount(() => {
             >号码地区<select
               v-model="draft.country"
               aria-label="号码国家"
+              :disabled="!!draft.knownTaskId"
               @change="configurationChanged"
             >
               <option
@@ -338,7 +388,7 @@ onBeforeUnmount(() => {
           <div>
             <h2>导入号码</h2>
             <p class="checks-hint">
-              每批最多 {{ quantity(catalog.limits.numbersPerTask) }} 个号码 ·
+              每次最多 {{ quantity(catalog.limits.numbersPerImport) }} 个号码 ·
               保留国家码，开头的 + 可省略
             </p>
           </div>
@@ -448,17 +498,13 @@ onBeforeUnmount(() => {
           </p>
           <p v-else-if="report.overLimit" role="alert" class="checks-error">
             去重后超过
-            {{ quantity(catalog.limits.numbersPerTask) }} 个号码，请减少后重新导入。
+            {{ quantity(catalog.limits.numbersPerImport) }} 个号码，请减少后重新导入。
           </p>
           <p v-else-if="!report.numbers.length" role="alert" class="checks-error">
             没有可提交的号码，请重新导入。
           </p>
           <p v-else class="checks-hint">
-            校验通过，可创建任务。{{
-              preview
-                ? "创建后进入待审核，确认启动后再查询。"
-                : "当前 API 创建成功后立即开始查询。"
-            }}
+            校验通过。导入后核对实际号码数量，再启动查询。
           </p>
         </template>
       </fieldset>
@@ -474,7 +520,9 @@ onBeforeUnmount(() => {
             native-type="submit"
             :loading="draft.busy"
             :disabled="!valid"
-            >{{ preview ? "创建待审核任务" : "创建并开始查询" }}</el-button
+            >{{
+              targetTask || draft.knownTaskId ? "导入号码" : "创建待审核任务"
+            }}</el-button
           >
         </div>
       </footer>

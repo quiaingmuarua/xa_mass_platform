@@ -27,7 +27,7 @@ const actions = computed<TaskAction[]>(() => {
     props.task.managed || !props.task.appId
       ? ["preview"]
       : stage.value === "pre_review"
-        ? ["approve", "close"]
+        ? ["import", "approve", "close"]
         : stage.value === "running"
           ? ["preview", "close"]
           : stage.value === "terminal"
@@ -37,18 +37,24 @@ const actions = computed<TaskAction[]>(() => {
 });
 const labels: Record<TaskAction, string> = {
   preview: "预览结果",
+  import: "导入号码",
   approve: "核对并启动",
   close: "中止任务",
   export: "导出结果"
 };
 function unavailable(action: TaskAction) {
   if (action === "preview") return "";
+  if (action === "import" && props.task.inputVersion !== "2")
+    return "旧任务不支持追加导入";
+  if (action === "approve" && !props.task.totalCount) return "请先导入号码";
   const supported =
-    action === "approve"
-      ? !!props.source.approveTask
-      : action === "close"
-        ? !!props.source.closeTask
-        : !!props.source.exportTask;
+    action === "import"
+      ? !!props.source.importNumbers
+      : action === "approve"
+        ? !!props.source.approveTask
+        : action === "close"
+          ? !!props.source.closeTask
+          : !!props.source.exportTask;
   if (!supported) return "暂未接入";
   return props.blocked ? "请先等待操作完成或刷新有效状态" : "";
 }

@@ -263,7 +263,7 @@ class RuntimeApiControllerTest {
                 taskItems,
                 itemScores,
                 new TaskItemOutcomeProperties(Map.of(7, "delivered", 8, "read", 9, "replied")),
-                matchingCatalog
+                matchingCatalog, mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), new com.xa.mass.server.operation.OperationGuard()
         );
         TaskRpcProperties rpcProperties = rpcProperties();
         taskRpcRegistry = new TaskRpcWaitRegistry(rpcProperties);
@@ -278,7 +278,7 @@ class RuntimeApiControllerTest {
                 workerCatalog,
                 matchingCatalog,
                 taskRuntime,
-                new TaskIdGenerator(), projects
+                new TaskIdGenerator(), projects, taskCatalog, mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), new com.xa.mass.server.operation.OperationGuard()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
@@ -296,7 +296,7 @@ class RuntimeApiControllerTest {
                                 taskCreation,
                                 new TaskLifecycleService(
                                         taskLifecycle,
-                                        taskCatalog
+                                        taskCatalog, new com.xa.mass.server.operation.OperationGuard()
                                 )
                         ),
                         new TaskDataController(

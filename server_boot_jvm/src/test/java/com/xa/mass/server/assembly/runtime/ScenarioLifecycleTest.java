@@ -58,6 +58,9 @@ class ScenarioLifecycleTest {
             context.registerBean(TaskDataService.class, () -> results);
             context.registerBean(TaskCreationService.class, () -> creation);
             context.registerBean(TaskLifecycleService.class, () -> lifecycle);
+            context.registerBean(com.xa.mass.server.operation.OperationGuard.class);
+            context.registerBean(com.xa.mass.server.task.result.TaskResultsExportService.class,
+                    () -> mock(com.xa.mass.server.task.result.TaskResultsExportService.class));
             context.registerBean(ServerConfiguredRuntimeLifecycleHost.class, () -> platform,
                     definition -> definition.setDestroyMethodName("stop"));
             context.register(PreviewConfiguration.class);

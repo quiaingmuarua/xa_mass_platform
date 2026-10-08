@@ -41,6 +41,10 @@ const current = shallowRef<CheckTask>(),
   detailStale = ref(true);
 const listView = ref<InstanceType<typeof AppCheckList>>();
 const previewView = ref<InstanceType<typeof AppCheckPreviewDrawer>>();
+const importOpen = ref(false),
+  importTask = shallowRef<CheckTask>();
+const importForm = ref<InstanceType<typeof AppCheckCreate>>();
+const importSession = createWorkbenchSession();
 const actionTask = shallowRef<CheckTask>(),
   confirmation = ref<"approve" | "close">();
 const displayConfirmation = ref<"approve" | "close">("approve");
@@ -63,7 +67,9 @@ let previewCanGoBack = false,
 const backgroundPath = computed(() =>
   creating.value ? "/app-checks?view=create" : "/app-checks"
 );
-const operationsBusy = computed(() => actionBusy.value || session.draft.busy);
+const operationsBusy = computed(
+  () => actionBusy.value || session.draft.busy || importSession.draft.busy
+);
 watch(
   confirmation,
   (action) => {
@@ -155,10 +161,7 @@ function openCreate() {
 function created(id: string) {
   newDraft();
   createdTaskId.value = id;
-  notice.value =
-    props.source.mode === "mock"
-      ? "任务已创建，等待核对并启动。"
-      : "任务已创建，可预览查询结果。";
+  notice.value = "任务已创建并导入，等待核对并启动。";
   void router.push("/app-checks");
 }
 function endUnconfirmedDraft() {
@@ -180,6 +183,28 @@ function endUnconfirmedDraft() {
 function clearExportFile() {
   if (exportFile.value) URL.revokeObjectURL(exportFile.value.url);
   exportFile.value = undefined;
+}
+async function imported(id: string) {
+  importOpen.value = false;
+  notice.value = "号码已导入，请核对最新数量后启动。";
+  await refreshVisible(id);
+}
+function endImportDraft() {
+  const draft = importSession.draft;
+  if (!draft.uncertain || draft.busy) return;
+  session.unconfirmedSubmissions.push({
+    requestId: draft.requestId,
+    knownTaskId: draft.knownTaskId,
+    appId: draft.appId,
+    country: draft.country,
+    expectedCount: draft.report?.numbers.length ?? 0,
+    sourceFile: draft.fileName || "粘贴号码",
+    submittedAt: draft.createdAtMillis,
+    endedAt: Date.now()
+  });
+  importOpen.value = false;
+  importSession.draft = freshDraft();
+  notice.value = "导入草稿已结束，原任务及已写入号码保留。";
 }
 async function openExport(task: CheckTask) {
   actionTask.value = task;
@@ -215,6 +240,28 @@ function requestAction(task: CheckTask, action: TaskAction, trigger?: HTMLElemen
   actionError.value = "";
   dialogOrigin = route.fullPath;
   dialogTrigger = trigger;
+  if (action === "import") {
+    if (
+      !props.source.importNumbers ||
+      task.state !== "pre_review" ||
+      task.inputVersion !== "2"
+    )
+      return;
+    if (
+      importSession.draft.uncertain &&
+      importSession.draft.knownTaskId !== task.taskId
+    ) {
+      importSession.draft.error =
+        "请先核对此任务的未确认导入或结束当前草稿，再为其他任务导入。";
+      importOpen.value = true;
+      return;
+    }
+    if (importSession.draft.knownTaskId !== task.taskId)
+      importSession.draft = freshDraft();
+    importTask.value = task;
+    importOpen.value = true;
+    return;
+  }
   if (action === "export") {
     if (props.source.exportTask && task.state === "terminal") void openExport(task);
   } else if (action === "approve" && props.source.approveTask)
@@ -239,16 +286,18 @@ async function perform(action: "approve" | "close") {
   actionError.value = "";
   dismissNotice();
   try {
-    await method.call(props.source, target.taskId);
+    await method.call(props.source, target.taskId, target.totalCount ?? 0);
     if (disposed) return;
     confirmation.value = undefined;
     if (route.fullPath === origin)
       notice.value =
-        action === "approve"
-          ? "任务已核对并启动。"
-          : target.state === "pre_review"
-            ? "任务已取消。"
-            : "任务已中止，已有结果已保留。";
+        props.source.mode === "api"
+          ? "操作请求已处理，请以最新读取的任务状态为准。"
+          : action === "approve"
+            ? "任务已核对并启动。"
+            : target.state === "pre_review"
+              ? "任务已取消。"
+              : "任务已中止，已有结果已保留。";
     await refreshVisible(target.taskId);
   } catch (error) {
     if (!disposed && route.fullPath === origin)
@@ -340,6 +389,7 @@ watch(
     actionError.value = "";
     confirmation.value = undefined;
     exportOpen.value = false;
+    importOpen.value = false;
   },
   { flush: "sync" }
 );
@@ -378,7 +428,7 @@ onBeforeUnmount(() => {
       :session="session"
       :busy="listBusy"
       :action-busy="actionBusy"
-      :submission-busy="session.draft.busy"
+      :submission-busy="session.draft.busy || importSession.draft.busy"
       :error="listError"
       :read-at="listReadAt"
       :truncated="truncated"
@@ -402,7 +452,7 @@ onBeforeUnmount(() => {
       :source="source"
       :task-id="taskId"
       :action-busy="actionBusy"
-      :submission-busy="session.draft.busy"
+      :submission-busy="session.draft.busy || importSession.draft.busy"
       :action-error="confirmation ? '' : actionError"
       :notice="notice"
       @close="closePreview"
@@ -471,6 +521,31 @@ onBeforeUnmount(() => {
       </template>
     </ElDialog>
     <ElDialog
+      v-model="importOpen"
+      title="补充导入"
+      width="800px"
+      destroy-on-close
+      :close-on-click-modal="!importSession.draft.busy"
+      :close-on-press-escape="!importSession.draft.busy"
+      :show-close="!importSession.draft.busy"
+      @closed="restoreDialogFocus"
+      @opened="importOpen && importForm?.focusHeading()"
+    >
+      <AppCheckCreate
+        v-if="importTask"
+        ref="importForm"
+        :source="source"
+        :catalog="catalog"
+        :session="importSession"
+        :target-task="importTask"
+        :active="importOpen"
+        @back="importOpen = false"
+        @created="imported"
+        @end-unconfirmed="endImportDraft"
+        @inspect="importOpen = false"
+      />
+    </ElDialog>
+    <ElDialog
       v-model="exportOpen"
       title="导出查询结果"
       width="min(520px, calc(100vw - 32px))"
@@ -500,7 +575,11 @@ onBeforeUnmount(() => {
       <div class="checks-export-count">
         <span>本次导出</span
         ><strong>{{
-          counts ? quantity(counts[exportFilter]) + " 条" : "数量暂不可用"
+          exportFile
+            ? quantity(exportFile.count) + " 条"
+            : counts
+              ? quantity(counts[exportFilter]) + " 条"
+              : "生成文件后确认数量"
         }}</strong
         ><small>CSV · 号码 / 注册状态 / 应用 / 地区</small>
       </div>

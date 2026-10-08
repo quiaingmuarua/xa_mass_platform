@@ -5,6 +5,8 @@ import com.xa.mass.server.project.ProjectTaskQueryService;
 import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.TaskLifecycleService;
+import com.xa.mass.server.operation.OperationGuard;
+import com.xa.mass.server.task.result.TaskResultsExportService;
 import com.xa.mass.server.worker.observation.WorkerPropertyProjection;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
@@ -31,7 +33,8 @@ public class AppCheckScenarioConfiguration {
 
     @Bean(destroyMethod = "close")
     AppCheckTaskService appChecks(ProjectDirectory projects, ProjectTaskQueryService queries,
-                                  TaskCreationService creation, TaskDataService data, TaskLifecycleService lifecycle) {
-        return new AppCheckTaskService(projects, queries, creation, data, lifecycle);
+                                  TaskCreationService creation, TaskDataService data, TaskLifecycleService lifecycle,
+                                  OperationGuard operations, TaskResultsExportService exports) {
+        return new AppCheckTaskService(projects, queries, creation, data, lifecycle, operations, exports);
     }
 }
