@@ -4,11 +4,12 @@ Status: current one-shot application check scenario owner.
 
 `app-checks` 是 Preview 的 one-shot 查询场景。创建空的 `CLOSE_WHEN_IDLE`
 Task、导入号码、核对启动和关闭是独立操作，复用 Server 的 Task 应用能力。
-App/Group 映射由 [Boot](../../server_boot_jvm/README.md#platform-and-preview) 装配。
+App/Group、Pool、查询函数和属性字段由场景内 `AppCheckWorkerSupply` 统一声明，
+[Boot](../../server_boot_jvm/README.md#platform-and-preview) 准备对应资源并提供启动配置。
 国家只校验号码格式和前缀，不筛选 Worker 国家或证明号码归属地。
 
 已注册和未注册均属于执行成功；失败区间让真实 Handler 抛异常。Kernel、Pacer、
-Matching、SDK 和 Worker 协议保持原样，没有新增业务 Redis key 或导入后台任务。
+SDK 和 Worker 协议使用既有机制；Matching 基础规则由场景声明装配，没有新增业务 Redis key 或导入后台任务。
 
 ## API 和 Task 数据
 
@@ -132,8 +133,8 @@ Pacer 在执行租约和 Item claim 均成功后、Command 编码和发布前发
 
 投影只写两个 Platform Properties：`lastAssignedAt` 和 `windowAssignmentCount`。
 前者是最近观察到的分配时间（毫秒），后者是该时间所在固定窗口中的观察数量。
-窗口长度读取各 Group 的 `xa.mass.worker-matching.groups.<group>.assignment-window-pool.window-millis`，
-与 Matching 使用同一份启动配置；窗口编号为 `floor(observedAtMillis / windowMillis)`。
+窗口长度读取各 Group 的 `xa.mass.worker-pools.assignment-window.groups.<group>.window-millis`，
+与 Pool 定义使用同一份 `AppCheckPoolProperties` 配置对象；窗口编号为 `floor(observedAtMillis / windowMillis)`。
 同窗口累加、时间取最大值；新窗口重新计数；
 更旧窗口不回退。两个字段均不存在时初始化；字段不完整、非整数、负数或溢出时
 整个 Worker 投影跳过并由 Server 计入处理失败诊断，不静默修复。其他属性不修改。
@@ -150,9 +151,13 @@ Properties Handler 合并读取与写入；场景不依赖 Pacer 或通用 Funct
 ## 分配窗口筛选
 
 新 Item 使用 `worker.assignment.available({})`；窗口和阈值由
-[Boot 的 Group 配置](../../server_boot_jvm/README.md#platform-and-preview) 决定。
-独立 assignment-window Pool 在补给阶段用 Worker/Platform 快照判断资格，查询函数只取库存；完整字段解释、失败与预算见
-[Matching Owner](../../worker_matching_jvm/README.md#observed-assignment-window)。
+[Boot 的 Pool／Group 配置](../../server_boot_jvm/README.md#platform-and-preview) 决定。
+场景以 `FixedWindowPoolDefinition` 注册独立 `assignment-window` Pool，关联
+`worker.assignment.available`、两个 Platform 属性键以及各 Group 的窗口参数。
+只有该纯数据契约及 `WindowLimit` 是场景允许引用的 Matching 类型；场景不持有库存、
+存储或补给策略实现。Server 收集定义，Matching 复用参数化基础规则在补给时资格判断，
+查询函数只取库存。完整失败与预算见
+[Matching Owner](../../worker_matching_jvm/README.md#fixed-window-pools)。
 
 跨窗口意味着重新符合条件，不承诺立即执行。观察异步、可丢失，不能把配置阈值当成严格
 执行上限；失败和迟到结果不会扣减统计。范围是 Group 内的单 Worker，没有跨设备
@@ -161,6 +166,13 @@ IP／账号配额。其他显式函数不受这一策略拦截。窗口长度改
 资格以补给时的快照为准，入池之后消费不读取 Facts 或再次计算窗口；候选库存由该 Pool
 独立持有，`worker.any` 使用另一份 Any 库存。属性变化、失效提示、TTL 与 Kernel 精确
 执行准入仍各自独立，不能据此承诺取用时业务条件最新。
+
+配置归属为 Pool／Group：`xa.mass.worker-pools.assignment-window.groups.<group>` 下
+显式提供 `window-millis` 与 `max-count`，Preview 为 60000／10；两个 App Group 必须
+完整配置，缺失、额外 Group、非法数值或未知字段均拒绝启动。Group 的 `pools` 和
+`functions` 只表达启用关系。旧 Group 下的 `assignment-window-pool` 路径不再接受。
+这次声明迁移保留 Pool／函数身份、Task descriptor、输入版本及 salt，不增加存量任务迁移；
+已有 Any 供给任务仍按上文规则处理。配置仅重启生效，同 scope 窗口长度保持不变。
 
 ## 页面与结果核对
 

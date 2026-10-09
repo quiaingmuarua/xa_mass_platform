@@ -14,7 +14,7 @@ class QueryFunctionTest {
 
     DefaultWorkerMatchingCatalog catalog(Map<String, QueryFunction> functions) {
         return new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis, Map.of(),
-                functions, Map.of("g", new MatchingGroup(Set.of(), functions.keySet(), null)), List.of(), Set.of());
+                functions, Map.of("g", new MatchingGroup(Set.of(), functions.keySet())), List.of(), Set.of());
     }
 
     @Test void globalAvailabilityIsCompositionDataAndAllowsUnknownGroups() {
@@ -170,7 +170,7 @@ class QueryFunctionTest {
 
         {
             var catalog = new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis,
-                        Map.of("map", rule), Map.of("map", function), Map.of("g", new MatchingGroup(Set.of("map"), Set.of("map"), null)), List.of("map"), Set.of());
+                        Map.of("map", rule), Map.of("map", function), Map.of("g", new MatchingGroup(Set.of("map"), Set.of("map"))), List.of("map"), Set.of());
             var targets = List.of(new RefillTarget("map", new EligibilityQuery(Map.of()), 1));
             assertEquals(Map.of("g",1), catalog.observeRefillDeficits(Map.of("g", targets)));
             assertEquals(1, catalog.refill("g", targets, Map.ofEntries(Map.entry("w", (long) (44)))));

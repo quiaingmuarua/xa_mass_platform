@@ -27,12 +27,11 @@ import com.xa.mass.server.task.result.TaskResultsExportService;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import org.springframework.context.SmartLifecycle;
+import static com.xa.mass.scenario.appchecks.AppCheckWorkerSupply.*;
 
 /** Request-driven creation, file import and result projection over existing Task application services. */
 public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable {
     public static final String PROJECT = "app-checks";
-    public static final String EVENT = "extension.worker.app.registration.check";
-    static final Map<String, String> APPS = Map.of("app-a", "app-a-sim", "app-b", "app-b-sim");
     private static final int MAX_ACTIVE_IMPORTS = 2;
     private final ProjectDirectory projects;
     private final ProjectTaskQueryService queries;
@@ -74,7 +73,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     public Map<String, Object> catalog() {
         requireRunning();
         return Map.of("projectId", PROJECT, "name", "应用注册查询", "version", "0.2.0-preview",
-                "apps", List.of("app-a", "app-b").stream().map(app -> Map.of("appId", app, "workerGroupId", APPS.get(app))).toList(),
+                "apps", APPS.keySet().stream().sorted().map(app -> Map.of("appId", app, "workerGroupId", APPS.get(app))).toList(),
                 "countries", List.of("CN", "US", "GB"),
                 "limits", Map.of("numbersPerImport", AppCheckNumberFile.MAX_NUMBERS, "importFileBytes", AppCheckNumberFile.MAX_BYTES),
                 "simulationExample", Map.of("ranges", Map.of("registered", List.of(0, 500),
@@ -92,7 +91,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         String name = specification.appId() + " · " + specification.country() + " · " + clock.instant();
         try {
             return creation.createForRequest(new TaskCreateRequest(PROJECT, APPS.get(specification.appId()), 50, 3,
-                    List.of(RefillTarget.of("assignment-window", new EligibilityQuery(Map.of()), 100)), name, metadata),
+                    List.of(RefillTarget.of(POOL, new EligibilityQuery(Map.of()), 100)), name, metadata),
                     specification.requestId(), specification.fingerprint());
         } catch (TaskCreationUnconfirmedException unknown) {
             throw new RequestFailure(503, "创建结果未确认，请核对已知任务；不会自动重建", unknown.taskId());
@@ -107,7 +106,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     }
 
     private static boolean hasWindowSupply(ProjectTaskQueryService.Entry entry) {
-        return entry.task().refill().stream().anyMatch(target -> target.poolName().equals("assignment-window")
+        return entry.task().refill().stream().anyMatch(target -> target.poolName().equals(POOL)
                 && target.target().query().isEmpty());
     }
 
@@ -144,7 +143,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                             var payload = new LinkedHashMap<String, Object>(simulation);
                             payload.put("number", number); payload.put("salt", entry.task().metadata().get("salt"));
                             batch.add(new TaskItemRequest("number-" + AppCheckSpecification.digest("app-checks/v2/number", number),
-                                    EVENT, payload, 5, null, new WorkerQuery("worker.assignment.available", Map.of())));
+                                    EVENT, payload, 5, null, new WorkerQuery(FUNCTION, Map.of())));
                         }
                         if (batch.isEmpty()) break;
                         var effects = data.importFiniteTaskItems(taskId, List.copyOf(batch));

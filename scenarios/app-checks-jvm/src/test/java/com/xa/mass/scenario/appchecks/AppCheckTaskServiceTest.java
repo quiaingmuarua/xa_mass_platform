@@ -159,7 +159,7 @@ class AppCheckTaskServiceTest {
             var tags = new LinkedHashMap<Integer, Long>(); for (int tag = 1; tag <= 9; tag++) tags.put(tag, 0L);
             tags.put(5, 2L); tags.put(6, 998L);
             when(data.observeItemScoreCounts(List.of("stored"))).thenReturn(Map.of("stored", new TaskItemScoreCounts(1000, tags)));
-            var item = new TaskItem("one", AppCheckTaskService.EVENT, 1L, Map.of("number", "+86123"), 5, 600_000L, new WorkerQuery("worker.any", Map.of()));
+            var item = new TaskItem("one", AppCheckWorkerSupply.EVENT, 1L, Map.of("number", "+86123"), 5, 600_000L, new WorkerQuery("worker.any", Map.of()));
             var valid = Jsons.toJson(Map.of("number", "+86123", "workerGroupId", "app-a-sim", "workerId", "actual", "registered", false, "simulatedDelayMillis", 12));
             when(data.previewTaskResults("stored")).thenReturn(new TaskDataService.ResultPreview(List.of(
                     new TaskDataService.ResultEntry("one", item, TaskItemResultResponse.succeeded(valid)),
@@ -203,7 +203,7 @@ class AppCheckTaskServiceTest {
             for (String id : List.of("registered", "unregistered", "bad-json", "no-answer", "wrong-number", "no-item", "no-number", "wrong-id")) {
                 var payload = id.equals("no-number") ? Map.<String, Object>of() : Map.<String, Object>of("number", "+86123");
                 if (!id.equals("no-item")) items.put(id, new TaskItem(id.equals("wrong-id") ? "another" : id,
-                        AppCheckTaskService.EVENT, 1L, payload, 5, 600_000L, new WorkerQuery("worker.any", Map.of())));
+                        AppCheckWorkerSupply.EVENT, 1L, payload, 5, 600_000L, new WorkerQuery("worker.any", Map.of())));
                 var content = new LinkedHashMap<String, Object>(Map.of("number", "+86123", "workerGroupId", "app-a-sim",
                         "workerId", "worker", "registered", !id.equals("unregistered"), "simulatedDelayMillis", 2));
                 if (id.equals("no-answer")) content.remove("registered");

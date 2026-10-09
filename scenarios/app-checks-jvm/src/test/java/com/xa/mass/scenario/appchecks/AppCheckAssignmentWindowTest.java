@@ -10,8 +10,11 @@ import static org.assertj.core.api.Assertions.*;
 class AppCheckAssignmentWindowTest {
     @Test void groupsProjectUsingTheirOwnInjectedWindowLength() {
         var configuration = new AppCheckScenarioConfiguration();
-        var a = configuration.appAAssignmentProjection(100);
-        var b = configuration.appBAssignmentProjection(200);
+        var config = new AppCheckPoolProperties(Map.of("app-a-sim", new com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit(100, 10),
+                "app-b-sim", new com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit(200, 20)));
+        var a = configuration.appAAssignmentProjection(config);
+        var b = configuration.appBAssignmentProjection(config);
+        assertThat(configuration.appCheckWindowPool(config).limitsByGroup()).isEqualTo(config.groups());
         assertThat(a.project().apply(Map.of(), List.of(99L, 100L)))
                 .containsEntry("windowAssignmentCount", 1L);
         assertThat(b.project().apply(Map.of(), List.of(99L, 100L)))

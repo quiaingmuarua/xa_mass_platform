@@ -52,7 +52,7 @@ class WorkerRefillDeficitIntegrationTest {
                         client, scope.keyspace(), () -> sampled);
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
                 var matchingComposition = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
-                        new MatchingGroup(Set.of("country"), Set.of("worker.country"), null)))) {
+                        new MatchingGroup(Set.of("country"), Set.of("worker.country"))), java.util.List.of())) {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
@@ -138,7 +138,7 @@ class WorkerRefillDeficitIntegrationTest {
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
                 var matchingComposition = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
-                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available", "worker.messaging.phone"), null)))) {
+                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available", "worker.messaging.phone"))), java.util.List.of())) {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
@@ -203,7 +203,7 @@ class WorkerRefillDeficitIntegrationTest {
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
                 var matchingComposition = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
-                        new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone", "worker.messaging.phone"), null)))) {
+                        new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone", "worker.messaging.phone"))), java.util.List.of())) {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
@@ -257,7 +257,7 @@ class WorkerRefillDeficitIntegrationTest {
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
                 var matchingComposition = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
-                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available"), null)))) {
+                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available"))), java.util.List.of())) {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
@@ -306,7 +306,7 @@ class WorkerRefillDeficitIntegrationTest {
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
                 var matchingComposition = MatchingComposition.create(client, scope.keyspace(),
-                        Map.of(group, new MatchingGroup(Set.of("any"), Set.of("worker.any"), null)))) {
+                        Map.of(group, new MatchingGroup(Set.of("any"), Set.of("worker.any"))), java.util.List.of())) {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
@@ -380,7 +380,7 @@ class WorkerRefillDeficitIntegrationTest {
         try (var connection=client.connect();
                 var scores=new RedisWorkerScoreCore(client,scope.keyspace());
                 var matchingComposition=MatchingComposition.create(client,scope.keyspace(),
-                        Map.of(group,new MatchingGroup(Set.of("any"),Set.of("worker.any"), null)))) {
+                        Map.of(group,new MatchingGroup(Set.of("any"),Set.of("worker.any"))), java.util.List.of())) {
             var matching = matchingComposition.catalog();
             var redis=connection.sync();
             try {

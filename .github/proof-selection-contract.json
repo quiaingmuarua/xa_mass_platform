@@ -1241,7 +1241,7 @@
       "reason": "Scenario arithmetic stays in the existing JVM and coexistence lanes; no new capacity claim."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/AssignmentWindowQueryFunction.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/EmptyInputPoolQueryFunction.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -1253,7 +1253,7 @@
         "worker_dynamic_matching",
         "product_coexistence"
       ],
-      "reason": "Fixed assignment-window qualification and Group configuration retain Matching and scenario proof selection."
+      "reason": "Shared Pool consumption and declared fixed-window rules retain Matching and scenario proof selection."
     },
     {
       "path": "server_jvm/src/main/java/com/xa/mass/server/assembly/pacer/KernelPacerProperties.java",

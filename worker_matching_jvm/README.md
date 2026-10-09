@@ -76,8 +76,9 @@ consumption are separate capabilities.
 
 Each Group/Pool has one bounded inventory shared by its Tasks. One strategy can
 serve multiple Groups, with Group passed explicitly on every call. There is no
-dynamic registry, per-Task cache or Matching execution thread. Identity and exact phone lookup use fixed functions; mixed/external strategies and
-dynamic property index configuration are not implemented.
+dynamic registry, per-Task cache or Matching execution thread. Identity and exact phone lookup use fixed functions.
+Fixed-window Pools accept immutable startup definitions; external strategy code and
+dynamic property index configuration are not supported.
 
 ## Owner Boundary
 
@@ -140,7 +141,8 @@ absent Groups have no observed demand. Pacer limits its raw candidate read to th
 smaller of that count and its per-Group ceiling, then calls
 `refill(group, declarations, candidateScores)` for candidateized Groups. Matching selects
 Pool maintenance by resource name, normalizes targets and MAX-merges them.
-Composition supplies the rotation base order: proof-facts, country, assignment-window, any, messaging.
+Composition supplies the rotation base order: proof-facts, country, declared fixed-window
+Pools sorted by name, any, messaging. Disabled resources are omitted.
 The Refill coordinator interprets the policy's fixed targetBatching capability, never its name:
 Country uses ALL; the other fixed policies use PAGED.
 Input limits are 100 Groups and 10,000 declarations, with no 100 Group/Pool-coordinate
@@ -199,7 +201,7 @@ execution exception ends the call without rolling back earlier consumption.
 production Pool strategies return their original nonzero fence. Refill takes a
 Map of opaque fences; storage creates and checks its own admission TTL.
 The Pool resource poll and Pool-consuming functions read no Redis or Facts.
-The assignment-window Pool qualifies stock during refill; its consuming function
+A fixed-window Pool qualifies stock during refill; its consuming function
 uses that admitted snapshot. Function results are candidates only; Kernel retains
 execution admission.
 
@@ -238,6 +240,7 @@ be thread-safe and Group-isolated; neither owns Task or Item lifecycle.
 Composition registers strategy instances with their existing Pool or Index.
 Adding a strategy over those resources requires its implementation, fixed
 registration and Group enablement, without changing Catalog, Kernel or Pacer.
+Another Pool using the existing fixed-window algorithm needs only a definition and Group enablement.
 There is no Normalizer/Executor callback pair, strategy factory or required refill
 interface. The consume-request budget remains local to Catalog; resource operation
 limits and entry/expiry/capacity checks retain their independent owners.
@@ -245,7 +248,7 @@ limits and entry/expiry/capacity checks retain their independent owners.
 | Current function name | Local input |
 | --- | --- |
 | `worker.any` | Only `{}`; explicitly enabled `any` Pool, no Facts required |
-| `worker.assignment.available` | Only `{}`; consumes independent `assignment-window` stock qualified at refill |
+| Declared fixed-window function | Only `{}`; consumes its own admission-qualified Pool stock |
 | `worker.country` | `{}` or a nonempty country list such as `["CN","US"]` |
 | `worker.messaging.available` | `{}` or an object with optional `country` list; consumes Messaging Pool stock |
 | `worker.messaging.phone` | Object with required nonblank `phone` and optional `country` list; qualified Direct lookup |
@@ -265,27 +268,39 @@ choice have no aliases or replacement multi-ID function.
 {"workerSelector":{"executorName":"worker.messaging.phone","input":{"country":["CN"],"phone":"+8613800000000"}}}
 ```
 
-### Observed assignment window
+### Fixed Window Pools
 
-`assignment-window` is an independent Pool, with its own stock and refill policy.
-Enable `pools: [assignment-window]` and configure
-`assignment-window-pool: {window-millis: 60000, max-assignments: 10}` in that Group.
-The settings belong only to this Group/Pool pair. Both values must be positive;
-missing settings, settings without an enabled Pool, and the retired Group-level
-`assignment-window` configuration field fail startup. Enabling
-`worker.assignment.available` additionally requires this Pool. Neither supply
-targets nor Item inputs may override the settings; both accept only `{}`.
+[FixedWindowPoolDefinition](src/main/java/com/xa/mass/workermatching/FixedWindowPoolDefinition.java)
+is a passive startup value: Pool name, function name, literal top-level Platform
+Properties timestamp/count keys, and immutable Group-to-WindowLimit settings.
+WindowLimit requires positive `windowMillis` and `maxCount`; the two nonblank keys
+must differ. Keys are exact Map keys, never paths or expressions. Matching contains
+no scenario property names, Pool names or configuration prefixes for this rule.
+
+`MatchingGroup` declares only enabled Pools and functions. Composition receives an
+explicit definition collection, including an empty collection in platform-only
+assemblies. Pool names and function names are separately unique and cannot replace
+any built-in name, even when that built-in is disabled. Every enabled window Pool
+requires that Group's limit; every configured Group must exist and enable the Pool.
+Enabling a declared function also requires its Pool. Missing definitions and unknown
+names fail startup. Definition order cannot change the name-sorted rotation order.
+
+Server collects the definitions at startup; the declaring module has no stock,
+store, callback, thread or destruction authority. Composition creates one resource
+per enabled Pool, sharing CandidateBudget while isolating Group inventory. A
+window definition is not an external strategy implementation or runtime registry.
+The [App Checks declaration](../scenarios/app-checks-jvm/README.md#分配窗口筛选)
+uses this contract alongside its existing property projections.
 
 Refill reads only the offered identities once through the atomic Worker/Platform
-Facts snapshot, without splitting the Catalog-admitted batch into pages. After
-reading, one clock sample determines the fixed window for the complete batch.
-All qualification finishes before eligible entries enter the single `available`
-bucket, retaining their original nonzero fences. No Properties or Score is changed.
-Missing Facts are skipped. With Facts present, absent `lastAssignedAt` and
-`windowAssignmentCount` means no observed assignments. A previous window has an
-effective count of zero; a current window qualifies below the configured threshold;
-a future window is skipped. Incomplete, negative, non-integer or overflowing fields
-are skipped per Worker with an aggregate diagnostic. Nothing repairs or resets them.
+Facts snapshot. After reading, one clock sample determines the fixed window for
+the complete Catalog-admitted batch. All qualification finishes before eligible
+entries enter the single `available` bucket, retaining their original nonzero
+fences. No Properties or Score is changed. Missing Worker Facts are skipped. Both
+configured fields absent means no observed count; an older window qualifies, and
+the current window qualifies below `maxCount`. Future windows, incomplete fields,
+negative, non-integer and overflowing values are skipped per Worker with aggregate
+Pool/Group diagnostics. Nothing repairs or resets stored values.
 
 Storage/JSON decoding failure admits none of this Pool's batch; earlier admissions
 by other Pools remain committed. Rejection never polls replacements, renews a fence,
@@ -293,19 +308,17 @@ returns an identity hint or rolls back candidateization. Existing 60-second cand
 aging and ordinary refill remain responsible for recovery. Time alone does not fill
 the Pool, and no immediate execution at a window boundary is promised.
 
-`worker.assignment.available` only polls this Pool and associates entries with Item
-requests. It reads no Facts, clock or window configuration, and never falls back to
-Any. Catalog retains its call-local Worker uniqueness check. Any stock is independent;
-`worker.any` keeps its unconditional semantics. Both Pools share the existing supply
-rotation, with each new candidate generation admitted by at most one Pool per batch.
+Any and declared window consumers share `EmptyInputPoolQueryFunction`, accepting
+only `{}` and polling their injected resource. Supply targets also accept only `{}`.
+Consumption reads no Facts, clock or window configuration and has no fallback. Any
+stock stays independent and unconditional. Catalog retains call-local Worker
+uniqueness; each candidate generation enters at most one Pool per refill batch.
 
-Qualification now means **the admission-time snapshot**, not a take-time check.
-Asynchronous projection delay/loss, later property changes and retained stock can
-permit assignments beyond the threshold. Existing best-effort candidate invalidation,
-stock TTL and exact Kernel execution admission remain independent; none proves that
-business eligibility is current at take. This is not a reserved or atomic quota.
-Window length stays fixed within a scope; changing it requires a new scope because
-persisted counts do not contain the old window definition. No migration is performed.
+Qualification means **the admission-time snapshot**. Existing observation semantics,
+property changes, candidate invalidation, stock TTL and exact Kernel execution
+admission remain independent. Window limits do not reserve execution quotas. Keep
+window length fixed within a scope; persisted counts do not include their old
+window definition, so changing it requires a new scope rather than an implicit migration.
 
 The [PoolRefillPolicy interface](src/main/java/com/xa/mass/workermatching/PoolRefillPolicy.java)
 now owns only the refill side:
@@ -335,7 +348,8 @@ cutovers each require a new scope; neither has a compatibility reader.
 
 ## Fixed Resource Composition
 
-`MatchingComposition` creates each enabled resource once and injects it into its
+`MatchingComposition` receives the Group availability map and immutable fixed-window
+definitions, creates each enabled resource once and injects it into its
 users. Pool maintenance and named consumer functions receive the same WorkerCandidatePool;
 Direct functions receive the PropertyIndex lookup interface, backed by one shared
 RedisHashPropertyIndex bound to `phone`. Resources do not know executorName.
@@ -355,8 +369,8 @@ WorkerCandidatePool receives only a clock and shared CandidateBudget. Compositio
 retains the fixed Pool map; the Refill coordinator invokes lazy cleanup only when a requested
 Group-Pool has no room and reads budget diagnostics. There is no self-registration
 or resource manager. Index resources have no Pool, capacity, policy or function dependency.
-Country and Messaging receive the bounded Worker Facts reader; Proof receives an
-atomic Worker/Platform snapshot reader. Messaging uses its existing pure eligibility
+Country and Messaging receive the bounded Worker Facts reader; Proof and declared
+fixed-window policies receive the atomic Worker/Platform snapshot reader. Messaging uses its existing pure eligibility
 helper. Proof refill and query share the complete tuple codec and bucket matching.
 All fixed policies use PoolMaintenance for fence validation, complete fallible
 qualification, batch budgeting and grouped offers. No admission observes resident
@@ -382,7 +396,7 @@ Pool/Identity Catalog tests construct their resources without a Redis Store.
 | Pool | Maintenance |
 | --- | --- |
 | `any` | Empty target only, unconditional candidate stock; no Facts or property views |
-| `assignment-window` | One atomic Worker/Platform snapshot and one clock sample per refill; a single qualified bucket |
+| Declared fixed-window Pool | One atomic Worker/Platform snapshot and one clock sample per refill; a single qualified bucket |
 | `country` | Valid Worker country Facts and local country buckets |
 | `messaging` | enabled messaging and country buckets; empty or country-only targets |
 | `proof-facts` | complete proof tuple buckets with rule-owned partial matching |
@@ -422,7 +436,7 @@ validated, rebuilt nor deleted. Phone remains the independent discovery index.
 ## Messaging and Proof Facts Qualification
 
 Every policy reads only the remaining Catalog-admitted identities, at most 1000. Any makes
-no read. Country and Messaging each use one Worker Facts HMGET. Proof and assignment-window each use one
+no read. Country and Messaging each use one Worker Facts HMGET. Proof and fixed-window policies each use one
 fixed EVAL_RO containing two HMGETs, so Worker and Platform rows share a Redis
 execution snapshot. A missing Worker row is ineligible; missing Platform is an
 empty map. Malformed present Facts fail before this Pool changes inventory. This
@@ -706,7 +720,7 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
 - Group shortage observation: zero Redis commands; local target aggregation and
   capacity-pressure cleanup only when a requested Group-Pool has no room. Country uses one bucket-count snapshot for
   all targets; other policies receive only visited target pages.
-- Pool resource counts, polling and Pool query functions, including assignment-window:
+- Pool resource counts, polling and Pool query functions, including declared fixed-window Pools:
   zero Redis commands or Facts reads. A miss never expands the Item request budget
   or reads Properties to find substitutes.
 - Identity take: zero Redis commands. Nonempty Phone take: one HMGET for the Catalog-admitted
@@ -718,7 +732,7 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
   separate 100-per-Group/1000-per-round budget and its own Group rotation hint.
 - Each Group needing fresh supply: one mark=0 due-head Lua, one exact candidateize
   Lua for a nonempty head, then one HMGET for Country/Messaging or one EVAL_RO
-  (two HMGETs) for Proof/assignment-window, only when that policy needs qualification. A full-stock
+  (two HMGETs) for Proof/fixed-window policies, only when that policy needs qualification. A full-stock
   deficit suppresses normal Pacer supply. If a batch is supplied anyway, it still
   qualifies before capacity refusal; no resident-identity pre-read skips that work.
 - Any needs no qualification read and never discovers substitute IDs.

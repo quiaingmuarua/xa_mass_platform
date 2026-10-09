@@ -1,6 +1,6 @@
 package com.xa.mass.server.testsupport;
 
-import com.xa.mass.workermatching.functions.AnyQueryFunction;
+import com.xa.mass.workermatching.functions.EmptyInputPoolQueryFunction;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
 import com.xa.mass.workermatching.PoolRefillPolicy;
@@ -29,7 +29,7 @@ public final class IdentityHintPoolFixture implements PoolRefillPolicy {
     public IdentityHintPoolFixture(LongSupplier clock, WorkerCandidatePool stock) {
         this.stock = stock;
         pool = new AnyPoolPolicy(stock);
-        consumer = new AnyQueryFunction(stock);
+        consumer = new EmptyInputPoolQueryFunction(stock);
     }
 
     public WorkerCandidatePool stock() { return stock; }

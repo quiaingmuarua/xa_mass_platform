@@ -2,6 +2,8 @@ package com.xa.mass.server.assembly.matching;
 
 import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
 import com.xa.mass.workermatching.MatchingComposition;
+import com.xa.mass.workermatching.FixedWindowPoolDefinition;
+import java.util.List;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.WorkerProperties;
 import io.lettuce.core.RedisClient;
@@ -13,8 +15,9 @@ import org.springframework.context.annotation.Configuration;
 @EnableConfigurationProperties(MatchingProperties.class)
 public class WorkerMatchingConfiguration {
     @Bean(destroyMethod="close")
-    MatchingComposition matchingComposition(RedisClient client, XaMassRedisProperties redis, MatchingProperties config) {
-        return MatchingComposition.create(client,redis.keyspace(),config.groups());
+    MatchingComposition matchingComposition(RedisClient client, XaMassRedisProperties redis, MatchingProperties config,
+            List<FixedWindowPoolDefinition> definitions) {
+        return MatchingComposition.create(client,redis.keyspace(),config.groups(),definitions);
     }
 
     @Bean(destroyMethod="")

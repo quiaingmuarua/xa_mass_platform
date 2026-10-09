@@ -8,26 +8,33 @@ import com.xa.mass.server.task.TaskLifecycleService;
 import com.xa.mass.server.operation.OperationGuard;
 import com.xa.mass.server.task.result.TaskResultsExportService;
 import com.xa.mass.server.worker.observation.WorkerPropertyProjection;
-import org.springframework.beans.factory.annotation.Value;
+import com.xa.mass.workermatching.FixedWindowPoolDefinition;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.*;
+import static com.xa.mass.scenario.appchecks.AppCheckWorkerSupply.*;
 
 @Configuration(proxyBeanMethods = false)
 @Import(AppCheckController.class)
+@EnableConfigurationProperties(AppCheckPoolProperties.class)
 public class AppCheckScenarioConfiguration {
     @Bean
-    WorkerPropertyProjection appAAssignmentProjection(
-            @Value("${xa.mass.worker-matching.groups.app-a-sim.assignment-window-pool.window-millis}") long windowMillis) {
-        return assignmentProjection("app-a-sim", new AppCheckAssignmentWindow(windowMillis));
+    FixedWindowPoolDefinition appCheckWindowPool(AppCheckPoolProperties config) {
+        return new FixedWindowPoolDefinition(POOL, FUNCTION, LAST, COUNT, config.groups());
     }
 
     @Bean
-    WorkerPropertyProjection appBAssignmentProjection(
-            @Value("${xa.mass.worker-matching.groups.app-b-sim.assignment-window-pool.window-millis}") long windowMillis) {
-        return assignmentProjection("app-b-sim", new AppCheckAssignmentWindow(windowMillis));
+    WorkerPropertyProjection appAAssignmentProjection(AppCheckPoolProperties config) {
+        return assignmentProjection(APPS.get("app-a"), config);
     }
 
-    private static WorkerPropertyProjection assignmentProjection(String group, AppCheckAssignmentWindow window) {
-        return new WorkerPropertyProjection(group, "extension.worker.app.registration.check",
+    @Bean
+    WorkerPropertyProjection appBAssignmentProjection(AppCheckPoolProperties config) {
+        return assignmentProjection(APPS.get("app-b"), config);
+    }
+
+    private static WorkerPropertyProjection assignmentProjection(String group, AppCheckPoolProperties config) {
+        var window = new AppCheckAssignmentWindow(config.groups().get(group).windowMillis());
+        return new WorkerPropertyProjection(group, EVENT,
                 "worker.assigned", window::project);
     }
 

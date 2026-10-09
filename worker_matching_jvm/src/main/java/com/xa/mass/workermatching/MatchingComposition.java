@@ -6,15 +6,14 @@ import com.xa.mass.workermatching.functions.ProofFactsQueryFunction;
 import com.xa.mass.workermatching.functions.MessagingQueryFunction;
 import com.xa.mass.workermatching.functions.MessagingPhoneQueryFunction;
 import com.xa.mass.workermatching.functions.CountryQueryFunction;
-import com.xa.mass.workermatching.functions.AnyQueryFunction;
-import com.xa.mass.workermatching.functions.AssignmentWindowQueryFunction;
+import com.xa.mass.workermatching.functions.EmptyInputPoolQueryFunction;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workermatching.index.RedisHashPropertyIndex;
 import com.xa.mass.workermatching.index.NetworkEvidenceTimestamps;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.workermatching.refill.AnyPoolPolicy;
-import com.xa.mass.workermatching.refill.AssignmentWindowPoolPolicy;
+import com.xa.mass.workermatching.refill.FixedWindowPoolPolicy;
 import com.xa.mass.workermatching.refill.CountryPoolPolicy;
 import com.xa.mass.workermatching.refill.MessagingPoolPolicy;
 import com.xa.mass.workermatching.refill.ProofFactsPoolPolicy;
@@ -38,7 +37,8 @@ public final class MatchingComposition implements AutoCloseable {
     private final DefaultWorkerMatchingCatalog catalog;
     private boolean closed;
 
-    public MatchingComposition(FactsIndexStore storage, Map<String, MatchingGroup> groups, LongSupplier clock) {
+    public MatchingComposition(FactsIndexStore storage, Map<String, MatchingGroup> groups, LongSupplier clock,
+            Collection<FixedWindowPoolDefinition> definitions) {
         this.storage = Objects.requireNonNull(storage);
         try {
             this.networkEvidenceTimestamps = new NetworkEvidenceTimestamps(storage::commands, storage.keyspace());
@@ -46,11 +46,27 @@ public final class MatchingComposition implements AutoCloseable {
             this.groups = Map.copyOf(groups);
             var enabledPools = new HashSet<String>();
             var enabledFunctions = new HashSet<String>();
-            var windows = new LinkedHashMap<String, MatchingGroup.AssignmentWindowPool>();
-            var dependencies = Map.of("worker.any", "any", "worker.assignment.available", "assignment-window", "worker.country", "country",
-                    "worker.messaging.available", "messaging", "proof.worker.facts", "proof-facts");
+            var builtInPools = List.of("any", "country", "messaging", "proof-facts");
+            var functionNames = new HashSet<>(Set.of("workerId", "worker.any", "worker.country",
+                    "worker.messaging.available", "proof.worker.facts", "worker.phone", "worker.messaging.phone"));
+            var windows = new TreeMap<String, FixedWindowPoolDefinition>();
+            var dependencies = new HashMap<>(Map.of("worker.any", "any", "worker.country", "country",
+                    "worker.messaging.available", "messaging", "proof.worker.facts", "proof-facts"));
+            for (var definition : List.copyOf(definitions)) {
+                if (builtInPools.contains(definition.poolName())
+                        || windows.putIfAbsent(definition.poolName(), definition) != null)
+                    throw new IllegalArgumentException("duplicate or reserved Pool name: " + definition.poolName());
+                if (!functionNames.add(definition.functionName()))
+                    throw new IllegalArgumentException("duplicate or reserved function name: " + definition.functionName());
+                if (!this.groups.keySet().containsAll(definition.limitsByGroup().keySet()))
+                    throw new IllegalArgumentException("window configuration names an unknown Group");
+                this.groups.forEach((group, config) -> {
+                    if (config.pools().contains(definition.poolName()) != definition.limitsByGroup().containsKey(group))
+                        throw new IllegalArgumentException("window Pool and its Group configuration must be enabled together");
+                });
+                dependencies.put(definition.functionName(), definition.poolName());
+            }
             groups.forEach((group, config) -> {
-                if (config.pools().contains("assignment-window")) windows.put(group, config.assignmentWindowPool());
                 for (String name : config.functions()) {
                     String required = dependencies.get(name);
                     if (required != null && !config.pools().contains(required))
@@ -63,18 +79,14 @@ public final class MatchingComposition implements AutoCloseable {
             var policies = new LinkedHashMap<String, PoolRefillPolicy>();
             var functions = new LinkedHashMap<String, QueryFunction>();
             functions.put("workerId", new IdentityQueryFunction());
-            for (String name : List.of("any", "assignment-window", "country", "messaging", "proof-facts")) {
+            for (String name : builtInPools) {
                 if (!enabledPools.contains(name)) continue;
                 var pool = new WorkerCandidatePool(clock, budget);
                 pools.put(name, pool);
                 switch (name) {
                     case "any" -> {
                         policies.put(name, new AnyPoolPolicy(pool));
-                        functions.put("worker.any", new AnyQueryFunction(pool));
-                    }
-                    case "assignment-window" -> {
-                        policies.put(name, new AssignmentWindowPoolPolicy(pool, storage::readFactsSnapshot, clock, windows));
-                        functions.put("worker.assignment.available", new AssignmentWindowQueryFunction(pool));
+                        functions.put("worker.any", new EmptyInputPoolQueryFunction(pool));
                     }
                     case "country" -> {
                         policies.put(name, new CountryPoolPolicy(pool, storage::readWorkerFacts));
@@ -91,6 +103,13 @@ public final class MatchingComposition implements AutoCloseable {
                     default -> throw new IllegalStateException("Unexpected built-in Pool");
                 }
             }
+            windows.forEach((name, definition) -> {
+                if (!enabledPools.contains(name)) return;
+                var pool = new WorkerCandidatePool(clock, budget);
+                pools.put(name, pool);
+                policies.put(name, new FixedWindowPoolPolicy(pool, storage::readFactsSnapshot, clock, definition));
+                functions.put(definition.functionName(), new EmptyInputPoolQueryFunction(pool));
+            });
             if (enabledFunctions.contains("worker.phone") || enabledFunctions.contains("worker.messaging.phone")) {
                 var phone = new RedisHashPropertyIndex(storage::commands, storage.keyspace(), "phone");
                 if (enabledFunctions.contains("worker.phone")) functions.put("worker.phone", new PhoneQueryFunction(phone));
@@ -100,7 +119,10 @@ public final class MatchingComposition implements AutoCloseable {
             this.pools = Map.copyOf(pools);
             this.policies = Map.copyOf(policies);
             this.functions = Map.copyOf(functions);
-            this.poolOrder = List.of("proof-facts", "country", "assignment-window", "any", "messaging").stream()
+            var order = new ArrayList<>(List.of("proof-facts", "country"));
+            order.addAll(windows.keySet());
+            order.addAll(List.of("any", "messaging"));
+            this.poolOrder = order.stream()
                     .filter(policies::containsKey).toList();
             if (!groups.keySet().containsAll(storage.indexedGroups()))
                 throw new IllegalArgumentException("Index Group unavailable");
@@ -146,8 +168,8 @@ public final class MatchingComposition implements AutoCloseable {
     }
 
     public static MatchingComposition create(RedisClient client, RedisKeyspace keyspace,
-            Map<String, MatchingGroup> groups) {
+            Map<String, MatchingGroup> groups, Collection<FixedWindowPoolDefinition> definitions) {
         var storage = new FactsIndexStore(client, keyspace, indexedProperties(groups));
-        return new MatchingComposition(storage, groups, System::currentTimeMillis);
+        return new MatchingComposition(storage, groups, System::currentTimeMillis, definitions);
     }
 }

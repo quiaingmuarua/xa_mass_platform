@@ -8,7 +8,7 @@ import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import com.xa.mass.workermatching.*;
-import com.xa.mass.workermatching.MatchingGroup.AssignmentWindowPool;
+import com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.event.command.*;
@@ -27,10 +27,11 @@ class AssignmentWindowIntegrationTest {
             @Override public void commandStarted(CommandStartedEvent event) { commands.add(event.getCommand().getType().toString()); }
         });
         var clock = new AtomicLong(120_000);
-        var groups = Map.of("g", new MatchingGroup(Set.of("any", "assignment-window"), Set.of("worker.assignment.available", "worker.any"),
-                new AssignmentWindowPool(60_000, 10)));
+        var groups = Map.of("g", new MatchingGroup(Set.of("any", "assignment-window"), Set.of("worker.assignment.available", "worker.any")));
+        var definition = new FixedWindowPoolDefinition("assignment-window", "worker.assignment.available",
+                "lastAssignedAt", "windowAssignmentCount", Map.of("g", new WindowLimit(60_000, 10)));
         try (var witness = client.connect();
-             var composition = new MatchingComposition(new FactsIndexStore(client, scope.keyspace(), Map.of()), groups, clock::get)) {
+             var composition = new MatchingComposition(new FactsIndexStore(client, scope.keyspace(), Map.of()), groups, clock::get, List.of(definition))) {
             try {
                 var properties = composition.properties();
                 properties.upsertWorkerFactsBatch("g", Map.of("blocked", Map.of(), "new", Map.of(), "bad", Map.of()));

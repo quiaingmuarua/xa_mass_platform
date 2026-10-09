@@ -14,7 +14,7 @@ class AppCheckProofTest(unittest.TestCase):
                     actual = json.loads(os.environ["SPRING_APPLICATION_JSON"])
                     self.assertEqual("retained", actual["some.setting"])
                     for group in ("app-a-sim", "app-b-sim"):
-                        self.assertEqual(1000, actual[f"xa.mass.worker-matching.groups.{group}.assignment-window-pool.max-assignments"])
+                        self.assertEqual(1000, actual[f"xa.mass.worker-pools.assignment-window.groups.{group}.max-count"])
                     self.assertFalse(any("window-millis" in name for name in actual))
                     raise RuntimeError("scenario failed")
             self.assertEqual(original, os.environ["SPRING_APPLICATION_JSON"])
@@ -35,11 +35,11 @@ class AppCheckProofTest(unittest.TestCase):
             with regression_window_configuration(baseline=True):
                 actual = json.loads(os.environ["SPRING_APPLICATION_JSON"])
                 self.assertEqual(1000, actual["xa.mass.worker-matching.groups.app-a-sim.assignment-window.max-assignments"])
-                self.assertFalse(any("assignment-window-pool" in key for key in actual))
+                self.assertFalse(any("worker-pools" in key for key in actual))
             self.assertNotIn("SPRING_APPLICATION_JSON", os.environ)
 
     def test_benchmark_pins_its_window_without_changing_functional_fixture_defaults(self):
-        key = "xa.mass.worker-matching.groups.app-a-sim.assignment-window-pool.window-millis"
+        key = "xa.mass.worker-pools.assignment-window.groups.app-a-sim.window-millis"
         with patch.dict(os.environ, {"SPRING_APPLICATION_JSON": json.dumps({key: 100})}):
             with regression_window_configuration(window_millis=60000):
                 self.assertEqual(60000, json.loads(os.environ["SPRING_APPLICATION_JSON"])[key])

@@ -21,11 +21,13 @@ def regression_window_configuration(*, baseline=False, window_millis=None):
     """Keep the content/closure workload finite; the Boot window proof owns low-threshold recovery."""
     previous = os.environ.get("SPRING_APPLICATION_JSON")
     configuration = json.loads(previous) if previous else {}
-    field = "assignment-window" if baseline else "assignment-window-pool"
     for group in ("app-a-sim", "app-b-sim"):
-        configuration[f"xa.mass.worker-matching.groups.{group}.{field}.max-assignments"] = 1000
+        # Only the explicit historical fixture uses the pre-Pool baseline's binding.
+        prefix = (f"xa.mass.worker-matching.groups.{group}.assignment-window" if baseline
+                  else f"xa.mass.worker-pools.assignment-window.groups.{group}")
+        configuration[f"{prefix}.{'max-assignments' if baseline else 'max-count'}"] = 1000
         if window_millis is not None:
-            configuration[f"xa.mass.worker-matching.groups.{group}.{field}.window-millis"] = window_millis
+            configuration[f"{prefix}.window-millis"] = window_millis
     os.environ["SPRING_APPLICATION_JSON"] = json.dumps(configuration)
     try:
         yield

@@ -23,15 +23,18 @@ xa:
         app-a-sim:
           pools: [any, assignment-window]
           functions: [worker.any, worker.assignment.available]
-          assignment-window-pool:
-            window-millis: 60000
-            max-assignments: 10
         app-b-sim:
           pools: [any, assignment-window]
           functions: [worker.any, worker.assignment.available]
-          assignment-window-pool:
+    worker-pools:
+      assignment-window:
+        groups:
+          app-a-sim:
             window-millis: 60000
-            max-assignments: 10
+            max-count: 10
+          app-b-sim:
+            window-millis: 60000
+            max-count: 10
     kernel-pacer:
       enabled: true
       preset: DEFAULT

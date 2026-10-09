@@ -701,6 +701,13 @@ managed Tasks, then starts Adapter ingress and scenarios. Boot owns the
 Scenarios consume prepared Projects;
 frontend availability does not enable business resources.
 
+App Checks may import only Matching
+`FixedWindowPoolDefinition` and its `WindowLimit` value for startup declarations.
+`WorkerMatchingConfiguration` collects the definition Beans and passes them to
+MatchingComposition; these Beans depend only on configuration, never Task services
+or the running Matching instance. Scenario code cannot access Matching stock,
+storage, policy implementations or lifecycle. No Server DTO mirrors the definition.
+
 Server never parses Worker files, creates business Definitions or manages a
 Worker process; that belongs to the standalone
 [Simulator Host](../worker_simulator_jvm/README.md). Products create no Redis clients
@@ -767,11 +774,11 @@ successful writes. One consumer serializes this local read/modify/write path;
 concurrent external writes to the same fields can still overwrite observations.
 There is no counter Lua, CAS, persistent queue, flush or recovery scan. Existing
 APPLIED patch handling still performs separate best-effort candidate invalidation.
-The notification path does not make eligibility decisions. The fixed
-[Matching assignment-window Pool](../worker_matching_jvm/README.md#observed-assignment-window)
-can consume the projected fields during a subsequent query. Its Group configuration
-supplies the same window length to the App Checks projection; Server only binds
-the configuration and performs the existing observation/property operations.
+The notification path does not make eligibility decisions. A declared
+[Matching fixed-window Pool](../worker_matching_jvm/README.md#fixed-window-pools)
+can read the projected fields during subsequent refill. App Checks supplies both
+the Pool definition and projection from the same Pool/Group configuration; Server
+collects definitions without interpreting their fields or window settings.
 
 The consumer starts before Pacer and stops after it, before Matching destruction.
 Stop closes ingress, discards queued batches, interrupts and waits up to 5 seconds

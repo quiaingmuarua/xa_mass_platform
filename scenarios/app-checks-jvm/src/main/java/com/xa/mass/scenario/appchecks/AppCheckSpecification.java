@@ -17,7 +17,7 @@ record AppCheckSpecification(String requestId, String appId, String country, Map
         if (input == null || !Set.of("requestId", "appId", "country", "simulation").containsAll(input.keySet()))
             throw new IllegalArgumentException("Unknown application check fields");
         String app = text(input.get("appId"), 128);
-        if (!AppCheckTaskService.APPS.containsKey(app)) throw new IllegalArgumentException("Unsupported appId");
+        if (!AppCheckWorkerSupply.APPS.containsKey(app)) throw new IllegalArgumentException("Unsupported appId");
         String country = text(input.get("country"), 2);
         String prefix = PREFIXES.get(country);
         if (prefix == null) throw new IllegalArgumentException("Unsupported country");

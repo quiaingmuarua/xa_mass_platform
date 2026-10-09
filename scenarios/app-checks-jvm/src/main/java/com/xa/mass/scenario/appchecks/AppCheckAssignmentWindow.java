@@ -4,11 +4,10 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.List;
 import java.util.Map;
+import static com.xa.mass.scenario.appchecks.AppCheckWorkerSupply.*;
 
 /** Statistics of observed allocations; neither an execution counter nor a quota. */
 final class AppCheckAssignmentWindow {
-    private static final String LAST = "lastAssignedAt";
-    private static final String COUNT = "windowAssignmentCount";
     private final long windowMillis;
 
     AppCheckAssignmentWindow(long windowMillis) {

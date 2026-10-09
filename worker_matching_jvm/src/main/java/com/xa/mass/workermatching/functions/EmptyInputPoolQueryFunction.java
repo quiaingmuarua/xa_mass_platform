@@ -6,10 +6,10 @@ import com.xa.mass.workermatching.RuleInputs;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import java.util.*;
 
-/** Unconditional consumption of the injected Any Pool. */
-public final class AnyQueryFunction implements QueryFunction {
+/** Empty-input consumption of the injected Pool's admitted stock; no qualification or fallback. */
+public final class EmptyInputPoolQueryFunction implements QueryFunction {
     private final WorkerCandidatePool pool;
-    public AnyQueryFunction(WorkerCandidatePool pool) { this.pool = Objects.requireNonNull(pool); }
+    public EmptyInputPoolQueryFunction(WorkerCandidatePool pool) { this.pool = Objects.requireNonNull(pool); }
     @Override public Object normalizeInput(String group, Object input) {
         return Collections.unmodifiableMap(RuleInputs.object(input, Set.of()));
     }

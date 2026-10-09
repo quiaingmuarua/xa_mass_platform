@@ -1,6 +1,6 @@
 package com.xa.mass.workermatching.refill;
 
-import com.xa.mass.workermatching.functions.AnyQueryFunction;
+import com.xa.mass.workermatching.functions.EmptyInputPoolQueryFunction;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
@@ -81,7 +81,7 @@ class PoolRefillPolicyTest {
         try(var storage=new FactsIndexStore(client, new RedisKeyspace("test_any"), Map.of())) {
             var stock=new WorkerCandidatePool(()->1000, budget);
             var rule=new AnyPoolPolicy(stock);
-            var function=new AnyQueryFunction(stock);
+            var function=new EmptyInputPoolQueryFunction(stock);
             var target=new EligibilityQuery(Map.of());
             assertEquals(target,rule.normalizeQuery("g",target));
             assertEquals(2,rule.deficits("g",Map.of(target,2)).get(target));

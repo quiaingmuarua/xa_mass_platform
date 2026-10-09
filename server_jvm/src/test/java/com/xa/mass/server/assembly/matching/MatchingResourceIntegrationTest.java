@@ -37,9 +37,9 @@ class MatchingResourceIntegrationTest {
     }
 
     @Test void phoneOnlyAssemblyMaintainsAndRetainsWithoutPoolOrTaskDemand() {
-        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"), null));
+        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone")));
         try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
-            var composition = new MatchingComposition(store, groups, System::currentTimeMillis);
+            var composition = new MatchingComposition(store, groups, System::currentTimeMillis, java.util.List.of());
             assertThat(composition.pools()).isEmpty(); assertThat(composition.policies()).isEmpty();
             {
             var catalog = composition.catalog();
@@ -55,7 +55,7 @@ class MatchingResourceIntegrationTest {
                 assertThat(composition.budget().available()).isEqualTo(10_000);
             }
         }
-        try (var restartedComposition = MatchingComposition.create(client, scope.keyspace(), groups)) {
+        try (var restartedComposition = MatchingComposition.create(client, scope.keyspace(), groups, java.util.List.of())) {
             var restarted = restartedComposition.catalog();
             assertThat(phone(restarted, "retained")).containsValue(new WorkerCandidate("w", 0));
             assertThat(phone(restarted, "retained")).containsValue(new WorkerCandidate("w", 0));
@@ -64,9 +64,9 @@ class MatchingResourceIntegrationTest {
 
     @Test void poolConsumptionExpirationAndFullCapacityDoNotChangePropertyIndex() {
         var clock = new AtomicLong(1_000);
-        var groups = Map.of("g", new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone"), null));
+        var groups = Map.of("g", new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone")));
         try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
-            var composition = new MatchingComposition(store, groups, clock::get);
+            var composition = new MatchingComposition(store, groups, clock::get, java.util.List.of());
             {
             var catalog = composition.catalog();
                 composition.properties().upsertWorkerFactsBatch("g", Map.of("w0", Map.of("phone", "number")));
@@ -92,9 +92,9 @@ class MatchingResourceIntegrationTest {
     }
 
     @Test void twoFunctionsReadTheSamePhoneResourceWithoutDuplicatingStorageOrConsumingIt() {
-        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone", "proof.phone"), null));
+        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone", "proof.phone")));
         try (var store = new FactsIndexStore(client, scope.keyspace(), MatchingComposition.indexedProperties(groups))) {
-            var composition = new MatchingComposition(store, Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"), null)), System::currentTimeMillis);
+            var composition = new MatchingComposition(store, Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"))), System::currentTimeMillis, java.util.List.of());
             var direct = composition.functions().get("worker.phone");
             var functions = new LinkedHashMap<>(composition.functions());
             functions.put("worker.phone", direct);
@@ -125,9 +125,9 @@ class MatchingResourceIntegrationTest {
     }
 
     @Test void twoFunctionsEnableOnePropertyAndAnUnchangedReportReassertsItsMapping() {
-        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone", "worker.messaging.phone"), null));
+        var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone", "worker.messaging.phone")));
         assertThat(MatchingComposition.indexedProperties(groups).get("g")).containsExactly("phone");
-        try (var composition = MatchingComposition.create(client, scope.keyspace(), groups)) {
+        try (var composition = MatchingComposition.create(client, scope.keyspace(), groups, java.util.List.of())) {
             var catalog = composition.catalog();
             composition.properties().upsertWorkerFactsBatch("g", Map.of("a", Map.of("phone", "same")));
             composition.properties().upsertWorkerFactsBatch("g", Map.of("b", Map.of("phone", "same")));
@@ -138,8 +138,8 @@ class MatchingResourceIntegrationTest {
     }
 
     @Test void phonePreflightProtectsFactsAndMembershipWithoutAnyDemand() {
-        var groups = Map.of("g", new MatchingGroup(Set.of("messaging", "proof-facts"), Set.of("worker.phone"), null));
-        try (var composition = MatchingComposition.create(client, scope.keyspace(), groups)) {
+        var groups = Map.of("g", new MatchingGroup(Set.of("messaging", "proof-facts"), Set.of("worker.phone")));
+        try (var composition = MatchingComposition.create(client, scope.keyspace(), groups, java.util.List.of())) {
             var catalog = composition.catalog();
             var original = Map.of("phone", "old", "country", "CN", "messaging.enabled", "true", "proofPool", "A", "proofTarget", "yes");
             composition.properties().upsertWorkerFactsBatch("g", Map.of("w", original));

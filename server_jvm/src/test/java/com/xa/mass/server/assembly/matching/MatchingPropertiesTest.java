@@ -8,31 +8,12 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class MatchingPropertiesTest {
-    @Test void windowConfigurationBelongsToAnEnabledPoolAndRejectsMalformedNumbers() {
-        runner.withPropertyValues("xa.mass.worker-matching.groups.g.pools[0]=assignment-window",
-                "xa.mass.worker-matching.groups.g.assignment-window-pool.window-millis=60000",
-                "xa.mass.worker-matching.groups.g.assignment-window-pool.max-assignments=10")
-                .run(context -> {
-                    assertThat(context).hasNotFailed();
-                    var window = context.getBean(MatchingProperties.class).groups().get("g").assignmentWindowPool();
-                    assertThat(window.windowMillis()).isEqualTo(60000);
-                    assertThat(window.maxAssignments()).isEqualTo(10);
-                });
-        for (String bad : List.of("0", "-1", "1.5", "many"))
-            runner.withPropertyValues("xa.mass.worker-matching.groups.g.pools[0]=assignment-window",
-                    "xa.mass.worker-matching.groups.g.assignment-window-pool.window-millis=60000",
-                    "xa.mass.worker-matching.groups.g.assignment-window-pool.max-assignments=" + bad)
+    @Test void retiredWindowFieldsAreRejectedByTheGenericGroupBinding() {
+        for (String field : List.of("assignment-window", "assignment-window-pool"))
+            runner.withPropertyValues("xa.mass.worker-matching.groups.g.pools[0]=sample-window",
+                    "xa.mass.worker-matching.groups.g." + field + ".window-millis=60000",
+                    "xa.mass.worker-matching.groups.g." + field + ".max-assignments=10")
                     .run(context -> assertThat(context).hasFailed());
-    }
-    @Test void absentPoolConfigurationAndTheRetiredGroupFieldAreRejected() {
-        runner.withPropertyValues("xa.mass.worker-matching.groups.g.pools[0]=assignment-window")
-                .run(context -> assertThat(context).hasFailed());
-        runner.withPropertyValues("xa.mass.worker-matching.groups.g.assignment-window-pool.window-millis=60000",
-                "xa.mass.worker-matching.groups.g.assignment-window-pool.max-assignments=10")
-                .run(context -> assertThat(context).hasFailed());
-        runner.withPropertyValues("xa.mass.worker-matching.groups.g.assignment-window.window-millis=60000",
-                "xa.mass.worker-matching.groups.g.assignment-window.max-assignments=10")
-                .run(context -> assertThat(context).hasFailed());
     }
     @EnableConfigurationProperties({MatchingProperties.class,TaskRpcProperties.class})
     @org.springframework.context.annotation.Import(com.xa.mass.server.task.call.RefillTargetConfigurationConverter.class)

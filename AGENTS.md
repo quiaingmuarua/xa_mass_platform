@@ -156,13 +156,15 @@ Scores and Redis state. Before changing operations or dependencies, read the
 Properties, Pool resources, indexes and candidate evidence. Changes require the
 relevant query/refill and failure clauses; resource or lifecycle changes also
 require [fixed composition](worker_matching_jvm/README.md#fixed-resource-composition).
-Use the [assignment-window](worker_matching_jvm/README.md#observed-assignment-window)
+Use the [fixed-window Pool](worker_matching_jvm/README.md#fixed-window-pools)
 and [network timestamp](worker_matching_jvm/README.md#network-evidence-timestamps)
 contracts for those paths.
 
 Window eligibility belongs to refill of its independent Pool. Consumption uses
 admitted snapshot evidence without another Facts read; do not restore the retired
-Any-stock post-filter or promote observed counts to reserved quotas.
+Any-stock post-filter or promote observed counts to reserved quotas. Scenario Pool
+declarations are immutable startup values; resource ownership and lifecycle stay
+in Matching, without external strategy callbacks or runtime registration.
 
 ## Kernel Pacer JVM
 

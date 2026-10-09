@@ -317,8 +317,8 @@ class AppChecksIntegrationTest {
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(observations));
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(selections));
             arguments = new String[]{"--spring.profiles.active=preview", "--server.port=" + port,
-                    "--xa.mass.worker-matching.groups.app-a-sim.assignment-window-pool.max-assignments=" + maxAssignments,
-                    "--xa.mass.worker-matching.groups.app-b-sim.assignment-window-pool.max-assignments=" + maxAssignments,
+                    "--xa.mass.worker-pools.assignment-window.groups.app-a-sim.max-count=" + maxAssignments,
+                    "--xa.mass.worker-pools.assignment-window.groups.app-b-sim.max-count=" + maxAssignments,
                     "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                     "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,

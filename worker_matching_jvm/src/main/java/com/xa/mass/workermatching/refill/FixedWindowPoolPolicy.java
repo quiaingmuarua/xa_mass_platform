@@ -1,7 +1,8 @@
 package com.xa.mass.workermatching.refill;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
-import com.xa.mass.workermatching.MatchingGroup.AssignmentWindowPool;
+import com.xa.mass.workermatching.FixedWindowPoolDefinition;
+import com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit;
 import com.xa.mass.workermatching.WorkerProperties.WorkerFacts;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import java.math.BigDecimal;
@@ -12,32 +13,30 @@ import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 
 /** One bounded Facts snapshot qualifies offered identities before any stock is admitted. */
-public final class AssignmentWindowPoolPolicy extends PoolMaintenance<Boolean> {
-    private static final String LAST = "lastAssignedAt";
-    private static final String COUNT = "windowAssignmentCount";
+public final class FixedWindowPoolPolicy extends PoolMaintenance<Boolean> {
     private static final String BUCKET = "available";
-    private static final System.Logger LOG = System.getLogger(AssignmentWindowPoolPolicy.class.getName());
+    private static final System.Logger LOG = System.getLogger(FixedWindowPoolPolicy.class.getName());
     private final BiFunction<String, List<String>, Map<String, WorkerFacts>> readFacts;
     private final LongSupplier clock;
-    private final Map<String, AssignmentWindowPool> windows;
+    private final FixedWindowPoolDefinition definition;
 
-    public AssignmentWindowPoolPolicy(WorkerCandidatePool pool,
+    public FixedWindowPoolPolicy(WorkerCandidatePool pool,
             BiFunction<String, List<String>, Map<String, WorkerFacts>> readFacts,
-            LongSupplier clock, Map<String, AssignmentWindowPool> windows) {
+            LongSupplier clock, FixedWindowPoolDefinition definition) {
         super(pool);
         this.readFacts = Objects.requireNonNull(readFacts);
         this.clock = Objects.requireNonNull(clock);
-        this.windows = Map.copyOf(windows);
+        this.definition = Objects.requireNonNull(definition);
     }
 
     @Override protected EligibilityQuery normalize(String group, EligibilityQuery query) {
-        if (!windows.containsKey(group)) throw new IllegalArgumentException("assignment-window Pool is unavailable");
-        if (!query.query().isEmpty()) throw new IllegalArgumentException("assignment-window Pool requires an empty target");
+        if (!definition.limitsByGroup().containsKey(group)) throw new IllegalArgumentException("fixed-window Pool is unavailable");
+        if (!query.query().isEmpty()) throw new IllegalArgumentException("fixed-window Pool requires an empty target");
         return query;
     }
 
     @Override protected Map<String, Boolean> readQualifications(String group, List<String> ids) {
-        var policy = windows.get(group);
+        var policy = definition.limitsByGroup().get(group);
         var facts = readFacts.apply(group, ids);
         long window = Math.floorDiv(clock.getAsLong(), policy.windowMillis());
         var qualified = new LinkedHashMap<String, Boolean>();
@@ -52,7 +51,8 @@ public final class AssignmentWindowPoolPolicy extends PoolMaintenance<Boolean> {
             }
         }
         if (malformed != 0) LOG.log(System.Logger.Level.WARNING,
-                "operation=assignmentWindowPool.refill skipped {0} malformed property records in Group {1}", malformed, group);
+                "operation=fixedWindowPool.refill skipped {0} malformed property records in Group {1}, Pool {2}",
+                malformed, group, definition.poolName());
         return qualified;
     }
 
@@ -68,14 +68,14 @@ public final class AssignmentWindowPoolPolicy extends PoolMaintenance<Boolean> {
         return result;
     }
 
-    private static boolean available(Map<String, Object> properties, AssignmentWindowPool policy, long window) {
-        boolean present = properties.containsKey(LAST);
-        if (present != properties.containsKey(COUNT)) throw new IllegalArgumentException("Incomplete assignment window");
+    private boolean available(Map<String, Object> properties, WindowLimit policy, long window) {
+        boolean present = properties.containsKey(definition.timestampProperty());
+        if (present != properties.containsKey(definition.countProperty())) throw new IllegalArgumentException("Incomplete fixed window");
         if (!present) return true;
-        long last = integer(properties.get(LAST)), count = integer(properties.get(COUNT));
+        long last = integer(properties.get(definition.timestampProperty())), count = integer(properties.get(definition.countProperty()));
         long observedWindow = last / policy.windowMillis();
-        if (observedWindow > window) throw new IllegalArgumentException("Future assignment window");
-        return observedWindow < window || count < policy.maxAssignments();
+        if (observedWindow > window) throw new IllegalArgumentException("Future fixed window");
+        return observedWindow < window || count < policy.maxCount();
     }
 
     private static long integer(Object value) {
@@ -86,10 +86,10 @@ public final class AssignmentWindowPoolPolicy extends PoolMaintenance<Boolean> {
             case Long number -> number;
             case BigInteger number -> number.longValueExact();
             case BigDecimal number -> number.longValueExact();
-            case null -> throw new IllegalArgumentException("Assignment window fields must be integers");
-            default -> throw new IllegalArgumentException("Assignment window fields must be integers");
+            case null -> throw new IllegalArgumentException("Window fields must be integers");
+            default -> throw new IllegalArgumentException("Window fields must be integers");
         };
-        if (result < 0) throw new IllegalArgumentException("Assignment window fields must be non-negative");
+        if (result < 0) throw new IllegalArgumentException("Window fields must be non-negative");
         return result;
     }
 }

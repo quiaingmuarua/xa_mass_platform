@@ -32,8 +32,8 @@ class MessagingPhoneIntegrationTest {
     private WorkerProperties properties;
     private final List<String> commands = new CopyOnWriteArrayList<>();
     private final Map<String, MatchingGroup> groups = Map.of(
-            "direct", new MatchingGroup(Set.of(), Set.of("worker.messaging.phone"), null),
-            "mixed", new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone", "worker.messaging.phone"), null));
+            "direct", new MatchingGroup(Set.of(), Set.of("worker.messaging.phone")),
+            "mixed", new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone", "worker.messaging.phone")));
 
     @BeforeEach void setup() {
         scope = RedisTestScope.create("messaging_phone");
@@ -42,7 +42,7 @@ class MessagingPhoneIntegrationTest {
             @Override public void commandStarted(CommandStartedEvent event) { commands.add(event.getCommand().getType().toString()); }
         });
         connection = client.connect(); redis = connection.sync();
-        composition = MatchingComposition.create(client, scope.keyspace(), groups);
+        composition = MatchingComposition.create(client, scope.keyspace(), groups, java.util.List.of());
         catalog = composition.catalog();
         properties = composition.properties();
     }
@@ -79,7 +79,7 @@ class MessagingPhoneIntegrationTest {
         assertThat(commands).containsExactly("HMGET");
 
         // Restart retains the existing mapping without rebuilding.
-        composition.close(); composition = MatchingComposition.create(client, scope.keyspace(), groups);
+        composition.close(); composition = MatchingComposition.create(client, scope.keyspace(), groups, java.util.List.of());
         catalog = composition.catalog();
         properties = composition.properties();
         assertThat(catalog.take("direct", Map.of("m", query("phone0"))))

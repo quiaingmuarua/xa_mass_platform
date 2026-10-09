@@ -29,10 +29,13 @@ fixed preview assembly, without per-business deployment profiles or selection.
 
 The `demo-sim` Project managed Tasks retain `country / {} / 100` supply;
 that Group does not enable Any Pool.
-Each App Group enables `assignment-window` and configures its
-`assignment-window-pool.window-millis=60000` and `max-assignments=10`.
+Each App Group enables `assignment-window`. App Checks contributes its immutable
+Pool definition and binds `xa.mass.worker-pools.assignment-window.groups.<group>`
+with explicit `window-millis=60000` and `max-count=10`. Its projection uses the
+same configuration object; generic Matching Group binding holds only enablement.
 App Checks declares only that Pool's supply. Any remains available for other
-explicit callers, without a default Group-wide window gate. The old field fails
+explicit callers, without a default Group-wide window gate. The old Group-level
+`assignment-window-pool` path and `max-assignments` field have no aliases and fail
 strict configuration binding; window length stays fixed within an existing scope.
 Direct `workerId` is available in every Group; phone-directed
 Messages declares no Pool supply. Matching owns the
