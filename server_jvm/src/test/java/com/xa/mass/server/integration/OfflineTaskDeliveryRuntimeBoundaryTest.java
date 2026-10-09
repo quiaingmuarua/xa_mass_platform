@@ -163,8 +163,13 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
             // RECOVERY-only rechecks may probe after expiry evidence, never the lost-disconnect HOT state.
             assertThat(evidence.probesBeforeExpiry).hasValue(0);
 
+            // Exercise the real recheck/reconnect ordering: the Owner defers before offering this Probe.
+            await("natural RECOVERY recheck before reconnect", () -> evidence.probesAfterExpiry.get() > 0);
+
             worker.start();
-            await("same Item succeeds after a real reconnect", () -> {
+            // CONNECTED preserves DEFAULT's future 15-second recheck coordinate. Allow that hold
+            // plus the normal observation budget; do not shorten the production delay or rewrite Score.
+            await("same Item succeeds after a real reconnect", Duration.ofSeconds(30), () -> {
                 Map<String, Object> result = (Map<String, Object>) post(
                         "/api/v1/tasks/" + task + "/results:load", List.of("offline-item")).get("offline-item");
                 return "succeeded".equals(result.get("status"));
@@ -209,6 +214,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
         final AtomicReference<Long> candidateFence = new AtomicReference<>();
         final AtomicReference<WorkerScoreTransitionResult> applied = new AtomicReference<>();
         final AtomicInteger probesBeforeExpiry = new AtomicInteger();
+        final AtomicInteger probesAfterExpiry = new AtomicInteger();
         final List<String> trace = new CopyOnWriteArrayList<>();
 
         synchronized void record(String stage, Object value) {
@@ -251,6 +257,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
             List<String> workerIds = call.getArgument(1);
             if (workerIds.contains(evidence.workerId.get())) {
                 if (applied.get() == null) evidence.probesBeforeExpiry.incrementAndGet();
+                else evidence.probesAfterExpiry.incrementAndGet();
                 evidence.record("PROBE_OFFER", applied.get() == null ? "before-expiry" : "after-expiry");
             }
             return call.callRealMethod();
@@ -313,7 +320,11 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
     }
 
     private void await(String stage, Check check) throws Exception {
-        long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
+        await(stage, Duration.ofSeconds(15), check);
+    }
+
+    private void await(String stage, Duration timeout, Check check) throws Exception {
+        long deadline = System.nanoTime() + timeout.toNanos();
         while (System.nanoTime() < deadline) {
             if (check.done()) return;
             Thread.sleep(20);

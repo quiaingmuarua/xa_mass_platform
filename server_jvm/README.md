@@ -939,6 +939,12 @@ The Server-specific test entrypoints are:
 | Actual protocol traversal and HTTP execution | [RuntimeBoundaryIntegrationTest](src/test/java/com/xa/mass/server/integration/RuntimeBoundaryIntegrationTest.java), [DirectCallHttpExecutionIntegrationTest](src/test/java/com/xa/mass/server/integration/DirectCallHttpExecutionIntegrationTest.java) |
 | Lost-disconnect expiry/reconnect witness | [OfflineTaskDeliveryRuntimeBoundaryTest](src/test/java/com/xa/mass/server/integration/OfflineTaskDeliveryRuntimeBoundaryTest.java) |
 
+The lost-disconnect proof waits for a natural RECOVERY recheck before reconnecting.
+CONNECTED retains the future recheck coordinate, so its completion observation allows
+30 seconds: DEFAULT's 15-second hold plus the ordinary 15-second observation budget.
+It neither changes the production delay nor injects Score writes; the same Item must
+still complete through actual Worker execution and Result handling.
+
 Ordinary Server tests use explicit test-only platform configuration with Pacer
 disabled and unreachable Redis, so a local Redis cannot hide accidental assembly
 connections. Named integration fixtures enable the real Owners and Pacer; their
