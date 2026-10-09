@@ -4,8 +4,10 @@ import type {
   MessageTask,
   MessageTaskDetail,
   MessageTaskResult,
-  MessageTaskSource
+  MessageTaskSource,
+  MessageDemoAction
 } from "./task-source";
+import { messageApplications } from "./workbench";
 
 const epoch = Date.parse("2026-09-18T08:00:00+08:00");
 const body = JSON.stringify(
@@ -27,7 +29,7 @@ function task(
   return {
     taskId,
     createdAtMillis: epoch - index * 3_600_000,
-    workerGroupId: "demo-sim",
+    workerGroupId: messageApplications[index % 3].workerGroupId,
     managed: false,
     state: "terminal",
     inputVersion: "2",
@@ -164,8 +166,10 @@ function initialRecords(): MessageTaskDetail[] {
 /** Explicit, process-local UI samples. No network, storage, timers or execution simulation. */
 export class MockMessageTaskSource implements MessageTaskSource {
   readonly mode = "mock";
+  readonly applications = messageApplications;
   private readonly records: Map<string, MessageTaskDetail>;
-  private readonly reads = new Map<string, number>();
+  private readonly failedReads = new Set<string>();
+  private replies = 0;
   private readonly requests = new Map<string, { input: string; taskId: string }>();
   private sequence = 0;
   private readonly recipients = new Map<string, Set<string>>();
@@ -176,6 +180,23 @@ export class MockMessageTaskSource implements MessageTaskSource {
     this.records = new Map(
       structuredClone(records).map((record) => [record.task.taskId, record])
     );
+    for (const record of this.records.values()) {
+      const task = record.task;
+      if (!task.managed && task.body && task.recipientCountry) {
+        const prefix = { CN: "+86", US: "+1", GB: "+44" }[task.recipientCountry];
+        const numbers = new Set(
+          record.results.flatMap((row) => (row.recipientId ? [row.recipientId] : []))
+        );
+        for (let i = 0; numbers.size < (task.sendTotal ?? 0); i++)
+          numbers.add(`${prefix}199${String(i).padStart(8, "0")}`);
+        this.recipients.set(task.taskId, numbers);
+        const counts = this.counts(record.results);
+        task.sentCount ??= counts.sentCount;
+        task.failedCount ??= counts.failedCount;
+        task.readCount ??= counts.readCount;
+        task.repliedCount ??= counts.repliedCount;
+      }
+    }
   }
   async listTasks() {
     const tasks = [...this.records.values()]
@@ -193,21 +214,8 @@ export class MockMessageTaskSource implements MessageTaskSource {
     const record = this.records.get(taskId);
     if (!record)
       throw new Error("没有找到这个 Mock 任务。刷新页面会重置本地创建的任务。");
-    const read = (this.reads.get(taskId) ?? 0) + 1;
-    this.reads.set(taskId, read);
-    // A fixed second-read failure makes preservation and manual recovery inspectable.
-    if (taskId === "msg-read-error" && read === 2)
+    if (this.failedReads.delete(taskId))
       throw new Error("Mock 结果读取失败。已保留上次数据，可再次刷新。");
-    if (taskId === "msg-follow-up") {
-      // READ and REPLIED both establish delivery of the same message, counted once.
-      record.task.deliveredCount = read === 1 ? 0 : 1;
-      record.results[0] = {
-        ...record.results[0],
-        status: read === 1 ? "SENT" : read === 2 ? "READ" : "REPLIED",
-        observedAtMillis: epoch + Math.min(read, 3) * 1000,
-        ...(read >= 3 ? { reply: "已确认，明天会到。" } : {})
-      };
-    }
     return structuredClone({
       task: record.task,
       results: record.results.slice(0, 100),
@@ -215,11 +223,13 @@ export class MockMessageTaskSource implements MessageTaskSource {
     });
   }
   async createTask(input: CreateMessageTask) {
+    const app = this.applications.find((app) => app.id === input.appId);
+    if (!app) throw new Error("应用配置不可用");
     const fingerprint = JSON.stringify([
+      input.appId,
       input.name,
       input.recipientCountry,
       input.senderCountry ?? null,
-      input.senderPhone?.trim() ? input.senderPhone : null,
       input.body
     ]);
     const prior = this.requests.get(input.requestId);
@@ -234,7 +244,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
         taskId,
         name: input.name,
         createdAtMillis: Math.max(Date.now(), epoch) + this.sequence,
-        workerGroupId: "demo-sim",
+        workerGroupId: app.workerGroupId,
         managed: false,
         state: "pre_review",
         inputVersion: "2",
@@ -246,7 +256,6 @@ export class MockMessageTaskSource implements MessageTaskSource {
         repliedCount: 0,
         failedCount: 0,
         deliveredCount: 0,
-        senderPhone: input.senderPhone,
         body: input.body
       },
       results: [],
@@ -317,5 +326,69 @@ export class MockMessageTaskSource implements MessageTaskSource {
   async closeTask(taskId: string) {
     if (this.mutations.has(taskId)) throw new Error("任务有其他操作正在进行");
     this.requireTask(taskId, false).task.state = "terminal";
+  }
+  private counts(rows: MessageTaskResult[]) {
+    const successful = rows.filter(
+      (row) => row.resultStatus === "succeeded" && !row.contentError
+    );
+    return {
+      sentCount: successful.filter((row) =>
+        ["SENT", "DELIVERED", "READ", "REPLIED"].includes(row.status ?? "")
+      ).length,
+      deliveredCount: successful.filter((row) =>
+        ["DELIVERED", "READ", "REPLIED"].includes(row.status ?? "")
+      ).length,
+      readCount: successful.filter((row) =>
+        ["READ", "REPLIED"].includes(row.status ?? "")
+      ).length,
+      repliedCount: successful.filter((row) => row.status === "REPLIED").length,
+      failedCount: rows.filter((row) => row.resultStatus === "failed").length
+    };
+  }
+  async demonstrate(taskId: string, action: MessageDemoAction) {
+    if (action === "fail-read") {
+      this.failedReads.add(taskId);
+      return;
+    }
+    const record = this.requireTask(taskId, false);
+    if (record.task.state === "pre_review") throw new Error("请先核对并启动任务");
+    if (action === "advance" || action === "complete") {
+      if (record.task.state === "terminal") throw new Error("调度已结束，不能继续发送");
+      const produced = new Set(record.results.map((row) => row.recipientId));
+      const numbers = [...(this.recipients.get(taskId) ?? [])].filter(
+        (number) => !produced.has(number)
+      );
+      const selected = action === "complete" ? numbers : numbers.slice(0, 50);
+      for (const recipient of selected)
+        record.results.push({
+          messageId: `${taskId}/${recipient}`,
+          recipientId: recipient,
+          resultStatus: "succeeded",
+          status: "SENT",
+          workerId: `${record.task.workerGroupId}-sender`,
+          phone: "+861700000001",
+          observedAtMillis: Date.now()
+        });
+      if (record.results.length >= (record.task.sendTotal ?? 0))
+        record.task.state = "terminal";
+    } else {
+      const stages = ["SENT", "DELIVERED", "READ", "REPLIED"];
+      const next =
+        action === "delivered" ? "DELIVERED" : action === "read" ? "READ" : "REPLIED";
+      if (action === "reply") this.replies++;
+      for (const row of record.results) {
+        if (
+          row.resultStatus !== "succeeded" ||
+          row.contentError ||
+          !stages.includes(row.status ?? "")
+        )
+          continue;
+        if (stages.indexOf(row.status!) > stages.indexOf(next)) continue;
+        row.status = next;
+        row.observedAtMillis = Math.max(Date.now(), (row.observedAtMillis ?? 0) + 1);
+        if (action === "reply") row.reply = `演示回复 ${this.replies}：消息已收到。`;
+      }
+    }
+    Object.assign(record.task, this.counts(record.results));
   }
 }

@@ -13,6 +13,7 @@ import { useThemeStore } from "@/stores/theme";
 import { messageTaskSourceKey } from "@/message-campaigns/task-source";
 import { MockMessageTaskSource } from "@/message-campaigns/mock-task-source";
 import { ApiMessageTaskSource } from "@/message-campaigns/api-task-source";
+import { createMessageSession, messageSessionKey } from "@/message-campaigns/workbench";
 import { appCheckContextKey, createAppCheckContext } from "@/app-checks/context";
 import { ApiAppCheckTaskSource } from "@/app-checks/task-source";
 import { MockAppCheckTaskSource } from "@/app-checks/mock-task-source";
@@ -28,8 +29,15 @@ const messages = createMessageAvailability(demo);
 provide(messageAvailabilityKey, messages);
 provide(
   messageTaskSourceKey,
-  demo ? new MockMessageTaskSource() : new ApiMessageTaskSource()
+  demo
+    ? new MockMessageTaskSource()
+    : new ApiMessageTaskSource(() =>
+        messages.state.value.status === "enabled"
+          ? messages.state.value.catalog
+          : undefined
+      )
 );
+provide(messageSessionKey, createMessageSession());
 const mobileNavigation = ref(false);
 onMounted(() => {
   void sms.load();

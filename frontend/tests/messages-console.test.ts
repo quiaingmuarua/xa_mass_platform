@@ -104,7 +104,7 @@ function installApi() {
   return fetcher;
 }
 async function settle() {
-  await vi.advanceTimersByTimeAsync(0);
+  await vi.advanceTimersByTimeAsync(250);
   await nextTick();
 }
 async function mount(path = "/messages", mode = "api") {
@@ -154,10 +154,10 @@ function input(label: string, value: string) {
   element.dispatchEvent(new Event("input", { bubbles: true }));
 }
 async function draft() {
-  button("创建消息任务").click();
+  button("创建任务").click();
   await settle();
   input("收件号码", "+8613800000001\n+8613800000002");
-  input("JSON 正文", "{}");
+  input("模板内容", "{}");
   await settle();
 }
 function submit() {
@@ -166,7 +166,7 @@ function submit() {
     .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 }
 describe("Messages Task API workspace", () => {
-  it("lists real tasks, creates through the synchronous API and keeps Score counts separate from bounded Results", async () => {
+  it("lists real tasks, creates then imports without approval and keeps Score counts separate from bounded Results", async () => {
     const fetcher = installApi();
     const { host, router } = await mount();
     expect(host.textContent).toContain("Saved task");
@@ -177,15 +177,16 @@ describe("Messages Task API workspace", () => {
     const posted = fetcher.mock.calls.find(([, init]) => init?.method === "POST")!;
     expect(posted[0]).toBe("/api/v1/messages/tasks");
     expect(JSON.parse(String(posted[1]?.body))).toMatchObject({
-      name: expect.stringMatching(/^msg-ANY-CN-/),
+      name: expect.stringMatching(/^msg-demo-ANY-CN-/),
       recipientCountry: "CN",
       senderCountry: null,
       body: "{}"
     });
-    expect(JSON.parse(String(posted[1]?.body))).not.toHaveProperty("recipientIds");
-    expect(router.currentRoute.value.path).toBe("/messages/tasks/new-task");
+    for (const field of ["recipientIds", "appId", "workerGroupId", "senderPhone"])
+      expect(JSON.parse(String(posted[1]?.body))).not.toHaveProperty(field);
+    expect(router.currentRoute.value.path).toBe("/messages");
     expect(host.textContent).toContain("待审核");
-    expect(host.querySelector('[data-testid="send-total"]')?.textContent).toBe("2");
+    expect(host.textContent).toContain("任务已创建");
     const imports = fetcher.mock.calls.filter(([url]) =>
       String(url).endsWith("/recipients:import")
     );
@@ -202,22 +203,26 @@ describe("Messages Task API workspace", () => {
     expect(
       fetcher.mock.calls.filter(([url]) => String(url).includes("/messages/tasks"))
     ).toHaveLength(before);
-    host.querySelector<HTMLAnchorElement>("a.task-back")!.click();
+    button("预览新任务").click();
+    await settle();
+    document
+      .querySelector<HTMLButtonElement>(".message-preview .el-drawer__close-btn")!
+      .click();
     await settle();
     expect(router.currentRoute.value.path).toBe("/messages");
   });
   it("directly opens retained task state after a new frontend session and preserves data when refresh fails", async () => {
     const fetcher = installApi();
     const { host } = await mount("/messages/tasks/finite-task");
-    expect(host.textContent).toContain("latest reply");
+    expect(document.body.textContent).toContain("latest reply");
     fetcher.mockImplementation(
       async () =>
         new Response(JSON.stringify({ message: "Owner unavailable" }), { status: 503 })
     );
-    button("刷新").click();
+    button("刷新预览").click();
     await settle();
-    expect(host.textContent).toContain("Owner unavailable");
-    expect(host.textContent).toContain("latest reply");
+    expect(document.body.textContent).toContain("Owner unavailable");
+    expect(document.body.textContent).toContain("latest reply");
     expect(host.textContent).not.toContain("Mock 数据");
   });
   it("keeps the draft and known Task link when submission is unconfirmed without retrying", async () => {
@@ -233,9 +238,7 @@ describe("Messages Task API workspace", () => {
     submit();
     await settle();
     expect(document.body.textContent).toContain("创建结果未确认");
-    expect(
-      document.querySelector('a[href="/messages/tasks/known-task"]')
-    ).not.toBeNull();
+    expect(button("查看已知任务 known-task")).not.toBeNull();
     expect(
       document.querySelector<HTMLTextAreaElement>('textarea[aria-label="收件号码"]')!
         .value

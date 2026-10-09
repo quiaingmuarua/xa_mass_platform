@@ -7,6 +7,18 @@ export type MessageTaskState =
   | "running_visible"
   | "terminal";
 export type MessageCountry = "CN" | "US" | "GB";
+export interface MessageApplication {
+  id: string;
+  label: string;
+  workerGroupId: string;
+}
+export type MessageDemoAction =
+  | "advance"
+  | "complete"
+  | "delivered"
+  | "read"
+  | "reply"
+  | "fail-read";
 export interface MessageTask {
   taskId: string;
   name?: string;
@@ -44,21 +56,23 @@ export interface MessageTaskDetail {
   resultsTruncated: boolean;
 }
 export interface CreateMessageTask {
+  appId: string;
   requestId: string;
   name: string;
   recipientCountry: MessageCountry;
   senderCountry: MessageCountry | null;
-  senderPhone?: string;
   body: string;
 }
 export interface MessageTaskSource {
   readonly mode: "api" | "mock";
+  readonly applications: readonly MessageApplication[];
   listTasks(): Promise<{ tasks: MessageTask[]; truncated: boolean }>;
   loadTask(taskId: string): Promise<MessageTaskDetail>;
   createTask(input: CreateMessageTask): Promise<{ taskId: string }>;
   importRecipients(taskId: string, text: string): Promise<MessageImportReceipt>;
   approveTask(taskId: string, expectedCount: number): Promise<void>;
   closeTask(taskId: string): Promise<void>;
+  demonstrate?(taskId: string, action: MessageDemoAction): Promise<void>;
 }
 export interface MessageImportReceipt {
   taskId: string;
@@ -83,13 +97,13 @@ export class MessageTaskCreationUnconfirmed extends Error {
 
 export const taskStateLabels: Record<MessageTaskState, string> = {
   pre_review: "待审核",
-  "running-initial": "运行中 · 初始",
-  running_visible: "运行中",
+  "running-initial": "发送中",
+  running_visible: "发送中",
   terminal: "调度已结束"
 };
 export function taskStateLabel(state: MessageTaskState | null): string {
   return state === null ? "状态不可用" : taskStateLabels[state];
 }
 export function senderRange(country: MessageCountry | null | undefined): string {
-  return country === null ? "ANY" : (country ?? "—");
+  return country === null ? "不限国家" : (country ?? "不可用");
 }

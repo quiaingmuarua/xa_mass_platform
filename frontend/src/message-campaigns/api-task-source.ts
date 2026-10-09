@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { api, MessageApiError } from "./api";
+import { api, MessageApiError, type Catalog } from "./api";
+import { apiApplications } from "./workbench";
 import {
   MessageTaskCreationUnconfirmed,
   type CreateMessageTask,
@@ -51,6 +52,10 @@ const detail = z.object({
 
 export class ApiMessageTaskSource implements MessageTaskSource {
   readonly mode = "api";
+  constructor(private readonly catalog: () => Catalog | undefined) {}
+  get applications() {
+    return apiApplications(this.catalog());
+  }
   async listTasks() {
     return list.parse(await api<unknown>("/tasks?limit=100"));
   }
@@ -95,10 +100,19 @@ export class ApiMessageTaskSource implements MessageTaskSource {
   }
 
   async createTask(input: CreateMessageTask) {
+    if (!this.applications.some((app) => app.id === input.appId))
+      throw new Error("应用配置不可用，不能为此应用创建任务。");
+    const { requestId, name, recipientCountry, senderCountry, body } = input;
     try {
-      return z
-        .object({ taskId: z.string().min(1) })
-        .parse(await api<unknown>("/tasks", input));
+      return z.object({ taskId: z.string().min(1) }).parse(
+        await api<unknown>("/tasks", {
+          requestId,
+          name,
+          recipientCountry,
+          senderCountry,
+          body
+        })
+      );
     } catch (error) {
       if (error instanceof MessageApiError && error.status >= 400 && error.status < 500)
         throw error;

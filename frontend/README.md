@@ -115,90 +115,109 @@ same console. Static page delivery never enables a business API.
 
 ## Messages business pages
 
-### Task workspace in explicit Mock mode
+`/messages` is the desktop Task workbench: one loaded list, one operation menu per
+row and a 760px result preview drawer. `/messages?view=create` is a single creation
+page. `/messages/tasks/:taskId` opens the same drawer over the list; adding
+`?view=create` opens it over the retained draft. Opening/closing previews does not
+reload the list or discard its filters, table position or focus. Browser history
+and direct links use the same routes; no new Server forwarding path is needed.
 
-`/messages` presents the `messages` Project's Tasks; `/messages/tasks/:taskId`
-presents one Task and its bounded Result preview. Creation uses a business drawer
-for the fixed message.send event, retaining the existing phone-file and country
-validation. It does not expose generic event, Matching or refill configuration.
-The Task list is newest-first, capped at 100 without pagination. Search and state
-filters apply only to that loaded window; returning from detail preserves them,
-the scroll position and focused row. Missing business metadata retains the Task,
-and managed Tasks have a separate type marker.
+The business list excludes managed Tasks without fetching replacements. It retains
+ordinary Tasks with missing metadata and shows unavailable values. The newest
+loaded window is capped at 100; state tabs, application/country/date filters and
+counts only describe that window. Both running bands display as sending, while
+unknown states appear only in All. Tables scroll within bounded areas, with no
+pagination, infinite loading or automatic polling.
 
-The list and detail show observed enqueued send total and delivered-success count. Delivery
-success counts each message once across DELIVERED, READ and REPLIED; SENT alone
-is displayed as sent, not delivery success. Mock supplies whole-Task counts
-independently of the 100-Result preview; unknown counts remain absent. The
-create drawer supports an empty Task or create-then-import; both remain in review.
-TXT/paste input is parsed in a browser worker, normalizes optional `+`, skips duplicates
-and rejects the whole invalid input. The default is 100,000 unique recipients / 10 MiB,
-using the API Catalog limits. Only summaries and first error locations are rendered.
-The same input component serves creation and independent import. API independently
-validates the UTF-8 text file before bounded Item writes.
+### Applications and API boundary
 
-Names remain automatic: `msg-{senderCountry|ANY}-{recipientCountry}-{YYYYMMDD}-{HHmmss}`.
-The name, requestId and creation payload freeze on first submission. Creation identity
-never depends on the eventual imported count. After creation, the Task ID is retained
-before import; import failure never creates another Task. Unconfirmed creation can be
-explicitly checked using the same request, without automatic import or approval.
-A local end-attempt action clears the draft and identity but retains any Server Task.
+`MessageTaskSource` supplies frontend application choices. Mock demonstrates
+Demo (`demo-sim`), App A (`app-a-sim`) and App B (`app-b-sim`). API derives exactly
+one choice from the existing Catalog's Group; ambiguous/missing Group binding
+blocks creation but never selects Mock or invents an application. A single
+application is read-only. Retained Task labels use their returned Group.
 
-New input-version-2 review Tasks expose import, count-confirmed approval and cancellation;
-running Tasks expose closure. Confirmation includes sender range, recipient country and
-observed count. Old input versions can only be read and closed. Managed/missing-business
-Tasks have no scenario management actions. Busy/stale reads disable mutations; late
-responses cannot replace a different Task or draft. Closing a Task retains quantities
-and permits later receipts. No scheduling state is invented by the API UI.
+New creation has no sender-phone input. The API source explicitly serializes only
+requestId, name, recipientCountry, senderCountry and body; it rejects an application
+other than the Catalog's choice before issuing a request. Frontend appId and
+workerGroupId are never sent. Old senderPhone metadata remains read-only and is
+shown during review/approval so an old restriction cannot silently appear removed.
+This is not backend multi-application support or removal of the backend Phone query.
 
-The detail preview contains at most 100 produced Results, including failures,
-with no pagination, export or whole-Task completion percentage. A Task's scheduling
-state, observed execution result and later receipt are distinct. Terminal scheduling
-does not stop receipts. Results are a bounded sample with no promised latest/file
-order. Read failures retain known data; empty Results do not imply failure.
+### Creation, import and management
 
-All new view access goes through `MessageTaskSource`, a frontend view boundary,
-with explicit ApiMessageTaskSource and MockMessageTaskSource implementations.
-API uses /api/v1/messages/tasks; Task identity is Server-owned. Mock labels its
-pages and drawer and makes no platform, Messages, Lab or export requests. Empty creation, independent imports, count checks, closure and later receipts are supported locally. Samples and locally created
-Tasks last for the console session; a full reload resets them. Closing creation
-retains the draft; success clears it and opens detail. Submission is single-flight,
-and an unconfirmed outcome cannot trigger an automatic retry.
+Names are automatic, include application and sender/recipient country and time,
+and never depend on imported count. Applications/countries and optional recipients
+and Template content are the ordinary inputs. Template content is submitted
+unchanged as `body`; the frontend checks only nonblank text and the existing
+4096-character bound, without interpreting JSON or expanding template variables.
+A hint explains the current demonstration application's JSON-object requirement
+and the `{}` automatic-delivery example, which remains the default. It also shows
+a Lab JSON example with receipt steps, delay, last-step omission probability and
+reply text; this is guidance only, with no frontend interpretation. There is no
+dedicated simulation-settings panel. The existing backend JSON validation and
+Worker/Lab protocol remain unchanged; API rejections are reported as returned.
 
-The fixed samples include cross-country sends, ANY, missing metadata, failures,
-empty and truncated Results. Refreshing `msg-follow-up` advances its receipt from
-SENT to READ to REPLIED while its Task remains terminal; refreshing
-`msg-read-error` fails on its second read and recovers on the third. These are
-deterministic UI samples, with no timers or simulated background scheduler.
+Empty creation and create-then-import both stop in review. UTF-8 TXT/paste uses a
+browser worker, optional `+` normalization, duplicate skipping, country-prefix
+validation and whole-input rejection on errors. The Catalog limits remain
+100,000 unique recipients / 10 MiB per import. No CSV or number-detail table is
+added. Independent import reuses the same editor. Only the latest confirmed import
+receipt/source summary is retained in the console session, never persisted.
+
+Request identity, application, generated name and wire payload freeze at first
+submission. A definitive creation rejection before any known Task unlocks the
+same draft for correction, retaining recipients, file source and the unused request
+identity. Identity conflicts keep their original request for explicit resolution.
+Creation uncertainty requires explicit reconciliation with the original
+request; reconciliation never auto-imports or approves. A rejected reconciliation
+keeps the earlier uncertainty and frozen input. Once a Task ID is known, import
+failure cannot create another Task. Explicit re-import and refreshed actual
+count recover the existing Task. Ending an attempt clears local input only. Drafts
+survive local navigation within the console session; reload loses them. Numbers
+are never stored in localStorage or other persistent browser storage.
+
+Review menus offer import, count-confirmed approval and cancellation. Running menus
+offer preview/closure; ended and unknown Tasks offer preview. Old input versions
+retain their existing restrictions, and managed or incomplete business Tasks cannot
+be mutated. Every management entry reads a fresh Task first; approval confirms that
+observed count. Conflict requires a new read/confirmation. Closure preserves partial
+progress and later receipts. Busy/stale state disables mutation, with independent
+list/drawer reads and generation/focus guards against late responses.
+
+### Preview and Mock evidence
+
+Review Tasks show actual recipient count and read-only Template content directly;
+empty execution metrics are hidden. Approval also displays the latest retrieved
+template unchanged as text, with bounded keyboard-accessible scrolling for long
+content. Other Tasks show at most 100
+produced Results with preview-local number/status filters, explicit truncation and
+matching counts. Whole-Task counts come from the source, never those rows. Sent,
+delivered, read and replied are cumulative stages, not disjoint quantities. Terminal
+scheduling is explicitly separate from later receipt updates; replies show the
+latest content, without fabricating a reply history. Failures, malformed content,
+missing business answers and empty previews remain distinct.
+
+Task/Worker identities, actual sender phone and original configuration are collapsed
+technical details. Missing import history is stated as unavailable. No operation
+history, Messages export, pause/resume, copy-configuration or mobile redesign is
+introduced. Read failures retain the previous snapshot/time; first failure offers
+retry. Only initial reads, explicit actions and manual refresh make API requests.
+
+Mock uses the same views and bounded windows with zero platform, product, Lab or
+export requests. Its three application bindings are immutable per created Task and
+part of request comparison. Explicit controls in the technical area advance sending,
+finish scheduling, deliver/read/reply after terminality or fail the next read.
+Refreshing itself never advances simulation, and no background timer is installed.
 
 ```powershell
 cd frontend
 pnpm dev:mock --host 127.0.0.1 --port 18501
 ```
 
-Open `http://127.0.0.1:18501/messages` in Mock mode. API uses the same list,
-drawer and `/messages/tasks/{taskId}` detail, including direct reload through the
-Server page forward. The old Campaign and metrics pages have been removed.
-API failure never switches data source. Catalog gates availability independently
-of SMS; Mock hides SMS and never calls catalog.
-
-API lists show a truncation notice for the bounded Project window. Counts come
-from the API, never preview rows or a client cache; their business meaning and
-independent sources belong to [Messages](../scenarios/message-campaigns-jvm/README.md#数量与结果读取).
-Detail rows preserve failures and content parse errors. Counts and Result
-content have no common snapshot; Task terminality does not stop later receipts.
-
-API creation completes append and automatic approval before returning taskId.
-Unconfirmed submission preserves the draft and offers a known Task link, without
-automatic retry. Enter/refresh are the only Task reads; there is no background
-statistics polling. Known data survives read errors. No pagination or export
-control is shown; the platform export endpoint remains unchanged.
-
-Recipient country and sender range are independent (CN and ANY defaults).
-An optional sender phone adds an intersecting condition. UTF-8 files remain local,
-at most 1 MiB/1000 numbers, with BOM and LF/CRLF/CR, original line errors and duplicate
-rejection; finite Task files retain their separate 10000-line limit. Lab interprets
-the submitted JSON body.
+Backend Group binding, HTTP contracts, input version and delivery capabilities are
+unchanged. Real multi-application assembly and environment migration are deferred;
+Mock behavior must not be reported as proof of those capabilities.
 
 ## App Checks Task workspace
 

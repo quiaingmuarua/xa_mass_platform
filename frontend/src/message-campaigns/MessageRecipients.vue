@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from "vue";
+import { onBeforeUnmount, reactive, ref, toRefs, watch } from "vue";
+import { recipientEditor, type RecipientEditor } from "./workbench";
 import {
   MESSAGE_IMPORT_LIMITS,
   type RecipientInput,
@@ -7,20 +8,22 @@ import {
 } from "@/files/phone-numbers";
 import { createRecipientReader } from "./recipient-reader";
 const props = withDefaults(
-  defineProps<{ country: string; disabled?: boolean; limits?: RecipientLimits }>(),
+  defineProps<{
+    country: string;
+    disabled?: boolean;
+    limits?: RecipientLimits;
+    editor?: RecipientEditor;
+  }>(),
   { limits: () => MESSAGE_IMPORT_LIMITS }
 );
 const emit = defineEmits<{
   change: [value: RecipientInput | undefined];
   busy: [value: boolean];
 }>();
-const pasted = ref("");
-const fileName = ref("");
-const summary = ref<RecipientInput>();
-const error = ref("");
+const state = props.editor ?? reactive(recipientEditor());
+const { pasted, fileName, summary, error } = toRefs(state);
 const reading = ref(false);
 const reader = createRecipientReader();
-let source: string | File = "";
 let generation = 0;
 async function validate() {
   const current = ++generation;
@@ -30,7 +33,7 @@ async function validate() {
   emit("change", undefined);
   emit("busy", true);
   try {
-    const value = await reader.read(source, props.country, props.limits);
+    const value = await reader.read(state.source, props.country, props.limits);
     if (current !== generation) return;
     summary.value = value;
     emit("change", value);
@@ -49,14 +52,14 @@ function choose(event: Event) {
   const file = input.files?.[0];
   input.value = "";
   if (!file) return;
-  source = file;
+  state.source = file;
   fileName.value = file.name;
   pasted.value = "";
   void validate();
 }
 function paste(value: string) {
   pasted.value = value;
-  source = value;
+  state.source = value;
   fileName.value = "";
   void validate();
 }

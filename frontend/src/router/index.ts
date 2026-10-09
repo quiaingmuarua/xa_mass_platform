@@ -70,8 +70,11 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: consoleRoutes,
   scrollBehavior: (to, from) => {
-    // The Messages workspace restores its loaded-list position and focused row.
-    if (to.path === "/messages" && from.path.startsWith("/messages/tasks/"))
+    // Messages previews remain over the mounted list or creation draft.
+    if (
+      (to.path === "/messages" || to.path.startsWith("/messages/tasks/")) &&
+      (from.path === "/messages" || from.path.startsWith("/messages/tasks/"))
+    )
       return false;
     // Task previews are overlays; their routes do not scroll the background.
     if (
