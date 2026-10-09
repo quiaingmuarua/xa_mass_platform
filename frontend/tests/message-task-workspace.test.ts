@@ -12,8 +12,10 @@ import {
   ElIcon,
   ElInput,
   ElOption,
-  ElSelect
+  ElSelect,
+  ElMessageBox
 } from "element-plus";
+import { MessageApiError } from "../src/message-campaigns/api";
 import App from "../src/App.vue";
 import { consoleRoutes } from "../src/router";
 import { MockMessageTaskSource } from "../src/message-campaigns/mock-task-source";
@@ -125,7 +127,7 @@ describe("Messages Task workspace in explicit Mock mode", () => {
     expect(host.querySelectorAll('[data-testid="message-task-row"]')).toHaveLength(0);
     button("创建消息任务").click();
     await settle();
-    expect(field("任务名称").value).toMatch(/^msg-ANY-CN-0-\d{8}-\d{6}$/);
+    expect(field("任务名称").value).toMatch(/^msg-ANY-CN-\d{8}-\d{6}$/);
     expect(field("任务名称").readOnly).toBe(true);
   });
 
@@ -168,24 +170,23 @@ describe("Messages Task workspace in explicit Mock mode", () => {
     const { host, router } = await mount();
     await draft();
     await select("发送范围", "US");
-    button("取消").click();
+    button("关闭").click();
     await settle();
     button("创建消息任务").click();
     await settle();
-    expect(field("任务名称").value).toMatch(/^msg-US-CN-2-\d{8}-\d{6}$/);
+    expect(field("任务名称").value).toMatch(/^msg-US-CN-\d{8}-\d{6}$/);
     submit();
     submit();
     await settle();
     expect(creating).toHaveBeenCalledTimes(1);
     expect(creating.mock.calls[0][0]).toMatchObject({
-      name: expect.stringMatching(/^msg-US-CN-2-\d{8}-\d{6}$/),
+      name: expect.stringMatching(/^msg-US-CN-\d{8}-\d{6}$/),
       recipientCountry: "CN",
       senderCountry: "US",
-      body: "{}",
-      recipientIds: ["+8613800000001", "+8613800000002"]
+      body: "{}"
     });
-    expect(button("创建并开始发送").disabled).toBe(true);
-    expect(button("取消").disabled).toBe(true);
+    expect(button("重试创建").disabled).toBe(true);
+    expect(button("关闭").disabled).toBe(true);
     complete();
     await settle();
     expect(router.currentRoute.value.path).toBe("/messages/tasks/mock-message-task-1");
@@ -199,7 +200,7 @@ describe("Messages Task workspace in explicit Mock mode", () => {
     expect(host.querySelectorAll('[data-testid="message-task-row"]')).toHaveLength(10);
     button("创建消息任务").click();
     await settle();
-    expect(field("任务名称").value).toMatch(/^msg-ANY-CN-0-\d{8}-\d{6}$/);
+    expect(field("任务名称").value).toMatch(/^msg-ANY-CN-\d{8}-\d{6}$/);
     expect(field("收件号码").value).toBe("");
     expect((await new MockMessageTaskSource().listTasks()).tasks).toHaveLength(9);
   });
@@ -224,12 +225,12 @@ describe("Messages Task workspace in explicit Mock mode", () => {
     input("收件号码", "\n+8613800000003\n+8613800000003");
     input("JSON 正文", "invalid");
     await settle();
-    expect(document.body.textContent).toContain("第 3 行：号码重复");
+    expect(document.body.textContent).toContain("重复号码将自动跳过");
     expect(document.body.textContent).toContain("正文不是合法 JSON");
     submit();
     await settle();
     expect(creating).not.toHaveBeenCalled();
-    expect(button("创建并开始发送").disabled).toBe(true);
+    expect(button("创建并导入").disabled).toBe(true);
   });
 
   it("keeps input after a rejected create and never retries an unconfirmed submission", async () => {
@@ -242,19 +243,19 @@ describe("Messages Task workspace in explicit Mock mode", () => {
     submit();
     await settle();
     expect(document.body.textContent).toContain("Mock 创建被拒绝");
-    expect(field("任务名称").value).toMatch(/^msg-ANY-CN-2-\d{8}-\d{6}$/);
+    expect(field("任务名称").value).toMatch(/^msg-ANY-CN-\d{8}-\d{6}$/);
     submit();
     await settle();
-    expect(document.body.textContent).toContain("提交结果未确认");
+    expect(document.body.textContent).toContain("创建结果未确认");
     submit();
-    button("取消").click();
+    button("关闭").click();
     await settle();
     button("刷新").click();
     button("创建消息任务").click();
     await vi.advanceTimersByTimeAsync(5000);
     expect(creating).toHaveBeenCalledTimes(2);
-    expect(button("创建并开始发送").disabled).toBe(true);
-    expect(field("任务名称").value).toMatch(/^msg-ANY-CN-2-\d{8}-\d{6}$/);
+    expect(button("重试创建").disabled).toBe(true);
+    expect(field("任务名称").value).toMatch(/^msg-ANY-CN-\d{8}-\d{6}$/);
   });
 
   it("renders only 100 produced Results, including failures, without paging, export or a task completion percentage", async () => {
@@ -372,5 +373,140 @@ describe("Messages Task workspace in explicit Mock mode", () => {
     const { host } = await mount();
     expect(host.querySelectorAll('[data-testid="message-task-row"]')).toHaveLength(100);
     expect(host.textContent).toContain("列表已截断");
+  });
+  it("creates an empty draft, explicitly imports, confirms its count and closes without inventing sends", async () => {
+    const confirmation = vi
+      .spyOn(ElMessageBox, "confirm")
+      .mockResolvedValue("confirm" as Awaited<ReturnType<typeof ElMessageBox.confirm>>);
+    const { host } = await mount();
+    button("创建消息任务").click();
+    await settle();
+    input("JSON 正文", "{}");
+    await settle();
+    submit();
+    await settle();
+    expect(host.textContent).toContain("待审核");
+    expect(button("核对并启动").disabled).toBe(true);
+    button("导入收件人").click();
+    await settle();
+    const importDrawer = [...document.querySelectorAll(".el-drawer")].find((drawer) =>
+      drawer.querySelector(".el-drawer__header")?.textContent?.includes("导入收件人")
+    )!;
+    expect(importDrawer).toBeDefined();
+    const recipientField = importDrawer.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="收件号码"]'
+    )!;
+    recipientField.value = "86123\n+86123\n86124";
+    recipientField.dispatchEvent(new Event("input", { bubbles: true }));
+    await settle();
+    expect(importDrawer.textContent).toContain("有效 2");
+    expect(button("导入收件人", importDrawer).disabled).toBe(false);
+    button("导入收件人", importDrawer).click();
+    await settle();
+    expect(host.querySelector('[data-testid="send-total"]')?.textContent).toBe("2");
+    button("核对并启动").click();
+    await settle();
+    expect(confirmation.mock.calls[0][0]).toContain("实际收件人数：2");
+    expect(host.textContent).toContain("运行中");
+    button("中止任务").click();
+    await settle();
+    expect(host.textContent).toContain("调度已结束");
+    expect(host.querySelector('[data-testid="send-total"]')?.textContent).toBe("2");
+    expect(host.querySelector('[data-testid="delivered-count"]')?.textContent).toBe(
+      "0"
+    );
+  });
+
+  it("keeps a created Task after lost import confirmation and only reimports explicitly", async () => {
+    const create = vi.spyOn(MockMessageTaskSource.prototype, "createTask");
+    const original = MockMessageTaskSource.prototype.importRecipients;
+    const importing = vi
+      .spyOn(MockMessageTaskSource.prototype, "importRecipients")
+      .mockImplementationOnce(async function (this: MockMessageTaskSource, id, text) {
+        await original.call(this, id, text);
+        throw new MessageApiError(503, "导入未确认", id, 0, 0);
+      });
+    const { host, router } = await mount();
+    await draft();
+    submit();
+    await settle();
+    expect(document.body.textContent).toContain("任务已创建，导入未完成");
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(importing).toHaveBeenCalledTimes(1);
+    button("刷新实际数量").click();
+    await settle();
+    expect(document.body.textContent).toContain("当前实际收件人数：2");
+    button("重新导入原号码").click();
+    await settle();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(importing).toHaveBeenCalledTimes(2);
+    expect(router.currentRoute.value.path).toBe("/messages/tasks/mock-message-task-1");
+    expect(host.querySelector('[data-testid="send-total"]')?.textContent).toBe("2");
+    expect(host.textContent).toContain("待审核");
+  });
+
+  it("reconciles with the frozen request without auto-import and can explicitly discard the local attempt", async () => {
+    const original = MockMessageTaskSource.prototype.createTask;
+    const create = vi
+      .spyOn(MockMessageTaskSource.prototype, "createTask")
+      .mockImplementationOnce(async function (this: MockMessageTaskSource, input) {
+        const result = await original.call(this, input);
+        throw new MessageTaskCreationUnconfirmed("unknown", result.taskId);
+      });
+    const importing = vi.spyOn(MockMessageTaskSource.prototype, "importRecipients");
+    await mount();
+    await draft();
+    submit();
+    await settle();
+    const frozen = structuredClone(create.mock.calls[0][0]);
+    await vi.advanceTimersByTimeAsync(60000);
+    button("使用原身份核对创建").click();
+    await settle();
+    expect(create.mock.calls[1][0]).toEqual(frozen);
+    expect(importing).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("创建已核对");
+    button("结束本次提交").click();
+    await settle();
+    expect(field("收件号码").value).toBe("");
+    expect(
+      document.querySelector('a[href="/messages/tasks/mock-message-task-1"]')
+    ).toBeNull();
+    input("JSON 正文", "{}");
+    await settle();
+    submit();
+    await settle();
+    expect(create.mock.calls[2][0].requestId).not.toBe(frozen.requestId);
+    expect(importing).not.toHaveBeenCalled();
+  });
+
+  it("supports full local imports independently of preview and rejects terminal re-imports", async () => {
+    const source = new MockMessageTaskSource([]);
+    const task = await source.createTask({
+      requestId: "bulk",
+      name: "bulk",
+      recipientCountry: "CN",
+      senderCountry: null,
+      body: "{}"
+    });
+    const text = Array.from({ length: 100000 }, (_, i) => `86138${10000000 + i}`).join(
+      "\n"
+    );
+    expect((await source.importRecipients(task.taskId, text)).confirmedAddedCount).toBe(
+      100000
+    );
+    expect(
+      (await source.importRecipients(task.taskId, "8613810000000\n+8613810000000"))
+        .existingCount
+    ).toBe(1);
+    expect((await source.loadTask(task.taskId)).task.sendTotal).toBe(100000);
+    await expect(source.approveTask(task.taskId, 1)).rejects.toThrow("变化");
+    await source.approveTask(task.taskId, 100000);
+    await source.closeTask(task.taskId);
+    expect((await source.loadTask(task.taskId)).task.sendTotal).toBe(100000);
+    await expect(source.importRecipients(task.taskId, "86123")).rejects.toThrow(
+      "待审核"
+    );
+    await expect(source.approveTask(task.taskId, 100000)).rejects.toThrow("待审核");
   });
 });

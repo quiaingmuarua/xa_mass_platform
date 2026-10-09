@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.*;
 class MessagesAssemblyIntegrationTest {
     private static final String EVENT = "extension.worker.message.send";
 
-    @Test @Timeout(90)
+    @Test @Timeout(150)
     void messagesAloneExecutesAndContinuesTrackedResponsesAfterTaskTermination() throws Exception {
         try (var fixture = new Fixture(); var channel = new MessageScenario();
              var lab = new MessageFailureIntegrationTest.LabHttp(channel)) {
@@ -47,9 +47,12 @@ class MessagesAssemblyIntegrationTest {
                             channel.definitions(sender)).build()) {
                 manager.set(worker); worker.start();
                 var created = fixture.post("/api/v1/messages/tasks", Map.of("requestId", "standalone", "name", "standalone",
-                        "recipientCountry", "CN", "senderCountry", "CN", "body", "{}", "recipientIds", List.of("+8613800000000")));
+                        "recipientCountry", "CN", "senderCountry", "CN", "body", "{}"));
                 assertThat(created.statusCode()).isEqualTo(201);
                 String task = (String) Jsons.parseObject(created.body()).get("taskId");
+                assertThat(fixture.upload(task, "+8613800000000").statusCode()).isEqualTo(200);
+                Thread.sleep(61_000); // Review may outlast the retired 60-second Item TTL.
+                assertThat(fixture.post("/api/v1/messages/tasks/" + task + "/approve", 1).statusCode()).isEqualTo(200);
                 await(() -> "terminal".equals(((Map<?, ?>) fixture.detail(task).get("task")).get("state")));
                 await(() -> fixture.hasStatus(task, "SENT", null));
                 var local = (Map<String, Object>) ((List<?>) channel.page(0, 1).get("items")).getFirst();
@@ -125,7 +128,7 @@ class MessagesAssemblyIntegrationTest {
         throw new AssertionError("Messages module observation timed out");
     }
 
-    private static final class Fixture implements AutoCloseable {
+    static final class Fixture implements AutoCloseable {
         final String scope = "test_messages_assembly_" + UUID.randomUUID().toString().replace("-", "");
         final String redisUrl = System.getenv().getOrDefault("XA_MASS_REDIS_URL", "redis://127.0.0.1:6379/15");
         final int port = port(), adapter = port();
@@ -177,6 +180,11 @@ class MessagesAssemblyIntegrationTest {
         HttpResponse<String> post(String path, Object input) throws Exception {
             return http.send(HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(5)).header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(Jsons.toJson(input))).build(), HttpResponse.BodyHandlers.ofString());
+        }
+        HttpResponse<String> upload(String taskId, String text) throws Exception {
+            return http.send(HttpRequest.newBuilder(base.resolve("/api/v1/messages/tasks/" + taskId + "/recipients:import"))
+                    .timeout(Duration.ofSeconds(180)).header("Content-Type", "text/plain;charset=UTF-8")
+                    .POST(HttpRequest.BodyPublishers.ofString(text)).build(), HttpResponse.BodyHandlers.ofString());
         }
         Map<String, Object> detail(String id) { return Jsons.parseObject(get("/api/v1/messages/tasks/" + id).body()); }
         boolean hasStatus(String task, String status, String reply) {

@@ -1,8 +1,5 @@
 package com.xa.mass.scenario.messages;
 
-import com.xa.mass.kernel.assignment.EligibilityQuery;
-import com.xa.mass.kernel.assignment.RefillTarget;
-import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultStatus;
@@ -14,18 +11,22 @@ import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.TaskLifecycleService;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
+import java.util.function.Supplier;
+import com.xa.mass.server.api.v1.contract.ActionOutcome;
+import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.operation.OperationGuard;
+import static com.xa.mass.scenario.messages.MessageSpecification.text;
 import java.util.concurrent.TimeUnit;
 import org.springframework.context.SmartLifecycle;
 import static com.xa.mass.scenario.messages.MessageWorkerSupply.*;
 
-/** Task-backed business view. Only current-run submission deduplication is retained locally. */
+/** Business admission and observation over existing Server Task operations. */
 public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     public static final List<String> COUNTRIES = List.of("CN", "US", "GB");
-    private static final int MAX_TASKS = 50, MAX_ITEMS = 50_000, MAX_RECIPIENTS = 1000;
-    private static final Map<String, String> DIAL_PREFIXES = Map.of("CN", "+86", "US", "+1", "GB", "+44");
-    private static final java.util.regex.Pattern INTERNATIONAL_NUMBER = java.util.regex.Pattern.compile("\\+[1-9][0-9]{1,14}");
+    private static final int MAX_ACTIVE_IMPORTS = 2;
     private static final Set<String> STAGES = Set.of("SENT", "DELIVERED", "READ", "REPLIED");
     private final ProjectDirectory projects;
     private final ProjectTaskQueryService queries;
@@ -33,17 +34,17 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     private final TaskDataService data;
     private final TaskLifecycleService lifecycle;
     private final String workerGroupId;
-    private final String runId = UUID.randomUUID().toString();
+    private final OperationGuard operations;
     private final Object gate = new Object();
-    private final Map<String, Submission> requests = new HashMap<>();
     private volatile boolean running;
     private boolean closed;
-    private int admittedItems, active;
+    private int active, activeImports;
 
     public MessageTaskService(ProjectDirectory projects, ProjectTaskQueryService queries, TaskCreationService creation,
-            TaskDataService data, TaskLifecycleService lifecycle, String workerGroupId) {
+            TaskDataService data, TaskLifecycleService lifecycle, String workerGroupId, OperationGuard operations) {
         this.projects = projects; this.queries = queries; this.creation = creation;
         this.data = data; this.lifecycle = lifecycle; this.workerGroupId = Objects.requireNonNull(workerGroupId);
+        this.operations = Objects.requireNonNull(operations);
     }
 
     @Override public void start() {
@@ -59,85 +60,136 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
 
     public Map<String, Object> catalog() {
         requireRunning();
-        return Map.of("projectId", PROJECT, "runId", runId, "version", "0.1.0-preview", "countries", COUNTRIES.stream()
+        return Map.of("projectId", PROJECT, "version", "0.2.0-preview", "countries", COUNTRIES.stream()
                 .map(c -> Map.of("id", c, "workerGroupId", workerGroupId)).toList(),
-                "limits", Map.of("tasks", MAX_TASKS, "items", MAX_ITEMS, "recipientsPerTask", MAX_RECIPIENTS));
+                "limits", Map.of("recipientsPerImport", MessageRecipientFile.MAX_RECIPIENTS, "importFileBytes", MessageRecipientFile.MAX_BYTES));
     }
 
     public CreatedTask create(Map<String, Object> input) {
-        Specification specification = Specification.parse(input);
-        Submission submission;
-        boolean owner;
-        synchronized (gate) {
-            requireRunning();
-            submission = requests.get(specification.requestId());
-            owner = submission == null;
-            if (!owner && !submission.specification.equals(specification))
-                throw new ProductError(409, "requestId has different content", null);
-            if (owner) {
-                if (active >= 2 || requests.size() >= MAX_TASKS || admittedItems + specification.recipientIds().size() > MAX_ITEMS)
-                    throw new ProductError(429, "Messages submission capacity exhausted", null);
-                submission = new Submission(specification);
-                requests.put(specification.requestId(), submission);
-                active++; admittedItems += specification.recipientIds().size();
+        return admitted(null, false, () -> {
+            var spec = MessageSpecification.parse(input);
+            try {
+                return new CreatedTask(creation.createForRequest(new TaskCreateRequest(PROJECT, workerGroupId, 50, 3,
+                        spec.refill(), spec.name(), spec.metadata()), spec.requestId(), spec.fingerprint(workerGroupId)).taskId());
+            } catch (TaskCreationUnconfirmedException unknown) {
+                throw failure(503, "创建结果未确认，请使用原请求身份核对；不会自动重建", unknown.taskId(), unknown);
             }
-        }
-        if (owner) {
-            try { submission.result.complete(submit(specification)); }
-            catch (RuntimeException failure) { submission.result.completeExceptionally(failure); }
-            finally { synchronized (gate) { active--; gate.notifyAll(); } }
-        }
-        try { return submission.result.join(); }
-        catch (CompletionException failure) { throw (RuntimeException) failure.getCause(); }
+        });
     }
 
-    private CreatedTask submit(Specification specification) {
-        String taskId = null;
-        try {
-            var supply = new LinkedHashMap<String, List<String>>();
-            var query = new LinkedHashMap<String, Object>();
-            var metadata = new LinkedHashMap<String, String>();
-            metadata.put("scenario", PROJECT); metadata.put("recipientCountry", specification.recipientCountry());
-            metadata.put("body", specification.body());
-            if (specification.senderCountry() != null) {
-                supply.put("worker.country", List.of(specification.senderCountry()));
-                query.put("country", List.of(specification.senderCountry()));
-                metadata.put("senderCountry", specification.senderCountry());
+    public ImportReceipt importRecipients(String taskId, InputStream input) {
+        return admitted(taskId, true, () -> operations.taskMutation(taskId, () -> {
+            var entry = requireMessage(taskId, true);
+            requireReview(entry);
+            MessageSpecification spec;
+            try {
+                var stored = new LinkedHashMap<String, Object>();
+                stored.put("requestId", "stored"); stored.put("name", entry.task().name());
+                for (String field : List.of("recipientCountry", "senderCountry", "senderPhone", "body"))
+                    if (entry.task().metadata().containsKey(field)) stored.put(field, entry.task().metadata().get(field));
+                spec = MessageSpecification.parse(stored);
+            } catch (RuntimeException malformed) {
+                throw failure(503, "任务配置不可用，请核对任务", taskId, malformed);
             }
-            if (specification.senderPhone() != null) {
-                query.put("phone", specification.senderPhone()); metadata.put("senderPhone", specification.senderPhone());
-            }
-            requireRunning();
-            var refill = specification.senderPhone() == null
-                    ? List.of(RefillTarget.of(POOL, new EligibilityQuery(supply), 100)) : List.<RefillTarget>of();
-            taskId = creation.create(new TaskCreateRequest(PROJECT, workerGroupId, 50, 3,
-                    refill, specification.name(), metadata)).taskId();
-            var selector = new WorkerQuery(specification.senderPhone() == null
-                    ? POOL_FUNCTION : PHONE_FUNCTION, query);
-            for (int start = 0; start < specification.recipientIds().size(); start += 100) {
-                requireRunning();
-                var items = new ArrayList<TaskItemRequest>();
-                for (String recipient : specification.recipientIds().subList(start, Math.min(start + 100, specification.recipientIds().size()))) {
-                    String messageId = UUID.randomUUID().toString();
-                    items.add(new TaskItemRequest(messageId, EVENT, Map.of("campaignId", taskId,
-                            "messageId", messageId, "country", specification.recipientCountry(), "recipientId", recipient,
-                            "body", specification.body()), 5, 60_000L, selector));
+            long added = 0, existing = 0;
+            try (var file = MessageRecipientFile.read(input, spec.recipientCountry());
+                 var reader = Files.newBufferedReader(file.file(), StandardCharsets.UTF_8)) {
+                var batch = new ArrayList<TaskItemRequest>(100);
+                boolean ended = false;
+                while (!ended) {
+                    requireRunning(); batch.clear();
+                    while (batch.size() < 100) {
+                        String number = reader.readLine();
+                        if (number == null) { ended = true; break; }
+                        String id = MessageSpecification.messageId(taskId, number);
+                        batch.add(new TaskItemRequest(id, EVENT, Map.of("campaignId", taskId, "messageId", id,
+                                "country", spec.recipientCountry(), "recipientId", number, "body", spec.body()), 5, null, spec.selector()));
+                    }
+                    if (batch.isEmpty()) break;
+                    var effects = data.importFiniteTaskItems(taskId, List.copyOf(batch));
+                    boolean confirmed = true;
+                    for (var item : batch) {
+                        var effect = effects.get(item.messageId());
+                        if (effect != null && effect.status() == ActionOutcome.Status.APPLIED) added++;
+                        else if (effect != null && effect.status() == ActionOutcome.Status.UNCHANGED) existing++;
+                        else confirmed = false;
+                    }
+                    if (!confirmed) throw new IllegalStateException("Item import is unconfirmed");
                 }
-                var appended = data.appendFiniteTaskItems(taskId, items);
-                if (appended.size() != items.size() || items.stream().anyMatch(item -> appended.get(item.messageId()) == null
-                        || !"applied".equals(appended.get(item.messageId()).status().wireValue())))
-                    throw new IllegalStateException("Item append is unconfirmed");
+                return new ImportReceipt(taskId, file.inputCount(), file.emptyCount(), file.duplicateCount(), file.uniqueCount(), added, existing);
+            } catch (IOException | RuntimeException error) {
+                var failure = translate(error, taskId);
+                failure.confirmedAddedCount = added; failure.existingCount = existing;
+                throw failure;
             }
-            requireRunning();
-            lifecycle.approve(taskId);
-            return new CreatedTask(taskId);
-        } catch (RuntimeException failure) {
-            if (failure instanceof TaskCreationUnconfirmedException unknown) taskId = unknown.taskId();
-            var unconfirmed = new ProductError(503, "Submission is unconfirmed; do not recreate or retry automatically", taskId);
-            unconfirmed.initCause(failure);
-            throw unconfirmed;
-        }
+        }));
     }
+
+    public ActionOutcome approve(String taskId, long expectedCount) {
+        return admitted(taskId, false, () -> operations.taskMutation(taskId, () -> {
+            var entry = requireMessage(taskId, true);
+            requireReview(entry);
+            long actual = data.observeItemScoreCounts(List.of(taskId)).get(taskId).total();
+            if (actual <= 0 || expectedCount != actual) throw new ProductError(409, "收件人数为空或已变化，请刷新后重新核对", taskId);
+            return lifecycle.approve(taskId);
+        }));
+    }
+
+    public ActionOutcome closeTask(String taskId) {
+        return admitted(taskId, false, () -> operations.taskMutation(taskId, () -> {
+            requireMessage(taskId, false);
+            return lifecycle.close(taskId);
+        }));
+    }
+
+    private ProjectTaskQueryService.Entry requireMessage(String taskId, boolean newInput) {
+        var entry = queries.get(PROJECT, taskId);
+        if (!isMessageTask(entry)) throw new ProductError(400, "只支持 Messages 有限任务", taskId);
+        if (entry.scoreBand() == null) throw new ProductError(503, "任务状态不可用，请刷新后核对", taskId);
+        if (newInput && !"2".equals(entry.task().metadata().get("inputVersion")))
+            throw new ProductError(409, "旧输入版本仅支持读取和关闭，不支持导入或启动", taskId);
+        return entry;
+    }
+
+    private static void requireReview(ProjectTaskQueryService.Entry entry) {
+        if (!"pre_review".equals(entry.scoreBand())) throw new ProductError(409, "任务不在待审核状态，请刷新后核对", entry.taskId());
+    }
+
+    private <T> T admitted(String taskId, boolean importing, Supplier<T> work) {
+        synchronized (gate) {
+            requireRunning();
+            if (importing && activeImports >= MAX_ACTIVE_IMPORTS) throw new ProductError(429, "导入繁忙，请稍后重试", taskId);
+            active++; if (importing) activeImports++;
+        }
+        try { return work.get(); }
+        catch (RuntimeException error) { throw translate(error, taskId); }
+        finally { synchronized (gate) { active--; if (importing) activeImports--; gate.notifyAll(); } }
+    }
+
+    private static ProductError translate(Throwable error, String taskId) {
+        if (error instanceof ProductError known) {
+            if (known.taskId != null || taskId == null) return known;
+            var associated = failure(known.status, known.getMessage(), taskId, known);
+            associated.confirmedAddedCount = known.confirmedAddedCount; associated.existingCount = known.existingCount;
+            return associated;
+        }
+        if (error instanceof ServerException server) {
+            return switch (server.errorCode()) {
+                case TASK_STATE_CONFLICT, KERNEL_REJECTED_CONFLICT -> failure(409, "任务或请求内容冲突，或有其他操作正在进行，请核对后重试", taskId, error);
+                case TASK_NOT_FOUND, TASK_WORKER_GROUP_NOT_FOUND -> failure(404, "任务或 WorkerGroup 不存在", taskId, error);
+                case INVALID_TASK_DATA_REQUEST, TASK_OPERATION_NOT_SUPPORTED -> failure(400, "任务不支持该操作或输入无效", taskId, error);
+                default -> failure(503, "操作结果未确认，请核对已知任务；不会自动重试", taskId, error);
+            };
+        }
+        return failure(503, "操作结果未确认，已确认写入保留；请核对任务", taskId, error);
+    }
+
+    private static ProductError failure(int status, String message, String taskId, Throwable cause) {
+        var error = new ProductError(status, message, taskId); error.initCause(cause); return error;
+    }
+
+    public record ImportReceipt(String taskId, long inputCount, long emptyCount, long duplicateCount, int uniqueCount,
+                                long confirmedAddedCount, long existingCount) { }
 
     public Map<String, Object> list(int limit) {
         requireRunning();
@@ -166,7 +218,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     }
 
     private static boolean isMessageTask(ProjectTaskQueryService.Entry entry) {
-        return entry.task() != null && "CLOSE_WHEN_IDLE".equals(entry.task().idleDisposition())
+        return entry != null && entry.task() != null && PROJECT.equals(entry.task().projectId()) && "CLOSE_WHEN_IDLE".equals(entry.task().idleDisposition())
                 && PROJECT.equals(entry.task().metadata().get("scenario"));
     }
     private static Map<String, Object> taskView(ProjectTaskQueryService.Entry entry) {
@@ -177,7 +229,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
         if (entry.task() != null && entry.task().name() != null) row.put("name", entry.task().name());
         if (isMessageTask(entry)) {
             var metadata = entry.task().metadata();
-            for (String field : List.of("recipientCountry", "senderPhone", "body"))
+            for (String field : List.of("recipientCountry", "senderPhone", "body", "inputVersion"))
                 if (metadata.containsKey(field)) row.put(field, metadata.get(field));
             row.put("senderCountry", metadata.get("senderCountry"));
         }
@@ -229,49 +281,10 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     }
     @Override public void close() { stop(); }
     public record CreatedTask(String taskId) {}
-    private record Submission(Specification specification, CompletableFuture<CreatedTask> result) {
-        Submission(Specification specification) { this(specification, new CompletableFuture<>()); }
-    }
-    static String text(Map<String, Object> input, String key, int max) {
-        if (!(input.get(key) instanceof String value) || value.isBlank() || value.length() > max)
-            throw new ProductError(400, "Invalid " + key, null);
-        return value;
-    }
-
-    record Specification(String requestId, String name, String recipientCountry, String senderCountry, String body,
-            List<String> recipientIds, String senderPhone) {
-        static Specification parse(Map<String, Object> input) {
-            if (input == null || !Set.of("requestId", "name", "recipientCountry", "senderCountry", "body", "recipientIds", "senderPhone").containsAll(input.keySet()))
-                throw new ProductError(400, "Unknown message task fields", null);
-            String country = text(input, "recipientCountry", 2);
-            if (!COUNTRIES.contains(country)) throw new ProductError(400, "Unsupported recipientCountry", null);
-            String senderCountry = input.get("senderCountry") == null ? null : text(input, "senderCountry", 2);
-            if (senderCountry != null && !COUNTRIES.contains(senderCountry)) throw new ProductError(400, "Unsupported senderCountry", null);
-            if (!(input.get("recipientIds") instanceof List<?> recipients) || recipients.isEmpty() || recipients.size() > MAX_RECIPIENTS)
-                throw new ProductError(400, "Expected 1..1000 unique international recipient numbers", null);
-            String prefix = DIAL_PREFIXES.get(country);
-            var normalized = new LinkedHashSet<String>();
-            for (int i = 0; i < recipients.size(); i++) {
-                if (!(recipients.get(i) instanceof String raw)) throw new ProductError(400, "Invalid recipient at position " + (i + 1), null);
-                String number = raw.strip();
-                if (!INTERNATIONAL_NUMBER.matcher(number).matches() || !number.startsWith(prefix) || number.length() <= prefix.length())
-                    throw new ProductError(400, "Invalid recipient number or country prefix at position " + (i + 1), null);
-                if (!normalized.add(number)) throw new ProductError(400, "Duplicate recipient at position " + (i + 1), null);
-            }
-            Object rawPhone = input.get("senderPhone");
-            String phone = rawPhone == null || rawPhone instanceof String value && value.isBlank()
-                    ? null : text(input, "senderPhone", 128);
-            try { Jsons.parseObject(text(input, "body", 4096)); }
-            catch (RuntimeException invalid) { throw new ProductError(400, "body must be a JSON object", null); }
-            return new Specification(text(input, "requestId", 128), text(input, "name", 128), country, senderCountry,
-                    text(input, "body", 4096), List.copyOf(normalized), phone);
-        }
-    }
-
-
     public static final class ProductError extends RuntimeException {
         final int status;
         final String taskId;
+        Long confirmedAddedCount, existingCount;
         ProductError(int status, String message, String taskId) { super(message); this.status = status; this.taskId = taskId; }
     }
 }

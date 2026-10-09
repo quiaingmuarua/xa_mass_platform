@@ -130,13 +130,26 @@ The list and detail show observed enqueued send total and delivered-success coun
 success counts each message once across DELIVERED, READ and REPLIED; SENT alone
 is displayed as sent, not delivery success. Mock supplies whole-Task counts
 independently of the 100-Result preview; unknown counts remain absent. The
-create action says "创建并开始发送" and explains automatic approval after complete
-Item submission. This UI has no manual review action or waiting-for-review sample.
-New Tasks receive an automatic display name of
-`msg-{senderCountry|ANY}-{recipientCountry}-{count}-{YYYYMMDD}-{HHmmss}`;
-the timestamp is the local submission time. Country/recipient edits update the
-name preview. This display name is not a Task ID or an idempotency key: the data
-source still supplies the Task ID, and real IDs remain Server-owned.
+create drawer supports an empty Task or create-then-import; both remain in review.
+TXT/paste input is parsed in a browser worker, normalizes optional `+`, skips duplicates
+and rejects the whole invalid input. The default is 100,000 unique recipients / 10 MiB,
+using the API Catalog limits. Only summaries and first error locations are rendered.
+The same input component serves creation and independent import. API independently
+validates the UTF-8 text file before bounded Item writes.
+
+Names remain automatic: `msg-{senderCountry|ANY}-{recipientCountry}-{YYYYMMDD}-{HHmmss}`.
+The name, requestId and creation payload freeze on first submission. Creation identity
+never depends on the eventual imported count. After creation, the Task ID is retained
+before import; import failure never creates another Task. Unconfirmed creation can be
+explicitly checked using the same request, without automatic import or approval.
+A local end-attempt action clears the draft and identity but retains any Server Task.
+
+New input-version-2 review Tasks expose import, count-confirmed approval and cancellation;
+running Tasks expose closure. Confirmation includes sender range, recipient country and
+observed count. Old input versions can only be read and closed. Managed/missing-business
+Tasks have no scenario management actions. Busy/stale reads disable mutations; late
+responses cannot replace a different Task or draft. Closing a Task retains quantities
+and permits later receipts. No scheduling state is invented by the API UI.
 
 The detail preview contains at most 100 produced Results, including failures,
 with no pagination, export or whole-Task completion percentage. A Task's scheduling
@@ -147,7 +160,7 @@ order. Read failures retain known data; empty Results do not imply failure.
 All new view access goes through `MessageTaskSource`, a frontend view boundary,
 with explicit ApiMessageTaskSource and MockMessageTaskSource implementations.
 API uses /api/v1/messages/tasks; Task identity is Server-owned. Mock labels its
-pages and drawer and makes no platform, Messages, Lab or export requests. Samples and locally created
+pages and drawer and makes no platform, Messages, Lab or export requests. Empty creation, independent imports, count checks, closure and later receipts are supported locally. Samples and locally created
 Tasks last for the console session; a full reload resets them. Closing creation
 retains the draft; success clears it and opens detail. Submission is single-flight,
 and an unconfirmed outcome cannot trigger an automatic retry.

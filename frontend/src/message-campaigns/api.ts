@@ -4,7 +4,9 @@ export class MessageApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
-    public readonly taskId?: string
+    public readonly taskId?: string,
+    public readonly confirmedAddedCount?: number,
+    public readonly existingCount?: number
   ) {
     super(message);
   }
@@ -12,12 +14,21 @@ export class MessageApiError extends Error {
 export async function api<T>(
   path: string,
   body?: unknown,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  encoding: "json" | "text" = "json"
 ): Promise<T> {
   const response = await fetch(`/api/v1/messages${path}`, {
     method: body === undefined ? "GET" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: {
+      "Content-Type":
+        encoding === "text" ? "text/plain;charset=UTF-8" : "application/json"
+    },
+    body:
+      body === undefined
+        ? undefined
+        : encoding === "text"
+          ? String(body)
+          : JSON.stringify(body),
     signal
   });
   if (!response.ok) {
@@ -35,6 +46,18 @@ export async function api<T>(
       "taskId" in error &&
       typeof error.taskId === "string"
         ? error.taskId
+        : undefined,
+      error &&
+      typeof error === "object" &&
+      "confirmedAddedCount" in error &&
+      typeof error.confirmedAddedCount === "number"
+        ? error.confirmedAddedCount
+        : undefined,
+      error &&
+      typeof error === "object" &&
+      "existingCount" in error &&
+      typeof error.existingCount === "number"
+        ? error.existingCount
         : undefined
     );
   }
@@ -42,7 +65,6 @@ export async function api<T>(
 }
 const catalogSchema = z.object({
   projectId: z.string().min(1),
-  runId: z.string().min(1),
   version: z.string().min(1),
   countries: z
     .array(
@@ -51,9 +73,8 @@ const catalogSchema = z.object({
     .length(3)
     .refine((countries) => new Set(countries.map((country) => country.id)).size === 3),
   limits: z.object({
-    tasks: z.number().int().positive(),
-    items: z.number().int().positive(),
-    recipientsPerTask: z.number().int().positive()
+    recipientsPerImport: z.number().int().positive(),
+    importFileBytes: z.number().int().positive()
   })
 });
 export type Catalog = z.infer<typeof catalogSchema>;

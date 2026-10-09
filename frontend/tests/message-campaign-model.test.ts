@@ -22,13 +22,10 @@ describe("Messages recipient files", () => {
       file(encoded("\uFEFF +8613800000001 \r\n\n+8613800000002\r+8613800000001\n"))
     );
     const result = inspectRecipients(text, "CN", 1000);
-    expect(result.recipients).toEqual([
-      "+8613800000001",
-      "+8613800000002",
-      "+8613800000001"
-    ]);
+    expect(result.recipients).toEqual(["+8613800000001", "+8613800000002"]);
     expect(result.validCount).toBe(2);
-    expect(result.issues).toEqual([{ line: 4, message: "号码重复" }]);
+    expect(result.issues).toEqual([]);
+    expect(result.duplicateCount).toBe(1);
   });
   it("rejects invalid encoding and oversize before attempting a read", async () => {
     await expect(
@@ -40,34 +37,34 @@ describe("Messages recipient files", () => {
         size: MAX_RECIPIENT_FILE_BYTES + 1,
         arrayBuffer
       } as unknown as File)
-    ).rejects.toThrow("1 MiB");
+    ).rejects.toThrow("大小限制");
     expect(arrayBuffer).not.toHaveBeenCalled();
     await expect(
       readRecipientFile(file(new Uint8Array(MAX_RECIPIENT_FILE_BYTES).fill(32).buffer))
     ).resolves.toHaveLength(MAX_RECIPIENT_FILE_BYTES);
   });
-  it("keeps Messages at 1000 while the existing finite Task parser still accepts 10000 lines", () => {
-    expect(inspectRecipients(numbers(1000), "CN", 1000).issues).toEqual([]);
-    expect(inspectRecipients(numbers(1001), "CN", 1000).issues).toEqual([
-      { line: 1001, message: "每批最多 1000 个号码" }
+  it("accepts 100000 per import without changing the finite Task parser limit", () => {
+    expect(inspectRecipients(numbers(100000), "CN", 100000).issues).toEqual([]);
+    expect(inspectRecipients(numbers(100001), "CN", 100000).issues).toEqual([
+      { line: 0, message: "每次最多 100,000 个去重号码" }
     ]);
     expect(parseSeedLines(encoded(numbers(10000)))).toHaveLength(10000);
     expect(() => parseSeedLines(encoded(numbers(10001)))).toThrow("10000");
     expect(inspectRecipients("\n \r\n", "CN", 1000).recipients).toEqual([]);
   });
-  it.each([
-    "+86",
-    "+44123",
-    "86123",
-    "+086123",
-    "+861 23",
-    "+8612345678901234",
-    "recipient-1"
-  ])("rejects %s without silently replacing it", (number) => {
-    const result = inspectRecipients(`\n${number}`, "CN", 1000);
-    expect(result.recipients).toEqual([number]);
-    expect(result.validCount).toBe(0);
-    expect(result.issues[0].line).toBe(2);
+  it.each(["+86", "+44123", "+086123", "+861 23", "+8612345678901234", "recipient-1"])(
+    "rejects %s without silently replacing it",
+    (number) => {
+      const result = inspectRecipients(`\n${number}`, "CN", 1000);
+      expect(result.recipients).toEqual([]);
+      expect(result.validCount).toBe(0);
+      expect(result.issues[0].line).toBe(2);
+    }
+  );
+  it("normalizes optional plus before deduplication", () => {
+    const value = inspectRecipients("86123\n+86123", "CN", 100000);
+    expect(value.recipients).toEqual(["+86123"]);
+    expect(value.duplicateCount).toBe(1);
   });
   it.each([
     ["CN", "+861"],

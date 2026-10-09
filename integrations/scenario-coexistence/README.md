@@ -137,8 +137,11 @@ inventory; the interactive Preview instead keeps its persistent inventory.
 
 ## Task management read boundary
 
-Preparation now posts /api/v1/messages/tasks synchronously (create, append,
-automatic approval) and retains the returned Server Task ID. Small worlds verify
+Preparation creates an empty Task through /api/v1/messages/tasks, retains its
+Server identity, uploads UTF-8 recipients through recipients:import and explicitly
+approves the confirmed count. No mutation is automatically retried; an unconfirmed
+phase stops that workflow. Existing small/load worlds use this same three-operation
+submission path without changing their business workload. Small worlds verify
 the bounded Messages detail against independent Item states and Results. Large
 worlds discover only actually executed message IDs from Lab, then use public
 results:load in batches of 100; missing Results still fail the complete witness.

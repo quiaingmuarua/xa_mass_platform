@@ -10,6 +10,7 @@ export type MessageCountry = "CN" | "US" | "GB";
 export interface MessageTask {
   taskId: string;
   name?: string;
+  inputVersion?: string;
   createdAtMillis: number;
   workerGroupId: string | null;
   managed: boolean;
@@ -48,7 +49,6 @@ export interface CreateMessageTask {
   recipientCountry: MessageCountry;
   senderCountry: MessageCountry | null;
   senderPhone?: string;
-  recipientIds: string[];
   body: string;
 }
 export interface MessageTaskSource {
@@ -56,6 +56,18 @@ export interface MessageTaskSource {
   listTasks(): Promise<{ tasks: MessageTask[]; truncated: boolean }>;
   loadTask(taskId: string): Promise<MessageTaskDetail>;
   createTask(input: CreateMessageTask): Promise<{ taskId: string }>;
+  importRecipients(taskId: string, text: string): Promise<MessageImportReceipt>;
+  approveTask(taskId: string, expectedCount: number): Promise<void>;
+  closeTask(taskId: string): Promise<void>;
+}
+export interface MessageImportReceipt {
+  taskId: string;
+  inputCount: number;
+  emptyCount: number;
+  duplicateCount: number;
+  uniqueCount: number;
+  confirmedAddedCount: number;
+  existingCount: number;
 }
 export const messageTaskSourceKey: InjectionKey<MessageTaskSource> =
   Symbol("message-task-source");
@@ -70,7 +82,7 @@ export class MessageTaskCreationUnconfirmed extends Error {
 }
 
 export const taskStateLabels: Record<MessageTaskState, string> = {
-  pre_review: "未批准",
+  pre_review: "待审核",
   "running-initial": "运行中 · 初始",
   running_visible: "运行中",
   terminal: "调度已结束"

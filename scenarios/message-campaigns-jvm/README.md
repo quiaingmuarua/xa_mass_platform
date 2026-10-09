@@ -8,9 +8,9 @@ Messages 承载消息发送及后续送达、已读和连续回复的 tracked �
 
 ## 归属与流程变化
 
-**本片将创建改为请求内完成，读取改为按请求观测。** 原 Campaign 提交队列、全量结果
-观察循环、业务结果缓存和 metrics API 已移除。Kernel 调度、Matching、lease、claim、
-TRACKED 与 Worker/Lab 协议没有改变。
+创建只保存发送配置并返回空的待审核 Task；收件人通过独立 UTF-8 导入追加，用户核对实际
+数量后批准。场景不保存提交账本、完整收件人历史或业务结果缓存；Kernel 调度、Matching、
+lease、claim、TRACKED 与 Worker/Lab 协议保持原归属。
 
 | 信息 | 唯一来源 |
 | --- | --- |
@@ -26,8 +26,9 @@ TaskDataService 和 TaskLifecycleService 组合读取与写入，不直接访问
 实现见 [MessageTaskService](src/main/java/com/xa/mass/scenario/messages/MessageTaskService.java)。
 
 ```text
-完整校验 → requestId 幂等/容量准入 → Server 生成 Task ID
-  → 创建 CLOSE Task → 每批至多 100 Items → 全部确认 → 自动批准 → HTTP 201
+创建配置校验 → Server 请求关联创建 → 空的待审核 CLOSE Task → HTTP 201
+UTF-8 文件完整校验 → 持有 Task 导入准入 → 每批至多 100 Items → 导入回执
+用户核对实际 Item 数量 → 同一准入内校验数量并批准 → 开始发送
 Worker message.send → HTTP 调用 Lab → SENT 执行结果
 Lab 接收生成 delivered / 后续 read、reply → HTTP 回调原 Worker Reporter
   → 既有 Item Score / Result Owner
@@ -67,17 +68,25 @@ Group 具有其他事件和资源，也允许使用外部已注册的 Group。�
 
 | API | 契约 |
 | --- | --- |
-| `GET /api/v1/messages/catalog` | Project、runId、版本、国家及受理上限，只有可用性含义 |
-| `POST /api/v1/messages/tasks` | 同步完成提交与自动批准，201 返回 `{taskId}` |
+| `GET /api/v1/messages/catalog` | Project、版本、国家和单次导入限制，不返回进程提交配额或 runId |
+| `POST /api/v1/messages/tasks` | 只创建空的待审核 Task，201 返回 `{taskId}` |
+| `POST /api/v1/messages/tasks/{taskId}/recipients:import` | `text/plain` UTF-8 文件，返回读取／空行／重复／唯一／确认写入／已存在数量 |
+| `POST /api/v1/messages/tasks/{taskId}/approve` | JSON 整数为用户看到的实际数量，核对后批准 |
+| `POST /api/v1/messages/tasks/{taskId}/close` | 取消或中止发送调度，保留数据和后续回执 |
 | `GET /api/v1/messages/tasks?limit=100` | 创建时间倒序，1..100 个 Task，带 truncated，不分页 |
 | `GET /api/v1/messages/tasks/{taskId}` | 项目内 Task、数量及最多 100 条 Result 预览 |
 
 ```json
-{"requestId":"cross-country","name":"msg-US-CN-2-example","recipientCountry":"CN","senderCountry":"US","body":"{}","recipientIds":["+8613800000001","+8613800000002"]}
+{"requestId":"cross-country","name":"msg-US-CN-example","recipientCountry":"CN","senderCountry":"US","body":"{}"}
 ```
 
-每次 1..1000 个号码，去首尾空白、禁止重复；国际号码为 + 加 2..15 位数字，首位非零，
-CN/US/GB 分别要求 +86/+1/+44 且前缀后有号码。此检查不证明号码存在或真实国家归属。
+创建拒绝旧 `recipientIds` 字段。每次导入最多 100,000 个去重收件号码／10 MiB，
+Catalog 返回 `recipientsPerImport` 和 `importFileBytes`；多次追加不受旧单任务 1,000 项限制。
+UTF-8 校验处理 BOM、空行和首尾空白；号码可省略 `+`，规范化为带 `+` 的 2..15 位数字，
+首位非零，CN/US/GB 分别要求 +86/+1/+44 且前缀后有号码。不会自动补国家码或验证真实可达性。
+文件内重复跳过，无效号码整批拒绝并报告首个错误行。完整文件通过校验后才分批写入；
+上传与规范化临时文件在成功、失败后清理，不持久化源文件或原始行历史。
+
 requestId/name/senderPhone 最长 128 字符，body 最长 4096，必须为 JSON 对象字符串。
 Lab 独占具体指令语义；Server 不重复解释步骤、概率和随机延迟。
 
@@ -90,8 +99,8 @@ Matching 从独立 Phone Index 查询身份，再按本批身份读取 Facts，�
 此路径不要求 Worker 进入 Messaging Pool，也不通知或删除 Country Pool 中的旧条目。
 Kernel 仍只从到期 HOT 获取执行租约，不能抢占正在执行的 Worker；查询资格与执行获取不是同一事务。
 
-切换前结束含旧手机号 Pool 查询／供给声明的 Task，或使用新 scope；不迁移旧 Task/Item，
-不保留兼容入口、不自动清理数据。Facts、Phone Index 和历史结果格式保持。
+本次输入流程切换保留当前供给／查询结构、Facts、Phone Index 和历史结果格式，
+不要求重建已运行的 Task；存量输入版本的管理范围见下文。
 
 name 是前端生成的显示名称；Task ID 始终由 Server 生成。metadata 保存 scenario=messages、
 recipientCountry、可选 senderCountry/senderPhone 和 body。不保存号码列表或统计。
@@ -99,14 +108,31 @@ recipientCountry、可选 senderCountry/senderPhone 和 body。不保存号码�
 
 ## 幂等、容量与失败
 
-当前进程保留最多 50 个提交、50000 个收件项的规范化请求及完成结果；同时最多两个新提交。
-满时在副作用前返回 429。相同 requestId/内容共享同一次提交与结果，不同内容返回 409。
-没有后台提交队列、执行线程或结果观察器。规范化号码和 null/省略 senderCountry 参与幂等。
+新任务写入 `inputVersion=2`。Server 的 `createForRequest` 以 Project/requestId 关联稳定
+Task ID；版本化创建指纹覆盖 Group、name、recipientCountry、senderCountry、senderPhone 和
+body。可选字段沿用原归一规则，body 按字符串比较；同身份不同配置冲突，相同配置可跨
+Server 重启核对，保证限于原 Task 资源保留期间。数据不完整返回未确认及固定身份，不修复。
 
-创建、追加或批准结果不明返回 503 和已知 taskId；TaskCreationUnconfirmedException 保留已生成
-身份。不会重新创建、自动重试、删除部分数据或恢复中断提交。全部追加确认后才批准。
-关闭先停止新准入，并用共享 5 秒预算等待当前提交；不清理 Redis scope。
-幂等不跨重启；重启后 Task 配置、Score 和 Result 仍可按 ID 读取，无需重建 Campaign。
+导入从已保存的 descriptor 取得固定配置。messageId 为 `message-` 加 SHA-256，输入是
+长度前缀 UTF-8 的 `["messages/v2/message", taskId, normalizedRecipient]`。同任务内收件人
+唯一，跨任务可以再次发送；该作用域也避免 Lab 的全局 messageId 去重误伤另一个任务。
+通过 Server `importFiniteTaskItems` 按每批最多 100 项追加，使用 Runtime 默认有效期
+（当前 365 天），删除场景内固定 60 秒 TTL。重传跳过内容一致的完整 Item，不刷新时间、
+有效期或参数；缺失 Score 的已存 Item 仅通过现有 Owner 操作使用原值补齐。内容冲突拒绝
+覆盖，其他不一致返回不可用。导入去重不扩大外部发送和 Worker 的交付保证。
+
+整个文件导入与批准、关闭、普通追加复用同一个 `OperationGuard.taskMutation`，保证限定
+为单 Server 实例。同时最多两个导入，超出时在文件读取前返回 429；结束即释放，无累计配额。
+部分写入后失败不回滚，回执或错误返回 taskId、confirmedAddedCount 和 existingCount；未知
+部分不计为拒绝，不自动重传或启动。用户可显式重传，或按 Owner 当前实际数量批准已导入部分。
+参数／状态／内容冲突为 409，输入无效为 400，文件过大为 413，未确认结果为 503。
+
+批准必须处于新版本待审核状态，实际数量大于零且与请求一致；读数与批准在同一次准入内。
+关闭保留已有结果和未发送数量，终态不能重启；已经发送的消息仍可通过原 Reporter 返回回执。
+服务关闭停止新准入，以共享 5 秒预算等待在途写操作，导入停止后续批次；不清理 Redis scope。
+
+旧任务保留原身份、Item、有效期和 Result，继续读取、关闭及通用导出；旧输入版本禁止导入和
+批准。旧随机 ID 与进程账本不迁移为持久请求关联，不重放旧未确认提交。旧整单创建入口无别名。
 
 ## 数量与结果读取
 
@@ -137,12 +163,13 @@ Preview 保留 extension.worker.message.send 的授权协议例外，不支持�
 ## 页面
 
 启动 [Preview](../../distribution/server/PREVIEW.md#source-launch)，打开 `/messages`，
-选择收件国家、发送范围与可选发送号码，导入收件号码并填写 Lab JSON 指令。创建完成后
-到 `/messages/tasks/{taskId}` 观察执行与后续回执；不确定提交遵循
-[幂等与失败契约](#幂等容量与失败)，不能重新创建来修补未知结果。
+选择收件国家、发送范围与可选发送号码，填写 Lab JSON 正文。可以创建空任务或创建并导入；
+随后在原详情页追加收件人、核对实际数量并启动，或取消／中止。号码输入只显示摘要，后台线程
+解析大文件，API 导入仍独立 recheck。创建与导入失败分开处理；不确定创建保留原 requestId 和
+载荷，用户显式核对，成功核对不自动导入或批准。已知 Task 上导入失败不得再次创建 Task。
 
-[前端 Owner](../../frontend/README.md#messages-business-pages) 维护文件导入、草稿、API/Mock、
-手动刷新和有界预览。Campaign 持久化、独立统计存储和自动修复不在本 Owner 内。
+[前端 Owner](../../frontend/README.md#messages-business-pages) 维护会话草稿、API/Mock、
+手动刷新和有界预览。页面结构不迁移，本片不新增专用导出、历史分页或持久化导入历史。
 
 ## 检查与验收
 

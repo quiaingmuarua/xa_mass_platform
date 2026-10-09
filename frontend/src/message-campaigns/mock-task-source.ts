@@ -1,3 +1,4 @@
+import { inspectRecipientInput, MESSAGE_IMPORT_LIMITS } from "@/files/phone-numbers";
 import type {
   CreateMessageTask,
   MessageTask,
@@ -29,6 +30,7 @@ function task(
     workerGroupId: "demo-sim",
     managed: false,
     state: "terminal",
+    inputVersion: "2",
     ...fields
   };
 }
@@ -166,6 +168,9 @@ export class MockMessageTaskSource implements MessageTaskSource {
   private readonly reads = new Map<string, number>();
   private readonly requests = new Map<string, { input: string; taskId: string }>();
   private sequence = 0;
+  private readonly recipients = new Map<string, Set<string>>();
+  private readonly mutations = new Set<string>();
+  private activeImports = 0;
 
   constructor(records: MessageTaskDetail[] = initialRecords()) {
     this.records = new Map(
@@ -210,7 +215,13 @@ export class MockMessageTaskSource implements MessageTaskSource {
     });
   }
   async createTask(input: CreateMessageTask) {
-    const fingerprint = JSON.stringify(input);
+    const fingerprint = JSON.stringify([
+      input.name,
+      input.recipientCountry,
+      input.senderCountry ?? null,
+      input.senderPhone?.trim() ? input.senderPhone : null,
+      input.body
+    ]);
     const prior = this.requests.get(input.requestId);
     if (prior) {
       if (prior.input !== fingerprint)
@@ -225,10 +236,15 @@ export class MockMessageTaskSource implements MessageTaskSource {
         createdAtMillis: Math.max(Date.now(), epoch) + this.sequence,
         workerGroupId: "demo-sim",
         managed: false,
-        state: "running_visible",
+        state: "pre_review",
+        inputVersion: "2",
         recipientCountry: input.recipientCountry,
         senderCountry: input.senderCountry,
-        sendTotal: input.recipientIds.length,
+        sendTotal: 0,
+        sentCount: 0,
+        readCount: 0,
+        repliedCount: 0,
+        failedCount: 0,
         deliveredCount: 0,
         senderPhone: input.senderPhone,
         body: input.body
@@ -238,5 +254,68 @@ export class MockMessageTaskSource implements MessageTaskSource {
     });
     this.requests.set(input.requestId, { input: fingerprint, taskId });
     return { taskId };
+  }
+  private requireTask(taskId: string, review: boolean) {
+    const record = this.records.get(taskId);
+    if (
+      !record ||
+      record.task.managed ||
+      !record.task.body ||
+      !record.task.recipientCountry
+    )
+      throw new Error("只支持 Messages 有限任务");
+    if (record.task.state === null) throw new Error("任务状态不可用");
+    if (review && record.task.inputVersion !== "2")
+      throw new Error("旧输入版本仅支持读取和关闭");
+    if (review && record.task.state !== "pre_review")
+      throw new Error("任务不在待审核状态");
+    return record;
+  }
+  async importRecipients(taskId: string, text: string) {
+    if (this.activeImports >= 2) throw new Error("导入繁忙，请稍后重试");
+    if (this.mutations.has(taskId)) throw new Error("任务有其他操作正在进行");
+    this.mutations.add(taskId);
+    this.activeImports++;
+    try {
+      const record = this.requireTask(taskId, true);
+      const checked = await inspectRecipientInput(
+        text,
+        record.task.recipientCountry!,
+        MESSAGE_IMPORT_LIMITS
+      );
+      if (checked.issues.length || !checked.validCount)
+        throw new Error(checked.issues[0]?.message ?? "号码文件不能为空");
+      const numbers = this.recipients.get(taskId) ?? new Set<string>();
+      let existingCount = 0;
+      for (const number of checked.recipients) {
+        if (numbers.has(number)) existingCount++;
+        else numbers.add(number);
+      }
+      this.recipients.set(taskId, numbers);
+      record.task.sendTotal = numbers.size;
+      return {
+        taskId,
+        inputCount: checked.inputCount,
+        emptyCount: checked.emptyCount,
+        duplicateCount: checked.duplicateCount,
+        uniqueCount: checked.validCount,
+        confirmedAddedCount: checked.validCount - existingCount,
+        existingCount
+      };
+    } finally {
+      this.mutations.delete(taskId);
+      this.activeImports--;
+    }
+  }
+  async approveTask(taskId: string, expectedCount: number) {
+    if (this.mutations.has(taskId)) throw new Error("任务有其他操作正在进行");
+    const record = this.requireTask(taskId, true);
+    if (!expectedCount || expectedCount !== record.task.sendTotal)
+      throw new Error("收件人数为空或已变化，请刷新后重新核对");
+    record.task.state = "running_visible";
+  }
+  async closeTask(taskId: string) {
+    if (this.mutations.has(taskId)) throw new Error("任务有其他操作正在进行");
+    this.requireTask(taskId, false).task.state = "terminal";
   }
 }

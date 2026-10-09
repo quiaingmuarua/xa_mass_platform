@@ -91,9 +91,11 @@ class MessageFailureIntegrationTest {
             var first = fixture.create(101);
             var unknown = first;
             assertThat(unknown.get("taskId")).isNotNull();
-            assertThat(fixture.create(101)).containsEntry("taskId", unknown.get("taskId"));
+            var retried = fixture.importRecipients((String) unknown.get("taskId"), 101);
+            assertThat(retried.statusCode()).isEqualTo(200);
+            assertThat(Jsons.parseObject(retried.body())).containsEntry("existingCount", 101L).containsEntry("confirmedAddedCount", 0L);
             var service = fixture.context.getBean(TaskDataService.class);
-            verify(service, times(2)).appendFiniteTaskItems(eq((String) unknown.get("taskId")), anyList());
+            verify(service, times(4)).importFiniteTaskItems(eq((String) unknown.get("taskId")), anyList());
             verify(fixture.context.getBean(TaskLifecycleService.class), never()).approve(anyString());
             var detail = fixture.get("/api/v1/messages/tasks/" + first.get("taskId"));
             assertThat((List<?>) detail.get("results")).isEmpty();
@@ -135,7 +137,7 @@ class MessageFailureIntegrationTest {
                         Object result = call.callRealMethod();
                         if (calls.incrementAndGet() == 2) throw new IllegalStateException("Append completed but its caller lost confirmation");
                         return result;
-                    }).when(decorated).appendFiniteTaskItems(anyString(), anyList());
+                    }).when(decorated).importFiniteTaskItems(anyString(), anyList());
                     return decorated;
                 }
             };
@@ -170,9 +172,20 @@ class MessageFailureIntegrationTest {
         Map<String, Object> create(int size) throws Exception {
             assertThat(post("/api/v1/tasks/blocked/items:call", List.of()).statusCode()).isEqualTo(503);
             assertThat(post("/api/v1/tasks/blocked/results:load", List.of("blocked")).statusCode()).isEqualTo(503);
-            var result = post("/api/v1/messages/tasks", Map.of("requestId", "request", "name", "proof", "recipientCountry", "CN", "senderCountry", "CN", "body", "{}",
-                    "recipientIds", IntStream.range(0, size).mapToObj(i -> "+861380000" + String.format("%04d", i)).toList()));
-            assertThat(result.statusCode()).isEqualTo(failure ? 503 : 201); return Jsons.parseObject(result.body());
+            var result = post("/api/v1/messages/tasks", Map.of("requestId", "request", "name", "proof", "recipientCountry", "CN", "senderCountry", "CN", "body", "{}"));
+            assertThat(result.statusCode()).isEqualTo(201);
+            var created = Jsons.parseObject(result.body());
+            var imported = importRecipients((String) created.get("taskId"), size);
+            assertThat(imported.statusCode()).isEqualTo(failure ? 503 : 200);
+            if (failure) return Jsons.parseObject(imported.body());
+            assertThat(post("/api/v1/messages/tasks/" + created.get("taskId") + "/approve", size).statusCode()).isEqualTo(200);
+            return created;
+        }
+        HttpResponse<String> importRecipients(String taskId, int size) throws Exception {
+            String numbers = IntStream.range(0, size).mapToObj(i -> "+861380000" + String.format("%04d", i)).collect(java.util.stream.Collectors.joining("\n"));
+            return http.send(HttpRequest.newBuilder(base.resolve("/api/v1/messages/tasks/" + taskId + "/recipients:import"))
+                    .timeout(Duration.ofSeconds(10)).header("Content-Type", "text/plain;charset=UTF-8")
+                    .POST(HttpRequest.BodyPublishers.ofString(numbers)).build(), HttpResponse.BodyHandlers.ofString());
         }
         Map<String, Object> awaitCampaign(Map<String, Object> task, String expected) throws Exception {
             long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);

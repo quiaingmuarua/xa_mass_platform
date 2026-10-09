@@ -34,10 +34,9 @@ afterEach(() => {
 });
 const catalog = {
   projectId: "messages",
-  runId: "one",
-  version: "0.1.0-preview",
+  version: "0.2.0-preview",
   countries: ["CN", "US", "GB"].map((id) => ({ id, workerGroupId: "demo-sim" })),
-  limits: { tasks: 50, items: 50000, recipientsPerTask: 1000 }
+  limits: { recipientsPerImport: 100000, importFileBytes: 10485760 }
 };
 const task = {
   taskId: "finite-task",
@@ -61,18 +60,44 @@ const result = {
   reply: "latest reply"
 };
 function installApi() {
+  let created: Record<string, unknown> | undefined;
   const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
     if (path.startsWith("/api/v1/sms/")) return new Response("{}", { status: 503 });
-    const value = path.endsWith("/catalog")
-      ? catalog
-      : init?.method === "POST"
-        ? { taskId: task.taskId }
-        : path.endsWith("/tasks/finite-task")
-          ? { task, results: [result], resultsTruncated: true }
-          : { tasks: [task], truncated: false };
+    let value: unknown;
+    if (path.endsWith("/catalog")) value = catalog;
+    else if (init?.method === "POST" && path.endsWith("/tasks")) {
+      created = {
+        ...task,
+        ...JSON.parse(String(init.body)),
+        taskId: "new-task",
+        inputVersion: "2",
+        state: "pre_review",
+        sendTotal: 0,
+        deliveredCount: 0
+      };
+      value = { taskId: "new-task" };
+    } else if (path.endsWith("/recipients:import")) {
+      created!.sendTotal = 2;
+      value = {
+        taskId: "new-task",
+        inputCount: 2,
+        emptyCount: 0,
+        duplicateCount: 0,
+        uniqueCount: 2,
+        confirmedAddedCount: 2,
+        existingCount: 0
+      };
+    } else if (path.endsWith("/approve") || path.endsWith("/close")) {
+      created!.state = path.endsWith("/approve") ? "running_visible" : "terminal";
+      value = { status: "applied" };
+    } else if (path.endsWith("/tasks/new-task"))
+      value = { task: created, results: [], resultsTruncated: false };
+    else if (path.endsWith("/tasks/finite-task"))
+      value = { task, results: [result], resultsTruncated: true };
+    else value = { tasks: created ? [created, task] : [task], truncated: false };
     return new Response(JSON.stringify(value), {
-      status: init?.method === "POST" ? 201 : 200
+      status: init?.method === "POST" && path.endsWith("/tasks") ? 201 : 200
     });
   });
   vi.stubGlobal("fetch", fetcher);
@@ -152,15 +177,23 @@ describe("Messages Task API workspace", () => {
     const posted = fetcher.mock.calls.find(([, init]) => init?.method === "POST")!;
     expect(posted[0]).toBe("/api/v1/messages/tasks");
     expect(JSON.parse(String(posted[1]?.body))).toMatchObject({
-      name: expect.stringMatching(/^msg-ANY-CN-2-/),
+      name: expect.stringMatching(/^msg-ANY-CN-/),
       recipientCountry: "CN",
       senderCountry: null,
       body: "{}"
     });
-    expect(router.currentRoute.value.path).toBe("/messages/tasks/finite-task");
-    expect(host.textContent).toContain("latest reply");
-    expect(host.textContent).toContain("1,000");
-    expect(host.querySelectorAll('[data-testid="message-result-row"]')).toHaveLength(1);
+    expect(JSON.parse(String(posted[1]?.body))).not.toHaveProperty("recipientIds");
+    expect(router.currentRoute.value.path).toBe("/messages/tasks/new-task");
+    expect(host.textContent).toContain("待审核");
+    expect(host.querySelector('[data-testid="send-total"]')?.textContent).toBe("2");
+    const imports = fetcher.mock.calls.filter(([url]) =>
+      String(url).endsWith("/recipients:import")
+    );
+    expect(imports).toHaveLength(1);
+    expect(imports[0][1]?.body).toBe("+8613800000001\n+8613800000002");
+    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/approve"))).toBe(
+      false
+    );
     expect(host.textContent).not.toContain("导出成功结果");
     const before = fetcher.mock.calls.filter(([url]) =>
       String(url).includes("/messages/tasks")
@@ -199,7 +232,7 @@ describe("Messages Task API workspace", () => {
     );
     submit();
     await settle();
-    expect(document.body.textContent).toContain("提交结果未确认");
+    expect(document.body.textContent).toContain("创建结果未确认");
     expect(
       document.querySelector('a[href="/messages/tasks/known-task"]')
     ).not.toBeNull();

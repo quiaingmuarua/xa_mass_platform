@@ -185,7 +185,7 @@ Items are unreadable. No query is inferred from supply declarations. See
 
 ### Request-correlated creation and finite import
 
-`TaskCreationService.createForRequest` is an application entry for App Checks; the
+`TaskCreationService.createForRequest` is an application entry for App Checks and Messages; the
 ordinary HTTP Task creation contract is unchanged. It derives `task-` plus SHA-256
 from length-prefixed UTF-8 `["xa-mass/task-create/v1", projectId, requestId]`.
 The scenario supplies a fingerprint of normalized creation inputs, excluding

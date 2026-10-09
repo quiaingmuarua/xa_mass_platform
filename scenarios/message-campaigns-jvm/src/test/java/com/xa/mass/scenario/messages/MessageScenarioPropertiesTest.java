@@ -31,7 +31,7 @@ class MessageScenarioPropertiesTest {
             assertThat(requirement.functions()).containsExactlyInAnyOrder("worker.messaging.available", "worker.messaging.phone");
             var directory = new ProjectDirectory(new ProjectAssemblyProperties(List.of()), List.of(definition));
             try (var service = assembly.messageTasks(directory, mock(ProjectTaskQueryService.class), mock(TaskCreationService.class),
-                    mock(TaskDataService.class), mock(TaskLifecycleService.class), config)) {
+                    mock(TaskDataService.class), mock(TaskLifecycleService.class), config, new com.xa.mass.server.operation.OperationGuard())) {
                 service.start();
                 assertThat(service.catalog().get("countries").toString()).contains("workerGroupId=bound-group").doesNotContain("demo-sim");
             }

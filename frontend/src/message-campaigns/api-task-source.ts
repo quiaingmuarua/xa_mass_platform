@@ -11,6 +11,7 @@ const count = z.number().int().nonnegative();
 const task = z.object({
   taskId: z.string().min(1),
   name: z.string().optional(),
+  inputVersion: z.string().optional(),
   createdAtMillis: count,
   workerGroupId: z.string().nullable(),
   managed: z.boolean(),
@@ -60,6 +61,39 @@ export class ApiMessageTaskSource implements MessageTaskSource {
     if (value.task.taskId !== taskId) throw new Error("返回的任务身份不符");
     return value;
   }
+  async importRecipients(taskId: string, text: string) {
+    const value = z
+      .object({
+        taskId: z.string(),
+        inputCount: count,
+        emptyCount: count,
+        duplicateCount: count,
+        uniqueCount: count,
+        confirmedAddedCount: count,
+        existingCount: count
+      })
+      .parse(
+        await api<unknown>(
+          `/tasks/${encodeURIComponent(taskId)}/recipients:import`,
+          text,
+          undefined,
+          "text"
+        )
+      );
+    if (value.taskId !== taskId) throw new Error("导入回执的任务身份不符，请核对任务");
+    return value;
+  }
+  async approveTask(taskId: string, expectedCount: number) {
+    z.object({ status: z.enum(["applied", "unchanged"]) }).parse(
+      await api<unknown>(`/tasks/${encodeURIComponent(taskId)}/approve`, expectedCount)
+    );
+  }
+  async closeTask(taskId: string) {
+    z.object({ status: z.enum(["applied", "unchanged"]) }).parse(
+      await api<unknown>(`/tasks/${encodeURIComponent(taskId)}/close`, {})
+    );
+  }
+
   async createTask(input: CreateMessageTask) {
     try {
       return z

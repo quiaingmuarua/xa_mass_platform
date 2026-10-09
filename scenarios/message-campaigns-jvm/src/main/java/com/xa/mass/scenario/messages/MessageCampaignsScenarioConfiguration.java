@@ -6,6 +6,7 @@ import com.xa.mass.server.task.TaskLifecycleService;
 import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.server.project.ProjectDefinition;
 import com.xa.mass.server.project.ProjectWorkerRequirements;
+import com.xa.mass.server.operation.OperationGuard;
 import com.xa.mass.workermatching.QualifiedCountryDefinition;
 import java.util.List;
 import java.util.Set;
@@ -37,7 +38,7 @@ public class MessageCampaignsScenarioConfiguration {
     @Bean(destroyMethod = "close")
     MessageTaskService messageTasks(ProjectDirectory projects, com.xa.mass.server.project.ProjectTaskQueryService queries, TaskCreationService creation,
             TaskDataService data, TaskLifecycleService lifecycle,
-            MessageScenarioProperties config) {
-        return new MessageTaskService(projects, queries, creation, data, lifecycle, config.workerGroupId());
+            MessageScenarioProperties config, OperationGuard operations) {
+        return new MessageTaskService(projects, queries, creation, data, lifecycle, config.workerGroupId(), operations);
     }
 }

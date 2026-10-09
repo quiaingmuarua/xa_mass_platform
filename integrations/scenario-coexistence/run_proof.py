@@ -67,11 +67,22 @@ def campaign(run, request="batch", count=2, country="CN", phone=None, instructio
     recipient_country = recipient_country or country or "CN"
     prefix = {"CN": "+86138", "US": "+1202", "GB": "+4477"}[recipient_country]
     body = {"requestId": request, "name": request, "recipientCountry": recipient_country, "senderCountry": country,
-            "body": json.dumps(instructions or {}), "recipientIds": [f"{prefix}{i:08d}" for i in range(count)]}
+            "body": json.dumps(instructions or {})}
+    recipients = [f"{prefix}{i:08d}" for i in range(count)]
     if phone:
         body["senderPhone"] = phone
     created = http(run.url, "/api/v1/messages/tasks", body, timeout=2)
-    return {**created, "expectedCount": count}, body
+    receipt = upload_recipients(run.url, created["taskId"], recipients)
+    require(receipt["confirmedAddedCount"] == count and receipt["existingCount"] == 0, "Recipient import was not fully confirmed")
+    http(run.url, f'/api/v1/messages/tasks/{created["taskId"]}/approve', count, timeout=2)
+    return {**created, "expectedCount": count, "recipientIds": recipients}, body
+
+
+def upload_recipients(base, task, recipients):
+    request = urllib.request.Request(base + f"/api/v1/messages/tasks/{task}/recipients:import",
+            data="\n".join(recipients).encode("utf-8"), headers={"Content-Type": "text/plain;charset=UTF-8"}, method="POST")
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
 
 
 def campaign_messages(run, value):
@@ -383,7 +394,7 @@ def pool_selection(run):
 
     begin_stage(run, "pool-any-send")
     any_campaign, any_request = campaign(run, "any-country", 2, country=None, recipient_country="CN")
-    require(any_request["recipientIds"] == cross_request["recipientIds"], "Country comparison changed the recipient fixture")
+    require(any_campaign["recipientIds"] == cross["recipientIds"], "Country comparison changed the recipient fixture")
     require_messaging_supply(run, any_campaign, None)
     any_campaign, any_rows = sent(run, any_campaign)
     for message in any_rows:

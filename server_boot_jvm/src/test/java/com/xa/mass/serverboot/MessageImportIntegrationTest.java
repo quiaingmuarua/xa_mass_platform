@@ -1,0 +1,92 @@
+package com.xa.mass.serverboot;
+
+import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.server.api.v1.contract.task.TaskCreateRequest;
+import com.xa.mass.server.project.ProjectDirectory;
+import com.xa.mass.server.task.TaskCreationService;
+import com.xa.mass.workerdelivery.json.Jsons;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Duration;
+import java.util.*;
+import java.util.stream.IntStream;
+import org.junit.jupiter.api.*;
+import static org.assertj.core.api.Assertions.*;
+
+@Tag("scenario-composition")
+class MessageImportIntegrationTest {
+    static final String PATH = "/api/v1/messages/tasks";
+    static Map<String, Object> input(String id) { return Map.of("requestId", id, "name", "import-proof", "recipientCountry", "CN", "body", "{}"); }
+    @Test @Timeout(240)
+    void largeImportRestartAndCrossFileDedupUseRealOwnersWithoutRunningWorkers() throws Exception {
+        try (var fixture = new MessagesAssemblyIntegrationTest.Fixture()) {
+            fixture.start(true, Map.of());
+            var create = fixture.post(PATH, input("bulk")); assertThat(create.statusCode()).isEqualTo(201);
+            String id = (String) Jsons.parseObject(create.body()).get("taskId");
+            String target = PATH + "/" + id;
+            assertThat(task(fixture, id)).containsEntry("state", "pre_review").containsEntry("sendTotal", 0L);
+            assertThat(fixture.post(target + "/approve", 0).statusCode()).isEqualTo(409);
+            String numbers = IntStream.range(0, 100000).mapToObj(i -> "86138" + (10000000 + i)).collect(java.util.stream.Collectors.joining("\n"));
+            assertThat(fixture.upload(id, numbers + "\nbad").statusCode()).isEqualTo(400);
+            assertThat(task(fixture, id)).containsEntry("sendTotal", 0L);
+            var imported = fixture.upload(id, numbers); assertThat(imported.statusCode()).as(imported.body()).isEqualTo(200);
+            assertThat(Jsons.parseObject(imported.body())).containsEntry("confirmedAddedCount", 100000L);
+            String message = messageId(id, "+8613810000000");
+            var owner = fixture.context.getBean(TaskRuntime.class);
+            var original = owner.loadTaskItems(id, List.of(message)).get(message);
+            assertThat(original.expireAtMillis() - original.createdAtMillis()).isEqualTo(Duration.ofDays(365).toMillis());
+            var repeated = fixture.upload(id, "+8613810000000\n8613810000000\n8613999999999");
+            assertThat(Jsons.parseObject(repeated.body())).containsEntry("confirmedAddedCount", 1L).containsEntry("existingCount", 1L).containsEntry("duplicateCount", 1L);
+            assertThat(owner.loadTaskItems(id, List.of(message)).get(message)).isEqualTo(original);
+            fixture.restart(true, Map.of());
+            assertThat(Jsons.parseObject(fixture.post(PATH, input("bulk")).body())).containsEntry("taskId", id);
+            var conflict = new HashMap<>(input("bulk")); conflict.put("body", "{ }");
+            assertThat(fixture.post(PATH, conflict).statusCode()).isEqualTo(409);
+            assertThat(fixture.context.getBean(TaskRuntime.class).loadTaskItems(id, List.of(message)).get(message)).isEqualTo(original);
+            assertThat(fixture.post(target + "/approve", 100000).statusCode()).isEqualTo(409);
+            assertThat(fixture.post(target + "/approve", 100001).statusCode()).isEqualTo(200);
+            assertThat(fixture.post(target + "/close", Map.of()).statusCode()).isEqualTo(200);
+            assertThat(task(fixture, id)).containsEntry("state", "terminal").containsEntry("sendTotal", 100001L).containsEntry("sentCount", 0L);
+            assertThat(fixture.post(target + "/approve", 100001).statusCode()).isEqualTo(409);
+            assertThat(fixture.upload(id, "8613810000000").statusCode()).isEqualTo(409);
+            String other = (String) Jsons.parseObject(fixture.post(PATH, input("other")).body()).get("taskId");
+            assertThat(Jsons.parseObject(fixture.upload(other, "8613810000000").body())).containsEntry("confirmedAddedCount", 1L);
+            assertThat(messageId(other, "+8613810000000")).isNotEqualTo(message);
+            assertThat(fixture.context.getBean(TaskRuntime.class).loadTaskItems(other, List.of(messageId(other, "+8613810000000"))))
+                    .containsKey(messageId(other, "+8613810000000"));
+        }
+    }
+    @Test @Timeout(60)
+    void legacyTasksRemainReadableAndClosableWhileManagedAndForeignBusinessTasksAreProtected() throws Exception {
+        try (var fixture = new MessagesAssemblyIntegrationTest.Fixture()) {
+            fixture.start(true, Map.of());
+            var creation = fixture.context.getBean(TaskCreationService.class);
+            String legacy = creation.create(new TaskCreateRequest("messages", "demo-sim", 50, 3, List.of(), "legacy",
+                    Map.of("scenario", "messages", "recipientCountry", "CN", "body", "{}"))).taskId();
+            assertThat(task(fixture, legacy)).containsEntry("name", "legacy").doesNotContainKey("inputVersion");
+            assertThat(fixture.upload(legacy, "86123").statusCode()).isEqualTo(409);
+            assertThat(fixture.post(PATH + "/" + legacy + "/approve", 1).statusCode()).isEqualTo(409);
+            assertThat(fixture.post(PATH + "/" + legacy + "/close", Map.of()).statusCode()).isEqualTo(200);
+            assertThat(fixture.post("/api/v1/tasks/" + legacy + "/results:export", Map.of()).statusCode()).isEqualTo(200);
+            String managed = fixture.context.getBean(ProjectDirectory.class).requireManagedTaskId("messages", "demo-sim");
+            String foreign = creation.create(new TaskCreateRequest("messages", "demo-sim", 50, 3, List.of(), "foreign", Map.of("scenario", "other"))).taskId();
+            for (String task : List.of(managed, foreign)) {
+                assertThat(fixture.upload(task, "86123").statusCode()).isEqualTo(400);
+                assertThat(fixture.post(PATH + "/" + task + "/approve", 1).statusCode()).isEqualTo(400);
+                assertThat(fixture.post(PATH + "/" + task + "/close", Map.of()).statusCode()).isEqualTo(400);
+            }
+            var old = new HashMap<>(input("old")); old.put("recipientIds", List.of("+86123"));
+            assertThat(fixture.post(PATH, old).statusCode()).isEqualTo(400);
+        }
+    }
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> task(MessagesAssemblyIntegrationTest.Fixture fixture, String id) { return (Map<String, Object>) fixture.detail(id).get("task"); }
+    private static String messageId(String task, String number) throws Exception {
+        var digest = MessageDigest.getInstance("SHA-256");
+        for (String value : List.of("messages/v2/message", task, number)) {
+            byte[] bytes = value.getBytes(StandardCharsets.UTF_8); digest.update(ByteBuffer.allocate(4).putInt(bytes.length).array()); digest.update(bytes);
+        }
+        return "message-" + HexFormat.of().formatHex(digest.digest());
+    }
+}

@@ -10,16 +10,16 @@ import run_proof as proof
 
 class ProofAssertionsTest(unittest.TestCase):
     def test_campaign_countries_are_independent_and_numbers_are_repeatable(self):
-        with patch.object(proof, "http", return_value={"id": "campaign"}):
-            _, cross = proof.campaign(SimpleNamespace(url="server"), country="US", recipient_country="CN")
-            _, any_sender = proof.campaign(SimpleNamespace(url="server"), country=None, recipient_country="CN")
+        with patch.object(proof, "http", return_value={"taskId": "campaign"}), patch.object(proof, "upload_recipients", return_value={"confirmedAddedCount": 2, "existingCount": 0}):
+            cross_task, cross = proof.campaign(SimpleNamespace(url="server"), country="US", recipient_country="CN")
+            any_task, any_sender = proof.campaign(SimpleNamespace(url="server"), country=None, recipient_country="CN")
         self.assertEqual("CN", cross["recipientCountry"])
         self.assertEqual("US", cross["senderCountry"])
         self.assertIsNone(any_sender["senderCountry"])
-        self.assertEqual(cross["recipientIds"], any_sender["recipientIds"])
+        self.assertEqual(cross_task["recipientIds"], any_task["recipientIds"])
         self.assertNotIn("senderPhone", cross)
         self.assertNotIn("senderPhone", any_sender)
-        self.assertTrue(all(number.startswith("+86") and number[1:].isdigit() for number in cross["recipientIds"]))
+        self.assertTrue(all(number.startswith("+86") and number[1:].isdigit() for number in cross_task["recipientIds"]))
         self.assertNotIn("country", cross)
 
     def test_recipient_input_uses_the_original_worker_coordinate(self):
@@ -85,7 +85,7 @@ class PoolSelectionTest(unittest.TestCase):
         workers = {f"{country}-{i}": {"workerId": f"{country}-{i}", "country": country}
                    for country in ("CN", "US", "GB") for i in range(4)}
         run = SimpleNamespace(url="server", host="host", input_workers_by_id=workers, check=lambda: None)
-        tasks, messages, requests = {}, {}, []
+        tasks, messages, requests, specifications = {}, {}, [], {}
 
         def http(base, path, body=None, **kwargs):
             requests.append((path, body))
@@ -100,17 +100,26 @@ class PoolSelectionTest(unittest.TestCase):
                 country = body["senderCountry"]
                 tasks[identity] = {"taskId": identity, "task": {"metadata": {}, "refill": [{
                     "poolName": pool, "target": {"worker.country": [country]} if country else {}, "count": 100}]}}
-                messages[identity] = [{"id": f"{identity}-{i}", "campaignId": identity, "status": "SENT",
-                                       "workerId": us_worker if country == "US" else "GB-0",
-                                       "country": body["recipientCountry"], "recipientId": recipient}
-                                      for i, recipient in enumerate(body["recipientIds"])]
+                specifications[identity] = body
+                messages[identity] = []
                 return {"taskId": identity}
+            if path.endswith("/recipients:import"):
+                identity = path.split("/")[-2]
+                specification = specifications[identity]
+                messages[identity] = [{"id": f"{identity}-{i}", "campaignId": identity, "status": "SENT",
+                    "workerId": us_worker if specification["senderCountry"] == "US" else "GB-0",
+                    "country": specification["recipientCountry"], "recipientId": recipient}
+                    for i, recipient in enumerate(body)]
+                return {"taskId": identity, "confirmedAddedCount": len(body), "existingCount": 0}
+            if path.endswith("/approve"):
+                return {"status": "applied"}
             raise AssertionError("Unexpected API call in Pool-only fixture")
 
         return run, http, messages, requests
 
     def execute(self, run, http, messages):
         with patch.object(proof, "http", side_effect=http), \
+                patch.object(proof, "upload_recipients", side_effect=lambda base, task, recipients: http(base, f"/api/v1/messages/tasks/{task}/recipients:import", recipients)), \
                 patch.object(proof, "campaign_messages", side_effect=lambda run, value: messages[value["taskId"]]), \
                 patch.object(proof, "lab_message", side_effect=lambda run, message: dict(message)), \
                 patch.object(proof, "sms_create", side_effect=AssertionError("Pool proof created SMS demand")):
@@ -121,9 +130,10 @@ class PoolSelectionTest(unittest.TestCase):
         result = self.execute(run, http, messages)
         self.assertTrue(result["passed"])
         self.assertEqual(4, result["messages"])
-        offered = [body for _, body in requests if body is not None]
+        offered = [body for path, body in requests if path == "/api/v1/messages/tasks"]
         self.assertEqual(["US", None], [body["senderCountry"] for body in offered])
-        self.assertEqual(offered[0]["recipientIds"], offered[1]["recipientIds"])
+        self.assertEqual([row["recipientId"] for row in messages["cross-country"]], [row["recipientId"] for row in messages["any-country"]])
+        self.assertTrue(all("recipientIds" not in body for body in offered))
         self.assertTrue(all("senderPhone" not in body for body in offered))
         self.assertEqual(4, sum(len(rows) for rows in messages.values()))
         self.assertIn("pool-us-send", run.completed_stages)

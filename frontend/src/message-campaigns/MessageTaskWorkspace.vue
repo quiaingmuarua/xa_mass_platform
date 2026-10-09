@@ -10,6 +10,9 @@ import {
   Tickets
 } from "@element-plus/icons-vue";
 import MessageTaskCreate from "./MessageTaskCreate.vue";
+import MessageTaskActions from "./MessageTaskActions.vue";
+import { useMessageAvailability } from "./availability";
+import { MESSAGE_IMPORT_LIMITS } from "@/files/phone-numbers";
 import { receiptLabel } from "./model";
 import {
   messageTaskSourceKey,
@@ -22,6 +25,12 @@ import {
 
 const source = inject(messageTaskSourceKey);
 if (!source) throw new Error("Messages task view requires an explicit data source");
+const availability = useMessageAvailability();
+const importLimits = computed(() =>
+  availability.state.value.status === "enabled"
+    ? availability.state.value.catalog.limits
+    : MESSAGE_IMPORT_LIMITS
+);
 const route = useRoute();
 const router = useRouter();
 const taskId = computed(() =>
@@ -314,6 +323,17 @@ onBeforeUnmount(() => {
         role="alert"
       />
       <template v-if="detail">
+        <MessageTaskActions
+          :task="detail.task"
+          :source="source"
+          :limits="importLimits"
+          :stale="detailBusy || !!detailError"
+          @changed="
+            (id) => {
+              if (id === taskId) refresh();
+            }
+          "
+        />
         <section class="task-surface task-overview" aria-label="任务信息">
           <dl>
             <div>
@@ -494,6 +514,7 @@ onBeforeUnmount(() => {
     <MessageTaskCreate
       v-model="creating"
       :source="source"
+      :limits="importLimits"
       @created="(id) => router.push(`/messages/tasks/${encodeURIComponent(id)}`)"
     />
   </div>
