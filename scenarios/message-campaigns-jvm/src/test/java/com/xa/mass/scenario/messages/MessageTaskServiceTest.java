@@ -31,11 +31,17 @@ class MessageTaskServiceTest {
             var result = new LinkedHashMap<String, ActionOutcome>();
             items.forEach(i -> result.put(i.messageId(), ActionOutcome.applied())); return result;
         });
-        var service = new MessageTaskService(mock(ProjectDirectory.class), queries, creation, data, lifecycle, "demo-sim", operations);
-        entry("finite-task", input(), "pre_review", "2");
+        var service = new MessageTaskService(mock(ProjectDirectory.class), queries, creation, data, lifecycle, config(), operations);
+        entry("finite-task", input(), "pre_review", "3");
         service.start(); return service;
     }
-    Map<String, Object> input() { return new HashMap<>(Map.of("requestId", "request", "name", "campaign", "recipientCountry", "CN", "senderCountry", "CN", "body", "{}")); }
+    MessageScenarioProperties config() {
+        return new MessageScenarioProperties(List.of(
+                new MessageScenarioProperties.Application("demo", "Demo", "demo-sim"),
+                new MessageScenarioProperties.Application("app-a", "App A", "app-a-sim"),
+                new MessageScenarioProperties.Application("app-b", "App B", "app-b-sim")));
+    }
+    Map<String, Object> input() { return new HashMap<>(Map.of("appId", "demo", "requestId", "request", "name", "campaign", "recipientCountry", "CN", "senderCountry", "CN", "body", "{}")); }
     void entry(String id, Map<String, Object> input, String state, String version) {
         var metadata = new HashMap<>(MessageSpecification.parse(input).metadata());
         if (version == null) metadata.remove("inputVersion"); else metadata.put("inputVersion", version);
@@ -50,16 +56,16 @@ class MessageTaskServiceTest {
             var request = input();
             assertThat(service.create(request).taskId()).isEqualTo("finite-task");
             verify(creation).createForRequest(argThat(r -> r.priority() == 50 && r.maxRetryTimes() == 3
-                    && r.metadata().get("inputVersion").equals("2") && !r.metadata().containsKey("recipientIds")), eq("request"), matches("[0-9a-f]{64}"));
+                    && r.metadata().get("inputVersion").equals("3") && !r.metadata().containsKey("recipientIds")), eq("request"), matches("[0-9a-f]{64}"));
             verifyNoInteractions(data, lifecycle);
             var spec = MessageSpecification.parse(request);
             assertThat(spec.fingerprint("other-group")).isNotEqualTo(spec.fingerprint("demo-sim"));
-            for (var change : Map.of("name", "other", "senderCountry", "US", "recipientCountry", "GB", "senderPhone", "+86123", "body", "{ }" ).entrySet()) {
+            for (var change : Map.of("name", "other", "senderCountry", "US", "recipientCountry", "GB", "appId", "app-a", "body", "{ }" ).entrySet()) {
                 var changed = new HashMap<>(request); changed.put(change.getKey(), change.getValue());
                 assertThat(MessageSpecification.parse(changed).fingerprint("demo-sim")).isNotEqualTo(spec.fingerprint("demo-sim"));
             }
             request.remove("senderCountry"); var omitted = MessageSpecification.parse(request);
-            request.put("senderCountry", null); request.put("senderPhone", " ");
+            request.put("senderCountry", null);
             assertThat(MessageSpecification.parse(request).fingerprint("demo-sim")).isEqualTo(omitted.fingerprint("demo-sim"));
             var old = input(); old.put("recipientIds", List.of("+86123"));
             assertThatThrownBy(() -> service.create(old)).hasMessageContaining("Unknown message task fields");
@@ -84,22 +90,49 @@ class MessageTaskServiceTest {
         }
     }
 
-    @Test void storedConfigurationDrivesPoolOrPhoneSelectionForAnyAndCrossCountrySending() {
-        for (String sender : Arrays.asList("US", null)) for (String phone : Arrays.asList("+86123", null)) {
+    @Test void eachApplicationUsesItsOwnGroupAndPoolForAnyAndCrossCountrySending() {
+        for (String app : List.of("demo", "app-a", "app-b")) for (String sender : Arrays.asList("US", null)) {
             reset(data, creation);
             try (var service = service()) {
-                var request = input(); request.put("senderCountry", sender); request.put("senderPhone", phone);
-                service.create(request); entry("finite-task", request, "pre_review", "2");
-                verify(creation).createForRequest(argThat(r -> phone == null
-                        ? r.refill().getFirst().target().query().equals(sender == null ? Map.of() : Map.of("worker.country", List.of(sender)))
-                        : r.refill().isEmpty()), eq("request"), anyString());
+                var request = input(); request.put("appId", app); request.put("senderCountry", sender);
+                service.create(request); entry("finite-task", request, "pre_review", "3");
+                verify(creation).createForRequest(argThat(r -> r.workerGroupId().equals(app + "-sim")
+                        && r.refill().getFirst().poolName().equals("messaging")
+                        && r.refill().getFirst().target().query().equals(sender == null ? Map.of() : Map.of("worker.country", List.of(sender)))), eq("request"), anyString());
                 service.importRecipients("finite-task", file("+86123"));
-                var expected = new HashMap<String, Object>();
-                if (sender != null) expected.put("country", List.of(sender)); if (phone != null) expected.put("phone", phone);
                 verify(data).importFiniteTaskItems(eq("finite-task"), argThat(items ->
-                        items.getFirst().workerSelector().executorName().equals(phone == null ? "worker.messaging.available" : "worker.messaging.phone")
-                        && items.getFirst().workerSelector().input().equals(expected) && items.getFirst().payload().get("country").equals("CN")));
+                        items.getFirst().workerSelector().executorName().equals("worker.messaging.available")
+                        && items.getFirst().workerSelector().input().equals(sender == null ? Map.of() : Map.of("country", List.of(sender)))
+                        && items.getFirst().payload().get("country").equals("CN")));
             }
+        }
+    }
+
+    @Test void opaqueContentSurvivesCreationAndImportAndStoredAppsAreNotResolvedAgain() {
+        try (var service = service()) {
+            String content = "  你好 {{name}}\n<body>not JSON</body>  ";
+            var request = input(); request.put("body", content);
+            service.create(request);
+            verify(creation).createForRequest(argThat(r -> r.metadata().get("body").equals(content)), anyString(), anyString());
+            request.put("appId", "retired-application");
+            entry("finite-task", request, "pre_review", "3");
+            service.importRecipients("finite-task", file("+86123"));
+            verify(data).importFiniteTaskItems(eq("finite-task"), argThat(items -> items.getFirst().payload().get("body").equals(content)));
+        }
+    }
+
+    @Test void rejectsMissingUnknownApplicationsDirectedInputAndInvalidTextBeforeCreatingAnything() {
+        try (var service = service()) {
+            var missing = input(); missing.remove("appId");
+            var unknown = input(); unknown.put("appId", "missing");
+            var phone = input(); phone.put("senderPhone", null);
+            var group = input(); group.put("workerGroupId", "demo-sim");
+            var blank = input(); blank.put("body", " ");
+            var longText = input(); longText.put("body", "x".repeat(4097));
+            for (var request : List.of(missing, unknown, phone, group, blank, longText))
+                assertThatThrownBy(() -> service.create(request)).isInstanceOfSatisfying(MessageTaskService.ProductError.class,
+                        error -> assertThat(error.status).isEqualTo(400));
+            verifyNoInteractions(creation, data, lifecycle);
         }
     }
 
@@ -139,19 +172,21 @@ class MessageTaskServiceTest {
             assertThatThrownBy(() -> service.approve("finite-task", 1)).hasMessageContaining("变化");
             service.approve("finite-task", 2); verify(lifecycle).approve("finite-task");
             for (String state : Arrays.asList("terminal", "running_visible", null)) {
-                entry("finite-task", input(), state, "2");
+                entry("finite-task", input(), state, "3");
                 assertThatThrownBy(() -> service.approve("finite-task", 2)).isInstanceOf(MessageTaskService.ProductError.class);
             }
-            entry("finite-task", input(), "pre_review", null);
-            assertThatThrownBy(() -> service.importRecipients("finite-task", file("+86123"))).hasMessageContaining("旧输入版本");
-            assertThatThrownBy(() -> service.approve("finite-task", 2)).hasMessageContaining("旧输入版本");
+            for (String version : Arrays.asList(null, "1", "2")) {
+                entry("finite-task", input(), "pre_review", version);
+                assertThatThrownBy(() -> service.importRecipients("finite-task", file("+86123"))).hasMessageContaining("旧输入版本");
+                assertThatThrownBy(() -> service.approve("finite-task", 2)).hasMessageContaining("旧输入版本");
+            }
             service.closeTask("finite-task"); verify(lifecycle).close("finite-task");
         }
     }
 
     @Test void concurrentImportBlocksSameTaskMutationsAndThirdImportBeforeReadingThenReleasesCapacity() throws Exception {
         try (var service = service(); var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            entry("second", input(), "pre_review", "2");
+            entry("second", input(), "pre_review", "3");
             var entered = new CountDownLatch(2); var release = new CountDownLatch(1);
             doAnswer(call -> { entered.countDown(); assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
                 List<TaskItemRequest> items = call.getArgument(1); return Map.of(items.getFirst().messageId(), ActionOutcome.applied());

@@ -252,7 +252,10 @@ application/dependency/lifecycle changes, and [Boot](server_boot_jvm/README.md)
 for profile composition. [Coexistence](integrations/scenario-coexistence/README.md)
 is the business proof entrypoint.
 
-Messages contributes immutable Project and resource-requirement declarations.
+Messages contributes immutable multi-Group Project and resource-requirement declarations.
+Its applications are startup bindings; only new Task creation resolves an application
+to a Group. Stored Tasks retain their original Group. Template content is opaque to
+the business API; the receiving event owns its format interpretation.
 Server validates dependencies between host Group initialization and Project Task
 initialization. Shared Group definitions remain host-owned; scenario requirements
 may read through the startup validator but must not register, amend or enable

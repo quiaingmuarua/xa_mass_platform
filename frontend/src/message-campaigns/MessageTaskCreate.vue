@@ -167,7 +167,7 @@ onBeforeUnmount(() => {
       </div>
     </header>
     <div v-if="!source.applications.length" class="message-error" role="alert">
-      应用配置不可用，无法确认唯一 WorkerGroup。当前不能创建任务。
+      应用配置不可用。当前不能创建任务。
     </div>
     <form
       id="message-task-form"
@@ -247,7 +247,8 @@ onBeforeUnmount(() => {
           />
         </label>
         <p id="message-content-hint" class="message-hint">
-          内容原样提交，由所选应用解释。当前演示应用要求 JSON 对象文本；填写
+          内容原样提交，由所选应用解释。创建成功不代表内容已通过接收端校验。当前 Lab
+          演示要求 JSON 对象文本，普通文本会在执行时被拒绝；填写
           <code>{}</code> 可演示自动送达。
           <br />
           Lab JSON 示例：

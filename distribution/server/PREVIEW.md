@@ -75,6 +75,31 @@ The shared HTTP client reuses a connection per thread and endpoint while request
 remain less than five seconds apart. It closes an idle connection before the next
 request; a failed or uncertain mutation is surfaced without automatic replay.
 
+## Messages multi-application cutover
+
+Preview binds Messages applications Demo, App A and App B to the corresponding
+Groups. All three install message.send; App A/B retain app.registration.check.
+Their explicit phone ranges do not overlap, and country/messaging.enabled
+Properties are initialized in new inventories. API creation requires appId and
+no longer accepts senderPhone. Template content is opaque to Messages; Lab still
+requires its JSON instruction format. Creation success is not Lab acceptance.
+
+This configuration expands the immutable App Group event definitions. Use a fresh
+Redis scope and fresh inventory; do not apply it over existing create-only Groups
+or edit retained inventory to resemble a migration. The launcher already selects
+an independent test_products scope. For source and ZIP alike, choose an unused
+port and a new sandbox root, for example from the Preview directory:
+
+```powershell
+python run_preview.py --port 18640 --sandbox-root ./environments/messages-v3/data/scenario-workers
+```
+
+Use a new inventory path ending in `data/scenario-workers`. The three Catalog
+applications and actual Worker capabilities must be verified after startup.
+Keep the previous instance and inventory separate; no task copying, Group overwrite,
+automatic replay of frozen requests or automatic replacement of an existing Preview
+occurs. Opening a new console session avoids carrying old environment drafts.
+
 ## Archive delivery
 
 ```powershell

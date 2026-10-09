@@ -12,6 +12,7 @@ const count = z.number().int().nonnegative();
 const task = z.object({
   taskId: z.string().min(1),
   name: z.string().optional(),
+  appId: z.string().optional(),
   inputVersion: z.string().optional(),
   createdAtMillis: count,
   workerGroupId: z.string().nullable(),
@@ -102,10 +103,11 @@ export class ApiMessageTaskSource implements MessageTaskSource {
   async createTask(input: CreateMessageTask) {
     if (!this.applications.some((app) => app.id === input.appId))
       throw new Error("应用配置不可用，不能为此应用创建任务。");
-    const { requestId, name, recipientCountry, senderCountry, body } = input;
+    const { appId, requestId, name, recipientCountry, senderCountry, body } = input;
     try {
       return z.object({ taskId: z.string().min(1) }).parse(
         await api<unknown>("/tasks", {
+          appId,
           requestId,
           name,
           recipientCountry,

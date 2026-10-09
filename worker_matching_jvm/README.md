@@ -616,7 +616,7 @@ xa:
       groups:
         demo-sim:
           pools: [country, messaging]
-          functions: [worker.country, worker.messaging.available, worker.messaging.phone, worker.phone]
+          functions: [worker.country, worker.messaging.available, worker.phone]
     task-rpc:
       refill-by-worker-group:
         demo-sim:
@@ -626,7 +626,7 @@ xa:
 Managed supply uses complete JSON declaration strings so an explicit empty target
 survives Boot binding and missing target still fails the shared strict decoder.
 Lab explicitly enables any/worker.any and supplies 1000. Preview SMS supplies
-country/{} /100; only Messages without senderPhone declares messaging supply. Unconfigured managed and
+country/{} /100; new Messages Tasks declare messaging supply in their selected Group. Unconfigured managed and
 ordinary Tasks save no supply.
 Phone Index depends on Group resource composition, never Task demand.
 

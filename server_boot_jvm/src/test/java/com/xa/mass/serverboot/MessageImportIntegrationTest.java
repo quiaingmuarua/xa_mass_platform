@@ -17,7 +17,67 @@ import static org.assertj.core.api.Assertions.*;
 @Tag("scenario-composition")
 class MessageImportIntegrationTest {
     static final String PATH = "/api/v1/messages/tasks";
-    static Map<String, Object> input(String id) { return Map.of("requestId", id, "name", "import-proof", "recipientCountry", "CN", "body", "{}"); }
+    static Map<String, Object> input(String id) { return Map.of("appId", "demo", "requestId", id, "name", "import-proof", "recipientCountry", "CN", "body", "{}"); }
+    @Test @Timeout(120)
+    @SuppressWarnings("unchecked")
+    void applicationsAreFrozenAcrossRestartAndOpaqueTextIsPreservedWithoutLabInterpretation() throws Exception {
+        try (var fixture = new MessagesAssemblyIntegrationTest.Fixture()) {
+            var settings = applicationSettings(false);
+            fixture.start(true, settings);
+            var catalog = Jsons.parseObject(fixture.get("/api/v1/messages/catalog").body());
+            assertThat(catalog).containsEntry("version", "0.3.0-preview");
+            assertThat((List<Map<String, Object>>) catalog.get("applications")).extracting(row -> row.get("id"))
+                    .containsExactly("demo", "app-a", "app-b");
+            String body = "  你好 {{name}}\n原样内容  ";
+            var tasks = new LinkedHashMap<String, String>();
+            for (String app : List.of("demo", "app-a", "app-b")) {
+                var request = new HashMap<>(input(app)); request.put("appId", app); request.put("body", body);
+                var response = fixture.post(PATH, request); assertThat(response.statusCode()).isEqualTo(201);
+                String taskId = (String) Jsons.parseObject(response.body()).get("taskId"); tasks.put(app, taskId);
+                assertThat(task(fixture, taskId)).containsEntry("appId", app).containsEntry("workerGroupId", app + "-sim")
+                        .containsEntry("body", body).containsEntry("inputVersion", "3").containsEntry("sendTotal", 0L);
+                var conflict = new HashMap<>(request); conflict.put("appId", app.equals("demo") ? "app-a" : "demo");
+                assertThat(fixture.post(PATH, conflict).statusCode()).isEqualTo(409);
+            }
+            fixture.restart(true, settings);
+            for (var entry : tasks.entrySet()) {
+                var request = new HashMap<>(input(entry.getKey())); request.put("appId", entry.getKey()); request.put("body", body);
+                assertThat(Jsons.parseObject(fixture.post(PATH, request).body())).containsEntry("taskId", entry.getValue());
+            }
+            fixture.restart(true, applicationSettings(true));
+            String taskId = tasks.get("app-a");
+            assertThat(fixture.upload(taskId, "86123").statusCode()).isEqualTo(200);
+            var item = fixture.context.getBean(TaskRuntime.class).loadTaskItems(taskId, List.of(messageId(taskId, "+86123"))).get(messageId(taskId, "+86123"));
+            assertThat(item.payload()).containsEntry("body", body);
+            assertThat(item.workerSelector().executorName()).isEqualTo("worker.messaging.available");
+            assertThat(task(fixture, taskId)).containsEntry("workerGroupId", "app-a-sim").containsEntry("appId", "app-a");
+            assertThat(fixture.post(PATH + "/" + taskId + "/approve", 1).statusCode()).isEqualTo(200);
+            assertThat(fixture.post(PATH + "/" + taskId + "/close", Map.of()).statusCode()).isEqualTo(200);
+            for (String field : List.of("senderPhone", "workerGroupId", "recipientIds")) {
+                var rejected = new HashMap<>(input("invalid")); rejected.put(field, "unexpected");
+                assertThat(fixture.post(PATH, rejected).statusCode()).isEqualTo(400);
+            }
+            var absent = new HashMap<>(input("absent")); absent.remove("appId");
+            assertThat(fixture.post(PATH, absent).statusCode()).isEqualTo(400);
+        }
+    }
+
+    private static Map<String, String> applicationSettings(boolean swap) {
+        var settings = new LinkedHashMap<String, String>();
+        var groups = new LinkedHashMap<String, Object>();
+        var apps = List.of("demo", "app-a", "app-b");
+        for (int index = 0; index < apps.size(); index++) {
+            String app = apps.get(index), group = app + "-sim";
+            String bound = swap && index > 0 ? apps.get(3 - index) + "-sim" : group;
+            String prefix = "xa.mass.scenarios.messages.applications[" + index + "].";
+            settings.put(prefix + "id", app); settings.put(prefix + "label", app); settings.put(prefix + "worker-group-id", bound);
+            groups.put(group, Map.of("attributes", Map.of(), "eventCodes", List.of("extension.worker.message.send")));
+            settings.put("xa.mass.worker-matching.groups." + group + ".pools[0]", "messaging");
+            settings.put("xa.mass.worker-matching.groups." + group + ".functions[0]", "worker.messaging.available");
+        }
+        settings.put("xa.mass.worker-assembly.group-config-json", Jsons.toJson(groups));
+        return settings;
+    }
     @Test @Timeout(240)
     void largeImportRestartAndCrossFileDedupUseRealOwnersWithoutRunningWorkers() throws Exception {
         try (var fixture = new MessagesAssemblyIntegrationTest.Fixture()) {

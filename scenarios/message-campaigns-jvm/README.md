@@ -38,37 +38,34 @@ Lab 接收生成 delivered / 后续 read、reply → HTTP 回调原 Worker Repor
 ## Worker 供给与装配
 
 `MessageWorkerSupply` 集中 Project、发送事件、Pool、查询名称和 Worker 资格字段。
-同一个装配入口从严格配置 `xa.mass.scenarios.messages.worker-group-id` 取得 Group，
-注册 `ProjectDefinition`、`ProjectWorkerRequirements` 和资格定义，并将同一 Group
-传给业务服务。Group 无默认值，不回退到 `scenarioWorkerGroup` String Bean；未知字段拒绝。
-Project 身份固定为 `messages`，由模块声明，不在宿主 Project 列表重复配置。
+严格配置 `xa.mass.scenarios.messages.applications` 是非空有序列表，每项包含 `id`、
+`label`、`worker-group-id`；应用 ID 与 Group ID 分别唯一，无隐式默认或旧单 Group 路径。
+模块从同一份不可变配置生成 Catalog、一个 `messages` Project 的 Group 列表、
+资源需求和创建映射。标签只作展示，不参与创建指纹。
 
-`MessageCampaignsScenarioConfiguration` 注册纯数据 `QualifiedCountryDefinition`：
-Pool=`messaging`、库存查询=`worker.messaging.available`、定向查询=`worker.messaging.phone`，
-要求 Worker Properties 的 `messaging.enabled` 精确等于字符串 `true`，国家取 `country`。
+`MessageCampaignsScenarioConfiguration` 注册现有纯数据 `QualifiedCountryDefinition`，
+Pool=`messaging`、库存查询=`worker.messaging.available`；Worker Properties 中
+`messaging.enabled` 必须精确等于字符串 `true`，国家取 `country`。
+声明类型保留的 `worker.messaging.phone` 基础能力不再由 Messages 要求或新建任务使用，
+Preview 不启用该函数；不改变 Matching 的 Phone Index、资格规则或声明类型。
 这里没有新增 Platform Properties 或属性投影。
 
-Server 收集声明，Matching 构造参数化资格、库存和定向查询；场景仅依赖该公开声明类型，
-不持有 Matching 的库存、索引、策略或生命周期。声明 Bean 不依赖 Task 服务或已启动实例。
-Group 仍由现有 Boot 配置分别启用 Pool／函数；指定号码查询可独立于 Pool 启用。
-普通发送在补给时读 Worker Facts 并按国家入池，消费不再读 Facts；定向发送独立查 Phone
-Index 后核对当前 Facts，仍共享同一物理 `phone` 索引。基础失败、预算与执行准入边界见
+每个绑定 Group 都要求 `extension.worker.message.send`、Messaging Pool 和库存查询。
+Server 将批量资源需求展开为 Project/Group 检查，在 Group 初始化后、Project Task
+初始化前验证；缺失依赖阻止启动。场景不持有资源或补注册事件，宿主管理共享 Group。
+普通发送在补给时读 Worker Facts 并按国家入池，消费不再读 Facts；规则与失败边界见
 [Matching Owner](../../worker_matching_jvm/README.md#qualified-country-declarations)。
 
-此次装配迁移保留所有 HTTP、供给／查询名称和输入、Task／Item／Result 与 Properties 格式，
-存量任务无需重建。Project／Group 初始化、tracked Reporter 及提交流程沿用既有 Owner 路径。
-平台测试显式提供自己的声明 fixture，不依赖本模块，也不在缺失声明时恢复内置默认规则。
-
-当前业务 API 同时提供普通发送和指定号码发送，因此模块要求 send 事件、`messaging` Pool
-以及上述两个函数。Server 在 Group 初始化后、Project Task 初始化前检查依赖；允许共享
-Group 具有其他事件和资源，也允许使用外部已注册的 Group。需求只校验，不补注册事件、
-启用 Matching 资源或覆盖 Group 属性。校验通过不证明真实 Worker 已安装事件 Handler。
+Preview 提供 Demo、App A、App B；App A/B 同时保留 App Checks 能力。
+Task 创建时固定一个 Group，ANY 只省略该 Group 内的国家条件，不跨应用调度。
+新增 Messaging 能力不改变 App Checks 的事件过滤、窗口投影、Pool 或参数。
+实际 Worker 必须安装发送 Handler 并发布合格 Properties；资源声明不证明执行能力。
 
 ## API 与业务输入
 
 | API | 契约 |
 | --- | --- |
-| `GET /api/v1/messages/catalog` | Project、版本、国家和单次导入限制，不返回进程提交配额或 runId |
+| `GET /api/v1/messages/catalog` | Project、版本 `0.3.0-preview`、有序 applications、国家和单次导入限制；国家不再携带 Group |
 | `POST /api/v1/messages/tasks` | 只创建空的待审核 Task，201 返回 `{taskId}` |
 | `POST /api/v1/messages/tasks/{taskId}/recipients:import` | `text/plain` UTF-8 文件，返回读取／空行／重复／唯一／确认写入／已存在数量 |
 | `POST /api/v1/messages/tasks/{taskId}/approve` | JSON 整数为用户看到的实际数量，核对后批准 |
@@ -77,40 +74,36 @@ Group 具有其他事件和资源，也允许使用外部已注册的 Group。�
 | `GET /api/v1/messages/tasks/{taskId}` | 项目内 Task、数量及最多 100 条 Result 预览 |
 
 ```json
-{"requestId":"cross-country","name":"msg-US-CN-example","recipientCountry":"CN","senderCountry":"US","body":"{}"}
+{"appId":"demo","requestId":"cross-country","name":"msg-US-CN-example","recipientCountry":"CN","senderCountry":"US","body":"{}"}
 ```
 
-创建拒绝旧 `recipientIds` 字段。每次导入最多 100,000 个去重收件号码／10 MiB，
+创建必须选择已配置的 `appId`，拒绝 `recipientIds`、`senderPhone` 和客户端 `workerGroupId`；未知字段无兼容入口。每次导入最多 100,000 个去重收件号码／10 MiB，
 Catalog 返回 `recipientsPerImport` 和 `importFileBytes`；多次追加不受旧单任务 1,000 项限制。
 UTF-8 校验处理 BOM、空行和首尾空白；号码可省略 `+`，规范化为带 `+` 的 2..15 位数字，
 首位非零，CN/US/GB 分别要求 +86/+1/+44 且前缀后有号码。不会自动补国家码或验证真实可达性。
 文件内重复跳过，无效号码整批拒绝并报告首个错误行。完整文件通过校验后才分批写入；
 上传与规范化临时文件在成功、失败后清理，不持久化源文件或原始行历史。
 
-requestId/name/senderPhone 最长 128 字符，body 最长 4096，必须为 JSON 对象字符串。
-Lab 独占具体指令语义；Server 不重复解释步骤、概率和随机延迟。
+requestId/name/appId 最长 128 字符；body 是最长 4096 字符的非空文本。
+Messages 不解析 JSON、不裁剪空白、不展开模板变量；导入从 descriptor 读取冻结的配置，
+不按当前应用映射重新选择 Group。Lab 仍独占 JSON 演示指令语义：普通文本可创建、导入
+和批准，但在当前 Lab 执行阶段被拒绝，不生成发送成功和回执。
 
-**收件国家与发送国家独立。** senderCountry 省略/null 为 ANY；可选 senderPhone 与国家取交集。
-未指定 senderPhone 时，Task 声明 messaging Pool 的 ANY／worker.country 供给，
-Item 使用 worker.messaging.available 的 ANY／country 查询。
-指定 senderPhone 时，Task 保存空供给声明，Item 使用 worker.messaging.phone(phone/country)：
-Matching 从独立 Phone Index 查询身份，再按本批身份读取 Facts，校验 messaging.enabled="true"、
-合法国家、当前手机号及可选发送国家条件。ANY 只省略国家条件，不放宽消息资格。
-此路径不要求 Worker 进入 Messaging Pool，也不通知或删除 Country Pool 中的旧条目。
-Kernel 仍只从到期 HOT 获取执行租约，不能抢占正在执行的 Worker；查询资格与执行获取不是同一事务。
+**收件国家与发送国家独立。** senderCountry 省略/null 为 ANY。
+Task 声明 messaging Pool 的 ANY／worker.country 供给，Item 使用
+worker.messaging.available 的 ANY／country 查询；供给数量 100，资格始终包含消息能力。
+Task 优先级 50、最大重试 3、Item 优先级 5 和 Worker tracked 协议不变。
 
-本次输入流程切换保留当前供给／查询结构、Facts、Phone Index 和历史结果格式，
-不要求重建已运行的 Task；存量输入版本的管理范围见下文。
-
-name 是前端生成的显示名称；Task ID 始终由 Server 生成。metadata 保存 scenario=messages、
-recipientCountry、可选 senderCountry/senderPhone 和 body。不保存号码列表或统计。
-原 Command/Result 的 campaignId 字段使用 Task ID，country 仍表示收件国家。
+name 是前端生成的显示名称；Task ID 由 Server 生成。metadata 保存 scenario=messages、
+inputVersion=3、appId、recipientCountry、可选 senderCountry 和原始 body。
+不保存号码列表或统计。Command/Result 的 campaignId 使用 Task ID，country 仍表示收件国家。
+列表及详情返回保存的 appId 和实际 workerGroupId；旧任务缺少 appId 时不重建应用身份。
 
 ## 幂等、容量与失败
 
-新任务写入 `inputVersion=2`。Server 的 `createForRequest` 以 Project/requestId 关联稳定
-Task ID；版本化创建指纹覆盖 Group、name、recipientCountry、senderCountry、senderPhone 和
-body。可选字段沿用原归一规则，body 按字符串比较；同身份不同配置冲突，相同配置可跨
+新任务写入 `inputVersion=3`。Server 的 `createForRequest` 以 Project/requestId 关联稳定
+Task ID；`messages/v3/create` 指纹覆盖 appId、解析后的 Group、name、recipientCountry、senderCountry 和
+原始 body。可选字段沿用原归一规则，body 按字符串比较；同身份不同配置冲突，相同配置可跨
 Server 重启核对，保证限于原 Task 资源保留期间。数据不完整返回未确认及固定身份，不修复。
 
 导入从已保存的 descriptor 取得固定配置。messageId 为 `message-` 加 SHA-256，输入是
@@ -131,8 +124,8 @@ Server 重启核对，保证限于原 Task 资源保留期间。数据不完整�
 关闭保留已有结果和未发送数量，终态不能重启；已经发送的消息仍可通过原 Reporter 返回回执。
 服务关闭停止新准入，以共享 5 秒预算等待在途写操作，导入停止后续批次；不清理 Redis scope。
 
-旧任务保留原身份、Item、有效期和 Result，继续读取、关闭及通用导出；旧输入版本禁止导入和
-批准。旧随机 ID 与进程账本不迁移为持久请求关联，不重放旧未确认提交。旧整单创建入口无别名。
+旧任务保留原身份、Item、有效期和 Result，继续读取、关闭及通用导出；非 v3 输入禁止导入和
+批准。历史 senderPhone 只读，旧定向任务不改写成 Pool 任务。旧随机 ID 与进程账本不迁移为持久请求关联，不重放旧未确认提交。旧整单创建入口无别名。
 
 ## 数量与结果读取
 
@@ -162,14 +155,14 @@ Preview 保留 extension.worker.message.send 的授权协议例外，不支持�
 
 ## 页面
 
-启动 [Preview](../../distribution/server/PREVIEW.md#source-launch)，打开 `/messages`，
-选择收件国家、发送范围与可选发送号码，填写 Lab JSON 正文。可以创建空任务或创建并导入；
-随后在原详情页追加收件人、核对实际数量并启动，或取消／中止。号码输入只显示摘要，后台线程
-解析大文件，API 导入仍独立 recheck。创建与导入失败分开处理；不确定创建保留原 requestId 和
-载荷，用户显式核对，成功核对不自动导入或批准。已知 Task 上导入失败不得再次创建 Task。
+[前端 Owner](../../frontend/README.md#messages-business-pages) 维护任务列表、统一操作菜单、
+结果抽屉和单页创建。应用来自真实 Catalog；选择应用、收件国家、发送范围和 Template content，
+可创建空任务或创建并导入，随后独立审核启动。内容旁的 Lab JSON 示例只是 hint。
+创建身份核对、导入恢复、手动刷新和最多 100 条预览沿用原边界。
 
-[前端 Owner](../../frontend/README.md#messages-business-pages) 维护会话草稿、API/Mock、
-手动刷新和有界预览。页面结构不迁移，本片不新增专用导出、历史分页或持久化导入历史。
+本片使用新的 Redis scope 和新的 Simulator inventory，不迁移旧任务、Group 或 Worker 文件。
+沿用 [Preview 启动入口](../../distribution/server/PREVIEW.md#messages-multi-application-cutover)，
+不自动重启当前实例，不用新配置覆盖旧 Group；旧未确认提交不得在新环境自动重放。
 
 ## 检查与验收
 
@@ -181,8 +174,9 @@ python integrations/scenario-coexistence/run_proof.py --build --scenario functio
 python integrations/scenario-coexistence/run_proof.py --scenario lifecycle
 ```
 
-[Scenario Coexistence](../../integrations/scenario-coexistence/README.md) 验证实际 Worker 的跨国/ANY、
-终态后连续回执、共享 SMS、旧 run 隔离及打包执行。超过 100 个结果使用已知 Item ID 经
+[Scenario Coexistence](../../integrations/scenario-coexistence/README.md) 验证三应用实际 Pool Worker 的跨国/ANY 与 Group 隔离、
+Lab 拒绝普通文本、终态后连续回执、共享 SMS、旧 run 隔离及打包执行。
+同 Worker/原 Reporter 定点证据使用通用 Task/workerId，业务创建不再提供定向入口。超过 100 个结果使用已知 Item ID 经
 results:load 核对，不恢复 UI 分页。固定 1000 Worker 负载保持显式选择，不作本片性能宣称。
 Redis Owner 证明展示字段 create-only、创建时间不刷新和数量命令预算；Boot 证明真实部分
 追加未确认、迟到执行结果及 Server 重启后直接读取配置和最新回复。
@@ -194,6 +188,6 @@ Redis Owner 证明展示字段 create-only、创建时间不刷新和数量命�
 
 场景贡献不可变 Project 和资源需求声明，由 Server 组合配置列表与模块声明并统一准备目录；
 场景不直接创建资源，所有新消息任务使用 projectId=messages。重复 Project 声明包括相同
-内容均拒绝启动。现有外部配置应删除 `messages` Project 列表项，并设置显式 Group 绑定；
+内容均拒绝启动。现有外部配置应删除 `messages` Project 列表项，并设置显式 applications 绑定；
 SMS 的现有装配不迁移。Project／Group／managed refill 不变时无需迁移或清理业务数据，
 读取也不会补写。改变 Group 是新的资源关联，不会自动搬迁既有 Task 或结果。

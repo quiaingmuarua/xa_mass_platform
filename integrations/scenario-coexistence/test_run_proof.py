@@ -81,40 +81,53 @@ class ProofAssertionsTest(unittest.TestCase):
 
 
 class PoolSelectionTest(unittest.TestCase):
-    def fixture(self, us_worker="US-0", managed_state="running-initial", pool="messaging"):
-        workers = {f"{country}-{i}": {"workerId": f"{country}-{i}", "country": country}
-                   for country in ("CN", "US", "GB") for i in range(4)}
+    def fixture(self, us_country="US", managed_state="running-initial", pool="messaging", wrong_group=False):
+        workers = {f"{app}-{country}-{i}": {"workerId": f"{app}-{country}-{i}", "workerGroupId": app + "-sim", "country": country}
+                   for app in ("demo", "app-a", "app-b") for country in ("CN", "US", "GB") for i in range(4)}
         run = SimpleNamespace(url="server", host="host", input_workers_by_id=workers, check=lambda: None)
         tasks, messages, requests, specifications = {}, {}, [], {}
+        applications = [{"id": app, "label": app, "workerGroupId": app + "-sim"} for app in ("demo", "app-a", "app-b")]
 
         def http(base, path, body=None, **kwargs):
             requests.append((path, body))
+            if path == "/api/v1/messages/catalog":
+                return {"applications": applications}
             if path in ("/api/v1/projects/sms", "/api/v1/projects/messages"):
-                return {"managedTaskIds": {"demo-sim": path.rsplit("/", 1)[-1] + "-managed"}}
+                project = path.rsplit("/", 1)[-1]
+                return {"managedTaskIds": {app["workerGroupId"]: project + app["id"] + "-managed"
+                        for app in (applications if project == "messages" else applications[:1])}}
             if path in ("/api/v1/projects/sms/tasks?limit=100", "/api/v1/projects/messages/tasks?limit=100"):
                 project = path.split("/")[4]
-                rows = [{"taskId": project + "-managed", "scoreBand": managed_state}]
+                rows = [{"taskId": project + app["id"] + "-managed", "scoreBand": managed_state}
+                        for app in (applications if project == "messages" else applications[:1])]
                 return {"truncated": False, "tasks": rows + (list(tasks.values()) if project == "messages" else [])}
             if path == "/api/v1/messages/tasks" and body is not None:
                 identity = body["requestId"]
+                if identity in specifications:
+                    if specifications[identity] != body:
+                        raise urllib.error.HTTPError("local", 409, "conflict", {}, None)
+                    return {"taskId": identity}
                 country = body["senderCountry"]
-                tasks[identity] = {"taskId": identity, "task": {"metadata": {}, "refill": [{
+                tasks[identity] = {"taskId": identity, "task": {"workerGroupId": body["appId"] + "-sim", "metadata": {"appId": body["appId"]}, "refill": [{
                     "poolName": pool, "target": {"worker.country": [country]} if country else {}, "count": 100}]}}
                 specifications[identity] = body
                 messages[identity] = []
                 return {"taskId": identity}
             if path.endswith("/recipients:import"):
                 identity = path.split("/")[-2]
-                specification = specifications[identity]
-                messages[identity] = [{"id": f"{identity}-{i}", "campaignId": identity, "status": "SENT",
-                    "workerId": us_worker if specification["senderCountry"] == "US" else "GB-0",
-                    "country": specification["recipientCountry"], "recipientId": recipient}
+                spec = specifications[identity]
+                app = ("app-b" if spec["appId"] == "demo" else "demo") if wrong_group else spec["appId"]
+                messages[identity] = [{"id": f"{identity}-{i}", "campaignId": identity, "status": "DELIVERED",
+                    "workerId": f"{app}-{us_country if spec['senderCountry'] == 'US' else 'GB'}-0",
+                    "country": spec["recipientCountry"], "recipientId": recipient}
                     for i, recipient in enumerate(body)]
                 return {"taskId": identity, "confirmedAddedCount": len(body), "existingCount": 0}
             if path.endswith("/approve"):
                 return {"status": "applied"}
+            if path == "/api/v1/messages/tasks/opaque-text":
+                return {"task": {"body": specifications["opaque-text"]["body"], "failedCount": 1, "sentCount": 0, "deliveredCount": 0},
+                        "results": [{"resultStatus": "failed"}]}
             raise AssertionError("Unexpected API call in Pool-only fixture")
-
         return run, http, messages, requests
 
     def execute(self, run, http, messages):
@@ -122,30 +135,37 @@ class PoolSelectionTest(unittest.TestCase):
                 patch.object(proof, "upload_recipients", side_effect=lambda base, task, recipients: http(base, f"/api/v1/messages/tasks/{task}/recipients:import", recipients)), \
                 patch.object(proof, "campaign_messages", side_effect=lambda run, value: messages[value["taskId"]]), \
                 patch.object(proof, "lab_message", side_effect=lambda run, message: dict(message)), \
+                patch.object(proof, "all_pages", return_value=[]), \
                 patch.object(proof, "sms_create", side_effect=AssertionError("Pool proof created SMS demand")):
             return proof.pool_selection(run)
 
-    def test_pool_only_world_keeps_both_real_send_oracles_without_sms_or_phone(self):
+    def test_all_applications_keep_real_group_country_oracles_without_sms_or_phone(self):
         run, http, messages, requests = self.fixture()
         result = self.execute(run, http, messages)
         self.assertTrue(result["passed"])
-        self.assertEqual(4, result["messages"])
+        self.assertEqual(12, result["messages"])
         offered = [body for path, body in requests if path == "/api/v1/messages/tasks"]
-        self.assertEqual(["US", None], [body["senderCountry"] for body in offered])
-        self.assertEqual([row["recipientId"] for row in messages["cross-country"]], [row["recipientId"] for row in messages["any-country"]])
-        self.assertTrue(all("recipientIds" not in body for body in offered))
-        self.assertTrue(all("senderPhone" not in body for body in offered))
-        self.assertEqual(4, sum(len(rows) for rows in messages.values()))
-        self.assertIn("pool-us-send", run.completed_stages)
-        self.assertIn("pool-any-send", run.completed_stages)
+        self.assertEqual({"demo", "app-a", "app-b"}, {body["appId"] for body in offered})
+        self.assertTrue(all("recipientIds" not in body and "senderPhone" not in body for body in offered))
+        for app in ("demo", "app-a", "app-b"):
+            self.assertEqual([row["recipientId"] for row in messages[app + "-cross-country"]],
+                             [row["recipientId"] for row in messages[app + "-any-country"]])
+            self.assertIn(app + "-pool-us-send", run.completed_stages)
+            self.assertIn(app + "-pool-any-send", run.completed_stages)
+        self.assertIn("opaque-text-lab-rejection", run.completed_stages)
 
     def test_wrong_us_executor_fails_before_any_query(self):
-        run, http, messages, _ = self.fixture(us_worker="CN-0")
+        run, http, messages, _ = self.fixture(us_country="CN")
         with self.assertRaisesRegex(AssertionError, "actual sender country"):
             self.execute(run, http, messages)
-        self.assertEqual("pool-us-send", run.current_stage)
-        self.assertNotIn("pool-us-send", run.completed_stages)
-        self.assertEqual(["cross-country"], list(messages))
+        self.assertEqual("demo-pool-us-send", run.current_stage)
+        self.assertNotIn("demo-pool-us-send", run.completed_stages)
+        self.assertEqual(["demo-cross-country"], list(messages))
+
+    def test_wrong_executor_group_cannot_satisfy_application_selection(self):
+        run, http, messages, _ = self.fixture(wrong_group=True)
+        with self.assertRaisesRegex(AssertionError, "crossed application Group"):
+            self.execute(run, http, messages)
 
     def test_active_managed_task_rejects_fixture_before_submission(self):
         run, http, messages, requests = self.fixture(managed_state="running")
@@ -190,7 +210,7 @@ class ScenarioSummaryTest(unittest.TestCase):
         checkpoint = {"stage": "DELIVERED", "platformMillis": 5, "productMillis": 6}
 
         def fail(run):
-            proof.begin_stage(run, "direct-phone-send")
+            proof.begin_stage(run, "shared-worker-control-send")
             proof.begin_stage(run, "completed-task-receipts")
             run.receipt_checkpoints = [checkpoint]
             proof.begin_stage(run, "latest-result-export")
@@ -199,7 +219,7 @@ class ScenarioSummaryTest(unittest.TestCase):
         result, _ = self.execute("functional", fail)
         self.assertFalse(result["passed"])
         self.assertEqual("latest-result-export", result["failedStage"])
-        self.assertEqual(["startup", "inventory", "direct-phone-send", "completed-task-receipts"], result["completedStages"])
+        self.assertEqual(["startup", "inventory", "shared-worker-control-send", "completed-task-receipts"], result["completedStages"])
         self.assertEqual([checkpoint], result["checkpoints"])
         self.assertEqual("AssertionError", result["failureType"])
 

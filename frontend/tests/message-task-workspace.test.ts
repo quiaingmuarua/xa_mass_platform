@@ -360,7 +360,7 @@ describe("Messages desktop workbench", () => {
   it("keeps the file and unused request identity editable after a definitive creation rejection", async () => {
     const create = vi
       .spyOn(source, "createTask")
-      .mockRejectedValueOnce(new MessageApiError(400, "body must be a JSON object"));
+      .mockRejectedValueOnce(new MessageApiError(400, "请求校验未通过"));
     const importing = vi.spyOn(source, "importRecipients");
     const { session, router } = await mount("/messages?view=create");
     const file = new File([], "recipients.txt");
@@ -570,7 +570,7 @@ describe("Messages desktop workbench", () => {
       "pre_review"
     );
   });
-  it("shows the legacy sender restriction in review and approval without exposing it in creation", async () => {
+  it("shows historical sender restrictions and blocks old Task imports and approval", async () => {
     const legacy = {
       task: {
         taskId: "legacy",
@@ -592,8 +592,11 @@ describe("Messages desktop workbench", () => {
     source = new MockMessageTaskSource([legacy]);
     await mount("/messages/tasks/legacy");
     expect(drawer().textContent).toContain("12025550123");
-    await command("核对并启动");
-    expect(document.querySelector(".el-dialog")!.textContent).toContain("12025550123");
+    await openMenu();
+    expect(menuItem("核对并启动").getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("导入收件人").getAttribute("aria-disabled")).toBe("true");
+    expect(menuItem("取消任务").getAttribute("aria-disabled")).not.toBe("true");
+    expect(drawer().textContent).toContain("demo-sim");
   });
   it("keeps terminal tasks terminal while explicit delivery, read and repeated replies advance", async () => {
     await mount("/messages/tasks/msg-follow-up");

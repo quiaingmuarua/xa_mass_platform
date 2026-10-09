@@ -11,7 +11,16 @@ xa:
           worker-group-ids: [app-a-sim, app-b-sim]
     scenarios:
       messages:
-        worker-group-id: demo-sim
+        applications:
+          - id: demo
+            label: Demo
+            worker-group-id: demo-sim
+          - id: app-a
+            label: App A
+            worker-group-id: app-a-sim
+          - id: app-b
+            label: App B
+            worker-group-id: app-b-sim
     task-rpc:
       refill-by-worker-group:
         demo-sim:
@@ -20,13 +29,13 @@ xa:
       groups:
         demo-sim:
           pools: [country, messaging]
-          functions: [worker.country, worker.messaging.available, worker.messaging.phone, worker.phone]
+          functions: [worker.country, worker.messaging.available, worker.phone]
         app-a-sim:
-          pools: [any, assignment-window]
-          functions: [worker.any, worker.assignment.available]
+          pools: [any, assignment-window, messaging]
+          functions: [worker.any, worker.assignment.available, worker.messaging.available]
         app-b-sim:
-          pools: [any, assignment-window]
-          functions: [worker.any, worker.assignment.available]
+          pools: [any, assignment-window, messaging]
+          functions: [worker.any, worker.assignment.available, worker.messaging.available]
     worker-pools:
       assignment-window:
         groups:
@@ -47,11 +56,11 @@ xa:
         {
           "app-a-sim": {
             "attributes": {},
-            "eventCodes": ["extension.worker.app.registration.check"]
+            "eventCodes": ["extension.worker.app.registration.check", "extension.worker.message.send"]
           },
           "app-b-sim": {
             "attributes": {},
-            "eventCodes": ["extension.worker.app.registration.check"]
+            "eventCodes": ["extension.worker.app.registration.check", "extension.worker.message.send"]
           },
           "demo-sim": {
             "attributes": {},

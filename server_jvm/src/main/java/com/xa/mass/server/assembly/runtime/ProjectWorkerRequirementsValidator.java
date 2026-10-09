@@ -19,26 +19,29 @@ final class ProjectWorkerRequirementsValidator {
             MatchingProperties matching, List<ProjectWorkerRequirements> requirements) {
         this.workers = Objects.requireNonNull(workers);
         this.matching = Objects.requireNonNull(matching);
-        this.requirements = requirements.stream().sorted(Comparator.comparing(ProjectWorkerRequirements::projectId)
-                .thenComparing(ProjectWorkerRequirements::workerGroupId)).toList();
+        this.requirements = requirements.stream().sorted(Comparator.comparing(ProjectWorkerRequirements::projectId)).toList();
         var pairs = new HashSet<Map.Entry<String, String>>();
         for (var requirement : this.requirements) {
-            if (!pairs.add(Map.entry(requirement.projectId(), requirement.workerGroupId())))
-                throw failure(requirement, "duplicate Project/Group requirements", null);
-            var project = projects.projects().get(requirement.projectId());
-            if (project == null) throw failure(requirement, "Project is not declared", null);
-            if (!project.managedTaskIds().containsKey(requirement.workerGroupId()))
-                throw failure(requirement, "Group is not declared by Project", null);
+            for (String group : requirement.workerGroupIds()) {
+                if (!pairs.add(Map.entry(requirement.projectId(), group)))
+                    throw failure(requirement, group, "duplicate Project/Group requirements", null);
+                var project = projects.projects().get(requirement.projectId());
+                if (project == null) throw failure(requirement, group, "Project is not declared", null);
+                if (!project.managedTaskIds().containsKey(group))
+                    throw failure(requirement, group, "Group is not declared by Project", null);
+            }
         }
     }
 
     void validate() {
         var byGroup = new LinkedHashMap<String, List<ProjectWorkerRequirements>>();
         for (var requirement : requirements) {
-            var available = matching.groups().getOrDefault(requirement.workerGroupId(), new MatchingGroup(Set.of(), Set.of()));
-            requireSubset(requirement, "Pools", requirement.pools(), available.pools());
-            requireSubset(requirement, "functions", requirement.functions(), available.functions());
-            byGroup.computeIfAbsent(requirement.workerGroupId(), ignored -> new ArrayList<>()).add(requirement);
+            for (String group : requirement.workerGroupIds()) {
+                var available = matching.groups().getOrDefault(group, new MatchingGroup(Set.of(), Set.of()));
+                requireSubset(requirement, group, "Pools", requirement.pools(), available.pools());
+                requireSubset(requirement, group, "functions", requirement.functions(), available.functions());
+                byGroup.computeIfAbsent(group, ignored -> new ArrayList<>()).add(requirement);
+            }
         }
         var ids = List.copyOf(byGroup.keySet());
         for (int start = 0; start < ids.size(); start += GROUP_READ_BATCH_SIZE) {
@@ -47,26 +50,26 @@ final class ProjectWorkerRequirementsValidator {
             try {
                 descriptors = Objects.requireNonNull(workers.getWorkerGroupDescriptors(batch));
             } catch (RuntimeException unavailable) {
-                throw failure(byGroup.get(batch.getFirst()).getFirst(), "Group descriptor read unavailable", unavailable);
+                throw failure(byGroup.get(batch.getFirst()).getFirst(), batch.getFirst(), "Group descriptor read unavailable", unavailable);
             }
             for (String group : batch) {
                 var descriptor = descriptors.get(group);
                 for (var requirement : byGroup.get(group)) {
-                    if (descriptor == null) throw failure(requirement, "Group is not registered", null);
-                    requireSubset(requirement, "events", requirement.eventCodes(), descriptor.eventCodes());
+                    if (descriptor == null) throw failure(requirement, group, "Group is not registered", null);
+                    requireSubset(requirement, group, "events", requirement.eventCodes(), descriptor.eventCodes());
                 }
             }
         }
     }
 
-    private static void requireSubset(ProjectWorkerRequirements requirement, String kind, Set<String> required, Set<String> available) {
+    private static void requireSubset(ProjectWorkerRequirements requirement, String group, String kind, Set<String> required, Set<String> available) {
         var missing = new TreeSet<>(required);
         missing.removeAll(available);
-        if (!missing.isEmpty()) throw failure(requirement, "missing " + kind + ": " + missing, null);
+        if (!missing.isEmpty()) throw failure(requirement, group, "missing " + kind + ": " + missing, null);
     }
 
-    private static IllegalStateException failure(ProjectWorkerRequirements requirement, String detail, Throwable cause) {
+    private static IllegalStateException failure(ProjectWorkerRequirements requirement, String group, String detail, Throwable cause) {
         return new IllegalStateException("operation=project.dependencies.validate project=" + requirement.projectId()
-                + " group=" + requirement.workerGroupId() + " " + detail, cause);
+                + " group=" + group + " " + detail, cause);
     }
 }

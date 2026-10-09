@@ -193,7 +193,10 @@ Worker identity, Tasks, Adapter state or Kernel expectations.
 ## Messages and shared products
 
 `config/messages.json` selects message senders; `config/products.json` selects
-SMS and Messages on the same replicas. Both examples use mixed-country `demo-sim`, declared by
+SMS and Messages on the same Demo replicas. The combined example also installs
+Messages on App A/B alongside App Checks, with explicit country, messaging.enabled
+and separate phone ranges (861710000001 and 861720000001; Demo starts at 861700000001).
+The standalone Messages example uses mixed-country `demo-sim`, declared by
 distribution before Host startup. One Manager per nonempty Group and one HTTP server
 form the common Host assembly. Properties additionally contain
 `messaging.enabled="true"` and enter Matching through the existing SDK/Adapter path.
@@ -218,7 +221,9 @@ body string now contains JSON instructions, with no ordinary-text fallback:
 {"receipts_status":["read","replied"],"delayMs":[1000,4000],"probability":0.5,"text":"收到了"}
 ```
 
-Body remains bounded to 4096 characters. Lab rejects malformed JSON, unknown or
+Body remains bounded to 4096 characters. Messages API accepts opaque text, so Task
+creation does not establish Lab acceptance. The Lab has no ordinary-text fallback
+and emits no accepted message/receipt for rejected input. Lab rejects malformed JSON, unknown or
 duplicate fields, wrong types and invalid sequences before acceptance.
 The message's `country` is the recipient country, independent of the actual
 Sender's country. Cross-country sends are accepted. A campaign retains one

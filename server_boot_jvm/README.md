@@ -24,22 +24,22 @@ Preview's host configuration and enabled module declarations form this topology:
 
 | Project | Groups | Declared events and Matching resources |
 | --- | --- | --- |
-| `sms`, `messages` | shared `demo-sim` | String/SMS/Messages events; Country and Messaging Pools; independent `worker.phone` and qualified `worker.messaging.phone` queries |
-| `app-checks` | `app-a → app-a-sim`, `app-b → app-b-sim` | `extension.worker.app.registration.check`; independent Any and assignment-window Pools, `worker.any` and `worker.assignment.available` |
+| `sms` | `demo-sim` | String/SMS/Messages events; Country and Messaging Pools; independent `worker.phone` query |
+| `messages` | `demo-sim`, `app-a-sim`, `app-b-sim` | `extension.worker.message.send`; Group-isolated Messaging Pool and `worker.messaging.available` |
+| `app-checks` | `app-a → app-a-sim`, `app-b → app-b-sim` | `extension.worker.app.registration.check`; Any and assignment-window Pools, `worker.any` and `worker.assignment.available` |
 
 The `demo-sim` Project managed Tasks retain `country / {} / 100` supply;
-that Group does not enable Any Pool.
-Messages contributes `QualifiedCountryDefinition` for `messaging`,
-`worker.messaging.available` and `worker.messaging.phone`, binding the Worker
-Properties requirement `messaging.enabled="true"` and country field `country`.
-These names are scenario declarations rather than built-in Matching branches.
-The existing Group configuration enables the resources; qualified Phone lookup
-still needs only the shared `phone` index and no Pool. Messages explicitly binds
-`xa.mass.scenarios.messages.worker-group-id=demo-sim`, contributes its `messages`
-Project and declares its send event/Pool/function requirements. It no longer uses
-the shared String Bean, which remains for SMS. Missing/blank bindings and unknown
-fields fail configuration. No Platform Properties projection or Task/Item data
-migration is introduced.
+that Group does not enable Any Pool. Messages contributes the existing
+`QualifiedCountryDefinition`; Worker qualification remains `messaging.enabled="true"`
+and the two-letter `country` field. Its Phone function declaration is retained by
+that basic contract but `worker.messaging.phone` is not enabled in Preview.
+`xa.mass.scenarios.messages.applications` explicitly binds ordered application IDs,
+labels and Groups. One module-owned Project and its batched resource requirement
+use those same Groups. There is no default application or old single Group alias.
+The shared String Bean remains for SMS. New API creation requires an application;
+only Messaging Pool selection is used. Simulator App Workers install both Messages
+and App Checks, with explicit nonoverlapping phone ranges and country Properties.
+
 Each App Group enables `assignment-window`. App Checks contributes its immutable
 Pool definition and binds `xa.mass.worker-pools.assignment-window.groups.<group>`
 with explicit `window-millis=60000` and `max-count=10`. Its projection uses the
@@ -48,8 +48,8 @@ App Checks declares only that Pool's supply. Any remains available for other
 explicit callers, without a default Group-wide window gate. The old Group-level
 `assignment-window-pool` path and `max-assignments` field have no aliases and fail
 strict configuration binding; window length stays fixed within an existing scope.
-Direct `workerId` is available in every Group; phone-directed
-Messages declares no Pool supply. Matching owns the
+Direct `workerId` remains available in every Group for general Runtime callers;
+Messages API creation no longer exposes directed sending. Matching owns the
 [query and index contracts](../worker_matching_jvm/README.md#identity-and-phone-query-functions).
 Server initializes host Groups, validates module dependencies and prepares Project
 managed Tasks before Adapter startup. Scenarios consume the immutable Project
@@ -168,7 +168,8 @@ Beans contribute additional Projects through the same immutable directory; dupli
 IDs across either source fail even when their Group lists match. Preview therefore
 keeps SMS/App Checks in the list and declares Messages through its module. Existing
 external configurations must remove the `messages` list entry and explicitly set
-`xa.mass.scenarios.messages.worker-group-id`; the old String Bean is not a fallback.
+`xa.mass.scenarios.messages.applications`; neither the old single Group path nor
+the shared String Bean is a fallback.
 Changing the list does not disable an imported module. Module selection remains
 explicit static Configuration assembly, with no new production profile or switch.
 

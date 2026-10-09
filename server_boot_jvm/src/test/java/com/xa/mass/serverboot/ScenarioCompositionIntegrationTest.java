@@ -91,7 +91,7 @@ class ScenarioCompositionIntegrationTest {
                 assertThat(group).isNotNull();
                 if (sms) assertThat(context.getBean(ListenerService.class).catalog().get("countries").toString())
                         .contains("workerGroupId=demo-sim");
-                if (messages) assertThat(context.getBean(MessageTaskService.class).catalog().get("countries").toString())
+                if (messages) assertThat(context.getBean(MessageTaskService.class).catalog().get("applications").toString())
                         .contains("workerGroupId=demo-sim");
                 var directory = context.getBean(com.xa.mass.server.project.ProjectDirectory.class);
                 String smsTask = directory.requireManagedTaskId("sms", "demo-sim");
@@ -103,7 +103,7 @@ class ScenarioCompositionIntegrationTest {
                     assertThat(projectResponse.body()).contains("managedTaskIds", directory.requireManagedTaskId(project, "demo-sim"));
                     var listResponse = get(client, base, "/api/v1/projects/" + project + "/tasks?limit=1");
                     assertThat(listResponse.statusCode()).isEqualTo(200);
-                    assertThat(listResponse.body()).contains("\"projectId\":\"" + project + "\"", "\"truncated\":false", "PARK_WHEN_IDLE");
+                    assertThat(listResponse.body()).contains("\"projectId\":\"" + project + "\"", "\"truncated\":" + project.equals("messages"), "PARK_WHEN_IDLE");
                 }
             } else assertThat(group).isNull();
             assertThat(get(client, base, "/api/v1/sms/catalog").statusCode()).isEqualTo(sms ? 200 : 404);

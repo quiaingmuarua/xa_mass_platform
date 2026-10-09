@@ -29,10 +29,11 @@ function task(
   return {
     taskId,
     createdAtMillis: epoch - index * 3_600_000,
+    appId: messageApplications[index % 3].id,
     workerGroupId: messageApplications[index % 3].workerGroupId,
     managed: false,
     state: "terminal",
-    inputVersion: "2",
+    inputVersion: "3",
     ...fields
   };
 }
@@ -227,6 +228,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
     if (!app) throw new Error("应用配置不可用");
     const fingerprint = JSON.stringify([
       input.appId,
+      app.workerGroupId,
       input.name,
       input.recipientCountry,
       input.senderCountry ?? null,
@@ -243,11 +245,12 @@ export class MockMessageTaskSource implements MessageTaskSource {
       task: {
         taskId,
         name: input.name,
+        appId: input.appId,
         createdAtMillis: Math.max(Date.now(), epoch) + this.sequence,
         workerGroupId: app.workerGroupId,
         managed: false,
         state: "pre_review",
-        inputVersion: "2",
+        inputVersion: "3",
         recipientCountry: input.recipientCountry,
         senderCountry: input.senderCountry,
         sendTotal: 0,
@@ -274,7 +277,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
     )
       throw new Error("只支持 Messages 有限任务");
     if (record.task.state === null) throw new Error("任务状态不可用");
-    if (review && record.task.inputVersion !== "2")
+    if (review && record.task.inputVersion !== "3")
       throw new Error("旧输入版本仅支持读取和关闭");
     if (review && record.task.state !== "pre_review")
       throw new Error("任务不在待审核状态");

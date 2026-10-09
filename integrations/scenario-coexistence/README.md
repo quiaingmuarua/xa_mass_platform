@@ -18,14 +18,19 @@ The proof neither searches for a suitable seed nor repairs sampled quotas.
 
 ## Small functional, Pool selection and lifecycle worlds
 
-The mixed `demo-sim` Group has four Workers per country (12 total). The existing
-fixture uses `app_count=0`: new Preview App Groups have no Workers
-in this proof. Their independent one-shot witness belongs to
-[App Checks](../../scenarios/app-checks-jvm/README.md#装配与证明), run in the same CI lane.
-Each small scenario starts an independent scope and Host inventory. In `functional`,
-SMS uses the Country Pool. A real SMS listener supplies the number
-for a campaign's qualified Direct Phone query with empty Pool supply. Phone Index
-and current Worker Facts establish the identity and message qualification; Kernel
+The `functional` and `lifecycle` worlds retain 12 Demo Workers (four per country)
+and no App Workers. The `pool-selection` world has the same deterministic 12-Worker
+population in each of Demo, App A and App B, with nonoverlapping phone ranges.
+Every scenario starts an independent scope and inventory. App Checks retains its
+independent one-shot witness in the same CI lane.
+
+Functional first checks the Messages application's empty creation identity and
+conflict response, then closes that empty Task. SMS uses Country Pool supply. The
+same-Worker/Reporter witness uses a generic finite Task with an explicit workerId
+selector targeting the actual SMS Worker, not a Messages senderPhone parameter.
+The Task has no Pool supply. Its metadata permits the existing Messages observation
+projection, but it is a Runtime-directed mechanism fixture, not product API creation.
+Kernel
 still requires due HOT for execution. Both execute on the same Worker and the SMS
 listener subsequently receives input. The finite Task must automatically become
 terminal before releasing the automatically generated delivered receipt (hold is
@@ -57,15 +62,19 @@ The functional world sends four messages. Terminal export first observes held SE
 content, then later replies, and can be repeated after a new reply. Exported
 payloads remain private; only pass/fail witnesses enter the summary.
 
-`pool-selection` sends the other four messages in an independent 12-Worker world:
-two with a US sender constraint, then two through ANY, using the same deterministic
-CN recipient list. It checks actual Worker identity, independent sender/recipient
-countries and the Host's matching message records. ANY does not promise a country
-distribution. Neither request supplies a phone; public Project Task descriptors
-must declare Messaging supply. The runner creates no SMS listener or managed-Task
-Item and checks, before and after these sends, that the SMS and Messages managed
-Tasks remain `running-initial`. They therefore create no active Country refill
-demand. Production Preview configuration and supply counts remain unchanged.
+`pool-selection` creates six product Tasks: two US-constrained recipients and two
+ANY recipients for each application, twelve successful messages in total. Creation
+carries appId; independent Task descriptor and actual Host Worker evidence must
+agree on that application's Group. Sender and recipient countries remain independent.
+Repeated creation returns the same identity, while changing the application conflicts.
+All sends use Messaging Pool declarations and never pass senderPhone. Each message's
+automatic delivery is observed. A seventh Task imports ordinary text: API preserves
+it exactly, but actual Lab rejection yields one failed Item, zero sent/delivered
+counts and no Lab message. It is not a throughput or large-input proof.
+
+No SMS request or managed-Task Item is created in this world. SMS's one managed Task
+and Messages' three managed Tasks must remain running-initial before and after the
+workload, so the proof does not manufacture competing Country/window refill demand.
 
 This separation makes the resource premise explicit: the ordinary query witness
 has only Messaging Pool demand. A generation enters at most one Pool; a finite
@@ -73,7 +82,9 @@ population already admitted elsewhere need not become available within the send
 window. The proof makes no cross-Pool fairness, starvation-freedom under insufficient
 supply or fixed-throughput claim. It does not prewarm stock, change Properties,
 restore Pool sharing or retry mutations to construct a preferred supply state.
-The existing `lifecycle` world retains the same Worker restart and Reporter checks.
+The `lifecycle` world retains same-Worker restart and original Reporter checks via
+explicit generic Task/workerId fixtures. It does not retain a hidden directed
+Messages creation API. Pool-only product evidence stays in pool-selection.
 
 `scenarioCompositionIntegrationTest` complements the process runner: platform/preview assembly asserts one resource set, API/Group/lifecycle gating and exact Console
 forwards. Its fault fixtures use real Server services/Redis for an append whose
@@ -137,11 +148,12 @@ inventory; the interactive Preview instead keeps its persistent inventory.
 
 ## Task management read boundary
 
-Preparation creates an empty Task through /api/v1/messages/tasks, retains its
+Product preparation creates an empty Task with appId through /api/v1/messages/tasks, retains its
 Server identity, uploads UTF-8 recipients through recipients:import and explicitly
 approves the confirmed count. No mutation is automatically retried; an unconfirmed
-phase stops that workflow. Existing small/load worlds use this same three-operation
-submission path without changing their business workload. Small worlds verify
+phase stops that workflow. Pool-selection and load worlds use this three-operation submission path. The
+functional/lifecycle directed controls use public generic Task create/append/approve
+for their distinct identity/Reporter assertions; mutation failures stop either path. Small worlds verify
 the bounded Messages detail against independent Item states and Results. Large
 worlds discover only actually executed message IDs from Lab, then use public
 results:load in batches of 100; missing Results still fail the complete witness.

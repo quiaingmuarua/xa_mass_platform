@@ -45,7 +45,9 @@ class ScenarioLifecycleTest {
             context.getEnvironment().setActiveProfiles("preview");
             context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource(
                     "window-fixture", java.util.Map.of(
-                    "xa.mass.scenarios.messages.worker-group-id", "demo-sim",
+                    "xa.mass.scenarios.messages.applications[0].id", "demo",
+                    "xa.mass.scenarios.messages.applications[0].label", "Demo",
+                    "xa.mass.scenarios.messages.applications[0].worker-group-id", "demo-sim",
                     "xa.mass.worker-pools.assignment-window.groups.app-a-sim.window-millis", "60000",
                     "xa.mass.worker-pools.assignment-window.groups.app-b-sim.window-millis", "60000",
                     "xa.mass.worker-pools.assignment-window.groups.app-a-sim.max-count", "10",

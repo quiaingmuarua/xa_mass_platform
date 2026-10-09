@@ -131,18 +131,18 @@ pagination, infinite loading or automatic polling.
 
 ### Applications and API boundary
 
-`MessageTaskSource` supplies frontend application choices. Mock demonstrates
-Demo (`demo-sim`), App A (`app-a-sim`) and App B (`app-b-sim`). API derives exactly
-one choice from the existing Catalog's Group; ambiguous/missing Group binding
-blocks creation but never selects Mock or invents an application. A single
-application is read-only. Retained Task labels use their returned Group.
+`MessageTaskSource` supplies application choices. API consumes the ordered
+Catalog `applications` list; Preview and Mock provide Demo (`demo-sim`), App A
+(`app-a-sim`) and App B (`app-b-sim`). A deployment may expose a subset; one choice
+is read-only. Invalid/missing Catalog data blocks creation, never selecting Mock.
 
-New creation has no sender-phone input. The API source explicitly serializes only
-requestId, name, recipientCountry, senderCountry and body; it rejects an application
-other than the Catalog's choice before issuing a request. Frontend appId and
-workerGroupId are never sent. Old senderPhone metadata remains read-only and is
-shown during review/approval so an old restriction cannot silently appear removed.
-This is not backend multi-application support or removal of the backend Phone query.
+New creation explicitly serializes appId, requestId, name, recipientCountry,
+senderCountry and body. It rejects unlisted applications before submission and
+never sends senderPhone or a client workerGroupId. New Tasks use inputVersion=3;
+labels require the saved appId and actual Group to agree with Catalog. Historical
+Tasks without appId show their Group without inventing an application identity.
+Old senderPhone is read-only; non-v3 Tasks support preview/closure, not import or
+approval. API and Mock use the same version boundary.
 
 ### Creation, import and management
 
@@ -155,8 +155,10 @@ A hint explains the current demonstration application's JSON-object requirement
 and the `{}` automatic-delivery example, which remains the default. It also shows
 a Lab JSON example with receipt steps, delay, last-step omission probability and
 reply text; this is guidance only, with no frontend interpretation. There is no
-dedicated simulation-settings panel. The existing backend JSON validation and
-Worker/Lab protocol remain unchanged; API rejections are reported as returned.
+dedicated simulation-settings panel. Messages API also treats body as opaque text;
+creation success is not receiving-side validation. Lab alone retains its JSON
+instruction protocol, so ordinary text is rejected during real demonstration
+execution without successful sending or receipts. The hint states that boundary.
 
 Empty creation and create-then-import both stop in review. UTF-8 TXT/paste uses a
 browser worker, optional `+` normalization, duplicate skipping, country-prefix

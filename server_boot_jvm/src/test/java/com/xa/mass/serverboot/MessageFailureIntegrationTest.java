@@ -172,7 +172,7 @@ class MessageFailureIntegrationTest {
         Map<String, Object> create(int size) throws Exception {
             assertThat(post("/api/v1/tasks/blocked/items:call", List.of()).statusCode()).isEqualTo(503);
             assertThat(post("/api/v1/tasks/blocked/results:load", List.of("blocked")).statusCode()).isEqualTo(503);
-            var result = post("/api/v1/messages/tasks", Map.of("requestId", "request", "name", "proof", "recipientCountry", "CN", "senderCountry", "CN", "body", "{}"));
+            var result = post("/api/v1/messages/tasks", Map.of("appId", "demo", "requestId", "request", "name", "proof", "recipientCountry", "CN", "senderCountry", "CN", "body", "{}"));
             assertThat(result.statusCode()).isEqualTo(201);
             var created = Jsons.parseObject(result.body());
             var imported = importRecipients((String) created.get("taskId"), size);

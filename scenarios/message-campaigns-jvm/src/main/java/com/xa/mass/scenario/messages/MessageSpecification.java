@@ -3,7 +3,6 @@ package com.xa.mass.scenario.messages;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.WorkerQuery;
-import com.xa.mass.workerdelivery.json.Jsons;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -12,35 +11,28 @@ import java.util.*;
 import static com.xa.mass.scenario.messages.MessageWorkerSupply.*;
 
 /** Immutable sending configuration; recipient membership is imported separately. */
-record MessageSpecification(String requestId, String name, String recipientCountry, String senderCountry,
-                            String body, String senderPhone) {
+record MessageSpecification(String requestId, String appId, String name, String recipientCountry, String senderCountry,
+                            String body) {
     static MessageSpecification parse(Map<String, Object> input) {
-        if (input == null || !Set.of("requestId", "name", "recipientCountry", "senderCountry", "body", "senderPhone").containsAll(input.keySet()))
+        if (input == null || !Set.of("requestId", "appId", "name", "recipientCountry", "senderCountry", "body").containsAll(input.keySet()))
             throw invalid("Unknown message task fields");
         String country = text(input, "recipientCountry", 2);
         if (!MessageTaskService.COUNTRIES.contains(country)) throw invalid("Unsupported recipientCountry");
         String sender = input.get("senderCountry") == null ? null : text(input, "senderCountry", 2);
         if (sender != null && !MessageTaskService.COUNTRIES.contains(sender)) throw invalid("Unsupported senderCountry");
-        Object rawPhone = input.get("senderPhone");
-        String phone = rawPhone == null || rawPhone instanceof String value && value.isBlank()
-                ? null : text(input, "senderPhone", 128);
         String body = text(input, "body", 4096);
-        try { Jsons.parseObject(body); }
-        catch (RuntimeException failure) { throw invalid("body must be a JSON object"); }
-        return new MessageSpecification(text(input, "requestId", 128), text(input, "name", 128), country, sender, body, phone);
+        return new MessageSpecification(text(input, "requestId", 128), text(input, "appId", 128), text(input, "name", 128), country, sender, body);
     }
 
     Map<String, String> metadata() {
         var result = new LinkedHashMap<String, String>();
-        result.put("scenario", PROJECT); result.put("inputVersion", "2");
+        result.put("scenario", PROJECT); result.put("inputVersion", "3"); result.put("appId", appId);
         result.put("recipientCountry", recipientCountry); result.put("body", body);
         if (senderCountry != null) result.put("senderCountry", senderCountry);
-        if (senderPhone != null) result.put("senderPhone", senderPhone);
         return Map.copyOf(result);
     }
 
     List<RefillTarget> refill() {
-        if (senderPhone != null) return List.of();
         return List.of(RefillTarget.of(POOL, new EligibilityQuery(senderCountry == null
                 ? Map.of() : Map.of("worker.country", List.of(senderCountry))), 100));
     }
@@ -48,13 +40,12 @@ record MessageSpecification(String requestId, String name, String recipientCount
     WorkerQuery selector() {
         var input = new LinkedHashMap<String, Object>();
         if (senderCountry != null) input.put("country", List.of(senderCountry));
-        if (senderPhone != null) input.put("phone", senderPhone);
-        return new WorkerQuery(senderPhone == null ? POOL_FUNCTION : PHONE_FUNCTION, input);
+        return new WorkerQuery(POOL_FUNCTION, input);
     }
 
     String fingerprint(String group) {
-        return digest("messages/v2/create", group, name, recipientCountry,
-                senderCountry == null ? "" : senderCountry, senderPhone == null ? "" : senderPhone, body);
+        return digest("messages/v3/create", appId, group, name, recipientCountry,
+                senderCountry == null ? "" : senderCountry, body);
     }
 
     static String messageId(String taskId, String recipient) { return "message-" + digest("messages/v2/message", taskId, recipient); }

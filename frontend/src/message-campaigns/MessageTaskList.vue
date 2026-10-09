@@ -54,13 +54,19 @@ const stages = [
   { key: "running", label: "发送中" },
   { key: "terminal", label: "调度已结束" }
 ];
+function applicationKey(task: MessageTask) {
+  const known = props.source.applications.find(
+    (app) => app.id === task.appId && app.workerGroupId === task.workerGroupId
+  );
+  return known ? `app:${known.id}` : `group:${task.workerGroupId ?? "unavailable"}`;
+}
 const apps = computed(() => {
   const values = new Map(
-    props.source.applications.map((app) => [app.workerGroupId, app.label])
+    props.source.applications.map((app) => [`app:${app.id}`, app.label])
   );
   for (const task of business.value)
-    if (task.workerGroupId && !values.has(task.workerGroupId))
-      values.set(task.workerGroupId, task.workerGroupId);
+    if (task.workerGroupId && !values.has(applicationKey(task)))
+      values.set(applicationKey(task), task.workerGroupId);
   return [...values].map(([id, label]) => ({ id, label }));
 });
 const rangeError = computed(
@@ -74,7 +80,7 @@ const filtered = computed(() =>
         !rangeError.value &&
         (!query ||
           `${task.name ?? ""} ${task.taskId}`.toLocaleLowerCase().includes(query)) &&
-        (filters.app === "all" || task.workerGroupId === filters.app) &&
+        (filters.app === "all" || applicationKey(task) === filters.app) &&
         (filters.country === "all" || task.recipientCountry === filters.country) &&
         (filters.state === "all" || taskStage(task) === filters.state) &&
         (filters.sender === "all" ||

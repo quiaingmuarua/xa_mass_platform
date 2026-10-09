@@ -46,7 +46,7 @@ class MessagesAssemblyIntegrationTest {
                     .replica("one", () -> Map.of("phone", "+861700000000", "country", "CN", "messaging.enabled", "true"),
                             channel.definitions(sender)).build()) {
                 manager.set(worker); worker.start();
-                var created = fixture.post("/api/v1/messages/tasks", Map.of("requestId", "standalone", "name", "standalone",
+                var created = fixture.post("/api/v1/messages/tasks", Map.of("appId", "demo", "requestId", "standalone", "name", "standalone",
                         "recipientCountry", "CN", "senderCountry", "CN", "body", "{}"));
                 assertThat(created.statusCode()).isEqualTo(201);
                 String task = (String) Jsons.parseObject(created.body()).get("taskId");
@@ -106,7 +106,7 @@ class MessagesAssemblyIntegrationTest {
                     overrides.put("xa.mass.worker-matching.groups.demo-sim.pools[0]", "any");
                     overrides.put("xa.mass.worker-matching.groups.demo-sim.functions[0]", "worker.any");
                 }
-                case "function" -> overrides.put("xa.mass.worker-matching.groups.demo-sim.functions[1]", "worker.any");
+                case "function" -> overrides.put("xa.mass.worker-matching.groups.demo-sim.functions[0]", "worker.any");
             }
             assertThatThrownBy(() -> fixture.start(true, overrides)).hasStackTraceContaining("project=messages group=demo-sim");
             assertThatThrownBy(() -> { try (var socket = new Socket()) { socket.connect(new InetSocketAddress("127.0.0.1", fixture.adapter), 500); } })
@@ -146,13 +146,14 @@ class MessagesAssemblyIntegrationTest {
             settings.put("xa.mass.redis.url", redisUrl); settings.put("xa.mass.redis.scope", scope);
             settings.put("xa.mass.kernel-pacer.enabled", "false"); settings.put("logging.level.root", "ERROR");
             if (messages) {
-                settings.put("xa.mass.scenarios.messages.worker-group-id", "demo-sim");
+                settings.put("xa.mass.scenarios.messages.applications[0].id", "demo");
+                settings.put("xa.mass.scenarios.messages.applications[0].label", "Demo");
+                settings.put("xa.mass.scenarios.messages.applications[0].worker-group-id", "demo-sim");
                 settings.put("xa.mass.worker-assembly.group-config-json", group(EVENT));
                 settings.put("xa.mass.worker-matching.groups.demo-sim.pools[0]", "messaging");
                 settings.put("xa.mass.worker-matching.groups.demo-sim.pools[1]", "any");
                 settings.put("xa.mass.worker-matching.groups.demo-sim.functions[0]", "worker.messaging.available");
-                settings.put("xa.mass.worker-matching.groups.demo-sim.functions[1]", "worker.messaging.phone");
-                settings.put("xa.mass.worker-matching.groups.demo-sim.functions[2]", "worker.any");
+                settings.put("xa.mass.worker-matching.groups.demo-sim.functions[1]", "worker.any");
                 settings.put("xa.mass.worker-delivery.adapter.remote-base-url", base.toString());
                 settings.put("xa.mass.worker-delivery.adapter.instances.messages-test.type", "WEBSOCKET");
                 settings.put("xa.mass.worker-delivery.adapter.instances.messages-test.listen-host", "127.0.0.1");

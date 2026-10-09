@@ -192,9 +192,9 @@ defineExpose({
         <p>实际收件人数：{{ quantity(detail.task.sendTotal) }}。导入后不会自动启动。</p>
         <MessageTemplateContent :content="detail.task.body" />
         <p v-if="detail.task.senderPhone" class="message-warning">
-          旧任务指定发送号码：{{ detail.task.senderPhone }}，启动后仍按这个限制发送。
+          历史指定发送号码：{{ detail.task.senderPhone }}，原任务发送方式保持不变。
         </p>
-        <p v-if="detail.task.inputVersion !== '2'" class="message-warning">
+        <p v-if="detail.task.inputVersion !== '3'" class="message-warning">
           旧输入版本仅支持读取和取消，不支持继续导入或启动。
         </p>
       </template>

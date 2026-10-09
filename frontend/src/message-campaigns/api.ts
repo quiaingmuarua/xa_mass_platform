@@ -66,10 +66,22 @@ export async function api<T>(
 const catalogSchema = z.object({
   projectId: z.string().min(1),
   version: z.string().min(1),
-  countries: z
+  applications: z
     .array(
-      z.object({ id: z.enum(["CN", "US", "GB"]), workerGroupId: z.string().min(1) })
+      z.object({
+        id: z.string().min(1),
+        label: z.string().min(1),
+        workerGroupId: z.string().min(1)
+      })
     )
+    .min(1)
+    .refine(
+      (apps) =>
+        new Set(apps.map((app) => app.id)).size === apps.length &&
+        new Set(apps.map((app) => app.workerGroupId)).size === apps.length
+    ),
+  countries: z
+    .array(z.object({ id: z.enum(["CN", "US", "GB"]) }))
     .length(3)
     .refine((countries) => new Set(countries.map((country) => country.id)).size === 3),
   limits: z.object({

@@ -33,7 +33,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     private final TaskCreationService creation;
     private final TaskDataService data;
     private final TaskLifecycleService lifecycle;
-    private final String workerGroupId;
+    private final MessageScenarioProperties config;
     private final OperationGuard operations;
     private final Object gate = new Object();
     private volatile boolean running;
@@ -41,14 +41,14 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     private int active, activeImports;
 
     public MessageTaskService(ProjectDirectory projects, ProjectTaskQueryService queries, TaskCreationService creation,
-            TaskDataService data, TaskLifecycleService lifecycle, String workerGroupId, OperationGuard operations) {
+            TaskDataService data, TaskLifecycleService lifecycle, MessageScenarioProperties config, OperationGuard operations) {
         this.projects = projects; this.queries = queries; this.creation = creation;
-        this.data = data; this.lifecycle = lifecycle; this.workerGroupId = Objects.requireNonNull(workerGroupId);
+        this.data = data; this.lifecycle = lifecycle; this.config = Objects.requireNonNull(config);
         this.operations = Objects.requireNonNull(operations);
     }
 
     @Override public void start() {
-        projects.requireManagedTaskId(PROJECT, workerGroupId);
+        config.workerGroupIds().forEach(group -> projects.requireManagedTaskId(PROJECT, group));
         synchronized (gate) {
             if (closed) throw new IllegalStateException("Messages is closed");
             running = true;
@@ -60,14 +60,16 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
 
     public Map<String, Object> catalog() {
         requireRunning();
-        return Map.of("projectId", PROJECT, "version", "0.2.0-preview", "countries", COUNTRIES.stream()
-                .map(c -> Map.of("id", c, "workerGroupId", workerGroupId)).toList(),
+        return Map.of("projectId", PROJECT, "version", "0.3.0-preview", "applications", config.applications(), "countries", COUNTRIES.stream()
+                .map(c -> Map.of("id", c)).toList(),
                 "limits", Map.of("recipientsPerImport", MessageRecipientFile.MAX_RECIPIENTS, "importFileBytes", MessageRecipientFile.MAX_BYTES));
     }
 
     public CreatedTask create(Map<String, Object> input) {
         return admitted(null, false, () -> {
             var spec = MessageSpecification.parse(input);
+            String workerGroupId = config.findApplication(spec.appId())
+                    .orElseThrow(() -> new ProductError(400, "Unsupported appId", null)).workerGroupId();
             try {
                 return new CreatedTask(creation.createForRequest(new TaskCreateRequest(PROJECT, workerGroupId, 50, 3,
                         spec.refill(), spec.name(), spec.metadata()), spec.requestId(), spec.fingerprint(workerGroupId)).taskId());
@@ -85,7 +87,8 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
             try {
                 var stored = new LinkedHashMap<String, Object>();
                 stored.put("requestId", "stored"); stored.put("name", entry.task().name());
-                for (String field : List.of("recipientCountry", "senderCountry", "senderPhone", "body"))
+                if (entry.task().metadata().containsKey("senderPhone")) throw new IllegalArgumentException("Unexpected directed sending configuration");
+                for (String field : List.of("appId", "recipientCountry", "senderCountry", "body"))
                     if (entry.task().metadata().containsKey(field)) stored.put(field, entry.task().metadata().get(field));
                 spec = MessageSpecification.parse(stored);
             } catch (RuntimeException malformed) {
@@ -146,7 +149,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
         var entry = queries.get(PROJECT, taskId);
         if (!isMessageTask(entry)) throw new ProductError(400, "只支持 Messages 有限任务", taskId);
         if (entry.scoreBand() == null) throw new ProductError(503, "任务状态不可用，请刷新后核对", taskId);
-        if (newInput && !"2".equals(entry.task().metadata().get("inputVersion")))
+        if (newInput && !"3".equals(entry.task().metadata().get("inputVersion")))
             throw new ProductError(409, "旧输入版本仅支持读取和关闭，不支持导入或启动", taskId);
         return entry;
     }
@@ -229,7 +232,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
         if (entry.task() != null && entry.task().name() != null) row.put("name", entry.task().name());
         if (isMessageTask(entry)) {
             var metadata = entry.task().metadata();
-            for (String field : List.of("recipientCountry", "senderPhone", "body", "inputVersion"))
+            for (String field : List.of("appId", "recipientCountry", "senderPhone", "body", "inputVersion"))
                 if (metadata.containsKey(field)) row.put(field, metadata.get(field));
             row.put("senderCountry", metadata.get("senderCountry"));
         }

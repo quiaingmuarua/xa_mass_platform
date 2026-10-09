@@ -720,9 +720,10 @@ can come from configuration or module Beans, with one existing initialization pa
 Missing declarations for enabled functions fail startup without a business fallback.
 
 Modules may additionally expose `ProjectDefinition` and `ProjectWorkerRequirements`
-values. Requirements identify one Project/Group pair and exact required event,
-Pool and explicitly Group-enabled function names; empty sets are valid. Duplicate
-pairs, unknown Projects and undeclared Project/Group bindings fail during assembly.
+values. Requirements declare one Project, a nonempty immutable unique `workerGroupIds`
+list and the same exact event/Pool/explicit function requirements for every Group.
+Resource sets may be empty. The validator expands Project/Group pairs; overlapping
+declarations, unknown Projects and undeclared bindings fail during assembly.
 These Beans depend only on configuration/static bindings, never Task services or
 initialized resources. No lifecycle hook or mutation capability is supplied by them.
 

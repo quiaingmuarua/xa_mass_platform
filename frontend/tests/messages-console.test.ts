@@ -34,8 +34,9 @@ afterEach(() => {
 });
 const catalog = {
   projectId: "messages",
-  version: "0.2.0-preview",
-  countries: ["CN", "US", "GB"].map((id) => ({ id, workerGroupId: "demo-sim" })),
+  version: "0.3.0-preview",
+  applications: [{ id: "demo", label: "Demo", workerGroupId: "demo-sim" }],
+  countries: ["CN", "US", "GB"].map((id) => ({ id })),
   limits: { recipientsPerImport: 100000, importFileBytes: 10485760 }
 };
 const task = {
@@ -71,7 +72,7 @@ function installApi() {
         ...task,
         ...JSON.parse(String(init.body)),
         taskId: "new-task",
-        inputVersion: "2",
+        inputVersion: "3",
         state: "pre_review",
         sendTotal: 0,
         deliveredCount: 0
@@ -177,12 +178,13 @@ describe("Messages Task API workspace", () => {
     const posted = fetcher.mock.calls.find(([, init]) => init?.method === "POST")!;
     expect(posted[0]).toBe("/api/v1/messages/tasks");
     expect(JSON.parse(String(posted[1]?.body))).toMatchObject({
+      appId: "demo",
       name: expect.stringMatching(/^msg-demo-ANY-CN-/),
       recipientCountry: "CN",
       senderCountry: null,
       body: "{}"
     });
-    for (const field of ["recipientIds", "appId", "workerGroupId", "senderPhone"])
+    for (const field of ["recipientIds", "workerGroupId", "senderPhone"])
       expect(JSON.parse(String(posted[1]?.body))).not.toHaveProperty(field);
     expect(router.currentRoute.value.path).toBe("/messages");
     expect(host.textContent).toContain("待审核");

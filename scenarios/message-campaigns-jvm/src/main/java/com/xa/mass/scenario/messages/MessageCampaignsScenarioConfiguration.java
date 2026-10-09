@@ -8,7 +8,6 @@ import com.xa.mass.server.project.ProjectDefinition;
 import com.xa.mass.server.project.ProjectWorkerRequirements;
 import com.xa.mass.server.operation.OperationGuard;
 import com.xa.mass.workermatching.QualifiedCountryDefinition;
-import java.util.List;
 import java.util.Set;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import static com.xa.mass.scenario.messages.MessageWorkerSupply.*;
@@ -20,13 +19,13 @@ import org.springframework.context.annotation.*;
 public class MessageCampaignsScenarioConfiguration {
     @Bean
     ProjectDefinition messageProject(MessageScenarioProperties config) {
-        return new ProjectDefinition(PROJECT, List.of(config.workerGroupId()));
+        return new ProjectDefinition(PROJECT, config.workerGroupIds());
     }
 
     @Bean
     ProjectWorkerRequirements messageWorkerRequirements(MessageScenarioProperties config) {
-        return new ProjectWorkerRequirements(PROJECT, config.workerGroupId(), Set.of(EVENT),
-                Set.of(POOL), Set.of(POOL_FUNCTION, PHONE_FUNCTION));
+        return new ProjectWorkerRequirements(PROJECT, config.workerGroupIds(), Set.of(EVENT),
+                Set.of(POOL), Set.of(POOL_FUNCTION));
     }
 
     @Bean
@@ -39,6 +38,6 @@ public class MessageCampaignsScenarioConfiguration {
     MessageTaskService messageTasks(ProjectDirectory projects, com.xa.mass.server.project.ProjectTaskQueryService queries, TaskCreationService creation,
             TaskDataService data, TaskLifecycleService lifecycle,
             MessageScenarioProperties config, OperationGuard operations) {
-        return new MessageTaskService(projects, queries, creation, data, lifecycle, config.workerGroupId(), operations);
+        return new MessageTaskService(projects, queries, creation, data, lifecycle, config, operations);
     }
 }

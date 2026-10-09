@@ -22,6 +22,7 @@ export type MessageDemoAction =
 export interface MessageTask {
   taskId: string;
   name?: string;
+  appId?: string;
   inputVersion?: string;
   createdAtMillis: number;
   workerGroupId: string | null;

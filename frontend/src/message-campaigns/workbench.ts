@@ -16,25 +16,16 @@ export const messageApplications: readonly MessageApplication[] = Object.freeze(
   { id: "app-b", label: "App B", workerGroupId: "app-b-sim" }
 ]);
 export function apiApplications(catalog?: Catalog): MessageApplication[] {
-  const groups = [
-    ...new Set(catalog?.countries.map((country) => country.workerGroupId))
-  ];
-  if (groups.length !== 1 || !groups[0]) return [];
-  const group = groups[0];
-  return [
-    {
-      id: group === "demo-sim" ? "demo" : group,
-      label: group === "demo-sim" ? "Demo" : group,
-      workerGroupId: group
-    }
-  ];
+  return catalog?.applications ?? [];
 }
 export function applicationLabel(
   task: MessageTask,
   apps: readonly MessageApplication[]
 ) {
   return (
-    apps.find((app) => app.workerGroupId === task.workerGroupId)?.label ??
+    apps.find(
+      (app) => app.id === task.appId && app.workerGroupId === task.workerGroupId
+    )?.label ??
     task.workerGroupId ??
     "不可用"
   );
@@ -60,7 +51,8 @@ export function actionReason(
   if (task.state === "terminal") return "调度已结束";
   if (action === "close") return "";
   if (task.state !== "pre_review") return "任务不在待审核状态";
-  if (task.inputVersion !== "2") return "旧输入版本不支持导入或启动";
+  if (task.inputVersion !== "3") return "旧输入版本不支持导入或启动";
+  if (!task.appId || task.senderPhone) return "任务发送配置不可用";
   return action === "approve" && !task.sendTotal ? "请先导入收件人" : "";
 }
 export const resultLabels = {

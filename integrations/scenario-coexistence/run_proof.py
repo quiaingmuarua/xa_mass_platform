@@ -63,19 +63,39 @@ def wait(run, predicate, seconds, label):
     raise AssertionError("Timed out: " + label)
 
 
-def campaign(run, request="batch", count=2, country="CN", phone=None, instructions=None, recipient_country=None):
+def campaign(run, request="batch", count=2, country="CN", instructions=None, recipient_country=None, app="demo", content=None):
     recipient_country = recipient_country or country or "CN"
     prefix = {"CN": "+86138", "US": "+1202", "GB": "+4477"}[recipient_country]
-    body = {"requestId": request, "name": request, "recipientCountry": recipient_country, "senderCountry": country,
-            "body": json.dumps(instructions or {})}
+    body = {"appId": app, "requestId": request, "name": request, "recipientCountry": recipient_country, "senderCountry": country,
+            "body": content if content is not None else json.dumps(instructions or {})}
     recipients = [f"{prefix}{i:08d}" for i in range(count)]
-    if phone:
-        body["senderPhone"] = phone
     created = http(run.url, "/api/v1/messages/tasks", body, timeout=2)
     receipt = upload_recipients(run.url, created["taskId"], recipients)
     require(receipt["confirmedAddedCount"] == count and receipt["existingCount"] == 0, "Recipient import was not fully confirmed")
     http(run.url, f'/api/v1/messages/tasks/{created["taskId"]}/approve', count, timeout=2)
     return {**created, "expectedCount": count, "recipientIds": recipients}, body
+
+
+def directed_control_task(run, worker_id, request="control", count=2, instructions=None):
+    """Generic Task identity witness, never a Messages creation API escape hatch."""
+    group = run.input_workers_by_id[worker_id]["workerGroupId"]
+    content = json.dumps(instructions or {})
+    created = http(run.url, "/api/v1/tasks", {"projectId": "messages", "workerGroupId": group,
+        "name": request, "priority": 50, "maxRetryTimes": 3, "refill": [],
+        "metadata": {"scenario": "messages", "recipientCountry": "CN", "body": content}})
+    task = created["taskId"]
+    recipients = [f"+86138{i:08d}" for i in range(count)]
+    items = [{"messageId": f"control-{uuid.uuid4().hex}", "eventCode": "extension.worker.message.send",
+              "payload": {"campaignId": task, "country": "CN", "recipientId": recipient, "body": content},
+              "priority": 5, "workerSelector": {"executorName": "workerId", "input": worker_id}}
+             for recipient in recipients]
+    for item in items:
+        item["payload"]["messageId"] = item["messageId"]
+    appended = http(run.url, f"/api/v1/tasks/{task}/items", items)
+    require(set(appended) == {item["messageId"] for item in items}
+            and all(value["status"] == "applied" for value in appended.values()), "Control Items were not confirmed")
+    http(run.url, f"/api/v1/tasks/{task}/approve", {})
+    return {**created, "expectedCount": count, "recipientIds": recipients}, items
 
 
 def upload_recipients(base, task, recipients):
@@ -221,19 +241,23 @@ def functional(run):
     sms_catalog = http(run.url, "/api/v1/sms/catalog")
     messages_catalog = http(run.url, "/api/v1/messages/catalog")
     require({c["workerGroupId"] for c in sms_catalog["countries"]}
-            == {c["workerGroupId"] for c in messages_catalog["countries"]} == {"demo-sim"}, "Products did not share Groups")
+            == {c["workerGroupId"] for c in messages_catalog["applications"] if c["id"] == "demo"} == {"demo-sim"}, "Products did not share Groups")
     inventory = all_pages(run.host, "/lab/v1/messages/inventory")
     require(len(inventory) == 12, "Expected 12 shared Workers")
     listener = sms_wait(run, sms_create(run), "LISTENING")
-    begin_stage(run, "direct-phone-send")
-    http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
-    created, request = campaign(run, phone=listener["phone"])
+    begin_stage(run, "application-create-identity")
+    request = {"appId": "demo", "requestId": "identity", "name": "identity", "recipientCountry": "CN", "body": "{}"}
+    created = http(run.url, "/api/v1/messages/tasks", request)
     require(http(run.url, "/api/v1/messages/tasks", request)["taskId"] == created["taskId"], "Campaign request was duplicated")
     try:
         http(run.url, "/api/v1/messages/tasks", {**request, "name": "conflicting"})
         raise AssertionError("Conflicting campaign was accepted")
     except urllib.error.HTTPError as error:
         require(error.code == 409, "Expected campaign conflict")
+    http(run.url, f'/api/v1/messages/tasks/{created["taskId"]}/close', {})
+    begin_stage(run, "shared-worker-control-send")
+    http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
+    created, _ = directed_control_task(run, listener["workerId"])
     value, rows = sent(run, created)
     require(all(m["workerId"] == listener["workerId"] for m in rows), "Targeted campaign did not execute on SMS Worker")
     require(http(run.url, "/api/v1/sms/listeners/" + listener["id"])["status"] == "LISTENING", "Campaign stopped SMS listening")
@@ -308,7 +332,7 @@ def functional(run):
     require(received["workerId"] == rows[0]["workerId"], "Cross-product identity mismatch")
     begin_stage(run, "closed-task-send")
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
-    closed, _ = campaign(run, "closed-batch", 1, phone=listener["phone"])
+    closed, _ = directed_control_task(run, listener["workerId"], "closed-batch", 1)
     closed, closed_rows = sent(run, closed)
     http(run.url, f'/api/v1/tasks/{closed["taskId"]}/close', {})
     wait(run, lambda: task_state(run, closed["taskId"]) == "terminal", 10, "explicit Task close")
@@ -322,7 +346,7 @@ def functional(run):
         checkpoints.append(observe_receipt(run, closed, closed_rows[0], status, began, text))
         require(task_state(run, closed["taskId"]) == "terminal", "Receipt reopened closed Task")
     begin_stage(run, "automatic-send-and-receipts")
-    automatic, _ = campaign(run, "automatic", 1, phone=listener["phone"], instructions={
+    automatic, _ = directed_control_task(run, listener["workerId"], "automatic", 1, instructions={
         "receipts_status": ["read", "replied", "replied"], "delayMs": 200, "probability": 0, "text": "auto"})
     automatic, automatic_rows = sent(run, automatic)
     message = automatic_rows[0]
@@ -354,7 +378,8 @@ def require_managed_tasks_initial(run):
     for project in ("sms", "messages"):
         directory = http(run.url, f"/api/v1/projects/{project}")
         managed = directory["managedTaskIds"]
-        require(set(managed) == {"demo-sim"}, "Unexpected managed Group in Pool fixture")
+        require(set(managed) == ({"demo-sim"} if project == "sms" else {"demo-sim", "app-a-sim", "app-b-sim"}),
+                "Unexpected managed Group in Pool fixture")
         page = http(run.url, f"/api/v1/projects/{project}/tasks?limit=100")
         require(not page["truncated"], "Pool fixture Project observation was truncated")
         rows = {row["taskId"]: row for row in page["tasks"]}
@@ -362,7 +387,7 @@ def require_managed_tasks_initial(run):
                     for identity in managed.values()), "Managed Task became active in Pool-only fixture")
 
 
-def require_messaging_supply(run, value, country):
+def require_messaging_supply(run, value, country, app="demo"):
     page = http(run.url, "/api/v1/projects/messages/tasks?limit=100")
     require(not page["truncated"], "Pool Task observation was truncated")
     row = next((row for row in page["tasks"] if row["taskId"] == value["taskId"]), None)
@@ -371,44 +396,64 @@ def require_messaging_supply(run, value, country):
     require(row["task"]["refill"] == [{"poolName": "messaging", "target": target, "count": 100}],
             "Ordinary Messages did not declare Messaging Pool supply")
     require("senderPhone" not in row["task"]["metadata"], "Pool Task unexpectedly selected a phone")
+    require(row["task"]["workerGroupId"] == app + "-sim" and row["task"]["metadata"].get("appId") == app,
+            "Application supply was bound to another Group")
 
 
 def pool_selection(run):
     run.phase_deadline = time.monotonic() + 180
     begin_stage(run, "pool-supply-preconditions")
-    require(Counter(w["country"] for w in run.input_workers_by_id.values()) == {"CN": 4, "US": 4, "GB": 4},
-            "Expected four Workers per country in Pool fixture")
+    for group in ("demo-sim", "app-a-sim", "app-b-sim"):
+        require(Counter(w["country"] for w in run.input_workers_by_id.values() if w["workerGroupId"] == group)
+                == {"CN": 4, "US": 4, "GB": 4}, "Expected four Workers per country and Group in Pool fixture")
     require_managed_tasks_initial(run)
-
-    begin_stage(run, "pool-us-send")
-    cross, cross_request = campaign(run, "cross-country", 2, country="US", recipient_country="CN")
-    require_messaging_supply(run, cross, "US")
-    cross, cross_rows = sent(run, cross)
-    require(all(m["workerId"] in run.input_workers_by_id
-                and run.input_workers_by_id[m["workerId"]]["country"] == "US" and m["country"] == "CN" for m in cross_rows),
-            "Recipient country still constrained actual sender country")
-    for message in cross_rows:
-        local = lab_message(run, message)
-        require(local["recipientId"] == message["recipientId"] and local["workerId"] == message["workerId"]
-                and local["campaignId"] == message["campaignId"] == cross["taskId"], "Cross-country send bypassed Lab reception")
-
-    begin_stage(run, "pool-any-send")
-    any_campaign, any_request = campaign(run, "any-country", 2, country=None, recipient_country="CN")
-    require(any_campaign["recipientIds"] == cross["recipientIds"], "Country comparison changed the recipient fixture")
-    require_messaging_supply(run, any_campaign, None)
-    any_campaign, any_rows = sent(run, any_campaign)
-    for message in any_rows:
-        require(message["workerId"] in run.input_workers_by_id, "ANY returned an unknown Worker")
-        worker = run.input_workers_by_id[message["workerId"]]
-        local = lab_message(run, message)
-        require(worker["country"] in ("CN", "US", "GB") and message["country"] == "CN"
-                and local["workerId"] == worker["workerId"] and local["recipientId"] == message["recipientId"]
-                and local["campaignId"] == message["campaignId"] == any_campaign["taskId"],
-                "ANY did not execute through a valid Messaging Worker")
-
+    catalog = http(run.url, "/api/v1/messages/catalog")
+    require([(app["id"], app["workerGroupId"]) for app in catalog["applications"]]
+            == [(app, app + "-sim") for app in ("demo", "app-a", "app-b")], "Wrong application Catalog")
+    for app in ("demo", "app-a", "app-b"):
+        reference = None
+        for country in ("US", None):
+            begin_stage(run, app + ("-pool-us-send" if country else "-pool-any-send"))
+            value, request = campaign(run, app + ("-cross-country" if country else "-any-country"),
+                                      2, country=country, recipient_country="CN", app=app)
+            require(http(run.url, "/api/v1/messages/tasks", request)["taskId"] == value["taskId"], "Created Task identity changed")
+            try:
+                http(run.url, "/api/v1/messages/tasks", {**request, "appId": "app-a" if app == "demo" else "demo"})
+                raise AssertionError("Cross-application request identity conflict was accepted")
+            except urllib.error.HTTPError as error:
+                require(error.code == 409, "Wrong application conflict response")
+            require_messaging_supply(run, value, country, app)
+            if reference is not None:
+                require(value["recipientIds"] == reference, "Country comparison changed recipient fixture")
+            reference = value["recipientIds"]
+            _, rows = sent(run, value)
+            for message in rows:
+                require(message["workerId"] in run.input_workers_by_id, "Unknown executor")
+                worker = run.input_workers_by_id[message["workerId"]]
+                require(worker["workerGroupId"] == app + "-sim", "Execution crossed application Group")
+                require(worker["country"] == country if country else worker["country"] in ("CN", "US", "GB"),
+                        "Recipient country still constrained actual sender country")
+                local = lab_message(run, message)
+                require(message["country"] == "CN" and local["recipientId"] == message["recipientId"]
+                        and local["workerId"] == worker["workerId"] and local["campaignId"] == value["taskId"],
+                        "Pool send bypassed actual Lab reception")
+            wait(run, lambda: (len(observed := campaign_messages(run, value)) == value["expectedCount"]
+                               and all(row["status"] == "DELIVERED" for row in observed)), 5, "automatic delivery")
+    begin_stage(run, "opaque-text-lab-rejection")
+    content = "  你好 {{name}}\nplain template text  "
+    value, _ = campaign(run, "opaque-text", 1, country=None, app="app-b", content=content)
+    detail = wait(run, lambda: (d if (d := http(run.url, f'/api/v1/messages/tasks/{value["taskId"]}'))["task"].get("failedCount") == 1
+                              and len(d["results"]) == 1 and d["results"][0]["resultStatus"] == "failed" else None),
+                  30, "Lab rejection observed")
+    require(detail["task"]["body"] == content and detail["task"]["sentCount"] == 0
+            and detail["task"]["deliveredCount"] == 0 and all(row["resultStatus"] == "failed" for row in detail["results"]),
+            "Rejected Lab content fabricated successful sending")
+    require(not any(row["campaignId"] == value["taskId"] for row in all_pages(run.host, "/lab/v1/messages/records")),
+            "Lab accepted ordinary text")
     begin_stage(run, "pool-supply-isolation")
     require_managed_tasks_initial(run)
-    return {"passed": True, "workers": 12, "messages": 4, "managedTasksRemainInitial": True,
+    return {"passed": True, "workers": 36, "messages": 12, "rejectedContents": 1,
+            "applications": 3, "applicationGroupIsolation": True, "managedTasksRemainInitial": True,
             "independentRecipientAndSenderCountries": True, "anyMessagingSend": True}
 
 
@@ -418,7 +463,7 @@ def lifecycle(run):
     listener = sms_wait(run, sms_create(run), "LISTENING")
     begin_stage(run, "lifecycle-old-run-send")
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
-    value, _ = campaign(run, "old-run", 1, phone=listener["phone"])
+    value, _ = directed_control_task(run, listener["workerId"], "old-run", 1)
     value, rows = sent(run, value)
     target = next(w for w in all_pages(run.host, "/lab/v1/messages/inventory") if w["workerId"] == rows[0]["workerId"])
     control = f'/lab/v1/messages/workers/{target["workerGroupId"]}/{target["replicaKey"]}'
@@ -437,7 +482,7 @@ def lifecycle(run):
     callback_observed(run, rows[0], receipt["receiptId"], False)
     begin_stage(run, "lifecycle-new-run-send")
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
-    fresh, _ = campaign(run, "new-run", 1, phone=target["phone"])
+    fresh, _ = directed_control_task(run, target["workerId"], "new-run", 1)
     fresh, fresh_rows = sent(run, fresh)
     require(fresh_rows[0]["workerId"] == rows[0]["workerId"], "Restart changed Worker identity")
     begin_stage(run, "lifecycle-new-run-receipt")
@@ -678,8 +723,15 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     counts = (700, 200, 100) if args.scenario == "load-1k" else (4, 4, 4)
     sandbox_root = output / "private" / ("inventory-" + uuid.uuid4().hex) / "data" / "scenario-workers"
-    materialize_inventory(sandbox_root, product_worker_world(counts))
-    run = preview.Preview(sum(counts), args.port, root=args.root, output=output / "private", sandbox_root=sandbox_root, app_count=0)
+    world = product_worker_world(counts)
+    app_count = 0
+    if args.scenario == "pool-selection":
+        app_count = 12
+        for app, offset in (("app-a", 1_000_000), ("app-b", 2_000_000)):
+            world[app + "-sim"] = tuple({**properties, "application": app, "phone": str(int(properties["phone"]) + offset)}
+                                         for properties in world["demo-sim"])
+    materialize_inventory(sandbox_root, world)
+    run = preview.Preview(sum(counts), args.port, root=args.root, output=output / "private", sandbox_root=sandbox_root, app_count=app_count)
     result = execute_scenario(run, args.scenario, output)
     (output / "summary.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2), flush=True)
