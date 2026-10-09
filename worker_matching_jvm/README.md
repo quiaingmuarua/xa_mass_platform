@@ -250,8 +250,8 @@ limits and entry/expiry/capacity checks retain their independent owners.
 | `worker.any` | Only `{}`; explicitly enabled `any` Pool, no Facts required |
 | Declared fixed-window function | Only `{}`; consumes its own admission-qualified Pool stock |
 | `worker.country` | `{}` or a nonempty country list such as `["CN","US"]` |
-| `worker.messaging.available` | `{}` or an object with optional `country` list; consumes Messaging Pool stock |
-| `worker.messaging.phone` | Object with required nonblank `phone` and optional `country` list; qualified Direct lookup |
+| Declared qualified-country Pool function | `{}` or an object with optional `country` list; consumes its own qualified Pool stock |
+| Declared qualified-country Phone function | Object with required nonblank `phone` and optional `country` list; qualified Direct lookup |
 | `proof.worker.facts` | String scalar fields `proofPool`, `proofTarget`, `proofEnabled`, or exclusive `convergenceSlot` |
 | `workerId` | One nonblank Worker ID string; no facts or stock read |
 | `worker.phone` | One exact nonempty Worker phone string; Group-enabled independent property index |
@@ -346,10 +346,43 @@ conversion, default supply, migration or cleanup is provided. Existing WorkerQue
 Item encoding and Facts keys remain unchanged. Property HASH and Worker Score
 cutovers each require a new scope; neither has a compatibility reader.
 
+### Qualified Country Declarations
+
+[QualifiedCountryDefinition](src/main/java/com/xa/mass/workermatching/QualifiedCountryDefinition.java)
+is an immutable startup value containing `poolName`, `poolFunctionName`,
+`phoneFunctionName`, `requiredProperty`, `requiredValue` and `countryProperty`.
+All fields are nonblank strings; property names are literal top-level Worker
+Properties keys. The rule compares the required value exactly as a string and
+requires a country matching `[A-Z]{2}`. Missing or mismatched fields reject that
+Worker; booleans, numbers, nested paths and case conversion are not accepted.
+The declaration contains no callback, Platform projection or resource instance.
+
+One qualification implementation serves both refill and qualified Phone lookup.
+Refill reads the offered Worker identities in one strict Facts batch, completes
+qualification before admission, and retains the original fence in country buckets.
+Consumption uses only stock, even if Properties subsequently change without
+invalidation. Phone lookup independently reads its bounded index matches and
+qualifies their current Worker Facts, including current phone equality. It returns
+zero-fence identity evidence; neither path changes Kernel execution admission.
+
+Group configuration independently enables the declared Pool and named functions.
+The Pool function requires its Pool; the Phone function requires neither that
+Pool nor the generic Phone function. All enabled Phone functions share the one
+physical `phone` index. Unused declarations allocate no Pool or index. Names must
+be unique among built-ins, fixed-window declarations and qualified-country
+declarations; unknown enabled names and missing dependencies fail startup.
+
+Server collects both declaration types separately. Messages supplies its binding
+from [its scenario configuration](../scenarios/message-campaigns-jvm/README.md#worker-供给与装配);
+Matching has no built-in Messaging names or business property keys. Existing
+Messages names, query inputs, Task descriptors and stored Properties remain valid
+when that declaration is installed. No compatibility branch or data migration is
+needed. Platform-only composition passes empty declaration collections.
+
 ## Fixed Resource Composition
 
-`MatchingComposition` receives the Group availability map and immutable fixed-window
-definitions, creates each enabled resource once and injects it into its
+`MatchingComposition` receives the Group availability map and separate immutable
+fixed-window and qualified-country definitions, creates each enabled resource once and injects it into its
 users. Pool maintenance and named consumer functions receive the same WorkerCandidatePool;
 Direct functions receive the PropertyIndex lookup interface, backed by one shared
 RedisHashPropertyIndex bound to `phone`. Resources do not know executorName.
@@ -369,9 +402,10 @@ WorkerCandidatePool receives only a clock and shared CandidateBudget. Compositio
 retains the fixed Pool map; the Refill coordinator invokes lazy cleanup only when a requested
 Group-Pool has no room and reads budget diagnostics. There is no self-registration
 or resource manager. Index resources have no Pool, capacity, policy or function dependency.
-Country and Messaging receive the bounded Worker Facts reader; Proof and declared
-fixed-window policies receive the atomic Worker/Platform snapshot reader. Messaging uses its existing pure eligibility
-helper. Proof refill and query share the complete tuple codec and bucket matching.
+Country and qualified-country policies receive the bounded Worker Facts reader;
+Proof and fixed-window policies receive the atomic Worker/Platform snapshot reader.
+Qualified-country refill and Phone lookup share one pure eligibility instance per
+declaration. Proof refill and query share the complete tuple codec and bucket matching.
 All fixed policies use PoolMaintenance for fence validation, complete fallible
 qualification, batch budgeting and grouped offers. No admission observes resident
 Worker identities, compares generations, replaces entries or removes old mismatches.
@@ -381,7 +415,7 @@ Country counts its complete target set from one bucket-count snapshot.
 uses one fixed preflight-and-write Lua; Platform patch uses a separate fixed script
 and never updates Worker property mappings. There are no injected Lua fragments,
 per-Group generated scripts or index-specific write callbacks. Group function
-configuration enables `phone` once for either Phone function, without separate
+configuration and declared Phone function names enable `phone` once, without separate
 index configuration or Task demand. Other property names use the same mechanical
 HASH implementation; no account query is configured by this change.
 
@@ -398,7 +432,7 @@ Pool/Identity Catalog tests construct their resources without a Redis Store.
 | `any` | Empty target only, unconditional candidate stock; no Facts or property views |
 | Declared fixed-window Pool | One atomic Worker/Platform snapshot and one clock sample per refill; a single qualified bucket |
 | `country` | Valid Worker country Facts and local country buckets |
-| `messaging` | enabled messaging and country buckets; empty or country-only targets |
+| Declared qualified-country Pool | Exact Worker property qualification and country buckets; empty or country-only targets |
 | `proof-facts` | complete proof tuple buckets with rule-owned partial matching |
 
 Composition explicitly supplies the immutable global-function set containing
@@ -407,6 +441,11 @@ for an unconfigured Group. Every Pool and Pool function requires
 explicit Group configuration; functions require their corresponding resource. A
 Group with no Pools can use Identity and an explicitly enabled Phone Index. No
 implicit Pool stock or managed supply is created.
+
+The stable rotation order is `proof-facts`, `country`, name-sorted fixed-window
+Pools, `any`, then name-sorted qualified-country Pools. This retains the current
+Messages position. Existing rotation, shared capacity and one-Pool-per-candidate
+generation admission remain unchanged; no fairness or throughput claim is added.
 
 ## Country Facts and Memory Buckets
 
@@ -433,19 +472,19 @@ There is no Country target page, cursor or source ZSET.
 The old country, messaging and proof index namespaces are neither read, written,
 validated, rebuilt nor deleted. Phone remains the independent discovery index.
 
-## Messaging and Proof Facts Qualification
+## Worker Facts Qualification
 
 Every policy reads only the remaining Catalog-admitted identities, at most 1000. Any makes
-no read. Country and Messaging each use one Worker Facts HMGET. Proof and fixed-window policies each use one
+no read. Country and qualified-country policies each use one Worker Facts HMGET. Proof and fixed-window policies each use one
 fixed EVAL_RO containing two HMGETs, so Worker and Platform rows share a Redis
 execution snapshot. A missing Worker row is ineligible; missing Platform is an
 empty map. Malformed present Facts fail before this Pool changes inventory. This
 strict internal read does not alter public loadWorkerFacts, whose two independent
 reads retain row-local null-on-corruption behavior.
 
-Messaging requires the exact string messaging.enabled=true and a valid uppercase
-country. A fixed pure Java predicate is shared by Pool qualification and qualified
-Direct Phone lookup. Pool entries have one country bucket; missing phone does
+Qualified-country rules require the declared exact string value and a valid
+uppercase country from the declared field. One pure Java predicate is shared by
+Pool qualification and qualified Direct Phone lookup. Pool entries have one country bucket; missing phone does
 not disqualify an otherwise eligible Pool candidate. Country values are strings
 without numeric Redis prefixes. Pool queries and supply targets reject phone conditions.
 
@@ -473,12 +512,12 @@ Identity input is a nonblank string. It returns identity evidence without Redis,
 Facts or Pool access. Pacer still checks existence, Group and Endpoint before Kernel
 admission. Phone input is a nonempty exact string; there is no trim or telephone
 format conversion. Its index depends only on Worker `phone`, not country,
-`messaging.enabled` or Platform Properties. Generic `worker.phone` does not apply
-Messaging qualification.
+any qualification field or Platform Properties. Generic `worker.phone` does not
+apply declared country qualification.
 
-Qualified `worker.messaging.phone` uses that same index and then one strict Worker
+Each declared qualified-country Phone function uses that same index and then one strict Worker
 Facts HMGET for the returned, deduplicated IDs. It requires a nonblank exact phone,
-Messaging eligibility, the current Facts phone equal to the requested phone, and
+its declared eligibility, the current Facts phone equal to the requested phone, and
 any supplied country condition. Requests are grouped by phone for a single bounded
 lookup. Each phone has at most one mapped Worker, assigned to the first compatible
 request in original order. Repeated requests do not obtain additional Workers.
@@ -488,18 +527,17 @@ present Facts fail the function; earlier function consumption remains committed.
 The two reads are independent snapshots; a changed phone seen in Facts is rejected,
 but there is no enduring qualification guarantee through execution.
 
-Either Phone function enables the same physical index exactly once. The qualified
-function needs neither Messaging Pool nor generic `worker.phone` enablement. It
+Any enabled Phone function enables the same physical index exactly once. A qualified
+function needs neither its associated Pool nor generic `worker.phone` enablement. It
 returns `expectedScore=0` without observing Score or editing Pool inventory. Kernel
 still acquires only strictly due HOT; an active execution hold cannot be preempted.
 If that Worker remains cached in a Pool, Direct acquisition makes the old fence
 stale without a Pool notification.
 
-Cutover removes phone inputs from `worker.messaging.available` and `worker.phone`
-conditions from Messaging supply targets. End affected old Tasks before deployment
-or use a new scope. Stored Task/Item queries are not migrated or compatibility-read;
-Facts and historical Result formats are unchanged. The property HASH cutover below
-requires a new scope. No old data is deleted.
+The declaration migration preserves existing Task/Item queries, Facts and historical
+Result formats. Retired phone conditions on Pool supply and consumption remain
+rejected. The older property HASH migration below has its own scope requirement;
+this declaration change introduces no storage migration or automatic data deletion.
 
 `PropertyIndex.lookup(group, values)` accepts caller-bounded unique nonempty strings
 and returns an immutable value-to-workerId map in request order, omitting misses.
@@ -534,7 +572,7 @@ Rule Pool instance -> Group -> bucketKey -> ArrayDeque<Entry>
 Entry = immutable WorkerCandidate + admission time
 ```
 
-Country and Messaging use country keys. Any uses one ordinary fixed key. Proof
+Country and qualified-country Pools use country keys. Any uses one ordinary fixed key. Proof
 uses a canonical JSON tuple of proofPool, proofTarget, proofEnabled and convergenceSlot;
 missing values remain distinct from all strings. Partial Proof queries decode each
 key once from one directory snapshot per call and select matching keys in Java.
@@ -725,13 +763,13 @@ autonomous source take, index repair scan, lease registry or per-Task publicatio
   or reads Properties to find substitutes.
 - Identity take: zero Redis commands. Nonempty Phone take: one HMGET for the Catalog-admitted
   unique exact values, returning at most one identity per value, without a lease read.
-- Qualified Messaging Phone take: the same bounded lookup plus at most one HMGET
+- Qualified-country Phone take: the same bounded lookup plus at most one HMGET
   for returned identities, transferring complete Worker Facts. No Pool or Score read.
 - Refill recycling: one read-only candidate-head Lua per selected Group and one
   exact recycle Lua for a nonempty batch, even without supply shortage. It has a
   separate 100-per-Group/1000-per-round budget and its own Group rotation hint.
 - Each Group needing fresh supply: one mark=0 due-head Lua, one exact candidateize
-  Lua for a nonempty head, then one HMGET for Country/Messaging or one EVAL_RO
+  Lua for a nonempty head, then one HMGET for Country/qualified-country or one EVAL_RO
   (two HMGETs) for Proof/fixed-window policies, only when that policy needs qualification. A full-stock
   deficit suppresses normal Pacer supply. If a batch is supplied anyway, it still
   qualifies before capacity refusal; no resident-identity pre-read skips that work.

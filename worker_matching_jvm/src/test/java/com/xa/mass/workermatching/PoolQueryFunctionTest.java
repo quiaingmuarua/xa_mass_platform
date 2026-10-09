@@ -17,16 +17,16 @@ class PoolQueryFunctionTest {
         var phones = mock(PropertyIndex.class);
         assertEquals(Map.of(), new EmptyInputPoolQueryFunction(pool).normalizeInput("g", Map.of()));
         assertEquals(List.of("CN", "US"), new CountryQueryFunction(pool).normalizeInput("g", List.of("US", "CN", "US")));
-        assertEquals(Map.of("country", List.of("CN")), new MessagingQueryFunction(pool)
+        assertEquals(Map.of("country", List.of("CN")), new QualifiedCountryQueryFunction(pool)
                 .normalizeInput("g", Map.of("country", List.of("CN", "CN"))));
-        assertThrows(IllegalArgumentException.class, () -> new MessagingQueryFunction(pool)
+        assertThrows(IllegalArgumentException.class, () -> new QualifiedCountryQueryFunction(pool)
                 .normalizeInput("g", Map.of("phone", "number")));
         assertEquals(Map.of("convergenceSlot", "slot"), new ProofFactsQueryFunction(pool)
                 .normalizeInput("g", Map.of("convergenceSlot", "slot")));
         assertEquals(" number ", new PhoneQueryFunction(phones).normalizeInput("g", " number "));
         assertThrows(IllegalArgumentException.class, () -> new EmptyInputPoolQueryFunction(pool).normalizeInput("g", List.of()));
         assertThrows(IllegalArgumentException.class, () -> new CountryQueryFunction(pool).normalizeInput("g", List.of("cn")));
-        assertThrows(IllegalArgumentException.class, () -> new MessagingQueryFunction(pool).normalizeInput("g", Map.of("unknown", "x")));
+        assertThrows(IllegalArgumentException.class, () -> new QualifiedCountryQueryFunction(pool).normalizeInput("g", Map.of("unknown", "x")));
         assertThrows(IllegalArgumentException.class, () -> new ProofFactsQueryFunction(pool)
                 .normalizeInput("g", Map.of("convergenceSlot", "slot", "proofPool", "p")));
         verifyNoInteractions(pool, phones);

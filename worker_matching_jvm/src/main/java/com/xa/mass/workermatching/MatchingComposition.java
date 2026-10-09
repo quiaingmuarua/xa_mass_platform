@@ -3,8 +3,8 @@ package com.xa.mass.workermatching;
 import com.xa.mass.workermatching.functions.PhoneQueryFunction;
 import com.xa.mass.workermatching.functions.IdentityQueryFunction;
 import com.xa.mass.workermatching.functions.ProofFactsQueryFunction;
-import com.xa.mass.workermatching.functions.MessagingQueryFunction;
-import com.xa.mass.workermatching.functions.MessagingPhoneQueryFunction;
+import com.xa.mass.workermatching.functions.QualifiedCountryQueryFunction;
+import com.xa.mass.workermatching.functions.QualifiedCountryPhoneQueryFunction;
 import com.xa.mass.workermatching.functions.CountryQueryFunction;
 import com.xa.mass.workermatching.functions.EmptyInputPoolQueryFunction;
 import com.xa.mass.kernel.redis.RedisKeyspace;
@@ -15,7 +15,7 @@ import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.workermatching.refill.AnyPoolPolicy;
 import com.xa.mass.workermatching.refill.FixedWindowPoolPolicy;
 import com.xa.mass.workermatching.refill.CountryPoolPolicy;
-import com.xa.mass.workermatching.refill.MessagingPoolPolicy;
+import com.xa.mass.workermatching.refill.QualifiedCountryPoolPolicy;
 import com.xa.mass.workermatching.refill.ProofFactsPoolPolicy;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
 import io.lettuce.core.RedisClient;
@@ -38,7 +38,8 @@ public final class MatchingComposition implements AutoCloseable {
     private boolean closed;
 
     public MatchingComposition(FactsIndexStore storage, Map<String, MatchingGroup> groups, LongSupplier clock,
-            Collection<FixedWindowPoolDefinition> definitions) {
+            Collection<FixedWindowPoolDefinition> definitions,
+            Collection<QualifiedCountryDefinition> qualifiedDefinitions) {
         this.storage = Objects.requireNonNull(storage);
         try {
             this.networkEvidenceTimestamps = new NetworkEvidenceTimestamps(storage::commands, storage.keyspace());
@@ -46,16 +47,18 @@ public final class MatchingComposition implements AutoCloseable {
             this.groups = Map.copyOf(groups);
             var enabledPools = new HashSet<String>();
             var enabledFunctions = new HashSet<String>();
-            var builtInPools = List.of("any", "country", "messaging", "proof-facts");
+            var builtInPools = List.of("any", "country", "proof-facts");
+            var poolNames = new HashSet<>(builtInPools);
             var functionNames = new HashSet<>(Set.of("workerId", "worker.any", "worker.country",
-                    "worker.messaging.available", "proof.worker.facts", "worker.phone", "worker.messaging.phone"));
+                    "proof.worker.facts", "worker.phone"));
             var windows = new TreeMap<String, FixedWindowPoolDefinition>();
+            var qualified = new TreeMap<String, QualifiedCountryDefinition>();
             var dependencies = new HashMap<>(Map.of("worker.any", "any", "worker.country", "country",
-                    "worker.messaging.available", "messaging", "proof.worker.facts", "proof-facts"));
+                    "proof.worker.facts", "proof-facts"));
             for (var definition : List.copyOf(definitions)) {
-                if (builtInPools.contains(definition.poolName())
-                        || windows.putIfAbsent(definition.poolName(), definition) != null)
+                if (!poolNames.add(definition.poolName()))
                     throw new IllegalArgumentException("duplicate or reserved Pool name: " + definition.poolName());
+                windows.put(definition.poolName(), definition);
                 if (!functionNames.add(definition.functionName()))
                     throw new IllegalArgumentException("duplicate or reserved function name: " + definition.functionName());
                 if (!this.groups.keySet().containsAll(definition.limitsByGroup().keySet()))
@@ -66,8 +69,20 @@ public final class MatchingComposition implements AutoCloseable {
                 });
                 dependencies.put(definition.functionName(), definition.poolName());
             }
+            for (var definition : List.copyOf(qualifiedDefinitions)) {
+                if (!poolNames.add(definition.poolName()))
+                    throw new IllegalArgumentException("duplicate or reserved Pool name: " + definition.poolName());
+                for (String name : List.of(definition.poolFunctionName(), definition.phoneFunctionName()))
+                    if (!functionNames.add(name))
+                        throw new IllegalArgumentException("duplicate or reserved function name: " + name);
+                qualified.put(definition.poolName(), definition);
+                dependencies.put(definition.poolFunctionName(), definition.poolName());
+            }
             groups.forEach((group, config) -> {
+                for (String name : config.pools())
+                    if (!poolNames.contains(name)) throw new IllegalArgumentException("Unknown Pool: " + name);
                 for (String name : config.functions()) {
+                    if (!functionNames.contains(name)) throw new IllegalArgumentException("Unknown function: " + name);
                     String required = dependencies.get(name);
                     if (required != null && !config.pools().contains(required))
                         throw new IllegalArgumentException("Function " + name + " requires Pool " + required);
@@ -92,10 +107,6 @@ public final class MatchingComposition implements AutoCloseable {
                         policies.put(name, new CountryPoolPolicy(pool, storage::readWorkerFacts));
                         functions.put("worker.country", new CountryQueryFunction(pool));
                     }
-                    case "messaging" -> {
-                        policies.put(name, new MessagingPoolPolicy(pool, storage::readWorkerFacts));
-                        functions.put("worker.messaging.available", new MessagingQueryFunction(pool));
-                    }
                     case "proof-facts" -> {
                         policies.put(name, new ProofFactsPoolPolicy(pool, storage::readFactsSnapshot));
                         functions.put("proof.worker.facts", new ProofFactsQueryFunction(pool));
@@ -110,18 +121,33 @@ public final class MatchingComposition implements AutoCloseable {
                 policies.put(name, new FixedWindowPoolPolicy(pool, storage::readFactsSnapshot, clock, definition));
                 functions.put(definition.functionName(), new EmptyInputPoolQueryFunction(pool));
             });
-            if (enabledFunctions.contains("worker.phone") || enabledFunctions.contains("worker.messaging.phone")) {
+            var qualifications = new HashMap<String, QualifiedCountryEligibility>();
+            qualified.forEach((name, definition) -> {
+                var eligibility = new QualifiedCountryEligibility(definition);
+                qualifications.put(name, eligibility);
+                if (!enabledPools.contains(name)) return;
+                var pool = new WorkerCandidatePool(clock, budget);
+                pools.put(name, pool);
+                policies.put(name, new QualifiedCountryPoolPolicy(pool, storage::readWorkerFacts, eligibility));
+                functions.put(definition.poolFunctionName(), new QualifiedCountryQueryFunction(pool));
+            });
+            if (enabledFunctions.contains("worker.phone") || qualified.values().stream()
+                    .anyMatch(definition -> enabledFunctions.contains(definition.phoneFunctionName()))) {
                 var phone = new RedisHashPropertyIndex(storage::commands, storage.keyspace(), "phone");
                 if (enabledFunctions.contains("worker.phone")) functions.put("worker.phone", new PhoneQueryFunction(phone));
-                if (enabledFunctions.contains("worker.messaging.phone"))
-                    functions.put("worker.messaging.phone", new MessagingPhoneQueryFunction(phone, storage::readWorkerFacts));
+                qualified.forEach((name, definition) -> {
+                    if (enabledFunctions.contains(definition.phoneFunctionName()))
+                        functions.put(definition.phoneFunctionName(), new QualifiedCountryPhoneQueryFunction(
+                                phone, storage::readWorkerFacts, qualifications.get(name)));
+                });
             }
             this.pools = Map.copyOf(pools);
             this.policies = Map.copyOf(policies);
             this.functions = Map.copyOf(functions);
             var order = new ArrayList<>(List.of("proof-facts", "country"));
             order.addAll(windows.keySet());
-            order.addAll(List.of("any", "messaging"));
+            order.add("any");
+            order.addAll(qualified.keySet());
             this.poolOrder = order.stream()
                     .filter(policies::containsKey).toList();
             if (!groups.keySet().containsAll(storage.indexedGroups()))
@@ -136,10 +162,13 @@ public final class MatchingComposition implements AutoCloseable {
     }
 
     /** Fixed dependencies, independent of Task demand or current Pool inventory. */
-    public static Map<String, Set<String>> indexedProperties(Map<String, MatchingGroup> groups) {
+    public static Map<String, Set<String>> indexedProperties(Map<String, MatchingGroup> groups,
+            Collection<QualifiedCountryDefinition> definitions) {
+        var phoneFunctions = new HashSet<>(Set.of("worker.phone"));
+        List.copyOf(definitions).forEach(definition -> phoneFunctions.add(definition.phoneFunctionName()));
         var indexes = new LinkedHashMap<String, Set<String>>();
         groups.forEach((group, config) -> {
-            boolean phone = config.functions().contains("worker.phone") || config.functions().contains("worker.messaging.phone");
+            boolean phone = config.functions().stream().anyMatch(phoneFunctions::contains);
             indexes.put(group, phone ? Set.of("phone") : Set.of());
         });
         return Collections.unmodifiableMap(indexes);
@@ -168,8 +197,10 @@ public final class MatchingComposition implements AutoCloseable {
     }
 
     public static MatchingComposition create(RedisClient client, RedisKeyspace keyspace,
-            Map<String, MatchingGroup> groups, Collection<FixedWindowPoolDefinition> definitions) {
-        var storage = new FactsIndexStore(client, keyspace, indexedProperties(groups));
-        return new MatchingComposition(storage, groups, System::currentTimeMillis, definitions);
+            Map<String, MatchingGroup> groups, Collection<FixedWindowPoolDefinition> definitions,
+            Collection<QualifiedCountryDefinition> qualifiedDefinitions) {
+        var captured = List.copyOf(qualifiedDefinitions);
+        var storage = new FactsIndexStore(client, keyspace, indexedProperties(groups, captured));
+        return new MatchingComposition(storage, groups, System::currentTimeMillis, definitions, captured);
     }
 }

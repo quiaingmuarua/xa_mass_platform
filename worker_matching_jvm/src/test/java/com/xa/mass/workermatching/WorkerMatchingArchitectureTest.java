@@ -92,7 +92,8 @@ class WorkerMatchingArchitectureTest {
                 "WorkerFactsPage",
                 "itemCursors",
                 "ItemRule",
-                "ArrayBlockingQueue"
+                "ArrayBlockingQueue",
+                "messaging.enabled", "\"messaging\"", "\"worker.messaging.", "lastAssignedAt", "windowAssignmentCount"
         )) {
             assertFalse(
                     source.toString().contains(forbidden),

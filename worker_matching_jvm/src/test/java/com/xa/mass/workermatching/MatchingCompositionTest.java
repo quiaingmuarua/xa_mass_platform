@@ -23,8 +23,8 @@ class MatchingCompositionTest {
     @Test void directOnlyCompositionHasNoPoolOrPolicyAndAdmissionNeedsNoConnection() {
         var client = mock(RedisClient.class);
         var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone")));
-        try (var store = new FactsIndexStore(client, keyspace, MatchingComposition.indexedProperties(groups))) {
-            var composition = new MatchingComposition(store, groups, () -> 1_000L, java.util.List.of());
+        try (var store = new FactsIndexStore(client, keyspace, MatchingComposition.indexedProperties(groups, QualifiedCountryFixtures.DEFINITIONS))) {
+            var composition = new MatchingComposition(store, groups, () -> 1_000L, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS);
             assertTrue(composition.pools().isEmpty());
             assertTrue(composition.policies().isEmpty());
             assertEquals(Set.of("workerId", "worker.phone"), composition.functions().keySet());
@@ -51,7 +51,7 @@ class MatchingCompositionTest {
         when(commands.hmget(anyString(), eq("number"))).thenReturn(List.of(KeyValue.just("number", "w")));
         when(commands.hmget(anyString(), eq("w"))).thenReturn(List.of(KeyValue.just("w", "{}")));
         var groups = Map.of("g", new MatchingGroup(Set.of("messaging", "proof-facts"), Set.of("worker.phone", "worker.messaging.phone")));
-        var composition = MatchingComposition.create(client, keyspace, groups, java.util.List.of());
+        var composition = MatchingComposition.create(client, keyspace, groups, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS);
         var catalog = composition.catalog();
         assertSame(catalog, composition.catalog());
         assertSame(composition.properties(), composition.properties());
@@ -77,7 +77,7 @@ class MatchingCompositionTest {
     @Test void startupAndCloseDoNotOpenRedisOrRebuildIndexes() {
         var client = mock(RedisClient.class);
         try (var composition = MatchingComposition.create(client, keyspace,
-                Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"))), java.util.List.of())) {
+                Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.phone"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS)) {
             assertEquals(Map.of(), composition.catalog().take("g", Map.of()));
         }
         verifyNoInteractions(client);
@@ -86,7 +86,7 @@ class MatchingCompositionTest {
     @Test void partialAssemblyFailureDoesNotOpenAConnection() {
         var client = mock(RedisClient.class);
         assertThrows(IllegalArgumentException.class, () -> MatchingComposition.create(client, keyspace,
-                Map.of("g", new MatchingGroup(Set.of("any"), Set.of("worker.phone", "unknown"))), java.util.List.of()));
+                Map.of("g", new MatchingGroup(Set.of("any"), Set.of("worker.phone", "unknown"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS));
         verifyNoInteractions(client);
     }
 
@@ -104,7 +104,7 @@ class MatchingCompositionTest {
         when(client.connect(StringCodec.UTF8)).thenReturn(connection);
         var store = new FactsIndexStore(client, keyspace, Map.of("unavailable", Set.of("phone")));
         store.commands();
-        assertThrows(IllegalArgumentException.class, () -> new MatchingComposition(store, Map.of(), () -> 0, java.util.List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new MatchingComposition(store, Map.of(), () -> 0, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS));
         store.close();
         verify(connection, times(1)).close();
         verify(client, never()).shutdown();
@@ -114,11 +114,11 @@ class MatchingCompositionTest {
     @Test void qualifiedPhoneNeedsOnlyOnePhoneIndexAndNoPoolOrGenericPhoneFunction() {
         var client = mock(RedisClient.class);
         var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.messaging.phone")));
-        var indexes = MatchingComposition.indexedProperties(groups);
+        var indexes = MatchingComposition.indexedProperties(groups, QualifiedCountryFixtures.DEFINITIONS);
         assertEquals(Set.of("phone"), indexes.get("g"));
         assertThrows(UnsupportedOperationException.class, indexes::clear);
         try (var store = new FactsIndexStore(client, keyspace, indexes)) {
-            var composition = new MatchingComposition(store, groups, () -> 1_000L, java.util.List.of());
+            var composition = new MatchingComposition(store, groups, () -> 1_000L, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS);
             assertTrue(composition.pools().isEmpty());
             assertTrue(composition.policies().isEmpty());
             assertEquals(Set.of("workerId", "worker.messaging.phone"), composition.functions().keySet());
@@ -133,6 +133,6 @@ class MatchingCompositionTest {
             }
         }
         assertEquals(1, MatchingComposition.indexedProperties(Map.of("g", new MatchingGroup(Set.of(),
-                Set.of("worker.phone", "worker.messaging.phone")))).get("g").size());
+                Set.of("worker.phone", "worker.messaging.phone"))), QualifiedCountryFixtures.DEFINITIONS).get("g").size());
     }
 }

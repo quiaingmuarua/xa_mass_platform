@@ -165,6 +165,10 @@ admitted snapshot evidence without another Facts read; do not restore the retire
 Any-stock post-filter or promote observed counts to reserved quotas. Scenario Pool
 declarations are immutable startup values; resource ownership and lifecycle stay
 in Matching, without external strategy callbacks or runtime registration.
+Messages uses a [qualified-country declaration](worker_matching_jvm/README.md#qualified-country-declarations)
+over Worker Properties. Its Pool refill and independent Phone query share the
+declared qualification; keep index/resource ownership in Matching and preserve
+the distinct stock-consumption and directed-identity paths.
 
 ## Kernel Pacer JVM
 

@@ -6,10 +6,10 @@ import com.xa.mass.workermatching.RuleInputs;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import java.util.*;
 
-/** ANY or country selection within the injected Messaging Pool. */
-public final class MessagingQueryFunction implements QueryFunction {
+/** Unrestricted or country selection within an already-qualified Pool. */
+public final class QualifiedCountryQueryFunction implements QueryFunction {
     private final WorkerCandidatePool pool;
-    public MessagingQueryFunction(WorkerCandidatePool pool) { this.pool = Objects.requireNonNull(pool); }
+    public QualifiedCountryQueryFunction(WorkerCandidatePool pool) { this.pool = Objects.requireNonNull(pool); }
     @Override public Object normalizeInput(String group, Object input) {
         var values = RuleInputs.object(input, Set.of("country"));
         if (values.containsKey("country")) values.put("country", RuleInputs.countries(values.get("country")));

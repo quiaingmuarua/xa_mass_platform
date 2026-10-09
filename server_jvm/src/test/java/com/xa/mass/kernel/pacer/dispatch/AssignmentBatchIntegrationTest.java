@@ -1,5 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
+import com.xa.mass.server.testsupport.QualifiedCountryFixtures;
+
 import static com.xa.mass.kernel.score.redis.WorkerScoreRedisFixture.dueOrdinaryScore;
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -165,7 +167,7 @@ class AssignmentBatchIntegrationTest {
              var matching = MatchingComposition.create(client, scope.keyspace(), Map.of("g", new MatchingGroup(
                      Set.of("any", "assignment-window", "messaging"), Set.of("worker.any", "worker.assignment.available", "worker.messaging.phone", "worker.messaging.available"))),
                      List.of(new com.xa.mass.workermatching.FixedWindowPoolDefinition("assignment-window", "worker.assignment.available",
-                             "lastAssignedAt", "windowAssignmentCount", Map.of("g", new com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit(60_000, 10)))))) {
+                             "lastAssignedAt", "windowAssignmentCount", Map.of("g", new com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit(60_000, 10)))), QualifiedCountryFixtures.DEFINITIONS)) {
             proof.accept(new Fixture(scope, client, taskScores, itemScores, tasks, workerScores, catalog, delivery, matching, commands));
         } finally {
             try (var connection = client.connect()) { scope.cleanup(connection.sync()); }

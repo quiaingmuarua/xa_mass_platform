@@ -2,7 +2,8 @@
 
 Status: current Messages business owner.
 
-Messages 是 `messages` Project 下有限 Task 的业务视图；共享资源拓扑由
+Messages 承载消息发送及后续送达、已读和连续回复的 tracked 业务过程。
+当前发送通过 `messages` Project 下有限 Task 提交，Task 结束后仍可接收后续响应；共享资源拓扑由
 [Boot](../../server_boot_jvm/README.md#platform-and-preview) 装配。
 
 ## 归属与流程变化
@@ -32,6 +33,25 @@ Lab 接收生成 delivered / 后续 read、reply → HTTP 回调原 Worker Repor
   → 既有 Item Score / Result Owner
 列表或详情请求 → 读取 Task / Score / Item / Result
 ```
+
+## Worker 供给与装配
+
+`MessageWorkerSupply` 集中 Project、发送事件、Pool、查询名称和 Worker 资格字段。
+`MessageCampaignsScenarioConfiguration` 注册纯数据 `QualifiedCountryDefinition`：
+Pool=`messaging`、库存查询=`worker.messaging.available`、定向查询=`worker.messaging.phone`，
+要求 Worker Properties 的 `messaging.enabled` 精确等于字符串 `true`，国家取 `country`。
+这里没有新增 Platform Properties 或属性投影。
+
+Server 收集声明，Matching 构造参数化资格、库存和定向查询；场景仅依赖该公开声明类型，
+不持有 Matching 的库存、索引、策略或生命周期。声明 Bean 不依赖 Task 服务或已启动实例。
+Group 仍由现有 Boot 配置分别启用 Pool／函数；指定号码查询可独立于 Pool 启用。
+普通发送在补给时读 Worker Facts 并按国家入池，消费不再读 Facts；定向发送独立查 Phone
+Index 后核对当前 Facts，仍共享同一物理 `phone` 索引。基础失败、预算与执行准入边界见
+[Matching Owner](../../worker_matching_jvm/README.md#qualified-country-declarations)。
+
+此次装配迁移保留所有 HTTP、供给／查询名称和输入、Task／Item／Result 与 Properties 格式，
+存量任务无需重建。Project／Group 初始化、tracked Reporter 及提交流程沿用既有路径。
+平台测试显式提供自己的声明 fixture，不依赖本模块，也不在缺失声明时恢复内置默认规则。
 
 ## API 与业务输入
 

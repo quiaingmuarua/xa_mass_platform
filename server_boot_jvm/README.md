@@ -29,6 +29,13 @@ fixed preview assembly, without per-business deployment profiles or selection.
 
 The `demo-sim` Project managed Tasks retain `country / {} / 100` supply;
 that Group does not enable Any Pool.
+Messages contributes `QualifiedCountryDefinition` for `messaging`,
+`worker.messaging.available` and `worker.messaging.phone`, binding the Worker
+Properties requirement `messaging.enabled="true"` and country field `country`.
+These names are scenario declarations rather than built-in Matching branches.
+The existing Group configuration enables the resources; qualified Phone lookup
+still needs only the shared `phone` index and no Pool. No new configuration prefix,
+Platform Properties projection or Task/Item data migration is introduced.
 Each App Group enables `assignment-window`. App Checks contributes its immutable
 Pool definition and binds `xa.mass.worker-pools.assignment-window.groups.<group>`
 with explicit `window-millis=60000` and `max-count=10`. Its projection uses the

@@ -1,6 +1,8 @@
 package com.xa.mass.server.integration;
 
-import com.xa.mass.workermatching.functions.MessagingQueryFunction;
+import com.xa.mass.server.testsupport.QualifiedCountryFixtures;
+
+import com.xa.mass.workermatching.functions.QualifiedCountryQueryFunction;
 import static org.mockito.ArgumentMatchers.anyString;
 
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
@@ -101,7 +103,7 @@ class RuntimeBoundaryIntegrationTest {
     static class MatchingTestAssembly {
         @Bean(destroyMethod="close") MatchingComposition matchingComposition(
                 RedisClient client, XaMassRedisProperties redis, MatchingProperties rules) {
-            var storage = new FactsIndexStore(client, redis.keyspace(), MatchingComposition.indexedProperties(rules.groups()));
+            var storage = new FactsIndexStore(client, redis.keyspace(), MatchingComposition.indexedProperties(rules.groups(), QualifiedCountryFixtures.DEFINITIONS));
             var builtIns = new LinkedHashMap<String, MatchingGroup>();
             var fixturePools = java.util.Set.of(BucketPoolFixture.ID, IdentityHintPoolFixture.ID);
             var fixtureFunctions = java.util.Set.of(BucketPoolFixture.ID, IdentityHintPoolFixture.ID,
@@ -109,7 +111,7 @@ class RuntimeBoundaryIntegrationTest {
             rules.groups().forEach((group, config) -> builtIns.put(group, new MatchingGroup(
                     config.pools().stream().filter(name -> !fixturePools.contains(name)).collect(java.util.stream.Collectors.toSet()),
                     config.functions().stream().filter(name -> !fixtureFunctions.contains(name)).collect(java.util.stream.Collectors.toSet()))));
-            return new MatchingComposition(storage,builtIns,System::currentTimeMillis, java.util.List.of());
+            return new MatchingComposition(storage,builtIns,System::currentTimeMillis, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS);
         }
         @Bean IdentityHintPoolFixture identityHintRule(MatchingComposition composition) {
             return new IdentityHintPoolFixture(System::currentTimeMillis,
@@ -127,7 +129,7 @@ class RuntimeBoundaryIntegrationTest {
             handlers.put(BucketPoolFixture.ID,bucket); handlers.put(IdentityHintPoolFixture.ID,identityHintRule);
             var functions=new LinkedHashMap<>(composition.functions());
             functions.put(BucketPoolFixture.ID,bucket.functions()); functions.put(IdentityHintPoolFixture.ID,identityHintRule.queryFunction());
-            var messaging = new MessagingQueryFunction(composition.pools().get("messaging"));
+            var messaging = new QualifiedCountryQueryFunction(composition.pools().get("messaging"));
             functions.put("proof.messaging.country", new QueryFunction() {
                 public Object normalizeInput(String g, Object input) {
                     if (!(input instanceof String country)) throw new IllegalArgumentException("country string required");

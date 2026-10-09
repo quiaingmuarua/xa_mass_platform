@@ -1,5 +1,7 @@
 package com.xa.mass.workermatching.refill;
 
+import com.xa.mass.workermatching.QualifiedCountryFixtures;
+
 import com.xa.mass.workermatching.functions.EmptyInputPoolQueryFunction;
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
@@ -56,7 +58,7 @@ class PoolRefillPolicyTest {
     @Test void messagingKeepsCountryQualificationWithoutPhoneViewsOrTargets() {
         try(var storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_rule"), Map.of())) {
             var stock=new WorkerCandidatePool(()->1000, budget);
-            var handler=new MessagingPoolPolicy(stock, storage::readWorkerFacts);
+            var handler=new QualifiedCountryPoolPolicy(stock, storage::readWorkerFacts, QualifiedCountryFixtures.eligibility());
             var q=handler.normalizeQuery("g",new EligibilityQuery(Map.of("worker.country",List.of("CN"))));
             assertEquals("CN",handler.bucketKey("g","w",Map.of("messaging.enabled","true","country","CN","phone","+86123")));
             assertEquals("CN",handler.bucketKey("g","w",Map.of("messaging.enabled","true","country","CN")));
@@ -70,7 +72,7 @@ class PoolRefillPolicyTest {
     }
     @Test void namedRulesAcceptAnyButRejectExplicitIdentity() {
         try(var storage=new FactsIndexStore(mock(RedisClient.class), new RedisKeyspace("test_rule"), Map.of())) {
-            for(var rule:List.of(new CountryPoolPolicy(new WorkerCandidatePool(()->1000, budget), storage::readWorkerFacts),new MessagingPoolPolicy(new WorkerCandidatePool(()->1000, budget), storage::readWorkerFacts),new ProofFactsPoolPolicy(new WorkerCandidatePool(()->1000, budget), storage::readFactsSnapshot))) {
+            for(var rule:List.of(new CountryPoolPolicy(new WorkerCandidatePool(()->1000, budget), storage::readWorkerFacts),new QualifiedCountryPoolPolicy(new WorkerCandidatePool(()->1000, budget), storage::readWorkerFacts, QualifiedCountryFixtures.eligibility()),new ProofFactsPoolPolicy(new WorkerCandidatePool(()->1000, budget), storage::readFactsSnapshot))) {
                 assertDoesNotThrow(()->rule.normalizeQuery("g",new EligibilityQuery(Map.of())));
                 assertThrows(IllegalArgumentException.class,()->rule.normalizeQuery("g",new EligibilityQuery(Map.of("workerId",List.of("w")))));
             }

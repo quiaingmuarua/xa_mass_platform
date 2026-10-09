@@ -1,22 +1,25 @@
 package com.xa.mass.workermatching.functions;
 
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
-import com.xa.mass.workermatching.MessagingEligibility;
+import com.xa.mass.workermatching.QualifiedCountryEligibility;
 import com.xa.mass.workermatching.QueryFunction;
 import com.xa.mass.workermatching.RuleInputs;
 import com.xa.mass.workermatching.index.PropertyIndex;
 import java.util.*;
 import java.util.function.BiFunction;
 
-/** Bounded Phone lookup followed by Messaging qualification; never consumes Pool stock. */
-public final class MessagingPhoneQueryFunction implements QueryFunction {
+/** Bounded Phone lookup followed by country qualification; never consumes Pool stock. */
+public final class QualifiedCountryPhoneQueryFunction implements QueryFunction {
     private final PropertyIndex phones;
     private final BiFunction<String, List<String>, Map<String, Map<String, Object>>> readFacts;
+    private final QualifiedCountryEligibility eligibility;
 
-    public MessagingPhoneQueryFunction(PropertyIndex phones,
-            BiFunction<String, List<String>, Map<String, Map<String, Object>>> readFacts) {
+    public QualifiedCountryPhoneQueryFunction(PropertyIndex phones,
+            BiFunction<String, List<String>, Map<String, Map<String, Object>>> readFacts,
+            QualifiedCountryEligibility eligibility) {
         this.phones = Objects.requireNonNull(phones);
         this.readFacts = Objects.requireNonNull(readFacts);
+        this.eligibility = Objects.requireNonNull(eligibility);
     }
 
     @Override public Object normalizeInput(String workerGroupId, Object input) {
@@ -43,7 +46,7 @@ public final class MessagingPhoneQueryFunction implements QueryFunction {
             String workerId = found.get(phone);
             if (workerId == null) return;
             var workerFacts = facts.get(workerId);
-            String country = MessagingEligibility.country(workerFacts);
+            String country = eligibility.country(workerFacts);
             if (country == null || !phone.equals(workerFacts.get("phone"))
                     || (countries != null && !countries.contains(country)) || !used.add(workerId)) return;
             result.put(messageId, new WorkerCandidate(workerId, 0));

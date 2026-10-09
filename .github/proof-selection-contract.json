@@ -994,7 +994,7 @@
       "reason": "Independent network observation persistence inherits the existing Matching path coverage without adding a proof lane."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/MessagingPhoneQueryFunction.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/QualifiedCountryPhoneQueryFunction.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -1009,7 +1009,7 @@
       "reason": "Qualified Direct Phone lookup separates directed Messages from Pool stock while retaining Kernel execution admission."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/MessagingEligibility.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/QualifiedCountryEligibility.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
@@ -1069,7 +1069,7 @@
       "reason": "Matching resource ownership retains the existing production proof selection."
     },
     {
-      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/refill/MessagingPoolPolicy.java",
+      "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/refill/QualifiedCountryPoolPolicy.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",

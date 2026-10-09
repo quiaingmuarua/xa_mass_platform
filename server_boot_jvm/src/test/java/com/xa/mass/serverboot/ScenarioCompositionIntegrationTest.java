@@ -57,7 +57,11 @@ class ScenarioCompositionIntegrationTest {
             assertThat(context.getBeansOfType(MessageTaskService.class)).hasSize(messages ? 1 : 0);
             assertThat(context.getBeansOfType(AppCheckTaskService.class)).hasSize(preview ? 1 : 0);
             assertThat(context.getBeansOfType(WorkerPropertyProjection.class)).hasSize(preview ? 2 : 0);
+            assertThat(context.getBeansOfType(com.xa.mass.workermatching.QualifiedCountryDefinition.class)).hasSize(preview ? 1 : 0);
             if (preview) {
+                var messageSupply = context.getBean(com.xa.mass.workermatching.QualifiedCountryDefinition.class);
+                assertThat(messageSupply).isEqualTo(new com.xa.mass.workermatching.QualifiedCountryDefinition(
+                        "messaging", "worker.messaging.available", "worker.messaging.phone", "messaging.enabled", "true", "country"));
                 var matching = context.getBean(com.xa.mass.server.assembly.matching.MatchingProperties.class);
                 for (String group : List.of("app-a-sim", "app-b-sim")) {
                     var definition = context.getBean(com.xa.mass.workermatching.FixedWindowPoolDefinition.class);

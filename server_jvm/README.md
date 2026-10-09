@@ -703,10 +703,14 @@ frontend availability does not enable business resources.
 
 App Checks may import only Matching
 `FixedWindowPoolDefinition` and its `WindowLimit` value for startup declarations.
-`WorkerMatchingConfiguration` collects the definition Beans and passes them to
-MatchingComposition; these Beans depend only on configuration, never Task services
+Messages may import only `QualifiedCountryDefinition` for its Worker qualification,
+Pool consumer and independently enabled Phone query. `WorkerMatchingConfiguration`
+collects both definition Bean lists separately and passes them to
+MatchingComposition; these Beans depend only on configuration or static bindings, never Task services
 or the running Matching instance. Scenario code cannot access Matching stock,
 storage, policy implementations or lifecycle. No Server DTO mirrors the definition.
+The existing Group enablement and Project initialization remain profile-owned.
+Missing declarations for enabled functions fail startup without a business fallback.
 
 Server never parses Worker files, creates business Definitions or manages a
 Worker process; that belongs to the standalone

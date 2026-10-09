@@ -4,17 +4,17 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
-import com.xa.mass.workermatching.functions.MessagingPhoneQueryFunction;
+import com.xa.mass.workermatching.functions.QualifiedCountryPhoneQueryFunction;
 import com.xa.mass.workermatching.index.PropertyIndex;
 import java.util.*;
 import java.util.function.BiFunction;
 import org.junit.jupiter.api.Test;
 
-class MessagingPhoneQueryFunctionTest {
+class QualifiedCountryPhoneQueryFunctionTest {
     private final PropertyIndex phones = mock(PropertyIndex.class);
     @SuppressWarnings("unchecked")
     private final BiFunction<String, List<String>, Map<String, Map<String, Object>>> facts = mock(BiFunction.class);
-    private final MessagingPhoneQueryFunction function = new MessagingPhoneQueryFunction(phones, facts);
+    private final QualifiedCountryPhoneQueryFunction function = new QualifiedCountryPhoneQueryFunction(phones, facts, QualifiedCountryFixtures.eligibility());
 
     @Test void normalizationRequiresPhoneAndValidOptionalCountriesWithoutReadingResources() {
         for (Object invalid : Arrays.asList(null, "+1", Map.of(), Map.of("phone", ""), Map.of("phone", " "),

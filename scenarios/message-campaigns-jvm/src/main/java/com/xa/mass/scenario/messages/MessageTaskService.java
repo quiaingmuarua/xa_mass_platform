@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import org.springframework.context.SmartLifecycle;
+import static com.xa.mass.scenario.messages.MessageWorkerSupply.*;
 
 /** Task-backed business view. Only current-run submission deduplication is retained locally. */
 public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
@@ -46,7 +47,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     }
 
     @Override public void start() {
-        projects.requireManagedTaskId("messages", workerGroupId);
+        projects.requireManagedTaskId(PROJECT, workerGroupId);
         synchronized (gate) {
             if (closed) throw new IllegalStateException("Messages is closed");
             running = true;
@@ -58,7 +59,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
 
     public Map<String, Object> catalog() {
         requireRunning();
-        return Map.of("projectId", "messages", "runId", runId, "version", "0.1.0-preview", "countries", COUNTRIES.stream()
+        return Map.of("projectId", PROJECT, "runId", runId, "version", "0.1.0-preview", "countries", COUNTRIES.stream()
                 .map(c -> Map.of("id", c, "workerGroupId", workerGroupId)).toList(),
                 "limits", Map.of("tasks", MAX_TASKS, "items", MAX_ITEMS, "recipientsPerTask", MAX_RECIPIENTS));
     }
@@ -96,7 +97,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
             var supply = new LinkedHashMap<String, List<String>>();
             var query = new LinkedHashMap<String, Object>();
             var metadata = new LinkedHashMap<String, String>();
-            metadata.put("scenario", "messages"); metadata.put("recipientCountry", specification.recipientCountry());
+            metadata.put("scenario", PROJECT); metadata.put("recipientCountry", specification.recipientCountry());
             metadata.put("body", specification.body());
             if (specification.senderCountry() != null) {
                 supply.put("worker.country", List.of(specification.senderCountry()));
@@ -108,17 +109,17 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
             }
             requireRunning();
             var refill = specification.senderPhone() == null
-                    ? List.of(RefillTarget.of("messaging", new EligibilityQuery(supply), 100)) : List.<RefillTarget>of();
-            taskId = creation.create(new TaskCreateRequest("messages", workerGroupId, 50, 3,
+                    ? List.of(RefillTarget.of(POOL, new EligibilityQuery(supply), 100)) : List.<RefillTarget>of();
+            taskId = creation.create(new TaskCreateRequest(PROJECT, workerGroupId, 50, 3,
                     refill, specification.name(), metadata)).taskId();
             var selector = new WorkerQuery(specification.senderPhone() == null
-                    ? "worker.messaging.available" : "worker.messaging.phone", query);
+                    ? POOL_FUNCTION : PHONE_FUNCTION, query);
             for (int start = 0; start < specification.recipientIds().size(); start += 100) {
                 requireRunning();
                 var items = new ArrayList<TaskItemRequest>();
                 for (String recipient : specification.recipientIds().subList(start, Math.min(start + 100, specification.recipientIds().size()))) {
                     String messageId = UUID.randomUUID().toString();
-                    items.add(new TaskItemRequest(messageId, "extension.worker.message.send", Map.of("campaignId", taskId,
+                    items.add(new TaskItemRequest(messageId, EVENT, Map.of("campaignId", taskId,
                             "messageId", messageId, "country", specification.recipientCountry(), "recipientId", recipient,
                             "body", specification.body()), 5, 60_000L, selector));
                 }
@@ -141,7 +142,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     public Map<String, Object> list(int limit) {
         requireRunning();
         if (limit < 1 || limit > 100) throw new ProductError(400, "limit must be in 1..100", null);
-        var page = queries.list("messages", limit);
+        var page = queries.list(PROJECT, limit);
         var ids = page.tasks().stream().filter(MessageTaskService::isMessageTask).map(ProjectTaskQueryService.Entry::taskId).toList();
         var counts = data.observeItemScoreCounts(ids);
         return Map.of("tasks", page.tasks().stream().map(entry -> {
@@ -153,7 +154,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
 
     public Map<String, Object> get(String taskId) {
         requireRunning();
-        var entry = queries.get("messages", taskId);
+        var entry = queries.get(PROJECT, taskId);
         var task = taskView(entry);
         if (isMessageTask(entry)) {
             var counts = data.observeItemScoreCounts(List.of(taskId)).get(taskId);
@@ -166,7 +167,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
 
     private static boolean isMessageTask(ProjectTaskQueryService.Entry entry) {
         return entry.task() != null && "CLOSE_WHEN_IDLE".equals(entry.task().idleDisposition())
-                && "messages".equals(entry.task().metadata().get("scenario"));
+                && PROJECT.equals(entry.task().metadata().get("scenario"));
     }
     private static Map<String, Object> taskView(ProjectTaskQueryService.Entry entry) {
         var row = new LinkedHashMap<String, Object>();
@@ -200,7 +201,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
         }
         try {
             var snapshot = Jsons.parseObject(entry.result().opaqueResultPayload());
-            if (item == null || !"extension.worker.message.send".equals(item.eventCode())
+            if (item == null || !EVENT.equals(item.eventCode())
                     || !taskId.equals(parameters.get("campaignId")) || !entry.messageId().equals(parameters.get("messageId"))
                     || !STAGES.contains(snapshot.get("status"))) throw new IllegalArgumentException();
             for (String key : List.of("campaignId", "messageId", "country", "recipientId", "body"))

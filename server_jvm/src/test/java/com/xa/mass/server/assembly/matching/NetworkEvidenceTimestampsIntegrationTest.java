@@ -39,7 +39,7 @@ class NetworkEvidenceTimestampsIntegrationTest {
             }
         });
         connection = client.connect(); redis = connection.sync();
-        composition = MatchingComposition.create(client, scope.keyspace(), Map.of(), java.util.List.of());
+        composition = MatchingComposition.create(client, scope.keyspace(), Map.of(), java.util.List.of(), java.util.List.of());
     }
 
     @AfterEach void close() {
@@ -69,7 +69,7 @@ class NetworkEvidenceTimestampsIntegrationTest {
                 scope.keyspace().base() + ":matching:worker:platform-properties:g:/国")).isZero();
         assertThat(redis.ttl(key("g:/国"))).isEqualTo(-1);
         composition.close();
-        composition = MatchingComposition.create(client, scope.keyspace(), Map.of(), java.util.List.of());
+        composition = MatchingComposition.create(client, scope.keyspace(), Map.of(), java.util.List.of(), java.util.List.of());
         assertThat(evidence().filterAndAdvance("g:/国", Map.of("third", 300L))).isEmpty();
     }
 
@@ -127,7 +127,7 @@ class NetworkEvidenceTimestampsIntegrationTest {
     }
 
     @Test void competingConnectionsNeverMoveTheRecordBackwards() throws Exception {
-        try (var other = MatchingComposition.create(client, scope.keyspace(), Map.of(), java.util.List.of());
+        try (var other = MatchingComposition.create(client, scope.keyspace(), Map.of(), java.util.List.of(), java.util.List.of());
                 var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var start = new CountDownLatch(1);
             var tasks = new ArrayList<java.util.concurrent.Future<?>>();

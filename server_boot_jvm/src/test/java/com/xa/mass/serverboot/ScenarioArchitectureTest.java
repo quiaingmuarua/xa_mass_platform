@@ -32,15 +32,17 @@ class ScenarioArchitectureTest {
                     .contains("id 'java-library'", "implementation project(':server_jvm')")
                     .doesNotContain("id 'org.springframework.boot'", "project(':server_boot_jvm')",
                             "project(':distribution:", "project(':scenarios:");
-            if (module.getKey().equals("app-checks-jvm"))
+            if (Set.of("app-checks-jvm", "message-campaigns-jvm").contains(module.getKey()))
                 assertThat(Files.readString(directory.resolve("build.gradle")))
                         .contains("implementation project(':worker_matching_jvm')");
             try (var paths = Files.walk(directory.resolve("src/main/java"))) {
                 for (Path path : paths.filter(p -> p.toString().endsWith(".java")).toList()) {
                     String source = Files.readString(path);
-                    String checked = module.getKey().equals("app-checks-jvm")
-                            ? source.replaceAll("com\\.xa\\.mass\\.workermatching\\.FixedWindowPoolDefinition(?:\\.WindowLimit)?\\b", "public-window-definition-contract")
-                            : source;
+                    String checked = switch (module.getKey()) {
+                        case "app-checks-jvm" -> source.replaceAll("com\\.xa\\.mass\\.workermatching\\.FixedWindowPoolDefinition(?:\\.WindowLimit)?\\b", "public-window-definition-contract");
+                        case "message-campaigns-jvm" -> source.replaceAll("com\\.xa\\.mass\\.workermatching\\.QualifiedCountryDefinition\\b", "public-qualified-country-contract");
+                        default -> source;
+                    };
                     assertThat(checked.replace("com.xa.mass.kernel.assignment.RefillTarget", "public-refill-target-contract")
                             .replace("com.xa.mass.kernel.assignment.EligibilityQuery", "public-refill-query-contract")
                             .replace("com.xa.mass.kernel.assignment.WorkerQuery", "public-item-query-contract")).as(path.toString()).doesNotContain("SpringApplication", "@Profile",

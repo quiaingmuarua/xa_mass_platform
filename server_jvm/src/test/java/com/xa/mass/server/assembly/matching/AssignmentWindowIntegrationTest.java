@@ -31,7 +31,7 @@ class AssignmentWindowIntegrationTest {
         var definition = new FixedWindowPoolDefinition("assignment-window", "worker.assignment.available",
                 "lastAssignedAt", "windowAssignmentCount", Map.of("g", new WindowLimit(60_000, 10)));
         try (var witness = client.connect();
-             var composition = new MatchingComposition(new FactsIndexStore(client, scope.keyspace(), Map.of()), groups, clock::get, List.of(definition))) {
+             var composition = new MatchingComposition(new FactsIndexStore(client, scope.keyspace(), Map.of()), groups, clock::get, List.of(definition), java.util.List.of())) {
             try {
                 var properties = composition.properties();
                 properties.upsertWorkerFactsBatch("g", Map.of("blocked", Map.of(), "new", Map.of(), "bad", Map.of()));
