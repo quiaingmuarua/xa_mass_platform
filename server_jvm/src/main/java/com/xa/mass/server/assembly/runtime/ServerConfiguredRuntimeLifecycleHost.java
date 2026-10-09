@@ -12,6 +12,7 @@ public final class ServerConfiguredRuntimeLifecycleHost
 
     private final com.xa.mass.server.project.ProjectTaskInitializer projectInitializer;
     private final ServerWorkerGroupInitializer groupInitializer;
+    private final ProjectWorkerRequirementsValidator requirements;
     private final WorkerDeliveryAdapterManager adapterManager;
     private final WorkerRouteVerificationBatcher routeVerificationBatcher;
     private boolean started;
@@ -19,11 +20,13 @@ public final class ServerConfiguredRuntimeLifecycleHost
 
     public ServerConfiguredRuntimeLifecycleHost(
             ServerWorkerGroupInitializer groupInitializer,
+            ProjectWorkerRequirementsValidator requirements,
             com.xa.mass.server.project.ProjectTaskInitializer projectInitializer,
             WorkerDeliveryAdapterManager adapterManager,
             WorkerRouteVerificationBatcher routeVerificationBatcher
     ) {
         this.projectInitializer = Objects.requireNonNull(projectInitializer, "projectInitializer");
+        this.requirements = Objects.requireNonNull(requirements, "requirements");
         this.groupInitializer = Objects.requireNonNull(
                 groupInitializer,
                 "groupInitializer"
@@ -51,6 +54,7 @@ public final class ServerConfiguredRuntimeLifecycleHost
 
         try {
             groupInitializer.initialize();
+            requirements.validate();
             projectInitializer.initialize();
         } catch (RuntimeException failure) {
             closed = true;

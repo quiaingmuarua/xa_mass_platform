@@ -24,7 +24,7 @@ import static org.mockito.Mockito.*;
 
 class ScenarioLifecycleTest {
     @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2, 3, 4})
+    @ValueSource(ints = {-1, 0, 1, 2, 3, 4})
     void allScenariosStopBeforePlatformIncludingPartialStartupFailure(int failedRegistration) {
         var registrations = mock(ProjectDirectory.class);
         var submissions = mock(TaskCallSubmissionService.class);
@@ -34,7 +34,10 @@ class ScenarioLifecycleTest {
         var adapters = mock(WorkerDeliveryAdapterManager.class);
         var verifier = mock(WorkerRouteVerificationBatcher.class);
         var initializer = mock(ServerWorkerGroupInitializer.class);
-        var platform = new ServerConfiguredRuntimeLifecycleHost(initializer, mock(com.xa.mass.server.project.ProjectTaskInitializer.class), adapters, verifier);
+        var requirements = mock(ProjectWorkerRequirementsValidator.class);
+        var platform = new ServerConfiguredRuntimeLifecycleHost(initializer, requirements, mock(com.xa.mass.server.project.ProjectTaskInitializer.class), adapters, verifier);
+        if (failedRegistration == -1)
+            doThrow(new IllegalStateException("dependency unavailable")).when(requirements).validate();
         var registrationCount = new AtomicInteger();
         List<String> events = new CopyOnWriteArrayList<>();
         List<SmartLifecycle> scenarios = new CopyOnWriteArrayList<>();
@@ -42,6 +45,7 @@ class ScenarioLifecycleTest {
             context.getEnvironment().setActiveProfiles("preview");
             context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource(
                     "window-fixture", java.util.Map.of(
+                    "xa.mass.scenarios.messages.worker-group-id", "demo-sim",
                     "xa.mass.worker-pools.assignment-window.groups.app-a-sim.window-millis", "60000",
                     "xa.mass.worker-pools.assignment-window.groups.app-b-sim.window-millis", "60000",
                     "xa.mass.worker-pools.assignment-window.groups.app-a-sim.max-count", "10",
@@ -84,7 +88,10 @@ class ScenarioLifecycleTest {
                 events.add("platform-close");
                 return null;
             }).when(adapters).close();
-            if (failedRegistration != 0) {
+            if (failedRegistration == -1) {
+                assertThatThrownBy(context::refresh).hasRootCauseMessage("dependency unavailable");
+                assertThat(scenarios).hasSize(3).allSatisfy(scenario -> assertThat(scenario.isRunning()).isFalse());
+            } else if (failedRegistration != 0) {
                 assertThatThrownBy(context::refresh).hasRootCauseMessage("registration unavailable");
             } else {
                 context.refresh();
@@ -98,6 +105,12 @@ class ScenarioLifecycleTest {
                                 "requestId", "closed", "applicationId", "A", "country", "CN", "listenSeconds", 60)))
                         .isInstanceOf(ListenerService.ProductError.class);
             }
+        }
+        if (failedRegistration == -1) {
+            assertThat(events).isEmpty();
+            assertThat(registrationCount).hasValue(0);
+            verify(adapters, never()).start();
+            return;
         }
         assertThat(events.getFirst()).isEqualTo("platform-start");
         assertThat(events.getLast()).isEqualTo("platform-close");

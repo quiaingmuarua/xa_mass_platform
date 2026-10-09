@@ -124,13 +124,19 @@ its own stable `PARK_WHEN_IDLE` Task. Public Task creation always uses
 `CLOSE_WHEN_IDLE`. Project membership is passive Kernel data; all Tasks retain global scheduling
 through the same Pacer. Pool/refill composition is unchanged.
 
-`xa.mass.project-assembly.projects` is an immutable list of `{project-id,
-worker-group-ids}` declarations. IDs are unique and each Group list is nonempty and
-unique. There is no Project registration, update or deletion API, Redis registry,
-dynamic Group association or default Project. Boot profiles own production values.
+`ProjectDefinition(projectId, workerGroupIds)` is the immutable topology value
+shared by the `xa.mass.project-assembly.projects` configuration list and module
+Beans. ProjectDirectory combines the configuration list with name-sorted module
+declarations into one immutable directory. IDs must be unique across all sources,
+even for identical declarations; Group lists remain nonempty and unique. YAML
+list overlays replace only the configuration contribution, not enabled modules.
+There is no override precedence, merge-by-ID, registration/update/deletion API,
+Redis registry, dynamic association or default Project. Boot owns environment
+bindings; enabled modules can contribute their own Project identities.
 
-Startup initializes configured WorkerGroups, prepares and approves each Project's
-managed Tasks, then starts Adapter ingress and scenarios. An absent Group or
+Startup initializes configured WorkerGroups, validates module dependencies,
+prepares and approves each Project's managed Tasks, then starts Adapter ingress
+and scenarios. An absent Group or
 conflicting Task fails startup. Completed stages survive failure; the next startup
 uses the same coordinates and does not reset existing Scores, Items or creation
 time. Managed IDs encode both UTF-8 coordinates independently with
@@ -695,7 +701,7 @@ and Kernel Binding/Score operations independently of Properties admission.
 ### Worker And Scenario Assembly
 
 The default profile declares no Scenario Group and starts no Adapter. Explicit
-configuration initializes create-only Groups, prepares/approves Project/Group
+configuration initializes create-only Groups, validates declared dependencies, prepares/approves Project/Group
 managed Tasks, then starts Adapter ingress and scenarios. Boot owns the
 [profile and page assembly](../server_boot_jvm/README.md#platform-and-preview).
 Scenarios consume prepared Projects;
@@ -709,8 +715,31 @@ collects both definition Bean lists separately and passes them to
 MatchingComposition; these Beans depend only on configuration or static bindings, never Task services
 or the running Matching instance. Scenario code cannot access Matching stock,
 storage, policy implementations or lifecycle. No Server DTO mirrors the definition.
-The existing Group enablement and Project initialization remain profile-owned.
+Group definitions and Matching enablement remain host-owned; Project declarations
+can come from configuration or module Beans, with one existing initialization path.
 Missing declarations for enabled functions fail startup without a business fallback.
+
+Modules may additionally expose `ProjectDefinition` and `ProjectWorkerRequirements`
+values. Requirements identify one Project/Group pair and exact required event,
+Pool and explicitly Group-enabled function names; empty sets are valid. Duplicate
+pairs, unknown Projects and undeclared Project/Group bindings fail during assembly.
+These Beans depend only on configuration/static bindings, never Task services or
+initialized resources. No lifecycle hook or mutation capability is supplied by them.
+
+`ProjectWorkerRequirementsValidator` is the sole startup dependency reader in
+`assembly.runtime`. After host Group registration it checks Matching's immutable
+enablement and point-reads required Group descriptors through WorkerResourceCatalog,
+deduplicated in caller-owned batches of 100; no requirements cause no reads. It
+checks required events as a subset of the registered descriptor, accepting shared
+Groups with additional capabilities and externally registered Groups absent from
+the host manifest. It never scans, registers, edits or enables resources. A Group
+declaration does not establish that an actual Worker installed the Handler.
+
+Missing dependencies identify Project, Group and missing names; read failure keeps
+its cause. Validation failure prevents subsequent Project initialization and Adapter
+or scenario startup. Completed Group registrations remain; there is no rollback or
+scope cleanup. Pacer's earlier lifecycle phase and context shutdown are unchanged,
+so this is not a transaction or a promise of no other startup effects.
 
 Server never parses Worker files, creates business Definitions or manages a
 Worker process; that belongs to the standalone

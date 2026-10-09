@@ -28,6 +28,7 @@ class ScenarioWorkerProfileContractTest {
     private final ApplicationContextRunner contextRunner =
             new ApplicationContextRunner()
                     .withBean(com.xa.mass.server.project.ProjectTaskInitializer.class, () -> mock(com.xa.mass.server.project.ProjectTaskInitializer.class))
+                    .withBean(com.xa.mass.server.project.ProjectDirectory.class, () -> mock(com.xa.mass.server.project.ProjectDirectory.class))
                     .withUserConfiguration(
                             ServerWorkerDeliveryAdapterConfiguration.class,
                             ServerWorkerAssemblyConfiguration.class,
@@ -50,7 +51,8 @@ class ScenarioWorkerProfileContractTest {
                     );
 
     @EnableConfigurationProperties({WorkerEndpointDirectory.class,
-            com.xa.mass.server.task.call.TaskRpcProperties.class})
+            com.xa.mass.server.task.call.TaskRpcProperties.class,
+            com.xa.mass.server.assembly.matching.MatchingProperties.class})
     @org.springframework.context.annotation.Import(com.xa.mass.server.task.call.RefillTargetConfigurationConverter.class)
     static class EndpointConfiguration {}
 

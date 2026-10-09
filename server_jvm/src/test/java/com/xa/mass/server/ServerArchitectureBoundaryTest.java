@@ -575,7 +575,11 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("ArrayBlockingQueue")
                 .doesNotContain("Thread.ofVirtual()");
 
-        String assembly = readSources(WORKER_ASSEMBLY).replace(
+        String dependencyValidator = Files.readString(WORKER_ASSEMBLY.resolve("ProjectWorkerRequirementsValidator.java"));
+        assertThat(dependencyValidator).contains("workers.getWorkerGroupDescriptors(batch)")
+                .doesNotContain("registerWorker", "sampleWorker", "TaskRuntime", "TaskResourceCatalog", "io.lettuce");
+        String assembly = readSources(WORKER_ASSEMBLY).replace(dependencyValidator, "")
+                .replace("com.xa.mass.kernel.worker.WorkerResourceCatalog workers,", "").replace(
                 "import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;",
                 ""
         );

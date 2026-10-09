@@ -273,7 +273,7 @@ class RuntimeApiControllerTest {
         );
         var projects = new com.xa.mass.server.project.ProjectDirectory(
                 new com.xa.mass.server.project.ProjectAssemblyProperties(List.of(
-                        new com.xa.mass.server.project.ProjectAssemblyProperties.Project("test-project", List.of("phone-tools", "missing-group", "missing")))));
+                        new com.xa.mass.server.project.ProjectDefinition("test-project", List.of("phone-tools", "missing-group", "missing")))), java.util.List.of());
         TaskCreationService taskCreation = new TaskCreationService(
                 workerCatalog,
                 matchingCatalog,

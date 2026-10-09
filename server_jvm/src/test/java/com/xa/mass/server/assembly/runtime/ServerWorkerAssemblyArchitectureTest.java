@@ -32,7 +32,14 @@ class ServerWorkerAssemblyArchitectureTest {
             sources = combined.toString();
         }
 
-        // Group descriptors are allowed; the assembly still cannot call the Catalog.
+        // The one dependency validator may point-read Group descriptors; no other Catalog authority moves here.
+        String validator = Files.readString(root.resolve("ProjectWorkerRequirementsValidator.java"));
+        assertThat(validator).contains("workers.getWorkerGroupDescriptors(batch)")
+                .doesNotContain("registerWorker", "sampleWorker", "TaskRuntime", "TaskResourceCatalog", "io.lettuce");
+        var ownerCalls = java.util.regex.Pattern.compile("workers\\.(\\w+)\\(").matcher(validator);
+        while (ownerCalls.find()) assertThat(ownerCalls.group(1)).isEqualTo("getWorkerGroupDescriptors");
+        sources = sources.replace(validator, "")
+                .replace("com.xa.mass.kernel.worker.WorkerResourceCatalog workers,", "");
         sources = sources.replace(
                 "import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;",
                 ""

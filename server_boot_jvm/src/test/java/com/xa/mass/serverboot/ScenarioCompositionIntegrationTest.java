@@ -58,7 +58,12 @@ class ScenarioCompositionIntegrationTest {
             assertThat(context.getBeansOfType(AppCheckTaskService.class)).hasSize(preview ? 1 : 0);
             assertThat(context.getBeansOfType(WorkerPropertyProjection.class)).hasSize(preview ? 2 : 0);
             assertThat(context.getBeansOfType(com.xa.mass.workermatching.QualifiedCountryDefinition.class)).hasSize(preview ? 1 : 0);
+            assertThat(context.getBeansOfType(com.xa.mass.server.project.ProjectDefinition.class)).hasSize(preview ? 1 : 0);
+            assertThat(context.getBeansOfType(com.xa.mass.server.project.ProjectWorkerRequirements.class)).hasSize(preview ? 1 : 0);
             if (preview) {
+                assertThat(context.getBean(com.xa.mass.server.project.ProjectAssemblyProperties.class).projects())
+                        .extracting(com.xa.mass.server.project.ProjectDefinition::projectId).containsExactly("sms", "app-checks");
+                assertThat(context.getBean(com.xa.mass.server.project.ProjectDefinition.class).projectId()).isEqualTo("messages");
                 var messageSupply = context.getBean(com.xa.mass.workermatching.QualifiedCountryDefinition.class);
                 assertThat(messageSupply).isEqualTo(new com.xa.mass.workermatching.QualifiedCountryDefinition(
                         "messaging", "worker.messaging.available", "worker.messaging.phone", "messaging.enabled", "true", "country"));

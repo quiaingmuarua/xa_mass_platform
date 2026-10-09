@@ -7,10 +7,11 @@ xa:
       projects:
         - project-id: sms
           worker-group-ids: [demo-sim]
-        - project-id: messages
-          worker-group-ids: [demo-sim]
         - project-id: app-checks
           worker-group-ids: [app-a-sim, app-b-sim]
+    scenarios:
+      messages:
+        worker-group-id: demo-sim
     task-rpc:
       refill-by-worker-group:
         demo-sim:

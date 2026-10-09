@@ -252,6 +252,12 @@ application/dependency/lifecycle changes, and [Boot](server_boot_jvm/README.md)
 for profile composition. [Coexistence](integrations/scenario-coexistence/README.md)
 is the business proof entrypoint.
 
+Messages contributes immutable Project and resource-requirement declarations.
+Server validates dependencies between host Group initialization and Project Task
+initialization. Shared Group definitions remain host-owned; scenario requirements
+may read through the startup validator but must not register, amend or enable
+resources. Configuration and module Project identities cannot shadow each other.
+
 ## Verification
 
 Use [TESTING.md](TESTING.md) for claim-based proof selection and commands.

@@ -3,8 +3,8 @@
 Status: current Messages business owner.
 
 Messages 承载消息发送及后续送达、已读和连续回复的 tracked 业务过程。
-当前发送通过 `messages` Project 下有限 Task 提交，Task 结束后仍可接收后续响应；共享资源拓扑由
-[Boot](../../server_boot_jvm/README.md#platform-and-preview) 装配。
+当前发送通过模块声明的 `messages` Project 下有限 Task 提交，Task 结束后仍可接收后续响应；
+共享 Group 和环境绑定由 [Boot](../../server_boot_jvm/README.md#platform-and-preview) 提供。
 
 ## 归属与流程变化
 
@@ -37,6 +37,11 @@ Lab 接收生成 delivered / 后续 read、reply → HTTP 回调原 Worker Repor
 ## Worker 供给与装配
 
 `MessageWorkerSupply` 集中 Project、发送事件、Pool、查询名称和 Worker 资格字段。
+同一个装配入口从严格配置 `xa.mass.scenarios.messages.worker-group-id` 取得 Group，
+注册 `ProjectDefinition`、`ProjectWorkerRequirements` 和资格定义，并将同一 Group
+传给业务服务。Group 无默认值，不回退到 `scenarioWorkerGroup` String Bean；未知字段拒绝。
+Project 身份固定为 `messages`，由模块声明，不在宿主 Project 列表重复配置。
+
 `MessageCampaignsScenarioConfiguration` 注册纯数据 `QualifiedCountryDefinition`：
 Pool=`messaging`、库存查询=`worker.messaging.available`、定向查询=`worker.messaging.phone`，
 要求 Worker Properties 的 `messaging.enabled` 精确等于字符串 `true`，国家取 `country`。
@@ -50,8 +55,13 @@ Index 后核对当前 Facts，仍共享同一物理 `phone` 索引。基础失�
 [Matching Owner](../../worker_matching_jvm/README.md#qualified-country-declarations)。
 
 此次装配迁移保留所有 HTTP、供给／查询名称和输入、Task／Item／Result 与 Properties 格式，
-存量任务无需重建。Project／Group 初始化、tracked Reporter 及提交流程沿用既有路径。
+存量任务无需重建。Project／Group 初始化、tracked Reporter 及提交流程沿用既有 Owner 路径。
 平台测试显式提供自己的声明 fixture，不依赖本模块，也不在缺失声明时恢复内置默认规则。
+
+当前业务 API 同时提供普通发送和指定号码发送，因此模块要求 send 事件、`messaging` Pool
+以及上述两个函数。Server 在 Group 初始化后、Project Task 初始化前检查依赖；允许共享
+Group 具有其他事件和资源，也允许使用外部已注册的 Group。需求只校验，不补注册事件、
+启用 Matching 资源或覆盖 Group 属性。校验通过不证明真实 Worker 已安装事件 Handler。
 
 ## API 与业务输入
 
@@ -149,9 +159,14 @@ python integrations/scenario-coexistence/run_proof.py --scenario lifecycle
 results:load 核对，不恢复 UI 分页。固定 1000 Worker 负载保持显式选择，不作本片性能宣称。
 Redis Owner 证明展示字段 create-only、创建时间不刷新和数量命令预算；Boot 证明真实部分
 追加未确认、迟到执行结果及 Server 重启后直接读取配置和最新回复。
+额外的 Messages-only Boot 装配证明不加载 SMS/App Checks API，真实发送完成后仍可送达、
+已读及连续回复；外部 Group 绑定和重启保留 managed Task 身份与创建时间。缺失 Group、
+事件或 Matching 依赖使启动失败，Project Task 不会被创建，已完成的 Group 注册不回滚。
 
 ## Project ownership
 
-场景只消费 [Boot 准备的目录](../../server_boot_jvm/README.md#platform-and-preview)，不注册
-Group/Project；所有新消息任务使用 projectId=messages。
-无需迁移或清理业务数据；新增展示字段缺失表示未知，读取不会补写。
+场景贡献不可变 Project 和资源需求声明，由 Server 组合配置列表与模块声明并统一准备目录；
+场景不直接创建资源，所有新消息任务使用 projectId=messages。重复 Project 声明包括相同
+内容均拒绝启动。现有外部配置应删除 `messages` Project 列表项，并设置显式 Group 绑定；
+SMS 的现有装配不迁移。Project／Group／managed refill 不变时无需迁移或清理业务数据，
+读取也不会补写。改变 Group 是新的资源关联，不会自动搬迁既有 Task 或结果。

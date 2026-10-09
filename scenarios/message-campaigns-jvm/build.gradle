@@ -9,6 +9,7 @@ tasks.withType(JavaCompile).configureEach { options.compilerArgs.add('-parameter
 dependencies {
     implementation platform(SpringBootPlugin.BOM_COORDINATES)
     implementation 'org.springframework:spring-webmvc'
+    implementation 'org.springframework.boot:spring-boot'
     implementation 'com.fasterxml.jackson.core:jackson-annotations'
     implementation project(':server_jvm')
     implementation project(':worker_matching_jvm')

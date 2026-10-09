@@ -18,7 +18,7 @@ import static org.mockito.Mockito.*;
 
 class ProjectTaskQueryServiceTest {
     private final ProjectDirectory projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(
-            new ProjectAssemblyProperties.Project("p", List.of("g")))));
+            new ProjectDefinition("p", List.of("g")))), java.util.List.of());
     private final TaskResourceCatalog tasks = mock(TaskResourceCatalog.class);
     private final TaskScoreBandCore scores = mock(TaskScoreBandCore.class);
     private final ProjectTaskQueryService service = new ProjectTaskQueryService(projects, tasks, scores);

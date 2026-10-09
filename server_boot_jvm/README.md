@@ -20,7 +20,7 @@ their platform behavior. `preview` imports [SMS Reception](../scenarios/sms-rece
 [App Checks](../scenarios/app-checks-jvm/README.md). There is one
 fixed preview assembly, without per-business deployment profiles or selection.
 
-`application-preview.yaml` owns this fixed Project/Group composition:
+Preview's host configuration and enabled module declarations form this topology:
 
 | Project | Groups | Declared events and Matching resources |
 | --- | --- | --- |
@@ -34,8 +34,12 @@ Messages contributes `QualifiedCountryDefinition` for `messaging`,
 Properties requirement `messaging.enabled="true"` and country field `country`.
 These names are scenario declarations rather than built-in Matching branches.
 The existing Group configuration enables the resources; qualified Phone lookup
-still needs only the shared `phone` index and no Pool. No new configuration prefix,
-Platform Properties projection or Task/Item data migration is introduced.
+still needs only the shared `phone` index and no Pool. Messages explicitly binds
+`xa.mass.scenarios.messages.worker-group-id=demo-sim`, contributes its `messages`
+Project and declares its send event/Pool/function requirements. It no longer uses
+the shared String Bean, which remains for SMS. Missing/blank bindings and unknown
+fields fail configuration. No Platform Properties projection or Task/Item data
+migration is introduced.
 Each App Group enables `assignment-window`. App Checks contributes its immutable
 Pool definition and binds `xa.mass.worker-pools.assignment-window.groups.<group>`
 with explicit `window-millis=60000` and `max-count=10`. Its projection uses the
@@ -47,8 +51,9 @@ strict configuration binding; window length stays fixed within an existing scope
 Direct `workerId` is available in every Group; phone-directed
 Messages declares no Pool supply. Matching owns the
 [query and index contracts](../worker_matching_jvm/README.md#identity-and-phone-query-functions).
-Server prepares Groups and Project managed Tasks before Adapter startup. Scenarios consume the
-immutable Project directory; they no longer register Groups. A declaration is not evidence
+Server initializes host Groups, validates module dependencies and prepares Project
+managed Tasks before Adapter startup. Scenarios consume the immutable Project
+directory; they do not register or amend Groups. A declaration is not evidence
 that the real Worker installed those handlers.
 
 Boot assembles each scenario to start after the platform lifecycle is ready; a scenario
@@ -147,19 +152,32 @@ finite vertical Worker proof.
 
 ## Project topology
 
-Production profiles declare `xa.mass.project-assembly.projects` as a list:
+Production profiles can declare `xa.mass.project-assembly.projects` as a list:
 
 ```yaml
 xa:
   mass:
     project-assembly:
       projects:
-        - project-id: messages
+        - project-id: sms
           worker-group-ids: [demo-sim]
 ```
 
-List overlays replace the whole topology. A proof or deployment replacing the Group
-manifest must also explicitly replace the Project list with its exact Groups.
+List overlays replace configuration-owned Projects only. Module `ProjectDefinition`
+Beans contribute additional Projects through the same immutable directory; duplicate
+IDs across either source fail even when their Group lists match. Preview therefore
+keeps SMS/App Checks in the list and declares Messages through its module. Existing
+external configurations must remove the `messages` list entry and explicitly set
+`xa.mass.scenarios.messages.worker-group-id`; the old String Bean is not a fallback.
+Changing the list does not disable an imported module. Module selection remains
+explicit static Configuration assembly, with no new production profile or switch.
+
+A proof or deployment changing Groups must update both its configuration-owned
+Project list and enabled modules' Group bindings. Shared Group definitions remain
+host-owned; module requirements only validate subsets and can use an already
+registered Group without a host creation entry. Reusing the same Project/Group and
+managed refill retains the existing derived Task ID and descriptor. Changing Group
+is a new binding, not an implicit data migration.
 Default and AgentForge have empty Project lists; downstream deployments provide
 Groups and Projects before startup when managed Calls are required. An external
 Group registration alone creates no Task. Projects have no mutation API.

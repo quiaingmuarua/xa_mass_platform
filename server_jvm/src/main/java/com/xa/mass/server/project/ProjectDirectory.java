@@ -7,21 +7,27 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Comparator;
 import org.springframework.stereotype.Service;
 
-/** Immutable configuration only. Reading this directory never prepares Runtime resources. */
+/** Immutable configuration and module declarations. Reads never prepare Runtime resources. */
 @Service
 public final class ProjectDirectory {
     private final Map<String, ProjectView> projects;
 
-    public ProjectDirectory(ProjectAssemblyProperties properties) {
+    public ProjectDirectory(ProjectAssemblyProperties properties, List<ProjectDefinition> declarations) {
+        var definitions = new ArrayList<>(properties.projects());
+        definitions.addAll(declarations.stream().sorted(Comparator.comparing(ProjectDefinition::projectId)).toList());
         var result = new LinkedHashMap<String, ProjectView>();
-        for (var project : properties.projects()) {
+        for (var project : definitions) {
             var tasks = new LinkedHashMap<String, String>();
             for (String group : project.workerGroupIds()) {
                 tasks.put(group, managedTaskId(project.projectId(), group));
             }
-            result.put(project.projectId(), new ProjectView(project.projectId(), tasks));
+            if (result.putIfAbsent(project.projectId(), new ProjectView(project.projectId(), tasks)) != null)
+                throw new IllegalArgumentException("Duplicate Project ID across startup declarations: " + project.projectId());
         }
         projects = Collections.unmodifiableMap(result);
     }
