@@ -83,7 +83,11 @@ and a 5s client timeout.
 Reference saturation cases (`sat-task-any`, `sat-task-targeted`) seed 600,000
 Items per Group before approval, warm for 15s, then measure a 30s window without
 HTTP submissions. Each repetition has independent Redis, Server, Host and JFR;
-the existing workflow repetition input still controls both paths (default 3).
+seed keeps one append request in flight per Task, with the two Tasks processed
+concurrently. A failed batch stops further seeding after already-started requests
+settle, without retry or approval. Action failures retain HTTP status and numeric
+API error code in the safe summary, without response bodies or server messages.
+The existing workflow repetition input still controls both paths (default 3).
 Closing and draining happen after the fixed window. The Java
 reader counts non-sampled, successful `RESULT_STORED` batch events in that
 window and reconciles full-lifecycle claims, publications and stores against
@@ -183,7 +187,8 @@ Screen Any at (CPUs, Workers/Group): (4,1000), (8,1000), (16,1000),
 15 seconds and measures 30 seconds. Select the highest valid throughput profile
 and freeze it for five Any and three interleaved targeted runs. Each confirmation
 pre-seeds 2,000,000 Items per Group, warms 30 seconds and measures 120 seconds.
-Append batches stay 100 with concurrency 16; Item TTL is 30 minutes. After
+Append batches stay 100, serial within each Task and concurrent across the two Tasks;
+Item TTL is 30 minutes. Seed remains outside the measured window. After
 measurement, close both Tasks, wait at most 60 seconds for quiet Workers, and
 verify each export identity and MD5 payload. Unexecuted backlog is expected.
 

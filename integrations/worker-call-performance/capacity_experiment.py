@@ -136,7 +136,7 @@ def run_case(runner, root, config_path, config, profile, stage, path, repetition
         runner.write_json(evidence / "effective-config.json", dict(experiment=config, profile=profile, stage=stage,
             cpuIds=cpu_ids, serverOverrides=flags, jvmOptions={**{r: jvm(r) for r in ("server", "host")},
                 "harness": [f"-Xmx{resources['harnessHeapMiB']}m", "-XX:+ExitOnOutOfMemoryError"]},
-            appendBatch=100, appendConcurrency=16,
+            appendBatch=100, appendConcurrency=len(runner.LANE_GROUPS), appendConcurrencyPerTask=1,
             mechanismConstants=runner.LANE_MECHANISM_CONSTANTS,
             redisContainer=runner.command(["docker", "inspect", container, "--format",
                                           "{{json .HostConfig.CpusetCpus}} {{.HostConfig.Memory}} {{.HostConfig.MemorySwap}}"])))

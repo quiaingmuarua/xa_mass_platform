@@ -13,6 +13,36 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 class CallApiTest {
+    @Test void actionErrorsKeepOnlyStatusAndIntegerCodeWithoutChangingUnavailableClassification() throws Exception {
+        var requests = new AtomicInteger();
+        var status = new AtomicInteger(503);
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            requests.incrementAndGet();
+            byte[] body = (status.get() == 503 ? "{\"code\":12003,\"message\":\"private\"}" : "private malformed body")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(status.get(), body.length);
+            exchange.getResponseBody().write(body); exchange.close();
+        });
+        server.start();
+        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused")) {
+            assertThatThrownBy(() -> api.post("/action", Map.of()))
+                    .isInstanceOfSatisfying(CallApi.Unavailable.class, error -> {
+                        assertThat(error.httpStatus).isEqualTo(503);
+                        assertThat(error.errorCode).isEqualTo(12003);
+                        assertThat(error).hasMessageNotContaining("private");
+                    });
+            status.set(400);
+            assertThatThrownBy(() -> api.post("/action", Map.of()))
+                    .isInstanceOfSatisfying(CallApi.ActionFailure.class, error -> {
+                        assertThat(error.errorCode).isNull();
+                        assertThat(error).hasMessage("Observation/action HTTP 400 at /action");
+                    });
+            assertThat(requests).hasValue(2);
+        } finally { server.stop(0); }
+    }
+
     @Test void callUsesFlatSelectorAndDoesNotRetryUnknownHttpOutcome() throws Exception {
         var count = new AtomicInteger();
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

@@ -10,10 +10,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Saturation-mode performance-lane case: each Group receives a fresh finite Task with a deep
@@ -27,7 +26,6 @@ final class LaneSaturation {
     }
     static final int ITEMS_PER_GROUP = 150_000;
     static final int APPEND_BATCH = 100;
-    static final int APPEND_CONCURRENCY = 16;
 
     private LaneSaturation() {}
 
@@ -124,6 +122,10 @@ final class LaneSaturation {
             failure = error;
             summary.put("failureType", error.getClass().getSimpleName());
             if (error instanceof IllegalStateException) summary.put("failure", error.getMessage());
+            if (error instanceof CallApi.ActionFailure action) {
+                summary.put("httpStatus", action.httpStatus);
+                if (action.errorCode != null) summary.put("errorCode", action.errorCode);
+            }
         } finally {
             summary.put("invalidReasons", invalid);
             summary.put("workerSamples", workerSamples);
@@ -141,30 +143,28 @@ final class LaneSaturation {
                 "refill", refill, "priority", 50, "maxRetryTimes", 3)), "taskId");
     }
 
-    /** Appends every Item before approval, so the window starts with the complete backlog. */
-    private static void seed(CallApi api, Path path, Map<String, List<String>> world, Map<String, String> tasks,
+    /** One append at a time per Task; independent Tasks seed concurrently, all before approval. */
+    static void seed(CallApi api, Path path, Map<String, List<String>> world, Map<String, String> tasks,
                              String prefix, ExperimentConfig.Settings settings) throws Exception {
-        var permits = new Semaphore(APPEND_CONCURRENCY);
-        var failures = ConcurrentHashMap.<String>newKeySet();
+        var failure = new AtomicReference<Exception>();
         try (var execution = Executors.newVirtualThreadPerTaskExecutor()) {
             for (String group : LaneWorld.GROUPS) {
                 var ids = world.get(group);
-                for (int offset = 0; offset < settings.items(); offset += APPEND_BATCH) {
-                    int first = offset;
-                    permits.acquire();
-                    execution.execute(() -> {
-                        try {
-                            appendBatch(api, tasks.get(group), items(path, group, ids, prefix, first, settings.ttlMillis()));
-                        } catch (Exception error) {
-                            failures.add(error.getClass().getSimpleName());
-                        } finally {
-                            permits.release();
+                execution.execute(() -> {
+                    try {
+                        for (int offset = 0; offset < settings.items() && failure.get() == null; offset += APPEND_BATCH) {
+                            appendBatch(api, tasks.get(group), items(path, group, ids, prefix, offset, settings.ttlMillis()));
                         }
-                    });
-                }
+                    } catch (Exception error) {
+                        if (error instanceof InterruptedException) Thread.currentThread().interrupt();
+                        failure.compareAndSet(null, error);
+                    }
+                });
             }
         }
-        if (!failures.isEmpty()) throw new IllegalStateException("Saturation seeding failed: " + failures);
+        if (failure.get() instanceof CallApi.ActionFailure action) throw action;
+        if (failure.get() != null)
+            throw new IllegalStateException("Saturation seeding failed: " + failure.get().getClass().getSimpleName(), failure.get());
     }
 
     static List<Map<String, Object>> items(Path path, String group, List<String> ids, String prefix, int first) {

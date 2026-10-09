@@ -17,9 +17,20 @@ final class CallApi implements AutoCloseable {
     static final String INPUT = "x".repeat(64);
     enum ExpectedResult { MD5, DELAY }
 
+    /** Safe action diagnostics: never retain or publish an error body or its message. */
+    static class ActionFailure extends IllegalStateException {
+        final int httpStatus;
+        final Integer errorCode;
+        ActionFailure(int httpStatus, Integer errorCode, String path) {
+            super("Observation/action HTTP " + httpStatus + (errorCode == null ? "" : " code=" + errorCode) + " at " + path);
+            this.httpStatus = httpStatus;
+            this.errorCode = errorCode;
+        }
+    }
+
     /** A temporarily unavailable Runtime Owner (HTTP 503); readiness polling may observe again. */
-    static final class Unavailable extends IllegalStateException {
-        Unavailable(String message) { super(message); }
+    static final class Unavailable extends ActionFailure {
+        Unavailable(Integer errorCode, String path) { super(503, errorCode, path); }
     }
     private final java.util.concurrent.ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final HttpClient http = HttpClient.newBuilder().executor(executor)
@@ -39,9 +50,16 @@ final class CallApi implements AutoCloseable {
 
     private Map<String, Object> json(String url, Object body, Duration timeout) throws Exception {
         var response = send(url, body, timeout);
-        String failure = "Observation/action HTTP " + response.statusCode() + " at " + URI.create(url).getPath();
-        if (response.statusCode() == 503) throw new Unavailable(failure);
-        if (response.statusCode() != 200) throw new IllegalStateException(failure);
+        if (response.statusCode() != 200) {
+            Integer code = null;
+            try {
+                Object value = Jsons.parseObject(response.body()).get("code");
+                if (value instanceof Number number && number.doubleValue() == number.intValue()) code = number.intValue();
+            } catch (RuntimeException ignored) { /* Status remains usable when the error body is not structured. */ }
+            String path = URI.create(url).getPath();
+            if (response.statusCode() == 503) throw new Unavailable(code, path);
+            throw new ActionFailure(response.statusCode(), code, path);
+        }
         return Jsons.parseObject(response.body());
     }
 
