@@ -8,9 +8,16 @@ import java.util.function.LongSupplier;
 public final class WorkerCandidatePool {
     static final long CANDIDATE_TTL_MILLIS = 60_000;
 
-    private record Entry(WorkerCandidate candidate, long admittedAtMillis) { }
+    private static final class Entry {
+        final WorkerCandidate candidate;
+        final long admittedAtMillis;
+        final Map<String, Long> availableAt;
+        Entry(WorkerCandidate candidate, long admittedAtMillis, Map<String, Long> availableAt) {
+            this.candidate = candidate; this.admittedAtMillis = admittedAtMillis; this.availableAt = new LinkedHashMap<>(availableAt);
+        }
+    }
     private static final class Stock {
-        final Map<String, ArrayDeque<Entry>> buckets = new LinkedHashMap<>();
+        final Map<String, LinkedHashMap<Entry, Entry>> buckets = new LinkedHashMap<>();
     }
 
     private final Map<String, Stock> groups = new HashMap<>();
@@ -37,11 +44,95 @@ public final class WorkerCandidatePool {
         var accepted = new ArrayList<WorkerCandidate>();
         for (var candidate : offered) {
             if (!budget.acquire(stock)) break;
-            stock.buckets.computeIfAbsent(bucketKey, ignored -> new ArrayDeque<>()).addLast(new Entry(candidate, now));
+            Entry entry = new Entry(candidate, now, Map.of(bucketKey, 0L));
+            stock.buckets.computeIfAbsent(bucketKey, ignored -> new LinkedHashMap<>()).put(entry, entry);
             accepted.add(candidate);
         }
         if (!accepted.isEmpty()) groups.put(group, stock);
         return List.copyOf(accepted);
+    }
+
+    /** Shared time-qualified snapshots. Deferred views are replaceable and do not count as ready stock. */
+    public synchronized List<WorkerCandidate> offerSharedBatch(String group,
+            Map<WorkerCandidate, Map<String, Long>> candidates, Map<String, Integer> targets) {
+        identity(group);
+        var captured = new LinkedHashMap<WorkerCandidate, Map<String, Long>>();
+        var limits = Map.copyOf(targets);
+        candidates.forEach((candidate, availability) -> {
+            identity(candidate.workerId());
+            if (candidate.expectedScore() == 0) throw new IllegalArgumentException("strict candidate required");
+            var values = Collections.unmodifiableMap(new LinkedHashMap<>(availability));
+            values.forEach((key, at) -> {
+                identity(key);
+                if (limits.getOrDefault(key, 0) < 1 || at < 0) throw new IllegalArgumentException("invalid timed bucket");
+            });
+            captured.put(candidate, values);
+        });
+        if (captured.values().stream().mapToInt(Map::size).sum() > 1000)
+            throw new IllegalArgumentException("at most 1000 shared references per admission");
+        discardExpired(group);
+        Stock stock = groups.getOrDefault(group, new Stock());
+        var admitted = new LinkedHashMap<WorkerCandidate, Entry>();
+        long now = clock.getAsLong();
+        // Ready references always get first use of the bounded capacity.
+        for (boolean readyPass : new boolean[]{true, false}) for (var row : captured.entrySet()) {
+            for (var view : row.getValue().entrySet()) {
+                boolean ready = view.getValue() <= now;
+                if (ready != readyPass) continue;
+                String key = view.getKey();
+                var bucket = stock.buckets.get(key);
+                if (bucket != null && bucket.size() >= limits.get(key)) {
+                    if (!ready) continue;
+                    // Targets are refill watermarks, not reservations. Keep the qualified
+                    // ready batch under the resource budget instead of discarding its fences.
+                    replaceDeferred(stock, List.of(key), now);
+                }
+                if (budget.room(stock) == 0 && (!ready || !replaceDeferred(stock, List.copyOf(stock.buckets.keySet()), now))) continue;
+                if (!budget.acquire(stock)) continue;
+                Entry entry = admitted.computeIfAbsent(row.getKey(), candidate -> new Entry(candidate, now, Map.of()));
+                entry.availableAt.put(key, view.getValue());
+                stock.buckets.computeIfAbsent(key, ignored -> new LinkedHashMap<>()).put(entry, entry);
+            }
+        }
+        if (!stock.buckets.isEmpty()) groups.put(group, stock);
+        return List.copyOf(admitted.keySet());
+    }
+
+    private boolean replaceDeferred(Stock stock, List<String> keys, long now) {
+        for (String key : keys) {
+            var bucket = stock.buckets.get(key);
+            if (bucket == null) continue;
+            Entry found = null;
+            for (Entry entry : bucket.values()) if (entry.availableAt.get(key) > now) { found = entry; break; }
+            if (found == null) continue;
+            bucket.remove(found); found.availableAt.remove(key);
+            if (bucket.isEmpty()) stock.buckets.remove(key);
+            budget.replaceDeferred(stock);
+            return true;
+        }
+        return false;
+    }
+
+    /** Deferred references can make room for fresh eligible stock without a Worker/Facts scan. */
+    public synchronized int leaseSupplyCapacity(String group) {
+        identity(group);
+        Stock stock = groups.get(group);
+        if (stock == null) return budget.room(null);
+        long now = clock.getAsLong();
+        int deferred = 0;
+        for (var bucket : stock.buckets.entrySet())
+            for (Entry entry : bucket.getValue().values()) if (entry.availableAt.get(bucket.getKey()) > now) deferred++;
+        return budget.room(stock) + deferred;
+    }
+
+    /** Capacity pressure may discard deferred hints; ready stock is preserved. */
+    public synchronized void reclaimDeferred(String group) {
+        Stock stock = groups.get(group);
+        if (stock == null || budget.room(stock) != 0) return;
+        long now = clock.getAsLong();
+        var keys = List.copyOf(stock.buckets.keySet());
+        while (replaceDeferred(stock, keys, now)) { /* At most the resident reference budget. */ }
+        if (stock.buckets.isEmpty()) groups.remove(group);
     }
 
     /** Lexicographic bucket order, FIFO within each bucket; an empty set matches nothing. */
@@ -56,8 +147,7 @@ public final class WorkerCandidatePool {
         for (String key : keys) {
             var bucket = stock.buckets.get(key);
             if (bucket != null) {
-                pollBucket(stock, bucket, limit, now, result);
-                if (bucket.isEmpty()) stock.buckets.remove(key);
+                pollBucket(stock, key, bucket, limit, now, result);
             }
             if (result.size() == limit) break;
         }
@@ -72,26 +162,36 @@ public final class WorkerCandidatePool {
         if (limit == 0 || stock == null) return List.of();
         long now = clock.getAsLong();
         var result = new ArrayList<WorkerCandidate>();
-        var buckets = stock.buckets.values().iterator();
-        while (buckets.hasNext() && result.size() < limit) {
-            var bucket = buckets.next();
-            pollBucket(stock, bucket, limit, now, result);
-            if (bucket.isEmpty()) buckets.remove();
+        for (String key : List.copyOf(stock.buckets.keySet())) {
+            var bucket = stock.buckets.get(key);
+            if (bucket != null) pollBucket(stock, key, bucket, limit, now, result);
+            if (result.size() == limit) break;
         }
         if (stock.buckets.isEmpty()) groups.remove(group);
         return List.copyOf(result);
     }
 
-    private void pollBucket(Stock stock, ArrayDeque<Entry> bucket, int limit, long now,
+    private void pollBucket(Stock stock, String key, LinkedHashMap<Entry, Entry> bucket, int limit, long now,
             List<WorkerCandidate> result) {
-        int expired = 0, consumed = 0;
-        while (!bucket.isEmpty() && result.size() < limit) {
-            Entry entry = bucket.removeFirst();
-            if (expired(entry, now)) expired++;
-            else { result.add(entry.candidate()); consumed++; }
+        while (!bucket.isEmpty() && expired(bucket.firstEntry().getValue(), now)) remove(stock, bucket.firstEntry().getValue(), true);
+        var selected = new ArrayList<Entry>();
+        for (Entry entry : bucket.values()) {
+            if (result.size() + selected.size() == limit) break;
+            if (entry.availableAt.get(key) <= now) selected.add(entry);
         }
-        budget.release(stock, expired, true);
-        budget.release(stock, consumed, false);
+        for (Entry entry : selected) { remove(stock, entry, false); result.add(entry.candidate); }
+    }
+
+    private void remove(Stock stock, Entry entry, boolean expiration) {
+        int removed = 0;
+        for (String key : entry.availableAt.keySet()) {
+            var bucket = stock.buckets.get(key);
+            if (bucket != null && bucket.remove(entry) != null) {
+                removed++;
+                if (bucket.isEmpty()) stock.buckets.remove(key);
+            }
+        }
+        budget.release(stock, removed, expiration);
     }
 
     /** Resident entry counts, including entries not yet lazily checked for age. */
@@ -103,6 +203,19 @@ public final class WorkerCandidatePool {
         return Collections.unmodifiableMap(counts);
     }
 
+    /** Partitioned pools count live local references before deciding whether a target is full. */
+    public synchronized Map<String, Integer> liveCountByKey(String group) {
+        discardExpired(group);
+        var counts = new LinkedHashMap<String, Integer>();
+        Stock stock = groups.get(group);
+        long now = clock.getAsLong();
+        if (stock != null) stock.buckets.forEach((key, bucket) -> {
+            int ready = (int) bucket.values().stream().filter(entry -> entry.availableAt.get(key) <= now).count();
+            if (ready > 0) counts.put(key, ready);
+        });
+        return Collections.unmodifiableMap(counts);
+    }
+
     public synchronized int remainingCapacity(String group) {
         identity(group);
         return budget.room(groups.get(group));
@@ -110,26 +223,25 @@ public final class WorkerCandidatePool {
 
     /** Called by Matching under capacity pressure; no timer or cross-Pool ownership. */
     public synchronized void discardExpired() {
+        for (String group : List.copyOf(groups.keySet())) discardExpired(group);
+    }
+
+    private void discardExpired(String group) {
         long now = clock.getAsLong();
-        var stocks = groups.values().iterator();
-        while (stocks.hasNext()) {
-            Stock stock = stocks.next();
-            var buckets = stock.buckets.values().iterator();
-            int expired = 0;
-            while (buckets.hasNext()) {
-                var bucket = buckets.next();
-                while (!bucket.isEmpty() && expired(bucket.getFirst(), now)) {
-                    bucket.removeFirst(); expired++;
-                }
-                if (bucket.isEmpty()) buckets.remove();
+        Stock stock = groups.get(group);
+        if (stock == null) return;
+        for (String key : List.copyOf(stock.buckets.keySet())) {
+            var bucket = stock.buckets.get(key);
+            if (bucket == null) continue;
+            while (!bucket.isEmpty() && expired(bucket.firstEntry().getValue(), now)) {
+                remove(stock, bucket.firstEntry().getValue(), true);
             }
-            budget.release(stock, expired, true);
-            if (stock.buckets.isEmpty()) stocks.remove();
         }
+        if (stock.buckets.isEmpty()) groups.remove(group);
     }
 
     private static boolean expired(Entry entry, long now) {
-        return now - entry.admittedAtMillis() >= CANDIDATE_TTL_MILLIS;
+        return now - entry.admittedAtMillis >= CANDIDATE_TTL_MILLIS;
     }
     private static void identity(String value) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("non-blank identity required");

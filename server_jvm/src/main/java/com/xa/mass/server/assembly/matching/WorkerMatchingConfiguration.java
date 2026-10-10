@@ -4,6 +4,7 @@ import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
 import com.xa.mass.workermatching.MatchingComposition;
 import com.xa.mass.workermatching.FixedWindowPoolDefinition;
 import com.xa.mass.workermatching.QualifiedCountryDefinition;
+import com.xa.mass.workermatching.PartitionedLeasePoolDefinition;
 import java.util.List;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.WorkerProperties;
@@ -17,8 +18,9 @@ import org.springframework.context.annotation.Configuration;
 public class WorkerMatchingConfiguration {
     @Bean(destroyMethod="close")
     MatchingComposition matchingComposition(RedisClient client, XaMassRedisProperties redis, MatchingProperties config,
-            List<FixedWindowPoolDefinition> definitions, List<QualifiedCountryDefinition> qualifiedDefinitions) {
-        return MatchingComposition.create(client,redis.keyspace(),config.groups(),definitions,qualifiedDefinitions);
+            List<FixedWindowPoolDefinition> definitions, List<QualifiedCountryDefinition> qualifiedDefinitions,
+            List<PartitionedLeasePoolDefinition> leaseDefinitions) {
+        return MatchingComposition.create(client,redis.keyspace(),config.groups(),definitions,qualifiedDefinitions, leaseDefinitions);
     }
 
     @Bean(destroyMethod="")

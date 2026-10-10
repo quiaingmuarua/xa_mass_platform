@@ -51,6 +51,12 @@ public final class TaskRpcWaitRegistry {
             Map<String, TaskItemResult> observedResults,
             DeferredResult<Map<String, TaskItemResultResponse>> deferred
     ) {
+        return tryRegister(taskId, messageIds, observedResults, deferred, java.util.function.Function.identity());
+    }
+
+    public <T> boolean tryRegister(String taskId, List<String> messageIds,
+            Map<String, TaskItemResult> observedResults, DeferredResult<T> deferred,
+            java.util.function.Function<Map<String, TaskItemResultResponse>, T> mapping) {
         long admittedAt = TaskRpcStageEvent.start();
         List<String> orderedIds = List.copyOf(messageIds);
         var observed = new LinkedHashMap<String, TaskItemResult>();
@@ -67,14 +73,14 @@ public final class TaskRpcWaitRegistry {
             }
         });
         if (pending.isEmpty()) {
-            deferred.setResult(TaskItemResultResponse.fromObservedResults(
+            deferred.setResult(mapping.apply(TaskItemResultResponse.fromObservedResults(
                     orderedIds,
                     observed
-            ));
+            )));
             return true;
         }
 
-        BatchWaiter waiter;
+        BatchWaiter<T> waiter;
         int admittedPending;
         synchronized (this) {
             if (closed) {
@@ -87,12 +93,13 @@ public final class TaskRpcWaitRegistry {
                 TaskRpcStageEvent.batch(admittedAt, "WAIT_REJECTED", orderedIds.size(), 0, false);
                 return false;
             }
-            waiter = new BatchWaiter(
+            waiter = new BatchWaiter<>(
                     this,
                     orderedIds,
                     observed,
                     pending,
                     deferred,
+                    mapping,
                     System.nanoTime()
             );
             for (ItemKey key : pending) {
@@ -142,7 +149,7 @@ public final class TaskRpcWaitRegistry {
     ) {
         java.util.Objects.requireNonNull(result, "result");
         ItemKey key = new ItemKey(taskId, messageId);
-        List<BatchWaiter> waiters;
+        List<BatchWaiter<?>> waiters;
         synchronized (this) {
             ItemWaitGroup group = groups.get(key);
             if (group == null) {
@@ -208,7 +215,7 @@ public final class TaskRpcWaitRegistry {
     }
 
     public void shutdown() {
-        List<BatchWaiter> waiters;
+        List<BatchWaiter<?>> waiters;
         synchronized (this) {
             if (closed) {
                 return;
@@ -271,7 +278,7 @@ public final class TaskRpcWaitRegistry {
     }
 
     private synchronized void remove(
-            BatchWaiter waiter,
+            BatchWaiter<?> waiter,
             Set<ItemKey> keys,
             boolean releaseWaiter
     ) {
@@ -321,14 +328,14 @@ public final class TaskRpcWaitRegistry {
     ) {
     }
 
-    private static final class BatchWaiter {
+    private static final class BatchWaiter<T> {
 
         private final TaskRpcWaitRegistry registry;
         private final List<String> orderedMessageIds;
         private final Map<String, TaskItemResult> observedResults;
         private final Set<ItemKey> pending;
-        private final DeferredResult<Map<String, TaskItemResultResponse>>
-                deferred;
+        private final DeferredResult<T> deferred;
+        private final java.util.function.Function<Map<String, TaskItemResultResponse>, T> mapping;
         private final long registeredAtNanos;
         private boolean completed;
 
@@ -337,7 +344,8 @@ public final class TaskRpcWaitRegistry {
                 List<String> orderedMessageIds,
                 Map<String, TaskItemResult> observedResults,
                 Set<ItemKey> pending,
-                DeferredResult<Map<String, TaskItemResultResponse>> deferred,
+                DeferredResult<T> deferred,
+                java.util.function.Function<Map<String, TaskItemResultResponse>, T> mapping,
                 long registeredAtNanos
         ) {
             this.registry = registry;
@@ -345,6 +353,7 @@ public final class TaskRpcWaitRegistry {
             this.observedResults = observedResults;
             this.pending = pending;
             this.deferred = deferred;
+            this.mapping = mapping;
             this.registeredAtNanos = registeredAtNanos;
         }
 
@@ -365,7 +374,7 @@ public final class TaskRpcWaitRegistry {
             if (!finished) {
                 return true;
             }
-            return deferred.setResult(response());
+            return publish();
         }
 
         private synchronized boolean completeNotObserved(String reason) {
@@ -379,7 +388,7 @@ public final class TaskRpcWaitRegistry {
                 TaskRpcStageEvent.items(observation, reason, key.taskId, List.of(key.messageId), 0, false);
             pending.clear();
             registry.remove(this, remaining, true);
-            return deferred.setResult(response());
+            return publish();
         }
 
         private synchronized void cancel() {
@@ -393,6 +402,11 @@ public final class TaskRpcWaitRegistry {
                 TaskRpcStageEvent.items(observation, "WAIT_CANCELLED", key.taskId, List.of(key.messageId), 0, false);
             pending.clear();
             registry.remove(this, remaining, true);
+        }
+
+        private boolean publish() {
+            try { return deferred.setResult(mapping.apply(response())); }
+            catch (RuntimeException error) { return deferred.setErrorResult(error); }
         }
 
         private Map<String, TaskItemResultResponse> response() {
@@ -412,7 +426,7 @@ public final class TaskRpcWaitRegistry {
     private static final class ItemWaitGroup {
 
         private final ItemKey key;
-        private final Set<BatchWaiter> waiters = new LinkedHashSet<>();
+        private final Set<BatchWaiter<?>> waiters = new LinkedHashSet<>();
         private long generation;
         private boolean scheduled;
         private boolean inFlight;

@@ -15,7 +15,7 @@ import java.util.function.LongSupplier;
 
 /** Pacer changes the candidate lane before Matching qualifies a bounded Group batch. */
 final class WorkerEligibilityRefillPolicy {
-    static final long CANDIDATE_RECYCLE_AFTER_MILLIS = 60_000;
+    static final long CANDIDATE_RECYCLE_AFTER_MILLIS = 30_000;
     private static final int RECYCLE_GROUP_BUDGET = 100;
     private static final int ROUND_BUDGET = 1_000;
 

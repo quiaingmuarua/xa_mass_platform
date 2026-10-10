@@ -1,7 +1,7 @@
 package com.xa.mass.serverboot;
 
 import com.xa.mass.scenario.sms.SmsScenarioConfiguration;
-import com.xa.mass.scenario.sms.ListenerService;
+import com.xa.mass.scenario.sms.SmsReceptionService;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
@@ -65,7 +65,7 @@ class SmsCompositionIntegrationTest {
              var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()) {
             assertThat(context.getBeansOfType(KernelPacerRuntime.class)).hasSize(1);
             assertThat(context.getBeansOfType(WorkerDeliveryAdapterManager.class)).hasSize(1);
-            assertThat(context.getBeansOfType(ListenerService.class)).hasSize(1);
+            assertThat(context.getBeansOfType(SmsReceptionService.class)).hasSize(1);
             for (Class<?> type : List.of(RedisClient.class, TaskRuntime.class, TaskResourceCatalog.class,
                     WorkerResourceCatalog.class, WorkerScoreCore.class, TaskDataService.class,
                     TaskCallSubmissionService.class, WorkerGroupRegistrationService.class)) {
@@ -76,25 +76,25 @@ class SmsCompositionIntegrationTest {
             assertThat(send(http, base, "/api/v1/catalog", null).statusCode()).isEqualTo(404);
             assertThat(send(http, base, "/api/simulation/metrics", null).statusCode()).isEqualTo(404);
             assertThat(send(http, base, "/api/v1/sms/missing", null).statusCode()).isEqualTo(404);
-            for (String path : List.of("/sms", "/sms/", "/sms/listeners", "/sms/listeners/", "/sms/metrics", "/sms/metrics/")) {
+            for (String path : List.of("/sms", "/sms/", "/sms/metrics", "/sms/metrics/")) {
                 var page = send(http, base, path, null);
                 assertThat(page.statusCode()).isEqualTo(200);
                 assertThat(page.body()).contains("/static/js/").doesNotContain("/sms/assets/");
                 assertThat(page.body()).isEqualTo(send(http, base, "/", null).body());
             }
             assertThat(Jsons.parseObject(send(http, base, "/v3/api-docs", null).body()).get("paths").toString())
-                    .contains("/api/v1/sms/listeners", "/api/v1/tasks/{taskId}/results:load");
+                    .contains("/api/v1/sms/numbers:lease", "/api/v1/tasks/{taskId}/results:load");
 
             var managerRef = new AtomicReference<JavaWorkerManager>();
             var reporter = new AtomicReference<WorkerOutcomeReporter>();
             var baseline = new AtomicReference<Map<String, Object>>();
-            var handler = WorkerEventDefinition.extension("sms.listen.start", WorkerEventParameterResolvers.jsonMap(),
+            var handler = WorkerEventDefinition.extension("sms.number.lease", WorkerEventParameterResolvers.jsonMap(),
                     (request, outcome) -> {
                         long now = System.currentTimeMillis();
-                        Map<String, Object> snapshot = Map.of("listenerId", request.get("listenerId"),
-                                "applicationId", "A", "country", "CN", "phone", "+861700000001",
+                        Map<String, Object> snapshot = Map.of("messageId", request.get("messageId"),
+                                "applicationId", "A", "country", "CN", "phoneNumber", "+861700000001",
                                 "workerId", managerRef.get().snapshot("one").workerId(),
-                                "startedAt", now, "expiresAt", now + 60_000, "status", "LISTENING");
+                                "startedAt", now, "leaseUntil", now + 60_000, "status", "WAITING");
                         baseline.set(snapshot);
                         reporter.set(outcome);
                         return Jsons.toJson(snapshot);
@@ -104,18 +104,17 @@ class SmsCompositionIntegrationTest {
                     .build()) {
                 managerRef.set(manager);
                 manager.start();
-                var created = send(http, base, "/api/v1/sms/listeners", Map.of("requestId", "no-http",
-                        "applicationId", "A", "country", "CN", "listenSeconds", 60));
+                var created = send(http, base, "/api/v1/sms/numbers:lease", Map.of("applicationId", "A", "country", "CN", "leaseSeconds", 60));
                 assertThat(created.statusCode()).isEqualTo(200);
-                String id = (String) Jsons.parseObject(created.body()).get("id");
-                awaitStatus(http, base, id, "LISTENING");
+                String id = (String) Jsons.parseObject(created.body()).get("messageId");
+                awaitStatus(http, base, id, "WAITING");
                 var received = new LinkedHashMap<>(baseline.get());
                 received.put("status", "RECEIVED");
                 received.put("sms", Map.of("smsId", "proof-sms", "text", "[A] 123456", "code", "123456",
                         "templateId", "A-code", "receivedAt", System.currentTimeMillis()));
                 assertThat(reporter.get().report(9, System.currentTimeMillis(), Jsons.toJson(received))).isTrue();
                 Map<String, Object> observed = awaitStatus(http, base, id, "RECEIVED");
-                assertThat(observed).containsEntry("phone", "+861700000001").containsKey("sms");
+                assertThat(observed).containsEntry("phoneNumber", "+861700000001").containsKey("sms");
                 reporter.set(null);
             }
         } finally {
@@ -136,14 +135,14 @@ class SmsCompositionIntegrationTest {
                 "--xa.mass.worker-assembly.group-config-json={}", "--spring.web.resources.static-locations=" + java.nio.file.Path.of(System.getProperty("xa.mass.test.frontend")).toUri(),
                 "--logging.level.root=WARN");
              var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()) {
-            assertThat(context.getBeansOfType(ListenerService.class)).isEmpty();
+            assertThat(context.getBeansOfType(SmsReceptionService.class)).isEmpty();
             assertThat(context.getBean(WorkerResourceCatalog.class)
                     .getWorkerGroupDescriptors(List.of("demo-sim")).values())
                     .allMatch(value -> value == null);
-            for (String path : List.of("/api/v1/sms/catalog", "/api/v1/sms/listeners", "/sms/index.html", "/sms/assets/missing.js", "/sms/missing", "/api/v1/sms/missing")) {
+            for (String path : List.of("/api/v1/sms/catalog", "/api/v1/sms/numbers:lease", "/sms/index.html", "/sms/assets/missing.js", "/sms/missing", "/api/v1/sms/missing")) {
                 assertThat(send(http, base, path, null).statusCode()).as(path).isEqualTo(404);
             }
-            for (String path : List.of("/sms", "/sms/", "/sms/listeners", "/sms/listeners/", "/sms/metrics", "/sms/metrics/")) {
+            for (String path : List.of("/sms", "/sms/", "/sms/metrics", "/sms/metrics/")) {
                 var page = send(http, base, path, null);
                 assertThat(page.statusCode()).as(path).isEqualTo(200);
                 assertThat(page.body()).contains("/static/js/").doesNotContain("/sms/assets/");
@@ -159,7 +158,7 @@ class SmsCompositionIntegrationTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
         Map<String, Object> record = Map.of();
         do {
-            record = Jsons.parseObject(send(http, base, "/api/v1/sms/listeners/" + id, null).body());
+            record = Jsons.parseObject(send(http, base, "/api/v1/sms/messages/" + id, null).body());
             if (expected.equals(record.get("status"))) return record;
             Thread.sleep(50);
         } while (System.nanoTime() < deadline);
@@ -168,7 +167,7 @@ class SmsCompositionIntegrationTest {
     }
 
     private static HttpResponse<String> send(HttpClient http, URI base, String path, Object body) throws Exception {
-        var request = HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(3));
+        var request = HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(6));
         if (body != null) request.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(Jsons.toJson(body)));
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }
@@ -187,7 +186,7 @@ class SmsCompositionIntegrationTest {
                 cursor = page;
             } while (!cursor.isFinished());
         } finally {
-            client.shutdown(Duration.ZERO, Duration.ofSeconds(3));
+            client.shutdown(Duration.ZERO, Duration.ofSeconds(6));
         }
     }
     @Configuration(proxyBeanMethods = false)

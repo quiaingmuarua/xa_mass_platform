@@ -184,7 +184,7 @@ record WorkerSimulatorGroupConfig(
         if (group.equals("scenario-string-utils-workers")) {
             events.add(WorkerSimulatorLabEvents.CHECKPOINT_EVENT_CODE);
         } else if (group.equals("demo-sim")) {
-            events.addAll(List.of(SmsScenario.START_EVENT, SmsScenario.CANCEL_EVENT, MessageProtocol.SEND_EVENT));
+            events.addAll(List.of(SmsScenario.LEASE_EVENT, MessageProtocol.SEND_EVENT));
         } else {
             throw new IllegalArgumentException("WorkerGroup has no default events; configure events explicitly");
         }

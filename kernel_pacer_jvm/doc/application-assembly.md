@@ -378,7 +378,7 @@ cannot skip the other operation's next Group. Both hints are process-local,
 cleared when their Group leaves the roots, and advance before fallible work. Matching supplies numeric shortage
 hints without reserving stock. Target counts are watermarks: Matching does not
 truncate already-supplied qualified candidates at those counts; admission still
-honors its batch budget and actual capacity. Candidate age is 60 seconds in production/Scenario
+honors its batch budget and actual capacity. Candidate age is 30 seconds in production/Scenario
 Lab and 1 second in Runtime Boundary; Pool TTL is independently 60 seconds and checked
 when entries are polled. Matching counts resident entries, including duplicates and
 old entries not yet reclaimed; these remain shortage hints rather than executable

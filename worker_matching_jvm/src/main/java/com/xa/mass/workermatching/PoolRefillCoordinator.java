@@ -119,6 +119,10 @@ final class PoolRefillCoordinator {
             return pool != null && pool.remainingCapacity(scope.workerGroupId()) == 0;
         })) {
             pools.values().forEach(WorkerCandidatePool::discardExpired);
+            targets.keySet().forEach(scope -> {
+                var pool = pools.get(scope.poolName());
+                if (pool != null) pool.reclaimDeferred(scope.workerGroupId());
+            });
         }
         targetPagesByScope.keySet().retainAll(targets.keySet());
         poolRotationByGroup.keySet().retainAll(supplied.keySet());

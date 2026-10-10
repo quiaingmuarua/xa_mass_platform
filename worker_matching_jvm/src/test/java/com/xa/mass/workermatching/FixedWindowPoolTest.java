@@ -160,7 +160,7 @@ class FixedWindowPoolTest {
         var store = spy(new FactsIndexStore(client, new RedisKeyspace("test_assignment_window"), Map.of()));
         doReturn(Map.of("window", new WorkerFacts("window", "g", Map.of(), Map.of()))).when(store).readFactsSnapshot(anyString(), anyList());
         var config = new MatchingGroup(Set.of("any", "sample-window"), Set.of("worker.any", "worker.sample.available"));
-        try (var composition = new MatchingComposition(store, Map.of("g", config), clock::get, List.of(definition(Map.of("g", windows.get("g")))), java.util.List.of())) {
+        try (var composition = new MatchingComposition(store, Map.of("g", config), clock::get, List.of(definition(Map.of("g", windows.get("g")))), java.util.List.of(), java.util.List.of())) {
             var any = composition.pools().get("any");
             any.offerBatch("g", "any", List.of(new WorkerCandidate("any", 7)));
             var catalog = composition.catalog();
@@ -190,7 +190,7 @@ class FixedWindowPoolTest {
             return snapshot;
         }).when(store).readFactsSnapshot(anyString(), anyList());
         var config = new MatchingGroup(Set.of("any", "sample-window"), Set.of("worker.any", "worker.sample.available"));
-        try (var composition = new MatchingComposition(store, Map.of("g", config), clock::get, List.of(definition(Map.of("g", windows.get("g")))), java.util.List.of())) {
+        try (var composition = new MatchingComposition(store, Map.of("g", config), clock::get, List.of(definition(Map.of("g", windows.get("g")))), java.util.List.of(), java.util.List.of())) {
             var supply = List.of(RefillTarget.of("any", target, 100), RefillTarget.of("sample-window", target, 100));
             var catalog = composition.catalog();
             assertEquals(1, catalog.refill("g", supply, Map.of("first", 10L)));
@@ -226,7 +226,7 @@ class FixedWindowPoolTest {
             return snapshot;
         }).when(store).readFactsSnapshot(eq("g"), anyList());
         var group = new MatchingGroup(Set.of("alpha", "beta", "any"), Set.of("custom.alpha", "custom.beta", "worker.any"));
-        try (var composition = new MatchingComposition(store, Map.of("g", group), clock::get, List.of(beta, alpha), java.util.List.of())) {
+        try (var composition = new MatchingComposition(store, Map.of("g", group), clock::get, List.of(beta, alpha), java.util.List.of(), java.util.List.of())) {
             assertEquals(List.of("alpha", "beta", "any"), composition.poolOrder());
             var offered = new LinkedHashMap<String, Long>(); offered.put("a", 11L); offered.put("b", 12L);
             assertEquals(2, composition.catalog().refill("g", List.of(RefillTarget.of("alpha", target, 1),
@@ -260,11 +260,11 @@ class FixedWindowPoolTest {
                 List.of(declaration, new FixedWindowPoolDefinition("second", "worker.sample.available", "time", "count", Map.of())),
                 List.of(new FixedWindowPoolDefinition("any", "custom", "time", "count", Map.of())),
                 List.of(new FixedWindowPoolDefinition("custom", "workerId", "time", "count", Map.of()))))
-            assertThrows(IllegalArgumentException.class, () -> MatchingComposition.create(client, keyspace, Map.of("g", enabled), definitions, java.util.List.of()));
+            assertThrows(IllegalArgumentException.class, () -> MatchingComposition.create(client, keyspace, Map.of("g", enabled), definitions, java.util.List.of(), java.util.List.of()));
         assertThrows(IllegalArgumentException.class, () -> MatchingComposition.create(client, keyspace,
-                Map.of("g", new MatchingGroup(Set.of("any"), Set.of())), List.of(declaration), java.util.List.of()));
+                Map.of("g", new MatchingGroup(Set.of("any"), Set.of())), List.of(declaration), java.util.List.of(), java.util.List.of()));
         assertThrows(IllegalArgumentException.class, () -> MatchingComposition.create(client, keyspace,
-                Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.sample.available"))), List.of(definition(Map.of())), java.util.List.of()));
+                Map.of("g", new MatchingGroup(Set.of(), Set.of("worker.sample.available"))), List.of(definition(Map.of())), java.util.List.of(), java.util.List.of()));
         verifyNoInteractions(client);
     }
 

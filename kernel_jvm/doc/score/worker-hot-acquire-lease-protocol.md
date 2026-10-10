@@ -41,7 +41,7 @@ old fences and prevent the same old head from immediately recycling again.
 Both reads honor Assignment's optional startup floor, Group rotation and raw-row
 budgets. No Worker cursor or new thread exists.
 
-Default candidate age and Pool local TTL are each 60 seconds, owned separately.
+Default candidate age is 30 seconds; Pool local TTL is independently 60 seconds.
 Pool TTL starts at actual admission, not from T. Entries are immutable occurrences;
 offers do not refresh, deduplicate, replace or remove older entries. Capacity
 bounds admission, and expired entries cannot be taken. A previously taken candidate

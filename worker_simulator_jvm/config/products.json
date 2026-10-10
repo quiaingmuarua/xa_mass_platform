@@ -23,8 +23,7 @@
         "extension.worker.string.md5",
         "extension.worker.string.sha1",
         "extension.worker.string.base64.encode",
-        "extension.worker.sms.listen.start",
-        "extension.worker.sms.listen.cancel",
+        "extension.worker.sms.number.lease",
         "extension.worker.message.send"
       ],
       "count": 60,

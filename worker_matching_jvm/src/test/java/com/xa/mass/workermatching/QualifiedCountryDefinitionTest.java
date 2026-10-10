@@ -47,7 +47,7 @@ class QualifiedCountryDefinitionTest {
         }).when(store).readWorkerFacts(anyString(), anyList());
         var group = new MatchingGroup(Set.of("alpha", "beta", "any"), Set.of("sample.alpha", "sample.beta", "worker.any"));
         try (var composition = new MatchingComposition(store, Map.of("g", group, "h", group), () -> 1_000L,
-                List.of(), List.of(BETA, ALPHA))) {
+                List.of(), List.of(BETA, ALPHA), java.util.List.of())) {
             assertEquals(List.of("any", "alpha", "beta"), composition.poolOrder());
             assertEquals(Map.of("g", Set.of(), "h", Set.of()), MatchingComposition.indexedProperties(
                     Map.of("g", group, "h", group), List.of(ALPHA, BETA)));
@@ -76,7 +76,7 @@ class QualifiedCountryDefinitionTest {
         var client = mock(RedisClient.class);
         var groups = Map.of("g", new MatchingGroup(Set.of(), Set.of(ALPHA.phoneFunctionName(), BETA.phoneFunctionName())));
         assertEquals(Map.of("g", Set.of("phone")), MatchingComposition.indexedProperties(groups, List.of(ALPHA, BETA)));
-        try (var composition = MatchingComposition.create(client, SCOPE, groups, List.of(), List.of(ALPHA, BETA))) {
+        try (var composition = MatchingComposition.create(client, SCOPE, groups, List.of(), List.of(ALPHA, BETA), java.util.List.of())) {
             assertTrue(composition.pools().isEmpty());
             assertTrue(composition.policies().isEmpty());
             assertEquals(Set.of("workerId", ALPHA.phoneFunctionName(), BETA.phoneFunctionName()), composition.functions().keySet());
@@ -93,7 +93,7 @@ class QualifiedCountryDefinitionTest {
                 Map.of("g", new FixedWindowPoolDefinition.WindowLimit(60_000, 10)));
         var group = new MatchingGroup(Set.of("proof-facts", "country", "window", "any", "alpha", "beta"),
                 Set.of(ALPHA.poolFunctionName(), BETA.poolFunctionName(), window.functionName()));
-        try (var composition = MatchingComposition.create(client, SCOPE, Map.of("g", group), List.of(window), List.of(BETA, ALPHA))) {
+        try (var composition = MatchingComposition.create(client, SCOPE, Map.of("g", group), List.of(window), List.of(BETA, ALPHA), java.util.List.of())) {
             assertEquals(List.of("proof-facts", "country", "window", "any", "alpha", "beta"), composition.poolOrder());
         }
         for (var invalid : List.of(List.of(ALPHA, ALPHA),
@@ -103,13 +103,13 @@ class QualifiedCountryDefinitionTest {
                 List.of(new QualifiedCountryDefinition("a", "x", "sample.window", "enabled", "yes", "country")),
                 List.of(ALPHA, new QualifiedCountryDefinition("a", "x", ALPHA.poolFunctionName(), "enabled", "yes", "country"))))
             assertThrows(IllegalArgumentException.class, () -> MatchingComposition.create(client, SCOPE,
-                    Map.of("g", new MatchingGroup(Set.of("window"), Set.of())), List.of(window), invalid));
+                    Map.of("g", new MatchingGroup(Set.of("window"), Set.of())), List.of(window), invalid, java.util.List.of()));
         for (var missing : List.of(new MatchingGroup(Set.of("alpha"), Set.of()),
                 new MatchingGroup(Set.of(), Set.of(ALPHA.phoneFunctionName()))))
-            assertThrows(IllegalArgumentException.class, () -> MatchingComposition.create(client, SCOPE, Map.of("g", missing), List.of(), List.of()));
+            assertThrows(IllegalArgumentException.class, () -> MatchingComposition.create(client, SCOPE, Map.of("g", missing), List.of(), List.of(), java.util.List.of()));
         assertThrows(IllegalArgumentException.class, () -> MatchingComposition.create(client, SCOPE,
-                Map.of("g", new MatchingGroup(Set.of(), Set.of(ALPHA.poolFunctionName()))), List.of(), List.of(ALPHA)));
-        try (var composition = MatchingComposition.create(client, SCOPE, Map.of(), List.of(), List.of())) {
+                Map.of("g", new MatchingGroup(Set.of(), Set.of(ALPHA.poolFunctionName()))), List.of(), List.of(ALPHA), java.util.List.of()));
+        try (var composition = MatchingComposition.create(client, SCOPE, Map.of(), List.of(), List.of(), java.util.List.of())) {
             assertTrue(composition.pools().isEmpty());
             assertEquals(Set.of("workerId"), composition.functions().keySet());
         }

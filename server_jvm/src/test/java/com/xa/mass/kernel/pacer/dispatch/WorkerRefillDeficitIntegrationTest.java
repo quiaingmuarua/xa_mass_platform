@@ -54,7 +54,7 @@ class WorkerRefillDeficitIntegrationTest {
                         client, scope.keyspace(), () -> sampled);
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
                 var matchingComposition = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
-                        new MatchingGroup(Set.of("country"), Set.of("worker.country"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS)) {
+                        new MatchingGroup(Set.of("country"), Set.of("worker.country"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS, java.util.List.of())) {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
@@ -140,7 +140,7 @@ class WorkerRefillDeficitIntegrationTest {
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
                 var matchingComposition = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
-                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available", "worker.messaging.phone"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS)) {
+                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available", "worker.messaging.phone"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS, java.util.List.of())) {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
@@ -205,7 +205,7 @@ class WorkerRefillDeficitIntegrationTest {
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
                 var matchingComposition = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
-                        new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone", "worker.messaging.phone"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS)) {
+                        new MatchingGroup(Set.of("any"), Set.of("worker.any", "worker.phone", "worker.messaging.phone"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS, java.util.List.of())) {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
@@ -259,7 +259,7 @@ class WorkerRefillDeficitIntegrationTest {
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
                 var matchingComposition = MatchingComposition.create(client, scope.keyspace(), Map.of(group,
-                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS)) {
+                        new MatchingGroup(Set.of("country", "messaging"), Set.of("worker.country", "worker.messaging.available"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS, java.util.List.of())) {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
@@ -271,7 +271,7 @@ class WorkerRefillDeficitIntegrationTest {
                 assertThat(pacer.refill(List.of(group), List.of(countryTask))).isEqualTo(1);
                 long original = readScores(redis, scope.keyspace(), group, List.of("w")).get("w");
                 assertThat(pacer.refill(List.of(group), List.of(messagingTask))).isZero();
-                clock.addAndGet(60_000);
+                clock.addAndGet(30_000);
                 // A Redis slot may elapse between recycling and the ordinary-head read.
                 int admitted = pacer.refill(List.of(group), List.of(messagingTask));
                 assertThat(admitted).isBetween(0, 1);
@@ -308,7 +308,7 @@ class WorkerRefillDeficitIntegrationTest {
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
                 var matchingComposition = MatchingComposition.create(client, scope.keyspace(),
-                        Map.of(group, new MatchingGroup(Set.of("any"), Set.of("worker.any"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS)) {
+                        Map.of(group, new MatchingGroup(Set.of("any"), Set.of("worker.any"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS, java.util.List.of())) {
             var matching = matchingComposition.catalog();
             var redis = connection.sync();
             try {
@@ -382,7 +382,7 @@ class WorkerRefillDeficitIntegrationTest {
         try (var connection=client.connect();
                 var scores=new RedisWorkerScoreCore(client,scope.keyspace());
                 var matchingComposition=MatchingComposition.create(client,scope.keyspace(),
-                        Map.of(group,new MatchingGroup(Set.of("any"),Set.of("worker.any"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS)) {
+                        Map.of(group,new MatchingGroup(Set.of("any"),Set.of("worker.any"))), java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS, java.util.List.of())) {
             var matching = matchingComposition.catalog();
             var redis=connection.sync();
             try {

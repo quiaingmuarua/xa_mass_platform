@@ -29,19 +29,25 @@ public final class TaskRpcCallService {
     }
 
     public DeferredResult<Map<String, TaskItemResultResponse>> call(String taskId, TaskRpcCallRequest request) {
+        return call(taskId, request, java.util.function.Function.identity());
+    }
+
+    /** One servlet waiter, with a pure application response mapping. */
+    public <T> DeferredResult<T> call(String taskId, TaskRpcCallRequest request,
+            java.util.function.Function<Map<String, TaskItemResultResponse>, T> mapping) {
         long timeoutMillis = resolveTimeout(request.waitTimeoutMillis());
         TaskCallSubmissionService.SubmittedCall submitted = submissions.submitCall(taskId, request.items());
         List<String> messageIds = submitted.messageIds();
         Map<String, TaskItemResult> observed = submitted.observed();
         long immediateStarted = submitted.observationStarted();
-        DeferredResult<Map<String, TaskItemResultResponse>> deferred =
+        DeferredResult<T> deferred =
                 new DeferredResult<>(timeoutMillis);
         if (allObserved(messageIds, observed)) {
             TaskRpcStageEvent.items(immediateStarted, "OBSERVED", taskId, observed.keySet(), observed.size(), false);
-            deferred.setResult(TaskItemResultResponse.fromObservedResults(
+            deferred.setResult(mapping.apply(TaskItemResultResponse.fromObservedResults(
                     messageIds,
                     observed
-            ));
+            )));
             return deferred;
         }
 
@@ -49,12 +55,12 @@ public final class TaskRpcCallService {
                 taskId,
                 messageIds,
                 observed,
-                deferred
+                deferred, mapping
         )) {
-            deferred.setResult(TaskItemResultResponse.fromObservedResults(
+            deferred.setResult(mapping.apply(TaskItemResultResponse.fromObservedResults(
                     messageIds,
                     observed
-            ));
+            )));
         }
         return deferred;
     }

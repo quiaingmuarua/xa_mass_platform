@@ -100,7 +100,7 @@ explain independent finality, failure windows and later observations.
 [SMS Reception](scenarios/sms-reception-jvm/README.md),
 [Message Campaigns](scenarios/message-campaigns-jvm/README.md) and
 [App Checks](scenarios/app-checks-jvm/README.md) validate realistic business
-workloads: listening orders, message delivery/later receipts, and
+workloads: number leases/latest SMS results, message delivery/later receipts, and
 one-shot lookups with assignment-window observations. Each owns its business
 state and assertions; these validation surfaces do not commit to separate product
 deployments. [Boot](server_boot_jvm/README.md#platform-and-preview) owns their

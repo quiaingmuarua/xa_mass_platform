@@ -26,7 +26,8 @@ class ScenarioArchitectureTest {
                         "api.v1.contract.task.TaskCreateResponse", "api.v1.contract.task.TaskItemRequest",
                         "api.v1.contract.task.TaskItemResultStatus", "worker.observation.WorkerPropertyProjection"),
                 "sms-reception-jvm", Set.of("project.ProjectDirectory",
-                        "task.call.TaskCallSubmissionService", "task.TaskDataService",
+                        "task.call.TaskRpcCallService", "task.TaskDataService", "task.observation.TaskLeaseProjection",
+                        "task.observation.TaskLeaseProjectionMetrics", "api.v1.contract.task.TaskRpcCallRequest",
                         "api.v1.contract.task.TaskItemRequest", "api.v1.contract.task.TaskItemResultResponse",
                         "api.v1.contract.task.TaskItemResultStatus"),
                 "message-campaigns-jvm", Set.of("project.ProjectDirectory",
@@ -42,7 +43,7 @@ class ScenarioArchitectureTest {
                     .contains("id 'java-library'", "implementation project(':server_jvm')")
                     .doesNotContain("id 'org.springframework.boot'", "project(':server_boot_jvm')",
                             "project(':distribution:", "project(':scenarios:");
-            if (Set.of("app-checks-jvm", "message-campaigns-jvm").contains(module.getKey()))
+            if (Set.of("app-checks-jvm", "message-campaigns-jvm", "sms-reception-jvm").contains(module.getKey()))
                 assertThat(Files.readString(directory.resolve("build.gradle")))
                         .contains("implementation project(':worker_matching_jvm')");
             try (var paths = Files.walk(directory.resolve("src/main/java"))) {
@@ -51,6 +52,9 @@ class ScenarioArchitectureTest {
                     String checked = switch (module.getKey()) {
                         case "app-checks-jvm" -> source.replaceAll("com\\.xa\\.mass\\.workermatching\\.FixedWindowPoolDefinition(?:\\.WindowLimit)?\\b", "public-window-definition-contract");
                         case "message-campaigns-jvm" -> source.replaceAll("com\\.xa\\.mass\\.workermatching\\.QualifiedCountryDefinition\\b", "public-qualified-country-contract");
+                        case "sms-reception-jvm" -> source
+                                .replace("com.xa.mass.workermatching.PartitionedLeasePoolDefinition", "public-lease-definition-contract")
+                                .replace("com.xa.mass.workermatching.PlatformLeaseState.Coordinate", "public-lease-coordinate-value");
                         default -> source;
                     };
                     assertThat(checked.replace("com.xa.mass.kernel.assignment.RefillTarget", "public-refill-target-contract")

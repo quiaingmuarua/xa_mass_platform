@@ -24,12 +24,20 @@ xa:
     task-rpc:
       refill-by-worker-group:
         demo-sim:
-          - '{"poolName":"country","target":{},"count":100}'
+          - '{"poolName":"sms-reception","target":{"partition":["A"],"worker.country":["CN"]},"count":100}'
+          - '{"poolName":"sms-reception","target":{"partition":["A"],"worker.country":["US"]},"count":100}'
+          - '{"poolName":"sms-reception","target":{"partition":["A"],"worker.country":["GB"]},"count":100}'
+          - '{"poolName":"sms-reception","target":{"partition":["B"],"worker.country":["CN"]},"count":100}'
+          - '{"poolName":"sms-reception","target":{"partition":["B"],"worker.country":["US"]},"count":100}'
+          - '{"poolName":"sms-reception","target":{"partition":["B"],"worker.country":["GB"]},"count":100}'
+          - '{"poolName":"sms-reception","target":{"partition":["C"],"worker.country":["CN"]},"count":100}'
+          - '{"poolName":"sms-reception","target":{"partition":["C"],"worker.country":["US"]},"count":100}'
+          - '{"poolName":"sms-reception","target":{"partition":["C"],"worker.country":["GB"]},"count":100}'
     worker-matching:
       groups:
         demo-sim:
-          pools: [country, messaging]
-          functions: [worker.country, worker.messaging.available, worker.phone]
+          pools: [country, sms-reception, messaging]
+          functions: [worker.country, worker.sms.available, worker.messaging.available, worker.phone]
         app-a-sim:
           pools: [any, assignment-window, messaging]
           functions: [worker.any, worker.assignment.available, worker.messaging.available]
@@ -68,8 +76,7 @@ xa:
               "extension.worker.string.md5",
               "extension.worker.string.sha1",
               "extension.worker.string.base64.encode",
-              "extension.worker.sms.listen.start",
-              "extension.worker.sms.listen.cancel",
+              "extension.worker.sms.number.lease",
               "extension.worker.message.send"
             ]
           }

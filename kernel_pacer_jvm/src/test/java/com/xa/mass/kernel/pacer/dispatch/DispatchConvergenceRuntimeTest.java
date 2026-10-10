@@ -25,7 +25,7 @@ class DispatchConvergenceRuntimeTest {
                 .candidateRecycleAfterMillisForPreset(PolicyPreset.RUNTIME_BOUNDARY_PROOF));
         for (PolicyPreset preset : List.of(PolicyPreset.DEFAULT,
                 PolicyPreset.SERVICEABILITY_DEFAULT, PolicyPreset.SCENARIO_LAB)) {
-            assertEquals(60_000, DispatchConvergenceRuntime
+            assertEquals(30_000, DispatchConvergenceRuntime
                     .candidateRecycleAfterMillisForPreset(preset));
         }
     }

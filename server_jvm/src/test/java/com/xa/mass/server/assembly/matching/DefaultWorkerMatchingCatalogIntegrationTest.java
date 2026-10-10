@@ -76,7 +76,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
     private DefaultWorkerMatchingCatalog createCatalog(Map<String,Set<String>> enabled, java.util.function.LongSupplier clock) {
         var groups=groups(enabled);
         var storage=new FactsIndexStore(redisClient,keyspace,MatchingComposition.indexedProperties(groups, QualifiedCountryFixtures.DEFINITIONS));
-        var composition=new MatchingComposition(storage,groups,clock, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS);
+        var composition=new MatchingComposition(storage,groups,clock, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS, java.util.List.of());
         var traced=new LinkedHashMap<String,PoolRefillPolicy>(); composition.policies().forEach((id,policy)->traced.put(id,trace(policy)));
         var result=new DefaultWorkerMatchingCatalog(composition.budget(),composition.pools(),
                 clock,traced,composition.functions(),groups, composition.poolOrder(), composition.globalFunctions());
@@ -90,7 +90,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         groups.forEach((group, config) -> builtIns.put(group, new MatchingGroup(
                 config.pools().stream().filter(name -> !name.equals(BucketPoolFixture.ID)).collect(java.util.stream.Collectors.toSet()),
                 config.functions().stream().filter(name -> !name.equals(BucketPoolFixture.ID)).collect(java.util.stream.Collectors.toSet()))));
-        var composition=new MatchingComposition(storage,builtIns,System::currentTimeMillis, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS);
+        var composition=new MatchingComposition(storage,builtIns,System::currentTimeMillis, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS, java.util.List.of());
         var stock=new WorkerCandidatePool(System::currentTimeMillis,composition.budget());
         var bucket=new BucketPoolFixture(System::currentTimeMillis,storage,stock,fail);
         var pools=new LinkedHashMap<>(composition.pools()); pools.put(BucketPoolFixture.ID,stock);
@@ -857,7 +857,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         stores.get(catalog).patchWorkerPlatformProperties("g", "proof", Map.of("proofEnabled", "yes"));
         var enabled = groups(Map.of("g", Set.of("worker.messaging.available", "proof.worker.facts")));
         commandTypes.clear();
-        try (var restartedComposition = MatchingComposition.create(redisClient, keyspace, enabled, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS)) {
+        try (var restartedComposition = MatchingComposition.create(redisClient, keyspace, enabled, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS, java.util.List.of())) {
             var restarted = restartedComposition.catalog();
             assertThat(commandTypes).isEmpty(); // No qualification index startup scan, even with poisoned keys.
             commandTypes.clear();

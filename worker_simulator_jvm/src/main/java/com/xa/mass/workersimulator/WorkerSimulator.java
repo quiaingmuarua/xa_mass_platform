@@ -6,7 +6,7 @@ import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workersimulator.sms.SmsScenario;
-import com.xa.mass.workersimulator.sms.ListeningRegistry;
+import com.xa.mass.workersimulator.sms.SmsReceptionRegistry;
 import com.xa.mass.workersimulator.messaging.MessageScenario;
 import com.xa.mass.workersimulator.messaging.MessageProtocol;
 import com.xa.mass.workersimulator.messaging.MessageSettings;
@@ -355,7 +355,7 @@ public final class WorkerSimulator implements AutoCloseable {
                 if (replica.sim == null) throw new IllegalArgumentException("Worker has no SMS capability");
                 requireInputFields(payload, Set.of("text"), Set.of("smsId", "phone"));
                 String id = optionalInputId(payload, "smsId");
-                String phone = payload.containsKey("phone") ? ListeningRegistry.string(payload, "phone") : null;
+                String phone = payload.containsKey("phone") ? SmsReceptionRegistry.string(payload, "phone") : null;
                 yield sms.registry.receive(replica.sim, phone, id, inputText(payload, "text", 1024));
             }
             case "message.read", "message.reply" -> {
@@ -938,8 +938,8 @@ public final class WorkerSimulator implements AutoCloseable {
                     new ArrayList<>();
             for (String eventCode : config.events()) {
                 if (Set.of(com.xa.mass.workersimulator.appchecks.AppRegistrationCheck.EVENT,
-                        WorkerSimulatorExecutionWitnesses.EVENT, SmsScenario.START_EVENT,
-                        SmsScenario.CANCEL_EVENT, MessageProtocol.SEND_EVENT).contains(eventCode)) {
+                        WorkerSimulatorExecutionWitnesses.EVENT, SmsScenario.LEASE_EVENT,
+                        MessageProtocol.SEND_EVENT).contains(eventCode)) {
                     continue; // This finite capability is bound to each actual replica at construction.
                 }
                 WorkerEventDefinition<?> definition =
@@ -967,7 +967,7 @@ public final class WorkerSimulator implements AutoCloseable {
     }
 
     private static boolean usesSms(WorkerSimulatorGroupConfig config) {
-        return config.events().contains(SmsScenario.START_EVENT) || config.events().contains(SmsScenario.CANCEL_EVENT);
+        return config.events().contains(SmsScenario.LEASE_EVENT);
     }
     private static boolean usesMessages(WorkerSimulatorGroupConfig config) {
         return config.events().contains(MessageProtocol.SEND_EVENT);
@@ -992,7 +992,7 @@ public final class WorkerSimulator implements AutoCloseable {
     static final class PreparedReplica {
         private final String replicaKey;
         private final WorkerSimulatorStateFile stateFile;
-        ListeningRegistry.Sim sim;
+        SmsReceptionRegistry.Sim sim;
         MessageWorkerEndpoint.Sender sender;
         PreparedReplica(String replicaKey, WorkerSimulatorStateFile stateFile) {
             this.replicaKey = replicaKey; this.stateFile = stateFile;

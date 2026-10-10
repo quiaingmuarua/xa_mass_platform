@@ -359,64 +359,33 @@ Reporter. Public proof artifacts and ordinary logs exclude message/reply bodies.
 
 ## SMS Scenario
 
-Start the Server with its `preview` profile first, then use a complete
-configuration based on [sms.json](config/sms.json) with the matching Runtime URL,
-or use the shared [Preview launcher](../distribution/server/PREVIEW.md) for both
-scenarios and their Host. Preview registers one mixed-country `demo-sim` Group; the Host never
-registers Groups. The example generates CN/US/GB numbers deterministically.
-All configurations use the same filename plus physical-line identity and the
-existing `SCENARIO_LAB` batch Prepare. Product examples do not implicitly start
-the Lab Groups. Existing inventory is reused regardless of seed/count/template changes
-unless that Group explicitly requests `newEnvironment=true`.
+SMS installs `extension.worker.sms.number.lease` and uses the shared raw
+`sms.receive` device input. `SmsReceptionRegistry` owns active messageId associations,
+finite template matching, recent diagnostics/dedup and original SDK Reporters.
+The Handler returns the number and absolute leaseUntil promptly; subsequent matches
+report tag 9 on that same Item and retain the association until expiry. Same-millisecond
+matches use increasing report ordering times while retaining real receive time.
 
-SMS Properties contain phone, country, operator and simulated strings and are
-editable through common inventory and live Properties controls.
-The SMS example selects start/cancel and MD5, SHA1 and Base64; explicit
-`events` may add validation capabilities or Messages. Delay/fail are not defaults.
-Actual `platform.worker.events.snapshot` evidence identifies loaded handlers;
-Group catalog metadata is not the execution oracle.
+A number supports multiple app associations. Matching owns platform admission and
+persistent app lease state; the Host only establishes the selected local association.
+Expiry uses a bounded due queue (512 per 100ms tick), not a full-number scan. Expiry,
+stop and phone changes discard the Reporter without publishing an empty final result.
+Publication remains outside the number gate. A new SDK run cannot inherit a Reporter;
+reconnect within the same run retains it.
 
-The single `/lab` page always shows common Worker management, and additionally shows local
-Worker state, number inventory, explicit Worker start/stop, device input
-and finite traffic controls. It does not manage product orders or infer routing
-or schedulability. All configurations expose the same common control routes.
-The HTTP executor has 8 threads and 128 queued requests with caller backpressure;
-SMS bodies are at most 8 KiB, while existing Lab body limits remain unchanged.
+Active associations are capped at 50,000 overall and 64 per number. Finished snapshots
+are FIFO-bounded to 50,000 and recent SMS IDs to 100,000; reaching retained-history
+capacity evicts old history, not new active work. Only retained duplicates are
+suppressed; conflicting retained SMS IDs fail. Metrics separate active associations,
+retained records, actual lease Handler executions, matches and report acceptance.
 
-| SMS Host route | Contract |
-| --- | --- |
-| `GET /lab/v1/sms/health` | Host startup, prepared identity count and number count; no Adapter readiness claim |
-| `GET /lab/v1/sms/inventory?offset=0&limit=100` | Paged Group, replica key, country, phone, actual Worker ID, desired/local state and active subscriptions; limit 1..1000 |
-| `GET /lab/v1/sms/metrics` | Local matching, dedup, capacity and traffic observations |
-| `GET /lab/v1/sms/records?offset=0&limit=100` | Bounded acceptance evidence, never a product Result source |
-| `POST /lab/v1/sms/traffic/start` | Existing finite `{ratePerSecond, durationSeconds}` input |
-| `POST /lab/v1/sms/traffic/stop` | Stop the finite stimulus stream |
-| `POST /lab/v1/sms/workers/{groupId}/{replicaKey}:start` | Request a local Worker run; no properties mutation |
-| `POST /lab/v1/sms/workers/{groupId}/{replicaKey}:stop` | Close number admission and request SDK stop; HTTP 202 acknowledges local control only |
-
-SMS owns one process-wide ListeningRegistry and one expiry/traffic clock.
-The [business contract](../scenarios/sms-reception-jvm/README.md#监听和分发契约)
-owns templates, dedup and resource limits. Constructors start no timer. The actual
-installed capabilities determine whether the SMS clock/routes and Messages Owner
-exist; the common scheduled-stop Owner is available to every configured Group.
-
-Stopping a number closes new admission, ends active subscriptions locally as
-INTERRUPTED and drops their Reporters under the number gate. SDK stop and network
-publication happen outside that gate; stop does not wait for a slow start or
-Report send. A stopped SDK snapshot is also cleaned by the existing SMS clock.
-Transparent reconnect of a RUNNING run retains its subscriptions. This local
-fault action sends neither a product cancellation command nor a synthetic ending
-Report. Without actual ending evidence, the product reaches UNCONFIRMED at its
-existing deadline. A previously won match is never reclassified by stop.
-
-Explicit restart retains the number/identity and the process-wide dedup history,
-but does not restore old subscriptions. Duplicate commands return the retained
-snapshot without transferring the original Reporter. Already-admitted SDK
-callbacks may finish late; their Reporters remain bound to the original Task/run.
-There is no new replay, automatic restart, or callback cancellation guarantee.
-Shutdown stops HTTP admission and timers, cleans SMS state, revokes Workers and
-then waits boundedly for resources. Partial assembly failures close created
-Managers; Server never owns this Host lifecycle.
+The `/lab/v1/sms/inventory`, `/records`, `/metrics` and finite `/traffic/start` and
+`/traffic/stop` APIs remain Host diagnostics/stimuli. Records carry messageId,
+phoneNumber, leaseUntil and the latest SMS identity; trackingStatus describes local
+expiry/interruption separately. They are not a result source for the product API.
+Raw input never manufactures a platform Report or mutates Redis directly. See
+[the SMS business contract](../scenarios/sms-reception-jvm/README.md#持续收码与-worker-生命周期)
+for API and template semantics, and its [proof entry](../scenarios/sms-reception-jvm/README.md#检查与验收).
 
 ## Actual Execution Witness
 
@@ -661,7 +630,7 @@ country. Validation and number conflicts are checked before atomic file replacem
 Only a successful write installs the snapshot/address update; file I/O never holds
 a business gate and SDK/Reporter calls never hold the inventory gate.
 
-A phone change withdraws the old SMS address, locally ends its listeners as
+A phone change withdraws the old SMS address, locally ends its reception associations as
 `INTERRUPTED` and clears Reporters before exposing the new address. It never emits
 a synthetic ending Report or carries an old address alias. Previously admitted
 input rechecks the original SIM binding before matching. Country changes affect

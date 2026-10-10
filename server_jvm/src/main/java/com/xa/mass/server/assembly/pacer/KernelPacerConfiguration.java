@@ -28,6 +28,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.ObjectProvider;
 import com.xa.mass.server.task.call.TaskRpcWaitRegistry;
+import com.xa.mass.server.task.observation.TaskLeaseProjectionService;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({KernelPacerProperties.class, TaskItemOutcomeProperties.class})
@@ -66,10 +67,12 @@ public class KernelPacerConfiguration {
             WorkerMatching workerMatching,
             MatchingComposition matchingComposition,
             ObjectProvider<WorkerObservationConsumer> observations,
-            TaskRpcWaitRegistry taskRpcWaiters
+            TaskRpcWaitRegistry taskRpcWaiters,
+            ObjectProvider<TaskLeaseProjectionService> leaseProjections
     ) {
         validatePresetScope(properties.preset(), redisProperties.scope());
         var consumer = observations.getIfAvailable();
+        var leaseConsumer = leaseProjections.getIfAvailable();
         return KernelPacerRuntime.assemble(
                 properties.preset(),
                 properties.shutdownTimeout(),
@@ -88,7 +91,10 @@ public class KernelPacerConfiguration {
                 workerMatching,
                 matchingComposition.networkEvidenceTimestamps()::filterAndAdvance,
                 consumer != null && consumer.enabled() ? consumer::accept : ignored -> {},
-                stored -> taskRpcWaiters.wake(stored.taskId(), stored.messageIds())
+                stored -> {
+                    taskRpcWaiters.wake(stored.taskId(), stored.messageIds());
+                    if (leaseConsumer != null && leaseConsumer.enabled()) leaseConsumer.accept(stored.taskId(), stored.messageIds());
+                }
         );
     }
 

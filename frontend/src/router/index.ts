@@ -36,7 +36,7 @@ export const consoleRoutes: RouteRecordRaw[] = [
         component: () => import("@/views/ErrorCodeReferenceView.vue"),
         meta: { section: "Reference", title: "Diagnostic Codes" }
       },
-      ...["sms", "sms/listeners", "sms/metrics"].map((path) => ({
+      ...["sms", "sms/metrics"].map((path) => ({
         path,
         component: smsPage,
         meta: { section: "Scenarios", title: "SMS" }

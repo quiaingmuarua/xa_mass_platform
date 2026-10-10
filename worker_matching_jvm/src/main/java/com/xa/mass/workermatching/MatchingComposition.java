@@ -18,6 +18,9 @@ import com.xa.mass.workermatching.refill.CountryPoolPolicy;
 import com.xa.mass.workermatching.refill.QualifiedCountryPoolPolicy;
 import com.xa.mass.workermatching.refill.ProofFactsPoolPolicy;
 import com.xa.mass.workermatching.storage.FactsIndexStore;
+import com.xa.mass.workermatching.storage.RedisPlatformLeaseState;
+import com.xa.mass.workermatching.refill.PartitionedLeasePoolPolicy;
+import com.xa.mass.workermatching.functions.PartitionedLeaseQueryFunction;
 import io.lettuce.core.RedisClient;
 import java.util.*;
 import java.util.function.LongSupplier;
@@ -26,6 +29,7 @@ import java.util.function.LongSupplier;
 public final class MatchingComposition implements AutoCloseable {
     private final FactsIndexStore storage;
     private final NetworkEvidenceTimestamps networkEvidenceTimestamps;
+    private final PlatformLeaseState platformLeases;
     private final LongSupplier clock;
     private final CandidateBudget budget = new CandidateBudget();
     private final Map<String, MatchingGroup> groups;
@@ -39,7 +43,8 @@ public final class MatchingComposition implements AutoCloseable {
 
     public MatchingComposition(FactsIndexStore storage, Map<String, MatchingGroup> groups, LongSupplier clock,
             Collection<FixedWindowPoolDefinition> definitions,
-            Collection<QualifiedCountryDefinition> qualifiedDefinitions) {
+            Collection<QualifiedCountryDefinition> qualifiedDefinitions,
+            Collection<PartitionedLeasePoolDefinition> leaseDefinitions) {
         this.storage = Objects.requireNonNull(storage);
         try {
             this.networkEvidenceTimestamps = new NetworkEvidenceTimestamps(storage::commands, storage.keyspace());
@@ -53,6 +58,7 @@ public final class MatchingComposition implements AutoCloseable {
                     "proof.worker.facts", "worker.phone"));
             var windows = new TreeMap<String, FixedWindowPoolDefinition>();
             var qualified = new TreeMap<String, QualifiedCountryDefinition>();
+            var leased = new TreeMap<String, PartitionedLeasePoolDefinition>();
             var dependencies = new HashMap<>(Map.of("worker.any", "any", "worker.country", "country",
                     "proof.worker.facts", "proof-facts"));
             for (var definition : List.copyOf(definitions)) {
@@ -78,6 +84,13 @@ public final class MatchingComposition implements AutoCloseable {
                 qualified.put(definition.poolName(), definition);
                 dependencies.put(definition.poolFunctionName(), definition.poolName());
             }
+            for (var definition : List.copyOf(leaseDefinitions)) {
+                if (!poolNames.add(definition.poolName()) || !functionNames.add(definition.functionName()))
+                    throw new IllegalArgumentException("duplicate or reserved lease resource name");
+                leased.put(definition.poolName(), definition);
+                dependencies.put(definition.functionName(), definition.poolName());
+            }
+            var leaseResources = new HashMap<String, Set<String>>();
             groups.forEach((group, config) -> {
                 for (String name : config.pools())
                     if (!poolNames.contains(name)) throw new IllegalArgumentException("Unknown Pool: " + name);
@@ -89,7 +102,11 @@ public final class MatchingComposition implements AutoCloseable {
                 }
                 enabledPools.addAll(config.pools());
                 enabledFunctions.addAll(config.functions());
+                var resources = new HashSet<>(config.pools());
+                resources.retainAll(leased.keySet());
+                leaseResources.put(group, resources);
             });
+            this.platformLeases = new RedisPlatformLeaseState(storage::commands, storage.keyspace(), leaseResources);
             var pools = new LinkedHashMap<String, WorkerCandidatePool>();
             var policies = new LinkedHashMap<String, PoolRefillPolicy>();
             var functions = new LinkedHashMap<String, QueryFunction>();
@@ -121,6 +138,13 @@ public final class MatchingComposition implements AutoCloseable {
                 policies.put(name, new FixedWindowPoolPolicy(pool, storage::readFactsSnapshot, clock, definition));
                 functions.put(definition.functionName(), new EmptyInputPoolQueryFunction(pool));
             });
+            leased.forEach((name, definition) -> {
+                if (!enabledPools.contains(name)) return;
+                var pool = new WorkerCandidatePool(clock, budget);
+                pools.put(name, pool);
+                policies.put(name, new PartitionedLeasePoolPolicy(pool, storage::readWorkerFacts, platformLeases, definition));
+                functions.put(definition.functionName(), new PartitionedLeaseQueryFunction(pool, definition));
+            });
             var qualifications = new HashMap<String, QualifiedCountryEligibility>();
             qualified.forEach((name, definition) -> {
                 var eligibility = new QualifiedCountryEligibility(definition);
@@ -146,6 +170,7 @@ public final class MatchingComposition implements AutoCloseable {
             this.functions = Map.copyOf(functions);
             var order = new ArrayList<>(List.of("proof-facts", "country"));
             order.addAll(windows.keySet());
+            order.addAll(leased.keySet());
             order.add("any");
             order.addAll(qualified.keySet());
             this.poolOrder = order.stream()
@@ -186,6 +211,16 @@ public final class MatchingComposition implements AutoCloseable {
     }
 
     public WorkerProperties properties() { return storage; }
+    public PlatformLeaseState platformLeases() { return platformLeases; }
+
+    public Map<String, Object> leaseMetrics() {
+        var result = new LinkedHashMap<String, Object>();
+        policies.forEach((name, policy) -> {
+            if (policy instanceof PartitionedLeasePoolPolicy leased) result.put(name, leased.metrics());
+        });
+        result.put("inventory", budget.diagnostics());
+        return Collections.unmodifiableMap(result);
+    }
 
     public NetworkEvidenceTimestamps networkEvidenceTimestamps() { return networkEvidenceTimestamps; }
 
@@ -198,9 +233,10 @@ public final class MatchingComposition implements AutoCloseable {
 
     public static MatchingComposition create(RedisClient client, RedisKeyspace keyspace,
             Map<String, MatchingGroup> groups, Collection<FixedWindowPoolDefinition> definitions,
-            Collection<QualifiedCountryDefinition> qualifiedDefinitions) {
+            Collection<QualifiedCountryDefinition> qualifiedDefinitions,
+            Collection<PartitionedLeasePoolDefinition> leaseDefinitions) {
         var captured = List.copyOf(qualifiedDefinitions);
         var storage = new FactsIndexStore(client, keyspace, indexedProperties(groups, captured));
-        return new MatchingComposition(storage, groups, System::currentTimeMillis, definitions, captured);
+        return new MatchingComposition(storage, groups, System::currentTimeMillis, definitions, captured, leaseDefinitions);
     }
 }

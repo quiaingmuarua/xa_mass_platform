@@ -223,6 +223,7 @@ class ServerArchitectureBoundaryTest {
                 .replace("com.xa.mass.server.api.v1.contract.task.TaskCreateRequest", "approved")
                 .replace("com.xa.mass.server.api.v1.contract.task.TaskCreateResponse", "approved")
                 .replace("com.xa.mass.server.api.v1.contract.task.TaskItemRequest", "approved")
+                .replace("com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest", "approved")
                 .replace("com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse", "approved")
                 .replace("com.xa.mass.server.api.v1.contract.task.TaskItemResultStatus", "approved"))
                 .doesNotContain("com.xa.mass.server.api.v1");

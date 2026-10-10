@@ -194,7 +194,7 @@ class PreviewLifecycleTest(unittest.TestCase):
                     self.assertEqual(60, group["count"])
                     self.assertFalse(group["newEnvironment"])
                     self.assertEqual({"$choice": ["CN", "US", "GB"]}, group["propertiesTemplate"]["country"])
-                    self.assertEqual(True, "extension.worker.sms.listen.start" in group["events"])
+                    self.assertEqual(True, "extension.worker.sms.number.lease" in group["events"])
                     self.assertEqual(True, "extension.worker.message.send" in group["events"])
                     self.assertEqual("18413", host.args[2]["PREVIEW_ADAPTER_PORT"])
                     for group_id in ("app-a-sim", "app-b-sim"):

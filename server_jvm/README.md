@@ -310,8 +310,7 @@ Scenarios call the same application admission as HTTP, with the same bounds and
 existing Task/Item/Result DTOs, never Controllers, providers, policy or mirrored
 contracts. Do not add HTTP fallbacks, Runtime bridges or a generic Scenario
 framework. Scenarios own neither HTTP waiters nor a Direct Call registry.
-`TaskCallSubmissionService` supplies SMS with bounded managed submission and ordered
-IDs without a servlet waiter; HTTP adds Result probing and wait registration.
+`TaskRpcCallService` supplies SMS with managed submission and a pure business response mapping over the same servlet waiter/probe as platform HTTP. SMS owns no waiter or submission queue; its later reads use `TaskDataService`.
 Messages uses `TaskCreationService`, `TaskLifecycleService`, `ProjectTaskQueryService`
 and `TaskDataService`; App Checks reuses TaskCreateResponse. Creation validates
 Group, supply and numeric inputs before writes; finite append validates the input
@@ -697,6 +696,30 @@ Resource dependencies, startup retention and Facts/index writes belong to the
 
 The [Prepare use case](#workergroup-and-worker-preparation) composes Server Identity
 and Kernel Binding/Score operations independently of Properties admission.
+
+### Stored Result Lease Projections
+
+Scenarios may contribute immutable `TaskLeaseProjection` values: Project, Group,
+Matching Pool, and a pure stored-Result-to-coordinate/deadline function. Server
+binds the managed Task identity during startup; the Scenario sees no Pacer type or
+storage handle. The concrete SMS caller imports the Matching definition and
+coordinate value contracts only, plus the read-only `TaskLeaseProjectionMetrics` capability; it receives no consumer lifecycle or producer-admission handle.
+
+The existing Pacer ResultObservation first wakes Call waiters, then offers IDs to
+`TaskLeaseProjectionService`. The producer performs no I/O. Its one consumer uses
+a 256-notice queue, drains at most 16 notices, coalesces IDs per Task and reads at
+most 1,000 Results per operation through `TaskDataService`. Successful projections
+are recorded through Matching's bounded `PlatformLeaseState` operation. Deadline
+comes from the stored result, never from consumption time. No later-SMS notification
+is needed for this effect, and Result queries themselves have no lease side effect.
+
+The handoff is lossy: full/stopped queues count dropped IDs; read, projection and
+write failures count without replay or blocking Result handling, Worker release or
+Call completion. It is not execution truth. Consumer starts after configured platform resources and before the Scenario API,
+and stops before platform resources with a bounded five-second join; shutdown drops queued notices. Empty
+projection composition starts no thread. Metrics expose queue, failures, recorded
+coordinates, mean queue delay and Matching stock diagnostics. SMS has no long-lived
+order observer or duplicate Result store.
 
 ### Worker And Scenario Assembly
 

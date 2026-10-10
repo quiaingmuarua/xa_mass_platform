@@ -28,7 +28,7 @@ final class SimulatorTestConfig {
 
     static List<WorkerSimulatorGroupConfig> products(int count) {
         return WorkerSimulatorJsonParser.parseGroups(Map.of("demo-sim", Map.of(
-                "events", List.of("extension.worker.sms.listen.start", "extension.worker.sms.listen.cancel",
+                "events", List.of("extension.worker.sms.number.lease",
                         "extension.worker.message.send"),
                 "messageContentMode", "lab-json", "count", count, "propertiesTemplate", Map.of(
                         "phone", Map.of("$index", List.of(861700000001L, 1)),

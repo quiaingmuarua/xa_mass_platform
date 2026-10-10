@@ -1,7 +1,7 @@
 package com.xa.mass.serverboot;
 
 import com.xa.mass.scenario.sms.SmsScenarioConfiguration;
-import com.xa.mass.scenario.sms.ListenerService;
+import com.xa.mass.scenario.sms.SmsReceptionService;
 import com.xa.mass.scenario.messages.MessageCampaignsScenarioConfiguration;
 import com.xa.mass.scenario.messages.MessageTaskService;
 import com.xa.mass.scenario.appchecks.AppCheckTaskService;
@@ -53,7 +53,7 @@ class ScenarioCompositionIntegrationTest {
             for (Class<?> owner : List.of(KernelPacerRuntime.class, WorkerDeliveryAdapterManager.class, RedisClient.class,
                     TaskRuntime.class, TaskResourceCatalog.class, WorkerResourceCatalog.class, WorkerScoreCore.class))
                 assertThat(context.getBeansOfType(owner)).as("one shared %s", owner.getSimpleName()).hasSize(1);
-            assertThat(context.getBeansOfType(ListenerService.class)).hasSize(sms ? 1 : 0);
+            assertThat(context.getBeansOfType(SmsReceptionService.class)).hasSize(sms ? 1 : 0);
             assertThat(context.getBeansOfType(MessageTaskService.class)).hasSize(messages ? 1 : 0);
             assertThat(context.getBeansOfType(AppCheckTaskService.class)).hasSize(preview ? 1 : 0);
             assertThat(context.getBeansOfType(WorkerPropertyProjection.class)).hasSize(preview ? 2 : 0);
@@ -84,13 +84,13 @@ class ScenarioCompositionIntegrationTest {
             }
             assertThat(context.getBean(com.xa.mass.server.delivery.adapter.ServerWorkerDeliveryAdapterProperties.class)
                     .instances()).hasSize(preview ? 1 : 0);
-            if (sms) assertThat(context.getBean(ListenerService.class).isRunning()).isTrue();
+            if (sms) assertThat(context.getBean(SmsReceptionService.class).isRunning()).isTrue();
             if (messages) assertThat(context.getBean(MessageTaskService.class).isRunning()).isTrue();
             var group = context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("demo-sim")).get("demo-sim");
             if (sms || messages) {
                 assertThat(group).isNotNull();
-                if (sms) assertThat(context.getBean(ListenerService.class).catalog().get("countries").toString())
-                        .contains("workerGroupId=demo-sim");
+                if (sms) assertThat(context.getBean(SmsReceptionService.class).catalog().get("countries").toString())
+                        .contains("CN", "US", "GB");
                 if (messages) assertThat(context.getBean(MessageTaskService.class).catalog().get("applications").toString())
                         .contains("workerGroupId=demo-sim");
                 var directory = context.getBean(com.xa.mass.server.project.ProjectDirectory.class);
@@ -115,7 +115,7 @@ class ScenarioCompositionIntegrationTest {
             assertThat(openapi.contains("/api/v1/app-checks/catalog")).isEqualTo(preview);
             String index = get(client, base, "/").body();
             assertThat(index).contains("/static/js/");
-            for (String page : List.of("/sms", "/sms/", "/sms/metrics", "/sms/listeners/", "/messages", "/messages/",
+            for (String page : List.of("/sms", "/sms/", "/sms/metrics", "/messages", "/messages/",
                     "/messages/tasks/example", "/messages/tasks/example/", "/app-checks", "/app-checks/",
                     "/app-checks/tasks/example", "/app-checks/tasks/example/")) {
                 var response = get(client, base, page);

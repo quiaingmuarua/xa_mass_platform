@@ -248,7 +248,7 @@ an old Pool fence on requalification. A later evidence slot is preferred to proc
 time, so delayed consumption does not unnecessarily raise the evidence fence. A
 coordinate written at N must cross the next slot before candidateization or execution.
 Old Pool entries need no repair or rollback. Normal Refill can resupply a due restored
-HOT without waiting for 60-second candidate recycling.
+HOT without waiting for 30-second candidate recycling.
 
 Java expands these rules into interval rules for each distinct E. Within every
 emitted interval the admitted target is constant: slots up to min(E, N) - 1 write
@@ -268,7 +268,7 @@ transition, and it does not fail the other members of its batch. Range reads
 keep the corruption behavior described under Read-Only Observations.
 
 Pacer uses 15-second Recovery eligibility and a separate 60-second HOT stale
-threshold with a 1-second Producer interval. Candidate age is separately 60 seconds;
+threshold with a 1-second Producer interval. Candidate age is separately 30 seconds;
 Pool admission has its own 60-second TTL. None is an execution-time guarantee.
 Main supplies all scanned Groups; no global discovery or resource cleanup is added.
 

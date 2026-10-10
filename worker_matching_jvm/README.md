@@ -260,13 +260,57 @@ Each Pool function rejects unknown local fields and preserves its previous quali
 rules. Countries remain strict uppercase two-letter codes. Empty object means no
 additional condition within a Pool function; empty arrays are not ANY. Messages
 with a sender phone use qualified Direct lookup and declare no Pool supply. Other
-Messages use Messaging Pool ANY/country stock. SMS listeners use Country Pool; cancellation
-uses the independent workerId function. The retired default function and ID-list
+Messages use Messaging Pool ANY/country stock. SMS number acquisition uses its declared partitioned lease Pool; each Item selects one app partition and country. The retired default function and ID-list
 choice have no aliases or replacement multi-ID function.
 
 ```json
 {"workerSelector":{"executorName":"worker.messaging.phone","input":{"country":["CN"],"phone":"+8613800000000"}}}
 ```
+
+### Partitioned Lease Pools
+
+`PartitionedLeasePoolDefinition` contributes immutable Pool/function names, subject
+and country property names, and a finite partition set. Composition validates names
+and Group enablement, constructs storage and stock, and registers one fixed query
+function. Input is `{partition: "A", country: "CN"}`; refill targets use
+`{"partition":["A"],"worker.country":["CN"]}`. Both coordinates are required and
+singular. Scenario callbacks never implement qualification or stock maintenance.
+
+`RedisPlatformLeaseState` shares Matching's existing connection and owns
+`xa_mass:<scope>:matching:lease:<base64url(group)>:<base64url(pool)>` ZSETs. Members
+are the dot-separated, unpadded base64url encoding of subject, partition and Worker
+ID. Score is the absolute deadline. Read/record accept at most 1,000 coordinates;
+ZMSCORE only reads requested members, and ZADD GT records greater deadlines while
+inserting missing members. Expired members remain until a future maintenance change;
+qualification compares deadline with the current time. No reservation, WorkerScore
+mutation or full-set scan occurs. Failed operations propagate without repair.
+
+The partitioned policy reads Facts only for caller-offered identities and skips
+full app/country targets. It groups offered rows by country, rotates shortage
+targets, and stops after 1,000 coordinate checks per refill. Fallible Facts and lease
+reads finish before local admission. Deficits count live local references; they do
+not reserve numbers or promise exclusive leases. Consumption performs no Redis read.
+
+`WorkerCandidatePool.offerSharedBatch` admits a generation into bounded bucket
+views. Every view consumes CandidateBudget capacity. Poll or TTL expiry removes
+all views of that entry in the same local gate; independent ordinary entries keep
+their original occurrence semantics. Bucket FIFO among available entries and opaque fences remain. A shared view retains
+the observed lease deadline as its local availableAt; future views are not consumable
+or counted as full. When the deadline passes they become usable from that same
+snapshot, without a Facts/Redis read or a new candidate generation. This prevents a
+short lease from waiting for the Pacer's 30-second aged-candidate recycle merely
+because another app already holds a view. Ready admissions precede future ones;
+future views can be replaced/reclaimed under capacity pressure. They share the
+existing 60-second admission TTL and reference budgets. This changes only Matching's
+new resource maintenance, not Kernel execution leasing or Pacer supply policy.
+The coordinator receives unique admitted Worker IDs, while physical reference
+cost is accounted by the Pool. A generation still enters at most one Pool per
+supply batch. There is no Worker-wide app materialization or cross-Pool registry.
+
+The memory Pool starts empty after process restart. Stored deadlines are independent
+and remain readable. Normal Pacer supply refills it; there is no Matching timer,
+startup scan, state replay or new Kernel operation. Diagnostics distinguish checked
+coordinates, captured references and actual resident references, including replaced deferred hints.
 
 ### Fixed Window Pools
 
@@ -304,7 +348,7 @@ Pool/Group diagnostics. Nothing repairs or resets stored values.
 
 Storage/JSON decoding failure admits none of this Pool's batch; earlier admissions
 by other Pools remain committed. Rejection never polls replacements, renews a fence,
-returns an identity hint or rolls back candidateization. Existing 60-second candidate
+returns an identity hint or rolls back candidateization. Existing 30-second candidate
 aging and ordinary refill remain responsible for recovery. Time alone does not fill
 the Pool, and no immediate execution at a window boundary is promised.
 

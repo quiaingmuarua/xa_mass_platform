@@ -12,18 +12,21 @@ import java.util.function.Supplier;
 import java.util.function.BooleanSupplier;
 
 /** Business state of one finite simulator run. No Kernel state or delivery retries. */
-public final class ListeningRegistry {
-    public static final int MAX_LISTENERS = 50_000;
+public final class SmsReceptionRegistry {
+    public static final int MAX_ASSOCIATIONS = 50_000;
     public static final int MAX_SMS = 100_000;
     public static final int PER_NUMBER = 64;
     private final Clock clock;
-    private final int listenerLimit;
+    private final int associationLimit;
     private final int smsLimit;
     private final Map<String, Sim> sims = new ConcurrentHashMap<>();
     private final List<Sim> devices = new ArrayList<>();
     private final Map<String, Entry> entries = new ConcurrentHashMap<>();
-    private final List<Entry> ordered = new ArrayList<>();
-    private final Map<String, String> smsIdentities = new HashMap<>();
+    private final LinkedHashMap<String, Entry> history = new LinkedHashMap<>();
+    private final Object historyGate = new Object(), expiryGate = new Object();
+    private final PriorityQueue<Entry> expirations = new PriorityQueue<>(Comparator.comparingLong(e -> e.leaseUntil));
+    private long sequence;
+    private final Map<String, String> smsIdentities = new LinkedHashMap<>();
     private final Object admission = new Object();
     private final Object smsAdmission = new Object();
     private final LongAdder matched = new LongAdder();
@@ -32,12 +35,13 @@ public final class ListeningRegistry {
     private final LongAdder noListeners = new LongAdder();
     private final LongAdder reportAccepted = new LongAdder();
     private final LongAdder reportFailed = new LongAdder();
+    private final LongAdder leaseExecutions = new LongAdder();
     private volatile boolean closed;
 
-    public ListeningRegistry() { this(Clock.systemUTC(), MAX_LISTENERS, MAX_SMS); }
-    ListeningRegistry(Clock clock, int listenerLimit, int smsLimit) {
+    public SmsReceptionRegistry() { this(Clock.systemUTC(), MAX_ASSOCIATIONS, MAX_SMS); }
+    SmsReceptionRegistry(Clock clock, int associationLimit, int smsLimit) {
         this.clock = clock;
-        this.listenerLimit = listenerLimit;
+        this.associationLimit = associationLimit;
         this.smsLimit = smsLimit;
     }
 
@@ -64,25 +68,28 @@ public final class ListeningRegistry {
         }
     }
 
-    public Map<String, Object> listen(Sim sim, Map<String, Object> request, WorkerOutcomeReporter reporter) {
-        String id = string(request, "listenerId");
+    public Map<String, Object> lease(Sim sim, Map<String, Object> request, WorkerOutcomeReporter reporter) {
+        leaseExecutions.increment();
+        String id = string(request, "messageId");
         String application = string(request, "applicationId");
         String country = string(request, "country");
-        long seconds = number(request, "listenSeconds");
+        long seconds = number(request, "leaseSeconds");
         long deadline = number(request, "setupDeadline");
         if (seconds < 1 || seconds > 300)
-            throw new IllegalArgumentException("Invalid listening window or country");
+            throw new IllegalArgumentException("Invalid lease window or country");
         List<Template> templates = templates(request);
         Map<String, Object> specification = Map.of("application", application, "country", country,
                 "seconds", seconds, "deadline", deadline, "templates", templates);
+        expire();
         synchronized (admission) {
             Entry previous = entries.get(id);
+            if (previous == null) synchronized (historyGate) { previous = history.get(id); }
             if (previous != null) {
-                if (!previous.specification.equals(specification)) throw new IllegalArgumentException("Listener conflict");
+                if (!previous.specification.equals(specification)) throw new IllegalArgumentException("Association conflict");
                 return previous.snapshot;
             }
             long now = clock.millis();
-            if (closed || ordered.size() >= listenerLimit) return rejection(id, "Listener capacity exhausted");
+            if (closed || entries.size() >= associationLimit) return rejection(id, "Association capacity exhausted");
             if (now >= deadline) return rejection(id, "Establishment deadline elapsed");
             String workerId = sim.workerId.get();
             if (workerId == null || workerId.isBlank()) return rejection(id, "Worker identity unavailable");
@@ -91,34 +98,15 @@ public final class ListeningRegistry {
                 if (!properties.get("country").equals(country)) throw new IllegalArgumentException("Wrong SIM country");
                 if (!sim.accepting || !"RUNNING".equals(sim.runtimeState.get()))
                     return rejection(id, "Worker is stopped");
-                if (sim.active.size() >= PER_NUMBER) {
-                    Entry refused = new Entry(id, application, specification, ordered.size(), sim,
-                            templates, now, now, workerId, null, properties);
-                    refused.snapshot = rejection(id, "Number listener capacity exhausted");
-                    ordered.add(refused); entries.put(id, refused);
-                    return refused.snapshot;
-                }
-                Entry entry = new Entry(id, application, specification, ordered.size(), sim,
+                if (sim.active.size() >= PER_NUMBER) return rejection(id, "Number association capacity exhausted");
+                Entry entry = new Entry(id, application, specification, sequence++, sim,
                         templates, now, now + seconds * 1000, workerId, reporter, properties);
                 sim.active.put(id, entry);
-                ordered.add(entry);
+                synchronized (expiryGate) { expirations.add(entry); entry.queued = true; }
                 entries.put(id, entry);
                 return entry.snapshot;
             }
         }
-    }
-
-    public Map<String, Object> cancel(Sim addressedSim, Map<String, Object> request) {
-        Entry entry = entries.get(string(request, "listenerId"));
-        if (entry == null) throw new IllegalArgumentException("Listener not established");
-        if (entry.sim != addressedSim) throw new IllegalArgumentException("Cancellation addressed to another number");
-        Publication publication;
-        synchronized (entry.sim) {
-            long now = clock.millis();
-            publication = finish(entry, now >= entry.expiresAt ? "EXPIRED" : "CANCELLED", now, Map.of());
-        }
-        publish(publication);
-        return entry.snapshot;
     }
 
     public Map<String, Object> receive(Sim sim, String smsId, String text) {
@@ -147,11 +135,11 @@ public final class ListeningRegistry {
                     duplicates.increment();
                     return Map.of("status", "DUPLICATE", "smsId", smsId);
                 }
-                if (smsIdentities.size() >= smsLimit) throw new IllegalStateException("SMS record capacity exhausted");
+                if (smsIdentities.size() >= smsLimit) smsIdentities.remove(smsIdentities.keySet().iterator().next());
                 smsIdentities.put(smsId, digest);
             }
             if (!"RUNNING".equals(sim.runtimeState.get())) interrupt(sim, now);
-            else expire(sim, now, publications);
+            else expire(sim, now);
             for (Entry entry : sim.active.values()) {
                 if (now < entry.startedAt) continue;
                 for (Template template : entry.templates) {
@@ -173,46 +161,59 @@ public final class ListeningRegistry {
                 sms.put("receivedAt", now);
                 sms.put("templateId", winningTemplate.id);
                 if (!winningTemplate.any) sms.put("code", text.substring(winningTemplate.prefix.length()));
-                publications.add(finish(winner, "RECEIVED", now, sms));
+                publications.add(received(winner, now, sms));
                 matched.increment();
             }
         }
         publications.forEach(this::publish);
         return winner == null ? Map.of("status", "IGNORED", "smsId", smsId)
-                : Map.of("status", "MATCHED", "smsId", smsId, "listenerId", winner.id,
+                : Map.of("status", "MATCHED", "smsId", smsId, "messageId", winner.id,
                         "templateId", winningTemplate.id);
     }
 
     public void expire() {
         long now = clock.millis();
-        for (Sim sim : devices) {
-            List<Publication> publications = new ArrayList<>();
-            synchronized (sim) {
-                if (!"RUNNING".equals(sim.runtimeState.get())) interrupt(sim, now);
-                else expire(sim, now, publications);
+        for (int i = 0; i < 512; i++) {
+            Entry entry;
+            synchronized (expiryGate) {
+                entry = expirations.peek();
+                if (entry == null || entry.leaseUntil > now) return;
+                expirations.remove(); entry.queued = false;
             }
-            publications.forEach(this::publish);
+            synchronized (entry.sim) { finish(entry, "EXPIRED", now); }
         }
     }
 
-    private void expire(Sim sim, long now, List<Publication> publications) {
-        for (Entry entry : List.copyOf(sim.active.values())) {
-            if (now >= entry.expiresAt) publications.add(finish(entry, "EXPIRED", now, Map.of()));
-        }
+    private void expire(Sim sim, long now) {
+        for (Entry entry : List.copyOf(sim.active.values()))
+            if (now >= entry.leaseUntil) finish(entry, "EXPIRED", now);
     }
 
-    private Publication finish(Entry entry, String status, long now, Map<String, Object> detail) {
-        if (!"LISTENING".equals(entry.snapshot.get("status"))) return null;
-        Map<String, Object> next = new LinkedHashMap<>(entry.snapshot);
-        next.put("status", status);
-        next.put("revision", 1);
-        next.put("endedAt", now);
-        if (!detail.isEmpty()) next.put("sms", Map.copyOf(detail));
+    private Publication received(Entry entry, long now, Map<String, Object> sms) {
+        var next = new LinkedHashMap<>(entry.snapshot);
+        next.put("status", "RECEIVED");
+        next.put("sms", Map.copyOf(sms));
+        next.put("revision", ++entry.revision);
         entry.snapshot = Map.copyOf(next);
-        entry.sim.active.remove(entry.id);
-        WorkerOutcomeReporter reporter = entry.reporter;
+        entry.reportTime = Math.max(now, entry.reportTime + 1);
+        return new Publication(entry, entry.reporter, entry.reportTime, entry.snapshot);
+    }
+
+    private void finish(Entry entry, String status, long now) {
+        if (entry.sim.active.remove(entry.id) == null) return;
+        entries.remove(entry.id, entry);
         entry.reporter = null;
-        return new Publication(entry, reporter, now, entry.snapshot);
+        synchronized (expiryGate) {
+            if (entry.queued) { expirations.remove(entry); entry.queued = false; }
+        }
+        var next = new LinkedHashMap<>(entry.snapshot);
+        next.put("trackingStatus", status);
+        next.put("endedAt", now);
+        entry.snapshot = Map.copyOf(next);
+        synchronized (historyGate) {
+            if (history.size() == associationLimit) history.pollFirstEntry();
+            history.put(entry.id, entry);
+        }
     }
 
     private void publish(Publication publication) {
@@ -222,7 +223,7 @@ public final class ListeningRegistry {
             accepted = publication.reporter != null && publication.reporter.report(9, publication.time,
                     Jsons.toJson(publication.snapshot));
         } catch (RuntimeException ignored) {
-            // Business state is already final. A failed send never selects another listener.
+            // A failed observation never forwards this SMS to a different association.
         }
         publication.entry.reportAccepted = accepted;
         if (accepted) reportAccepted.increment(); else reportFailed.increment();
@@ -262,7 +263,7 @@ public final class ListeningRegistry {
     }
 
     private void interrupt(Sim sim, long now) {
-        for (Entry entry : List.copyOf(sim.active.values())) finish(entry, "INTERRUPTED", now, Map.of());
+        for (Entry entry : List.copyOf(sim.active.values())) finish(entry, "INTERRUPTED", now);
     }
 
     public List<Sim> devices() { return List.copyOf(devices); }
@@ -277,7 +278,7 @@ public final class ListeningRegistry {
             synchronized (sim) { active = sim.active.size(); }
             return Map.<String, Object>of("workerGroupId", sim.groupId, "replicaKey", sim.replicaKey,
                     "desiredRunning", sim.desiredRunning.getAsBoolean(), "phone", properties.get("phone"), "country", properties.get("country"),
-                    "workerId", workerId, "runtimeState", state, "activeListeners", active);
+                    "workerId", workerId, "runtimeState", state, "activeAssociations", active);
         }).toList();
         return Map.of("total", devices.size(), "offset", offset, "limit", limit, "items", page);
     }
@@ -286,11 +287,12 @@ public final class ListeningRegistry {
         if (offset < 0 || limit < 1 || limit > 1000) throw new IllegalArgumentException("Invalid page");
         List<Entry> page;
         int total;
-        synchronized (admission) {
-            total = ordered.size();
-            int from = Math.min(offset, total);
-            page = List.copyOf(ordered.subList(from, from + Math.min(limit, total - from)));
-        }
+        List<Entry> retained = new ArrayList<>(entries.values());
+        synchronized (historyGate) { retained.addAll(history.values()); }
+        retained = retained.stream().distinct().sorted(Comparator.comparingLong(e -> e.sequence)).toList();
+        total = retained.size();
+        int from = Math.min(offset, total);
+        page = retained.subList(from, from + Math.min(limit, total - from));
         return Map.of("total", total, "items", page.stream().map(entry -> {
             Map<String, Object> captured = entry.snapshot;
             Map<String, Object> evidence = new LinkedHashMap<>(captured);
@@ -303,18 +305,21 @@ public final class ListeningRegistry {
     }
 
     public Map<String, Object> metrics() {
-        int active = 0;
-        for (Sim sim : devices) synchronized (sim) { active += sim.active.size(); }
+        int active = entries.size();
         int sms;
         synchronized (smsAdmission) { sms = smsIdentities.size(); }
-        return Map.of("numbers", devices.size(), "listeners", entries.size(), "activeListeners", active,
+        var result = new LinkedHashMap<String, Object>(Map.of("numbers", devices.size(), "activeAssociations", active, "retainedRecords", retainedCount(),
                 "smsEvents", sms, "matched", matched.sum(), "duplicates", duplicates.sum(),
                 "unmatched", unmatched.sum(), "noListeners", noListeners.sum(),
-                "reportAccepted", reportAccepted.sum(), "reportFailed", reportFailed.sum());
+                "reportAccepted", reportAccepted.sum(), "reportFailed", reportFailed.sum()));
+        result.put("leaseExecutions", leaseExecutions.sum());
+        return Map.copyOf(result);
     }
 
+    private int retainedCount() { synchronized (historyGate) { return history.size() + entries.size(); } }
+
     private static Map<String, Object> rejection(String id, String reason) {
-        return Map.of("listenerId", id, "status", "REJECTED", "reason", reason, "revision", 1);
+        return Map.of("messageId", id, "status", "REJECTED", "reason", reason, "revision", 1);
     }
     public static String string(Map<String, Object> value, String key) {
         if (!(value.get(key) instanceof String s) || s.isBlank() || s.length() > 256)
@@ -377,17 +382,19 @@ public final class ListeningRegistry {
         final Sim sim;
         final List<Template> templates;
         final long startedAt;
-        final long expiresAt;
+        final long leaseUntil;
         volatile Map<String, Object> snapshot;
         volatile Boolean reportAccepted;
         WorkerOutcomeReporter reporter;
+        long revision, reportTime;
+        boolean queued;
         Entry(String id, String app, Map<String, Object> specification, long sequence, Sim sim, List<Template> templates,
-              long startedAt, long expiresAt, String workerId, WorkerOutcomeReporter reporter, Map<String, String> properties) {
+              long startedAt, long leaseUntil, String workerId, WorkerOutcomeReporter reporter, Map<String, String> properties) {
             this.id = id; this.specification = specification; this.sequence = sequence; this.sim = sim;
-            this.templates = templates; this.startedAt = startedAt; this.expiresAt = expiresAt; this.reporter = reporter;
-            this.snapshot = Map.of("listenerId", id, "applicationId", app, "country", properties.get("country"),
-                    "phone", properties.get("phone"), "workerId", workerId, "startedAt", startedAt, "expiresAt", expiresAt,
-                    "status", "LISTENING", "revision", 0);
+            this.templates = templates; this.startedAt = startedAt; this.leaseUntil = leaseUntil; this.reporter = reporter;
+            this.snapshot = Map.of("messageId", id, "applicationId", app, "country", properties.get("country"),
+                    "phoneNumber", properties.get("phone"), "workerId", workerId, "startedAt", startedAt, "leaseUntil", leaseUntil,
+                    "status", "WAITING", "revision", 0);
         }
     }
 }

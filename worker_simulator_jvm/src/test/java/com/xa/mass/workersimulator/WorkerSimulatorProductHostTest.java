@@ -1,6 +1,6 @@
 package com.xa.mass.workersimulator;
 
-import com.xa.mass.workersimulator.sms.ListeningRegistry;
+import com.xa.mass.workersimulator.sms.SmsReceptionRegistry;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -72,7 +72,7 @@ class WorkerSimulatorProductHostTest {
     private final class Fixture implements AutoCloseable {
         final Map<String, JavaWorkerManager> managers = new LinkedHashMap<>();
         final Map<String, AtomicBoolean> running = new ConcurrentHashMap<>();
-        final Map<String, ListeningRegistry.Sim> sims = new HashMap<>();
+        final Map<String, SmsReceptionRegistry.Sim> sims = new HashMap<>();
         final Map<String, WorkerSimulator.PreparedReplica> replicas = new LinkedHashMap<>();
         final Path root;
         final AtomicReference<WorkerSimulator> owner = new AtomicReference<>();
@@ -197,7 +197,7 @@ class WorkerSimulatorProductHostTest {
             var smsReports = new AtomicInteger();
             var messageReports = new java.util.concurrent.CopyOnWriteArrayList<Map<String, Object>>();
             var oldListen = listen("old", "CN");
-            registry.listen(worker.sim, oldListen, (tag, time, payload) -> { smsReports.incrementAndGet(); return true; });
+            registry.lease(worker.sim, oldListen, (tag, time, payload) -> { smsReports.incrementAndGet(); return true; });
             var send = Map.<String, Object>of("campaignId", "c", "messageId", "old", "country", "CN", "recipientId", "r", "body", "{}");
             messageOwner.worker().send(worker.sender, send, (tag, time, payload) -> { messageReports.add(Jsons.parseObject(payload)); return true; });
             String oldPhone = worker.properties().get("phone");
@@ -205,14 +205,14 @@ class WorkerSimulatorProductHostTest {
             assertThat(fixture.workers.simulateInput("demo-sim", FIRST, "properties.update", new LinkedHashMap<>(Map.of("phone", "+new", "country", "GB")))).containsEntry("sendAccepted", false);
             assertThat(worker.properties()).containsEntry("phone", "+new").containsEntry("country", "GB");
             assertThat(worker.stateFile().readProperties()).isEqualTo(worker.properties());
-            assertThat(registry.listen(worker.sim, oldListen, (tag, time, payload) -> { throw new AssertionError("rebound"); }))
-                    .containsEntry("status", "INTERRUPTED").containsEntry("phone", oldPhone).containsEntry("country", "CN");
+            assertThat(registry.lease(worker.sim, oldListen, (tag, time, payload) -> { throw new AssertionError("rebound"); }))
+                    .containsEntry("trackingStatus", "INTERRUPTED").containsEntry("phoneNumber", oldPhone).containsEntry("country", "CN");
             assertThat(smsReports).hasValue(0);
             assertThatThrownBy(() -> registry.receive(fixture.sims.get(FIRST), oldPhone, "stale", "text")).isInstanceOf(IllegalArgumentException.class);
             assertThat(messageOwner.worker().send(worker.sender, send, (tag, time, payload) -> false)).containsEntry("country", "CN").containsEntry("phone", oldPhone);
             awaitMessage(() -> messageReports.size() == 1);
             assertThat(messageReports).singleElement().satisfies(report -> assertThat(report).containsEntry("phone", oldPhone));
-            registry.listen(worker.sim, listen("new", "GB"), (tag, time, payload) -> { smsReports.incrementAndGet(); return true; });
+            registry.lease(worker.sim, listen("new", "GB"), (tag, time, payload) -> { smsReports.incrementAndGet(); return true; });
             assertThat(registry.receive(fixture.sims.get(FIRST), "+new", "new", "text")).containsEntry("status", "MATCHED");
             assertThat(smsReports).hasValue(1);
             verify(fixture.managers.get("demo-sim"), never()).prepareAndStart(anyCollection());
@@ -225,7 +225,7 @@ class WorkerSimulatorProductHostTest {
             var worker = fixture.replicas.get(FIRST);
             var original = worker.properties();
             var registry = fixture.workers.smsScenario().registry;
-            registry.listen(worker.sim, listen("old", "CN"), (tag, time, payload) -> true);
+            registry.lease(worker.sim, listen("old", "CN"), (tag, time, payload) -> true);
             for (Map<String, String> invalid : List.of(Map.of("phone", ""), Map.of("country", "cn"),
                     Map.of("phone", fixture.replicas.get(SECOND).properties().get("phone")))) {
                 assertThatThrownBy(() -> fixture.workers.simulateInput("demo-sim", FIRST, "properties.update", new LinkedHashMap<>(invalid)))
@@ -239,7 +239,7 @@ class WorkerSimulatorProductHostTest {
                 assertThatThrownBy(() -> fixture.workers.simulateInput("demo-sim", FIRST, "properties.update", new LinkedHashMap<>(Map.of("phone", "changed"))))
                         .isInstanceOf(RuntimeException.class);
                 assertThat(worker.properties()).isEqualTo(original);
-                assertThat(registry.metrics()).containsEntry("activeListeners", 1);
+                assertThat(registry.metrics()).containsEntry("activeAssociations", 1);
             } finally { Files.delete(file); Files.move(backup, file); }
             assertThat(worker.stateFile().readProperties()).isEqualTo(original);
             assertThat(registry.receive(fixture.sims.get(FIRST), original.get("phone"), "still-old", "text")).containsEntry("status", "MATCHED");
@@ -298,8 +298,8 @@ class WorkerSimulatorProductHostTest {
     @Test void batchAndScheduledStopClearReportersBeforeSdkStop() throws Exception {
         try (var fixture = new Fixture(1); var stops = new WorkerSimulatorScheduledStops(fixture.workers)) {
             var registry = fixture.workers.smsScenario().registry;
-            registry.listen(fixture.replicas.get(FIRST).sim, listen("a", "CN"), (tag, time, payload) -> { throw new AssertionError("stopped reporter"); });
-            registry.listen(fixture.replicas.get(SECOND).sim, listen("b", "US"), (tag, time, payload) -> { throw new AssertionError("stopped reporter"); });
+            registry.lease(fixture.replicas.get(FIRST).sim, listen("a", "CN"), (tag, time, payload) -> { throw new AssertionError("stopped reporter"); });
+            registry.lease(fixture.replicas.get(SECOND).sim, listen("b", "US"), (tag, time, payload) -> { throw new AssertionError("stopped reporter"); });
             var manager = fixture.managers.get("demo-sim");
             doAnswer(call -> {
                 String key = call.getArgument(0);
@@ -311,12 +311,12 @@ class WorkerSimulatorProductHostTest {
             long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
             while (fixture.running.get(SECOND).get() && System.nanoTime() < end) Thread.sleep(5);
             assertThat(fixture.running.get(SECOND)).isFalse();
-            assertThat(registry.metrics()).containsEntry("activeListeners", 0);
+            assertThat(registry.metrics()).containsEntry("activeAssociations", 0);
         }
     }
 
     private static Map<String, Object> listen(String id, String country) {
-        return Map.of("listenerId", id, "applicationId", "app", "country", country, "listenSeconds", 300L,
+        return Map.of("messageId", id, "applicationId", "app", "country", country, "leaseSeconds", 300L,
                 "setupDeadline", System.currentTimeMillis() + 300_000,
                 "templates", List.of(Map.of("id", "any", "priority", 1L, "kind", "ANY")));
     }
@@ -354,7 +354,7 @@ class WorkerSimulatorProductHostTest {
             awaitMessage(() -> reported.size() == 3);
             assertThat(reported).containsExactlyInAnyOrder(7, 8, 9);
             var registry = fixture.workers.smsScenario().registry;
-            registry.listen(fixture.sims.get(FIRST), listen("sms", "CN"), (tag, time, payload) -> true);
+            registry.lease(fixture.sims.get(FIRST), listen("sms", "CN"), (tag, time, payload) -> true);
             assertThat(input(http, base, FIRST, "sms.receive", Map.of("text", "hello", "smsId", "once", "phone", "wrong")).statusCode()).isEqualTo(400);
             assertThat(registry.metrics()).containsEntry("smsEvents", 0);
             var sms = Jsons.parseObject(input(http, base, FIRST, "sms.receive", Map.of("text", "hello")).body());

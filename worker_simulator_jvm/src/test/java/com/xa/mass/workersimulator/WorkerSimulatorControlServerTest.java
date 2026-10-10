@@ -440,7 +440,8 @@ class WorkerSimulatorControlServerTest {
         }
         assertThat(scheduledStops.scheduledStopAtEpochMillis(GROUP, CLIENT))
                 .isNull();
-        verify(manager, times(1)).stop(CLIENT);
+        // The due-map entry is removed before the asynchronous stop callback executes.
+        verify(manager, org.mockito.Mockito.timeout(1000).times(1)).stop(CLIENT);
 
         assertThat(scheduledStops.schedule(GROUP, CLIENT, 500)).isTrue();
         assertThat(scheduledStops.cancel(GROUP, CLIENT)).isTrue();

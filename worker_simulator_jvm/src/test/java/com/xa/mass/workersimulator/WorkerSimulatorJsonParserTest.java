@@ -52,7 +52,7 @@ class WorkerSimulatorJsonParserTest {
 
     @Test void defaultsAreLocalAndUnknownGroupsMustChooseEvents() {
         var group = parse("{\"demo-sim\":{\"count\":0,\"propertiesTemplate\":{}}}").workerGroups().get(0);
-        assertThat(group.events()).contains("extension.worker.sms.listen.start", "extension.worker.message.send")
+        assertThat(group.events()).contains("extension.worker.sms.number.lease", "extension.worker.message.send")
                 .doesNotContain(WorkerSimulatorExecutionWitnesses.EVENT, "extension.worker.lab.fail");
         assertThatThrownBy(() -> parse("{\"unknown\":{\"count\":1,\"propertiesTemplate\":{}}}"))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("no default");
@@ -105,7 +105,7 @@ class WorkerSimulatorJsonParserTest {
 
     @Test void defaultPropertiesDoNotAdvertiseAnExplicitlyExcludedMessagesCapability() {
         var sms = parse("""
-                {"demo-sim":{"events":["extension.worker.sms.listen.start","extension.worker.sms.listen.cancel"]}}
+                {"demo-sim":{"events":["extension.worker.sms.number.lease"]}}
                 """).workerGroups().get(0);
         assertThat(sms.generateProperties(0, 1)).containsEntry("phone", "861700000001")
                 .containsEntry("country", "CN").doesNotContainKey("messaging.enabled");

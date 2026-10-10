@@ -184,8 +184,15 @@ distribution, fixed-executor or single-execution claim.
 
 ## sms_reception_preview
 
+The named Redis Owner proof covers independent lease coordinates and monotonic
+absolute deadlines. Focused Matching tests cover shared views, deferred availability,
+capacity replacement and bounded refill. The optional sustained SMS workload is
+1,000 Workers, 5,400 acquisitions at 30/sec for 180 seconds with 60-second leases;
+it reports duplicate allocations and lost observations without promising strict
+exclusivity or reliable reports. These claims do not certify real SMS devices.
+
 - **Primary Owner:** [SMS Reception acceptance](../../scenarios/sms-reception-jvm/README.md#检查与验收).
-- **Boundary:** shared console enablement/navigation and business tab/polling state remain independent of Runtime truth; real Server/Host listening and later outcomes survive the named functional/lifecycle sequences.
+- **Boundary:** shared console enablement/navigation and business tab/polling state remain independent of Runtime truth; real number acquisition, time-qualified app/country stock and latest original-Item SMS Results traverse the functional/lifecycle sequences, including Server restart and Worker run isolation.
 - **Required delivery witness:** APIs, Groups and jobs remain profile-owned; Distribution serves unified assets and rejects embedded SMS assets. The SMS oracle submits SMS-only work through a freshly extracted Preview's packaged launcher, with Preview scenarios enabled and App Workers excluded, without build tools or checkout-launcher fallback.
 - **Evidence:** SMS owns business assertions; [Distribution](../../distribution/server/PREVIEW.md) owns archive/launch lifecycle; [Frontend](../../frontend/README.md#sms-business-pages) owns page behavior. [TESTING](../../TESTING.md) selects the workflow and separate larger acceptance workload.
-- **Nonclaims:** Mock SMS execution, authentication, business persistence across restart or new scheduling/capacity guarantees.
+- **Nonclaims:** Real-device SMS, authentication, restoring Worker associations/history after a new run, reliable observation delivery, strict lease exclusivity or platform capacity guarantees.

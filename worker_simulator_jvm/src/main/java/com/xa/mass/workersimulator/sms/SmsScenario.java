@@ -13,18 +13,15 @@ import java.util.concurrent.TimeUnit;
 
 /** Finite SMS state and external stimuli. Worker resources belong to the common Host. */
 public final class SmsScenario implements AutoCloseable {
-    public static final String START_EVENT = "extension.worker.sms.listen.start";
-    public static final String CANCEL_EVENT = "extension.worker.sms.listen.cancel";
-    public final ListeningRegistry registry = new ListeningRegistry();
+    public static final String LEASE_EVENT = "extension.worker.sms.number.lease";
+    public final SmsReceptionRegistry registry = new SmsReceptionRegistry();
     private final Traffic traffic = new Traffic();
     private ScheduledExecutorService clock;
     private volatile boolean closed;
 
-    public List<WorkerEventDefinition<?>> definitions(ListeningRegistry.Sim sim) {
-        return List.of(WorkerEventDefinition.extension("sms.listen.start", WorkerEventParameterResolvers.jsonMap(),
-                        (request, reporter) -> Jsons.toJson(registry.listen(sim, request, reporter))),
-                WorkerEventDefinition.extension("sms.listen.cancel", WorkerEventParameterResolvers.jsonMap(),
-                        request -> Jsons.toJson(registry.cancel(sim, request))));
+    public List<WorkerEventDefinition<?>> definitions(SmsReceptionRegistry.Sim sim) {
+        return List.of(WorkerEventDefinition.extension("sms.number.lease", WorkerEventParameterResolvers.jsonMap(),
+                (request, reporter) -> Jsons.toJson(registry.lease(sim, request, reporter))));
     }
 
     public synchronized void start() {
@@ -69,13 +66,13 @@ public final class SmsScenario implements AutoCloseable {
         private int rate;
         private long sequence;
         private String error = "";
-        private List<ListeningRegistry.Sim> devices = List.of();
+        private List<SmsReceptionRegistry.Sim> devices = List.of();
 
         synchronized Map<String, Object> start(Map<String, Object> input) {
             if (closed) throw new IllegalStateException("SMS scenario closed");
             if (rate != 0) throw new IllegalStateException("Traffic is already running");
-            int selectedRate = Math.toIntExact(ListeningRegistry.number(input, "ratePerSecond"));
-            long duration = ListeningRegistry.number(input, "durationSeconds");
+            int selectedRate = Math.toIntExact(SmsReceptionRegistry.number(input, "ratePerSecond"));
+            long duration = SmsReceptionRegistry.number(input, "durationSeconds");
             if (selectedRate < 1 || selectedRate > 1000 || duration < 1 || duration > 300
                     || selectedRate * duration > 100_000) throw new IllegalArgumentException("Invalid finite traffic budget");
             devices = registry.devices();
@@ -93,7 +90,7 @@ public final class SmsScenario implements AutoCloseable {
         void tick() {
             // Bound catch-up work; a stalled timer must not generate an unbounded burst.
             for (int i = 0; i < 32; i++) {
-                ListeningRegistry.Sim device;
+                SmsReceptionRegistry.Sim device;
                 String text;
                 String smsId;
                 synchronized (this) {

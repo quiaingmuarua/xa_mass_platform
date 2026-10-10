@@ -345,7 +345,7 @@ A future recheck restored to HOT must still become strictly due before acquisiti
 The one-slot advance for valid same-slot evidence prevents old candidate fences from
 reappearing after requalification. Current/future execution fences still change only
 by exact sign, preserving Result association. A recovered past Worker returns to the
-ordinary head without a 60-second recycling wait even if a failed strict acquisition
+ordinary head without a 30-second recycling wait even if a failed strict acquisition
 has already consumed its Pool entry. The DEFAULT offline-delivery proof retains its
 15-second reconnect witness and requires that no Probe is offered before the
 delivery-expiry evidence moves its Worker to RECOVERY.

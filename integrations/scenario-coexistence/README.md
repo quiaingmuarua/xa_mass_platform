@@ -26,7 +26,7 @@ Every scenario starts an independent scope and inventory. App Checks retains its
 independent one-shot witness in the same CI lane.
 
 Functional first checks the Messages application's empty creation identity and
-conflict response, then closes that empty Task. SMS uses Country Pool supply. The
+conflict response, then closes that empty Task. SMS uses its partitioned lease Pool and returns number plus messageId. The
 same-Worker/Reporter witness uses a generic finite Task with an explicit workerId
 selector targeting the actual SMS Worker, not a Messages senderPhone parameter.
 The Task has no Pool supply. Its metadata permits the existing Messages observation
@@ -111,7 +111,7 @@ Focused product/Host tests own input, capacity, publication and local conflict r
 
 ## Fixed 1,000 Worker workload
 
-CN/US/GB = 700/200/100. SMS offers 200 applications/second for 60 seconds (12,000),
+CN/US/GB = 700/200/100. SMS offers 25 acquisitions/second for 60 seconds (1,500),
 while Messages creates twelve 1,000-recipient campaigns at five-second intervals.
 Finite SMS input runs at 300/second for at most 135 seconds. Every actually sent
 message receives automatic delivery from HTTP acceptance, then read and two replies
@@ -135,7 +135,7 @@ fails the proof; all four facts, latest Results and associations remain mandator
 Queue-overflow loss is proved separately by the focused Host tests. This pacing
 change makes recipient action latency incomparable with older generator runs.
 
-After scheduled producers stop, convergence allows at most 120 seconds. All 12,000
+After scheduled producers stop, convergence allows at most 120 seconds. All 1,500
 SMS applications must establish, then agree with Host received/expired records;
 an expired valid window is not fabricated SMS success. All 12,000 messages must be
 sent and match their latest replies and associations; channel identities must be
@@ -224,3 +224,9 @@ from the Task list's Score observations. The retired Campaign cache, asynchronou
 submission queue and Messages metrics API are not proof inputs. The existing
 three manual actions plus automatic delivered still require four committed receipt
 facts per message. Boot also restarts Server and reads the same saved Task and reply.
+
+The combined 1k workload retains its 12,000 Messages sends/receipts and offers SMS
+at 25 acquisitions/sec for 60 seconds (1,500 leases), within the three-app number
+window premise. Its external client reads SMS Results by the returned messageIds;
+there is no backend SMS history API. This is separate from the 30/sec, 180-second
+SMS-only fixture. Latest SMS content is compared after the finite windows finish.

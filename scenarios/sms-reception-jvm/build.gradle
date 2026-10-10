@@ -11,6 +11,7 @@ dependencies {
     implementation 'org.springframework:spring-webmvc'
     implementation 'com.fasterxml.jackson.core:jackson-annotations'
     implementation project(':server_jvm')
+    implementation project(':worker_matching_jvm')
     implementation project(':transport:worker-delivery-contract')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

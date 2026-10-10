@@ -24,7 +24,7 @@ Preview's host configuration and enabled module declarations form this topology:
 
 | Project | Groups | Declared events and Matching resources |
 | --- | --- | --- |
-| `sms` | `demo-sim` | String/SMS/Messages events; Country and Messaging Pools; independent `worker.phone` query |
+| `sms` | `demo-sim` | String/SMS/Messages events; Partitioned SMS, Country and Messaging Pools; independent `worker.phone` query |
 | `messages` | `demo-sim`, `app-a-sim`, `app-b-sim` | `extension.worker.message.send`; Group-isolated Messaging Pool and `worker.messaging.available` |
 | `app-checks` | `app-a → app-a-sim`, `app-b → app-b-sim` | `extension.worker.app.registration.check`; Any and assignment-window Pools, `worker.any` and `worker.assignment.available` |
 
@@ -68,7 +68,7 @@ on this executable or the scenarios.
 
 ## Pages and configuration
 
-Boot forwards `/sms`, `/sms/listeners`, `/sms/metrics`, `/messages`,
+Boot forwards `/sms`, `/sms/metrics`, `/messages`,
 `/messages/tasks/{taskId}`, `/app-checks` and `/app-checks/tasks/{taskId}`
 to the shared Console, including trailing slashes, in platform and preview
 instances. The root `/` remains the Runtime entry. Catalog observation controls feature
@@ -197,3 +197,9 @@ Redis, HTTP and Worker execution: text sends finish Tasks despite bounded option
 Reporter admission, and short Host windows release capacity without Worker restart.
 The default ten-minute windows and explicit lab-json mode belong to the Simulator
 Host configuration, not Boot YAML, Kernel Item retention or Messages input versions.
+
+SMS's managed Task declares `sms-reception` targets for A/B/C × CN/US/GB, each
+with watermark 100, and uses `worker.sms.available`. Country remains enabled for
+explicit generic Task supply. The Scenario contributes its passive partitioned lease
+resource and stored-Result projection; host configuration owns enabling both Pool and
+function and admitting the `extension.worker.sms.number.lease` event.

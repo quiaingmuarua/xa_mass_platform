@@ -60,7 +60,6 @@ Routes:
 /api-reference
 /reference/error-codes
 /sms
-/sms/listeners
 /sms/metrics
 /messages
 /messages/tasks/:taskId
@@ -91,27 +90,23 @@ on Runtime configuration or stores.
 
 ## SMS business pages
 
-`src/sms/` owns the SMS pages, API client and page-local business state. The
-[SMS Owner](../scenarios/sms-reception-jvm/README.md) retains business semantics.
-The sidebar shows SCENARIOS / SMS only after one successful, validated
-`GET /api/v1/sms/catalog` observation. The shared catalog request has a five-second
-timeout and no periodic retry: 404 means disabled; other errors or invalid content
-mean availability is unconfirmed, with an explicit retry. Navigation and the page
-share the initial catalog. Backend run changes refresh the catalog and discard
-an old selected listener. This observation does not register or enable SMS.
+`src/sms/` owns `/sms` and `/sms/metrics` under the shared Console. The
+[SMS Owner](../scenarios/sms-reception-jvm/README.md) owns API and reception semantics.
+One validated catalog observation controls enablement; failure/retry and public Mock
+Demo gating stay independent of Runtime configuration. Theme uses the shared preference.
 
-The three SMS routes are lazy loaded under the common layout. Page tabs retain
-form and selection; leaving SMS aborts requests and stops polling, without
-resubmitting business commands. SMS uses only same-origin `/api/v1/sms/*` calls.
-The existing platform theme preference is used; no SMS theme store remains.
-Runtime configuration errors do not prevent SMS or Reference pages from loading.
+The workbench calls `numbers:lease`, shows phoneNumber/messageId/leaseUntil and reads
+`messages/{messageId}`. The selected reception refreshes every second while active,
+including after its first SMS; manual ID lookup/refresh remains available afterwards.
+`NOT_OBSERVED` is not failure, and expiry retains the last SMS. At most 100 records
+are kept in browser session storage; a Server run change does not discard their IDs.
+There is no server-side order list, cancellation UI or call to the Host API.
 
-Public Mock Demo hides the SMS entry, makes no SMS requests, and explains that
-SMS is unsupported on direct visits. An ordinary Server without SMS serves the
-same console pages but their catalog check reports the feature as disabled.
-[Boot](../server_boot_jvm/README.md#pages-and-configuration) owns page forwards
-and profile gating; [Distribution](../distribution/server/README.md) packages this
-same console. Static page delivery never enables a business API.
+Navigation retains local selection; leaving the workspace aborts requests and stops
+polling without resubmitting. Public Mock Demo hides the entry, makes no SMS requests
+and explains direct visits; a platform-only Server serves the shared page with the
+scenario unavailable. Metrics report acquisition/query observations and bounded lease
+projection counters rather than scanning all business orders.
 
 ## Messages business pages
 

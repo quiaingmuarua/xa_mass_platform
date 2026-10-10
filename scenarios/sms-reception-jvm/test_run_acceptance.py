@@ -92,32 +92,29 @@ class Preview:
                 run_acceptance.load_preview(Path(directory))
 
     def test_matching_counts_alone_do_not_hide_wrong_order_association(self):
-        host = [{"listenerId": "a", "smsId": "sms-a", "status": "RECEIVED"},
-                {"listenerId": "b", "smsId": "sms-b", "status": "RECEIVED"}]
-        correct = [{"id": "a", "sms": {"smsId": "sms-a"}, "status": "RECEIVED"},
-                   {"id": "b", "sms": {"smsId": "sms-b"}, "status": "RECEIVED"}]
-        swapped = [{"id": "a", "sms": {"smsId": "sms-b"}, "status": "RECEIVED"},
-                   {"id": "b", "sms": {"smsId": "sms-a"}, "status": "RECEIVED"}]
+        host = [{"messageId": "a", "smsId": "sms-a", "status": "RECEIVED"},
+                {"messageId": "b", "smsId": "sms-b", "status": "RECEIVED"}]
+        correct = [{"messageId": "a", "sms": {"smsId": "sms-a"}, "status": "RECEIVED"},
+                   {"messageId": "b", "sms": {"smsId": "sms-b"}, "status": "RECEIVED"}]
+        swapped = [{"messageId": "a", "sms": {"smsId": "sms-b"}, "status": "RECEIVED"},
+                   {"messageId": "b", "sms": {"smsId": "sms-a"}, "status": "RECEIVED"}]
         run = SimpleNamespace(host="host", url="product")
-        with patch("run_acceptance.all_records", side_effect=[host, correct]):
+        with patch("run_acceptance.all_records", return_value=host), patch("run_acceptance.query_records", return_value=correct):
             valid = compare(run)
         self.assertEqual(1, valid["smsObservationRate"])
         self.assertEqual(0, valid["falseSuccesses"])
         self.assertEqual(64, len(valid["matchedIdentityDigest"]))
-        with patch("run_acceptance.all_records", side_effect=[host, swapped]):
+        with patch("run_acceptance.all_records", return_value=host), patch("run_acceptance.query_records", return_value=swapped):
             invalid = compare(run)
         self.assertEqual(2, invalid["falseSuccesses"])
         self.assertEqual(2, invalid["missingSmsObservations"])
         self.assertEqual(0, invalid["smsObservationRate"])
 
     def test_unconfirmed_cannot_be_counted_as_observed_sms(self):
-        with patch("run_acceptance.all_records", side_effect=[
-            [{"listenerId": "a", "smsId": "one", "status": "RECEIVED"}],
-            [{"id": "a", "status": "UNCONFIRMED"}],
-        ]):
+        with patch("run_acceptance.all_records", return_value=[{"messageId": "a", "smsId": "one", "status": "RECEIVED"}]), \
+                patch("run_acceptance.query_records", return_value=[{"messageId": "a", "status": "NOT_OBSERVED"}]):
             result = compare(SimpleNamespace(host="host", url="product"))
         self.assertEqual(1, result["missingSmsObservations"])
-        self.assertEqual(1, result["stateMismatches"])
         self.assertEqual(0, result["observedSms"])
 
 

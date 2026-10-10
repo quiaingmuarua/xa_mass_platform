@@ -23,6 +23,22 @@ import org.springframework.web.context.request.async.DeferredResultProcessingInt
 
 class TaskRpcWaitRegistryTest {
 
+    @Test void applicationMappingUsesTheSameWaiterAndReleasesItEvenIfMappingFails() {
+        var registry = registry(10, 10, 256);
+        var response = new DeferredResult<String>();
+        assertThat(registry.tryRegister("t", List.of("m"), Map.of(), response,
+                rows -> rows.get("m").opaqueResultPayload())).isTrue();
+        registry.completeResult("t", "m", TaskItemResult.succeeded("latest"));
+        assertThat(response.getResult()).isEqualTo("latest");
+        assertThat(registry.waiterCount()).isZero();
+        var rejected = new DeferredResult<String>();
+        registry.tryRegister("t", List.of("bad"), Map.of(), rejected, rows -> { throw new IllegalArgumentException("bad snapshot"); });
+        registry.completeResult("t", "bad", TaskItemResult.succeeded("value"));
+        assertThat(rejected.getResult()).isInstanceOf(IllegalArgumentException.class);
+        assertThat(registry.waiterCount()).isZero();
+        assertThat(registry.pendingObservationCount()).isZero();
+    }
+
     @Test
     void coalescesSameItemAndCountsEachWaiterAssociation() throws Exception {
         TaskRpcWaitRegistry registry = registry(10, 10, 256);

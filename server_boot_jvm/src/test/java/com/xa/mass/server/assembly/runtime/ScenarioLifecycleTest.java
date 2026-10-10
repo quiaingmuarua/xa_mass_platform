@@ -6,7 +6,7 @@ import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.TaskLifecycleService;
 import com.xa.mass.server.task.call.TaskCallSubmissionService;
 import com.xa.mass.server.project.ProjectDirectory;
-import com.xa.mass.scenario.sms.ListenerService;
+import com.xa.mass.scenario.sms.SmsReceptionService;
 import com.xa.mass.scenario.messages.MessageTaskService;
 import com.xa.mass.scenario.appchecks.AppCheckTaskService;
 import com.xa.mass.serverboot.PreviewConfiguration;
@@ -54,7 +54,7 @@ class ScenarioLifecycleTest {
                     "xa.mass.worker-pools.assignment-window.groups.app-b-sim.max-count", "10")));
             context.getBeanFactory().addBeanPostProcessor(new BeanPostProcessor() {
                 @Override public Object postProcessAfterInitialization(Object bean, String name) {
-                    if (bean instanceof ListenerService || bean instanceof MessageTaskService || bean instanceof AppCheckTaskService)
+                    if (bean instanceof SmsReceptionService || bean instanceof MessageTaskService || bean instanceof AppCheckTaskService)
                         scenarios.add((SmartLifecycle) bean);
                     return bean;
                 }
@@ -64,6 +64,10 @@ class ScenarioLifecycleTest {
                     () -> mock(com.xa.mass.server.project.ProjectTaskQueryService.class));
             context.registerBean(TaskCallSubmissionService.class, () -> submissions);
             context.registerBean(TaskDataService.class, () -> results);
+            context.registerBean(com.xa.mass.server.task.call.TaskRpcCallService.class,
+                    () -> mock(com.xa.mass.server.task.call.TaskRpcCallService.class));
+            context.registerBean(com.xa.mass.server.task.observation.TaskLeaseProjectionService.class,
+                    () -> mock(com.xa.mass.server.task.observation.TaskLeaseProjectionService.class));
             context.registerBean(TaskCreationService.class, () -> creation);
             context.registerBean(TaskLifecycleService.class, () -> lifecycle);
             context.registerBean(com.xa.mass.server.operation.OperationGuard.class);
@@ -102,10 +106,10 @@ class ScenarioLifecycleTest {
                     assertThat(scenario.getPhase()).isGreaterThan(platform.getPhase());
                 });
                 context.close();
-                assertThatThrownBy(() -> ((ListenerService) scenarios.stream()
-                        .filter(ListenerService.class::isInstance).findFirst().orElseThrow()).create(java.util.Map.of(
-                                "requestId", "closed", "applicationId", "A", "country", "CN", "listenSeconds", 60)))
-                        .isInstanceOf(ListenerService.ProductError.class);
+                assertThatThrownBy(() -> ((SmsReceptionService) scenarios.stream()
+                        .filter(SmsReceptionService.class::isInstance).findFirst().orElseThrow()).lease(java.util.Map.of(
+                                "applicationId", "A", "country", "CN", "leaseSeconds", 60)))
+                        .isInstanceOf(SmsReceptionService.ProductError.class);
             }
         }
         if (failedRegistration == -1) {

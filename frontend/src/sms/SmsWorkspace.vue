@@ -1,745 +1,506 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
-import {
-  ElMessage,
-  ElForm,
-  ElFormItem,
-  ElRadioGroup,
-  ElRadioButton,
-  ElPagination
-} from "element-plus";
-import "element-plus/theme-chalk/el-form.css";
-import "element-plus/theme-chalk/el-form-item.css";
-import "element-plus/theme-chalk/el-radio-group.css";
-import "element-plus/theme-chalk/el-radio-button.css";
-import "element-plus/theme-chalk/el-pagination.css";
-import { useRoute, useRouter } from "vue-router";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { useRoute } from "vue-router";
+import { api, statusLabels, waitingMessage, type Reception, type Metrics } from "./api";
 import { useSmsAvailability } from "./availability";
-import {
-  api,
-  loadCatalog,
-  canCancel,
-  statusLabels,
-  waitingMessage,
-  type Listener,
-  type Metrics,
-  type Page,
-  type Catalog
-} from "./api";
 
-const tabs = ["接码工作台", "监听记录", "业务指标"];
-const paths = ["/sms", "/sms/listeners", "/sms/metrics"];
 const route = useRoute();
-const router = useRouter();
 const availability = useSmsAvailability();
-const tab = computed(() => Math.max(0, paths.indexOf(route.path.replace(/\/$/, ""))));
-const form = reactive({ applicationId: "A", country: "CN", listenSeconds: 60 });
-const requestId = ref(crypto.randomUUID());
-const page = ref(1);
-const records = ref<Page>({ total: 0, items: [] });
-const metrics = ref<Metrics>();
-const current = ref<Listener>();
-const busy = ref(false);
-const error = ref("");
-const catalog = ref<Catalog | undefined>(
+const catalog = computed(() =>
   availability.state.value.status === "enabled"
     ? availability.state.value.catalog
     : undefined
 );
-let timer: ReturnType<typeof setTimeout> | undefined;
-let active: AbortController | undefined;
-let mutation: AbortController | undefined;
-let stopped = false;
-const activeCount = computed(() => metrics.value?.activeListenersObserved ?? 0);
-const time = (value?: number) =>
-  value ? new Date(value).toLocaleTimeString("zh-CN", { hour12: false }) : "—";
-
-async function refresh() {
-  if (stopped) return;
-  active?.abort();
-  const controller = new AbortController();
-  active = controller;
+const metricsPage = computed(() => route.path.replace(/\/$/, "") === "/sms/metrics");
+const form = reactive({ applicationId: "A", country: "CN", leaseSeconds: 60 });
+const storageKey = "sms-reception-session";
+function restore(): Reception[] {
   try {
-    const [next, counts] = await Promise.all([
-      api<Page>(
-        `/api/v1/sms/listeners?offset=${(page.value - 1) * 20}&limit=20`,
-        undefined,
-        controller.signal
-      ),
-      api<Metrics>("/api/v1/sms/metrics", undefined, controller.signal)
+    const stored: unknown = JSON.parse(sessionStorage.getItem(storageKey) ?? "[]");
+    return Array.isArray(stored)
+      ? stored
+          .filter(
+            (row): row is Reception =>
+              row && typeof row.messageId === "string" && row.status in statusLabels
+          )
+          .slice(0, 100)
+      : [];
+  } catch {
+    return [];
+  }
+}
+const records = ref<Reception[]>(restore());
+const selectedId = ref(records.value[0]?.messageId ?? "");
+const lookupId = ref("");
+const current = computed(() =>
+  records.value.find((row) => row.messageId === selectedId.value)
+);
+const metrics = ref<Metrics>();
+const busy = ref(false),
+  error = ref("");
+let stopped = false;
+let timer: ReturnType<typeof setTimeout> | undefined;
+let reading: AbortController | undefined;
+let submitting: AbortController | undefined;
+function remember(row: Reception) {
+  records.value = [
+    row,
+    ...records.value.filter((item) => item.messageId !== row.messageId)
+  ].slice(0, 100);
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify(records.value));
+  } catch {
+    /* The live view still works without browser storage. */
+  }
+}
+const time = (millis?: number) =>
+  millis ? new Date(millis).toLocaleTimeString("zh-CN", { hour12: false }) : "—";
+async function refresh(force = false) {
+  reading?.abort();
+  const controller = new AbortController();
+  reading = controller;
+  const id = selectedId.value;
+  const shouldRead =
+    id &&
+    (force ||
+      !current.value ||
+      current.value.leaseActive ||
+      current.value.status === "NOT_OBSERVED");
+  try {
+    const [nextMetrics, next] = await Promise.all([
+      api<Metrics>("/api/v1/sms/metrics", undefined, controller.signal),
+      shouldRead
+        ? api<Reception>(
+            "/api/v1/sms/messages/" + encodeURIComponent(id),
+            undefined,
+            controller.signal
+          )
+        : Promise.resolve(undefined)
     ]);
     if (stopped || controller.signal.aborted) return;
-    records.value = next;
-    metrics.value = counts;
-    if (catalog.value?.runId !== counts.runId) {
-      if (catalog.value && catalog.value.runId !== counts.runId) {
-        current.value = undefined;
-        requestId.value = crypto.randomUUID();
-        page.value = 1;
-      }
-      const nextCatalog = await loadCatalog(controller.signal);
-      if (stopped || controller.signal.aborted) return;
-      catalog.value = nextCatalog;
-      availability.acceptCatalog(nextCatalog);
-    }
-    if (current.value) {
-      const selectedId = current.value.id;
-      const latest = await api<Listener>(
-        `/api/v1/sms/listeners/${selectedId}`,
-        undefined,
-        controller.signal
-      );
-      if (stopped || controller.signal.aborted) return;
-      if (current.value?.id === selectedId) current.value = latest;
-    }
+    metrics.value = nextMetrics;
+    if (next) remember(next);
     error.value = "";
   } catch (failure) {
     if (!controller.signal.aborted)
-      error.value = failure instanceof Error ? failure.message : "连接失败";
+      error.value = failure instanceof Error ? failure.message : "读取失败";
   }
 }
 async function poll() {
   await refresh();
   if (!stopped) timer = setTimeout(poll, 1000);
 }
-async function action(work: (signal: AbortSignal) => Promise<void>) {
-  if (busy.value || stopped) return;
+async function lease() {
+  if (busy.value) return;
   busy.value = true;
-  mutation = new AbortController();
+  submitting = new AbortController();
   try {
-    await work(mutation.signal);
-    if (!stopped) await refresh();
+    const row = await api<Reception>(
+      "/api/v1/sms/numbers:lease",
+      { ...form },
+      submitting.signal
+    );
+    if (stopped) return;
+    remember(row);
+    selectedId.value = row.messageId;
+    lookupId.value = row.messageId;
+    error.value = "";
   } catch (failure) {
-    if (!mutation.signal.aborted)
-      ElMessage.error(failure instanceof Error ? failure.message : "操作失败");
+    if (!submitting.signal.aborted)
+      error.value = failure instanceof Error ? failure.message : "取号失败";
   } finally {
     busy.value = false;
   }
 }
-async function create() {
-  await action(async (signal) => {
-    const created = await api<Listener>(
-      "/api/v1/sms/listeners",
-      {
-        ...form,
-        requestId: requestId.value
-      },
-      signal
-    );
-    if (stopped || signal.aborted) return;
-    current.value = created;
-    requestId.value = crypto.randomUUID();
-    ElMessage.success("监听申请已受理");
-  });
+async function lookup() {
+  const id = lookupId.value.trim();
+  if (!id) return;
+  selectedId.value = id;
+  await refresh(true);
 }
-async function cancel(item: Listener) {
-  await action(async (signal) => {
-    await api(`/api/v1/sms/listeners/${item.id}/cancel`, {}, signal);
-    if (stopped || signal.aborted) return;
-    ElMessage.info("已记录取消请求，等待号码确认");
-  });
+async function select(row: Reception) {
+  selectedId.value = row.messageId;
+  lookupId.value = row.messageId;
+  await refresh(true);
 }
-watch(page, () => void refresh());
-watch(form, () => {
-  requestId.value = crypto.randomUUID();
-});
 onMounted(() => void poll());
-onUnmounted(() => {
+onBeforeUnmount(() => {
   stopped = true;
   clearTimeout(timer);
-  active?.abort();
-  mutation?.abort();
+  reading?.abort();
+  submitting?.abort();
 });
 </script>
 
 <template>
   <div class="sms-workspace">
     <nav class="sms-tabs" aria-label="SMS 页面">
-      <router-link
-        v-for="(name, index) in tabs"
-        :key="name"
-        :to="paths[index]!"
-        :class="{ selected: tab === index }"
-        :aria-current="tab === index ? 'page' : undefined"
-        >{{ name }}</router-link
+      <router-link to="/sms" :aria-current="!metricsPage ? 'page' : undefined"
+        >接码工作台</router-link
+      >
+      <router-link to="/sms/metrics" :aria-current="metricsPage ? 'page' : undefined"
+        >业务指标</router-link
       >
     </nav>
-    <div class="sms-content-area">
+    <main class="sms-content-area">
       <header>
-        <div>
-          <div class="eyebrow">SMS RECEPTION / PREVIEW</div>
-          <h1>{{ tabs[tab] }}</h1>
-          <p>
-            {{
-              tab === 0
-                ? "选择应用与国家，获取号码并等待第一条匹配短信。"
-                : tab === 1
-                  ? "追踪每次申请的真实业务结果。到期与未确认分别展示。"
-                  : "查看已观察的接码结果、延迟和未确认数量。"
-            }}
-          </p>
-        </div>
+        <div class="eyebrow">SMS RECEPTION / PREVIEW</div>
+        <h1>{{ metricsPage ? "业务指标" : "接码工作台" }}</h1>
+        <p>取号后使用 messageId 查询，租期内持续显示最新短信。</p>
       </header>
-      <el-alert
-        v-if="error"
-        :title="error"
-        type="error"
-        show-icon
-        :closable="false"
-        class="error-banner"
-      />
+      <p v-if="error" role="alert" class="error-banner">{{ error }}</p>
       <section class="stat-row" aria-label="运行概况">
         <div>
-          <small>本次申请</small><strong>{{ metrics?.requests ?? "—" }}</strong
-          ><span>本轮监听记录</span>
+          <small>取号请求</small><strong>{{ metrics?.requests ?? "—" }}</strong>
         </div>
         <div>
-          <small>活跃监听</small><strong>{{ activeCount }}</strong
-          ><span>含等待取消确认</span>
+          <small>结果查询</small><strong>{{ metrics?.queries ?? "—" }}</strong>
         </div>
         <div>
-          <small>收到短信</small
-          ><strong class="green">{{ metrics?.statuses.RECEIVED ?? 0 }}</strong
-          ><span>已观察到匹配内容</span>
+          <small>已记录租期</small
+          ><strong>{{ metrics?.projection.recorded ?? "—" }}</strong>
         </div>
         <div>
-          <small>结果未确认</small
-          ><strong>{{ metrics?.statuses.UNCONFIRMED ?? 0 }}</strong
-          ><span>与明确到期分开计数</span>
+          <small>请求错误</small><strong>{{ metrics?.errors ?? "—" }}</strong>
         </div>
       </section>
-
-      <template v-if="tab === 0">
+      <template v-if="!metricsPage">
         <div class="workbench-grid">
           <section class="panel">
-            <div class="panel-heading">
-              <h2>新建监听</h2>
-              <span>01 / 申请号码</span>
-            </div>
-            <el-form label-position="top" @submit.prevent="create">
-              <el-form-item label="接收应用"
-                ><el-select v-model="form.applicationId" aria-label="接收应用"
-                  ><el-option
-                    v-for="app in catalog?.applications ?? []"
+            <h2>申请号码</h2>
+            <form @submit.prevent="lease">
+              <label
+                >接收应用<select v-model="form.applicationId" aria-label="接收应用">
+                  <option
+                    v-for="app in catalog?.applications"
                     :key="app.id"
-                    :label="`${app.name} / 优先级 ${app.templates.map((template) => template.priority).join(', ')}`"
-                    :value="app.id" /></el-select
-              ></el-form-item>
-              <el-form-item label="号码国家"
-                ><el-radio-group v-model="form.country"
-                  ><el-radio-button value="CN">中国 CN</el-radio-button
-                  ><el-radio-button value="US">美国 US</el-radio-button
-                  ><el-radio-button value="GB">英国 GB</el-radio-button></el-radio-group
-                ></el-form-item
+                    :value="app.id"
+                  >
+                    {{ app.name }}
+                  </option>
+                </select></label
               >
-              <el-form-item label="监听时长（秒）"
-                ><el-input
-                  v-model.number="form.listenSeconds"
+              <label
+                >号码国家<select v-model="form.country" aria-label="号码国家">
+                  <option
+                    v-for="country in catalog?.countries ?? ['CN', 'US', 'GB']"
+                    :key="country"
+                    :value="country"
+                  >
+                    {{ country }}
+                  </option>
+                </select></label
+              >
+              <label
+                >租期（秒）<input
+                  v-model.number="form.leaseSeconds"
                   type="number"
                   min="1"
                   max="300"
                   step="1"
                   required
-                  aria-label="监听时长（秒）"
-              /></el-form-item>
-              <el-button
-                type="primary"
-                native-type="submit"
-                :loading="busy"
-                class="full-width"
-                >获取号码并监听</el-button
-              >
-            </el-form>
-            <p class="hint">
-              同一个号码可以承接多个监听。一条短信只归属最高优先级的匹配监听，命中后该监听结束。
-            </p>
+                  aria-label="租期（秒）"
+              /></label>
+              <button type="submit" class="primary" :disabled="busy">
+                {{ busy ? "正在取号…" : "获取号码" }}
+              </button>
+            </form>
+            <p class="hint">同一号码可以服务不同应用。收到短信后，当前租期仍会继续。</p>
           </section>
-          <section class="panel current-panel">
-            <div class="panel-heading">
-              <h2>当前监听</h2>
-              <span>02 / 等待短信</span>
-            </div>
-            <template v-if="current"
-              ><span class="status-label" :data-status="current.status">{{
+          <section class="panel current-panel" aria-live="polite">
+            <h2>号码与最新短信</h2>
+            <template v-if="current">
+              <span class="status-label" :data-status="current.status">{{
                 statusLabels[current.status]
               }}</span>
-              <div class="phone">{{ current.phone ?? "正在分配号码…" }}</div>
+              <div class="phone">{{ current.phoneNumber ?? "等待号码结果…" }}</div>
               <p class="hint">
-                {{ current.applicationId }} 应用 · {{ current.country }} ·
-                {{ time(current.startedAt) }} — {{ time(current.expiresAt) }}
+                {{ current.applicationId ?? "—" }} · {{ current.country ?? "—" }} ·
+                租期至 {{ time(current.leaseUntil) }}
+                <span v-if="current.leaseActive === false">（已结束）</span>
               </p>
               <div v-if="current.sms" class="sms-content">
-                <small>收到的短信</small
+                <small>最新短信 · {{ time(current.sms.receivedAt) }}</small
                 ><strong v-if="current.sms.code">{{ current.sms.code }}</strong>
                 <p>{{ current.sms.text }}</p>
-                <small
-                  >{{ time(current.sms.receivedAt) }} ·
-                  {{ current.sms.templateId }}</small
-                >
               </div>
-              <div v-else class="waiting">
-                <span>◌</span>
-                <p>
-                  {{ waitingMessage(current) }}
-                </p>
-              </div>
-              <div class="actions">
-                <el-button
-                  v-if="canCancel(current.status)"
-                  :disabled="busy"
-                  @click="cancel(current)"
-                  >取消监听</el-button
-                >
-              </div>
-              <small class="record-id">{{ current.id }}</small>
+              <p>{{ waitingMessage(current) }}</p>
+              <div class="record-id">{{ current.messageId }}</div>
             </template>
-            <div v-else class="empty">
-              <span>✉</span>
-              <h3>从一个号码开始</h3>
-              <p>提交申请后，这里会展示号码、监听窗口和匹配到的短信。</p>
-            </div>
+            <p v-else class="hint">申请号码，或输入已有的 messageId 查询。</p>
+            <form class="lookup" @submit.prevent="lookup">
+              <label
+                >messageId<input
+                  v-model="lookupId"
+                  aria-label="messageId"
+                  placeholder="输入 messageId" /></label
+              ><button type="submit">查询 / 刷新</button>
+            </form>
           </section>
         </div>
+        <section class="panel records">
+          <h2>本次浏览器会话</h2>
+          <p class="hint">
+            仅在当前浏览器保留最近 100 条，可随时按 messageId 重新查询。
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>号码</th>
+                  <th>应用 / 国家</th>
+                  <th>状态</th>
+                  <th>租期至</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in records" :key="row.messageId">
+                  <td>{{ row.phoneNumber ?? "等待结果" }}</td>
+                  <td>{{ row.applicationId ?? "—" }} / {{ row.country ?? "—" }}</td>
+                  <td>{{ statusLabels[row.status] }}</td>
+                  <td>{{ time(row.leaseUntil) }}</td>
+                  <td><button type="button" @click="select(row)">查看</button></td>
+                </tr>
+                <tr v-if="!records.length">
+                  <td colspan="5">暂无取号记录</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
       </template>
-      <section v-if="tab !== 2" class="panel records">
-        <div class="panel-heading">
-          <h2>{{ tab === 0 ? "监听记录" : "本次运行的全部监听" }}</h2>
-          <span>每页 20 条 · {{ records.total }} 条记录</span>
+      <section v-else class="panel metric-grid">
+        <div>
+          <small>取号等待 P95 / P99</small
+          ><strong
+            >{{ metrics?.acquisitionLatencyMillis.p95 ?? "—" }} /
+            {{ metrics?.acquisitionLatencyMillis.p99 ?? "—" }} ms</strong
+          >
         </div>
-        <el-table
-          :data="records.items"
-          empty-text="暂无监听，先在工作台申请一个号码"
-          row-key="id"
-        >
-          <el-table-column label="应用 / 国家" min-width="110"
-            ><template #default="{ row }"
-              ><strong>{{ row.applicationId }}</strong
-              ><span class="country">{{ row.country }}</span></template
-            ></el-table-column
+        <div>
+          <small>查询 P95 / P99</small
+          ><strong
+            >{{ metrics?.queryLatencyMillis.p95 ?? "—" }} /
+            {{ metrics?.queryLatencyMillis.p99 ?? "—" }} ms</strong
           >
-          <el-table-column prop="phone" label="接收号码" min-width="180"
-            ><template #default="{ row }"
-              ><span class="mono">{{ row.phone ?? "等待分配" }}</span></template
-            ></el-table-column
-          >
-          <el-table-column label="状态" min-width="130"
-            ><template #default="{ row }"
-              ><span class="status-label" :data-status="row.status">{{
-                statusLabels[row.status]
-              }}</span></template
-            ></el-table-column
-          >
-          <el-table-column label="短信" min-width="210"
-            ><template #default="{ row }">{{
-              row.sms?.text ?? row.reason ?? "—"
-            }}</template></el-table-column
-          >
-          <el-table-column label="建立 / 到期" min-width="170"
-            ><template #default="{ row }"
-              >{{ time(row.startedAt) }} / {{ time(row.expiresAt) }}</template
-            ></el-table-column
-          >
-          <el-table-column label="操作" min-width="140"
-            ><template #default="{ row }"
-              ><el-button
-                link
-                type="primary"
-                @click="
-                  current = row;
-                  router.push('/sms');
-                "
-                >查看</el-button
-              ><el-button
-                v-if="canCancel(row.status)"
-                link
-                :disabled="busy"
-                @click="cancel(row)"
-                >取消</el-button
-              ></template
-            ></el-table-column
-          > </el-table
-        ><el-pagination
-          v-model:current-page="page"
-          :page-size="20"
-          :total="records.total"
-          layout="prev, pager, next"
-        />
-      </section>
-
-      <section v-if="tab === 2" class="panel">
-        <div class="panel-heading">
-          <h2>业务结果与延迟</h2>
-          <span>本次运行 · 实际观察样本</span>
         </div>
-        <div class="metric-grid">
-          <div>
-            <small>建立延迟 P95 / P99</small
-            ><strong
-              >{{ metrics?.establishmentLatencyMillis.p95 ?? "—" }} /
-              {{ metrics?.establishmentLatencyMillis.p99 ?? "—" }} ms</strong
-            >
-          </div>
-          <div>
-            <small>短信观察延迟 P95 / P99</small
-            ><strong
-              >{{ metrics?.smsObservationLatencyMillis.p95 ?? "—" }} /
-              {{ metrics?.smsObservationLatencyMillis.p99 ?? "—" }} ms</strong
-            >
-          </div>
-          <div>
-            <small>明确到期</small><strong>{{ metrics?.statuses.EXPIRED ?? 0 }}</strong>
-          </div>
-          <div>
-            <small>明确取消</small
-            ><strong>{{ metrics?.statuses.CANCELLED ?? 0 }}</strong>
-          </div>
-          <div>
-            <small>待提交命令</small><strong>{{ metrics?.commandQueue ?? 0 }}</strong>
-          </div>
-          <div>
-            <small>读取错误 / 提交不确定</small
-            ><strong
-              >{{ metrics?.observationErrors ?? 0 }} /
-              {{ metrics?.submissionUnknown ?? 0 }}</strong
-            >
-          </div>
+        <div>
+          <small>租期通知丢弃 / 失败</small
+          ><strong
+            >{{ metrics?.projection.dropped ?? "—" }} /
+            {{ metrics?.projection.failures ?? "—" }}</strong
+          >
         </div>
-        <p class="hint">
-          到期不计为接码成功；结果未确认单独展示。延迟仅包含可观察样本。
-        </p>
+        <div>
+          <small>租期处理排队</small
+          ><strong>{{ metrics?.projection.queueBatches ?? "—" }}</strong>
+        </div>
       </section>
       <footer>
-        SMS Reception {{ catalog?.version ?? "0.1.0-preview"
-        }}<span>仅模拟数据 · 本地运行</span>
+        SMS Reception {{ catalog?.version ?? "0.1.0-preview" }}
+        <span>模拟短信 · 本地运行</span>
       </footer>
-    </div>
+    </main>
   </div>
 </template>
 
 <style scoped>
 .sms-workspace {
-  min-width: 0;
   color: var(--rv-text);
-}
-.sms-content-area {
-  min-width: 0;
 }
 .sms-tabs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 24px;
+  gap: 28px;
+  border-bottom: 1px solid var(--rv-border);
+  padding: 0 32px;
 }
 .sms-tabs a {
+  padding: 18px 0;
   color: var(--rv-text-secondary);
-  padding: 10px 16px;
-  border-radius: 8px;
   text-decoration: none;
 }
-.sms-tabs a.selected {
-  color: var(--rv-primary);
-  background: var(--rv-primary-soft);
-  font-weight: 600;
+.sms-tabs a[aria-current="page"] {
+  color: var(--rv-text);
+  border-bottom: 2px solid currentColor;
 }
-h1,
-h2,
-h3,
-p {
-  margin-top: 0;
+.sms-content-area {
+  max-width: 1360px;
+  margin: auto;
+  padding: 32px;
 }
-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 28px;
+.eyebrow,
+small,
+.hint,
+footer {
+  color: var(--rv-text-secondary);
 }
 .eyebrow {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 2px;
-  color: var(--rv-text-secondary);
-  margin-bottom: 10px;
 }
 h1 {
-  font-size: 27px;
-  font-weight: 650;
-  margin-bottom: 12px;
+  font-size: 30px;
+  margin: 10px 0;
+}
+h2 {
+  font-size: 18px;
+  margin: 0 0 24px;
 }
 header p {
-  font-size: 13px;
   color: var(--rv-text-secondary);
-  margin-bottom: 0;
-  line-height: 1.7;
+  margin-bottom: 30px;
 }
-
-.stat-row {
+.stat-row,
+.metric-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  gap: 20px;
+}
+.stat-row {
   margin-bottom: 26px;
 }
-.stat-row > div {
+.stat-row > div,
+.panel {
+  padding: 24px;
   border: 1px solid var(--rv-border);
+  border-radius: 10px;
   background: var(--rv-surface);
-  border-radius: 12px;
-  padding: 20px 23px;
 }
-.stat-row small,
-.metric-grid small {
+.stat-row strong,
+.metric-grid strong {
   display: block;
-  font-size: 11px;
-  color: var(--rv-text-secondary);
-}
-.stat-row strong {
-  display: block;
-  font-size: 30px;
-  font-weight: 550;
-  margin: 13px 0 8px;
-}
-.stat-row span {
-  font-size: 10px;
-  color: var(--rv-text-secondary);
-}
-.green {
-  color: var(--rv-success);
+  margin-top: 12px;
+  font-size: 23px;
 }
 .workbench-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(260px, 1fr) minmax(0, 1.5fr);
   gap: 24px;
-  margin-bottom: 24px;
 }
-.panel {
-  min-width: 0;
-  padding: 24px;
-  background: var(--rv-surface);
-  border: 1px solid var(--rv-border);
-  border-radius: 12px;
+label {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 18px;
 }
-.panel-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 24px;
-}
-.panel-heading h2 {
-  font-size: 15px;
-  font-weight: 650;
-  margin: 0;
-}
-.panel-heading > span {
-  font-size: 10px;
-  color: var(--rv-text-secondary);
-}
-.el-form-item {
-  margin-bottom: 23px;
-}
-.el-form-item__label {
-  font-size: 12px !important;
-}
-.el-select,
-.full-width {
+input,
+select {
+  display: block;
   width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 11px;
+  color: var(--rv-text);
+  border: 1px solid var(--rv-border);
+  border-radius: 5px;
+  background: var(--rv-bg);
+}
+button {
+  padding: 10px 16px;
+  border: 1px solid var(--rv-border);
+  border-radius: 5px;
+  background: var(--rv-bg);
+  color: var(--rv-text);
+  cursor: pointer;
+}
+button.primary {
+  width: 100%;
+  background: #276b56;
+  color: white;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 .hint {
-  font-size: 11px;
-  line-height: 1.9;
-  color: var(--rv-text-secondary);
-  margin: 17px 0 0;
-}
-.current-panel {
-  position: relative;
+  font-size: 12px;
+  line-height: 1.8;
 }
 .phone {
-  font-size: 29px;
-  letter-spacing: 0.8px;
-  color: var(--rv-text);
-  margin: 20px 0 10px;
-  font-variant-numeric: tabular-nums;
+  font-size: 30px;
+  margin-top: 20px;
+  overflow-wrap: anywhere;
 }
 .status-label {
-  display: inline-block;
-  border-radius: 5px;
-  padding: 5px 8px;
-  background: var(--rv-bg);
-  font-size: 11px;
-  color: var(--rv-text-secondary);
-  white-space: nowrap;
+  font-size: 12px;
 }
 .status-label[data-status="RECEIVED"] {
-  background: var(--rv-success-soft);
-  color: var(--rv-success);
-}
-.status-label[data-status="LISTENING"] {
-  background: var(--rv-info-soft);
-  color: var(--rv-info);
-}
-.status-label[data-status="UNCONFIRMED"],
-.status-label[data-status="CANCELLING"] {
-  background: var(--rv-warning-soft);
-  color: var(--rv-warning);
-}
-.status-label[data-status="REJECTED"] {
-  background: var(--el-color-danger-light-9);
-  color: var(--el-color-danger);
+  color: #358467;
 }
 .sms-content {
-  background: var(--rv-success-soft);
-  border: 1px solid var(--rv-border);
-  border-radius: 9px;
-  padding: 22px;
-  margin: 24px 0;
-}
-.sms-content small {
-  color: var(--rv-text-secondary);
-  font-size: 10px;
+  padding: 20px;
+  background: var(--rv-bg);
+  margin: 22px 0;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
 }
 .sms-content strong {
   display: block;
   font-size: 34px;
-  letter-spacing: 7px;
-  font-weight: 500;
-  margin: 12px 0;
-}
-.sms-content p {
-  font-size: 13px;
-  margin: 14px 0;
-  overflow-wrap: anywhere;
-}
-.waiting {
-  min-height: 145px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  color: var(--rv-text-secondary);
-}
-.waiting span {
-  font-size: 32px;
-}
-.waiting p {
-  font-size: 12px;
-  max-width: 250px;
-  line-height: 1.8;
-  margin: 0;
-}
-.actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  letter-spacing: 5px;
+  margin: 10px 0;
 }
 .record-id {
-  font-size: 9px;
-  color: var(--rv-text-secondary);
-  display: block;
-  margin-top: 20px;
+  font-family: monospace;
+  font-size: 11px;
   overflow-wrap: anywhere;
-}
-.empty {
-  display: flex;
-  min-height: 295px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--rv-text-secondary);
-  text-align: center;
-}
-.empty > span {
-  font-size: 40px;
-  background: var(--rv-bg);
-  border-radius: 50%;
-  width: 76px;
-  height: 76px;
-  display: grid;
-  place-items: center;
-  margin-bottom: 20px;
-}
-.empty h3 {
-  font-weight: 500;
-  font-size: 16px;
   color: var(--rv-text-secondary);
 }
-.empty p {
-  font-size: 12px;
-  max-width: 240px;
-  line-height: 1.8;
+.lookup {
+  margin-top: 24px;
 }
-.records .el-table {
-  font-size: 12px;
-  --el-table-header-bg-color: var(--rv-bg);
-  --el-table-border-color: var(--rv-border);
+.records {
+  margin-top: 24px;
 }
-.el-pagination {
-  justify-content: flex-end;
-  margin-top: 20px;
+.table-scroll {
+  overflow-x: auto;
 }
-.country {
-  font-size: 10px;
-  color: var(--rv-text-secondary);
-  margin-left: 10px;
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
 }
-.mono {
-  font-variant-numeric: tabular-nums;
-}
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 28px;
+th,
+td {
+  padding: 13px 10px;
+  border-bottom: 1px solid var(--rv-border);
+  white-space: nowrap;
 }
 .metric-grid strong {
-  display: block;
-  font-size: 16px;
-  font-weight: 500;
-  margin-top: 13px;
+  font-size: 18px;
+}
+.error-banner {
+  padding: 14px;
+  border: 1px solid #b96b53;
 }
 footer {
   display: flex;
   justify-content: space-between;
   margin-top: 30px;
-  font-size: 10px;
-  color: var(--rv-text-secondary);
+  font-size: 11px;
 }
-.error-banner {
-  margin-bottom: 20px;
-}
-@media (max-width: 1100px) {
+@media (max-width: 900px) {
   .workbench-grid {
     grid-template-columns: 1fr;
   }
   .metric-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  .stat-row {
-    gap: 10px;
-  }
-  .stat-row > div {
-    padding: 17px 13px;
-  }
 }
-@media (max-width: 700px) {
-  header {
-    margin-bottom: 22px;
-  }
-  h1 {
-    font-size: 24px;
+@media (max-width: 600px) {
+  .sms-content-area {
+    padding: 18px;
   }
   .stat-row {
     grid-template-columns: repeat(2, 1fr);
-  }
-  .stat-row strong {
-    font-size: 25px;
+    gap: 10px;
   }
   .panel {
-    padding: 19px;
+    padding: 18px;
   }
   .phone {
-    font-size: 25px;
-  }
-  .metric-grid {
-    gap: 24px 15px;
-  }
-  .metric-grid strong {
-    font-size: 14px;
+    font-size: 24px;
   }
   footer span {
     display: none;

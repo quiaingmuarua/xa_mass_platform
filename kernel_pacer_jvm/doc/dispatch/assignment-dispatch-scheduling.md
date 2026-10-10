@@ -64,7 +64,9 @@ The observation stage records the requested raw-row limit. No Worker offset,
 extra thread, supplementary scan or durable cursor is introduced.
 Recycling and refill honor the same optional floor; DEFAULT retains no Assignment
 scan floor. Runtime Boundary uses 1-second candidate age; production and Scenario Lab
-use 60 seconds. This is distinct from Pool TTL and Serviceability HOT staleness.
+use 30 seconds. This is distinct from Pool TTL and Serviceability HOT staleness.
+Recycling can invalidate a retained Pool fence before its local TTL; exact
+execution admission rejects that stale fence.
 
 Age is measured from the candidate's retained HOT time, not from candidateization.
 Due HOT is already at least one 10ms Worker Score slot old, so an age below the 50ms Refill

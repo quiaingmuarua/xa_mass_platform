@@ -215,7 +215,7 @@ class WorkerSimulatorLabTest {
         Path existing = labRoot().resolve(PHONE_GROUP + "/workers-000.jsonl");
         String before = Files.readString(existing);
         var invalid = new WorkerSimulatorGroupConfig(PHONE_GROUP,
-                List.of(com.xa.mass.workersimulator.sms.SmsScenario.START_EVENT), 2,
+                List.of(com.xa.mass.workersimulator.sms.SmsScenario.LEASE_EVENT), 2,
                 Map.of("phone", "861700000001", "country", "CN"), true,
                 Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults(), com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
         var config = new WorkerSimulatorConfig(java.net.URI.create("http://127.0.0.1:1"),

@@ -7,8 +7,8 @@ import java.util.Map;
 public final class CandidateBudget {
     static final int PER_ELIGIBILITY = 1000, PROCESS = 10_000, ELIGIBILITIES = 100;
     private final Map<Object, Integer> counts = new IdentityHashMap<>();
-    private int size;
-    private long admitted, consumed, expired, capacityLimited;
+    private int size, peakSize;
+    private long admitted, consumed, expired, capacityLimited, replacedDeferred;
     public synchronized int available() { return PROCESS - size; }
     synchronized int room(Object pool) {
         int count = counts.getOrDefault(pool, 0);
@@ -19,7 +19,7 @@ public final class CandidateBudget {
         if (size == PROCESS || count == PER_ELIGIBILITY || count == 0 && counts.size() == ELIGIBILITIES) {
             capacityLimited++; return false;
         }
-        counts.put(pool, count + 1); size++; admitted++; return true;
+        counts.put(pool, count + 1); size++; peakSize = Math.max(peakSize, size); admitted++; return true;
     }
     synchronized void release(Object pool, int count, boolean expiration) {
         if (count == 0) return;
@@ -28,8 +28,11 @@ public final class CandidateBudget {
         size -= count;
         if (expiration) expired += count; else consumed += count;
     }
+    synchronized void replaceDeferred(Object pool) {
+        release(pool, 1, false); consumed--; replacedDeferred++;
+    }
     public synchronized String diagnostics() {
-        return "resident=" + size + " eligibilities=" + counts.size() + " admitted=" + admitted
-                + " consumed=" + consumed + " expiredUnused=" + expired + " capacityLimited=" + capacityLimited;
+        return "resident=" + size + " peakResident=" + peakSize + " eligibilities=" + counts.size() + " admitted=" + admitted
+                + " consumed=" + consumed + " replacedDeferred=" + replacedDeferred + " expiredUnused=" + expired + " capacityLimited=" + capacityLimited;
     }
 }

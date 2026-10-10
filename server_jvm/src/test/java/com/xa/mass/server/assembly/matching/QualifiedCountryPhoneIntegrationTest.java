@@ -44,7 +44,7 @@ class QualifiedCountryPhoneIntegrationTest {
             @Override public void commandStarted(CommandStartedEvent event) { commands.add(event.getCommand().getType().toString()); }
         });
         connection = client.connect(); redis = connection.sync();
-        composition = MatchingComposition.create(client, scope.keyspace(), groups, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS);
+        composition = MatchingComposition.create(client, scope.keyspace(), groups, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS, java.util.List.of());
         catalog = composition.catalog();
         properties = composition.properties();
     }
@@ -81,7 +81,7 @@ class QualifiedCountryPhoneIntegrationTest {
         assertThat(commands).containsExactly("HMGET");
 
         // Restart retains the existing mapping without rebuilding.
-        composition.close(); composition = MatchingComposition.create(client, scope.keyspace(), groups, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS);
+        composition.close(); composition = MatchingComposition.create(client, scope.keyspace(), groups, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS, java.util.List.of());
         catalog = composition.catalog();
         properties = composition.properties();
         assertThat(catalog.take("direct", Map.of("m", query("phone0"))))
@@ -93,7 +93,7 @@ class QualifiedCountryPhoneIntegrationTest {
         var beta = new QualifiedCountryDefinition("beta", "custom.beta", "custom.beta.phone", "allow.b", "ok", "region");
         var enabled = Map.of("custom", new MatchingGroup(Set.of("alpha"),
                 Set.of(alpha.poolFunctionName(), alpha.phoneFunctionName(), beta.phoneFunctionName())));
-        try (var declared = MatchingComposition.create(client, scope.keyspace(), enabled, List.of(), List.of(alpha, beta))) {
+        try (var declared = MatchingComposition.create(client, scope.keyspace(), enabled, List.of(), List.of(alpha, beta), java.util.List.of())) {
             declared.properties().upsertWorkerFactsBatch("custom", Map.of(
                     "a", Map.of("phone", "123", "allow.a", "yes", "nation", "CN"),
                     "b", Map.of("phone", "456", "allow.b", "ok", "region", "US")));

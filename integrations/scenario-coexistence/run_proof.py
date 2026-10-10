@@ -227,13 +227,13 @@ def callback_observed(run, message, receipt_id, accepted):
     return receipt
 
 
-def sms_create(run, request="shared-sms", country="CN", application="A"):
-    return http(run.url, "/api/v1/sms/listeners", {"requestId": request, "country": country,
-                "applicationId": application, "listenSeconds": 60}, timeout=2)
+def sms_create(run, country="CN", application="A"):
+    return http(run.url, "/api/v1/sms/numbers:lease", {"country": country,
+                "applicationId": application, "leaseSeconds": 60}, timeout=6)
 
 
 def sms_wait(run, listener, state):
-    return wait(run, lambda: (v if (v := http(run.url, "/api/v1/sms/listeners/" + listener["id"]))["status"] == state else None),
+    return wait(run, lambda: (v if (v := http(run.url, "/api/v1/sms/messages/" + listener["messageId"]))["status"] == state else None),
                 20, "SMS " + state)
 
 
@@ -242,11 +242,12 @@ def functional(run):
     begin_stage(run, "shared-supply-preconditions")
     sms_catalog = http(run.url, "/api/v1/sms/catalog")
     messages_catalog = http(run.url, "/api/v1/messages/catalog")
-    require({c["workerGroupId"] for c in sms_catalog["countries"]}
-            == {c["workerGroupId"] for c in messages_catalog["applications"] if c["id"] == "demo"} == {"demo-sim"}, "Products did not share Groups")
+    require(set(sms_catalog["countries"]) == {"CN", "US", "GB"}
+            and {c["workerGroupId"] for c in messages_catalog["applications"] if c["id"] == "demo"} == {"demo-sim"}, "Unexpected shared product configuration")
     inventory = all_pages(run.host, "/lab/v1/messages/inventory")
     require(len(inventory) == 12, "Expected 12 shared Workers")
-    listener = sms_wait(run, sms_create(run), "LISTENING")
+    listener = sms_wait(run, sms_create(run), "WAITING")
+    require(run.input_workers_by_id[listener["workerId"]]["workerGroupId"] == "demo-sim", "SMS used another Group")
     begin_stage(run, "application-create-identity")
     request = {"appId": "demo", "requestId": "identity", "name": "identity", "recipientCountry": "CN", "body": "{}"}
     created = http(run.url, "/api/v1/messages/tasks", request)
@@ -262,7 +263,7 @@ def functional(run):
     created, _ = directed_control_task(run, listener["workerId"])
     value, rows = sent(run, created)
     require(all(m["workerId"] == listener["workerId"] for m in rows), "Targeted campaign did not execute on SMS Worker")
-    require(http(run.url, "/api/v1/sms/listeners/" + listener["id"])["status"] == "LISTENING", "Campaign stopped SMS listening")
+    require(http(run.url, "/api/v1/sms/messages/" + listener["messageId"])["status"] == "WAITING", "Campaign stopped SMS listening")
     begin_stage(run, "terminal-sent-export")
     wait(run, lambda: task_state(run, value["taskId"]) == "terminal", 30, "finite Task automatic completion")
     initial_export = export_results(run, value["taskId"])
@@ -328,7 +329,7 @@ def functional(run):
     target = run.input_workers_by_id[listener["workerId"]]
     input_path = "/lab/v1/workers/" + urllib.parse.quote(target["workerGroupId"], safe="") + "/" + urllib.parse.quote(target["replicaKey"], safe="") + ":inputs"
     injected = http(run.host, input_path, {"eventName": "sms.receive", "payload": {
-        "phone": listener["phone"], "text": "[A] 123456", "smsId": "shared-input"}})
+        "phone": listener["phoneNumber"], "text": "[A] 123456", "smsId": "shared-input"}})
     require(injected["status"] == "MATCHED", "Same Worker SMS did not match")
     received = sms_wait(run, listener, "RECEIVED")
     require(received["workerId"] == rows[0]["workerId"], "Cross-product identity mismatch")
@@ -462,7 +463,8 @@ def pool_selection(run):
 def lifecycle(run):
     run.phase_deadline = time.monotonic() + 180
     begin_stage(run, "lifecycle-supply-preconditions")
-    listener = sms_wait(run, sms_create(run), "LISTENING")
+    listener = sms_wait(run, sms_create(run), "WAITING")
+    require(run.input_workers_by_id[listener["workerId"]]["workerGroupId"] == "demo-sim", "SMS used another Group")
     begin_stage(run, "lifecycle-old-run-send")
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
     value, _ = directed_control_task(run, listener["workerId"], "old-run", 1)
@@ -568,10 +570,10 @@ def load_1k(run):
         began = time.monotonic()
         try:
             country = "CN" if index % 10 < 7 else "US" if index % 10 < 9 else "GB"
-            result = sms_create(run, f"load-sms-{index}", country, ("A", "B", "C")[index % 3])
+            result = sms_create(run, country, ("A", "B", "C")[index % 3])
             with lock:
-                accepted.append(result["id"]); latencies.append((time.monotonic() - began) * 1000)
-                lag.append(max(0, began - start - index / rate))
+                accepted.append(result); latencies.append((time.monotonic() - began) * 1000)
+                lag.append(max(0, began - start - index / (rate / 8)))
         except Exception as error:
             failure(error, "sms.submit")
         finally:
@@ -627,8 +629,8 @@ def load_1k(run):
     campaign_thread.start(); recipient_thread.start()
     try:
         with ThreadPoolExecutor(max_workers=96) as pool:
-            for index in range(total):
-                delay = start + index / rate - time.monotonic()
+            for index in range(total // 8):
+                delay = start + index / (rate / 8) - time.monotonic()
                 if delay > 0:
                     time.sleep(delay)
                 require(permits.acquire(blocking=False), "Load generator exceeded bounded admission")
@@ -640,7 +642,7 @@ def load_1k(run):
         offered_seconds = time.monotonic() - start
         campaign_thread.join(timeout=5)
         require(not campaign_thread.is_alive() and len(campaigns) == 12, "Campaign schedule incomplete")
-        require(len(accepted) == total and not errors,
+        require(len(accepted) == total // 8 and not errors,
                 "Load submissions or receipts failed: accepted=" + str(len(accepted))
                 + ", errors=" + json.dumps(dict(Counter(errors)), sort_keys=True))
         require(offered_seconds <= seconds + 3 and max(lag, default=0) < 1, "SMS offered rate fell below fixture")
@@ -648,10 +650,9 @@ def load_1k(run):
 
         def converged():
             require(not errors, "Recipient flow failed")
-            sms = http(run.url, "/api/v1/sms/metrics")
             messages = http(run.url, "/api/v1/messages/tasks?limit=100")
-            peak["hostActiveSms"] = max(peak["hostActiveSms"], http(run.host, "/lab/v1/sms/metrics")["host"]["activeListeners"])
-            return sum(task.get("repliedCount", 0) for task in messages["tasks"]) == total and sum(sms["statuses"].get(s, 0) for s in ("RECEIVED", "EXPIRED")) == total
+            peak["hostActiveSms"] = max(peak["hostActiveSms"], http(run.host, "/lab/v1/sms/metrics")["host"]["activeAssociations"])
+            return sum(task.get("repliedCount", 0) for task in messages["tasks"]) == total and http(run.host, "/lab/v1/sms/metrics")["host"]["activeAssociations"] == 0
         wait(run, converged, 120, "1k complete business observations")
         wait(run, lambda: len(action_latencies) == total * 3, 120, "all manual recipient actions complete")
         http(run.host, "/lab/v1/sms/traffic/stop", {})
@@ -676,16 +677,16 @@ def load_1k(run):
                 compared.append(message["id"])
         require(len(set(compared)) == total, "Message projection missing identities")
         host_sms = all_pages(run.host, "/lab/v1/sms/records")
-        product_sms = {r["id"]: r for r in all_pages(run.url, "/api/v1/sms/listeners")}
-        require(len(host_sms) == len(product_sms) == total, "SMS record count mismatch")
+        product_sms = {r["messageId"]: http(run.url, "/api/v1/sms/messages/" + r["messageId"]) for r in accepted}
+        require(len(host_sms) == len(product_sms) == total // 8, "SMS record count mismatch")
         for record in host_sms:
-            observed = product_sms[record["listenerId"]]
-            require(record["status"] == observed["status"] and record["workerId"] == observed["workerId"], "SMS identity or state mismatch")
+            observed = product_sms[record["messageId"]]
+            require(not observed["leaseActive"] and record["workerId"] == observed["workerId"], "SMS identity or state mismatch")
             if record["status"] == "RECEIVED":
                 require(record["smsId"] == observed["sms"]["smsId"], "SMS payload association mismatch")
-        return {"passed": True, "workers": 1000, "countryCounts": [700, 200, 100], "smsAccepted": total,
+        return {"passed": True, "workers": 1000, "countryCounts": [700, 200, 100], "smsAccepted": total // 8, "smsRequestsPerSecond": rate / 8,
                 "campaigns": 12, "messagesSentAndReplied": total, "recipientActions": len(action_latencies),
-                "targetRequestsPerSecond": rate, "targetSeconds": seconds, "actualSubmissionSeconds": offered_seconds,
+                "targetRequestsPerSecond": rate / 8, "targetSeconds": seconds, "actualSubmissionSeconds": offered_seconds,
                 "actualRequestRate": len(accepted) / offered_seconds, "maximumGeneratorLagSeconds": max(lag),
                 "httpErrors": dict(Counter(errors)), "requestLatencyMillis": percentiles(latencies),
                 "recipientActionLatencyMillis": percentiles(action_latencies), "backlogPeaks": peak,

@@ -61,7 +61,9 @@ jobs:
           python -m pip install -r distribution/server/requirements-preview.txt
       - name: Product contracts and frontend
         run: |
-          ./gradlew :worker_simulator_jvm:test :scenarios:sms-reception-jvm:test :server_boot_jvm:test :server_boot_jvm:smsCompositionIntegrationTest --console=plain
+          ./gradlew :worker_matching_jvm:test :worker_simulator_jvm:test :scenarios:sms-reception-jvm:test :server_boot_jvm:test :server_boot_jvm:smsCompositionIntegrationTest --console=plain
+          ./gradlew :server_jvm:test --tests '*TaskLeaseProjectionServiceTest' --tests '*TaskRpcCallServiceTest' --tests '*TaskRpcWaitRegistryTest' --console=plain
+          ./gradlew :server_jvm:redisOwnerIntegrationTest --tests '*PlatformLeaseIntegrationTest' --console=plain
           corepack pnpm@11.9.0 --dir frontend lint
           corepack pnpm@11.9.0 --dir frontend typecheck
           corepack pnpm@11.9.0 --dir frontend test
