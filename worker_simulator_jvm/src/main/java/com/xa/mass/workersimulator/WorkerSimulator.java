@@ -8,7 +8,9 @@ import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workersimulator.sms.SmsScenario;
 import com.xa.mass.workersimulator.sms.ListeningRegistry;
 import com.xa.mass.workersimulator.messaging.MessageScenario;
+import com.xa.mass.workersimulator.messaging.MessageProtocol;
 import com.xa.mass.workersimulator.messaging.MessageSettings;
+import com.xa.mass.workersimulator.messaging.MessageWorkerEndpoint;
 import java.util.concurrent.atomic.AtomicReference;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -74,7 +76,8 @@ public final class WorkerSimulator implements AutoCloseable {
         );
         lab = new WorkerSimulatorLab(sandboxRoot);
         sms = configs.stream().anyMatch(WorkerSimulator::usesSms) ? new SmsScenario() : null;
-        messages = configs.stream().anyMatch(WorkerSimulator::usesMessages) ? new MessageScenario(seed, messageSettings) : null;
+        messages = configs.stream().anyMatch(WorkerSimulator::usesMessages) ? new MessageScenario(seed, messageSettings, configs.stream().filter(WorkerSimulator::usesMessages)
+                .collect(java.util.stream.Collectors.toUnmodifiableMap(WorkerSimulatorGroupConfig::workerGroupId, WorkerSimulatorGroupConfig::messageContentMode))) : null;
         this.groupManagerFactory = groupManagerFactory == null ? this::createManager : groupManagerFactory;
         this.commandCheckpoints = Objects.requireNonNull(
                 commandCheckpoints,
@@ -221,7 +224,7 @@ public final class WorkerSimulator implements AutoCloseable {
                 replica = requireReplica(group, labWorkerKey);
                 applyProperties(group, replica, replica.stateFile().readProperties(), false);
                 if (replica.sim != null) sms.registry.beginStart(replica.sim);
-                if (replica.sender != null) messages.start(replica.sender);
+                if (replica.sender != null) messages.worker().start(replica.sender);
             }
             try {
                 group.manager().prepareAndStart(List.of(replica.replicaKey()));
@@ -231,7 +234,7 @@ public final class WorkerSimulator implements AutoCloseable {
             } finally {
                 try {
                     if ((replica.sim != null && !sms.registry.startStillRequested(replica.sim))
-                            || (replica.sender != null && !messages.startStillRequested(replica.sender))) {
+                            || (replica.sender != null && !messages.worker().startStillRequested(replica.sender))) {
                         group.manager().stop(replica.replicaKey());
                     }
                 } finally {
@@ -337,7 +340,7 @@ public final class WorkerSimulator implements AutoCloseable {
     Map<String, Object> simulateInput(String workerGroupId, String labWorkerKey,
             String eventName, Map<String, Object> payload) {
         // An original correlation is sufficient during startup; do not wait on the Host READY gate.
-        if (eventName.equals("message.receipt")) return messageScenario().receive(workerGroupId, labWorkerKey, payload);
+        if (eventName.equals("message.receipt")) return messageScenario().worker().receive(workerGroupId, labWorkerKey, payload);
         PreparedReplica replica;
         synchronized (this) {
             ensureControllable();
@@ -353,17 +356,17 @@ public final class WorkerSimulator implements AutoCloseable {
                 requireInputFields(payload, Set.of("text"), Set.of("smsId", "phone"));
                 String id = optionalInputId(payload, "smsId");
                 String phone = payload.containsKey("phone") ? ListeningRegistry.string(payload, "phone") : null;
-                yield sms.registry.receive(replica.sim, phone, id, MessageScenario.text(payload, "text", 1024));
+                yield sms.registry.receive(replica.sim, phone, id, inputText(payload, "text", 1024));
             }
             case "message.read", "message.reply" -> {
                 if (replica.sender == null) throw new IllegalArgumentException("Worker has no Messages capability");
                 boolean reply = eventName.equals("message.reply");
                 requireInputFields(payload, reply ? Set.of("messageId", "text") : Set.of("messageId"),
                         reply ? Set.of("requestId") : Set.of());
-                String id = MessageScenario.text(payload, "messageId", 128);
+                String id = inputText(payload, "messageId", 128);
                 String requestId = reply ? optionalInputId(payload, "requestId") : null;
-                Map<String, Object> result = messages.act(replica.sender, id, eventName.substring("message.".length()),
-                        reply ? Map.of("requestId", requestId, "text", MessageScenario.text(payload, "text", 4096)) : Map.of());
+                Map<String, Object> result = messages.lab().act(replica.sender.group(), replica.sender.replica(), id, eventName.substring("message.".length()),
+                        reply ? Map.of("requestId", requestId, "text", inputText(payload, "text", 4096)) : Map.of());
                 if (!reply) yield result;
                 Map<String, Object> withId = new LinkedHashMap<>(result);
                 withId.put("requestId", requestId);
@@ -374,13 +377,13 @@ public final class WorkerSimulator implements AutoCloseable {
     }
 
     Map<String, Object> workerMessages(String workerGroupId, String labWorkerKey, int offset, int limit) {
-        MessageScenario.Sender sender;
+        MessageWorkerEndpoint.Sender sender;
         synchronized (this) {
             ensureControllable();
             sender = requireReplica(requireManagedGroup(workerGroupId), labWorkerKey).sender;
         }
         if (sender == null) throw new IllegalArgumentException("Worker has no Messages capability");
-        return messages.page(sender, offset, limit);
+        return messages.lab().page(sender.group(), sender.replica(), offset, limit);
     }
 
     private static void requireInputFields(Map<String, Object> input, Set<String> required, Set<String> optional) {
@@ -390,8 +393,14 @@ public final class WorkerSimulator implements AutoCloseable {
         }
     }
 
+    private static String inputText(Map<String, Object> input, String key, int maximum) {
+        if (!(input.get(key) instanceof String value) || value.isBlank() || value.length() > maximum)
+            throw new IllegalArgumentException("Invalid " + key);
+        return value;
+    }
+
     private static String optionalInputId(Map<String, Object> input, String name) {
-        return input.containsKey(name) ? MessageScenario.text(input, name, 128) : UUID.randomUUID().toString();
+        return input.containsKey(name) ? inputText(input, name, 128) : UUID.randomUUID().toString();
     }
 
     private boolean publishProperties(
@@ -786,10 +795,10 @@ public final class WorkerSimulator implements AutoCloseable {
                         .filter(definition -> config.events().contains(definition.eventName())).toList());
             }
             if (usesMessages(config)) {
-                replica.sender = messages.addSender(config.workerGroupId(), replica.replicaKey(), replica::properties,
+                replica.sender = messages.worker().addSender(config.workerGroupId(), replica.replicaKey(), replica::properties,
                         () -> managerReference.get().snapshot(replica.replicaKey()).workerId(),
-                        () -> managerReference.get().snapshot(replica.replicaKey()).state().name(), config.messageContentMode());
-                extensions.addAll(messages.definitions(replica.sender));
+                        () -> managerReference.get().snapshot(replica.replicaKey()).state().name());
+                extensions.addAll(messages.worker().definitions(replica.sender));
             }
             if (config.events().contains(WorkerSimulatorExecutionWitnesses.EVENT))
                 extensions.add(executionWitnesses.definition(config.workerGroupId(), replica.replicaKey()));
@@ -930,7 +939,7 @@ public final class WorkerSimulator implements AutoCloseable {
             for (String eventCode : config.events()) {
                 if (Set.of(com.xa.mass.workersimulator.appchecks.AppRegistrationCheck.EVENT,
                         WorkerSimulatorExecutionWitnesses.EVENT, SmsScenario.START_EVENT,
-                        SmsScenario.CANCEL_EVENT, MessageScenario.SEND_EVENT).contains(eventCode)) {
+                        SmsScenario.CANCEL_EVENT, MessageProtocol.SEND_EVENT).contains(eventCode)) {
                     continue; // This finite capability is bound to each actual replica at construction.
                 }
                 WorkerEventDefinition<?> definition =
@@ -961,7 +970,7 @@ public final class WorkerSimulator implements AutoCloseable {
         return config.events().contains(SmsScenario.START_EVENT) || config.events().contains(SmsScenario.CANCEL_EVENT);
     }
     private static boolean usesMessages(WorkerSimulatorGroupConfig config) {
-        return config.events().contains(MessageScenario.SEND_EVENT);
+        return config.events().contains(MessageProtocol.SEND_EVENT);
     }
     private static boolean usesNumbers(WorkerSimulatorGroupConfig config) { return usesSms(config) || usesMessages(config); }
 
@@ -984,7 +993,7 @@ public final class WorkerSimulator implements AutoCloseable {
         private final String replicaKey;
         private final WorkerSimulatorStateFile stateFile;
         ListeningRegistry.Sim sim;
-        MessageScenario.Sender sender;
+        MessageWorkerEndpoint.Sender sender;
         PreparedReplica(String replicaKey, WorkerSimulatorStateFile stateFile) {
             this.replicaKey = replicaKey; this.stateFile = stateFile;
         }

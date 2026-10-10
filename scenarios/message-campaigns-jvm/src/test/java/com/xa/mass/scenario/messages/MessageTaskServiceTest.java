@@ -130,7 +130,7 @@ class MessageTaskServiceTest {
             var blank = input(); blank.put("body", " ");
             var longText = input(); longText.put("body", "x".repeat(4097));
             for (var request : List.of(missing, unknown, phone, group, blank, longText))
-                assertThatThrownBy(() -> service.create(request)).isInstanceOfSatisfying(MessageTaskService.ProductError.class,
+                assertThatThrownBy(() -> service.create(request)).isInstanceOfSatisfying(MessageError.class,
                         error -> assertThat(error.status).isEqualTo(400));
             verifyNoInteractions(creation, data, lifecycle);
         }
@@ -145,7 +145,7 @@ class MessageTaskServiceTest {
                 return items.stream().collect(java.util.stream.Collectors.toMap(TaskItemRequest::messageId, i -> ActionOutcome.applied()));
             }).when(data).importFiniteTaskItems(anyString(), anyList());
             assertThatThrownBy(() -> service.importRecipients("finite-task", file(numbers(201))))
-                    .isInstanceOfSatisfying(MessageTaskService.ProductError.class, error -> {
+                    .isInstanceOfSatisfying(MessageError.class, error -> {
                         assertThat(error.status).isEqualTo(503); assertThat(error.taskId).isEqualTo("finite-task");
                         assertThat(error.confirmedAddedCount).isEqualTo(100); assertThat(error.existingCount).isZero();
                     });
@@ -158,11 +158,11 @@ class MessageTaskServiceTest {
     @Test void knownCreationIdentityAndStateConflictsKeepTheirClassification() {
         try (var service = service()) {
             when(creation.createForRequest(any(), anyString(), anyString())).thenThrow(new TaskCreationUnconfirmedException("known", new IllegalStateException()));
-            assertThatThrownBy(() -> service.create(input())).isInstanceOfSatisfying(MessageTaskService.ProductError.class, e -> {
+            assertThatThrownBy(() -> service.create(input())).isInstanceOfSatisfying(MessageError.class, e -> {
                 assertThat(e.taskId).isEqualTo("known"); assertThat(e.status).isEqualTo(503);
             });
             doThrow(new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "test.create", "conflict", null)).when(creation).createForRequest(any(), anyString(), anyString());
-            assertThatThrownBy(() -> service.create(input())).isInstanceOfSatisfying(MessageTaskService.ProductError.class, e -> assertThat(e.status).isEqualTo(409));
+            assertThatThrownBy(() -> service.create(input())).isInstanceOfSatisfying(MessageError.class, e -> assertThat(e.status).isEqualTo(409));
         }
     }
 
@@ -173,7 +173,7 @@ class MessageTaskServiceTest {
             service.approve("finite-task", 2); verify(lifecycle).approve("finite-task");
             for (String state : Arrays.asList("terminal", "running_visible", null)) {
                 entry("finite-task", input(), state, "3");
-                assertThatThrownBy(() -> service.approve("finite-task", 2)).isInstanceOf(MessageTaskService.ProductError.class);
+                assertThatThrownBy(() -> service.approve("finite-task", 2)).isInstanceOf(MessageError.class);
             }
             for (String version : Arrays.asList(null, "1", "2")) {
                 entry("finite-task", input(), "pre_review", version);
@@ -196,10 +196,10 @@ class MessageTaskServiceTest {
                 var two = executor.submit(() -> service.importRecipients("second", file("+86123")));
                 assertThat(entered.await(3, TimeUnit.SECONDS)).isTrue();
                 var stream = mock(InputStream.class);
-                assertThatThrownBy(() -> service.importRecipients("third", stream)).isInstanceOfSatisfying(MessageTaskService.ProductError.class, e -> assertThat(e.status).isEqualTo(429));
+                assertThatThrownBy(() -> service.importRecipients("third", stream)).isInstanceOfSatisfying(MessageError.class, e -> assertThat(e.status).isEqualTo(429));
                 verifyNoInteractions(stream);
-                assertThatThrownBy(() -> service.approve("finite-task", 1)).isInstanceOfSatisfying(MessageTaskService.ProductError.class, e -> assertThat(e.status).isEqualTo(409));
-                assertThatThrownBy(() -> service.closeTask("finite-task")).isInstanceOfSatisfying(MessageTaskService.ProductError.class, e -> assertThat(e.status).isEqualTo(409));
+                assertThatThrownBy(() -> service.approve("finite-task", 1)).isInstanceOfSatisfying(MessageError.class, e -> assertThat(e.status).isEqualTo(409));
+                assertThatThrownBy(() -> service.closeTask("finite-task")).isInstanceOfSatisfying(MessageError.class, e -> assertThat(e.status).isEqualTo(409));
                 assertThatThrownBy(() -> operations.taskMutation("finite-task", () -> true)).isInstanceOf(ServerException.class);
                 release.countDown(); one.get(); two.get();
                 service.importRecipients("finite-task", file("+86123"));

@@ -16,11 +16,11 @@ class MessageRecipientFileTest {
             assertThat(file.uniqueCount()).isEqualTo(100000); assertThat(Files.size(file.file())).isPositive();
         }
         for (String text : List.of("", "+86", "000123", "+44123", "86123\nbad", numbers + "\n8613911111111"))
-            assertThatThrownBy(() -> MessageRecipientFile.read(input(text), "CN")).isInstanceOf(MessageTaskService.ProductError.class);
+            assertThatThrownBy(() -> MessageRecipientFile.read(input(text), "CN")).isInstanceOf(MessageError.class);
         assertThatThrownBy(() -> MessageRecipientFile.read(new ByteArrayInputStream(new byte[]{(byte)0xc3, 0x28}), "CN"))
                 .hasMessageContaining("UTF-8");
         assertThatThrownBy(() -> MessageRecipientFile.read(input(" ".repeat(MessageRecipientFile.MAX_BYTES + 1)), "CN"))
-                .isInstanceOfSatisfying(MessageTaskService.ProductError.class, e -> assertThat(e.status).isEqualTo(413));
+                .isInstanceOfSatisfying(MessageError.class, e -> assertThat(e.status).isEqualTo(413));
         try (var file = MessageRecipientFile.read(input("86123" + " ".repeat(MessageRecipientFile.MAX_BYTES - 5)), "CN")) {
             assertThat(file.uniqueCount()).isEqualTo(1);
         }

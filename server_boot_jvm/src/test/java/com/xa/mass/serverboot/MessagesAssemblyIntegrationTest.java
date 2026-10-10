@@ -9,6 +9,9 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workersimulator.messaging.MessageScenario;
+import com.xa.mass.workersimulator.messaging.MessageSettings;
+import com.xa.mass.workersimulator.messaging.MessageContentMode;
+import com.xa.mass.workersimulator.messaging.MessageLab;
 import io.lettuce.core.*;
 import java.net.*;
 import java.net.http.*;
@@ -33,16 +36,15 @@ class MessagesAssemblyIntegrationTest {
     void textSendingIsIndependentOfReceiptCapacityAndShortWindowsReleaseWithoutRestart(boolean shortWindow) throws Exception {
         var settings = new com.xa.mass.workersimulator.messaging.MessageSettings(
                 shortWindow ? 3000 : 600000, shortWindow ? 1 : 4, shortWindow ? 3000 : 600000, 1, 1);
-        try (var fixture = new Fixture(); var channel = new MessageScenario(0, settings);
+        try (var fixture = new Fixture(); var channel = new MessageScenario(0, settings, Map.of("demo-sim", MessageContentMode.TEXT));
              var lab = new MessageFailureIntegrationTest.LabHttp(channel)) {
             fixture.start(true, Map.of("xa.mass.kernel-pacer.enabled", "true"));
             var manager = new AtomicReference<JavaWorkerManager>();
-            var sender = channel.addSender("demo-sim", "one", () -> Map.of("phone", "+861700000000", "country", "CN"),
-                    () -> manager.get().snapshot("one").workerId(), () -> "RUNNING",
-                    com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
+            var sender = channel.worker().addSender("demo-sim", "one", () -> Map.of("phone", "+861700000000", "country", "CN"),
+                    () -> manager.get().snapshot("one").workerId(), () -> "RUNNING");
             try (var worker = JavaWorkerManager.builder(fixture.base, "demo-sim", WorkerTransportType.WEBSOCKET)
                     .replica("one", () -> Map.of("phone", "+861700000000", "country", "CN", "messaging.enabled", "true"),
-                            channel.definitions(sender)).build()) {
+                            channel.worker().definitions(sender)).build()) {
                 manager.set(worker); worker.start();
                 int count = shortWindow ? 1 : 3;
                 String task = createTextTask(fixture, "plain-first", count);
@@ -56,7 +58,7 @@ class MessagesAssemblyIntegrationTest {
                 if (shortWindow) {
                     await(() -> ((Number) channel.metrics().get("dedupEntries")).intValue() == 0
                             && ((Number) channel.metrics().get("reporters")).intValue() == 0);
-                    assertThatThrownBy(() -> channel.act(sender, oldMessage, "read", Map.of())).isInstanceOf(MessageScenario.MissingMessage.class);
+                    assertThatThrownBy(() -> channel.lab().act(sender.group(), sender.replica(), oldMessage, "read", Map.of())).isInstanceOf(MessageLab.MissingMessage.class);
                 } else {
                     assertThat(((Number) channel.metrics().get("skippedAssociations")).longValue()).isGreaterThanOrEqualTo(2);
                     assertThat(channel.metrics()).containsEntry("reporters", 1).containsEntry("recentSentRecords", 1);
@@ -85,20 +87,20 @@ class MessagesAssemblyIntegrationTest {
 
     @Test @Timeout(150)
     void messagesAloneExecutesAndContinuesTrackedResponsesAfterTaskTermination() throws Exception {
-        try (var fixture = new Fixture(); var channel = new MessageScenario();
+        try (var fixture = new Fixture(); var channel = new MessageScenario(0, MessageSettings.defaults(), Map.of("demo-sim", MessageContentMode.LAB_JSON));
              var lab = new MessageFailureIntegrationTest.LabHttp(channel)) {
             fixture.start(true, Map.of("xa.mass.kernel-pacer.enabled", "true"));
             assertThat(fixture.get("/api/v1/messages/catalog").statusCode()).isEqualTo(200);
             assertThat(fixture.get("/api/v1/sms/catalog").statusCode()).isEqualTo(404);
             assertThat(fixture.get("/api/v1/app-checks/catalog").statusCode()).isEqualTo(404);
             assertThat(fixture.context.getBean(ProjectDirectory.class).projects()).containsOnlyKeys("messages");
-            channel.hold(true);
+            channel.lab().hold(true);
             var manager = new AtomicReference<JavaWorkerManager>();
-            var sender = channel.addSender("demo-sim", "one", () -> Map.of("phone", "+861700000000", "country", "CN"),
-                    () -> manager.get().snapshot("one").workerId(), () -> "RUNNING", com.xa.mass.workersimulator.messaging.MessageContentMode.LAB_JSON);
+            var sender = channel.worker().addSender("demo-sim", "one", () -> Map.of("phone", "+861700000000", "country", "CN"),
+                    () -> manager.get().snapshot("one").workerId(), () -> "RUNNING");
             try (var worker = JavaWorkerManager.builder(fixture.base, "demo-sim", WorkerTransportType.WEBSOCKET)
                     .replica("one", () -> Map.of("phone", "+861700000000", "country", "CN", "messaging.enabled", "true"),
-                            channel.definitions(sender)).build()) {
+                            channel.worker().definitions(sender)).build()) {
                 manager.set(worker); worker.start();
                 var created = fixture.post("/api/v1/messages/tasks", Map.of("appId", "demo", "requestId", "standalone", "name", "standalone",
                         "recipientCountry", "CN", "senderCountry", "CN", "body", "{}"));
@@ -109,15 +111,15 @@ class MessagesAssemblyIntegrationTest {
                 assertThat(fixture.post("/api/v1/messages/tasks/" + task + "/approve", 1).statusCode()).isEqualTo(200);
                 await(() -> "terminal".equals(((Map<?, ?>) fixture.detail(task).get("task")).get("state")));
                 await(() -> fixture.hasStatus(task, "SENT", null));
-                var local = (Map<String, Object>) ((List<?>) channel.page(0, 1).get("items")).getFirst();
+                var local = (Map<String, Object>) ((List<?>) channel.lab().page(null, null, 0, 1).get("items")).getFirst();
                 String message = (String) local.get("messageId");
                 String receipt = (String) ((Map<?, ?>) ((List<?>) local.get("receipts")).getFirst()).get("receiptId");
-                channel.hold(false); channel.release(List.of(receipt));
+                channel.lab().hold(false); channel.lab().release(List.of(receipt));
                 await(() -> fixture.hasStatus(task, "DELIVERED", null));
-                channel.act(sender, message, "read", Map.of());
+                channel.lab().act(sender.group(), sender.replica(), message, "read", Map.of());
                 await(() -> fixture.hasStatus(task, "READ", null));
                 for (String reply : List.of("first", "latest")) {
-                    channel.act(sender, message, "reply", Map.of("requestId", reply, "text", reply));
+                    channel.lab().act(sender.group(), sender.replica(), message, "reply", Map.of("requestId", reply, "text", reply));
                     await(() -> fixture.hasStatus(task, "REPLIED", reply));
                 }
                 assertThat((Map<String, Object>) fixture.detail(task).get("task"))

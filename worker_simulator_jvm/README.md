@@ -193,6 +193,41 @@ Worker identity, Tasks, Adapter state or Kernel expectations.
 
 ## Messages and shared products
 
+Messages is composed inside this module; the platform Worker SDK still owns only
+execution and the original-run Reporter, without business state.
+
+| Component | Owner |
+| --- | --- |
+| `MessageWorkerEndpoint` | Sender admission, the 64/256 send bound and original Reporter associations; no Lab, content-mode or HTTP implementation dependency |
+| `MessageLab` | Acceptance fingerprints, first sending identity, optional observations, instructions and receipt diagnostics; no Worker SDK dependency |
+| `MessageLabHttp` | One shared HTTP client, wire classification and the existing bounded callback executor; no acceptance or association ledger |
+| `MessageScenario` | Fixed Host composition, Group content modes, startup/shutdown, the existing maintenance tick and cross-Owner admission/stop coordination |
+
+The internal synchronous `MessageSendOperation` takes the unchanged message and
+sender snapshot, nullable callback identity and remaining budget. It returns the
+first accepted SENT snapshot and adopted callback identity. Definite rejection
+releases the reservation, preserving input versus execution-failure classification;
+an uncertain attempt retains it until expiry. The Worker endpoint checks association
+and never retries the operation. Its focused proof constructs no Lab or listener.
+`MessageProtocol` owns pure wire checks, not mutable facts or a shared platform DTO.
+
+Lab receiving admission runs through the Worker's bounded `admitReceiver` critical
+section. Sender/callback validation and Lab retention are ordered against
+`stopWithCleanup`, which revokes associations and releases that Sender's records
+under the same gate. The lock order remains Worker then Lab; callbacks only enqueue
+local work here, and network/Reporter execution stays outside those gates. Do not
+replace this operation with a boolean precheck followed by an unlocked Lab write.
+Already admitted callbacks retain the SDK's run isolation and need not be awaited.
+
+Host composition owns the single 100 ms tick, calling association expiry before Lab
+maintenance. Lab no longer starts a thread or calls back into Worker maintenance.
+Shutdown revokes Worker admission/associations before stopping that tick, clearing
+Lab records and closing callback/network resources. Group modes are captured from
+the existing startup configuration; no registration service or new configuration
+format is introduced. Host routes call the actual Worker/Lab component, with no
+old aggregate forwarding API. SMS/common Host input validation does not depend on
+Messages helpers.
+
 `config/messages.json` selects message senders; `config/products.json` installs
 SMS and Messages on Demo and Messages/App Checks on App A/B. All senders expose
 explicit phone, country and messaging.enabled Properties. Group/Pool selection

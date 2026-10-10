@@ -25,6 +25,16 @@ lease、claim、TRACKED 与 Worker/Lab 协议保持原归属。
 TaskDataService 和 TaskLifecycleService 组合读取与写入，不直接访问 Redis 或调度 Owner。
 实现见 [MessageTaskService](src/main/java/com/xa/mass/scenario/messages/MessageTaskService.java)。
 
+服务保持唯一的业务编排和生命周期准入；`MessageInputs` 承接纯输入规则，
+`MessageSpecification` 保留冻结配置、指纹和供给声明，`MessageRecipientFile` 只管理请求级文件材料。
+它们使用模块内 `MessageError`，不反向引用服务。`MessageViews` 无状态地解释已读取的
+Task、Item Score 和 Result，保留业务关联校验、内容异常与累计阶段计数；它不读取资源、
+保存快照或管理生命周期。Controller 的 HTTP 字段、状态码和异常关联信息不变。
+
+Worker 侧发送接入和 Lab 的独立状态归属见
+[Simulator Messages 装配](../../worker_simulator_jvm/README.md#messages-and-shared-products)。
+两端仍通过现有业务事件协作，不新增跨端协议 JAR，也不让业务场景依赖 Simulator 实现。
+
 ```text
 创建配置校验 → Server 请求关联创建 → 空的待审核 CLOSE Task → HTTP 201
 UTF-8 文件完整校验 → 持有 Task 导入准入 → 每批至多 100 Items → 导入回执

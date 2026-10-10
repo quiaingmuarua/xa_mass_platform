@@ -2,7 +2,7 @@ package com.xa.mass.workersimulator;
 
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.workersimulator.messaging.MessageScenario;
+import com.xa.mass.workersimulator.messaging.MessageProtocol;
 import com.xa.mass.workersimulator.messaging.MessageContentMode;
 import com.xa.mass.workersimulator.sms.SmsScenario;
 import java.math.BigDecimal;
@@ -157,7 +157,7 @@ record WorkerSimulatorGroupConfig(
             template.put("country", Map.of("$choice", List.of("CN", "US", "GB")));
             template.put("operator", "Preview SIM");
             template.put("simulated", "true");
-            if (events.isEmpty() || events.contains(MessageScenario.SEND_EVENT)) {
+            if (events.isEmpty() || events.contains(MessageProtocol.SEND_EVENT)) {
                 template.put("messaging.enabled", "true");
             }
         } else {
@@ -184,7 +184,7 @@ record WorkerSimulatorGroupConfig(
         if (group.equals("scenario-string-utils-workers")) {
             events.add(WorkerSimulatorLabEvents.CHECKPOINT_EVENT_CODE);
         } else if (group.equals("demo-sim")) {
-            events.addAll(List.of(SmsScenario.START_EVENT, SmsScenario.CANCEL_EVENT, MessageScenario.SEND_EVENT));
+            events.addAll(List.of(SmsScenario.START_EVENT, SmsScenario.CANCEL_EVENT, MessageProtocol.SEND_EVENT));
         } else {
             throw new IllegalArgumentException("WorkerGroup has no default events; configure events explicitly");
         }

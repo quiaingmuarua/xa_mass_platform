@@ -8,8 +8,6 @@ import java.util.*;
 /** Request-local materials; all validation completes before the caller writes any Items. */
 record MessageRecipientFile(Path file, long inputCount, long emptyCount, long duplicateCount, int uniqueCount) implements AutoCloseable {
     static final int MAX_RECIPIENTS = 100_000, MAX_BYTES = 10 * 1024 * 1024;
-    private static final Map<String, String> PREFIXES = Map.of("CN", "+86", "US", "+1", "GB", "+44");
-    private static final java.util.regex.Pattern NUMBER = java.util.regex.Pattern.compile("\\+[1-9][0-9]{1,14}");
 
     static MessageRecipientFile read(InputStream input, String country) throws IOException {
         Path raw = Files.createTempFile("message-input-", ".txt"), normalized = null;
@@ -33,10 +31,8 @@ record MessageRecipientFile(Path file, long inputCount, long emptyCount, long du
                     if (rows == 1 && line.startsWith("\uFEFF")) line = line.substring(1);
                     String number = line.strip();
                     if (number.isEmpty()) { empty++; continue; }
-                    if (!number.startsWith("+")) number = "+" + number;
-                    String prefix = PREFIXES.get(country);
-                    if (!NUMBER.matcher(number).matches() || prefix == null
-                            || !number.startsWith(prefix) || number.length() <= prefix.length()) {
+                    number = MessageInputs.recipient(number, country);
+                    if (number == null) {
                         invalid++; if (firstInvalid == 0) firstInvalid = rows; continue;
                     }
                     if (!seen.add(number)) { duplicates++; continue; }
@@ -61,6 +57,6 @@ record MessageRecipientFile(Path file, long inputCount, long emptyCount, long du
             finally { if (!complete && normalized != null) Files.deleteIfExists(normalized); }
         }
     }
-    private static MessageTaskService.ProductError invalid(int status, String message) { return new MessageTaskService.ProductError(status, message, null); }
+    private static MessageError invalid(int status, String message) { return new MessageError(status, message, null); }
     @Override public void close() throws IOException { Files.deleteIfExists(file); }
 }

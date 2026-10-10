@@ -7,7 +7,7 @@ import static org.assertj.core.api.Assertions.*;
 
 class MessageLabTest {
     private static MessageLab lab(long seed, java.util.function.LongSupplier clock, java.util.function.Predicate<MessageLab.Receipt> callback) {
-        return new MessageLab(seed, MessageSettings.defaults(), clock, () -> clock.getAsLong() * 1_000_000L, callback, () -> {});
+        return new MessageLab(seed, MessageSettings.defaults(), clock, () -> clock.getAsLong() * 1_000_000L, callback);
     }
     private static final Map<String,Object> SENDER = Map.of("workerGroupId", "g", "replicaKey", "r", "workerId", "w", "phone", "+86123", "country", "CN");
 
@@ -57,7 +57,7 @@ class MessageLabTest {
         try (var lab = lab(1, now::get, r -> { throw new AssertionError("Held callback escaped"); })) {
             lab.hold(true);
             lab.accept(MessageScenarioTest.send("m", "{\"receipts_status\":[\"replied\"],\"delayMs\":1000,\"text\":\"auto\"}"), SENDER, "c", MessageContentMode.LAB_JSON);
-            for (int i = 1; i < MessageScenario.MAX_HELD; i++) lab.act("g", "r", "m", "reply", Map.of("requestId", "r" + i, "text", "reply"));
+            for (int i = 1; i < MessageLab.MAX_HELD; i++) lab.act("g", "r", "m", "reply", Map.of("requestId", "r" + i, "text", "reply"));
             assertThat(lab.act("g", "r", "m", "reply", Map.of("requestId", "overflow", "text", "no")))
                     .containsEntry("persisted", true).containsEntry("held", false).containsEntry("callbackQueued", false);
             assertThat(lab.accept(MessageScenarioTest.send("other"), SENDER, "c2", MessageContentMode.LAB_JSON)).containsKey("snapshot");
@@ -74,7 +74,7 @@ class MessageLabTest {
     @Test void textIsOpaqueAndAcceptanceWindowDoesNotRenewOnReadOrDuplicate() {
         var wall = new AtomicLong(1000); var nanos = new AtomicLong();
         var settings = new MessageSettings(100, 2, 50, 1, 1);
-        try (var lab = new MessageLab(0, settings, wall::get, nanos::get, r -> { throw new AssertionError("Text emitted a receipt"); }, () -> {})) {
+        try (var lab = new MessageLab(0, settings, wall::get, nanos::get, r -> { throw new AssertionError("Text emitted a receipt"); })) {
             var request = MessageScenarioTest.send("m", "  模板 {{name}}\n{}  ");
             var first = lab.accept(request, SENDER, "original", MessageContentMode.TEXT);
             assertThat(((Map<?,?>) first.get("snapshot")).get("body")).isEqualTo(request.get("body"));
@@ -83,7 +83,7 @@ class MessageLabTest {
             assertThat(second.get("callbackId")).isNull();
             assertThat(lab.metrics()).containsEntry("trackedMessages", 1).containsEntry("trackingSkipped", 1L);
             assertThatThrownBy(() -> lab.accept(MessageScenarioTest.send("full"), SENDER, null, MessageContentMode.TEXT))
-                    .isInstanceOf(MessageScenario.CapacityExceeded.class);
+                    .isInstanceOf(MessageLab.CapacityExceeded.class);
             assertThat(lab.metrics()).containsEntry("acceptedMessages", 2L);
             nanos.set(99_000_000); wall.set(900);
             assertThat(lab.accept(request, SENDER, "replacement", MessageContentMode.TEXT)).isEqualTo(first);
@@ -99,7 +99,7 @@ class MessageLabTest {
 
     @Test void optionalObservationsAreBoundedAndNeverReboundOnDuplicate() {
         var nanos = new AtomicLong();
-        try (var lab = new MessageLab(0, new MessageSettings(1000, 10, 10, 1, 1), () -> 1000L, nanos::get, r -> true, () -> {})) {
+        try (var lab = new MessageLab(0, new MessageSettings(1000, 10, 10, 1, 1), () -> 1000L, nanos::get, r -> true)) {
             lab.accept(MessageScenarioTest.send("first"), SENDER, "first-callback", MessageContentMode.LAB_JSON);
             var untracked = lab.accept(MessageScenarioTest.send("second"), SENDER, "second-callback", MessageContentMode.LAB_JSON);
             assertThat(untracked.get("callbackId")).isNull();
@@ -123,7 +123,7 @@ class MessageLabTest {
     @Test void explicitHeldReleaseCannotOutliveItsWindowBehindTheCleanupBatch() {
         var nanos = new AtomicLong();
         try (var lab = new MessageLab(0, new MessageSettings(1000, 200, 10, 200, 1),
-                () -> 1000L, nanos::get, r -> { throw new AssertionError("Expired callback escaped"); }, () -> {})) {
+                () -> 1000L, nanos::get, r -> { throw new AssertionError("Expired callback escaped"); })) {
             lab.hold(true);
             for (int i = 0; i < 101; i++) lab.accept(MessageScenarioTest.send("m" + i), SENDER, "c" + i, MessageContentMode.LAB_JSON);
             nanos.set(10_000_000);
@@ -135,7 +135,7 @@ class MessageLabTest {
 
     @Test void summaryEvictionDoesNotDetachTrackedRecordsFromWorkerStop() {
         try (var lab = new MessageLab(0, new MessageSettings(1000, 10, 1000, 2, 1),
-                () -> 1000L, () -> 0L, r -> true, () -> {})) {
+                () -> 1000L, () -> 0L, r -> true)) {
             lab.accept(MessageScenarioTest.send("first"), SENDER, "first", MessageContentMode.TEXT);
             lab.accept(MessageScenarioTest.send("second"), SENDER, "second", MessageContentMode.TEXT);
             assertThat(lab.metrics()).containsEntry("messages", 2).containsEntry("recentSentRecords", 1);

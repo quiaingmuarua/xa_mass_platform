@@ -45,16 +45,16 @@ class WorkerSimulatorProductHostTest {
 
     @Test void anEarlyBusinessCallbackDoesNotWaitForTheHostStartupGate() throws Exception {
         var owner = new AtomicReference<WorkerSimulator>();
-        var sender = new AtomicReference<com.xa.mass.workersimulator.messaging.MessageScenario.Sender>();
+        var sender = new AtomicReference<com.xa.mass.workersimulator.messaging.MessageWorkerEndpoint.Sender>();
         var reports = new AtomicInteger();
         try (var workers = new WorkerSimulator(URI.create("http://127.0.0.1:1"),
                 temp.resolve("startup/data/scenario-workers").toString(), 0, SimulatorTestConfig.products(1), Map.of(), (uri, group) -> {
             var manager = mock(JavaWorkerManager.class);
             var replica = group.replicas().getFirst();
-            sender.set(owner.get().messageScenario().addSender("demo-sim", replica.replicaKey(),
-                    replica::properties, () -> "startup-worker", () -> "RUNNING", com.xa.mass.workersimulator.messaging.MessageContentMode.LAB_JSON));
+            sender.set(owner.get().messageScenario().worker().addSender("demo-sim", replica.replicaKey(),
+                    replica::properties, () -> "startup-worker", () -> "RUNNING"));
             doAnswer(call -> {
-                owner.get().messageScenario().send(sender.get(), message("startup"), (a,b,c) -> { reports.incrementAndGet(); return true; });
+                owner.get().messageScenario().worker().send(sender.get(), message("startup"), (a,b,c) -> { reports.incrementAndGet(); return true; });
                 // start() still owns the Host gate here; an actual HTTP callback must already work.
                 awaitMessage(() -> reports.get() == 1);
                 return null;
@@ -95,8 +95,8 @@ class WorkerSimulatorProductHostTest {
                             replica::properties, () -> groupId + ":" + key,
                             () -> active.get() ? "RUNNING" : "STOPPED", active::get);
                     replica.sim = sim;
-                    replica.sender = owner.get().messageScenario().addSender(groupId, key, replica::properties,
-                            () -> groupId + ":" + key, () -> active.get() ? "RUNNING" : "STOPPED", com.xa.mass.workersimulator.messaging.MessageContentMode.LAB_JSON);
+                    replica.sender = owner.get().messageScenario().worker().addSender(groupId, key, replica::properties,
+                            () -> groupId + ":" + key, () -> active.get() ? "RUNNING" : "STOPPED");
                     sims.put(key, sim);
                 }
                 when(manager.snapshot(anyString())).thenAnswer(call -> new WorkerLifecycle.Snapshot(
@@ -199,7 +199,7 @@ class WorkerSimulatorProductHostTest {
             var oldListen = listen("old", "CN");
             registry.listen(worker.sim, oldListen, (tag, time, payload) -> { smsReports.incrementAndGet(); return true; });
             var send = Map.<String, Object>of("campaignId", "c", "messageId", "old", "country", "CN", "recipientId", "r", "body", "{}");
-            messageOwner.send(worker.sender, send, (tag, time, payload) -> { messageReports.add(Jsons.parseObject(payload)); return true; });
+            messageOwner.worker().send(worker.sender, send, (tag, time, payload) -> { messageReports.add(Jsons.parseObject(payload)); return true; });
             String oldPhone = worker.properties().get("phone");
             clearInvocations(fixture.managers.get("demo-sim"));
             assertThat(fixture.workers.simulateInput("demo-sim", FIRST, "properties.update", new LinkedHashMap<>(Map.of("phone", "+new", "country", "GB")))).containsEntry("sendAccepted", false);
@@ -209,7 +209,7 @@ class WorkerSimulatorProductHostTest {
                     .containsEntry("status", "INTERRUPTED").containsEntry("phone", oldPhone).containsEntry("country", "CN");
             assertThat(smsReports).hasValue(0);
             assertThatThrownBy(() -> registry.receive(fixture.sims.get(FIRST), oldPhone, "stale", "text")).isInstanceOf(IllegalArgumentException.class);
-            assertThat(messageOwner.send(worker.sender, send, (tag, time, payload) -> false)).containsEntry("country", "CN").containsEntry("phone", oldPhone);
+            assertThat(messageOwner.worker().send(worker.sender, send, (tag, time, payload) -> false)).containsEntry("country", "CN").containsEntry("phone", oldPhone);
             awaitMessage(() -> messageReports.size() == 1);
             assertThat(messageReports).singleElement().satisfies(report -> assertThat(report).containsEntry("phone", oldPhone));
             registry.listen(worker.sim, listen("new", "GB"), (tag, time, payload) -> { smsReports.incrementAndGet(); return true; });
@@ -332,7 +332,7 @@ class WorkerSimulatorProductHostTest {
             var owner = fixture.workers.messageScenario();
             var sender = fixture.replicas.get(FIRST).sender;
             var reported = new java.util.concurrent.CopyOnWriteArrayList<Integer>();
-            owner.send(sender, message("actual"), (tag, time, payload) -> { reported.add(tag); return true; });
+            owner.worker().send(sender, message("actual"), (tag, time, payload) -> { reported.add(tag); return true; });
             assertThat(input(http, base, SECOND, "message.read", Map.of("messageId", "actual")).statusCode()).isEqualTo(404);
             awaitMessage(() -> reported.size() == 1);
             assertThat(reported).containsExactly(7);
@@ -365,7 +365,7 @@ class WorkerSimulatorProductHostTest {
             fixture.workers.stopWorker("demo-sim", FIRST); fixture.workers.startWorker("demo-sim", FIRST);
             assertThat(input(http, base, FIRST, "message.reply", Map.of("messageId", "actual", "text", "late")).statusCode()).isEqualTo(404);
             assertThat(reported).containsExactlyInAnyOrder(7, 8, 9);
-            owner.send(sender, message("direct"), com.xa.mass.worker.execution.WorkerOutcomeReporter.UNAVAILABLE);
+            owner.worker().send(sender, message("direct"), com.xa.mass.worker.execution.WorkerOutcomeReporter.UNAVAILABLE);
             assertThat(Jsons.parseObject(input(http, base, FIRST, "message.read", Map.of("messageId", "direct")).body()))
                     .containsEntry("persisted", true).containsEntry("callbackQueued", true);
             awaitMessage(() -> ((Number) owner.metrics().get("httpSucceeded")).intValue() == 5);

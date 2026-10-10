@@ -230,31 +230,31 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
                     if (!body.keySet().equals(Set.of("messageIds")) || !(body.get("messageIds") instanceof List<?> ids)
                             || ids.stream().anyMatch(id -> !(id instanceof String)))
                         throw new IllegalArgumentException("Expected messageIds");
-                    yield messages.acceptances(ids.stream().map(String.class::cast).toList());
+                    yield messages.lab().acceptances(ids.stream().map(String.class::cast).toList());
                 }
                 case "GET health" -> workers.smsHealth();
-                case "GET inventory" -> messages.inventory(Integer.parseInt(query.getOrDefault("offset", "0")), Integer.parseInt(query.getOrDefault("limit", "100")));
-                case "GET records" -> messages.page(Integer.parseInt(query.getOrDefault("offset", "0")), Integer.parseInt(query.getOrDefault("limit", "100")));
+                case "GET inventory" -> messages.worker().inventory(Integer.parseInt(query.getOrDefault("offset", "0")), Integer.parseInt(query.getOrDefault("limit", "100")));
+                case "GET records" -> messages.lab().page(null, null, Integer.parseInt(query.getOrDefault("offset", "0")), Integer.parseInt(query.getOrDefault("limit", "100")));
                 case "GET metrics" -> messages.metrics();
                 case "POST receipts:hold" -> {
                     var body = readMessageBody(exchange);
                     if (!body.keySet().equals(Set.of("enabled")) || !(body.get("enabled") instanceof Boolean))
                         throw new IllegalArgumentException("Expected enabled boolean");
-                    yield messages.hold((Boolean) body.get("enabled"));
+                    yield messages.lab().hold((Boolean) body.get("enabled"));
                 }
                 case "POST receipts:release" -> {
                     var body = readMessageBody(exchange);
                     if (!body.keySet().equals(Set.of("receiptIds")) || !(body.get("receiptIds") instanceof List<?> ids)
                             || ids.stream().anyMatch(id -> !(id instanceof String))) throw new IllegalArgumentException("Expected receiptIds");
-                    yield messages.release(ids.stream().map(String.class::cast).toList());
+                    yield messages.lab().release(ids.stream().map(String.class::cast).toList());
                 }
                 default -> null;
             };
             if (response == null) respondError(exchange, 404, "route_not_found", "Unknown message route");
             else respondJson(exchange, 200, response);
-        } catch (com.xa.mass.workersimulator.messaging.MessageScenario.CapacityExceeded full) {
+        } catch (com.xa.mass.workersimulator.messaging.MessageLab.CapacityExceeded full) {
             respondError(exchange, 429, "message_capacity", full.getMessage());
-        } catch (com.xa.mass.workersimulator.messaging.MessageScenario.MissingMessage | WorkerSimulator.UnknownWorkerException missing) {
+        } catch (com.xa.mass.workersimulator.messaging.MessageLab.MissingMessage | com.xa.mass.workersimulator.messaging.MessageWorkerEndpoint.MissingCorrelation | WorkerSimulator.UnknownWorkerException missing) {
             respondError(exchange, 404, "message_not_found", "Message or Worker not found");
         } catch (IllegalArgumentException invalid) {
             respondError(exchange, 400, "invalid_request", invalid.getMessage());
@@ -313,7 +313,7 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
             route(exchange);
         } catch (WorkerSimulator.UnknownWorkerException error) {
             respondError(exchange, 404, "worker_not_found", error.getMessage());
-        } catch (com.xa.mass.workersimulator.messaging.MessageScenario.MissingMessage error) {
+        } catch (com.xa.mass.workersimulator.messaging.MessageLab.MissingMessage | com.xa.mass.workersimulator.messaging.MessageWorkerEndpoint.MissingCorrelation error) {
             respondError(exchange, 404, "message_not_found", "Message not found for target Worker");
         } catch (WorkerSimulatorCommandCheckpoints.UnknownCheckpointException
                  error) {

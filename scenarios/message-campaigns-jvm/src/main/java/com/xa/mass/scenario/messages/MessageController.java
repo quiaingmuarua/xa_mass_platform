@@ -22,7 +22,7 @@ public class MessageController {
     public Object approve(@PathVariable String taskId, @RequestBody long expectedCount) { return tasks.approve(taskId, expectedCount); }
     @PostMapping("/tasks/{taskId}/close")
     public Object close(@PathVariable String taskId) { return tasks.closeTask(taskId); }
-    @ExceptionHandler(MessageTaskService.ProductError.class) ResponseEntity<?> error(MessageTaskService.ProductError error) {
+    @ExceptionHandler(MessageError.class) ResponseEntity<?> error(MessageError error) {
         var body = new java.util.LinkedHashMap<String, Object>();
         body.put("message", error.getMessage());
         if (error.taskId != null) body.put("taskId", error.taskId);

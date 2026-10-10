@@ -70,12 +70,20 @@ class WorkerSimulatorArchitectureBoundaryTest {
                 .doesNotContain("Executors.newCachedThreadPool");
         // The sole business HTTP client only talks to the bound Lab listener; SDK still owns platform I/O.
         assertThat(sources).containsOnlyOnce("HttpClient.newBuilder()");
-        String messages = Files.readString(Path.of("src/main/java/com/xa/mass/workersimulator/messaging/MessageScenario.java"));
+        String messages = Files.readString(Path.of("src/main/java/com/xa/mass/workersimulator/messaging/MessageLabHttp.java"));
         assertThat(messages).contains("baseUri.resolve(\"/lab/v1/messages/send\")")
                 .contains("baseUri.resolve(\"/lab/v1/workers/\"")
                 .doesNotContain("/api/v1/");
         assertThat(Files.readString(Path.of("src/main/java/com/xa/mass/workersimulator/messaging/MessageLab.java")))
-                .doesNotContain("WorkerOutcomeReporter").doesNotContain(".report(");
+                .doesNotContain("WorkerOutcomeReporter", ".report(", "MessageScenario", "MessageWorkerEndpoint",
+                        "ScheduledExecutorService", "Executors.");
+        assertThat(Files.readString(Path.of("src/main/java/com/xa/mass/workersimulator/messaging/MessageWorkerEndpoint.java")))
+                .doesNotContain("MessageLab", "MessageScenario", "MessageInstructions", "MessageContentMode", "java.net", "HttpClient");
+        assertThat(Files.readString(Path.of("src/main/java/com/xa/mass/workersimulator/messaging/MessageProtocol.java")))
+                .doesNotContain("com.xa.mass.worker.execution", "java.net", "MessageScenario", "MessageWorkerEndpoint");
+        assertThat(Files.readString(Path.of("src/main/java/com/xa/mass/workersimulator/messaging/MessageScenario.java")))
+                .doesNotContain("Semaphore", "new Association", "public Map<String, Object> send(",
+                        "public Map<String, Object> receive(", "public Map<String, Object> page(");
         assertThat(sources)
                 .doesNotContain("com.xa.mass.kernel")
                 .doesNotContain("org.springframework")

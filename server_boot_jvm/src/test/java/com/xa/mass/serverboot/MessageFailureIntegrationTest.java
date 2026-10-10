@@ -4,6 +4,9 @@ import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.TaskLifecycleService;
 import com.xa.mass.scenario.messages.MessageCampaignsScenarioConfiguration;
 import com.xa.mass.workersimulator.messaging.MessageScenario;
+import com.xa.mass.workersimulator.messaging.MessageSettings;
+import com.xa.mass.workersimulator.messaging.MessageContentMode;
+import com.xa.mass.workersimulator.messaging.MessageLab;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
@@ -33,14 +36,14 @@ import static org.mockito.Mockito.*;
 class MessageFailureIntegrationTest {
     @Test @Timeout(90)
     void newerBusinessReceiptSurvivesLateSynchronousExecutionResult() throws Exception {
-        try (var fixture = new Fixture(false); var channel = new MessageScenario(); var lab = new LabHttp(channel)) {
-            channel.hold(true);
+        try (var fixture = new Fixture(false); var channel = new MessageScenario(0, MessageSettings.defaults(), Map.of("demo-sim", MessageContentMode.LAB_JSON)); var lab = new LabHttp(channel)) {
+            channel.lab().hold(true);
             var manager = new AtomicReference<JavaWorkerManager>();
             var executed = new CountDownLatch(1); var finishSend = new CountDownLatch(1);
-            var sender = channel.addSender("demo-sim", "one", () -> Map.of("country", "CN", "phone", "+861700000000"), () -> manager.get().snapshot("one").workerId(), () -> "RUNNING", com.xa.mass.workersimulator.messaging.MessageContentMode.LAB_JSON);
+            var sender = channel.worker().addSender("demo-sim", "one", () -> Map.of("country", "CN", "phone", "+861700000000"), () -> manager.get().snapshot("one").workerId(), () -> "RUNNING");
             var handler = WorkerEventDefinition.extension("message.send", WorkerEventParameterResolvers.jsonMap(), (request, reporter) -> {
                 // Hold the real synchronous handler completion; recipient actions still use its original Reporter.
-                var sent = channel.send(sender, request, reporter); executed.countDown();
+                var sent = channel.worker().send(sender, request, reporter); executed.countDown();
                 if (!finishSend.await(15, TimeUnit.SECONDS)) throw new IllegalStateException("Send confirmation deadline");
                 return Jsons.toJson(sent);
             });
@@ -49,15 +52,15 @@ class MessageFailureIntegrationTest {
                 manager.set(worker); worker.start();
                 Map<String, Object> campaign = fixture.create(1);
                 assertThat(executed.await(20, TimeUnit.SECONDS)).isTrue();
-                var local = (Map<?, ?>) ((List<?>) channel.page(0, 1).get("items")).getFirst();
+                var local = (Map<?, ?>) ((List<?>) channel.lab().page(null, null, 0, 1).get("items")).getFirst();
                 String id = (String) local.get("messageId");
                 var submitting = campaign;
                 var earlyExport = fixture.post("/api/v1/tasks/" + submitting.get("taskId") + "/results:export", Map.of());
                 assertThat(earlyExport.statusCode()).isEqualTo(400);
                 assertThat(((Number) Jsons.parseObject(earlyExport.body()).get("code")).intValue()).isEqualTo(12010);
-                channel.hold(false);
-                assertThat(channel.act(sender, id, "read", Map.of())).containsEntry("callbackQueued", true);
-                assertThat(channel.act(sender, id, "reply", Map.of("requestId", "reply", "text", "newer content"))).containsEntry("callbackQueued", true);
+                channel.lab().hold(false);
+                assertThat(channel.lab().act(sender.group(), sender.replica(), id, "read", Map.of())).containsEntry("callbackQueued", true);
+                assertThat(channel.lab().act(sender.group(), sender.replica(), id, "reply", Map.of("requestId", "reply", "text", "newer content"))).containsEntry("callbackQueued", true);
                 var observed = fixture.awaitCampaign(campaign, "REPLIED");
                 String task = (String) observed.get("taskId");
                 assertThat(fixture.context.getBean(TaskDataService.class).loadTaskItemStates(task, List.of(id)).get(id).tag()).isEqualTo(9);
@@ -115,7 +118,7 @@ class MessageFailureIntegrationTest {
                 try {
                     var body = Jsons.parseObject(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
                     var result = exchange.getRequestURI().getPath().endsWith("/send") ? channel.accept(body)
-                            : channel.receive("demo-sim", "one", (Map<String,Object>)body.get("payload"));
+                            : channel.worker().receive("demo-sim", "one", (Map<String,Object>)body.get("payload"));
                     byte[] encoded = Jsons.toJson(result).getBytes(java.nio.charset.StandardCharsets.UTF_8);
                     exchange.sendResponseHeaders(200, encoded.length); exchange.getResponseBody().write(encoded);
                 } finally { exchange.close(); }

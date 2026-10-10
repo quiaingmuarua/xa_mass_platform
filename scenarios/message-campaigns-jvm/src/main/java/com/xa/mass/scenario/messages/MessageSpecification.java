@@ -9,6 +9,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import static com.xa.mass.scenario.messages.MessageWorkerSupply.*;
+import static com.xa.mass.scenario.messages.MessageInputs.*;
 
 /** Immutable sending configuration; recipient membership is imported separately. */
 record MessageSpecification(String requestId, String appId, String name, String recipientCountry, String senderCountry,
@@ -17,9 +18,9 @@ record MessageSpecification(String requestId, String appId, String name, String 
         if (input == null || !Set.of("requestId", "appId", "name", "recipientCountry", "senderCountry", "body").containsAll(input.keySet()))
             throw invalid("Unknown message task fields");
         String country = text(input, "recipientCountry", 2);
-        if (!MessageTaskService.COUNTRIES.contains(country)) throw invalid("Unsupported recipientCountry");
+        if (!COUNTRIES.contains(country)) throw invalid("Unsupported recipientCountry");
         String sender = input.get("senderCountry") == null ? null : text(input, "senderCountry", 2);
-        if (sender != null && !MessageTaskService.COUNTRIES.contains(sender)) throw invalid("Unsupported senderCountry");
+        if (sender != null && !COUNTRIES.contains(sender)) throw invalid("Unsupported senderCountry");
         String body = text(input, "body", 4096);
         return new MessageSpecification(text(input, "requestId", 128), text(input, "appId", 128), text(input, "name", 128), country, sender, body);
     }
@@ -61,9 +62,5 @@ record MessageSpecification(String requestId, String appId, String name, String 
         } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
 
-    static String text(Map<String, Object> input, String key, int max) {
-        if (!(input.get(key) instanceof String value) || value.isBlank() || value.length() > max) throw invalid("Invalid " + key);
-        return value;
-    }
-    private static MessageTaskService.ProductError invalid(String message) { return new MessageTaskService.ProductError(400, message, null); }
+    private static MessageError invalid(String message) { return new MessageError(400, message, null); }
 }

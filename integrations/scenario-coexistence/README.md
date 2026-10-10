@@ -48,8 +48,8 @@ The oracles use complete snapshots and actual Worker identity.
 Recipient receipts can be held and released newest-first, older-stage-last or
 duplicated using existing receipt IDs. Continuous replies retain latest content.
 An actual repeated Worker execution returns the original message and retains its
-first Reporter. Worker stop/start retains local records but cannot transfer the old
-Reporter; old product observations remain unchanged while the new run works.
+first Reporter. Worker stop/start releases full local observations and cannot
+transfer the old Reporter; retained Runtime Results remain while the new run works.
 An additional message runs automatic read and two replies through actual HTTP.
 Their text is identical, so the oracle waits for the latest reply operation ID,
 not merely REPLIED or equal text. Repeated Result reads must retain that content.
@@ -58,6 +58,15 @@ remain independent. Lifecycle rejection is checked after HTTP callback completio
 Host tests also block callback HTTP, exercise early callbacks, lost send responses,
 queue saturation and startup readiness; the retired direct Reporter path cannot
 pass those tests.
+
+The Worker endpoint's focused tests use a synchronous sending operation without a
+Lab, HTTP client or listener, proving that original-Reporter association does not
+require the receiving implementation. Host composition tests additionally pause
+real receiving admission with a barrier, race Worker stop, and require the
+admitted observation and association to be gone when stop completes. These Owner
+proofs complement, rather than replace, actual HTTP/Worker traversal below.
+The composition refactor preserves source/fresh-ZIP fixtures, mixed-load callback
+pacing, 105000-send workload, deadlines and capacities; it makes no throughput claim.
 
 The functional world sends four messages. Terminal export first observes held SENT
 content, then later replies, and can be repeated after a new reply. Exported

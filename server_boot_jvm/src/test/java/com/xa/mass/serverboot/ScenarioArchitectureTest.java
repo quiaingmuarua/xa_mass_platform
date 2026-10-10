@@ -9,6 +9,15 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ScenarioArchitectureTest {
+    @Test void messageRulesAndViewsDoNotDependOnTheApplicationCoordinator() throws Exception {
+        Path root = Path.of("../scenarios/message-campaigns-jvm/src/main/java/com/xa/mass/scenario/messages");
+        for (String file : Set.of("MessageInputs.java", "MessageSpecification.java", "MessageRecipientFile.java",
+                "MessageViews.java", "MessageError.java"))
+            assertThat(Files.readString(root.resolve(file))).as(file)
+                    .doesNotContain("MessageTaskService", "SmartLifecycle", "OperationGuard", "TaskCreationService",
+                            "TaskLifecycleService", "org.springframework");
+    }
+
     @Test void scenariosUseOnlyTheirExistingServerApplicationCapabilities() throws Exception {
         var allowed = Map.of(
                 "app-checks-jvm", Set.of("project.ProjectDirectory", "project.ProjectTaskQueryService",

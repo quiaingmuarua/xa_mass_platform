@@ -4,21 +4,18 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 
 /** Receiving service: compact acceptance truth and independently bounded optional observations. */
-final class MessageLab implements AutoCloseable {
+public final class MessageLab implements AutoCloseable {
+    static final int MAX_HELD = 10_000, MAX_REPLY_IDS = 100_000;
     private static final int CLEANUP_BATCH = 100, DIAGNOSTICS_PER_MESSAGE = 64;
     private final Object gate = new Object();
     private final long seed;
     private final MessageSettings settings;
     private final LongSupplier clock, monotonic;
     private final Predicate<Receipt> callback;
-    private final Runnable associationMaintenance;
     private final LinkedHashMap<String, Acceptance> acceptances = new LinkedHashMap<>();
     private final LinkedHashMap<String, Entry> observations = new LinkedHashMap<>();
     private final LinkedHashMap<String, Recent> recent = new LinkedHashMap<>();
@@ -26,33 +23,21 @@ final class MessageLab implements AutoCloseable {
     private final Map<String, String> replyIds = new HashMap<>();
     private final Map<String, Receipt> held = new LinkedHashMap<>();
     private final NavigableSet<Entry> actions = new TreeSet<>(Comparator.comparingLong((Entry e) -> e.nextAt).thenComparing(e -> e.id));
-    private ScheduledExecutorService ticker;
     private boolean holding, closed;
     private long receiptSequence, acceptedMessages, offered, queued, httpSucceeded, reportAccepted, callbackFailed, duplicates;
     private long expiredAcceptances, expiredObservations, trackingSkipped, droppedReceipts, discardedDiagnostics, evictedRecent;
 
     MessageLab(long seed, MessageSettings settings, LongSupplier clock, LongSupplier monotonic,
-            Predicate<Receipt> callback, Runnable associationMaintenance) {
+            Predicate<Receipt> callback) {
         this.seed = seed; this.settings = settings; this.clock = clock; this.monotonic = monotonic;
-        this.callback = callback; this.associationMaintenance = associationMaintenance;
-    }
-
-    void start() {
-        synchronized (gate) {
-            if (closed) throw new IllegalStateException("Message Lab closed");
-            if (ticker != null) return;
-            ticker = Executors.newSingleThreadScheduledExecutor(task -> {
-                Thread thread = new Thread(task, "message-lab-actions"); thread.setDaemon(true); return thread;
-            });
-            ticker.scheduleWithFixedDelay(() -> { associationMaintenance.run(); tick(); }, 100, 100, TimeUnit.MILLISECONDS);
-        }
+        this.callback = callback;
     }
 
     Map<String, Object> accept(Map<String, Object> request, Map<String, Object> sender, String callbackId, MessageContentMode mode) {
-        MessageScenario.validateMessage(request);
+        MessageProtocol.validateMessage(request);
         if (!sender.keySet().equals(Set.of("workerGroupId", "replicaKey", "workerId", "phone", "country")))
             throw new IllegalArgumentException("Invalid sender fields");
-        sender.keySet().forEach(key -> MessageScenario.text(sender, key, 256));
+        sender.keySet().forEach(key -> MessageProtocol.text(sender, key, 256));
         String id = (String) request.get("messageId"), fingerprint = inputFingerprint(request);
         Receipt receipt = null;
         Map<String, Object> response;
@@ -71,7 +56,7 @@ final class MessageLab implements AutoCloseable {
             MessageInstructions instructions = mode == MessageContentMode.LAB_JSON
                     ? MessageInstructions.parse((String) request.get("body"), seed, id) : null;
             if (acceptances.size() >= settings.maxDedupEntries())
-                throw new MessageScenario.CapacityExceeded("Message acceptance window is full");
+                throw new CapacityExceeded("Message acceptance window is full");
             // A new acceptance generation cannot inherit an older observation or callback.
             removeRecord(id);
             String adopted = callbackId != null && observations.size() < settings.maxTrackedMessages() ? callbackId : null;
@@ -97,7 +82,7 @@ final class MessageLab implements AutoCloseable {
         return response;
     }
 
-    Map<String, Object> acceptances(List<String> ids) {
+    public Map<String, Object> acceptances(List<String> ids) {
         if (ids == null || ids.isEmpty() || ids.size() > 100
                 || ids.stream().anyMatch(id -> id == null || id.isBlank() || id.length() > 128))
             throw new IllegalArgumentException("Expected 1..100 message IDs");
@@ -115,7 +100,7 @@ final class MessageLab implements AutoCloseable {
         }
     }
 
-    Map<String, Object> act(String group, String replica, String id, String action, Map<String, Object> input) {
+    public Map<String, Object> act(String group, String replica, String id, String action, Map<String, Object> input) {
         Receipt receipt;
         synchronized (gate) {
             requireOpen(); cleanup(monotonic.getAsLong());
@@ -124,7 +109,7 @@ final class MessageLab implements AutoCloseable {
                 removeObservation(id); expiredObservations++; entry = null;
             }
             if (entry == null || !entry.sender.get("workerGroupId").equals(group)
-                    || !entry.sender.get("replicaKey").equals(replica)) throw new MessageScenario.MissingMessage();
+                    || !entry.sender.get("replicaKey").equals(replica)) throw new MissingMessage();
             receipt = action(entry, action, input);
         }
         if (receipt == null) return Map.of("persisted", true, "unchanged", true, "held", false, "callbackQueued", false);
@@ -139,14 +124,14 @@ final class MessageLab implements AutoCloseable {
         String operation = null, reply = null, fingerprint = null;
         if (tag == 9) {
             if (!input.keySet().equals(Set.of("requestId", "text"))) throw new IllegalArgumentException("Invalid reply fields");
-            operation = MessageScenario.text(input, "requestId", 128); reply = MessageScenario.text(input, "text", 4096);
+            operation = MessageProtocol.text(input, "requestId", 128); reply = MessageProtocol.text(input, "text", 4096);
             fingerprint = fingerprint("lab-reply/v1", entry.id, reply);
             String previous = replyIds.get(operation);
             if (previous != null) {
                 if (!previous.equals(fingerprint)) throw new IllegalArgumentException("Reply identity conflict");
                 return null;
             }
-            if (replyIds.size() >= MessageScenario.MAX_REPLY_IDS) throw new MessageScenario.CapacityExceeded("Reply operation window is full");
+            if (replyIds.size() >= MAX_REPLY_IDS) throw new CapacityExceeded("Reply operation window is full");
         } else {
             if (!input.isEmpty()) throw new IllegalArgumentException("Recipient action takes an empty object");
             if (entry.stage >= tag) return null;
@@ -162,7 +147,7 @@ final class MessageLab implements AutoCloseable {
         if (reply != null) { snapshot.put("reply", reply); snapshot.put("replyRequestId", operation); }
         entry.stage = tag; entry.snapshot = Map.copyOf(snapshot);
         String id = "receipt-" + ++receiptSequence;
-        boolean retainedHold = holding && held.size() < MessageScenario.MAX_HELD;
+        boolean retainedHold = holding && held.size() < MAX_HELD;
         Diagnostic diagnostic = new Diagnostic(id, (String) snapshot.get("status"), time, retainedHold);
         entry.receipts.addLast(diagnostic);
         if (entry.receipts.size() > DIAGNOSTICS_PER_MESSAGE) { entry.receipts.removeFirst(); discardedDiagnostics++; }
@@ -219,14 +204,14 @@ final class MessageLab implements AutoCloseable {
         }
     }
 
-    Map<String, Object> hold(boolean enabled) {
+    public Map<String, Object> hold(boolean enabled) {
         synchronized (gate) { requireOpen(); holding = enabled; return Map.of("holding", holding, "held", held.size()); }
     }
-    Map<String, Object> release(List<String> ids) {
+    public Map<String, Object> release(List<String> ids) {
         List<Receipt> batch;
         synchronized (gate) {
             requireOpen(); long now = monotonic.getAsLong(); cleanup(now);
-            if (ids.isEmpty() || ids.size() > MessageScenario.MAX_HELD || ids.stream().anyMatch(id -> id == null || !held.containsKey(id)))
+            if (ids.isEmpty() || ids.size() > MAX_HELD || ids.stream().anyMatch(id -> id == null || !held.containsKey(id)))
                 throw new IllegalArgumentException("Expected 1..10000 existing receipt IDs");
             batch = ids.stream().map(held::get).toList();
             // A bounded maintenance pass may leave expired records later in the
@@ -248,8 +233,8 @@ final class MessageLab implements AutoCloseable {
         return Map.of("offered", batch.size(), "queued", batch.stream().filter(this::offer).count());
     }
 
-    Map<String, Object> page(String group, String replica, int offset, int limit) {
-        MessageScenario.pageBounds(offset, limit);
+    public Map<String, Object> page(String group, String replica, int offset, int limit) {
+        MessageProtocol.pageBounds(offset, limit);
         synchronized (gate) {
             long now = monotonic.getAsLong();
             var rows = new ArrayList<Viewed>();
@@ -280,7 +265,7 @@ final class MessageLab implements AutoCloseable {
                     "acceptedTotal", acceptedMessages, "retentionLimited", true);
         }
     }
-    Map<String, Object> metrics() {
+    public Map<String, Object> metrics() {
         synchronized (gate) {
             var result = new LinkedHashMap<String, Object>();
             int retained = observations.size();
@@ -340,12 +325,14 @@ final class MessageLab implements AutoCloseable {
     private static boolean expired(long now, long created, long window) { return now - created >= window; }
     private void requireOpen() { if (closed) throw new IllegalStateException("Message Lab closed"); }
     @Override public void close() {
-        ScheduledExecutorService closing;
         synchronized (gate) {
             closed = true; actions.clear(); held.clear(); observations.clear(); recent.clear(); recordsBySender.clear();
-            replyIds.clear(); acceptances.clear(); closing = ticker;
+            replyIds.clear(); acceptances.clear();
         }
-        if (closing != null) closing.shutdownNow();
+    }
+    public static final class MissingMessage extends RuntimeException {}
+    public static final class CapacityExceeded extends IllegalStateException {
+        public CapacityExceeded(String message) { super(message); }
     }
     static String inputFingerprint(Map<String, Object> request) {
         return fingerprint("lab-message-input/v1", (String) request.get("campaignId"), (String) request.get("messageId"),
