@@ -173,6 +173,22 @@ before the next Pool's qualification. Rejected identities may reach a later Pool
 Empty input never scans or republishes existing stock. There is no replay ledger,
 Worker-to-Pool registry or cross-Pool transfer operation.
 
+Refill returns `WorkerMatching.RefillOutcome`: immutable, disjoint
+`admittedWorkerIds` and `fullDeferredWorkerIds`, each bounded by this call's input.
+The coordinator unions capacity deferrals and removes every identity admitted by
+any Pool before returning. A later Pool failure still propagates without a result;
+earlier admissions remain, and Pacer receives no new short-recycle hints.
+Ordinary Pool maintenance marks only qualified, selected offers refused by actual
+storage capacity. Budget truncation, ineligibility and page omissions are not full.
+Partitioned lease Pools additionally report capacity short-circuits: when the
+selected targets or the resource are full, the skipped input needs no extra Facts
+or lease read. When other targets need stock, already-read country facts identify
+full countries; a missing or unvisited target is not evidence of fullness.
+After lease qualification, only ready views refused by storage produce this hint;
+future-only views do not. A deferral is evidence of the local reason for skipping,
+not certification that the Worker meets unexamined business rules. Pacer owns the
+[bounded short recycle](../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#full-candidate-recycling).
+
 This isolates each generation in the production supply path, not every cached
 Worker identity for all time. A new generation can enter another Pool while an
 old entry remains until take or TTL expiry. Direct functions find identities
@@ -372,7 +388,7 @@ now owns only the refill side:
 | `targetBatching()` | Fixed ALL or PAGED target organization; independent of registration name |
 | `normalizeQuery(group, query)` | Idempotent target admission; no Redis read or inventory mutation |
 | `deficits(group, targets)` | Immutable observed shortages, never reservations |
-| `refill(group, targets, offered, maxAccepted)` | Qualify supplied IDs and return actual admissions with opaque fences and local TTL |
+| `refill(group, targets, offered, maxAccepted)` | Return actual admissions and full-deferral IDs; preserve opaque fences and local TTL |
 
 `EligibilityQuery` remains the quantity-free string-list structure for supply.
 `RefillTarget(poolName,target,count)` carries the resource name and quantity. TaskDescriptor

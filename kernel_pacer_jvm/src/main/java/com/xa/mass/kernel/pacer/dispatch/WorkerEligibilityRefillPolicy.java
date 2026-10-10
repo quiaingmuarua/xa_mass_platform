@@ -44,7 +44,7 @@ final class WorkerEligibilityRefillPolicy {
         this.clock = Objects.requireNonNull(clock);
     }
 
-    int refill(List<String> rootGroups, List<TaskDescriptor> tasks) {
+    int refill(List<String> rootGroups, List<TaskDescriptor> tasks, CandidateRecycleHints hints) {
         var groups = new ArrayList<>(new LinkedHashSet<>(rootGroups));
         if (!groups.contains(lastAttemptedGroup)) lastAttemptedGroup = null;
         if (!groups.contains(lastRecycledGroup)) lastRecycledGroup = null;
@@ -67,8 +67,26 @@ final class WorkerEligibilityRefillPolicy {
                 lastRecycledGroup = recycledGroup;
                 recycleBudget -= RECYCLE_GROUP_BUDGET;
                 long cutoff = Math.max(0, clock.getAsLong() - recycleAfterMillis);
-                var old = scores.observeHotCandidateScoresBefore(recycledGroup, hotFloorMillis, cutoff, RECYCLE_GROUP_BUDGET);
-                if (!old.isEmpty()) scores.recycleObservedHotCandidates(recycledGroup, old);
+                var due = recycleAfterMillis > CandidateRecycleHints.DELAY_MILLIS
+                        ? hints.pollDue(recycledGroup, RECYCLE_GROUP_BUDGET / 2) : Map.<String, Long>of();
+                int ordinaryLimit = RECYCLE_GROUP_BUDGET - due.size();
+                long recycleStarted = DispatchStageEvent.start();
+                try {
+                    var old = scores.observeHotCandidateScoresBefore(recycledGroup, hotFloorMillis, cutoff, ordinaryLimit);
+                    DispatchStageEvent.batch(recycleStarted, "RECYCLE_OBSERVATION", ordinaryLimit, old.size(), false);
+                    var merged = new LinkedHashMap<>(due);
+                    merged.putAll(old);
+                    if (!merged.isEmpty()) {
+                        recycleStarted = DispatchStageEvent.start();
+                        var recycled = scores.recycleObservedHotCandidates(recycledGroup, merged);
+                        hints.completed(due, merged, recycled);
+                        DispatchStageEvent.batch(recycleStarted, "CANDIDATE_RECYCLE", merged.size(),
+                                (int) recycled.values().stream().filter(value -> value.status() == WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED).count(), false);
+                    }
+                } catch (RuntimeException failure) {
+                    hints.failed(due.size());
+                    throw failure;
+                }
             }
             if (budget == 0) continue;
             String group = groups.get((start + n) % groups.size());
@@ -94,7 +112,12 @@ final class WorkerEligibilityRefillPolicy {
                 } finally {
                     DispatchStageEvent.batch(acquiredAt, "CANDIDATEIZE", observed.size(), candidates.size(), failed);
                 }
-                if (!candidates.isEmpty()) added = index.refill(group, targets.get(group), candidates);
+                if (!candidates.isEmpty()) {
+                    var outcome = index.refill(group, targets.get(group), candidates);
+                    added = outcome.admittedWorkerIds().size();
+                    if (recycleAfterMillis > CandidateRecycleHints.DELAY_MILLIS)
+                        hints.offer(group, candidates, outcome.fullDeferredWorkerIds());
+                }
             }
             admitted += added;
         }

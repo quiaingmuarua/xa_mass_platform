@@ -44,7 +44,7 @@ public final class IdentityHintPoolFixture implements PoolRefillPolicy {
         return pool.deficits(group, targets);
     }
 
-    @Override public List<String> refill(String group, Map<EligibilityQuery, Integer> targets,
+    @Override public com.xa.mass.kernel.assignment.WorkerMatching.RefillOutcome refill(String group, Map<EligibilityQuery, Integer> targets,
             Map<String, Long> offered, int maxAccepted) {
         return pool.refill(group, targets, offered, maxAccepted);
     }

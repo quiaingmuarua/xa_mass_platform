@@ -108,12 +108,13 @@ class AppChecksIntegrationTest {
                 phase.set("refill");
                 try {
                     long before = refillSnapshots.get();
-                    int accepted = (int) call.callRealMethod();
+                    var outcome = (com.xa.mass.kernel.assignment.WorkerMatching.RefillOutcome) call.callRealMethod();
+                    int accepted = outcome.admittedWorkerIds().size();
                     Map<String, Long> offered = call.getArgument(2);
                     if ("app-a-sim".equals(call.getArgument(0)) && !offered.isEmpty()
                             && accepted == 0 && refillSnapshots.get() > before)
                         rejectedAt.compareAndSet(0, System.currentTimeMillis());
-                    return accepted;
+                    return outcome;
                 } finally { phase.remove(); }
             }).when(witnessed).refill(anyString(), anyList(), anyMap());
             return witnessed;

@@ -187,6 +187,7 @@ final class DispatchMainScheduler {
 
         private final ExecutorService executor;
         private final LongSupplier nanoTime;
+        private final CandidateRecycleHints recycleHints;
         private final BlockingQueue<ProducerCompletion> completions =
                 new LinkedBlockingQueue<>();
         private final Map<DispatchProducerId, ProducerRuntime> runtimes;
@@ -194,6 +195,7 @@ final class DispatchMainScheduler {
         SchedulerRun(ExecutorService executor, LongSupplier nanoTime) {
             this.executor = Objects.requireNonNull(executor, "executor");
             this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
+            this.recycleHints = new CandidateRecycleHints(nanoTime);
             this.runtimes = createRuntimes(
                     assignmentConfig,
                     serviceabilityConfig
@@ -361,15 +363,17 @@ final class DispatchMainScheduler {
             LinkedHashSet<String> groupIds = new LinkedHashSet<>();
             supplyTasks.forEach(task -> groupIds.add(task.workerGroupId()));
             List<String> workerGroupIds = List.copyOf(groupIds);
+            recycleHints.retainGroups(workerGroupIds);
             startProducer(DispatchProducerId.ELIGIBILITY_REFILL, supplyTasks.size(), () -> {
                 long started=DispatchStageEvent.start();
                 int added=0;
                 boolean failed=true;
                 try {
-                    added=refill.refill(workerGroupIds, supplyTasks);
+                    added=refill.refill(workerGroupIds, supplyTasks, recycleHints);
                     failed=false;
                 } finally {
                     DispatchStageEvent.batch(started,"REFILL_ROUND",supplyTasks.size(),added,failed);
+                    recycleHints.observe();
                 }
             });
         }

@@ -184,6 +184,14 @@ distribution, fixed-executor or single-execution claim.
 
 ## sms_reception_preview
 
+Full-candidate short recycling has separate Matching/Pacer focused witnesses and
+`FullCandidateRecycleIntegrationTest` real-Redis composition. They cover cross-Pool
+admission subtraction, bounded lossy hints, original-fence recycling and preserving
+newer execution/generation state, including actual Redis command and mutation
+bounds across eleven Groups. Performance retention requires the paired SMS
+30-second baseline / 10-second full-deferral experiment; a functional pass alone
+does not establish latency improvement or platform capacity.
+
 The named Redis Owner proof covers independent lease coordinates and monotonic
 absolute deadlines. Focused Matching tests cover shared views, deferred availability,
 capacity replacement and bounded refill. The optional sustained SMS workload is

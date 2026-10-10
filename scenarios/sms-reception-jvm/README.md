@@ -165,6 +165,16 @@ observation loss and Server/Host resources. Normal provisioned acquisitions must
 establish; false SMS associations fail. Zero duplicate leases or reliable delivery
 are not promised, and neither this fixture nor green CI establishes a platform limit.
 
+The concurrency report retains final `initialResponses` counts/rates by country
+and all client acquisition/query latency samples. Progress checkpoints and Server
+latency rings are not substitutes for the complete client distribution. Candidate
+recycle experiments compare fixed artifacts with the same Host, frontend and
+workload, using three alternating A/B pairs and separate diagnostic runs. They
+do not alter the 60-second SMS business lease or the client query workload.
+The [2026-10-10 full-candidate evaluation](baselines/2026-10-10-full-candidate-recycle.md)
+records the retained 10-second policy, frozen artifacts, cost gates and executed
+proofs; its fixed workload measurements are not platform capacity guarantees.
+
 The runner uses exact pre-materialized SMS-only inventory with `app_count=0`, a
 unique `test_*` scope and the packaged launcher's lifecycle/cleanup. Fresh ZIP
 functional must run with `--root <extracted Preview>` and no build or checkout

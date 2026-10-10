@@ -66,7 +66,7 @@ class AssignmentBatchIntegrationTest {
             f.appendAndStart(task, items);
             var refill = new WorkerEligibilityRefillPolicy(f.workerScores, f.matching.catalog(), null, limit, System::currentTimeMillis);
             f.commands.clear();
-            assertThat(refill.refill(List.of("g"), List.of(task))).isEqualTo(limit);
+            assertThat(refill.refill(List.of("g"), List.of(task), new CandidateRecycleHints(System::nanoTime))).isEqualTo(limit);
             // Two bounded head reads and one candidateization Lua, also at 1,000 identities.
             assertThat(Collections.frequency(f.commands, "ZRANGEBYSCORE")).isEqualTo(2);
             assertThat(Collections.frequency(f.commands, "EVAL")).isEqualTo(1);
@@ -140,7 +140,7 @@ class AssignmentBatchIntegrationTest {
             f.appendAndStart(task, List.of(new TaskItem("m", "event", now - 2000, Map.of(), 0, null,
                     new WorkerQuery("worker.assignment.available", Map.of()))));
             var refill = new WorkerEligibilityRefillPolicy(f.workerScores, f.matching.catalog(), null, 1, System::currentTimeMillis);
-            assertThat(refill.refill(List.of("g"), List.of(task))).isEqualTo(1);
+            assertThat(refill.refill(List.of("g"), List.of(task), new CandidateRecycleHints(System::nanoTime))).isEqualTo(1);
             assertThat(f.workerScores.pauseScheduling("g", "w")).isEqualTo(WorkerScoreCore.WorkerSchedulingChangeStatus.APPLIED);
             var observations = new ArrayList<WorkerObservation>();
             f.commands.clear();

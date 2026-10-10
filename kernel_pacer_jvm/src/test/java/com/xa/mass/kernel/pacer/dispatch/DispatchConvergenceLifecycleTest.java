@@ -68,7 +68,7 @@ class DispatchConvergenceLifecycleTest {
             List<TaskDescriptor> tasks = invocation.getArgument(1);
             refillTasks.set(tasks.stream().map(TaskDescriptor::taskId).toList());
             return complete(rounds, allVirtual, finishRound);
-        }).when(fixture.refill).refill(any(), any());
+        }).when(fixture.refill).refill(any(), any(), org.mockito.ArgumentMatchers.any(CandidateRecycleHints.class));
 
         fixture.runtime.start();
         try {
@@ -153,7 +153,7 @@ class DispatchConvergenceLifecycleTest {
         assertTrue(sourceAttempt.await(2, TimeUnit.SECONDS));
         verify(fixture.initialization, never()).initialize(any());
         verify(fixture.dispatch, never()).dispatchTasks(any());
-        verify(fixture.refill, never()).refill(any(), any());
+        verify(fixture.refill, never()).refill(any(), any(), org.mockito.ArgumentMatchers.any(CandidateRecycleHints.class));
         assertTrue(fixture.runtime.isRunning());
         fixture.runtime.stop(2_000);
     }

@@ -16,6 +16,34 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 class DispatchBudgetTest {
+    @Test void schedulerRunsDoNotShareFullCandidateHintsAndEmptyRootsRetireThem() {
+        var scores = mock(TaskScoreBandCore.class);
+        var catalog = mock(TaskResourceCatalog.class);
+        var refill = mock(WorkerEligibilityRefillPolicy.class);
+        when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of());
+        when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
+        when(scores.observeNormalRunningTasksAscending(100)).thenReturn(Map.of("task", 123L));
+        when(catalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("task", descriptor()));
+        var observed = new ArrayList<CandidateRecycleHints>();
+        when(refill.refill(anyList(), anyList(), any(CandidateRecycleHints.class))).thenAnswer(call -> {
+            CandidateRecycleHints hints = call.getArgument(2); observed.add(hints);
+            assertEquals(0, hints.pending()); hints.offer("group", Map.of("w", 1L), List.of("w")); return 0;
+        });
+        var scheduler = new DispatchMainScheduler(scores, catalog, mock(TaskInitializationPolicy.class),
+                mock(TaskDispatchPolicy.class), refill, null, AssignmentDispatchConfig.defaults(), null);
+        var nanos = new AtomicLong(); var firstExecutor = new ManualExecutor();
+        var first = scheduler.new SchedulerRun(firstExecutor, nanos::get);
+        first.step(); while (!firstExecutor.pending.isEmpty()) firstExecutor.pending.removeFirst().run();
+        first.step();
+        when(scores.observeNormalRunningTasksAscending(100)).thenReturn(Map.of());
+        nanos.set(1_000_000_000L); first.step();
+        assertEquals(0, observed.getFirst().pending());
+        observed.getFirst().offer("group", Map.of("old", 2L), List.of("old"));
+        when(scores.observeNormalRunningTasksAscending(100)).thenReturn(Map.of("task", 123L));
+        var secondExecutor = new ManualExecutor(); scheduler.new SchedulerRun(secondExecutor, nanos::get).step();
+        while (!secondExecutor.pending.isEmpty()) secondExecutor.pending.removeFirst().run();
+        assertEquals(2, observed.size()); assertNotSame(observed.get(0), observed.get(1));
+    }
     @Test void mainSharesCompleteDescriptorsAndRefillCanRunBeforeDispatch() {
         var scores=mock(TaskScoreBandCore.class);
         var catalog=mock(TaskResourceCatalog.class);
@@ -33,7 +61,7 @@ class DispatchBudgetTest {
         run.step();
         assertEquals(3,executor.pending.size());
         executor.pending.remove(1).run(); // Refill only; initialization and dispatch are still queued.
-        verify(hold).refill(List.of("group"),List.of(descriptor()));
+        verify(hold).refill(eq(List.of("group")),eq(List.of(descriptor())), org.mockito.ArgumentMatchers.any(CandidateRecycleHints.class));
         verifyNoInteractions(initialization,dispatch);
         executor.pending.removeLast().run();
         verify(dispatch).dispatchTasks(List.of(new ObservedTask(descriptor(),123L)));
@@ -49,7 +77,7 @@ class DispatchBudgetTest {
         when(scores.acquireSchedulingTasks(100)).thenReturn(Map.of("task",123L));
         when(scores.filterInitialTaskScores(anyMap())).thenReturn(Map.of());
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task",descriptor()));
-        when(refill.refill(anyList(),anyList())).thenThrow(new IllegalStateException("Matching unavailable"));
+        when(refill.refill(anyList(),anyList(), org.mockito.ArgumentMatchers.any(CandidateRecycleHints.class))).thenThrow(new IllegalStateException("Matching unavailable"));
         var scheduler=new DispatchMainScheduler(scores,catalog,mock(TaskInitializationPolicy.class),
                 dispatch,refill,null,AssignmentDispatchConfig.defaults(),null);
         var executor=new ManualExecutor();
@@ -73,7 +101,7 @@ class DispatchBudgetTest {
         var executor=new ManualExecutor();
         scheduler.new SchedulerRun(executor,()->0).step();
         while(!executor.pending.isEmpty())executor.pending.removeFirst().run();
-        verify(refill).refill(List.of("group"),List.of(descriptor()));
+        verify(refill).refill(eq(List.of("group")),eq(List.of(descriptor())), org.mockito.ArgumentMatchers.any(CandidateRecycleHints.class));
         verifyNoInteractions(dispatch);
     }
 

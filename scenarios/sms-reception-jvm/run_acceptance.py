@@ -58,6 +58,24 @@ def percentile(values, p):
     import math
     return ordered[max(0, math.ceil(len(ordered) * p) - 1)]
 
+
+def initial_response_summary(counts):
+    """All completed acquisition responses, independent of progress checkpoints."""
+    countries = {}
+    for key, count in counts.items():
+        country, status = key.split(":", 1)
+        row = countries.setdefault(country, {"total": 0, "notObserved": 0, "statuses": {}})
+        row["total"] += count
+        row["statuses"][status] = count
+        if status == "NOT_OBSERVED":
+            row["notObserved"] += count
+    for row in countries.values():
+        row["notObservedRate"] = row["notObserved"] / row["total"] if row["total"] else 0
+    total = sum(row["total"] for row in countries.values())
+    missed = sum(row["notObserved"] for row in countries.values())
+    return {"total": total, "notObserved": missed, "notObservedRate": missed / total if total else 0,
+            "byCountry": countries}
+
 def prepare_counts(path):
     counts = {"prepare": 0, "prepare-batch": 0}
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -399,6 +417,8 @@ def concurrency(run):
             "actualSubmissionSeconds": offered_seconds, "maximumGeneratorLagSeconds": max(schedule_lags, default=0),
             "httpErrors": dict(Counter(failures)), "generatorRejected": rejected, "established": len(established),
             "responseTimeline": timeline,
+            "initialResponses": initial_response_summary(response_counts),
+            "clientLatencySamplesMillis": {"acquisition": request_latencies, "query": query_latencies},
             "requestLatencyMillis": {"p95": percentile(request_latencies, .95), "p99": percentile(request_latencies, .99)},
             "queryLatencyMillis": {"p95": percentile(query_latencies, .95), "p99": percentile(query_latencies, .99)},
             "duplicateLeaseCount": overlaps, "duplicateLeaseRate": overlaps / len(established) if established else None,

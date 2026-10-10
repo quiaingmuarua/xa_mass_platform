@@ -40,7 +40,7 @@ class AssignmentWindowIntegrationTest {
                 var pool = composition.pools().get("assignment-window");
                 var supply = List.of(RefillTarget.of("assignment-window", new EligibilityQuery(Map.of()), 100));
                 commands.clear();
-                assertThat(composition.catalog().refill("g", supply, Map.of("blocked", 11L, "new", 12L))).isEqualTo(1);
+                assertThat(composition.catalog().refill("g", supply, Map.of("blocked", 11L, "new", 12L)).admittedWorkerIds().size()).isEqualTo(1);
                 assertThat(commands).containsExactly("EVAL_RO");
                 var requests = new LinkedHashMap<String, WorkerQuery>();
                 requests.put("first", new WorkerQuery("worker.assignment.available", Map.of()));
@@ -52,7 +52,7 @@ class AssignmentWindowIntegrationTest {
                 assertThat(composition.catalog().take("g", requests)).isEmpty();
                 assertThat(commands).isEmpty();
                 clock.set(180_000);
-                assertThat(composition.catalog().refill("g", supply, Map.of("blocked", 13L))).isEqualTo(1);
+                assertThat(composition.catalog().refill("g", supply, Map.of("blocked", 13L)).admittedWorkerIds().size()).isEqualTo(1);
                 commands.clear();
                 assertThat(composition.catalog().take("g", requests)).containsEntry("first", new WorkerCandidate("blocked", 13));
                 assertThat(commands).isEmpty();

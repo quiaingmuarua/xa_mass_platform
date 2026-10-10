@@ -44,7 +44,7 @@ class FixedWindowPoolTest {
         offered.put(id, fence);
         return fence;
     }
-    List<String> refill() { return policy.refill("g", targets, offered, offered.size()); }
+    List<String> refill() { return policy.refill("g", targets, offered, offered.size()).admittedWorkerIds(); }
     static Map<String, Object> window(Object time, Object count) {
         return Map.of("seenAt", time, "seenCount", count);
     }
@@ -127,15 +127,15 @@ class FixedWindowPoolTest {
         assertEquals(1, clockReads.get());
         assertEquals(Map.of(target, 0), policy.deficits("g", targets));
         prepare("overflow", Map.of());
-        assertTrue(policy.refill("g", targets, Map.of("overflow", 2000L), 1).isEmpty());
+        assertTrue(policy.refill("g", targets, Map.of("overflow", 2000L), 1).admittedWorkerIds().isEmpty());
         assertEquals(1000, pool.countByKey("g").get("available"));
         assertEquals(1000, function.apply("g", requests(1000)).size());
         assertEquals(2, reads.size());
     }
 
     @Test void configurationAdmissionAndEmptyBatchesReadNoFacts() {
-        assertTrue(policy.refill("g", targets, Map.of(), 1).isEmpty());
-        assertTrue(policy.refill("g", targets, Map.of("w", 10L), 0).isEmpty());
+        assertTrue(policy.refill("g", targets, Map.of(), 1).admittedWorkerIds().isEmpty());
+        assertTrue(policy.refill("g", targets, Map.of("w", 10L), 0).admittedWorkerIds().isEmpty());
         assertThrows(IllegalArgumentException.class, () -> policy.normalizeQuery("g", new EligibilityQuery(Map.of("country", List.of("CN")))));
         assertThrows(IllegalArgumentException.class, () -> function.normalizeInput("g", Map.of("maxAssignments", 30)));
         assertThrows(IllegalArgumentException.class, () -> policy.refill("g", targets, Map.of("w", 0L), 1));
@@ -145,7 +145,7 @@ class FixedWindowPoolTest {
 
     @Test void groupIsolationDuplicateOccurrencesAndLazyExpiryUseTheExistingPool() {
         prepare("w", window(120_000L, 1)); refill();
-        assertTrue(policy.refill("other", targets, offered, 1).isEmpty());
+        assertTrue(policy.refill("other", targets, offered, 1).admittedWorkerIds().isEmpty());
         assertTrue(function.apply("other", requests(1)).isEmpty());
         pool.offerBatch("g", "available", List.of(new WorkerCandidate("w", 99)));
         assertEquals(Map.of("m0", new WorkerCandidate("w", 10), "m1", new WorkerCandidate("w", 99)), function.apply("g", requests(2)));
@@ -169,7 +169,7 @@ class FixedWindowPoolTest {
             assertTrue(catalog.take("g", queries).isEmpty());
             assertEquals(1, any.countByKey("g").get("any"));
             var supply = List.of(RefillTarget.of("sample-window", target, 100));
-            assertEquals(1, catalog.refill("g", supply, Map.of("window", 9L)));
+            assertEquals(1, catalog.refill("g", supply, Map.of("window", 9L)).admittedWorkerIds().size());
             queries.put("bad", new WorkerQuery("worker.sample.available", Map.of("maxAssignments", 50)));
             assertThrows(IllegalArgumentException.class, () -> catalog.take("g", queries));
             queries.remove("bad");
@@ -193,11 +193,11 @@ class FixedWindowPoolTest {
         try (var composition = new MatchingComposition(store, Map.of("g", config), clock::get, List.of(definition(Map.of("g", windows.get("g")))), java.util.List.of(), java.util.List.of())) {
             var supply = List.of(RefillTarget.of("any", target, 100), RefillTarget.of("sample-window", target, 100));
             var catalog = composition.catalog();
-            assertEquals(1, catalog.refill("g", supply, Map.of("first", 10L)));
-            assertEquals(1, catalog.refill("g", supply, Map.of("second", 11L)));
+            assertEquals(1, catalog.refill("g", supply, Map.of("first", 10L)).admittedWorkerIds().size());
+            assertEquals(1, catalog.refill("g", supply, Map.of("second", 11L)).admittedWorkerIds().size());
             assertEquals(1, composition.pools().get("any").countByKey("g").get("any"));
             assertEquals(1, composition.pools().get("sample-window").countByKey("g").get("available"));
-            assertEquals(1, catalog.refill("g", supply, Map.of("third", 12L)));
+            assertEquals(1, catalog.refill("g", supply, Map.of("third", 12L)).admittedWorkerIds().size());
             // The next round starts with Any. It can accept one occurrence before the other Pool fails.
             var any = composition.pools().get("any");
             any.offerBatch("g", "any", IntStream.range(0, 998).mapToObj(i -> new WorkerCandidate("resident" + i, 20)).toList());
@@ -230,7 +230,7 @@ class FixedWindowPoolTest {
             assertEquals(List.of("alpha", "beta", "any"), composition.poolOrder());
             var offered = new LinkedHashMap<String, Long>(); offered.put("a", 11L); offered.put("b", 12L);
             assertEquals(2, composition.catalog().refill("g", List.of(RefillTarget.of("alpha", target, 1),
-                    RefillTarget.of("beta", target, 1), RefillTarget.of("any", target, 1)), offered));
+                    RefillTarget.of("beta", target, 1), RefillTarget.of("any", target, 1)), offered).admittedWorkerIds().size());
             var result = composition.catalog().take("g", Map.of("first", new WorkerQuery("custom.alpha", Map.of()),
                     "second", new WorkerQuery("custom.beta", Map.of()), "third", new WorkerQuery("worker.any", Map.of())));
             assertEquals(Map.of("first", new WorkerCandidate("a", 11), "second", new WorkerCandidate("b", 12)), result);

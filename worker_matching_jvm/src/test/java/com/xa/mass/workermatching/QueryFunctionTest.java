@@ -145,10 +145,10 @@ class QueryFunctionTest {
                 var result = new LinkedHashMap<EligibilityQuery, Integer>();
                 targets.forEach((q, n) -> result.put(q, Math.max(0, n - held.size()))); return Map.copyOf(result);
             }
-            public synchronized List<String> refill(String g, Map<EligibilityQuery, Integer> targets, Map<String, Long> offered, int limit) {
+            public synchronized com.xa.mass.kernel.assignment.WorkerMatching.RefillOutcome refill(String g, Map<EligibilityQuery, Integer> targets, Map<String, Long> offered, int limit) {
                 var result = new ArrayList<String>();
                 for (var entry : offered.entrySet()) if (result.size() < limit && held.putIfAbsent(entry.getKey(), entry.getValue()) == null) result.add(entry.getKey());
-                return List.copyOf(result);
+                return new com.xa.mass.kernel.assignment.WorkerMatching.RefillOutcome(result, List.of());
             }
         };
         var function = new QueryFunction() {
@@ -173,7 +173,7 @@ class QueryFunctionTest {
                         Map.of("map", rule), Map.of("map", function), Map.of("g", new MatchingGroup(Set.of("map"), Set.of("map"))), List.of("map"), Set.of());
             var targets = List.of(new RefillTarget("map", new EligibilityQuery(Map.of()), 1));
             assertEquals(Map.of("g",1), catalog.observeRefillDeficits(Map.of("g", targets)));
-            assertEquals(1, catalog.refill("g", targets, Map.ofEntries(Map.entry("w", (long) (44)))));
+            assertEquals(1, catalog.refill("g", targets, Map.ofEntries(Map.entry("w", (long) (44)))).admittedWorkerIds().size());
             assertEquals(new WorkerCandidate("w", 44), catalog.take("g", Map.of("m", new WorkerQuery("map", Map.of()))).get("m"));
 
         }

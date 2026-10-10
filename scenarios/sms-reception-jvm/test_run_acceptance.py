@@ -10,6 +10,15 @@ from run_acceptance import compare
 
 
 class AcceptanceOracleTest(unittest.TestCase):
+    def test_complete_initial_responses_include_tail_and_all_countries(self):
+        result = run_acceptance.initial_response_summary({"CN:WAITING": 350, "CN:NOT_OBSERVED": 50,
+                                                         "US:RECEIVED": 80, "GB:WAITING": 20})
+        self.assertEqual(500, result["total"])
+        self.assertEqual(.1, result["notObservedRate"])
+        self.assertEqual(.125, result["byCountry"]["CN"]["notObservedRate"])
+        self.assertEqual(0, result["byCountry"]["US"]["notObserved"])
+        self.assertEqual(0, run_acceptance.initial_response_summary({})["total"])
+
     def test_explicit_old_phone_reaches_target_worker_owner_without_client_side_rejection(self):
         target = {"workerGroupId": "demo-sim", "replicaKey": "workers-000.jsonl:1"}
         with patch("run_acceptance.http", return_value={"status": "IGNORED"}) as call, \

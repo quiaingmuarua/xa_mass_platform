@@ -14,20 +14,45 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class PartitionedLeasePoolTest {
+    @Test void fullCountryIsReportedWhileOtherCountrySuppliesWithoutExtraLeaseReads() {
+        pool.offerSharedBatch("g", Map.of(new WorkerCandidate("resident", 1), Map.of(definition.bucket("A", "CN"), 0L,
+                definition.bucket("B", "CN"), 0L)), Map.of(definition.bucket("A", "CN"), 1, definition.bucket("B", "CN"), 1));
+        var declarations = new LinkedHashMap<>(targets());
+        declarations.put(new EligibilityQuery(Map.of("partition", List.of("A"), "worker.country", List.of("US"))), 1);
+        var offered = new LinkedHashMap<String, Long>(); offered.put("cn", 2L); offered.put("us", 3L); offered.put("invalid", 4L);
+        when(facts.apply("g", List.copyOf(offered.keySet()))).thenReturn(Map.of("cn", Map.of("phone", "cn", "country", "CN"),
+                "us", Map.of("phone", "us", "country", "US")));
+        when(leases.read(anyString(), anyString(), anyList())).thenReturn(Map.of());
+        var result = policy.refill("g", declarations, offered, 3);
+        assertEquals(List.of("us"), result.admittedWorkerIds()); assertEquals(List.of("cn"), result.fullDeferredWorkerIds());
+        verify(facts, times(1)).apply(anyString(), anyList());
+        verify(leases).read("g", "leases", List.of(new Coordinate("us", "A", "us")));
+    }
+    @Test void capacityRaceReportsReadyRefusalButNotAnActiveBusinessLease() {
+        var offered = Map.of("ready", 2L, "leased", 3L);
+        when(facts.apply(anyString(), anyList())).thenAnswer(call -> {
+            pool.offerBatch("g", "other", Collections.nCopies(1000, new WorkerCandidate("resident", 1)));
+            return Map.of("ready", Map.of("phone", "r", "country", "CN"), "leased", Map.of("phone", "l", "country", "CN"));
+        });
+        when(leases.read(anyString(), anyString(), anyList())).thenReturn(Map.of(new Coordinate("l", "A", "leased"), 5000L));
+        var result = policy.refill("g", Map.of(target("A"), 1), offered, 2);
+        assertTrue(result.admittedWorkerIds().isEmpty()); assertEquals(List.of("ready"), result.fullDeferredWorkerIds());
+        verify(facts, times(1)).apply(anyString(), anyList()); verify(leases, times(1)).read(anyString(), anyString(), anyList());
+    }
     final AtomicLong clock = new AtomicLong(1000);
     final CandidateBudget budget = new CandidateBudget();
     final WorkerCandidatePool pool = new WorkerCandidatePool(clock::get, budget);
     final PlatformLeaseState leases = mock(PlatformLeaseState.class);
     final PartitionedLeasePoolDefinition definition = new PartitionedLeasePoolDefinition("leases", "available", "phone", "country", Set.of("A", "B"));
     @SuppressWarnings("unchecked") final BiFunction<String, List<String>, Map<String, Map<String, Object>>> facts = mock(BiFunction.class);
-    final PartitionedLeasePoolPolicy policy = new PartitionedLeasePoolPolicy(pool, facts, leases, definition);
+    final PartitionedLeasePoolPolicy policy = new PartitionedLeasePoolPolicy(pool, facts, leases, definition, clock::get);
     EligibilityQuery target(String app) { return new EligibilityQuery(Map.of("partition", List.of(app), "worker.country", List.of("CN"))); }
     Map<EligibilityQuery, Integer> targets() { return Map.of(target("A"), 1, target("B"), 1); }
     void facts() { when(facts.apply("g", List.of("w"))).thenReturn(Map.of("w", Map.of("phone", "123", "country", "CN"))); }
 
     @Test void consumingSharedGenerationRemovesAllViewsAndReleasesEveryReference() {
         facts(); when(leases.read(anyString(), anyString(), anyList())).thenReturn(Map.of());
-        assertEquals(List.of("w"), policy.refill("g", targets(), Map.of("w", 31L), 1));
+        assertEquals(List.of("w"), policy.refill("g", targets(), Map.of("w", 31L), 1).admittedWorkerIds());
         assertEquals(9998, budget.available());
         assertEquals(Map.of(target("A"), 0, target("B"), 0), policy.deficits("g", targets()));
         var query = new PartitionedLeaseQueryFunction(pool, definition);
@@ -52,7 +77,9 @@ class PartitionedLeasePoolTest {
         var candidate = new WorkerCandidate("w", 31);
         pool.offerSharedBatch("g", Map.of(candidate, Map.of(definition.bucket("A", "CN"), 0L, definition.bucket("B", "CN"), 0L)),
                 Map.of(definition.bucket("A", "CN"), 1, definition.bucket("B", "CN"), 1));
-        assertTrue(policy.refill("g", targets(), Map.of("other", 32L), 1).isEmpty());
+        var outcome = policy.refill("g", targets(), Map.of("other", 32L), 1);
+        assertTrue(outcome.admittedWorkerIds().isEmpty());
+        assertEquals(List.of("other"), outcome.fullDeferredWorkerIds());
         verifyNoInteractions(facts, leases);
         clock.set(61_000);
         assertEquals(Map.of(target("A"), 1, target("B"), 1), policy.deficits("g", targets()));
@@ -67,8 +94,8 @@ class PartitionedLeasePoolTest {
         when(facts.apply(anyString(), anyList())).thenReturn(rows);
         var batches = new ArrayList<List<Coordinate>>();
         when(leases.read(anyString(), anyString(), anyList())).thenAnswer(call -> { batches.add(List.copyOf(call.getArgument(2))); return Map.of(); });
-        var policy = new PartitionedLeasePoolPolicy(pool, facts, leases, definition);
-        assertEquals(20, policy.refill("g", targets, offered, 20).size());
+        var policy = new PartitionedLeasePoolPolicy(pool, facts, leases, definition, clock::get);
+        assertEquals(20, policy.refill("g", targets, offered, 20).admittedWorkerIds().size());
         assertEquals(1000, batches.getFirst().size());
         assertEquals(9000, budget.available());
         pool.pollAnyBatch("g", 20);
@@ -90,7 +117,7 @@ class PartitionedLeasePoolTest {
         assertEquals(10, pool.offerSharedBatch("g", offered, Map.of(key, 2)).size());
         assertEquals(Map.of(key, 11), pool.liveCountByKey("g"));
         assertEquals(9989, budget.available());
-        assertTrue(policy.refill("g", Map.of(target("A"), 2), Map.of("other", 31L), 1).isEmpty());
+        assertTrue(policy.refill("g", Map.of(target("A"), 2), Map.of("other", 31L), 1).admittedWorkerIds().isEmpty());
         verifyNoInteractions(facts, leases);
     }
     @Test void deferredViewsDoNotFillTargetsOrBlockReadyStockAtTheCapacityLimit() {

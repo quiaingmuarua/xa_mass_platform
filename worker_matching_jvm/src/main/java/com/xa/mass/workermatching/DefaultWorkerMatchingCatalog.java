@@ -84,7 +84,7 @@ public final class DefaultWorkerMatchingCatalog implements WorkerMatchingCatalog
         return refillCoordinator.observeRefillDeficits(supplied);
     }
 
-    @Override public int refill(String group, List<RefillTarget> declarations, Map<String, Long> offered) {
+    @Override public RefillOutcome refill(String group, List<RefillTarget> declarations, Map<String, Long> offered) {
         Objects.requireNonNull(offered, "offeredCandidates");
         if (offered.size() > MAX_REFILL_CANDIDATES)
             throw new IllegalArgumentException("at most " + MAX_REFILL_CANDIDATES + " candidate Workers");

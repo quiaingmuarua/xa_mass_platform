@@ -153,13 +153,13 @@ class WorkerRefillDeficitIntegrationTest {
                 }
                 matchingComposition.properties().upsertWorkerFactsBatch(group, facts);
                 var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, 100, () -> sampled);
-                assertThat(pacer.refill(List.of(group), List.of(countryTask))).isEqualTo(12);
+                assertThat(pacer.refill(List.of(group), List.of(countryTask), new CandidateRecycleHints(System::nanoTime))).isEqualTo(12);
                 var before = readScores(redis, scope.keyspace(), group, List.copyOf(facts.keySet()));
                 assertThat(before.values()).allMatch(score -> mark(score) == 1);
                 assertThat(scores.observeDueHotScoreCandidates(group, null, 100)).isEmpty();
 
                 commands.clear();
-                assertThat(pacer.refill(List.of(group), List.of(countryTask, messagingTask))).isZero();
+                assertThat(pacer.refill(List.of(group), List.of(countryTask, messagingTask), new CandidateRecycleHints(System::nanoTime))).isZero();
                 // Only the aged and ordinary heads are read: no retained qualification or Score write.
                 assertThat(commands.stream().filter("ZRANGEBYSCORE"::equals).count()).isEqualTo(2);
                 assertThat(readScores(redis, scope.keyspace(), group, List.copyOf(facts.keySet()))).isEqualTo(before);
@@ -213,7 +213,7 @@ class WorkerRefillDeficitIntegrationTest {
                 redis.zadd(scope.keyspace().base() + ":worker:score:" + group, dueOrdinaryScore(sampled), "w");
                 matchingComposition.properties().upsertWorkerFactsBatch(group, Map.of("w", Map.of("phone", "number", "country", "CN", "messaging.enabled", "true")));
                 var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, 100, () -> sampled);
-                assertThat(pacer.refill(List.of(group), List.of(task))).isEqualTo(1);
+                assertThat(pacer.refill(List.of(group), List.of(task), new CandidateRecycleHints(System::nanoTime))).isEqualTo(1);
                 var pooled = matching.take(group, Map.of("pool", new WorkerQuery("worker.any", Map.of()))).get("pool");
                 var direct = matching.take(group, Map.of("direct", new WorkerQuery(directFunction,
                         directFunction.equals("worker.phone") ? "number" : Map.of("phone", "number")))).get("direct");
@@ -268,17 +268,17 @@ class WorkerRefillDeficitIntegrationTest {
                 matchingComposition.properties().upsertWorkerFactsBatch(group, Map.of("w", Map.of("country", "US", "messaging.enabled", "true")));
                 var clock = new java.util.concurrent.atomic.AtomicLong(sampled);
                 var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, 100, clock::get);
-                assertThat(pacer.refill(List.of(group), List.of(countryTask))).isEqualTo(1);
+                assertThat(pacer.refill(List.of(group), List.of(countryTask), new CandidateRecycleHints(System::nanoTime))).isEqualTo(1);
                 long original = readScores(redis, scope.keyspace(), group, List.of("w")).get("w");
-                assertThat(pacer.refill(List.of(group), List.of(messagingTask))).isZero();
+                assertThat(pacer.refill(List.of(group), List.of(messagingTask), new CandidateRecycleHints(System::nanoTime))).isZero();
                 clock.addAndGet(30_000);
                 // A Redis slot may elapse between recycling and the ordinary-head read.
-                int admitted = pacer.refill(List.of(group), List.of(messagingTask));
+                int admitted = pacer.refill(List.of(group), List.of(messagingTask), new CandidateRecycleHints(System::nanoTime));
                 assertThat(admitted).isBetween(0, 1);
                 if (admitted == 0) {
                     org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(3)).untilAsserted(() ->
                             assertThat(scores.observeDueHotScoreCandidates(group, null, 1)).containsKey("w"));
-                    assertThat(pacer.refill(List.of(group), List.of(messagingTask))).isEqualTo(1);
+                    assertThat(pacer.refill(List.of(group), List.of(messagingTask), new CandidateRecycleHints(System::nanoTime))).isEqualTo(1);
                 }
                 var old = matching.take(group, Map.of("old", new WorkerQuery("worker.country", List.of("US")))).get("old");
                 var fresh = matching.take(group, Map.of("fresh", new WorkerQuery("worker.messaging.available", Map.of()))).get("fresh");
@@ -317,7 +317,7 @@ class WorkerRefillDeficitIntegrationTest {
                 redis.zadd(scope.keyspace().base() + ":worker:score:" + group, original, "w");
                 // A fixed round clock excludes aged recycling from both production Refill calls.
                 var pacer = new WorkerEligibilityRefillPolicy(scores, matching, null, 100, () -> sampled);
-                assertThat(pacer.refill(List.of(group), tasks)).isEqualTo(1);
+                assertThat(pacer.refill(List.of(group), tasks, new CandidateRecycleHints(System::nanoTime))).isEqualTo(1);
                 long oldFence = readScores(redis, scope.keyspace(), group, List.of("w")).get("w");
                 assertThat(mark(oldFence)).isEqualTo(1);
                 for (int poll = 0; poll < 3; poll++) {
@@ -343,7 +343,7 @@ class WorkerRefillDeficitIntegrationTest {
                 assertThat(mark(connected.score())).isZero();
                 assertThat(timeMillis(connected.score())).isGreaterThan(timeMillis(oldFence));
                 assertThat(scores.observeHotCandidateScoresBefore(group, null, sampled - 60_000, 100)).isEmpty();
-                assertThat(pacer.refill(List.of(group), tasks)).isEqualTo(1);
+                assertThat(pacer.refill(List.of(group), tasks, new CandidateRecycleHints(System::nanoTime))).isEqualTo(1);
                 var fresh = matching.take(group, query).get("item");
                 assertThat(fresh.workerId()).isEqualTo("w");
                 assertThat(fresh.expectedScore()).isNotEqualTo(oldFence);
@@ -399,7 +399,7 @@ class WorkerRefillDeficitIntegrationTest {
                     assertThat(result.status()).isEqualTo(TRANSITIONED);
                     held.put(id,result.score());
                 });
-                assertThat(matching.refill(group,declarations,held)).isEqualTo(residentCount);
+                assertThat(matching.refill(group,declarations,held).admittedWorkerIds().size()).isEqualTo(residentCount);
                 var additional=new LinkedHashMap<String,Long>();
                 for(int i=0;i<100;i++) {
                     String id="available-%03d".formatted(i);
@@ -408,7 +408,7 @@ class WorkerRefillDeficitIntegrationTest {
                 assertThat(matching.observeRefillDeficits(Map.of(group,declarations))).containsExactlyEntriesOf(Map.of(group,deficit));
                 var pacer=new WorkerEligibilityRefillPolicy(scores,matching,null,100,()->now);
                 commands.clear();
-                assertThat(pacer.refill(List.of(group),tasks)).isEqualTo(deficit);
+                assertThat(pacer.refill(List.of(group),tasks, new CandidateRecycleHints(System::nanoTime))).isEqualTo(deficit);
                 assertThat(Collections.frequency(commands,"ZRANGEBYSCORE")).isEqualTo(2); // old head + due head
                 assertThat(Collections.frequency(commands,"EVAL")).isEqualTo(1); // exact candidateize
                 assertThat(commands).doesNotContain("ZMSCORE","TIME");
@@ -436,7 +436,7 @@ class WorkerRefillDeficitIntegrationTest {
                 assertThat(taken.values()).extracting(candidate->candidate.workerId())
                         .containsAll(residents.keySet()).containsAll(changed);
                 commands.clear();
-                assertThat(pacer.refill(List.of(group),tasks)).isEqualTo(residentCount);
+                assertThat(pacer.refill(List.of(group),tasks, new CandidateRecycleHints(System::nanoTime))).isEqualTo(residentCount);
                 assertThat(Collections.frequency(commands,"ZRANGEBYSCORE")).isEqualTo(2);
                 assertThat(Collections.frequency(commands,"EVAL")).isEqualTo(1);
                 var next=matching.take(group,queries);

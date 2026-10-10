@@ -24,6 +24,11 @@ serviceability policy, Pacer loops and thread lifecycle belong to
 [`kernel_pacer_jvm`](../kernel_pacer_jvm/). Worker facts, fixed query functions, Pool maintenance and constraint evaluation belong to
 [`worker_matching_jvm`](../worker_matching_jvm/).
 
+Refill returns immutable `RefillOutcome` admissions and full-deferral identity hints.
+Matching removes identities admitted by any Pool from the final deferral list.
+These hints grant no execution authority and carry no retry deadline; the Pacer
+owns their optional short-recycle policy using existing exact Score operations.
+
 TaskItems carry `WorkerQuery(executorName, input)`, a bounded immutable JSON
 request. Kernel stores its envelope without interpreting function names or local
 parameters. Pacer passes Group and messageId-to-query Maps; Matching routes through

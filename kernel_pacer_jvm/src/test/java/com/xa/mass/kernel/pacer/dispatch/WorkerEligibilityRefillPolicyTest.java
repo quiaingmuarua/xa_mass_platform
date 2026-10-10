@@ -1,6 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.WorkerMatching;
+import com.xa.mass.kernel.assignment.WorkerMatching.RefillOutcome;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
@@ -16,7 +17,8 @@ import static org.mockito.Mockito.*;
 
 class WorkerEligibilityRefillPolicyTest {
     final WorkerScoreCore scores=mock(WorkerScoreCore.class);
-    final WorkerMatching index=mock(WorkerMatching.class);
+    final WorkerMatching index=mock(WorkerMatching.class, invocation -> invocation.getMethod().getName().equals("refill")
+            ? new RefillOutcome(List.of(), List.of()) : org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation));
     final List<com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor> tasks=tasks(List.of("g"));
     static List<com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor> tasks(List<String> groups) {
         return groups.stream().map(group -> new com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor(
@@ -50,9 +52,9 @@ class WorkerEligibilityRefillPolicyTest {
             assertEquals(Map.ofEntries(Map.entry("w", (long) (20L))),offered);
             verify(scores).candidateizeObservedHotScores("g", Map.of("w",10L));
             assertThrows(UnsupportedOperationException.class,()->offered.clear());
-            return 1;
+            return new RefillOutcome(List.of("w"), List.of());
         });
-        assertEquals(1,policy.refill(List.of("g"),tasks));
+        assertEquals(1,policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime)));
         var order=inOrder(scores,index);
         order.verify(index).observeRefillDeficits(Map.of("g",targets));
         order.verify(scores).observeDueHotScoreCandidates("g",500L,100);
@@ -70,7 +72,7 @@ class WorkerEligibilityRefillPolicyTest {
         when(scores.candidateizeObservedHotScores("g", observed)).thenReturn(Map.of(
                 "w",changed(20L),"lost",new WorkerScoreTransitionResult(WorkerScoreTransitionStatus.STALE,30L),
                 "same",changed(12L),"outside",changed(40L)));
-        policy.refill(List.of("g"),tasks);
+        policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime));
         verify(index).refill("g",targets,Map.ofEntries(Map.entry("w", (long) (20L))));
         verify(scores,times(1)).observeDueHotScoreCandidates("g",500L,100);
         verify(scores,times(1)).candidateizeObservedHotScores("g", observed);
@@ -82,8 +84,8 @@ class WorkerEligibilityRefillPolicyTest {
         when(index.observeRefillDeficits(anyMap())).thenReturn(Map.of("g", 4));
         when(scores.observeDueHotScoreCandidates("g", 500L, 4)).thenReturn(Map.of("new", 10L));
         when(scores.candidateizeObservedHotScores("g", Map.of("new", 10L))).thenReturn(Map.of("new", changed(20L)));
-        when(index.refill("g", targets, Map.of("new", 20L))).thenReturn(1);
-        assertEquals(1, policy.refill(List.of("g"), tasks));
+        when(index.refill("g", targets, Map.of("new", 20L))).thenReturn(new RefillOutcome(List.of("new"), List.of()));
+        assertEquals(1, policy.refill(List.of("g"), tasks, new CandidateRecycleHints(System::nanoTime)));
         var order = inOrder(index, scores);
         order.verify(scores).observeDueHotScoreCandidates("g", 500L, 4);
         order.verify(scores).candidateizeObservedHotScores("g", Map.of("new", 10L));
@@ -95,7 +97,7 @@ class WorkerEligibilityRefillPolicyTest {
 
     @Test void emptyOrdinaryHeadDoesNotAskMatchingForOtherStock() {
         when(index.observeRefillDeficits(anyMap())).thenReturn(Map.of("g", 1));
-        assertEquals(0, policy.refill(List.of("g"), tasks));
+        assertEquals(0, policy.refill(List.of("g"), tasks, new CandidateRecycleHints(System::nanoTime)));
         verify(scores).observeHotCandidateScoresBefore(eq("g"), eq(500L), anyLong(), eq(100));
         verify(scores).observeDueHotScoreCandidates("g", 500L, 1);
         verifyNoMoreInteractions(scores);
@@ -105,10 +107,10 @@ class WorkerEligibilityRefillPolicyTest {
 
     @Test void satisfiedInventoryAndForeignGroupDemandNeverAcquireWorkers() {
         when(index.observeRefillDeficits(anyMap())).thenReturn(Map.of("outside",100));
-        assertEquals(0,policy.refill(List.of("g"),tasks));
+        assertEquals(0,policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime)));
         when(index.observeRefillDeficits(anyMap())).thenReturn(Map.of());
-        assertEquals(0,policy.refill(List.of("g"),tasks));
-        assertEquals(0,policy.refill(List.of(),List.of()));
+        assertEquals(0,policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime)));
+        assertEquals(0,policy.refill(List.of(),List.of(), new CandidateRecycleHints(System::nanoTime)));
         verify(scores,times(2)).observeHotCandidateScoresBefore(eq("g"),eq(500L),anyLong(),eq(100));
         verifyNoMoreInteractions(scores);
         verify(index,never()).refill(anyString(), anyList(), anyMap());
@@ -121,9 +123,9 @@ class WorkerEligibilityRefillPolicyTest {
         when(scores.observeDueHotScoreCandidates(anyString(),eq(500L),eq(100))).thenAnswer(call->{
             attempted.add(call.getArgument(0));return Map.of();
         });
-        policy.refill(groups,tasks(groups));
+        policy.refill(groups,tasks(groups), new CandidateRecycleHints(System::nanoTime));
         assertEquals(groups.subList(0,10),attempted);
-        policy.refill(groups,tasks(groups));
+        policy.refill(groups,tasks(groups), new CandidateRecycleHints(System::nanoTime));
         assertEquals(groups.subList(10,15),attempted.subList(10,15));
         assertEquals(20,attempted.size());
         verify(index,times(2)).observeRefillDeficits(anyMap());
@@ -138,7 +140,7 @@ class WorkerEligibilityRefillPolicyTest {
             when(scores.observeDueHotScoreCandidates("g",500L,limit)).thenReturn(Map.of("w",10L));
             when(scores.candidateizeObservedHotScores("g",Map.of("w",10L))).thenReturn(Map.of("w",changed(20L)));
         }
-        assertEquals(0,policy.refill(List.of("g"),tasks)); // Matching may decline the single offered generation.
+        assertEquals(0,policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime))); // Matching may decline the single offered generation.
         verify(index).observeRefillDeficits(Map.of("g",targets));
         verify(scores).observeHotCandidateScoresBefore(eq("g"),eq(500L),anyLong(),eq(100));
         if(limit>0) {
@@ -160,10 +162,10 @@ class WorkerEligibilityRefillPolicyTest {
         when(scores.observeHotCandidateScoresBefore(anyString(),eq(500L),anyLong(),eq(100))).thenAnswer(call->{
             recycled.add(call.getArgument(0)); return Map.of();
         });
-        assertEquals(0, policy.refill(groups,tasks(groups)));
+        assertEquals(0, policy.refill(groups,tasks(groups), new CandidateRecycleHints(System::nanoTime)));
         assertEquals(groups,attempted);
         assertEquals(groups.subList(0,10),recycled);
-        assertEquals(0, policy.refill(groups,tasks(groups)));
+        assertEquals(0, policy.refill(groups,tasks(groups), new CandidateRecycleHints(System::nanoTime)));
         assertEquals(groups,attempted.subList(15,30));
         assertEquals(groups.subList(10,15),recycled.subList(10,15));
         assertEquals(20,recycled.size());
@@ -183,20 +185,20 @@ class WorkerEligibilityRefillPolicyTest {
         });
         when(scores.candidateizeObservedHotScores(anyString(),anyMap())).thenReturn(Map.of("rejected",changed(20L)));
         var configured=new WorkerEligibilityRefillPolicy(scores,index,500L,ceiling,clock::get);
-        assertEquals(0,configured.refill(groups,tasks(groups)));
+        assertEquals(0,configured.refill(groups,tasks(groups), new CandidateRecycleHints(System::nanoTime)));
         assertEquals(first,limits.getFirst());
         assertEquals(Math.min(1000,15*ceiling),limits.stream().mapToInt(Integer::intValue).sum());
         assertTrue(limits.stream().allMatch(value->value<=ceiling));
         if(ceiling==333)assertEquals(List.of(333,333,333,1),limits);
         int visits=attempted.size();
-        configured.refill(groups,tasks(groups));
+        configured.refill(groups,tasks(groups), new CandidateRecycleHints(System::nanoTime));
         assertEquals(groups.get(visits%groups.size()),attempted.get(visits));
         verify(index,times(attempted.size())).refill(anyString(),anyList(),anyMap());
     }
 
     @Test void thousandCeilingStillReadsOnlyTheTwentyMissingCandidates() {
         when(index.observeRefillDeficits(anyMap())).thenReturn(Map.of("g",20));
-        new WorkerEligibilityRefillPolicy(scores,index,500L,1000,clock::get).refill(List.of("g"),tasks);
+        new WorkerEligibilityRefillPolicy(scores,index,500L,1000,clock::get).refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime));
         verify(scores).observeDueHotScoreCandidates("g",500L,20);
         verify(scores).observeHotCandidateScoresBefore(eq("g"),eq(500L),anyLong(),eq(100));
         verifyNoMoreInteractions(scores);
@@ -204,7 +206,7 @@ class WorkerEligibilityRefillPolicyTest {
 
     @Test void noMatchKeepsTheSingleCandidateizationWithoutRenewalOrRelease() {
         oneIssuedWorker();
-        assertEquals(0,policy.refill(List.of("g"),tasks));
+        assertEquals(0,policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime)));
         verify(index).refill("g",targets,Map.ofEntries(Map.entry("w", (long) (20L))));
         verify(scores).observeDueHotScoreCandidates("g",500L,100);
         verify(scores).candidateizeObservedHotScores("g", Map.of("w",10L));
@@ -215,7 +217,7 @@ class WorkerEligibilityRefillPolicyTest {
     @Test void projectionFailureLeavesTheCandidateForNormalRecycling() {
         oneIssuedWorker();
         when(index.refill(eq("g"), anyList(), anyMap())).thenThrow(new IllegalStateException("projection"));
-        assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
+        assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime)));
         verify(scores).observeDueHotScoreCandidates("g",500L,100);
         verify(scores).candidateizeObservedHotScores("g", Map.of("w",10L));
         verify(scores,atLeastOnce()).observeHotCandidateScoresBefore(eq("g"),eq(500L),anyLong(),eq(100));
@@ -227,7 +229,7 @@ class WorkerEligibilityRefillPolicyTest {
         for(var status:List.of(WorkerScoreTransitionStatus.NOOP,WorkerScoreTransitionStatus.STALE,WorkerScoreTransitionStatus.INVALID)) {
             when(scores.candidateizeObservedHotScores("g", Map.of("w",10L)))
                     .thenReturn(Map.of("w",new WorkerScoreTransitionResult(status,20L)));
-            assertEquals(0,policy.refill(List.of("g"),tasks));
+            assertEquals(0,policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime)));
         }
         verify(index,never()).refill(anyString(), anyList(), anyMap());
     }
@@ -235,7 +237,7 @@ class WorkerEligibilityRefillPolicyTest {
     @Test void ambiguousCandidateizationDoesNotReachMatchingOrRetryWithinTheRound() {
         oneIssuedWorker();
         when(scores.candidateizeObservedHotScores(anyString(), anyMap())).thenThrow(new IllegalStateException("response lost"));
-        assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
+        assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime)));
         verify(index,never()).refill(anyString(), anyList(), anyMap());
         verify(scores,times(1)).candidateizeObservedHotScores(anyString(), anyMap());
     }
@@ -244,9 +246,9 @@ class WorkerEligibilityRefillPolicyTest {
         oneIssuedWorker();
         when(index.refill(eq("g"),anyList(),anyMap())).thenAnswer(call->{
             clock.set(9000);
-            assertEquals(Map.of("w",20L),call.getArgument(2)); return 0;
+            assertEquals(Map.of("w",20L),call.getArgument(2)); return new RefillOutcome(List.of(), List.of());
         });
-        assertEquals(0,policy.refill(List.of("g"),tasks));
+        assertEquals(0,policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime)));
         verify(scores).candidateizeObservedHotScores("g",Map.of("w",10L));
         verify(scores,never()).acquireObservedHotScoreLeases(anyString(),anyMap(),anyLong());
     }
@@ -258,8 +260,8 @@ class WorkerEligibilityRefillPolicyTest {
         when(scores.observeHotCandidateScoresBefore(anyString(),eq(500L),anyLong(),eq(100))).thenAnswer(call->{
             attempts.add(call.getArgument(0)); return Map.of("old",22L);
         });
-        policy.refill(groups,tasks(groups));
-        policy.refill(groups,tasks(groups));
+        policy.refill(groups,tasks(groups), new CandidateRecycleHints(System::nanoTime));
+        policy.refill(groups,tasks(groups), new CandidateRecycleHints(System::nanoTime));
         assertEquals(groups.subList(0,10),attempts.subList(0,10));
         assertEquals(groups.subList(10,15),attempts.subList(10,15));
         assertEquals(20,attempts.size());
@@ -275,10 +277,10 @@ class WorkerEligibilityRefillPolicyTest {
             Map<String,Long> observed=call.getArgument(1);
             return Map.of(observed.keySet().iterator().next(),changed(20L));
         });
-        when(index.refill(eq("g"), anyList(), anyMap())).thenReturn(0).thenThrow(new IllegalStateException("projection")).thenReturn(0);
-        policy.refill(List.of("g"),tasks);
-        assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
-        policy.refill(List.of("g"),tasks);
+        when(index.refill(eq("g"), anyList(), anyMap())).thenReturn(new RefillOutcome(List.of(), List.of())).thenThrow(new IllegalStateException("projection")).thenReturn(new RefillOutcome(List.of(), List.of()));
+        policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime));
+        assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime)));
+        policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime));
         verify(scores,times(3)).observeDueHotScoreCandidates("g",500L,100);
         for(String id:List.of("a","b","c")) {
             verify(index).refill("g",targets,Map.ofEntries(Map.entry(id, (long) (20L))));
@@ -297,8 +299,8 @@ class WorkerEligibilityRefillPolicyTest {
             if(attempted.size()==1)throw new IllegalStateException("read");
             return Map.of();
         });
-        assertThrows(IllegalStateException.class,()->policy.refill(groups,tasks(groups)));
-        policy.refill(groups,tasks(groups));
+        assertThrows(IllegalStateException.class,()->policy.refill(groups,tasks(groups), new CandidateRecycleHints(System::nanoTime)));
+        policy.refill(groups,tasks(groups), new CandidateRecycleHints(System::nanoTime));
         assertEquals(List.of("a","b","a"),attempted);
         verify(scores,never()).candidateizeObservedHotScores(anyString(), anyMap());
     }
@@ -307,8 +309,8 @@ class WorkerEligibilityRefillPolicyTest {
         oneIssuedWorker();
         when(scores.observeDueHotScoreCandidates("g",500L,100)).thenThrow(new IllegalStateException("read"))
                 .thenReturn(Map.of());
-        assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks));
-        assertEquals(0,policy.refill(List.of("g"),tasks));
+        assertThrows(IllegalStateException.class,()->policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime)));
+        assertEquals(0,policy.refill(List.of("g"),tasks, new CandidateRecycleHints(System::nanoTime)));
         verify(scores,times(2)).observeDueHotScoreCandidates("g",500L,100);
     }
 }

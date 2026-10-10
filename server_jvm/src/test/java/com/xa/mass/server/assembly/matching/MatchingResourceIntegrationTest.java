@@ -76,9 +76,9 @@ class MatchingResourceIntegrationTest {
                 for (int batch = 0; batch < 10; batch++) {
                     var held = new LinkedHashMap<String, Long>();
                     for (int i = batch * 100; i < (batch + 1) * 100; i++) held.put("w" + i, (long) (123));
-                    assertThat(catalog.refill("g", target, held)).isEqualTo(100);
+                    assertThat(catalog.refill("g", target, held).admittedWorkerIds().size()).isEqualTo(100);
                 }
-                assertThat(catalog.refill("g", target, Map.ofEntries(Map.entry("overflow", (long) (123))))).isZero();
+                assertThat(catalog.refill("g", target, Map.ofEntries(Map.entry("overflow", (long) (123)))).admittedWorkerIds().size()).isZero();
                 assertThat(phone(catalog, "number")).containsValue(new WorkerCandidate("w0", 0));
                 assertThat(catalog.take("g", Map.of("pool", new WorkerQuery("worker.any", Map.of()))))
                         .containsEntry("pool", new WorkerCandidate("w0", 123));

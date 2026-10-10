@@ -1,5 +1,7 @@
 package com.xa.mass.workermatching;
 
+import com.xa.mass.kernel.assignment.WorkerMatching.RefillOutcome;
+
 import com.xa.mass.workermatching.pool.CandidateBudget;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.kernel.assignment.RefillTarget;
@@ -152,7 +154,7 @@ final class PoolRefillCoordinator {
         return Collections.unmodifiableMap(result);
     }
 
-    int refill(String group,List<RefillTarget> declarations,
+    RefillOutcome refill(String group,List<RefillTarget> declarations,
             Map<String, Long> offered) {
         requireNonBlank(group,"workerGroupId");
         Objects.requireNonNull(offered,"offeredCandidates");
@@ -165,15 +167,16 @@ final class PoolRefillCoordinator {
         return refill(group, targets(Map.of(group, declarations)), candidates);
     }
 
-    private int refill(String group, Map<Scope, List<RefillTarget>> declaredTargets, Map<String, Long> candidates) {
+    private RefillOutcome refill(String group, Map<Scope, List<RefillTarget>> declaredTargets, Map<String, Long> candidates) {
         var scopes=declaredTargets.entrySet().stream()
                 .sorted(java.util.Comparator.<Map.Entry<Scope,List<RefillTarget>>>comparingInt(
                         entry -> poolPositions.get(entry.getKey().poolName()))).toList();
         var remaining=new LinkedHashSet<>(candidates.keySet());
-        if(remaining.isEmpty() || scopes.isEmpty())return 0;
+        if(remaining.isEmpty() || scopes.isEmpty())return new RefillOutcome(List.of(), List.of());
         int start=Math.floorMod(poolRotationByGroup.getOrDefault(group,0),scopes.size());
         poolRotationByGroup.put(group,(start+1)%scopes.size());
-        int added=0;
+        var admitted = new LinkedHashSet<String>();
+        var fullDeferred = new LinkedHashSet<String>();
         for(int n=0;n<scopes.size() && !remaining.isEmpty();n++) {
             var entry=scopes.get((start+n)%scopes.size());
             var scope=entry.getKey();
@@ -198,14 +201,19 @@ final class PoolRefillCoordinator {
             // Each Pool commits its own admission. A later failure preserves earlier successes.
             var batch=new LinkedHashMap<String,Long>();
             remaining.forEach(id->batch.put(id,candidates.get(id)));
-            var accepted=handler.refill(group,targetCounts(selected),Collections.unmodifiableMap(batch),remaining.size());
+            var outcome=handler.refill(group,targetCounts(selected),Collections.unmodifiableMap(batch),remaining.size());
+            var accepted=outcome.admittedWorkerIds();
             if(accepted.size()>remaining.size() || new LinkedHashSet<>(accepted).size()!=accepted.size() || !remaining.containsAll(accepted))
                 throw new IllegalStateException("Pool policy returned invalid admitted identities");
+            if (!remaining.containsAll(outcome.fullDeferredWorkerIds()))
+                throw new IllegalStateException("Pool policy returned invalid full-deferred identities");
             // Each newly candidateized generation can enter only one Pool in this supply batch.
             remaining.removeAll(accepted);
-            added+=accepted.size();
+            admitted.addAll(accepted);
+            fullDeferred.addAll(outcome.fullDeferredWorkerIds());
         }
-        return added;
+        fullDeferred.removeAll(admitted);
+        return new RefillOutcome(List.copyOf(admitted), List.copyOf(fullDeferred));
     }
 
     private static Map<EligibilityQuery, Integer> targetCounts(List<RefillTarget> targets) {

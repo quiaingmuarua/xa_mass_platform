@@ -114,7 +114,7 @@ class RuleEligibilityTest {
         var targets=List.of(pools(10,"US"),pools(20,"US","CN"));
         var deficits=rule.deficits("g",targets(targets));
         assertEquals(List.of(0,0),new ArrayList<>(deficits.values()));
-        assertEquals(List.of("w50"),rule.refill("g",targets(targets),offers(50,1,"US"),100));
+        assertEquals(List.of("w50"),rule.refill("g",targets(targets),offers(50,1,"US"),100).admittedWorkerIds());
         assertEquals(reads + 1,rule.reads);
         var taken=rule.functions().apply("g",Map.of("message",Map.of()));
         assertEquals(1,taken.size()); assertEquals(reads + 1,rule.reads);
@@ -123,7 +123,7 @@ class RuleEligibilityTest {
     }
     @Test void overlappingTargetsShareOneReadAndOriginalFences() {
         var offered=offers(0,10,"US");
-        var admitted=rule.refill("g",targets(List.of(pools(10,"US"),pools(10,"US","CN"))),offered,100);
+        var admitted=rule.refill("g",targets(List.of(pools(10,"US"),pools(10,"US","CN"))),offered,100).admittedWorkerIds();
         assertEquals(10,admitted.size()); assertEquals(1,rule.reads);
         var taken=consume(rule,"g",Map.of(),100);
         assertEquals(offered.entrySet().stream().map(RuleEligibilityTest::candidate).toList(),taken);
@@ -141,7 +141,7 @@ class RuleEligibilityTest {
         assertThrows(IllegalStateException.class,()->rule.refill("g",targets(List.of(pools(2,"US"))),offered,100));
         rule.beforeMatch=()->{};
         assertTrue(consume(rule,"g",Map.of(),100).isEmpty());
-        assertEquals(List.of("w1"),rule.refill("g",targets(List.of(pools(2,"US"))),offered,100));
+        assertEquals(List.of("w1"),rule.refill("g",targets(List.of(pools(2,"US"))),offered,100).admittedWorkerIds());
         assertEquals(List.of("w0","w1"),rule.readIds);
     }
     @Test void invalidInputDoesNotReadOrMutateExistingStock() {
@@ -167,14 +167,14 @@ class RuleEligibilityTest {
     }
     @Test void qualifiedOffersKeepInputOrderWithinTheBatchBudget() {
         var offered=offers(0,2,"US");rule.current=Map.of("w0","CN","w1","US");
-        assertEquals(List.of("w0"),rule.refill("g",targets(List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1),pools(1,"US"))),offered,1));
+        assertEquals(List.of("w0"),rule.refill("g",targets(List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1),pools(1,"US"))),offered,1).admittedWorkerIds());
         assertEquals(2,rule.evaluations);
     }
     @Test void hundredTargetsUseOneBoundedSourceRead() {
         var targets=IntStream.range(0,100).mapToObj(i->pools(1,"p"+i)).toList();
         var offered=offers(0,100,"unused");var facts=new HashMap<String,String>();
         for(int i=0;i<100;i++)facts.put("w"+i,"p"+i);rule.current=facts;
-        assertEquals(100,rule.refill("g",targets(targets),offered,100).size());
+        assertEquals(100,rule.refill("g",targets(targets),offered,100).admittedWorkerIds().size());
         assertEquals(1,rule.reads); assertEquals(100,rule.readIds.size()); assertEquals(100,rule.evaluations);
     }
     @Test void concurrentTakesConsumeEachEntryOnce() throws Exception {
@@ -206,8 +206,8 @@ class RuleEligibilityTest {
         var entered=new CountDownLatch(2);var release=new CountDownLatch(1);
         rule.beforeRead=()->{entered.countDown();await(release);};
         try (var executor=Executors.newVirtualThreadPerTaskExecutor()) {
-            var a=executor.submit(()->rule.refill("g",Map.of(ANY,target),first,100));
-            var b=executor.submit(()->rule.refill("g",Map.of(ANY,target),second,100));
+            var a=executor.submit(()->rule.refill("g",Map.of(ANY,target),first,100).admittedWorkerIds());
+            var b=executor.submit(()->rule.refill("g",Map.of(ANY,target),second,100).admittedWorkerIds());
             try { assertTrue(entered.await(5,TimeUnit.SECONDS)); }
             finally { release.countDown(); }
             var accepted=new ArrayList<>(a.get(5,TimeUnit.SECONDS));accepted.addAll(b.get(5,TimeUnit.SECONDS));
@@ -223,7 +223,7 @@ class RuleEligibilityTest {
         rule.refill("g",targets(List.of(pools(1,"US"))),Map.ofEntries(held),100); clock.set(61000);
         assertTrue(consume(rule,"g",Map.of(),1).isEmpty());
         var replacement=Map.entry("w0", (long) (999));
-        assertEquals(List.of("w0"),rule.refill("g",targets(List.of(pools(1,"US"))),Map.ofEntries(replacement),100));
+        assertEquals(List.of("w0"),rule.refill("g",targets(List.of(pools(1,"US"))),Map.ofEntries(replacement),100).admittedWorkerIds());
         assertEquals(candidate(replacement),consume(rule,"g",Map.of(),1).getFirst());
     }
 
@@ -233,7 +233,7 @@ class RuleEligibilityTest {
     }
     @Test void localTtlStartsAfterQualification() {
         rule.beforeRead=()->clock.set(61000);
-        assertEquals(List.of("w0"),rule.refill("g",targets(List.of(pools(1,"US"))),offers(0,1,"US"),100));
+        assertEquals(List.of("w0"),rule.refill("g",targets(List.of(pools(1,"US"))),offers(0,1,"US"),100).admittedWorkerIds());
         clock.set(120_999);
         assertEquals(1,consume(rule,"g",Map.of(),1).size());
     }
@@ -241,7 +241,7 @@ class RuleEligibilityTest {
         populate(1000); int reads=rule.reads;
         var target=pools(10,"CN");
         assertEquals(0,rule.deficits("g",targets(List.of(target))).get(target.target()));
-        assertTrue(rule.refill("g",targets(List.of(target)),offers(1000,1,"CN"),100).isEmpty());
+        assertTrue(rule.refill("g",targets(List.of(target)),offers(1000,1,"CN"),100).admittedWorkerIds().isEmpty());
         assertEquals(reads + 1,rule.reads);
         rule.fail=true;
         assertThrows(IllegalStateException.class, () -> rule.refill("g",targets(List.of(target)),offers(1001,1,"CN"),100));
@@ -256,14 +256,14 @@ class RuleEligibilityTest {
         var defaults=new AnyPoolPolicy(defaultStock);
         var any=new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1000);
         for(int g=0;g<10;g++)for(int n=0;n<10;n++)
-            assertEquals(100,defaults.refill("g"+g,targets(List.of(any)),offers(n*100,100,"US"),100).size());
+            assertEquals(100,defaults.refill("g"+g,targets(List.of(any)),offers(n*100,100,"US"),100).admittedWorkerIds().size());
         assertEquals(0,budget.available());
-        assertTrue(rule.refill("g",targets(List.of(pools(1,"US"))),offers(0,1,"US"),100).isEmpty());
+        assertTrue(rule.refill("g",targets(List.of(pools(1,"US"))),offers(0,1,"US"),100).admittedWorkerIds().isEmpty());
         clock.set(61000);
         assertEquals(0,budget.available(),"unrelated expiry requires global shortage-observation cleanup");
         defaultStock.discardExpired(); rule.stock.discardExpired(); assertEquals(10_000,budget.available());
-        for(int g=0;g<100;g++)assertEquals(1,defaults.refill("g"+g,targets(List.of(any)),Map.ofEntries(Map.entry("w", (long) (1))),100).size());
-        assertTrue(defaults.refill("other",targets(List.of(any)),Map.ofEntries(Map.entry("w", (long) (1))),100).isEmpty());
+        for(int g=0;g<100;g++)assertEquals(1,defaults.refill("g"+g,targets(List.of(any)),Map.ofEntries(Map.entry("w", (long) (1))),100).admittedWorkerIds().size());
+        assertTrue(defaults.refill("other",targets(List.of(any)),Map.ofEntries(Map.entry("w", (long) (1))),100).admittedWorkerIds().isEmpty());
     }
     @Test void blockedSourceReadDoesNotHoldCandidateGate() throws Exception {
         populate(1);
@@ -271,7 +271,7 @@ class RuleEligibilityTest {
         rule.beforeRead=()->{entered.countDown();try { assertTrue(release.await(5,TimeUnit.SECONDS)); }catch(InterruptedException e){throw new RuntimeException(e);}};
         var offered=offers(1,1,"US");
         try (var executor=Executors.newVirtualThreadPerTaskExecutor()) {
-            var refill=executor.submit(()->rule.refill("g",targets(List.of(pools(2,"US"))),offered,100));
+            var refill=executor.submit(()->rule.refill("g",targets(List.of(pools(2,"US"))),offered,100).admittedWorkerIds());
             assertTrue(entered.await(5,TimeUnit.SECONDS));
             try { assertEquals(1,executor.submit(()->consume(rule,"g",Map.of(),1).size()).get(2,TimeUnit.SECONDS)); }
             finally { release.countDown(); }

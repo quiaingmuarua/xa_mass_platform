@@ -2,6 +2,7 @@ package com.xa.mass.workermatching.refill;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching.RefillOutcome;
 import com.xa.mass.workermatching.*;
 import com.xa.mass.workermatching.PlatformLeaseState.Coordinate;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
@@ -9,6 +10,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiFunction;
+import java.util.function.LongSupplier;
 
 /** Caller-bounded qualification; missing/full partitions generate no lease reads. */
 public final class PartitionedLeasePoolPolicy implements PoolRefillPolicy {
@@ -17,12 +19,14 @@ public final class PartitionedLeasePoolPolicy implements PoolRefillPolicy {
     private final BiFunction<String, List<String>, Map<String, Map<String, Object>>> facts;
     private final PlatformLeaseState leases;
     private final PartitionedLeasePoolDefinition definition;
+    private final LongSupplier clock;
     private final Map<String, Integer> cursors = new ConcurrentHashMap<>();
     private final LongAdder checked = new LongAdder(), references = new LongAdder();
     public PartitionedLeasePoolPolicy(WorkerCandidatePool pool,
             BiFunction<String, List<String>, Map<String, Map<String, Object>>> facts,
-            PlatformLeaseState leases, PartitionedLeasePoolDefinition definition) {
+            PlatformLeaseState leases, PartitionedLeasePoolDefinition definition, LongSupplier clock) {
         this.pool = pool; this.facts = facts; this.leases = leases; this.definition = definition;
+        this.clock = clock;
     }
     @Override public TargetBatching targetBatching() { return TargetBatching.PAGED; }
     @Override public EligibilityQuery normalizeQuery(String group, EligibilityQuery query) {
@@ -56,15 +60,17 @@ public final class PartitionedLeasePoolPolicy implements PoolRefillPolicy {
                 Math.max(0, normalized.get(normalizeQuery(group, query)) - counts.getOrDefault(bucket(query), 0)))));
         return Collections.unmodifiableMap(result);
     }
-    @Override public List<String> refill(String group, Map<EligibilityQuery, Integer> targets,
+    @Override public RefillOutcome refill(String group, Map<EligibilityQuery, Integer> targets,
             Map<String, Long> offered, int maxAccepted) {
         var normalized = admitted(group, targets);
         if (maxAccepted < 0) throw new IllegalArgumentException("negative admission budget");
         offered.forEach((id, score) -> { RuleInputs.text(id); if (score == null || score == 0) throw new IllegalArgumentException("strict candidate required"); });
-        if (offered.isEmpty() || maxAccepted == 0) return List.of();
+        if (offered.isEmpty() || maxAccepted == 0 || normalized.isEmpty()) return new RefillOutcome(List.of(), List.of());
         var counts = pool.liveCountByKey(group);
         var missing = normalized.entrySet().stream().filter(e -> counts.getOrDefault(bucket(e.getKey()), 0) < e.getValue()).toList();
-        if (missing.isEmpty() || pool.leaseSupplyCapacity(group) == 0) return List.of();
+        // Capacity short-circuit evidence is not a claim of business eligibility.
+        if (missing.isEmpty() || pool.leaseSupplyCapacity(group) == 0)
+            return new RefillOutcome(List.of(), offered.keySet().stream().limit(maxAccepted).toList());
         List<String> ids = offered.keySet().stream().limit(maxAccepted).toList();
         var values = facts.apply(group, ids);
         var byCountry = new LinkedHashMap<String, List<String>>();
@@ -74,6 +80,11 @@ public final class PartitionedLeasePoolPolicy implements PoolRefillPolicy {
                     || !(row.get(definition.countryProperty()) instanceof String country) || !RuleInputs.validCountry(country)) continue;
             byCountry.computeIfAbsent(country, ignored -> new ArrayList<>()).add(id);
         }
+        var fullCountries = new HashSet<String>();
+        normalized.keySet().forEach(query -> fullCountries.add(query.query().get("worker.country").getFirst()));
+        missing.forEach(target -> fullCountries.remove(target.getKey().query().get("worker.country").getFirst()));
+        var full = new LinkedHashSet<String>();
+        fullCountries.forEach(country -> full.addAll(byCountry.getOrDefault(country, List.of())));
         int start = Math.floorMod(cursors.getOrDefault(group, 0), missing.size());
         var pairs = new LinkedHashMap<Coordinate, String>();
         var targetCounts = new LinkedHashMap<String, Integer>();
@@ -90,7 +101,7 @@ public final class PartitionedLeasePoolPolicy implements PoolRefillPolicy {
             }
         }
         cursors.put(group, (start + Math.max(1, visited)) % missing.size());
-        if (pairs.isEmpty()) return List.of();
+        if (pairs.isEmpty()) return new RefillOutcome(List.of(), List.copyOf(full));
         checked.add(pairs.size());
         var deadlines = leases.read(group, definition.poolName(), List.copyOf(pairs.keySet()));
         var candidates = new LinkedHashMap<WorkerCandidate, Map<String, Long>>();
@@ -98,9 +109,15 @@ public final class PartitionedLeasePoolPolicy implements PoolRefillPolicy {
             candidates.computeIfAbsent(new WorkerCandidate(coordinate.workerId(), offered.get(coordinate.workerId())),
                     ignored -> new LinkedHashMap<>()).put(key, deadlines.getOrDefault(coordinate, 0L));
         });
+        long now = clock.getAsLong();
         var accepted = pool.offerSharedBatch(group, candidates, targetCounts);
+        var admittedIds = accepted.stream().map(WorkerCandidate::workerId).distinct().toList();
+        candidates.forEach((candidate, views) -> {
+            if (views.values().stream().anyMatch(at -> at <= now)) full.add(candidate.workerId());
+        });
+        full.removeAll(admittedIds);
         references.add(candidates.values().stream().mapToInt(Map::size).sum());
-        return accepted.stream().map(WorkerCandidate::workerId).distinct().toList();
+        return new RefillOutcome(admittedIds, List.copyOf(full));
     }
     public Map<String, Long> metrics() { return Map.of("checkedCoordinates", checked.sum(), "capturedReferences", references.sum()); }
 }

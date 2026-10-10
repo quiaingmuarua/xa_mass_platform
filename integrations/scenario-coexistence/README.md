@@ -48,7 +48,9 @@ The oracles use complete snapshots and actual Worker identity.
 Recipient receipts can be held and released newest-first, older-stage-last or
 duplicated using existing receipt IDs. Continuous replies retain latest content.
 An actual repeated Worker execution returns the original message and retains its
-first Reporter. Worker stop/start releases full local observations and cannot
+first Reporter. That duplicate runs in a separate finite generic Task with no
+Pool supply; the proof does not derive a Task from SMS countries or submit
+message sends into SMS's managed Task. Worker stop/start releases full local observations and cannot
 transfer the old Reporter; retained Runtime Results remain while the new run works.
 An additional message runs automatic read and two replies through actual HTTP.
 Their text is identical, so the oracle waits for the latest reply operation ID,
@@ -122,10 +124,13 @@ this slice makes no new load-performance claim.
 The generators are bounded; persistent per-thread HTTP connections avoid measuring
 ephemeral-port exhaustion as product performance. Mutations have no automatic retry.
 The fixture uses the existing hold/release control for automatic delivery and manual
-receipts. The 24 recipient workers each commit the three manual actions, release
-the message's four original receipts exactly once, then wait for actual HTTP/Reporter
-acceptance before taking another message. At most 96 callbacks can be outstanding;
-each still takes its own HTTP request and original Reporter path.
+receipts. The 24 recipient workers each commit the three manual actions. One
+generator-local admission gate reserves room below 32 outstanding callbacks before
+releasing a message's four original receipts exactly once. Completion uses the
+smaller of HTTP success and Reporter admission counters. Input workers do not wait
+for every other producer to reach a simultaneous empty queue; final convergence
+still requires all callbacks admitted. Each receipt takes its own HTTP request and
+original Reporter path.
 Pacing uses compact Host callback counters; the final oracle independently checks
 every receipt's one HTTP attempt and Reporter acceptance, plus complete Results.
 This bounds outstanding callbacks,
@@ -158,6 +163,9 @@ approve and the original Task-plus-normalized-recipient identity algorithm.
 
 Import is timed separately. The sum of sending/observation phases has a 900-second
 budget; it is not a production SLA. Default ten-minute Host windows are unchanged.
+Transient read-only observation failures are polled again within that same phase
+deadline, using the existing five-second request timeout. Create, import and approve
+mutations remain single-attempt; invalid responses and failed evidence fail immediately.
 The runner continuously reads known IDs through results:load, receiver
 acceptances:load and items:states in bounded batches. A successful Result must have
 its matching receiving fingerprint, original Group/Worker/phone/time and terminal

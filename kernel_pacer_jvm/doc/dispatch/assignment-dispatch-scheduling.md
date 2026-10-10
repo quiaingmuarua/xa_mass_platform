@@ -77,10 +77,42 @@ that interval so its fixed workload bounds measure scheduling, not that race.
 Both heads count raw rows, including corruption, against their budgets. Successful
 candidateize moves a member to another mark band. Recycling advances generation,
 so an old head cannot immediately repeat the same aged cycle. No match, capacity
-refusal, qualification exception, lost response or process exit leaves a rollback
-or retry; normal age-based recycling is the recovery path while Main supplies the
+refusal, qualification exception, lost response or process exit leaves no rollback
+or replay; normal age-based recycling remains the recovery path while Main supplies the
 Group. Old stock independently expires. Initial/closed/parked Tasks do not create
 new demand, and a Task stop does not cancel an already admitted refill call.
+
+## Full Candidate Recycling
+
+Matching's immutable `RefillOutcome` separates actual admissions from capacity
+deferrals that entered no Pool. Pacer records the latter with the original opaque
+fence, Group and a monotonic deadline 10 seconds after receipt. It never interprets
+business eligibility, app, country or lease time. This is a lossy acceleration of
+ordinary 30-second recycling, not another execution lease or reliable retry path.
+The 1-second Runtime Boundary preset uses ordinary recycling only.
+
+`SchedulerRun` owns one `CandidateRecycleHints` structure, with at most 1,000
+identities per Group and 10,000 per run. A repeated fence keeps its deadline; a
+new fence replaces the prior generation and goes to the Group tail. Full buffers
+drop new hints. The existing single-flight refill Producer drains ordered due
+heads; the next supply-root observation removes inactive Groups, including empty
+roots. A new run inherits no hints. There is no timer, extra thread, background
+scan, persistent key or Worker-by-partition state.
+
+Both recycle paths share the existing 100-per-Group / 1,000-per-round budget and
+Group rotation. At most 50 due hints use a Group's allowance; the remainder reads
+ordinary aged candidates, preserving at least 50 ordinary raw slots. Merge the
+two Maps and perform one existing exact recycle, preferring the ordinary observed
+fence for overlaps. Due hints are removed on attempt, including stale outcomes
+and failure. A successful recycle returns the identity to ordinary supply; it
+does not replay a candidate or bypass the positive-deficit supply rule. Recycling
+continues for current roots even with no observed shortage.
+
+Default-off `xa.mass.CandidateRecycle` JFR records run-cumulative accepted,
+dropped, attempted, recycled, stale, failed and retired counts plus pending/peak
+gauges. `xa.mass.TaskDispatch` records `RECYCLE_OBSERVATION` and
+`CANDIDATE_RECYCLE` alongside existing supply stages. These contain no Worker
+identity or content, and diagnostic failure never changes scheduling.
 
 ## Candidate Selection
 

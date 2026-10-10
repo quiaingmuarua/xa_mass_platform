@@ -53,7 +53,7 @@ class QualifiedCountryDefinitionTest {
                     Map.of("g", group, "h", group), List.of(ALPHA, BETA)));
             var offered = new LinkedHashMap<String, Long>();
             offered.put("a", 11L); offered.put("b", 12L); offered.put("both", 13L); offered.put("missing", 14L);
-            assertEquals(3, composition.catalog().refill("g", List.of(target("alpha"), target("beta")), offered));
+            assertEquals(3, composition.catalog().refill("g", List.of(target("alpha"), target("beta")), offered).admittedWorkerIds().size());
             verify(store).readWorkerFacts("g", List.of("a", "b", "both", "missing"));
             verify(store).readWorkerFacts("g", List.of("b", "missing"));
             assertTrue(composition.catalog().take("h", Map.of("m", query("sample.alpha", Map.of()))).isEmpty());

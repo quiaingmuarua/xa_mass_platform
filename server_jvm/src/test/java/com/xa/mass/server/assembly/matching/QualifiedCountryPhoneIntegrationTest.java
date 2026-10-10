@@ -101,7 +101,7 @@ class QualifiedCountryPhoneIntegrationTest {
             assertThat(declared.pools()).containsOnlyKeys("alpha");
             var stock = List.of(RefillTarget.of("alpha", new EligibilityQuery(Map.of()), 100));
             commands.clear();
-            assertThat(declared.catalog().refill("custom", stock, Map.of("a", 123L, "b", 456L))).isEqualTo(1);
+            assertThat(declared.catalog().refill("custom", stock, Map.of("a", 123L, "b", 456L)).admittedWorkerIds().size()).isEqualTo(1);
             assertThat(commands).containsExactly("HMGET");
             commands.clear();
             assertThat(declared.catalog().take("custom", Map.of("m", new WorkerQuery(alpha.poolFunctionName(), Map.of()))))
@@ -157,7 +157,7 @@ class QualifiedCountryPhoneIntegrationTest {
         properties.upsertWorkerFactsBatch("mixed", Map.of("bad", eligible("CN", "bad")));
         redis.hset(factsKey("mixed"), "bad", "not-json");
         assertThat(catalog.refill("mixed", List.of(new RefillTarget("any", new EligibilityQuery(Map.of()), 1)),
-                Map.of("pooled", 123L))).isEqualTo(1);
+                Map.of("pooled", 123L)).admittedWorkerIds().size()).isEqualTo(1);
         var requests = new LinkedHashMap<String, WorkerQuery>();
         requests.put("pool", new WorkerQuery("worker.any", Map.of())); requests.put("bad", query("bad"));
         requests.put("invalid", new WorkerQuery("worker.messaging.phone", Map.of()));

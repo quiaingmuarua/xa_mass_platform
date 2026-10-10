@@ -57,7 +57,7 @@ class CountryPoolPolicyTest {
         facts("cn","CN");facts("us","US");facts("gb","GB");facts("jp","JP");
         var targets=new LinkedHashMap<EligibilityQuery,Integer>();
         targets.put(any,1);targets.put(country("CN","US","CN"),1);targets.put(country("US","GB"),1);
-        assertEquals(List.of("jp","us","cn","gb"),policy.refill("g",targets,offers("jp","us","cn","gb"),100));
+        assertEquals(List.of("jp","us","cn","gb"),policy.refill("g",targets,offers("jp","us","cn","gb"),100).admittedWorkerIds());
         assertTrue(policy.deficits("g",targets).values().stream().allMatch(n->n==0));
         assertEquals(4,pool.countByKey("g").size());assertEquals(9996,budget.available());
         assertEquals(List.of(List.of("jp","us","cn","gb")),reads);
@@ -75,7 +75,7 @@ class CountryPoolPolicyTest {
             assertEquals(List.of(target),declarations);
             verifyNoInteractions(redis);
             facts("us","US");facts("cn","CN");facts("gb","GB");
-            assertEquals(2,catalog.refill("g",declarations,offers("us","cn","gb")));
+            assertEquals(2,catalog.refill("g",declarations,offers("us","cn","gb")).admittedWorkerIds().size());
             assertEquals(Map.of(target.target(),1),policy.deficits("g",Map.of(target.target(),3)));
             assertEquals(9998,budget.available());
         }
@@ -89,7 +89,7 @@ class CountryPoolPolicyTest {
             var catalog=new DefaultWorkerMatchingCatalog(budget, Map.of("renamed-country-policy", pool), clock::get, Map.of("renamed-country-policy",traced), Map.of("worker.country",new CountryQueryFunction(pool)), Map.of("g",new MatchingGroup(Set.of("renamed-country-policy"),Set.of("worker.country"))), List.of("renamed-country-policy"), Set.of());
             assertEquals(Map.of("g",200),catalog.observeRefillDeficits(Map.of("g",targets)));
             verify(traced).deficits(eq("g"),argThat(map->map.size()==200));
-            assertEquals(1,catalog.refill("g",targets,offers("late")));
+            assertEquals(1,catalog.refill("g",targets,offers("late")).admittedWorkerIds().size());
             verify(traced).refill(eq("g"), argThat(map->map.size()==200), anyMap(), eq(1));
             assertEquals(1,reads.size());
             clearInvocations(pool);
@@ -103,14 +103,14 @@ class CountryPoolPolicyTest {
         facts.put("corrupt","[]");
         assertThrows(IllegalArgumentException.class,()->policy.refill("g",Map.of(any,100),offers("valid","corrupt"),100));
         assertEquals(10000,budget.available());assertEquals(0,pool.countByKey("g").size());
-        assertEquals(List.of("valid"),policy.refill("g",Map.of(any,100),offers("missing","empty","number","lowercase","valid"),100));
+        assertEquals(List.of("valid"),policy.refill("g",Map.of(any,100),offers("missing","empty","number","lowercase","valid"),100).admittedWorkerIds());
         clock.set(61000); assertTrue(new CountryQueryFunction(pool).apply("g",Map.of("m",Map.of())).isEmpty());
         assertEquals(0,pool.countByKey("g").size());assertEquals(10000,budget.available());
     }
     @Test void satisfiedWatermarkStillValidatesTheWholeOfferedFactsBatch() {
         facts("resident", "US");
         var targets = Map.of(country("US"), 1);
-        assertEquals(List.of("resident"), policy.refill("g", targets, offers("resident"), 100));
+        assertEquals(List.of("resident"), policy.refill("g", targets, offers("resident"), 100).admittedWorkerIds());
         assertEquals(0, policy.deficits("g", targets).get(country("US")));
         facts("valid", "US");
         facts.put("corrupt", "[]");
@@ -119,7 +119,7 @@ class CountryPoolPolicyTest {
         assertEquals(List.of("valid", "corrupt"), reads.getLast());
         assertEquals(1, pool.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
         facts("corrupt", "CN");
-        assertEquals(List.of("valid"), policy.refill("g", targets, offers("valid", "corrupt"), 100));
+        assertEquals(List.of("valid"), policy.refill("g", targets, offers("valid", "corrupt"), 100).admittedWorkerIds());
         assertEquals(2, pool.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
     }
     @Test void readFailureDoesNotAdmitAndSuccessfulAdmissionStartsLocalTtl() {
@@ -128,7 +128,7 @@ class CountryPoolPolicyTest {
         assertEquals(10000,budget.available());
         doAnswer(call->{clock.set(2000);return List.of(KeyValue.just("w","{\"country\":\"CN\"}"));})
                 .when(redis).hmget(anyString(),any(String[].class));
-        assertEquals(List.of("w"),policy.refill("g",Map.of(any,1),offers("w"),1));
+        assertEquals(List.of("w"),policy.refill("g",Map.of(any,1),offers("w"),1).admittedWorkerIds());
         clock.set(62_000); pool.discardExpired();
         assertEquals(10000,budget.available());
     }

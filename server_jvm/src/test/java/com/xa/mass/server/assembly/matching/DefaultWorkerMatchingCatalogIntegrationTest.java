@@ -106,7 +106,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
             public TargetBatching targetBatching() { return handler.targetBatching(); }
             public EligibilityQuery normalizeQuery(String group,EligibilityQuery query) { return handler.normalizeQuery(group,query); }
             public Map<EligibilityQuery,Integer> deficits(String group,Map<EligibilityQuery,Integer> targets) { return handler.deficits(group,targets); }
-            public List<String> refill(String group,Map<EligibilityQuery,Integer> targets,Map<String, Long> offered,int maxAccepted) {
+            public com.xa.mass.kernel.assignment.WorkerMatching.RefillOutcome refill(String group,Map<EligibilityQuery,Integer> targets,Map<String, Long> offered,int maxAccepted) {
                 var ids=List.copyOf(offered.keySet());
                 refillStages.add("qualification"); beforeQualification.accept(ids);
                 var result=handler.refill(group,targets,offered,maxAccepted); afterAdmission.accept(ids); return result;
@@ -211,11 +211,11 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         var blue=Map.of("test.bucket",List.of("blue"));
         assertThat(takeItems(catalog,prepared.get("bucket").workerGroupId(),function(prepared.get("bucket")),blue,1)).extracting(h -> h.workerId()).containsExactly("w");
         stores.get(catalog).patchWorkerPlatformProperties("g","w",Map.of("testEnabled","no"));
-        assertThat(catalog.refill("g", List.of(new RefillTarget(BucketPoolFixture.ID, ANY, 1)), Map.of("w", 42L))).isZero();
+        assertThat(catalog.refill("g", List.of(new RefillTarget(BucketPoolFixture.ID, ANY, 1)), Map.of("w", 42L)).admittedWorkerIds().size()).isZero();
         stores.get(catalog).upsertWorkerFactsBatch("g",Map.of("w",Map.of("testBucket","red")));
         assertThat(stores.get(catalog).loadWorkerFacts("g",List.of("w")).get("w").platformProperties()).containsEntry("testEnabled","no");
         stores.get(catalog).patchWorkerPlatformProperties("g","w",Map.of("testEnabled","yes"));
-        assertThat(catalog.refill("g", List.of(new RefillTarget(BucketPoolFixture.ID, ANY, 1)), Map.of("w", 43L))).isEqualTo(1);
+        assertThat(catalog.refill("g", List.of(new RefillTarget(BucketPoolFixture.ID, ANY, 1)), Map.of("w", 43L)).admittedWorkerIds().size()).isEqualTo(1);
         assertThat(takeItems(catalog,"g",BucketPoolFixture.ID,Map.of("test.bucket",List.of("red")),1)).extracting(WorkerCandidate::workerId).containsExactly("w");
     }
     @Test void corruptBucketFactsFailBeforeAnyAdmission() {
@@ -447,7 +447,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         if(!owner.observeRefillDeficits(targets).containsKey(group))return 0;
         var offered=offer(group,limit);
         var held=candidateize(group,offered);
-        return held.isEmpty()?0:owner.refill(group,targets.get(group),held);
+        return held.isEmpty()?0:owner.refill(group,targets.get(group),held).admittedWorkerIds().size();
     }
     private int refillDeclarations(Map<String,TaskDescriptor> tasks) { return refillDeclarations(catalog,"g",tasks,100); }
     private static List<RefillTarget> withPool(String name,List<RefillTarget> targets) {
@@ -552,7 +552,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         var prepared=declarations("messages");
         var held=candidateize("g",offer("g",100));
         stores.get(catalog).upsertWorkerFactsBatch("g",Map.of("target",messageFacts("US","new-phone")));
-        assertThat(catalog.refill("g",targets(prepared).get("g"),held)).isZero();
+        assertThat(catalog.refill("g",targets(prepared).get("g"),held).admittedWorkerIds().size()).isZero();
         assertThat(takeItems(catalog,prepared.get("messages").workerGroupId(),function(prepared.get("messages")),Map.of(),1)).isEmpty();
         assertThat(readScores(redis, keyspace, "g",List.of("target")).get("target")).isEqualTo(held.values().iterator().next());
     }
@@ -566,7 +566,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         assertThat(observed.keySet()).containsExactly("a");
         var held=candidateize("g",observed);
         commandTypes.clear();
-        assertThat(catalog.refill("g",targets(prepared).get("g"),held)).isZero();
+        assertThat(catalog.refill("g",targets(prepared).get("g"),held).admittedWorkerIds().size()).isZero();
         assertThat(commandTypes).containsExactly("HMGET"); // Supplied Worker Facts only.
         assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),function(prepared.get("task")),Map.of(),1)).isEmpty();
         assertThat(scores.observeDueHotScoreCandidates("g", null, 100)).containsKey("b");
@@ -585,7 +585,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
             assertThat(mark(state)).isEqualTo(1);
             assertThat(scores.observeDueHotScoreCandidates("g", null, 100)).isEmpty();
         };
-        assertThat(catalog.refill("g",targets(prepared).get("g"),held)).isZero();
+        assertThat(catalog.refill("g",targets(prepared).get("g"),held).admittedWorkerIds().size()).isZero();
         assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),function(prepared.get("task")),Map.of(),1)).isEmpty();
         recycleTestCandidates("g");
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);
@@ -607,7 +607,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         commandTypes.clear();refillStages.clear();
         var offered=candidateize("g",observed);
         var original=Map.copyOf(offered);
-        assertThat(catalog.refill("g",targets(prepared).get("g"),offered)).isEqualTo(2);
+        assertThat(catalog.refill("g",targets(prepared).get("g"),offered).admittedWorkerIds().size()).isEqualTo(2);
         assertThat(commandTypes).containsExactly("EVAL","HMGET");
         assertThat(refillStages).containsExactly("candidateize","qualification","qualification");
         var delivered=new HashSet<String>();
@@ -639,7 +639,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
             var observedBatch=scores.observeDueHotScoreCandidates("g",null,100);
             visited.addAll(observedBatch.keySet());
             var held=candidateize("g",observedBatch);
-            added+=catalog.refill("g",targets.get("g"),held);
+            added+=catalog.refill("g",targets.get("g"),held).admittedWorkerIds().size();
         }
         assertThat(visited).containsExactlyElementsOf(ids);
         assertThat(added).isEqualTo(1);
@@ -674,7 +674,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
             assertThat(scores.advancePastScoreTimesToNow("g",ids).get("w").status())
                     .isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
         };
-        assertThat(catalog.refill("g",targets(prepared).get("g"),held)).isZero();
+        assertThat(catalog.refill("g",targets(prepared).get("g"),held).admittedWorkerIds().size()).isZero();
         assertThat(takeItems(catalog,prepared.get("task").workerGroupId(),function(prepared.get("task")),List.of("CN"),1)).isEmpty();
     }
 
@@ -691,7 +691,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
             assertThat(scores.advancePastScoreTimesToNow("g",ids).get("w").status())
                     .isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
         };
-        assertThat(catalog.refill("g",targets(prepared).get("g"),offered)).isEqualTo(1);
+        assertThat(catalog.refill("g",targets(prepared).get("g"),offered).admittedWorkerIds().size()).isEqualTo(1);
         var held=takeItems(catalog,prepared.get("task").workerGroupId(),function(prepared.get("task")),List.of("CN"),1).getFirst();
         assertThat(held).isEqualTo(candidate(offered.entrySet().iterator().next()));
         assertThat(scores.acquireObservedHotScoreLeases("g", Map.of("w",held.expectedScore()), System.currentTimeMillis()+5000)
@@ -736,7 +736,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         var acquired = scores.candidateizeObservedHotScores("g", offer("g", 100)).get("w");
         assertThat(acquired.status()).isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
         var original = Map.entry("w", (long) (acquired.score()));
-        assertThat(catalog.refill("g", targets(prepared).get("g"), Map.ofEntries(original))).isEqualTo(1);
+        assertThat(catalog.refill("g", targets(prepared).get("g"), Map.ofEntries(original)).admittedWorkerIds().size()).isEqualTo(1);
 
         // Another bounded caller has the opaque fence; no allocator or cache scan is involved.
         var execution = (direct ? scores.acquireCurrentHotScoreLeases("g",List.of("w"),requestTime + 5000)
@@ -861,10 +861,10 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
             var restarted = restartedComposition.catalog();
             assertThat(commandTypes).isEmpty(); // No qualification index startup scan, even with poisoned keys.
             commandTypes.clear();
-            assertThat(restarted.refill("g", List.of(new RefillTarget("messaging", ANY, 1)), Map.of("message", 42L))).isEqualTo(1);
+            assertThat(restarted.refill("g", List.of(new RefillTarget("messaging", ANY, 1)), Map.of("message", 42L)).admittedWorkerIds().size()).isEqualTo(1);
             assertThat(commandTypes).containsExactly("HMGET");
             commandTypes.clear();
-            assertThat(restarted.refill("g", List.of(new RefillTarget("proof-facts", ANY, 1)), Map.of("proof", 43L))).isEqualTo(1);
+            assertThat(restarted.refill("g", List.of(new RefillTarget("proof-facts", ANY, 1)), Map.of("proof", 43L)).admittedWorkerIds().size()).isEqualTo(1);
             assertThat(commandTypes).containsExactly("EVAL_RO");
             assertThat(restarted.take("g", Map.of("m", new WorkerQuery("proof.worker.facts", Map.of("proofPool", "*",
                     "proofEnabled", "yes"))))).containsEntry("m", new WorkerCandidate("proof", 43L));
@@ -880,7 +880,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         redis.hset(workerKey, "unoffered", "[]");
         redis.hset(platformKey, "unoffered", "[]");
         commandTypes.clear();
-        assertThat(catalog.refill("g", List.of(new RefillTarget("messaging", ANY, 1)), Map.of("valid", 42L))).isEqualTo(1);
+        assertThat(catalog.refill("g", List.of(new RefillTarget("messaging", ANY, 1)), Map.of("valid", 42L)).admittedWorkerIds().size()).isEqualTo(1);
         assertThat(commandTypes).containsExactly("HMGET");
         assertThat(catalog.take("g", Map.of("m", new WorkerQuery("worker.messaging.available", Map.of()))))
                 .containsEntry("m", new WorkerCandidate("valid", 42L));

@@ -2,6 +2,7 @@ package com.xa.mass.workermatching.refill;
 
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.WorkerMatching.WorkerCandidate;
+import com.xa.mass.kernel.assignment.WorkerMatching.RefillOutcome;
 import com.xa.mass.workermatching.PoolRefillPolicy;
 import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import java.util.*;
@@ -49,7 +50,7 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
         return Collections.unmodifiableMap(result);
     }
 
-    @Override public final List<String> refill(String group, Map<EligibilityQuery, Integer> targets,
+    @Override public final RefillOutcome refill(String group, Map<EligibilityQuery, Integer> targets,
             Map<String, Long> offered, int maxAccepted) {
         var normalized = targets(group, targets);
         Objects.requireNonNull(offered);
@@ -58,7 +59,7 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
             identity(id);
             if (score == null || score == 0) throw new IllegalArgumentException("strict candidate required");
         });
-        if (maxAccepted == 0 || offered.isEmpty() || normalized.isEmpty()) return List.of();
+        if (maxAccepted == 0 || offered.isEmpty() || normalized.isEmpty()) return new RefillOutcome(List.of(), List.of());
         var values = readQualifications(group, List.copyOf(offered.keySet()));
         if (!offered.keySet().containsAll(values.keySet()))
             throw new IllegalStateException("Pool policy read an unoffered identity");
@@ -83,7 +84,10 @@ public abstract class PoolMaintenance<P> implements PoolRefillPolicy {
         var accepted = new ArrayList<String>();
         batches.forEach((key, candidates) -> pool.offerBatch(group, key, candidates)
                 .forEach(candidate -> accepted.add(candidate.workerId())));
-        return List.copyOf(accepted);
+        var full = new LinkedHashSet<String>();
+        batches.values().forEach(batch -> batch.forEach(candidate -> full.add(candidate.workerId())));
+        full.removeAll(accepted);
+        return new RefillOutcome(accepted, List.copyOf(full));
     }
 
     private static void identity(String id) {

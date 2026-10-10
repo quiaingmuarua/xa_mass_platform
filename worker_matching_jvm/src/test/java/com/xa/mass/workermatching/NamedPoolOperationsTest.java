@@ -20,6 +20,17 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class NamedPoolOperationsTest {
+    @Test void laterPoolAdmissionRemovesEarlierFullDeferral() {
+        var any = new RefillTarget("any", ANY, 1000);
+        var resident = new LinkedHashMap<String, Long>();
+        for (int i = 0; i < 1000; i++) resident.put("resident" + i, 10L);
+        assertEquals(1000, catalog.refill("g1", List.of(any), resident).admittedWorkerIds().size());
+        rule.facts.put("w", "US");
+        var admitted = catalog.refill("g1", List.of(any, pool(1, "US")), Map.of("w", 20L));
+        assertEquals(List.of("w"), admitted.admittedWorkerIds()); assertTrue(admitted.fullDeferredWorkerIds().isEmpty());
+        var refused = catalog.refill("g1", List.of(any), Map.of("waiting", 21L));
+        assertTrue(refused.admittedWorkerIds().isEmpty()); assertEquals(List.of("waiting"), refused.fullDeferredWorkerIds());
+    }
     final CandidateBudget budget = new CandidateBudget();
     CountingRule rule;
     CountingRule failingRule;
@@ -67,7 +78,7 @@ class NamedPoolOperationsTest {
 
     @Test void invalidWholeBatchLeavesStockUntouchedAndEmptyDoesNotTouchRule() {
         rule.facts.put("worker","US");
-        assertEquals(1,catalog.refill("g1",List.of(pool(1,"US")),offer("worker")));
+        assertEquals(1,catalog.refill("g1",List.of(pool(1,"US")),offer("worker")).admittedWorkerIds().size());
         int before=rule.normalizations;
         assertTrue(catalog.take("g1",Map.of()).isEmpty()); assertEquals(before,rule.normalizations);
         assertThrows(IllegalArgumentException.class,()->catalog.take(" ",Map.of()));
@@ -92,7 +103,7 @@ class NamedPoolOperationsTest {
     @Test void overlappingQueriesShortagesAndRepeatedMessageIdsHaveOnlyCallLocalMeaning() {
         var targets=List.of(pool(3,"US","CN"));
         rule.facts.putAll(Map.of("one","US","two","CN","three","CN"));
-        var held=offer("one","two","three"); assertEquals(3,catalog.refill("g1",targets,held));
+        var held=offer("one","two","three"); assertEquals(3,catalog.refill("g1",targets,held).admittedWorkerIds().size());
         var identity=new WorkerQuery("test.pool",Map.of("pool",List.of("US")));
         var any=new WorkerQuery("test.pool",Map.of());
         var requests=new LinkedHashMap<String,WorkerQuery>();
@@ -103,7 +114,7 @@ class NamedPoolOperationsTest {
         assertEquals(held.entrySet().stream().map(NamedPoolOperationsTest::candidate).toList(),List.copyOf(result.values()));
         assertTrue(catalog.take("g1",requests).isEmpty());
         rule.facts.put("four","CN");
-        assertEquals(1,catalog.refill("g1",targets,offer("four")));
+        assertEquals(1,catalog.refill("g1",targets,offer("four")).admittedWorkerIds().size());
         assertEquals("four",catalog.take("g1",Map.of("id-first",any)).get("id-first").workerId());
     }
 
@@ -111,7 +122,7 @@ class NamedPoolOperationsTest {
         var held=new LinkedHashMap<String, Long>(); var requests=new LinkedHashMap<String,WorkerQuery>();
         for(int i=0;i<100;i++) { held.put("worker"+i, (long) (20+i));
             requests.put("message"+i,new WorkerQuery("worker.any",Map.of())); }
-        assertEquals(100,catalog.refill("g1",List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 100)),held));
+        assertEquals(100,catalog.refill("g1",List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 100)),held).admittedWorkerIds().size());
         var result=catalog.take("g1",requests);
         assertEquals(List.copyOf(requests.keySet()),List.copyOf(result.keySet()));
         assertEquals(held.entrySet().stream().map(NamedPoolOperationsTest::candidate).toList(),List.copyOf(result.values()));
@@ -145,8 +156,8 @@ class NamedPoolOperationsTest {
         var needed=catalog.observeRefillDeficits(targets);
         assertEquals(Map.of("g1",2,"g2",1),needed);
         assertThrows(UnsupportedOperationException.class,needed::clear);
-        assertEquals(3,catalog.refill("g1",targets.get("g1"),offer("w1","w2","w3")));
-        assertEquals(1,catalog.refill("g2",targets.get("g2"),offer("w4")));
+        assertEquals(3,catalog.refill("g1",targets.get("g1"),offer("w1","w2","w3")).admittedWorkerIds().size());
+        assertEquals(1,catalog.refill("g2",targets.get("g2"),offer("w4")).admittedWorkerIds().size());
         assertEquals(List.of("w1","w2","w3"),takeItems(catalog,"g1","test.pool",Map.of(),3)
                 .stream().map(h -> h.workerId()).toList());
         assertEquals(List.of("w4"),takeItems(catalog,"g2","test.pool",Map.of(),1)
@@ -155,7 +166,7 @@ class NamedPoolOperationsTest {
 
     @Test void endingDemandRetainsStockUntilPollDiscardsExpiredEntries() {
         var supply = List.of(new RefillTarget("any", ANY, 2));
-        assertEquals(2, catalog.refill("g1", supply, offer("first", "second")));
+        assertEquals(2, catalog.refill("g1", supply, offer("first", "second")).admittedWorkerIds().size());
         assertTrue(catalog.observeRefillDeficits(Map.of()).isEmpty());
         var consumed = catalog.take("g1", Map.of("consumer", new WorkerQuery("worker.any", Map.of())));
         assertEquals("first", consumed.get("consumer").workerId());
@@ -174,7 +185,7 @@ class NamedPoolOperationsTest {
         assertEquals(Map.of("g2",5,"g1",7),observed);
         assertEquals(List.of("g2","g1"),List.copyOf(observed.keySet()));
         assertThrows(UnsupportedOperationException.class,()->observed.put("g2",9));
-        assertEquals(1,catalog.refill("g2",targets.get("g2"),offer("w")));
+        assertEquals(1,catalog.refill("g2",targets.get("g2"),offer("w")).admittedWorkerIds().size());
         assertEquals(5,observed.get("g2"));
         assertEquals(Map.of("g2",4,"g1",7),catalog.observeRefillDeficits(targets));
     }
@@ -186,13 +197,13 @@ class NamedPoolOperationsTest {
             for(int offset=0;offset<count;offset+=100) {
                 var offered=new LinkedHashMap<String,Long>();
                 for(int i=offset;i<Math.min(count,offset+100);i++)offered.put("w"+i,20L);
-                assertEquals(offered.size(),catalog.refill("group"+g,target,offered));
+                assertEquals(offered.size(),catalog.refill("group"+g,target,offered).admittedWorkerIds().size());
             }
         }
         assertEquals(1,budget.available());
         var requested=Map.of("g1",List.of(new RefillTarget("any",ANY,100)));
         assertEquals(Map.of("g1",1),catalog.observeRefillDeficits(requested));
-        assertEquals(1,catalog.refill("g1",requested.get("g1"),offer("last")));
+        assertEquals(1,catalog.refill("g1",requested.get("g1"),offer("last")).admittedWorkerIds().size());
         assertTrue(catalog.observeRefillDeficits(requested).isEmpty());
         clock.set(61_000);
         assertTrue(catalog.observeRefillDeficits(Map.of()).isEmpty());
@@ -204,9 +215,9 @@ class NamedPoolOperationsTest {
     @Test void namedRefillAndTakeNeedNoPreparation() {
         rule.facts.putAll(Map.of("a","US","b","US"));
         var targets=List.of(pool(1,"US"));
-        assertEquals(1,catalog.refill("g1",targets,offer("a")));
+        assertEquals(1,catalog.refill("g1",targets,offer("a")).admittedWorkerIds().size());
         assertTrue(takeItems(catalog,"g2","test.pool",Map.of(),1).isEmpty());
-        assertEquals(1,catalog.refill("g2",targets,offer("b")));
+        assertEquals(1,catalog.refill("g2",targets,offer("b")).admittedWorkerIds().size());
         assertEquals("a",takeItems(catalog,"g1","test.pool",Map.of(),1).getFirst().workerId());
         assertEquals("b",takeItems(catalog,"g2","test.pool",Map.of(),1).getFirst().workerId());
     }
@@ -215,13 +226,13 @@ class NamedPoolOperationsTest {
         rule.facts.putAll(Map.of("first","US","second","US"));
         var targets=List.of(pool(1,"US"));
         assertEquals(Map.of("g1",1),catalog.observeRefillDeficits(Map.of("g1",targets)));
-        assertEquals(1,catalog.refill("g1",targets,offer("first")));
+        assertEquals(1,catalog.refill("g1",targets,offer("first")).admittedWorkerIds().size());
         int reads=rule.snapshots.size();
-        assertEquals(1,catalog.refill("g1",targets,offer("second")));
+        assertEquals(1,catalog.refill("g1",targets,offer("second")).admittedWorkerIds().size());
         assertEquals(reads + 1,rule.snapshots.size());
         assertTrue(catalog.observeRefillDeficits(Map.of("g1",targets)).isEmpty());
         catalog.take("g1",Map.of("m",new WorkerQuery("test.pool",Map.of())));
-        assertEquals(1,catalog.refill("g1",targets,offer("second")));
+        assertEquals(1,catalog.refill("g1",targets,offer("second")).admittedWorkerIds().size());
         assertEquals("second",takeItems(catalog,"g1","test.pool",Map.of(),1).getFirst().workerId());
     }
 
@@ -232,10 +243,10 @@ class NamedPoolOperationsTest {
         catalog.observeRefillDeficits(Map.of("g1",rules));
         catalog.observeRefillDeficits(Map.of("g1",rules));
         assertEquals(100,rule.observedTargets.size());
-        assertEquals(0,catalog.refill("g1",rules,Map.of()));
+        assertEquals(0,catalog.refill("g1",rules,Map.of()).admittedWorkerIds().size());
         catalog.observeRefillDeficits(Map.of("g1",rules));
         assertEquals(100,rule.observedTargets.size());
-        assertEquals(0,catalog.refill("g1",rules,offer("missing")));
+        assertEquals(0,catalog.refill("g1",rules,offer("missing")).admittedWorkerIds().size());
         assertEquals(100,rule.observedTargets.size());
         catalog.observeRefillDeficits(Map.of("g1",rules));
         assertEquals(200,rule.observedTargets.size());
@@ -266,7 +277,7 @@ class NamedPoolOperationsTest {
     @Test void declarationCeilingsAreAcceptedAndEquivalentTargetsUseMax() {
         var rules=Collections.nCopies(10_000,new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1));
         assertEquals(Map.of("g1",1),catalog.observeRefillDeficits(Map.of("g1",rules)));
-        assertEquals(2,catalog.refill("g1",rules,offer("first","second")));
+        assertEquals(2,catalog.refill("g1",rules,offer("first","second")).admittedWorkerIds().size());
         var groups=new LinkedHashMap<String,List<RefillTarget>>();
         for(int i=0;i<100;i++)groups.put("group"+i,List.of(new RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 1)));
         assertEquals(100,catalog.observeRefillDeficits(groups).size());
@@ -275,7 +286,7 @@ class NamedPoolOperationsTest {
     @Test void qualificationReceivesGenerationsAndAdmissionStartsLocalTtl() {
         rule.facts.put("w","US"); rule.beforeSnapshot=()->clock.set(61_000);
         var targets=List.of(pool(1,"US"));
-        assertEquals(1,catalog.refill("g1",targets,offer("w")));
+        assertEquals(1,catalog.refill("g1",targets,offer("w")).admittedWorkerIds().size());
         assertEquals(List.of(List.of("w")),rule.snapshots);
         clock.set(120_999);
         assertEquals(new WorkerCandidate("w",20),takeItems(catalog,"g1","test.pool",Map.of(),1).getFirst());
@@ -296,7 +307,7 @@ class NamedPoolOperationsTest {
         rule.facts.putAll(Map.of("a", "US", "b", "US"));
         failingRule.facts.putAll(rule.facts);
         var targets = List.of(pool(1, "US"), new RefillTarget("zz.fail", pool(1, "US").target(), 1));
-        assertEquals(2, catalog.refill("g1", targets, offer("a", "b")));
+        assertEquals(2, catalog.refill("g1", targets, offer("a", "b")).admittedWorkerIds().size());
         assertEquals(List.of(List.of("a", "b")), rule.snapshots);
         assertTrue(failingRule.snapshots.isEmpty());
         assertEquals(List.of("a", "b"), takeItems(catalog, "g1", "test.pool", Map.of(), 2)
@@ -308,7 +319,7 @@ class NamedPoolOperationsTest {
         rule.facts.put("w", "CN");
         failingRule.facts.put("w", "US");
         var targets = List.of(pool(1, "US"), new RefillTarget("zz.fail", pool(1, "US").target(), 1));
-        assertEquals(1, catalog.refill("g1", targets, offer("w")));
+        assertEquals(1, catalog.refill("g1", targets, offer("w")).admittedWorkerIds().size());
         assertEquals(List.of(List.of("w")), rule.snapshots);
         assertEquals(List.of(List.of("w")), failingRule.snapshots);
         assertTrue(takeItems(catalog, "g1", "test.pool", Map.of(), 1).isEmpty());
@@ -317,10 +328,10 @@ class NamedPoolOperationsTest {
 
     @Test void laterDemandDoesNotCopyRetainedStockWithoutNewCandidateization() {
         rule.facts.put("w", "US");
-        assertEquals(1, catalog.refill("g1", List.of(new RefillTarget("any", ANY, 1)), Map.of("w", 42L)));
+        assertEquals(1, catalog.refill("g1", List.of(new RefillTarget("any", ANY, 1)), Map.of("w", 42L)).admittedWorkerIds().size());
         var later = List.of(pool(1, "US"));
         assertEquals(Map.of("g1", 1), catalog.observeRefillDeficits(Map.of("g1", later)));
-        assertEquals(0, catalog.refill("g1", later, Map.of()));
+        assertEquals(0, catalog.refill("g1", later, Map.of()).admittedWorkerIds().size());
         assertTrue(rule.snapshots.isEmpty());
         assertTrue(takeItems(catalog, "g1", "test.pool", Map.of(), 1).isEmpty());
         assertEquals(new WorkerCandidate("w", 42), takeItems(catalog, "g1", "worker.any", Map.of(), 1).getFirst());
@@ -334,7 +345,7 @@ class NamedPoolOperationsTest {
                 Map.of("a", rule, "z", failingRule), Map.of(), Map.of("g", new MatchingGroup(Set.of("a", "z"), Set.of())),
                 List.of("z", "a"), Set.of());
         var targets = List.of(new RefillTarget("a", ANY, 1), new RefillTarget("z", ANY, 1));
-        assertEquals(1, configured.refill("g", targets, Map.of("w", 42L)));
+        assertEquals(1, configured.refill("g", targets, Map.of("w", 42L)).admittedWorkerIds().size());
         assertTrue(rule.snapshots.isEmpty());
         assertEquals(List.of(List.of("w")), failingRule.snapshots);
     }
@@ -349,9 +360,9 @@ class NamedPoolOperationsTest {
             failingRule.facts.put(id, "US");
         }
         var targets = List.of(pool(100, "US"), new RefillTarget("zz.fail", pool(100, "US").target(), 100));
-        assertEquals(100, catalog.refill("g1", targets, first));
+        assertEquals(100, catalog.refill("g1", targets, first).admittedWorkerIds().size());
         assertTrue(failingRule.snapshots.isEmpty());
-        assertEquals(100, catalog.refill("g1", targets, second));
+        assertEquals(100, catalog.refill("g1", targets, second).admittedWorkerIds().size());
         assertEquals(List.of(List.copyOf(first.keySet())), rule.snapshots);
         assertEquals(List.of(List.copyOf(second.keySet())), failingRule.snapshots);
         assertEquals(first.keySet(), new LinkedHashSet<>(takeItems(catalog, "g1", "test.pool", Map.of(), 100)
@@ -363,12 +374,12 @@ class NamedPoolOperationsTest {
     @Test void repeatedOffersAppendAndFailedQualificationLeavesExistingEntries() {
         rule.facts.put("w", "US");
         var targets = List.of(pool(1,"US"));
-        assertEquals(1, catalog.refill("g1", targets, Map.of("w", 20L)));
+        assertEquals(1, catalog.refill("g1", targets, Map.of("w", 20L)).admittedWorkerIds().size());
         assertTrue(catalog.observeRefillDeficits(Map.of("g1", targets)).isEmpty());
-        assertEquals(1, catalog.refill("g1", targets, Map.of("w", 21L)));
-        assertEquals(1, catalog.refill("g1", targets, Map.of("w", 21L)));
+        assertEquals(1, catalog.refill("g1", targets, Map.of("w", 21L)).admittedWorkerIds().size());
+        assertEquals(1, catalog.refill("g1", targets, Map.of("w", 21L)).admittedWorkerIds().size());
         rule.facts.put("w", "CN");
-        assertEquals(0, catalog.refill("g1", targets, Map.of("w", 22L)));
+        assertEquals(0, catalog.refill("g1", targets, Map.of("w", 22L)).admittedWorkerIds().size());
         assertEquals(List.of(new WorkerCandidate("w", 20), new WorkerCandidate("w", 21), new WorkerCandidate("w", 21)),
                 rule.stock.pollAnyBatch("g1", 10));
     }
@@ -385,7 +396,7 @@ class NamedPoolOperationsTest {
     @Test void residentCountsRemainApproximateUntilPollAndThenNormalRefillSeesTheGap() {
         rule.facts.put("w", "US");
         var targets = List.of(pool(1, "US"));
-        assertEquals(1, catalog.refill("g1", targets, Map.of("w", 20L)));
+        assertEquals(1, catalog.refill("g1", targets, Map.of("w", 20L)).admittedWorkerIds().size());
         clock.set(61_000);
         assertTrue(catalog.observeRefillDeficits(Map.of("g1", targets)).isEmpty());
         assertEquals(Map.of("US", 1), rule.stock.countByKey("g1"));

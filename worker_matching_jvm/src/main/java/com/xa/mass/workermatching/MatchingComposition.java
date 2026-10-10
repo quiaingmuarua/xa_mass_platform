@@ -142,7 +142,7 @@ public final class MatchingComposition implements AutoCloseable {
                 if (!enabledPools.contains(name)) return;
                 var pool = new WorkerCandidatePool(clock, budget);
                 pools.put(name, pool);
-                policies.put(name, new PartitionedLeasePoolPolicy(pool, storage::readWorkerFacts, platformLeases, definition));
+                policies.put(name, new PartitionedLeasePoolPolicy(pool, storage::readWorkerFacts, platformLeases, definition, clock));
                 functions.put(definition.functionName(), new PartitionedLeaseQueryFunction(pool, definition));
             });
             var qualifications = new HashMap<String, QualifiedCountryEligibility>();

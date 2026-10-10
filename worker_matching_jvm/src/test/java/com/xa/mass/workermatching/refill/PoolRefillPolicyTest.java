@@ -28,7 +28,7 @@ class PoolRefillPolicyTest {
         for (int start : List.of(0, 100)) {
             var offered = new LinkedHashMap<String, Long>();
             for (int i = start; i < start + 100; i++) offered.put("w" + i, 20L + i);
-            assertEquals(100, policy.refill("g", targets, offered, 100).size());
+            assertEquals(100, policy.refill("g", targets, offered, 100).admittedWorkerIds().size());
             assertEquals(Map.of(target, 0), policy.deficits("g", targets));
         }
         assertEquals(200, stock.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
@@ -44,13 +44,13 @@ class PoolRefillPolicyTest {
         for (int start = 0; start < 900; start += 100) {
             var offered = new LinkedHashMap<String, Long>();
             for (int i = start; i < start + 100; i++) offered.put("w" + i, 20L);
-            assertEquals(100, policy.refill("g", targets, offered, 100).size());
+            assertEquals(100, policy.refill("g", targets, offered, 100).admittedWorkerIds().size());
         }
         var offered = new LinkedHashMap<String, Long>();
         for (int i = 900; i < 1000; i++) offered.put("w" + i, 20L);
-        assertEquals(7, policy.refill("g", targets, offered, 7).size());
-        assertEquals(93, policy.refill("g", targets, offered, 100).size());
-        assertTrue(policy.refill("g", targets, Map.of("overflow", 20L), 100).isEmpty());
+        assertEquals(7, policy.refill("g", targets, offered, 7).admittedWorkerIds().size());
+        assertEquals(93, policy.refill("g", targets, offered, 100).admittedWorkerIds().size());
+        assertTrue(policy.refill("g", targets, Map.of("overflow", 20L), 100).admittedWorkerIds().isEmpty());
         assertEquals(1000, stock.countByKey("g").values().stream().mapToInt(Integer::intValue).sum());
         assertEquals(9000, budget.available());
     }
@@ -88,7 +88,7 @@ class PoolRefillPolicyTest {
             assertEquals(target,rule.normalizeQuery("g",target));
             assertEquals(2,rule.deficits("g",Map.of(target,2)).get(target));
             var offered = new LinkedHashMap<String,Long>(); offered.put("a",2L); offered.put("b",3L);
-            assertEquals(List.of("a","b"),rule.refill("g",Map.of(target,2),offered,100));
+            assertEquals(List.of("a","b"),rule.refill("g",Map.of(target,2),offered,100).admittedWorkerIds());
             assertEquals(0,rule.deficits("g",Map.of(target,2)).get(target));
             var requests=new LinkedHashMap<String,Object>();requests.put("first",Map.of());requests.put("second",Map.of());
             var result=function.apply("g",requests);

@@ -1,0 +1,1617 @@
+{
+  "status": "retained",
+  "baseCommit": "1197ea7df06a1f002cc01cd7529c5ea9d236887b",
+  "workload": {
+    "workers": 1000,
+    "countryCounts": [
+      700,
+      200,
+      100
+    ],
+    "apps": 3,
+    "leaseSeconds": 60,
+    "requestsPerSecond": 30,
+    "seconds": 180,
+    "requests": 5400
+  },
+  "comparison": {
+    "performanceDecision": "retain",
+    "validFormalRuns": true,
+    "sameSupportingArtifacts": true,
+    "serverPins": {
+      "A": [
+        "393d09bd288cb1a1d47223e6f5d205ee9a2f612c8fe2daf85c0c419fa6829e73"
+      ],
+      "B": [
+        "c81beb49cc99a5907b66bab6efce9fde15f2aaef9fa309362a060f5e24ddef5b"
+      ]
+    },
+    "pairs": [
+      {
+        "pair": 1,
+        "A": {
+          "notObservedRate": 0.06259259259259259,
+          "acquisitionP95": 3172.910400026012,
+          "acquisitionP99": 3798.9599000138696,
+          "queryP95": 4.920499981380999,
+          "queryP99": 16.444800014141947,
+          "checkedCoordinates": 22401,
+          "server.cpuSeconds": 142.1875,
+          "server.rssBytes": 593076224,
+          "server.threads": 117,
+          "host.cpuSeconds": 19.90625,
+          "host.rssBytes": 467111936,
+          "host.threads": 65
+        },
+        "B": {
+          "notObservedRate": 0.0,
+          "acquisitionP95": 215.90850001666695,
+          "acquisitionP99": 268.81999999750406,
+          "queryP95": 6.066800007829443,
+          "queryP99": 12.5906000030227,
+          "checkedCoordinates": 21361,
+          "server.cpuSeconds": 279.140625,
+          "server.rssBytes": 433704960,
+          "server.threads": 100,
+          "host.cpuSeconds": 32.890625,
+          "host.rssBytes": 466763776,
+          "host.threads": 64
+        }
+      },
+      {
+        "pair": 2,
+        "A": {
+          "notObservedRate": 0.06851851851851852,
+          "acquisitionP95": 3338.770000002114,
+          "acquisitionP99": 3863.799300015671,
+          "queryP95": 6.17380000767298,
+          "queryP99": 15.334299998357892,
+          "checkedCoordinates": 22170,
+          "server.cpuSeconds": 149.359375,
+          "server.rssBytes": 596660224,
+          "server.threads": 119,
+          "host.cpuSeconds": 22.1875,
+          "host.rssBytes": 469270528,
+          "host.threads": 64
+        },
+        "B": {
+          "notObservedRate": 0.0,
+          "acquisitionP95": 202.26580000598915,
+          "acquisitionP99": 233.48639998584986,
+          "queryP95": 4.055600002175197,
+          "queryP99": 6.312100013019517,
+          "checkedCoordinates": 20854,
+          "server.cpuSeconds": 147.59375,
+          "server.rssBytes": 591339520,
+          "server.threads": 98,
+          "host.cpuSeconds": 23.375,
+          "host.rssBytes": 465625088,
+          "host.threads": 64
+        }
+      },
+      {
+        "pair": 3,
+        "A": {
+          "notObservedRate": 0.0712962962962963,
+          "acquisitionP95": 3339.9281000019982,
+          "acquisitionP99": 3905.295799981104,
+          "queryP95": 6.458599993493408,
+          "queryP99": 15.640199999324977,
+          "checkedCoordinates": 22052,
+          "server.cpuSeconds": 160.21875,
+          "server.rssBytes": 600166400,
+          "server.threads": 110,
+          "host.cpuSeconds": 22.078125,
+          "host.rssBytes": 464396288,
+          "host.threads": 64
+        },
+        "B": {
+          "notObservedRate": 0.0,
+          "acquisitionP95": 201.32590000866912,
+          "acquisitionP99": 224.15710001951084,
+          "queryP95": 3.6656000011134893,
+          "queryP99": 5.771900003310293,
+          "checkedCoordinates": 20909,
+          "server.cpuSeconds": 145.265625,
+          "server.rssBytes": 598822912,
+          "server.threads": 95,
+          "host.cpuSeconds": 21.8125,
+          "host.rssBytes": 467091456,
+          "host.threads": 64
+        }
+      }
+    ],
+    "benefit": {
+      "notObservedRate": {
+        "pairImprovements": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "medianImprovement": 1.0,
+        "threshold": 0.3,
+        "passed": true
+      },
+      "acquisitionP95": {
+        "pairImprovements": [
+          0.9319525379554062,
+          0.9394190674991506,
+          0.9397214868162734
+        ],
+        "medianImprovement": 0.9394190674991506,
+        "threshold": 0.2,
+        "passed": true
+      }
+    },
+    "cost": {
+      "server.cpuSeconds": {
+        "baselineMedian": 149.359375,
+        "candidateMedian": 147.59375,
+        "growth": -0.01182132022178052,
+        "maximumGrowth": 0.2,
+        "passed": true
+      },
+      "host.cpuSeconds": {
+        "baselineMedian": 22.078125,
+        "candidateMedian": 23.375,
+        "growth": 0.05874026893135174,
+        "maximumGrowth": 0.2,
+        "passed": true
+      },
+      "server.rssBytes": {
+        "baselineMedian": 596660224,
+        "candidateMedian": 591339520,
+        "growth": -0.008917477294414049,
+        "maximumGrowth": 0.2,
+        "passed": true
+      },
+      "host.rssBytes": {
+        "baselineMedian": 467111936,
+        "candidateMedian": 466763776,
+        "growth": -0.0007453459720626792,
+        "maximumGrowth": 0.2,
+        "passed": true
+      },
+      "checkedCoordinates": {
+        "baselineMedian": 22170,
+        "candidateMedian": 20909,
+        "growth": -0.0568786648624267,
+        "maximumGrowth": 0.5,
+        "passed": true
+      },
+      "acquisitionP99": {
+        "baselineMedian": 3863.799300015671,
+        "candidateMedian": 233.48639998584986,
+        "growth": -0.9395707742933483,
+        "maximumGrowth": 0.1,
+        "passed": true
+      }
+    },
+    "scope": "Performance gate only; retaining also requires the named functional and regression proofs."
+  },
+  "cases": {
+    "1-A": {
+      "passed": true,
+      "established": 5400,
+      "initialResponses": {
+        "total": 5400,
+        "notObserved": 338,
+        "notObservedRate": 0.06259259259259259,
+        "byCountry": {
+          "CN": {
+            "total": 3780,
+            "notObserved": 338,
+            "statuses": {
+              "WAITING": 3436,
+              "RECEIVED": 6,
+              "NOT_OBSERVED": 338
+            },
+            "notObservedRate": 0.08941798941798942
+          },
+          "GB": {
+            "total": 540,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 540
+            },
+            "notObservedRate": 0.0
+          },
+          "US": {
+            "total": 1080,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 1078,
+              "RECEIVED": 2
+            },
+            "notObservedRate": 0.0
+          }
+        }
+      },
+      "requestLatencyMillis": {
+        "p95": 3172.910400026012,
+        "p99": 3798.9599000138696
+      },
+      "queryLatencyMillis": {
+        "p95": 4.920499981380999,
+        "p99": 16.444800014141947
+      },
+      "resourcePeaks": {
+        "server": {
+          "rssBytes": 593076224,
+          "threads": 117,
+          "cpuSeconds": 142.1875
+        },
+        "host": {
+          "rssBytes": 467111936,
+          "threads": 65,
+          "cpuSeconds": 19.90625
+        }
+      },
+      "duplicateLeaseCount": 0,
+      "duplicateLeaseRate": 0.0,
+      "artifacts": {
+        "server": {
+          "file": "xa-mass-server-jvm-0.5.0-SNAPSHOT.jar",
+          "sha256": "393d09bd288cb1a1d47223e6f5d205ee9a2f612c8fe2daf85c0c419fa6829e73"
+        },
+        "hostClasspath": [
+          {
+            "file": "annotations-13.0.jar",
+            "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+          },
+          {
+            "file": "carrier-2.31.jar",
+            "sha256": "3517d9c152a732c170496a0496fb7e52fc22627e8a07292041195d3cde801013"
+          },
+          {
+            "file": "error_prone_annotations-2.48.0.jar",
+            "sha256": "b49c5c958316ed67a09c699dda9aa749caf434d51d863dea599ef36a49b9c855"
+          },
+          {
+            "file": "gson-2.14.0.jar",
+            "sha256": "2cbd119bf1961c28788310963dc80ba65f58cdeec1dd139c8bdb1240faa2c36f"
+          },
+          {
+            "file": "kotlin-stdlib-2.2.21.jar",
+            "sha256": "6558a3d233da56a20934b32159f9db5f86ed5816ef098f78a2c223dc6abb79dd"
+          },
+          {
+            "file": "libphonenumber-9.0.31.jar",
+            "sha256": "3cc0cb8ab527891cfb9831d655aa22b228b6a7040806e676d129b87d9f504d60"
+          },
+          {
+            "file": "okhttp-jvm-5.3.0.jar",
+            "sha256": "7d6033eea0eb0045615e36bd5a250f2e0320885ffedb99d5c27a85e6f5f2f8ec"
+          },
+          {
+            "file": "okio-jvm-3.16.2.jar",
+            "sha256": "a0a9f1abfb90c0a37b9c847cea39fff26d15f39253f5175632cdb948c96318d0"
+          },
+          {
+            "file": "prefixmapper-3.31.jar",
+            "sha256": "de95d3d7841fb13486253507dbf491e573db26ad2ef3f6b47bccc5e11ed9b03d"
+          },
+          {
+            "file": "xa-mass-java-worker-0.5.0-SNAPSHOT.jar",
+            "sha256": "fb476623ffbbcbe553b4964d26a0360a076af6a47d5f53b68e0d968afccb0a5b"
+          },
+          {
+            "file": "xa-mass-worker-core-0.5.0-SNAPSHOT.jar",
+            "sha256": "13d57592248feb2f418120d0cc48f1a238ab2cf3fd8abe53cb18f19bcbc334aa"
+          },
+          {
+            "file": "xa-mass-worker-delivery-contract-0.5.0-SNAPSHOT.jar",
+            "sha256": "bda41dc2f3203d487ccaa962fccee7671babb3dc92721b77255ac3c8a870ad6f"
+          },
+          {
+            "file": "xa-mass-worker-simulator-jvm-0.5.0-SNAPSHOT.jar",
+            "sha256": "8d02bf0af6f5c731edd8e9acb152908f10a3c1781a928fcb85bac04e8d40dd33"
+          }
+        ],
+        "frontendSha256": "a332047106f407ad3bd3ce785784a456816981daa6473566bca3417348e8ba29"
+      },
+      "launcherSha256": "560bd1e4549d855c1fb4c85eca2684f6b937d4edac4a77497b46b1b56bd15bae",
+      "actualSubmissionSeconds": 180.0451127999986,
+      "maximumGeneratorLagSeconds": 0.006640566658461466,
+      "generatorRejected": 0,
+      "httpErrors": {},
+      "projection": {
+        "accepted": 5400,
+        "recorded": 5400,
+        "dropped": 0,
+        "failures": 0
+      },
+      "matching": {
+        "sms-reception": {
+          "checkedCoordinates": 22401,
+          "capturedReferences": 22401
+        },
+        "inventory": "resident=900 peakResident=1000 eligibilities=1 admitted=15341 consumed=10977 replacedDeferred=3464 expiredUnused=0 capacityLimited=0"
+      }
+    },
+    "1-B": {
+      "passed": true,
+      "established": 5400,
+      "initialResponses": {
+        "total": 5400,
+        "notObserved": 0,
+        "notObservedRate": 0.0,
+        "byCountry": {
+          "CN": {
+            "total": 3780,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 3774,
+              "RECEIVED": 6
+            },
+            "notObservedRate": 0.0
+          },
+          "US": {
+            "total": 1080,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 1076,
+              "RECEIVED": 4
+            },
+            "notObservedRate": 0.0
+          },
+          "GB": {
+            "total": 540,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 540
+            },
+            "notObservedRate": 0.0
+          }
+        }
+      },
+      "requestLatencyMillis": {
+        "p95": 215.90850001666695,
+        "p99": 268.81999999750406
+      },
+      "queryLatencyMillis": {
+        "p95": 6.066800007829443,
+        "p99": 12.5906000030227
+      },
+      "resourcePeaks": {
+        "server": {
+          "rssBytes": 433704960,
+          "threads": 100,
+          "cpuSeconds": 279.140625
+        },
+        "host": {
+          "rssBytes": 466763776,
+          "threads": 64,
+          "cpuSeconds": 32.890625
+        }
+      },
+      "duplicateLeaseCount": 0,
+      "duplicateLeaseRate": 0.0,
+      "artifacts": {
+        "server": {
+          "file": "xa-mass-server-jvm-0.5.0-SNAPSHOT.jar",
+          "sha256": "c81beb49cc99a5907b66bab6efce9fde15f2aaef9fa309362a060f5e24ddef5b"
+        },
+        "hostClasspath": [
+          {
+            "file": "annotations-13.0.jar",
+            "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+          },
+          {
+            "file": "carrier-2.31.jar",
+            "sha256": "3517d9c152a732c170496a0496fb7e52fc22627e8a07292041195d3cde801013"
+          },
+          {
+            "file": "error_prone_annotations-2.48.0.jar",
+            "sha256": "b49c5c958316ed67a09c699dda9aa749caf434d51d863dea599ef36a49b9c855"
+          },
+          {
+            "file": "gson-2.14.0.jar",
+            "sha256": "2cbd119bf1961c28788310963dc80ba65f58cdeec1dd139c8bdb1240faa2c36f"
+          },
+          {
+            "file": "kotlin-stdlib-2.2.21.jar",
+            "sha256": "6558a3d233da56a20934b32159f9db5f86ed5816ef098f78a2c223dc6abb79dd"
+          },
+          {
+            "file": "libphonenumber-9.0.31.jar",
+            "sha256": "3cc0cb8ab527891cfb9831d655aa22b228b6a7040806e676d129b87d9f504d60"
+          },
+          {
+            "file": "okhttp-jvm-5.3.0.jar",
+            "sha256": "7d6033eea0eb0045615e36bd5a250f2e0320885ffedb99d5c27a85e6f5f2f8ec"
+          },
+          {
+            "file": "okio-jvm-3.16.2.jar",
+            "sha256": "a0a9f1abfb90c0a37b9c847cea39fff26d15f39253f5175632cdb948c96318d0"
+          },
+          {
+            "file": "prefixmapper-3.31.jar",
+            "sha256": "de95d3d7841fb13486253507dbf491e573db26ad2ef3f6b47bccc5e11ed9b03d"
+          },
+          {
+            "file": "xa-mass-java-worker-0.5.0-SNAPSHOT.jar",
+            "sha256": "fb476623ffbbcbe553b4964d26a0360a076af6a47d5f53b68e0d968afccb0a5b"
+          },
+          {
+            "file": "xa-mass-worker-core-0.5.0-SNAPSHOT.jar",
+            "sha256": "13d57592248feb2f418120d0cc48f1a238ab2cf3fd8abe53cb18f19bcbc334aa"
+          },
+          {
+            "file": "xa-mass-worker-delivery-contract-0.5.0-SNAPSHOT.jar",
+            "sha256": "bda41dc2f3203d487ccaa962fccee7671babb3dc92721b77255ac3c8a870ad6f"
+          },
+          {
+            "file": "xa-mass-worker-simulator-jvm-0.5.0-SNAPSHOT.jar",
+            "sha256": "8d02bf0af6f5c731edd8e9acb152908f10a3c1781a928fcb85bac04e8d40dd33"
+          }
+        ],
+        "frontendSha256": "a332047106f407ad3bd3ce785784a456816981daa6473566bca3417348e8ba29"
+      },
+      "launcherSha256": "560bd1e4549d855c1fb4c85eca2684f6b937d4edac4a77497b46b1b56bd15bae",
+      "actualSubmissionSeconds": 180.18778129998827,
+      "maximumGeneratorLagSeconds": 0.323148499999661,
+      "generatorRejected": 0,
+      "httpErrors": {},
+      "projection": {
+        "accepted": 5400,
+        "recorded": 5400,
+        "dropped": 0,
+        "failures": 0
+      },
+      "matching": {
+        "sms-reception": {
+          "checkedCoordinates": 21361,
+          "capturedReferences": 21361
+        },
+        "inventory": "resident=895 peakResident=1000 eligibilities=1 admitted=14511 consumed=10483 replacedDeferred=3133 expiredUnused=0 capacityLimited=0"
+      }
+    },
+    "2-B": {
+      "passed": true,
+      "established": 5400,
+      "initialResponses": {
+        "total": 5400,
+        "notObserved": 0,
+        "notObservedRate": 0.0,
+        "byCountry": {
+          "CN": {
+            "total": 3780,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 3762,
+              "RECEIVED": 18
+            },
+            "notObservedRate": 0.0
+          },
+          "US": {
+            "total": 1080,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 1078,
+              "RECEIVED": 2
+            },
+            "notObservedRate": 0.0
+          },
+          "GB": {
+            "total": 540,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 539,
+              "RECEIVED": 1
+            },
+            "notObservedRate": 0.0
+          }
+        }
+      },
+      "requestLatencyMillis": {
+        "p95": 202.26580000598915,
+        "p99": 233.48639998584986
+      },
+      "queryLatencyMillis": {
+        "p95": 4.055600002175197,
+        "p99": 6.312100013019517
+      },
+      "resourcePeaks": {
+        "server": {
+          "rssBytes": 591339520,
+          "threads": 98,
+          "cpuSeconds": 147.59375
+        },
+        "host": {
+          "rssBytes": 465625088,
+          "threads": 64,
+          "cpuSeconds": 23.375
+        }
+      },
+      "duplicateLeaseCount": 0,
+      "duplicateLeaseRate": 0.0,
+      "artifacts": {
+        "server": {
+          "file": "xa-mass-server-jvm-0.5.0-SNAPSHOT.jar",
+          "sha256": "c81beb49cc99a5907b66bab6efce9fde15f2aaef9fa309362a060f5e24ddef5b"
+        },
+        "hostClasspath": [
+          {
+            "file": "annotations-13.0.jar",
+            "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+          },
+          {
+            "file": "carrier-2.31.jar",
+            "sha256": "3517d9c152a732c170496a0496fb7e52fc22627e8a07292041195d3cde801013"
+          },
+          {
+            "file": "error_prone_annotations-2.48.0.jar",
+            "sha256": "b49c5c958316ed67a09c699dda9aa749caf434d51d863dea599ef36a49b9c855"
+          },
+          {
+            "file": "gson-2.14.0.jar",
+            "sha256": "2cbd119bf1961c28788310963dc80ba65f58cdeec1dd139c8bdb1240faa2c36f"
+          },
+          {
+            "file": "kotlin-stdlib-2.2.21.jar",
+            "sha256": "6558a3d233da56a20934b32159f9db5f86ed5816ef098f78a2c223dc6abb79dd"
+          },
+          {
+            "file": "libphonenumber-9.0.31.jar",
+            "sha256": "3cc0cb8ab527891cfb9831d655aa22b228b6a7040806e676d129b87d9f504d60"
+          },
+          {
+            "file": "okhttp-jvm-5.3.0.jar",
+            "sha256": "7d6033eea0eb0045615e36bd5a250f2e0320885ffedb99d5c27a85e6f5f2f8ec"
+          },
+          {
+            "file": "okio-jvm-3.16.2.jar",
+            "sha256": "a0a9f1abfb90c0a37b9c847cea39fff26d15f39253f5175632cdb948c96318d0"
+          },
+          {
+            "file": "prefixmapper-3.31.jar",
+            "sha256": "de95d3d7841fb13486253507dbf491e573db26ad2ef3f6b47bccc5e11ed9b03d"
+          },
+          {
+            "file": "xa-mass-java-worker-0.5.0-SNAPSHOT.jar",
+            "sha256": "fb476623ffbbcbe553b4964d26a0360a076af6a47d5f53b68e0d968afccb0a5b"
+          },
+          {
+            "file": "xa-mass-worker-core-0.5.0-SNAPSHOT.jar",
+            "sha256": "13d57592248feb2f418120d0cc48f1a238ab2cf3fd8abe53cb18f19bcbc334aa"
+          },
+          {
+            "file": "xa-mass-worker-delivery-contract-0.5.0-SNAPSHOT.jar",
+            "sha256": "bda41dc2f3203d487ccaa962fccee7671babb3dc92721b77255ac3c8a870ad6f"
+          },
+          {
+            "file": "xa-mass-worker-simulator-jvm-0.5.0-SNAPSHOT.jar",
+            "sha256": "8d02bf0af6f5c731edd8e9acb152908f10a3c1781a928fcb85bac04e8d40dd33"
+          }
+        ],
+        "frontendSha256": "a332047106f407ad3bd3ce785784a456816981daa6473566bca3417348e8ba29"
+      },
+      "launcherSha256": "560bd1e4549d855c1fb4c85eca2684f6b937d4edac4a77497b46b1b56bd15bae",
+      "actualSubmissionSeconds": 180.82685450001736,
+      "maximumGeneratorLagSeconds": 0.00482066668337211,
+      "generatorRejected": 0,
+      "httpErrors": {},
+      "projection": {
+        "accepted": 5400,
+        "recorded": 5400,
+        "dropped": 0,
+        "failures": 0
+      },
+      "matching": {
+        "sms-reception": {
+          "capturedReferences": 20854,
+          "checkedCoordinates": 20854
+        },
+        "inventory": "resident=900 peakResident=1000 eligibilities=1 admitted=14293 consumed=10530 replacedDeferred=2863 expiredUnused=0 capacityLimited=0"
+      }
+    },
+    "2-A": {
+      "passed": true,
+      "established": 5400,
+      "initialResponses": {
+        "total": 5400,
+        "notObserved": 370,
+        "notObservedRate": 0.06851851851851852,
+        "byCountry": {
+          "CN": {
+            "total": 3780,
+            "notObserved": 370,
+            "statuses": {
+              "WAITING": 3401,
+              "RECEIVED": 9,
+              "NOT_OBSERVED": 370
+            },
+            "notObservedRate": 0.09788359788359788
+          },
+          "GB": {
+            "total": 540,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 538,
+              "RECEIVED": 2
+            },
+            "notObservedRate": 0.0
+          },
+          "US": {
+            "total": 1080,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 1079,
+              "RECEIVED": 1
+            },
+            "notObservedRate": 0.0
+          }
+        }
+      },
+      "requestLatencyMillis": {
+        "p95": 3338.770000002114,
+        "p99": 3863.799300015671
+      },
+      "queryLatencyMillis": {
+        "p95": 6.17380000767298,
+        "p99": 15.334299998357892
+      },
+      "resourcePeaks": {
+        "server": {
+          "rssBytes": 596660224,
+          "threads": 119,
+          "cpuSeconds": 149.359375
+        },
+        "host": {
+          "rssBytes": 469270528,
+          "threads": 64,
+          "cpuSeconds": 22.1875
+        }
+      },
+      "duplicateLeaseCount": 0,
+      "duplicateLeaseRate": 0.0,
+      "artifacts": {
+        "server": {
+          "file": "xa-mass-server-jvm-0.5.0-SNAPSHOT.jar",
+          "sha256": "393d09bd288cb1a1d47223e6f5d205ee9a2f612c8fe2daf85c0c419fa6829e73"
+        },
+        "hostClasspath": [
+          {
+            "file": "annotations-13.0.jar",
+            "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+          },
+          {
+            "file": "carrier-2.31.jar",
+            "sha256": "3517d9c152a732c170496a0496fb7e52fc22627e8a07292041195d3cde801013"
+          },
+          {
+            "file": "error_prone_annotations-2.48.0.jar",
+            "sha256": "b49c5c958316ed67a09c699dda9aa749caf434d51d863dea599ef36a49b9c855"
+          },
+          {
+            "file": "gson-2.14.0.jar",
+            "sha256": "2cbd119bf1961c28788310963dc80ba65f58cdeec1dd139c8bdb1240faa2c36f"
+          },
+          {
+            "file": "kotlin-stdlib-2.2.21.jar",
+            "sha256": "6558a3d233da56a20934b32159f9db5f86ed5816ef098f78a2c223dc6abb79dd"
+          },
+          {
+            "file": "libphonenumber-9.0.31.jar",
+            "sha256": "3cc0cb8ab527891cfb9831d655aa22b228b6a7040806e676d129b87d9f504d60"
+          },
+          {
+            "file": "okhttp-jvm-5.3.0.jar",
+            "sha256": "7d6033eea0eb0045615e36bd5a250f2e0320885ffedb99d5c27a85e6f5f2f8ec"
+          },
+          {
+            "file": "okio-jvm-3.16.2.jar",
+            "sha256": "a0a9f1abfb90c0a37b9c847cea39fff26d15f39253f5175632cdb948c96318d0"
+          },
+          {
+            "file": "prefixmapper-3.31.jar",
+            "sha256": "de95d3d7841fb13486253507dbf491e573db26ad2ef3f6b47bccc5e11ed9b03d"
+          },
+          {
+            "file": "xa-mass-java-worker-0.5.0-SNAPSHOT.jar",
+            "sha256": "fb476623ffbbcbe553b4964d26a0360a076af6a47d5f53b68e0d968afccb0a5b"
+          },
+          {
+            "file": "xa-mass-worker-core-0.5.0-SNAPSHOT.jar",
+            "sha256": "13d57592248feb2f418120d0cc48f1a238ab2cf3fd8abe53cb18f19bcbc334aa"
+          },
+          {
+            "file": "xa-mass-worker-delivery-contract-0.5.0-SNAPSHOT.jar",
+            "sha256": "bda41dc2f3203d487ccaa962fccee7671babb3dc92721b77255ac3c8a870ad6f"
+          },
+          {
+            "file": "xa-mass-worker-simulator-jvm-0.5.0-SNAPSHOT.jar",
+            "sha256": "8d02bf0af6f5c731edd8e9acb152908f10a3c1781a928fcb85bac04e8d40dd33"
+          }
+        ],
+        "frontendSha256": "a332047106f407ad3bd3ce785784a456816981daa6473566bca3417348e8ba29"
+      },
+      "launcherSha256": "560bd1e4549d855c1fb4c85eca2684f6b937d4edac4a77497b46b1b56bd15bae",
+      "actualSubmissionSeconds": 180.24470510001993,
+      "maximumGeneratorLagSeconds": 0.0295780666929204,
+      "generatorRejected": 0,
+      "httpErrors": {},
+      "projection": {
+        "accepted": 5400,
+        "recorded": 5400,
+        "dropped": 0,
+        "failures": 0
+      },
+      "matching": {
+        "sms-reception": {
+          "capturedReferences": 22170,
+          "checkedCoordinates": 22170
+        },
+        "inventory": "resident=900 peakResident=1000 eligibilities=1 admitted=15549 consumed=11736 replacedDeferred=2913 expiredUnused=0 capacityLimited=0"
+      }
+    },
+    "3-A": {
+      "passed": true,
+      "established": 5400,
+      "initialResponses": {
+        "total": 5400,
+        "notObserved": 385,
+        "notObservedRate": 0.0712962962962963,
+        "byCountry": {
+          "CN": {
+            "total": 3780,
+            "notObserved": 385,
+            "statuses": {
+              "WAITING": 3385,
+              "RECEIVED": 10,
+              "NOT_OBSERVED": 385
+            },
+            "notObservedRate": 0.10185185185185185
+          },
+          "US": {
+            "total": 1080,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 1079,
+              "RECEIVED": 1
+            },
+            "notObservedRate": 0.0
+          },
+          "GB": {
+            "total": 540,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 539,
+              "RECEIVED": 1
+            },
+            "notObservedRate": 0.0
+          }
+        }
+      },
+      "requestLatencyMillis": {
+        "p95": 3339.9281000019982,
+        "p99": 3905.295799981104
+      },
+      "queryLatencyMillis": {
+        "p95": 6.458599993493408,
+        "p99": 15.640199999324977
+      },
+      "resourcePeaks": {
+        "server": {
+          "rssBytes": 600166400,
+          "threads": 110,
+          "cpuSeconds": 160.21875
+        },
+        "host": {
+          "rssBytes": 464396288,
+          "threads": 64,
+          "cpuSeconds": 22.078125
+        }
+      },
+      "duplicateLeaseCount": 0,
+      "duplicateLeaseRate": 0.0,
+      "artifacts": {
+        "server": {
+          "file": "xa-mass-server-jvm-0.5.0-SNAPSHOT.jar",
+          "sha256": "393d09bd288cb1a1d47223e6f5d205ee9a2f612c8fe2daf85c0c419fa6829e73"
+        },
+        "hostClasspath": [
+          {
+            "file": "annotations-13.0.jar",
+            "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+          },
+          {
+            "file": "carrier-2.31.jar",
+            "sha256": "3517d9c152a732c170496a0496fb7e52fc22627e8a07292041195d3cde801013"
+          },
+          {
+            "file": "error_prone_annotations-2.48.0.jar",
+            "sha256": "b49c5c958316ed67a09c699dda9aa749caf434d51d863dea599ef36a49b9c855"
+          },
+          {
+            "file": "gson-2.14.0.jar",
+            "sha256": "2cbd119bf1961c28788310963dc80ba65f58cdeec1dd139c8bdb1240faa2c36f"
+          },
+          {
+            "file": "kotlin-stdlib-2.2.21.jar",
+            "sha256": "6558a3d233da56a20934b32159f9db5f86ed5816ef098f78a2c223dc6abb79dd"
+          },
+          {
+            "file": "libphonenumber-9.0.31.jar",
+            "sha256": "3cc0cb8ab527891cfb9831d655aa22b228b6a7040806e676d129b87d9f504d60"
+          },
+          {
+            "file": "okhttp-jvm-5.3.0.jar",
+            "sha256": "7d6033eea0eb0045615e36bd5a250f2e0320885ffedb99d5c27a85e6f5f2f8ec"
+          },
+          {
+            "file": "okio-jvm-3.16.2.jar",
+            "sha256": "a0a9f1abfb90c0a37b9c847cea39fff26d15f39253f5175632cdb948c96318d0"
+          },
+          {
+            "file": "prefixmapper-3.31.jar",
+            "sha256": "de95d3d7841fb13486253507dbf491e573db26ad2ef3f6b47bccc5e11ed9b03d"
+          },
+          {
+            "file": "xa-mass-java-worker-0.5.0-SNAPSHOT.jar",
+            "sha256": "fb476623ffbbcbe553b4964d26a0360a076af6a47d5f53b68e0d968afccb0a5b"
+          },
+          {
+            "file": "xa-mass-worker-core-0.5.0-SNAPSHOT.jar",
+            "sha256": "13d57592248feb2f418120d0cc48f1a238ab2cf3fd8abe53cb18f19bcbc334aa"
+          },
+          {
+            "file": "xa-mass-worker-delivery-contract-0.5.0-SNAPSHOT.jar",
+            "sha256": "bda41dc2f3203d487ccaa962fccee7671babb3dc92721b77255ac3c8a870ad6f"
+          },
+          {
+            "file": "xa-mass-worker-simulator-jvm-0.5.0-SNAPSHOT.jar",
+            "sha256": "8d02bf0af6f5c731edd8e9acb152908f10a3c1781a928fcb85bac04e8d40dd33"
+          }
+        ],
+        "frontendSha256": "a332047106f407ad3bd3ce785784a456816981daa6473566bca3417348e8ba29"
+      },
+      "launcherSha256": "560bd1e4549d855c1fb4c85eca2684f6b937d4edac4a77497b46b1b56bd15bae",
+      "actualSubmissionSeconds": 180.29855909998878,
+      "maximumGeneratorLagSeconds": 0.007957199995871633,
+      "generatorRejected": 0,
+      "httpErrors": {},
+      "projection": {
+        "accepted": 5400,
+        "recorded": 5400,
+        "dropped": 0,
+        "failures": 0
+      },
+      "matching": {
+        "sms-reception": {
+          "capturedReferences": 22052,
+          "checkedCoordinates": 22052
+        },
+        "inventory": "resident=901 peakResident=1000 eligibilities=1 admitted=15532 consumed=11686 replacedDeferred=2945 expiredUnused=0 capacityLimited=0"
+      }
+    },
+    "3-B": {
+      "passed": true,
+      "established": 5400,
+      "initialResponses": {
+        "total": 5400,
+        "notObserved": 0,
+        "notObservedRate": 0.0,
+        "byCountry": {
+          "CN": {
+            "total": 3780,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 3773,
+              "RECEIVED": 7
+            },
+            "notObservedRate": 0.0
+          },
+          "GB": {
+            "total": 540,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 539,
+              "RECEIVED": 1
+            },
+            "notObservedRate": 0.0
+          },
+          "US": {
+            "total": 1080,
+            "notObserved": 0,
+            "statuses": {
+              "WAITING": 1077,
+              "RECEIVED": 3
+            },
+            "notObservedRate": 0.0
+          }
+        }
+      },
+      "requestLatencyMillis": {
+        "p95": 201.32590000866912,
+        "p99": 224.15710001951084
+      },
+      "queryLatencyMillis": {
+        "p95": 3.6656000011134893,
+        "p99": 5.771900003310293
+      },
+      "resourcePeaks": {
+        "server": {
+          "rssBytes": 598822912,
+          "threads": 95,
+          "cpuSeconds": 145.265625
+        },
+        "host": {
+          "rssBytes": 467091456,
+          "threads": 64,
+          "cpuSeconds": 21.8125
+        }
+      },
+      "duplicateLeaseCount": 0,
+      "duplicateLeaseRate": 0.0,
+      "artifacts": {
+        "server": {
+          "file": "xa-mass-server-jvm-0.5.0-SNAPSHOT.jar",
+          "sha256": "c81beb49cc99a5907b66bab6efce9fde15f2aaef9fa309362a060f5e24ddef5b"
+        },
+        "hostClasspath": [
+          {
+            "file": "annotations-13.0.jar",
+            "sha256": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+          },
+          {
+            "file": "carrier-2.31.jar",
+            "sha256": "3517d9c152a732c170496a0496fb7e52fc22627e8a07292041195d3cde801013"
+          },
+          {
+            "file": "error_prone_annotations-2.48.0.jar",
+            "sha256": "b49c5c958316ed67a09c699dda9aa749caf434d51d863dea599ef36a49b9c855"
+          },
+          {
+            "file": "gson-2.14.0.jar",
+            "sha256": "2cbd119bf1961c28788310963dc80ba65f58cdeec1dd139c8bdb1240faa2c36f"
+          },
+          {
+            "file": "kotlin-stdlib-2.2.21.jar",
+            "sha256": "6558a3d233da56a20934b32159f9db5f86ed5816ef098f78a2c223dc6abb79dd"
+          },
+          {
+            "file": "libphonenumber-9.0.31.jar",
+            "sha256": "3cc0cb8ab527891cfb9831d655aa22b228b6a7040806e676d129b87d9f504d60"
+          },
+          {
+            "file": "okhttp-jvm-5.3.0.jar",
+            "sha256": "7d6033eea0eb0045615e36bd5a250f2e0320885ffedb99d5c27a85e6f5f2f8ec"
+          },
+          {
+            "file": "okio-jvm-3.16.2.jar",
+            "sha256": "a0a9f1abfb90c0a37b9c847cea39fff26d15f39253f5175632cdb948c96318d0"
+          },
+          {
+            "file": "prefixmapper-3.31.jar",
+            "sha256": "de95d3d7841fb13486253507dbf491e573db26ad2ef3f6b47bccc5e11ed9b03d"
+          },
+          {
+            "file": "xa-mass-java-worker-0.5.0-SNAPSHOT.jar",
+            "sha256": "fb476623ffbbcbe553b4964d26a0360a076af6a47d5f53b68e0d968afccb0a5b"
+          },
+          {
+            "file": "xa-mass-worker-core-0.5.0-SNAPSHOT.jar",
+            "sha256": "13d57592248feb2f418120d0cc48f1a238ab2cf3fd8abe53cb18f19bcbc334aa"
+          },
+          {
+            "file": "xa-mass-worker-delivery-contract-0.5.0-SNAPSHOT.jar",
+            "sha256": "bda41dc2f3203d487ccaa962fccee7671babb3dc92721b77255ac3c8a870ad6f"
+          },
+          {
+            "file": "xa-mass-worker-simulator-jvm-0.5.0-SNAPSHOT.jar",
+            "sha256": "8d02bf0af6f5c731edd8e9acb152908f10a3c1781a928fcb85bac04e8d40dd33"
+          }
+        ],
+        "frontendSha256": "a332047106f407ad3bd3ce785784a456816981daa6473566bca3417348e8ba29"
+      },
+      "launcherSha256": "560bd1e4549d855c1fb4c85eca2684f6b937d4edac4a77497b46b1b56bd15bae",
+      "actualSubmissionSeconds": 180.08355859998846,
+      "maximumGeneratorLagSeconds": 0.006664466665824875,
+      "generatorRejected": 0,
+      "httpErrors": {},
+      "projection": {
+        "accepted": 5400,
+        "recorded": 5400,
+        "dropped": 0,
+        "failures": 0
+      },
+      "matching": {
+        "sms-reception": {
+          "checkedCoordinates": 20909,
+          "capturedReferences": 20909
+        },
+        "inventory": "resident=897 peakResident=1000 eligibilities=1 admitted=14201 consumed=10443 replacedDeferred=2861 expiredUnused=0 capacityLimited=0"
+      }
+    }
+  },
+  "diagnostics": {
+    "A": {
+      "ownerStageCalls": {
+        "DISPATCH_DEFER": 3974,
+        "RECYCLE_OBSERVATION": 2905,
+        "REFILL_OBSERVATION": 2905,
+        "CANDIDATEIZE": 1797,
+        "DISPATCH_CHECK": 1800,
+        "REFILL_ROUND": 2905,
+        "CANDIDATES": 1799,
+        "WORKER_CONFIRM": 1662,
+        "WORKER_CONFIRM_REJECTED": 1662,
+        "ITEM_CLAIM": 1661,
+        "CLAIMED": 1661,
+        "COMMAND_APPEND": 1661,
+        "COMMAND_PUBLISHED": 1661,
+        "DISPATCH_ROUND": 1800,
+        "CANDIDATE_RECYCLE": 837
+      },
+      "ownerRequestedRows": {
+        "DISPATCH_DEFER": 0,
+        "RECYCLE_OBSERVATION": 290500,
+        "REFILL_OBSERVATION": 286754,
+        "CANDIDATEIZE": 9970,
+        "DISPATCH_CHECK": 26075,
+        "REFILL_ROUND": 2905,
+        "CANDIDATES": 26075,
+        "WORKER_CONFIRM": 5466,
+        "WORKER_CONFIRM_REJECTED": 5466,
+        "ITEM_CLAIM": 5400,
+        "CLAIMED": 5400,
+        "COMMAND_APPEND": 5400,
+        "COMMAND_PUBLISHED": 5400,
+        "DISPATCH_ROUND": 1800,
+        "CANDIDATE_RECYCLE": 3571
+      },
+      "ownerStageCounts": {
+        "DISPATCH_DEFER": 0,
+        "RECYCLE_OBSERVATION": 3571,
+        "REFILL_OBSERVATION": 9970,
+        "CANDIDATEIZE": 9970,
+        "DISPATCH_CHECK": 26075,
+        "REFILL_ROUND": 6667,
+        "CANDIDATES": 5466,
+        "WORKER_CONFIRM": 5400,
+        "WORKER_CONFIRM_REJECTED": 66,
+        "ITEM_CLAIM": 5400,
+        "CLAIMED": 5400,
+        "COMMAND_APPEND": 5400,
+        "COMMAND_PUBLISHED": 5400,
+        "DISPATCH_ROUND": 5400,
+        "CANDIDATE_RECYCLE": 3571
+      },
+      "hints": null,
+      "scoreRefillRedisCommands": {
+        "ZRANGEBYSCORE": 5810,
+        "EVAL": 2634
+      },
+      "commandScope": "Successful Pacer Score supply/recycle operations: one range read or exact EVAL per recorded stage; excludes Matching and other Owners.",
+      "executionSampleCount": 1239,
+      "topSampledFrames": [
+        [
+          "java.lang.ThreadLocal$ThreadLocalMap.getEntry",
+          59
+        ],
+        [
+          "java.lang.reflect.Executable.equalParamTypes",
+          40
+        ],
+        [
+          "java.util.HashMap.getNode",
+          37
+        ],
+        [
+          "io.netty.channel.nio.AbstractNioChannel.unsafe",
+          29
+        ],
+        [
+          "sun.nio.ch.WEPollSelectorImpl.wakeup",
+          19
+        ],
+        [
+          "io.netty.util.HashedWheelTimer$Worker.processCancelledTasks",
+          16
+        ],
+        [
+          "java.lang.invoke.Invokers.checkCustomized",
+          16
+        ],
+        [
+          "java.util.WeakHashMap.put",
+          15
+        ],
+        [
+          "java.util.concurrent.ConcurrentHashMap.get",
+          15
+        ],
+        [
+          "io.lettuce.core.AbstractRedisAsyncCommands.dispatch",
+          15
+        ],
+        [
+          "java.lang.String.hashCode",
+          14
+        ],
+        [
+          "io.netty.channel.AbstractChannelHandlerContext.write",
+          13
+        ],
+        [
+          "java.lang.reflect.Method.invoke",
+          13
+        ],
+        [
+          "io.netty.util.HashedWheelTimer$Worker.run",
+          13
+        ],
+        [
+          "java.util.HashMap.putVal",
+          12
+        ]
+      ],
+      "gcEvents": 119,
+      "dataLossEvents": 0
+    },
+    "B": {
+      "ownerStageCalls": {
+        "DISPATCH_DEFER": 3985,
+        "RECYCLE_OBSERVATION": 2919,
+        "REFILL_OBSERVATION": 2919,
+        "CANDIDATEIZE": 1988,
+        "DISPATCH_CHECK": 1801,
+        "REFILL_ROUND": 2919,
+        "CANDIDATES": 1800,
+        "WORKER_CONFIRM": 1800,
+        "WORKER_CONFIRM_REJECTED": 1800,
+        "ITEM_CLAIM": 1800,
+        "CLAIMED": 1800,
+        "COMMAND_APPEND": 1800,
+        "COMMAND_PUBLISHED": 1800,
+        "DISPATCH_ROUND": 1801,
+        "CANDIDATE_RECYCLE": 1095
+      },
+      "ownerRequestedRows": {
+        "DISPATCH_DEFER": 0,
+        "RECYCLE_OBSERVATION": 286766,
+        "REFILL_OBSERVATION": 282428,
+        "CANDIDATEIZE": 13198,
+        "DISPATCH_CHECK": 5467,
+        "REFILL_ROUND": 2919,
+        "CANDIDATES": 5467,
+        "WORKER_CONFIRM": 5467,
+        "WORKER_CONFIRM_REJECTED": 5467,
+        "ITEM_CLAIM": 5400,
+        "CLAIMED": 5400,
+        "COMMAND_APPEND": 5400,
+        "COMMAND_PUBLISHED": 5400,
+        "DISPATCH_ROUND": 1801,
+        "CANDIDATE_RECYCLE": 6800
+      },
+      "ownerStageCounts": {
+        "DISPATCH_DEFER": 0,
+        "RECYCLE_OBSERVATION": 1666,
+        "REFILL_OBSERVATION": 13198,
+        "CANDIDATEIZE": 13198,
+        "DISPATCH_CHECK": 5467,
+        "REFILL_ROUND": 6519,
+        "CANDIDATES": 5467,
+        "WORKER_CONFIRM": 5400,
+        "WORKER_CONFIRM_REJECTED": 67,
+        "ITEM_CLAIM": 5400,
+        "CLAIMED": 5400,
+        "COMMAND_APPEND": 5400,
+        "COMMAND_PUBLISHED": 5400,
+        "DISPATCH_ROUND": 5400,
+        "CANDIDATE_RECYCLE": 6800
+      },
+      "hints": {
+        "pending": 154,
+        "peak": 698,
+        "accepted": 5288,
+        "dropped": 0,
+        "attempted": 5134,
+        "recycled": 5134,
+        "stale": 0,
+        "failed": 0,
+        "retired": 0
+      },
+      "scoreRefillRedisCommands": {
+        "ZRANGEBYSCORE": 5838,
+        "EVAL": 3083
+      },
+      "commandScope": "Successful Pacer Score supply/recycle operations: one range read or exact EVAL per recorded stage; excludes Matching and other Owners.",
+      "executionSampleCount": 1140,
+      "topSampledFrames": [
+        [
+          "java.util.HashMap.getNode",
+          43
+        ],
+        [
+          "sun.nio.ch.WEPollSelectorImpl.wakeup",
+          23
+        ],
+        [
+          "io.lettuce.core.RedisChannelHandler.dispatch",
+          21
+        ],
+        [
+          "java.lang.AbstractStringBuilder.ensureCapacityInternal",
+          16
+        ],
+        [
+          "java.util.concurrent.ConcurrentHashMap.get",
+          16
+        ],
+        [
+          "java.util.WeakHashMap.get",
+          15
+        ],
+        [
+          "java.util.concurrent.ThreadPoolExecutor.runWorker",
+          15
+        ],
+        [
+          "io.netty.channel.AbstractChannelHandlerContext.writeAndFlush",
+          15
+        ],
+        [
+          "java.lang.reflect.Executable.equalParamTypes",
+          14
+        ],
+        [
+          "io.lettuce.core.protocol.MaintenanceAwareExpiryWriter.write",
+          13
+        ],
+        [
+          "java.lang.invoke.Invokers$Holder.invokeExact_MT",
+          12
+        ],
+        [
+          "io.netty.util.internal.LongLongHashMap.get",
+          11
+        ],
+        [
+          "io.netty.util.internal.shaded.org.jctools.queues.BaseMpscLinkedArrayQueue.poll",
+          11
+        ],
+        [
+          "java.lang.String.hashCode",
+          10
+        ],
+        [
+          "io.netty.channel.AbstractChannelHandlerContext.write",
+          10
+        ]
+      ],
+      "gcEvents": 87,
+      "dataLossEvents": 0
+    }
+  },
+  "observationRepair": {
+    "serverSha256": "cb35a98068cc099da85b4f6317aee1b142ed9f8d39569f50b5f923d647a8da34",
+    "changedProductionClasses": [
+      "com/xa/mass/kernel/assignment/WorkerMatching$RefillOutcome.class",
+      "com/xa/mass/kernel/assignment/WorkerMatching$WorkerCandidate.class",
+      "com/xa/mass/kernel/pacer/dispatch/CandidateRecycleEvent.class",
+      "com/xa/mass/kernel/pacer/dispatch/CandidateRecycleHints.class"
+    ],
+    "reason": "JFR exception boundary moved outside Event class; policy unchanged. Recompiled source includes updated API Javadoc line numbers."
+  },
+  "initialRegressionResults": {
+    "server_jvm:redisOwnerIntegrationTest": {
+      "tests": 276,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "server_jvm:runtimeBoundaryIntegrationTest": {
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "server_boot_jvm:smsCompositionIntegrationTest": {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "server_boot_jvm:scenarioCompositionIntegrationTest": {
+      "tests": 22,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "finalDecision": "retain",
+  "verification": {
+    "worker_matching_jvm:test": {
+      "tests": 127,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "kernel_pacer_jvm:test": {
+      "tests": 179,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "server_jvm:redisOwnerIntegrationTest": {
+      "tests": 277,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "server_jvm:runtimeBoundaryIntegrationTest": {
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "server_boot_jvm:smsCompositionIntegrationTest": {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "server_boot_jvm:scenarioCompositionIntegrationTest": {
+      "tests": 22,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "app-checks-source": {
+      "passed": true
+    },
+    "app-checks-zip": {
+      "passed": true
+    },
+    "coexistence-functional": {
+      "passed": false,
+      "failureType": "TypeError",
+      "failedStage": "duplicate-execution-association",
+      "durationSeconds": 8.987
+    },
+    "coexistence-functional-corrected": {
+      "passed": true,
+      "durationSeconds": 10.565
+    },
+    "coexistence-lifecycle": {
+      "passed": true,
+      "durationSeconds": 8.631
+    },
+    "coexistence-load-1k": {
+      "passed": false,
+      "failureType": "AssertionError",
+      "failure": "Timed out: 1k complete business observations",
+      "durationSeconds": 191.24
+    },
+    "coexistence-pool-selection": {
+      "passed": true,
+      "durationSeconds": 31.24
+    },
+    "load-1k-bounded-A": {
+      "passed": true,
+      "durationSeconds": 174.273
+    },
+    "load-1k-bounded-B-observation": {
+      "passed": true,
+      "durationSeconds": 177.649
+    },
+    "load-1k-isolated-A": {
+      "passed": false,
+      "failureType": "AssertionError",
+      "failure": "Timed out: 1k complete business observations",
+      "durationSeconds": 190.383,
+      "loadProgress": {
+        "acceptedSms": 1500,
+        "campaigns": 12,
+        "sent": 12000,
+        "replied": 10346,
+        "activeSms": 0,
+        "receiptMessages": 10596,
+        "manualActions": 31086,
+        "errors": {
+          "message.receipt:AssertionError:Timed out: bounded load callbacks": 7
+        }
+      }
+    },
+    "load-1k-isolated-B-observation": {
+      "passed": false,
+      "failureType": "AssertionError",
+      "failure": "Timed out: 1k complete business observations",
+      "durationSeconds": 189.599,
+      "loadProgress": {
+        "acceptedSms": 1500,
+        "campaigns": 12,
+        "sent": 12000,
+        "replied": 10255,
+        "activeSms": 0,
+        "receiptMessages": 10500,
+        "manualActions": 30799,
+        "errors": {}
+      }
+    },
+    "messages-send-100k": {
+      "passed": false,
+      "failureType": "TimeoutError",
+      "durationSeconds": 126.123,
+      "verifiedBeforeFailure": 44319
+    },
+    "messages-send-100k-bounded-A": {
+      "passed": true,
+      "durationSeconds": 219.197,
+      "verifiedSends": 105000
+    },
+    "messages-send-100k-bounded-B-observation": {
+      "passed": true,
+      "durationSeconds": 219.198,
+      "verifiedSends": 105000
+    },
+    "messages-send-100k-isolated-A": {
+      "passed": false,
+      "failureType": "TimeoutError",
+      "durationSeconds": 113.547,
+      "verifiedBeforeFailure": 33300
+    },
+    "messages-send-100k-isolated-B-observation": {
+      "passed": false,
+      "failureType": "TimeoutError",
+      "durationSeconds": 73.0,
+      "verifiedBeforeFailure": 0
+    },
+    "sms-functional": {
+      "passed": true
+    },
+    "sms-lifecycle": {
+      "passed": true
+    },
+    "zip-coexistence-functional": {
+      "passed": true,
+      "durationSeconds": 10.507
+    },
+    "zip-coexistence-pool-selection": {
+      "passed": true,
+      "durationSeconds": 29.545
+    },
+    "zip-sms-functional": {
+      "passed": true
+    },
+    "android/convergence-active": {
+      "status": "succeeded",
+      "phase": "active"
+    },
+    "android/convergence-process-loss-recovery": {
+      "status": "succeeded",
+      "phase": "process-loss-recovery"
+    },
+    "android/convergence-process-loss": {
+      "status": "succeeded",
+      "phase": "process-loss"
+    },
+    "android/convergence-server-restart": {
+      "status": "succeeded",
+      "phase": "server-restart"
+    },
+    "android/convergence-terminal": {
+      "status": "succeeded",
+      "phase": "terminal"
+    },
+    "android/correctness-initial": {
+      "status": "succeeded",
+      "phase": "initial"
+    },
+    "android/correctness-process-restart": {
+      "status": "succeeded",
+      "phase": "process-restart"
+    },
+    "android/triad-convergence-baseline": {
+      "status": "succeeded",
+      "phase": "baseline"
+    },
+    "android/triad-convergence-outage": {
+      "status": "succeeded",
+      "phase": "outage"
+    },
+    "android/triad-convergence-recovery": {
+      "status": "succeeded",
+      "phase": "recovery"
+    },
+    "android/triad-correctness": {
+      "status": "succeeded",
+      "phase": "initial"
+    },
+    "worker-correctness/worker-correctness-initial": {
+      "status": "succeeded",
+      "phase": "initial"
+    },
+    "worker-correctness/worker-correctness-live-properties": {
+      "status": "succeeded",
+      "phase": "live-properties",
+      "harnessStatus": "succeeded",
+      "controlFileRecordsUnchanged": true
+    },
+    "worker-correctness/worker-correctness-restart": {
+      "status": "succeeded",
+      "phase": "restart"
+    },
+    "convergence/worker-convergence-state-server-convergence-summary": {
+      "status": "succeeded"
+    },
+    "convergence/worker-convergence-in-flight-loss-convergence-summary": {
+      "status": "succeeded"
+    },
+    "dynamic-matching/worker-dynamic-matching": {
+      "status": "succeeded",
+      "phase": "complete",
+      "harnessStatus": "succeeded",
+      "processesUnchanged": true,
+      "controlFileRecordsUnchanged": true
+    },
+    "frontend": {
+      "lint": "passed",
+      "typecheck": "passed",
+      "testFiles": 23,
+      "tests": 261,
+      "failures": 0
+    },
+    "python/app-checks-python-tests": {
+      "tests": 5,
+      "passed": true,
+      "skipped": 0
+    },
+    "python/coexistence-python-tests": {
+      "tests": 24,
+      "passed": true,
+      "skipped": 0
+    },
+    "python/inventory-python-tests": {
+      "tests": 7,
+      "passed": true,
+      "skipped": 0
+    },
+    "python/simulator-python-tests": {
+      "tests": 2,
+      "passed": true,
+      "skipped": 0
+    },
+    "python/worker-call-performance-python-tests": {
+      "tests": 41,
+      "passed": true,
+      "skipped": 0
+    },
+    "python/worker-correctness-python-tests": {
+      "tests": 5,
+      "passed": true,
+      "skipped": 0
+    },
+    "python/worker-dynamic-matching-python-tests": {
+      "tests": 3,
+      "passed": true,
+      "skipped": 0
+    },
+    "python/worker-loaded-recovery-python-tests": {
+      "tests": 19,
+      "passed": true,
+      "skipped": 1
+    },
+    "experiment-cleanup": {
+      "remainingOwnedJvmOrEmulatorProcesses": 0,
+      "runnerOwnedScopesCleaned": true
+    }
+  },
+  "delivery": {
+    "runtimeZip": "distribution/server/build/distributions/xa-mass-server-runtime-0.5.0.zip",
+    "workerSdkZip": "distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-0.5.0.zip",
+    "previewZip": "distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip",
+    "runtimeAndSdkProof": "passed",
+    "previewArchiveAndLauncherProof": "passed",
+    "published": false
+  },
+  "proofRepairs": [
+    "Boot App Checks observer adapted from integer refill result to RefillOutcome; full suite rerun passed.",
+    "Coexistence duplicate execution uses a generic finite Task rather than retired per-country SMS Tasks.",
+    "Mixed-load driver serializes four-receipt admission within a 32-callback window instead of requiring per-thread global drain.",
+    "Large sending retries only read-only transient observations within the unchanged sending-phase deadline; mutations are not replayed."
+  ]
+}

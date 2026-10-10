@@ -385,6 +385,13 @@ old entries not yet reclaimed; these remain shortage hints rather than executabl
 Worker counts. Capacity pressure can reclaim expired queue heads during the existing
 shortage observation. No additional Pacer task or cleanup thread is introduced.
 Each Group attempt supplies only the successful new candidateizations, once.
+Matching also returns full-deferral IDs after excluding all admissions. The
+current SchedulerRun may retain their original fences for fixed 10-second
+recycling, bounded to 1,000 per Group and 10,000 per run. Due hints share the
+existing recycle budgets with ordinary aging and never reserve stock or drive
+Task discovery. Loss and overflow fall back to ordinary recycling. The
+[assignment contract](dispatch/assignment-dispatch-scheduling.md#full-candidate-recycling)
+owns timing, budget sharing, run isolation and default-off diagnostics.
 Remaining shortage does not trigger stock copying, a supplementary scan or replay.
 Matching retains Pool/target rotation while each generation enters at most one Pool.
 Its composition supplies Pool order and target batching capability; Pacer does
@@ -405,6 +412,8 @@ the Result Application. These remain separate proof claims.
 
 - Keep Task discovery in Main's three bounded Owner observations. Do not add
   Producer-local Task discovery, Candidate demand hints or a pending Batch queue.
+  The bounded run-local full-deferral evidence above only accelerates existing
+  candidate recycling; it does not supply demand or retain executable Batches.
 - Do not add a dynamic Pacer/Producer registry, public policy SPI, reflection,
   ServiceLoader, or fallback owner.
 - Do not assemble Pacer subpackage types from Server;

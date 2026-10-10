@@ -9,7 +9,7 @@ import run_proof as proof
 
 
 class ProofAssertionsTest(unittest.TestCase):
-    def test_load_actions_wait_for_each_callback_and_never_replay_a_rejected_action(self):
+    def test_load_actions_admit_bounded_callbacks_and_never_replay_a_rejected_action(self):
         message = {"messageId": "m", "workerId": "w", "receipts": [{"receiptId": "delivered"}]}
         events, latencies = [], []
         def observed(*args):
@@ -17,7 +17,7 @@ class ProofAssertionsTest(unittest.TestCase):
         def action(run, target, name, text, request):
             events.append(name)
             return proof.time.monotonic(), {"held": True, "unchanged": False, "receiptId": request}
-        run = SimpleNamespace(host="host")
+        run = SimpleNamespace(host="host", callback_release_lock=proof.threading.Lock())
         with patch.object(proof, "wait", side_effect=observed), patch.object(proof, "action", side_effect=action), \
                 patch.object(proof, "http", return_value={"offered": 4, "queued": 4}) as release:
             proof.load_recipient_actions(run, message, proof.threading.Event(), latencies.append)
@@ -47,6 +47,25 @@ class ProofAssertionsTest(unittest.TestCase):
         rows = [row for group in world.values() for row in group]
         self.assertEqual(1000, len({row["phone"] for row in rows}))
         self.assertTrue(all(row["country"] == "CN" and row["messaging.enabled"] == "true" for row in rows))
+
+    def test_callback_capacity_does_not_require_a_global_empty_instant(self):
+        metrics = {"callbackFailed": 0, "droppedReceipts": 0, "callbackQueued": 100,
+                   "httpSucceeded": 80, "reportAccepted": 80}
+        with patch.object(proof, "http", return_value=metrics):
+            self.assertTrue(proof.load_callback_capacity(SimpleNamespace(host="host")))
+            self.assertFalse(proof.load_callbacks_drained(SimpleNamespace(host="host")))
+            metrics["reportAccepted"] = 70
+            self.assertFalse(proof.load_callback_capacity(SimpleNamespace(host="host")))
+
+    def test_sending_read_can_retry_timeout_but_mutations_are_never_replayed(self):
+        run = SimpleNamespace(check=lambda: None, phase_deadline=proof.time.monotonic() + 1)
+        with patch.object(proof, "http", side_effect=[TimeoutError(), {}]) as read:
+            self.assertEqual({}, proof.read_sending_observation(run, "server", "/api/v1/tasks/task/results:load", ["m"]))
+            self.assertEqual(2, read.call_count)
+        with patch.object(proof, "http") as mutation:
+            with self.assertRaisesRegex(AssertionError, "read-only"):
+                proof.read_sending_observation(run, "server", "/api/v1/tasks/task/approve", {})
+            mutation.assert_not_called()
 
     def test_message_identity_is_task_scoped_and_uses_unambiguous_utf8_fields(self):
         self.assertEqual(proof.message_identity("task", "+86123"), proof.message_identity("task", "+86123"))
