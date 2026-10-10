@@ -10,16 +10,7 @@ import type {
 import { messageApplications } from "./workbench";
 
 const epoch = Date.parse("2026-09-18T08:00:00+08:00");
-const body = JSON.stringify(
-  {
-    receipts_status: ["read", "replied"],
-    delayMs: [1000, 4000],
-    probability: 0.5,
-    text: "收到了"
-  },
-  null,
-  2
-);
+const body = "您好，欢迎使用消息服务。";
 
 function task(
   taskId: string,
@@ -81,7 +72,7 @@ function initialRecords(): MessageTaskDetail[] {
         senderCountry: null,
         sendTotal: 1,
         deliveredCount: 0,
-        body: "{}"
+        body: "您好，这是一条消息。"
       }),
       results: [{ ...results(2)[1], status: "SENT" }],
       resultsTruncated: false
@@ -112,7 +103,7 @@ function initialRecords(): MessageTaskDetail[] {
         senderCountry: null,
         sendTotal: 80,
         deliveredCount: 0,
-        body: "{}"
+        body: "您好，这是一条消息。"
       }),
       results: [],
       resultsTruncated: false
@@ -125,7 +116,7 @@ function initialRecords(): MessageTaskDetail[] {
         senderCountry: "CN",
         sendTotal: 120,
         deliveredCount: 0,
-        body: "{}"
+        body: "您好，这是一条消息。"
       }),
       results: [],
       resultsTruncated: false
@@ -142,7 +133,7 @@ function initialRecords(): MessageTaskDetail[] {
         senderCountry: null,
         sendTotal: 3,
         deliveredCount: 2,
-        body: "{}"
+        body: "您好，这是一条消息。"
       }),
       results: results(3),
       resultsTruncated: false

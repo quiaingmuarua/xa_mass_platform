@@ -75,6 +75,7 @@ There are no implicit additional Groups. Root defaults are:
 | `controlPort` | `18086` |
 | `seed` | `0` (signed 64-bit initialization seed) |
 | `startupPlan` | Start all discovered inventory, no scheduled stops |
+| `messages` | Finite messaging windows and capacities; see [message retention](#message-retention-and-admission) |
 
 Relative `sandboxRoot` paths resolve against the configuration file's directory,
 including the default path, not the process working directory. The Runtime API URL must be absolute HTTP(S).
@@ -192,112 +193,134 @@ Worker identity, Tasks, Adapter state or Kernel expectations.
 
 ## Messages and shared products
 
-`config/messages.json` selects message senders; `config/products.json` selects
-SMS and Messages on the same Demo replicas. The combined example also installs
-Messages on App A/B alongside App Checks, with explicit country, messaging.enabled
-and separate phone ranges (861710000001 and 861720000001; Demo starts at 861700000001).
-The standalone Messages example uses mixed-country `demo-sim`, declared by
-distribution before Host startup. One Manager per nonempty Group and one HTTP server
-form the common Host assembly. Properties additionally contain
-`messaging.enabled="true"` and enter Matching through the existing SDK/Adapter path.
+`config/messages.json` selects message senders; `config/products.json` installs
+SMS and Messages on Demo and Messages/App Checks on App A/B. All senders expose
+explicit phone, country and messaging.enabled Properties. Group/Pool selection
+stays with Matching and Kernel. The Host never chooses replacement Workers.
 Use the [shared launcher](../distribution/server/PREVIEW.md).
 
-**Boundary change: Worker sends through actual HTTP to the Lab; every receipt
-travels through HTTP back to the original Worker's Reporter association.** Lab
-and Worker Host share one process and loopback Listener, without process isolation.
-Kernel, Matching, Pacer, SDK and Adapter mechanisms are unchanged.
+Group `messageContentMode` is captured at startup: `text` is the default and
+`lab-json` explicitly selects receipt demonstrations. Unknown values fail startup.
+This setting is not a Worker Property, Catalog field, or task parameter. The five
+fields of `extension.worker.message.send` remain
+`campaignId,messageId,country,recipientId,body`. Body is nonblank text of at most
+4096 characters and is never trimmed or rewritten. Text mode accepts JSON-looking
+strings literally and generates no automatic delivered/read/replied observations.
 
 ```text
-message.send Handler -> HTTP /lab/v1/messages/send -> first SENT + delivered fact
-Lab automatic/manual action -> immutable receipt -> bounded HTTP callback
-Worker :inputs message.receipt -> original run Reporter -> existing TASK evidence
+message.send Handler -> real HTTP /lab/v1/messages/send -> confirmed SENT
+    -> ordinary execution Result and Item completion (no receipt wait)
+optional Lab observation -> bounded HTTP callback -> original run Reporter
+    -> best-effort later Item/Result observation
 ```
 
-**Explicit Preview protocol exception:** `extension.worker.message.send` keeps
-its name and five fields (`campaignId,messageId,country,recipientId,body`). The
-body string now contains JSON instructions, with no ordinary-text fallback:
+The receiving Lab shares the Host process and loopback listener. It is a simulated
+business channel, not evidence of third-party delivery. A send must obtain its
+actual HTTP acceptance response before returning SENT. Rejected/uncertain sends
+remain failures of that execution; no callback failure changes a confirmed send.
+
+### Explicit JSON receipt demonstrations
+
+Only `lab-json` parses the following body protocol; invalid JSON, duplicate or
+unknown fields, invalid types and sequences reject before acceptance:
 
 ```json
 {"receipts_status":["read","replied"],"delayMs":[1000,4000],"probability":0.5,"text":"收到了"}
 ```
 
-Body remains bounded to 4096 characters. Messages API accepts opaque text, so Task
-creation does not establish Lab acceptance. The Lab has no ordinary-text fallback
-and emits no accepted message/receipt for rejected input. Lab rejects malformed JSON, unknown or
-duplicate fields, wrong types and invalid sequences before acceptance.
-The message's `country` is the recipient country, independent of the actual
-Sender's country. Cross-country sends are accepted. A campaign retains one
-recipient country; dedup still compares the complete message and retains its
-first actual Sender and callback. Sender selection remains the existing
-Messaging query/Kernel path, never a Lab decision.
-`receipts_status` defaults to `[]`, at most 16 read/replied steps. Read can occur
-once, before replies; direct and repeated replies are legal. `delayMs` defaults
-to `[1000,4000]`: an integer or inclusive integer range within 0..60000.
-`probability` defaults to zero and is within 0..1: one draw removes only the last
-requested step. Replies require nonblank `text`, reused by automatic replies.
-**Delivered is not configurable and always follows acceptance**, including `{}`
-and probability 1. Automatic completion does not seal a message.
+`receipts_status` defaults to [], with at most 16 read/replied steps. Read is legal
+once before replies; repeated replies are legal. `delayMs` is an integer or
+inclusive two-integer range in 0..60000, default [1000,4000]. Probability is 0..1,
+default zero, and omits only the last requested step. Replies require nonblank
+text. JSON-mode acceptance generates delivered when observation capacity is
+available; text mode does not. The Host seed and message ID fix the first plan.
+Plans use the existing 100ms clock, at most 100 actions per tick. Observations keep
+monotonic business time `max(clock,lastTime+1)` and do not wait for HTTP callbacks.
 
-The Host seed and message ID determine the first accepted plan. Duplicates compare
-the complete business input, return the first SENT and adopted callback ID, and
-do not regenerate delivery or the plan. First Sender and callback remain fixed,
-including duplicate execution by a different Worker. Conflicting input rejects.
-The first later action is relative to acceptance; subsequent actions are relative
-to the preceding business action, independent of callback completion. The one
-100ms action clock commits at most 100 due actions per tick and retains one next
-node per message. Action time is `max(clock,lastTime+1)`, preserved on release.
-Automatic replies use distinct operation IDs. Failed business admission ends that
-message's plan; failed callback delivery does not stop subsequent actions.
+### Message retention and admission
 
-Lab owns records, plans, dedup and receipts; it holds no Reporter reference.
-Worker creates callback association before HTTP, so callbacks may precede send
-response. Definite rejection removes the pending association; timeout/unknown
-response retains it within capacity. Duplicate attempts discard unadopted
-associations. Callback addresses derive only from the bound Host listener and
-Worker coordinates; no body can provide a URL, Report, forward, Task or lease.
+The optional Host-root `messages` object accepts exactly these positive settings:
 
-| Messages Host API | Local contract |
+| Field | Default |
 | --- | --- |
-| `POST /lab/v1/messages/send` | `{message,sender,callbackId}`; Sender is Group/replica/Worker ID/phone/country; returns first `{snapshot,callbackId}` |
-| `POST /lab/v1/workers/{group}/{replica}:inputs` | `message.receipt` contains `{callbackId,receiptId,snapshot}`; validates original association and returns `reportAccepted` |
-| `GET /lab/v1/messages/health` | Prepared identities and Host lifecycle |
-| `GET /lab/v1/messages/inventory` | Group/replica/country/phone/actual Worker, paged 1..1000 |
-| `GET /lab/v1/messages/records` | Actually received messages, plan/delays/dropped-last/action times and callback diagnostics, paged 1..1000 |
-| `GET /lab/v1/messages/metrics` | Capacity, pending associations, HTTP completion and Reporter acceptance counts |
-| `POST /lab/v1/messages/receipts:hold` | `{enabled}`; default false, no automatic flush |
-| `POST /lab/v1/messages/receipts:release` | 1..10,000 existing receiptIds; duplicates preserve time/content; returns offered/queued, HTTP completion order is not guaranteed |
-| `POST /lab/v1/messages/workers/{group}/{replica}:start` | Start one local replica |
-| `POST /lab/v1/messages/workers/{group}/{replica}:stop` | Revoke both products' Reporter associations before SDK stop |
+| dedupWindowMillis | 600000 |
+| maxDedupEntries | 200000 |
+| receiptWindowMillis | 600000 |
+| maxTrackedMessages | 20000 |
+| maxRecentSentRecords | 1000 |
 
-Bodies are bounded to 1,000,000 bytes. Manual read/reply commits facts before
-queueing HTTP; manual deliver is removed. Replies with a repeated operation ID and
-different content reject. Responses are persisted/unchanged/held/receiptId/
-callbackQueued (no new receipt ID for a no-op). Queue admission, HTTP success and
-SDK reportAccepted are distinct; none establishes a Kernel commit. Valid older
-callbacks still enter existing platform monotonicity. Held receipts can only be
-released once, including repeated IDs within that release.
-Report acceptance is null until an actual callback response supplies it; a lost
-response must not be rendered as a known SDK rejection.
+Deduplication is receiver-owned, keyed by messageId. Each compact entry retains
+only a versioned SHA-256 input fingerprint, first Sender, acceptance time and
+nullable first callback identity. The digest uses length-prefixed UTF-8 fields
+`lab-message-input/v1,campaignId,messageId,country,recipientId,body`. A matching
+repeat returns the first SENT reconstructed from the verified request and first
+Sender/time; conflicting input rejects. Neither reads nor repeats renew the
+window. New identities at capacity receive HTTP 429 before acceptance; existing
+identities still reconcile. There is no cumulative Campaign quota or duplicate
+Campaign configuration directory. This is a bounded in-process guarantee, not
+persistent or external exactly-once delivery. Expiry/restart ends that guarantee.
 
-Fixed bounds: 50 campaigns, 50,000 messages/Reporter associations, at most 1024
-pending or uncertain associations, 10,000 held receipts and 100,000 reply IDs.
-One shared business HTTP client admits 64 sends; callbacks use four workers and
-128 waiting entries. Connect timeout is one second and request timeout five
-seconds. Capacity is checked before facts. Queue/HTTP/SDK failure after commit
-keeps the fact and diagnostic, without retry, compensation or replay. Latest reply
-content is retained; receipt diagnostics carry no content history. All network
-and Reporter calls run outside business locks.
+Reporter admission is optional. Before business HTTP the Worker tries to reserve
+an association; full capacity or 1024 pending/uncertain associations skips new
+tracking but still sends. Internal HTTP carries a nullable callbackId and returns
+the first adopted identity. An untracked, expired or stopped original association
+cannot be replaced by a retry's Reporter. Definite rejection releases the new
+reservation; uncertain responses retain it until expiry. Callbacks can precede
+the send response. All HTTP and Reporter calls run outside the state gates.
 
-Stopping a Worker clears its associated Reporters. Records remain readable and
-can accept local actions after restart, but the new run cannot publish those old
-messages. Startup assembles inventory, Managers and routes, enables HTTP/action
-clock, starts Workers, then publishes READY. Original callbacks do not wait on
-the Host startup gate; ordinary controls still require readiness. Close stops
-acceptance/actions, revokes Reporters and closes network resources without flush.
-Process restart restores neither messages nor plans. DIRECT_CALL still returns
-only the synchronous result. Lab distinguishes random omission from transmission
-failure; Messages reads platform truth independently. Ordinary logs and public
-proof artifacts contain no opaque message/reply content.
+The association window starts at registration; receiver windows start at first
+acceptance, using monotonic elapsed time. Task completion does not end tracking.
+Full payloads, plans and latest replies are independently bounded to tracked
+observations. A separate ring keeps the latest send summaries, including untracked
+sends, without bodies. The Lab view prefers an observation while present and never
+counts its summary twice. Each observation
+keeps only its last 64 receipt diagnostics. The 10000 held-receipt cap drops new
+held observations instead of rejecting sends or ending subsequent actions. Reply
+operation deduplication is capped at 100000 IDs and ends with its observation;
+exhaustion rejects only that reply operation. Callback queue admission, HTTP
+success, and Reporter local acceptance remain separate evidence.
+
+The existing tick and admissions remove bounded batches of expired records.
+There are no additional maintenance threads, replay, sweeps of all history or
+Task-state lookups for cleanup. Indexed Worker stop releases that Worker's full
+observations, plans, held receipts and operation IDs, and revokes its associations.
+Acceptance fingerprints remain until their own deadline. Already admitted calls
+may finish; stop does not wait for a callback. Retained Runtime Results are not
+cleared. Host restart restores neither deduplication nor observation windows.
+
+One shared HTTP client admits 64 concurrent sends and at most 256 additional
+waiting Handlers, parked on the existing caller threads with fair permit admission.
+Waiting and
+HTTP share the original five-second call budget; full admission and timeout still
+fail, and stop does not wait for these calls. No Kernel scheduling or retry policy
+changes. Metrics include sendInFlight, queuedSends and sendCapacityRejected.
+Callbacks use four workers and 128 queued entries. Connect timeout remains one second. Sending
+concurrency is separate from optional observation capacity. Metrics distinguish
+acceptedMessages from current dedupEntries/trackedMessages/recentSentRecords,
+skipped/expired associations, dropped receipts, discarded diagnostics and callback
+failures. sendAttempts counts Handler send invocations, not Kernel retries.
+
+### Messages Host API
+
+| Route | Local contract |
+| --- | --- |
+| POST /lab/v1/messages/send | Existing message/sender envelope with nullable callbackId; returns first snapshot and nullable adopted callbackId |
+| POST /lab/v1/messages/acceptances:load | `{messageIds:[...]}`, 1..100 known IDs; items contain inputFingerprint, original sender and observedAtMillis; missingIds includes expired records. Read-only, no renewal or body output |
+| POST /lab/v1/workers/{group}/{replica}:inputs | message.receipt validates the original association and returns local reportAccepted |
+| GET /lab/v1/messages/health | Host lifecycle and prepared identity evidence |
+| GET /lab/v1/messages/inventory | Group/replica/Worker properties, limit 1..1000 |
+| GET /lab/v1/messages/records | Currently retained observations and recent sends; total is retained count, acceptedTotal is cumulative; not complete history |
+| GET /lab/v1/messages/metrics | Acceptance, bounded state and observation diagnostics |
+| POST /lab/v1/messages/receipts:hold | `{enabled}`; no automatic flush |
+| POST /lab/v1/messages/receipts:release | 1..10000 retained receiptIds; duplicates within a release retain original time/content |
+| POST /lab/v1/messages/workers/{group}/{replica}:start | Start one local replica |
+| POST /lab/v1/messages/workers/{group}/{replica}:stop | Revoke associations and retained observations before SDK stop |
+
+Bodies remain bounded to 1000000 bytes. Manual read/reply requires a retained
+observation; expired/stopped/untracked messages return unavailable. Local record
+pages mark trackingAvailable and the Lab UI disables actions for summaries.
+DIRECT_CALL still has only its synchronous Result; it cannot manufacture a TASK
+Reporter. Public proof artifacts and ordinary logs exclude message/reply bodies.
 
 ## SMS Scenario
 
@@ -571,7 +594,8 @@ explicit phone is checked against that Sim's current address inside its gate,
 before dedup or matching; an old address is rejected without side effects.
 Messages likewise checks message ownership against the selected Sender inside
 its existing gate. `:messages` pages that Sender's retained records (offset >= 0,
-limit 1..1000); it adds no index or record copy.
+limit 1..1000), using the existing Worker stop index instead of scanning every
+retained Host record. It adds no independent index or record copy.
 
 Properties input automatically retains `labInventoryKey/labInventoryLine` from
 the physical coordinate. Explicit values must match; `clientWorkerKey` is

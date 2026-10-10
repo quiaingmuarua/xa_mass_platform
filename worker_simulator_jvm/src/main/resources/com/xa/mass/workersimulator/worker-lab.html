@@ -454,17 +454,19 @@
       }
       function row(item) {
         const tr = document.createElement("tr");
-        for (const value of [item.recipientId, item.phone, item.body, item.status, item.reply || "—"]) {
+        for (const value of [item.recipientId, item.phone, item.body ?? "仅保留发送摘要", item.status, item.reply || "—"]) {
           const td = document.createElement("td"); td.textContent = value; tr.append(td);
         }
         const diagnostics = document.createElement("td"), details = document.createElement("details"), title = document.createElement("summary");
-        title.textContent = (item.plan.droppedLast ? "已随机省略最后一步 · " : "未随机省略 · ") + item.plan.retained.join(" → ");
+        title.textContent = item.plan.retained ? (item.plan.droppedLast ? "已随机省略最后一步 · " : "未随机省略 · ") + item.plan.retained.join(" → ") : "无自动回执计划";
         const content = document.createElement("pre");
         content.textContent = JSON.stringify({ plan: item.plan, receipts: item.receipts }, null, 2);
         details.append(title, content); diagnostics.append(details); tr.append(diagnostics);
         const td = document.createElement("td");
         for (const [action, label] of [["read", "阅读"], ["reply", "选择回复"]]) {
           const button = document.createElement("button"); button.textContent = label;
+          button.disabled = item.trackingAvailable === false;
+          if (button.disabled) button.title = "仅保留发送摘要，回执观察不可用";
           button.onclick = () => {
             window.openMessageInput(item, "message." + action);
           };
@@ -479,7 +481,7 @@
           const page = await api("records?offset=" + offset + "&limit=" + limit, undefined, controller.signal);
           if (stopped || controller.signal.aborted) return;
           total = page.total; element("records").replaceChildren(...page.items.map(row));
-          element("page").textContent = "第 " + (offset / limit + 1) + " 页 · 共 " + total + " 条";
+          element("page").textContent = "第 " + (offset / limit + 1) + " 页 · 当前保留 " + total + " 条，非完整发送历史";
           element("prev").disabled = offset === 0; element("next").disabled = offset + limit >= total;
           element("error").textContent = "";
         } catch (error) { if (!controller.signal.aborted) element("error").textContent = error.message; }

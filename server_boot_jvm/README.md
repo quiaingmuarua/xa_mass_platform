@@ -191,3 +191,9 @@ Server passes it to the Pacer assembly for admission before resource creation.
 It bounds each Task's Item check and each Group's demand-driven candidate read;
 it is not a requested inventory size. No hot reload or per-Task override exists.
 Other Owner budgets, preset intervals and HTTP limits remain independent.
+
+Messages sending/receipt separation is verified by Scenario Composition using real
+Redis, HTTP and Worker execution: text sends finish Tasks despite bounded optional
+Reporter admission, and short Host windows release capacity without Worker restart.
+The default ten-minute windows and explicit lab-json mode belong to the Simulator
+Host configuration, not Boot YAML, Kernel Item retention or Messages input versions.

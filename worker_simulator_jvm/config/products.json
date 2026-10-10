@@ -4,18 +4,21 @@
   "controlPort": 18086,
   "workerGroups": {
     "app-a-sim": {
+      "messageContentMode": "text",
       "events": ["extension.worker.app.registration.check", "extension.worker.message.send"],
       "count": 20,
       "propertiesTemplate": {"runtime": "java", "simulated": "true", "application": "app-a", "phone": {"$index": [861710000001, 1]}, "country": {"$choice": ["CN", "US", "GB"]}, "messaging.enabled": "true"},
       "newEnvironment": false
     },
     "app-b-sim": {
+      "messageContentMode": "text",
       "events": ["extension.worker.app.registration.check", "extension.worker.message.send"],
       "count": 20,
       "propertiesTemplate": {"runtime": "java", "simulated": "true", "application": "app-b", "phone": {"$index": [861720000001, 1]}, "country": {"$choice": ["CN", "US", "GB"]}, "messaging.enabled": "true"},
       "newEnvironment": false
     },
     "demo-sim": {
+      "messageContentMode": "text",
       "events": [
         "extension.worker.string.md5",
         "extension.worker.string.sha1",

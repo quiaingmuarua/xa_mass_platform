@@ -3,6 +3,7 @@ package com.xa.mass.workersimulator;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.workersimulator.messaging.MessageScenario;
+import com.xa.mass.workersimulator.messaging.MessageContentMode;
 import com.xa.mass.workersimulator.sms.SmsScenario;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
@@ -26,7 +27,8 @@ record WorkerSimulatorGroupConfig(
         Map<String, Object> propertiesTemplate,
         boolean newEnvironment,
         Duration requestTimeout,
-        TextMessageReconnectPolicy reconnectPolicy
+        TextMessageReconnectPolicy reconnectPolicy,
+        MessageContentMode messageContentMode
 ) {
     WorkerSimulatorGroupConfig {
         requireNonBlank(workerGroupId, "workerGroupId");
@@ -54,6 +56,7 @@ record WorkerSimulatorGroupConfig(
             throw new IllegalArgumentException("requestTimeout must be positive");
         }
         Objects.requireNonNull(reconnectPolicy, "reconnectPolicy");
+        Objects.requireNonNull(messageContentMode, "messageContentMode");
     }
 
     Map<String, String> generateProperties(long seed, int ordinal) {

@@ -14,24 +14,36 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
+import java.util.function.LongSupplier;
 
 /** Fixed Messages composition: Lab facts, business HTTP, and run-owned Worker correlations. */
 public final class MessageScenario implements AutoCloseable {
     public static final String SEND_EVENT = "extension.worker.message.send";
-    public static final int MAX_MESSAGES = 50_000, MAX_CAMPAIGNS = 50, MAX_HELD = 10_000, MAX_REPLY_IDS = 100_000;
+    public static final int MAX_HELD = 10_000, MAX_REPLY_IDS = 100_000;
     private final Object gate = new Object();
     private final Map<String, Sender> senders = new LinkedHashMap<>();
-    private final Map<String, Association> associations = new HashMap<>();
-    private final Semaphore sends = new Semaphore(64);
+    private final LinkedHashMap<String, Association> associations = new LinkedHashMap<>();
+    private static final long SEND_BUDGET_NANOS = TimeUnit.SECONDS.toNanos(5);
+    private final Semaphore sendAdmissions = new Semaphore(64 + 256);
+    private final Semaphore sends = new Semaphore(64, true);
     private final MessageLab lab;
+    private final MessageSettings settings;
+    private final LongSupplier monotonic;
     private URI baseUri;
     private HttpClient http;
     private ThreadPoolExecutor callbacks;
     private boolean closed;
     private int pending, accepted;
+    private long skippedAssociations, expiredAssociations;
+    private long sendAttempts, sendCapacityRejected;
 
     public MessageScenario() { this(0); }
-    public MessageScenario(long seed) { lab = new MessageLab(seed, System::currentTimeMillis, this::queueCallback); }
+    public MessageScenario(long seed) { this(seed, MessageSettings.defaults()); }
+    public MessageScenario(long seed, MessageSettings settings) { this(seed, settings, System::currentTimeMillis, System::nanoTime); }
+    MessageScenario(long seed, MessageSettings settings, LongSupplier clock, LongSupplier monotonic) {
+        this.settings = Objects.requireNonNull(settings); this.monotonic = Objects.requireNonNull(monotonic);
+        lab = new MessageLab(seed, settings, clock, monotonic, this::queueCallback, this::expireAssociations);
+    }
 
     /** Called once the Host listener is bound and routes/Workers have been assembled. */
     public void startHttp(URI listener) {
@@ -52,9 +64,9 @@ public final class MessageScenario implements AutoCloseable {
     }
 
     public Sender addSender(String group, String replica, Supplier<Map<String, String>> properties,
-            Supplier<String> workerId, Supplier<String> runtimeState) {
+            Supplier<String> workerId, Supplier<String> runtimeState, MessageContentMode mode) {
         synchronized (gate) {
-            var sender = new Sender(group, replica, properties, workerId, runtimeState);
+            var sender = new Sender(group, replica, properties, workerId, runtimeState, mode);
             if (senders.putIfAbsent(group + "/" + replica, sender) != null) throw new IllegalArgumentException("Duplicate sender");
             return sender;
         }
@@ -66,9 +78,22 @@ public final class MessageScenario implements AutoCloseable {
 
     public Map<String, Object> send(Sender sender, Map<String, Object> request, WorkerOutcomeReporter reporter) {
         validateMessage(request);
-        if (!sends.tryAcquire()) throw new IllegalStateException("Message send capacity exhausted");
-        String callbackId = UUID.randomUUID().toString();
+        synchronized (gate) { sendAttempts++; }
+        if (!sendAdmissions.tryAcquire()) {
+            synchronized (gate) { sendCapacityRejected++; }
+            throw new IllegalStateException("Message send capacity exhausted");
+        }
+        long began = System.nanoTime();
+        boolean acquired = false, httpStarted = false;
+        String callbackId = null;
         try {
+            // Park the existing Handler, never start another thread or retry an external effect.
+            // Queueing and HTTP share the original five-second call budget.
+            if (!sends.tryAcquire(SEND_BUDGET_NANOS, TimeUnit.NANOSECONDS)) {
+                synchronized (gate) { sendCapacityRejected++; }
+                throw new IllegalStateException("Message send capacity wait expired");
+            }
+            acquired = true;
             Map<String, String> properties = sender.properties.get();
             String worker = sender.workerId.get();
             if (worker == null || worker.isBlank()) throw new IllegalStateException("Sender identity unavailable");
@@ -77,15 +102,26 @@ public final class MessageScenario implements AutoCloseable {
             HttpClient client;
             URI target;
             synchronized (gate) {
+                expireAssociations();
                 if (closed || http == null || !sender.accepting || !"RUNNING".equals(sender.runtimeState.get()))
                     throw new IllegalStateException("Sender is stopped or business HTTP unavailable");
-                if (pending >= 1024 || associations.size() >= MAX_MESSAGES)
-                    throw new IllegalStateException("Reporter association capacity exhausted");
-                var association = new Association(sender, Map.copyOf(request), snapshot, Objects.requireNonNull(reporter));
-                associations.put(callbackId, association); sender.callbacks.add(callbackId); pending++;
+                if (pending >= 1024 || associations.size() >= settings.maxTrackedMessages()) skippedAssociations++;
+                else {
+                    callbackId = UUID.randomUUID().toString();
+                    var association = new Association(sender, Map.copyOf(request), snapshot, Objects.requireNonNull(reporter), monotonic.getAsLong());
+                    associations.put(callbackId, association); sender.callbacks.add(callbackId); pending++;
+                }
                 client = http; target = baseUri.resolve("/lab/v1/messages/send");
             }
-            var response = post(client, target, Map.of("message", request, "sender", snapshot, "callbackId", callbackId));
+            var envelope = new LinkedHashMap<String, Object>();
+            envelope.put("message", request); envelope.put("sender", snapshot); envelope.put("callbackId", callbackId);
+            long remaining = SEND_BUDGET_NANOS - (System.nanoTime() - began);
+            if (remaining <= 0) {
+                synchronized (gate) { sendCapacityRejected++; }
+                throw new IllegalStateException("Message send capacity wait expired");
+            }
+            httpStarted = true;
+            var response = post(client, target, envelope, Duration.ofNanos(remaining));
             if (response.statusCode() >= 400 && response.statusCode() < 500) {
                 synchronized (gate) { remove(callbackId); }
                 if (response.statusCode() == 400) throw new IllegalArgumentException("Lab rejected message input or identity conflict");
@@ -93,23 +129,29 @@ public final class MessageScenario implements AutoCloseable {
             }
             if (response.statusCode() != 200) throw new IllegalStateException("Lab message response is uncertain");
             Map<String, Object> decoded = Jsons.parseObject(response.body());
-            String adopted = text(decoded, "callbackId", 128);
+            String adopted = nullableCallback(decoded);
             Map<String, Object> sent = object(decoded, "snapshot");
             if (!sameRequest(request, sent) || !"SENT".equals(sent.get("status")))
                 throw new IllegalStateException("Invalid Lab acceptance response");
             synchronized (gate) {
-                if (!callbackId.equals(adopted)) remove(callbackId);
+                if (!Objects.equals(callbackId, adopted)) remove(callbackId);
                 Association original = associations.get(adopted);
+                if (original != null && expired(original)) { remove(adopted); expiredAssociations++; original = null; }
                 if (original != null && sameRequest(original.request, sent)
                         && original.senderSnapshot.get("workerId").equals(sent.get("workerId"))
                         && original.senderSnapshot.get("phone").equals(sent.get("phone"))) confirm(original);
             }
             return sent;
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt(); throw new IllegalStateException("Message send interrupted; acceptance unknown", interrupted);
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(httpStarted ? "Message send interrupted; acceptance unknown" : "Message send interrupted before HTTP", interrupted);
         } catch (java.io.IOException failure) {
             throw new IllegalStateException("Message send failed; acceptance unknown", failure);
-        } finally { sends.release(); }
+        } finally {
+            if (!httpStarted) synchronized (gate) { remove(callbackId); }
+            if (acquired) sends.release();
+            sendAdmissions.release();
+        }
     }
 
     /** Lab ingress; can execute before the send response and before Host READY. */
@@ -118,10 +160,16 @@ public final class MessageScenario implements AutoCloseable {
         Map<String, Object> sender = object(input, "sender");
         synchronized (gate) {
             if (closed) throw new IllegalStateException("Messages closed");
-            if (!senders.containsKey(text(sender, "workerGroupId", 256) + "/" + text(sender, "replicaKey", 256)))
+            Sender registered = senders.get(text(sender, "workerGroupId", 256) + "/" + text(sender, "replicaKey", 256));
+            if (registered == null)
                 throw new IllegalArgumentException("Unknown sender coordinates");
+            String callbackId = nullableCallback(input);
+            Association association = associations.get(callbackId);
+            if (association == null || association.sender != registered || expired(association)) callbackId = null;
+            // Coordinate stop and new acceptance without retaining a stopped run's observation.
+            // Lab queues callbacks; HTTP and Reporter execution remain outside both state gates.
+            return lab.accept(object(input, "message"), sender, callbackId, registered.mode);
         }
-        return lab.accept(object(input, "message"), sender, text(input, "callbackId", 128));
     }
 
     /** Worker ingress. No Lab state is consulted to resolve an original Reporter. */
@@ -142,6 +190,7 @@ public final class MessageScenario implements AutoCloseable {
         WorkerOutcomeReporter reporter;
         synchronized (gate) {
             Association association = associations.get(id);
+            if (association != null && expired(association)) { remove(id); expiredAssociations++; association = null; }
             if (closed || association == null || !association.sender.group.equals(group) || !association.sender.replica.equals(replica))
                 throw new MissingMessage();
             if (!sameRequest(association.request, snapshot) || !association.senderSnapshot.get("workerId").equals(snapshot.get("workerId"))
@@ -189,7 +238,11 @@ public final class MessageScenario implements AutoCloseable {
 
     private static HttpResponse<String> post(HttpClient client, URI target, Map<String, Object> payload)
             throws java.io.IOException, InterruptedException {
-        return client.send(HttpRequest.newBuilder(target).timeout(Duration.ofSeconds(5)).header("Content-Type", "application/json")
+        return post(client, target, payload, Duration.ofSeconds(5));
+    }
+    private static HttpResponse<String> post(HttpClient client, URI target, Map<String, Object> payload, Duration timeout)
+            throws java.io.IOException, InterruptedException {
+        return client.send(HttpRequest.newBuilder(target).timeout(timeout).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(Jsons.toJson(payload))).build(), HttpResponse.BodyHandlers.ofString());
     }
     private static String segment(Object value) { return URLEncoder.encode((String) value, StandardCharsets.UTF_8).replace("+", "%20"); }
@@ -202,6 +255,23 @@ public final class MessageScenario implements AutoCloseable {
         association.removed = true; association.sender.callbacks.remove(id);
         if (association.confirmed) accepted--; else pending--;
     }
+    private boolean expired(Association association) {
+        return monotonic.getAsLong() - association.createdNanos >= settings.receiptWindowNanos();
+    }
+    private void expireAssociations() {
+        synchronized (gate) {
+            for (int i = 0; i < 100 && !associations.isEmpty(); i++) {
+                var first = associations.firstEntry();
+                if (!expired(first.getValue())) break;
+                remove(first.getKey()); expiredAssociations++;
+            }
+        }
+    }
+    private static String nullableCallback(Map<String, Object> value) {
+        if (!value.containsKey("callbackId")) throw new IllegalArgumentException("Missing callbackId");
+        return value.get("callbackId") == null ? null : text(value, "callbackId", 128);
+    }
+    public Map<String, Object> acceptances(List<String> ids) { return lab.acceptances(ids); }
     public Map<String, Object> act(Sender sender, String id, String action, Map<String, Object> input) {
         return lab.act(sender.group, sender.replica, id, action, input);
     }
@@ -211,7 +281,12 @@ public final class MessageScenario implements AutoCloseable {
     public Map<String, Object> page(Sender sender, int offset, int limit) { return lab.page(sender.group, sender.replica, offset, limit); }
     public Map<String, Object> metrics() {
         var result = new LinkedHashMap<>(lab.metrics());
-        synchronized (gate) { result.put("reporters", accepted); result.put("pendingAssociations", pending); }
+        synchronized (gate) {
+            result.put("reporters", accepted); result.put("pendingAssociations", pending);
+            result.put("skippedAssociations", skippedAssociations); result.put("expiredAssociations", expiredAssociations);
+            result.put("sendAttempts", sendAttempts); result.put("sendCapacityRejected", sendCapacityRejected);
+            result.put("sendInFlight", 64 - sends.availablePermits()); result.put("queuedSends", sends.getQueueLength());
+        }
         return result;
     }
     public Map<String, Object> inventory(int offset, int limit) {
@@ -227,7 +302,10 @@ public final class MessageScenario implements AutoCloseable {
         }
     }
     public void stop(Sender sender) {
-        synchronized (gate) { sender.accepting = false; List.copyOf(sender.callbacks).forEach(this::remove); }
+        synchronized (gate) {
+            sender.accepting = false; List.copyOf(sender.callbacks).forEach(this::remove);
+            lab.stop(sender.group, sender.replica);
+        }
     }
     public void start(Sender sender) {
         synchronized (gate) {
@@ -271,18 +349,25 @@ public final class MessageScenario implements AutoCloseable {
         if (offset < 0 || limit < 1 || limit > 1000) throw new IllegalArgumentException("Invalid page");
     }
     public static final class MissingMessage extends RuntimeException {}
+    public static final class CapacityExceeded extends IllegalStateException {
+        public CapacityExceeded(String message) { super(message); }
+    }
     public static final class Sender {
         final String group, replica; final Supplier<Map<String, String>> properties; final Supplier<String> workerId, runtimeState;
+        final MessageContentMode mode;
         final Set<String> callbacks = new HashSet<>(); boolean accepting = true;
-        Sender(String group, String replica, Supplier<Map<String, String>> properties, Supplier<String> workerId, Supplier<String> runtimeState) {
+        Sender(String group, String replica, Supplier<Map<String, String>> properties, Supplier<String> workerId, Supplier<String> runtimeState, MessageContentMode mode) {
             this.group = group; this.replica = replica; this.properties = properties; this.workerId = workerId; this.runtimeState = runtimeState;
+            this.mode = Objects.requireNonNull(mode);
         }
     }
     private static final class Association {
         final Sender sender; final Map<String, Object> request, senderSnapshot; final WorkerOutcomeReporter reporter;
+        final long createdNanos;
         boolean confirmed, removed;
-        Association(Sender sender, Map<String, Object> request, Map<String, Object> senderSnapshot, WorkerOutcomeReporter reporter) {
+        Association(Sender sender, Map<String, Object> request, Map<String, Object> senderSnapshot, WorkerOutcomeReporter reporter, long createdNanos) {
             this.sender = sender; this.request = request; this.senderSnapshot = senderSnapshot; this.reporter = reporter;
+            this.createdNanos = createdNanos;
         }
     }
 }

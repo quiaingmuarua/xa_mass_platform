@@ -122,7 +122,7 @@ class WorkerSimulatorPopulationTest {
                 .extracting(worker -> worker.workerProperties())
                 .containsExactlyElementsOf(initial.stream().map(worker -> worker.workerProperties()).toList());
         var reset = new WorkerSimulatorGroupConfig(config.workerGroupId(), config.events(), config.count(),
-                config.propertiesTemplate(), true, config.requestTimeout(), config.reconnectPolicy());
+                config.propertiesTemplate(), true, config.requestTimeout(), config.reconnectPolicy(), com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
         var regenerated = lab.prepare(List.of(reset), 713, ignored -> {}).get(0).workers();
         assertThat(regenerated).extracting(worker -> worker.labWorkerKey())
                 .containsExactlyElementsOf(initial.stream().map(worker -> worker.labWorkerKey()).toList());
@@ -137,7 +137,7 @@ class WorkerSimulatorPopulationTest {
 
     private static WorkerSimulatorGroupConfig group(String id, int count, Map<String, Object> template) {
         return new WorkerSimulatorGroupConfig(id, List.of("test"), count, template, false,
-                Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults());
+                Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults(), com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
     }
 
     private static List<Map<String, String>> population(WorkerSimulatorGroupConfig group, long seed) {

@@ -29,8 +29,8 @@ TaskDataService 和 TaskLifecycleService 组合读取与写入，不直接访问
 创建配置校验 → Server 请求关联创建 → 空的待审核 CLOSE Task → HTTP 201
 UTF-8 文件完整校验 → 持有 Task 导入准入 → 每批至多 100 Items → 导入回执
 用户核对实际 Item 数量 → 同一准入内校验数量并批准 → 开始发送
-Worker message.send → HTTP 调用 Lab → SENT 执行结果
-Lab 接收生成 delivered / 后续 read、reply → HTTP 回调原 Worker Reporter
+Worker message.send → 发送通道确认受理 → SENT 执行结果 → Item 完成／Task 收敛
+可选后续回执 → 原 Worker Reporter → best-effort 更新（不等待回执）
   → 既有 Item Score / Result Owner
 列表或详情请求 → 读取 Task / Score / Item / Result
 ```
@@ -86,8 +86,8 @@ UTF-8 校验处理 BOM、空行和首尾空白；号码可省略 `+`，规范化
 
 requestId/name/appId 最长 128 字符；body 是最长 4096 字符的非空文本。
 Messages 不解析 JSON、不裁剪空白、不展开模板变量；导入从 descriptor 读取冻结的配置，
-不按当前应用映射重新选择 Group。Lab 仍独占 JSON 演示指令语义：普通文本可创建、导入
-和批准，但在当前 Lab 执行阶段被拒绝，不生成发送成功和回执。
+不按当前应用映射重新选择 Group。默认 Simulator 按普通文本发送；只有显式配置为
+`lab-json` 的 Worker 才解释 JSON 演示协议并拒绝非法指令。
 
 **收件国家与发送国家独立。** senderCountry 省略/null 为 ANY。
 Task 声明 messaging Pool 的 ANY／worker.country 供给，Item 使用
@@ -146,18 +146,21 @@ Task 结束后仍可 read/reply，Result 查询不删除最新内容；上层不
 
 ## 模拟收件端与交付
 
-[Worker Simulator](../../worker_simulator_jvm/README.md#messages-and-shared-products) 拥有接收事实、
-去重、计划和原 run Reporter 关联。Lab 与 Worker 同进程，但发送/回调都经过实际 HTTP。
-delivered 只来自接收；read/reply 可来自 JSON 计划或人工动作；回调排队不表示平台 ACK。
-Preview 保留 extension.worker.message.send 的授权协议例外，不支持旧普通文本或 v2 别名。
-例如 body 为 `{"receipts_status":["read","replied"],"probability":0.5,"text":"收到了"}`。
-计划及 Reporter 不跨 Host 重启恢复，Server 重启可读存量 Task 不等于恢复 Host 计划。
+[Worker Simulator](../../worker_simulator_jvm/README.md#messages-and-shared-products) 拥有模拟发送端
+受理、窗口去重、可选观察和原 run Reporter 关联。发送与回调经过实际 HTTP，但不证明第三方交付。
+默认 `text` 原样受理并返回 SENT，不自动生成回执；`lab-json` 才解释演示 JSON。
+回执关联或观察容量不足不拒绝发送，held／回调溢出不触发补发；发送并发和去重容量仍独立背压。
+去重与关联默认保留 10 分钟，重传／回复不续期。窗口到期或 Host 重启不保证模拟端去重，
+也不恢复计划和 Reporter。Item 的 Runtime 默认有效期保持独立。Task 结束后，窗口内原 Reporter
+仍可上报；Worker 停止清理本地观察，Server 已有 Result 保留。
+稳定 messageId 只提供输入身份，不承诺外部发送 exactly-once。完整字段、容量、清理与故障边界
+统一由 Simulator Owner 维护，Messages 不保存另一份模拟端账本。
 
 ## 页面
 
 [前端 Owner](../../frontend/README.md#messages-business-pages) 维护任务列表、统一操作菜单、
 结果抽屉和单页创建。应用来自真实 Catalog；选择应用、收件国家、发送范围和 Template content，
-可创建空任务或创建并导入，随后独立审核启动。内容旁的 Lab JSON 示例只是 hint。
+可创建空任务或创建并导入，随后独立审核启动。内容默认留空，Lab JSON 示例位于折叠帮助，注明仅适用于显式配置的演示 Worker。
 创建身份核对、导入恢复、手动刷新和最多 100 条预览沿用原边界。
 
 本片使用新的 Redis scope 和新的 Simulator inventory，不迁移旧任务、Group 或 Worker 文件。
@@ -175,7 +178,7 @@ python integrations/scenario-coexistence/run_proof.py --scenario lifecycle
 ```
 
 [Scenario Coexistence](../../integrations/scenario-coexistence/README.md) 验证三应用实际 Pool Worker 的跨国/ANY 与 Group 隔离、
-Lab 拒绝普通文本、终态后连续回执、共享 SMS、旧 run 隔离及打包执行。
+显式 JSON 模式的输入拒绝、文本无回执完成、终态后连续回执、共享 SMS、旧 run 隔离及打包执行。
 同 Worker/原 Reporter 定点证据使用通用 Task/workerId，业务创建不再提供定向入口。超过 100 个结果使用已知 Item ID 经
 results:load 核对，不恢复 UI 分页。固定 1000 Worker 负载保持显式选择，不作本片性能宣称。
 Redis Owner 证明展示字段 create-only、创建时间不刷新和数量命令预算；Boot 证明真实部分
@@ -191,3 +194,8 @@ Redis Owner 证明展示字段 create-only、创建时间不刷新和数量命�
 内容均拒绝启动。现有外部配置应删除 `messages` Project 列表项，并设置显式 applications 绑定；
 SMS 的现有装配不迁移。Project／Group／managed refill 不变时无需迁移或清理业务数据，
 读取也不会补写。改变 Group 是新的资源关联，不会自动搬迁既有 Task 或结果。
+
+十万号码导入用例不证明发送。现有 Product Coexistence runner 的 `messages-send-100k`
+手动 workload 实际执行 105,000 条发送、51 个 Task，持续独立核对发送端受理指纹、完整 Result
+和 Item 状态，不等待回执、不以预览或保留历史代替全量证据。该证明与原 12,000 条混合回执
+负载分开报告，均不建立生产吞吐 SLA。

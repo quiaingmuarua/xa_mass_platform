@@ -151,14 +151,13 @@ and never depend on imported count. Applications/countries and optional recipien
 and Template content are the ordinary inputs. Template content is submitted
 unchanged as `body`; the frontend checks only nonblank text and the existing
 4096-character bound, without interpreting JSON or expanding template variables.
-A hint explains the current demonstration application's JSON-object requirement
-and the `{}` automatic-delivery example, which remains the default. It also shows
-a Lab JSON example with receipt steps, delay, last-step omission probability and
-reply text; this is guidance only, with no frontend interpretation. There is no
-dedicated simulation-settings panel. Messages API also treats body as opaque text;
-creation success is not receiving-side validation. Lab alone retains its JSON
-instruction protocol, so ordinary text is rejected during real demonstration
-execution without successful sending or receipts. The hint states that boundary.
+New drafts start with empty content. The generic hint states that the selected
+application's Worker interprets the unchanged text. Lab JSON guidance is folded
+and explicitly applies only to Workers configured as `lab-json`; there is no
+frontend JSON parser or automatic receipt behavior inferred from the body.
+Preview defaults to text sending. Creation acceptance is still separate from
+Worker execution and external delivery. Mock examples use ordinary text and
+later receipt progression remains an explicit demonstration action.
 
 Empty creation and create-then-import both stop in review. UTF-8 TXT/paste uses a
 browser worker, optional `+` normalization, duplicate skipping, country-prefix

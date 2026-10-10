@@ -4,6 +4,7 @@
   "controlPort": 18086,
   "workerGroups": {
     "demo-sim": {
+      "messageContentMode": "text",
       "events": [
         "extension.worker.string.md5",
         "extension.worker.string.sha1",

@@ -9,6 +9,24 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 
 class WorkerSimulatorJsonParserTest {
+    @Test void messagesUseExplicitModesAndBoundedStartupSettings() {
+        var config = parse("{\"demo-sim\":{}}");
+        assertThat(config.workerGroups().getFirst().messageContentMode()).isEqualTo(com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
+        assertThat(config.messages()).isEqualTo(com.xa.mass.workersimulator.messaging.MessageSettings.defaults());
+        assertThat(parse("{\"demo-sim\":{\"messageContentMode\":\"lab-json\"}}").workerGroups().getFirst().messageContentMode())
+                .isEqualTo(com.xa.mass.workersimulator.messaging.MessageContentMode.LAB_JSON);
+        assertThatThrownBy(() -> parse("{\"demo-sim\":{\"messageContentMode\":\"auto\"}}"))
+                .isInstanceOf(IllegalArgumentException.class);
+        var explicit = WorkerSimulatorJsonParser.parse("""
+                {"workerGroups":{"demo-sim":{}},"messages":{"dedupWindowMillis":10,"maxDedupEntries":2,
+                 "receiptWindowMillis":5,"maxTrackedMessages":1,"maxRecentSentRecords":1}}
+                """, java.nio.file.Path.of("."));
+        assertThat(explicit.messages().maxDedupEntries()).isEqualTo(2);
+        for (String invalid : List.of("{\"maxDedupEntries\":0}", "{\"receiptWindowMillis\":-1}", "{\"unknown\":1}",
+                "{\"dedupWindowMillis\":9223372036854775807}", "{\"maxTrackedMessages\":1.2}"))
+            assertThatThrownBy(() -> WorkerSimulatorJsonParser.parse("{\"workerGroups\":{\"demo-sim\":{}},\"messages\":" + invalid + "}", java.nio.file.Path.of(".")))
+                    .isInstanceOf(IllegalArgumentException.class);
+    }
     private static WorkerSimulatorConfig parse(String groups) {
         return WorkerSimulatorJsonParser.parse("""
                 {"runtimeApiBaseUrl":"http://127.0.0.1:18082","sandboxRoot":"data/scenario-workers",

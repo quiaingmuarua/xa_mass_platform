@@ -1,5 +1,7 @@
 package com.xa.mass.workersimulator;
 
+import com.xa.mass.workersimulator.messaging.MessageSettings;
+
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -14,7 +16,8 @@ record WorkerSimulatorConfig(
         int controlPort,
         long seed,
         List<WorkerSimulatorGroupConfig> workerGroups,
-        WorkerSimulatorStartupPlan startupPlan
+        WorkerSimulatorStartupPlan startupPlan,
+        MessageSettings messages
 ) {
     WorkerSimulatorConfig {
         if (runtimeApiBaseUrl == null || !runtimeApiBaseUrl.isAbsolute()
@@ -30,6 +33,7 @@ record WorkerSimulatorConfig(
         }
         workerGroups = List.copyOf(workerGroups);
         Objects.requireNonNull(startupPlan, "startupPlan");
+        Objects.requireNonNull(messages, "messages");
     }
 
     static WorkerSimulatorConfig load(Path path) throws IOException {

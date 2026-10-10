@@ -360,7 +360,7 @@ class WorkerSimulatorTest {
                 managerFactory,
                 new WorkerSimulatorCommandCheckpoints(),
                 new WorkerSimulatorExecutionWitnesses()
-        );
+        , com.xa.mass.workersimulator.messaging.MessageSettings.defaults());
     }
 
     private void createLabRoot() throws Exception {

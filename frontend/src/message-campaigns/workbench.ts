@@ -116,7 +116,7 @@ export function freshMessageDraft(appId = "") {
     appId,
     recipientCountry: "CN" as MessageCountry,
     senderCountry: "ANY" as MessageCountry | "ANY",
-    body: "{}",
+    body: "",
     createdAt: Date.now(),
     requestId: crypto.randomUUID(),
     editor: recipientEditor(),

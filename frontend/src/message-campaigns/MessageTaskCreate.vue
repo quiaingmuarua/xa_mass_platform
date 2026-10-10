@@ -18,6 +18,7 @@ const emit = defineEmits<{
 const session = props.session;
 const draft = computed(() => session.draft);
 const reading = ref(false);
+const contentEdited = ref(false);
 let disposed = false;
 watch(
   () => props.source.applications,
@@ -54,6 +55,7 @@ const valid = computed(
     !draft.value.editor.error
 );
 function reset() {
+  contentEdited.value = false;
   session.draft = freshMessageDraft(props.source.applications[0]?.id);
 }
 function done(id: string) {
@@ -240,18 +242,22 @@ onBeforeUnmount(() => {
             v-model="draft.body"
             aria-label="模板内容"
             aria-describedby="message-content-hint message-content-error"
-            :aria-invalid="!!bodyError"
+            :aria-invalid="contentEdited && !!bodyError"
             type="textarea"
             :rows="5"
             :disabled="draft.busy || !!draft.frozen"
+            @input="contentEdited = true"
           />
         </label>
         <p id="message-content-hint" class="message-hint">
-          内容原样提交，由所选应用解释。创建成功不代表内容已通过接收端校验。当前 Lab
-          演示要求 JSON 对象文本，普通文本会在执行时被拒绝；填写
-          <code>{}</code> 可演示自动送达。
-          <br />
-          Lab JSON 示例：
+          内容原样发送，由所选应用的 Worker 处理。
+        </p>
+        <details class="message-hint">
+          <summary>Lab JSON 演示帮助</summary>
+          <p>
+            以下示例仅适用于显式配置为 <code>lab-json</code> 的
+            Worker。默认文本模式不会解释这些字段。
+          </p>
           <code class="message-content-example"
             >{"receipts_status":["read","replied"],"delayMs":[1000,4000],"probability":0,"text":"收到了"}</code
           >
@@ -259,9 +265,9 @@ onBeforeUnmount(() => {
           <code>receipts_status</code> 指定已读／回复顺序，<code>delayMs</code>
           为步骤延迟（毫秒），<code>probability</code> 为省略最后一步的概率（0～1），
           <code>text</code> 为模拟回复文字。
-        </p>
+        </details>
         <p
-          v-if="bodyError"
+          v-if="contentEdited && bodyError"
           id="message-content-error"
           class="message-error"
           role="alert"

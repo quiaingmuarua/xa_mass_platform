@@ -225,6 +225,13 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
                 response = Map.of("acceptedCount", 1);
             } else response = switch (method + " " + path) {
                 case "POST send" -> messages.accept(readMessageBody(exchange));
+                case "POST acceptances:load" -> {
+                    var body = readMessageBody(exchange);
+                    if (!body.keySet().equals(Set.of("messageIds")) || !(body.get("messageIds") instanceof List<?> ids)
+                            || ids.stream().anyMatch(id -> !(id instanceof String)))
+                        throw new IllegalArgumentException("Expected messageIds");
+                    yield messages.acceptances(ids.stream().map(String.class::cast).toList());
+                }
                 case "GET health" -> workers.smsHealth();
                 case "GET inventory" -> messages.inventory(Integer.parseInt(query.getOrDefault("offset", "0")), Integer.parseInt(query.getOrDefault("limit", "100")));
                 case "GET records" -> messages.page(Integer.parseInt(query.getOrDefault("offset", "0")), Integer.parseInt(query.getOrDefault("limit", "100")));
@@ -245,6 +252,8 @@ final class WorkerSimulatorControlServer implements AutoCloseable {
             };
             if (response == null) respondError(exchange, 404, "route_not_found", "Unknown message route");
             else respondJson(exchange, 200, response);
+        } catch (com.xa.mass.workersimulator.messaging.MessageScenario.CapacityExceeded full) {
+            respondError(exchange, 429, "message_capacity", full.getMessage());
         } catch (com.xa.mass.workersimulator.messaging.MessageScenario.MissingMessage | WorkerSimulator.UnknownWorkerException missing) {
             respondError(exchange, 404, "message_not_found", "Message or Worker not found");
         } catch (IllegalArgumentException invalid) {

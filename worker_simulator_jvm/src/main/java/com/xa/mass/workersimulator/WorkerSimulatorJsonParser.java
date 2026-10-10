@@ -5,6 +5,8 @@ import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.workersimulator.messaging.MessageContentMode;
+import com.xa.mass.workersimulator.messaging.MessageSettings;
 import java.io.IOException;
 import java.io.StringReader;
 import java.net.URI;
@@ -19,9 +21,9 @@ import java.util.Set;
 
 final class WorkerSimulatorJsonParser {
     private static final Set<String> ROOT_FIELDS = Set.of(
-            "runtimeApiBaseUrl", "sandboxRoot", "controlPort", "seed", "workerGroups", "startupPlan");
+            "runtimeApiBaseUrl", "sandboxRoot", "controlPort", "seed", "workerGroups", "startupPlan", "messages");
     private static final Set<String> GROUP_FIELDS = Set.of(
-            "events", "count", "propertiesTemplate", "newEnvironment", "requestTimeoutMillis", "reconnectPolicy");
+            "events", "count", "propertiesTemplate", "newEnvironment", "requestTimeoutMillis", "reconnectPolicy", "messageContentMode");
     private static final Set<String> RECONNECT_FIELDS = Set.of(
             "maxUnstableAttempts", "reconnectIntervalMillis", "stableConnectionDurationMillis");
 
@@ -40,7 +42,7 @@ final class WorkerSimulatorJsonParser {
                 parseGroups(object(root.get("workerGroups"), "workerGroups")),
                 root.containsKey("startupPlan")
                         ? WorkerSimulatorStartupPlan.parse(object(root.get("startupPlan"), "startupPlan"))
-                        : WorkerSimulatorStartupPlan.defaults());
+                        : WorkerSimulatorStartupPlan.defaults(), messages(root));
     }
 
     static List<WorkerSimulatorGroupConfig> parseGroups(Map<String, Object> groups) {
@@ -65,7 +67,7 @@ final class WorkerSimulatorJsonParser {
                             : WorkerSimulatorGroupConfig.defaultPropertiesTemplate(id, events),
                     (Boolean) reset,
                     Duration.ofMillis(positive(group.getOrDefault("requestTimeoutMillis", 10000L), "requestTimeoutMillis")),
-                    reconnectPolicy(group)));
+                    reconnectPolicy(group), MessageContentMode.parse(string(group.getOrDefault("messageContentMode", "text"), "messageContentMode"))));
         });
         return List.copyOf(configs);
     }
@@ -82,6 +84,20 @@ final class WorkerSimulatorJsonParser {
                         "reconnectIntervalMillis")),
                 Duration.ofMillis(positive(policy.getOrDefault("stableConnectionDurationMillis", defaults.stableConnectionDuration().toMillis()),
                         "stableConnectionDurationMillis")));
+    }
+
+    private static MessageSettings messages(Map<String, Object> root) {
+        var defaults = MessageSettings.defaults();
+        if (!root.containsKey("messages")) return defaults;
+        var values = object(root.get("messages"), "messages");
+        requireFields(values, Set.of("dedupWindowMillis", "maxDedupEntries", "receiptWindowMillis",
+                "maxTrackedMessages", "maxRecentSentRecords"), "messages");
+        return new MessageSettings(
+                positive(values.getOrDefault("dedupWindowMillis", defaults.dedupWindowMillis()), "dedupWindowMillis"),
+                integer(values.getOrDefault("maxDedupEntries", defaults.maxDedupEntries()), "maxDedupEntries", 1, Integer.MAX_VALUE),
+                positive(values.getOrDefault("receiptWindowMillis", defaults.receiptWindowMillis()), "receiptWindowMillis"),
+                integer(values.getOrDefault("maxTrackedMessages", defaults.maxTrackedMessages()), "maxTrackedMessages", 1, Integer.MAX_VALUE),
+                integer(values.getOrDefault("maxRecentSentRecords", defaults.maxRecentSentRecords()), "maxRecentSentRecords", 1, Integer.MAX_VALUE));
     }
 
     private static long positive(Object value, String name) {

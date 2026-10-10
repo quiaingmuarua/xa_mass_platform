@@ -11,6 +11,8 @@ from pathlib import Path
 import sys
 import threading
 import time
+import struct
+import psutil
 import traceback
 import urllib.error
 import urllib.parse
@@ -98,10 +100,10 @@ def directed_control_task(run, worker_id, request="control", count=2, instructio
     return {**created, "expectedCount": count, "recipientIds": recipients}, items
 
 
-def upload_recipients(base, task, recipients):
+def upload_recipients(base, task, recipients, timeout=10):
     request = urllib.request.Request(base + f"/api/v1/messages/tasks/{task}/recipients:import",
             data="\n".join(recipients).encode("utf-8"), headers={"Content-Type": "text/plain;charset=UTF-8"}, method="POST")
-    with urllib.request.urlopen(request, timeout=10) as response:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -468,18 +470,25 @@ def lifecycle(run):
     target = next(w for w in all_pages(run.host, "/lab/v1/messages/inventory") if w["workerId"] == rows[0]["workerId"])
     control = f'/lab/v1/messages/workers/{target["workerGroupId"]}/{target["replicaKey"]}'
     begin_stage(run, "lifecycle-stopped-run-receipt")
-    http(run.host, control + ":stop", {})
     receipt_id = delivered_id(run, rows[0])
-    release_delivered(run, rows[0])
-    callback_observed(run, rows[0], receipt_id, False)
+    http(run.host, control + ":stop", {})
+    require(not any(row["messageId"] == rows[0]["id"] for row in all_pages(run.host, "/lab/v1/messages/records")),
+            "Stopped Worker retained message content")
+    try:
+        http(run.host, "/lab/v1/messages/receipts:release", {"receiptIds": [receipt_id]})
+        raise AssertionError("Stopped Worker retained a held receipt")
+    except urllib.error.HTTPError as error:
+        require(error.code == 400, "Unexpected released-receipt response")
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": False})
     begin_stage(run, "lifecycle-restart-isolation")
     http(run.host, control + ":start", {})
     wait(run, run.connected, 30, "Worker restart")
-    _, receipt = action(run, rows[0], "read")
-    callback_observed(run, rows[0], receipt["receiptId"], False)
-    _, receipt = action(run, rows[0], "reply", "old-run-local-only")
-    callback_observed(run, rows[0], receipt["receiptId"], False)
+    for name, text in (("read", None), ("reply", "old-run-local-only")):
+        try:
+            action(run, rows[0], name, text)
+            raise AssertionError("New run adopted an old observation")
+        except urllib.error.HTTPError as error:
+            require(error.code == 404, "Unexpected old observation response")
     begin_stage(run, "lifecycle-new-run-send")
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
     fresh, _ = directed_control_task(run, target["workerId"], "new-run", 1)
@@ -492,14 +501,39 @@ def lifecycle(run):
     require(campaign_messages(run, value)[0]["status"] == "SENT", "Product fabricated outcome for old run")
     old_result = http(run.url, f'/api/v1/tasks/{value["taskId"]}/results:load', [rows[0]["id"]])[rows[0]["id"]]
     require(json.loads(old_result["opaqueResultPayload"])["status"] == "SENT", "Old run Result changed")
-    return {"passed": True, "workers": 12, "reporterRebound": False, "localReceiptsWithoutSend": 3,
-            "oldObservationRetained": True, "newRunCheckpoint": checkpoint}
+    return {"passed": True, "workers": 12, "reporterRebound": False, "oldObservationReleased": True,
+            "oldResultRetained": True, "newRunCheckpoint": checkpoint}
 
 
 def percentiles(values):
     import math
     values = sorted(values)
     return {"count": len(values), **{f"p{p}": values[math.ceil(len(values) * p / 100) - 1] if values else None for p in (50, 95, 99)}}
+
+
+def load_callbacks_drained(run):
+    metrics = http(run.host, "/lab/v1/messages/metrics")
+    require(metrics["callbackFailed"] == metrics["droppedReceipts"] == 0, "Load callback was dropped or failed")
+    return metrics["callbackQueued"] == metrics["httpSucceeded"] == metrics["reportAccepted"]
+
+
+def load_recipient_actions(run, message, stop, record_latency):
+    # Use the existing hold/release control to bound outstanding callbacks, including
+    # automatic delivery. Each committed receipt is released exactly once.
+    target = {"id": message["messageId"], "workerId": message["workerId"]}
+    receipts = [message["receipts"][0]["receiptId"]]
+    for name, text in [("read", None), ("reply", "first reply"), ("reply", "latest reply")]:
+        if stop.is_set():
+            return
+        began, result = action(run, target, name, text, request=message["messageId"] + "-" + str(text))
+        require(result["held"] and not result["unchanged"], "Load action did not retain its receipt")
+        record_latency((time.monotonic() - began) * 1000)
+        receipts.append(result["receiptId"])
+    require(http(run.host, "/lab/v1/messages/receipts:release", {"receiptIds": receipts})
+            == {"offered": 4, "queued": 4}, "Load callbacks were not queued")
+    # 24 input workers x four receipts leaves at most 96 outstanding callbacks.
+    # Each receipt still traverses its own real HTTP and original Reporter.
+    wait(run, lambda: load_callbacks_drained(run), 5, "bounded load callbacks")
 
 
 def load_1k(run):
@@ -510,6 +544,7 @@ def load_1k(run):
     lock, stop, permits = threading.Lock(), threading.Event(), threading.BoundedSemaphore(512)
     receipts_scheduled = set()
     peak = {"hostActiveSms": 0}
+    http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
     http(run.host, "/lab/v1/sms/traffic/start", {"ratePerSecond": 300, "durationSeconds": 135})
     start = time.monotonic()
     run.phase_deadline = start + 180
@@ -555,22 +590,17 @@ def load_1k(run):
 
     def recipient_actions(message):
         try:
-            # Delivery is an acceptance fact; only the three subsequent actions are manual.
-            for name, text in [("read", None), ("reply", "first reply"), ("reply", "latest reply")]:
-                if stop.is_set():
-                    return
-                began, result = action(run, {"id": message["messageId"], "workerId": message["workerId"]}, name, text,
-                                        request=message["messageId"] + "-" + str(text))
-                require(result["callbackQueued"] and not result["unchanged"], "Load action did not create and queue a callback")
+            def recorded(latency):
                 with lock:
-                    action_latencies.append((time.monotonic() - began) * 1000)
+                    action_latencies.append(latency)
+            load_recipient_actions(run, message, stop, recorded)
         except Exception as error:
-            failure(error, "message." + name)
+            failure(error, "message.receipt")
 
     def recipients():
         # Pages only discover channel records that real Worker execution has created.
         offset = 0
-        with ThreadPoolExecutor(max_workers=48) as pool:
+        with ThreadPoolExecutor(max_workers=24) as pool:
             pending = set()
             while not stop.is_set():
                 try:
@@ -631,6 +661,8 @@ def load_1k(run):
         require(len(channel) == len(actual) == total, "Channel delivery identities differ")
         require(all(len(m["receipts"]) == 4 and m["receipts"][0]["status"] == "DELIVERED" for m in channel),
                 "Expected actual delivery plus read and two reply facts for every message")
+        require(all(r["attempts"] == 1 and r["reportAccepted"] is True and r["httpStatus"] == 200
+                    for m in channel for r in m["receipts"]), "A receipt was lost, rejected or replayed")
         compared = []
         for value in campaigns:
             def latest_observed():
@@ -666,10 +698,165 @@ def load_1k(run):
         campaign_thread.join(timeout=5); recipient_thread.join(timeout=10)
 
 
+def message_identity(task, recipient):
+    return "message-" + tuple_digest("messages/v2/message", task, recipient)
+
+
+def message_send_worker_world():
+    world = {}
+    for app, count, first_phone in (("demo", 400, 861700000001), ("app-a", 300, 861710000001), ("app-b", 300, 861720000001)):
+        world[app + "-sim"] = tuple({"runtime": "java", "simulated": "true", "application": app,
+                "phone": str(first_phone + index), "country": "CN", "operator": "Preview SIM", "messaging.enabled": "true"}
+                for index in range(count))
+    return world
+
+
+def tuple_digest(*values):
+    digest = hashlib.sha256()
+    for value in values:
+        encoded = value.encode("utf-8")
+        digest.update(struct.pack(">I", len(encoded))); digest.update(encoded)
+    return digest.hexdigest()
+
+
+def verify_send_evidence(task, expected, results, states, accepted, group, inventory):
+    """Independent public Result, Item and receiving-service witnesses; never a preview count."""
+    verified = []
+    witnesses = {row["messageId"]: row for row in accepted["items"]}
+    require(len(witnesses) == len(accepted["items"]), "Duplicate acceptance witness")
+    require(set(witnesses).issubset(expected), "Unexpected acceptance identity")
+    for identity, (recipient, body) in expected.items():
+        result = results.get(identity, {})
+        require(result.get("status") != "failed", "A sending Item failed")
+        if result.get("status") != "succeeded":
+            continue
+        require(identity in witnesses, "Successful Result lacks a retained acceptance witness")
+        witness = witnesses[identity]
+        require(witness["inputFingerprint"] == tuple_digest("lab-message-input/v1", task, identity, "CN", recipient, body),
+                "Acceptance input fingerprint differs")
+        sender = witness["sender"]
+        require(sender["workerGroupId"] == group and inventory.get(sender["workerId"], {}).get("workerGroupId") == group,
+                "Send escaped the selected application Group")
+        snapshot = json.loads(result["opaqueResultPayload"])
+        require(all(snapshot.get(key) == value for key, value in {
+            "campaignId": task, "messageId": identity, "recipientId": recipient, "country": "CN", "body": body,
+            "status": "SENT", "workerId": sender["workerId"], "phone": sender["phone"],
+            "observedAtMillis": witness["observedAtMillis"]}.items()), "SENT content or association differs")
+        state = states.get(identity, {})
+        require(state.get("tag") != 5, "Item is terminal-failed despite acceptance")
+        if state.get("tag") == 6 and state.get("band") == "terminal":
+            verified.append(identity)
+    return verified
+
+
+def messages_send_100k(run):
+    require(Counter(worker["workerGroupId"] for worker in run.input_workers_by_id.values())
+            == {"demo-sim": 400, "app-a-sim": 300, "app-b-sim": 300}, "Wrong sending workload inventory")
+    body = "  您好 {{name}}\nMessages text sending proof.  "
+    task_reports, verified_ids, import_seconds = [], set(), 0.0
+    send_seconds, last_sample, cache_peaks = 0.0, 0.0, {}
+    resource_path = run.output.parent / "process-resources.jsonl"
+    run.sending_progress = {"verifiedSends": 0, "completedTasks": 0, "importSeconds": 0, "sendAndObserveSeconds": 0}
+
+    def sample(force=False):
+        nonlocal last_sample
+        now = time.monotonic()
+        if not force and now - last_sample < 5:
+            return
+        run.check(); last_sample = now
+        metrics = http(run.host, "/lab/v1/messages/metrics", timeout=5)
+        run.sending_progress["lastHostMessageMetrics"] = metrics
+        for key, bound in {"dedupEntries": 200000, "trackedMessages": 20000, "recentSentRecords": 1000,
+                           "held": 10000, "replyIds": 100000}.items():
+            require(0 <= metrics[key] <= bound, "Messages cache exceeded its configured bound")
+            cache_peaks[key] = max(cache_peaks.get(key, 0), metrics[key])
+        require(metrics["reporters"] + metrics["pendingAssociations"] <= 20000, "Reporter bound exceeded")
+        processes = {}
+        for name, process in run.processes.items():
+            observed = psutil.Process(process.pid)
+            record = {"rssBytes": observed.memory_info().rss, "threads": observed.num_threads()}
+            if hasattr(observed, "num_fds"):
+                record["fileDescriptors"] = observed.num_fds()
+            else:
+                record["handles"] = observed.num_handles()
+            processes[name] = record
+        with resource_path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps({"observedAtMillis": int(time.time() * 1000), "processes": processes,
+                                     "messages": metrics}) + "\n")
+
+    for index in range(51):
+        app, count = ("app-a", 100000) if index == 0 else (("demo", "app-a", "app-b")[(index - 1) % 3], 100)
+        created = http(run.url, "/api/v1/messages/tasks", {"appId": app, "requestId": f"send-proof-{index}",
+                "name": f"send-proof-{index}", "recipientCountry": "CN", "senderCountry": None, "body": body}, timeout=5)
+        task = created["taskId"]
+        run.sending_progress.update(currentTask=index + 1, currentApplication=app, currentExpectedCount=count)
+        recipients = [f"+86138{i:08d}" for i in range(count)]
+        began_import = time.monotonic()
+        receipt = upload_recipients(run.url, task, recipients, timeout=180)
+        elapsed_import = time.monotonic() - began_import; import_seconds += elapsed_import
+        run.sending_progress["importSeconds"] = import_seconds
+        require(receipt["confirmedAddedCount"] == count and receipt["existingCount"] == 0, "Sending import incomplete")
+        expected = {message_identity(task, number): (number, body) for number in recipients}
+        pending = dict(expected)
+        began_send = time.monotonic()
+        remaining_seconds = 900 - send_seconds
+        require(remaining_seconds > 0, "Sending phases exceeded 15 minutes")
+        run.phase_deadline = began_send + remaining_seconds
+        http(run.url, f"/api/v1/messages/tasks/{task}/approve", count, timeout=5)
+        while pending:
+            require(time.monotonic() < run.phase_deadline, "Sending evidence did not converge within 15 minutes")
+            before = len(pending)
+            pass_ids = list(pending)
+            for offset in range(0, len(pass_ids), 100):
+                ids = pass_ids[offset:offset + 100]
+                if not ids:
+                    break
+                sample()
+                require(time.monotonic() < run.phase_deadline, "Sending phases exceeded 15 minutes")
+                results = http(run.url, f"/api/v1/tasks/{task}/results:load", ids, timeout=5)
+                succeeded = [identity for identity in ids if results.get(identity, {}).get("status") == "succeeded"]
+                require(not any(row.get("status") == "failed" for row in results.values()), "A sending Item failed")
+                if not succeeded:
+                    continue
+                acceptances = http(run.host, "/lab/v1/messages/acceptances:load", {"messageIds": succeeded}, timeout=5)
+                states = http(run.url, f"/api/v1/tasks/{task}/items:states", succeeded, timeout=5)
+                confirmed = verify_send_evidence(task, {identity: expected[identity] for identity in succeeded},
+                        results, states, acceptances, app + "-sim", run.input_workers_by_id)
+                for identity in confirmed:
+                    require(identity not in verified_ids, "Message identity reused by another Task")
+                    verified_ids.add(identity); pending.pop(identity)
+                run.sending_progress["verifiedSends"] = len(verified_ids)
+            if len(pending) == before:
+                time.sleep(.05)
+        wait(run, lambda: task_state(run, task) == "terminal", remaining_seconds, "sending Task terminal")
+        detail = http(run.url, f"/api/v1/messages/tasks/{task}", timeout=5)["task"]
+        require(detail["sendTotal"] == detail["sentCount"] == count and detail["failedCount"] == 0
+                and detail["deliveredCount"] == detail["readCount"] == detail["repliedCount"] == 0,
+                "Task counts differ from exact no-receipt sending evidence")
+        elapsed_send = time.monotonic() - began_send; send_seconds += elapsed_send
+        run.sending_progress.update(completedTasks=index + 1, sendAndObserveSeconds=send_seconds)
+        task_reports.append({"appId": app, "count": count, "importSeconds": elapsed_import,
+                             "sendAndObserveSeconds": elapsed_send, "idsSha256": hashlib.sha256("\n".join(sorted(expected)).encode()).hexdigest()})
+        sample(True)
+        print(f"Messages sending proof: {index + 1}/51 Tasks, {len(verified_ids)}/105000 verified sends", flush=True)
+    metrics = http(run.host, "/lab/v1/messages/metrics", timeout=5)
+    require(len(verified_ids) == metrics["acceptedMessages"] == 105000, "Receiving count differs from verified identities")
+    require(metrics["callbackOffered"] == 0 and metrics["scheduled"] == 0, "Plain text manufactured automatic receipts")
+    require(metrics["skippedAssociations"] > 0, "Workload did not cross the receipt association bound")
+    return {"passed": True, "workers": 1000, "taskCount": 51, "verifiedSends": len(verified_ids),
+            "importSeconds": import_seconds, "sendAndObserveSeconds": send_seconds,
+            "observedSendsPerSecond": len(verified_ids) / send_seconds, "tasks": task_reports,
+            "cachePeaks": cache_peaks, "hostMessageMetrics": metrics,
+            "additionalSendAttempts": metrics["sendAttempts"] - len(verified_ids),
+            "additionalAttemptsMeaning": "Worker send invocations beyond unique messages; not a Kernel retry counter",
+            "messageIdsSha256": hashlib.sha256("\n".join(sorted(verified_ids)).encode()).hexdigest(),
+            "claim": "Actual Redis/HTTP/Worker execution and simulated receiver acceptance without receipts; no third-party delivery or throughput SLA"}
+
+
 def execute_scenario(run, scenario, output):
     result = {"passed": False}
     started = time.monotonic()
-    small = scenario != "load-1k"
+    small = scenario not in ("load-1k", "messages-send-100k")
     if small:
         begin_stage(run, "startup")
     try:
@@ -680,7 +867,7 @@ def execute_scenario(run, scenario, output):
             run.input_workers_by_id = {worker["workerId"]: worker
                                        for worker in all_pages(run.host, "/lab/v1/messages/inventory")}
             result = {"functional": functional, "pool-selection": pool_selection,
-                      "lifecycle": lifecycle, "load-1k": load_1k}[scenario](run)
+                      "lifecycle": lifecycle, "load-1k": load_1k, "messages-send-100k": messages_send_100k}[scenario](run)
             if small:
                 begin_stage(run, "shutdown")
         if small:
@@ -692,6 +879,8 @@ def execute_scenario(run, scenario, output):
         if isinstance(error, AssertionError):
             result["failure"] = str(error)
         (output / "private" / "failure.txt").write_text(str(error), encoding="utf-8")
+        if hasattr(run, "sending_progress"):
+            result["sendingProgress"] = run.sending_progress
     if small:
         result["completedStages"] = run.completed_stages
         if run.current_stage is not None:
@@ -706,7 +895,7 @@ def execute_scenario(run, scenario, output):
 def main():
     global preview, http, all_pages
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scenario", choices=["functional", "pool-selection", "lifecycle", "load-1k"], default="functional")
+    parser.add_argument("--scenario", choices=["functional", "pool-selection", "lifecycle", "load-1k", "messages-send-100k"], default="functional")
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--root", type=Path, default=PREVIEW)
     parser.add_argument("--output", type=Path)
@@ -721,17 +910,18 @@ def main():
     http, all_pages = preview.http, preview.all_pages
     output = (args.output or Path(__file__).parent / "build" / args.scenario).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    counts = (700, 200, 100) if args.scenario == "load-1k" else (4, 4, 4)
+    counts = (400, 0, 0) if args.scenario == "messages-send-100k" else (700, 200, 100) if args.scenario == "load-1k" else (4, 4, 4)
     sandbox_root = output / "private" / ("inventory-" + uuid.uuid4().hex) / "data" / "scenario-workers"
-    world = product_worker_world(counts)
-    app_count = 0
+    world = message_send_worker_world() if args.scenario == "messages-send-100k" else product_worker_world(counts)
+    app_count = 300 if args.scenario == "messages-send-100k" else 0
     if args.scenario == "pool-selection":
         app_count = 12
         for app, offset in (("app-a", 1_000_000), ("app-b", 2_000_000)):
             world[app + "-sim"] = tuple({**properties, "application": app, "phone": str(int(properties["phone"]) + offset)}
-                                         for properties in world["demo-sim"])
+                                         for properties in world["demo-sim"][:app_count])
     materialize_inventory(sandbox_root, world)
-    run = preview.Preview(sum(counts), args.port, root=args.root, output=output / "private", sandbox_root=sandbox_root, app_count=app_count)
+    run = preview.Preview(sum(counts), args.port, root=args.root, output=output / "private", sandbox_root=sandbox_root, app_count=app_count,
+                          message_content_mode="text" if args.scenario == "messages-send-100k" else "lab-json")
     result = execute_scenario(run, args.scenario, output)
     (output / "summary.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2), flush=True)

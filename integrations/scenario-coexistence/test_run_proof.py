@@ -9,6 +9,85 @@ import run_proof as proof
 
 
 class ProofAssertionsTest(unittest.TestCase):
+    def test_load_actions_wait_for_each_callback_and_never_replay_a_rejected_action(self):
+        message = {"messageId": "m", "workerId": "w", "receipts": [{"receiptId": "delivered"}]}
+        events, latencies = [], []
+        def observed(*args):
+            events.append("observed")
+        def action(run, target, name, text, request):
+            events.append(name)
+            return proof.time.monotonic(), {"held": True, "unchanged": False, "receiptId": request}
+        run = SimpleNamespace(host="host")
+        with patch.object(proof, "wait", side_effect=observed), patch.object(proof, "action", side_effect=action), \
+                patch.object(proof, "http", return_value={"offered": 4, "queued": 4}) as release:
+            proof.load_recipient_actions(run, message, proof.threading.Event(), latencies.append)
+            release.assert_called_once_with("host", "/lab/v1/messages/receipts:release",
+                    {"receiptIds": ["delivered", "m-None", "m-first reply", "m-latest reply"]})
+        self.assertEqual(["read", "reply", "reply", "observed"], events)
+        self.assertEqual(3, len(latencies))
+        with patch.object(proof, "wait"), patch.object(proof, "http", return_value={"offered": 1, "queued": 1}), \
+                patch.object(proof, "action", return_value=(0, {"held": False})) as mutation:
+            with self.assertRaisesRegex(AssertionError, "retain its receipt"):
+                proof.load_recipient_actions(run, message, proof.threading.Event(), latencies.append)
+            mutation.assert_called_once()
+
+    def test_load_pacing_waits_for_reporter_admission_and_never_tolerates_loss(self):
+        metrics = {"callbackFailed": 0, "droppedReceipts": 0, "callbackQueued": 2, "httpSucceeded": 2, "reportAccepted": 1}
+        with patch.object(proof, "http", return_value=metrics):
+            self.assertFalse(proof.load_callbacks_drained(SimpleNamespace(host="host")))
+            metrics["reportAccepted"] = 2
+            self.assertTrue(proof.load_callbacks_drained(SimpleNamespace(host="host")))
+            metrics["droppedReceipts"] = 1
+            with self.assertRaisesRegex(AssertionError, "dropped or failed"):
+                proof.load_callbacks_drained(SimpleNamespace(host="host"))
+
+    def test_large_sending_world_has_exact_group_counts_and_independent_phone_ranges(self):
+        world = proof.message_send_worker_world()
+        self.assertEqual({"demo-sim": 400, "app-a-sim": 300, "app-b-sim": 300}, {key: len(rows) for key, rows in world.items()})
+        rows = [row for group in world.values() for row in group]
+        self.assertEqual(1000, len({row["phone"] for row in rows}))
+        self.assertTrue(all(row["country"] == "CN" and row["messaging.enabled"] == "true" for row in rows))
+
+    def test_message_identity_is_task_scoped_and_uses_unambiguous_utf8_fields(self):
+        self.assertEqual(proof.message_identity("task", "+86123"), proof.message_identity("task", "+86123"))
+        self.assertNotEqual(proof.message_identity("task", "+86123"), proof.message_identity("another", "+86123"))
+        self.assertNotEqual(proof.tuple_digest("ab", "c"), proof.tuple_digest("a", "bc"))
+        self.assertNotEqual(proof.tuple_digest("模", "板"), proof.tuple_digest("模板", ""))
+
+    def sending_evidence(self):
+        identity = proof.message_identity("task", "+86123")
+        sender = {"workerGroupId": "app-a-sim", "workerId": "worker", "phone": "sender"}
+        snapshot = {"campaignId": "task", "messageId": identity, "country": "CN", "recipientId": "+86123",
+                    "body": "text", "workerId": "worker", "phone": "sender", "status": "SENT", "observedAtMillis": 123}
+        return identity, {"task": "task", "expected": {identity: ("+86123", "text")},
+                "results": {identity: {"status": "succeeded", "opaqueResultPayload": json.dumps(snapshot)}},
+                "states": {identity: {"tag": 6, "band": "terminal"}},
+                "accepted": {"items": [{"messageId": identity, "sender": sender, "observedAtMillis": 123,
+                    "inputFingerprint": proof.tuple_digest("lab-message-input/v1", "task", identity, "CN", "+86123", "text")}]},
+                "group": "app-a-sim", "inventory": {"worker": {"workerGroupId": "app-a-sim"}}}
+
+    def test_sending_requires_all_three_independent_witnesses(self):
+        identity, evidence = self.sending_evidence()
+        self.assertEqual([identity], proof.verify_send_evidence(**evidence))
+        evidence["states"] = {}
+        self.assertEqual([], proof.verify_send_evidence(**evidence))
+        evidence["accepted"]["items"] = []
+        with self.assertRaisesRegex(AssertionError, "acceptance witness"):
+            proof.verify_send_evidence(**evidence)
+
+    def test_sending_rejects_wrong_group_input_or_a_receipt_instead_of_sent(self):
+        for fault in ("group", "input", "receipt", "failed", "duplicate"):
+            identity, evidence = self.sending_evidence()
+            if fault == "group": evidence["accepted"]["items"][0]["sender"]["workerGroupId"] = "demo-sim"
+            if fault == "input": evidence["accepted"]["items"][0]["inputFingerprint"] = "wrong"
+            if fault == "receipt":
+                row = json.loads(evidence["results"][identity]["opaqueResultPayload"]); row["status"] = "DELIVERED"
+                evidence["results"][identity]["opaqueResultPayload"] = json.dumps(row)
+            if fault == "failed": evidence["results"][identity]["status"] = "failed"
+            if fault == "duplicate": evidence["accepted"]["items"] *= 2
+            with self.subTest(fault=fault), self.assertRaises(AssertionError):
+                proof.verify_send_evidence(**evidence)
+
     def test_campaign_countries_are_independent_and_numbers_are_repeatable(self):
         with patch.object(proof, "http", return_value={"taskId": "campaign"}), patch.object(proof, "upload_recipients", return_value={"confirmedAddedCount": 2, "existingCount": 0}):
             cross_task, cross = proof.campaign(SimpleNamespace(url="server"), country="US", recipient_country="CN")

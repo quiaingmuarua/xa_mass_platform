@@ -81,8 +81,11 @@ Preview binds Messages applications Demo, App A and App B to the corresponding
 Groups. All three install message.send; App A/B retain app.registration.check.
 Their explicit phone ranges do not overlap, and country/messaging.enabled
 Properties are initialized in new inventories. API creation requires appId and
-no longer accepts senderPhone. Template content is opaque to Messages; Lab still
-requires its JSON instruction format. Creation success is not Lab acceptance.
+no longer accepts senderPhone. Template content is opaque to Messages. The Host
+now defaults each Group to text sending; existing JSON demonstration fixtures
+explicitly set `messageContentMode: "lab-json"`. Creation success is not sending
+acceptance or a receipt. Host-root `messages` settings define finite deduplication
+and observation windows; they do not change Runtime Item retention.
 
 This configuration expands the immutable App Group event definitions. Use a fresh
 Redis scope and fresh inventory; do not apply it over existing create-only Groups
@@ -156,3 +159,13 @@ Launch lifecycle and archive checks belong here; run them with
 launcher tests. The preview verifier is `src/test/python/verify_preview_archive.py`.
 Both the SMS Preview workflow and Scenario Coexistence lane run these checks before
 their separate business proofs.
+
+### Text sending cutover
+
+The shipped products/messages Host configurations explicitly select text mode.
+JSON-looking bodies remain literal text in that mode. To retain an old receipt
+demonstration, configure its Group as lab-json before startup. Existing Task/Item
+identities and stored Results need no migration; queued work is interpreted by the
+Worker configuration selected for execution. Host windows do not survive restart.
+Do not restart an existing Preview or overwrite its staged artifacts as part of
+validation: build and run a separate source copy, port, scope and inventory.

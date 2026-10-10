@@ -164,13 +164,13 @@ class WorkerSimulatorLabTest {
     @Test void generationCrossesFilesAndReuseIgnoresChangedTemplates() throws Exception {
         var first = new WorkerSimulatorGroupConfig("g", List.of("test"), 101,
                 Map.of("ordinal", Map.of("$index", List.of(1, 1))), false,
-                Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults());
+                Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults(), com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
         var generated = prepare(labRoot(), List.of(first)).get(0).workers();
         assertThat(generated).hasSize(101);
         assertThat(generated.get(100).labWorkerKey()).isEqualTo("workers-001.jsonl:1");
         assertThat(generated.get(100).workerProperties()).containsEntry("ordinal", "101");
         var changed = new WorkerSimulatorGroupConfig("g", List.of("test"), 1, Map.of("ordinal", "different"),
-                false, Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults());
+                false, Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults(), com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
         assertThat(prepare(labRoot(), List.of(changed)).get(0).workers()).hasSize(101);
     }
 
@@ -179,7 +179,7 @@ class WorkerSimulatorLabTest {
         Path preserved = labRoot().resolve(STRING_GROUP + "/workers-000.jsonl");
         String before = Files.readString(preserved);
         var reset = new WorkerSimulatorGroupConfig(PHONE_GROUP, List.of("test"), 1, Map.of("new", "yes"),
-                true, Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults());
+                true, Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults(), com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
         var lab = new WorkerSimulatorLab(labRoot().toString());
         assertThatThrownBy(() -> lab.prepare(List.of(reset, group(STRING_GROUP)), 0,
                 ignored -> { throw new IllegalArgumentException("invalid world"); })).hasMessage("invalid world");
@@ -201,7 +201,7 @@ class WorkerSimulatorLabTest {
             return call.callRealMethod();
         }).when(lab).moveDirectory(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(target));
         var reset = new WorkerSimulatorGroupConfig(PHONE_GROUP, List.of("test"), 0, Map.of(),
-                true, Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults());
+                true, Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults(), com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
         assertThatThrownBy(() -> lab.prepare(List.of(reset), 0, ignored -> {}))
                 .isInstanceOf(WorkerSimulatorAssemblyException.class);
         assertThat(Files.readString(target.resolve("workers-000.jsonl"))).isEqualTo(old);
@@ -217,9 +217,9 @@ class WorkerSimulatorLabTest {
         var invalid = new WorkerSimulatorGroupConfig(PHONE_GROUP,
                 List.of(com.xa.mass.workersimulator.sms.SmsScenario.START_EVENT), 2,
                 Map.of("phone", "861700000001", "country", "CN"), true,
-                Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults());
+                Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults(), com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
         var config = new WorkerSimulatorConfig(java.net.URI.create("http://127.0.0.1:1"),
-                labRoot(), 0, 0, List.of(invalid), WorkerSimulatorStartupPlan.defaults());
+                labRoot(), 0, 0, List.of(invalid), WorkerSimulatorStartupPlan.defaults(), com.xa.mass.workersimulator.messaging.MessageSettings.defaults());
         try (var host = WorkerSimulator.create(config)) {
             assertThatThrownBy(host::start)
                     .hasRootCauseMessage("Duplicate inventory phone");
@@ -237,7 +237,7 @@ class WorkerSimulatorLabTest {
         String before = Files.readString(existing);
         var invalid = new WorkerSimulatorGroupConfig(PHONE_GROUP, List.of("test"), 2,
                 Map.of("value", Map.of("$index", List.of(Long.MAX_VALUE, 1))), true,
-                Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults());
+                Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults(), com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
         assertThatThrownBy(() -> prepare(labRoot(), List.of(invalid)))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(Files.readString(existing)).isEqualTo(before);
@@ -279,7 +279,7 @@ class WorkerSimulatorLabTest {
                 Map.of("labSlot", Map.of("$index", List.of(1, 1)), "convergenceSlot", "A"), false,
                 Duration.ofSeconds(1),
                 TextMessageReconnectPolicy.defaults()
-        );
+        , com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
     }
 
     private static void writeInventory(

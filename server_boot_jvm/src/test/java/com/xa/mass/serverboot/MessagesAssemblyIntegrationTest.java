@@ -29,6 +29,60 @@ import static org.assertj.core.api.Assertions.*;
 class MessagesAssemblyIntegrationTest {
     private static final String EVENT = "extension.worker.message.send";
 
+    @ParameterizedTest @ValueSource(booleans = {false, true}) @Timeout(120)
+    void textSendingIsIndependentOfReceiptCapacityAndShortWindowsReleaseWithoutRestart(boolean shortWindow) throws Exception {
+        var settings = new com.xa.mass.workersimulator.messaging.MessageSettings(
+                shortWindow ? 3000 : 600000, shortWindow ? 1 : 4, shortWindow ? 3000 : 600000, 1, 1);
+        try (var fixture = new Fixture(); var channel = new MessageScenario(0, settings);
+             var lab = new MessageFailureIntegrationTest.LabHttp(channel)) {
+            fixture.start(true, Map.of("xa.mass.kernel-pacer.enabled", "true"));
+            var manager = new AtomicReference<JavaWorkerManager>();
+            var sender = channel.addSender("demo-sim", "one", () -> Map.of("phone", "+861700000000", "country", "CN"),
+                    () -> manager.get().snapshot("one").workerId(), () -> "RUNNING",
+                    com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
+            try (var worker = JavaWorkerManager.builder(fixture.base, "demo-sim", WorkerTransportType.WEBSOCKET)
+                    .replica("one", () -> Map.of("phone", "+861700000000", "country", "CN", "messaging.enabled", "true"),
+                            channel.definitions(sender)).build()) {
+                manager.set(worker); worker.start();
+                int count = shortWindow ? 1 : 3;
+                String task = createTextTask(fixture, "plain-first", count);
+                await(() -> "terminal".equals(((Map<?, ?>) fixture.detail(task).get("task")).get("state")));
+                assertThat((Map<String, Object>) fixture.detail(task).get("task"))
+                        .containsEntry("sentCount", (long) count).containsEntry("failedCount", 0L).containsEntry("deliveredCount", 0L);
+                var rows = (List<Map<String, Object>>) fixture.detail(task).get("results");
+                assertThat(rows).hasSize(count).allSatisfy(row -> assertThat(row).containsEntry("status", "SENT"));
+                String oldMessage = (String) rows.getFirst().get("messageId");
+                String workerId = worker.snapshot("one").workerId();
+                if (shortWindow) {
+                    await(() -> ((Number) channel.metrics().get("dedupEntries")).intValue() == 0
+                            && ((Number) channel.metrics().get("reporters")).intValue() == 0);
+                    assertThatThrownBy(() -> channel.act(sender, oldMessage, "read", Map.of())).isInstanceOf(MessageScenario.MissingMessage.class);
+                } else {
+                    assertThat(((Number) channel.metrics().get("skippedAssociations")).longValue()).isGreaterThanOrEqualTo(2);
+                    assertThat(channel.metrics()).containsEntry("reporters", 1).containsEntry("recentSentRecords", 1);
+                }
+                String next = createTextTask(fixture, "plain-next", 1);
+                await(() -> "terminal".equals(((Map<?, ?>) fixture.detail(next).get("task")).get("state")));
+                assertThat(fixture.hasStatus(next, "SENT", null)).isTrue();
+                assertThat(fixture.hasStatus(task, "SENT", null)).isTrue();
+                assertThat(worker.snapshot("one").workerId()).isEqualTo(workerId);
+                assertThat(channel.metrics()).containsEntry("callbackOffered", 0L).containsEntry("acceptedMessages", (long) count + 1);
+            }
+        }
+    }
+
+    private static String createTextTask(Fixture fixture, String name, int count) throws Exception {
+        var created = fixture.post("/api/v1/messages/tasks", Map.of("appId", "demo", "requestId", name,
+                "name", name, "recipientCountry", "CN", "body", "  文本 {{name}}\n{}  "));
+        assertThat(created.statusCode()).isEqualTo(201);
+        String task = (String) Jsons.parseObject(created.body()).get("taskId");
+        var numbers = java.util.stream.IntStream.range(0, count).mapToObj(i -> "+86138000000" + i)
+                .collect(java.util.stream.Collectors.joining("\n"));
+        assertThat(fixture.upload(task, numbers).statusCode()).isEqualTo(200);
+        assertThat(fixture.post("/api/v1/messages/tasks/" + task + "/approve", count).statusCode()).isEqualTo(200);
+        return task;
+    }
+
     @Test @Timeout(150)
     void messagesAloneExecutesAndContinuesTrackedResponsesAfterTaskTermination() throws Exception {
         try (var fixture = new Fixture(); var channel = new MessageScenario();
@@ -41,7 +95,7 @@ class MessagesAssemblyIntegrationTest {
             channel.hold(true);
             var manager = new AtomicReference<JavaWorkerManager>();
             var sender = channel.addSender("demo-sim", "one", () -> Map.of("phone", "+861700000000", "country", "CN"),
-                    () -> manager.get().snapshot("one").workerId(), () -> "RUNNING");
+                    () -> manager.get().snapshot("one").workerId(), () -> "RUNNING", com.xa.mass.workersimulator.messaging.MessageContentMode.LAB_JSON);
             try (var worker = JavaWorkerManager.builder(fixture.base, "demo-sim", WorkerTransportType.WEBSOCKET)
                     .replica("one", () -> Map.of("phone", "+861700000000", "country", "CN", "messaging.enabled", "true"),
                             channel.definitions(sender)).build()) {

@@ -134,10 +134,11 @@ async function expand(label: string, root: ParentNode = drawer()) {
   await settle();
   return details;
 }
-async function createDraft(text = "86123\n86124") {
+async function createDraft(text = "86123\n86124", content = "测试消息") {
   button("创建任务").click();
   await settle();
   input("收件号码", text);
+  input("模板内容", content);
   await settle();
 }
 function submit() {
@@ -166,22 +167,28 @@ describe("Messages desktop workbench", () => {
   it("opens a single creation page with template content and supports an empty task", async () => {
     const create = vi.spyOn(source, "createTask");
     const { router } = await mount();
-    await createDraft("");
+    await createDraft("", "");
     expect(router.currentRoute.value.query.view).toBe("create");
     expect(document.querySelector(".message-create-page .el-drawer")).toBeNull();
     expect(field("任务名称").value).toMatch(/^msg-demo-ANY-CN-/);
     expect(field("任务名称").readOnly).toBe(true);
     expect(document.querySelector('[aria-label="指定发送号码"]')).toBeNull();
-    expect(document.querySelector(".message-create-form details")).toBeNull();
-    expect(field("模板内容").value).toBe("{}");
+    expect(
+      (document.querySelector(".message-create-form details") as HTMLDetailsElement)
+        .open
+    ).toBe(false);
+    expect(field("模板内容").value).toBe("");
     expect(document.getElementById("message-content-hint")?.textContent).toContain(
-      "JSON 对象文本"
+      "内容原样发送"
     );
+    expect(button("创建空任务").disabled).toBe(true);
+    input("模板内容", "测试消息");
+    await settle();
     expect(button("创建空任务").disabled).toBe(false);
     submit();
     await settle();
     expect(create).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0][0]).toMatchObject({ appId: "demo", body: "{}" });
+    expect(create.mock.calls[0][0]).toMatchObject({ appId: "demo", body: "测试消息" });
     expect(router.currentRoute.value.fullPath).toBe("/messages");
     const noticeTrigger = button("预览新任务");
     noticeTrigger.focus();
@@ -480,6 +487,9 @@ describe("Messages desktop workbench", () => {
     button("结束本次提交").click();
     await settle();
     expect(field("收件号码").value).toBe("");
+    expect(field("模板内容").value).toBe("");
+    input("模板内容", "新的消息");
+    await settle();
     submit();
     await settle();
     expect(create.mock.calls[2][0].requestId).not.toBe(frozen.requestId);

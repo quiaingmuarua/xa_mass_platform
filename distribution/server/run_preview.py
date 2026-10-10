@@ -98,13 +98,18 @@ def validate_parameters(count, seed, port, sandbox_root=None, app_count=20):
 
 
 class Preview:
-    def __init__(self, count=60, port=18500, redis_url=None, root=PRODUCT, output=None, sandbox_root=None, seed=0, app_count=20):
+    def __init__(self, count=60, port=18500, redis_url=None, root=PRODUCT, output=None, sandbox_root=None, seed=0, app_count=20,
+                 message_content_mode=None, message_settings=None):
         validate_parameters(count, seed, port, sandbox_root, app_count)
         self.root = Path(root).resolve()
         self.sandbox_root = Path(sandbox_root or self.root / "data" / "scenario-workers").resolve()
         self.count = count
         self.app_count = app_count
         self.seed = seed
+        if message_content_mode not in (None, "text", "lab-json"):
+            raise ValueError("Unsupported message content mode")
+        self.message_content_mode = message_content_mode
+        self.message_settings = dict(message_settings) if message_settings is not None else None
         self.scenarios = ("sms", "messages", "app-checks")
         self.adapter = "products-websocket"
         self.lab = "/lab/v1/sms"
@@ -184,6 +189,12 @@ class Preview:
         worker_config = json.loads((host_lib.parent / "config" / "products.json").read_text(encoding="utf-8"))
         worker_config.update(runtimeApiBaseUrl=self.url, sandboxRoot=str(self.sandbox_root), controlPort=self.port + 4,
                              seed=self.seed)
+        if self.message_settings is not None:
+            worker_config["messages"] = self.message_settings
+        if self.message_content_mode is not None:
+            for message_group in worker_config["workerGroups"].values():
+                if "extension.worker.message.send" in message_group.get("events", []):
+                    message_group["messageContentMode"] = self.message_content_mode
         group = worker_config["workerGroups"]["demo-sim"]
         group["count"] = self.count
         for app_group in ("app-a-sim", "app-b-sim"):

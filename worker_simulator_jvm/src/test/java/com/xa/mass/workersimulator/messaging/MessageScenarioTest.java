@@ -19,7 +19,7 @@ class MessageScenarioTest {
         return Map.of("campaignId", "campaign", "messageId", id, "country", "CN", "recipientId", "recipient", "body", body);
     }
     static MessageScenario.Sender sender(MessageScenario host, String id) {
-        return host.addSender("group", id, () -> Map.of("phone", "+86123", "country", "CN"), () -> id, () -> "RUNNING");
+        return host.addSender("group", id, () -> Map.of("phone", "+86123", "country", "CN"), () -> id, () -> "RUNNING", com.xa.mass.workersimulator.messaging.MessageContentMode.LAB_JSON);
     }
     @Test void realHttpSendReturnsStableSentAndLabAutomaticallyDelivers() throws Exception {
         try (var f = new Network()) {
@@ -40,7 +40,7 @@ class MessageScenarioTest {
 
     @Test void crossCountrySendAndReceiptKeepRecipientCountryAndActualSender() throws Exception {
         try (var f = new Network()) {
-            var worker = f.host.addSender("group", "us", () -> Map.of("phone", "+12025550123", "country", "US"), () -> "us-worker", () -> "RUNNING");
+            var worker = f.host.addSender("group", "us", () -> Map.of("phone", "+12025550123", "country", "US"), () -> "us-worker", () -> "RUNNING", com.xa.mass.workersimulator.messaging.MessageContentMode.LAB_JSON);
             var reports = new CopyOnWriteArrayList<Map<String, Object>>();
             var request = new LinkedHashMap<>(send("cross-country")); request.put("recipientId", "+8613800000001");
             var sent = f.host.send(worker, request, (tag, time, payload) -> { reports.add(Jsons.parseObject(payload)); return true; });
@@ -51,8 +51,10 @@ class MessageScenarioTest {
             assertThat(reports).allSatisfy(report -> assertThat(report).containsEntry("country", "CN")
                     .containsEntry("recipientId", "+8613800000001").containsEntry("workerId", "us-worker"));
             assertThat(f.sends).hasValue(1); assertThat(f.callbacks).hasValue(2);
-            var conflicting = new LinkedHashMap<>(request); conflicting.put("messageId", "other"); conflicting.put("country", "GB");
+            var conflicting = new LinkedHashMap<>(request); conflicting.put("country", "GB");
             assertThatThrownBy(() -> f.host.send(worker, conflicting, WorkerOutcomeReporter.UNAVAILABLE)).hasMessageContaining("conflict");
+            conflicting.put("messageId", "other");
+            assertThat(f.host.send(worker, conflicting, WorkerOutcomeReporter.UNAVAILABLE)).containsEntry("country", "GB");
         }
     }
 
@@ -102,8 +104,11 @@ class MessageScenarioTest {
                 assertThatThrownBy(() -> f.host.send(worker, send(id), WorkerOutcomeReporter.UNAVAILABLE)).hasMessageContaining("uncertain");
             }
             assertThat(f.host.metrics()).containsEntry("pendingAssociations", 1024);
-            assertThatThrownBy(() -> f.host.send(worker, send("full"), WorkerOutcomeReporter.UNAVAILABLE)).hasMessageContaining("capacity");
-            assertThat(f.sends).hasValue(1024);
+            f.uncertain = false;
+            assertThat(f.host.send(worker, send("full"), WorkerOutcomeReporter.UNAVAILABLE)).containsEntry("status", "SENT");
+            assertThat(f.lastSend.get().get("callbackId")).isNull();
+            assertThat(f.sends).hasValue(1025);
+            assertThat(f.host.metrics()).containsEntry("skippedAssociations", 1L);
             f.host.stop(worker); assertThat(f.host.metrics()).containsEntry("pendingAssociations", 0);
         }
         try (var f = new Network(); var executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -115,10 +120,17 @@ class MessageScenarioTest {
                     calls.add(executor.submit(() -> f.host.send(worker, send(id), WorkerOutcomeReporter.UNAVAILABLE)));
                 }
                 await(() -> f.sends.get() == 64);
+                for (int i = 0; i < 256; i++) {
+                    String id = "queued" + i;
+                    calls.add(executor.submit(() -> f.host.send(worker, send(id), WorkerOutcomeReporter.UNAVAILABLE)));
+                }
+                await(() -> ((Number) f.host.metrics().get("queuedSends")).intValue() == 256);
                 assertThatThrownBy(() -> f.host.send(worker, send("full"), WorkerOutcomeReporter.UNAVAILABLE)).hasMessageContaining("send capacity");
                 assertThat(f.sends).hasValue(64);
             } finally { f.responseGate.countDown(); }
             for (Future<?> call : calls) call.get(5, TimeUnit.SECONDS);
+            assertThat(f.sends).hasValue(320);
+            assertThat(f.host.metrics()).containsEntry("sendInFlight", 0).containsEntry("queuedSends", 0);
         }
     }
 
@@ -180,8 +192,8 @@ class MessageScenarioTest {
             f.host.stop(worker); f.host.start(worker); release.countDown();
             f.host.send(worker, send("old"), (a,b,c) -> { throw new AssertionError("Old Reporter adopted"); });
             assertThat(f.host.metrics()).containsEntry("reporters", 0);
-            f.host.act(worker, "old", "read", Map.of());
-            await(() -> ((Number) f.host.metrics().get("callbackFailed")).intValue() == 1);
+            assertThatThrownBy(() -> f.host.act(worker, "old", "read", Map.of())).isInstanceOf(MessageScenario.MissingMessage.class);
+            assertThat(f.host.page(0, 100).get("items")).isEqualTo(List.of());
             var fresh = new AtomicInteger(); f.host.send(worker, send("new"), (a,b,c) -> { fresh.incrementAndGet(); return true; });
             await(() -> fresh.get() == 1);
         }
@@ -216,7 +228,7 @@ class MessageScenarioTest {
         try (var f = new Network()) {
             var worker = sender(f.host, "one"); f.host.hold(true);
             f.host.send(worker, send("m"), WorkerOutcomeReporter.UNAVAILABLE);
-            var envelope = f.lastSend.get(); var row = new LinkedHashMap<>(f.row()); row.remove("plan"); row.remove("receipts");
+            var envelope = f.lastSend.get(); var row = new LinkedHashMap<>(f.row()); row.remove("plan"); row.remove("receipts"); row.remove("trackingAvailable");
             var payload = Map.<String,Object>of("callbackId", envelope.get("callbackId"), "receiptId", "receipt-1", "snapshot", row);
             assertThatThrownBy(() -> f.host.receive("group", "wrong", payload)).isInstanceOf(MessageScenario.MissingMessage.class);
             row.put("workerId", "wrong");
@@ -231,15 +243,80 @@ class MessageScenarioTest {
         assertThat(condition.getAsBoolean()).isTrue();
     }
 
+    @Test void stoppedAndInterruptedWaitersNeverStartBusinessHttp() throws Exception {
+        try (var f = new Network(); var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var active = sender(f.host, "active"); var stopped = sender(f.host, "stopped"); var interrupted = sender(f.host, "interrupted");
+            f.responseGate = new CountDownLatch(1);
+            var admitted = new ArrayList<Future<?>>();
+            Future<?> stoppedCall;
+            try {
+                for (int i = 0; i < 64; i++) {
+                    String id = "active-" + i;
+                    admitted.add(executor.submit(() -> f.host.send(active, send(id), WorkerOutcomeReporter.UNAVAILABLE)));
+                }
+                await(() -> f.sends.get() == 64);
+                stoppedCall = executor.submit(() -> f.host.send(stopped, send("stopped"), WorkerOutcomeReporter.UNAVAILABLE));
+                var interruptedCall = executor.submit(() -> f.host.send(interrupted, send("interrupted"), WorkerOutcomeReporter.UNAVAILABLE));
+                await(() -> ((Number) f.host.metrics().get("queuedSends")).intValue() == 2);
+                executor.submit(() -> f.host.stop(stopped)).get(1, TimeUnit.SECONDS);
+                assertThat(interruptedCall.cancel(true)).isTrue();
+                await(() -> ((Number) f.host.metrics().get("queuedSends")).intValue() == 1);
+                assertThat(f.sends).hasValue(64);
+            } finally { f.responseGate.countDown(); }
+            assertThatThrownBy(() -> stoppedCall.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(IllegalStateException.class);
+            for (var call : admitted) call.get(5, TimeUnit.SECONDS);
+            assertThat(f.sends).hasValue(64);
+            assertThat(f.host.metrics()).containsEntry("sendInFlight", 0).containsEntry("queuedSends", 0);
+        }
+    }
+
+    @Test void plainTextAndFullOrExpiredReporterWindowsDoNotBlockSendingOrRebindDuplicates() throws Exception {
+        var nanos = new AtomicLong();
+        var host = new MessageScenario(42, new MessageSettings(10_000, 10, 100, 1, 1), () -> 1000L, nanos::get);
+        try (var f = new Network(host)) {
+            var worker = host.addSender("group", "one", () -> Map.of("phone", "+86123", "country", "CN"),
+                    () -> "one", () -> "RUNNING", MessageContentMode.TEXT);
+            var first = host.send(worker, send("first", "  文本 {{name}}\n{}"), (a,b,c) -> { throw new AssertionError("Unexpected receipt"); });
+            assertThat(first).containsEntry("status", "SENT").containsEntry("body", "  文本 {{name}}\n{}");
+            String originalCallback = (String) f.lastSend.get().get("callbackId");
+            var second = host.send(worker, send("second", "{}"), WorkerOutcomeReporter.UNAVAILABLE);
+            assertThat(f.lastSend.get().get("callbackId")).isNull();
+            assertThat(host.metrics()).containsEntry("acceptedMessages", 2L).containsEntry("skippedAssociations", 1L);
+            assertThat(f.callbacks).hasValue(0);
+            nanos.set(100_000_000);
+            var snapshot = new LinkedHashMap<>(first); snapshot.put("status", "READ");
+            assertThatThrownBy(() -> host.receive("group", "one", Map.of("callbackId", originalCallback,
+                    "receiptId", "old", "snapshot", snapshot))).isInstanceOf(MessageScenario.MissingMessage.class);
+            assertThat(host.send(worker, send("second", "{}"), (a,b,c) -> { throw new AssertionError("Rebound untracked send"); })).isEqualTo(second);
+            assertThat(host.metrics()).containsEntry("reporters", 0).containsEntry("pendingAssociations", 0);
+            host.send(worker, send("fresh", "正文"), WorkerOutcomeReporter.UNAVAILABLE);
+            assertThat(host.metrics()).containsEntry("reporters", 1).containsEntry("acceptedMessages", 3L);
+        }
+    }
+
+    @Test void acceptanceCapacityRejectsBeforeReceivingButExistingIdentityStillConfirms() throws Exception {
+        try (var f = new Network(new MessageScenario(42, new MessageSettings(10000, 1, 10000, 1, 1)))) {
+            var worker = sender(f.host, "one");
+            var first = f.host.send(worker, send("first"), WorkerOutcomeReporter.UNAVAILABLE);
+            assertThatThrownBy(() -> f.host.send(worker, send("second"), WorkerOutcomeReporter.UNAVAILABLE)).hasMessageContaining("rejected message acceptance");
+            assertThat(f.host.send(worker, send("first"), WorkerOutcomeReporter.UNAVAILABLE)).isEqualTo(first);
+            assertThat(f.host.metrics()).containsEntry("acceptedMessages", 1L).containsEntry("pendingAssociations", 0);
+        }
+    }
+
     static final class Network implements AutoCloseable {
-        final MessageScenario host = new MessageScenario(42);
-        final HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        final MessageScenario host;
+        // The fixture intentionally starts 64 sends together, plus callbacks.
+        // Do not turn the OS default accept backlog into a send-capacity oracle.
+        final HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 128);
         final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
         final AtomicInteger sends = new AtomicInteger(), callbacks = new AtomicInteger();
         final AtomicReference<Map<String,Object>> lastSend = new AtomicReference<>();
         volatile boolean rejectSend, rejectCallback, loseResponse, uncertain;
         volatile CountDownLatch responseGate, callbackGate;
-        Network() throws Exception {
+        Network() throws Exception { this(new MessageScenario(42)); }
+        Network(MessageScenario host) throws Exception {
+            this.host = host;
             server.setExecutor(executor);
             server.createContext("/", exchange -> {
                 try {
@@ -261,7 +338,8 @@ class MessageScenarioTest {
                     }
                     byte[] bytes = Jsons.toJson(result).getBytes(StandardCharsets.UTF_8);
                     exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes);
-                } catch (MessageScenario.MissingMessage missing) { exchange.sendResponseHeaders(404, -1); }
+                } catch (MessageScenario.CapacityExceeded full) { exchange.sendResponseHeaders(429, -1); }
+                catch (MessageScenario.MissingMessage missing) { exchange.sendResponseHeaders(404, -1); }
                 catch (IllegalArgumentException invalid) { exchange.sendResponseHeaders(400, -1); }
                 catch (Exception failure) { exchange.sendResponseHeaders(500, -1); }
                 finally { exchange.close(); }

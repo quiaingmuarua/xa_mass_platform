@@ -23,14 +23,14 @@ final class SimulatorTestConfig {
 
     static WorkerSimulatorConfig config(String groups, Path root) {
         return new WorkerSimulatorConfig(java.net.URI.create("http://127.0.0.1:18082"),
-                root, 0, 0, groups(groups), WorkerSimulatorStartupPlan.defaults());
+                root, 0, 0, groups(groups), WorkerSimulatorStartupPlan.defaults(), com.xa.mass.workersimulator.messaging.MessageSettings.defaults());
     }
 
     static List<WorkerSimulatorGroupConfig> products(int count) {
         return WorkerSimulatorJsonParser.parseGroups(Map.of("demo-sim", Map.of(
                 "events", List.of("extension.worker.sms.listen.start", "extension.worker.sms.listen.cancel",
                         "extension.worker.message.send"),
-                "count", count, "propertiesTemplate", Map.of(
+                "messageContentMode", "lab-json", "count", count, "propertiesTemplate", Map.of(
                         "phone", Map.of("$index", List.of(861700000001L, 1)),
                         "country", Map.of("$choice", List.of("CN", "US", "GB")),
                         "messaging.enabled", "true"))));

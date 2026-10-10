@@ -8,6 +8,7 @@ import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workersimulator.sms.SmsScenario;
 import com.xa.mass.workersimulator.sms.ListeningRegistry;
 import com.xa.mass.workersimulator.messaging.MessageScenario;
+import com.xa.mass.workersimulator.messaging.MessageSettings;
 import java.util.concurrent.atomic.AtomicReference;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -57,7 +58,8 @@ public final class WorkerSimulator implements AutoCloseable {
                     availableExtensionsByEventCode,
             GroupManagerFactory groupManagerFactory,
             WorkerSimulatorCommandCheckpoints commandCheckpoints,
-            WorkerSimulatorExecutionWitnesses executionWitnesses
+            WorkerSimulatorExecutionWitnesses executionWitnesses,
+            MessageSettings messageSettings
     ) {
         this.runtimeApiBaseUrl = Objects.requireNonNull(
                 runtimeApiBaseUrl,
@@ -72,7 +74,7 @@ public final class WorkerSimulator implements AutoCloseable {
         );
         lab = new WorkerSimulatorLab(sandboxRoot);
         sms = configs.stream().anyMatch(WorkerSimulator::usesSms) ? new SmsScenario() : null;
-        messages = configs.stream().anyMatch(WorkerSimulator::usesMessages) ? new MessageScenario(seed) : null;
+        messages = configs.stream().anyMatch(WorkerSimulator::usesMessages) ? new MessageScenario(seed, messageSettings) : null;
         this.groupManagerFactory = groupManagerFactory == null ? this::createManager : groupManagerFactory;
         this.commandCheckpoints = Objects.requireNonNull(
                 commandCheckpoints,
@@ -86,7 +88,7 @@ public final class WorkerSimulator implements AutoCloseable {
             WorkerSimulatorCommandCheckpoints checkpoints = new WorkerSimulatorCommandCheckpoints();
             return new WorkerSimulator(config.runtimeApiBaseUrl(), config.sandboxRoot().toString(), config.seed(),
                     config.workerGroups(), availableDefinitionExtensions(checkpoints), null,
-                    checkpoints, new WorkerSimulatorExecutionWitnesses());
+                    checkpoints, new WorkerSimulatorExecutionWitnesses(), config.messages());
         } catch (IllegalArgumentException error) {
             throw new WorkerSimulatorAssemblyException(14012, "workerSimulator.create",
                     "Worker Simulator configuration is invalid: " + error.getMessage(), error);
@@ -786,7 +788,7 @@ public final class WorkerSimulator implements AutoCloseable {
             if (usesMessages(config)) {
                 replica.sender = messages.addSender(config.workerGroupId(), replica.replicaKey(), replica::properties,
                         () -> managerReference.get().snapshot(replica.replicaKey()).workerId(),
-                        () -> managerReference.get().snapshot(replica.replicaKey()).state().name());
+                        () -> managerReference.get().snapshot(replica.replicaKey()).state().name(), config.messageContentMode());
                 extensions.addAll(messages.definitions(replica.sender));
             }
             if (config.events().contains(WorkerSimulatorExecutionWitnesses.EVENT))

@@ -37,7 +37,7 @@ class MessageFailureIntegrationTest {
             channel.hold(true);
             var manager = new AtomicReference<JavaWorkerManager>();
             var executed = new CountDownLatch(1); var finishSend = new CountDownLatch(1);
-            var sender = channel.addSender("demo-sim", "one", () -> Map.of("country", "CN", "phone", "+861700000000"), () -> manager.get().snapshot("one").workerId(), () -> "RUNNING");
+            var sender = channel.addSender("demo-sim", "one", () -> Map.of("country", "CN", "phone", "+861700000000"), () -> manager.get().snapshot("one").workerId(), () -> "RUNNING", com.xa.mass.workersimulator.messaging.MessageContentMode.LAB_JSON);
             var handler = WorkerEventDefinition.extension("message.send", WorkerEventParameterResolvers.jsonMap(), (request, reporter) -> {
                 // Hold the real synchronous handler completion; recipient actions still use its original Reporter.
                 var sent = channel.send(sender, request, reporter); executed.countDown();

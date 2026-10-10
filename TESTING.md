@@ -63,12 +63,15 @@ python integrations/scenario-coexistence/run_proof.py --build --scenario functio
 python integrations/scenario-coexistence/run_proof.py --scenario pool-selection --port 18560
 python integrations/scenario-coexistence/run_proof.py --scenario lifecycle
 python integrations/scenario-coexistence/run_proof.py --scenario load-1k
+python integrations/scenario-coexistence/run_proof.py --scenario messages-send-100k
 ```
 
 Install `distribution/server/requirements-preview.txt`; use `--root` with a fresh
 extracted Preview to exercise its packaged launcher. The dedicated
-`.github/workflows/product-coexistence.yml` also accepts `scenario=load-1k` through
-workflow_dispatch. CI uploads only safe summary/manifest evidence.
+`.github/workflows/product-coexistence.yml` also accepts `scenario=load-1k` or
+`scenario=messages-send-100k` through workflow_dispatch. The latter separately
+proves 105,000 actual sends without waiting for receipts. CI uploads only safe
+summary/manifest evidence and bounded process-resource samples.
 
 ## Proof Model
 
@@ -200,7 +203,7 @@ these correctness claims and add no heavy ordinary CI lane.
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |
 | Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
 | Runtime Distribution | Distribution integration tests with `-PxaMassVersion=0.5.0` | Redis, Java, Android SDK, Node |
-| Scenario Coexistence | `python integrations/scenario-coexistence/run_proof.py --build --scenario functional`, then `--scenario pool-selection`, `--scenario lifecycle`; fresh ZIP functional and pool-selection | Redis 7, Java 21, Python, Node for build |
+| Scenario Coexistence | `python integrations/scenario-coexistence/run_proof.py --build --scenario functional`, then `--scenario pool-selection`, `--scenario lifecycle`; fresh ZIP functional and pool-selection; explicit `--scenario messages-send-100k` verifies 105000 sends across 51 Tasks without receipts | Redis 7, Java 21, Python, Node for build |
 | Docs Contract | `python .github/scripts/check_docs.py` | None |
 
 The exact JVM module build list and Android assembly commands are maintained in
