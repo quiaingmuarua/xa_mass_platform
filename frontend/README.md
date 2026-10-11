@@ -211,9 +211,9 @@ cd frontend
 pnpm dev:mock --host 127.0.0.1 --port 18501
 ```
 
-Backend Group binding, HTTP contracts, input version and delivery capabilities are
-unchanged. Real multi-application assembly and environment migration are deferred;
-Mock behavior must not be reported as proof of those capabilities.
+Real multi-application assembly follows the
+[Messages startup contract](../scenarios/message-campaigns-jvm/README.md#worker-供给与装配).
+Mock behavior is not proof of real assembly, environment migration or Worker delivery.
 
 ## App Checks Task workspace
 

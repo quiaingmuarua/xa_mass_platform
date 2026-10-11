@@ -25,11 +25,27 @@ def gitCommit = providers.exec {
     commandLine 'git', 'rev-parse', 'HEAD'
 }.standardOutput.asText.map { it.trim() }
 
-def pnpmCommand = { List<String> arguments ->
-    if (isWindows) {
-        return ['cmd.exe', '/d', '/c', 'corepack', 'pnpm@11.9.0'] + arguments
+def executableOnPath = { String name ->
+    def names = isWindows ? ["${name}.cmd", "${name}.exe", name] : [name]
+    for (String directory : providers.environmentVariable('PATH').orElse('').get().split(File.pathSeparator)) {
+        for (String candidateName : names) {
+            File candidate = new File(directory, candidateName)
+            if (candidate.isFile() && (isWindows || candidate.canExecute())) {
+                return candidate.absolutePath
+            }
+        }
     }
-    return ['corepack', 'pnpm@11.9.0'] + arguments
+    return null
+}
+
+def pnpmCommand = { List<String> arguments ->
+    def corepack = executableOnPath('corepack')
+    def pnpm = corepack ? null : executableOnPath('pnpm')
+    if (!corepack && !pnpm) {
+        throw new GradleException('Frontend build requires Corepack or pnpm on PATH; see frontend/README.md for supported versions.')
+    }
+    def command = corepack ? [corepack, 'pnpm@11.9.0'] : [pnpm]
+    return (isWindows ? ['cmd.exe', '/d', '/c'] : []) + command + arguments
 }
 
 tasks.register('validateRuntimeVersion') {

@@ -211,8 +211,8 @@ python scenarios/app-checks-jvm/run_acceptance.py --root <freshly-extracted-prev
 Worker 关联复算窗口，不用 Item 数量或 Result 数量推算。该见证不进入生产代码。
 
 窗口专用 Boot 用例使用一个实际 Worker、60 秒窗口、阈值 1：真实分配通知推进属性后，
-通过实际 Facts 快照读取和零准入的 refill 结果见证筛选拒绝，并断言 take 的 Facts 读取为零；跨窗后等待正常 60 秒候选回收、
-补货与执行，不手动清零、恢复库存或改 Score。恢复观察最多 180 秒，字段边界另由
+通过实际 Facts 快照读取和零准入的 refill 结果见证筛选拒绝，并断言 take 的 Facts 读取为零；跨窗后通过普通候选回收（30 秒老化阈值）、
+补货与执行恢复，不手动清零、恢复库存或改 Score，也不承诺跨窗立即执行。恢复观察最多 180 秒，字段边界另由
 受控时钟单元测试证明。投影延迟允许继续选择，测试不把阈值当成严格配额。
 
 原 101 Item 等非窗口 Boot 回归显式把阈值设为 1000，仍走新函数。

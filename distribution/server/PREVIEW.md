@@ -18,6 +18,10 @@ python run_local_runtime.py --profile preview
 
 From this directory the entry is `python run_preview.py --build`. Build requires
 Java 21, Node 22.19+ below 25, Corepack/pnpm 11.9.0 and Gradle's existing wrapper.
+The frontend build uses Corepack when available, otherwise pnpm on PATH, with
+the versions declared in `frontend/package.json`; neither tool present fails
+before dependency installation. An install/build failure is reported without
+retrying through another package manager.
 Run requires external Java 21, Python 3.11+ and Redis 7. It does not start or stop Redis.
 `XA_MASS_REDIS_URL` defaults to `redis://127.0.0.1:6379/15`.
 

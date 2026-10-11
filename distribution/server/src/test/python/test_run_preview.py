@@ -154,7 +154,7 @@ class PreviewLifecycleTest(unittest.TestCase):
     def test_source_and_zip_compositions_use_two_jvms_and_one_server_address(self):
         for packaged, app_count in ((False, 20), (True, 20), (False, 0), (True, 0)):
             with self.subTest(packaged=packaged, app_count=app_count), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 if not packaged:
                     (root / "build.gradle").touch()
                 server_lib = root / ("lib" if packaged else "build/preview/server")
