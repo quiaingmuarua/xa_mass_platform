@@ -318,8 +318,18 @@ async function exportTask() {
   }
 }
 async function afterSubmit(id: string) {
+  const receipt = operations.submission;
+  const generation = navigation;
+  const wasOpen = creating.value || taskId.value === id;
   await workspace.loadTasks("default");
-  if (operations.submission?.complete) {
+  if (
+    disposed ||
+    !wasOpen ||
+    generation !== navigation ||
+    receipt !== operations.submission
+  )
+    return;
+  if (receipt?.complete && receipt.taskId === id) {
     showAppend.value = false;
     await router.push({ query: { project: "default", taskId: id } });
     await workspace.loadDetail("default", id);
@@ -456,7 +466,7 @@ function scroll(event: { scrollTop: number }) {
       class="raw-tasks__table"
       @scroll="scroll"
     >
-      <el-table-column label="任务 / 编号" min-width="270"
+      <el-table-column label="任务 / 编号" min-width="240"
         ><template #default="{ row }">
           <el-button v-if="row.task" link type="primary" @click="openTask(row)">{{
             row.task.name || row.taskId
@@ -466,23 +476,23 @@ function scroll(event: { scrollTop: number }) {
           <small v-if="!row.task">Task 描述符缺失</small>
         </template></el-table-column
       >
-      <el-table-column label="Project / Group" min-width="185"
+      <el-table-column label="Project / Group" min-width="145"
         ><template #default="{ row }"
           >{{ row.task?.projectId ?? "未提供"
           }}<small>{{ row.task?.workerGroupId ?? "未提供" }}</small></template
         ></el-table-column
       >
-      <el-table-column label="生命周期" min-width="170"
+      <el-table-column label="生命周期" min-width="165"
         ><template #default="{ row }">{{
           row.task?.idleDisposition ?? "未提供"
         }}</template></el-table-column
       >
-      <el-table-column label="Score band" min-width="155"
+      <el-table-column label="Score band" min-width="140"
         ><template #default="{ row }"
           ><el-tag effect="plain">{{ row.scoreBand ?? "状态不可用" }}</el-tag></template
         ></el-table-column
       >
-      <el-table-column label="Pool 供给" min-width="150" show-overflow-tooltip
+      <el-table-column label="Pool 供给" min-width="130" show-overflow-tooltip
         ><template #default="{ row }">{{
           row.task
             ? row.task.refill
@@ -494,12 +504,12 @@ function scroll(event: { scrollTop: number }) {
             : "未提供"
         }}</template></el-table-column
       >
-      <el-table-column label="创建时间" min-width="170"
+      <el-table-column label="创建时间" min-width="165"
         ><template #default="{ row }">{{
           time(row.createdAtMillis)
         }}</template></el-table-column
       >
-      <el-table-column label="操作" fixed="right" width="95"
+      <el-table-column label="操作" fixed="right" width="80"
         ><template #default="{ row }"
           ><el-button link :disabled="!row.task" @click="openTask(row)"
             >查看</el-button
@@ -690,6 +700,17 @@ function scroll(event: { scrollTop: number }) {
   display: block;
   color: var(--el-text-color-secondary);
   font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.raw-tasks__table :deep(.el-button) {
+  max-width: 100%;
+}
+.raw-tasks__table :deep(.el-button span) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .raw-muted {
   color: var(--el-text-color-secondary);

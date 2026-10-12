@@ -25,7 +25,14 @@ import { createRuntimeViewerStore } from "@/stores/runtime-viewer";
 import { createRuntimeViewerDataSource } from "@/runtime-viewer/data-source";
 import { createTaskManagementStore } from "@/stores/task-management";
 import { task } from "./fixtures";
-it("late creation-drawer close cannot erase the newly opened Task route", async () => {
+vi.mock("@/components/RawTaskInput.vue", () => ({
+  default: {
+    emits: ["submitted"],
+    template:
+      "<button data-testid=\"finish-submission\" @click=\"$emit('submitted', 'known')\">Finish</button>"
+  }
+}));
+it("late drawer and submission continuations cannot replace the current context", async () => {
   const row = {
     taskId: "known",
     createdAtMillis: 1,
@@ -36,28 +43,34 @@ it("late creation-drawer close cannot erase the newly opened Task route", async 
       idleDisposition: "CLOSE_WHEN_IDLE"
     }
   };
+  let delayRefresh = false;
+  let releaseRefresh: ((response: Response) => void) | undefined;
   vi.stubGlobal(
     "fetch",
-    vi.fn(
-      async (url: string) =>
-        new Response(
-          JSON.stringify(
-            url.endsWith("/worker-groups")
-              ? [
-                  {
-                    workerGroupId: "g",
-                    workerGroup: { workerGroupId: "g", attributes: {}, eventCodes: [] },
-                    matching: { pools: [], functions: ["workerId"] }
-                  }
-                ]
-              : url.endsWith("/tasks/known")
-                ? row
-                : url.includes("/tasks?")
-                  ? { projectId: "default", truncated: false, tasks: [row] }
-                  : [{ projectId: "default", managedTaskIds: { g: "rpc" } }]
-          )
+    vi.fn(async (url: string) => {
+      if (delayRefresh && url.includes("/tasks?")) {
+        return new Promise<Response>((resolve) => {
+          releaseRefresh = resolve;
+        });
+      }
+      return new Response(
+        JSON.stringify(
+          url.endsWith("/worker-groups")
+            ? [
+                {
+                  workerGroupId: "g",
+                  workerGroup: { workerGroupId: "g", attributes: {}, eventCodes: [] },
+                  matching: { pools: [], functions: ["workerId"] }
+                }
+              ]
+            : url.endsWith("/tasks/known")
+              ? row
+              : url.includes("/tasks?")
+                ? { projectId: "default", truncated: false, tasks: [row] }
+                : [{ projectId: "default", managedTaskIds: { g: "rpc" } }]
         )
-    )
+      );
+    })
   );
   const router = createRouter({
     history: createMemoryHistory(),
@@ -89,16 +102,14 @@ it("late creation-drawer close cannot erase the newly opened Task route", async 
       createRuntimeViewerDataSource({ ...config, mode: "mock" })
     )
   );
-  app.provide(
-    taskManagementStoreKey,
-    createTaskManagementStore("api", {
-      createTask: vi.fn(),
-      appendItems: vi.fn(),
-      approveTask: vi.fn(),
-      closeTask: vi.fn(),
-      exportResults: vi.fn()
-    })
-  );
+  const operations = createTaskManagementStore("api", {
+    createTask: vi.fn(),
+    appendItems: vi.fn(),
+    approveTask: vi.fn(),
+    closeTask: vi.fn(),
+    exportResults: vi.fn()
+  });
+  app.provide(taskManagementStoreKey, operations);
   const host = document.createElement("div");
   document.body.append(host);
   try {
@@ -119,6 +130,42 @@ it("late creation-drawer close cannot erase the newly opened Task route", async 
     await router.push("/runtime/tasks?project=default&view=create");
     await new Promise((resolve) => setTimeout(resolve, 450));
     expect(router.currentRoute.value.query.view).toBe("create");
+    operations.submission = {
+      taskId: "known",
+      fileName: "old.txt",
+      total: 1,
+      applied: 1,
+      rejected: 0,
+      unconfirmed: 0,
+      notSubmitted: 0,
+      complete: true
+    };
+    delayRefresh = true;
+    (
+      document.querySelector('[data-testid="finish-submission"]') as HTMLButtonElement
+    ).click();
+    await vi.waitFor(() => expect(releaseRefresh).toBeTypeOf("function"));
+    operations.finishSubmission();
+    operations.submission = {
+      taskId: "next",
+      fileName: "new.txt",
+      total: 1,
+      applied: 1,
+      rejected: 0,
+      unconfirmed: 0,
+      notSubmitted: 0,
+      complete: true
+    };
+    await router.push("/runtime/tasks?project=elsewhere");
+    releaseRefresh!(
+      new Response(
+        JSON.stringify({ projectId: "default", truncated: false, tasks: [row] })
+      )
+    );
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(router.currentRoute.value.query.project).toBe("elsewhere");
+    expect(router.currentRoute.value.query.taskId).toBeUndefined();
   } finally {
     app.unmount();
     host.remove();
