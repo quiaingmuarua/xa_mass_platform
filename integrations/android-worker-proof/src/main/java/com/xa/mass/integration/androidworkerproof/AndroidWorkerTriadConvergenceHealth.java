@@ -55,6 +55,7 @@ final class AndroidWorkerTriadConvergenceHealth {
     }
 
     private void run() {
+        triad.runtime().prepareRpcTask();
         switch (options.phase()) {
             case BASELINE_PHASE -> runBaseline();
             case OUTAGE_PHASE -> runOutage();

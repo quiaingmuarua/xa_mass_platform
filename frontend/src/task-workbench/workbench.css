@@ -101,7 +101,13 @@
   margin: 16px 0;
 }
 .rpc-page__scope .el-select {
-  width: 320px;
+  width: 240px;
+}
+.rpc-page__scope .el-input {
+  width: 220px;
+}
+.rpc-page__identity {
+  overflow-wrap: anywhere;
 }
 .rpc-page__form {
   display: grid;

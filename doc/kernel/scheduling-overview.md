@@ -25,9 +25,9 @@ Both lines are first-class: heterogeneous Worker capabilities and context make
 resource selection distinctive, while Task/Item progress, retry, termination
 and results remain independent responsibilities.
 
-The current [Project contract](../../server_jvm/README.md#profile-projects-and-managed-tasks)
-provides business attribution, configured Group associations and managed Task
-entrypoints. Projects do not partition Kernel scheduling or Matching stock;
+The current [Project contract](../../server_jvm/README.md#projects-and-explicit-rpc-tasks)
+provides business attribution and configured Group associations. Callers explicitly
+prepare RPC Tasks. Projects do not partition Kernel scheduling or Matching stock;
 they do not own the Pools or query strategies used by their Tasks. Broader
 Project ideas are possible evolution, not implied current authority.
 

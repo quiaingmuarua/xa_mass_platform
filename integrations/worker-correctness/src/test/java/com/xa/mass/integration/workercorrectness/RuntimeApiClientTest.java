@@ -50,8 +50,12 @@ class RuntimeApiClientTest {
                 new InetSocketAddress("127.0.0.1", 0),
                 0
         );
-        server.createContext("/api/v1/projects/scenario-workers", exchange -> respond(exchange, Map.of("projectId", "scenario-workers", "managedTaskIds", Map.of("group-1", "managed-call"))));
         server.createContext("/api/v1/tasks", exchange -> {
+            if (exchange.getRequestURI().getPath().endsWith("/rpc:prepare")) {
+                assertEquals(Map.of("projectId", "scenario-workers", "workerGroupId", "group-1"), readBody(exchange));
+                respond(exchange, Map.of("taskId", "correctness-rpc-group-1"));
+                return;
+            }
             path.set(exchange.getRequestURI().getPath());
             requestBody.set(readBody(exchange));
             respond(exchange, Map.of(
@@ -67,6 +71,7 @@ class RuntimeApiClientTest {
                     Duration.ofSeconds(2)
             );
 
+            client.prepareRpcTask("group-1");
             assertEquals(Map.of(
                     "message-1", CallStatus.SUCCEEDED,
                     "message-2", CallStatus.FAILED,
@@ -77,7 +82,7 @@ class RuntimeApiClientTest {
                     new TaskItem("message-3", "event.three", Map.of())
             ), 500L));
             assertEquals(
-                    "/api/v1/tasks/managed-call/items:call"
+                    "/api/v1/tasks/correctness-rpc-group-1/items:call"
                     , path.get());
             assertEquals(500L, requestBody.get().get("waitTimeoutMillis"));
             List<?> items = assertInstanceOf(

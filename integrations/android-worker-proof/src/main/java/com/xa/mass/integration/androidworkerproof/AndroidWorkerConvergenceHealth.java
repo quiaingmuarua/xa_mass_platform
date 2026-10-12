@@ -64,6 +64,7 @@ final class AndroidWorkerConvergenceHealth {
     }
 
     private void run() {
+        runtime.prepareRpcTask();
         switch (options.phase()) {
             case ACTIVE_PHASE -> runActive();
             case PROCESS_LOSS_PHASE -> runProcessLoss();

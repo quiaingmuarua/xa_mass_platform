@@ -140,7 +140,7 @@ final class AndroidRuntimeApiClient {
         JsonHttpClient.Response response = http.send(
                 "POST",
                 "/api/v1/tasks/"
-                        + segment(managedTaskId())
+                        + segment(rpcTaskId())
                         + "/items:call",
                 Map.of(
                         "items", List.copyOf(items),
@@ -185,7 +185,7 @@ final class AndroidRuntimeApiClient {
         JsonHttpClient.Response response = http.send(
                 "POST",
                 "/api/v1/tasks/"
-                        + segment(managedTaskId())
+                        + segment(rpcTaskId())
                         + "/results:load",
                 List.of(messageId),
                 "androidWorker.results.load"
@@ -399,16 +399,15 @@ final class AndroidRuntimeApiClient {
         );
     }
 
-    private Map<String, Object> managedTasks;
-
-    private synchronized String managedTaskId() {
-        if (managedTasks == null) {
-            var response = http.send("GET", "/api/v1/projects/scenario-workers", null, "project.read");
-            requireStatus(response, 200, "read configured Project");
-            managedTasks = JsonValues.object(response.body().get("managedTaskIds"), "managedTaskIds");
-        }
-        return JsonValues.requiredString(managedTasks, AndroidWorkerProofConstants.WORKER_GROUP_ID);
+    void prepareRpcTask() {
+        var response = http.send("POST", "/api/v1/tasks/" + rpcTaskId() + "/rpc:prepare",
+                Map.of("projectId", "scenario-workers", "workerGroupId", AndroidWorkerProofConstants.WORKER_GROUP_ID), "rpc.prepare");
+        requireStatus(response, 200, "prepare RPC Task");
+        if (!rpcTaskId().equals(JsonValues.requiredString(response.body(), "taskId")))
+            throw new ProofFailure("rpc.prepare.identity", "RPC Task preparation changed identity");
     }
+
+    private static String rpcTaskId() { return "android-proof-rpc"; }
 
     private static String segment(String value) {
         if (value == null || value.isBlank()) {

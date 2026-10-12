@@ -29,11 +29,10 @@ class ServerConfiguredRuntimeLifecycleHostTest {
         WorkerRouteVerificationBatcher routeBatcher = mock(
                 WorkerRouteVerificationBatcher.class
         );
-        var projects = mock(com.xa.mass.server.project.ProjectTaskInitializer.class);
         var requirements = mock(ProjectWorkerRequirementsValidator.class);
         ServerConfiguredRuntimeLifecycleHost host =
                 new ServerConfiguredRuntimeLifecycleHost(
-                        groupInitializer, requirements, projects,
+                        groupInitializer, requirements,
                         adapterManager,
                         routeBatcher
                 );
@@ -43,10 +42,9 @@ class ServerConfiguredRuntimeLifecycleHostTest {
         host.stop();
         host.stop();
 
-        InOrder order = inOrder(groupInitializer, requirements, projects, routeBatcher, adapterManager);
+        InOrder order = inOrder(groupInitializer, requirements, routeBatcher, adapterManager);
         order.verify(groupInitializer).initialize();
         order.verify(requirements).validate();
-        order.verify(projects).initialize();
         order.verify(routeBatcher).start();
         order.verify(adapterManager).start();
         order.verify(routeBatcher).stopIngress();
@@ -65,21 +63,19 @@ class ServerConfiguredRuntimeLifecycleHostTest {
         );
     }
 
-    @Test void dependencyFailurePreventsProjectAndIngressStartupWithoutRollingBackGroupInitialization() {
+    @Test void dependencyFailurePreventsIngressStartupWithoutRollingBackGroupInitialization() {
         var groups = mock(ServerWorkerGroupInitializer.class);
         var requirements = mock(ProjectWorkerRequirementsValidator.class);
-        var projects = mock(com.xa.mass.server.project.ProjectTaskInitializer.class);
         var adapters = mock(WorkerDeliveryAdapterManager.class);
         var routes = mock(WorkerRouteVerificationBatcher.class);
         var failure = new IllegalStateException("missing event");
         doThrow(failure).when(requirements).validate();
-        var host = new ServerConfiguredRuntimeLifecycleHost(groups, requirements, projects, adapters, routes);
+        var host = new ServerConfiguredRuntimeLifecycleHost(groups, requirements, adapters, routes);
         assertThatThrownBy(host::start).isSameAs(failure);
         host.stop();
         var order = inOrder(groups, requirements);
         order.verify(groups).initialize();
         order.verify(requirements).validate();
-        verify(projects, never()).initialize();
         verify(adapters, never()).start();
         verify(routes, never()).start();
         assertThat(host.isRunning()).isFalse();
@@ -100,7 +96,7 @@ class ServerConfiguredRuntimeLifecycleHostTest {
         doThrow(failure).when(adapterManager).start();
         ServerConfiguredRuntimeLifecycleHost host =
                 new ServerConfiguredRuntimeLifecycleHost(
-                        groupInitializer, mock(ProjectWorkerRequirementsValidator.class), mock(com.xa.mass.server.project.ProjectTaskInitializer.class),
+                        groupInitializer, mock(ProjectWorkerRequirementsValidator.class),
                         adapterManager,
                         routeBatcher
                 );
@@ -116,7 +112,7 @@ class ServerConfiguredRuntimeLifecycleHostTest {
     }
 
     @Test
-    void groupOrTaskCallInitializationFailurePreventsAdapterStartup() {
+    void groupInitializationFailurePreventsAdapterStartup() {
         ServerWorkerGroupInitializer groupInitializer = mock(
                 ServerWorkerGroupInitializer.class
         );
@@ -127,12 +123,12 @@ class ServerConfiguredRuntimeLifecycleHostTest {
                 WorkerRouteVerificationBatcher.class
         );
         RuntimeException failure = new RuntimeException(
-                "group Task Call registration failed"
+                "group registration failed"
         );
         doThrow(failure).when(groupInitializer).initialize();
         ServerConfiguredRuntimeLifecycleHost host =
                 new ServerConfiguredRuntimeLifecycleHost(
-                        groupInitializer, mock(ProjectWorkerRequirementsValidator.class), mock(com.xa.mass.server.project.ProjectTaskInitializer.class),
+                        groupInitializer, mock(ProjectWorkerRequirementsValidator.class),
                         adapterManager,
                         routeBatcher
                 );

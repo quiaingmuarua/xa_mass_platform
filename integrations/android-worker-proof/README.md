@@ -1,5 +1,10 @@
 # Android Worker Proof
 
+RPC Tasks are explicitly prepared with stable fixture IDs via
+`POST /api/v1/tasks/{taskId}/rpc:prepare` during setup, before readiness/load
+measurement. Project directory reads only expose bound Groups. Preparation does
+not alter the lane's supply configuration, workload, deadlines or assertions.
+
 `:integrations:android-worker-proof` is the Java 21 proof owner for the real
 Android Worker emulator lane. It drives both one Debug App and a fixed three-App
 Lab topology through their loopback Host APIs and observes only public Runtime

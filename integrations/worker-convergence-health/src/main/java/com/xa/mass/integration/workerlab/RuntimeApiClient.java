@@ -303,16 +303,16 @@ final class RuntimeApiClient {
         return new RuleWitness(taskId, messageId);
     }
 
-    private Map<String, Object> managedTasks;
-
-    synchronized String managedTaskId(String workerGroupId) {
-        if (managedTasks == null) {
-            var response = http.send("GET", "/api/v1/projects/scenario-workers", null);
-            requireStatus(response, 200, "read configured Project");
-            managedTasks = JsonValues.object(response.body().get("managedTaskIds"), "managedTaskIds");
-        }
-        return JsonValues.requiredString(managedTasks, workerGroupId);
+    void prepareRpcTask(String group) {
+        String id = rpcTaskId(group);
+        var response = http.send("POST", "/api/v1/tasks/" + segment(id) + "/rpc:prepare",
+                Map.of("projectId", "scenario-workers", "workerGroupId", group));
+        requireStatus(response, 200, "prepare RPC Task");
+        if (!id.equals(JsonValues.requiredString(response.body(), "taskId")))
+            throw JsonValues.invalid("RPC Task preparation changed identity");
     }
+
+    String rpcTaskId(String group) { return "task-" + group; }
 
     private Map<String, String> observeStates(
             String path,

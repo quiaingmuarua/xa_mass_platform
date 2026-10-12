@@ -9,6 +9,7 @@ import { presentTaskCallDebugError } from "@/task-call-debug/errors";
 import type { TaskCallDebugHistoryItem } from "@/stores/task-call-debug";
 import type { Project } from "@/task-management/projects";
 import { useTaskSession } from "./session";
+import { rpcTaskId, type RpcTaskPrepareRequest } from "./rpc-task";
 const props = defineProps<{ project: Project }>();
 const session = useTaskSession();
 const workspace = session.rpc;
@@ -16,16 +17,46 @@ const config = useRuntimeViewerConfig();
 const calls = useTaskCallDebugStore();
 const route = useRoute();
 const router = useRouter();
-const groupId = computed(() =>
-  typeof route.query.group === "string" ? route.query.group : ""
+const directTaskId = computed(() =>
+  typeof route.query.taskId === "string" ? route.query.taskId : ""
 );
+const state = computed(() => workspace.detail.value);
+const row = computed(() => state.value.value);
+const groupId = computed(() =>
+  directTaskId.value
+    ? row.value?.taskId === directTaskId.value
+      ? (row.value.task?.workerGroupId ?? "")
+      : ""
+    : typeof route.query.group === "string"
+      ? route.query.group
+      : ""
+);
+const userId = computed(() =>
+  directTaskId.value
+    ? row.value?.taskId === directTaskId.value
+      ? (row.value.task?.metadata.userId ?? "")
+      : ""
+    : typeof route.query.user === "string"
+      ? route.query.user
+      : ""
+);
+const callerInput = ref(userId.value);
+watch(userId, (value) => {
+  callerInput.value = value;
+});
+const changedCaller = computed(() => callerInput.value.trim() !== userId.value.trim());
 const groups = computed(() => workspace.groups.default);
 const group = computed(() =>
   groups.value?.value?.find((g) => g.workerGroupId === groupId.value)
 );
-const taskId = computed(() => props.project.managedTaskIds[groupId.value] ?? "");
-const state = computed(() => workspace.detail.value);
-const row = computed(() => state.value.value);
+const taskId = computed(() => {
+  if (directTaskId.value) return directTaskId.value;
+  try {
+    return rpcTaskId("default", userId.value, groupId.value);
+  } catch {
+    return "";
+  }
+});
 const valid = computed(
   () =>
     !!taskId.value &&
@@ -34,20 +65,39 @@ const valid = computed(
     row.value.task.workerGroupId === groupId.value &&
     row.value.task.idleDisposition === "PARK_WHEN_IDLE"
 );
-const fresh = computed(
+const resourcesReady = computed(
   () =>
-    valid.value &&
     !!group.value?.workerGroup &&
-    !!row.value?.scoreBand &&
-    row.value.scoreBand !== "terminal" &&
-    !state.value.loading &&
-    !state.value.stale &&
+    props.project.workerGroupIds.includes(groupId.value) &&
     !groups.value?.loading &&
     !groups.value?.stale &&
     !session.directory.loading &&
     !session.directory.stale
 );
-const enabled = computed(() => config.mode === "api" && fresh.value);
+const preparation = computed(() => session.rpcPreparations[taskId.value]);
+const fresh = computed(
+  () =>
+    valid.value &&
+    resourcesReady.value &&
+    ["running-initial", "running_visible"].includes(row.value?.scoreBand ?? "") &&
+    !state.value.loading &&
+    !state.value.stale &&
+    !preparation.value?.busy
+);
+const enabled = computed(
+  () => config.mode === "api" && fresh.value && !changedCaller.value
+);
+const canPrepare = computed(
+  () =>
+    config.mode === "api" &&
+    resourcesReady.value &&
+    (changedCaller.value
+      ? !!callerInput.value.trim() && callerInput.value.trim().length <= 128
+      : !!taskId.value &&
+        (!directTaskId.value || valid.value) &&
+        (row.value?.taskId !== taskId.value || row.value.scoreBand !== "terminal") &&
+        !preparation.value?.busy)
+);
 const draft = computed(() => calls.draft(taskId.value));
 const history = computed(() => calls.history(taskId.value));
 const busy = computed(() => calls.isBusy(taskId.value));
@@ -55,20 +105,30 @@ const validation = ref("");
 let disposed = false;
 let navigation = 0;
 function time(value?: string) {
-  return value ? new Date(value).toLocaleString() : "未提供";
+  return value ? new Date(value).toLocaleTimeString() : "未提供";
+}
+async function selectIdentity(group: string, user: string) {
+  await router.push({ query: { tab: "rpc", group, user: user.trim() || undefined } });
 }
 async function sync() {
   const generation = ++navigation;
   validation.value = "";
   if (!groups.value) await workspace.loadGroups("default");
   if (disposed || generation !== navigation) return;
-  if (!groupId.value) {
-    const first =
-      session.navigation.group || Object.keys(props.project.managedTaskIds)[0];
-    if (first) await router.replace({ query: { tab: "rpc", group: first } });
+  if (!directTaskId.value && !groupId.value) {
+    const remembered = session.navigation.rpcQuery;
+    const query =
+      typeof route.query.user === "string"
+        ? { group: props.project.workerGroupIds[0], user: route.query.user }
+        : Object.keys(remembered).length
+          ? remembered
+          : { group: props.project.workerGroupIds[0] };
+    await router.replace({ query: { tab: "rpc", ...query } });
     return;
   }
-  session.navigation.group = groupId.value;
+  session.navigation.rpcQuery = directTaskId.value
+    ? { taskId: directTaskId.value }
+    : { group: groupId.value, user: userId.value };
   if (taskId.value) {
     if (workspace.detailKey.value !== "default/" + taskId.value)
       await workspace.loadDetail("default", taskId.value);
@@ -76,7 +136,7 @@ async function sync() {
 }
 onMounted(sync);
 watch(
-  () => [route.query.group, props.project],
+  () => [route.query.group, route.query.user, route.query.taskId, props.project],
   () => {
     if (route.path === "/task-workbench" && route.query.tab !== "finite") void sync();
   }
@@ -92,6 +152,31 @@ async function refresh() {
     workspace.loadGroups("default"),
     ...(id ? [workspace.loadDetail("default", id)] : [])
   ]);
+}
+async function prepare() {
+  if (!canPrepare.value) return;
+  if (changedCaller.value) {
+    await selectIdentity(groupId.value, callerInput.value);
+    if (disposed || !canPrepare.value) return;
+  }
+  const id = taskId.value;
+  const request: RpcTaskPrepareRequest = directTaskId.value
+    ? {
+        projectId: "default",
+        workerGroupId: groupId.value,
+        name: row.value!.task!.name,
+        metadata: { ...row.value!.task!.metadata }
+      }
+    : {
+        projectId: "default",
+        workerGroupId: groupId.value,
+        metadata: { userId: userId.value.trim() }
+      };
+  // A previous snapshot cannot confirm the outcome of a new preparation attempt.
+  workspace.invalidateDetail();
+  const outcome = await session.prepareRpc(id, request);
+  if (!disposed && taskId.value === id && outcome === "ready")
+    await workspace.loadDetail("default", id);
 }
 async function send() {
   if (!enabled.value || busy.value) return;
@@ -144,17 +229,31 @@ const labels: Record<string, string> = {
 <template>
   <section class="rpc-page" data-testid="rpc-task-page">
     <div class="rpc-page__scope">
+      <el-input
+        v-model="callerInput"
+        aria-label="RPC 调用方标识"
+        maxlength="128"
+        placeholder="调用方标识（如 alice）"
+        @change="selectIdentity(groupId, String($event))"
+      />
       <el-select
         :model-value="groupId"
         aria-label="RPC WorkerGroup"
         placeholder="选择 Group"
-        @change="router.push({ query: { tab: 'rpc', group: String($event) } })"
+        @change="selectIdentity(String($event), callerInput)"
         ><el-option
-          v-for="(_, id) in project.managedTaskIds"
+          v-for="id in project.workerGroupIds"
           :key="id"
           :value="id"
           :label="id"
       /></el-select>
+      <el-button :disabled="!canPrepare" :loading="preparation?.busy" @click="prepare">
+        {{
+          preparation?.outcome === "unconfirmed"
+            ? "再次准备原 Task"
+            : "创建／复用 RPC Task"
+        }}
+      </el-button>
       <el-button
         :icon="Refresh"
         :loading="state.loading || groups?.loading"
@@ -163,8 +262,33 @@ const labels: Record<string, string> = {
       >
       <span class="raw-muted">最近读取：{{ time(state.readAt) }}</span>
     </div>
+    <p v-if="taskId" class="raw-muted rpc-page__identity">
+      Task ID：<code>{{ taskId }}</code>
+    </p>
     <el-alert
-      v-if="state.error || groups?.error"
+      v-if="preparation?.error"
+      :title="preparation.error"
+      type="error"
+      :closable="false"
+    >
+      {{
+        preparation.outcome === "unconfirmed"
+          ? "准备结果未确认，已保留原身份和请求。可刷新核对，或显式再次准备原 Task；不会自动重试。"
+          : "请求被拒绝，原 Task 状态保持不变。"
+      }}
+    </el-alert>
+    <el-alert
+      v-if="state.missing"
+      :title="
+        directTaskId
+          ? '指定 Task 不存在，请核对 Task ID。'
+          : '尚未创建此 RPC Task，请点击创建／复用。'
+      "
+      type="info"
+      :closable="false"
+    />
+    <el-alert
+      v-if="(state.error && !state.missing) || groups?.error"
       :title="'读取失败，保留已有快照：' + (state.error || groups?.error)"
       type="error"
       :closable="false"
@@ -174,7 +298,9 @@ const labels: Record<string, string> = {
       :title="
         config.mode === 'mock'
           ? 'Mock 只展示配置，不执行真实 RPC 调用。'
-          : '当前 Group、managed Task 或最新读取状态不可用，不能提交调用。'
+          : !taskId
+            ? '请输入调用方标识并选择 Group，再显式创建 RPC Task。'
+            : '当前 RPC Task 尚未确认可调用，请先准备或刷新核对。'
       "
       type="info"
       :closable="false"

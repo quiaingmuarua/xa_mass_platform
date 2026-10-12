@@ -183,7 +183,7 @@ final class RuntimeApiClient {
         }
         Map<String, Object> response = post(
                 "/api/v1/tasks/"
-                        + managedTaskId(workerGroupId)
+                        + rpcTaskId(workerGroupId)
                         + "/items:call",
                 Map.of(
                         "items", encoded,
@@ -214,15 +214,15 @@ final class RuntimeApiClient {
         return Collections.unmodifiableMap(results);
     }
 
-    private Map<String, Object> managedTasks;
-
-    private synchronized String managedTaskId(String workerGroupId) {
-        if (managedTasks == null) {
-            managedTasks = objectMap(request("GET", "/api/v1/projects/scenario-workers", null,
-                    "project.read").get("managedTaskIds"), "managedTaskIds");
-        }
-        return requiredString(managedTasks, workerGroupId);
+    void prepareRpcTask(String group) {
+        String id = rpcTaskId(group);
+        var response = post("/api/v1/tasks/" + id + "/rpc:prepare",
+                Map.of("projectId", "scenario-workers", "workerGroupId", group), "rpc.prepare");
+        if (!id.equals(requiredString(response, "taskId")))
+            throw new IllegalStateException("RPC Task preparation changed identity");
     }
+
+    private static String rpcTaskId(String group) { return "correctness-rpc-" + group; }
 
     private DirectCallOutcome decodeDirectCall(Map<String, Object> response) {
         Object rawStatus = response.get("status");

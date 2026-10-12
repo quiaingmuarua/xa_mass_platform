@@ -80,7 +80,7 @@ existingCount；当前未确认批次不算拒绝，不自动重传、回滚或�
 existingCount，均针对收到的号码文件。前端原始 CSV 的行数及去重数属于客户端校验摘要。
 来源和回执仅在控制台会话保存；API 不根据 Task 数量重建来源或操作历史。
 
-列表仍包含 Project 目录中的 managed/无业务 metadata 行，由前端过滤；详情和写入验证
+Project 绑定不预置长期 RPC Task，App Checks 只创建有限任务。列表仍保留目录中由其他显式调用产生的 RPC/无业务 metadata 行，由前端过滤；详情和写入验证
 Project、场景和有限 Task 类型。总量来自 Item Score 成员数，active 为 tag 1，failed 为
  tag 5，succeeded 为 tags 6..9。Result 预览只读一次 Owner HSCAN，最多 100 条，不补扫，
 不保证文件顺序或最新顺序。失败行没有注册答案；内容或 Item/Group 关联异常保留执行状态并

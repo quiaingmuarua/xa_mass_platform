@@ -256,8 +256,10 @@ Messages contributes immutable multi-Group Project and resource-requirement decl
 Its applications are startup bindings; only new Task creation resolves an application
 to a Group. Stored Tasks retain their original Group. Template content is opaque to
 the business API; the receiving event owns its format interpretation.
-Server validates dependencies between host Group initialization and Project Task
-initialization. Shared Group definitions remain host-owned; scenario requirements
+Server validates dependencies after host Group initialization and before Adapter startup.
+Project bindings do not provision Tasks. RPC preparation is an explicit Server use case;
+SMS prepares a shared Task at Scenario startup, while the workbench owns its caller-based
+Task ID convention. Caller metadata is attribution, not a user domain or scheduling input. Shared Group definitions remain host-owned; scenario requirements
 may read through the startup validator but must not register, amend or enable
 resources. Configuration and module Project identities cannot shadow each other.
 

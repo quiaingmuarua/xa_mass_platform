@@ -127,6 +127,76 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         }
     }
 
+    private com.xa.mass.server.task.call.TaskRpcPreparationService rpcPreparation() {
+        var workers = mock(com.xa.mass.kernel.worker.WorkerResourceCatalog.class);
+        when(workers.getWorkerGroupDescriptors(List.of("phone-tools"))).thenReturn(Map.of("phone-tools",
+                new com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor("phone-tools", Map.of(), java.util.Set.of("test.event"))));
+        var matching = mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
+        when(matching.normalizeRefill(eq("phone-tools"), anyList())).thenAnswer(call -> call.getArgument(1));
+        var projects = new com.xa.mass.server.project.ProjectDirectory(new com.xa.mass.server.project.ProjectAssemblyProperties(
+                List.of(new com.xa.mass.server.project.ProjectDefinition("test-project", List.of("phone-tools")))), List.of());
+        return new com.xa.mass.server.task.call.TaskRpcPreparationService(workers, catalog, runtime, lifecycle, matching,
+                new com.xa.mass.server.task.call.TaskRpcProperties(1000, 1000, 10, 10, 10, 50, 100, 250, Map.of()),
+                projects, new com.xa.mass.server.operation.OperationGuard());
+    }
+
+    private static com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest rpcRequest(String user) {
+        return new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("test-project", "phone-tools", null, Map.of("userId", user));
+    }
+
+    @Test void explicitRpcReuseAfterProviderReopenPreservesIdentityWorkAndResults() {
+        var service = rpcPreparation();
+        service.prepare("rpc-alice", rpcRequest("Alice"));
+        var item = new TaskItem("shared-id", "test.event", ownerClockMillis(), Map.of("value", "Alice"), 5,
+                ownerClockMillis() + 60_000, new WorkerQuery("workerId", "w"));
+        runtime.appendItems("rpc-alice", List.of(item));
+        runtime.storeTaskItemSuccessResults("rpc-alice", Map.of("shared-id", new TaskItemSuccessResult(6, ownerClockMillis(), "Alice")));
+        var order = catalog.getProjectTask("test-project", "rpc-alice");
+        var score = scoreCore.getScoreStates(List.of("rpc-alice")).get("rpc-alice");
+        runtime.close(); catalog.close();
+        runtime = new RedisTaskRuntime(redisClient, scoreCore, itemScoreCore, keyspace);
+        catalog = new RedisTaskResourceCatalog(redisClient, keyspace);
+        lifecycle = new DefaultTaskLifecycleCommands(scoreCore, catalog);
+        rpcPreparation().prepare("rpc-alice", rpcRequest("Alice"));
+        assertThat(catalog.getProjectTask("test-project", "rpc-alice")).isEqualTo(order);
+        assertThat(scoreCore.getScoreStates(List.of("rpc-alice")).get("rpc-alice")).isEqualTo(score);
+        assertThat(runtime.loadTaskItems("rpc-alice", List.of("shared-id")).get("shared-id")).isEqualTo(item);
+        assertThat(runtime.loadTaskItemResults("rpc-alice", List.of("shared-id")).get("shared-id").opaqueResultPayload()).isEqualTo("Alice");
+        assertThatThrownBy(() -> rpcPreparation().prepare("rpc-alice", rpcRequest("Bob")))
+                .isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        lifecycle.closeTask("rpc-alice");
+        assertThatThrownBy(() -> rpcPreparation().prepare("rpc-alice", rpcRequest("Alice")))
+                .isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        assertThat(scoreCore.getScoreStates(List.of("rpc-alice")).get("rpc-alice").band()).isEqualTo(TaskScoreBandCore.TaskScoreBand.TERMINAL);
+    }
+
+    @Test void parkedRpcTasksKeepTheExistingApprovalLimitAndRetryKeepsPendingCreation() {
+        var service = rpcPreparation();
+        for (int i = 0; i < 100; i++) {
+            String id = "rpc-" + i;
+            service.prepare(id, rpcRequest("user-" + i));
+            var initial = scoreCore.getScoreStates(List.of(id)).get(id);
+            assertThat(scoreCore.promoteObservedInitialTasks(Map.of(id, initial.score())).get(id).status())
+                    .isEqualTo(TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED);
+            var normal = scoreCore.getScoreStates(List.of(id)).get(id);
+            assertThat(scoreCore.parkObservedIdleTask(id, normal.score()).status())
+                    .isEqualTo(TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED);
+        }
+        assertThat(scoreCore.countRunningTasks()).isEqualTo(100);
+        assertThatThrownBy(() -> service.prepare("pending", rpcRequest("next")))
+                .isInstanceOfSatisfying(com.xa.mass.server.error.ServerException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(com.xa.mass.server.error.ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE));
+        var order = catalog.getProjectTask("test-project", "pending");
+        assertThat(order).isNotNull();
+        assertThat(scoreCore.getScoreStates(List.of("pending")).get("pending").band()).isEqualTo(TaskScoreBandCore.TaskScoreBand.PRE_REVIEW);
+        service.prepare("rpc-0", rpcRequest("user-0"));
+        assertThat(scoreCore.countRunningTasks()).isEqualTo(100);
+        lifecycle.closeTask("rpc-0");
+        service.prepare("pending", rpcRequest("next"));
+        assertThat(catalog.getProjectTask("test-project", "pending")).isEqualTo(order);
+        assertThat(scoreCore.countRunningTasks()).isEqualTo(100);
+    }
+
     @Test void projectDirectoryRetainsFirstCreationTimeAndClosedTasks() {
         long before = ownerClockMillis();
         assertThat(runtime.createTask(descriptor("indexed", 0)).status()).isEqualTo(TaskCreationStatus.CREATED);
@@ -1434,7 +1504,8 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     void publicFiniteTaskControlUsesJavaOwnersWithoutPythonHttp() {
         TaskControlController controller = new TaskControlController(
                 mock(TaskCreationService.class),
-                new TaskLifecycleService(lifecycle, catalog, new com.xa.mass.server.operation.OperationGuard())
+                new TaskLifecycleService(lifecycle, catalog, new com.xa.mass.server.operation.OperationGuard()),
+                mock(com.xa.mass.server.task.call.TaskRpcPreparationService.class)
         );
         var created = runtime.createTask(new TaskDescriptor("public-task", "test-project", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "2", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of()));
 

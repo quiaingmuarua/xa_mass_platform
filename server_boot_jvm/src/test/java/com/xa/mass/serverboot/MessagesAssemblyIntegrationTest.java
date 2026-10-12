@@ -129,19 +129,23 @@ class MessagesAssemblyIntegrationTest {
     }
 
     @Test @Timeout(90)
-    void moduleBindsAPreRegisteredGroupAndRestartPreservesManagedTaskAndGroupData() throws Exception {
+    void moduleBindsAPreRegisteredGroupWithoutRpcTasksAndRestartPreservesFiniteTaskAndGroupData() throws Exception {
         try (var fixture = new Fixture()) {
             fixture.start(false, Map.of());
             fixture.context.getBean(WorkerGroupRegistrationService.class).register("demo-sim", Map.of("owner", "external"), List.of(EVENT, "extra"));
             var before = fixture.context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("demo-sim")).get("demo-sim");
             fixture.restart(true, Map.of("xa.mass.worker-assembly.group-config-json", "{}"));
-            String id = fixture.context.getBean(ProjectDirectory.class).requireManagedTaskId("messages", "demo-sim");
             var tasks = fixture.context.getBean(TaskResourceCatalog.class);
+            assertThat(tasks.listProjectTasks("messages", 100).tasks()).isEmpty();
+            var created = fixture.post("/api/v1/messages/tasks", Map.of("appId", "demo", "requestId", "restart-binding",
+                    "name", "retained", "recipientCountry", "CN", "body", "text"));
+            assertThat(created.statusCode()).isEqualTo(201);
+            String id = (String) Jsons.parseObject(created.body()).get("taskId");
             var descriptor = tasks.loadTaskAllocationDescriptors(List.of(id)).get(id);
             var order = tasks.getProjectTask("messages", id);
             assertThat(order).isNotNull();
             fixture.restart(true, Map.of("xa.mass.worker-assembly.group-config-json", "{}"));
-            assertThat(fixture.context.getBean(ProjectDirectory.class).requireManagedTaskId("messages", "demo-sim")).isEqualTo(id);
+            assertThat(fixture.context.getBean(ProjectDirectory.class).require("messages").workerGroupIds()).containsExactly("demo-sim");
             tasks = fixture.context.getBean(TaskResourceCatalog.class);
             assertThat(tasks.loadTaskAllocationDescriptors(List.of(id)).get(id)).isEqualTo(descriptor);
             assertThat(tasks.getProjectTask("messages", id)).isEqualTo(order);

@@ -175,9 +175,8 @@ class WorkerStateConvergenceTest {
                     states.put(id, state);
                 }
                 body = Map.of("statesByWorkerId", states);
-            } else if (path.equals("/api/v1/projects/scenario-workers")) {
-                body = Map.of("managedTaskIds", Map.of(PHONE_GROUP, "task-" + PHONE_GROUP,
-                        STRING_GROUP, "task-" + STRING_GROUP));
+            } else if (path.endsWith("/rpc:prepare")) {
+                body = Map.of("taskId", "task-" + Jsons.parseObject(request).get("workerGroupId"));
             } else if (path.endsWith("/items:call")) {
                 var results = new LinkedHashMap<String, Object>();
                 for (Object raw : (List<?>) Jsons.parseObject(request).get("items")) {

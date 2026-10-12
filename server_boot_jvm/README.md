@@ -28,7 +28,7 @@ Preview's host configuration and enabled module declarations form this topology:
 | `messages` | `demo-sim`, `app-a-sim`, `app-b-sim` | `extension.worker.message.send`; Group-isolated Messaging Pool and `worker.messaging.available` |
 | `app-checks` | `app-a → app-a-sim`, `app-b → app-b-sim` | `extension.worker.app.registration.check`; Any and assignment-window Pools, `worker.any` and `worker.assignment.available` |
 
-The `demo-sim` managed Tasks retain the host-configured Partitioned SMS supply;
+Explicit RPC preparation for `demo-sim` retains the host-configured Partitioned SMS supply;
 that Group does not enable Any Pool. A raw finite Task can explicitly supply Country.
 The `default` Project has no special Server semantics and does not auto-bind new Groups. Messages contributes the existing
 `QualifiedCountryDefinition`; Worker qualification remains `messaging.enabled="true"`
@@ -58,9 +58,11 @@ window length changes require a new Redis scope. Host resources are not auto-ena
 Direct `workerId` remains available in every Group for general Runtime callers;
 Messages API creation no longer exposes directed sending. Matching owns the
 [query and index contracts](../worker_matching_jvm/README.md#identity-and-phone-query-functions).
-Server initializes host Groups, validates module dependencies and prepares Project
-managed Tasks before Adapter startup. Scenarios consume the immutable Project
-directory; they do not register or amend Groups. A declaration is not evidence
+Server initializes host Groups and validates module dependencies before Adapter
+startup. Project bindings create no Tasks. SMS prepares one shared RPC Task during
+its own initialization; Messages/App Checks create only finite business Tasks, and
+the default workbench explicitly prepares caller-named RPC Tasks. Scenarios consume
+the immutable Project directory; they do not register or amend Groups. A declaration is not evidence
 that the real Worker installed those handlers.
 
 Boot assembles each scenario to start after the platform lifecycle is ready; a scenario
@@ -175,7 +177,7 @@ xa:
 List overlays replace configuration-owned Projects only. Module `ProjectDefinition`
 Beans contribute additional Projects through the same immutable directory; duplicate
 IDs across either source fail even when their Group lists match. Preview therefore
-keeps only SMS in the list and declares Messages and App Checks through their modules. Existing
+keeps default and SMS in the list and declares Messages and App Checks through their modules. Existing
 external configurations must remove the `messages` and `app-checks` list entries and explicitly set
 `xa.mass.scenarios.messages.applications`; neither the old single Group path nor
 the shared String Bean is a fallback.
@@ -185,12 +187,12 @@ explicit static Configuration assembly, with no new production profile or switch
 A proof or deployment changing Groups must update both its configuration-owned
 Project list and enabled modules' Group bindings. Shared Group definitions remain
 host-owned; module requirements only validate subsets and can use an already
-registered Group without a host creation entry. Reusing the same Project/Group and
-managed refill retains the existing derived Task ID and descriptor. Changing Group
+registered Group without a host creation entry. Explicit preparation with the same
+caller Task ID and complete descriptor reuses retained work. Changing Group
 is a new binding, not an implicit data migration.
 Default and AgentForge have empty Project lists; downstream deployments provide
-Groups and Projects before startup when managed Calls are required. An external
-Group registration alone creates no Task. Projects have no mutation API.
+Groups and Projects before explicitly preparing RPC Tasks. An external
+Group registration or Project declaration alone creates no Task. Projects have no mutation API.
 
 ## Assignment batch ceiling
 

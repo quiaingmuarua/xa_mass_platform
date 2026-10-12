@@ -380,17 +380,21 @@ def functional(run):
             "hostMetrics": http(run.host, "/lab/v1/messages/metrics")}
 
 
-def require_managed_tasks_initial(run):
-    for project in ("sms", "messages"):
+def require_only_sms_rpc_initial(run):
+    for project, expected in (("sms", {"demo-sim"}), ("messages", {"demo-sim", "app-a-sim", "app-b-sim"}),
+                              ("app-checks", {"app-a-sim", "app-b-sim"})):
         directory = http(run.url, f"/api/v1/projects/{project}")
-        managed = directory["managedTaskIds"]
-        require(set(managed) == ({"demo-sim"} if project == "sms" else {"demo-sim", "app-a-sim", "app-b-sim"}),
-                "Unexpected managed Group in Pool fixture")
+        require(set(directory["workerGroupIds"]) == expected, "Unexpected Project bindings in Pool fixture")
         page = http(run.url, f"/api/v1/projects/{project}/tasks?limit=100")
         require(not page["truncated"], "Pool fixture Project observation was truncated")
-        rows = {row["taskId"]: row for row in page["tasks"]}
-        require(all(identity in rows and rows[identity]["scoreBand"] == "running-initial"
-                    for identity in managed.values()), "Managed Task became active in Pool-only fixture")
+        rows = page["tasks"]
+        require(all(row.get("task") for row in rows), "Pool fixture Task descriptor missing")
+        parked = [row for row in rows if row["task"]["idleDisposition"] == "PARK_WHEN_IDLE"]
+        if project == "sms":
+            require(len(rows) == len(parked) == 1 and parked[0]["task"]["workerGroupId"] == "demo-sim"
+                    and parked[0]["scoreBand"] == "running-initial", "SMS RPC Task became active in Pool-only fixture")
+        else:
+            require(not parked, "Finite Scenario unexpectedly prepared a long-lived RPC Task")
 
 
 def require_messaging_supply(run, value, country, app="demo"):
@@ -412,7 +416,7 @@ def pool_selection(run):
     for group in ("demo-sim", "app-a-sim", "app-b-sim"):
         require(Counter(w["country"] for w in run.input_workers_by_id.values() if w["workerGroupId"] == group)
                 == {"CN": 4, "US": 4, "GB": 4}, "Expected four Workers per country and Group in Pool fixture")
-    require_managed_tasks_initial(run)
+    require_only_sms_rpc_initial(run)
     catalog = http(run.url, "/api/v1/messages/catalog")
     require([(app["id"], app["workerGroupId"]) for app in catalog["applications"]]
             == [(app, app + "-sim") for app in ("demo", "app-a", "app-b")], "Wrong application Catalog")
@@ -457,9 +461,9 @@ def pool_selection(run):
     require(not any(row["campaignId"] == value["taskId"] for row in all_pages(run.host, "/lab/v1/messages/records")),
             "Lab accepted ordinary text")
     begin_stage(run, "pool-supply-isolation")
-    require_managed_tasks_initial(run)
+    require_only_sms_rpc_initial(run)
     return {"passed": True, "workers": 36, "messages": 12, "rejectedContents": 1,
-            "applications": 3, "applicationGroupIsolation": True, "managedTasksRemainInitial": True,
+            "applications": 3, "applicationGroupIsolation": True, "onlySmsRpcPrepared": True, "smsRpcRemainsInitial": True,
             "independentRecipientAndSenderCountries": True, "anyMessagingSend": True}
 
 

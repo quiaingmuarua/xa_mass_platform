@@ -57,16 +57,24 @@ final class LaneWorld {
     }
 
     private static Map<String, Object> bootstrap(CallApi api, int workers) throws Exception {
+        var prepared = new LinkedHashMap<String, String>();
+        for (String group : GROUPS) {
+            String id = "perf-rpc-" + group;
+            var response = api.post("/api/v1/tasks/" + id + "/rpc:prepare",
+                    Map.of("projectId", PROJECT, "workerGroupId", group));
+            if (!id.equals(CallApi.string(response, "taskId")))
+                throw new CallLoad.ProtocolFailure("RPC Task preparation changed identity");
+            prepared.put(group, id);
+        }
         var ids = readyGroups(api, workers);
         var groups = new LinkedHashMap<String, Object>();
-        var project = CallApi.object(api.get("/api/v1/projects/" + PROJECT).get("managedTaskIds"));
         for (String group : GROUPS) {
             var registration = api.post("/api/v1/worker-groups/" + group + ":register", Map.of(
                     "attributes", Map.of("capability", "string-utils"),
                     "eventCodes", List.of("extension.worker.string.md5", "extension.worker.lab.delay")));
             if (!group.equals(registration.get("workerGroupId")))
                 throw new CallLoad.ProtocolFailure("Registration Group changed");
-            groups.put(group, Map.of("managedTaskId", CallApi.string(project, group), "workerIds", ids.get(group)));
+            groups.put(group, Map.of("managedTaskId", prepared.get(group), "workerIds", ids.get(group)));
         }
         return Map.of("groups", groups, "workersPerGroup", workers, "endpoint", ENDPOINT,
                 "propertiesObservation", workers <= 1000 ? "complete-known-fixture" : "bounded-sample");

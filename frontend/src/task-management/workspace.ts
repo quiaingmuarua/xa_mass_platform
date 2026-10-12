@@ -1,4 +1,5 @@
 import { ref, reactive } from "vue";
+import { ProjectRequestError } from "./projects";
 import type {
   Project,
   ProjectGroup,
@@ -13,6 +14,7 @@ export interface Snapshot<T> {
   loading: boolean;
   stale: boolean;
   error?: string;
+  missing?: boolean;
 }
 function snapshot<T>(): Snapshot<T> {
   return { loading: false, stale: false };
@@ -37,6 +39,7 @@ export function createProjectWorkspace(source: ProjectSource) {
     sequences.set(key, sequence);
     state.loading = true;
     state.error = undefined;
+    state.missing = false;
     try {
       const value = await loader(controller.signal);
       if (sequences.get(key) !== sequence || controller.signal.aborted) return;
@@ -46,6 +49,10 @@ export function createProjectWorkspace(source: ProjectSource) {
     } catch (error) {
       if (sequences.get(key) !== sequence || controller.signal.aborted) return;
       state.error = error instanceof Error ? error.message : "读取失败";
+      state.missing =
+        error instanceof ProjectRequestError &&
+        error.status === 400 &&
+        error.code === 12002;
       state.stale = true;
     } finally {
       if (sequences.get(key) === sequence) {
@@ -80,6 +87,13 @@ export function createProjectWorkspace(source: ProjectSource) {
     detailKey.value = "";
     detail.value = snapshot();
   }
+  function invalidateDetail() {
+    requests.get("detail")?.abort();
+    requests.delete("detail");
+    sequences.set("detail", (sequences.get("detail") ?? 0) + 1);
+    detail.value.loading = false;
+    detail.value.stale = true;
+  }
   function dispose() {
     requests.forEach((c) => c.abort());
     requests.clear();
@@ -95,6 +109,7 @@ export function createProjectWorkspace(source: ProjectSource) {
     loadGroups,
     loadDetail,
     clearDetail,
+    invalidateDetail,
     dispose
   };
 }

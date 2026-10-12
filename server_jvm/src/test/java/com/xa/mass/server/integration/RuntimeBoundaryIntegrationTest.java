@@ -268,7 +268,7 @@ class RuntimeBoundaryIntegrationTest {
         for (String group : List.of("property-tools-boundary", SERVICEABILITY_WORKER_GROUP_ID))
             groups.put(group, Map.of("eventCodes", List.of(TEST_EVENT_CODE)));
         for (var profile : TransportProfile.values()) {
-            for (String prefix : List.of("task-call-tools-", "tracked-", "failure-event-"))
+            for (String prefix : List.of("task-call-tools-", "tracked-", "failure-event-", "user-rpc-"))
                 groups.put(prefix + profile.name(), Map.of("eventCodes", List.of(TEST_EVENT_CODE)));
         }
         registry.add("xa.mass.worker-assembly.group-config-json", () -> Jsons.toJson(groups));
@@ -1672,6 +1672,48 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     @Test
+    void explicitCallerRpcTasksExecuteTheSameMessageIdIndependentlyAndReuseWithoutReset() throws Exception {
+        String group = "user-rpc-" + TransportProfile.WEBSOCKET.name();
+        String suffix = UUID.randomUUID().toString();
+        var ids = new LinkedHashMap<String, String>();
+        for (String user : List.of("Alice", "Bob")) {
+            String id = "caller-" + user + "-" + suffix;
+            var response = send("POST", "/api/v1/tasks/" + id + "/rpc:prepare",
+                    Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "metadata", Map.of("userId", user))));
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(JSON.readTree(response.body()).path("taskId").asText()).isEqualTo(id);
+            ids.put(user, id);
+        }
+        var prepared = prepareWorker(group, "caller-worker", TransportProfile.WEBSOCKET, Map.of("runtime", "caller-proof"));
+        try (var worker = startWorker(group, "caller-worker", prepared.workerId(), prepared.endpointUri(),
+                Map.of("runtime", "caller-proof"), TransportProfile.WEBSOCKET)) {
+            awaitWorkerRegistered(group, prepared.workerId());
+            for (var entry : ids.entrySet()) {
+                String user = entry.getKey(), id = entry.getValue();
+                var original = taskCatalog.getProjectTask("boundary", id);
+                var response = send("POST", "/api/v1/tasks/" + id + "/items:call", Jsons.toJson(Map.of(
+                        "items", List.of(Map.of("messageId", "same-id", "eventCode", TEST_EVENT_CODE,
+                                "payload", Map.of("value", user), "workerSelector", Map.of("executorName", "workerId", "input", prepared.workerId()))),
+                        "waitTimeoutMillis", 10_000)));
+                assertThat(response.statusCode()).isEqualTo(200);
+                assertThat(JSON.readTree(response.body()).path("same-id").path("status").asText()).isEqualTo("succeeded");
+                awaitTrackedState(id, "same-id", 6);
+                var repeated = send("POST", "/api/v1/tasks/" + id + "/rpc:prepare",
+                        Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "metadata", Map.of("userId", user))));
+                assertThat(repeated.statusCode()).isEqualTo(200);
+                assertThat(taskCatalog.getProjectTask("boundary", id)).isEqualTo(original);
+                assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(id)).get(id).metadata()).containsEntry("userId", user);
+            }
+            for (var entry : ids.entrySet()) {
+                var result = send("POST", "/api/v1/tasks/" + entry.getValue() + "/results:load", "[\"same-id\"]");
+                assertThat(result.statusCode()).isEqualTo(200);
+                assertThat(JSON.readTree(result.body()).path("same-id").path("opaqueResultPayload").asText())
+                        .isEqualTo(Jsons.toJson(Map.of("observed", entry.getKey())));
+            }
+        }
+    }
+
+    @Test
     void trackedObservationsCloseThroughActualWorkersAndExistingQueryApis() throws Exception {
         for (TransportProfile profile : TransportProfile.values()) {
             String group = "tracked-" + profile.name();
@@ -1737,7 +1779,7 @@ class RuntimeBoundaryIntegrationTest {
                 if (state != null && !state.isNull() && state.get("tag").asInt() == tag) {
                     assertThat(state.get("band").asText()).isEqualTo("terminal");
                     assertThat(state.get("outcomeName").asText())
-                            .isEqualTo(Map.of(7, "delivered", 8, "read", 9, "replied").get(tag));
+                            .isEqualTo(Map.of(6, "succeeded", 7, "delivered", 8, "read", 9, "replied").get(tag));
                     assertThat(state.has("score")).isFalse();
                     return;
                 }
@@ -1748,9 +1790,13 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     private String managedTaskId(String group) throws Exception {
-        var response = send("GET", "/api/v1/projects/boundary", null);
+        String id = "boundary-rpc-" + java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(group.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var response = send("POST", "/api/v1/tasks/" + id + "/rpc:prepare",
+                Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group)));
         assertThat(response.statusCode()).isEqualTo(200);
-        return JSON.readTree(response.body()).path("managedTaskIds").path(group).asText();
+        assertThat(JSON.readTree(response.body()).path("taskId").asText()).isEqualTo(id);
+        return id;
     }
 
     private void runWorkerGroupTaskCall(

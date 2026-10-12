@@ -60,6 +60,7 @@ final class AndroidWorkerCorrectness {
     }
 
     private void run() {
+        runtime.prepareRpcTask();
         switch (options.phase()) {
             case INITIAL_PHASE -> runInitial();
             case PROCESS_RESTART_PHASE -> runProcessRestart();

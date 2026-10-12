@@ -129,6 +129,7 @@ final class WorkerCorrectness {
                 options.serverBaseUrl(),
                 Duration.ofMillis(options.requestTimeoutMillis())
         );
+        CAPABILITY_GROUPS.forEach(group -> api.prepareRpcTask(group.workerGroupId()));
         Map<String, Map<String, String>> inventory;
         try {
             inventory = WorkerSimulatorInventory.await(

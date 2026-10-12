@@ -1,7 +1,7 @@
 package com.xa.mass.server;
 
 import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
-import com.xa.mass.server.project.ProjectTaskInitializer;
+import com.xa.mass.server.task.call.TaskRpcPreparationService;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
@@ -199,6 +199,7 @@ class ServerArchitectureBoundaryTest {
                         "TaskCreateRequest",
                         "TaskItemRequest",
                         "TaskRpcCallRequest",
+                        "TaskRpcPrepareRequest",
                         "WorkerGroupRegisterRequest",
                         "WorkerPreparationRequest",
                         "WorkerResultRequest"
@@ -224,6 +225,7 @@ class ServerArchitectureBoundaryTest {
                 .replace("com.xa.mass.server.api.v1.contract.task.TaskCreateResponse", "approved")
                 .replace("com.xa.mass.server.api.v1.contract.task.TaskItemRequest", "approved")
                 .replace("com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest", "approved")
+                .replace("com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest", "approved")
                 .replace("com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse", "approved")
                 .replace("com.xa.mass.server.api.v1.contract.task.TaskItemResultStatus", "approved"))
                 .doesNotContain("com.xa.mass.server.api.v1");
@@ -400,7 +402,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("org.springframework.data.redis")
                 .doesNotContain("WorkerScoreCore")
                 .doesNotContain("RedisTaskScoreBandCore")
-                .doesNotContain("ProjectTaskInitializer")
+                .doesNotContain("TaskRpcPreparationService")
                 .doesNotContain("DirectCallRegistry")
                 .doesNotContain("WorkerRouteRegistry")
                 .doesNotContain("NettyWorkerServer")

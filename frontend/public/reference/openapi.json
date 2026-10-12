@@ -170,14 +170,14 @@
       },
       "ProjectView" : {
         "properties" : {
-          "managedTaskIds" : {
-            "additionalProperties" : {
-              "type" : "string"
-            },
-            "type" : "object"
-          },
           "projectId" : {
             "type" : "string"
+          },
+          "workerGroupIds" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
           }
         },
         "type" : "object"
@@ -395,6 +395,31 @@
           }
         },
         "required" : [ "items" ],
+        "type" : "object"
+      },
+      "TaskRpcPrepareRequest" : {
+        "properties" : {
+          "metadata" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "name" : {
+            "maxLength" : 128,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "projectId" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "workerGroupId" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [ "projectId", "workerGroupId" ],
         "type" : "object"
       },
       "TaskView" : {
@@ -1801,6 +1826,65 @@
           }
         },
         "summary" : "Load TaskItem result states",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/rpc:prepare" : {
+      "post" : {
+        "description" : "Caller supplies a stable Task ID. Exact existing configuration is reused without resetting work. Creation and approval are separate commits; on 503 retain this identity and explicitly reconcile.",
+        "operationId" : "prepareRpcTask",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/TaskRpcPrepareRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskCreateResponse"
+                }
+              }
+            },
+            "description" : "RPC Task approval confirmed"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid request or conflicting Task"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Preparation or approval not confirmed"
+          }
+        },
+        "summary" : "Create or reuse and enable an RPC Task",
         "tags" : [ "Tasks" ]
       }
     },

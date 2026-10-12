@@ -21,7 +21,13 @@ GET messages/{messageId} -> Server Result point read -> business snapshot
 ```
 
 [SmsReceptionService](src/main/java/com/xa/mass/scenario/sms/SmsReceptionService.java)
-uses `ProjectDirectory`, mapped `TaskRpcCallService` and `TaskDataService`.
+uses `TaskRpcPreparationService`, mapped `TaskRpcCallService` and `TaskDataService`.
+Initialization explicitly prepares and approves one shared Task per Group before
+opening business admission. SMS retains its stable `project-rpc-` identity built
+from independently Base64URL-encoded `sms` and Group coordinates; it adds no user
+dimension. Repeated startup reuses the immutable descriptor and retained work.
+The lease projection declares that same Task ID directly; it does not derive a Task
+from the Project directory. Neither leases nor Result reads implicitly prepare Tasks.
 SMS contributes immutable `PartitionedLeasePoolDefinition` and pure
 `TaskLeaseProjection` values. Server owns the bounded result handoff and Matching
 owns its storage effects. No Scenario Redis client, Pacer dependency, waiter,
@@ -125,7 +131,7 @@ records in browser session storage. Server restart does not discard those IDs.
 There is no browser call to the Host; raw SMS input uses the separate `/lab` page.
 
 [Boot](../../server_boot_jvm/README.md#platform-and-preview) owns Group enablement,
-Project/managed Task and refill configuration. Ordinary platform profile has no SMS
+Project bindings and RPC refill configuration. SMS owns the preparation trigger. Ordinary platform profile has no SMS
 API or resource declaration. Scenario shutdown rejects new calls before platform
 shutdown. [Distribution](../../distribution/server/PREVIEW.md#archive-delivery)
 packages the same frontend, Server and Host; there are no embedded SMS assets.

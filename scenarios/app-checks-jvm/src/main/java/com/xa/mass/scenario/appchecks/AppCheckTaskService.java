@@ -62,7 +62,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     }
 
     @Override public void start() {
-        for (String group : settings.workerGroupIds()) projects.requireManagedTaskId(PROJECT, group);
+        for (String group : settings.workerGroupIds()) projects.requireWorkerGroup(PROJECT, group);
         synchronized (gate) {
             if (closed) throw new IllegalStateException("App checks is closed");
             running = true;

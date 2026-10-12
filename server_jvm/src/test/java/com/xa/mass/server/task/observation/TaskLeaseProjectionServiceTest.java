@@ -19,10 +19,9 @@ class TaskLeaseProjectionServiceTest {
     final PlatformLeaseState leases = mock(PlatformLeaseState.class);
     final Coordinate coordinate = new Coordinate("number", "A", "w");
     TaskLeaseProjectionService service() {
-        when(projects.requireManagedTaskId("sms", "g")).thenReturn("task");
         when(matching.platformLeases()).thenReturn(leases);
         when(matching.leaseMetrics()).thenReturn(Map.of());
-        return new TaskLeaseProjectionService(List.of(new TaskLeaseProjection("sms", "g", "pool",
+        return new TaskLeaseProjectionService(List.of(new TaskLeaseProjection("task", "sms", "g", "pool",
                 rows -> rows.isEmpty() ? Map.of() : Map.of(coordinate, 2000L))), projects, results, matching);
     }
     @Test void onlyDeclaredTasksReadStoredResultsAndWriteTheirAbsoluteDeadline() throws Exception {

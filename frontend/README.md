@@ -543,9 +543,18 @@ only the explicitly configured `default` Project. A missing default shows an
 unavailable workspace; it never chooses a business Project instead. This is a
 frontend entry boundary, not new authorization in the generic Server API.
 
-RPC uses `tab=rpc&group=...`, consuming `managedTaskIds` from the directory and
-point-reading the selected Task. It never searches the recent task list for a
-managed identity or computes one. Group capabilities come from the existing
+RPC uses `tab=rpc&group=...&user=...`, with the caller identifier initially blank.
+The workbench trims it, preserves case and mints
+`rpc-workbench-v1.<project>.<user>.<group>` using separately encoded UTF-8 Base64URL
+segments without padding. It saves the caller string as `metadata.userId`, solely
+for attribution. This convention adds no user registry, authorization or user quota.
+Existing Tasks are point-read by the stable ID, independent of the recent list.
+Only the explicit create/reuse button calls `POST /v1/tasks/{taskId}/rpc:prepare`;
+route changes, reads and calls never create a Task. Preparation includes approval.
+Unconfirmed attempts retain their original identity/request for manual read or
+explicit re-preparation. PRE_REVIEW, stale and terminal Tasks cannot be called.
+`tab=rpc&taskId=...` opens an existing Task directly, including Tasks without user
+metadata; Runtime links preserve this actual identity. Group capabilities come from the existing
 Project worker-groups endpoint, not a random inventory sample. Task supply is
 read-only. The Event catalog supplies suggestions; custom full names remain
 accepted. The user explicitly selects an enabled Matching function and supplies
@@ -557,12 +566,13 @@ wait and the existing 1..60000ms range. Per-Task history keeps the latest 20
 browser-session records. Execution failure, not-observed results, request
 rejection and uncertain requests are separate observations. Uncertain and
 not-observed calls may manually load the original message ID; neither is
-automatically resubmitted. Group switching retains separate drafts and histories,
-and late responses update only their original call. Mock disables calls.
+automatically resubmitted. Caller/Group switching retains separate Task drafts and histories,
+and late responses update only their original call or preparation. Mock includes
+read-only caller examples and disables preparation and calls.
 
 Finite tasks use `tab=finite`, `taskId=...` for details and `view=create` for the
-creation drawer. The current default Project collection excludes known managed
-IDs and managed descriptors without fetching replacements. Unknown descriptors
+creation drawer. The current default Project collection excludes PARK_WHEN_IDLE
+descriptors without fetching replacements. Unknown descriptors
 remain visible and cannot be mutated. Create, append, approve and close use
 fresh Server state, so reloading the browser does not lose the ability to manage
 existing tasks. Terminal export shares the viewer's download implementation.

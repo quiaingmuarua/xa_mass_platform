@@ -1,8 +1,14 @@
 import { inject, reactive, type InjectionKey } from "vue";
 import { createProjectWorkspace } from "@/task-management/workspace";
 import type { ProjectSource } from "@/task-management/projects";
+import type { RpcTaskPreparationClient, RpcTaskPrepareRequest } from "./rpc-task";
+import { TaskCallDebugError } from "@/task-call-debug/errors";
 
-export function createTaskSession(source: ProjectSource) {
+export function createTaskSession(
+  source: ProjectSource,
+  preparations: RpcTaskPreparationClient,
+  mode: "api" | "mock"
+) {
   // Only Runtime owns the shared directory reader. Each surface has its own
   // detail request slot, so navigating elsewhere cannot replace a saved snapshot.
   const runtime = createProjectWorkspace(source);
@@ -14,8 +20,46 @@ export function createTaskSession(source: ProjectSource) {
   const finiteFilter = reactive({ search: "", group: "", status: "", scroll: 0 });
   const navigation = reactive({
     runtimeQuery: {} as Record<string, string>,
-    group: ""
+    rpcQuery: {} as Record<string, string>
   });
+  const rpcPreparations = reactive<
+    Record<
+      string,
+      {
+        request: RpcTaskPrepareRequest;
+        busy: boolean;
+        outcome?: "ready" | "unconfirmed" | "rejected";
+        error?: string;
+      }
+    >
+  >(Object.create(null));
+  async function prepareRpc(taskId: string, request: RpcTaskPrepareRequest) {
+    if (mode !== "api") return;
+    const attempt = (rpcPreparations[taskId] ??= {
+      request: { ...request, metadata: { ...request.metadata } },
+      busy: false
+    });
+    if (attempt.busy) return;
+    attempt.busy = true;
+    attempt.error = undefined;
+    attempt.outcome = undefined;
+    try {
+      await preparations.prepareTask(taskId, {
+        ...attempt.request,
+        metadata: { ...attempt.request.metadata }
+      });
+      attempt.outcome = "ready";
+    } catch (error) {
+      attempt.outcome =
+        error instanceof TaskCallDebugError && error.status === 400
+          ? "rejected"
+          : "unconfirmed";
+      attempt.error = error instanceof Error ? error.message : "RPC Task 准备未确认。";
+    } finally {
+      attempt.busy = false;
+    }
+    return attempt.outcome;
+  }
   let initialDirectory: Promise<void> | undefined;
   function ensureDirectory() {
     if (runtime.directory.value) return Promise.resolve();
@@ -33,6 +77,8 @@ export function createTaskSession(source: ProjectSource) {
     runtimeFilters,
     finiteFilter,
     navigation,
+    rpcPreparations,
+    prepareRpc,
     dispose() {
       runtime.dispose();
       finite.dispose();

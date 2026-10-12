@@ -131,7 +131,7 @@ public final class TaskCreationService {
                 || request.maxRetryTimes() < 0 || request.maxRetryTimes() > 98) {
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION, "Invalid Task creation request", null);
         }
-        projects.requireManagedTaskId(request.projectId(), request.workerGroupId());
+        projects.requireWorkerGroup(request.projectId(), request.workerGroupId());
         requireWorkerGroup(request.workerGroupId());
         List<RefillTarget> targets = resolveTargets(request);
         var config = new java.util.LinkedHashMap<String, String>();

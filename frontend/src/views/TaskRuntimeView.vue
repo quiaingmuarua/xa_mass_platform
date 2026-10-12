@@ -189,7 +189,7 @@ function workbenchLink() {
     path: "/task-workbench",
     query:
       task?.idleDisposition === "PARK_WHEN_IDLE"
-        ? { tab: "rpc", group: task.workerGroupId }
+        ? { tab: "rpc", taskId: detail.value?.taskId }
         : { tab: "finite", taskId: detail.value?.taskId }
   };
 }

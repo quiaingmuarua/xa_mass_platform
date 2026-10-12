@@ -2,8 +2,6 @@ package com.xa.mass.server.project;
 
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -22,11 +20,7 @@ public final class ProjectDirectory {
         definitions.addAll(declarations.stream().sorted(Comparator.comparing(ProjectDefinition::projectId)).toList());
         var result = new LinkedHashMap<String, ProjectView>();
         for (var project : definitions) {
-            var tasks = new LinkedHashMap<String, String>();
-            for (String group : project.workerGroupIds()) {
-                tasks.put(group, managedTaskId(project.projectId(), group));
-            }
-            if (result.putIfAbsent(project.projectId(), new ProjectView(project.projectId(), tasks)) != null)
+            if (result.putIfAbsent(project.projectId(), new ProjectView(project.projectId(), project.workerGroupIds())) != null)
                 throw new IllegalArgumentException("Duplicate Project ID across startup declarations: " + project.projectId());
         }
         projects = Collections.unmodifiableMap(result);
@@ -41,20 +35,13 @@ public final class ProjectDirectory {
         return project;
     }
 
-    public String requireManagedTaskId(String projectId, String workerGroupId) {
-        String taskId = require(projectId).managedTaskIds().get(workerGroupId);
-        if (taskId == null) throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                "project.requireManagedTaskId", "WorkerGroup is not declared by Project", null);
-        return taskId;
+    public void requireWorkerGroup(String projectId, String workerGroupId) {
+        if (!require(projectId).workerGroupIds().contains(workerGroupId))
+            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST,
+                    "project.requireWorkerGroup", "WorkerGroup is not declared by Project", null);
     }
 
-    private static String managedTaskId(String project, String group) {
-        var encoder = Base64.getUrlEncoder().withoutPadding();
-        return "project-rpc-" + encoder.encodeToString(project.getBytes(StandardCharsets.UTF_8))
-                + "." + encoder.encodeToString(group.getBytes(StandardCharsets.UTF_8));
-    }
-
-    public record ProjectView(String projectId, Map<String, String> managedTaskIds) {
-        public ProjectView { managedTaskIds = Collections.unmodifiableMap(new LinkedHashMap<>(managedTaskIds)); }
+    public record ProjectView(String projectId, List<String> workerGroupIds) {
+        public ProjectView { workerGroupIds = List.copyOf(workerGroupIds); }
     }
 }

@@ -88,7 +88,7 @@ final class ConvergenceWorkload {
         }
         List<Batch> submitted = new ArrayList<>();
         for (GroupWorkload group : GROUPS) {
-            String taskId = runtime.managedTaskId(group.groupId());
+            String taskId = runtime.rpcTaskId(group.groupId());
             List<TaskItem> items = items(
                     wave,
                     group,

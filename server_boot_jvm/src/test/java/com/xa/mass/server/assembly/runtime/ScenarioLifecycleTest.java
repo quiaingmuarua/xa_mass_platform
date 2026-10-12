@@ -27,6 +27,7 @@ class ScenarioLifecycleTest {
     @ValueSource(ints = {-1, 0, 1, 2, 3, 4})
     void allScenariosStopBeforePlatformIncludingPartialStartupFailure(int failedRegistration) {
         var registrations = mock(ProjectDirectory.class);
+        var preparations = mock(com.xa.mass.server.task.call.TaskRpcPreparationService.class);
         var submissions = mock(TaskCallSubmissionService.class);
         var results = mock(TaskDataService.class);
         var creation = mock(TaskCreationService.class);
@@ -35,7 +36,7 @@ class ScenarioLifecycleTest {
         var verifier = mock(WorkerRouteVerificationBatcher.class);
         var initializer = mock(ServerWorkerGroupInitializer.class);
         var requirements = mock(ProjectWorkerRequirementsValidator.class);
-        var platform = new ServerConfiguredRuntimeLifecycleHost(initializer, requirements, mock(com.xa.mass.server.project.ProjectTaskInitializer.class), adapters, verifier);
+        var platform = new ServerConfiguredRuntimeLifecycleHost(initializer, requirements, adapters, verifier);
         if (failedRegistration == -1)
             doThrow(new IllegalStateException("dependency unavailable")).when(requirements).validate();
         var registrationCount = new AtomicInteger();
@@ -58,6 +59,7 @@ class ScenarioLifecycleTest {
                 }
             });
             context.registerBean(ProjectDirectory.class, () -> registrations);
+            context.registerBean(com.xa.mass.server.task.call.TaskRpcPreparationService.class, () -> preparations);
             context.registerBean(com.xa.mass.server.project.ProjectTaskQueryService.class,
                     () -> mock(com.xa.mass.server.project.ProjectTaskQueryService.class));
             context.registerBean(TaskCallSubmissionService.class, () -> submissions);
@@ -76,16 +78,20 @@ class ScenarioLifecycleTest {
             context.register(PreviewConfiguration.class);
             doAnswer(call -> { events.add("platform-start"); return null; }).when(adapters).start();
             when(results.loadTaskItemResults(anyString(), anyList())).thenReturn(java.util.Map.of());
-            when(registrations.requireManagedTaskId(anyString(), anyString())).thenAnswer(call -> {
+            java.util.function.BiConsumer<String, String> observe = (project, id) -> {
                 assertThat(platform.isRunning()).isTrue();
                 events.add("register");
                 if (registrationCount.incrementAndGet() == failedRegistration)
                     throw new IllegalStateException("registration unavailable");
-                String id = call.getArgument(1);
-                String project = call.getArgument(0);
                 if (project.equals("app-checks")) assertThat(id).isIn("app-a-sim", "app-b-sim");
                 else assertThat(id).isEqualTo("demo-sim");
-                return "task-" + id;
+            };
+            doAnswer(call -> { observe.accept(call.getArgument(0), call.getArgument(1)); return null; })
+                    .when(registrations).requireWorkerGroup(anyString(), anyString());
+            when(preparations.prepare(anyString(), any())).thenAnswer(call -> {
+                var request = call.<com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest>getArgument(1);
+                observe.accept(request.projectId(), request.workerGroupId());
+                return new com.xa.mass.server.api.v1.contract.task.TaskCreateResponse(call.getArgument(0));
             });
             doAnswer(call -> {
                 assertThat(scenarios).hasSize(3).allSatisfy(scenario -> assertThat(scenario.isRunning()).isFalse());

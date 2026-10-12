@@ -1,11 +1,21 @@
 import { z } from "zod";
 import { taskViewSchema, workerGroupViewSchema } from "@/runtime-viewer/schemas";
 import { MOCK_TASK_PREVIEW, MOCK_WORKER_GROUPS } from "@/runtime-viewer/mock-data";
+import { rpcTaskId } from "@/task-workbench/rpc-task";
+
+export class ProjectRequestError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code?: number
+  ) {
+    super(code === 12002 ? "Task 不存在。" : "Project 请求失败 (" + status + ")");
+  }
+}
 
 export const projectSchema = z
   .object({
     projectId: z.string().min(1),
-    managedTaskIds: z.record(z.string(), z.string().min(1))
+    workerGroupIds: z.array(z.string().min(1))
   })
   .strict();
 export type Project = z.infer<typeof projectSchema>;
@@ -63,7 +73,13 @@ export function createProjectSource(
     const response = await fetch(baseUrl.replace(/\/$/, "") + "/v1/projects" + suffix, {
       signal
     });
-    if (!response.ok) throw new Error("Project 请求失败 (" + response.status + ")");
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new ProjectRequestError(
+        response.status,
+        typeof body?.code === "number" ? body.code : undefined
+      );
+    }
     return response.json();
   };
   const path = (project: string) => "/" + encodeURIComponent(project);
@@ -109,9 +125,7 @@ function mockProjectSource(): ProjectSource {
   const projects: Project[] = [
     {
       projectId: "default",
-      managedTaskIds: Object.fromEntries(
-        groups.map((g) => [g.workerGroupId, "demo-managed-" + g.workerGroupId])
-      )
+      workerGroupIds: groups.map((g) => g.workerGroupId)
     }
   ];
   const tasks: ProjectTask[] = MOCK_TASK_PREVIEW.entries.map((row, index) => ({
@@ -121,7 +135,7 @@ function mockProjectSource(): ProjectSource {
     createdAtMillis: Date.parse(MOCK_TASK_PREVIEW.generatedAt) - index * 1000
   }));
   for (const group of groups) {
-    const taskId = projects[0]!.managedTaskIds[group.workerGroupId]!;
+    const taskId = rpcTaskId("default", "demo", group.workerGroupId);
     if (!tasks.some((row) => row.taskId === taskId))
       tasks.push({
         taskId,
@@ -133,7 +147,7 @@ function mockProjectSource(): ProjectSource {
           workerGroupId: group.workerGroupId,
           idleDisposition: "PARK_WHEN_IDLE",
           name: null,
-          metadata: {},
+          metadata: { userId: "demo" },
           config: { priority: "0", maxRetryTimes: "3" },
           refill: [{ poolName: "any", target: {}, count: 100 }]
         }
@@ -154,7 +168,7 @@ function mockProjectSource(): ProjectSource {
     async task(project, taskId) {
       requireProject(project);
       const task = tasks.find((t) => t.taskId === taskId);
-      if (!task) throw new Error("Task 不可用");
+      if (!task) throw new ProjectRequestError(400, 12002);
       return structuredClone(task);
     },
     async groups(project) {

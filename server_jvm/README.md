@@ -38,7 +38,7 @@ paths are not forwarded.
 ```text
 HTTP -> Controller -> Server admission/use case -> Kernel or Matching Owner
 Pacer -> bounded Server observation handoff -> application projection
-Boot -> Server providers/lifecycles -> configured Groups and managed Tasks -> Adapters
+Boot -> Server providers/lifecycles -> configured Groups -> dependency validation -> Adapters -> scenarios
 ```
 
 Kernel owns Task/Item data, Score and delivery resources; Matching owns Properties,
@@ -112,12 +112,13 @@ Task type returns `400/12008`.
 
 | Operation | Admission | State effect | Failure boundary | Reference |
 | --- | --- | --- | --- | --- |
-| Project directory | Startup declarations only | Return configured Project views without Redis reads | No initialization or implicit default | [Project directory](#profile-projects-and-managed-tasks) |
-| Project Group capabilities | Known Project Group identities | Point-read descriptors in batches of 100 and immutable Matching enablement | Missing descriptors stay null; reads do not imply ready Workers | [Project directory](#profile-projects-and-managed-tasks) |
-| Known Project Task | Project plus Task identity | Read descriptor, membership and Score without discovery | Ownership checks precede state reads | [Project directory](#profile-projects-and-managed-tasks) |
-| Project lookup | Configured Project; no default | Return the managed Group-to-Task mapping | Read never initializes resources | [Project directory](#profile-projects-and-managed-tasks) |
+| Project directory | Startup declarations only | Return configured Project views without Redis reads | No initialization or implicit default | [Project directory](#projects-and-explicit-rpc-tasks) |
+| Project Group capabilities | Known Project Group identities | Point-read descriptors in batches of 100 and immutable Matching enablement | Missing descriptors stay null; reads do not imply ready Workers | [Project directory](#projects-and-explicit-rpc-tasks) |
+| Known Project Task | Project plus Task identity | Read descriptor, membership and Score without discovery | Ownership checks precede state reads | [Project directory](#projects-and-explicit-rpc-tasks) |
+| Project lookup | Configured Project; no default | Return Project identity and its bound Group list | Read never initializes resources | [Project directory](#projects-and-explicit-rpc-tasks) |
 | Project Task list | Configured Project; `limit=1..1000` | Read a bounded directory page and independent Task/Score projections | Missing projections stay null; corruption fails | [Task Owner](../kernel_jvm/doc/resource-model/task-resource-model.md#cross-owner-creation) |
 | Task create | Declared Project, one of its registered Groups, normalized supply and valid fields | Create a finite immutable Task descriptor | Validate before writes; unknown commit retains the generated identity | [TaskCreationService](src/main/java/com/xa/mass/server/task/TaskCreationService.java) |
+| RPC prepare | Caller Task ID and declared Project/Group | Create or reuse and approve a parked Task | 400 conflict/invalid; 503 retains the supplied identity | [RPC preparation](#projects-and-explicit-rpc-tasks) |
 | Approve / close | Finite Task only | Return the shared applied/unchanged effect | Missing/wrong-type rules above; Owner failure uses `503` | [TaskLifecycleService](src/main/java/com/xa/mass/server/task/TaskLifecycleService.java) |
 | Ordinary Item append | Finite Task; structurally valid batch | Persist admitted Items without releasing idle park | Query rejection is per Item; whole-request failure is non-2xx | [TaskDataService](src/main/java/com/xa/mass/server/task/TaskDataService.java) |
 | Item Call | Managed Task; all original queries admitted | Submit once, then observe within the wait bound | Submission may commit before `503`; observation limits yield `not_observed` | [Call sequence](#managed-task-call) |
@@ -125,13 +126,12 @@ Task type returns `400/12008`.
 | Item states | Finite or managed Task | Read decoded Score, independently of Results | Missing Items return null; Owner failure uses `503` | [Item Score Owner](../kernel_jvm/doc/score/task-item-score-band-scheduling.md) |
 | Result export | Finite Task; one observed Task Score is `TERMINAL` | Stream only successful content through bounded Owner pages | Nonterminal: `400/12010`; overlapping generation: `400/12009` | [Result Owner](../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md#taskitem-result-projection) |
 
-### Profile Projects and managed Tasks
+### Projects and explicit RPC Tasks
 
-Managed Task provisioning belongs to configured Project/Group pairs, not
-WorkerGroup registration. A Group may serve several Projects, each with
-its own stable `PARK_WHEN_IDLE` Task. Public Task creation always uses
-`CLOSE_WHEN_IDLE`. Project membership is passive Kernel data; all Tasks retain global scheduling
-through the same Pacer. Pool/refill composition is unchanged.
+Project declarations bind Groups without creating Tasks. `POST /api/v1/tasks` creates
+finite `CLOSE_WHEN_IDLE` Tasks. `POST /api/v1/tasks/{taskId}/rpc:prepare` explicitly
+creates or reuses and approves a `PARK_WHEN_IDLE` Task. Project membership remains
+passive Kernel data; all Tasks use the same global Pacer and shared Pool resources.
 
 `ProjectDefinition(projectId, workerGroupIds)` is the immutable topology value
 shared by the `xa.mass.project-assembly.projects` configuration list and module
@@ -143,14 +143,28 @@ There is no override precedence, merge-by-ID, registration/update/deletion API,
 Redis registry, dynamic association or default Project. Boot owns environment
 bindings; enabled modules can contribute their own Project identities.
 
-Startup initializes configured WorkerGroups, validates module dependencies,
-prepares and approves each Project's managed Tasks, then starts Adapter ingress
-and scenarios. An absent Group or
-conflicting Task fails startup. Completed stages survive failure; the next startup
-uses the same coordinates and does not reset existing Scores, Items or creation
-time. Managed IDs encode both UTF-8 coordinates independently with
-Base64URL without padding, separated by a dot after `project-rpc-`. Clients consume
-the returned mapping rather than calculating IDs.
+Startup initializes configured WorkerGroups, validates module dependencies and starts
+Adapter ingress before scenarios. Project responses are `{projectId, workerGroupIds}`;
+lookup never provisions a Task. SMS prepares its own shared RPC Task when starting.
+Messages and App Checks validate bindings but create only finite business Tasks.
+
+`TaskRpcPreparationService.prepare(taskId, request)` is the common HTTP/Scenario
+entry. Its request contains `projectId`, `workerGroupId`, optional `name` and string
+`metadata`; the caller owns Task ID naming. The service never decodes a user or
+turns metadata into authorization. It validates the Project/registered Group and
+uses priority 0, maxRetryTimes 3 and the Group's configured RPC refill snapshot.
+Same-ID mutations share `OperationGuard.taskMutation`. A matching descriptor is
+reused and an unfinished approval can be completed; conflicts and terminal Tasks
+are rejected without overwrite or reopening. Creation and approval remain separate
+Owner commits. Only confirmed approval returns `{taskId}` with HTTP 200; unavailable
+creation/approval returns 503 with the original identity already known to the caller.
+Explicit re-preparation uses that same identity. Existing Server error codes/status
+mapping remain in force. Ordinary reads and Item Calls do not prepare Tasks.
+
+The existing approval soft limit of 100 RUNNING Tasks includes parked Tasks;
+preparation does not bypass it. A limit failure can leave a PRE_REVIEW Task, which
+can later be explicitly prepared under the same identity. No user registry,
+additional Redis key, automatic retry, RPC close/delete API or new lifecycle is added.
 
 Project Task pages are newest-first, with a one-member `truncated` lookahead and
 no cursor or total. Closed Tasks remain listed; same-millisecond order follows the
@@ -174,13 +188,13 @@ The [Matching Owner](../worker_matching_jvm/README.md#item-queries-and-pool-main
 owns function names, input shapes, bounds and Pool semantics; Server gains no
 predicate interpretation, candidate selection, alternative search or lease authority.
 
-Managed registration saves `[]` unless `xa.mass.task-rpc.refill-by-worker-group`
+Explicit RPC preparation saves `[]` unless `xa.mass.task-rpc.refill-by-worker-group`
 supplies complete RefillTarget JSON strings (Lab overrides remain 1000).
 Re-registration compares the complete expected descriptor; lookup reads saved
 declarations without resolving new defaults. Old Task layouts require a new scope,
 with no migration, cleanup or dual reading.
 
-Managed Tasks expose neither public lifecycle operations nor ordinary append.
+RPC Tasks expose no separate public approve/close or ordinary append; preparation includes approval.
 
 Server stamps Item creation/expiry and captures each immutable selector using the
 Task descriptor Group and named Matching function. Admission normalizes without
@@ -345,7 +359,7 @@ business state or Redis bypass.
 
 Group attributes/Event Names are directory metadata, not Matching facts, Dispatch
 evidence or per-Worker capability truth. Managed Tasks belong to configured
-[Project/Group pairs](#profile-projects-and-managed-tasks).
+[Project/Group pairs](#projects-and-explicit-rpc-tasks).
 
 `workerKind` is optional and defaults to `CLIENT_KEY`, preserving existing
 ordinary callers. Android supplies `CLIENT_KEY` explicitly; ordinary Java may
@@ -708,9 +722,9 @@ and Kernel Binding/Score operations independently of Properties admission.
 
 ### Stored Result Lease Projections
 
-Scenarios may contribute immutable `TaskLeaseProjection` values: Project, Group,
-Matching Pool, and a pure stored-Result-to-coordinate/deadline function. Server
-binds the managed Task identity during startup; the Scenario sees no Pacer type or
+Scenarios may contribute immutable `TaskLeaseProjection` values: explicit Task ID,
+Project, Group, Matching Pool, and a pure stored-Result-to-coordinate/deadline function.
+Server validates the Project/Group binding and routes by the declared Task ID; the Scenario sees no Pacer type or
 storage handle. The concrete SMS caller imports the Matching definition and
 coordinate value contracts only, plus the read-only `TaskLeaseProjectionMetrics` capability; it receives no consumer lifecycle or producer-admission handle.
 
@@ -733,10 +747,11 @@ order observer or duplicate Result store.
 ### Worker And Scenario Assembly
 
 The default profile declares no Scenario Group and starts no Adapter. Explicit
-configuration initializes create-only Groups, validates declared dependencies, prepares/approves Project/Group
-managed Tasks, then starts Adapter ingress and scenarios. Boot owns the
+configuration initializes create-only Groups, validates declared dependencies,
+then starts Adapter ingress and scenarios. SMS explicitly prepares its shared RPC Task
+before accepting business calls. Boot owns the
 [profile and page assembly](../server_boot_jvm/README.md#platform-and-preview).
-Scenarios consume prepared Projects;
+Scenarios consume the immutable Project directory and approved application services;
 frontend availability does not enable business resources.
 
 App Checks may import only Matching
@@ -769,8 +784,7 @@ the host manifest. It never scans, registers, edits or enables resources. A Grou
 declaration does not establish that an actual Worker installed the Handler.
 
 Missing dependencies identify Project, Group and missing names; read failure keeps
-its cause. Validation failure prevents subsequent Project initialization and Adapter
-or scenario startup. Completed Group registrations remain; there is no rollback or
+its cause. Validation failure prevents Adapter and scenario startup. Completed Group registrations remain; there is no rollback or
 scope cleanup. Pacer's earlier lifecycle phase and context shutdown are unchanged,
 so this is not a transaction or a promise of no other startup effects.
 
@@ -1001,7 +1015,7 @@ The Server-specific test entrypoints are:
 
 | Boundary | Focused evidence |
 | --- | --- |
-| Project/Group initialization and directory reads | [ProjectTaskInitializerTest](src/test/java/com/xa/mass/server/project/ProjectTaskInitializerTest.java), [ProjectTaskQueryServiceTest](src/test/java/com/xa/mass/server/project/ProjectTaskQueryServiceTest.java) |
+| Explicit RPC preparation and Project directory reads | [TaskRpcPreparationServiceTest](src/test/java/com/xa/mass/server/task/call/TaskRpcPreparationServiceTest.java), [ProjectTaskQueryServiceTest](src/test/java/com/xa/mass/server/project/ProjectTaskQueryServiceTest.java) |
 | Independent Prepare stages | [WorkerPreparationServiceTest](src/test/java/com/xa/mass/server/worker/preparation/WorkerPreparationServiceTest.java) |
 | Call batching and finite export | [TaskCallSubmissionBatcherTest](src/test/java/com/xa/mass/server/task/call/TaskCallSubmissionBatcherTest.java), [TaskResultsExportServiceTest](src/test/java/com/xa/mass/server/task/result/TaskResultsExportServiceTest.java) |
 | Report admission and partial effects | [WorkerDeliveryServiceTest](src/test/java/com/xa/mass/server/delivery/application/WorkerDeliveryServiceTest.java) |

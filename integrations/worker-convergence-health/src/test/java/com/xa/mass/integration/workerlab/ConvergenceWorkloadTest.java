@@ -28,12 +28,13 @@ class ConvergenceWorkloadTest {
                 new InetSocketAddress("127.0.0.1", 0),
                 0
         );
-        server.createContext("/api/v1/projects/scenario-workers", exchange -> respondJson(exchange, Map.of(
-                "projectId", "scenario-workers", "managedTaskIds", Map.of(
-                        WorkerLabConvergenceSupport.PHONE_GROUP, "managed-phone",
-                        WorkerLabConvergenceSupport.STRING_GROUP, "managed-string"))));
         server.createContext("/api/v1/tasks", exchange -> {
             Map<String, Object> body = requestBody(exchange);
+            if (exchange.getRequestURI().getPath().endsWith("/rpc:prepare")) {
+                assertThat(body).containsEntry("projectId", "scenario-workers");
+                respondJson(exchange, Map.of("taskId", "task-" + body.get("workerGroupId")));
+                return;
+            }
             requests.add(new Request(exchange.getRequestURI().getPath(), body));
             Map<String, Object> results = new LinkedHashMap<>();
             for (Object raw : JsonValues.array(body.get("items"), "items")) {
@@ -50,6 +51,8 @@ class ConvergenceWorkloadTest {
             RuntimeApiClient runtime = new RuntimeApiClient(
                     new JsonHttpClient(baseUri(server), Duration.ofSeconds(2))
             );
+            runtime.prepareRpcTask(WorkerLabConvergenceSupport.PHONE_GROUP);
+            runtime.prepareRpcTask(WorkerLabConvergenceSupport.STRING_GROUP);
             ConvergenceWorkload workload = new ConvergenceWorkload(
                     runtime,
                     "proof"

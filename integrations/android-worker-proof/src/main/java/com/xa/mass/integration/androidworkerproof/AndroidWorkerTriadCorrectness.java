@@ -50,6 +50,7 @@ final class AndroidWorkerTriadCorrectness {
     }
 
     private void run() {
+        triad.runtime().prepareRpcTask();
         if (!INITIAL_PHASE.equals(options.phase())) {
             throw new IllegalArgumentException(
                     "Triad correctness phase must be initial"

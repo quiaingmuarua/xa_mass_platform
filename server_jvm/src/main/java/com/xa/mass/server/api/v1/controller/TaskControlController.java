@@ -5,6 +5,8 @@ import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateResponse;
+import com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest;
+import com.xa.mass.server.task.call.TaskRpcPreparationService;
 import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskLifecycleService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,13 +32,33 @@ public class TaskControlController {
 
     private final TaskCreationService taskCreation;
     private final TaskLifecycleService taskLifecycle;
+    private final TaskRpcPreparationService rpcPreparation;
 
     public TaskControlController(
             TaskCreationService taskCreation,
-            TaskLifecycleService taskLifecycle
+            TaskLifecycleService taskLifecycle,
+            TaskRpcPreparationService rpcPreparation
     ) {
         this.taskCreation = taskCreation;
         this.taskLifecycle = taskLifecycle;
+        this.rpcPreparation = rpcPreparation;
+    }
+
+    @Operation(summary = "Create or reuse and enable an RPC Task",
+            description = "Caller supplies a stable Task ID. Exact existing configuration is reused without resetting work. "
+                    + "Creation and approval are separate commits; on 503 retain this identity and explicitly reconcile.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "RPC Task approval confirmed",
+                    content = @Content(schema = @Schema(implementation = TaskCreateResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid request or conflicting Task",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "503", description = "Preparation or approval not confirmed",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+    })
+    @PostMapping("/{taskId}/rpc:prepare")
+    public TaskCreateResponse prepareRpcTask(@PathVariable @NotBlank String taskId,
+            @Valid @RequestBody TaskRpcPrepareRequest request) {
+        return rpcPreparation.prepare(taskId, request);
     }
 
     @Operation(summary = "Create a finite Task")
