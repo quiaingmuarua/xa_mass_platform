@@ -8,7 +8,9 @@ import {
   chunkTaskItems,
   materializeTaskItems,
   MAX_TASK_SEED_LINES,
-  parseSeedLines
+  parseSeedLines,
+  parseJsonlItems,
+  defaultSupply
 } from "@/task-management/model";
 import type {
   FiniteTaskClient,
@@ -164,159 +166,182 @@ describe("HttpFiniteTaskClient", () => {
   });
 });
 
-describe("finite Task management store", () => {
-  beforeEach(() => setActivePinia(createPinia()));
-
-  it("creates, chunks, waits for explicit approval, and manually retries export", async () => {
-    const order: string[] = [];
-    const client = fakeClient({
-      createTask: vi.fn(async () => {
-        order.push("create");
-        return { taskId: "task-1" };
-      }),
-      appendItems: vi.fn(async (_taskId: string, items: TaskItemApiRequest[]) => {
-        order.push(`append-${items.length}`);
-        return appended(items.map((item) => item.messageId));
-      }),
-      approveTask: vi.fn(async () => {
-        order.push("approve");
-      }),
-      exportResults: vi
-        .fn()
-        .mockResolvedValueOnce({ ready: false })
-        .mockResolvedValueOnce({
-          ready: true,
-          fileName: "task-1-results.jsonl",
-          blob: new Blob(["{}\n"])
-        })
-    });
-    const store = createTaskManagementStore(catalog("api"), client);
-
-    const task = await store.createAndAppend(
-      executionRequest(
-        Array.from({ length: 101 }, (_, index) => `line-${index}`).join("\n")
-      )
-    );
-
-    expect(order).toEqual(["create", "append-100", "append-1"]);
-    expect(task).toMatchObject({
+const group = {
+  workerGroupId: "g",
+  workerGroup: { workerGroupId: "g", eventCodes: ["event"], attributes: {} },
+  matching: { pools: ["country"], functions: ["worker.country", "workerId"] }
+};
+function item(id: string): TaskItemApiRequest {
+  return {
+    messageId: id,
+    eventCode: "event",
+    payload: { nested: { text: "你好", array: [1, true] } },
+    workerSelector: { executorName: "worker.country", input: {} }
+  };
+}
+function observed(band: "pre_review" | "terminal" = "pre_review") {
+  return {
+    taskId: "task-1",
+    createdAtMillis: 1,
+    scoreBand: band,
+    task: {
       taskId: "task-1",
-      appendedCount: 101,
-      stage: "ITEMS_APPENDED"
-    });
-    expect(client.approveTask).not.toHaveBeenCalled();
-
-    await expect(store.approveTask("task-1")).resolves.toBe(true);
-    expect(task?.stage).toBe("APPROVED");
-    await expect(store.exportTask("task-1")).resolves.toBeUndefined();
-    expect(store.notice).toContain("尚未就绪");
-    await expect(store.exportTask("task-1")).resolves.toMatchObject({
-      fileName: "task-1-results.jsonl"
-    });
-    expect(task?.stage).toBe("EXPORT_READY");
-  });
-
-  it("stops after an Append failure and never approves the Task", async () => {
-    const client = fakeClient({
-      appendItems: vi
-        .fn()
-        .mockResolvedValueOnce(
-          appended(
-            Array.from(
-              { length: 100 },
-              (_, index) => `task-1-${String(index + 1).padStart(5, "0")}`
-            )
-          )
-        )
-        .mockResolvedValueOnce({
-          "task-1-00101": {
-            status: "rejected",
-            code: 12003,
-            message: "Task data is temporarily unavailable."
-          }
-        })
-    });
-    const store = createTaskManagementStore(catalog("api"), client);
-
-    await store.createAndAppend(
-      executionRequest(Array.from({ length: 101 }, () => "line").join("\n"))
+      projectId: "default",
+      workerGroupId: "g",
+      idleDisposition: "CLOSE_WHEN_IDLE" as const,
+      config: {},
+      refill: [],
+      name: null,
+      metadata: {}
+    }
+  };
+}
+function request(count = 101) {
+  return {
+    create: {
+      projectId: "default",
+      workerGroupId: "g",
+      priority: 50,
+      maxRetryTimes: 3,
+      refill: []
+    },
+    fileName: "input.jsonl",
+    total: count,
+    items: () => Array.from({ length: count }, (_, i) => item("m" + i))
+  };
+}
+describe("raw JSONL", () => {
+  it("preserves complete nested Items and validates the whole file including its last line", () => {
+    const input = { ...item("one"), priority: 7, ttlMillis: 1234 };
+    expect(parseJsonlItems(bytes(JSON.stringify(input)), group)).toEqual([input]);
+    expect(() => parseJsonlItems(bytes(JSON.stringify(input) + "\n{}"), group)).toThrow(
+      "第 2 行"
     );
-
-    expect(store.tasks[0]).toMatchObject({ stage: "CREATED", appendedCount: 100 });
-    expect(client.approveTask).not.toHaveBeenCalled();
-    expect(store.error?.message).toContain("temporarily unavailable");
+    expect(() =>
+      parseJsonlItems(
+        bytes(JSON.stringify(input) + "\n" + JSON.stringify(input)),
+        group
+      )
+    ).toThrow("重复");
+    expect(() =>
+      parseJsonlItems(bytes(JSON.stringify({ ...input, eventCode: "missing" })), group)
+    ).toThrow("事件");
+    expect(() =>
+      parseJsonlItems(
+        bytes(
+          JSON.stringify({
+            ...input,
+            workerSelector: { executorName: "worker.any", input: {} }
+          })
+        ),
+        group
+      )
+    ).toThrow("函数");
   });
-
-  it("disables every real operation in Mock mode without client fallback", async () => {
-    const client = fakeClient();
-    const store = createTaskManagementStore(catalog("mock"), client);
-
-    await store.createAndAppend(executionRequest("line"));
-
-    expect(store.tasks).toEqual([]);
-    expect(client.createTask).not.toHaveBeenCalled();
-    expect(client.appendItems).not.toHaveBeenCalled();
+  it("selects only available built-in supply, never a business rule fallback", () => {
+    expect(defaultSupply(group)).toEqual({
+      refill: [{ poolName: "country", target: {}, count: 100 }],
+      selector: { executorName: "worker.country", input: {} }
+    });
+    expect(
+      defaultSupply({
+        ...group,
+        matching: { pools: ["custom"], functions: ["custom.query", "workerId"] }
+      })
+    ).toEqual({ refill: [], selector: undefined });
   });
 });
-
-function catalog(mode: "api" | "mock") {
-  return {
-    mode,
-    workerGroups: [
-      {
-        workerGroupId: "scenario-string-utils-workers",
-        eventCodes: ["extension.worker.string.md5"]
-      }
-    ]
-  };
-}
-
-function executionRequest(contents: string) {
-  return {
-    projectId: "test-project",
-    workerGroupId: "scenario-string-utils-workers",
-    eventCode: "extension.worker.string.md5",
-    workerSelector: { executorName: "worker.any", input: {} },
-    payloadKey: "value",
-    file: textFile("seed.txt", contents),
-    config: { priority: 50, maxRetryTimes: 3, refill: [] }
-  };
-}
-
+describe("server-observed finite Task management", () => {
+  beforeEach(() => setActivePinia(createPinia()));
+  it("chunks without approval and manages rediscovered Tasks without a submission ledger", async () => {
+    const client = fakeClient();
+    const store = createTaskManagementStore("api", client);
+    await store.submit(request());
+    expect(client.appendItems).toHaveBeenCalledTimes(2);
+    expect(store.submission).toMatchObject({
+      taskId: "task-1",
+      total: 101,
+      applied: 101,
+      complete: true
+    });
+    expect(client.approveTask).not.toHaveBeenCalled();
+    await expect(store.submit(request())).rejects.toThrow("上一次");
+    store.finishSubmission();
+    await expect(store.mutate(observed(), "approve", true)).resolves.toBe(true);
+    await expect(store.mutate(observed(), "close", true)).resolves.toBe(true);
+    await expect(store.mutate(observed(), "approve", false)).rejects.toThrow("快照");
+    await expect(
+      store.mutate(
+        { ...observed(), task: { ...observed().task, projectId: "messages" } },
+        "close",
+        true
+      )
+    ).rejects.toThrow("快照");
+    await expect(store.exportTask(observed("terminal"), true)).resolves.toBeUndefined();
+    expect(store.error?.message).toContain("尚未就绪");
+  });
+  it("counts confirmed entries in a partially rejected batch and never continues or recreates", async () => {
+    const client = fakeClient({
+      appendItems: vi.fn(async () => ({
+        m0: { status: "applied" as const },
+        m1: { status: "rejected" as const, code: 12001, message: "invalid" }
+      }))
+    });
+    const store = createTaskManagementStore("api", client);
+    await store.submit(request(201));
+    expect(store.submission).toMatchObject({
+      applied: 1,
+      rejected: 1,
+      unconfirmed: 98,
+      notSubmitted: 101,
+      complete: false
+    });
+    expect(client.appendItems).toHaveBeenCalledTimes(1);
+    await expect(store.submit(request())).rejects.toThrow("上一次");
+    expect(client.createTask).toHaveBeenCalledTimes(1);
+  });
+  it("preserves unknown creation or append results without retry", async () => {
+    const client = fakeClient({
+      createTask: vi.fn(async () => {
+        throw new Error("response lost");
+      })
+    });
+    const store = createTaskManagementStore("api", client);
+    await store.submit(request());
+    expect(store.submission).toMatchObject({
+      complete: false,
+      notSubmitted: 101,
+      error: "response lost"
+    });
+    expect(client.appendItems).not.toHaveBeenCalled();
+    await expect(store.submit(request())).rejects.toThrow("上一次");
+  });
+  it("disables every real operation in Mock", async () => {
+    const client = fakeClient();
+    const store = createTaskManagementStore("mock", client);
+    await expect(store.submit(request())).rejects.toThrow("Mock");
+    await expect(store.mutate(observed(), "approve", true)).rejects.toThrow("Mock");
+    await expect(store.exportTask(observed("terminal"), true)).rejects.toThrow("Mock");
+    expect(client.createTask).not.toHaveBeenCalled();
+  });
+});
 function fakeClient(overrides: Partial<FiniteTaskClient> = {}): FiniteTaskClient {
   return {
     createTask: vi.fn(
-      async (): Promise<TaskCreateApiResponse> => ({
-        taskId: "task-1"
-      })
+      async (): Promise<TaskCreateApiResponse> => ({ taskId: "task-1" })
     ),
     appendItems: vi.fn(async (_taskId: string, items: TaskItemApiRequest[]) =>
-      appended(items.map((item) => item.messageId))
+      appended(items.map((i) => i.messageId))
     ),
     approveTask: vi.fn(async () => undefined),
+    closeTask: vi.fn(async () => undefined),
     exportResults: vi.fn(async (): Promise<TaskExportResult> => ({ ready: false })),
     ...overrides
   };
 }
-
-function appended(messageIds: string[]): TaskItemsAppendApiResponse {
-  return Object.fromEntries(
-    messageIds.map((messageId): [string, TaskItemsAppendApiResponse[string]] => [
-      messageId,
-      { status: "applied" }
-    ])
-  );
+function appended(ids: string[]): TaskItemsAppendApiResponse {
+  return Object.fromEntries(ids.map((id) => [id, { status: "applied" }]));
 }
-
 function bytes(value: string): ArrayBuffer {
   return new TextEncoder().encode(value).buffer;
-}
-
-function textFile(name: string, contents: string): File {
-  const file = new File([contents], name, { type: "text/plain" });
-  Object.defineProperty(file, "arrayBuffer", {
-    configurable: true,
-    value: vi.fn(async () => bytes(contents))
-  });
-  return file;
 }

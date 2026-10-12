@@ -21,16 +21,16 @@ another maintained YAML default.
 
 ## Source launch
 
-From the checkout root, build and start the complete local Lab:
+From the checkout root, build and start the complete business Preview:
 
 ```text
 python run_local_runtime.py
 ```
 
-The default is `scenario-workers`. The launcher builds and starts Server first,
-waits for readiness, then starts the standalone Simulator against persistent
-`data/scenario-workers`. Stopping Host closes its network resources without
-stopping Server or deleting Workers, Groups or managed Tasks.
+The default is `preview` and delegates to the sole Preview launcher. It supplies
+three business Scenarios and the explicit `default` raw-task Project.
+`--profile default` builds and starts only the plain Server; no Worker Host or
+business storage is opened. The retired platform Lab profile has no launch alias.
 
 `python run_local_runtime.py --profile agentforge` builds the same frontend and
 starts only Server with its configured Adapter; it does not build or start Host.
@@ -79,7 +79,7 @@ extracting it on a machine with Java 21, run from the extracted Runtime root:
 
 ```powershell
 java -jar .\lib\xa-mass-server-jvm-0.5.0.jar `
-  --spring.profiles.active=scenario-workers `
+  --spring.profiles.active=default `
   --spring.web.resources.static-locations=file:frontend/dist/ `
   --xa.mass.redis.url=redis://127.0.0.1:6379/15
 ```
@@ -92,7 +92,7 @@ java -jar .\lib\xa-mass-server-jvm-0.5.0.jar `
   --spring.web.resources.static-locations=file:frontend/dist/
 ```
 
-Only profiles listed in the schema-v5 Runtime manifest are supported. Redis
+Only profiles listed in the schema-v6 Runtime manifest are supported. Redis
 lifecycle remains with the caller. The archive contains no Pacer policy file or
 per-field policy tuning; the checked Boot profile selects its fixed preset.
 Use the [Preview archive](PREVIEW.md#archive-delivery) when delivery must include
@@ -111,6 +111,7 @@ full Git commit against `manifest.json`, plus the exact Server, Adapter and
 Worker Core owner order. It also requires the OpenAPI 3.1 snapshot, rejects a
 request-derived `servers` field or non-`/api/v1/**` paths, and checks the stable
 four-Tag navigation order.
-It requires the canonical Boot resources and rejects application configuration
+It requires the three canonical Boot resources (base, AgentForge and Preview),
+excludes the external platform proof fixture, and rejects application configuration
 in nested platform/Scenario libraries and all test configuration.
 Preview adds [external-profile and packaged-launch checks](PREVIEW.md#archive-delivery).

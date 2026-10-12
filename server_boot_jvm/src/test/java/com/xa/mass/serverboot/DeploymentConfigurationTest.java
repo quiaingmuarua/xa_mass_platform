@@ -46,12 +46,15 @@ class DeploymentConfigurationTest {
                                     StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, environment));
                 })
                 .withInitializer(new ConfigDataApplicationContextInitializer());
+        if (profile.equals("platform-proof")) return runner.withPropertyValues(
+                "spring.config.additional-location=" + Path.of(System.getProperty("xa.mass.repository.root"))
+                    .resolve("integrations/worker_proof_support/platform-runtime.yaml").toUri());
         return profile.equals("default") ? runner : runner.withPropertyValues("spring.profiles.active=" + profile);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"default", "scenario-workers", "agentforge", "preview"})
-    void classpathProfilesBindCompleteExistingDeployments(String profile) {
+    @ValueSource(strings = {"default", "platform-proof", "agentforge", "preview"})
+    void productionProfilesAndExternalFixtureBindCompleteDeployments(String profile) {
         configuration(profile, profile.equals("preview") ? Map.of("XA_MASS_REDIS_SCOPE", "test_preview_config") : Map.of())
                 .run(context -> {
                     assertThat(context).hasNotFailed();
@@ -64,10 +67,10 @@ class DeploymentConfigurationTest {
                         default -> 18082;
                     });
                     assertThat(context.getBean(KernelPacerProperties.class).preset().name())
-                            .isEqualTo(profile.equals("scenario-workers") ? "SCENARIO_LAB" : "DEFAULT");
+                            .isEqualTo(profile.equals("platform-proof") ? "SCENARIO_LAB" : "DEFAULT");
                     assertThat(context.getBean(KernelPacerProperties.class).enabled()).isTrue();
                     assertThat(context.getBean(XaMassRedisProperties.class).scope()).isEqualTo(switch (profile) {
-                        case "scenario-workers" -> "profile_scenario_workers";
+                        case "platform-proof" -> "profile_scenario_workers";
                         case "agentforge" -> "profile_agentforge";
                         case "preview" -> "test_preview_config";
                         default -> "profile_default";
@@ -80,11 +83,11 @@ class DeploymentConfigurationTest {
                     assertThat(context.getBean(WorkerEndpointDirectory.class).endpoints()).containsKey("system-polling");
                     if (profile.equals("default")) assertThat(adapters).isEmpty();
                     else assertThat(adapters).containsOnlyKeys(switch (profile) {
-                        case "scenario-workers" -> "scenario-websocket";
+                        case "platform-proof" -> "scenario-websocket";
                         case "agentforge" -> "agentforge-websocket";
                         default -> "products-websocket";
                     });
-                    if (profile.equals("scenario-workers")) {
+                    if (profile.equals("platform-proof")) {
                         assertThat(groups).contains("scenario-phone-number-workers", "scenario-string-utils-workers", "android-demo-workers");
                         assertThat(context.getBean(TaskItemOutcomeProperties.class).names())
                                 .containsEntry(7, "delivered").containsEntry(8, "read").containsEntry(9, "replied");
@@ -146,7 +149,7 @@ class DeploymentConfigurationTest {
     }
 
     @Test void deploymentProjectListReplacesInheritedTopology() {
-        configuration("scenario-workers", Map.of()).withPropertyValues(
+        configuration("platform-proof", Map.of()).withPropertyValues(
                 "xa.mass.project-assembly.projects[0].project-id=proof",
                 "xa.mass.project-assembly.projects[0].worker-group-ids[0]=one-group").run(context -> {
             assertThat(context).hasNotFailed();

@@ -23,7 +23,7 @@ import org.springframework.boot.test.context.runner
         .ApplicationContextRunner;
 import org.springframework.context.LifecycleProcessor;
 
-class ScenarioWorkerProfileContractTest {
+class PlatformProofFixtureContractTest {
 
     private final ApplicationContextRunner contextRunner =
             new ApplicationContextRunner()
@@ -57,11 +57,13 @@ class ScenarioWorkerProfileContractTest {
     static class EndpointConfiguration {}
 
     @Test
-    void scenarioProfileSuppliesOpaqueJsonAndAdapterConfiguration() {
+    void externalFixtureSuppliesOpaqueJsonAndAdapterConfiguration() {
         contextRunner.withInitializer(
                 new ConfigDataApplicationContextInitializer()
         ).withPropertyValues(
-                "spring.profiles.active=scenario-workers"
+                "spring.profiles.active=default",
+                "spring.config.additional-location=" + java.nio.file.Path.of(System.getProperty("xa.mass.repository.root"))
+                    .resolve("integrations/worker_proof_support/platform-runtime.yaml").toUri()
         ).run(context -> {
             assertThat(context).hasNotFailed();
             var defaults=context.getBean(com.xa.mass.server.task.call.TaskRpcProperties.class)

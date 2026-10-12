@@ -106,6 +106,9 @@ Task type returns `400/12008`.
 
 | Operation | Admission | State effect | Failure boundary | Reference |
 | --- | --- | --- | --- | --- |
+| Project directory | Startup declarations only | Return configured Project views without Redis reads | No initialization or implicit default | [Project directory](#profile-projects-and-managed-tasks) |
+| Project Group capabilities | Known Project Group identities | Point-read descriptors in batches of 100 and immutable Matching enablement | Missing descriptors stay null; reads do not imply ready Workers | [Project directory](#profile-projects-and-managed-tasks) |
+| Known Project Task | Project plus Task identity | Read descriptor, membership and Score without discovery | Ownership checks precede state reads | [Project directory](#profile-projects-and-managed-tasks) |
 | Project lookup | Configured Project; no default | Return the managed Group-to-Task mapping | Read never initializes resources | [Project directory](#profile-projects-and-managed-tasks) |
 | Project Task list | Configured Project; `limit=1..1000` | Read a bounded directory page and independent Task/Score projections | Missing projections stay null; corruption fails | [Task Owner](../kernel_jvm/doc/resource-model/task-resource-model.md#cross-owner-creation) |
 | Task create | Declared Project, one of its registered Groups, normalized supply and valid fields | Create a finite immutable Task descriptor | Validate before writes; unknown commit retains the generated identity | [TaskCreationService](src/main/java/com/xa/mass/server/task/TaskCreationService.java) |

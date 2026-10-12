@@ -12,7 +12,7 @@ definition captures the actual identity at execution entry; request input cannot
 choose its executor. It uses the existing Handler thread for deterministic delay,
 then returns registered/unregistered or throws the existing execution exception.
 No business lifecycle, callback, queue, Reporter or result cache is installed.
-The Lab uses the checked-in `scenario-workers` Server profile. It is not
+The platform Lab uses the external `integrations/worker_proof_support/platform-runtime.yaml` fixture. It is not
 a Kernel owner, privileged Server extension, Adapter, production Worker
 platform, or plugin SPI. Server has no compile-time or lifecycle dependency on
 this module.

@@ -1,284 +1,158 @@
-import { refillSchema } from "@/runtime-viewer/schemas";
-import { parseWorkerSelector } from "@/task-call-debug/model";
-import { computed, ref } from "vue";
+import { ref } from "vue";
 import { defineStore } from "pinia";
-
+import { chunkTaskItems } from "@/task-management/model";
 import {
-  chunkTaskItems,
-  buildSeedItems,
-  materializeTaskItems,
-  MAX_TASK_SEED_BYTES,
-  parseSeedLines
-} from "@/task-management/model";
-import {
-  finiteTaskConfigurationError,
   presentFiniteTaskError,
   type FiniteTaskErrorPresentation
 } from "@/task-management/errors";
+import type { ProjectTask } from "@/task-management/projects";
 import type {
-  CreateFiniteTaskExecutionRequest,
   FiniteTaskClient,
-  FiniteTaskDownload,
-  FiniteTaskSession,
-  TaskManagementCatalog
+  ImportReceipt,
+  TaskCreateApiRequest,
+  TaskItemApiRequest
 } from "@/task-management/types";
 
+export function canManageRawTask(task: ProjectTask, fresh: boolean): boolean {
+  return (
+    fresh &&
+    task.task?.projectId === "default" &&
+    task.task.idleDisposition === "CLOSE_WHEN_IDLE" &&
+    task.scoreBand !== null &&
+    task.scoreBand !== "terminal"
+  );
+}
 export function createTaskManagementStore(
-  catalog: TaskManagementCatalog,
+  mode: "api" | "mock",
   client: FiniteTaskClient
 ) {
   return defineStore("taskManagement", () => {
-    const tasks = ref<FiniteTaskSession[]>([]);
+    const busy = ref(false);
+    const submission = ref<ImportReceipt>();
     const error = ref<FiniteTaskErrorPresentation>();
-    const notice = ref<string>();
-    const activeTaskId = ref<string>();
-
-    const available = computed(() => catalog.mode === "api");
-    const isBusy = computed(() => activeTaskId.value !== undefined);
-    const appendedCount = computed(
-      () => tasks.value.filter((task) => task.stage === "ITEMS_APPENDED").length
-    );
-    const approvedCount = computed(
-      () => tasks.value.filter((task) => task.stage === "APPROVED").length
-    );
-    const exportReadyCount = computed(
-      () => tasks.value.filter((task) => task.stage === "EXPORT_READY").length
-    );
-
-    async function createAndAppend(
-      request: CreateFiniteTaskExecutionRequest
-    ): Promise<FiniteTaskSession | undefined> {
-      clearMessages();
-      if (!available.value) {
-        return fail(
-          finiteTaskConfigurationError(
-            "Finite Task operations are disabled while the Runtime Viewer uses Mock data."
-          )
-        );
-      }
-      if (isBusy.value) {
-        return fail(
-          finiteTaskConfigurationError("Another finite Task operation is in progress.")
-        );
-      }
-
-      if (!request.projectId.trim())
-        return fail(finiteTaskConfigurationError("Select a Project."));
-      const group = workerGroup(request.workerGroupId);
-      const payloadKey = request.payloadKey.trim();
-      if (group === undefined) {
-        return fail(finiteTaskConfigurationError("Select an available WorkerGroup."));
-      }
-      if (!group.eventCodes.includes(request.eventCode)) {
-        return fail(
-          finiteTaskConfigurationError(
-            "Select an EventCode from the WorkerGroup catalog."
-          )
-        );
-      }
-      if (payloadKey.length === 0) {
-        return fail(finiteTaskConfigurationError("Payload Key must not be blank."));
-      }
-      try {
-        parseWorkerSelector(JSON.stringify(request.workerSelector));
-      } catch {
-        return fail(
-          finiteTaskConfigurationError(
-            "Worker Selector must explicitly name a function and input."
-          )
-        );
-      }
-      if (!validConfig(request.config)) {
-        return fail(
-          finiteTaskConfigurationError(
-            "Task scheduling values are outside their supported ranges."
-          )
-        );
-      }
-      if (!request.file.name.toLocaleLowerCase().endsWith(".txt")) {
-        return fail(finiteTaskConfigurationError("The input file must use .txt."));
-      }
-      if (request.file.size > MAX_TASK_SEED_BYTES) {
-        return fail(
-          finiteTaskConfigurationError("The input file must not exceed 1 MiB.")
-        );
-      }
-
-      let content: ArrayBuffer;
-      let lines: string[];
-      try {
-        content = await request.file.arrayBuffer();
-        lines = parseSeedLines(content);
-      } catch (failure) {
-        return fail(
-          finiteTaskConfigurationError(
-            failure instanceof Error ? failure.message : "The input file is invalid."
-          )
-        );
-      }
-      if (content.byteLength === 0 || lines.length === 0) {
-        return fail(
-          finiteTaskConfigurationError("The input file must contain at least one line.")
-        );
-      }
-
-      activeTaskId.value = "creating";
-      try {
-        const created = await client.createTask({
-          projectId: request.projectId,
-          workerGroupId: request.workerGroupId,
-          ...request.config
-        });
-        const now = new Date().toISOString();
-        const task: FiniteTaskSession = {
-          taskId: created.taskId,
-          projectId: request.projectId,
-          workerGroupId: request.workerGroupId,
-          eventCode: request.eventCode,
-          workerSelectorText: JSON.stringify(request.workerSelector),
-          payloadKey,
-          originalFileName: request.file.name,
-          byteCount: content.byteLength,
-          lineCount: lines.length,
-          appendedCount: 0,
-          stage: "CREATED",
-          config: structuredClone(request.config),
-          createdAt: now,
-          updatedAt: now
-        };
-        tasks.value.unshift(task);
-        activeTaskId.value = task.taskId;
-
-        const items = materializeTaskItems(
-          task.taskId,
-          task.eventCode,
-          buildSeedItems(lines, payloadKey),
-          request.workerSelector
-        );
-        for (const chunk of chunkTaskItems(items)) {
-          const response = await client.appendItems(task.taskId, chunk);
-          const rejected = chunk.find(
-            (item) => response[item.messageId]?.status !== "applied"
-          );
-          if (rejected !== undefined) {
-            const outcome = response[rejected.messageId];
-            throw new Error(
-              (outcome?.status === "rejected" ? outcome.message : undefined) ??
-                `Item ${rejected.messageId} was not appended.`
-            );
-          }
-          task.appendedCount += chunk.length;
-          task.updatedAt = new Date().toISOString();
-        }
-        task.stage = "ITEMS_APPENDED";
-        return task;
-      } catch (failure) {
-        return fail(failure);
-      } finally {
-        activeTaskId.value = undefined;
-      }
+    function admit() {
+      if (mode !== "api") throw new Error("Mock 不执行原始任务写操作。");
+      if (busy.value) throw new Error("操作进行中，请等待本次请求结束。");
+      error.value = undefined;
     }
-
-    async function approveTask(taskId: string): Promise<boolean> {
-      clearMessages();
-      const task = findTask(taskId);
-      if (task === undefined || task.stage !== "ITEMS_APPENDED") {
-        fail(
-          finiteTaskConfigurationError("Task Items must be appended before approval.")
-        );
-        return false;
+    function finishSubmission() {
+      if (busy.value) return;
+      submission.value = undefined;
+      error.value = undefined;
+    }
+    async function appendBatches(
+      taskId: string,
+      items: TaskItemApiRequest[],
+      receipt: ImportReceipt
+    ) {
+      for (const batch of chunkTaskItems(items)) {
+        receipt.notSubmitted -= batch.length;
+        receipt.unconfirmed += batch.length;
+        const response = await client.appendItems(taskId, batch);
+        for (const item of batch) {
+          const outcome = response[item.messageId];
+          if (outcome?.status === "applied") {
+            receipt.applied++;
+            receipt.unconfirmed--;
+          } else if (outcome?.status === "rejected") {
+            receipt.rejected++;
+            receipt.unconfirmed--;
+          }
+        }
+        if (receipt.rejected || receipt.unconfirmed)
+          throw new Error("本批包含拒绝或未确认项，后续批次已停止。");
       }
-      activeTaskId.value = taskId;
+      receipt.complete = true;
+    }
+    async function submit(request: {
+      create?: TaskCreateApiRequest;
+      existing?: ProjectTask;
+      fresh?: boolean;
+      fileName: string;
+      total: number;
+      items: (taskId: string) => TaskItemApiRequest[];
+    }): Promise<string | undefined> {
+      admit();
+      if (submission.value)
+        throw new Error("请先结束上一次提交；不会自动重传或重建任务。");
+      if (
+        request.create?.projectId !== "default" &&
+        !(
+          request.existing &&
+          canManageRawTask(request.existing, request.fresh === true) &&
+          request.existing.scoreBand === "pre_review"
+        )
+      )
+        throw new Error("只能向 default 的待审核有限任务追加。");
+      busy.value = true;
+      submission.value = {
+        taskId: request.existing?.taskId,
+        fileName: request.fileName,
+        total: request.total,
+        applied: 0,
+        rejected: 0,
+        unconfirmed: 0,
+        notSubmitted: request.total,
+        complete: false
+      };
+      const receipt = submission.value;
       try {
-        await client.approveTask(taskId);
-        task.stage = "APPROVED";
-        task.updatedAt = new Date().toISOString();
+        if (request.create)
+          receipt.taskId = (await client.createTask(request.create)).taskId;
+        if (!receipt.taskId) throw new Error("创建结果未确认，请人工核对任务列表。");
+        await appendBatches(receipt.taskId, request.items(receipt.taskId), receipt);
+      } catch (failure) {
+        error.value = presentFiniteTaskError(failure);
+        receipt.error = error.value.message;
+      } finally {
+        busy.value = false;
+      }
+      return receipt.taskId;
+    }
+    async function mutate(
+      task: ProjectTask,
+      action: "approve" | "close",
+      fresh: boolean
+    ): Promise<boolean> {
+      admit();
+      if (
+        !canManageRawTask(task, fresh) ||
+        (action === "approve" && task.scoreBand !== "pre_review")
+      )
+        throw new Error("当前快照不允许此操作，请重新读取。");
+      busy.value = true;
+      try {
+        if (action === "approve") await client.approveTask(task.taskId);
+        else await client.closeTask(task.taskId);
         return true;
       } catch (failure) {
-        fail(failure);
+        error.value = presentFiniteTaskError(failure);
         return false;
       } finally {
-        activeTaskId.value = undefined;
+        busy.value = false;
       }
     }
-
-    async function exportTask(taskId: string): Promise<FiniteTaskDownload | undefined> {
-      clearMessages();
-      const task = findTask(taskId);
+    async function exportTask(task: ProjectTask, fresh: boolean) {
+      admit();
       if (
-        task === undefined ||
-        (task.stage !== "APPROVED" && task.stage !== "EXPORT_READY")
-      ) {
-        return fail(
-          finiteTaskConfigurationError("Only an approved Task can export results.")
-        );
-      }
-      activeTaskId.value = taskId;
+        !fresh ||
+        task.task?.idleDisposition !== "CLOSE_WHEN_IDLE" ||
+        task.scoreBand !== "terminal"
+      )
+        throw new Error("只能导出最新读取为终态的有限任务。");
+      busy.value = true;
       try {
-        const exported = await client.exportResults(taskId);
-        if (!exported.ready) {
-          notice.value = "结果尚未就绪，请稍后手工重试导出。";
-          return undefined;
-        }
-        task.stage = "EXPORT_READY";
-        task.updatedAt = new Date().toISOString();
-        return { fileName: exported.fileName, blob: exported.blob };
+        const result = await client.exportResults(task.taskId);
+        if (!result.ready) throw new Error("结果尚未就绪，请刷新后重试。");
+        return result;
       } catch (failure) {
-        return fail(failure);
+        error.value = presentFiniteTaskError(failure);
+        return undefined;
       } finally {
-        activeTaskId.value = undefined;
+        busy.value = false;
       }
     }
-
-    function clearMessages(): void {
-      error.value = undefined;
-      notice.value = undefined;
-    }
-
-    function findTask(taskId: string): FiniteTaskSession | undefined {
-      return tasks.value.find((task) => task.taskId === taskId);
-    }
-
-    function workerGroup(workerGroupId: string): { eventCodes: string[] } | undefined {
-      return (
-        catalog.workerGroups.find((group) => group.workerGroupId === workerGroupId) ??
-        undefined
-      );
-    }
-
-    function fail(failure: unknown): undefined {
-      error.value = presentFiniteTaskError(failure);
-      return undefined;
-    }
-
-    return {
-      tasks,
-      error,
-      notice,
-      activeTaskId,
-      available,
-      isBusy,
-      appendedCount,
-      approvedCount,
-      exportReadyCount,
-      createAndAppend,
-      approveTask,
-      exportTask,
-      clearMessages
-    };
+    return { busy, submission, error, submit, mutate, exportTask, finishSubmission };
   })();
 }
-
-function validConfig(config: CreateFiniteTaskExecutionRequest["config"]): boolean {
-  return (
-    Number.isInteger(config.priority) &&
-    config.priority >= 0 &&
-    config.priority <= 99 &&
-    refillSchema.safeParse(config.refill).success &&
-    Number.isInteger(config.maxRetryTimes) &&
-    config.maxRetryTimes >= 0 &&
-    config.maxRetryTimes <= 98
-  );
-}
-
 export type TaskManagementStore = ReturnType<typeof createTaskManagementStore>;

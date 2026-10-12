@@ -26,7 +26,7 @@ if (configResult.ok) {
   const dataSource = createRuntimeViewerDataSource(configResult.value);
   const runtimeViewerStore = createRuntimeViewerStore(configResult.value, dataSource);
   const taskManagementStore = createTaskManagementStore(
-    runtimeViewerStore,
+    configResult.value.mode,
     new HttpFiniteTaskClient(configResult.value.apiBaseUrl)
   );
   const taskCallDebugStore = createTaskCallDebugStore(

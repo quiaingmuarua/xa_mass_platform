@@ -185,8 +185,8 @@ def main() -> int:
                         f"{MODULE}:installDist"], cwd=ROOT, env=environment, check=True)
         jars = [p for p in (ROOT / "server_boot_jvm/build/libs").glob("xa-mass-server-jvm-*.jar") if not p.name.endswith("-plain.jar")]
         jar = max(jars, key=lambda p: p.stat().st_mtime_ns)
-        server = start(["java", "-jar", str(jar), "--spring.profiles.active=scenario-workers",
-                        f"--spring.config.additional-location={config.as_uri()}",
+        server = start(["java", "-jar", str(jar), "--spring.profiles.active=default",
+                        f"--spring.config.additional-location={(ROOT / 'integrations/worker_proof_support/platform-runtime.yaml').as_uri()},{config.as_uri()}",
                         "--server.tomcat.accesslog.enabled=true", "--server.tomcat.accesslog.buffered=false",
                         "--server.tomcat.accesslog.rotate=false", f"--server.tomcat.accesslog.directory={private}",
                         "--server.tomcat.accesslog.prefix=runtime-http", "--server.tomcat.accesslog.suffix=.log",

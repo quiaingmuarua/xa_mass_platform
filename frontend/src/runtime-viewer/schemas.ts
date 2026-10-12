@@ -55,7 +55,9 @@ export const taskViewSchema = z
     workerGroupId: z.string().min(1),
     idleDisposition: z.enum(["CLOSE_WHEN_IDLE", "PARK_WHEN_IDLE"]),
     refill: refillSchema,
-    config: z.record(z.string(), z.string())
+    config: z.record(z.string(), z.string()),
+    name: z.string().nullable(),
+    metadata: z.record(z.string(), z.string())
   })
   .strict();
 

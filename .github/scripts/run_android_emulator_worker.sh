@@ -173,7 +173,8 @@ start_server() {
     done
     test -n "$server_jar"
     XA_MASS_REDIS_SCOPE="$scope" java -jar "$server_jar" \
-        --spring.profiles.active=scenario-workers \
+        --spring.profiles.active=default \
+        "--spring.config.additional-location=file:$workspace/integrations/worker_proof_support/platform-runtime.yaml" \
         > "$log_root/server-$label.log" 2>&1 &
     server_pid=$!
     if ! wait_for_url \

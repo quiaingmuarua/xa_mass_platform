@@ -32,7 +32,7 @@ JVM = ("-Xms256m", "-Xmx1g", "-XX:+ExitOnOutOfMemoryError")
 MODULE = ROOT / "integrations/worker-call-performance"
 # Server settings shared by every lane world; lane_server_flags adds the Groups, Project and raised resources.
 LANE_BASE_FLAGS = {
-    "spring.profiles.active": "scenario-workers",
+    "spring.profiles.active": "default",
     "server.address": "127.0.0.1", "server.port": "18082",
     "xa.mass.kernel-pacer.preset": "DEFAULT",
     "xa.mass.kernel-pacer.enabled": "true",
@@ -318,14 +318,20 @@ def build(root, harness=False):
     result.check_returncode()
 
 
+PLATFORM_FIXTURE = "integrations/worker_proof_support/platform-runtime.yaml"
+
+
 def fingerprint(root):
-    names = ("application.yaml", "application-scenario-workers.yaml")
-    directories = ["server_boot_jvm/src/main/resources"]
-    if root.resolve() != ROOT.resolve():
-        # Only an explicit historical checkout may retain the former layout.
-        directories.extend(("spring_server_jvm/src/main/resources", "server_jvm/src/main/resources"))
-    for directory in directories:
-        files = tuple(f"{directory}/{name}" for name in names)
+    current = ("server_boot_jvm/src/main/resources/application.yaml", PLATFORM_FIXTURE)
+    if (root / PLATFORM_FIXTURE).is_file():
+        if not all((root / path).is_file() for path in current):
+            raise RuntimeError("Incomplete Server configuration group")
+        return {path: hashlib.sha256((root / path).read_bytes()).hexdigest() for path in current}
+    if root.resolve() == ROOT.resolve():
+        raise RuntimeError("Server configuration group is missing")
+    # Historical benchmark checkouts retain their exact versioned deployment inputs.
+    for directory in ("server_boot_jvm/src/main/resources", "spring_server_jvm/src/main/resources", "server_jvm/src/main/resources"):
+        files = tuple(f"{directory}/{name}" for name in ("application.yaml", "application-scenario-workers.yaml"))
         if all((root / path).is_file() for path in files):
             return {path: hashlib.sha256((root / path).read_bytes()).hexdigest() for path in files}
         if any((root / path).is_file() for path in files):
@@ -426,8 +432,14 @@ LANE_MECHANISM_CONSTANTS = {
 }
 
 
-def lane_server_flags():
+def lane_server_flags(root=None):
+    root = ROOT if root is None else root
+    inputs = fingerprint(root)
     flags = dict(LANE_BASE_FLAGS)
+    if PLATFORM_FIXTURE in inputs:
+        flags["spring.config.additional-location"] = (root / PLATFORM_FIXTURE).resolve().as_uri()
+    else:
+        flags["spring.profiles.active"] = "scenario-workers"  # Explicit historical benchmark only.
     flags["xa.mass.project-assembly.projects[0].project-id"] = LANE_PROJECT
     flags["xa.mass.worker-assembly.group-config-json"] = json.dumps({group: {
         "attributes": {"capability": "string-utils"}, "eventCodes": list(LANE_EVENTS)} for group in LANE_GROUPS})
@@ -676,7 +688,7 @@ def run_lane(root, output, deadline, plan, attribution=True, warmup_case=None, c
         env = {k: v for k, v in os.environ.items() if not k.startswith(("XA_MASS_", "SPRING_"))
                and k not in {"JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"}}
         env.update(XA_MASS_REDIS_URL=redis_url, XA_MASS_REDIS_SCOPE=scope, XA_MASS_KERNEL_PACER_PRESET="DEFAULT")
-        flags = lane_server_flags()
+        flags = lane_server_flags(root)
         flags.update({"xa.mass.redis.url": redis_url, "xa.mass.redis.scope": scope})
         if diagnostics == "jfr":
             # Optional servlet/executor observations; normal lane runs have no diagnostic beans.

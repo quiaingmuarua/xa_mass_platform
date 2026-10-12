@@ -706,7 +706,7 @@
       "reason": "Executable-owned deployment configuration retains every proof selected before its move out of the Server library."
     },
     {
-      "path": "server_boot_jvm/src/main/resources/application-scenario-workers.yaml",
+      "path": "integrations/worker_proof_support/platform-runtime.yaml",
       "lanes": [
         "android_emulator",
         "jvm_contracts",

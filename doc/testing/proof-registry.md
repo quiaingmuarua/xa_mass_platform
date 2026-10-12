@@ -206,3 +206,11 @@ exclusivity or reliable reports. These claims do not certify real SMS devices.
 - **Required delivery witness:** APIs, Groups and jobs remain profile-owned; Distribution serves unified assets and rejects embedded SMS assets. The SMS oracle submits SMS-only work through a freshly extracted Preview's packaged launcher, with Preview scenarios enabled and App Workers excluded, without build tools or checkout-launcher fallback.
 - **Evidence:** SMS owns business assertions; [Distribution](../../distribution/server/PREVIEW.md) owns archive/launch lifecycle; [Frontend](../../frontend/README.md#sms-business-pages) owns page behavior. [TESTING](../../TESTING.md) selects the workflow and separate larger acceptance workload.
 - **Nonclaims:** Real-device SMS, authentication, restoring Worker associations/history after a new run, reliable observation delivery, strict lease exclusivity or platform capacity guarantees.
+
+## Platform proof configuration
+
+The external `integrations/worker_proof_support/platform-runtime.yaml` is a
+test fixture shared by existing Worker proofs and Runtime archive acceptance.
+Its migration out of the Boot classpath changes no workload, deadline, assertion
+or lane claim. Preview contributes a separate explicit `default` Project for raw
+Task use; business and platform proofs remain independently assembled.

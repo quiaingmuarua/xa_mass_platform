@@ -14,8 +14,7 @@ composition; `server_jvm` retains the complete platform implementation.
 ## Platform and preview
 
 Ordinary platform profiles load no business Scenario Controllers, registrations or
-jobs; platform profiles may still supply their own advisory Group seeds. The existing `scenario-workers` and `agentforge` profiles retain
-their platform behavior. `preview` imports [SMS Reception](../scenarios/sms-reception-jvm/README.md),
+jobs. The base platform and `agentforge` remain independent of business modules. `preview` imports [SMS Reception](../scenarios/sms-reception-jvm/README.md),
 [Message Campaigns](../scenarios/message-campaigns-jvm/README.md) and
 [App Checks](../scenarios/app-checks-jvm/README.md). There is one
 fixed preview assembly, without per-business deployment profiles or selection.
@@ -24,12 +23,14 @@ Preview's host configuration and enabled module declarations form this topology:
 
 | Project | Groups | Declared events and Matching resources |
 | --- | --- | --- |
+| `default` | `demo-sim`, `app-a-sim`, `app-b-sim` | Explicit raw Task workspace; existing Group capabilities are reused |
 | `sms` | `demo-sim` | String/SMS/Messages events; Partitioned SMS, Country and Messaging Pools; independent `worker.phone` query |
 | `messages` | `demo-sim`, `app-a-sim`, `app-b-sim` | `extension.worker.message.send`; Group-isolated Messaging Pool and `worker.messaging.available` |
 | `app-checks` | `app-a → app-a-sim`, `app-b → app-b-sim` | `extension.worker.app.registration.check`; Any and assignment-window Pools, `worker.any` and `worker.assignment.available` |
 
-The `demo-sim` Project managed Tasks retain `country / {} / 100` supply;
-that Group does not enable Any Pool. Messages contributes the existing
+The `demo-sim` managed Tasks retain the host-configured Partitioned SMS supply;
+that Group does not enable Any Pool. A raw finite Task can explicitly supply Country.
+The `default` Project has no special Server semantics and does not auto-bind new Groups. Messages contributes the existing
 `QualifiedCountryDefinition`; Worker qualification remains `messaging.enabled="true"`
 and the two-letter `country` field. Its Phone function declaration is retained by
 that basic contract but `worker.messaging.phone` is not enabled in Preview.
@@ -92,13 +93,13 @@ standard environment, command-line and `spring.config.additional-location` input
 | Profile | Configuration | Default deployment |
 | --- | --- | --- |
 | Default | `application.yaml` | Server 18082, Redis `redis://localhost:6379/15`, scope `profile_default`, DEFAULT Pacer, no Adapter or Group seeds |
-| `scenario-workers` | `application-scenario-workers.yaml` over the base | Server 18082, Adapter 18083, scope `profile_scenario_workers`, SCENARIO_LAB and three advisory Groups |
 | `agentforge` | `application-agentforge.yaml` over the base | Server 18182, `agentforge-websocket` Adapter 18183, scope `profile_agentforge`, DEFAULT and no Group seeds |
 | `preview` | `application-preview.yaml` over the base | Server 18500, `products-websocket` Adapter 18503, required `XA_MASS_REDIS_SCOPE`, DEFAULT and all three business Scenarios |
 
-The `scenario-workers` Project references its two JVM Lab Groups and advisory
-Android demo Group, provisioning three independent managed Task Calls. Its two
-Lab Groups enable `any/worker.any` with managed watermarks of 1000.
+The external [platform proof fixture](../integrations/worker_proof_support/platform-runtime.yaml)
+retains the `scenario-workers` test Project, three Groups, original Adapter and
+SCENARIO_LAB settings. Runners explicitly load that fixture before lane overlays;
+it is not a production profile or packaged application resource.
 AgentForge registers its own Groups through the public API; the profile does not
 embed AgentForge or Scenario capabilities. Groups without a task-rpc refill
 override save empty managed supply and may use Identity without a Pool.
@@ -121,13 +122,13 @@ Select another checked profile explicitly, for example:
 
 ```text
 ./gradlew :server_boot_jvm:bootRun \
-  --args="--spring.profiles.active=scenario-workers"
+  --args="--spring.profiles.active=agentforge"
 ```
 
 This starts the selected Server composition, without a Worker Host. Server
 readiness does not depend on that Host. Use Distribution's
 [source launcher](../distribution/server/README.md#source-launch) for the complete
-local Lab or Preview, and its [Runtime archive instructions](../distribution/server/README.md#runtime-archive)
+local Preview, and its [Runtime archive instructions](../distribution/server/README.md#runtime-archive)
 for repository-independent deployment.
 
 ## Build and verification

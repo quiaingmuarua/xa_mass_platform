@@ -1,6 +1,6 @@
 jvm_contracts:
   - 'server_boot_jvm/src/main/resources/application-agentforge.yaml'
-  - 'server_boot_jvm/src/main/resources/application-scenario-workers.yaml'
+  - 'integrations/worker_proof_support/platform-runtime.yaml'
   - 'server_boot_jvm/src/main/resources/application.yaml'
   - 'server_boot_jvm/src/test/**'
   - 'scenarios/message-campaigns-jvm/**'
@@ -39,7 +39,7 @@ jvm_contracts:
   - '!**/*.md'
 redis_owner:
   - 'server_boot_jvm/src/main/resources/application-agentforge.yaml'
-  - 'server_boot_jvm/src/main/resources/application-scenario-workers.yaml'
+  - 'integrations/worker_proof_support/platform-runtime.yaml'
   - 'server_boot_jvm/src/main/resources/application.yaml'
   - 'server_boot_jvm/src/main/java/**'
   - 'distribution/server/build.gradle'
@@ -61,7 +61,7 @@ redis_owner:
   - '!**/*.md'
 runtime_boundary:
   - 'server_boot_jvm/src/main/resources/application-agentforge.yaml'
-  - 'server_boot_jvm/src/main/resources/application-scenario-workers.yaml'
+  - 'integrations/worker_proof_support/platform-runtime.yaml'
   - 'server_boot_jvm/src/main/resources/application.yaml'
   - 'server_boot_jvm/src/main/java/**'
   - 'distribution/server/build.gradle'
@@ -90,7 +90,7 @@ worker_correctness:
   - 'kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/WorkerQuery.java'
   - 'kernel_jvm/src/main/java/com/xa/mass/kernel/task/TaskRuntime.java'
   - 'server_boot_jvm/src/main/resources/application-agentforge.yaml'
-  - 'server_boot_jvm/src/main/resources/application-scenario-workers.yaml'
+  - 'integrations/worker_proof_support/platform-runtime.yaml'
   - 'server_boot_jvm/src/main/resources/application.yaml'
   - 'server_boot_jvm/src/main/java/**'
   - 'distribution/server/build.gradle'
@@ -148,7 +148,7 @@ worker_correctness:
   - '!**/*.md'
 worker_dynamic_matching:
   - 'server_boot_jvm/src/main/resources/application-agentforge.yaml'
-  - 'server_boot_jvm/src/main/resources/application-scenario-workers.yaml'
+  - 'integrations/worker_proof_support/platform-runtime.yaml'
   - 'server_boot_jvm/src/main/resources/application.yaml'
   - 'server_boot_jvm/src/main/java/**'
   - 'distribution/server/build.gradle'
@@ -189,7 +189,7 @@ worker_dynamic_matching:
   - '!**/*.md'
 worker_convergence_health:
   - 'server_boot_jvm/src/main/resources/application-agentforge.yaml'
-  - 'server_boot_jvm/src/main/resources/application-scenario-workers.yaml'
+  - 'integrations/worker_proof_support/platform-runtime.yaml'
   - 'server_boot_jvm/src/main/resources/application.yaml'
   - 'server_boot_jvm/src/main/java/**'
   - 'distribution/server/build.gradle'
@@ -246,7 +246,7 @@ android_emulator:
   - 'kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/RefillTarget.java'
   - 'kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/WorkerQuery.java'
   - 'kernel_jvm/src/main/java/com/xa/mass/kernel/task/TaskRuntime.java'
-  - 'server_boot_jvm/src/main/resources/application-scenario-workers.yaml'
+  - 'integrations/worker_proof_support/platform-runtime.yaml'
   - 'server_boot_jvm/src/main/resources/application.yaml'
   - 'server_boot_jvm/src/main/java/**'
   - 'distribution/server/build.gradle'
@@ -318,6 +318,7 @@ frontend:
   - '.github/workflows/proof-ci.yml'
   - '!**/*.md'
 runtime_distribution:
+  - 'integrations/worker_proof_support/platform-runtime.yaml'
   - '!distribution/server/run_preview.py'
   - '!distribution/server/requirements-preview.txt'
   - '!distribution/server/src/test/python/verify_preview_archive.py'
@@ -372,6 +373,7 @@ runtime_distribution:
   - '.github/workflows/release-server-runtime.yml'
   - '!**/*.md'
 product_coexistence:
+  - 'integrations/worker_proof_support/platform-runtime.yaml'
   - 'run_local_runtime.py'
   - 'scenarios/app-checks-jvm/**'
   - 'scenarios/message-campaigns-jvm/**'

@@ -523,6 +523,8 @@ function entry(
       projectId: "test-project",
       idleDisposition: "PARK_WHEN_IDLE",
       refill: [{ poolName: "any", target: {}, count: 100 }],
+      name: null,
+      metadata: {},
       config: {
         priority: "0",
         maxRetryTimes: "3"

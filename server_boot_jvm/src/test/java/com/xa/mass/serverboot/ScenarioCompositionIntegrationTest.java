@@ -55,6 +55,18 @@ class ScenarioCompositionIntegrationTest {
             for (Class<?> owner : List.of(KernelPacerRuntime.class, WorkerDeliveryAdapterManager.class, RedisClient.class,
                     TaskRuntime.class, TaskResourceCatalog.class, WorkerResourceCatalog.class, WorkerScoreCore.class))
                 assertThat(context.getBeansOfType(owner)).as("one shared %s", owner.getSimpleName()).hasSize(1);
+            var directoryHttp = get(client, base, "/api/v1/projects");
+            assertThat(directoryHttp.statusCode()).isEqualTo(200);
+            if (preview) {
+                assertThat(directoryHttp.body()).contains("\"projectId\":\"default\"", "\"projectId\":\"sms\"",
+                        "\"projectId\":\"messages\"", "\"projectId\":\"app-checks\"");
+                var capabilityHttp = get(client, base, "/api/v1/projects/default/worker-groups");
+                assertThat(capabilityHttp.statusCode()).isEqualTo(200);
+                assertThat(capabilityHttp.body()).contains("demo-sim", "app-a-sim", "app-b-sim", "workerId", "worker.country", "worker.any");
+                String id = context.getBean(com.xa.mass.server.project.ProjectDirectory.class).requireManagedTaskId("default", "demo-sim");
+                assertThat(get(client, base, "/api/v1/projects/default/tasks/" + id).statusCode()).isEqualTo(200);
+                assertThat(get(client, base, "/api/v1/projects/messages/tasks/" + id).statusCode()).isEqualTo(400);
+            } else assertThat(directoryHttp.body()).isEqualTo("[]");
             assertThat(context.getBeansOfType(SmsReceptionService.class)).hasSize(sms ? 1 : 0);
             assertThat(context.getBeansOfType(MessageTaskService.class)).hasSize(messages ? 1 : 0);
             assertThat(context.getBeansOfType(AppCheckTaskService.class)).hasSize(preview ? 1 : 0);
@@ -66,7 +78,7 @@ class ScenarioCompositionIntegrationTest {
             assertThat(context.getBeansOfType(com.xa.mass.server.project.ProjectWorkerRequirements.class)).hasSize(preview ? 2 : 0);
             if (preview) {
                 assertThat(context.getBean(com.xa.mass.server.project.ProjectAssemblyProperties.class).projects())
-                        .extracting(com.xa.mass.server.project.ProjectDefinition::projectId).containsExactly("sms");
+                        .extracting(com.xa.mass.server.project.ProjectDefinition::projectId).containsExactly("default", "sms");
                 assertThat(context.getBeansOfType(com.xa.mass.server.project.ProjectDefinition.class).values())
                         .extracting(com.xa.mass.server.project.ProjectDefinition::projectId).containsExactlyInAnyOrder("messages", "app-checks");
                 var messageSupply = context.getBean(com.xa.mass.workermatching.QualifiedCountryDefinition.class);

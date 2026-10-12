@@ -338,9 +338,8 @@ def _start_server(
             "java",
             "-jar",
             str(boot_jar),
-            "--spring.profiles.active=scenario-workers",
-            "--spring.config.additional-location="
-            f"{SERVER_CONFIG_DIRECTORY.as_uri()}/",
+            "--spring.profiles.active=default",
+            f"--spring.config.additional-location={(REPOSITORY_ROOT / 'integrations/worker_proof_support/platform-runtime.yaml').as_uri()},{(SERVER_CONFIG_DIRECTORY / 'convergence-runtime.yaml').as_uri()}",
         ],
         scenario_root / log_name,
         environment,

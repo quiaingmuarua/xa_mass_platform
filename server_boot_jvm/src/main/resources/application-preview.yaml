@@ -5,6 +5,8 @@ xa:
   mass:
     project-assembly:
       projects:
+        - project-id: default
+          worker-group-ids: [demo-sim, app-a-sim, app-b-sim]
         - project-id: sms
           worker-group-ids: [demo-sim]
     scenarios:

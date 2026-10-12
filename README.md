@@ -125,8 +125,8 @@ Server never starts Worker processes. AgentForge consumes release artifacts and
 public APIs. Within one Redis scope, only one Server may enable Pacer; the
 [Pacer lifecycle contract](kernel_pacer_jvm/doc/application-assembly.md#lifecycle) defines this boundary.
 
-For local work, `python run_local_runtime.py` starts the Scenario Lab;
-`--profile preview` starts the business Preview and `--profile agentforge` selects
+For local work, `python run_local_runtime.py` starts the business Preview;
+`--profile default` starts the plain platform and `--profile agentforge` selects
 the clean Server/Adapter preset. The linked delivery documents own the complete
 build, configuration and launch procedures.
 

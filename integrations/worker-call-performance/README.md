@@ -407,3 +407,11 @@ The `baselines/` reports record the retired task, direct, direct-diagnosis,
 rpc-diagnosis and nightly suites (100 or 1,000 Workers, one Group, assignment
 ceiling 100 unless stated). They are version-scoped evidence and are not
 comparable with this lane's cases.
+
+### Platform configuration source
+
+Current runs load `../worker_proof_support/platform-runtime.yaml` explicitly,
+before this lane's overlay/CLI flags. It preserves the test Project, Group and
+Adapter identities and existing budgets without activating a business profile.
+The fixture is not packaged in the production Server. Historical benchmark
+checkouts retain their version-specific configuration inputs.
