@@ -858,7 +858,7 @@
             "description" : "Task Owner is unavailable"
           }
         },
-        "summary" : "Read a configured Project and its managed Task coordinates",
+        "summary" : "Read a configured Project and its bound WorkerGroups",
         "tags" : [ "Tasks" ]
       }
     },

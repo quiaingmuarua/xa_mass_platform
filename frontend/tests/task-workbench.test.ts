@@ -194,12 +194,13 @@ it("caller selection reads only; explicit preparation enables the original Task 
   const input = f.host.querySelector<HTMLInputElement>(
     'input[aria-label="RPC 调用方标识"]'
   )!;
+  input.focus();
   input.value = " Alice ";
   input.dispatchEvent(new Event("input"));
   await nextTick();
   expect(input.value).toBe(" Alice ");
   expect(button("创建／复用 RPC Task").disabled).toBe(false);
-  input.dispatchEvent(new Event("change"));
+  input.blur();
   const id = rpcTaskId("default", "Alice", "g1");
   await vi.waitFor(() => expect(f.session.rpc.detail.value.missing).toBe(true));
   expect(f.router.currentRoute.value.query.user).toBe("Alice");

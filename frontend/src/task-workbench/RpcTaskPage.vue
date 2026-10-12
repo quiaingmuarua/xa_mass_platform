@@ -110,6 +110,10 @@ function time(value?: string) {
 async function selectIdentity(group: string, user: string) {
   await router.push({ query: { tab: "rpc", group, user: user.trim() || undefined } });
 }
+function commitCaller() {
+  callerInput.value = callerInput.value.trim();
+  if (changedCaller.value) void selectIdentity(groupId.value, callerInput.value);
+}
 async function sync() {
   const generation = ++navigation;
   validation.value = "";
@@ -234,7 +238,8 @@ const labels: Record<string, string> = {
         aria-label="RPC 调用方标识"
         maxlength="128"
         placeholder="调用方标识（如 alice）"
-        @change="selectIdentity(groupId, String($event))"
+        @blur="commitCaller"
+        @keyup.enter="commitCaller"
       />
       <el-select
         :model-value="groupId"

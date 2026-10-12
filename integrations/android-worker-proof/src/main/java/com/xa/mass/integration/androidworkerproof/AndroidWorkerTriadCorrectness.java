@@ -50,13 +50,13 @@ final class AndroidWorkerTriadCorrectness {
     }
 
     private void run() {
-        triad.runtime().prepareRpcTask();
         if (!INITIAL_PHASE.equals(options.phase())) {
             throw new IllegalArgumentException(
                     "Triad correctness phase must be initial"
             );
         }
         options.baselineFile(false);
+        triad.runtime().prepareRpcTask();
         Map<String, String> identities = triad.awaitAvailableWorld(Map.of());
         evidence.workers(identities);
 

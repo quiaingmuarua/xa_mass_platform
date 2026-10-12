@@ -60,7 +60,6 @@ final class AndroidWorkerCorrectness {
     }
 
     private void run() {
-        runtime.prepareRpcTask();
         switch (options.phase()) {
             case INITIAL_PHASE -> runInitial();
             case PROCESS_RESTART_PHASE -> runProcessRestart();
@@ -72,6 +71,7 @@ final class AndroidWorkerCorrectness {
 
     private void runInitial() {
         options.baselineFile(false);
+        runtime.prepareRpcTask();
         Duration maximumWait = options.maximumWait();
         AndroidWorkerProofAssertions.awaitDeviceHealth(device, maximumWait);
         AndroidWorkerProofAssertions.requireDeviceEvents(device);
