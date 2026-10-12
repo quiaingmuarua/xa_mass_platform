@@ -209,7 +209,7 @@ defineExpose({ revealTask, focusHeading });
         <select v-model="filters.app" aria-label="筛选应用">
           <option value="all">全部应用</option>
           <option v-for="app in catalog.apps" :key="app.appId" :value="app.appId">
-            {{ appLabel(app.appId) }}
+            {{ app.label }}
           </option>
         </select>
         <select v-model="filters.country" aria-label="筛选地区">
@@ -280,7 +280,7 @@ defineExpose({ revealTask, focusHeading });
         </ElTableColumn>
         <ElTableColumn label="应用 / 地区" width="120">
           <template #default="{ row }"
-            >{{ appLabel(row.appId)
+            >{{ appLabel(row.appId, catalog)
             }}<small>{{ countryLabel(row.country) }}</small></template
           >
         </ElTableColumn>

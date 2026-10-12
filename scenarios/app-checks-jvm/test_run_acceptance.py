@@ -1,11 +1,18 @@
 import unittest
 import json
 import os
+from pathlib import Path
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 from unittest.mock import patch
 from run_acceptance import hash_value, request, regression_window_configuration
 
 
 class AppCheckProofTest(unittest.TestCase):
+    def read_seed(self):
+        path = Path(url2pathname(urlparse(os.environ["XA_MASS_APP_CHECKS_SEED"]).path))
+        return path, json.loads(path.read_text(encoding="utf-8"))
+
     def test_window_fixture_keeps_other_settings_and_restores_environment_on_failure(self):
         original = json.dumps({"some.setting": "retained"})
         with patch.dict(os.environ, {"SPRING_APPLICATION_JSON": original}):
@@ -13,15 +20,17 @@ class AppCheckProofTest(unittest.TestCase):
                 with regression_window_configuration():
                     actual = json.loads(os.environ["SPRING_APPLICATION_JSON"])
                     self.assertEqual("retained", actual["some.setting"])
+                    path, configuration = self.read_seed()
                     for group in ("app-a-sim", "app-b-sim"):
-                        self.assertEqual(1000, actual[f"xa.mass.worker-pools.assignment-window.groups.{group}.max-count"])
-                    self.assertFalse(any("window-millis" in name for name in actual))
+                        self.assertEqual({"windowMillis": 60000, "maxCount": 1000}, configuration["poolGroups"][group])
+                    self.assertEqual({"some.setting": "retained"}, actual)
                     raise RuntimeError("scenario failed")
             self.assertEqual(original, os.environ["SPRING_APPLICATION_JSON"])
+            self.assertFalse(path.exists())
         with patch.dict(os.environ):
             os.environ.pop("SPRING_APPLICATION_JSON", None)
             with regression_window_configuration():
-                self.assertIn("SPRING_APPLICATION_JSON", os.environ)
+                self.assertIn("XA_MASS_APP_CHECKS_SEED", os.environ)
             self.assertNotIn("SPRING_APPLICATION_JSON", os.environ)
 
     def test_wire_hash_vectors_match_owner_examples(self):
@@ -39,11 +48,11 @@ class AppCheckProofTest(unittest.TestCase):
             self.assertNotIn("SPRING_APPLICATION_JSON", os.environ)
 
     def test_benchmark_pins_its_window_without_changing_functional_fixture_defaults(self):
-        key = "xa.mass.worker-pools.assignment-window.groups.app-a-sim.window-millis"
-        with patch.dict(os.environ, {"SPRING_APPLICATION_JSON": json.dumps({key: 100})}):
+        with patch.dict(os.environ, {"XA_MASS_APP_CHECKS_SEED": "file:///original.json"}):
             with regression_window_configuration(window_millis=60000):
-                self.assertEqual(60000, json.loads(os.environ["SPRING_APPLICATION_JSON"])[key])
-            self.assertEqual(100, json.loads(os.environ["SPRING_APPLICATION_JSON"])[key])
+                _, configuration = self.read_seed()
+                self.assertEqual(60000, configuration["poolGroups"]["app-a-sim"]["windowMillis"])
+            self.assertEqual("file:///original.json", os.environ["XA_MASS_APP_CHECKS_SEED"])
 
     def test_task_fixture_uses_distinct_valid_numbers_and_no_worker_hint(self):
         case = request("mixed", "app-b", 30, 16, ([0, 500], [500, 900], [900, 1000]), [10, 50])

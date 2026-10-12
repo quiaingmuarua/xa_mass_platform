@@ -22,7 +22,9 @@ The `functional` and `lifecycle` worlds retain 12 Demo Workers (four per country
 and no App Workers. The `pool-selection` world has the same deterministic 12-Worker
 population in each of Demo, App A and App B, with nonoverlapping phone ranges.
 These receipt fixtures explicitly select lab-json; Preview itself defaults to text.
-Every scenario starts an independent scope and inventory. App Checks retains its
+Every scenario starts an independent scope, inventory and App Checks configuration
+database (a sibling of that private inventory). The packaged seed is used only on
+first initialization; no shared Preview database or window YAML overlay is reused. App Checks retains its
 independent one-shot witness in the same CI lane.
 
 Functional first checks the Messages application's empty creation identity and

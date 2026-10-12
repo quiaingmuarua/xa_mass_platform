@@ -351,6 +351,9 @@ per enabled Pool, sharing CandidateBudget while isolating Group inventory. A
 window definition is not an external strategy implementation or runtime registry.
 The [App Checks declaration](../scenarios/app-checks-jvm/README.md#分配窗口筛选)
 uses this contract alongside its existing property projections.
+Its scenario-owned configuration store produces the immutable startup definition;
+Matching receives no database handle and performs no configuration reads. Startup
+window definition errors identify the Pool and missing or mismatched Group.
 
 Refill reads only the offered identities once through the atomic Worker/Platform
 Facts snapshot. After reading, one clock sample determines the fixed window for

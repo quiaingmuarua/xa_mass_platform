@@ -544,7 +544,8 @@ onBeforeUnmount(() => {
       ref="configurationView"
       :catalog="catalog"
       :app-id="session.configurationApp"
-      :mode="source.mode"
+      :source="source"
+      :session="session.configuration"
       :read="configurationRead"
       :return-to-create="configurationFromCreate"
       @select="selectConfigurationApp"
@@ -592,7 +593,8 @@ onBeforeUnmount(() => {
           {{ actionTask.name || actionTask.taskId }}
         </p>
         <p>
-          {{ appLabel(actionTask.appId) }} · {{ countryLabel(actionTask.country) }} ·
+          {{ appLabel(actionTask.appId, catalog) }} ·
+          {{ countryLabel(actionTask.country) }} ·
           {{ quantity(actionTask.totalCount) }} 个号码
         </p>
         <p class="checks-hint">

@@ -1,5 +1,12 @@
 import type { AppCheckTaskSource } from "./task-source";
 import type { TaskPolicySnapshot } from "./configuration";
+import { AppCheckApiError } from "./task-source";
+import {
+  settingsSchema,
+  settingsIdentity,
+  requireSettingsUpdate,
+  type AppCheckSettings
+} from "./settings";
 import { csvCell, inspectImport, type ImportSnapshot } from "./import-model";
 import { type PreviewState, type ExportFilter, type TaskActivity } from "./workbench";
 import {
@@ -14,21 +21,22 @@ export const mockCatalog: Catalog = {
   projectId: "app-checks",
   name: "应用注册查询",
   version: "0.1.0-preview",
-  apps: ["app-a", "app-b"].map((appId) => ({ appId, workerGroupId: `${appId}-sim` })),
+  apps: ["app-a", "app-b"].map((appId) => ({
+    appId,
+    label: appId === "app-a" ? "App A" : "App B",
+    workerGroupId: `${appId}-sim`
+  })),
   countries: ["CN", "US", "GB"],
   limits: { numbersPerImport: 100000, importFileBytes: 10 * 1024 * 1024 },
-  simulationExample: { ranges: rangeExamples.混合, delayMs: [2000, 5000] },
-  mockPolicies: Object.fromEntries(
-    ["app-a", "app-b"].map((appId) => [
-      appId,
-      {
-        pool: {
-          poolName: "assignment-window",
-          workerGroupId: `${appId}-sim`,
-          windowMillis: 60000,
-          maxCount: 10
-        }
-      }
+  simulationExample: { ranges: rangeExamples.混合, delayMs: [2000, 5000] }
+};
+export const mockSettings: AppCheckSettings = {
+  common: { simulationDefault: structuredClone(mockCatalog.simulationExample) },
+  applications: structuredClone(mockCatalog.apps),
+  poolGroups: Object.fromEntries(
+    mockCatalog.apps.map((app) => [
+      app.workerGroupId,
+      { windowMillis: 60000, maxCount: 10 }
     ])
   )
 };
@@ -227,6 +235,11 @@ function sampleRows(count: number, group: string, country: string, numbers?: str
 }
 export class MockAppCheckTaskSource implements AppCheckTaskSource {
   readonly mode = "mock";
+  private savedConfiguration = {
+    revision: 1,
+    configuration: structuredClone(mockSettings)
+  };
+  private effectiveConfiguration = structuredClone(this.savedConfiguration);
   private readonly records = new Map(records().map((r) => [r.task.taskId, r]));
   private readonly requests = new Map<string, { input: string; taskId: string }>();
   private readonly reads = new Map<string, number>();
@@ -262,7 +275,46 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     }
   }
   async catalog() {
-    return structuredClone(mockCatalog);
+    return structuredClone({
+      ...mockCatalog,
+      apps: this.effectiveConfiguration.configuration.applications,
+      simulationExample:
+        this.effectiveConfiguration.configuration.common.simulationDefault
+    });
+  }
+  async loadConfiguration() {
+    return structuredClone({
+      saved: this.savedConfiguration,
+      effective: this.effectiveConfiguration,
+      restartRequired:
+        settingsIdentity(this.savedConfiguration.configuration) !==
+        settingsIdentity(this.effectiveConfiguration.configuration),
+      newScopeRequired: Object.entries(
+        this.effectiveConfiguration.configuration.poolGroups
+      ).some(
+        ([group, limit]) =>
+          this.savedConfiguration.configuration.poolGroups[group]?.windowMillis !==
+          limit.windowMillis
+      )
+    });
+  }
+  async saveConfiguration(expectedRevision: number, configuration: AppCheckSettings) {
+    if (expectedRevision !== this.savedConfiguration.revision)
+      throw new AppCheckApiError(409, "配置修订已变化，请重新读取后核对");
+    const validated = settingsSchema.parse(configuration);
+    requireSettingsUpdate(this.savedConfiguration.configuration, validated);
+    if (
+      settingsIdentity(validated) !==
+      settingsIdentity(this.savedConfiguration.configuration)
+    )
+      this.savedConfiguration = {
+        revision: expectedRevision + 1,
+        configuration: validated
+      };
+    return this.loadConfiguration();
+  }
+  async simulateConfigurationRestart() {
+    this.effectiveConfiguration = structuredClone(this.savedConfiguration);
   }
   async listTasks() {
     const tasks = [...this.records.values()]
@@ -298,6 +350,10 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     return structuredClone({ ...record, results: record.results.slice(0, 100) });
   }
   async createTask(input: CreateCheckTask) {
+    const app = this.effectiveConfiguration.configuration.applications.find(
+      (app) => app.appId === input.appId
+    );
+    if (!app) throw new Error("当前生效配置不支持此应用");
     const identity = JSON.stringify(input);
     const prior = this.requests.get(input.requestId);
     if (prior) {
@@ -309,7 +365,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       task: task(taskId, {
         name: `${input.appId} · ${input.country} · ${new Date().toISOString()}`,
         appId: input.appId,
-        workerGroupId: input.appId + "-sim",
+        workerGroupId: app.workerGroupId,
         country: input.country,
         createdAtMillis: Date.now(),
         simulation: structuredClone(input.simulation),

@@ -39,7 +39,8 @@ class PreviewArchiveTest(unittest.TestCase):
 
     def archive(self, *, embedded=False, extra=None, missing_configuration=None,
                 dependency_configuration=None, scenario_configuration=None,
-                host_test_configuration=False, different_external_configuration=False):
+                host_test_configuration=False, different_external_configuration=False,
+                missing_h2=False, missing_seed=False):
         jar = io.BytesIO()
         with zipfile.ZipFile(jar, "w") as bundle:
             bundle.writestr("BOOT-INF/classes/Application.class", b"server")
@@ -47,7 +48,12 @@ class PreviewArchiveTest(unittest.TestCase):
             if scenario_configuration:
                 scenario_entries[scenario_configuration] = b"stale"
             bundle.writestr("BOOT-INF/lib/xa-mass-message-campaigns-test.jar", library(scenario_entries))
-            bundle.writestr("BOOT-INF/lib/xa-mass-app-checks-test.jar", library(scenario_entries))
+            app_check_entries = dict(scenario_entries)
+            if not missing_seed:
+                app_check_entries["app-checks/preview-configuration.json"] = b"{}"
+            bundle.writestr("BOOT-INF/lib/xa-mass-app-checks-test.jar", library(app_check_entries))
+            if not missing_h2:
+                bundle.writestr("BOOT-INF/lib/h2-test.jar", library({"org/h2/Driver.class": b"driver"}))
             server_entries = {"Server.class": b"platform"}
             if dependency_configuration:
                 server_entries[dependency_configuration] = b"stale"
@@ -125,6 +131,15 @@ class PreviewArchiveTest(unittest.TestCase):
     def test_never_packages_materialized_inventory(self):
         with self.assertRaisesRegex(ValueError, "private run material"):
             verify(self.archive(extra="xa-mass-scenario-preview-0.1.0-preview/worker-simulator/config/data/scenario-workers/demo-sim/workers-000.jsonl"), self.frontend)
+
+    def test_configuration_delivery_contains_code_and_seed_without_database(self):
+        for suffix in (".mv.db", ".trace.db"):
+            with self.subTest(suffix=suffix), self.assertRaisesRegex(ValueError, "private run material"):
+                verify(self.archive(extra="xa-mass-scenario-preview-0.1.0-preview/data/app-checks/configuration" + suffix), self.frontend)
+        with self.assertRaisesRegex(ValueError, "H2 runtime"):
+            verify(self.archive(missing_h2=True), self.frontend)
+        with self.assertRaisesRegex(ValueError, "configuration seed"):
+            verify(self.archive(missing_seed=True), self.frontend)
 
     def test_rejects_stale_frontend(self):
         archive = self.archive()

@@ -9,6 +9,18 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ScenarioArchitectureTest {
+    @Test void configurationDatabaseBelongsOnlyToTheAppChecksModule() throws Exception {
+        assertThat(Files.readString(Path.of("../scenarios/app-checks-jvm/build.gradle"))).contains("runtimeOnly 'com.h2database:h2'");
+        for (String module : Set.of("kernel_jvm", "kernel_pacer_jvm", "worker_matching_jvm", "server_jvm", "server_boot_jvm")) {
+            Path directory = Path.of("..", module);
+            assertThat(Files.readString(directory.resolve("build.gradle"))).doesNotContain("com.h2database", "spring-boot-starter-jdbc");
+            try (var paths = Files.walk(directory.resolve("src/main/java"))) {
+                for (Path path : paths.filter(p -> p.toString().endsWith(".java")).toList())
+                    assertThat(Files.readString(path)).as(path.toString()).doesNotContain("java.sql.", "org.h2.", "AppCheckConfigurationStore");
+            }
+        }
+    }
+
     @Test void messageRulesAndViewsDoNotDependOnTheApplicationCoordinator() throws Exception {
         Path root = Path.of("../scenarios/message-campaigns-jvm/src/main/java/com/xa/mass/scenario/messages");
         for (String file : Set.of("MessageInputs.java", "MessageSpecification.java", "MessageRecipientFile.java",
@@ -20,7 +32,7 @@ class ScenarioArchitectureTest {
 
     @Test void scenariosUseOnlyTheirExistingServerApplicationCapabilities() throws Exception {
         var allowed = Map.of(
-                "app-checks-jvm", Set.of("project.ProjectDirectory", "project.ProjectTaskQueryService",
+                "app-checks-jvm", Set.of("project.ProjectDirectory", "project.ProjectTaskQueryService", "project.ProjectDefinition", "project.ProjectWorkerRequirements",
                         "task.TaskCreationService", "task.TaskCreationUnconfirmedException", "task.TaskDataService",
                         "task.TaskLifecycleService", "operation.OperationGuard", "operation.OperationAlreadyRunningException", "task.result.TaskResultsExportService", "api.v1.contract.ActionOutcome", "api.v1.contract.task.TaskItemResultResponse", "api.v1.contract.task.TaskCreateRequest",
                         "api.v1.contract.task.TaskCreateResponse", "api.v1.contract.task.TaskItemRequest",

@@ -12,12 +12,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongConsumer;
+import java.util.function.BiFunction;
 
 /** Serial read/project/patch consumer; owns no queue, thread or independent lifecycle. */
 final class PlatformPropertiesHandler implements FunctionHandler {
     private record Selection(String group, EventKey event) {}
+    private record Projection(Selection selection,
+            BiFunction<Map<String, Object>, List<Long>, Map<String, Object>> project) {}
 
-    private final Map<Selection, WorkerPropertyProjection> projections;
+    private final Map<Selection, Projection> projections;
     private final WorkerProperties properties;
     private final WorkerResourceCommandService commands;
     private final BooleanSupplier running;
@@ -26,13 +29,15 @@ final class PlatformPropertiesHandler implements FunctionHandler {
     PlatformPropertiesHandler(List<WorkerPropertyProjection> projections, WorkerProperties properties,
                               WorkerResourceCommandService commands, BooleanSupplier running,
                               LongConsumer failures) {
-        var selected = new LinkedHashMap<Selection, WorkerPropertyProjection>();
+        var selected = new LinkedHashMap<Selection, Projection>();
         for (var projection : projections) {
-            var key = new Selection(projection.workerGroupId(),
-                    new EventKey(projection.messageEventName(), projection.observationEventName()));
-            if (selected.putIfAbsent(key, projection) != null) {
-                throw new IllegalArgumentException("operation=workerObservation.assemble duplicate projection selection");
-            }
+            projection.projectionsByGroup().forEach((group, project) -> {
+                var key = new Selection(group,
+                        new EventKey(projection.messageEventName(), projection.observationEventName()));
+                if (selected.putIfAbsent(key, new Projection(key, project)) != null) {
+                    throw new IllegalArgumentException("operation=workerObservation.assemble duplicate projection selection");
+                }
+            });
         }
         this.projections = Collections.unmodifiableMap(selected);
         this.properties = properties;
@@ -42,7 +47,7 @@ final class PlatformPropertiesHandler implements FunctionHandler {
     }
 
     @Override public void handle(List<WorkerObservation> observations) {
-        var byGroup = new LinkedHashMap<String, Map<String, Map<WorkerPropertyProjection, List<Long>>>>();
+        var byGroup = new LinkedHashMap<String, Map<String, Map<Projection, List<Long>>>>();
         for (var observation : observations) {
             var projection = projections.get(new Selection(observation.workerGroupId(),
                     new EventKey(observation.messageEventName(), observation.observationEventName())));

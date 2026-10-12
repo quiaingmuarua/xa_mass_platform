@@ -261,6 +261,13 @@ initialization. Shared Group definitions remain host-owned; scenario requirement
 may read through the startup validator but must not register, amend or enable
 resources. Configuration and module Project identities cannot shadow each other.
 
+App Checks owns its H2 configuration dependency, schema, JDBC lifecycle and
+configuration API inside its scenario module. Only configuration is persisted there;
+Task/Item/Result and runtime identities remain with Redis Owners. Server consumes
+immutable startup declarations and must not query the scenario database. Saved
+configuration becomes effective on restart, without runtime registration or resource
+mutation. Multi-Group Worker property projections remain pure startup declarations.
+
 ## Verification
 
 Use [TESTING.md](TESTING.md) for claim-based proof selection and commands.

@@ -623,6 +623,8 @@ describe("App Checks product workspace", () => {
     const selected: AppCheckTaskSource = {
       mode: "api",
       catalog: source.catalog.bind(source),
+      loadConfiguration: source.loadConfiguration.bind(source),
+      saveConfiguration: source.saveConfiguration.bind(source),
       listTasks: source.listTasks.bind(source),
       loadTask: source.loadTask.bind(source),
       createTask: source.createTask.bind(source)
@@ -1004,6 +1006,8 @@ describe("App Checks product workspace", () => {
     const selected: AppCheckTaskSource = {
       mode: "api",
       catalog: source.catalog.bind(source),
+      loadConfiguration: source.loadConfiguration.bind(source),
+      saveConfiguration: source.saveConfiguration.bind(source),
       listTasks: source.listTasks.bind(source),
       loadTask: source.loadTask.bind(source),
       createTask: source.createTask.bind(source)

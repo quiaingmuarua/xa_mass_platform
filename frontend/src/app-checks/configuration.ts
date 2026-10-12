@@ -5,6 +5,7 @@ import {
   type Catalog,
   type CheckTask
 } from "./model";
+import type { AppCheckSettings } from "./settings";
 
 export interface TaskPolicySnapshot {
   priority: number;
@@ -12,15 +13,6 @@ export interface TaskPolicySnapshot {
   validityMillis: number;
   supply: { poolName: string; target: string; count: number };
 }
-export interface MockApplicationPolicy {
-  pool: {
-    poolName: string;
-    workerGroupId: string;
-    windowMillis: number;
-    maxCount: number;
-  };
-}
-
 export function scenarioConfiguration(
   catalog: Catalog,
   mode: "api" | "mock"
@@ -36,7 +28,13 @@ export function scenarioConfiguration(
     ]
   };
 }
-export type ConfigurationSource = "catalog" | "task" | "draft" | "mock";
+export type ConfigurationSource =
+  | "catalog"
+  | "task"
+  | "draft"
+  | "mock"
+  | "saved"
+  | "effective";
 export interface ConfigurationSection {
   source: ConfigurationSource;
   scope: "应用" | "场景" | "任务" | "Pool / Group";
@@ -52,7 +50,9 @@ export const configurationSources: Record<ConfigurationSource, string> = {
   catalog: "Catalog",
   task: "任务保存值",
   draft: "当前草稿保存值",
-  mock: "Mock 演示数据"
+  mock: "Mock 演示数据",
+  saved: "已保存配置",
+  effective: "本次进程生效配置"
 };
 const absent = "当前接口未提供";
 const number = (value: number) => value.toLocaleString("zh-CN");
@@ -86,18 +86,22 @@ export function policySection(
 export function applicationConfiguration(
   catalog: Catalog,
   appId: string,
-  mode: "api" | "mock"
+  mode: "api" | "mock",
+  settings?: AppCheckSettings,
+  origin: ConfigurationSource = "saved"
 ) {
-  const app = catalog.apps.find((candidate) => candidate.appId === appId);
+  const app = (settings?.applications ?? catalog.apps).find(
+    (candidate) => candidate.appId === appId
+  );
   if (!app) return undefined;
-  const source = mode === "mock" ? "mock" : "catalog";
-  const sample = mode === "mock" ? catalog.mockPolicies?.[appId] : undefined;
+  const source = mode === "mock" ? "mock" : settings ? origin : "catalog";
+  const limit = settings?.poolGroups[app.workerGroupId];
   return {
     binding: {
       source,
       scope: "应用",
       rows: [
-        row("应用名称", appLabel(appId)),
+        row("应用名称", app.label),
         row("应用 ID", appId),
         row("WorkerGroup", app.workerGroupId)
       ]
@@ -105,15 +109,15 @@ export function applicationConfiguration(
     pool: {
       source,
       scope: "Pool / Group",
-      rows: sample
+      rows: limit
         ? [
-            row("Pool", sample.pool.poolName),
-            row("WorkerGroup", sample.pool.workerGroupId),
-            row("观察窗口", `${number(sample.pool.windowMillis / 1000)} 秒`),
-            row("观察阈值", `单个 Worker 每窗口 ${number(sample.pool.maxCount)} 次`)
+            row("Pool", "assignment-window"),
+            row("WorkerGroup", app.workerGroupId),
+            row("观察窗口", `${number(limit.windowMillis / 1000)} 秒`),
+            row("观察阈值", `单个 Worker 每窗口 ${number(limit.maxCount)} 次`)
           ]
         : [],
-      unavailable: sample
+      unavailable: limit
         ? undefined
         : `${absent}：Pool 身份、Group 范围、窗口长度、观察阈值。`
     } satisfies ConfigurationSection

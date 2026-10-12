@@ -812,8 +812,10 @@ The receiver has no Properties dependency; handler-owned operations run outside
 its short admission/lifecycle gate.
 
 One `PlatformPropertiesHandler` serves all `WorkerPropertyProjection` definitions.
-Definitions provide a pure `(current Platform Properties, observation times) ->
-local patch` function; duplicate projection selections still fail assembly. The
+Each definition selects message/observation events and provides an immutable Group-to-function
+map. Each function is pure `(current Platform Properties, observation times) ->
+local patch`. Server expands this map only at startup; duplicate expanded Group/event
+selections fail assembly. There is no runtime registration or configuration read. The
 handler groups selected times by Group/Worker, chunks reads at the existing
 `WorkerProperties` read budget, and computes against immutable input snapshots.
 For each Worker, projections run in their first-appearance order within the drain.
@@ -835,7 +837,9 @@ The notification path does not make eligibility decisions. A declared
 [Matching fixed-window Pool](../worker_matching_jvm/README.md#fixed-window-pools)
 can read the projected fields during subsequent refill. App Checks supplies both
 the Pool definition and projection from the same Pool/Group configuration; Server
-collects definitions without interpreting their fields or window settings.
+collects definitions without interpreting their fields or window settings. The
+scenario may own persistent configuration and supply an immutable startup snapshot;
+Server has no H2 dependency, connection, schema, repository or configuration query.
 
 The consumer starts before Pacer and stops after it, before Matching destruction.
 Stop closes ingress, discards queued batches, interrupts and waits up to 5 seconds

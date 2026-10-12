@@ -15,7 +15,29 @@ import com.xa.mass.server.operation.OperationAlreadyRunningException;
 @RequestMapping("/api/v1/app-checks")
 public final class AppCheckController {
     private final AppCheckTaskService tasks;
-    public AppCheckController(AppCheckTaskService tasks) { this.tasks = tasks; }
+    private final AppCheckConfigurationStore configurations;
+    public AppCheckController(AppCheckTaskService tasks, AppCheckConfigurationStore configurations) {
+        this.tasks = tasks; this.configurations = configurations;
+    }
+    @GetMapping("/configuration") public Object configuration() { return configurations.view(); }
+    @PutMapping("/configuration") public Object saveConfiguration(@RequestBody Map<String, Object> input) {
+        final long revision;
+        final AppCheckSettings settings;
+        try {
+            AppCheckSettings.object(input, java.util.Set.of("expectedRevision", "configuration"));
+            revision = AppCheckSpecification.integer(input.get("expectedRevision"));
+            if (revision <= 0) throw new IllegalArgumentException("expectedRevision 必须为正整数");
+            settings = AppCheckSettings.parse(input.get("configuration"));
+        } catch (IllegalArgumentException invalid) {
+            throw new AppCheckConfigurationException(400, AppCheckConfigurationException.Code.INVALID_CONFIGURATION,
+                    "save", invalid.getMessage(), invalid);
+        }
+        return configurations.save(revision, settings);
+    }
+    @ExceptionHandler(AppCheckConfigurationException.class)
+    ResponseEntity<?> configurationFailure(AppCheckConfigurationException failure) {
+        return ResponseEntity.status(failure.status).body(Map.of("errorCode", failure.code.name(), "message", failure.getMessage()));
+    }
     @GetMapping("/catalog") public Object catalog() { return tasks.catalog(); }
     @PostMapping("/tasks") public ResponseEntity<?> create(@RequestBody Map<String, Object> input) {
         return ResponseEntity.status(201).body(tasks.create(input));

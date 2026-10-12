@@ -67,11 +67,15 @@ public final class MatchingComposition implements AutoCloseable {
                 windows.put(definition.poolName(), definition);
                 if (!functionNames.add(definition.functionName()))
                     throw new IllegalArgumentException("duplicate or reserved function name: " + definition.functionName());
-                if (!this.groups.keySet().containsAll(definition.limitsByGroup().keySet()))
-                    throw new IllegalArgumentException("window configuration names an unknown Group");
+                if (!this.groups.keySet().containsAll(definition.limitsByGroup().keySet())) {
+                    var missing = new TreeSet<>(definition.limitsByGroup().keySet());
+                    missing.removeAll(this.groups.keySet());
+                    throw new IllegalArgumentException("window Pool " + definition.poolName() + " names unknown Groups: " + missing);
+                }
                 this.groups.forEach((group, config) -> {
                     if (config.pools().contains(definition.poolName()) != definition.limitsByGroup().containsKey(group))
-                        throw new IllegalArgumentException("window Pool and its Group configuration must be enabled together");
+                        throw new IllegalArgumentException("window Pool " + definition.poolName() + " and Group " + group
+                                + " configuration must be enabled together");
                 });
                 dependencies.put(definition.functionName(), definition.poolName());
             }

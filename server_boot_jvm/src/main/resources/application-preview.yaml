@@ -7,9 +7,11 @@ xa:
       projects:
         - project-id: sms
           worker-group-ids: [demo-sim]
-        - project-id: app-checks
-          worker-group-ids: [app-a-sim, app-b-sim]
     scenarios:
+      app-checks:
+        storage:
+          path: ${XA_MASS_APP_CHECKS_DB_PATH:}
+          seed: ${XA_MASS_APP_CHECKS_SEED:classpath:app-checks/preview-configuration.json}
       messages:
         applications:
           - id: demo
@@ -44,15 +46,6 @@ xa:
         app-b-sim:
           pools: [any, assignment-window, messaging]
           functions: [worker.any, worker.assignment.available, worker.messaging.available]
-    worker-pools:
-      assignment-window:
-        groups:
-          app-a-sim:
-            window-millis: 60000
-            max-count: 10
-          app-b-sim:
-            window-millis: 60000
-            max-count: 10
     kernel-pacer:
       enabled: true
       preset: DEFAULT

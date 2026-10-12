@@ -15,14 +15,17 @@ import {
   catalogSchema,
   detailSchema,
   rangeExamples,
-  type Catalog,
   type CheckDetail
 } from "../src/app-checks/model";
 import {
   MockAppCheckTaskSource,
   mockCatalog
 } from "../src/app-checks/mock-task-source";
-import { AppCheckCreationUnconfirmed } from "../src/app-checks/task-source";
+import {
+  AppCheckCreationUnconfirmed,
+  AppCheckConfigurationUnconfirmed
+} from "../src/app-checks/task-source";
+import type { AppCheckConfigurationView } from "../src/app-checks/settings";
 import { inspectImport } from "../src/app-checks/import-model";
 
 let app: App | undefined;
@@ -98,14 +101,145 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
+async function input(label: string, value: string) {
+  const element = document.querySelector<HTMLInputElement>(`[aria-label="${label}"]`)!;
+  expect(element, label).not.toBeNull();
+  element.value = value;
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+  await settle();
+}
 
-describe("App Checks read-only configuration", () => {
+describe("App Checks configuration workspace", () => {
+  it("saves edits and a new app without changing effective capabilities until explicit Mock restart", async () => {
+    const { host, session } = await mount();
+    button("编辑配置").click();
+    await settle();
+    await input("应用显示名称", "Alpha");
+    await input("观察阈值", "25");
+    button("新增应用").click();
+    await settle();
+    await input("新应用 ID", "app-c");
+    await input("新应用名称", "App C");
+    await input("新应用 Group", "app-c-sim");
+    button("加入编辑配置").click();
+    await settle();
+    expect(session.configurationApp).toBe("app-c");
+    button("保存配置").click();
+    await settle();
+    expect(host.textContent).toContain("配置已保存，待手动重启生效");
+    expect(session.configuration.snapshot?.saved.revision).toBe(2);
+    expect((await source.catalog()).apps.map((app) => app.appId)).toEqual([
+      "app-a",
+      "app-b"
+    ]);
+    await expect(
+      source.createTask({
+        requestId: "pending-c",
+        appId: "app-c",
+        country: "CN",
+        simulation: mockCatalog.simulationExample
+      })
+    ).rejects.toThrow();
+    button("模拟重启生效").click();
+    await settle();
+    expect(session.configuration.snapshot?.restartRequired).toBe(false);
+    expect((await source.catalog()).apps).toContainEqual({
+      appId: "app-c",
+      label: "App C",
+      workerGroupId: "app-c-sim"
+    });
+    expect((await source.catalog()).apps[0].label).toBe("Alpha");
+    const task = await source.createTask({
+      requestId: "active-c",
+      appId: "app-c",
+      country: "CN",
+      simulation: mockCatalog.simulationExample
+    });
+    expect((await source.loadTask(task.taskId)).task.workerGroupId).toBe("app-c-sim");
+  });
+  it("preserves unsaved edits across refresh, app selection and navigation and refuses stale overwrite", async () => {
+    const { router, session, host } = await mount();
+    button("编辑配置").click();
+    await settle();
+    await input("应用显示名称", "Local draft");
+    await input("观察窗口", "30000");
+    expect(host.textContent).toContain("需使用新的 Redis scope");
+    const concurrent = (await source.loadConfiguration()).saved.configuration;
+    concurrent.applications[1].label = "Concurrent";
+    await source.saveConfiguration(1, concurrent);
+    button("刷新配置").click();
+    await settle();
+    selectApp("app-b");
+    await settle();
+    await router.push("/app-checks");
+    await settle();
+    await router.push("/app-checks?view=configuration&app=app-a");
+    await settle();
+    expect(session.configuration.draft?.applications[0].label).toBe("Local draft");
+    expect(session.configuration.baseRevision).toBe(1);
+    expect(button("保存配置").disabled).toBe(true);
+    expect(host.textContent).toContain("当前编辑未覆盖");
+    button("取消编辑").click();
+    await settle();
+    expect(session.configuration.draft).toBeUndefined();
+    expect(
+      session.configuration.snapshot?.saved.configuration.applications[1].label
+    ).toBe("Concurrent");
+  });
+  it("does not repeat an unconfirmed save and reconciles it by reading the persisted document", async () => {
+    const actualSave = source.saveConfiguration.bind(source);
+    const save = vi
+      .spyOn(source, "saveConfiguration")
+      .mockImplementationOnce(async (revision, value) => {
+        await actualSave(revision, value);
+        throw new AppCheckConfigurationUnconfirmed();
+      });
+    const { session } = await mount();
+    button("编辑配置").click();
+    await settle();
+    await input("应用显示名称", "Accepted but response lost");
+    button("保存配置").click();
+    await settle();
+    expect(session.configuration.uncertain).toBe(true);
+    expect(button("保存配置").disabled).toBe(true);
+    expect(session.configuration.draft?.applications[0].label).toBe(
+      "Accepted but response lost"
+    );
+    button("刷新配置").click();
+    await settle();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(session.configuration.uncertain).toBe(false);
+    expect(session.configuration.draft).toBeUndefined();
+    expect(session.configuration.snapshot?.saved.revision).toBe(2);
+  });
+  it("keeps a pending save locked across page remounts and ignores its late response", async () => {
+    const pending = deferred<AppCheckConfigurationView>();
+    const save = vi
+      .spyOn(source, "saveConfiguration")
+      .mockReturnValueOnce(pending.promise);
+    const { router, session } = await mount();
+    button("编辑配置").click();
+    await settle();
+    await input("应用显示名称", "Still pending");
+    button("保存配置").click();
+    await settle();
+    await router.push("/app-checks");
+    await settle();
+    await router.push("/app-checks?view=configuration");
+    await settle();
+    expect(button("保存配置").disabled).toBe(true);
+    expect(button("取消编辑").disabled).toBe(true);
+    pending.resolve(await source.loadConfiguration());
+    await settle();
+    expect(session.configuration.uncertain).toBe(true);
+    expect(session.configuration.draft?.applications[0].label).toBe("Still pending");
+    expect(save).toHaveBeenCalledTimes(1);
+  });
   it("maps API values without accepting Mock policy or inventing missing task settings", async () => {
     const apiCatalog = catalogSchema.parse({
       ...mockCatalog,
       limits: { numbersPerImport: 321, importFileBytes: 2 * 1024 * 1024 }
     });
-    expect(apiCatalog).not.toHaveProperty("mockPolicies");
     const value = applicationConfiguration(apiCatalog, "app-a", "api")!;
     expect(
       scenarioConfiguration(apiCatalog, "api")
@@ -138,8 +272,8 @@ describe("App Checks read-only configuration", () => {
       country: "GB",
       simulation
     });
-    const catalog = await source.catalog();
-    catalog.mockPolicies!["app-b"].pool.maxCount = 90;
+    const configuration = await source.loadConfiguration();
+    configuration.saved.configuration.poolGroups["app-b-sim"].maxCount = 90;
     simulation.delayMs = [0, 0];
     const task = (await source.loadTask(taskId)).task;
     expect(task.mockPolicy?.priority).toBe(50);
@@ -151,7 +285,7 @@ describe("App Checks read-only configuration", () => {
   it("opens configuration directly without loading tasks and handles invalid apps and history", async () => {
     const list = vi.spyOn(source, "listTasks");
     const { router, host } = await mount("/app-checks?view=configuration&app=missing");
-    expect(host.textContent).toContain("不在当前 Catalog");
+    expect(host.textContent).toContain("不在当前配置");
     expect(
       host.querySelector('[aria-label="App Checks 通用配置"]')?.textContent
     ).toContain("100,000 个");
@@ -175,7 +309,7 @@ describe("App Checks read-only configuration", () => {
     expect(host.querySelectorAll("input, textarea")).toHaveLength(0);
     router.back();
     await settle();
-    expect(host.textContent).toContain("不在当前 Catalog");
+    expect(host.textContent).toContain("不在当前配置");
     router.forward();
     await settle();
     expect(list).not.toHaveBeenCalled();
@@ -185,9 +319,9 @@ describe("App Checks read-only configuration", () => {
   });
   it("retains the selected app when a slow refresh finishes and preserves old data on failure", async () => {
     const { host } = await mount();
-    const before = context.configurationRead.value.readAt;
-    const pending = deferred<Catalog>();
-    vi.spyOn(source, "catalog").mockReturnValueOnce(pending.promise);
+    const before = context.session.configuration.readAt;
+    const pending = deferred<AppCheckConfigurationView>();
+    vi.spyOn(source, "loadConfiguration").mockReturnValueOnce(pending.promise);
     button("刷新配置").click();
     await settle();
     selectApp("app-b");
@@ -197,11 +331,11 @@ describe("App Checks read-only configuration", () => {
     expect(host.textContent).toContain("已保留上次快照");
     expect(host.textContent).toContain("app-b-sim");
     expect(context.state.value.status).toBe("enabled");
-    expect(context.configurationRead.value.readAt).toBe(before);
+    expect(context.session.configuration.readAt).toBe(before);
     button("刷新配置").click();
     await settle();
-    expect(context.configurationRead.value.error).toBe("");
-    expect(context.configurationRead.value.readAt).toBeGreaterThan(before);
+    expect(context.session.configuration.error).toBe("");
+    expect(context.session.configuration.readAt).toBeGreaterThan(before);
     expect(context.session.configurationApp).toBe("app-b");
   });
   it("keeps the list instance, filters and scrolling across tabs without rereading", async () => {
@@ -320,6 +454,9 @@ describe("App Checks read-only configuration", () => {
     expect(host.textContent).toContain("app-b-sim");
   });
   it("API configuration gaps do not block task preview or expose local policy defaults", async () => {
+    vi.spyOn(source, "loadConfiguration").mockRejectedValueOnce(
+      new Error("configuration unavailable")
+    );
     const { host, router } = await mount("/app-checks?view=configuration", "api");
     expect(host.textContent).toContain("当前接口未提供：Pool 身份");
     expect(host.textContent).not.toContain("assignment-window");

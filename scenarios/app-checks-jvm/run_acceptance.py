@@ -11,6 +11,7 @@ from pathlib import Path
 import time
 import uuid
 import urllib.request
+import tempfile
 
 SCENARIO = Path(__file__).resolve().parent
 PREVIEW = SCENARIO.parents[1] / "distribution/server"
@@ -19,13 +20,31 @@ PREVIEW = SCENARIO.parents[1] / "distribution/server"
 @contextmanager
 def regression_window_configuration(*, baseline=False, window_millis=None):
     """Keep the content/closure workload finite; the Boot window proof owns low-threshold recovery."""
+    if not baseline:
+        previous_seed = os.environ.get("XA_MASS_APP_CHECKS_SEED")
+        with tempfile.TemporaryDirectory(prefix="app-checks-config-") as directory:
+            configuration = json.loads((SCENARIO / "src/main/resources/app-checks/preview-configuration.json").read_text(encoding="utf-8"))
+            for limit in configuration["poolGroups"].values():
+                limit["maxCount"] = 1000
+                if window_millis is not None:
+                    limit["windowMillis"] = window_millis
+            seed = Path(directory) / "seed.json"
+            seed.write_text(json.dumps(configuration), encoding="utf-8")
+            os.environ["XA_MASS_APP_CHECKS_SEED"] = seed.resolve().as_uri()
+            try:
+                yield
+            finally:
+                if previous_seed is None:
+                    os.environ.pop("XA_MASS_APP_CHECKS_SEED", None)
+                else:
+                    os.environ["XA_MASS_APP_CHECKS_SEED"] = previous_seed
+        return
     previous = os.environ.get("SPRING_APPLICATION_JSON")
     configuration = json.loads(previous) if previous else {}
     for group in ("app-a-sim", "app-b-sim"):
         # Only the explicit historical fixture uses the pre-Pool baseline's binding.
-        prefix = (f"xa.mass.worker-matching.groups.{group}.assignment-window" if baseline
-                  else f"xa.mass.worker-pools.assignment-window.groups.{group}")
-        configuration[f"{prefix}.{'max-assignments' if baseline else 'max-count'}"] = 1000
+        prefix = f"xa.mass.worker-matching.groups.{group}.assignment-window"
+        configuration[f"{prefix}.max-assignments"] = 1000
         if window_millis is not None:
             configuration[f"{prefix}.window-millis"] = window_millis
     os.environ["SPRING_APPLICATION_JSON"] = json.dumps(configuration)

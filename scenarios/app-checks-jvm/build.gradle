@@ -11,6 +11,7 @@ dependencies {
     implementation 'org.springframework:spring-webmvc'
     implementation 'org.springframework.boot:spring-boot'
     implementation 'com.fasterxml.jackson.core:jackson-annotations'
+    runtimeOnly 'com.h2database:h2'
     implementation project(':server_jvm')
     implementation project(':worker_matching_jvm')
     implementation project(':transport:worker-delivery-contract')

@@ -8,6 +8,7 @@ import type {
   Simulation
 } from "./model";
 import { simulationSchema } from "./model";
+import type { ConfigurationSession } from "./settings";
 import type { ImportReport } from "./import-model";
 
 export type ExportFilter = "all" | "registered" | "unregistered";
@@ -87,6 +88,14 @@ export function createWorkbenchSession() {
     },
     filtersExpanded: false,
     configurationApp: "",
+    configuration: {
+      readAt: 0,
+      error: "",
+      notice: "",
+      uncertain: false,
+      stale: false,
+      saving: false
+    } as ConfigurationSession,
     listScroll: 0,
     listTableScrollTop: 0,
     listTableScrollLeft: 0

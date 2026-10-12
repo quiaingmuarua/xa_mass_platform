@@ -163,12 +163,12 @@ class MessageFailureIntegrationTest {
             if (failure) classes.add(UncertainAppend.class);
             var app = new SpringApplication(classes.toArray(Class<?>[]::new)); app.setRegisterShutdownHook(false);
             application = app;
-            arguments = new String[]{"--spring.profiles.active=preview", "--server.port=" + port,
+            arguments = AppCheckConfigurationFixture.arguments(10, "--spring.profiles.active=preview", "--server.port=" + port,
                     "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                     "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,
                     "--xa.mass.worker-endpoints.endpoints.products-websocket.public-uri=ws://127.0.0.1:" + adapter + "/api/v1/worker-delivery/websocket",
-                    "--logging.level.root=ERROR"};
+                    "--logging.level.root=ERROR");
             context = application.run(arguments);
         }
         void restart() { context.close(); context = application.run(arguments); }

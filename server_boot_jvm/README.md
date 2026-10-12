@@ -40,14 +40,20 @@ The shared String Bean remains for SMS. New API creation requires an application
 only Messaging Pool selection is used. Simulator App Workers install both Messages
 and App Checks, with explicit nonoverlapping phone ranges and country Properties.
 
-Each App Group enables `assignment-window`. App Checks contributes its immutable
-Pool definition and binds `xa.mass.worker-pools.assignment-window.groups.<group>`
-with explicit `window-millis=60000` and `max-count=10`. Its projection uses the
-same configuration object; generic Matching Group binding holds only enablement.
+Each App Group enables `assignment-window`. App Checks owns its H2 configuration
+and reads one immutable startup snapshot. That snapshot contributes the Project,
+resource requirements, Pool definition, multi-Group projection and Catalog.
+Boot passes `xa.mass.scenarios.app-checks.storage.path` through
+`XA_MASS_APP_CHECKS_DB_PATH`, and `storage.seed` through `XA_MASS_APP_CHECKS_SEED`
+(default `classpath:app-checks/preview-configuration.json`). The seed contains App
+A/B and explicit 60000 ms/10 limits and is used only for an empty configuration table.
+Generic Matching Group binding still holds only enablement. Boot opens no database;
+ordinary platform composition does not instantiate the scenario store.
 App Checks declares only that Pool's supply. Any remains available for other
 explicit callers, without a default Group-wide window gate. The old Group-level
-`assignment-window-pool` path and `max-assignments` field have no aliases and fail
-strict configuration binding; window length stays fixed within an existing scope.
+`assignment-window-pool` path and `max-assignments` field have no aliases. The
+scenario no longer reads window parameters from YAML. Saves require manual restart;
+window length changes require a new Redis scope. Host resources are not auto-enabled.
 Direct `workerId` remains available in every Group for general Runtime callers;
 Messages API creation no longer exposes directed sending. Matching owns the
 [query and index contracts](../worker_matching_jvm/README.md#identity-and-phone-query-functions).
@@ -166,8 +172,8 @@ xa:
 List overlays replace configuration-owned Projects only. Module `ProjectDefinition`
 Beans contribute additional Projects through the same immutable directory; duplicate
 IDs across either source fail even when their Group lists match. Preview therefore
-keeps SMS/App Checks in the list and declares Messages through its module. Existing
-external configurations must remove the `messages` list entry and explicitly set
+keeps only SMS in the list and declares Messages and App Checks through their modules. Existing
+external configurations must remove the `messages` and `app-checks` list entries and explicitly set
 `xa.mass.scenarios.messages.applications`; neither the old single Group path nor
 the shared String Bean is a fallback.
 Changing the list does not disable an imported module. Module selection remains

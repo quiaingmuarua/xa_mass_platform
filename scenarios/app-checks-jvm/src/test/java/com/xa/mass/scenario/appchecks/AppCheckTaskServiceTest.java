@@ -42,6 +42,7 @@ class AppCheckTaskServiceTest {
         });
         when(queries.get(eq("app-checks"), anyString())).thenAnswer(call -> entry(call.getArgument(1), "pre_review", true));
         var service = new AppCheckTaskService(projects, queries, creation, data, lifecycle, operations, exports,
+                AppCheckTestSettings.settings(),
                 Clock.fixed(Instant.parse("2026-09-18T01:00:00Z"), ZoneOffset.UTC));
         service.start(); return service;
     }
@@ -61,6 +62,8 @@ class AppCheckTaskServiceTest {
 
     @Test void createsOnlyAnEmptyTaskAndDoesNotRetainAFiftyRequestBudget() {
         try (var service = service()) {
+            var unknown = request(); unknown.put("appId", "not-configured");
+            assertThatThrownBy(() -> service.create(unknown)).hasMessageContaining("Unsupported appId");
             for (int i = 0; i < 51; i++) { var input = request(); input.put("requestId", "r" + i); service.create(input); }
             verify(creation, times(51)).createForRequest(argThat(req -> req.metadata().get("inputVersion").equals("2")
                     && !req.metadata().containsKey("numbers") && req.refill().getFirst().poolName().equals("assignment-window")), anyString(), anyString());

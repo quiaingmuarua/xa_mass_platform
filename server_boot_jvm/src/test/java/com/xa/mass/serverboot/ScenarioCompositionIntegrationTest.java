@@ -44,6 +44,8 @@ class ScenarioCompositionIntegrationTest {
                 "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                 "--spring.web.resources.static-locations=" + Path.of(System.getProperty("xa.mass.test.frontend")).toUri(),
                 "--logging.level.root=ERROR"));
+        var storage = AppCheckConfigurationFixture.properties(10);
+        storage.forEach((key, value) -> arguments.add("--" + key + "=" + value));
         if (preview) arguments.addAll(List.of(
                 "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                 "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,
@@ -56,14 +58,17 @@ class ScenarioCompositionIntegrationTest {
             assertThat(context.getBeansOfType(SmsReceptionService.class)).hasSize(sms ? 1 : 0);
             assertThat(context.getBeansOfType(MessageTaskService.class)).hasSize(messages ? 1 : 0);
             assertThat(context.getBeansOfType(AppCheckTaskService.class)).hasSize(preview ? 1 : 0);
-            assertThat(context.getBeansOfType(WorkerPropertyProjection.class)).hasSize(preview ? 2 : 0);
+            assertThat(context.getBeansOfType(WorkerPropertyProjection.class)).hasSize(preview ? 1 : 0);
+            assertThat(context.getBeansOfType(javax.sql.DataSource.class)).isEmpty();
+            assertThat(java.nio.file.Files.exists(Path.of(storage.get("xa.mass.scenarios.app-checks.storage.path") + ".mv.db"))).isEqualTo(preview);
             assertThat(context.getBeansOfType(com.xa.mass.workermatching.QualifiedCountryDefinition.class)).hasSize(preview ? 1 : 0);
-            assertThat(context.getBeansOfType(com.xa.mass.server.project.ProjectDefinition.class)).hasSize(preview ? 1 : 0);
-            assertThat(context.getBeansOfType(com.xa.mass.server.project.ProjectWorkerRequirements.class)).hasSize(preview ? 1 : 0);
+            assertThat(context.getBeansOfType(com.xa.mass.server.project.ProjectDefinition.class)).hasSize(preview ? 2 : 0);
+            assertThat(context.getBeansOfType(com.xa.mass.server.project.ProjectWorkerRequirements.class)).hasSize(preview ? 2 : 0);
             if (preview) {
                 assertThat(context.getBean(com.xa.mass.server.project.ProjectAssemblyProperties.class).projects())
-                        .extracting(com.xa.mass.server.project.ProjectDefinition::projectId).containsExactly("sms", "app-checks");
-                assertThat(context.getBean(com.xa.mass.server.project.ProjectDefinition.class).projectId()).isEqualTo("messages");
+                        .extracting(com.xa.mass.server.project.ProjectDefinition::projectId).containsExactly("sms");
+                assertThat(context.getBeansOfType(com.xa.mass.server.project.ProjectDefinition.class).values())
+                        .extracting(com.xa.mass.server.project.ProjectDefinition::projectId).containsExactlyInAnyOrder("messages", "app-checks");
                 var messageSupply = context.getBean(com.xa.mass.workermatching.QualifiedCountryDefinition.class);
                 assertThat(messageSupply).isEqualTo(new com.xa.mass.workermatching.QualifiedCountryDefinition(
                         "messaging", "worker.messaging.available", "worker.messaging.phone", "messaging.enabled", "true", "country"));

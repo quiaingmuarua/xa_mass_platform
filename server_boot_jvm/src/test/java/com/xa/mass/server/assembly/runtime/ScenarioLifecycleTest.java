@@ -47,11 +47,9 @@ class ScenarioLifecycleTest {
                     "window-fixture", java.util.Map.of(
                     "xa.mass.scenarios.messages.applications[0].id", "demo",
                     "xa.mass.scenarios.messages.applications[0].label", "Demo",
-                    "xa.mass.scenarios.messages.applications[0].worker-group-id", "demo-sim",
-                    "xa.mass.worker-pools.assignment-window.groups.app-a-sim.window-millis", "60000",
-                    "xa.mass.worker-pools.assignment-window.groups.app-b-sim.window-millis", "60000",
-                    "xa.mass.worker-pools.assignment-window.groups.app-a-sim.max-count", "10",
-                    "xa.mass.worker-pools.assignment-window.groups.app-b-sim.max-count", "10")));
+                    "xa.mass.scenarios.messages.applications[0].worker-group-id", "demo-sim")));
+            context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource(
+                    "app-checks-storage", com.xa.mass.serverboot.AppCheckConfigurationFixture.properties(10)));
             context.getBeanFactory().addBeanPostProcessor(new BeanPostProcessor() {
                 @Override public Object postProcessAfterInitialization(Object bean, String name) {
                     if (bean instanceof SmsReceptionService || bean instanceof MessageTaskService || bean instanceof AppCheckTaskService)

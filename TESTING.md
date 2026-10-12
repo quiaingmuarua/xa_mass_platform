@@ -51,6 +51,9 @@ scenario lane for composition, allocation projection, assignment-window and
 source/fresh-ZIP execution changes. Its Owner defines fixtures and observation
 bounds; [Product Coexistence](doc/testing/proof-registry.md#product_coexistence)
 registers the claims without promoting projections to reliable counters or quotas.
+Scenario-local H2 tests cover persistence, revision conflicts and unknown-commit
+readback; the same composition lane covers App C configuration activation and real
+HTTP/Redis/Worker execution after restart. No new lane is introduced.
 
 [Scenario Coexistence](integrations/scenario-coexistence/README.md) runs functional,
 Pool-selection and lifecycle scenarios against source artifacts; fresh ZIP repeats

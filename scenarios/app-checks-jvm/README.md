@@ -4,8 +4,9 @@ Status: current one-shot application check scenario owner.
 
 `app-checks` 是 Preview 的 one-shot 查询场景。创建空的 `CLOSE_WHEN_IDLE`
 Task、导入号码、核对启动和关闭是独立操作，复用 Server 的 Task 应用能力。
-App/Group、Pool、查询函数和属性字段由场景内 `AppCheckWorkerSupply` 统一声明，
-[Boot](../../server_boot_jvm/README.md#platform-and-preview) 准备对应资源并提供启动配置。
+App/Group、应用名称及窗口参数来自模块内 H2 的启动快照；Pool、查询函数、事件及属性字段
+由场景内 `AppCheckWorkerSupply` 固定声明。[Boot](../../server_boot_jvm/README.md#platform-and-preview)
+提供数据库路径和种子资源，宿主继续准备对应 Group、Matching 启用关系和 Worker 能力。
 国家只校验号码格式和前缀，不筛选 Worker 国家或证明号码归属地。
 
 已注册和未注册均属于执行成功；失败区间让真实 Handler 抛异常。Kernel、Pacer、
@@ -15,7 +16,9 @@ SDK 和 Worker 协议使用既有机制；Matching 基础规则由场景声明�
 
 | API | 内容 |
 | --- | --- |
-| `GET /api/v1/app-checks/catalog` | Project、App/Group、国家、单次导入限制及模拟示例 |
+| `GET /api/v1/app-checks/catalog` | 当前生效的 Project、App/名称/Group、国家、单次导入限制及模拟默认值 |
+| `GET /api/v1/app-checks/configuration` | 已保存与当前进程生效配置及修订号、待重启/新 scope 提示 |
+| `PUT /api/v1/app-checks/configuration` | `{expectedRevision, configuration}` 整份校验与事务保存；不热更新 |
 | `POST /api/v1/app-checks/tasks` | 创建空待审核任务，201 返回 `{"taskId":"..."}` |
 | `POST /api/v1/app-checks/tasks/{taskId}/numbers:import` | `text/plain` UTF-8 号码文件；全文件校验后每批最多 100 个 Item |
 | `POST /api/v1/app-checks/tasks/{taskId}/approve` | JSON 整数为用户确认的号码数量；与当前数量一致且非零才批准 |
@@ -133,8 +136,9 @@ Pacer 在执行租约和 Item claim 均成功后、Command 编码和发布前发
 
 投影只写两个 Platform Properties：`lastAssignedAt` 和 `windowAssignmentCount`。
 前者是最近观察到的分配时间（毫秒），后者是该时间所在固定窗口中的观察数量。
-窗口长度读取各 Group 的 `xa.mass.worker-pools.assignment-window.groups.<group>.window-millis`，
-与 Pool 定义使用同一份 `AppCheckPoolProperties` 配置对象；窗口编号为 `floor(observedAtMillis / windowMillis)`。
+窗口长度读取启动快照的 `poolGroups.<group>.windowMillis`，与 Pool 定义使用同一份不可变
+配置。一个 `WorkerPropertyProjection` 声明包含 Group 到纯投影函数的映射，Server 在启动时展开；
+投影不读取数据库。窗口编号为 `floor(observedAtMillis / windowMillis)`。
 同窗口累加、时间取最大值；新窗口重新计数；
 更旧窗口不回退。两个字段均不存在时初始化；字段不完整、非整数、负数或溢出时
 整个 Worker 投影跳过并由 Server 计入处理失败诊断，不静默修复。其他属性不修改。
@@ -150,8 +154,7 @@ Properties Handler 合并读取与写入；场景不依赖 Pacer 或通用 Funct
 
 ## 分配窗口筛选
 
-新 Item 使用 `worker.assignment.available({})`；窗口和阈值由
-[Boot 的 Pool／Group 配置](../../server_boot_jvm/README.md#platform-and-preview) 决定。
+新 Item 使用 `worker.assignment.available({})`；窗口和阈值由下述模块配置的启动快照决定。
 场景以 `FixedWindowPoolDefinition` 注册独立 `assignment-window` Pool，关联
 `worker.assignment.available`、两个 Platform 属性键以及各 Group 的窗口参数。
 只有该纯数据契约及 `WindowLimit` 是场景允许引用的 Matching 类型；场景不持有库存、
@@ -167,12 +170,51 @@ IP／账号配额。其他显式函数不受这一策略拦截。窗口长度改
 独立持有，`worker.any` 使用另一份 Any 库存。属性变化、失效提示、TTL 与 Kernel 精确
 执行准入仍各自独立，不能据此承诺取用时业务条件最新。
 
-配置归属为 Pool／Group：`xa.mass.worker-pools.assignment-window.groups.<group>` 下
-显式提供 `window-millis` 与 `max-count`，Preview 为 60000／10；两个 App Group 必须
-完整配置，缺失、额外 Group、非法数值或未知字段均拒绝启动。Group 的 `pools` 和
-`functions` 只表达启用关系。旧 Group 下的 `assignment-window-pool` 路径不再接受。
-这次声明迁移保留 Pool／函数身份、Task descriptor、输入版本及 salt，不增加存量任务迁移；
-已有 Any 供给任务仍按上文规则处理。配置仅重启生效，同 scope 窗口长度保持不变。
+配置归属为固定 Pool／Group，`poolGroups` 必须与应用绑定的 Group 完整对应。
+宿主 Group 的 `pools` 和 `functions` 只表达启用关系。没有独立窗口 YAML 读取路径；
+Pool／函数身份、Task descriptor、输入版本、创建指纹及 salt 保持不变。
+
+## 模块内配置存储
+
+`AppCheckConfigurationStore` 独占 H2 JDBC 连接、单表建表和关闭，H2 版本随 Boot BOM。
+没有公共 DataSource、ORM、数据库进程或公共 Storage 模块。Kernel、Pacer、Matching、Server
+不查询 H2；Task、Item、Result、调度和请求幂等仍由 Redis 原 Owner 管理。
+
+严格启动参数为 `xa.mass.scenarios.app-checks.storage.path`（嵌入式数据库文件前缀）和
+`storage.seed`（Spring 资源地址）。Preview 由启动器传入独立环境路径，种子为
+`classpath:app-checks/preview-configuration.json`，包含 App A/B、60000 ms/10 次窗口及原模拟默认值。
+数据库表没有配置行时才读取种子；存在记录时种子内容不会覆盖数据库。非法文档、未知格式版本
+或读取失败阻止场景启动，不回退默认值。未装配本场景的上下文不开连接、不建文件。
+
+唯一表 `app_check_configuration` 保存一行：`id=1`、`format_version=1`、递增 `revision`
+和完整 `document`。文档结构为：
+
+```json
+{
+  "common": {"simulationDefault": {"ranges": {"registered": [0,500], "unregistered": [500,900], "failed": [900,1000]}, "delayMs": [2000,5000]}},
+  "applications": [{"appId": "app-a", "label": "App A", "workerGroupId": "app-a-sim"}],
+  "poolGroups": {"app-a-sim": {"windowMillis": 60000, "maxCount": 10}}
+}
+```
+
+应用列表有序且非空；App ID、Group 分别唯一。模拟参数复用原校验，窗口/阈值为正整数。
+允许改名称、模拟默认值、窗口参数和新增 App；不允许删除、停用或改已有身份/Group 绑定。
+国家、导入容量和 Task 策略不进入配置表。不保存历史修订、任务身份、号码或操作记录。
+
+PUT 以 `expectedRevision` 比较后在一个事务内替换整份文档；冲突 409，同内容不递增修订，
+非法配置/字段 400，数据库故障或提交未确认 503。未知保存不自动重试；GET 读取当前保存文档
+供人工核对。GET 的 `saved` 与 `effective` 各包含 `revision`、`configuration`；
+`restartRequired` 比较配置内容，`newScopeRequired` 标识既有 Group 窗口长度变化。
+
+模块启动只加载一次生效快照，以它生成 Catalog、ProjectDefinition、ProjectWorkerRequirements、
+FixedWindowPoolDefinition、各 Group 属性投影和创建映射。配置保存不会改变这些运行对象。
+任务保存的 Group 和模拟输入也不随配置变化；运行时存储故障仅影响配置读写。
+
+新增 App 先保存配置，再准备宿主 Group/事件/Pool/函数和真实 Worker，最后手动重启。
+保存只验证配置本身；完整依赖在启动时校验，失败阻止后续启动，不补注册资源。
+修改既有 Group 窗口长度须使用新 Redis scope；系统不自动清理、切换或重启。
+数据库文件位于环境数据目录，不进入 Git 或 ZIP。源码/ZIP 验收使用独立数据库和种子，
+重启证明复用同一文件。没有热更新、后台同步或数据库执行路径。
 
 ## 页面与结果核对
 
@@ -186,6 +228,11 @@ IP／账号配额。其他显式函数不受这一策略拦截。窗口长度改
 API/Mock 和浏览器核对的可用性及本地状态。
 
 ## 装配与证明
+
+配置单测覆盖文件重开、种子不覆盖、文档损坏、并发修订冲突、提交确认丢失后的读取核对。
+Boot 真实 HTTP/Redis/Worker 证明保存 App C 后 Catalog 保持原值，缺失宿主 Group 启动失败，
+补齐后重启完成 C 的创建、导入、审核、查询、属性投影及导出；关闭 H2 后这些执行路径仍工作。
+Server 测试保留多 Group 投影隔离、既有批读预算和 best-effort 失败语义。
 
 生产装配见 [Boot](../../server_boot_jvm/README.md#platform-and-preview)；
 Host 数量参数和库存复用见 [Preview](../../distribution/server/PREVIEW.md#inventory-and-process-lifecycle)。

@@ -1,0 +1,30 @@
+package com.xa.mass.serverboot;
+
+import com.xa.mass.workerdelivery.json.Jsons;
+import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/** Isolated test files, reused by a fixture's Server restarts; never a Preview database. */
+public final class AppCheckConfigurationFixture {
+    public static Map<String, Object> properties(long maxCount) {
+        try {
+            Path root = Path.of("build", "app-check-config-fixtures", UUID.randomUUID().toString()).toAbsolutePath();
+            Files.createDirectories(root);
+            Map<String, Object> seed;
+            try (var input = AppCheckConfigurationFixture.class.getResourceAsStream("/app-checks/preview-configuration.json")) {
+                seed = Jsons.parseObject(new String(input.readAllBytes(), StandardCharsets.UTF_8));
+            }
+            seed.put("poolGroups", Map.of("app-a-sim", Map.of("windowMillis", 60000, "maxCount", maxCount),
+                    "app-b-sim", Map.of("windowMillis", 60000, "maxCount", maxCount)));
+            Path file = root.resolve("seed.json"); Files.writeString(file, Jsons.toJson(seed));
+            return Map.of("xa.mass.scenarios.app-checks.storage.path", root.resolve("configuration").toString(),
+                    "xa.mass.scenarios.app-checks.storage.seed", file.toUri().toString());
+        } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+    }
+    static String[] arguments(long maxCount, String... arguments) {
+        var result = new ArrayList<>(List.of(arguments));
+        properties(maxCount).forEach((key, value) -> result.add("--" + key + "=" + value));
+        return result.toArray(String[]::new);
+    }
+}

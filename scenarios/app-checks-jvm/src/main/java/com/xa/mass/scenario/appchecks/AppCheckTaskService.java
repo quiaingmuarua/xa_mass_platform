@@ -42,23 +42,27 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     private final Object gate = new Object();
     private final OperationGuard operations;
     private final TaskResultsExportService exports;
+    private final AppCheckSettings settings;
     private volatile boolean running;
     private boolean closed;
     private int active;
 
     public AppCheckTaskService(ProjectDirectory projects, ProjectTaskQueryService queries, TaskCreationService creation,
-                               TaskDataService data, TaskLifecycleService lifecycle, OperationGuard operations, TaskResultsExportService exports) {
-        this(projects, queries, creation, data, lifecycle, operations, exports, Clock.systemUTC());
+                               TaskDataService data, TaskLifecycleService lifecycle, OperationGuard operations, TaskResultsExportService exports,
+                               AppCheckSettings settings) {
+        this(projects, queries, creation, data, lifecycle, operations, exports, settings, Clock.systemUTC());
     }
 
     AppCheckTaskService(ProjectDirectory projects, ProjectTaskQueryService queries, TaskCreationService creation,
-                        TaskDataService data, TaskLifecycleService lifecycle, OperationGuard operations, TaskResultsExportService exports, Clock clock) {
+                        TaskDataService data, TaskLifecycleService lifecycle, OperationGuard operations, TaskResultsExportService exports,
+                        AppCheckSettings settings, Clock clock) {
         this.projects = projects; this.queries = queries; this.creation = creation;
         this.data = data; this.lifecycle = lifecycle; this.clock = clock; this.operations = operations; this.exports = exports;
+        this.settings = Objects.requireNonNull(settings);
     }
 
     @Override public void start() {
-        for (String group : APPS.values()) projects.requireManagedTaskId(PROJECT, group);
+        for (String group : settings.workerGroupIds()) projects.requireManagedTaskId(PROJECT, group);
         synchronized (gate) {
             if (closed) throw new IllegalStateException("App checks is closed");
             running = true;
@@ -73,24 +77,26 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     public Map<String, Object> catalog() {
         requireRunning();
         return Map.of("projectId", PROJECT, "name", "应用注册查询", "version", "0.2.0-preview",
-                "apps", APPS.keySet().stream().sorted().map(app -> Map.of("appId", app, "workerGroupId", APPS.get(app))).toList(),
+                "apps", settings.applications().stream().map(app -> Map.of("appId", app.appId(), "label", app.label(), "workerGroupId", app.workerGroupId())).toList(),
                 "countries", List.of("CN", "US", "GB"),
                 "limits", Map.of("numbersPerImport", AppCheckNumberFile.MAX_NUMBERS, "importFileBytes", AppCheckNumberFile.MAX_BYTES),
-                "simulationExample", Map.of("ranges", Map.of("registered", List.of(0, 500),
-                        "unregistered", List.of(500, 900), "failed", List.of(900, 1000)), "delayMs", List.of(2000, 5000)));
+                "simulationExample", settings.simulationDefault());
     }
 
     public TaskCreateResponse create(Map<String, Object> input) {
         requireRunning();
         final AppCheckSpecification specification;
-        try { specification = AppCheckSpecification.parse(input); }
+        try {
+            specification = AppCheckSpecification.parse(input);
+            settings.requireApplication(specification.appId());
+        }
         catch (IllegalArgumentException invalid) { throw new RequestFailure(400, invalid.getMessage(), null); }
         LocalDate date = LocalDate.now(clock.withZone(ZoneOffset.UTC));
         var metadata = Map.of("scenario", PROJECT, "inputVersion", "2", "appId", specification.appId(), "country", specification.country(),
                 "simulation", Jsons.toJson(specification.simulation()), "salt", specification.salt(date), "saltDate", date.toString());
         String name = specification.appId() + " · " + specification.country() + " · " + clock.instant();
         try {
-            return creation.createForRequest(new TaskCreateRequest(PROJECT, APPS.get(specification.appId()), 50, 3,
+            return creation.createForRequest(new TaskCreateRequest(PROJECT, settings.requireApplication(specification.appId()).workerGroupId(), 50, 3,
                     List.of(RefillTarget.of(POOL, new EligibilityQuery(Map.of()), 100)), name, metadata),
                     specification.requestId(), specification.fingerprint());
         } catch (TaskCreationUnconfirmedException unknown) {

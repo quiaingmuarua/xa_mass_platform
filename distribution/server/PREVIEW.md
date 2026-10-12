@@ -60,7 +60,18 @@ The launcher selects a complete Simulator example, writes the final Runtime URL,
 absolute inventory path, port, events, count, seed and template into one
 `worker-simulator.json` in its run directory, and passes only `--config` to Main.
 The launcher never evaluates templates or corrects sampled country counts.
-`run.json` records count, appCount, seed and fixed `scenarios: ["sms", "messages", "app-checks"]`, not a
+App Checks configuration persists separately at `<inventory-parent>/app-checks/configuration`
+(H2 creates the `.mv.db` file), alongside `data/scenario-workers`. The launcher passes
+that prefix as `XA_MASS_APP_CHECKS_DB_PATH`; it never removes the database on shutdown.
+`XA_MASS_APP_CHECKS_SEED` may point to an explicit seed resource for a fresh environment;
+otherwise the module's packaged Preview seed is used. Seeds initialize only an empty
+configuration table. Saved edits require a manual Server restart; changed window length
+requires a new Redis scope. Existing tasks and Redis state are not moved into H2.
+The ZIP contains code and the seed resource, never a database file. Acceptance runs
+use their private inventory sibling for a distinct database; source/ZIP starts do not
+touch an already running Preview's configuration.
+
+`run.json` records count, appCount, seed, appChecksDatabase and fixed `scenarios: ["sms", "messages", "app-checks"]`, not a
 promised country distribution. The Host uses the existing combined capability
 configuration; no Simulator runtime mode selects business deployment.
 Acceptance fixtures materialize their exact inventory before launch instead of

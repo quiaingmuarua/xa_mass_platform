@@ -54,6 +54,29 @@
 .checks-configuration-mode {
   margin: 0;
 }
+.checks-configuration-toolbar,
+.checks-config-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.checks-config-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.checks-config-input-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 1fr;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+}
+.checks-config-input-row .checks-field {
+  margin: 8px 0;
+}
 .checks-application-sections h3 {
   margin: 0;
   font-size: 14px;

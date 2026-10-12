@@ -10,17 +10,18 @@ import static org.assertj.core.api.Assertions.*;
 class AppCheckAssignmentWindowTest {
     @Test void groupsProjectUsingTheirOwnInjectedWindowLength() {
         var configuration = new AppCheckScenarioConfiguration();
-        var config = new AppCheckPoolProperties(Map.of("app-a-sim", new com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit(100, 10),
+        var seed = AppCheckTestSettings.settings();
+        var settings = new AppCheckSettings(seed.simulationDefault(), seed.applications(), Map.of(
+                "app-a-sim", new com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit(100, 10),
                 "app-b-sim", new com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit(200, 20)));
-        var a = configuration.appAAssignmentProjection(config);
-        var b = configuration.appBAssignmentProjection(config);
-        assertThat(configuration.appCheckWindowPool(config).limitsByGroup()).isEqualTo(config.groups());
-        assertThat(a.project().apply(Map.of(), List.of(99L, 100L)))
+        var config = new AppCheckConfigurationStore.Snapshot(1, settings);
+        var projections = configuration.appCheckAssignmentProjections(config).projectionsByGroup();
+        assertThat(configuration.appCheckWindowPool(config).limitsByGroup()).isEqualTo(settings.poolGroups());
+        assertThat(projections.get("app-a-sim").apply(Map.of(), List.of(99L, 100L)))
                 .containsEntry("windowAssignmentCount", 1L);
-        assertThat(b.project().apply(Map.of(), List.of(99L, 100L)))
+        assertThat(projections.get("app-b-sim").apply(Map.of(), List.of(99L, 100L)))
                 .containsEntry("windowAssignmentCount", 2L);
-        assertThat(a.workerGroupId()).isEqualTo("app-a-sim");
-        assertThat(b.workerGroupId()).isEqualTo("app-b-sim");
+        assertThat(projections.keySet()).containsExactly("app-a-sim", "app-b-sim");
     }
     final AppCheckAssignmentWindow projection = new AppCheckAssignmentWindow(60_000);
 

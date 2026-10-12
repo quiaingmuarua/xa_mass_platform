@@ -53,7 +53,7 @@ class SmsCompositionIntegrationTest {
         URI base = URI.create("http://127.0.0.1:" + serverPort);
         var app = new SpringApplication(ServerBootConfiguration.class, BlockTaskHttp.class);
         app.setRegisterShutdownHook(false);
-        try (var context = app.run(
+        try (var context = app.run(AppCheckConfigurationFixture.arguments(10,
                 "--spring.profiles.active=preview", "--server.port=" + serverPort,
                 "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                 "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
@@ -61,7 +61,7 @@ class SmsCompositionIntegrationTest {
                 "--xa.mass.worker-endpoints.endpoints.products-websocket.public-uri=ws://127.0.0.1:"
                         + adapterPort + "/api/v1/worker-delivery/websocket",
                 "--spring.web.resources.static-locations=" + java.nio.file.Path.of(System.getProperty("xa.mass.test.frontend")).toUri(),
-                "--logging.level.root=WARN");
+                "--logging.level.root=WARN"));
              var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()) {
             assertThat(context.getBeansOfType(KernelPacerRuntime.class)).hasSize(1);
             assertThat(context.getBeansOfType(WorkerDeliveryAdapterManager.class)).hasSize(1);

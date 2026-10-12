@@ -44,7 +44,8 @@ public class KernelPacerConfiguration {
             var handler = new PlatformPropertiesHandler(projections, properties.getObject(), commands.getObject(),
                     running::get, failures::addAndGet);
             for (var projection : projections) {
-                routes.computeIfAbsent(projection.workerGroupId(), ignored -> new LinkedHashMap<>())
+                for (String group : projection.projectionsByGroup().keySet())
+                    routes.computeIfAbsent(group, ignored -> new LinkedHashMap<>())
                         .put(new EventKey(projection.messageEventName(), projection.observationEventName()), List.of(handler));
             }
         }

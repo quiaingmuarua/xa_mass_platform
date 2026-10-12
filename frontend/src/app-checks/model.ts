@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { MockApplicationPolicy, TaskPolicySnapshot } from "./configuration";
+import type { TaskPolicySnapshot } from "./configuration";
 
 const integer = z.number().int().nonnegative();
 const bounds = (max: number) =>
@@ -109,7 +109,13 @@ export const catalogSchema = z.object({
   name: z.string(),
   version: z.string(),
   apps: z
-    .array(z.object({ appId: z.string().min(1), workerGroupId: z.string().min(1) }))
+    .array(
+      z.object({
+        appId: z.string().min(1),
+        label: z.string().min(1),
+        workerGroupId: z.string().min(1)
+      })
+    )
     .min(1),
   countries: z.array(z.enum(["CN", "US", "GB"])).min(1),
   limits: z.object({
@@ -119,9 +125,7 @@ export const catalogSchema = z.object({
   simulationExample: simulationSchema
 });
 // Local Mock snapshots are not part of the API schema; API parsing strips them.
-export type Catalog = z.infer<typeof catalogSchema> & {
-  mockPolicies?: Record<string, MockApplicationPolicy>;
-};
+export type Catalog = z.infer<typeof catalogSchema>;
 export type CheckTask = z.infer<typeof taskSchema> & {
   mockPolicy?: TaskPolicySnapshot;
 };
@@ -135,8 +139,8 @@ export interface CreateCheckTask {
   country: Country;
   simulation: Simulation;
 }
-export const appLabel = (app?: string) =>
-  ({ "app-a": "App A", "app-b": "App B" })[app ?? ""] ?? app ?? "—";
+export const appLabel = (app?: string, catalog?: Catalog) =>
+  catalog?.apps.find((candidate) => candidate.appId === app)?.label ?? app ?? "—";
 export const countryLabel = (country?: string) =>
   ({ CN: "中国", US: "美国", GB: "英国" })[country ?? ""] ?? country ?? "—";
 export function taskProgress(task: CheckTask): number {

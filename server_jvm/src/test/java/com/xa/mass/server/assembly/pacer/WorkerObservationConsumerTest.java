@@ -251,7 +251,7 @@ class WorkerObservationConsumerTest {
     }
     static WorkerPropertyProjection projection(String group, String event,
             BiFunction<Map<String, Object>, List<Long>, Map<String, Object>> compute) {
-        return new WorkerPropertyProjection(group, event, "worker.assigned", compute);
+        return new WorkerPropertyProjection(event, "worker.assigned", Map.of(group, compute));
     }
     static WorkerObservation observation(String worker, long time) {
         return new WorkerObservation("g", List.of(worker), time, "event", "worker.assigned");

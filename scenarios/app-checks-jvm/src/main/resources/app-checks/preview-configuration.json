@@ -1,0 +1,16 @@
+{
+  "common": {
+    "simulationDefault": {
+      "ranges": {"registered": [0, 500], "unregistered": [500, 900], "failed": [900, 1000]},
+      "delayMs": [2000, 5000]
+    }
+  },
+  "applications": [
+    {"appId": "app-a", "label": "App A", "workerGroupId": "app-a-sim"},
+    {"appId": "app-b", "label": "App B", "workerGroupId": "app-b-sim"}
+  ],
+  "poolGroups": {
+    "app-a-sim": {"windowMillis": 60000, "maxCount": 10},
+    "app-b-sim": {"windowMillis": 60000, "maxCount": 10}
+  }
+}

@@ -405,7 +405,7 @@ onBeforeUnmount(() => {
     >
       <div class="checks-section-heading">
         <span
-          >{{ appLabel(draft.appId) }} ·
+          >{{ appLabel(draft.appId, catalog) }} ·
           {{
             catalog.apps.find((app) => app.appId === draft.appId)?.workerGroupId ||
             "当前应用不可用"
@@ -456,7 +456,7 @@ onBeforeUnmount(() => {
               :disabled="!!draft.knownTaskId"
             >
               <option v-for="app in catalog.apps" :key="app.appId" :value="app.appId">
-                {{ appLabel(app.appId) }}
+                {{ app.label }}
               </option>
             </select></label
           >

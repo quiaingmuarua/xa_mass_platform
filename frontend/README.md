@@ -323,7 +323,8 @@ execution counts. Shared Messages and finite Task file limits are unchanged.
 When the API returns `inputUnavailableReason` for a Task using retired supply,
 the import and approval menu entries show that reason and stay disabled.
 Preview, closure and terminal export remain available. The UI does not infer
-supply compatibility from the number input version. Pool settings are not editable here.
+supply compatibility from the number input version. Pool settings are edited in the
+configuration page and become effective only after Server restart.
 
 ### Preview drawer, management and results
 
@@ -364,11 +365,11 @@ business answers, Group and configured delay, not scheduling or attempts. Missin
 evidence is unavailable; verification is invalidated by refresh. There is no
 remote hashing fallback.
 
-### Read-only application and policy configuration
+### Application configuration storage and activation
 
 The configuration page separates **App Checks 通用配置** from **App 运行配置**.
-The common section owns scenario countries, import limits and the current shared
-simulation defaults; it remains visible and unchanged when selecting an app, even
+The common section shows read-only scenario countries/import limits and editable shared
+simulation defaults; it remains visible when selecting an app, even
 if the requested app is invalid. The application section owns App/WorkerGroup
 binding and associated Pool/Group rules. Each section names its source and scope.
 Task execution policy stays in the saved Task summary; it is not presented as an
@@ -377,20 +378,37 @@ predictions of actual outcomes or elapsed time.
 
 Adding an application requires a scenario App-to-Group binding, host-provided
 Group/event and Worker execution capability, and corresponding Pool configuration.
-The frontend observes the Catalog bindings; it does not register or enable those
-resources. Common import rules are not duplicated for every new app. Configuration
-editing and Task-level policy changes remain outside this frontend slice.
+The frontend saves configuration through the scenario API; it does not register or enable those
+resources. Common import rules are not duplicated for every new app. Task-level
+policy changes remain outside this slice.
 
-The current API does not provide default Task priority, retry limit, validity or
-supply targets; nor does it expose Pool identity, Group scope, window or threshold.
-These gaps are labeled **当前接口未提供**, without reading unrelated Runtime/Project
-previews, introducing configuration requests or substituting local constants.
-The Task API likewise does not expose execution policy. Backend follow-up needs
-separate authoritative reads for application defaults, effective Pool settings and
-saved Task execution policy. Configuration has no edit/save or hot-update action.
+`GET /api/v1/app-checks/configuration` returns saved and effective documents with
+their revisions, `restartRequired` and `newScopeRequired`. The module owns H2;
+the frontend neither opens it nor stores numbers there. Edit/save/cancel and add-app
+operate on one session draft. `PUT` sends the complete configuration and
+`expectedRevision`; 409 requires rereading and reconciling, while an unconfirmed
+save freezes edits until an explicit read or cancellation. There is no automatic
+retry. A confirmed identical save does not increment the revision.
 
-Mock supplies independent read-only Pool examples for both apps: a 60-second
-window with threshold 10. Separately, each Mock Task retains its own policy snapshot
+Existing App ID/Group bindings are read-only; users can edit labels, positive
+window/threshold values and structured simulation ranges/delay, or append an app.
+Refresh, application switching and navigation retain unsaved edits. A stale base
+revision cannot overwrite concurrent changes. In-flight saves remain locked across
+page remounts; late responses do not update an unrelated view or steal focus.
+
+The page distinguishes saved configuration from the current process snapshot.
+Saving requires manual restart, and changing an existing Group's window length also
+requires a new Redis scope. New pending apps appear only in configuration management;
+the create form continues using the effective Catalog. Database failure does not
+block task preview or management. Neither Catalog refresh nor configuration save
+changes an existing creation draft, frozen request or saved Task.
+
+The Task API still does not provide priority, retry limit, validity or supply policy;
+these remain **当前接口未提供**, without scanning Runtime/Project data or copying local defaults.
+Mock supports the same configuration editing, revision conflicts and pending state.
+Its explicit **模拟重启生效** control applies the saved session configuration and refreshes
+the Catalog, with no network request or actual process restart. Initial examples use
+a 60-second window and threshold 10. Each Mock Task retains its own policy snapshot
 (priority 50, three retries, 365-day validity and `assignment-window / {} / 100`). These are labeled
 demonstration data; they add no simulated scheduling guarantees. Window thresholds
 describe observed admission qualification for a single Worker within the Pool/Group,

@@ -39,6 +39,61 @@ import static org.mockito.Mockito.*;
 /** Real HTTP/Redis/Worker proof. The attempt witness exists only in this test assembly. */
 @Tag("scenario-composition")
 class AppChecksIntegrationTest {
+    @Test @Timeout(120)
+    @SuppressWarnings("unchecked")
+    void persistedConfigurationAddsAnApplicationOnlyAfterRestartAndNeverEntersExecutionReads() throws Exception {
+        try (var world = new World()) {
+            var initial = world.get("/api/v1/app-checks/configuration");
+            var saved = (Map<String, Object>) initial.get("saved");
+            var config = (Map<String, Object>) saved.get("configuration");
+            ((List<Object>) config.get("applications")).add(Map.of("appId", "app-c", "label", "App C", "workerGroupId", "app-c-sim"));
+            ((Map<String, Object>) config.get("poolGroups")).put("app-c-sim", Map.of("windowMillis", 60000, "maxCount", 1000));
+            var request = Map.of("expectedRevision", 1, "configuration", config);
+            var response = world.putConfiguration(request);
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(Jsons.parseObject(response.body())).containsEntry("restartRequired", true).containsEntry("newScopeRequired", false);
+            assertThat(world.get("/api/v1/app-checks/catalog").get("apps").toString()).doesNotContain("app-c");
+            assertThat(world.putConfiguration(request).statusCode()).isEqualTo(409);
+            assertThat(world.putConfiguration(Map.of("expectedRevision", 2, "configuration", config, "unexpected", true)).statusCode()).isEqualTo(400);
+            var noChange = world.putConfiguration(Map.of("expectedRevision", 2, "configuration", config));
+            assertThat(((Map<?, ?>) Jsons.parseObject(noChange.body()).get("saved")).get("revision")).isEqualTo(2L);
+            assertThat(world.post("/api/v1/app-checks/tasks", Jsons.toJson(Map.of("requestId", "not-effective",
+                    "appId", "app-c", "country", "CN", "simulation", ((Map<?, ?>) config.get("common")).get("simulationDefault"))), "application/json")
+                    .statusCode()).isEqualTo(400);
+
+            var groups = Jsons.parseObject(world.context.getEnvironment().getProperty("xa.mass.worker-assembly.group-config-json"));
+            assertThatThrownBy(() -> world.restart(
+                    "--xa.mass.worker-matching.groups.app-c-sim.pools[0]=assignment-window",
+                    "--xa.mass.worker-matching.groups.app-c-sim.functions[0]=worker.assignment.available"))
+                    .hasStackTraceContaining("project=app-checks group=app-c-sim Group is not registered");
+            groups.put("app-c-sim", Map.of("attributes", Map.of(), "eventCodes", List.of("extension.worker.app.registration.check")));
+            world.restart("--xa.mass.worker-assembly.group-config-json=" + Jsons.toJson(groups));
+            var active = world.get("/api/v1/app-checks/configuration");
+            assertThat(active).containsEntry("restartRequired", false);
+            assertThat(((Map<?, ?>) active.get("effective")).get("revision")).isEqualTo(2L);
+            assertThat(world.get("/api/v1/app-checks/catalog").get("apps").toString()).contains("app-c-sim", "App C");
+            var projection = world.context.getBean(com.xa.mass.server.worker.observation.WorkerPropertyProjection.class);
+            assertThat(projection.projectionsByGroup()).containsKey("app-c-sim");
+            assertThat(world.context.getBean(com.xa.mass.workermatching.FixedWindowPoolDefinition.class)
+                    .limitsByGroup().get("app-c-sim").windowMillis()).isEqualTo(60000);
+            // Deliberately make the storage owner unavailable before creating and executing the new app's task.
+            ((AutoCloseable) world.context.getBean("appCheckConfigurationStore")).close();
+            assertThat(world.http.send(HttpRequest.newBuilder(world.base.resolve("/api/v1/app-checks/configuration")).build(),
+                    HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(503);
+            try (var workers = world.workers("app-c-sim")) {
+                workers.start();
+                var ids = world.readyFacts(workers, "app-c-sim");
+                String taskId = world.create("app-c-real-path", "app-c", 3, 1000, 1000, 0);
+                var detail = world.settled(taskId, 3);
+                assertThat(task(detail)).containsEntry("workerGroupId", "app-c-sim").containsEntry("succeededCount", 3L);
+                assertThat(rows(detail)).hasSize(3).allSatisfy(row -> assertThat(row).containsEntry("registered", true));
+                world.assertAllocationProjection("app-c-sim", ids);
+                assertThat(world.post("/api/v1/app-checks/tasks/" + taskId + "/results:export", "", "application/json")
+                        .headers().firstValue("X-Export-Count")).contains("3");
+            }
+        }
+    }
+
     @Test @Timeout(240)
     void observedWindowRejectsActualStockAndRecoversThroughNormalRecycling() throws Exception {
         try (var world = new World(1, 1); var worker = world.workers("app-a-sim")) {
@@ -305,7 +360,7 @@ class AppChecksIntegrationTest {
         final List<String> replicas;
         final URI base;
         final SpringApplication application = new SpringApplication(ServerBootConfiguration.class);
-        final String[] arguments;
+        String[] arguments;
         ConfigurableApplicationContext context;
         int sequence;
         World() throws Exception {
@@ -317,14 +372,12 @@ class AppChecksIntegrationTest {
             application.setRegisterShutdownHook(false);
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(observations));
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(selections));
-            arguments = new String[]{"--spring.profiles.active=preview", "--server.port=" + port,
-                    "--xa.mass.worker-pools.assignment-window.groups.app-a-sim.max-count=" + maxAssignments,
-                    "--xa.mass.worker-pools.assignment-window.groups.app-b-sim.max-count=" + maxAssignments,
+            arguments = AppCheckConfigurationFixture.arguments(maxAssignments, "--spring.profiles.active=preview", "--server.port=" + port,
                     "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                     "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,
                     "--xa.mass.worker-endpoints.endpoints.products-websocket.public-uri=ws://127.0.0.1:" + adapter + "/api/v1/worker-delivery/websocket",
-                    "--logging.level.root=ERROR"};
+                    "--logging.level.root=ERROR");
             context = application.run(arguments);
         }
         JavaWorkerManager workers(String group) {
@@ -426,7 +479,17 @@ class AppChecksIntegrationTest {
             var response = http.send(HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
             assertThat(response.statusCode()).isEqualTo(200); return Jsons.parseObject(response.body());
         }
-        void restart() { context.close(); context = application.run(arguments); }
+        HttpResponse<String> putConfiguration(Map<String, Object> input) throws Exception {
+            return http.send(HttpRequest.newBuilder(base.resolve("/api/v1/app-checks/configuration"))
+                    .timeout(Duration.ofSeconds(5)).header("Content-Type", "application/json")
+                    .PUT(HttpRequest.BodyPublishers.ofString(Jsons.toJson(input))).build(), HttpResponse.BodyHandlers.ofString());
+        }
+        void restart(String... overrides) {
+            context.close();
+            var next = new ArrayList<>(List.of(arguments)); next.addAll(List.of(overrides));
+            arguments = next.toArray(String[]::new);
+            context = application.run(arguments);
+        }
         public void close() {
             context.close(); http.close();
             var client = RedisClient.create(redisUrl);

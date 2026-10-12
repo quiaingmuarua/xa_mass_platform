@@ -3,6 +3,8 @@ package com.xa.mass.server.worker.observation;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.function.BiFunction;
 
 /**
@@ -15,15 +17,18 @@ import java.util.function.BiFunction;
  * replaying the original interleaving across selections.
  */
 public record WorkerPropertyProjection(
-        String workerGroupId,
         String messageEventName,
         String observationEventName,
-        BiFunction<Map<String, Object>, List<Long>, Map<String, Object>> project
+        Map<String, BiFunction<Map<String, Object>, List<Long>, Map<String, Object>>> projectionsByGroup
 ) {
     public WorkerPropertyProjection {
-        Objects.requireNonNull(workerGroupId, "workerGroupId");
         Objects.requireNonNull(messageEventName, "messageEventName");
         Objects.requireNonNull(observationEventName, "observationEventName");
-        Objects.requireNonNull(project, "project");
+        var copy = new LinkedHashMap<String, BiFunction<Map<String, Object>, List<Long>, Map<String, Object>>>();
+        Objects.requireNonNull(projectionsByGroup, "projectionsByGroup").forEach((group, project) -> {
+            if (group == null || group.isBlank()) throw new IllegalArgumentException("Projection Group must be present");
+            copy.put(group, Objects.requireNonNull(project, "project"));
+        });
+        projectionsByGroup = Collections.unmodifiableMap(copy);
     }
 }

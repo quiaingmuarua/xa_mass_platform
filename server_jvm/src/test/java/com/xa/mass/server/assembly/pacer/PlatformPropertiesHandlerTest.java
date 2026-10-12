@@ -24,22 +24,46 @@ class PlatformPropertiesHandlerTest {
     final AtomicBoolean running = new AtomicBoolean(true);
     final AtomicLong failures = new AtomicLong();
 
+    @Test void oneDeclarationExpandsIntoIsolatedGroupsWithoutChangingBatching() {
+        var functions = new LinkedHashMap<String, java.util.function.BiFunction<Map<String, Object>, List<Long>, Map<String, Object>>>();
+        functions.put("a", (current, times) -> Map.of("window", times.getFirst() / 10));
+        functions.put("b", (current, times) -> Map.of("window", times.getFirst() / 20));
+        var declaration = new WorkerPropertyProjection("event", "worker.assigned", functions);
+        functions.clear();
+        for (String group : List.of("a", "b")) {
+            when(properties.loadWorkerFacts(group, List.of("w")))
+                    .thenReturn(Map.of("w", new WorkerFacts("w", group, Map.of(), Map.of())));
+            when(properties.patchWorkerPlatformProperties(eq(group), eq("w"), anyMap()))
+                    .thenReturn(new WorkerProperties.MutationResult(WorkerProperties.MutationStatus.UNCHANGED));
+        }
+        handler(List.of(declaration)).handle(List.of(
+                new WorkerObservation("a", List.of("w"), 35, "event", "worker.assigned"),
+                new WorkerObservation("b", List.of("w"), 35, "event", "worker.assigned")));
+        verify(properties).loadWorkerFacts("a", List.of("w"));
+        verify(properties).loadWorkerFacts("b", List.of("w"));
+        verify(properties).patchWorkerPlatformProperties("a", "w", Map.of("window", 3L));
+        verify(properties).patchWorkerPlatformProperties("b", "w", Map.of("window", 1L));
+        verifyNoMoreInteractions(properties);
+        assertThatThrownBy(() -> handler(List.of(declaration, declaration))).isInstanceOf(IllegalArgumentException.class);
+        assertThat(failures.get()).isZero();
+    }
+
     @Test void allProjectionsShareOneReadAndWriteWithDeletionAndLocalPatchVisibility() {
         when(properties.loadWorkerFacts("g", List.of("w")))
                 .thenReturn(Map.of("w", new WorkerFacts("w", "g", Map.of(), Map.of("keep", 7, "remove", 1))));
         when(properties.patchWorkerPlatformProperties(eq("g"), eq("w"), anyMap()))
                 .thenReturn(new WorkerProperties.MutationResult(WorkerProperties.MutationStatus.APPLIED));
         var calls = new ArrayList<String>();
-        var a = new WorkerPropertyProjection("g", "a", "worker.assigned", (current, times) -> {
+        var a = new WorkerPropertyProjection("a", "worker.assigned", Map.of("g", (current, times) -> {
             assertThat(current).containsEntry("keep", 7).containsEntry("remove", 1);
             calls.add("a:" + times);
             var patch = new LinkedHashMap<String, Object>(); patch.put("remove", null); patch.put("count", times.size());
             return patch;
-        });
-        var b = new WorkerPropertyProjection("g", "b", "worker.assigned", (current, times) -> {
+        }));
+        var b = new WorkerPropertyProjection("b", "worker.assigned", Map.of("g", (current, times) -> {
             assertThat(current).containsEntry("keep", 7).containsEntry("count", 2).doesNotContainKey("remove");
             calls.add("b:" + times); return Map.of("count", 3);
-        });
+        }));
         handler(List.of(b, a)).handle(List.of(notice("a", 10), notice("b", 20), notice("a", 30)));
         var patch = new LinkedHashMap<String, Object>(); patch.put("remove", null); patch.put("count", 3);
         assertThat(calls).containsExactly("a:[10, 30]", "b:[20]");
@@ -55,9 +79,9 @@ class PlatformPropertiesHandlerTest {
                 .thenReturn(Map.of("w", new WorkerFacts("w", "g", Map.of(), Map.of()),
                         "next", new WorkerFacts("next", "g", Map.of(), Map.of())));
         var computed = new AtomicLong();
-        var projection = new WorkerPropertyProjection("g", "a", "worker.assigned", (current, times) -> {
+        var projection = new WorkerPropertyProjection("a", "worker.assigned", Map.of("g", (current, times) -> {
             computed.incrementAndGet(); running.set(false); return Map.of("count", 1);
-        });
+        }));
         handler(List.of(projection)).handle(List.of(new WorkerObservation("g", List.of("w", "next"),
                 10, "a", "worker.assigned")));
         assertThat(computed.get()).isEqualTo(1);
@@ -71,11 +95,11 @@ class PlatformPropertiesHandlerTest {
                         "next", new WorkerFacts("next", "g", Map.of(), Map.of())));
         when(properties.patchWorkerPlatformProperties("g", "next", Map.of("a", 1, "b", 2)))
                 .thenReturn(new WorkerProperties.MutationResult(WorkerProperties.MutationStatus.UNCHANGED));
-        var a = new WorkerPropertyProjection("g", "a", "worker.assigned", (current, times) -> Map.of("a", 1));
-        var b = new WorkerPropertyProjection("g", "b", "worker.assigned", (current, times) -> {
+        var a = new WorkerPropertyProjection("a", "worker.assigned", Map.of("g", (current, times) -> Map.of("a", 1)));
+        var b = new WorkerPropertyProjection("b", "worker.assigned", Map.of("g", (current, times) -> {
             if (current.containsKey("invalid")) throw new IllegalStateException("invalid properties");
             return Map.of("b", 2);
-        });
+        }));
         handler(List.of(a, b)).handle(List.of(
                 new WorkerObservation("g", List.of("w", "next"), 10, "a", "worker.assigned"),
                 new WorkerObservation("g", List.of("w", "next"), 20, "b", "worker.assigned")));
@@ -87,7 +111,7 @@ class PlatformPropertiesHandlerTest {
 
     @Test void theHandlerOnlyReadsLifecycleAndHasNoIndependentRuntimeResources() {
         running.set(false);
-        var projection = new WorkerPropertyProjection("g", "a", "worker.assigned", (current, times) -> Map.of());
+        var projection = new WorkerPropertyProjection("a", "worker.assigned", Map.of("g", (current, times) -> Map.of()));
         handler(List.of(projection)).handle(List.of(notice("a", 10)));
         verifyNoInteractions(properties, scheduling);
         assertThat(running.get()).isFalse();

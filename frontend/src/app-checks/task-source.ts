@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  configurationViewSchema,
+  type AppCheckSettings,
+  type AppCheckConfigurationView
+} from "./settings";
 import type { ImportSnapshot, ImportReceipt } from "./import-model";
 import type { PreviewState, ExportFilter, TaskActivity } from "./workbench";
 import {
@@ -14,6 +19,12 @@ import {
 export interface AppCheckTaskSource {
   readonly mode: "api" | "mock";
   catalog(signal?: AbortSignal): Promise<Catalog>;
+  loadConfiguration(): Promise<AppCheckConfigurationView>;
+  saveConfiguration(
+    expectedRevision: number,
+    configuration: AppCheckSettings
+  ): Promise<AppCheckConfigurationView>;
+  simulateConfigurationRestart?(): Promise<void>;
   listTasks(): Promise<{ tasks: CheckTask[]; truncated: boolean }>;
   loadTask(taskId: string): Promise<CheckDetail>;
   createTask(input: CreateCheckTask): Promise<{ taskId: string }>;
@@ -58,6 +69,11 @@ export class AppCheckImportUnconfirmed extends Error {
     super(message);
   }
 }
+export class AppCheckConfigurationUnconfirmed extends Error {
+  constructor() {
+    super("配置保存未确认，编辑内容已保留。请重新读取核对，不会自动重试保存。");
+  }
+}
 async function requireResponse(response: Response): Promise<Response> {
   if (!response.ok) {
     const value = z
@@ -91,6 +107,30 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
   private readonly imports = new Map<string, ImportSnapshot>();
   async catalog(signal?: AbortSignal) {
     return catalogSchema.parse(await request("/catalog", undefined, signal));
+  }
+  async loadConfiguration() {
+    return configurationViewSchema.parse(await request("/configuration"));
+  }
+  async saveConfiguration(expectedRevision: number, configuration: AppCheckSettings) {
+    try {
+      const response = await requireResponse(
+        await fetch("/api/v1/app-checks/configuration", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expectedRevision, configuration })
+        })
+      );
+      return configurationViewSchema.parse(await response.json());
+    } catch (error) {
+      if (
+        error instanceof AppCheckApiError &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        error.status !== 408
+      )
+        throw error;
+      throw new AppCheckConfigurationUnconfirmed();
+    }
   }
   async listTasks() {
     return listSchema.parse(await request("/tasks?limit=100"));
