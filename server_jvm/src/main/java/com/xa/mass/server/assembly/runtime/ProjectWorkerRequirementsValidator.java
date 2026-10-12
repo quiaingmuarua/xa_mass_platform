@@ -8,7 +8,7 @@ import com.xa.mass.server.project.ProjectWorkerRequirements;
 import com.xa.mass.workermatching.MatchingGroup;
 import java.util.*;
 
-/** One startup check over caller-known Groups, after host registration and before Project initialization. */
+/** One startup check over caller-known Groups, after host registration and before Adapter startup. */
 final class ProjectWorkerRequirementsValidator {
     private static final int GROUP_READ_BATCH_SIZE = 100;
     private final List<ProjectWorkerRequirements> requirements;
@@ -27,7 +27,7 @@ final class ProjectWorkerRequirementsValidator {
                     throw failure(requirement, group, "duplicate Project/Group requirements", null);
                 var project = projects.projects().get(requirement.projectId());
                 if (project == null) throw failure(requirement, group, "Project is not declared", null);
-                if (!project.managedTaskIds().containsKey(group))
+                if (!project.workerGroupIds().contains(group))
                     throw failure(requirement, group, "Group is not declared by Project", null);
             }
         }

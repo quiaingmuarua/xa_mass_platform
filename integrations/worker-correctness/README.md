@@ -1,5 +1,10 @@
 # Worker Correctness
 
+RPC Tasks are explicitly prepared with stable fixture IDs via
+`POST /api/v1/tasks/{taskId}/rpc:prepare` during setup, before readiness/load
+measurement. Project directory reads only expose bound Groups. Preparation does
+not alter the lane's supply configuration, workload, deadlines or assertions.
+
 This Java 21 Integration is the Primary Proof for XA Mass Worker vertical
 correctness. It calls public Runtime and loopback Lab APIs and reads initial
 inventory/evidence files; it

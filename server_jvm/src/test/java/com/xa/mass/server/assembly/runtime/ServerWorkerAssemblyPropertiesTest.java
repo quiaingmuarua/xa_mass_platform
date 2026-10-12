@@ -21,7 +21,6 @@ class ServerWorkerAssemblyPropertiesTest {
 
     private final ApplicationContextRunner contextRunner =
             new ApplicationContextRunner()
-                    .withBean(com.xa.mass.server.project.ProjectTaskInitializer.class, () -> mock(com.xa.mass.server.project.ProjectTaskInitializer.class))
                     .withBean(com.xa.mass.server.project.ProjectDirectory.class, () -> mock(com.xa.mass.server.project.ProjectDirectory.class))
                     .withUserConfiguration(
                             ServerWorkerDeliveryAdapterConfiguration.class,

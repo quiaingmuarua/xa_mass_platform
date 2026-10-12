@@ -44,7 +44,7 @@ for point membership and the same first-created timestamp, without list scanning
 corrupt directory values fail, with no cleanup or repair.
 
 **Ownership change:** every Task has a nonblank passive Project coordinate. Server
-admits profile declarations and provisions managed Project/Group pairs; Kernel
+admits Project/Group bindings and prepares caller-named RPC Tasks on explicit request; Kernel
 neither loads profiles nor verifies Project existence. The global `task:score` and
 all scheduling/Pool ownership remain unchanged. Score initialization and descriptor
 writing retain separate commit and retry boundaries; they are not one transaction.

@@ -67,7 +67,7 @@ import com.xa.mass.server.task.call.TaskCallSubmissionService;
 import com.xa.mass.server.task.call.TaskRpcProperties;
 import com.xa.mass.server.task.call.TaskRpcWaitRegistry;
 import com.xa.mass.server.task.result.TaskResultsExportService;
-import com.xa.mass.server.project.ProjectTaskInitializer;
+import com.xa.mass.server.task.call.TaskRpcPreparationService;
 import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerRegistrationResult;
 import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory.Endpoint;
@@ -112,6 +112,35 @@ class RuntimeApiControllerTest {
     private TaskResultsExportService taskResultsExport;
     private TaskRpcWaitRegistry taskRpcRegistry;
     private MockMvc mockMvc;
+
+    @Test
+    void rpcPreparationUsesCallerIdentityAndRejectsUnknownOrNonStringMetadata() throws Exception {
+        when(taskCatalog.loadTaskAllocationDescriptors(List.of("caller-rpc"))).thenReturn(Map.of());
+        when(taskLifecycle.approveTask("caller-rpc"))
+                .thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED, null));
+        mockMvc.perform(post("/api/v1/tasks/caller-rpc/rpc:prepare")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"projectId":"test-project","workerGroupId":"phone-tools","metadata":{"userId":"Alice"}}
+                        """))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.taskId").value("caller-rpc"));
+        var captured = org.mockito.ArgumentCaptor.forClass(TaskDescriptor.class);
+        verify(taskRuntime).createTask(captured.capture());
+        assertThat(captured.getValue().metadata()).containsEntry("userId", "Alice");
+        assertThat(captured.getValue().idleDisposition()).isEqualTo(TaskIdleDisposition.PARK_WHEN_IDLE);
+        for (String extra : List.of("\"userId\":\"ignored\"", "\"metadata\":{\"userId\":123}", "\"idleDisposition\":\"CLOSE_WHEN_IDLE\"")) {
+            mockMvc.perform(post("/api/v1/tasks/caller-rpc/rpc:prepare")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\"," + extra + "}"))
+                    .andExpect(status().isBadRequest());
+        }
+        when(taskLifecycle.approveTask("caller-rpc"))
+                .thenReturn(new TaskApprovalResult(TaskApprovalStatus.RETRYABLE, "limit"));
+        mockMvc.perform(post("/api/v1/tasks/caller-rpc/rpc:prepare")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\"}"))
+                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value(12007));
+    }
 
     @BeforeEach
     void setUp() {
@@ -297,7 +326,9 @@ class RuntimeApiControllerTest {
                                 new TaskLifecycleService(
                                         taskLifecycle,
                                         taskCatalog, new com.xa.mass.server.operation.OperationGuard()
-                                )
+                                ),
+                                new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matchingCatalog,
+                                        rpcProperties, projects, new com.xa.mass.server.operation.OperationGuard())
                         ),
                         new TaskDataController(
                                 taskData,

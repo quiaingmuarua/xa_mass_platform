@@ -1,6 +1,6 @@
 package com.xa.mass.scenario.sms;
 
-import com.xa.mass.server.project.ProjectDirectory;
+import com.xa.mass.server.task.call.TaskRpcPreparationService;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.call.TaskRpcCallService;
 import com.xa.mass.server.task.observation.TaskLeaseProjectionService;
@@ -16,12 +16,12 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class SmsReceptionServiceTest {
-    final ProjectDirectory projects = mock(ProjectDirectory.class);
+    final TaskRpcPreparationService projects = mock(TaskRpcPreparationService.class);
     final TaskRpcCallService calls = mock(TaskRpcCallService.class);
     final TaskDataService results = mock(TaskDataService.class);
     final TaskLeaseProjectionService projections = mock(TaskLeaseProjectionService.class);
     final SmsReceptionService service = new SmsReceptionService(projects, calls, results, projections, "g", Clock.fixed(Instant.ofEpochMilli(1000), ZoneOffset.UTC));
-    void start() { when(projects.requireManagedTaskId("sms", "g")).thenReturn("task"); service.start(); }
+    void start() { when(projects.prepare(SmsReceptionService.rpcTaskId("g"), new TaskRpcPrepareRequest("sms", "g", null, Map.of()))).thenReturn(new TaskCreateResponse("task")); service.start(); }
     Map<String, Object> snapshot(String id, boolean sms) {
         var value = new LinkedHashMap<String, Object>(Map.of("messageId", id, "applicationId", "A", "country", "CN",
                 "phoneNumber", "123", "workerId", "w", "leaseUntil", 2000, "status", sms ? "RECEIVED" : "WAITING"));

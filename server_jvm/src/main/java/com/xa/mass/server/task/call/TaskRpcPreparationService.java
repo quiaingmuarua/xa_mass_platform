@@ -1,8 +1,7 @@
-package com.xa.mass.server.project;
+package com.xa.mass.server.task.call;
 
 import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalResult;
-import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalStatus;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationResult;
@@ -16,13 +15,16 @@ import com.xa.mass.server.error.ServerException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import com.xa.mass.server.task.call.TaskRpcProperties;
+import com.xa.mass.server.api.v1.contract.task.TaskCreateResponse;
+import com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest;
+import com.xa.mass.server.operation.OperationGuard;
+import com.xa.mass.server.project.ProjectDirectory;
 import org.springframework.stereotype.Service;
 
 @Service
-public final class ProjectTaskInitializer {
+public final class TaskRpcPreparationService {
 
-    private static final String REGISTER_OPERATION = "project.initialize";
+    private static final String REGISTER_OPERATION = "taskRpc.prepare";
     private static final Map<String, String> TASK_CONFIG = Map.of(
             "priority", "0",
             "maxRetryTimes", "3"
@@ -35,17 +37,20 @@ public final class ProjectTaskInitializer {
     private final WorkerMatchingCatalog matching;
     private final TaskRpcProperties rpc;
     private final TaskLifecycleCommands taskLifecycle;
+    private final OperationGuard operations;
 
-    public ProjectTaskInitializer(
+    public TaskRpcPreparationService(
             WorkerResourceCatalog workerCatalog,
             TaskResourceCatalog taskCatalog,
             TaskRuntime taskRuntime,
             TaskLifecycleCommands taskLifecycle,
             WorkerMatchingCatalog matching,
             TaskRpcProperties rpc,
-            ProjectDirectory projects
+            ProjectDirectory projects,
+            OperationGuard operations
     ) {
         this.projects = Objects.requireNonNull(projects, "projects");
+        this.operations = Objects.requireNonNull(operations, "operations");
         this.rpc = Objects.requireNonNull(rpc, "rpc");
         this.matching = Objects.requireNonNull(matching, "matching");
         this.workerCatalog = Objects.requireNonNull(
@@ -60,28 +65,25 @@ public final class ProjectTaskInitializer {
         );
     }
 
-    public void initialize() {
-        for (var project : projects.projects().values()) {
-            for (String group : project.managedTaskIds().keySet()) {
-                prepare(project.projectId(), group);
-            }
-        }
+    public TaskCreateResponse prepare(String taskId, TaskRpcPrepareRequest request) {
+        if (taskId == null || taskId.isBlank() || request == null
+                || request.projectId() == null || request.projectId().isBlank()
+                || request.workerGroupId() == null || request.workerGroupId().isBlank())
+            throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, REGISTER_OPERATION, "Invalid RPC Task preparation", null);
+        return operations.taskMutation(taskId, () -> prepareObserved(taskId, request));
     }
 
-    public Registration prepare(String projectId, String workerGroupId) {
-        projects.requireManagedTaskId(projectId, workerGroupId);
-        requireWorkerGroup(workerGroupId, REGISTER_OPERATION);
-        TaskDescriptor expected = descriptor(projectId, workerGroupId);
+    private TaskCreateResponse prepareObserved(String taskId, TaskRpcPrepareRequest request) {
+        projects.requireWorkerGroup(request.projectId(), request.workerGroupId());
+        requireWorkerGroup(request.workerGroupId(), REGISTER_OPERATION);
+        TaskDescriptor expected = descriptor(taskId, request);
         TaskDescriptor existing = loadDescriptor(
                 expected.taskId(),
                 REGISTER_OPERATION
         );
-        boolean created = false;
         if (existing == null) {
             TaskCreationResult creation = create(expected);
-            if (creation.status() == TaskCreationStatus.CREATED) {
-                created = true;
-            } else if (creation.status() == TaskCreationStatus.CONFLICT) {
+            if (creation.status() == TaskCreationStatus.CONFLICT) {
                 existing = loadDescriptor(
                         expected.taskId(),
                         REGISTER_OPERATION
@@ -104,7 +106,7 @@ public final class ProjectTaskInitializer {
                         creation.reason(),
                         null
                 );
-            } else {
+            } else if (creation.status() != TaskCreationStatus.CREATED) {
                 throw unavailable(REGISTER_OPERATION, creation.reason(), null);
             }
         } else {
@@ -113,16 +115,7 @@ public final class ProjectTaskInitializer {
 
         TaskApprovalResult approval = approve(expected.taskId());
         return switch (approval.status()) {
-            case APPROVED -> new Registration(
-                    workerGroupId,
-                    expected.taskId(),
-                    true
-            );
-            case ALREADY_APPROVED -> new Registration(
-                    workerGroupId,
-                    expected.taskId(),
-                    created
-            );
+            case APPROVED, ALREADY_APPROVED -> new TaskCreateResponse(expected.taskId());
             case NOT_FOUND, RETRYABLE -> throw unavailable(
                     REGISTER_OPERATION,
                     approval.reason(),
@@ -209,20 +202,25 @@ public final class ProjectTaskInitializer {
             throw failure(
                     ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT,
                     operation,
-                    "derived Task descriptor conflicts with registration",
+                    "Task identity has different configuration",
                     null
             );
         }
     }
 
-    private TaskDescriptor descriptor(String projectId, String workerGroupId) {
+    private TaskDescriptor descriptor(String taskId, TaskRpcPrepareRequest request) {
+        java.util.List<com.xa.mass.kernel.assignment.RefillTarget> refill;
         try {
-            return new TaskDescriptor(
-                    projects.requireManagedTaskId(projectId, workerGroupId), projectId, workerGroupId, TaskIdleDisposition.PARK_WHEN_IDLE,
-                    TASK_CONFIG, matching.normalizeRefill(workerGroupId, rpc.refillByWorkerGroup().getOrDefault(workerGroupId,
-                            List.of())), null, java.util.Map.of());
+            refill = Objects.requireNonNull(matching.normalizeRefill(request.workerGroupId(),
+                    rpc.refillByWorkerGroup().getOrDefault(request.workerGroupId(), List.of())));
         } catch (RuntimeException error) {
             throw unavailable(REGISTER_OPERATION, "Call Task targets unavailable", error);
+        }
+        try {
+            return new TaskDescriptor(taskId, request.projectId(), request.workerGroupId(), TaskIdleDisposition.PARK_WHEN_IDLE,
+                    TASK_CONFIG, refill, request.name(), request.metadata());
+        } catch (IllegalArgumentException error) {
+            throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, REGISTER_OPERATION, null, error);
         }
     }
 
@@ -259,10 +257,4 @@ public final class ProjectTaskInitializer {
         return new ServerException(code, operation, message, cause);
     }
 
-    public record Registration(
-            String workerGroupId,
-            String taskId,
-            boolean newlyRegistered
-    ) {
-    }
 }

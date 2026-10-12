@@ -56,6 +56,7 @@ final class AndroidWorkerTriadCorrectness {
             );
         }
         options.baselineFile(false);
+        triad.runtime().prepareRpcTask();
         Map<String, String> identities = triad.awaitAvailableWorld(Map.of());
         evidence.workers(identities);
 

@@ -36,8 +36,9 @@ if (configResult.ok) {
     configResult.value.mode,
     new HttpFiniteTaskClient(configResult.value.apiBaseUrl)
   );
+  const taskCallClient = new HttpTaskCallDebugClient(configResult.value.apiBaseUrl);
   const taskCallDebugStore = createTaskCallDebugStore(
-    new HttpTaskCallDebugClient(configResult.value.apiBaseUrl),
+    taskCallClient,
     configResult.value.mode
   );
   const workerStatusStore = createWorkerStatusStore(
@@ -54,7 +55,9 @@ if (configResult.ok) {
   provide(workerDirectDebugStoreKey, workerDirectDebugStore);
   provide(workerStatusStoreKey, workerStatusStore);
   const taskSession = createTaskSession(
-    createProjectSource(configResult.value.apiBaseUrl, configResult.value.mode)
+    createProjectSource(configResult.value.apiBaseUrl, configResult.value.mode),
+    taskCallClient,
+    configResult.value.mode
   );
   provide(taskSessionKey, taskSession);
   onBeforeUnmount(() => {

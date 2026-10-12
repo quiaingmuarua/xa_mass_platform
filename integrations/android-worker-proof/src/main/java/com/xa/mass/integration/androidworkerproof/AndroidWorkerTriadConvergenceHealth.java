@@ -67,6 +67,7 @@ final class AndroidWorkerTriadConvergenceHealth {
 
     private void runBaseline() {
         options.baselineFile(false);
+        triad.runtime().prepareRpcTask();
         Map<String, String> identities = triad.awaitAvailableWorld(Map.of());
         evidence.workers(identities);
         evidence.check("connectedWorkerCount", 3);

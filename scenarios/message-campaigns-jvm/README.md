@@ -61,8 +61,8 @@ Preview 不启用该函数；不改变 Matching 的 Phone Index、资格规则�
 这里没有新增 Platform Properties 或属性投影。
 
 每个绑定 Group 都要求 `extension.worker.message.send`、Messaging Pool 和库存查询。
-Server 将批量资源需求展开为 Project/Group 检查，在 Group 初始化后、Project Task
-初始化前验证；缺失依赖阻止启动。场景不持有资源或补注册事件，宿主管理共享 Group。
+Server 将批量资源需求展开为 Project/Group 检查，在 Group 初始化后、Adapter
+启动前验证；缺失依赖阻止启动。Project 绑定不创建长期 Task；Messages 只创建有限任务。场景不持有资源或补注册事件，宿主管理共享 Group。
 普通发送在补给时读 Worker Facts 并按国家入池，消费不再读 Facts；规则与失败边界见
 [Matching Owner](../../worker_matching_jvm/README.md#qualified-country-declarations)。
 
@@ -194,7 +194,7 @@ results:load 核对，不恢复 UI 分页。固定 1000 Worker 负载保持显�
 Redis Owner 证明展示字段 create-only、创建时间不刷新和数量命令预算；Boot 证明真实部分
 追加未确认、迟到执行结果及 Server 重启后直接读取配置和最新回复。
 额外的 Messages-only Boot 装配证明不加载 SMS/App Checks API，真实发送完成后仍可送达、
-已读及连续回复；外部 Group 绑定和重启保留 managed Task 身份与创建时间。缺失 Group、
+已读及连续回复；外部 Group 绑定不生成 RPC Task，重启保留已创建有限任务的身份与创建时间。缺失 Group、
 事件或 Matching 依赖使启动失败，Project Task 不会被创建，已完成的 Group 注册不回滚。
 
 ## Project ownership

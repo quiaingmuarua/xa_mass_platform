@@ -68,6 +68,8 @@ final class WorkerStateConvergence {
         RuntimeApiClient runtime = options.runtimeClient();
         try {
             requireExactWorld(lab);
+            runtime.prepareRpcTask(PHONE_GROUP);
+            runtime.prepareRpcTask(STRING_GROUP);
             Map<WorkerRef, String> identities = awaitConnected(
                     "baseline-connected",
                     options,

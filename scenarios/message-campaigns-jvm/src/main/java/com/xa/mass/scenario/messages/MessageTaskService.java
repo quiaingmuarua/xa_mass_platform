@@ -45,7 +45,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     }
 
     @Override public void start() {
-        config.workerGroupIds().forEach(group -> projects.requireManagedTaskId(PROJECT, group));
+        config.workerGroupIds().forEach(group -> projects.requireWorkerGroup(PROJECT, group));
         synchronized (gate) {
             if (closed) throw new IllegalStateException("Messages is closed");
             running = true;

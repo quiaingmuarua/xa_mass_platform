@@ -1,5 +1,13 @@
 # Android Worker Proof
 
+RPC Tasks are explicitly prepared with stable fixture IDs via
+`POST /api/v1/tasks/{taskId}/rpc:prepare` during setup, before readiness/load
+measurement. Project directory reads only expose bound Groups. Preparation does
+not alter the lane's supply configuration, workload, deadlines or assertions.
+Only the initial/active/baseline phase prepares the Task. Later fault and recovery
+phases use that original identity without preparing or repairing it, including
+the terminal phase which deliberately runs while Server is absent.
+
 `:integrations:android-worker-proof` is the Java 21 proof owner for the real
 Android Worker emulator lane. It drives both one Debug App and a fixed three-App
 Lab topology through their loopback Host APIs and observes only public Runtime
@@ -88,8 +96,8 @@ reads may be observed again until the phase deadline. Mutation requests are
 issued once and an ambiguous transport failure fails the phase. Invalid JSON,
 unexpected HTTP status, invalid state or identity drift fails immediately.
 Defaults are 180 seconds for the whole phase and 5 seconds for one request,
-with `requestTimeout <= maximumWait`. The launcher selects `scenario-workers`,
-whose default SCENARIO_LAB Pacer defers a due RECOVERY coordinate from the Score
+with `requestTimeout <= maximumWait`. The launcher loads the external platform
+proof fixture, whose SCENARIO_LAB Pacer defers a due RECOVERY coordinate from the Score
 Owner's process clock before offering its Probe. Connected evidence restores HOT
 polarity while preserving a still-current/future coordinate; it does not bypass
 the due check. The [Serviceability retry contract](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)

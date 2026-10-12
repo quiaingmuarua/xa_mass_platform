@@ -40,7 +40,7 @@ class ProjectDirectoryTest {
         var yaml = new ProjectDirectory(new ProjectAssemblyProperties(List.of(messages)), List.of());
         var module = new ProjectDirectory(new ProjectAssemblyProperties(List.of()), List.of(messages));
         assertThat(module.projects()).isEqualTo(yaml.projects());
-        assertThat(module.requireManagedTaskId("messages", "demo-sim")).isEqualTo("project-rpc-bWVzc2FnZXM.ZGVtby1zaW0");
+        assertThat(module.require("messages").workerGroupIds()).containsExactly("demo-sim");
         var combined = new ProjectDirectory(new ProjectAssemblyProperties(List.of(
                 new ProjectDefinition("sms", List.of("demo-sim")))), List.of(messages));
         assertThat(combined.projects()).containsOnlyKeys("sms", "messages");
@@ -53,20 +53,19 @@ class ProjectDirectoryTest {
                 .hasMessageContaining("Duplicate Project ID");
     }
 
-    @Test void declarationsAreImmutableAndPairCoordinatesAreStableAndUnambiguous() {
+    @Test void declarationsAreImmutableAndBindingChecksHaveNoRuntimeSideEffects() {
         var properties = new ProjectAssemblyProperties(List.of(
                 new ProjectDefinition("a", List.of("b-c", "shared")),
                 new ProjectDefinition("a-b", List.of("c", "shared"))));
         var directory = new ProjectDirectory(properties, java.util.List.of());
         var restart = new ProjectDirectory(properties, java.util.List.of());
         assertThat(directory.projects()).isEqualTo(restart.projects());
-        assertThat(directory.requireManagedTaskId("a", "shared"))
-                .isNotEqualTo(directory.requireManagedTaskId("a-b", "shared"));
-        assertThat(directory.requireManagedTaskId("a", "b-c"))
-                .isNotEqualTo(directory.requireManagedTaskId("a-b", "c"));
+        directory.requireWorkerGroup("a", "shared");
+        directory.requireWorkerGroup("a-b", "shared");
+        assertThatThrownBy(() -> directory.require("a").workerGroupIds().clear()).isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> directory.projects().clear()).isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> directory.require("absent")).isInstanceOf(com.xa.mass.server.error.ServerException.class);
-        assertThatThrownBy(() -> directory.requireManagedTaskId("a", "c"))
+        assertThatThrownBy(() -> directory.requireWorkerGroup("a", "c"))
                 .isInstanceOf(com.xa.mass.server.error.ServerException.class);
     }
 

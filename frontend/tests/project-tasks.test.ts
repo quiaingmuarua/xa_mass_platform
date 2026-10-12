@@ -41,7 +41,7 @@ it("reads startup Projects and complete backend-shaped TaskViews with null proje
   const fetcher = vi
     .fn()
     .mockResolvedValueOnce(
-      new Response(JSON.stringify([{ projectId: "p", managedTaskIds: { g: "rpc" } }]))
+      new Response(JSON.stringify([{ projectId: "p", workerGroupIds: ["g"] }]))
     )
     .mockResolvedValueOnce(
       new Response(
@@ -117,7 +117,7 @@ it("late detail responses cannot overwrite another task; refresh failure retains
 });
 it("failed task reads do not erase the directory or Group capabilities", async () => {
   const source = {
-    list: vi.fn().mockResolvedValue([{ projectId: "p", managedTaskIds: { g: "rpc" } }]),
+    list: vi.fn().mockResolvedValue([{ projectId: "p", workerGroupIds: ["g"] }]),
     tasks: vi.fn().mockRejectedValue(new Error("bad Task response")),
     groups: vi.fn().mockResolvedValue([])
   } as unknown as ProjectSource;
@@ -132,4 +132,33 @@ it("failed task reads do not erase the directory or Group capabilities", async (
 it("accepts the exact DTO fixture asserted by the Server serializer", () => {
   expect(taskViewSchema.parse(taskWireFixture)).toEqual(taskWireFixture);
   expect(() => taskViewSchema.parse({ ...taskWireFixture, unknown: true })).toThrow();
+});
+
+it("a pre-mutation read cannot make an invalidated snapshot fresh again", async () => {
+  const current = { taskId: "rpc", task: null, createdAtMillis: 2, scoreBand: null };
+  let release!: (value: unknown) => void;
+  const source = {
+    task: vi
+      .fn()
+      .mockResolvedValueOnce(current)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      )
+  } as unknown as ProjectSource;
+  const workspace = createProjectWorkspace(source);
+  await workspace.loadDetail("p", "rpc");
+  const time = workspace.detail.value.readAt;
+  const old = workspace.loadDetail("p", "rpc");
+  workspace.invalidateDetail();
+  release({ ...current, createdAtMillis: 999 });
+  await old;
+  expect(workspace.detail.value).toMatchObject({
+    value: current,
+    readAt: time,
+    stale: true,
+    loading: false
+  });
 });

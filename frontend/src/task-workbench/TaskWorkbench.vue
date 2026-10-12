@@ -26,7 +26,7 @@ function selectTab(value: string | number) {
   return router.push({
     query:
       value === "rpc"
-        ? { tab: "rpc", group: session.navigation.group || undefined }
+        ? { tab: "rpc", ...session.navigation.rpcQuery }
         : { tab: "finite" }
   });
 }

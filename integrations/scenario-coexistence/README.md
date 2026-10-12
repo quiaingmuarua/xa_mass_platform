@@ -86,9 +86,10 @@ automatic delivery is observed. A seventh Task imports ordinary text: API preser
 it exactly, but the explicitly selected lab-json Worker rejects it, yielding one failed Item, zero sent/delivered
 counts and no Lab message. It is not a throughput or large-input proof.
 
-No SMS request or managed-Task Item is created in this world. SMS's one managed Task
-and Messages' three managed Tasks must remain running-initial before and after the
-workload, so the proof does not manufacture competing Country/window refill demand.
+No SMS request or RPC Item is created in this world. SMS explicitly prepares one
+shared RPC Task, which must remain running-initial before and after the workload.
+Messages and App Checks must contain no long-lived RPC Task. These checks preserve
+the premise that no hidden task supplies competing Country/window refill demand.
 
 This separation makes the resource premise explicit: the ordinary query witness
 has only Messaging Pool demand. A generation enters at most one Pool; a finite

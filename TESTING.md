@@ -308,14 +308,14 @@ through `spring.config.additional-location` and use its explicit `scenario-worke
 Project. Lane overlays follow that fixture; no Preview profile or H2 is involved. Runners that
 replace Group manifests must also replace the complete Project list under
 [Boot's topology contract](server_boot_jvm/README.md#project-topology), preserving
-the lane's intended managed Task topology. Each lane owns its workload, fault,
+the lane's intended Project/Group bindings. Each lane owns its workload, fault,
 deadline and outcome assertions.
 
 Finite Task creation includes `projectId`. Correctness, Convergence Health and
-Android clients lazily read `GET /api/v1/projects/scenario-workers` on first
-managed-ID use and cache its Group-to-Task mapping per client instance; they do
-not derive IDs or rely on Group registration side effects. Dynamic Matching and
-Loaded Recovery create finite Tasks and do not make that Project read.
+Android clients explicitly prepare their stable fixture RPC Task IDs through
+`POST /api/v1/tasks/{taskId}/rpc:prepare` during setup. Project reads expose Group
+bindings only; Group registration never creates Tasks. Dynamic Matching and
+Loaded Recovery create finite Tasks without preparing RPC Tasks.
 The separate [Worker Call Performance](integrations/worker-call-performance/README.md)
 lane owns its preparation and measurement windows.
 

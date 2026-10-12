@@ -13,7 +13,7 @@ import { useRuntimeViewerConfig, useTaskManagementStore } from "@/runtime-contex
 import { canManageRawTask } from "@/stores/task-management";
 import type { Project } from "@/task-management/projects";
 import { useTaskSession } from "./session";
-const props = defineProps<{ project: Project }>();
+defineProps<{ project: Project }>();
 const session = useTaskSession();
 const workspace = session.finite;
 const filter = session.finiteFilter;
@@ -44,16 +44,9 @@ const manage = computed(
 const groupFresh = computed(
   () => !!groups.value?.value && !groups.value.stale && !groups.value.loading
 );
-const knownManaged = computed(
-  () => new Set(Object.values(props.project.managedTaskIds))
-);
 const rows = computed(() =>
   (list.value?.value?.tasks ?? [])
-    .filter(
-      (r) =>
-        !knownManaged.value.has(r.taskId) &&
-        r.task?.idleDisposition !== "PARK_WHEN_IDLE"
-    )
+    .filter((r) => r.task?.idleDisposition !== "PARK_WHEN_IDLE")
     .sort((a, b) => b.createdAtMillis - a.createdAtMillis)
 );
 const filtered = computed(() =>

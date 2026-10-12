@@ -129,7 +129,9 @@ class MessageImportIntegrationTest {
             assertThat(fixture.post(PATH + "/" + legacy + "/approve", 1).statusCode()).isEqualTo(409);
             assertThat(fixture.post(PATH + "/" + legacy + "/close", Map.of()).statusCode()).isEqualTo(200);
             assertThat(fixture.post("/api/v1/tasks/" + legacy + "/results:export", Map.of()).statusCode()).isEqualTo(200);
-            String managed = fixture.context.getBean(ProjectDirectory.class).requireManagedTaskId("messages", "demo-sim");
+            String managed = fixture.context.getBean(com.xa.mass.server.task.call.TaskRpcPreparationService.class).prepare(
+                    "explicit-foreign-rpc", new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest(
+                            "messages", "demo-sim", null, Map.of())).taskId();
             String foreign = creation.create(new TaskCreateRequest("messages", "demo-sim", 50, 3, List.of(), "foreign", Map.of("scenario", "other"))).taskId();
             for (String task : List.of(managed, foreign)) {
                 assertThat(fixture.upload(task, "86123").statusCode()).isEqualTo(400);

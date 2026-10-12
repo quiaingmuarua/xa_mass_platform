@@ -2,6 +2,11 @@ import axios, { AxiosError, type AxiosInstance } from "axios";
 
 import { TaskCallDebugError } from "./errors";
 import { taskCallDebugApiErrorSchema, taskCallDebugResultsSchema } from "./schemas";
+import { taskCreateResponseSchema } from "@/task-management/schemas";
+import type {
+  RpcTaskPreparationClient,
+  RpcTaskPrepareRequest
+} from "@/task-workbench/rpc-task";
 import type {
   TaskCallDebugClient,
   TaskCallDebugClientRequest,
@@ -22,11 +27,30 @@ const SAFE_ERROR_MESSAGES: Record<number, string> = {
   19001: "Task Call 请求体无效。"
 };
 
-export class HttpTaskCallDebugClient implements TaskCallDebugClient {
+export class HttpTaskCallDebugClient
+  implements TaskCallDebugClient, RpcTaskPreparationClient
+{
   private readonly client: AxiosInstance;
 
   constructor(baseUrl: string, client?: AxiosInstance) {
     this.client = client ?? axios.create({ baseURL: baseUrl });
+  }
+
+  async prepareTask(taskId: string, request: RpcTaskPrepareRequest): Promise<void> {
+    const requestId = createRequestId("rpc-prepare");
+    try {
+      const response = await this.client.post(
+        `/v1/tasks/${encodeURIComponent(taskId)}/rpc:prepare`,
+        request,
+        { headers: { "X-Request-Id": requestId }, timeout: 5_000 }
+      );
+      if (response.status !== 200) throw schemaError(requestId);
+      const parsed = taskCreateResponseSchema.safeParse(response.data);
+      if (!parsed.success || parsed.data.taskId !== taskId)
+        throw schemaError(requestId);
+    } catch (error) {
+      throw mapHttpError(error, requestId);
+    }
   }
 
   async callTask(request: TaskCallDebugClientRequest): Promise<TaskCallDebugOutcome> {

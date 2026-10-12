@@ -35,7 +35,7 @@ import com.xa.mass.server.assembly.pacer.KernelPacerProperties;
 import com.xa.mass.server.openapi.OpenApiSnapshotSupport;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
-import com.xa.mass.server.project.ProjectTaskInitializer;
+import com.xa.mass.server.task.call.TaskRpcPreparationService;
 import com.xa.mass.server.delivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.delivery.application.WorkerDeliveryService;
 import com.xa.mass.server.assembly.runtime
@@ -158,7 +158,7 @@ class ServerApplicationContextTest {
         assertThat(applicationContext.getBean(TaskDataController.class))
                 .isNotNull();
         assertThat(applicationContext.getBean(
-                ProjectTaskInitializer.class
+                TaskRpcPreparationService.class
         )).isNotNull();
         assertThat(applicationContext.getBean(RuntimeViewController.class))
                 .isNotNull();

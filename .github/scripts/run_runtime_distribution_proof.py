@@ -148,29 +148,33 @@ def _preview_worker_groups(base_url: str) -> dict[str, Any]:
     return preview
 
 
-def _managed_task_id(base_url: str, worker_group_id: str) -> str:
-    matches: list[dict[str, Any]] = []
-    for entry in _preview_tasks(base_url):
-        task = entry.get("task")
-        worker_group = entry.get("workerGroup")
-        if (
-            isinstance(task, dict)
-            and isinstance(worker_group, dict)
-            and task.get("workerGroupId") == worker_group_id
-            and worker_group.get("workerGroupId") == worker_group_id
-            and isinstance(task.get("refill"), list)
-            and task.get("idleDisposition") == "PARK_WHEN_IDLE"
-            and entry.get("taskId") == task.get("taskId")
-        ):
-            matches.append(entry)
-    if len(matches) != 1:
-        raise RuntimeError(
-            f"Task preview did not resolve one managed Task for "
-            f"{worker_group_id}"
-        )
-    task_id = matches[0].get("taskId")
-    if not isinstance(task_id, str) or not task_id:
-        raise RuntimeError("Managed Task ID was unavailable")
+def _prepare_rpc_task(base_url: str, worker_group_id: str) -> str:
+    task_id = f"distribution-rpc-{worker_group_id}"
+    status, payload, _ = _request(
+        "POST",
+        f"{base_url}/api/v1/tasks/{task_id}/rpc:prepare",
+        {"projectId": "scenario-workers", "workerGroupId": worker_group_id},
+    )
+    if status != 200 or json.loads(payload) != {"taskId": task_id}:
+        raise RuntimeError(f"RPC preparation for {worker_group_id} was not confirmed")
+    status, payload, _ = _request(
+        "GET", f"{base_url}/api/v1/projects/scenario-workers/tasks/{task_id}"
+    )
+    if status != 200:
+        raise RuntimeError(f"Prepared RPC Task point read returned HTTP {status}")
+    entry = json.loads(payload)
+    task = entry.get("task")
+    if (
+        entry.get("taskId") != task_id
+        or not isinstance(task, dict)
+        or task.get("taskId") != task_id
+        or task.get("projectId") != "scenario-workers"
+        or task.get("workerGroupId") != worker_group_id
+        or task.get("idleDisposition") != "PARK_WHEN_IDLE"
+        or not isinstance(task.get("refill"), list)
+        or entry.get("scoreBand") not in ("running-initial", "running_visible")
+    ):
+        raise RuntimeError("Prepared RPC Task identity or approved state is invalid")
     return task_id
 
 
@@ -286,6 +290,9 @@ def _prove_runtime(
         try:
             _wait_for_readiness(base_url, server_process)
 
+            if _preview_tasks(base_url) != []:
+                raise RuntimeError("Project bindings implicitly created Tasks")
+
             for worker_group_id in (
                 "scenario-phone-number-workers",
                 "scenario-string-utils-workers",
@@ -294,7 +301,7 @@ def _prove_runtime(
                     raise RuntimeError(
                         "Packaged Server implicitly started Scenario Workers"
                     )
-                _managed_task_id(base_url, worker_group_id)
+                _prepare_rpc_task(base_url, worker_group_id)
 
             status, scalar, scalar_type = _request("GET", f"{base_url}/scalar")
             if status != 200 or scalar_type != "text/html":

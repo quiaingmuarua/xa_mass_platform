@@ -34,8 +34,8 @@ public final class TaskLeaseProjectionService implements TaskLeaseProjectionMetr
         if (thread != null && thread.isAlive()) throw new IllegalStateException("operation=taskLeaseProjection.start consumer still stopping");
         var bound = new LinkedHashMap<String, List<TaskLeaseProjection>>();
         for (var definition : definitions) {
-            String task = projects.requireManagedTaskId(definition.projectId(), definition.workerGroupId());
-            bound.computeIfAbsent(task, ignored -> new ArrayList<>()).add(definition);
+            projects.requireWorkerGroup(definition.projectId(), definition.workerGroupId());
+            bound.computeIfAbsent(definition.taskId(), ignored -> new ArrayList<>()).add(definition);
         }
         bound.replaceAll((task, items) -> List.copyOf(items));
         routes = Map.copyOf(bound);

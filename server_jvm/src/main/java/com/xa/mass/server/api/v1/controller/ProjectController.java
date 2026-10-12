@@ -62,7 +62,7 @@ public final class ProjectController {
         return groups.list(projectId);
     }
 
-    @Operation(summary = "Read a configured Project and its managed Task coordinates")
+    @Operation(summary = "Read a configured Project and its bound WorkerGroups")
     @GetMapping("/{projectId}")
     @ApiResponse(responseCode = "200", description = "Configured Project",
             content = @Content(schema = @Schema(

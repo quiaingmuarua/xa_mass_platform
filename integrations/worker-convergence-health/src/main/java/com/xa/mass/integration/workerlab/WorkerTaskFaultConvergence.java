@@ -56,6 +56,8 @@ final class WorkerTaskFaultConvergence {
         boolean checkpointArmed = false;
         try {
             requireBaselineWorld(lab);
+            runtime.prepareRpcTask(PHONE_GROUP);
+            runtime.prepareRpcTask(STRING_GROUP);
             Map<WorkerRef, String> identities = awaitConnected(
                     "baseline-connected",
                     options,
@@ -303,7 +305,7 @@ final class WorkerTaskFaultConvergence {
             );
             require(
                     runtime.loadResultStatuses(
-                            runtime.managedTaskId(STRING_GROUP),
+                            runtime.rpcTaskId(STRING_GROUP),
                             List.of(state.checkpointMessageId())
                     ).get(state.checkpointMessageId())
                             == RuntimeApiClient.CallStatus.SUCCEEDED,

@@ -5,13 +5,15 @@ import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultStatus;
 import com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest;
-import com.xa.mass.server.project.ProjectDirectory;
+import com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.call.TaskRpcCallService;
+import com.xa.mass.server.task.call.TaskRpcPreparationService;
 import com.xa.mass.server.task.observation.TaskLeaseProjectionMetrics;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workermatching.PlatformLeaseState.Coordinate;
 import java.time.Clock;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.atomic.LongAdder;
 import org.springframework.context.SmartLifecycle;
@@ -26,7 +28,7 @@ public final class SmsReceptionService implements SmartLifecycle, AutoCloseable 
             "A", List.of(Map.of("id", "A-code", "priority", 200, "kind", "CODE", "prefix", "[A] ")),
             "B", List.of(Map.of("id", "B-code", "priority", 100, "kind", "CODE", "prefix", "[B] ")),
             "C", List.of(Map.of("id", "C-any", "priority", 0, "kind", "ANY")));
-    private final ProjectDirectory projects;
+    private final TaskRpcPreparationService preparations;
     private final TaskRpcCallService calls;
     private final TaskDataService results;
     private final TaskLeaseProjectionMetrics projections;
@@ -38,18 +40,25 @@ public final class SmsReceptionService implements SmartLifecycle, AutoCloseable 
     private volatile String taskId;
     private volatile boolean running;
     private boolean closed;
-    public SmsReceptionService(ProjectDirectory projects, TaskRpcCallService calls, TaskDataService results,
+    public SmsReceptionService(TaskRpcPreparationService preparations, TaskRpcCallService calls, TaskDataService results,
             TaskLeaseProjectionMetrics projections, String group, Clock clock) {
-        this.projects = projects; this.calls = calls; this.results = results;
+        this.preparations = preparations; this.calls = calls; this.results = results;
         this.projections = projections; this.group = group; this.clock = clock;
     }
     @Override public synchronized void start() {
         if (running) return;
         if (closed) throw new IllegalStateException("SMS run is closed");
-        taskId = projects.requireManagedTaskId("sms", group);
+        taskId = preparations.prepare(rpcTaskId(group), new TaskRpcPrepareRequest("sms", group, null, Map.of())).taskId();
         running = true;
     }
     @Override public synchronized void stop() { running = false; closed = true; }
+
+    /** SMS owns one shared RPC identity per Group; no caller/user dimension. */
+    static String rpcTaskId(String group) {
+        var encoder = Base64.getUrlEncoder().withoutPadding();
+        return "project-rpc-" + encoder.encodeToString("sms".getBytes(StandardCharsets.UTF_8))
+                + "." + encoder.encodeToString(group.getBytes(StandardCharsets.UTF_8));
+    }
     @Override public boolean isRunning() { return running; }
     @Override public int getPhase() { return Integer.MAX_VALUE; }
     @Override public void close() { stop(); }

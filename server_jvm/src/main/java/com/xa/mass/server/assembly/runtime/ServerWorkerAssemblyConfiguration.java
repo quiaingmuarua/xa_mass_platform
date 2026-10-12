@@ -38,14 +38,12 @@ public class ServerWorkerAssemblyConfiguration {
     serverConfiguredRuntimeLifecycleHost(
             ServerWorkerGroupInitializer groupInitializer,
             ProjectWorkerRequirementsValidator requirements,
-            com.xa.mass.server.project.ProjectTaskInitializer projectInitializer,
             WorkerDeliveryAdapterManager adapterManager,
             WorkerRouteVerificationBatcher routeVerificationBatcher
     ) {
         return new ServerConfiguredRuntimeLifecycleHost(
                 groupInitializer,
                 requirements,
-                projectInitializer,
                 adapterManager,
                 routeVerificationBatcher
         );

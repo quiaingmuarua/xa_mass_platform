@@ -1,5 +1,10 @@
 # Worker Call Performance
 
+RPC Tasks are explicitly prepared with stable fixture IDs via
+`POST /api/v1/tasks/{taskId}/rpc:prepare` during setup, before readiness/load
+measurement. Project directory reads only expose bound Groups. Preparation does
+not alter the lane's supply configuration, workload, deadlines or assertions.
+
 Primary claim: with configurable resources set so they do not bind, the
 performance of each call path at fixed offered rates, the capacity of the Task
 paths, and the difference between paths on one host. The lane does not measure

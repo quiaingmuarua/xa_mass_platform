@@ -71,6 +71,7 @@ final class AndroidWorkerCorrectness {
 
     private void runInitial() {
         options.baselineFile(false);
+        runtime.prepareRpcTask();
         Duration maximumWait = options.maximumWait();
         AndroidWorkerProofAssertions.awaitDeviceHealth(device, maximumWait);
         AndroidWorkerProofAssertions.requireDeviceEvents(device);

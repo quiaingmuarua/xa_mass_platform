@@ -63,7 +63,10 @@ class ScenarioCompositionIntegrationTest {
                 var capabilityHttp = get(client, base, "/api/v1/projects/default/worker-groups");
                 assertThat(capabilityHttp.statusCode()).isEqualTo(200);
                 assertThat(capabilityHttp.body()).contains("demo-sim", "app-a-sim", "app-b-sim", "workerId", "worker.country", "worker.any");
-                String id = context.getBean(com.xa.mass.server.project.ProjectDirectory.class).requireManagedTaskId("default", "demo-sim");
+                var rpc = context.getBean(com.xa.mass.server.task.call.TaskRpcPreparationService.class);
+                assertThat(context.getBean(TaskResourceCatalog.class).listProjectTasks("default", 100).tasks()).isEmpty();
+                String id = rpc.prepare("composition-rpc", new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest(
+                        "default", "demo-sim", null, Map.of("userId", "fixture"))).taskId();
                 assertThat(get(client, base, "/api/v1/projects/default/tasks/" + id).statusCode()).isEqualTo(200);
                 assertThat(get(client, base, "/api/v1/projects/messages/tasks/" + id).statusCode()).isEqualTo(400);
             } else assertThat(directoryHttp.body()).isEqualTo("[]");
@@ -96,8 +99,9 @@ class ScenarioCompositionIntegrationTest {
                 assertThat(context.getBean(AppCheckTaskService.class).isRunning()).isTrue();
                 var groups = context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("app-a-sim", "app-b-sim"));
                 assertThat(groups.values()).doesNotContainNull();
-                assertThat(context.getBean(com.xa.mass.server.project.ProjectDirectory.class).requireManagedTaskId("app-checks", "app-a-sim"))
-                        .isNotEqualTo(context.getBean(com.xa.mass.server.project.ProjectDirectory.class).requireManagedTaskId("app-checks", "app-b-sim"));
+                assertThat(context.getBean(com.xa.mass.server.project.ProjectDirectory.class).require("app-checks").workerGroupIds())
+                        .containsExactly("app-a-sim", "app-b-sim");
+                assertThat(context.getBean(TaskResourceCatalog.class).listProjectTasks("app-checks", 100).tasks()).isEmpty();
             }
             assertThat(context.getBean(com.xa.mass.server.delivery.adapter.ServerWorkerDeliveryAdapterProperties.class)
                     .instances()).hasSize(preview ? 1 : 0);
@@ -111,16 +115,18 @@ class ScenarioCompositionIntegrationTest {
                 if (messages) assertThat(context.getBean(MessageTaskService.class).catalog().get("applications").toString())
                         .contains("workerGroupId=demo-sim");
                 var directory = context.getBean(com.xa.mass.server.project.ProjectDirectory.class);
-                String smsTask = directory.requireManagedTaskId("sms", "demo-sim");
-                String messagesTask = directory.requireManagedTaskId("messages", "demo-sim");
-                assertThat(smsTask).isNotEqualTo(messagesTask);
+                var tasks = context.getBean(TaskResourceCatalog.class);
+                assertThat(tasks.listProjectTasks("sms", 100).tasks()).hasSize(1);
+                assertThat(tasks.listProjectTasks("messages", 100).tasks()).isEmpty();
                 for (String project : List.of("sms", "messages")) {
                     var projectResponse = get(client, base, "/api/v1/projects/" + project);
                     assertThat(projectResponse.statusCode()).isEqualTo(200);
-                    assertThat(projectResponse.body()).contains("managedTaskIds", directory.requireManagedTaskId(project, "demo-sim"));
+                    assertThat(projectResponse.body()).contains("workerGroupIds", "demo-sim").doesNotContain("managedTaskIds");
                     var listResponse = get(client, base, "/api/v1/projects/" + project + "/tasks?limit=1");
                     assertThat(listResponse.statusCode()).isEqualTo(200);
-                    assertThat(listResponse.body()).contains("\"projectId\":\"" + project + "\"", "\"truncated\":" + project.equals("messages"), "PARK_WHEN_IDLE");
+                    assertThat(listResponse.body()).contains("\"projectId\":\"" + project + "\"", "\"truncated\":false");
+                    if (project.equals("sms")) assertThat(listResponse.body()).contains("PARK_WHEN_IDLE");
+                    else assertThat(listResponse.body()).contains("\"tasks\":[]");
                 }
             } else assertThat(group).isNull();
             assertThat(get(client, base, "/api/v1/sms/catalog").statusCode()).isEqualTo(sms ? 200 : 404);

@@ -1,5 +1,10 @@
 # Worker Convergence Health
 
+RPC Tasks are explicitly prepared with stable fixture IDs via
+`POST /api/v1/tasks/{taskId}/rpc:prepare` during setup, before readiness/load
+measurement. Project directory reads only expose bound Groups. Preparation does
+not alter the lane's supply configuration, workload, deadlines or assertions.
+
 This Java 21 and Python Integration is the Primary Proof for
 Worker fault and scheduling convergence. It owns no Worker, Adapter, Server,
 Kernel, Redis or lifecycle implementation. Java phases use only the loopback

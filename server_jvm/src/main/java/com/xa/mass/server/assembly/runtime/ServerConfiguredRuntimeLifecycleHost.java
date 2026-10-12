@@ -10,7 +10,6 @@ import org.springframework.context.SmartLifecycle;
 public final class ServerConfiguredRuntimeLifecycleHost
         implements SmartLifecycle {
 
-    private final com.xa.mass.server.project.ProjectTaskInitializer projectInitializer;
     private final ServerWorkerGroupInitializer groupInitializer;
     private final ProjectWorkerRequirementsValidator requirements;
     private final WorkerDeliveryAdapterManager adapterManager;
@@ -21,11 +20,9 @@ public final class ServerConfiguredRuntimeLifecycleHost
     public ServerConfiguredRuntimeLifecycleHost(
             ServerWorkerGroupInitializer groupInitializer,
             ProjectWorkerRequirementsValidator requirements,
-            com.xa.mass.server.project.ProjectTaskInitializer projectInitializer,
             WorkerDeliveryAdapterManager adapterManager,
             WorkerRouteVerificationBatcher routeVerificationBatcher
     ) {
-        this.projectInitializer = Objects.requireNonNull(projectInitializer, "projectInitializer");
         this.requirements = Objects.requireNonNull(requirements, "requirements");
         this.groupInitializer = Objects.requireNonNull(
                 groupInitializer,
@@ -55,7 +52,6 @@ public final class ServerConfiguredRuntimeLifecycleHost
         try {
             groupInitializer.initialize();
             requirements.validate();
-            projectInitializer.initialize();
         } catch (RuntimeException failure) {
             closed = true;
             throw failure;

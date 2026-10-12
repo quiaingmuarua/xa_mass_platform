@@ -179,7 +179,7 @@ class ProofAssertionsTest(unittest.TestCase):
 
 
 class PoolSelectionTest(unittest.TestCase):
-    def fixture(self, us_country="US", managed_state="running-initial", pool="messaging", wrong_group=False):
+    def fixture(self, us_country="US", sms_rpc_state="running-initial", pool="messaging", wrong_group=False):
         workers = {f"{app}-{country}-{i}": {"workerId": f"{app}-{country}-{i}", "workerGroupId": app + "-sim", "country": country}
                    for app in ("demo", "app-a", "app-b") for country in ("CN", "US", "GB") for i in range(4)}
         run = SimpleNamespace(url="server", host="host", input_workers_by_id=workers, check=lambda: None)
@@ -190,14 +190,14 @@ class PoolSelectionTest(unittest.TestCase):
             requests.append((path, body))
             if path == "/api/v1/messages/catalog":
                 return {"applications": applications}
-            if path in ("/api/v1/projects/sms", "/api/v1/projects/messages"):
+            if path in ("/api/v1/projects/sms", "/api/v1/projects/messages", "/api/v1/projects/app-checks"):
                 project = path.rsplit("/", 1)[-1]
-                return {"managedTaskIds": {app["workerGroupId"]: project + app["id"] + "-managed"
-                        for app in (applications if project == "messages" else applications[:1])}}
-            if path in ("/api/v1/projects/sms/tasks?limit=100", "/api/v1/projects/messages/tasks?limit=100"):
+                apps = applications[:1] if project == "sms" else applications[1:] if project == "app-checks" else applications
+                return {"workerGroupIds": [app["workerGroupId"] for app in apps]}
+            if path in tuple(f"/api/v1/projects/{project}/tasks?limit=100" for project in ("sms", "messages", "app-checks")):
                 project = path.split("/")[4]
-                rows = [{"taskId": project + app["id"] + "-managed", "scoreBand": managed_state}
-                        for app in (applications if project == "messages" else applications[:1])]
+                rows = [{"taskId": "sms-shared", "scoreBand": sms_rpc_state,
+                         "task": {"idleDisposition": "PARK_WHEN_IDLE", "workerGroupId": "demo-sim"}}] if project == "sms" else []
                 return {"truncated": False, "tasks": rows + (list(tasks.values()) if project == "messages" else [])}
             if path == "/api/v1/messages/tasks" and body is not None:
                 identity = body["requestId"]
@@ -206,7 +206,7 @@ class PoolSelectionTest(unittest.TestCase):
                         raise urllib.error.HTTPError("local", 409, "conflict", {}, None)
                     return {"taskId": identity}
                 country = body["senderCountry"]
-                tasks[identity] = {"taskId": identity, "task": {"workerGroupId": body["appId"] + "-sim", "metadata": {"appId": body["appId"]}, "refill": [{
+                tasks[identity] = {"taskId": identity, "task": {"idleDisposition": "CLOSE_WHEN_IDLE", "workerGroupId": body["appId"] + "-sim", "metadata": {"appId": body["appId"]}, "refill": [{
                     "poolName": pool, "target": {"worker.country": [country]} if country else {}, "count": 100}]}}
                 specifications[identity] = body
                 messages[identity] = []
@@ -265,9 +265,9 @@ class PoolSelectionTest(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "crossed application Group"):
             self.execute(run, http, messages)
 
-    def test_active_managed_task_rejects_fixture_before_submission(self):
-        run, http, messages, requests = self.fixture(managed_state="running")
-        with self.assertRaisesRegex(AssertionError, "Managed Task became active"):
+    def test_active_sms_rpc_task_rejects_fixture_before_submission(self):
+        run, http, messages, requests = self.fixture(sms_rpc_state="running")
+        with self.assertRaisesRegex(AssertionError, "SMS RPC Task became active"):
             self.execute(run, http, messages)
         self.assertFalse(messages)
         self.assertTrue(all(body is None for _, body in requests))

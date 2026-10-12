@@ -1,6 +1,6 @@
 package com.xa.mass.scenario.sms;
 
-import com.xa.mass.server.project.ProjectDirectory;
+import com.xa.mass.server.task.call.TaskRpcPreparationService;
 import com.xa.mass.server.task.call.TaskRpcCallService;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.observation.TaskLeaseProjection;
@@ -14,16 +14,17 @@ import java.time.Clock;
 @Import(SmsController.class)
 public class SmsScenarioConfiguration {
     @Bean(destroyMethod = "close")
-    SmsReceptionService smsReceptionService(ProjectDirectory projects,
+    SmsReceptionService smsReceptionService(TaskRpcPreparationService preparations,
             TaskRpcCallService calls, TaskDataService results, TaskLeaseProjectionMetrics projections,
             @Qualifier("scenarioWorkerGroup") String workerGroupId) {
-        return new SmsReceptionService(projects, calls, results, projections, workerGroupId, Clock.systemUTC());
+        return new SmsReceptionService(preparations, calls, results, projections, workerGroupId, Clock.systemUTC());
     }
     @Bean PartitionedLeasePoolDefinition smsPoolDefinition() {
         return new PartitionedLeasePoolDefinition(SmsReceptionService.POOL, SmsReceptionService.FUNCTION,
                 "phone", "country", SmsReceptionService.TEMPLATES.keySet());
     }
     @Bean TaskLeaseProjection smsLeaseProjection(@Qualifier("scenarioWorkerGroup") String workerGroupId) {
-        return new TaskLeaseProjection("sms", workerGroupId, SmsReceptionService.POOL, SmsReceptionService::leaseProjection);
+        return new TaskLeaseProjection(SmsReceptionService.rpcTaskId(workerGroupId), "sms", workerGroupId,
+                SmsReceptionService.POOL, SmsReceptionService::leaseProjection);
     }
 }

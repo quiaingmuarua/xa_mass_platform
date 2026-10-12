@@ -115,3 +115,6 @@ It requires the three canonical Boot resources (base, AgentForge and Preview),
 excludes the external platform proof fixture, and rejects application configuration
 in nested platform/Scenario libraries and all test configuration.
 Preview adds [external-profile and packaged-launch checks](PREVIEW.md#archive-delivery).
+The Runtime proof loads the external platform fixture, verifies that its Project
+bindings create no Tasks, then explicitly prepares its named RPC Tasks and
+point-reads their approved descriptors from the extracted archive.

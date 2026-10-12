@@ -25,7 +25,7 @@ public final class ProjectWorkerGroupQueryService {
     }
 
     public List<ProjectWorkerGroup> list(String projectId) {
-        var ids = List.copyOf(projects.require(projectId).managedTaskIds().keySet());
+        var ids = projects.require(projectId).workerGroupIds();
         try {
             var result = new ArrayList<ProjectWorkerGroup>();
             for (int offset = 0; offset < ids.size(); offset += 100) {

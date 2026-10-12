@@ -79,6 +79,7 @@ final class AndroidWorkerConvergenceHealth {
 
     private void runActive() {
         options.baselineFile(false);
+        runtime.prepareRpcTask();
         Duration maximumWait = options.maximumWait();
         AndroidWorkerProofAssertions.awaitDeviceHealth(device, maximumWait);
         AndroidWorkerProofAssertions.requireDeviceEvents(device);

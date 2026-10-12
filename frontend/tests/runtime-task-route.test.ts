@@ -69,7 +69,7 @@ it("late drawer and submission continuations cannot replace the current context"
               ? row
               : url.includes("/tasks?")
                 ? { projectId: "default", truncated: false, tasks: [row] }
-                : [{ projectId: "default", managedTaskIds: { g: "rpc" } }]
+                : [{ projectId: "default", workerGroupIds: ["g"] }]
         )
       );
     })
@@ -80,7 +80,7 @@ it("late drawer and submission continuations cannot replace the current context"
       {
         path: "/task-workbench",
         component: FiniteTaskPage,
-        props: { project: { projectId: "default", managedTaskIds: { g: "rpc" } } }
+        props: { project: { projectId: "default", workerGroupIds: ["g"] } }
       }
     ]
   });
@@ -110,7 +110,14 @@ it("late drawer and submission continuations cannot replace the current context"
       createRuntimeViewerDataSource({ ...config, mode: "mock" })
     )
   );
-  app.provide(taskSessionKey, createTaskSession(createProjectSource("/api", "api")));
+  app.provide(
+    taskSessionKey,
+    createTaskSession(
+      createProjectSource("/api", "api"),
+      { prepareTask: vi.fn() },
+      "api"
+    )
+  );
   const operations = createTaskManagementStore("api", {
     createTask: vi.fn(),
     appendItems: vi.fn(),

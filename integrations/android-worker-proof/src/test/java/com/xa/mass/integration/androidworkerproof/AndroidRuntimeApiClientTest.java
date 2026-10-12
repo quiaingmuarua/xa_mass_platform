@@ -39,6 +39,7 @@ final class AndroidRuntimeApiClientTest {
                 URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
                 Duration.ofSeconds(2L)
         ));
+        client.prepareRpcTask();
     }
 
     @AfterEach
@@ -168,8 +169,9 @@ final class AndroidRuntimeApiClientTest {
                 StandardCharsets.UTF_8
         );
         Map<String, Object> response;
-        if (path.equals("/api/v1/projects/scenario-workers")) {
-            response = Map.of("projectId", "scenario-workers", "managedTaskIds", Map.of(AndroidWorkerProofConstants.WORKER_GROUP_ID, "managed-android"));
+        if (path.endsWith("/rpc:prepare")) {
+            assertEquals(Map.of("projectId", "scenario-workers", "workerGroupId", AndroidWorkerProofConstants.WORKER_GROUP_ID), Jsons.parseObject(encodedRequest));
+            response = Map.of("taskId", "android-proof-rpc");
         } else if (path.endsWith("workers:network-observe")) {
             assertEquals(
                     List.of("worker-1"),
