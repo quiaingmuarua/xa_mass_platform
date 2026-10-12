@@ -1,7 +1,7 @@
 # XA Mass Console
 
-Vue 3 console for Worker and Task runtime observation, a thin finite Task
-file client, SMS business pages and public Demo. It is derived from Pure Admin Thin 6.2.0 and contains no login,
+Vue 3 console for Worker and Task runtime observation, a default-Project task
+workbench (RPC calls and finite Tasks), Scenario pages and public Demo. It is derived from Pure Admin Thin 6.2.0 and contains no login,
 token, dynamic-permission, fake-user, or fabricated-user path.
 
 ## Requirements and local run
@@ -57,6 +57,8 @@ Routes:
 ```text
 /runtime/workers
 /runtime/tasks
+/task-workbench?tab=rpc
+/task-workbench?tab=finite
 /api-reference
 /reference/error-codes
 /sms
@@ -84,9 +86,12 @@ fixture contracts remain in their Owner and proof documents.
 
 `pnpm build` writes the unified console to `dist`; `pnpm build:demo` writes
 `dist-demo` for public hosting. There is one dependency graph and theme. The
-console owns navigation and page layout; Runtime configuration and Store lifetime
-belong only to the Runtime route container. SMS and Reference pages do not depend
-on Runtime configuration or stores.
+console owns navigation and page layout. Runtime and the task workbench share
+a console-session provider for their directory, call history and drafts, while
+each surface owns independent read snapshots and request generations. Invalid
+Runtime configuration blocks only Runtime/workbench pages; SMS and Reference
+remain independent of that configuration. No background reads are started by
+the session provider.
 
 ## SMS business pages
 
@@ -512,77 +517,75 @@ not fabricate a response.
 
 ## Task page
 
-In API mode, `Project Tasks` loads a caller-entered Project on explicit request
-through `GET /api/v1/projects/{projectId}`, then reads its newest Task window through
-`GET /api/v1/projects/{projectId}/tasks?limit=100`. It preserves missing Task/Score
-projections and displays `truncated`; it has no pagination or total. This read does
-not provision resources or substitute the global Score Preview when it fails.
-The selected Project supplies the finite workbench's allowed Groups. Mock mode
-does not query Projects. The [Server Project contract](../server_jvm/README.md#profile-projects-and-managed-tasks)
-owns admission and the independent projections returned by these reads.
+`/runtime/tasks` is a raw viewer. Project tabs use the immutable directory from
+`GET /api/v1/projects` and read at most 100 newest Tasks. Global observation keeps
+its independent Score window (1..1000 coordinates in Owner order). Search, Group
+and finite/managed filters operate only on the loaded collection; scrolling
+never fetches more data. Missing descriptors and Score bands remain unavailable.
+Refresh failures retain the last snapshot and successful read time.
 
-`Task Runtime Preview` reads the highest `1..1000` Task Score coordinates and
-displays their Task and WorkerGroup descriptor projections in Owner order. It
-has no total, cursor, paging, stable-window or completeness meaning. The page
-shows only `Awaiting Review`, `Running Initial`, `Running Visible` and `Closed`;
-it never receives raw Score. `Running Initial` is a fixed Kernel sorting
-coordinate rather than a wall-clock deadline, and `Running Visible` does not
-prove a Task is executing. Search filters only the current browser window and
-does not issue another API request. Descriptor gaps remain visible and are never
-repaired or inferred by the browser.
+The configured `default` Project remains an ordinary observed Project, preferred
+on first entry. `project`, `taskId` and the global `view` route query preserve the
+viewer context. TaskView decoding includes backend `name` and `metadata`. The
+drawer exposes original configuration and a link to the default task workbench.
+It contains no create, append, approve, close or Task Call control. The former
+`view=create` parameter no longer opens a creation flow.
 
-In API mode, each readable `PARK_WHEN_IDLE` Task with a
-WorkerGroup descriptor exposes a single-Item `Task Call Debug` action. The
-debug composer
-accepts an advisory Event Name, a JSON Object Payload, and an Item-level
-`workerSelector: {executorName, input}`. For `worker.any`, input must be `{}`; the Group must explicitly enable any/worker.any
-and a Task must supply that shared Pool. `workerId` takes one string without Pool
-demand; `worker.country` takes a country list or `{}` within its enabled Country Pool.
-The composer shows an explicit sample and never infers a function from Task supply. The browser validates the
-envelope and JSON bounds: non-null root, at most 100 members per container,
-container depth 8 and 64 KiB of serialized input. Matching owns local parameter
-semantics, normalization and Group enablement. Calls go
-through Kernel scheduling; the browser does not query the index or infer
-which Worker matched. Each Task retains at most 20 diagnostic exchanges in the
-current Pinia/browser memory. A `not_observed` response means submission was
-accepted without a Result in the bounded wait window, so the user may manually
-load that Message ID later; there is no automatic polling. Both `items:call`
-and manual `results:load` may instead return `failed`, which is shown as a
-terminal Item Result without payload or failure reason. Browser refresh clears
-this history, and Mock mode never fabricates Task Call results.
-Both endpoints decode the direct Message-ID-keyed Result Map; manual
-`results:load` sends the direct Message-ID array. Finite Task append likewise
-sends a direct Item array and reads the direct outcome Map.
+Terminal finite Tasks in every Project retain raw successful-Result JSONL export.
+It reads the whole-task source independently of the preview/filter state, does
+not apply Scenario business validation, and requires a fresh terminal snapshot.
+Export state is independent of finite-task mutations; Mock never exports.
 
-`Finite Task Workbench` is a drawer layered over the preview and is available
-only in API mode:
+## Task workbench
 
-1. Load the configured Project through `Project Tasks`.
-2. Validate a local UTF-8 `.txt` file (non-empty, at most 1 MiB and 10,000
-   lines).
-3. Lazily load the bounded WorkerGroup Preview, then select one of the Project's
-   Groups, an advisory Event Name, and Payload key.
-4. Create one ordinary finite Task through `POST /api/v1/tasks`, including the
-   selected `projectId`.
-5. Convert each line into one standard TaskItem and append chunks of at most
-   100 Items. The direct Message-ID-keyed response uses shared action outcomes:
-   accepted Items are `applied`, and a locally rejected Item carries
-   `rejected + code/message`.
-6. Require explicit approval before calling the Task approve endpoint.
-7. Export successful Results manually through
-   `POST /api/v1/tasks/{taskId}/results:export`; `400/12010` is shown as not
-   ready and never triggers automatic polling. The request has no terminal
-   wait budget or JSON body.
+`/task-workbench` has RPC and finite-task tabs, defaulting to `tab=rpc`. It binds
+only the explicitly configured `default` Project. A missing default shows an
+unavailable workspace; it never chooses a business Project instead. This is a
+frontend entry boundary, not new authorization in the generic Server API.
 
-Create/append, approve and successful export each request a fresh Task Runtime
-Preview, but failure to refresh never rolls back the completed write. The
-browser records only confirmed stages: `Created`, `Items Appended`,
-`Approved`, and `Export Ready`. It never simulates `RUNNING` or `TERMINAL` from
-elapsed time. Append failure stops the flow before approval. Local file metadata
-and confirmed workbench stages live only in the current browser session and are
-lost on refresh. Persisted Tasks remain queryable through `Project Tasks`; that
-bounded window does not reconstruct the imported file or resume its submission.
-Mock mode disables the mutating flow and sends no Task request.
+RPC uses `tab=rpc&group=...`, consuming `managedTaskIds` from the directory and
+point-reading the selected Task. It never searches the recent task list for a
+managed identity or computes one. Group capabilities come from the existing
+Project worker-groups endpoint, not a random inventory sample. Task supply is
+read-only. The Event catalog supplies suggestions; custom full names remain
+accepted. The user explicitly selects an enabled Matching function and supplies
+non-null JSON input under the existing bounded query contract. There is no
+implicit `worker.any` selection or inference of business query parameters.
+
+Calls continue to submit one Item through `items:call`, with a 3000ms initial
+wait and the existing 1..60000ms range. Per-Task history keeps the latest 20
+browser-session records. Execution failure, not-observed results, request
+rejection and uncertain requests are separate observations. Uncertain and
+not-observed calls may manually load the original message ID; neither is
+automatically resubmitted. Group switching retains separate drafts and histories,
+and late responses update only their original call. Mock disables calls.
+
+Finite tasks use `tab=finite`, `taskId=...` for details and `view=create` for the
+creation drawer. The current default Project collection excludes known managed
+IDs and managed descriptors without fetching replacements. Unknown descriptors
+remain visible and cannot be mutated. Create, append, approve and close use
+fresh Server state, so reloading the browser does not lose the ability to manage
+existing tasks. Terminal export shares the viewer's download implementation.
+
+The create drawer separates Task supply from Item queries. Any/Country templates
+are offered only when enabled; other rules need explicit input. TXT maps each
+line into one payload field; JSONL accepts complete TaskItem envelopes with
+object payload and optional priority/TTL. Both are UTF-8, limited to 1 MiB/10,000
+lines and fully validated before creation. Duplicate JSONL identities reject
+the file. Additional TXT imports keep a unique fixed import prefix.
+
+Append batches remain at most 100. Rejection or uncertainty stops further
+batches while retaining confirmed, rejected, unconfirmed and unsubmitted counts.
+The browser never automatically retries creation, replays Items or approves;
+generic requestId is diagnostic rather than an idempotency identity. Ending the
+local submission clears its input without closing the Server Task.
+
+Viewer/workbench navigation retains filters, table scroll, RPC drafts/history
+and finite input drafts in the current console session. Create and append drafts
+are isolated by target. No numbers, files or call records are persisted in browser
+storage; reload clears them. Drawer close restores focus only while its route
+is still current. Lists, RPC and finite details have independent request slots,
+so late reads and submission continuations cannot replace another context.
 
 ## Verification
 

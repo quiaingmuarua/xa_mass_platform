@@ -116,14 +116,14 @@ tasks.register('generateRuntimeManifest') {
         output.parentFile.mkdirs()
         output.setText(
                 JsonOutput.prettyPrint(JsonOutput.toJson([
-                        schemaVersion   : 5,
+                        schemaVersion   : 6,
                         version         : runtimeVersion,
                         gitCommit       : resolvedGitCommit,
                         serverJar       : "lib/xa-mass-server-jvm-${runtimeVersion}.jar",
                         javaVersion     : 21,
-                        defaultSpringProfile: 'scenario-workers',
+                        defaultSpringProfile: 'default',
                         springProfiles  : [
-                                'scenario-workers',
+                                'default',
                                 'agentforge',
                                 'preview'
                         ],

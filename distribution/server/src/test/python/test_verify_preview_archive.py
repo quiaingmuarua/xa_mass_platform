@@ -12,7 +12,7 @@ from verify_preview_archive import verify
 
 
 CONFIGURATIONS = {name: (name + "\n").encode() for name in (
-    "application.yaml", "application-scenario-workers.yaml", "application-agentforge.yaml", "application-preview.yaml")}
+    "application.yaml", "application-agentforge.yaml", "application-preview.yaml")}
 
 
 def library(entries):

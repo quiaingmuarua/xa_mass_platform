@@ -4,10 +4,14 @@ import { defineStore } from "pinia";
 import type { RuntimeDataSourceMode } from "@/runtime-viewer/types";
 import {
   presentTaskCallDebugError,
+  TaskCallDebugError,
   taskCallDebugConfigurationError,
   type TaskCallDebugErrorPresentation
 } from "@/task-call-debug/errors";
-import { validateTaskCallDebugDraft } from "@/task-call-debug/model";
+import {
+  DEFAULT_TASK_CALL_TIMEOUT_MILLIS,
+  validateTaskCallDebugDraft
+} from "@/task-call-debug/model";
 import type { TaskCallDebugClient, TaskCallDebugDraft } from "@/task-call-debug/types";
 
 export const TASK_CALL_DEBUG_HISTORY_LIMIT = 20;
@@ -16,6 +20,8 @@ export type TaskCallDebugHistoryState =
   | "sending"
   | "succeeded"
   | "not_observed"
+  | "unconfirmed"
+  | "request_rejected"
   | "failed";
 
 /** Browser-memory diagnostic evidence. This is not a Task or Server resource. */
@@ -44,6 +50,28 @@ export function createTaskCallDebugStore(
 ) {
   return defineStore("taskCallDebug", () => {
     const histories = reactive<Record<string, TaskCallDebugHistoryItem[]>>({});
+    const drafts = reactive<
+      Record<
+        string,
+        {
+          eventName: string;
+          payloadText: string;
+          executorName: string;
+          inputText: string;
+          waitTimeoutMillis: number;
+        }
+      >
+    >({});
+    function draft(taskId: string) {
+      drafts[taskId] ??= {
+        eventName: "",
+        payloadText: "{}",
+        executorName: "",
+        inputText: "{}",
+        waitTimeoutMillis: DEFAULT_TASK_CALL_TIMEOUT_MILLIS
+      };
+      return drafts[taskId]!;
+    }
     let lastMessageMillis = 0;
     let messageSequence = 0;
 
@@ -100,7 +128,15 @@ export function createTaskCallDebugStore(
           item.opaqueResultPayload = outcome.opaqueResultPayload;
         }
       } catch (cause) {
-        item.state = "failed";
+        item.state =
+          cause instanceof TaskCallDebugError &&
+          cause.kind === "http" &&
+          cause.status !== undefined &&
+          cause.status >= 400 &&
+          cause.status < 500 &&
+          cause.status !== 408
+            ? "request_rejected"
+            : "unconfirmed";
         item.safeError = presentTaskCallDebugError(cause);
       } finally {
         item.completedAt = now().toISOString();
@@ -120,9 +156,9 @@ export function createTaskCallDebugStore(
         );
       }
       const item = history(taskId).find((candidate) => candidate.localId === localId);
-      if (item === undefined || item.state !== "not_observed") {
+      if (item === undefined || !["not_observed", "unconfirmed"].includes(item.state)) {
         throw taskCallDebugConfigurationError(
-          "Only a not_observed Task Call can load its Result."
+          "Only a not_observed or unconfirmed Task Call can load its Result."
         );
       }
       item.checkingResult = true;
@@ -133,9 +169,11 @@ export function createTaskCallDebugStore(
         if (outcome.status === "succeeded") {
           item.opaqueResultPayload = outcome.opaqueResultPayload;
           item.state = "succeeded";
+          item.safeError = undefined;
           item.completedAt = item.lastCheckedAt;
         } else if (outcome.status === "failed") {
           item.state = "failed";
+          item.safeError = undefined;
           item.completedAt = item.lastCheckedAt;
         }
       } catch (cause) {
@@ -184,6 +222,7 @@ export function createTaskCallDebugStore(
 
     return {
       histories,
+      draft,
       history,
       isBusy,
       send,

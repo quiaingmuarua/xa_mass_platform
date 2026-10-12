@@ -19,6 +19,15 @@ import static org.mockito.Mockito.*;
 
 class DirectQueryFunctionTest {
     final CandidateBudget budget = new CandidateBudget();
+    @Test void capabilityReadsOnlyStartupEnablementIncludingGlobalFunctions() {
+        var configured = catalog();
+        assertEquals(Set.of("workerId", "worker.phone"), configured.capabilities("g").functions());
+        assertEquals(Set.of("workerId"), configured.capabilities("other").functions());
+        assertTrue(configured.capabilities("g").pools().isEmpty());
+        assertThrows(UnsupportedOperationException.class, () -> configured.capabilities("g").functions().clear());
+        assertThrows(IllegalArgumentException.class, () -> configured.capabilities(" "));
+    }
+
     @Test void identityNeedsNoFactsStockOrRedisAndRetainsInvocationLocalCorrelation() {
 
         {

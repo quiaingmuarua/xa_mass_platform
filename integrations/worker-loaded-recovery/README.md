@@ -49,7 +49,7 @@ reshape the Fleet. Stopping a run does not delete its Server-issued identity.
 
 The generated Host assembly contains only
 `extension.worker.string.md5`. The Runtime Server uses the checked
-`scenario-workers` Profile plus the Integration-owned capacity configuration.
+external platform proof fixture plus the Integration-owned capacity configuration.
 Redis, Server and Host are separate processes. Across all three Server
 restarts the Host PID is retained and no Lab start or Prepare endpoint is
 invoked; existing Clients reconnect to the same Endpoint URI.
@@ -171,3 +171,11 @@ stages pass; the 60-minute Workflow timeout is only a failure ceiling.
 ## Project fixture
 
 Use the shared [`scenario-workers` Project fixture](../../TESTING.md#worker-project-fixture).
+
+### Platform configuration source
+
+Current runs load `../worker_proof_support/platform-runtime.yaml` explicitly,
+before this lane's overlay/CLI flags. It preserves the test Project, Group and
+Adapter identities and existing budgets without activating a business profile.
+The fixture is not packaged in the production Server. Historical benchmark
+checkouts retain their version-specific configuration inputs.

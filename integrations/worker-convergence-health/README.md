@@ -237,3 +237,11 @@ for claim boundaries and [TESTING.md](../../TESTING.md) for lane selection.
 ## Project fixture
 
 Use the shared [`scenario-workers` Project fixture](../../TESTING.md#worker-project-fixture).
+
+### Platform configuration source
+
+Current runs load `../worker_proof_support/platform-runtime.yaml` explicitly,
+before this lane's overlay/CLI flags. It preserves the test Project, Group and
+Adapter identities and existing budgets without activating a business profile.
+The fixture is not packaged in the production Server. Historical benchmark
+checkouts retain their version-specific configuration inputs.

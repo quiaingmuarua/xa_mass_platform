@@ -1,0 +1,150 @@
+.raw-tasks {
+  min-width: 0;
+  padding: 24px;
+}
+.raw-tasks__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 16px;
+}
+.raw-tasks__heading h1 {
+  margin: 0;
+  font-size: 24px;
+}
+.raw-tasks__heading > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.raw-tasks__filters {
+  display: flex;
+  gap: 12px;
+  margin: 16px 0;
+}
+.raw-tasks__filters .el-input {
+  width: 300px;
+}
+.raw-tasks__filters .el-select {
+  width: 200px;
+}
+.raw-tasks__table {
+  width: 100%;
+}
+.raw-tasks small {
+  display: block;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.raw-tasks__table .el-button {
+  max-width: 100%;
+}
+.raw-tasks__table .el-button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.raw-muted {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.raw-submission {
+  padding: 12px;
+  background: var(--el-fill-color-light);
+  margin: 12px 0;
+}
+.raw-tasks__actions {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+}
+.raw-tasks__actions .el-button {
+  margin-left: 0;
+}
+
+.task-workbench {
+  padding: 24px;
+  min-width: 0;
+}
+.task-workbench > header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.task-workbench > header h1 {
+  margin: 0;
+  font-size: 24px;
+}
+.task-workbench .raw-tasks {
+  padding: 0;
+}
+.raw-tasks__heading h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.task-result-export {
+  margin: 16px 0;
+}
+.rpc-page {
+  max-width: 1100px;
+}
+.rpc-page__scope {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 16px 0;
+}
+.rpc-page__scope .el-select {
+  width: 320px;
+}
+.rpc-page__form {
+  display: grid;
+  gap: 16px;
+}
+.rpc-page__form label {
+  display: grid;
+  gap: 6px;
+}
+.rpc-page__form .el-select {
+  width: 100%;
+}
+.rpc-page__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+}
+.rpc-page pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rpc-call {
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 12px 0;
+}
+.rpc-history {
+  max-height: 640px;
+  overflow: auto;
+}
+.rpc-call__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.rpc-page__form textarea {
+  font: inherit;
+  padding: 10px;
+  color: var(--el-text-color-primary);
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  resize: vertical;
+}

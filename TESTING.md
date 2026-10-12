@@ -23,11 +23,11 @@ fresh run evidence. Docs Contract checks entrypoints, links and selected retired
 terms; semantic agreement still requires comparing prose with its Owner/caller
 and assertions.
 
-Deployment configuration proof lives in `server_boot_jvm`: the default, Lab,
-AgentForge and preview classpath configurations, explicit overrides and deployment
+Deployment configuration proof lives in `server_boot_jvm`: the default,
+AgentForge and preview classpath configurations plus the external platform proof fixture, explicit overrides and deployment
 overlays. `server_jvm` tests and OpenAPI export use independent test resources;
 only named real-infrastructure tests enable Redis and Pacers. Archive verification
-checks the four host configurations, absence of application configuration in
+checks the three host configurations, absence of application configuration in
 nested platform/Scenario libraries, and absence of test configuration. Moving
 configuration ownership retains the original proof-path selections.
 
@@ -303,7 +303,9 @@ execution of the Java Worker proof.
 ### Worker Project Fixture
 
 Worker Correctness, Dynamic Matching, Convergence Health, Loaded Recovery and
-Android Worker Proof use the explicit `scenario-workers` Project. Runners that
+Android Worker Proof load `integrations/worker_proof_support/platform-runtime.yaml`
+through `spring.config.additional-location` and use its explicit `scenario-workers`
+Project. Lane overlays follow that fixture; no Preview profile or H2 is involved. Runners that
 replace Group manifests must also replace the complete Project list under
 [Boot's topology contract](server_boot_jvm/README.md#project-topology), preserving
 the lane's intended managed Task topology. Each lane owns its workload, fault,

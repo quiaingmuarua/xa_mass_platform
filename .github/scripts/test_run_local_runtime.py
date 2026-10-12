@@ -20,8 +20,8 @@ SPEC.loader.exec_module(launcher)
 
 class LocalRuntimeLauncherTest(unittest.TestCase):
 
-    def test_profile_defaults_to_scenario_and_rejects_unknown_values(self) -> None:
-        self.assertEqual(launcher.parse_arguments([]).profile, "scenario-workers")
+    def test_profile_defaults_to_preview_and_rejects_retired_values(self) -> None:
+        self.assertEqual(launcher.parse_arguments([]).profile, "preview")
         self.assertEqual(
             launcher.parse_arguments(["--profile", "agentforge"]).profile,
             "agentforge",
@@ -30,7 +30,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
             launcher.parse_arguments(["--profile", "unknown"])
 
     def test_preview_options_are_rejected_for_other_profiles(self) -> None:
-        for profile in ("scenario-workers", "agentforge"):
+        for profile in ("default", "agentforge"):
             for option in ("count", "app-count", "seed", "port", "sandbox-root"):
                 with self.subTest(profile=profile, option=option), redirect_stderr(io.StringIO()), \
                         self.assertRaises(SystemExit) as error, patch.object(launcher, "build_frontend") as build:
@@ -63,15 +63,14 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("preview", result.stdout)
         with patch.object(launcher, "load_preview", side_effect=AssertionError("unexpected Preview import")):
-            self.assertEqual("scenario-workers", launcher.parse_arguments([]).profile)
+            self.assertEqual("preview", launcher.parse_arguments([]).profile)
             self.assertEqual("agentforge", launcher.parse_arguments(["--profile", "agentforge"]).profile)
 
-    def test_only_scenario_profile_builds_the_worker_host(self) -> None:
+    def test_platform_profiles_build_no_worker_host(self) -> None:
         self.assertEqual(
-            launcher.gradle_tasks("scenario-workers"),
+            launcher.gradle_tasks("default"),
             [
                 ":server_boot_jvm:bootJar",
-                ":worker_simulator_jvm:installDist",
                 ":distribution:server:installLocalPlatformDiagnosticCodes",
             ],
         )
@@ -85,7 +84,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
 
     def test_profile_coordinates_follow_the_checked_configuration(self) -> None:
         self.assertEqual(
-            launcher.runtime_api_base_url("scenario-workers", {}),
+            launcher.runtime_api_base_url("default", {}),
             "http://127.0.0.1:18082",
         )
         self.assertEqual(
@@ -97,7 +96,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         )
         self.assertEqual(
             launcher.runtime_api_base_url(
-                "scenario-workers",
+                "default",
                 {"SERVER_PORT": "19082"},
             ),
             "http://127.0.0.1:19082",
@@ -118,13 +117,13 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
             self.assertIs(
                 launcher.start_server(
                     Path(directory) / "server.jar",
-                    "scenario-workers",
+                    "default",
                     {"PATH": "test-path"},
                 ),
                 process,
             )
         command = popen.call_args.args[0]
-        self.assertIn("--spring.profiles.active=scenario-workers", command)
+        self.assertIn("--spring.profiles.active=default", command)
         static_argument = next(
             value
             for value in command
@@ -136,50 +135,20 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         )
         self.assertEqual(popen.call_args.kwargs["env"], {"PATH": "test-path"})
 
-    def test_main_starts_worker_host_only_for_scenario_profile(self) -> None:
-        server = MagicMock()
-        worker_host = MagicMock()
-        with patch.object(launcher, "build_frontend"), patch.object(
-            launcher,
-            "build_runtime_processes",
-            return_value=(Path("server.jar"), [Path("host.jar")]),
-        ), patch.object(
-            launcher,
-            "start_server",
-            return_value=server,
-        ), patch.object(launcher, "wait_for_server"), patch.object(
-            launcher,
-            "start_worker_host",
-            return_value=worker_host,
-        ) as start_host, patch.object(
-            launcher,
-            "supervise",
-            return_value=0,
-        ), patch.object(launcher, "stop_process"):
-            self.assertEqual(launcher.main([], environ={}), 0)
-            start_host.assert_called_once()
-        with patch.object(launcher, "build_frontend"), patch.object(
-            launcher,
-            "build_runtime_processes",
-            return_value=(Path("server.jar"), []),
-        ), patch.object(
-            launcher,
-            "start_server",
-            return_value=server,
-        ), patch.object(launcher, "wait_for_server"), patch.object(
-            launcher,
-            "start_worker_host",
-            return_value=worker_host,
-        ) as start_host, patch.object(
-            launcher,
-            "supervise",
-            return_value=0,
-        ), patch.object(launcher, "stop_process"):
-            self.assertEqual(
-                launcher.main(["--profile", "agentforge"], environ={}),
-                0,
-            )
-            start_host.assert_not_called()
+    def test_platform_main_starts_only_server_and_always_cleans_up(self):
+        for profile in ("default", "agentforge"):
+            server = MagicMock()
+            with patch.object(launcher, "build_frontend"), patch.object(
+                    launcher, "build_runtime_processes", return_value=Path("server.jar")), patch.object(
+                    launcher, "start_server", return_value=server), patch.object(
+                    launcher, "wait_for_server"), patch.object(
+                    launcher, "supervise", return_value=0) as supervise, patch.object(
+                    launcher, "stop_process") as stop:
+                self.assertEqual(launcher.main(["--profile", profile], environ={}), 0)
+                supervise.assert_called_once_with(server)
+                stop.assert_called_once_with(server, "XA Mass Server")
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            launcher.parse_arguments(["--profile", "scenario-workers"])
 
 
 if __name__ == "__main__":

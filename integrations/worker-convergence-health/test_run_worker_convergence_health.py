@@ -90,7 +90,7 @@ class WorkerConvergenceHealthRunnerTest(unittest.TestCase):
     def test_server_catalog_matches_convergence_worker_groups(self):
         config = (
             PROOF.SERVER_CONFIG_DIRECTORY
-            / "application-scenario-workers.yaml"
+            / "convergence-runtime.yaml"
         ).read_text(encoding="utf-8")
 
         self.assertIn('"extension.worker.lab.delay"', config)

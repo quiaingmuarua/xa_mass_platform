@@ -47,6 +47,8 @@ export interface TaskView {
   idleDisposition: "CLOSE_WHEN_IDLE" | "PARK_WHEN_IDLE";
   refill: RefillTarget[];
   config: Record<string, string>;
+  name: string | null;
+  metadata: Record<string, string>;
 }
 
 export type TaskScoreBand =

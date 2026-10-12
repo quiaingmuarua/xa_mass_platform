@@ -57,10 +57,12 @@ const mockTasks: TaskView[] = [
 function mockTask(taskId: string, workerGroupId: string): TaskView {
   return {
     taskId,
-    projectId: "demo",
+    projectId: "default",
     workerGroupId,
     idleDisposition: "PARK_WHEN_IDLE",
     refill: [{ poolName: "any", target: {}, count: 100 }],
+    name: null,
+    metadata: {},
     config: {
       priority: "0",
       maxRetryTimes: "3"
@@ -78,7 +80,7 @@ export const MOCK_TASK_PREVIEW: TaskPreviewResponse = {
       task: {
         ...mockTasks[0]!,
         taskId: "mock-finite-awaiting-review",
-        projectId: "demo",
+        projectId: "default",
         idleDisposition: "CLOSE_WHEN_IDLE"
       },
       workerGroup: MOCK_WORKER_GROUPS[0]!
@@ -89,7 +91,7 @@ export const MOCK_TASK_PREVIEW: TaskPreviewResponse = {
       task: {
         ...mockTasks[1]!,
         taskId: "mock-finite-initial",
-        projectId: "demo",
+        projectId: "default",
         idleDisposition: "CLOSE_WHEN_IDLE"
       },
       workerGroup: MOCK_WORKER_GROUPS[1]!
@@ -106,7 +108,7 @@ export const MOCK_TASK_PREVIEW: TaskPreviewResponse = {
       task: {
         ...mockTasks[1]!,
         taskId: "mock-finite-closed",
-        projectId: "demo",
+        projectId: "default",
         idleDisposition: "CLOSE_WHEN_IDLE"
       },
       workerGroup: MOCK_WORKER_GROUPS[1]!

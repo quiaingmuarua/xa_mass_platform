@@ -16,7 +16,7 @@ def _require(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
-HOST_CONFIGURATIONS = {"application.yaml", "application-scenario-workers.yaml",
+HOST_CONFIGURATIONS = {"application.yaml",
                        "application-agentforge.yaml", "application-preview.yaml"}
 
 
@@ -27,6 +27,7 @@ def is_application_configuration(name: str) -> bool:
 def verify_server_configuration(server_jar: zipfile.ZipFile) -> None:
     """Both distributions must deliver the same complete host-owned configuration."""
     entries = server_jar.namelist()
+    _require(not any("platform-runtime.yaml" in name for name in entries), "Proof fixture must not be packaged")
     expected = {"BOOT-INF/classes/" + name for name in HOST_CONFIGURATIONS}
     actual = {name for name in entries if not name.startswith("BOOT-INF/lib/") and is_application_configuration(name)}
     _require(actual == expected, "Server Boot JAR has missing or unexpected application configuration")
@@ -92,7 +93,7 @@ def verify(archive: Path, version: str) -> None:
         )
 
         manifest = json.loads(runtime.read(f"{root}/manifest.json"))
-        _require(manifest.get("schemaVersion") == 5, "manifest schema mismatch")
+        _require(manifest.get("schemaVersion") == 6, "manifest schema mismatch")
         _require(manifest.get("version") == version, "manifest version mismatch")
         _require(
             re.fullmatch(r"[0-9a-f]{40}", manifest.get("gitCommit", ""))
@@ -110,12 +111,12 @@ def verify(archive: Path, version: str) -> None:
             "manifest retains Python production fields",
         )
         _require(
-            manifest.get("defaultSpringProfile") == "scenario-workers",
+            manifest.get("defaultSpringProfile") == "default",
             "Default Spring Profile mismatch",
         )
         _require(
             manifest.get("springProfiles")
-            == ["scenario-workers", "agentforge", "preview"],
+            == ["default", "agentforge", "preview"],
             "Spring Profiles mismatch",
         )
         _require(manifest.get("frontendIncluded") is True, "Frontend mismatch")

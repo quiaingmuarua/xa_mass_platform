@@ -442,6 +442,14 @@ Messages names, query inputs, Task descriptors and stored Properties remain vali
 when that declaration is installed. No compatibility branch or data migration is
 needed. Platform-only composition passes empty declaration collections.
 
+## Capability Observation
+
+`WorkerMatchingCatalog.capabilities(group)` returns immutable enabled Pool and
+query names, including global `workerId`. It reads startup values only: no Facts,
+Redis, stock or readiness lookup. The Server separately checks Project binding
+and registered Group evidence. This metadata transfers no selection or mutation
+authority.
+
 ## Fixed Resource Composition
 
 `MatchingComposition` receives the Group availability map and separate immutable

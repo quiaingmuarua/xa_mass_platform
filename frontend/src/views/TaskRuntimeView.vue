@@ -1,458 +1,320 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from "vue";
-import {
-  InfoFilled,
-  Refresh,
-  Search,
-  Tickets,
-  Tools,
-  Warning
-} from "@element-plus/icons-vue";
-
-import ProjectTasksPanel from "@/components/ProjectTasksPanel.vue";
-import type { Project } from "@/task-management/projects";
-import FiniteTaskManagement from "@/components/FiniteTaskManagement.vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { ElInputNumber, ElMessage } from "element-plus";
+import { Refresh } from "@element-plus/icons-vue";
+import "element-plus/es/components/input-number/style/css";
 import JsonBlock from "@/components/JsonBlock.vue";
-import TaskCallDebug from "@/components/TaskCallDebug.vue";
-import {
-  useRuntimeViewerConfig,
-  useRuntimeViewerStore,
-  useTaskManagementStore
-} from "@/runtime-context";
-import type { TaskRuntimePreviewEntry, TaskScoreBand } from "@/runtime-viewer/types";
-import {
-  taskCallDebugAvailability,
-  type TaskCallDebugAvailability
-} from "@/task-call-debug/model";
+import RawTaskTable, { type TaskRow } from "@/components/RawTaskTable.vue";
+import TaskResultExport from "@/components/TaskResultExport.vue";
+import { useRuntimeViewerStore } from "@/runtime-context";
+import { useTaskSession } from "@/task-workbench/session";
+import "@/task-workbench/workbench.css";
 
-type TaskDetailTab = "overview" | "debug";
-type FiniteTaskWorkbench = { openTaskById(taskId: string): void };
-
-const store = useRuntimeViewerStore();
-const taskManagement = useTaskManagementStore();
-const config = useRuntimeViewerConfig();
-const project = ref<Project>();
-const searchText = ref("");
-const selectedEntry = ref<TaskRuntimePreviewEntry>();
-const detailsOpen = ref(false);
-const detailTab = ref<TaskDetailTab>("overview");
-const workbenchOpen = ref(false);
-const finiteWorkbench = ref<FiniteTaskWorkbench>();
-
-const filteredEntries = computed(() => {
-  const query = searchText.value.trim().toLocaleLowerCase();
-  if (query.length === 0) return store.entries;
-  return store.entries.filter((entry) =>
-    [
-      entry.taskId,
-      entry.scoreBand,
-      entry.task?.workerGroupId,
-      entry.task?.refill.map((item) => item.poolName).join(" "),
-      entry.task?.idleDisposition
-    ]
-      .filter((value): value is string => value !== undefined)
-      .some((value) => value.toLocaleLowerCase().includes(query))
-  );
-});
-
-onMounted(() => void store.initializeTaskView());
-
-function openDetails(
-  entry: TaskRuntimePreviewEntry,
-  tab: TaskDetailTab = "overview"
-): void {
-  selectedEntry.value = entry;
-  detailTab.value = tab;
-  detailsOpen.value = true;
+const session = useTaskSession();
+const workspace = session.runtime;
+const directory = session.directory;
+const globalStore = useRuntimeViewerStore();
+const route = useRoute();
+const router = useRouter();
+const globalView = computed(() => route.query.view === "global");
+const project = computed(() =>
+  typeof route.query.project === "string" ? route.query.project : ""
+);
+const taskId = computed(() =>
+  typeof route.query.taskId === "string" ? route.query.taskId : ""
+);
+const knownProject = computed(() =>
+  directory.value?.some((p) => p.projectId === project.value)
+);
+const list = computed(() => workspace.windows[project.value]);
+const detailState = computed(() => workspace.detail.value);
+const detail = computed(() => detailState.value.value);
+const fresh = computed(
+  () => !!detail.value && !detailState.value.loading && !detailState.value.stale
+);
+const filterKey = computed(() => (globalView.value ? "@global" : project.value));
+watch(
+  filterKey,
+  (key) => {
+    session.runtimeFilters[key] ??= { search: "", group: "", kind: "", scroll: 0 };
+  },
+  { immediate: true }
+);
+const filter = computed(() => session.runtimeFilters[filterKey.value]!);
+const rows = computed<TaskRow[]>(() =>
+  globalView.value
+    ? globalStore.entries.map((e) => ({
+        taskId: e.taskId,
+        task: e.task,
+        scoreBand: e.scoreBand
+      }))
+    : (list.value?.value?.tasks ?? [])
+);
+const filtered = computed(() =>
+  rows.value.filter((row) => {
+    const search = filter.value.search.trim().toLowerCase();
+    return (
+      (!search ||
+        [row.taskId, row.task?.name ?? ""].some((v) =>
+          v.toLowerCase().includes(search)
+        )) &&
+      (!filter.value.group || row.task?.workerGroupId === filter.value.group) &&
+      (!filter.value.kind || row.task?.idleDisposition === filter.value.kind)
+    );
+  })
+);
+const groups = computed(() => [
+  ...new Set(rows.value.flatMap((r) => (r.task ? [r.task.workerGroupId] : [])))
+]);
+const loading = computed(() =>
+  globalView.value
+    ? ["loading", "refreshing"].includes(globalStore.taskPreviewState.status)
+    : list.value?.loading
+);
+const error = computed(() =>
+  globalView.value ? globalStore.taskPreviewState.error?.message : list.value?.error
+);
+const stale = computed(() =>
+  globalView.value ? globalStore.taskPreviewState.stale : list.value?.stale
+);
+const readAt = computed(() =>
+  globalView.value
+    ? globalStore.taskPreviewState.preview?.generatedAt
+    : list.value?.readAt
+);
+const table = ref<InstanceType<typeof RawTaskTable>>();
+let disposed = false;
+let generation = 0;
+let restoringScroll = true;
+let focusReturn: HTMLElement | undefined;
+function time(value?: string | number) {
+  return value === undefined ? "未提供" : new Date(value).toLocaleString();
 }
-
-function closeDetails(): void {
-  selectedEntry.value = undefined;
-  detailTab.value = "overview";
-}
-
-async function openWorkbench(taskId?: string): Promise<void> {
-  workbenchOpen.value = true;
-  await store.initializeWorkerGroups();
-  if (taskId !== undefined) {
-    await nextTick();
-    finiteWorkbench.value?.openTaskById(taskId);
+async function syncRoute() {
+  const current = ++generation;
+  const savedScroll = filter.value.scroll;
+  restoringScroll = true;
+  if (!directory.value) return;
+  if (!project.value && !globalView.value) {
+    const selected =
+      directory.value.find((p) => p.projectId === "default") ?? directory.value[0];
+    if (selected) {
+      await router.replace({ query: { ...route.query, project: selected.projectId } });
+      return;
+    }
   }
+  session.navigation.runtimeQuery = Object.fromEntries(
+    Object.entries(route.query).filter(
+      (pair): pair is [string, string] => typeof pair[1] === "string"
+    )
+  );
+  if (globalView.value) {
+    if (
+      !globalStore.taskPreviewState.preview &&
+      globalStore.taskPreviewState.status !== "loading"
+    )
+      void globalStore.initializeTaskView();
+  } else if (knownProject.value && !workspace.windows[project.value])
+    void workspace.loadTasks(project.value);
+  if (taskId.value && knownProject.value) {
+    if (workspace.detailKey.value !== project.value + "/" + taskId.value)
+      void workspace.loadDetail(project.value, taskId.value);
+  } else workspace.clearDetail();
+  await nextTick();
+  if (!disposed && current === generation)
+    await table.value?.restoreScrollTop(savedScroll);
+  if (!disposed && current === generation) restoringScroll = false;
 }
-
-function refreshAfterFiniteTaskChange(): void {
-  void store.refreshTasks();
+function rememberScroll(event: { scrollTop: number }) {
+  if (!restoringScroll && !disposed) filter.value.scroll = event.scrollTop;
 }
-
-function debugAvailability(entry: TaskRuntimePreviewEntry): TaskCallDebugAvailability {
-  return taskCallDebugAvailability(config.mode, entry);
+watch(
+  () => route.fullPath,
+  () => {
+    if (route.path === "/runtime/tasks") void syncRoute();
+  }
+);
+onMounted(async () => {
+  await session.ensureDirectory();
+  if (disposed) return;
+  if (
+    !Object.keys(route.query).length &&
+    Object.keys(session.navigation.runtimeQuery).length
+  )
+    await router.replace({ query: session.navigation.runtimeQuery });
+  else await syncRoute();
+});
+onBeforeUnmount(() => {
+  disposed = true;
+  generation++;
+});
+async function refreshDirectory() {
+  await session.loadDirectory();
+  if (!disposed) await syncRoute();
 }
-
-function finiteTaskKnown(taskId: string): boolean {
-  return taskManagement.tasks.some((task) => task.taskId === taskId);
+async function refresh() {
+  if (globalView.value) await globalStore.refreshTasks();
+  else if (knownProject.value) await workspace.loadTasks(project.value);
 }
-
-function workerGroupId(entry: TaskRuntimePreviewEntry): string {
-  return entry.task?.workerGroupId ?? "—";
+function selectProject(value: string) {
+  return router.push({ query: value ? { project: value } : { view: "global" } });
 }
-
-function scoreBandLabel(band: TaskScoreBand): string {
+function open(row: TaskRow) {
+  if (!row.task || !directory.value?.some((p) => p.projectId === row.task?.projectId)) {
+    ElMessage.warning("描述符或 Project 绑定不可用，保留当前原始证据。");
+    return;
+  }
+  focusReturn =
+    document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+  return router.push({
+    query: { ...route.query, project: row.task.projectId, taskId: row.taskId }
+  });
+}
+async function close(done: () => void) {
+  const id = taskId.value;
+  done();
+  if (route.path !== "/runtime/tasks" || !id) return;
+  const query = { ...route.query };
+  delete query.taskId;
+  await router.push({ query });
+  const current = generation;
+  await nextTick();
+  if (!disposed && current === generation && !taskId.value && focusReturn?.isConnected)
+    focusReturn.focus();
+}
+function workbenchLink() {
+  const task = detail.value?.task;
   return {
-    pre_review: "Awaiting Review",
-    "running-initial": "Running Initial",
-    running_visible: "Running Visible",
-    terminal: "Closed"
-  }[band];
-}
-
-function scoreBandType(
-  band: TaskScoreBand
-): "warning" | "primary" | "success" | "info" {
-  return {
-    pre_review: "warning",
-    "running-initial": "primary",
-    running_visible: "success",
-    terminal: "info"
-  }[band] as "warning" | "primary" | "success" | "info";
-}
-
-function descriptorLabel(entry: TaskRuntimePreviewEntry): string {
-  if (entry.task === null) return "Task Missing";
-  if (entry.workerGroup === null) return "Group Missing";
-  return "Available";
-}
-
-function descriptorType(entry: TaskRuntimePreviewEntry): "success" | "warning" {
-  return entry.task !== null && entry.workerGroup !== null ? "success" : "warning";
+    path: "/task-workbench",
+    query:
+      task?.idleDisposition === "PARK_WHEN_IDLE"
+        ? { tab: "rpc", group: task.workerGroupId }
+        : { tab: "finite", taskId: detail.value?.taskId }
+  };
 }
 </script>
-
 <template>
-  <section class="task-page" data-testid="task-runtime-page">
-    <header class="worker-page__heading task-preview-heading">
+  <section class="raw-tasks" data-testid="task-runtime-page">
+    <header class="raw-tasks__heading">
+      <h1>Runtime Tasks</h1>
       <div>
-        <p class="worker-page__eyebrow">RUNTIME / TASKS</p>
-        <h1>Task Runtime Preview</h1>
-        <p>Task Score 高位窗口的只读投影，以及通过 Kernel Scheduling 的 Task 调试</p>
-      </div>
-      <div class="task-preview-heading__actions">
-        <label>
-          采样上限
-          <el-input
-            v-model.number="store.taskSampleLimit"
-            :min="1"
-            :max="1000"
-            type="number"
-            :step="1"
-            style="width: 140px"
-            aria-label="Task 采样上限"
-            @change="
-              store.taskSampleLimit = Math.min(
-                1000,
-                Math.max(1, Math.round(Number(store.taskSampleLimit) || 100))
-              )
-            "
-          />
-        </label>
-        <el-button :icon="Tools" @click="openWorkbench()">
-          Finite Task Workbench
-        </el-button>
-        <el-button
-          type="primary"
-          :icon="Refresh"
-          :loading="store.taskPreviewState.status === 'refreshing'"
-          @click="store.refreshTasks"
-        >
-          刷新
-        </el-button>
+        <span class="raw-muted">最近读取：{{ time(readAt) }}</span
+        ><el-button :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
       </div>
     </header>
-
-    <el-alert class="runtime-semantics" type="info" :closable="false" show-icon>
-      <template #title>
-        当前窗口由 Task Score 从高到低读取，采样上限可选 1–1000
-        条；它不代表业务优先级，也不承诺全量、分页或稳定成员。 Running Visible
-        只表示进入调度可见 Band，不证明正在执行。
-      </template>
-    </el-alert>
-
     <el-alert
-      v-if="store.taskPreviewState.stale"
-      class="runtime-semantics"
+      v-if="directory.error"
+      :title="directory.error"
+      type="error"
+      :closable="false"
+      ><el-button @click="refreshDirectory">重读 Project 目录</el-button></el-alert
+    >
+    <el-tabs
+      :model-value="globalView ? '@global' : project"
+      @tab-change="selectProject($event === '@global' ? '' : String($event))"
+    >
+      <el-tab-pane
+        v-for="p in directory.value ?? []"
+        :key="p.projectId"
+        :name="p.projectId"
+        :label="p.projectId"
+      />
+      <el-tab-pane name="@global" label="全局观察" />
+    </el-tabs>
+    <el-alert
+      v-if="!globalView && directory.value && !knownProject"
+      title="Project 未配置或不可用，可重新选择或切换全局观察。"
+      type="info"
+      :closable="false"
+    />
+    <p v-if="globalView" class="raw-muted">
+      按 Task Score 从高到低采样，不代表创建时间或业务优先级；Running Visible
+      不证明正在执行。
+    </p>
+    <p v-else class="raw-muted">
+      当前 Project 最近 {{ rows.length }} 条，最多 100 条；筛选仅作用于当前载入集合。{{
+        list?.value?.truncated ? "列表已截断。" : ""
+      }}
+    </p>
+    <el-alert
+      v-if="error"
+      :title="(stale ? '读取失败，保留旧快照：' : '读取失败：') + error"
       type="warning"
       :closable="false"
-      show-icon
-    >
-      <template #title>
-        当前仍显示上一次成功读取的 Task 窗口；最近一次刷新失败。
-        <template v-if="store.taskPreviewState.error">
-          {{ store.taskPreviewState.error.message }}
-          <span v-if="store.taskPreviewState.error.requestId">
-            · Request ID: {{ store.taskPreviewState.error.requestId }}
-          </span>
-        </template>
-      </template>
-    </el-alert>
-
-    <ProjectTasksPanel
-      :base-url="config.apiBaseUrl"
-      :disabled="config.mode === 'mock'"
-      @selected="project = $event"
     />
-    <section class="worker-panel" aria-label="Task Runtime Preview">
-      <div class="finite-task-toolbar task-preview-toolbar">
-        <div>
-          <strong>Task Score Window</strong>
-          <span>
-            {{ store.entries.length }} /
-            {{ store.taskPreviewState.preview?.sampleLimit ?? 100 }}
-            observed
-            <template v-if="store.taskPreviewState.preview">
-              ·
-              {{
-                new Date(store.taskPreviewState.preview.generatedAt).toLocaleString()
-              }}
-            </template>
-          </span>
-        </div>
-        <el-input
-          v-model="searchText"
-          class="task-preview-search"
-          :prefix-icon="Search"
-          clearable
-          placeholder="筛选当前 Task 窗口"
-          aria-label="筛选当前 Task 窗口"
-        />
-      </div>
-
-      <div
-        v-if="
-          (store.taskPreviewState.status === 'loading' ||
-            store.taskPreviewState.status === 'refreshing') &&
-          store.entries.length === 0
-        "
-        class="panel-state"
-        data-testid="task-loading"
-      >
-        <el-icon class="is-loading"><Tickets /></el-icon>
-        正在读取 Task Score 窗口…
-      </div>
-
-      <div
-        v-else-if="
-          store.taskPreviewState.status === 'error' && store.entries.length === 0
-        "
-        class="panel-state panel-state--error"
-        data-testid="task-error"
-      >
-        <el-icon><Warning /></el-icon>
-        <div>
-          <strong>{{ store.taskPreviewState.error?.title }}</strong>
-          <p>{{ store.taskPreviewState.error?.message }}</p>
-          <small v-if="store.taskPreviewState.error?.requestId">
-            Request ID: {{ store.taskPreviewState.error.requestId }}
-          </small>
-        </div>
-        <el-button @click="store.refreshTasks">重新读取</el-button>
-      </div>
-
-      <div
-        v-else-if="store.entries.length === 0"
-        class="panel-state"
-        data-testid="empty-tasks"
-      >
-        <el-icon><InfoFilled /></el-icon>
-        <div>
-          <strong>当前 Task Score 窗口为空</strong>
-          <p>Owner 当前没有返回可展示的 Task Score 成员。</p>
-        </div>
-      </div>
-
-      <div v-else class="task-table-wrap">
-        <el-table :data="filteredEntries" row-key="taskId" class="task-table">
-          <el-table-column label="TASK ID" min-width="280">
-            <template #default="{ row }"
-              ><code>{{ row.taskId }}</code></template
-            >
-          </el-table-column>
-          <el-table-column label="SCORE BAND" min-width="155">
-            <template #default="{ row }">
-              <el-tag :type="scoreBandType(row.scoreBand)" effect="plain" size="small">
-                {{ scoreBandLabel(row.scoreBand) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="WORKER GROUP" min-width="230">
-            <template #default="{ row }">
-              <span class="task-group-id">{{ workerGroupId(row) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="POOL SUPPLY" min-width="190">
-            <template #default="{ row }">
-              {{
-                row.task?.refill
-                  .map(
-                    (item: { poolName: string; count: number }) =>
-                      `${item.poolName} × ${item.count}`
-                  )
-                  .join(", ") || "无供给"
-              }}
-            </template>
-          </el-table-column>
-          <el-table-column label="IDLE DISPOSITION" min-width="170">
-            <template #default="{ row }">
-              <code>{{ row.task?.idleDisposition ?? "—" }}</code>
-            </template>
-          </el-table-column>
-          <el-table-column label="DESCRIPTOR" width="145">
-            <template #default="{ row }">
-              <el-tag :type="descriptorType(row)" effect="plain" size="small">
-                {{ descriptorLabel(row) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="ACTIONS" width="190" fixed="right" align="right">
-            <template #default="{ row }">
-              <div class="task-row-actions">
-                <el-button link type="primary" @click="openDetails(row)"
-                  >详情</el-button
-                >
-                <span :title="debugAvailability(row).reason">
-                  <el-button
-                    link
-                    type="warning"
-                    :disabled="!debugAvailability(row).enabled"
-                    @click="openDetails(row, 'debug')"
-                  >
-                    调试
-                  </el-button>
-                </span>
-                <el-button
-                  v-if="finiteTaskKnown(row.taskId)"
-                  link
-                  type="success"
-                  @click="openWorkbench(row.taskId)"
-                >
-                  继续
-                </el-button>
-              </div>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div v-if="filteredEntries.length === 0" class="panel-state task-filter-empty">
-          当前窗口没有匹配的 Task。
-        </div>
-      </div>
-    </section>
-
-    <el-drawer
-      v-model="detailsOpen"
-      class="worker-detail-drawer"
-      size="min(680px, 100%)"
-      destroy-on-close
-      @closed="closeDetails"
-    >
-      <template #header>
-        <div v-if="selectedEntry" class="worker-drawer-heading">
-          <span>TASK RUNTIME PREVIEW</span>
-          <strong>{{ selectedEntry.taskId }}</strong>
-        </div>
-      </template>
-
-      <el-tabs
-        v-if="selectedEntry"
-        v-model="detailTab"
-        class="worker-detail-tabs"
-        data-testid="task-detail"
-      >
-        <el-tab-pane label="Overview" name="overview">
-          <div class="worker-detail">
-            <section class="task-descriptor-heading">
-              <h2>Runtime projection</h2>
-              <el-tag effect="plain" type="info" size="small">READ-ONLY</el-tag>
-            </section>
-            <section>
-              <dl class="worker-detail__identity">
-                <div>
-                  <dt>Task ID</dt>
-                  <dd>{{ selectedEntry.taskId }}</dd>
-                </div>
-                <div>
-                  <dt>Score Band</dt>
-                  <dd>{{ scoreBandLabel(selectedEntry.scoreBand) }}</dd>
-                </div>
-                <div>
-                  <dt>WorkerGroup</dt>
-                  <dd>{{ workerGroupId(selectedEntry) }}</dd>
-                </div>
-                <div>
-                  <dt>Pool 供给声明</dt>
-                  <dd>
-                    <pre>{{ selectedEntry.task?.refill ?? "描述符缺失" }}</pre>
-                  </dd>
-                </div>
-                <div>
-                  <dt>Idle disposition</dt>
-                  <dd>{{ selectedEntry.task?.idleDisposition ?? "描述符缺失" }}</dd>
-                </div>
-              </dl>
-            </section>
-
-            <template v-if="selectedEntry.task">
-              <section>
-                <h2>Config</h2>
-                <JsonBlock :value="selectedEntry.task.config" />
-              </section>
-            </template>
-
-            <el-alert
-              v-if="selectedEntry.task === null"
-              type="warning"
-              :closable="false"
-              show-icon
-            >
-              <template #title>
-                Score 成员存在，但 Task Descriptor 缺失。Runtime Preview
-                只暴露漂移，不会推导或修复资源。
-              </template>
-            </el-alert>
-            <el-alert
-              v-else-if="selectedEntry.workerGroup === null"
-              type="warning"
-              :closable="false"
-              show-icon
-            >
-              <template #title>
-                Task Descriptor 存在，但 WorkerGroup Descriptor
-                缺失。查询不会自动修复资源。
-              </template>
-            </el-alert>
-          </div>
-        </el-tab-pane>
-        <el-tab-pane
-          label="Task Call Debug"
-          name="debug"
-          :disabled="!debugAvailability(selectedEntry).enabled"
-        >
-          <TaskCallDebug
-            v-if="debugAvailability(selectedEntry).enabled"
-            :entry="selectedEntry"
-          />
-        </el-tab-pane>
-      </el-tabs>
-    </el-drawer>
-
-    <el-drawer
-      v-model="workbenchOpen"
-      class="worker-detail-drawer finite-task-workbench-drawer"
-      size="min(1180px, 100%)"
-      title="Finite Task Workbench"
-    >
-      <FiniteTaskManagement
-        ref="finiteWorkbench"
-        :project="project"
-        @task-changed="refreshAfterFiniteTaskChange"
+    <div class="raw-tasks__filters">
+      <el-input
+        v-model="filter.search"
+        placeholder="名称 / 编号（当前集合）"
+        clearable
+        aria-label="任务搜索"
       />
+      <el-select
+        v-model="filter.group"
+        placeholder="所有 Group"
+        clearable
+        aria-label="Group 筛选"
+        ><el-option v-for="g in groups" :key="g" :label="g" :value="g"
+      /></el-select>
+      <el-select
+        v-model="filter.kind"
+        placeholder="全部任务类型"
+        clearable
+        aria-label="任务类型"
+        ><el-option label="有限任务" value="CLOSE_WHEN_IDLE" /><el-option
+          label="托管任务"
+          value="PARK_WHEN_IDLE"
+      /></el-select>
+      <el-input-number
+        v-if="globalView"
+        v-model="globalStore.taskSampleLimit"
+        :min="1"
+        :max="1000"
+        aria-label="全局采样上限"
+      />
+    </div>
+    <RawTaskTable
+      ref="table"
+      :rows="filtered"
+      :loading="loading"
+      :error="error"
+      @open="open"
+      @scroll="rememberScroll"
+    />
+    <el-drawer
+      :key="taskId"
+      :model-value="!!taskId"
+      size="760px"
+      :title="detail?.task?.name || taskId"
+      :before-close="close"
+    >
+      <el-alert
+        v-if="detailState.error"
+        :title="(detailState.stale ? '当前快照已过期：' : '') + detailState.error"
+        type="error"
+        :closable="false"
+      />
+      <el-button
+        :loading="detailState.loading"
+        :icon="Refresh"
+        @click="workspace.loadDetail(project, taskId)"
+        >刷新任务</el-button
+      ><span class="raw-muted"> {{ time(detailState.readAt) }}</span>
+      <template v-if="detail">
+        <p>
+          <code>{{ detail.taskId }}</code>
+        </p>
+        <p>
+          {{ detail.task?.projectId }} / {{ detail.task?.workerGroupId }} ·
+          {{ detail.scoreBand ?? "状态不可用" }}
+        </p>
+        <router-link v-if="detail.task?.projectId === 'default'" :to="workbenchLink()"
+          >进入任务工作台</router-link
+        >
+        <TaskResultExport :key="detail.taskId" :task="detail" :fresh="fresh" />
+        <JsonBlock :value="detail" />
+      </template>
     </el-drawer>
   </section>
 </template>

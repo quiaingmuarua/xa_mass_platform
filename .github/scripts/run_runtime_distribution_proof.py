@@ -259,8 +259,9 @@ def _prove_runtime(
     environment["XA_MASS_REDIS_SCOPE"] = scope
     command = _server_command(
         runtime_root,
-        "scenario-workers",
+        "default",
         [
+            f"--spring.config.additional-location={(repository_root / 'integrations/worker_proof_support/platform-runtime.yaml').as_uri()}",
             f"--server.port={server_port}",
             "--xa.mass.worker-delivery.adapter.instances."
             f"scenario-websocket.listen-port={adapter_port}",
@@ -384,7 +385,7 @@ def _prove_runtime(
                 raise RuntimeError("Java-only Runtime created a Python venv")
             print(
                 "Runtime distribution proof succeeded: "
-                f"scope={scope}, profile=scenario-workers, workers=0"
+                f"scope={scope}, fixture=platform-runtime, workers=0"
             )
         finally:
             _stop_process(server_process)

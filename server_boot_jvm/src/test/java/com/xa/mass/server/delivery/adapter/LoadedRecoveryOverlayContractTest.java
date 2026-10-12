@@ -41,8 +41,9 @@ class LoadedRecoveryOverlayContractTest {
         contextRunner.withInitializer(
                 new ConfigDataApplicationContextInitializer()
         ).withPropertyValues(
-                "spring.profiles.active=scenario-workers",
-                "spring.config.additional-location=" + overlay.toUri()
+                "spring.profiles.active=default",
+                "spring.config.additional-location=" + Path.of(System.getProperty("xa.mass.repository.root"))
+                    .resolve("integrations/worker_proof_support/platform-runtime.yaml").toUri() + "," + overlay.toUri()
         ).run(context -> {
             assertThat(context).hasNotFailed();
             NettyWorkerDeliveryAdapterConfig config = context.getBean(

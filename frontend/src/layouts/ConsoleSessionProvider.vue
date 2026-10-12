@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { provide, onBeforeUnmount } from "vue";
+import { computed, provide, onBeforeUnmount } from "vue";
+import { useRoute } from "vue-router";
 import ConfigErrorView from "@/views/ConfigErrorView.vue";
 import {
   runtimeViewerConfigKey,
@@ -20,13 +21,19 @@ import { createWorkerDirectDebugStore } from "../stores/worker-direct-debug";
 import { createWorkerStatusStore } from "../stores/worker-status";
 import { createWorkerStatusDataSource } from "../worker-status/data-source";
 import { HttpWorkerDirectCallClient } from "../worker-direct-call/http-client";
+import { createTaskSession, taskSessionKey } from "@/task-workbench/session";
+import { createProjectSource } from "@/task-management/projects";
 
 const configResult = parseRuntimeViewerConfig(import.meta.env);
+const route = useRoute();
+const needsRuntime = computed(() =>
+  ["Runtime", "Workbench"].includes(String(route.meta.section))
+);
 if (configResult.ok) {
   const dataSource = createRuntimeViewerDataSource(configResult.value);
   const runtimeViewerStore = createRuntimeViewerStore(configResult.value, dataSource);
   const taskManagementStore = createTaskManagementStore(
-    runtimeViewerStore,
+    configResult.value.mode,
     new HttpFiniteTaskClient(configResult.value.apiBaseUrl)
   );
   const taskCallDebugStore = createTaskCallDebugStore(
@@ -46,13 +53,21 @@ if (configResult.ok) {
   provide(taskCallDebugStoreKey, taskCallDebugStore);
   provide(workerDirectDebugStoreKey, workerDirectDebugStore);
   provide(workerStatusStoreKey, workerStatusStore);
+  const taskSession = createTaskSession(
+    createProjectSource(configResult.value.apiBaseUrl, configResult.value.mode)
+  );
+  provide(taskSessionKey, taskSession);
   onBeforeUnmount(() => {
+    taskSession.dispose();
     runtimeViewerStore.dispose();
     workerStatusStore.dispose();
   });
 }
 </script>
 <template>
-  <ConfigErrorView v-if="!configResult.ok" :error="configResult.error" />
+  <ConfigErrorView
+    v-if="!configResult.ok && needsRuntime"
+    :error="configResult.error"
+  />
   <router-view v-else />
 </template>

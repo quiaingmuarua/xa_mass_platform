@@ -1,0 +1,15 @@
+{
+  "taskId": "task-fixture",
+  "projectId": "default",
+  "workerGroupId": "demo-sim",
+  "idleDisposition": "CLOSE_WHEN_IDLE",
+  "refill": [],
+  "config": {
+    "priority": "50",
+    "maxRetryTimes": "3"
+  },
+  "name": "Wire fixture",
+  "metadata": {
+    "source": "contract-fixture"
+  }
+}

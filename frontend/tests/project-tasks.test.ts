@@ -1,96 +1,135 @@
+import taskWireFixture from "./fixtures/server-task-view.json";
+import { taskViewSchema } from "@/runtime-viewer/schemas";
 import { afterEach, expect, it, vi } from "vitest";
-import { createApp, nextTick, type App } from "vue";
-import { ElButton } from "element-plus";
-import ProjectTasksPanel from "@/components/ProjectTasksPanel.vue";
-import { loadProjectTasks } from "@/task-management/projects";
-
-let app: App | undefined;
-function mountPanel(props: {
-  projectId: string;
-  baseUrl: string;
-  disabled?: boolean;
-  onSelected?: (...args: unknown[]) => void;
-}) {
-  const host = document.createElement("div");
-  document.body.append(host);
-  app = createApp(ProjectTasksPanel, props);
-  app.component("ElButton", ElButton).mount(host);
-  return host;
-}
-afterEach(() => {
-  app?.unmount();
-  document.body.replaceChildren();
-  vi.unstubAllGlobals();
+import { computed } from "vue";
+import { createProjectSource, type ProjectSource } from "@/task-management/projects";
+import { createProjectWorkspace } from "@/task-management/workspace";
+import { task } from "./fixtures";
+afterEach(() => vi.unstubAllGlobals());
+it("first asynchronous loads notify computed list and Group consumers", async () => {
+  const source = {
+    tasks: vi.fn().mockResolvedValue({
+      projectId: "p",
+      truncated: false,
+      tasks: [{ taskId: "one", createdAtMillis: 1, scoreBand: null, task: null }]
+    }),
+    groups: vi.fn().mockResolvedValue([
+      {
+        workerGroupId: "g",
+        workerGroup: null,
+        matching: { pools: [], functions: ["workerId"] }
+      }
+    ])
+  } as unknown as ProjectSource;
+  const workspace = createProjectWorkspace(source);
+  const count = computed(() => workspace.windows.p?.value?.tasks.length ?? 0);
+  const groups = computed(() => workspace.groups.p?.value?.length ?? 0);
+  const pending = Promise.all([workspace.loadTasks("p"), workspace.loadGroups("p")]);
+  expect(count.value).toBe(0);
+  expect(groups.value).toBe(0);
+  await pending;
+  expect(count.value).toBe(1);
+  expect(groups.value).toBe(1);
 });
-
-it("loads only on demand, preserves missing projections and shows truncation", async () => {
-  const selected = vi.fn();
+it("reads startup Projects and complete backend-shaped TaskViews with null projections", async () => {
+  const descriptor = {
+    ...task("t", "g"),
+    projectId: "p",
+    name: "named",
+    metadata: { scenario: "test" }
+  };
   const fetcher = vi
     .fn()
     .mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ projectId: "messages", managedTaskIds: { group: "managed" } })
-      )
+      new Response(JSON.stringify([{ projectId: "p", managedTaskIds: { g: "rpc" } }]))
     )
     .mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          projectId: "messages",
+          projectId: "p",
           truncated: true,
           tasks: [
             {
-              taskId: "closed-task",
-              createdAtMillis: 1,
-              task: null,
-              scoreBand: "terminal"
-            }
+              taskId: "t",
+              createdAtMillis: 12,
+              task: descriptor,
+              scoreBand: "pre_review"
+            },
+            { taskId: "missing", createdAtMillis: 10, task: null, scoreBand: null }
           ]
         })
       )
     );
   vi.stubGlobal("fetch", fetcher);
-  const host = mountPanel({
-    projectId: "messages",
-    baseUrl: "/api",
-    onSelected: selected
-  });
-  await nextTick();
-  expect(fetcher).not.toHaveBeenCalled();
-  host
-    .querySelector("form")!
-    .dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
-  await vi.waitFor(() => expect(host.textContent).toContain("closed-task"));
-  expect(host.textContent).toContain("列表已截断");
-  expect(host.textContent).toContain("terminal");
+  const source = createProjectSource("/api", "api");
+  expect(await source.list()).toHaveLength(1);
+  expect((await source.tasks("p")).tasks[0]?.task).toEqual(descriptor);
   expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
-    "/api/v1/projects/messages",
-    "/api/v1/projects/messages/tasks?limit=100"
+    "/api/v1/projects",
+    "/api/v1/projects/p/tasks?limit=100"
   ]);
-  expect(selected).toHaveBeenCalledWith({
-    projectId: "messages",
-    managedTaskIds: { group: "managed" }
-  });
 });
-
-it("does not query in Mock mode", async () => {
+it("Mock has a consistent directory and no service requests", async () => {
   const fetcher = vi.fn();
   vi.stubGlobal("fetch", fetcher);
-  const host = mountPanel({
-    projectId: "demo",
-    baseUrl: "/api",
-    disabled: true
-  });
-  host
-    .querySelector("form")!
-    .dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
-  await nextTick();
+  const source = createProjectSource("/api", "mock");
+  const projects = await source.list();
+  for (const project of projects) {
+    const result = await source.tasks(project.projectId);
+    expect(result.tasks.every((row) => row.task?.projectId === project.projectId)).toBe(
+      true
+    );
+    await source.groups(project.projectId);
+    await source.task(project.projectId, result.tasks[0]!.taskId);
+  }
   expect(fetcher).not.toHaveBeenCalled();
 });
+it("late detail responses cannot overwrite another task; refresh failure retains snapshot and time", async () => {
+  let resolveOld!: (value: unknown) => void;
+  const current = { taskId: "new", task: null, createdAtMillis: 2, scoreBand: null };
+  const source = {
+    task: vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOld = resolve;
+          })
+      )
+      .mockResolvedValueOnce(current)
+      .mockRejectedValueOnce(new Error("unavailable"))
+  } as unknown as ProjectSource;
+  const workspace = createProjectWorkspace(source);
+  const first = workspace.loadDetail("p", "old");
+  await workspace.loadDetail("p", "new");
+  const readAt = workspace.detail.value.readAt;
+  resolveOld({ ...current, taskId: "old" });
+  await first;
+  expect(workspace.detail.value.value?.taskId).toBe("new");
+  await workspace.loadDetail("p", "new");
+  expect(workspace.detail.value).toMatchObject({
+    value: current,
+    readAt,
+    stale: true,
+    error: "unavailable"
+  });
+  workspace.dispose();
+});
+it("failed task reads do not erase the directory or Group capabilities", async () => {
+  const source = {
+    list: vi.fn().mockResolvedValue([{ projectId: "p", managedTaskIds: { g: "rpc" } }]),
+    tasks: vi.fn().mockRejectedValue(new Error("bad Task response")),
+    groups: vi.fn().mockResolvedValue([])
+  } as unknown as ProjectSource;
+  const workspace = createProjectWorkspace(source);
+  await workspace.loadDirectory();
+  await Promise.all([workspace.loadTasks("p"), workspace.loadGroups("p")]);
+  expect(workspace.directory.value?.[0]?.projectId).toBe("p");
+  expect(workspace.groups.p?.stale).toBe(false);
+  expect(workspace.windows.p?.error).toBe("bad Task response");
+});
 
-it("preserves request failures instead of substituting a sampled global list", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue(new Response("{}", { status: 503 }))
-  );
-  await expect(loadProjectTasks("/api", "messages")).rejects.toThrow("503");
+it("accepts the exact DTO fixture asserted by the Server serializer", () => {
+  expect(taskViewSchema.parse(taskWireFixture)).toEqual(taskWireFixture);
+  expect(() => taskViewSchema.parse({ ...taskWireFixture, unknown: true })).toThrow();
 });

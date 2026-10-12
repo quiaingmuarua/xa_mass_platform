@@ -108,6 +108,21 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
       throw mapHttpError(error, requestId);
     }
   }
+
+  async closeTask(taskId: string): Promise<void> {
+    const requestId = createRequestId();
+    try {
+      const response = await this.client.post(
+        `/v1/tasks/${encodeURIComponent(taskId)}/close`,
+        undefined,
+        { headers: requestHeaders(requestId) }
+      );
+      if (response.status !== 200) throw schemaError(requestId);
+      parseResponse(taskActionOutcomeSchema, response.data, requestId);
+    } catch (error) {
+      throw mapHttpError(error, requestId);
+    }
+  }
 }
 
 function requestHeaders(requestId: string): Record<string, string> {

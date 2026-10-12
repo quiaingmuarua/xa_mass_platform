@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import importlib.util
 
 import argparse
@@ -22,8 +21,8 @@ from typing import Mapping, Sequence
 ROOT = Path(__file__).resolve().parent
 FRONTEND = ROOT / "frontend"
 FRONTEND_DIST = FRONTEND / "dist"
-DEFAULT_PROFILE = "scenario-workers"
-SUPPORTED_PROFILES = (DEFAULT_PROFILE, "agentforge", "preview")
+DEFAULT_PROFILE = "preview"
+SUPPORTED_PROFILES = (DEFAULT_PROFILE, "default", "agentforge")
 SHUTDOWN_TIMEOUT_SECONDS = 15
 
 
@@ -88,13 +87,11 @@ def build_frontend() -> None:
 
 def gradle_tasks(profile: str) -> list[str]:
     tasks = [":server_boot_jvm:bootJar"]
-    if profile == DEFAULT_PROFILE:
-        tasks.append(":worker_simulator_jvm:installDist")
     tasks.append(":distribution:server:installLocalPlatformDiagnosticCodes")
     return tasks
 
 
-def build_runtime_processes(profile: str) -> tuple[Path, list[Path]]:
+def build_runtime_processes(profile: str) -> Path:
     gradle = ROOT / ("gradlew.bat" if os.name == "nt" else "gradlew")
     subprocess.run(
         [str(gradle), *gradle_tasks(profile), "--console=plain"],
@@ -116,20 +113,7 @@ def build_runtime_processes(profile: str) -> tuple[Path, list[Path]]:
     )
     if not server_jar.is_file():
         raise RuntimeError(f"Expected Server Boot JAR is missing: {server_jar}")
-    if profile != DEFAULT_PROFILE:
-        return server_jar, []
-    host_lib = (
-        ROOT
-        / "worker_simulator_jvm"
-        / "build"
-        / "install"
-        / "xa-mass-worker-simulator"
-        / "lib"
-    )
-    host_jars = sorted(host_lib.glob("*.jar"))
-    if not host_jars:
-        raise RuntimeError(f"Worker Simulator libraries missing: {host_lib}")
-    return server_jar, host_jars
+    return server_jar
 
 
 def java_executable(environ: Mapping[str, str]) -> str:
@@ -208,30 +192,6 @@ def wait_for_server(
     )
 
 
-def start_worker_host(
-    host_jars: list[Path],
-    runtime_api_url: str,
-    environ: Mapping[str, str],
-) -> subprocess.Popen[bytes]:
-    classpath = os.pathsep.join(str(path) for path in host_jars)
-    config = json.loads((ROOT / "worker_simulator_jvm/config/lab.json").read_text(encoding="utf-8"))
-    config.update(runtimeApiBaseUrl=runtime_api_url, sandboxRoot=str(ROOT / "data/scenario-workers"))
-    config_path = ROOT / "build/local-runtime/worker-simulator.json"
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-    return subprocess.Popen(
-        [
-            java_executable(environ),
-            "-cp",
-            classpath,
-            "com.xa.mass.workersimulator.WorkerSimulatorMain",
-            "--config", str(config_path),
-        ],
-        cwd=ROOT,
-        env=dict(environ),
-    )
-
-
 def stop_process(process: subprocess.Popen[bytes] | None, name: str) -> None:
     if process is None or process.poll() is not None:
         return
@@ -244,16 +204,8 @@ def stop_process(process: subprocess.Popen[bytes] | None, name: str) -> None:
         process.wait(timeout=SHUTDOWN_TIMEOUT_SECONDS)
 
 
-def supervise(
-    server: subprocess.Popen[bytes],
-    worker_host: subprocess.Popen[bytes] | None,
-) -> int:
+def supervise(server: subprocess.Popen[bytes]) -> int:
     while True:
-        if worker_host is not None:
-            host_exit = worker_host.poll()
-            if host_exit is not None:
-                print(f"Worker Simulator exited with code {host_exit}")
-                return host_exit if host_exit != 0 else 1
         server_exit = server.poll()
         if server_exit is not None:
             print(f"XA Mass Server exited with code {server_exit}")
@@ -277,25 +229,21 @@ def main(
         return load_preview().main(forwarded)
     values = os.environ if environ is None else environ
     server: subprocess.Popen[bytes] | None = None
-    worker_host: subprocess.Popen[bytes] | None = None
     try:
         print("[1/3] Building frontend", flush=True)
         build_frontend()
         print(f"[2/3] Building local Runtime for {profile}", flush=True)
-        server_jar, host_jars = build_runtime_processes(profile)
+        server_jar = build_runtime_processes(profile)
         print(f"[3/3] Starting local Runtime for {profile}", flush=True)
         runtime_api_url = runtime_api_base_url(profile, values)
         server = start_server(server_jar, profile, values)
         wait_for_server(server, runtime_api_url)
-        if profile == DEFAULT_PROFILE:
-            worker_host = start_worker_host(host_jars, runtime_api_url, values)
         print(f"Open {runtime_api_url}/runtime/workers")
         print(f"Tasks {runtime_api_url}/runtime/tasks")
-        return supervise(server, worker_host)
+        return supervise(server)
     except KeyboardInterrupt:
         return 0
     finally:
-        stop_process(worker_host, "Worker Simulator")
         stop_process(server, "XA Mass Server")
 
 

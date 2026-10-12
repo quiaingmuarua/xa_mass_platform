@@ -96,8 +96,8 @@ onMounted(() => theme.apply());
           Runtime API
         </span>
         <p>
-          Runtime truth remains read-only. Task actions use public APIs and retain only
-          browser-session diagnostic coordinates here.
+          Tasks 展示 Project 与全局原始观察。default 的 RPC
+          和有限任务操作请使用任务工作台。
         </p>
       </div>
     </aside>

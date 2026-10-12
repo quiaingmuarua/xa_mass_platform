@@ -184,3 +184,12 @@ identities and stored Results need no migration; queued work is interpreted by t
 Worker configuration selected for execution. Host windows do not survive restart.
 Do not restart an existing Preview or overwrite its staged artifacts as part of
 validation: build and run a separate source copy, port, scope and inventory.
+
+## Raw Task workspace
+
+Preview declares `default` over `demo-sim`, `app-a-sim` and `app-b-sim` in addition
+to the three business Projects. `/runtime/tasks` observes all Projects and keeps
+read-only terminal JSONL export. `/task-workbench` provides RPC calls and finite
+Task management only for `default`. It does not automatically include new applications. Managed Tasks still follow the existing Group-level supply
+configuration. No migration, scope cleanup or running-process restart is performed
+by this UI change.

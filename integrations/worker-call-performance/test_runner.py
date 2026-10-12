@@ -15,39 +15,30 @@ spec.loader.exec_module(runner)
 
 class RunnerTest(unittest.TestCase):
     def test_configuration_fingerprints_use_complete_current_or_historical_groups(self):
-        names = ("application.yaml", "application-scenario-workers.yaml")
-        self.assertEqual({f"server_boot_jvm/src/main/resources/{name}" for name in names},
-                         set(runner.fingerprint(runner.ROOT)))
+        current = {"server_boot_jvm/src/main/resources/application.yaml", runner.PLATFORM_FIXTURE}
+        self.assertEqual(current, set(runner.fingerprint(runner.ROOT)))
+        flags = runner.lane_server_flags()
+        self.assertEqual("default", flags["spring.profiles.active"])
+        self.assertEqual((runner.ROOT / runner.PLATFORM_FIXTURE).as_uri(), flags["spring.config.additional-location"])
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             old = root / "server_jvm/src/main/resources"
             old.mkdir(parents=True)
-            for name in names:
+            for name in ("application.yaml", "application-scenario-workers.yaml"):
                 (old / name).write_text("historical", encoding="utf-8")
-            self.assertEqual({f"server_jvm/src/main/resources/{name}" for name in names}, set(runner.fingerprint(root)))
+            self.assertEqual("scenario-workers", runner.lane_server_flags(root)["spring.profiles.active"])
             with patch.object(runner, "ROOT", root):
                 with self.assertRaisesRegex(RuntimeError, "configuration group is missing"):
                     runner.fingerprint(root)
-            historical = root / "spring_server_jvm/src/main/resources"
-            historical.mkdir(parents=True)
-            (historical / names[0]).write_text("historical host", encoding="utf-8")
+            fixture = root / runner.PLATFORM_FIXTURE
+            fixture.parent.mkdir(parents=True)
+            fixture.write_text("fixture", encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "Incomplete"):
                 runner.fingerprint(root)
-            (historical / names[1]).write_text("historical host", encoding="utf-8")
-            self.assertEqual({f"spring_server_jvm/src/main/resources/{name}" for name in names},
-                             set(runner.fingerprint(root)))
-            with patch.object(runner, "ROOT", root):
-                with self.assertRaisesRegex(RuntimeError, "configuration group is missing"):
-                    runner.fingerprint(root)
-            current = root / "server_boot_jvm/src/main/resources"
-            current.mkdir(parents=True)
-            (current / names[0]).write_text("current", encoding="utf-8")
-            with self.assertRaisesRegex(RuntimeError, "Incomplete"):
-                runner.fingerprint(root)
-            (current / names[1]).write_text("current", encoding="utf-8")
-            with patch.object(runner, "ROOT", root):
-                self.assertEqual({f"server_boot_jvm/src/main/resources/{name}" for name in names},
-                                 set(runner.fingerprint(root)))
+            base = root / "server_boot_jvm/src/main/resources/application.yaml"
+            base.parent.mkdir(parents=True)
+            base.write_text("base", encoding="utf-8")
+            self.assertEqual(current, set(runner.fingerprint(root)))
 
     def test_current_build_and_immutable_baseline_use_their_own_server_entrypoints(self):
         self.assertEqual("server_boot_jvm", runner.server_distribution(runner.ROOT))
@@ -271,7 +262,7 @@ class LaneWorldConfigTest(unittest.TestCase):
         self.assertEqual("1000", flags["xa.mass.kernel-pacer.assignment-batch-limit"])
         self.assertEqual("1000", flags["xa.mass.task-rpc.max-probe-items-per-round"])
         self.assertEqual("10000", flags[adapter + "report-queue-capacity"])
-        self.assertEqual("scenario-workers", flags["spring.profiles.active"])
+        self.assertEqual("default", flags["spring.profiles.active"])
         # The lane measures the scenario profile's consume limit and must not raise it.
         self.assertNotIn(adapter + "command-consume-limit", flags)
         self.assertEqual(500, runner.LANE_MECHANISM_CONSTANTS["adapterCommandConsumeLimit"])

@@ -33,6 +33,14 @@ public final class DefaultWorkerMatchingCatalog implements WorkerMatchingCatalog
         });
     }
 
+    @Override public Capabilities capabilities(String group) {
+        requireNonBlank(group, "workerGroupId");
+        var enabled = groups.getOrDefault(group, new MatchingGroup(Set.of(), Set.of()));
+        var functions = new TreeSet<>(globalFunctions);
+        functions.addAll(enabled.functions());
+        return new Capabilities(enabled.pools(), functions);
+    }
+
     private QueryFunction requireFunction(String group, String name) {
         requireNonBlank(group, "workerGroupId"); requireNonBlank(name, "executorName");
         var function = queryFunctions.get(name);
