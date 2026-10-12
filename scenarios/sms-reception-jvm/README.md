@@ -176,8 +176,10 @@ records the retained 10-second policy, frozen artifacts, cost gates and executed
 proofs; its fixed workload measurements are not platform capacity guarantees.
 
 The runner uses exact pre-materialized SMS-only inventory with `app_count=0`, a
-unique `test_*` scope and the packaged launcher's lifecycle/cleanup. Fresh ZIP
-functional must run with `--root <extracted Preview>` and no build or checkout
+unique `test_*` scope and the packaged launcher's lifecycle/cleanup. Server restart
+reuses that invocation's App Checks configuration database path, along with the
+same Redis scope and ports; it never inherits another environment's database.
+Fresh ZIP functional must run with `--root <extracted Preview>` and no build or checkout
 fallback. Summaries contain bounded metadata and fingerprints; private logs are
 not public artifacts. `.github/workflows/sms-reception-preview.yml` selects the
 regular functional/lifecycle/ZIP checks; the sustained workload is explicit.

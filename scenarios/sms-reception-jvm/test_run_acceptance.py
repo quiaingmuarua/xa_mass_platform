@@ -3,13 +3,36 @@ import json
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import run_acceptance
 from run_acceptance import compare
 
 
 class AcceptanceOracleTest(unittest.TestCase):
+    def test_server_restart_reuses_the_previews_isolated_configuration_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            process = Mock(args=["java", "-jar", "preview.jar"])
+            run = SimpleNamespace(processes={"server": process}, logs=[], output=root,
+                                  scope="test_sms_restart", redis_url="redis://localhost/15", port=18400,
+                                  app_checks_db=root / "inventory" / "app-checks" / "configuration",
+                                  launch=Mock(), wait_for=Mock(), connected=Mock())
+            (root / "server.log").write_text("first startup", encoding="utf-8")
+            with patch.dict("os.environ", {"XA_MASS_APP_CHECKS_DB_PATH": "unrelated-host-database"}):
+                run_acceptance.restart_server(run)
+            process.terminate.assert_called_once()
+            process.wait.assert_called_once_with(timeout=10)
+            name, arguments, environment = run.launch.call_args.args
+            self.assertEqual("server", name)
+            self.assertEqual(process.args, arguments)
+            self.assertEqual(str(run.app_checks_db), environment["XA_MASS_APP_CHECKS_DB_PATH"])
+            self.assertEqual(run.scope, environment["XA_MASS_REDIS_SCOPE"])
+            self.assertEqual(run.redis_url, environment["XA_MASS_REDIS_URL"])
+            self.assertEqual("18400", environment["PREVIEW_SERVER_PORT"])
+            self.assertEqual("18403", environment["PREVIEW_ADAPTER_PORT"])
+            self.assertEqual("first startup", (root / "server-before-restart.log").read_text(encoding="utf-8"))
+
     def test_complete_initial_responses_include_tail_and_all_countries(self):
         result = run_acceptance.initial_response_summary({"CN:WAITING": 350, "CN:NOT_OBSERVED": 50,
                                                          "US:RECEIVED": 80, "GB:WAITING": 20})
