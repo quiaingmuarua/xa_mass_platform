@@ -75,7 +75,7 @@ onBeforeUnmount(() => {
     <h2>本次提交尚未确认</h2>
     <p role="alert">{{ draft.error }}</p>
     <p class="checks-hint">
-      草稿已冻结，不会再次提交。请核对号码数量与任务状态；查到任务不代表所有号码已写入或已启动。
+      草稿已冻结，不会自动重试创建。请核对号码数量与任务状态；查到任务不代表所有号码已写入或已启动。
     </p>
     <dl class="checks-description">
       <div>

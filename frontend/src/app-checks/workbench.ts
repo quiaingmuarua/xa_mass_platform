@@ -1,5 +1,13 @@
 import { reactive } from "vue";
-import type { CheckTask, CheckResult, Country } from "./model";
+import type {
+  Catalog,
+  CheckTask,
+  CheckResult,
+  Country,
+  CreateCheckTask,
+  Simulation
+} from "./model";
+import { simulationSchema } from "./model";
 import type { ImportReport } from "./import-model";
 
 export type ExportFilter = "all" | "registered" | "unregistered";
@@ -30,6 +38,8 @@ export interface CheckDraft {
   submissionPhase: "create" | "import";
   busy: boolean;
   error: string;
+  simulation?: Simulation;
+  frozenCreate?: CreateCheckTask;
 }
 export interface UnconfirmedSubmission {
   requestId: string;
@@ -44,11 +54,12 @@ export interface UnconfirmedSubmission {
 export const requestIdentity = () =>
   globalThis.crypto?.randomUUID?.() ??
   "app-check-" + Date.now() + "-" + Math.random().toString(16).slice(2);
-export function freshDraft(): CheckDraft {
+export function freshDraft(catalog?: Catalog): CheckDraft {
   return {
     createdAtMillis: Date.now(),
-    appId: "",
-    country: "CN",
+    appId: catalog?.apps[0].appId ?? "",
+    country: catalog?.countries[0] ?? "CN",
+    simulation: catalog ? simulationSchema.parse(catalog.simulationExample) : undefined,
     inputMode: "file",
     text: "",
     fileName: "",
@@ -75,6 +86,7 @@ export function createWorkbenchSession() {
       to: ""
     },
     filtersExpanded: false,
+    configurationApp: "",
     listScroll: 0,
     listTableScrollTop: 0,
     listTableScrollLeft: 0

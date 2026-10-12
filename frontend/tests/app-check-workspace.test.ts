@@ -663,7 +663,11 @@ describe("App Checks product workspace", () => {
     );
     expect(document.body.textContent).toContain("当前预览 100 条");
     expect(document.body.textContent).toContain("120");
-    expect(document.body.textContent).not.toMatch(/已注册数|salt|实际 Worker|模拟延迟/);
+    expect(document.body.textContent).not.toMatch(/已注册数|salt/);
+    expect(document.querySelector(".checks-diagnostics-body")).toBeNull();
+    expect(
+      document.querySelector<HTMLDetailsElement>(".checks-task-configuration")!.open
+    ).toBe(false);
     await openMenu();
     expect(menuItem("导出结果").getAttribute("aria-disabled")).not.toBe("true");
   });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { MockApplicationPolicy, TaskPolicySnapshot } from "./configuration";
 
 const integer = z.number().int().nonnegative();
 const bounds = (max: number) =>
@@ -117,10 +118,17 @@ export const catalogSchema = z.object({
   }),
   simulationExample: simulationSchema
 });
-export type Catalog = z.infer<typeof catalogSchema>;
-export type CheckTask = z.infer<typeof taskSchema>;
+// Local Mock snapshots are not part of the API schema; API parsing strips them.
+export type Catalog = z.infer<typeof catalogSchema> & {
+  mockPolicies?: Record<string, MockApplicationPolicy>;
+};
+export type CheckTask = z.infer<typeof taskSchema> & {
+  mockPolicy?: TaskPolicySnapshot;
+};
 export type CheckResult = z.infer<typeof resultSchema>;
-export type CheckDetail = z.infer<typeof detailSchema>;
+export type CheckDetail = Omit<z.infer<typeof detailSchema>, "task"> & {
+  task: CheckTask;
+};
 export interface CreateCheckTask {
   requestId: string;
   appId: string;

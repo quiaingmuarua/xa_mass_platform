@@ -6,6 +6,8 @@ import "element-plus/es/components/dialog/style/css";
 import AppCheckCreate from "./AppCheckCreate.vue";
 import AppCheckList from "./AppCheckList.vue";
 import AppCheckPreviewDrawer from "./AppCheckPreviewDrawer.vue";
+import AppCheckConfiguration from "./AppCheckConfiguration.vue";
+import type { ConfigurationReadState } from "./configuration";
 import { appLabel, countryLabel, type Catalog, type CheckTask } from "./model";
 import type { AppCheckTaskSource } from "./task-source";
 import {
@@ -21,7 +23,9 @@ const props = defineProps<{
   source: AppCheckTaskSource;
   catalog: Catalog;
   session?: WorkbenchSession;
+  configurationRead?: ConfigurationReadState;
 }>();
+const emit = defineEmits<{ refreshConfiguration: [] }>();
 const session = props.session ?? createWorkbenchSession();
 const route = useRoute(),
   router = useRouter();
@@ -29,6 +33,16 @@ const taskId = computed(() =>
   typeof route.params.taskId === "string" ? route.params.taskId : undefined
 );
 const creating = computed(() => route.query.view === "create");
+const configuring = computed(() => route.query.view === "configuration");
+const listing = computed(() => !creating.value && !configuring.value);
+const listVisited = ref(false);
+const configurationView = ref<InstanceType<typeof AppCheckConfiguration>>();
+const configurationFromCreate = ref(false);
+const configurationRead = computed(
+  () => props.configurationRead ?? { readAt: 0, busy: false, error: "" }
+);
+let listNeedsRefresh = true;
+let revealCreatedTask = false;
 const tasks = shallowRef<CheckTask[]>([]),
   previews = ref<Record<string, PreviewState>>({});
 const listBusy = ref(false),
@@ -63,10 +77,19 @@ let disposed = false,
   exportGeneration = 0;
 let previewTrigger: HTMLElement | undefined, dialogTrigger: HTMLElement | undefined;
 let previewCanGoBack = false,
+  previewBackground = "",
   dialogOrigin = "";
 const backgroundPath = computed(() =>
-  creating.value ? "/app-checks?view=create" : "/app-checks"
+  creating.value
+    ? "/app-checks?view=create"
+    : configuring.value
+      ? router.resolve({
+          path: "/app-checks",
+          query: { view: "configuration", app: session.configurationApp }
+        }).fullPath
+      : "/app-checks"
 );
+previewBackground = backgroundPath.value;
 const operationsBusy = computed(
   () => actionBusy.value || session.draft.busy || importSession.draft.busy
 );
@@ -85,17 +108,14 @@ const confirmTitle = computed(() =>
       : "中止这个任务？"
 );
 function newDraft() {
-  session.draft = {
-    ...freshDraft(),
-    appId: props.catalog.apps[0].appId,
-    country: props.catalog.countries[0]
-  };
+  session.draft = freshDraft(props.catalog);
 }
 function dismissNotice() {
   notice.value = "";
   createdTaskId.value = undefined;
 }
 async function loadList() {
+  listNeedsRefresh = false;
   const token = ++listGeneration;
   listBusy.value = true;
   listError.value = "";
@@ -119,11 +139,14 @@ async function loadList() {
   }
 }
 function rememberList() {
-  if (!creating.value && !taskId.value) session.listScroll = window.scrollY;
+  if (listing.value && !taskId.value) session.listScroll = window.scrollY;
 }
 function openTask(id: string, trigger?: HTMLElement) {
   rememberList();
-  if (!taskId.value) previewTrigger = trigger;
+  if (!taskId.value) {
+    previewTrigger = trigger;
+    previewBackground = backgroundPath.value;
+  }
   void router.push({
     path: "/app-checks/tasks/" + encodeURIComponent(id),
     query: creating.value ? { view: "create" } : {}
@@ -135,7 +158,9 @@ function closePreview() {
   else void router.replace(backgroundPath.value);
 }
 function focusBackground(trigger?: HTMLElement) {
-  if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+  if (trigger?.isConnected && !trigger.closest('[style*="display: none"]'))
+    trigger.focus({ preventScroll: true });
+  else if (configuring.value) configurationView.value?.focusHeading();
   else if (creating.value)
     document
       .querySelector<HTMLElement>("#app-check-create select")
@@ -143,7 +168,7 @@ function focusBackground(trigger?: HTMLElement) {
   else listView.value?.focusHeading();
 }
 function restorePreviewFocus() {
-  if (disposed || taskId.value) return;
+  if (disposed || taskId.value || route.fullPath !== previewBackground) return;
   focusBackground(previewTrigger);
   previewTrigger = undefined;
 }
@@ -158,10 +183,28 @@ function openCreate() {
   dismissNotice();
   void router.push("/app-checks?view=create");
 }
+function openConfiguration(
+  appId = session.configurationApp || props.catalog.apps[0].appId
+) {
+  rememberList();
+  configurationFromCreate.value = creating.value;
+  void router.push({
+    path: "/app-checks",
+    query: { view: "configuration", app: appId }
+  });
+}
+function selectConfigurationApp(appId: string) {
+  void router.push({
+    path: "/app-checks",
+    query: { view: "configuration", app: appId }
+  });
+}
 function created(id: string) {
   newDraft();
   createdTaskId.value = id;
   notice.value = "任务已创建并导入，等待核对并启动。";
+  listNeedsRefresh = true;
+  revealCreatedTask = true;
   void router.push("/app-checks");
 }
 function endUnconfirmedDraft() {
@@ -270,7 +313,8 @@ function requestAction(task: CheckTask, action: TaskAction, trigger?: HTMLElemen
 }
 async function refreshVisible(targetId: string) {
   const reads: Promise<unknown>[] = [];
-  if (!creating.value) reads.push(loadList());
+  if (listing.value) reads.push(loadList());
+  else listNeedsRefresh = true;
   if (taskId.value === targetId)
     reads.push(previewView.value?.refresh() ?? Promise.resolve());
   await Promise.all(reads);
@@ -358,17 +402,38 @@ watch(exportOpen, (open) => {
   }
 });
 watch(
-  creating,
+  listing,
   async (value, previous) => {
-    if (value) return;
-    await loadList();
+    if (!value) return;
+    listVisited.value = true;
+    const origin = route.fullPath;
+    if (listNeedsRefresh) await loadList();
     await nextTick();
-    if (disposed || creating.value || taskId.value) return;
-    if (createdTaskId.value && listView.value?.revealTask(createdTaskId.value)) return;
-    if (previous) {
+    if (disposed || route.fullPath !== origin || !listing.value || taskId.value) return;
+    if (revealCreatedTask && createdTaskId.value) {
+      revealCreatedTask = false;
+      if (listView.value?.revealTask(createdTaskId.value)) return;
+    }
+    if (previous === false) {
       window.scrollTo({ top: session.listScroll, left: 0, behavior: "instant" });
       listView.value?.focusHeading();
     }
+  },
+  { immediate: true }
+);
+watch(
+  () => [configuring.value, route.query.app],
+  async (_value, previous) => {
+    if (!configuring.value) return;
+    session.configurationApp =
+      typeof route.query.app === "string"
+        ? route.query.app
+        : session.configurationApp || props.catalog.apps[0].appId;
+    if (previous?.[0] === true) return;
+    const origin = route.fullPath;
+    await nextTick();
+    if (!disposed && route.fullPath === origin && !taskId.value)
+      configurationView.value?.focusHeading();
   },
   { immediate: true }
 );
@@ -377,7 +442,9 @@ watch(
   (_path, previous) => {
     if (taskId.value) {
       previewCanGoBack = previous === backgroundPath.value;
+      previewBackground = backgroundPath.value;
       if (
+        !previous.includes("view=configuration") &&
         !previewTrigger &&
         document.activeElement instanceof HTMLElement &&
         document.activeElement !== document.body
@@ -402,7 +469,29 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div class="checks-workspace" data-testid="app-check-workspace">
-    <div v-if="notice && !taskId" role="status" class="checks-notice">
+    <nav class="checks-workspace-tabs" aria-label="应用注册查询工作区">
+      <router-link
+        to="/app-checks"
+        :aria-current="!configuring ? 'page' : undefined"
+        @click="rememberList"
+        >任务</router-link
+      >
+      <a
+        :href="
+          router.resolve({
+            path: '/app-checks',
+            query: {
+              view: 'configuration',
+              app: session.configurationApp || catalog.apps[0].appId
+            }
+          }).href
+        "
+        :aria-current="configuring ? 'page' : undefined"
+        @click.prevent="openConfiguration()"
+        >应用与运行策略</a
+      >
+    </nav>
+    <div v-if="notice && !taskId && !configuring" role="status" class="checks-notice">
       <span>{{ notice }}</span>
       <button
         v-if="createdTaskId"
@@ -419,7 +508,8 @@ onBeforeUnmount(() => {
       {{ actionError }}
     </p>
     <AppCheckList
-      v-if="!creating"
+      v-if="listVisited"
+      v-show="listing"
       ref="listView"
       :source="source"
       :catalog="catalog"
@@ -438,14 +528,28 @@ onBeforeUnmount(() => {
       @action="requestAction"
     />
     <AppCheckCreate
-      v-else
+      v-if="creating"
       :source="source"
       :catalog="catalog"
       :session="session"
       :active="creating"
+      :configuration-read="configurationRead"
+      @configuration="openConfiguration"
       @back="router.push('/app-checks')"
       @created="created"
       @end-unconfirmed="endUnconfirmedDraft"
+    />
+    <AppCheckConfiguration
+      v-if="configuring"
+      ref="configurationView"
+      :catalog="catalog"
+      :app-id="session.configurationApp"
+      :mode="source.mode"
+      :read="configurationRead"
+      :return-to-create="configurationFromCreate"
+      @select="selectConfigurationApp"
+      @refresh="emit('refreshConfiguration')"
+      @return-to-draft="router.push('/app-checks?view=create')"
     />
     <AppCheckPreviewDrawer
       ref="previewView"
@@ -459,6 +563,7 @@ onBeforeUnmount(() => {
       @closed="restorePreviewFocus"
       @action="requestAction"
       @demo="demo"
+      @configuration="openConfiguration"
       @dismiss-notice="dismissNotice"
       @loaded="
         (task, stale) => {

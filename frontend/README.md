@@ -220,9 +220,18 @@ Mock behavior is not proof of real assembly, environment migration or Worker del
 The App Checks workbench is the first business Task workflow sample. It keeps
 the existing Console theme/navigation and does not change the Tasks, Messages
 or SMS workspaces. Its Catalog probe independently controls availability:
-404 means disabled; transient errors allow explicit retry.
+an initial 404 means disabled; transient errors allow explicit retry.
 
-The desktop workspace uses a Task list, one action menu per row and a 760px
+The desktop workspace has two read-only observation entrypoints: Tasks at
+`/app-checks` and application configuration at
+`/app-checks?view=configuration&app=app-a`. The optional `app` selects an application;
+without it, the session selection or first Catalog application is used. An unknown
+application remains visibly invalid until the user selects an available one.
+Opening configuration directly does not load Tasks. Switching tabs keeps the Task
+table mounted, preserving filters and scrolling without another list request.
+Drafts and the selected application survive navigation within the console session.
+
+The Task workspace uses a list, one action menu per row and a 760px
 result-preview drawer. `/app-checks/tasks/:taskId` opens that drawer over the
 list; there is no separate detail workspace. Full-page creation remains
 `/app-checks?view=create`, so existing Boot page forwarding is sufficient.
@@ -286,8 +295,14 @@ revalidated before use.
 
 API and Mock now share independent creation/import/approval boundaries. The
 create request contains requestId, App, country and the existing simulation
-configuration, with no name or numbers. Simulation remains hidden from the
-business form. The UI creates once, retains the returned Task ID, then uploads a
+configuration, with no name or numbers. A compact creation summary links to the
+selected application's configuration and shows import limits. Simulation parameters
+are displayed read-only in a collapsed section; there is no JSON editor.
+New drafts copy the Catalog simulation defaults once. Later Catalog refreshes do
+not replace those values. First submission freezes the entire creation payload,
+including request identity and simulation. An explicit check of an unconfirmed
+creation uses that payload without automatically importing or approving.
+The UI creates once, retains the returned Task ID, then uploads a
 normalized UTF-8 number file (`text/plain`) for server validation and bounded
 append. Catalog supplies the per-import 100,000-number/10 MiB limits. A failed
 import never creates another Task. Pending-review menus allow additional imports;
@@ -295,7 +310,7 @@ existing numbers are skipped and older input-version Tasks explain why import is
 unavailable. Starting sends the quantity shown in the confirmation dialog; the
 server rejects a changed/empty quantity and active imports.
 
-Unknown creation freezes its original request identity and known Task link.
+Unknown creation freezes its original request payload and known Task link.
 Unknown import retains the target Task and offers explicit re-import of the same
 numbers; neither action retries automatically. The recovery panel reads the known
 Task independently. Users may close the local draft after acknowledgement;
@@ -337,11 +352,55 @@ submitted count. Missing summaries are unavailable and are never reconstructed
 from Task counts or Results. API exposes no extrapolated whole-Task registration
 totals or fabricated import/activity history. Known creation time remains visible.
 
-Technical information retains Task/Worker identities, simulation, salt and manual
+The collapsed **本次任务配置** section uses only the Task response: saved application,
+actual Group, country and simulation. A link opens the current application
+configuration; browser Back restores the original drawer and background context.
+Current Catalog values never overwrite saved Task values. Unavailable or malformed
+configuration is shown locally and does not block result preview or management.
+
+Technical information retains Task/Worker identities, salt and manual
 Web Crypto SHA-256/BigInt verification of up to 100 snapshot Results. It compares
 business answers, Group and configured delay, not scheduling or attempts. Missing
 evidence is unavailable; verification is invalidated by refresh. There is no
 remote hashing fallback.
+
+### Read-only application and policy configuration
+
+The configuration page separates **App Checks 通用配置** from **App 运行配置**.
+The common section owns scenario countries, import limits and the current shared
+simulation defaults; it remains visible and unchanged when selecting an app, even
+if the requested app is invalid. The application section owns App/WorkerGroup
+binding and associated Pool/Group rules. Each section names its source and scope.
+Task execution policy stays in the saved Task summary; it is not presented as an
+application default. Simulation interval proportions are request parameters, not
+predictions of actual outcomes or elapsed time.
+
+Adding an application requires a scenario App-to-Group binding, host-provided
+Group/event and Worker execution capability, and corresponding Pool configuration.
+The frontend observes the Catalog bindings; it does not register or enable those
+resources. Common import rules are not duplicated for every new app. Configuration
+editing and Task-level policy changes remain outside this frontend slice.
+
+The current API does not provide default Task priority, retry limit, validity or
+supply targets; nor does it expose Pool identity, Group scope, window or threshold.
+These gaps are labeled **当前接口未提供**, without reading unrelated Runtime/Project
+previews, introducing configuration requests or substituting local constants.
+The Task API likewise does not expose execution policy. Backend follow-up needs
+separate authoritative reads for application defaults, effective Pool settings and
+saved Task execution policy. Configuration has no edit/save or hot-update action.
+
+Mock supplies independent read-only Pool examples for both apps: a 60-second
+window with threshold 10. Separately, each Mock Task retains its own policy snapshot
+(priority 50, three retries, 365-day validity and `assignment-window / {} / 100`). These are labeled
+demonstration data; they add no simulated scheduling guarantees. Window thresholds
+describe observed admission qualification for a single Worker within the Pool/Group,
+not Project quotas, a Group-wide allowance or strict throughput guarantees.
+
+Manual Catalog refresh retains the workspace and previous data while reading.
+A failed refresh preserves the last successful timestamp and marks the snapshot
+stale, independently of Task read/mutation status. Configuration reads do not reset
+drafts, frozen requests or Task snapshots; late reads and drawer close callbacks
+cannot steal focus after navigation. No polling or persistent number storage is added.
 
 ### Explicit Mock product prototype
 

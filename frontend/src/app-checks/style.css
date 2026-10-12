@@ -6,10 +6,95 @@
   color: var(--rv-text);
 }
 .checks-list-page,
-.checks-create-page {
+.checks-create-page,
+.checks-configuration-page {
   display: grid;
   gap: 22px;
   min-width: 0;
+}
+.checks-workspace-tabs {
+  display: flex;
+  gap: 28px;
+  border-bottom: 1px solid var(--rv-border);
+}
+.checks-workspace-tabs a {
+  padding: 0 2px 12px;
+  border-bottom: 2px solid transparent;
+  color: var(--rv-text-secondary);
+  text-decoration: none;
+  font-size: 14px;
+}
+.checks-workspace-tabs a[aria-current="page"] {
+  color: var(--rv-primary);
+  border-bottom-color: var(--rv-primary);
+  font-weight: 600;
+}
+.checks-configuration-selector {
+  display: flex;
+  align-items: end;
+  gap: 22px;
+  margin: 14px 0 8px;
+}
+.checks-configuration-selector .checks-field {
+  min-width: 240px;
+  margin: 0;
+}
+.checks-configuration-page {
+  gap: 16px;
+}
+.checks-configuration-sections {
+  padding: 20px 24px;
+}
+.checks-application-sections > section + section,
+.checks-configuration-simulation {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rv-border);
+}
+.checks-configuration-mode {
+  margin: 0;
+}
+.checks-application-sections h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.checks-configuration-source {
+  font-size: 12px;
+  margin: 8px 0;
+}
+.checks-configuration-rows .el-descriptions__table {
+  table-layout: fixed;
+}
+.checks-configuration-rows .el-descriptions__label {
+  width: 120px;
+}
+.checks-configuration-rows .el-descriptions__content {
+  overflow-wrap: anywhere;
+}
+.checks-configuration-gap {
+  margin: 8px 0 0;
+  padding: 10px 14px;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--rv-text-secondary);
+}
+.checks-create-configuration {
+  padding: 16px 22px;
+  font-size: 13px;
+}
+.checks-create-configuration .checks-section-heading {
+  padding: 0;
+}
+.checks-create-configuration details {
+  margin-top: 10px;
+}
+.checks-create-configuration summary,
+.checks-configuration-simulation summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--rv-text-secondary);
 }
 .checks-heading,
 .checks-section-heading {

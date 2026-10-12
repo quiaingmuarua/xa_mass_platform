@@ -59,10 +59,6 @@ onBeforeUnmount(() => {
           <dd>{{ detail.task.taskId }}</dd>
         </div>
         <div>
-          <dt>Worker Group</dt>
-          <dd>{{ detail.task.workerGroupId || "—" }}</dd>
-        </div>
-        <div>
           <dt>原始状态</dt>
           <dd>{{ detail.task.state || "—" }}</dd>
         </div>
@@ -71,13 +67,6 @@ onBeforeUnmount(() => {
           <dd>{{ detail.task.salt || "—" }} / {{ detail.task.saltDate || "—" }}</dd>
         </div>
       </dl>
-      <p v-if="detail.task.configurationError" role="alert" class="checks-error">
-        {{ detail.task.configurationError }}
-      </p>
-      <details>
-        <summary>模拟配置</summary>
-        <pre>{{ JSON.stringify(detail.task.simulation, null, 2) }}</pre>
-      </details>
       <p class="checks-hint">
         仅核对当前最多 100 条预览的业务内容，不审计调度与重试次数。
       </p>

@@ -29,6 +29,9 @@ import TaskStatus from "./TaskStatus.vue";
 import TaskActions from "./TaskActions.vue";
 import ImportSummary from "./ImportSummary.vue";
 import AppCheckDiagnostics from "./AppCheckDiagnostics.vue";
+import ConfigurationRows from "./ConfigurationRows.vue";
+import SimulationSummary from "./SimulationSummary.vue";
+import { savedTaskConfiguration } from "./configuration";
 const props = defineProps<{
   source: AppCheckTaskSource;
   taskId?: string;
@@ -44,8 +47,14 @@ const emit = defineEmits<{
   action: [task: CheckTask, action: TaskAction, trigger?: HTMLElement];
   demo: [action: "advance" | "complete" | "late"];
   loaded: [task: CheckTask | undefined, stale: boolean];
+  configuration: [appId: string];
 }>();
 const detail = shallowRef<CheckDetail>();
+const configuration = computed(() =>
+  detail.value
+    ? savedTaskConfiguration(detail.value.task, props.source.mode)
+    : undefined
+);
 const busy = ref(false),
   error = ref(""),
   readAt = ref(0),
@@ -335,6 +344,36 @@ defineExpose({ refresh, focusHeading });
             <p>预览仅覆盖本次读取的数据，不能据此判断整个任务的注册情况。</p>
           </div>
         </section>
+        <details
+          v-if="configuration"
+          :key="detail.task.taskId"
+          class="checks-auxiliary checks-task-configuration"
+        >
+          <summary>本次任务配置</summary>
+          <p class="checks-hint">
+            {{ source.mode === "mock" ? "Mock 任务保存值" : "任务保存值" }} · 读取于
+            {{ timestamp(readAt)
+            }}{{ error ? " · 快照已过期" : "" }}。当前应用配置不会覆盖这些值。
+          </p>
+          <ConfigurationRows :section="configuration.binding" />
+          <h3>执行策略</h3>
+          <ConfigurationRows :section="configuration.policy" />
+          <h3>已保存模拟参数</h3>
+          <SimulationSummary
+            :value="detail.task.simulation"
+            :source="source.mode === 'mock' ? 'mock' : 'task'"
+          />
+          <p v-if="detail.task.configurationError" class="checks-error">
+            {{ detail.task.configurationError }}
+          </p>
+          <button
+            v-if="detail.task.appId"
+            class="checks-link"
+            @click="emit('configuration', detail.task.appId)"
+          >
+            查看当前应用配置
+          </button>
+        </details>
         <details
           class="checks-auxiliary"
           :open="importOpen"

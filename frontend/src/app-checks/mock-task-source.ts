@@ -1,4 +1,5 @@
 import type { AppCheckTaskSource } from "./task-source";
+import type { TaskPolicySnapshot } from "./configuration";
 import { csvCell, inspectImport, type ImportSnapshot } from "./import-model";
 import { type PreviewState, type ExportFilter, type TaskActivity } from "./workbench";
 import {
@@ -16,7 +17,26 @@ export const mockCatalog: Catalog = {
   apps: ["app-a", "app-b"].map((appId) => ({ appId, workerGroupId: `${appId}-sim` })),
   countries: ["CN", "US", "GB"],
   limits: { numbersPerImport: 100000, importFileBytes: 10 * 1024 * 1024 },
-  simulationExample: { ranges: rangeExamples.混合, delayMs: [2000, 5000] }
+  simulationExample: { ranges: rangeExamples.混合, delayMs: [2000, 5000] },
+  mockPolicies: Object.fromEntries(
+    ["app-a", "app-b"].map((appId) => [
+      appId,
+      {
+        pool: {
+          poolName: "assignment-window",
+          workerGroupId: `${appId}-sim`,
+          windowMillis: 60000,
+          maxCount: 10
+        }
+      }
+    ])
+  )
+};
+const mockTaskPolicy: TaskPolicySnapshot = {
+  priority: 50,
+  maxRetries: 3,
+  validityMillis: 365 * 86400000,
+  supply: { poolName: "assignment-window", target: "{}", count: 100 }
 };
 const epoch = Date.UTC(2026, 9, 8, 2);
 function task(taskId: string, changes: Partial<CheckTask> = {}): CheckTask {
@@ -37,6 +57,7 @@ function task(taskId: string, changes: Partial<CheckTask> = {}): CheckTask {
     activeCount: 0,
     succeededCount: 1,
     failedCount: 0,
+    mockPolicy: structuredClone(mockTaskPolicy),
     ...changes
   };
 }
@@ -292,6 +313,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         country: input.country,
         createdAtMillis: Date.now(),
         simulation: structuredClone(input.simulation),
+        mockPolicy: structuredClone(mockTaskPolicy),
         salt: undefined,
         saltDate: undefined,
         state: "pre_review",

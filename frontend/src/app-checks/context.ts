@@ -2,6 +2,7 @@ import { inject, shallowRef, type InjectionKey } from "vue";
 import type { Catalog } from "./model";
 import { AppCheckApiError, type AppCheckTaskSource } from "./task-source";
 import { createWorkbenchSession } from "./workbench";
+import type { ConfigurationReadState } from "./configuration";
 
 type Availability =
   | { status: "loading" | "disabled" }
@@ -9,6 +10,11 @@ type Availability =
   | { status: "unavailable"; message: string };
 export function createAppCheckContext(source: AppCheckTaskSource) {
   const state = shallowRef<Availability>({ status: "loading" });
+  const configurationRead = shallowRef<ConfigurationReadState>({
+    readAt: 0,
+    busy: false,
+    error: ""
+  });
   let active: AbortController | undefined;
   let pending: Promise<void> | undefined;
   let disposed = false;
@@ -18,22 +24,34 @@ export function createAppCheckContext(source: AppCheckTaskSource) {
       return Promise.resolve();
     const controller = new AbortController();
     active = controller;
-    state.value = { status: "loading" };
+    const previous = state.value.status === "enabled" ? state.value : undefined;
+    if (!previous) state.value = { status: "loading" };
+    configurationRead.value = { ...configurationRead.value, busy: true };
     const timer = setTimeout(() => controller.abort(), 5000);
     pending = (async () => {
       try {
         const catalog = await source.catalog(controller.signal);
-        if (!disposed && !controller.signal.aborted)
+        if (controller.signal.aborted) throw new Error("配置读取超时");
+        if (!disposed) {
           state.value = { status: "enabled", catalog };
+          configurationRead.value = { readAt: Date.now(), busy: false, error: "" };
+        }
       } catch (error) {
-        if (!disposed)
+        if (!disposed) {
+          configurationRead.value = {
+            ...configurationRead.value,
+            busy: false,
+            error: "配置读取失败，请重试。"
+          };
           state.value =
-            error instanceof AppCheckApiError && error.status === 404
+            previous ??
+            (error instanceof AppCheckApiError && error.status === 404
               ? { status: "disabled" }
               : {
                   status: "unavailable",
                   message: "暂时无法确认应用注册查询可用性，请重试。"
-                };
+                });
+        }
       } finally {
         clearTimeout(timer);
         pending = undefined;
@@ -46,6 +64,7 @@ export function createAppCheckContext(source: AppCheckTaskSource) {
     source,
     session: createWorkbenchSession(),
     state,
+    configurationRead,
     load,
     dispose() {
       disposed = true;

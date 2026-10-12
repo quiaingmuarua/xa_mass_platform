@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { computed, markRaw, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { ArrowLeft, UploadFilled } from "@element-plus/icons-vue";
-import { appLabel, countryLabel, type Catalog, type CheckTask } from "./model";
+import {
+  appLabel,
+  countryLabel,
+  simulationSchema,
+  type Catalog,
+  type CheckTask
+} from "./model";
+import type { ConfigurationReadState } from "./configuration";
+import SimulationSummary from "./SimulationSummary.vue";
 import {
   AppCheckCreationUnconfirmed,
   AppCheckImportUnconfirmed,
@@ -25,12 +33,14 @@ const props = defineProps<{
   session: WorkbenchSession;
   active: boolean;
   targetTask?: CheckTask;
+  configurationRead?: ConfigurationReadState;
 }>();
 const emit = defineEmits<{
   back: [];
   created: [taskId: string];
   endUnconfirmed: [];
   inspect: [];
+  configuration: [appId: string];
 }>();
 const draft = computed(() => props.session.draft);
 const reading = ref(false),
@@ -166,12 +176,15 @@ async function submit() {
   try {
     if (!props.source.importNumbers) throw new Error("当前数据源未接入号码导入");
     if (!current.knownTaskId) {
-      const response = await props.source.createTask({
+      current.frozenCreate ??= markRaw({
         requestId: current.requestId,
         appId: current.appId,
         country: current.country,
-        simulation: structuredClone(props.catalog.simulationExample)
+        simulation: simulationSchema.parse(current.simulation)
       });
+      const response = await props.source.createTask(
+        structuredClone(current.frozenCreate)
+      );
       current.knownTaskId = response.taskId;
     }
     current.submissionPhase = "import";
@@ -195,8 +208,36 @@ async function submit() {
     if (error instanceof AppCheckCreationUnconfirmed)
       current.knownTaskId = error.taskId;
     current.error = error instanceof Error ? error.message : "创建失败，已保留草稿";
-    if (!current.uncertain && !current.knownTaskId)
+    if (!current.uncertain && !current.knownTaskId) {
       current.requestId = requestIdentity();
+      current.frozenCreate = undefined;
+    }
+  } finally {
+    current.busy = false;
+  }
+}
+async function checkCreation() {
+  const current = draft.value;
+  if (
+    !current.uncertain ||
+    current.busy ||
+    !current.frozenCreate ||
+    current.submissionPhase !== "create"
+  )
+    return;
+  current.busy = true;
+  try {
+    const response = await props.source.createTask(
+      structuredClone(current.frozenCreate)
+    );
+    current.knownTaskId = response.taskId;
+    current.submissionPhase = "import";
+    current.error = "创建已确认，尚未自动导入或启动。请核对任务，或显式导入当前号码。";
+  } catch (error) {
+    if (error instanceof AppCheckCreationUnconfirmed && error.taskId)
+      current.knownTaskId = error.taskId;
+    current.error =
+      error instanceof Error ? error.message : "创建仍未确认，请保留原请求继续核对。";
   } finally {
     current.busy = false;
   }
@@ -246,6 +287,8 @@ watch(
       draft.value.appId = props.catalog.apps[0].appId;
       draft.value.country = props.catalog.countries[0];
     }
+    if (!props.targetTask && !draft.value.simulation)
+      draft.value.simulation = simulationSchema.parse(props.catalog.simulationExample);
     if (props.targetTask) {
       draft.value.appId = props.targetTask.appId!;
       draft.value.country = props.targetTask.country!;
@@ -254,7 +297,7 @@ watch(
     }
     if (draft.value.text && !report.value && !blocked.value) void inspect();
     await nextTick();
-    focusHeading();
+    if (!disposed && props.active) focusHeading();
   },
   { immediate: true }
 );
@@ -301,6 +344,12 @@ onBeforeUnmount(() => {
       @end="emit('endUnconfirmed')"
       @inspect="emit('inspect')"
     />
+    <el-button
+      v-if="draft.uncertain && draft.submissionPhase === 'create' && draft.frozenCreate"
+      :loading="draft.busy"
+      @click="checkCreation"
+      >使用原请求核对创建</el-button
+    >
     <el-button
       v-if="draft.uncertain && draft.submissionPhase === 'import' && draft.knownTaskId"
       :disabled="draft.busy || reading"
@@ -349,6 +398,50 @@ onBeforeUnmount(() => {
         </li>
       </ul>
     </details>
+    <section
+      v-if="!targetTask"
+      class="checks-surface checks-create-configuration"
+      aria-label="创建配置摘要"
+    >
+      <div class="checks-section-heading">
+        <span
+          >{{ appLabel(draft.appId) }} ·
+          {{
+            catalog.apps.find((app) => app.appId === draft.appId)?.workerGroupId ||
+            "当前应用不可用"
+          }}</span
+        >
+        <button
+          type="button"
+          class="checks-link"
+          @click="emit('configuration', draft.appId)"
+        >
+          查看应用配置
+        </button>
+      </div>
+      <p class="checks-hint">
+        单次最多 {{ quantity(catalog.limits.numbersPerImport) }} 个号码 /
+        {{ catalog.limits.importFileBytes / 1024 / 1024 }} MiB · 来源：{{
+          source.mode === "mock" ? "Mock 演示数据" : "Catalog"
+        }}
+      </p>
+      <p v-if="configurationRead?.error" class="checks-error">
+        配置快照可能已过期，已保留原读取值；已有草稿参数保持不变。
+      </p>
+      <p v-if="source.mode === 'api'" class="checks-hint">
+        任务优先级、最大重试、有效期和供给目标：当前接口未提供。
+      </p>
+      <details>
+        <summary>本次创建携带模拟参数</summary>
+        <SimulationSummary
+          :value="draft.frozenCreate?.simulation ?? draft.simulation"
+          :source="source.mode === 'mock' ? 'mock' : 'draft'"
+        />
+        <p class="checks-hint">
+          参数已在草稿中保存，刷新 Catalog 不会替换；首次提交后使用相同请求与参数核对。
+        </p>
+      </details>
+    </section>
     <form
       :id="targetTask ? 'app-check-import' : 'app-check-create'"
       class="checks-surface checks-create-form"

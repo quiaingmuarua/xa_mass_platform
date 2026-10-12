@@ -11,6 +11,8 @@ const state = context.state;
     :source="context.source"
     :catalog="state.catalog"
     :session="context.session"
+    :configuration-read="context.configurationRead.value"
+    @refresh-configuration="context.load(true)"
   />
   <section v-else class="checks-surface checks-unavailable" aria-live="polite">
     <h1>应用注册查询</h1>
