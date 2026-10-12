@@ -120,6 +120,25 @@ function mockProjectSource(): ProjectSource {
     scoreBand: row.scoreBand,
     createdAtMillis: Date.parse(MOCK_TASK_PREVIEW.generatedAt) - index * 1000
   }));
+  for (const group of groups) {
+    const taskId = projects[0]!.managedTaskIds[group.workerGroupId]!;
+    if (!tasks.some((row) => row.taskId === taskId))
+      tasks.push({
+        taskId,
+        createdAtMillis: Date.parse(MOCK_TASK_PREVIEW.generatedAt),
+        scoreBand: "running_visible",
+        task: {
+          taskId,
+          projectId: "default",
+          workerGroupId: group.workerGroupId,
+          idleDisposition: "PARK_WHEN_IDLE",
+          name: null,
+          metadata: {},
+          config: { priority: "0", maxRetryTimes: "3" },
+          refill: [{ poolName: "any", target: {}, count: 100 }]
+        }
+      });
+  }
   const requireProject = (project: string) => {
     if (!projects.some((p) => p.projectId === project))
       throw new Error("Project 不可用");

@@ -2,17 +2,13 @@ import { AxiosError, type AxiosInstance, type AxiosResponse } from "axios";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { TaskRuntimePreviewEntry } from "@/runtime-viewer/types";
 import {
   createTaskCallDebugStore,
   TASK_CALL_DEBUG_HISTORY_LIMIT
 } from "@/stores/task-call-debug";
 import { TaskCallDebugError } from "@/task-call-debug/errors";
 import { HttpTaskCallDebugClient } from "@/task-call-debug/http-client";
-import {
-  taskCallDebugAvailability,
-  validateTaskCallDebugDraft
-} from "@/task-call-debug/model";
+import { validateTaskCallDebugDraft } from "@/task-call-debug/model";
 import type {
   TaskCallDebugClient,
   TaskCallDebugClientRequest,
@@ -144,28 +140,6 @@ describe("Task Call Debug request model", () => {
     expect(() => validateTaskCallDebugDraft(draft({ waitTimeoutMillis: 1.5 }))).toThrow(
       "整数"
     );
-  });
-
-  it("enables only real managed Task Call descriptors", () => {
-    expect(taskCallDebugAvailability("api", entry())).toEqual({ enabled: true });
-    expect(taskCallDebugAvailability("mock", entry())).toMatchObject({
-      enabled: false,
-      reason: expect.stringContaining("Mock")
-    });
-    expect(
-      taskCallDebugAvailability("api", entry({ workerGroup: null }))
-    ).toMatchObject({ enabled: false });
-    expect(taskCallDebugAvailability("api", entry({ task: null }))).toMatchObject({
-      enabled: false
-    });
-    expect(
-      taskCallDebugAvailability(
-        "api",
-        entry({
-          task: { ...entry().task!, idleDisposition: "CLOSE_WHEN_IDLE" }
-        })
-      )
-    ).toMatchObject({ enabled: false });
   });
 });
 
@@ -505,34 +479,6 @@ describe("Task Call Debug browser-memory store", () => {
     expect(refreshed.history("task-1")).toEqual([]);
   });
 });
-
-function entry(
-  overrides: Partial<TaskRuntimePreviewEntry> = {}
-): TaskRuntimePreviewEntry {
-  return {
-    taskId: "task-1",
-    scoreBand: "running_visible",
-    workerGroup: {
-      workerGroupId: "group-a",
-      attributes: {},
-      eventCodes: ["extension.worker.custom"]
-    },
-    task: {
-      taskId: "task-1",
-      workerGroupId: "group-a",
-      projectId: "test-project",
-      idleDisposition: "PARK_WHEN_IDLE",
-      refill: [{ poolName: "any", target: {}, count: 100 }],
-      name: null,
-      metadata: {},
-      config: {
-        priority: "0",
-        maxRetryTimes: "3"
-      }
-    },
-    ...overrides
-  };
-}
 
 function draft(overrides: Partial<TaskCallDebugDraft> = {}): TaskCallDebugDraft {
   return {

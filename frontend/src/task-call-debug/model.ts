@@ -1,8 +1,4 @@
-import type {
-  JsonValue,
-  RuntimeDataSourceMode,
-  TaskRuntimePreviewEntry
-} from "@/runtime-viewer/types";
+import type { JsonValue } from "@/runtime-viewer/types";
 
 import { taskCallDebugConfigurationError } from "./errors";
 import type {
@@ -13,42 +9,6 @@ import type {
 
 export const DEFAULT_TASK_CALL_TIMEOUT_MILLIS = 3_000;
 export const MAX_TASK_CALL_TIMEOUT_MILLIS = 60_000;
-
-export interface TaskCallDebugAvailability {
-  enabled: boolean;
-  reason?: string;
-}
-
-export function taskCallDebugAvailability(
-  mode: RuntimeDataSourceMode,
-  entry: TaskRuntimePreviewEntry
-): TaskCallDebugAvailability {
-  if (mode !== "api") {
-    return {
-      enabled: false,
-      reason: "Mock 模式不执行真实 Task Call。"
-    };
-  }
-  if (entry.workerGroup === null) {
-    return {
-      enabled: false,
-      reason: "WorkerGroup 描述符缺失，不能构造调试调用。"
-    };
-  }
-  if (entry.task === null) {
-    return {
-      enabled: false,
-      reason: "Task 描述符缺失，不能调用当前配置坐标。"
-    };
-  }
-  if (entry.task.idleDisposition !== "PARK_WHEN_IDLE") {
-    return {
-      enabled: false,
-      reason: "该 Task 不是可复用的 PARK_WHEN_IDLE Task Call。"
-    };
-  }
-  return { enabled: true };
-}
 
 export function validateTaskCallDebugDraft(
   draft: TaskCallDebugDraft

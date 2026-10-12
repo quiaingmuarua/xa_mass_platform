@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
 import ConsoleLayout from "@/layouts/ConsoleLayout.vue";
-import RuntimeProvider from "@/layouts/RuntimeProvider.vue";
+import ConsoleSessionProvider from "@/layouts/ConsoleSessionProvider.vue";
 
 const smsPage = () => import("@/sms/SmsPage.vue");
 const messagesPage = () => import("@/message-campaigns/MessagePage.vue");
@@ -8,49 +8,60 @@ const appChecksPage = () => import("@/app-checks/AppCheckPage.vue");
 export const consoleRoutes: RouteRecordRaw[] = [
   {
     path: "/",
-    component: ConsoleLayout,
+    component: ConsoleSessionProvider,
     children: [
-      { path: "", redirect: "/runtime/workers" },
       {
-        path: "runtime",
-        component: RuntimeProvider,
-        meta: { section: "Runtime" },
+        path: "",
+        component: ConsoleLayout,
         children: [
+          { path: "", redirect: "/runtime/workers" },
           {
-            path: "workers",
-            name: "runtime-workers",
-            component: () => import("@/views/WorkerRuntimeView.vue"),
-            meta: { title: "Worker Runtime" }
+            path: "runtime",
+            meta: { section: "Runtime" },
+            children: [
+              {
+                path: "workers",
+                name: "runtime-workers",
+                component: () => import("@/views/WorkerRuntimeView.vue"),
+                meta: { title: "Worker Runtime" }
+              },
+              {
+                path: "tasks",
+                name: "runtime-tasks",
+                component: () => import("@/views/TaskRuntimeView.vue"),
+                meta: { title: "Tasks" }
+              }
+            ]
           },
           {
-            path: "tasks",
-            name: "runtime-tasks",
-            component: () => import("@/views/TaskRuntimeView.vue"),
-            meta: { title: "Tasks" }
-          }
+            path: "task-workbench",
+            name: "task-workbench",
+            component: () => import("@/task-workbench/TaskWorkbench.vue"),
+            meta: { section: "Workbench", title: "任务工作台" }
+          },
+          {
+            path: "reference/error-codes",
+            name: "reference-error-codes",
+            component: () => import("@/views/ErrorCodeReferenceView.vue"),
+            meta: { section: "Reference", title: "Diagnostic Codes" }
+          },
+          ...["sms", "sms/metrics"].map((path) => ({
+            path,
+            component: smsPage,
+            meta: { section: "Scenarios", title: "SMS" }
+          })),
+          ...["messages", "messages/tasks/:taskId"].map((path) => ({
+            path,
+            component: messagesPage,
+            meta: { section: "Scenarios", title: "Messages" }
+          })),
+          ...["app-checks", "app-checks/tasks/:taskId"].map((path) => ({
+            path,
+            component: appChecksPage,
+            meta: { section: "Scenarios", title: "应用注册查询" }
+          }))
         ]
-      },
-      {
-        path: "reference/error-codes",
-        name: "reference-error-codes",
-        component: () => import("@/views/ErrorCodeReferenceView.vue"),
-        meta: { section: "Reference", title: "Diagnostic Codes" }
-      },
-      ...["sms", "sms/metrics"].map((path) => ({
-        path,
-        component: smsPage,
-        meta: { section: "Scenarios", title: "SMS" }
-      })),
-      ...["messages", "messages/tasks/:taskId"].map((path) => ({
-        path,
-        component: messagesPage,
-        meta: { section: "Scenarios", title: "Messages" }
-      })),
-      ...["app-checks", "app-checks/tasks/:taskId"].map((path) => ({
-        path,
-        component: appChecksPage,
-        meta: { section: "Scenarios", title: "应用注册查询" }
-      }))
+      }
     ]
   },
   {
@@ -70,6 +81,11 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: consoleRoutes,
   scrollBehavior: (to, from) => {
+    if (
+      ["/runtime/tasks", "/task-workbench"].includes(to.path) &&
+      to.path === from.path
+    )
+      return false;
     // Messages previews remain over the mounted list or creation draft.
     if (
       (to.path === "/messages" || to.path.startsWith("/messages/tasks/")) &&

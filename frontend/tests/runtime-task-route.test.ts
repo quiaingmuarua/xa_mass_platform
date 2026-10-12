@@ -15,7 +15,9 @@ import {
   ElTag
 } from "element-plus";
 import { expect, it, vi } from "vitest";
-import TaskRuntimeView from "@/views/TaskRuntimeView.vue";
+import FiniteTaskPage from "@/task-workbench/FiniteTaskPage.vue";
+import { createTaskSession, taskSessionKey } from "@/task-workbench/session";
+import { createProjectSource } from "@/task-management/projects";
 import {
   runtimeViewerConfigKey,
   runtimeViewerStoreKey,
@@ -74,9 +76,15 @@ it("late drawer and submission continuations cannot replace the current context"
   );
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: "/runtime/tasks", component: TaskRuntimeView }]
+    routes: [
+      {
+        path: "/task-workbench",
+        component: FiniteTaskPage,
+        props: { project: { projectId: "default", managedTaskIds: { g: "rpc" } } }
+      }
+    ]
   });
-  await router.push("/runtime/tasks?project=default&view=create");
+  await router.push("/task-workbench?tab=finite&view=create");
   const app = createApp({ template: "<router-view />" });
   app.use(createPinia());
   app.use(router);
@@ -102,6 +110,7 @@ it("late drawer and submission continuations cannot replace the current context"
       createRuntimeViewerDataSource({ ...config, mode: "mock" })
     )
   );
+  app.provide(taskSessionKey, createTaskSession(createProjectSource("/api", "api")));
   const operations = createTaskManagementStore("api", {
     createTask: vi.fn(),
     appendItems: vi.fn(),
@@ -114,20 +123,18 @@ it("late drawer and submission continuations cannot replace the current context"
   document.body.append(host);
   try {
     app.mount(host);
-    await vi.waitFor(() =>
-      expect(document.body.textContent).toContain("创建原始有限任务")
-    );
-    await router.push("/runtime/tasks?project=default&taskId=known");
+    await vi.waitFor(() => expect(document.body.textContent).toContain("创建有限任务"));
+    await router.push("/task-workbench?tab=finite&taskId=known");
     await nextTick();
     // Element Plus emits update:modelValue again after its leaving transition.
     await new Promise((resolve) => setTimeout(resolve, 450));
     expect(router.currentRoute.value.query.taskId).toBe("known");
-    expect(document.body.textContent).toContain("核对并批准");
+    expect(document.body.textContent).toContain("原始任务信息");
     const activeDrawer = [...document.querySelectorAll(".el-drawer")].find((d) =>
-      d.textContent?.includes("核对并批准")
+      d.textContent?.includes("原始任务信息")
     );
     (activeDrawer?.querySelector(".el-drawer__close-btn") as HTMLButtonElement).click();
-    await router.push("/runtime/tasks?project=default&view=create");
+    await router.push("/task-workbench?tab=finite&view=create");
     await new Promise((resolve) => setTimeout(resolve, 450));
     expect(router.currentRoute.value.query.view).toBe("create");
     operations.submission = {
@@ -156,7 +163,7 @@ it("late drawer and submission continuations cannot replace the current context"
       notSubmitted: 0,
       complete: true
     };
-    await router.push("/runtime/tasks?project=elsewhere");
+    await router.push("/task-workbench?tab=rpc");
     releaseRefresh!(
       new Response(
         JSON.stringify({ projectId: "default", truncated: false, tasks: [row] })
@@ -164,7 +171,7 @@ it("late drawer and submission continuations cannot replace the current context"
     );
     await nextTick();
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(router.currentRoute.value.query.project).toBe("elsewhere");
+    expect(router.currentRoute.value.query.tab).toBe("rpc");
     expect(router.currentRoute.value.query.taskId).toBeUndefined();
   } finally {
     app.unmount();

@@ -138,7 +138,7 @@ or observation replay.
 ## frontend
 
 - **Primary Owner:** [Frontend](../../frontend/README.md).
-- **Boundary:** Runtime projections, finite Task workbench and static API Reference.
+- **Boundary:** Runtime projections, default-Project RPC/finite Task workbench and static API Reference.
 - **Required evidence:** Owner lint, type, test and build checks; a successful build alone does not replace the other checks.
 - **Nonclaims:** browser compatibility or visual regression.
 

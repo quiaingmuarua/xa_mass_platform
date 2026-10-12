@@ -78,7 +78,9 @@ on this executable or the scenarios.
 Boot forwards `/sms`, `/sms/metrics`, `/messages`,
 `/messages/tasks/{taskId}`, `/app-checks` and `/app-checks/tasks/{taskId}`
 to the shared Console, including trailing slashes, in platform and preview
-instances. The root `/` remains the Runtime entry. Catalog observation controls feature
+instances. Server's generic page controller also forwards `/task-workbench` and its trailing
+slash to the same Console. This route enables no Project or API capabilities.
+The root `/` remains the Runtime entry. Catalog observation controls feature
 availability; static assets never enable business. Unknown API and asset paths
 remain errors. The [Frontend Owner](../frontend/README.md) owns page data and
 polling lifetimes. Platform OpenAPI snapshots exclude scenarios; preview's live

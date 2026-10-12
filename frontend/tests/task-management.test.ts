@@ -277,8 +277,6 @@ describe("server-observed finite Task management", () => {
         true
       )
     ).rejects.toThrow("快照");
-    await expect(store.exportTask(observed("terminal"), true)).resolves.toBeUndefined();
-    expect(store.error?.message).toContain("尚未就绪");
   });
   it("counts confirmed entries in a partially rejected batch and never continues or recreates", async () => {
     const client = fakeClient({
@@ -321,7 +319,6 @@ describe("server-observed finite Task management", () => {
     const store = createTaskManagementStore("mock", client);
     await expect(store.submit(request())).rejects.toThrow("Mock");
     await expect(store.mutate(observed(), "approve", true)).rejects.toThrow("Mock");
-    await expect(store.exportTask(observed("terminal"), true)).rejects.toThrow("Mock");
     expect(client.createTask).not.toHaveBeenCalled();
   });
 });

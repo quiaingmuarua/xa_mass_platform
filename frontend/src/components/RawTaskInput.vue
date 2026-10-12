@@ -6,7 +6,7 @@ import {
   ElRadioButton,
   ElRadioGroup
 } from "element-plus";
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, toRefs, watch } from "vue";
 import "element-plus/es/components/form/style/css";
 import "element-plus/es/components/form-item/style/css";
 import "element-plus/es/components/input-number/style/css";
@@ -33,28 +33,35 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ submitted: [taskId: string]; inspect: [taskId: string] }>();
 const operations = useTaskManagementStore();
-const groupId = ref("");
-const format = ref<"txt" | "jsonl">("txt");
-const eventCode = ref("");
-const payloadKey = ref("");
-const selectorText = ref("");
-const refillText = ref("[]");
-const priority = ref(50);
-const retries = ref(3);
-const file = ref<File>();
-const content = ref<ArrayBuffer>();
+const draftKey = props.task?.taskId ?? "create";
+const {
+  groupId,
+  format,
+  eventCode,
+  payloadKey,
+  selectorText,
+  refillText,
+  priority,
+  retries,
+  file,
+  content,
+  inputError
+} = toRefs(operations.draft(draftKey));
+const ownReceipt = computed(() =>
+  operations.submissionKey === draftKey ? operations.submission : undefined
+);
 const parsing = ref(false);
-const inputError = ref("");
 const inputKey = ref(0);
 let parseGeneration = 0;
 const group = computed(() =>
   props.groups.find((g) => g.workerGroupId === groupId.value)
 );
 const frozen = computed(() => !!operations.submission || operations.busy);
+const restoredDraft = !!groupId.value;
 watch(
   () => [props.task?.taskId, props.groups] as const,
   () => {
-    if (frozen.value) return;
+    if (frozen.value || groupId.value) return;
     groupId.value =
       props.task?.task?.workerGroupId ??
       props.groups.find((g) => g.workerGroup)?.workerGroupId ??
@@ -78,13 +85,14 @@ watch(
       : "";
     payloadKey.value = eventCode.value ? "value" : "";
   },
-  { immediate: true }
+  { immediate: !restoredDraft }
 );
 async function chooseFile(event: Event) {
   const generation = ++parseGeneration;
   file.value = (event.target as HTMLInputElement).files?.[0];
   content.value = undefined;
   inputError.value = "";
+  parsing.value = false;
   const selected = file.value;
   if (!selected) return;
   if (selected.size > MAX_TASK_SEED_BYTES) {
@@ -295,24 +303,17 @@ function reset() {
       :closable="false"
       role="alert"
     />
-    <section
-      v-if="operations.submission"
-      class="raw-task-receipt"
-      aria-label="本会话提交回执"
-    >
+    <section v-if="ownReceipt" class="raw-task-receipt" aria-label="本会话提交回执">
       <strong>本会话提交回执</strong>
       <p>
-        已确认 {{ operations.submission.applied }} · 拒绝
-        {{ operations.submission.rejected }} · 未确认
-        {{ operations.submission.unconfirmed }} · 未提交
-        {{ operations.submission.notSubmitted }}
+        已确认 {{ ownReceipt.applied }} · 拒绝 {{ ownReceipt.rejected }} · 未确认
+        {{ ownReceipt.unconfirmed }} · 未提交
+        {{ ownReceipt.notSubmitted }}
       </p>
-      <p v-if="operations.submission.error" role="alert">
-        {{ operations.submission.error }} 不会自动重建、重传或批准。
+      <p v-if="ownReceipt.error" role="alert">
+        {{ ownReceipt.error }} 不会自动重建、重传或批准。
       </p>
-      <el-button
-        v-if="operations.submission.taskId"
-        @click="emit('inspect', operations.submission.taskId)"
+      <el-button v-if="ownReceipt.taskId" @click="emit('inspect', ownReceipt.taskId)"
         >查看已知任务</el-button
       >
       <el-button :disabled="operations.busy" @click="reset"
@@ -324,7 +325,7 @@ function reset() {
       </p>
     </section>
     <el-button
-      v-else
+      v-else-if="!operations.submission"
       type="primary"
       native-type="submit"
       :loading="operations.busy || parsing"

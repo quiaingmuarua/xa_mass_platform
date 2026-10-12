@@ -27,6 +27,12 @@ Read this Owner by use case:
 [assembly and lifecycle](#assembly-boundaries),
 [configuration and health](#configuration), and [proof](#verification).
 
+The generic frontend controller forwards `/runtime/workers`, `/runtime/tasks`
+and `/task-workbench` (including trailing slashes) to the Console entry. The
+workbench is a frontend-only default-Project operation surface; public Task
+API admission and managed provisioning are unchanged. Unknown API and asset
+paths are not forwarded.
+
 ### Runtime Shape
 
 ```text

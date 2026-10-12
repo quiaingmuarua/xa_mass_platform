@@ -39,6 +39,12 @@ const messagesEnabled = computed(() =>
       <el-icon><Tickets /></el-icon>
       <span>Tasks</span>
     </router-link>
+    <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
+      >WORKBENCH</span
+    >
+    <router-link class="runtime-navigation__link" to="/task-workbench">
+      <el-icon><Tickets /></el-icon><span>任务工作台</span>
+    </router-link>
     <template v-if="smsEnabled || messagesEnabled || appChecksEnabled">
       <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
         >SCENARIOS</span

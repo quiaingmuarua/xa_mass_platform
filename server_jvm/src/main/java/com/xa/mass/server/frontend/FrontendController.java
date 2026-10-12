@@ -12,6 +12,8 @@ public final class FrontendController {
             "/runtime/workers/",
             "/runtime/tasks",
             "/runtime/tasks/",
+            "/task-workbench",
+            "/task-workbench/",
             "/api-reference",
             "/api-reference/",
             "/reference/error-codes",

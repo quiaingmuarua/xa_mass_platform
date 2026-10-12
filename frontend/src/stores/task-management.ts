@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { reactive, ref } from "vue";
 import { defineStore } from "pinia";
 import { chunkTaskItems } from "@/task-management/model";
 import {
@@ -22,6 +22,21 @@ export function canManageRawTask(task: ProjectTask, fresh: boolean): boolean {
     task.scoreBand !== "terminal"
   );
 }
+export function newRawTaskDraft() {
+  return {
+    groupId: "",
+    format: "txt" as "txt" | "jsonl",
+    eventCode: "",
+    payloadKey: "",
+    selectorText: "",
+    refillText: "[]",
+    priority: 50,
+    retries: 3,
+    file: undefined as File | undefined,
+    content: undefined as ArrayBuffer | undefined,
+    inputError: ""
+  };
+}
 export function createTaskManagementStore(
   mode: "api" | "mock",
   client: FiniteTaskClient
@@ -30,6 +45,12 @@ export function createTaskManagementStore(
     const busy = ref(false);
     const submission = ref<ImportReceipt>();
     const error = ref<FiniteTaskErrorPresentation>();
+    const drafts = reactive<Record<string, ReturnType<typeof newRawTaskDraft>>>({});
+    const submissionKey = ref("");
+    function draft(key: string) {
+      drafts[key] ??= newRawTaskDraft();
+      return drafts[key]!;
+    }
     function admit() {
       if (mode !== "api") throw new Error("Mock 不执行原始任务写操作。");
       if (busy.value) throw new Error("操作进行中，请等待本次请求结束。");
@@ -37,6 +58,13 @@ export function createTaskManagementStore(
     }
     function finishSubmission() {
       if (busy.value) return;
+      const current = drafts[submissionKey.value];
+      if (current) {
+        current.file = undefined;
+        current.content = undefined;
+        current.inputError = "";
+      }
+      submissionKey.value = "";
       submission.value = undefined;
       error.value = undefined;
     }
@@ -85,6 +113,7 @@ export function createTaskManagementStore(
       )
         throw new Error("只能向 default 的待审核有限任务追加。");
       busy.value = true;
+      submissionKey.value = request.existing?.taskId ?? "create";
       submission.value = {
         taskId: request.existing?.taskId,
         fileName: request.fileName,
@@ -132,27 +161,16 @@ export function createTaskManagementStore(
         busy.value = false;
       }
     }
-    async function exportTask(task: ProjectTask, fresh: boolean) {
-      admit();
-      if (
-        !fresh ||
-        task.task?.idleDisposition !== "CLOSE_WHEN_IDLE" ||
-        task.scoreBand !== "terminal"
-      )
-        throw new Error("只能导出最新读取为终态的有限任务。");
-      busy.value = true;
-      try {
-        const result = await client.exportResults(task.taskId);
-        if (!result.ready) throw new Error("结果尚未就绪，请刷新后重试。");
-        return result;
-      } catch (failure) {
-        error.value = presentFiniteTaskError(failure);
-        return undefined;
-      } finally {
-        busy.value = false;
-      }
-    }
-    return { busy, submission, error, submit, mutate, exportTask, finishSubmission };
+    return {
+      busy,
+      submission,
+      submissionKey,
+      error,
+      draft,
+      submit,
+      mutate,
+      finishSubmission
+    };
   })();
 }
 export type TaskManagementStore = ReturnType<typeof createTaskManagementStore>;
