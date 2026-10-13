@@ -5,14 +5,15 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import com.xa.mass.server.task.directory.TaskUserId;
 
 /** Client-declared development context, never an authenticated principal. */
 record AppCheckCaller(String userId, String role) {
     AppCheckCaller {
         if (userId == null) throw new AppCheckAccessException(400, "缺少开发调用方");
-        userId = userId.strip();
-        if (userId.isEmpty() || userId.length() > 128
-                || !("admin".equals(role) || "operator".equals(role)))
+        try { userId = TaskUserId.normalize(userId); }
+        catch (IllegalArgumentException invalid) { throw new AppCheckAccessException(400, invalid.getMessage()); }
+        if (!("admin".equals(role) || "operator".equals(role)))
             throw new AppCheckAccessException(400, "开发调用方无效");
     }
 

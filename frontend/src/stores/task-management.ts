@@ -132,11 +132,30 @@ export function createTaskManagementStore(
         await appendBatches(receipt.taskId, request.items(receipt.taskId), receipt);
       } catch (failure) {
         error.value = presentFiniteTaskError(failure);
+        receipt.taskId ??= error.value.taskId;
         receipt.error = error.value.message;
       } finally {
         busy.value = false;
       }
       return receipt.taskId;
+    }
+    async function ensureDirectory(): Promise<boolean> {
+      admit();
+      const receipt = submission.value;
+      if (!receipt?.taskId) return false;
+      busy.value = true;
+      try {
+        await client.ensureDirectory(receipt.taskId);
+        receipt.error =
+          "任务目录已确认。请读取原任务，再显式追加号码或 Item；不会自动续提。";
+        return true;
+      } catch (failure) {
+        error.value = presentFiniteTaskError(failure);
+        receipt.error = error.value.message;
+        return false;
+      } finally {
+        busy.value = false;
+      }
     }
     async function mutate(
       task: ProjectTask,
@@ -168,6 +187,7 @@ export function createTaskManagementStore(
       error,
       draft,
       submit,
+      ensureDirectory,
       mutate,
       finishSubmission
     };

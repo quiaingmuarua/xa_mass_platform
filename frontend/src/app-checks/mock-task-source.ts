@@ -1,5 +1,6 @@
 import type { AppCheckTaskSource } from "./task-source";
 import { developmentIdentities } from "@/console-identity";
+import { normalizeTaskUserId, taskUserScore, compareTaskIds } from "@/task-user-id";
 import type { TaskPolicySnapshot } from "./configuration";
 import {
   AppCheckApiError,
@@ -336,18 +337,28 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     requireAdminCaller(caller);
     this.effectiveConfiguration = structuredClone(this.savedConfiguration);
   }
-  async listTasks(caller: AppCheckCaller) {
+  async listTasks(caller: AppCheckCaller, userId?: string) {
     caller = requireCaller(caller);
+    const selected = userId === undefined ? undefined : normalizeTaskUserId(userId);
+    if (caller.role !== "admin" && selected !== undefined && selected !== caller.userId)
+      throw new AppCheckApiError(403, "当前开发身份不能查询其他用户的任务");
+    const owner = caller.role === "operator" ? caller.userId : selected;
     const tasks = [...this.records.values()]
       .map((r) => r.task)
+      .filter((task) => owner === undefined || task.userId === owner)
       .sort(
         (a, b) =>
-          b.createdAtMillis - a.createdAtMillis || a.taskId.localeCompare(b.taskId)
+          taskUserScore(a.userId) - taskUserScore(b.userId) ||
+          compareTaskIds(a.taskId, b.taskId)
       );
     return structuredClone({
       tasks: tasks
         .slice(0, 100)
-        .filter((task) => caller.role === "admin" || task.userId === caller.userId),
+        .sort(
+          (a, b) =>
+            (b.createdAtMillis ?? -1) - (a.createdAtMillis ?? -1) ||
+            compareTaskIds(a.taskId, b.taskId)
+        ),
       truncated: tasks.length > 100
     });
   }

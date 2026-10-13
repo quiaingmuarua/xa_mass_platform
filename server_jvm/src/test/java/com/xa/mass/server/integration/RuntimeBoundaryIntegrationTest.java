@@ -1676,7 +1676,7 @@ class RuntimeBoundaryIntegrationTest {
         String group = "user-rpc-" + TransportProfile.WEBSOCKET.name();
         String suffix = UUID.randomUUID().toString();
         var ids = new LinkedHashMap<String, String>();
-        for (String user : List.of("Alice", "Bob")) {
+        for (String user : List.of("alice", "bobby")) {
             String id = "caller-" + user + "-" + suffix;
             var response = send("POST", "/api/v1/tasks/" + id + "/rpc:prepare",
                     Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "metadata", Map.of("userId", user))));
@@ -1690,7 +1690,7 @@ class RuntimeBoundaryIntegrationTest {
             awaitWorkerRegistered(group, prepared.workerId());
             for (var entry : ids.entrySet()) {
                 String user = entry.getKey(), id = entry.getValue();
-                var original = taskCatalog.getProjectTask("boundary", id);
+                var original = com.xa.mass.server.task.directory.TaskAttribution.require(taskCatalog.loadTaskAllocationDescriptors(List.of(id)).get(id).metadata());
                 var response = send("POST", "/api/v1/tasks/" + id + "/items:call", Jsons.toJson(Map.of(
                         "items", List.of(Map.of("messageId", "same-id", "eventCode", TEST_EVENT_CODE,
                                 "payload", Map.of("value", user), "workerSelector", Map.of("executorName", "workerId", "input", prepared.workerId()))),
@@ -1701,7 +1701,7 @@ class RuntimeBoundaryIntegrationTest {
                 var repeated = send("POST", "/api/v1/tasks/" + id + "/rpc:prepare",
                         Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "metadata", Map.of("userId", user))));
                 assertThat(repeated.statusCode()).isEqualTo(200);
-                assertThat(taskCatalog.getProjectTask("boundary", id)).isEqualTo(original);
+                assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(taskCatalog.loadTaskAllocationDescriptors(List.of(id)).get(id).metadata())).isEqualTo(original);
                 assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(id)).get(id).metadata()).containsEntry("userId", user);
             }
             for (var entry : ids.entrySet()) {

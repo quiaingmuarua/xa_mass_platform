@@ -180,7 +180,7 @@ class AssignmentBatchIntegrationTest {
             RedisWorkerResourceCatalog catalog, RedisWorkerCommandRuntime delivery, MatchingComposition matching,
             List<String> commands) {
         TaskDescriptor task(String id, int limit, String pool) {
-            return new TaskDescriptor(id, "test-project", "g", TaskIdleDisposition.CLOSE_WHEN_IDLE,
+            return new TaskDescriptor(id, "g", TaskIdleDisposition.CLOSE_WHEN_IDLE,
                     Map.of("priority", "0", "maxRetryTimes", "1"),
                     List.of(new RefillTarget(pool, new EligibilityQuery(Map.of()), limit)), null, Map.of());
         }

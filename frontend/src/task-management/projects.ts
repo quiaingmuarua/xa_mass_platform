@@ -2,6 +2,7 @@ import { z } from "zod";
 import { taskViewSchema, workerGroupViewSchema } from "@/runtime-viewer/schemas";
 import { MOCK_TASK_PREVIEW, MOCK_WORKER_GROUPS } from "@/runtime-viewer/mock-data";
 import { rpcTaskId } from "@/task-workbench/rpc-task";
+import { compareTaskIds, taskUserScore } from "@/task-user-id";
 
 export class ProjectRequestError extends Error {
   constructor(
@@ -22,7 +23,7 @@ export type Project = z.infer<typeof projectSchema>;
 export const projectTaskSchema = z
   .object({
     taskId: z.string().min(1),
-    createdAtMillis: z.number().int().nonnegative(),
+    createdAtMillis: z.number().int().nonnegative().nullable(),
     task: taskViewSchema.nullable(),
     scoreBand: z
       .enum(["pre_review", "running-initial", "running_visible", "terminal"])
@@ -128,11 +129,13 @@ function mockProjectSource(): ProjectSource {
       workerGroupIds: groups.map((g) => g.workerGroupId)
     }
   ];
-  const tasks: ProjectTask[] = MOCK_TASK_PREVIEW.entries.map((row, index) => ({
+  const tasks: ProjectTask[] = MOCK_TASK_PREVIEW.entries.map((row) => ({
     taskId: row.taskId,
     task: row.task,
     scoreBand: row.scoreBand,
-    createdAtMillis: Date.parse(MOCK_TASK_PREVIEW.generatedAt) - index * 1000
+    createdAtMillis: row.task?.metadata["server.createdAtMillis"]
+      ? Number(row.task.metadata["server.createdAtMillis"])
+      : null
   }));
   for (const group of groups) {
     const taskId = rpcTaskId("default", "demo", group.workerGroupId);
@@ -147,7 +150,11 @@ function mockProjectSource(): ProjectSource {
           workerGroupId: group.workerGroupId,
           idleDisposition: "PARK_WHEN_IDLE",
           name: null,
-          metadata: { userId: "demo" },
+          metadata: {
+            userId: "demo",
+            "server.projectId": "default",
+            "server.createdAtMillis": String(Date.parse(MOCK_TASK_PREVIEW.generatedAt))
+          },
           config: { priority: "0", maxRetryTimes: "3" },
           refill: [{ poolName: "any", target: {}, count: 100 }]
         }
@@ -163,7 +170,24 @@ function mockProjectSource(): ProjectSource {
     },
     async tasks(project) {
       requireProject(project);
-      return structuredClone({ projectId: project, truncated: false, tasks });
+      const batch = [...tasks]
+        .sort(
+          (a, b) =>
+            taskUserScore(a.task?.metadata.userId) -
+              taskUserScore(b.task?.metadata.userId) ||
+            compareTaskIds(a.taskId, b.taskId)
+        )
+        .slice(0, 100);
+      batch.sort(
+        (a, b) =>
+          (b.createdAtMillis ?? -1) - (a.createdAtMillis ?? -1) ||
+          compareTaskIds(a.taskId, b.taskId)
+      );
+      return structuredClone({
+        projectId: project,
+        truncated: tasks.length > 100,
+        tasks: batch
+      });
     },
     async task(project, taskId) {
       requireProject(project);

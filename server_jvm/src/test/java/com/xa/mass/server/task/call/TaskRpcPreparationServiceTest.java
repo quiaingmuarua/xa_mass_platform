@@ -51,7 +51,7 @@ class TaskRpcPreparationServiceTest {
         matching=mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
         when(matching.normalizeRefill(org.mockito.ArgumentMatchers.anyString(),anyList()))
                 .thenAnswer(call -> call.getArgument(1));
-        service = new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matching, new com.xa.mass.server.task.call.TaskRpcProperties(1000,1000,10,10,10,50,100,250,java.util.Map.of()), projects(), new OperationGuard());
+        service = new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matching, new com.xa.mass.server.task.call.TaskRpcProperties(1000,1000,10,10,10,50,100,250,java.util.Map.of()), projects(), new OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class));
         when(workerCatalog.getWorkerGroupDescriptors(List.of("phone-tools")))
                 .thenReturn(Map.of(
                         "phone-tools",
@@ -82,13 +82,16 @@ class TaskRpcPreparationServiceTest {
         ArgumentCaptor<TaskDescriptor> descriptor =
                 ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime).createTask(descriptor.capture());
-        assertThat(descriptor.getValue()).isEqualTo(expectedDescriptor());
+        assertThat(descriptor.getValue()).usingRecursiveComparison().ignoringFields("metadata").isEqualTo(expectedDescriptor());
+        var attribution = com.xa.mass.server.task.directory.TaskAttribution.require(descriptor.getValue().metadata());
+        assertThat(attribution.projectId()).isEqualTo("test-project");
+        assertThat(attribution.createdAtMillis()).isPositive();
         verify(taskLifecycle).approveTask("rpc-test");
     }
 
     @Test void explicitEmptyManagedOverrideCreatesNoSupply() {
         var rpc=new TaskRpcProperties(1000,1000,10,10,10,50,100,250,Map.of("phone-tools",List.of()));
-        service=new TaskRpcPreparationService(workerCatalog,taskCatalog,taskRuntime,taskLifecycle,matching,rpc,projects(),new OperationGuard());
+        service=new TaskRpcPreparationService(workerCatalog,taskCatalog,taskRuntime,taskLifecycle,matching,rpc,projects(),new OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class));
         when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of());
         when(taskRuntime.createTask(any())).thenReturn(new TaskCreationResult(TaskCreationStatus.CREATED));
         when(taskLifecycle.approveTask("rpc-test")).thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED));
@@ -135,15 +138,16 @@ class TaskRpcPreparationServiceTest {
         when(matching.normalizeRefill(org.mockito.ArgumentMatchers.eq("phone-tools"),anyList()))
                 .thenThrow(new IllegalArgumentException("invalid targets"));
         assertError(()->service.prepare("rpc-test", request()),ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE,"taskRpc.prepare");
-        org.mockito.Mockito.verifyNoInteractions(taskRuntime,taskCatalog,taskLifecycle);
+        org.mockito.Mockito.verifyNoInteractions(taskRuntime,taskLifecycle);
+        verify(taskCatalog).loadTaskAllocationDescriptors(List.of("rpc-test"));
     }
 
     @Test
     void conflictingPersistentDescriptorRejectsRegistration() {
-        TaskDescriptor conflict = new TaskDescriptor("rpc-test", "test-project", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
+        TaskDescriptor conflict = new TaskDescriptor("rpc-test", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "1",
                         "maxRetryTimes", "3"
-                ), java.util.List.of(), null, java.util.Map.of());
+                ), java.util.List.of(), null, expectedDescriptor().metadata());
         when(taskCatalog.loadTaskAllocationDescriptors(anyList()))
                 .thenReturn(Map.of(conflict.taskId(), conflict));
 
@@ -248,7 +252,7 @@ class TaskRpcPreparationServiceTest {
                 .thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED));
         assertError(() -> service.prepare("rpc-test", request()), ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE, "taskRpc.prepare");
         service.prepare("rpc-test", request());
-        verify(taskRuntime, org.mockito.Mockito.times(1)).createTask(expectedDescriptor());
+        verify(taskRuntime, org.mockito.Mockito.times(1)).createTask(any());
         verify(taskLifecycle, org.mockito.Mockito.times(2)).approveTask(expectedDescriptor().taskId());
     }
 
@@ -269,26 +273,27 @@ class TaskRpcPreparationServiceTest {
         });
         when(taskLifecycle.approveTask(any())).thenReturn(new TaskApprovalResult(TaskApprovalStatus.ALREADY_APPROVED));
         var initializer = new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle,
-                matching, new TaskRpcProperties(1000,1000,10,10,10,50,100,250,Map.of()), directory, new OperationGuard());
+                matching, new TaskRpcProperties(1000,1000,10,10,10,50,100,250,Map.of()), directory, new OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class));
         for (int repeat = 0; repeat < 2; repeat++) {
             initializer.prepare("rpc-one", new TaskRpcPrepareRequest("one", "phone-tools", null, Map.of()));
             initializer.prepare("rpc-two", new TaskRpcPrepareRequest("two", "phone-tools", null, Map.of()));
         }
-        assertThat(saved.values()).extracting(TaskDescriptor::projectId).containsExactly("one", "two");
+        assertThat(saved.values()).extracting(task -> com.xa.mass.server.task.directory.TaskAttribution.require(task.metadata()).projectId()).containsExactly("one", "two");
         verify(taskRuntime, org.mockito.Mockito.times(2)).createTask(any());
     }
 
     @Test void callerIdentityAndMetadataAreOpaqueAndImmutable() {
-        var attributes = new java.util.HashMap<>(Map.of("userId", "Alice"));
+        var attributes = new java.util.HashMap<>(Map.of("userId", "alice"));
         var request = new TaskRpcPrepareRequest("test-project", "phone-tools", "RPC", attributes);
-        attributes.put("userId", "Bob");
+        attributes.put("userId", "bobby");
         when(taskRuntime.createTask(any())).thenReturn(new TaskCreationResult(TaskCreationStatus.CREATED));
         when(taskLifecycle.approveTask("caller-chosen"))
                 .thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED));
         assertThat(service.prepare("caller-chosen", request).taskId()).isEqualTo("caller-chosen");
         var descriptor = ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime).createTask(descriptor.capture());
-        assertThat(descriptor.getValue().metadata()).containsExactlyEntriesOf(Map.of("userId", "Alice"));
+        assertThat(descriptor.getValue().metadata()).containsEntry("userId", "alice")
+                .containsOnlyKeys("userId", "server.projectId", "server.createdAtMillis");
         assertThat(descriptor.getValue().name()).isEqualTo("RPC");
         assertThatThrownBy(() -> request.metadata().clear()).isInstanceOf(UnsupportedOperationException.class);
     }
@@ -335,10 +340,10 @@ class TaskRpcPreparationServiceTest {
     }
 
     private static TaskDescriptor expectedDescriptor() {
-        return new TaskDescriptor("rpc-test", "test-project", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
+        return new TaskDescriptor("rpc-test", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ), java.util.List.of(), null, java.util.Map.of());
+                ), java.util.List.of(), null, new com.xa.mass.server.task.directory.TaskAttribution("test-project", 123L, null).stamp(Map.of()));
     }
 
     private static void assertError(

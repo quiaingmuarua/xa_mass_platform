@@ -64,7 +64,7 @@ class ScenarioCompositionIntegrationTest {
                 assertThat(capabilityHttp.statusCode()).isEqualTo(200);
                 assertThat(capabilityHttp.body()).contains("demo-sim", "app-a-sim", "app-b-sim", "workerId", "worker.country", "worker.any");
                 var rpc = context.getBean(com.xa.mass.server.task.call.TaskRpcPreparationService.class);
-                assertThat(context.getBean(TaskResourceCatalog.class).listProjectTasks("default", 100).tasks()).isEmpty();
+                assertThat(context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class).list("default", 100, null).tasks()).isEmpty();
                 String id = rpc.prepare("composition-rpc", new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest(
                         "default", "demo-sim", null, Map.of("userId", "fixture"))).taskId();
                 assertThat(get(client, base, "/api/v1/projects/default/tasks/" + id).statusCode()).isEqualTo(200);
@@ -101,7 +101,7 @@ class ScenarioCompositionIntegrationTest {
                 assertThat(groups.values()).doesNotContainNull();
                 assertThat(context.getBean(com.xa.mass.server.project.ProjectDirectory.class).require("app-checks").workerGroupIds())
                         .containsExactly("app-a-sim", "app-b-sim");
-                assertThat(context.getBean(TaskResourceCatalog.class).listProjectTasks("app-checks", 100).tasks()).isEmpty();
+                assertThat(context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class).list("app-checks", 100, null).tasks()).isEmpty();
             }
             assertThat(context.getBean(com.xa.mass.server.delivery.adapter.ServerWorkerDeliveryAdapterProperties.class)
                     .instances()).hasSize(preview ? 1 : 0);
@@ -115,9 +115,9 @@ class ScenarioCompositionIntegrationTest {
                 if (messages) assertThat(context.getBean(MessageTaskService.class).catalog().get("applications").toString())
                         .contains("workerGroupId=demo-sim");
                 var directory = context.getBean(com.xa.mass.server.project.ProjectDirectory.class);
-                var tasks = context.getBean(TaskResourceCatalog.class);
-                assertThat(tasks.listProjectTasks("sms", 100).tasks()).hasSize(1);
-                assertThat(tasks.listProjectTasks("messages", 100).tasks()).isEmpty();
+                var tasks = context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class);
+                assertThat(tasks.list("sms", 100, null).tasks()).hasSize(1);
+                assertThat(tasks.list("messages", 100, null).tasks()).isEmpty();
                 for (String project : List.of("sms", "messages")) {
                     var projectResponse = get(client, base, "/api/v1/projects/" + project);
                     assertThat(projectResponse.statusCode()).isEqualTo(200);

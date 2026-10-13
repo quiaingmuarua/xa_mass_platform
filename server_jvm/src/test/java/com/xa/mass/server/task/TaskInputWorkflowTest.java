@@ -30,11 +30,10 @@ class TaskInputWorkflowTest {
             itemScores, new TaskItemOutcomeProperties(Map.of()), matching, scores, guard);
     final Map<String, TaskRuntime.TaskDescriptor> descriptors = new HashMap<>();
     final Map<String, TaskScoreBandCore.TaskScoreState> states = new HashMap<>();
-    final Map<String, TaskResourceCatalog.ProjectTaskEntry> directory = new HashMap<>();
+    final com.xa.mass.server.task.directory.TaskDirectory directory = mock(com.xa.mass.server.task.directory.TaskDirectory.class);
 
     TaskInputWorkflowTest() {
         when(catalog.loadTaskAllocationDescriptors(anyList())).thenAnswer(c -> descriptors);
-        when(catalog.getProjectTask(anyString(), anyString())).thenAnswer(c -> directory.get(c.getArgument(1)));
         when(scores.getScoreStates(anyList())).thenAnswer(c -> states);
         when(matching.normalizeQuery(anyString(), any())).thenAnswer(c -> c.getArgument(1));
         when(matching.normalizeRefill(anyString(), anyList())).thenReturn(List.of());
@@ -43,10 +42,10 @@ class TaskInputWorkflowTest {
     TaskCreationService creator() {
         var workers = mock(WorkerResourceCatalog.class);
         when(workers.getWorkerGroupDescriptors(anyList())).thenReturn(Collections.singletonMap("g", mock(com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor.class)));
-        return new TaskCreationService(workers, matching, runtime, new TaskIdGenerator(), mock(ProjectDirectory.class), catalog, scores, guard);
+        return new TaskCreationService(workers, matching, runtime, new TaskIdGenerator(), mock(ProjectDirectory.class), catalog, scores, guard, directory);
     }
     TaskRuntime.TaskDescriptor descriptor(String id) {
-        return new TaskRuntime.TaskDescriptor(id, "p", "g", TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE,
+        return new TaskRuntime.TaskDescriptor(id, "g", TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 Map.of("priority", "50", "maxRetryTimes", "3"), List.of(), null, Map.of());
     }
     void pending(String id) {
@@ -60,7 +59,6 @@ class TaskInputWorkflowTest {
             TaskRuntime.TaskDescriptor value = c.getArgument(0);
             descriptors.put(value.taskId(), value);
             states.put(value.taskId(), new TaskScoreBandCore.TaskScoreState(value.taskId(), 1, TaskScoreBandCore.TaskScoreBand.PRE_REVIEW, 0L, 0));
-            directory.put(value.taskId(), new TaskResourceCatalog.ProjectTaskEntry(value.taskId(), 123));
             return new TaskRuntime.TaskCreationResult(TaskRuntime.TaskCreationStatus.CREATED);
         });
         var request = new TaskCreateRequest("p", "g", 50, 3, List.of(), "first", Map.of());
@@ -83,6 +81,24 @@ class TaskInputWorkflowTest {
         var second = catchThrowableOfType(TaskCreationUnconfirmedException.class,
                 () -> creator().createForRequest(request, "unknown", "a".repeat(64)));
         assertThat(second.taskId()).isEqualTo(first.taskId());
+    }
+
+    @Test void lostDirectoryCommitCanBeExplicitlyConfirmedWithoutRecreatingOrRetiming() {
+        when(runtime.createTask(any())).thenAnswer(call -> {
+            TaskRuntime.TaskDescriptor task = call.getArgument(0);
+            descriptors.put(task.taskId(), task);
+            states.put(task.taskId(), new TaskScoreBandCore.TaskScoreState(task.taskId(), 1, TaskScoreBandCore.TaskScoreBand.PRE_REVIEW, 0L, 0));
+            return new TaskRuntime.TaskCreationResult(TaskRuntime.TaskCreationStatus.CREATED);
+        });
+        when(directory.ensure(anyString())).thenThrow(new IllegalStateException("lost directory reply")).thenReturn(ActionOutcome.unchanged());
+        var request = new TaskCreateRequest("p", "g", 50, 3, List.of(), null, Map.of("userId", "1001"));
+        var failure = catchThrowableOfType(TaskCreationUnconfirmedException.class,
+                () -> creator().createForRequest(request, "directory", "a".repeat(64)));
+        var original = descriptors.get(failure.taskId());
+        assertThat(creator().createForRequest(request, "directory", "a".repeat(64)).taskId()).isEqualTo(failure.taskId());
+        assertThat(descriptors.get(failure.taskId())).isSameAs(original);
+        verify(runtime, times(1)).createTask(any());
+        verify(directory, times(2)).ensure(failure.taskId());
     }
 
     @Test void repeatedInputsPreserveStoredTimesAndExplicitReimportCompletesOnlyMissingScores() {

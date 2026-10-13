@@ -9,7 +9,7 @@ stores optional Pool supply declarations. Kernel validates immutable structure;
 Matching interprets targets, qualifications and resource access without Task IDs.
 
 ```text
-TaskDescriptor = taskId, projectId, workerGroupId, idleDisposition, config, refill, name?, metadata
+TaskDescriptor = taskId, workerGroupId, idleDisposition, config, refill, name?, metadata
 RefillTarget = poolName, target, count
 TaskItem = messageId, eventCode, createdAtMillis, payload, priority,
            expireAtMillis, workerSelector
@@ -33,22 +33,18 @@ refill declarations configured. Saved declarations are a
 creation-time snapshot. Re-registration compares the full expected descriptor;
 normal lookup does not recompute current defaults.
 
-Descriptor creation is create-only in one Lua. The same Lua preflights descriptor
-HASH and project ZSET types and writes the descriptor plus
-`xa_mass:<scope>:task:project:<projectId>` membership (`taskId -> creation millis`)
-with NX; the creation millis come from the Owner clock as a script argument.
-Existing creation times never refresh. The directory retains closed Tasks.
-`listProjectTasks(projectId,limit)` returns newest first with 1..1000 rows and a
-one-member truncation lookahead. getProjectTask(projectId,taskId) uses one ZSCORE
-for point membership and the same first-created timestamp, without list scanning. Missing projections remain independently missing;
-corrupt directory values fail, with no cleanup or repair.
+Descriptor creation writes only the descriptor HASH in one create-only Lua. Score
+initialization and descriptor writing retain separate commit/retry boundaries;
+they are not one transaction. Kernel validates the generic string metadata shape
+but does not interpret Project, User, role or application creation timestamps.
+A pure Kernel Task needs none of these metadata fields and remains globally observable.
 
-**Ownership change:** every Task has a nonblank passive Project coordinate. Server
-admits Project/Group bindings and prepares caller-named RPC Tasks on explicit request; Kernel
-neither loads profiles nor verifies Project existence. The global `task:score` and
-all scheduling/Pool ownership remain unchanged. Score initialization and descriptor
-writing retain separate commit and retry boundaries; they are not one transaction.
-There is no separate Matching binding or configuration store.
+**Ownership change:** Project attribution and its lookup index belong to the
+[Server task directory](../../../server_jvm/README.md#task-attribution-and-directory).
+Kernel no longer has a dedicated Project field, Project listing/point-membership
+operations or Project ZSET writes. Server saves its immutable attribution inside
+ordinary metadata, then independently confirms its index. The global `task:score`,
+Item mutation, execution and all scheduling/Pool ownership remain unchanged.
 
 All Item requests explicitly carry WorkerQuery(executorName,input). Server uses
 Matching for admission, Kernel captures and stores bounded JSON without interpreting
@@ -81,7 +77,7 @@ independently of Task closure. Stock invalidation never reopens scheduling.
 
 ## Redis Shape
 
-The descriptor HASH has exactly `projectId`, `workerGroupId`, `idleDisposition`,
+The descriptor HASH has exactly `workerGroupId`, `idleDisposition`,
 `configJson`, `refillJson`, `metadataJson`, plus optional `name`, written together by the create-only Lua. refillJson is an
 array of `{poolName,target,count}`, with an empty refill array allowed.
 metadataJson encodes only a string Map (absent means empty). Missing required scheduling fields, retired

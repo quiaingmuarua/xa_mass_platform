@@ -130,7 +130,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         return declareTask(task,"g",rule,null);
     }
     private TaskDescriptor declareTask(String task,String group,String rule,List<RefillTarget> targets) {
-        var descriptor = new TaskDescriptor(task, "test-project", group, TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority","0","maxRetryTimes","1"), catalog.normalizeRefill(group, (targets==null?List.of(new RefillTarget(poolName(rule),ANY,100)):targets.stream().map(t->new RefillTarget(poolName(rule),t.target(),t.count())).toList())), null, java.util.Map.of());
+        var descriptor = new TaskDescriptor(task, group, TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority","0","maxRetryTimes","1"), catalog.normalizeRefill(group, (targets==null?List.of(new RefillTarget(poolName(rule),ANY,100)):targets.stream().map(t->new RefillTarget(poolName(rule),t.target(),t.count())).toList())), null, java.util.Map.of());
         declarations.put(task,descriptor); itemFunctions.put(task,rule);
         return descriptor;
     }
@@ -933,7 +933,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
             var neighbor=createCatalog(Map.of(special + ":other", Set.of("worker.country")));
             stores.get(selected).upsertWorkerFactsBatch(special, Map.of("a", Map.of("country", "CN")));
             stores.get(neighbor).upsertWorkerFactsBatch(special + ":other", Map.of("b", Map.of("country", "US")));
-            var query = new TaskDescriptor("neighbor", "test-project", special+":other", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority","0","maxRetryTimes","1"), neighbor.normalizeRefill(special+":other", List.of(new RefillTarget("country",ANY,100))), null, java.util.Map.of());
+            var query = new TaskDescriptor("neighbor", special+":other", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority","0","maxRetryTimes","1"), neighbor.normalizeRefill(special+":other", List.of(new RefillTarget("country",ANY,100))), null, java.util.Map.of());
             hot(special+":other",List.of("b"));
             refillDeclarations(neighbor,special+":other",Map.of("neighbor",query),100);
             assertThat(takeItems(neighbor,query.workerGroupId(),"worker.country",Map.of(),1)).extracting(h -> h.workerId()).containsExactly("b");

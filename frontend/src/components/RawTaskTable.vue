@@ -4,7 +4,7 @@ import { ElLoading, type TableInstance } from "element-plus";
 import type { ProjectTask } from "@/task-management/projects";
 import "element-plus/es/components/loading/style/css";
 export type TaskRow = Omit<ProjectTask, "createdAtMillis"> & {
-  createdAtMillis?: number;
+  createdAtMillis?: number | null;
 };
 defineProps<{ rows: TaskRow[]; loading?: boolean; error?: string }>();
 const emit = defineEmits<{
@@ -23,8 +23,8 @@ async function restoreScrollTop(top: number) {
   );
 }
 defineExpose({ restoreScrollTop });
-function time(value?: string | number) {
-  return value === undefined ? "未提供" : new Date(value).toLocaleString();
+function time(value?: string | number | null) {
+  return value == null ? "未提供" : new Date(value).toLocaleString();
 }
 </script>
 <template>

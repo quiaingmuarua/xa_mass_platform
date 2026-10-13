@@ -194,7 +194,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     public Map<String, Object> list(int limit) {
         requireRunning();
         if (limit < 1 || limit > 100) throw new MessageError(400, "limit must be in 1..100", null);
-        var page = queries.list(PROJECT, limit);
+        var page = queries.list(PROJECT, limit, null);
         var ids = page.tasks().stream().filter(MessageViews::isMessageTask).map(ProjectTaskQueryService.Entry::taskId).toList();
         var counts = data.observeItemScoreCounts(ids);
         return Map.of("tasks", page.tasks().stream().map(entry -> {

@@ -112,6 +112,7 @@ async function mount(
     appendItems: vi.fn(),
     approveTask: vi.fn(),
     closeTask: vi.fn(),
+    ensureDirectory: vi.fn(async () => {}),
     exportResults: vi.fn()
   };
   const rpcClient = {
@@ -195,15 +196,15 @@ it("caller selection reads only; explicit preparation enables the original Task 
     'input[aria-label="RPC 调用方标识"]'
   )!;
   input.focus();
-  input.value = " Alice ";
+  input.value = " alice ";
   input.dispatchEvent(new Event("input"));
   await nextTick();
-  expect(input.value).toBe(" Alice ");
+  expect(input.value).toBe(" alice ");
   expect(button("创建／复用 RPC Task").disabled).toBe(false);
   input.blur();
-  const id = rpcTaskId("default", "Alice", "g1");
+  const id = rpcTaskId("default", "alice", "g1");
   await vi.waitFor(() => expect(f.session.rpc.detail.value.missing).toBe(true));
-  expect(f.router.currentRoute.value.query.user).toBe("Alice");
+  expect(f.router.currentRoute.value.query.user).toBe("alice");
   expect(f.source.task).toHaveBeenCalledWith("default", id, expect.any(AbortSignal));
   expect(f.preparationClient.prepareTask).not.toHaveBeenCalled();
   f.preparationClient.prepareTask.mockImplementationOnce(async () => {
@@ -214,7 +215,7 @@ it("caller selection reads only; explicit preparation enables the original Task 
   expect(f.preparationClient.prepareTask).toHaveBeenCalledExactlyOnceWith(id, {
     projectId: "default",
     workerGroupId: "g1",
-    metadata: { userId: "Alice" }
+    metadata: { userId: "alice" }
   });
   button("刷新").click();
   await vi.waitFor(() => expect(f.session.rpc.detail.value.loading).toBe(false));
@@ -223,9 +224,9 @@ it("caller selection reads only; explicit preparation enables the original Task 
 });
 
 it("late preparation stays with its caller and PRE_REVIEW never enables calls", async () => {
-  const alice = rpcTaskId("default", "Alice", "g1");
-  const bob = rpcTaskId("default", "Bob", "g1");
-  const f = await mount("/task-workbench?tab=rpc&group=g1&user=Alice", {
+  const alice = rpcTaskId("default", "alice", "g1");
+  const bob = rpcTaskId("default", "bobby", "g1");
+  const f = await mount("/task-workbench?tab=rpc&group=g1&user=alice", {
     missing: true
   });
   await vi.waitFor(() => expect(f.session.rpc.detail.value.missing).toBe(true));
@@ -244,7 +245,7 @@ it("late preparation stays with its caller and PRE_REVIEW never enables calls", 
     ...row(bob, "g1", true),
     scoreBand: "pre_review"
   });
-  await f.router.push("/task-workbench?tab=rpc&group=g1&user=Bob");
+  await f.router.push("/task-workbench?tab=rpc&group=g1&user=bobby");
   await vi.waitFor(() => expect(f.session.rpc.detail.value.value?.taskId).toBe(bob));
   finish();
   await vi.waitFor(() =>
@@ -261,7 +262,7 @@ it("one create click commits an edited caller even when its point read is still 
   const input = f.host.querySelector<HTMLInputElement>(
     'input[aria-label="RPC 调用方标识"]'
   )!;
-  input.value = "New caller";
+  input.value = "newcaller";
   input.dispatchEvent(new Event("input"));
   await nextTick();
   expect(button("创建／复用 RPC Task").disabled).toBe(false);
@@ -273,12 +274,12 @@ it("one create click commits an edited caller even when its point read is still 
       })
   );
   button("创建／复用 RPC Task").click();
-  const id = rpcTaskId("default", "New caller", "g1");
+  const id = rpcTaskId("default", "newcaller", "g1");
   await vi.waitFor(() =>
     expect(f.preparationClient.prepareTask).toHaveBeenCalledExactlyOnceWith(id, {
       projectId: "default",
       workerGroupId: "g1",
-      metadata: { userId: "New caller" }
+      metadata: { userId: "newcaller" }
     })
   );
   release(row(id, "g1", true));
@@ -466,7 +467,10 @@ it("request uncertainty can be read with the original message ID without being r
 });
 
 it("export uses the whole-task API independently, rejecting stale, running and Mock reads", async () => {
-  const client = { exportResults: vi.fn().mockResolvedValue({ ready: false }) };
+  const client = {
+    ensureDirectory: vi.fn(async () => {}),
+    exportResults: vi.fn().mockResolvedValue({ ready: false })
+  };
   const exporter = createTaskExport("api", client);
   const terminal = { ...row("ended"), scoreBand: "terminal" as const };
   await exporter.download(terminal, false);

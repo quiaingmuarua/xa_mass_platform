@@ -16,14 +16,14 @@ describe("development identity context", () => {
     };
     const first = createConsoleIdentity(storage);
     expect(first.current.value.role).toBe("admin");
-    first.select("user-a");
-    expect([...values.entries()]).toEqual([[identityStorageKey, "user-a"]]);
+    first.select("1001");
+    expect([...values.entries()]).toEqual([[identityStorageKey, "1001"]]);
     expect(createConsoleIdentity(storage).current.value).toMatchObject({
-      userId: "user-a",
+      userId: "1001",
       role: "operator"
     });
-    values.set(identityStorageKey, '{"userId":"user-a","role":"admin"}');
-    expect(createConsoleIdentity(storage).current.value.userId).toBe("admin");
+    values.set(identityStorageKey, '{"userId":"1001","role":"admin"}');
+    expect(createConsoleIdentity(storage).current.value.userId).toBe("1000");
   });
   it("keeps working without browser storage and limits operator SPA routes", () => {
     const identity = createConsoleIdentity({
@@ -34,8 +34,8 @@ describe("development identity context", () => {
         throw new Error("blocked");
       }
     });
-    identity.select("user-b");
-    expect(identity.current.value.userId).toBe("user-b");
+    identity.select("1002");
+    expect(identity.current.value.userId).toBe("1002");
     for (const path of [
       "/runtime/tasks",
       "/runtime/workers",
@@ -59,7 +59,7 @@ describe("development identity context", () => {
         query: { view: "create" }
       })
     ).toBe(true);
-    identity.select("admin");
+    identity.select("1000");
     expect(
       identityRouteAllowed(identity.current.value, {
         path: "/app-checks",

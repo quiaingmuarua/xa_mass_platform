@@ -43,7 +43,8 @@ public final class AppCheckController {
     @PostMapping("/tasks") public ResponseEntity<?> create(@RequestHeader HttpHeaders headers, @RequestBody Map<String, Object> input) {
         return ResponseEntity.status(201).body(tasks.create(caller(headers), input));
     }
-    @GetMapping("/tasks") public Object list(@RequestHeader HttpHeaders headers, @RequestParam(defaultValue = "100") int limit) { return tasks.list(caller(headers), limit); }
+    @GetMapping("/tasks") public Object list(@RequestHeader HttpHeaders headers, @RequestParam(defaultValue = "100") int limit,
+            @RequestParam(required = false) String userId) { return tasks.list(caller(headers), limit, userId); }
     @GetMapping("/tasks/{taskId}") public Object get(@RequestHeader HttpHeaders headers, @PathVariable String taskId) { return tasks.get(caller(headers), taskId); }
     @PostMapping(value = "/tasks/{taskId}/numbers:import", consumes = "text/plain")
     public Object importNumbers(@RequestHeader HttpHeaders headers, @PathVariable String taskId, InputStream input) { return tasks.importNumbers(caller(headers), taskId, input); }

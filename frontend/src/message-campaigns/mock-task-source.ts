@@ -1,3 +1,4 @@
+import { compareTaskIds } from "@/task-user-id";
 import { inspectRecipientInput, MESSAGE_IMPORT_LIMITS } from "@/files/phone-numbers";
 import type {
   CreateMessageTask,
@@ -193,12 +194,15 @@ export class MockMessageTaskSource implements MessageTaskSource {
   async listTasks() {
     const tasks = [...this.records.values()]
       .map(({ task }) => task)
-      .sort(
-        (a, b) =>
-          b.createdAtMillis - a.createdAtMillis || a.taskId.localeCompare(b.taskId)
-      );
+      .sort((a, b) => compareTaskIds(a.taskId, b.taskId));
     return structuredClone({
-      tasks: tasks.slice(0, 100),
+      tasks: tasks
+        .slice(0, 100)
+        .sort(
+          (a, b) =>
+            (b.createdAtMillis ?? -1) - (a.createdAtMillis ?? -1) ||
+            compareTaskIds(a.taskId, b.taskId)
+        ),
       truncated: tasks.length > 100
     });
   }

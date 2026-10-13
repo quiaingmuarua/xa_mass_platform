@@ -86,6 +86,9 @@ export function createWorkbenchSession(userId = consoleIdentity.current.value.us
   return reactive({
     userId,
     draft: freshDraft(),
+    ownerQuery: "",
+    ownerFilter: "",
+    knownTaskQuery: "",
     unconfirmedSubmissions,
     import: { userId, draft: freshDraft(), unconfirmedSubmissions },
     importTask: undefined as CheckTask | undefined,
@@ -162,8 +165,10 @@ export function filterResults(
 }
 export const quantity = (value?: number) =>
   value === undefined ? "—" : value.toLocaleString("zh-CN");
-export const timestamp = (value: number) =>
-  new Date(value).toLocaleString("zh-CN", { hour12: false });
+export const timestamp = (value: number | null) =>
+  value === null
+    ? "未提供"
+    : new Date(value).toLocaleString("zh-CN", { hour12: false });
 export function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob),
     link = document.createElement("a");

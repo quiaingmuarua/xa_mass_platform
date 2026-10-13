@@ -5,16 +5,12 @@ import { HttpTaskCallDebugClient } from "@/task-call-debug/http-client";
 import { createTaskSession } from "@/task-workbench/session";
 import type { ProjectSource } from "@/task-management/projects";
 
-it("mints stable UTF-8 segments with trimmed, case-sensitive caller attribution", () => {
+it("mints stable UTF-8 segments with canonical Base36 caller attribution", () => {
   expect(rpcTaskId("default", " alice ", "g")).toBe(
     "rpc-workbench-v1.ZGVmYXVsdA.YWxpY2U.Zw"
   );
-  expect(rpcTaskId("default", "用户.甲", "g")).toBe(
-    rpcTaskId("default", " 用户.甲 ", "g")
-  );
-  expect(rpcTaskId("p", "Alice", "g")).not.toBe(rpcTaskId("p", "alice", "g"));
-  expect(rpcTaskId("a.b", "c", "d")).not.toBe(rpcTaskId("a", "b.c", "d"));
-  for (const value of [" ", "x".repeat(129)])
+  expect(rpcTaskId("a.b", "abcd", "d")).not.toBe(rpcTaskId("a", "abcd", "b.d"));
+  for (const value of [" ", "用户.甲", "Alice", "0001", "abc", "a".repeat(10)])
     expect(() => rpcTaskId("p", value, "g")).toThrow();
 });
 
@@ -29,7 +25,7 @@ it("prepares only the requested identity and rejects a mismatched success respon
   const request = {
     projectId: "default",
     workerGroupId: "g",
-    metadata: { userId: "Alice" }
+    metadata: { userId: "alice" }
   };
   await client.prepareTask("chosen", request);
   expect(post).toHaveBeenCalledWith(
@@ -59,7 +55,7 @@ it("retains the frozen request through uncertainty without automatic retries or 
   const request = {
     projectId: "default",
     workerGroupId: "g",
-    metadata: { userId: "Alice" }
+    metadata: { userId: "alice" }
   };
   await session.prepareRpc("original", request);
   request.metadata.userId = "changed";
@@ -70,7 +66,7 @@ it("retains the frozen request through uncertainty without automatic retries or 
   expect(client.prepareTask).toHaveBeenCalledTimes(2);
   expect(client.prepareTask.mock.calls[1]).toEqual([
     "original",
-    { ...request, metadata: { userId: "Alice" } }
+    { ...request, metadata: { userId: "alice" } }
   ]);
   finish();
   await retry;

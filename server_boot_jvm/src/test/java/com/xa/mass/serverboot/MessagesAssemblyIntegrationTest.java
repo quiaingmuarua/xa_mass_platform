@@ -135,21 +135,21 @@ class MessagesAssemblyIntegrationTest {
             fixture.context.getBean(WorkerGroupRegistrationService.class).register("demo-sim", Map.of("owner", "external"), List.of(EVENT, "extra"));
             var before = fixture.context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("demo-sim")).get("demo-sim");
             fixture.restart(true, Map.of("xa.mass.worker-assembly.group-config-json", "{}"));
-            var tasks = fixture.context.getBean(TaskResourceCatalog.class);
-            assertThat(tasks.listProjectTasks("messages", 100).tasks()).isEmpty();
+            var tasks = fixture.context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class);
+            assertThat(tasks.list("messages", 100, null).tasks()).isEmpty();
             var created = fixture.post("/api/v1/messages/tasks", Map.of("appId", "demo", "requestId", "restart-binding",
                     "name", "retained", "recipientCountry", "CN", "body", "text"));
             assertThat(created.statusCode()).isEqualTo(201);
             String id = (String) Jsons.parseObject(created.body()).get("taskId");
-            var descriptor = tasks.loadTaskAllocationDescriptors(List.of(id)).get(id);
-            var order = tasks.getProjectTask("messages", id);
+            var descriptor = fixture.context.getBean(TaskResourceCatalog.class).loadTaskAllocationDescriptors(List.of(id)).get(id);
+            var order = tasks.get("messages", id);
             assertThat(order).isNotNull();
             fixture.restart(true, Map.of("xa.mass.worker-assembly.group-config-json", "{}"));
             assertThat(fixture.context.getBean(ProjectDirectory.class).require("messages").workerGroupIds()).containsExactly("demo-sim");
-            tasks = fixture.context.getBean(TaskResourceCatalog.class);
-            assertThat(tasks.loadTaskAllocationDescriptors(List.of(id)).get(id)).isEqualTo(descriptor);
-            assertThat(tasks.getProjectTask("messages", id)).isEqualTo(order);
-            assertThat(tasks.listProjectTasks("messages", 100).tasks()).containsExactly(order);
+            tasks = fixture.context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class);
+            assertThat(fixture.context.getBean(TaskResourceCatalog.class).loadTaskAllocationDescriptors(List.of(id)).get(id)).isEqualTo(descriptor);
+            assertThat(tasks.get("messages", id)).isEqualTo(order);
+            assertThat(tasks.list("messages", 100, null).tasks()).containsExactly(order);
             assertThat(fixture.context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("demo-sim")).get("demo-sim"))
                     .isEqualTo(before);
         }
@@ -172,7 +172,8 @@ class MessagesAssemblyIntegrationTest {
             assertThatThrownBy(() -> { try (var socket = new Socket()) { socket.connect(new InetSocketAddress("127.0.0.1", fixture.adapter), 500); } })
                     .isInstanceOf(java.io.IOException.class);
             fixture.start(false, Map.of());
-            assertThat(fixture.context.getBean(TaskResourceCatalog.class).listProjectTasks("messages", 100).tasks()).isEmpty();
+            assertThat(fixture.context.getBean(ProjectDirectory.class).projects()).doesNotContainKey("messages");
+            assertThat(fixture.context.getBean(com.xa.mass.kernel.score.TaskScoreBandCore.class).previewScoreStates(1)).isEmpty();
             var group = fixture.context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("demo-sim")).get("demo-sim");
             if (missing.equals("group")) assertThat(group).isNull();
             else assertThat(group).isNotNull(); // Host registration is create-only and not rolled back.

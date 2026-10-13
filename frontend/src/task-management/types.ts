@@ -44,6 +44,7 @@ export interface FiniteTaskClient {
   ): Promise<TaskItemsAppendApiResponse>;
   approveTask(taskId: string): Promise<void>;
   closeTask(taskId: string): Promise<void>;
+  ensureDirectory(taskId: string): Promise<void>;
   exportResults(taskId: string): Promise<TaskExportResult>;
 }
 export interface ImportReceipt {

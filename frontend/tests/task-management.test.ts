@@ -20,6 +20,7 @@ import type {
   TaskItemsAppendApiResponse
 } from "@/task-management/types";
 import { createTaskManagementStore } from "@/stores/task-management";
+import { FiniteTaskError } from "@/task-management/errors";
 
 describe("finite Task input model", () => {
   it("parses UTF-8, keeps empty lines, and creates stable five-digit IDs", () => {
@@ -321,6 +322,31 @@ describe("server-observed finite Task management", () => {
     await expect(store.mutate(observed(), "approve", true)).rejects.toThrow("Mock");
     expect(client.createTask).not.toHaveBeenCalled();
   });
+  it("retains a known creation identity and only ensures the directory on explicit recovery", async () => {
+    const client = fakeClient({
+      createTask: vi.fn(async () => {
+        throw new FiniteTaskError({
+          kind: "http",
+          status: 503,
+          taskId: "known",
+          message: "Directory not confirmed"
+        });
+      })
+    });
+    const store = createTaskManagementStore("api", client);
+    await store.submit(request());
+    expect(store.submission).toMatchObject({
+      taskId: "known",
+      complete: false,
+      notSubmitted: 101
+    });
+    expect(client.ensureDirectory).not.toHaveBeenCalled();
+    expect(await store.ensureDirectory()).toBe(true);
+    expect(client.ensureDirectory).toHaveBeenCalledExactlyOnceWith("known");
+    expect(client.createTask).toHaveBeenCalledTimes(1);
+    expect(client.appendItems).not.toHaveBeenCalled();
+    expect(client.approveTask).not.toHaveBeenCalled();
+  });
 });
 function fakeClient(overrides: Partial<FiniteTaskClient> = {}): FiniteTaskClient {
   return {
@@ -332,6 +358,7 @@ function fakeClient(overrides: Partial<FiniteTaskClient> = {}): FiniteTaskClient
     ),
     approveTask: vi.fn(async () => undefined),
     closeTask: vi.fn(async () => undefined),
+    ensureDirectory: vi.fn(async () => {}),
     exportResults: vi.fn(async (): Promise<TaskExportResult> => ({ ready: false })),
     ...overrides
   };

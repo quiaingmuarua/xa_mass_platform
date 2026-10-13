@@ -121,12 +121,12 @@ class RuntimeApiControllerTest {
         mockMvc.perform(post("/api/v1/tasks/caller-rpc/rpc:prepare")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"projectId":"test-project","workerGroupId":"phone-tools","metadata":{"userId":"Alice"}}
+                        {"projectId":"test-project","workerGroupId":"phone-tools","metadata":{"userId":"alice"}}
                         """))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.taskId").value("caller-rpc"));
         var captured = org.mockito.ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime).createTask(captured.capture());
-        assertThat(captured.getValue().metadata()).containsEntry("userId", "Alice");
+        assertThat(captured.getValue().metadata()).containsEntry("userId", "alice");
         assertThat(captured.getValue().idleDisposition()).isEqualTo(TaskIdleDisposition.PARK_WHEN_IDLE);
         for (String extra : List.of("\"userId\":\"ignored\"", "\"metadata\":{\"userId\":123}", "\"idleDisposition\":\"CLOSE_WHEN_IDLE\"")) {
             mockMvc.perform(post("/api/v1/tasks/caller-rpc/rpc:prepare")
@@ -308,7 +308,7 @@ class RuntimeApiControllerTest {
                 matchingCatalog,
                 taskRuntime,
                 new TaskIdGenerator(), projects, taskCatalog, mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), new com.xa.mass.server.operation.OperationGuard()
-        );
+        , org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class));
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
                                 new WorkerResourceCommandService(workerProperties, mock(WorkerSchedulingService.class))
@@ -328,8 +328,8 @@ class RuntimeApiControllerTest {
                                         taskCatalog, new com.xa.mass.server.operation.OperationGuard()
                                 ),
                                 new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matchingCatalog,
-                                        rpcProperties, projects, new com.xa.mass.server.operation.OperationGuard())
-                        ),
+                                        rpcProperties, projects, new com.xa.mass.server.operation.OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class))
+                        , org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class)),
                         new TaskDataController(
                                 taskData,
                                 taskRpc,
@@ -582,8 +582,9 @@ class RuntimeApiControllerTest {
         var descriptor = ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime).createTask(descriptor.capture());
         assertThat(descriptor.getValue().name()).isEqualTo("message task");
-        assertThat(descriptor.getValue().metadata()).containsExactlyInAnyOrderEntriesOf(
-                Map.of("scenario", "messages", "body", "{}"));
+        assertThat(descriptor.getValue().metadata()).containsAllEntriesOf(
+                Map.of("scenario", "messages", "body", "{}", "server.projectId", "test-project"))
+                .containsOnlyKeys("scenario", "body", "server.projectId", "server.createdAtMillis");
         assertThat(descriptor.getValue().config()).containsOnlyKeys("priority", "maxRetryTimes");
     }
 
@@ -920,7 +921,7 @@ class RuntimeApiControllerTest {
                 .andExpect(jsonPath("$.code").value(12003))
                 .andExpect(jsonPath("$.message")
                         .value("Task Owner is unavailable"))
-                .andExpect(jsonPath("$.taskId").doesNotExist())
+                .andExpect(jsonPath("$.taskId").isString())
                 .andReturn();
         assertCreationCorrelation(response);
     }
@@ -1474,7 +1475,7 @@ class RuntimeApiControllerTest {
 
     private static TaskDescriptor descriptor(String taskId) {
         boolean scenarioRpc = taskId.startsWith("project-rpc-");
-        return new TaskDescriptor(taskId, "test-project", "phone-tools", scenarioRpc
+        return new TaskDescriptor(taskId, "phone-tools", scenarioRpc
                         ? TaskIdleDisposition.PARK_WHEN_IDLE
                         : TaskIdleDisposition.CLOSE_WHEN_IDLE, !scenarioRpc ? Map.of(
                         "priority", "0",

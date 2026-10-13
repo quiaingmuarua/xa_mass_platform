@@ -78,7 +78,7 @@ async function mount(
   [ElButton, ElInput, ElSelect, ElOption].forEach((component) => app!.use(component));
   app.mount(host);
   await settle();
-  return { host, router, session: context.sessionFor("admin") };
+  return { host, router, session: context.sessionFor("1000") };
 }
 function button(text: string, scope: ParentNode = document) {
   const node = [...scope.querySelectorAll<HTMLButtonElement>("button")].find(
@@ -324,7 +324,7 @@ describe("App Checks configuration workspace", () => {
   });
   it("retains the selected app when a slow refresh finishes and preserves old data on failure", async () => {
     const { host } = await mount();
-    const before = context.sessionFor("admin").configuration.readAt;
+    const before = context.sessionFor("1000").configuration.readAt;
     const pending = deferred<AppCheckConfigurationView>();
     vi.spyOn(source, "loadConfiguration").mockReturnValueOnce(pending.promise);
     button("刷新配置").click();
@@ -336,12 +336,12 @@ describe("App Checks configuration workspace", () => {
     expect(host.textContent).toContain("已保留上次快照");
     expect(host.textContent).toContain("app-b-sim");
     expect(context.state.value.status).toBe("enabled");
-    expect(context.sessionFor("admin").configuration.readAt).toBe(before);
+    expect(context.sessionFor("1000").configuration.readAt).toBe(before);
     button("刷新配置").click();
     await settle();
-    expect(context.sessionFor("admin").configuration.error).toBe("");
-    expect(context.sessionFor("admin").configuration.readAt).toBeGreaterThan(before);
-    expect(context.sessionFor("admin").configurationApp).toBe("app-b");
+    expect(context.sessionFor("1000").configuration.error).toBe("");
+    expect(context.sessionFor("1000").configuration.readAt).toBeGreaterThan(before);
+    expect(context.sessionFor("1000").configurationApp).toBe("app-b");
   });
   it("keeps the list instance, filters and scrolling across tabs without rereading", async () => {
     const list = vi.spyOn(source, "listTasks");

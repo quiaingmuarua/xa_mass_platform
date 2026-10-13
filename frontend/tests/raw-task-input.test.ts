@@ -13,6 +13,7 @@ it("registers lazy form, numeric and radio controls using only the console globa
     appendItems: vi.fn(),
     approveTask: vi.fn(),
     closeTask: vi.fn(),
+    ensureDirectory: vi.fn(async () => {}),
     exportResults: vi.fn()
   });
   const host = document.createElement("div");

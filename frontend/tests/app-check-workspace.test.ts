@@ -472,6 +472,32 @@ describe("App Checks product workspace", () => {
     await settle();
     expect(document.body.textContent).toContain("开始日期不能晚于结束日期");
   }, 15000);
+  it("applies an owner read explicitly and opens a known task outside that batch", async () => {
+    const read = vi.spyOn(source, "listTasks");
+    const { router } = await mount();
+    input("归属 userId", "1001");
+    await settle();
+    expect(read).toHaveBeenCalledTimes(1);
+    button("按归属读取").click();
+    await settle();
+    expect(read.mock.calls.at(-1)?.[1]).toBe("1001");
+    expect(document.getElementById("check-task-check-delivered")).toBeNull();
+    input("已知 Task ID", "check-delivered");
+    await settle();
+    const trigger = button("打开任务");
+    trigger.focus();
+    trigger.click();
+    await settle();
+    expect(router.currentRoute.value.path).toBe("/app-checks/tasks/check-delivered");
+    expect(document.querySelector(".checks-preview-drawer")?.textContent).toContain(
+      "用户 B"
+    );
+    drawer().querySelector<HTMLButtonElement>(".el-drawer__close-btn")!.click();
+    await settle();
+    expect(router.currentRoute.value.path).toBe("/app-checks");
+    expect(document.activeElement).toBe(trigger);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
   it("caps the loaded task set at 100 and replaces it on refresh without continuation", async () => {
     vi.setSystemTime(new Date("2026-10-09T12:00:00Z"));
     const createdIds: string[] = [];
@@ -485,12 +511,23 @@ describe("App Checks product workspace", () => {
       createdIds.push(created.taskId);
       vi.setSystemTime(Date.now() + 1000);
     }
+    const batch = await source.listTasks(CALLER);
+    expect(batch.tasks).toHaveLength(100);
+    const visibleCount = batch.tasks.filter(
+      (task) => !task.managed && task.appId
+    ).length;
+    const outside = createdIds.find(
+      (id) => !batch.tasks.some((task) => task.taskId === id)
+    )!;
+    expect(outside).toBeDefined();
     const read = vi.spyOn(source, "listTasks");
     await mount();
-    expect(document.querySelectorAll(".checks-task-table tbody tr")).toHaveLength(100);
+    expect(document.querySelectorAll(".checks-task-table tbody tr")).toHaveLength(
+      visibleCount
+    );
     expect(document.body.textContent).toContain("列表未完整加载");
-    expect(document.body.textContent).toContain("当前载入 100 个");
-    input("搜索查询任务", (await source.loadTask(CALLER, createdIds[0])).task.name!);
+    expect(document.body.textContent).toContain(`当前载入 ${visibleCount} 个`);
+    input("搜索查询任务", (await source.loadTask(CALLER, outside)).task.name!);
     await settle();
     expect(document.querySelectorAll(".checks-task-table tbody tr")).toHaveLength(0);
     input("搜索查询任务", "");
@@ -737,7 +774,7 @@ describe("App Checks product workspace", () => {
     button("生成 CSV 文件").click();
     await settle();
     expect(exported).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ userId: "admin", role: "admin" }),
+      expect.objectContaining({ userId: "1000", role: "admin" }),
       taskId,
       "all"
     );
@@ -755,7 +792,7 @@ describe("App Checks product workspace", () => {
     expect(read).not.toHaveBeenCalled();
     await expand("导入摘要");
     expect(read).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ userId: "admin", role: "admin" }),
+      expect.objectContaining({ userId: "1000", role: "admin" }),
       "check-delivered"
     );
     expect(document.body.textContent).toContain("october_existing_numbers.txt");
@@ -923,7 +960,7 @@ describe("App Checks product workspace", () => {
         button("读取关联任务").click();
         await settle();
         expect(read).toHaveBeenCalledExactlyOnceWith(
-          expect.objectContaining({ userId: "admin", role: "admin" }),
+          expect.objectContaining({ userId: "1000", role: "admin" }),
           knownTaskId
         );
         expect(
@@ -1020,7 +1057,7 @@ describe("App Checks product workspace", () => {
     button("确认启动").click();
     await settle();
     expect(approve).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "admin", role: "admin" }),
+      expect.objectContaining({ userId: "1000", role: "admin" }),
       "check-review",
       24000
     );

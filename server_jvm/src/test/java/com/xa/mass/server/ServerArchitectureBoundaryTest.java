@@ -284,7 +284,8 @@ class ServerArchitectureBoundaryTest {
                 KERNEL_ASSEMBLY,
                 MATCHING_ASSEMBLY,
                 DELIVERY_ASSEMBLY,
-                WORKER_IDENTITY
+                WORKER_IDENTITY,
+                TASK.resolve("directory")
         ))
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis");
@@ -436,7 +437,7 @@ class ServerArchitectureBoundaryTest {
     @Test
     void taskResultExportUsesOnlyTaskOwnerContracts()
             throws IOException {
-        String task = readSources(TASK);
+        String task = readSourcesExcluding(TASK, TASK.resolve("directory"));
         assertThat(task)
                 .contains("scanTaskItemResults")
                 .contains("getScoreStates")

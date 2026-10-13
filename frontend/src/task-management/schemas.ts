@@ -32,6 +32,7 @@ export const taskApiErrorResponseSchema = z
   .object({
     code: z.number().int(),
     message: z.string(),
-    requestId: z.string().nullable()
+    requestId: z.string().nullable(),
+    taskId: z.string().min(1).optional()
   })
   .strict();

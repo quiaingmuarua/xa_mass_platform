@@ -123,6 +123,21 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
       throw mapHttpError(error, requestId);
     }
   }
+
+  async ensureDirectory(taskId: string): Promise<void> {
+    const requestId = createRequestId();
+    try {
+      const response = await this.client.post(
+        `/v1/tasks/${encodeURIComponent(taskId)}/directory:ensure`,
+        undefined,
+        { headers: requestHeaders(requestId) }
+      );
+      if (response.status !== 200) throw schemaError(requestId);
+      parseResponse(taskActionOutcomeSchema, response.data, requestId);
+    } catch (error) {
+      throw mapHttpError(error, requestId);
+    }
+  }
 }
 
 function requestHeaders(requestId: string): Record<string, string> {
@@ -181,7 +196,7 @@ async function parseErrorBlob(blob: Blob, requestId: string) {
 }
 
 function apiError(
-  body: { code: number; message: string; requestId: string | null },
+  body: { code: number; message: string; requestId: string | null; taskId?: string },
   status: number,
   fallbackRequestId: string,
   cause?: unknown
@@ -191,6 +206,7 @@ function apiError(
     message:
       SAFE_ERROR_MESSAGES[body.code] ?? "Task API returned an unrecognized error.",
     requestId: body.requestId ?? fallbackRequestId,
+    taskId: body.taskId,
     code: body.code,
     status,
     cause

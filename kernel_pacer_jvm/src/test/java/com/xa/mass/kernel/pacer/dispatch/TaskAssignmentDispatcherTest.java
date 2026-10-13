@@ -393,7 +393,7 @@ class TaskAssignmentDispatcherTest {
     }
 
     private static TaskDescriptor descriptor() {
-        return new TaskDescriptor("task-1", "test-project", "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
+        return new TaskDescriptor("task-1", "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "1"
                 ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of());

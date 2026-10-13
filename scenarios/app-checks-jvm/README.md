@@ -24,7 +24,7 @@ SDK 和 Worker 协议使用既有机制；Matching 基础规则由场景声明�
 | `POST /api/v1/app-checks/tasks/{taskId}/approve` | JSON 整数为用户确认的号码数量；与当前数量一致且非零才批准 |
 | `POST /api/v1/app-checks/tasks/{taskId}/close` | 取消或中止有限任务，复用通用关闭能力 |
 | `POST /api/v1/app-checks/tasks/{taskId}/results:export?filter=all` | 终态 CSV；filter 为 all、registered 或 unregistered |
-| `GET /api/v1/app-checks/tasks?limit=100` | 最近一批 Project 任务，最多 100，无分页 |
+| `GET /api/v1/app-checks/tasks?limit=100` | Project 或 userId 当前批次，最多 100，无分页 |
 | `GET /api/v1/app-checks/tasks/{taskId}` | 有限场景 Task、数量观测和最多 100 条 Result 预览 |
 
 例如，以开发调用方 `proof` 创建任务时显式携带以下请求头；`cHJvb2Y` 是 `proof`
@@ -52,20 +52,23 @@ Content-Type: application/json
 
 Server 以版本化命名空间、Project、requestId 的长度前缀 UTF-8 SHA-256 生成稳定
 Task ID，并在现有不可变 descriptor 保存请求身份与输入指纹。同身份同配置读取原
-Task；不同配置冲突。已有 descriptor、Project 目录和 Task Score 不完整时返回未确认，
-不另建或补造资源。关联在原 Task 资源保留期间跨 Server 重启成立，清理 scope 后不承诺。
+Task；不同配置冲突。已有 descriptor 或 Task Score 不完整时返回未确认，不另建或补造资源。
+Project 目录由 Server 登记；目录未确认保留已知 Task ID，同请求显式核对可以从原 descriptor 补齐目录。关联在原 Task 资源保留期间跨 Server 重启成立，清理 scope 后不承诺。
 没有原先累计 50 请求、50,000 号码的内存账本。自动名称、salt 和日期首次创建后固定。
 
 任务和配置 HTTP 接口必须声明开发调用方：`X-XA-Dev-User` 为 userId 的 UTF-8
 Base64URL 编码，`X-XA-Dev-Role` 为 `admin` 或 `operator`。解码后的 userId 去首尾空白，
-非空且最多 128 字符，保留大小写。缺失、非法编码、非法角色或重复请求头返回 400，
+必须符合 `^[1-9a-z][0-9a-z]{3,8}$`，不转换大小写或接受前导零，复用 Server 的纯标识校验。缺失、非法编码、非法角色或重复请求头返回 400，
 不默认补管理员；操作范围不符返回 403。`GET /catalog` 保留无身份的只读能力探测。
 
 App Checks 模块内的不可变调用方由 Controller 解析并显式传入场景服务。
 admin 可管理全部场景任务及配置；operator 只能读取和管理自己创建的任务，不能访问配置接口。
 先检查 Project、场景和有限 Task 类型，再检查创建者；拒绝发生在导入文件读取、Item 数量
 和 Result 读取、写入及导出扫描之前。配置接口在 H2 访问之前拒绝 operator。
-列表仍先读取 Project 最近最多 100 条，再按调用方筛选并读取匹配任务的数量；不补扫个人历史。
+列表直接从 Server 的 Project 单 ZSET 按用户 score 范围取最多 100 条，再读取数量。
+operator 默认自己的范围；显式查询其他 userId 返回 403。admin 可用 `?userId=` 查询指定创建者，
+省略时读取 Project 批次。truncated 属于实际查询范围，其他用户再多也不会占用个人批次。
+批次内按保存的创建时间排序，不承诺最新 100 条，不补扫或分页；已知 Task ID 可独立核对。
 缺少创建者不归属于任何 operator。Task 状态、部分失败与 OperationGuard 继续采用原有规则。
 
 创建 JSON 不再接收 `userId` 或 `role`，只从调用方保存 `metadata.userId`，列表/详情返回该保存值。

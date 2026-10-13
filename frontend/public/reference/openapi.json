@@ -28,6 +28,9 @@
           },
           "requestId" : {
             "type" : "string"
+          },
+          "taskId" : {
+            "type" : "string"
           }
         },
         "type" : "object"
@@ -230,6 +233,7 @@
             "additionalProperties" : {
               "type" : "string"
             },
+            "description" : "String metadata; server.* keys are reserved. Optional userId must match ^[1-9a-z][0-9a-z]{3,8}$ after trimming. Server stamps Project and first creation time.",
             "type" : "object"
           },
           "name" : {
@@ -403,6 +407,7 @@
             "additionalProperties" : {
               "type" : "string"
             },
+            "description" : "String metadata; server.* keys are reserved. Optional userId must match ^[1-9a-z][0-9a-z]{3,8}$ after trimming.",
             "type" : "object"
           },
           "name" : {
@@ -881,6 +886,13 @@
             "format" : "int32",
             "type" : "integer"
           }
+        }, {
+          "in" : "query",
+          "name" : "userId",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -914,7 +926,7 @@
             "description" : "Task Owner is unavailable"
           }
         },
-        "summary" : "Read newest Project Tasks, without pagination or Result reads",
+        "summary" : "Read a bounded Project or user Task batch, without pagination or Result reads",
         "tags" : [ "Tasks" ]
       }
     },
@@ -1512,6 +1524,55 @@
           }
         },
         "summary" : "Close a finite Task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/directory:ensure" : {
+      "post" : {
+        "description" : "Does not create, approve, close or append work. No caller-supplied attribution is accepted.",
+        "operationId" : "ensureDirectory",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ActionOutcome"
+                }
+              }
+            },
+            "description" : "Directory entry applied or unchanged"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task is missing or has no valid Server attribution"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task read or directory write not confirmed"
+          }
+        },
+        "summary" : "Confirm a known Task's directory entry from its immutable Server metadata",
         "tags" : [ "Tasks" ]
       }
     },

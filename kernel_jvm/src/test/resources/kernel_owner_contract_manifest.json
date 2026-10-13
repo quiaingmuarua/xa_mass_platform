@@ -91,8 +91,6 @@
       "rewrite_observed_item_scores"
     ],
     "TaskResourceCatalog": [
-      "get_project_task",
-      "list_project_tasks",
       "load_task_allocation_descriptors"
     ],
     "TaskRuntime": [
@@ -180,12 +178,12 @@
       "status",
       "reason"
     ],
-    "ProjectTaskEntry": ["task_id", "created_at_millis"],
-    "TaskItemScoreCounts": ["total", "counts_by_tag"],
-    "ProjectTaskPage": ["tasks", "truncated"],
+    "TaskItemScoreCounts": [
+      "total",
+      "counts_by_tag"
+    ],
     "TaskDescriptor": [
       "task_id",
-      "project_id",
       "worker_group_id",
       "idle_disposition",
       "config",
@@ -202,7 +200,10 @@
       "expire_at_millis",
       "worker_selector"
     ],
-    "WorkerQuery": ["executor_name", "input"],
+    "WorkerQuery": [
+      "executor_name",
+      "input"
+    ],
     "EligibilityQuery": [
       "query"
     ],

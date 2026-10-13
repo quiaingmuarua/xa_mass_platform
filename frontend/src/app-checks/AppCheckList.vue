@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 import { Plus, Refresh, Search } from "@element-plus/icons-vue";
 import { consoleIdentity, identityLabel } from "@/console-identity";
+import { normalizeTaskUserId } from "@/task-user-id";
 const admin = consoleIdentity.current.value.role === "admin";
 import {
   ElTable,
@@ -45,11 +46,30 @@ const emit = defineEmits<{
   create: [];
   refresh: [];
   action: [task: CheckTask, action: TaskAction, trigger?: HTMLElement];
+  openKnown: [taskId: string, trigger?: HTMLElement];
 }>();
 const session = props.session,
   filters = session.filters;
 const table = ref<TableInstance>();
 const heading = ref<HTMLElement>();
+const ownerError = ref("");
+function applyOwner() {
+  try {
+    session.ownerFilter = session.ownerQuery.trim()
+      ? normalizeTaskUserId(session.ownerQuery)
+      : "";
+    ownerError.value = "";
+    resetScroll();
+    emit("refresh");
+  } catch (error) {
+    ownerError.value = (error as Error).message;
+  }
+}
+function openKnown(event: Event) {
+  const id = session.knownTaskQuery.trim();
+  const trigger = (event as SubmitEvent).submitter;
+  if (id) emit("openKnown", id, trigger instanceof HTMLElement ? trigger : undefined);
+}
 const business = computed(() =>
   props.tasks.filter((task) => !task.managed && !!task.appId)
 );
@@ -75,13 +95,16 @@ const filtered = computed(() =>
         (filters.country === "all" || task.country === filters.country) &&
         (filters.state === "all" || taskStage(task) === filters.state) &&
         (!filters.from ||
-          task.createdAtMillis >= new Date(filters.from + "T00:00:00").getTime()) &&
+          (task.createdAtMillis ?? Number.NEGATIVE_INFINITY) >=
+            new Date(filters.from + "T00:00:00").getTime()) &&
         (!filters.to ||
-          task.createdAtMillis <= new Date(filters.to + "T23:59:59.999").getTime())
+          (task.createdAtMillis ?? Number.POSITIVE_INFINITY) <=
+            new Date(filters.to + "T23:59:59.999").getTime())
     )
     .sort(
       (a, b) =>
-        b.createdAtMillis - a.createdAtMillis || a.taskId.localeCompare(b.taskId)
+        (b.createdAtMillis ?? -1) - (a.createdAtMillis ?? -1) ||
+        a.taskId.localeCompare(b.taskId)
     )
 );
 function rememberScroll({
@@ -150,7 +173,9 @@ defineExpose({ revealTask, focusHeading });
 <template>
   <section class="checks-list-page">
     <header class="checks-heading">
-      <h1 ref="heading" tabindex="-1">{{ admin ? "应用注册查询" : "我的近期任务" }}</h1>
+      <h1 ref="heading" tabindex="-1">
+        {{ admin ? "应用注册查询" : "我的任务 · 当前批次" }}
+      </h1>
       <div class="checks-list-controls">
         <div class="checks-actions">
           <el-button :icon="Refresh" :loading="busy" @click="emit('refresh')"
@@ -176,6 +201,27 @@ defineExpose({ revealTask, focusHeading });
         </small>
       </div>
     </header>
+    <div class="checks-filters">
+      <form v-if="admin" class="checks-actions" @submit.prevent="applyOwner">
+        <input
+          v-model="session.ownerQuery"
+          aria-label="归属 userId"
+          placeholder="归属 userId，留空为全部"
+        />
+        <el-button native-type="submit" :disabled="busy">按归属读取</el-button>
+      </form>
+      <form class="checks-actions" @submit.prevent="openKnown">
+        <input
+          v-model="session.knownTaskQuery"
+          aria-label="已知 Task ID"
+          placeholder="已知 Task ID"
+        />
+        <el-button native-type="submit" :disabled="!session.knownTaskQuery.trim()"
+          >打开任务</el-button
+        >
+      </form>
+    </div>
+    <p v-if="ownerError" role="alert" class="checks-error">{{ ownerError }}</p>
     <p v-if="error" class="checks-error" role="alert">
       {{ tasks.length ? "当前显示上次快照；状态变更已禁用。" : "" }}{{ error }}
       <button class="checks-link" @click="emit('refresh')">重新读取</button>
@@ -246,11 +292,11 @@ defineExpose({ revealTask, focusHeading });
         开始日期不能晚于结束日期。
       </p>
       <p class="checks-table-note" role="status">
-        <template v-if="!admin">Project 最近一批中的个人任务 · </template>
+        <template v-if="!admin">个人任务当前批次 · </template>
         当前载入 {{ quantity(business.length) }} 个 · 匹配
         {{ quantity(filtered.length) }} 个 · 仅筛选本次载入，最多 100 条{{
           truncated ? " · 列表未完整加载" : ""
-        }}
+        }}。批次内按创建时间排序，不代表最新任务。
       </p>
       <ElTable
         ref="table"

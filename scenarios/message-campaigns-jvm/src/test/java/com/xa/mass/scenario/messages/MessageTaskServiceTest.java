@@ -45,7 +45,7 @@ class MessageTaskServiceTest {
     void entry(String id, Map<String, Object> input, String state, String version) {
         var metadata = new HashMap<>(MessageSpecification.parse(input).metadata());
         if (version == null) metadata.remove("inputVersion"); else metadata.put("inputVersion", version);
-        when(queries.get("messages", id)).thenReturn(new ProjectTaskQueryService.Entry(id, 1,
+        when(queries.get("messages", id)).thenReturn(new ProjectTaskQueryService.Entry(id, 1L,
                 new TaskView(id, "messages", "demo-sim", "CLOSE_WHEN_IDLE", List.of(), Map.of(), "campaign", metadata), state));
     }
     static InputStream file(String value) { return new ByteArrayInputStream(value.getBytes(StandardCharsets.UTF_8)); }
@@ -212,7 +212,7 @@ class MessageTaskServiceTest {
                     "CLOSE_WHEN_IDLE", List.of(), Map.of(), "saved name", Map.of("scenario", "messages", "recipientCountry", "CN", "body", "{}"));
             var entry = new ProjectTaskQueryService.Entry("existing", 100L, task, "terminal");
             when(queries.get("messages", "existing")).thenReturn(entry);
-            when(queries.list("messages", 100)).thenReturn(new ProjectTaskQueryService.ProjectTasks("messages", List.of(entry), false));
+            when(queries.list("messages", 100, null)).thenReturn(new ProjectTaskQueryService.ProjectTasks("messages", List.of(entry), false));
             var tags = new LinkedHashMap<Integer, Long>(); for (int tag = 1; tag <= 9; tag++) tags.put(tag, 0L);
             tags.put(5, 1L); tags.put(6, 2L); tags.put(7, 3L); tags.put(8, 4L); tags.put(9, 5L);
             when(data.observeItemScoreCounts(List.of("existing"))).thenReturn(Map.of("existing",

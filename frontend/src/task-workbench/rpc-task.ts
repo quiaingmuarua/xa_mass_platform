@@ -1,3 +1,5 @@
+import { normalizeTaskUserId } from "@/task-user-id";
+
 export interface RpcTaskPrepareRequest {
   projectId: string;
   workerGroupId: string;
@@ -11,9 +13,8 @@ export interface RpcTaskPreparationClient {
 
 /** A workbench naming convention; the Server does not decode or enforce it. */
 export function rpcTaskId(project: string, user: string, group: string): string {
-  const normalized = user.trim();
-  if (!project || !group || !normalized || normalized.length > 128)
-    throw new Error("请输入 1–128 个字符的调用方标识并选择 Group。");
+  const normalized = normalizeTaskUserId(user);
+  if (!project || !group) throw new Error("请选择 Project 和 Group。");
   const encode = (value: string) =>
     btoa(String.fromCharCode(...new TextEncoder().encode(value)))
       .replace(/\+/g, "-")
