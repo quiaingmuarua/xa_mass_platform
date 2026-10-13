@@ -29,8 +29,9 @@ Read this Owner by use case:
 
 The generic frontend controller forwards `/runtime/workers`, `/runtime/tasks`
 and `/task-workbench` (including trailing slashes) to the Console entry. The
-workbench is a frontend-only default-Project operation surface; public Task
-API admission and managed provisioning are unchanged. Unknown API and asset
+workbench lets administrators operate any declared Project using the existing
+Task APIs. Its Project selection is frontend context, not new API authorization;
+Task preparation remains explicit and Project declarations never provision Tasks. Unknown API and asset
 paths are not forwarded.
 
 ### Runtime Shape
@@ -1074,6 +1075,14 @@ CONNECTED retains the future recheck coordinate, so its completion observation a
 30 seconds: DEFAULT's 15-second hold plus the ordinary 15-second observation budget.
 It neither changes the production delay nor injects Score writes; the same Item must
 still complete through actual Worker execution and Result handling.
+
+The live-country-swap proof submits each RPC batch once and observes those same
+message IDs through Result and Item-state reads within the existing 15-second
+convergence budget, including the initial HTTP wait. It checks the actual Worker
+and Host before and after the swap on WebSocket and Socket. A completion gate
+forces a `not_observed` response after the swap: HTTP observation expiry is not
+execution failure, and subsequent reads must still show the expected executor
+and successful Item state. No resubmission or scheduling mutation repairs the proof.
 
 Ordinary Server tests use explicit test-only platform configuration with Pacer
 disabled and unreachable Redis, so a local Redis cannot hide accidental assembly

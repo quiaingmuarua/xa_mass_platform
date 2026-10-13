@@ -71,6 +71,9 @@
   padding: 24px;
   min-width: 0;
 }
+.task-workbench > header > .el-select {
+  width: 280px;
+}
 .task-workbench > header {
   display: flex;
   gap: 16px;

@@ -18,7 +18,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import TaskWorkbench from "@/task-workbench/TaskWorkbench.vue";
 import TaskRuntimeView from "@/views/TaskRuntimeView.vue";
 import { createTaskSession, taskSessionKey } from "@/task-workbench/session";
-import type { ProjectSource, ProjectTask } from "@/task-management/projects";
+import type { Project, ProjectSource, ProjectTask } from "@/task-management/projects";
 import { createTaskManagementStore } from "@/stores/task-management";
 import { createTaskCallDebugStore } from "@/stores/task-call-debug";
 import { createRuntimeViewerStore } from "@/stores/runtime-viewer";
@@ -40,7 +40,12 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
-function row(id: string, group = "g1", managed = false): ProjectTask {
+function row(
+  id: string,
+  group = "g1",
+  managed = false,
+  projectId = "default"
+): ProjectTask {
   return {
     taskId: id,
     createdAtMillis: 123,
@@ -48,7 +53,7 @@ function row(id: string, group = "g1", managed = false): ProjectTask {
     task: {
       taskId: id,
       workerGroupId: group,
-      projectId: "default",
+      projectId,
       idleDisposition: managed ? "PARK_WHEN_IDLE" : "CLOSE_WHEN_IDLE",
       refill: [],
       name: null,
@@ -59,41 +64,49 @@ function row(id: string, group = "g1", managed = false): ProjectTask {
 }
 async function mount(
   path: string,
-  options: { absent?: boolean; missing?: boolean; mode?: "api" | "mock" } = {}
+  options: {
+    projects?: Project[];
+    missing?: boolean;
+    mode?: "api" | "mock";
+    unregistered?: boolean;
+    identityOnly?: boolean;
+  } = {}
 ) {
   const source: ProjectSource = {
     list: vi
       .fn()
       .mockResolvedValue(
-        options.absent
-          ? [{ projectId: "business", workerGroupIds: ["g1"] }]
-          : [{ projectId: "default", workerGroupIds: ["g1", "g2"] }]
+        options.projects ?? [{ projectId: "default", workerGroupIds: ["g1", "g2"] }]
       ),
     groups: vi.fn().mockResolvedValue(
       ["g1", "g2"].map((workerGroupId) => ({
         workerGroupId,
-        workerGroup: {
-          workerGroupId,
-          attributes: {},
-          eventCodes: ["extension.worker.string.md5"]
-        },
-        matching: { pools: ["country"], functions: ["worker.country", "workerId"] }
+        workerGroup: options.unregistered
+          ? null
+          : {
+              workerGroupId,
+              attributes: {},
+              eventCodes: ["extension.worker.string.md5"]
+            },
+        matching: options.identityOnly
+          ? { pools: [], functions: ["workerId"] }
+          : { pools: ["country"], functions: ["worker.country", "workerId"] }
       }))
     ),
-    tasks: vi.fn().mockResolvedValue({
-      projectId: "default",
+    tasks: vi.fn(async (projectId) => ({
+      projectId,
       truncated: true,
       tasks: [
-        row("finite"),
-        { ...row("closed"), scoreBand: "terminal" },
-        { ...row("broken"), task: null },
-        row("rpc-1", "g1", true)
+        row("finite", "g1", false, projectId),
+        { ...row("closed", "g1", false, projectId), scoreBand: "terminal" as const },
+        { ...row("broken", "g1", false, projectId), task: null },
+        row("rpc-1", "g1", true, projectId)
       ]
-    }),
-    task: vi.fn(async (_project, id): Promise<ProjectTask> => {
+    })),
+    task: vi.fn(async (projectId, id): Promise<ProjectTask> => {
       if (options.missing) throw new ProjectRequestError(400, 12002);
       return {
-        ...row(id, id === "rpc-2" ? "g2" : "g1", id.startsWith("rpc-")),
+        ...row(id, id === "rpc-2" ? "g2" : "g1", id.startsWith("rpc-"), projectId),
         scoreBand:
           id === "closed"
             ? "terminal"
@@ -357,7 +370,7 @@ it("finite create drafts survive tabs and Runtime without resetting file or supp
   await vi.waitFor(() =>
     expect(document.querySelector('textarea[aria-label="Item 查询"]')).not.toBeNull()
   );
-  const draft = f.ops.draft("create");
+  const draft = f.ops.draft("default", "create");
   draft.content = new TextEncoder().encode("kept").buffer;
   draft.file = new File(["kept"], "kept.txt");
   draft.payloadKey = "custom";
@@ -365,20 +378,31 @@ it("finite create drafts survive tabs and Runtime without resetting file or supp
   await f.router.push("/runtime/tasks?project=default");
   await f.router.push("/task-workbench?tab=finite&view=create");
   await vi.waitFor(() => expect(document.body.textContent).toContain("kept.txt"));
-  expect(f.ops.draft("create").payloadKey).toBe("custom");
+  expect(f.ops.draft("default", "create").payloadKey).toBe("custom");
   await f.router.push("/task-workbench?tab=finite&taskId=finite&view=append");
   await vi.waitFor(() =>
     expect(f.session.finite.detail.value.value?.taskId).toBe("finite")
   );
-  expect(f.ops.draft("finite").content).toBeUndefined();
+  expect(f.ops.draft("default", "finite").content).toBeUndefined();
 });
 
-it("missing default never falls back to a business Project", async () => {
-  const f = await mount("/task-workbench?tab=rpc", { absent: true });
-  await vi.waitFor(() => expect(f.host.textContent).toContain("未配置 default"));
-  expect(f.source.task).not.toHaveBeenCalled();
-  expect(f.source.groups).not.toHaveBeenCalled();
-  expect(button("提交调用")).toBeUndefined();
+it("uses the sole declared non-default Project and leaves an empty directory unavailable", async () => {
+  const f = await mount("/task-workbench?tab=rpc", {
+    projects: [{ projectId: "agentforge", workerGroupIds: ["g1"] }],
+    identityOnly: true
+  });
+  await vi.waitFor(() =>
+    expect(f.router.currentRoute.value.query.project).toBe("agentforge")
+  );
+  expect(f.host.querySelector('[aria-label="工作台 Project"]')).toBeNull();
+  expect(f.host.textContent).toContain("Project · agentforge");
+  await vi.waitFor(() =>
+    expect(f.source.groups).toHaveBeenCalledWith("agentforge", expect.any(AbortSignal))
+  );
+  expect(f.preparationClient.prepareTask).not.toHaveBeenCalled();
+  const empty = await mount("/task-workbench", { projects: [] });
+  await vi.waitFor(() => expect(empty.host.textContent).toContain("未配置 Project"));
+  expect(empty.source.groups).not.toHaveBeenCalled();
 });
 
 it("initial table scroll events cannot erase the saved finite-list position when a tab remounts", async () => {
@@ -390,7 +414,9 @@ it("initial table scroll events cannot erase the saved finite-list position when
   const wrap = f.host.querySelector<HTMLElement>(".el-table .el-scrollbar__wrap")!;
   wrap.scrollTop = 640;
   wrap.dispatchEvent(new Event("scroll"));
-  await vi.waitFor(() => expect(f.session.finiteFilter.scroll).toBe(640));
+  await vi.waitFor(() =>
+    expect(f.session.project("default").finiteFilter.scroll).toBe(640)
+  );
   await f.router.push("/task-workbench?tab=rpc&taskId=rpc-1");
   await f.router.push("/task-workbench?tab=finite");
   await nextTick();
@@ -398,7 +424,7 @@ it("initial table scroll events cannot erase the saved finite-list position when
   restored.scrollTop = 0;
   restored.dispatchEvent(new Event("scroll"));
   await vi.waitFor(() => expect(restored.scrollTop).toBe(640));
-  expect(f.session.finiteFilter.scroll).toBe(640);
+  expect(f.session.project("default").finiteFilter.scroll).toBe(640);
 });
 
 it("Mock keeps the RPC form read-only", async () => {
@@ -425,7 +451,7 @@ it("failed RPC refresh keeps its old snapshot and time but blocks submission unt
 
 it("completed import receipts do not claim the task is still awaiting approval", async () => {
   const f = await mount("/task-workbench?tab=finite");
-  f.ops.submission = {
+  f.ops.project("default").submission = {
     taskId: "closed",
     fileName: "old.txt",
     total: 1,
@@ -480,4 +506,164 @@ it("export uses the whole-task API independently, rejecting stale, running and M
   await exporter.download(terminal, true);
   expect(client.exportResults).toHaveBeenCalledWith("ended");
   expect(exporter.error.value).toContain("尚未就绪");
+});
+
+const twoProjects: Project[] = [
+  { projectId: "agentforge", workerGroupIds: ["g1", "g2"] },
+  { projectId: "messages", workerGroupIds: ["g1", "g2"] }
+];
+it("never silently replaces an explicit unknown Project and restores a valid session selection", async () => {
+  const f = await mount("/task-workbench?project=unknown&tab=finite", {
+    projects: twoProjects
+  });
+  await vi.waitFor(() => expect(f.host.textContent).toContain("不在当前目录"));
+  expect(f.source.tasks).not.toHaveBeenCalled();
+  expect(f.source.groups).not.toHaveBeenCalled();
+  await f.router.push("/task-workbench?project=messages&tab=finite");
+  await vi.waitFor(() =>
+    expect(f.source.tasks).toHaveBeenCalledWith("messages", expect.any(AbortSignal))
+  );
+  await f.router.push("/runtime/tasks?view=global");
+  await f.router.push("/task-workbench?tab=finite");
+  await vi.waitFor(() =>
+    expect(f.router.currentRoute.value.query.project).toBe("messages")
+  );
+});
+it("prepares the non-default caller identity using workerId-only capabilities and refreshes missing Groups", async () => {
+  const f = await mount(
+    "/task-workbench?project=agentforge&tab=rpc&group=g1&user=1001",
+    {
+      projects: twoProjects,
+      identityOnly: true,
+      unregistered: true,
+      missing: true
+    }
+  );
+  await vi.waitFor(() => expect(f.host.textContent).toContain("尚未注册"));
+  expect(button("创建／复用 RPC Task").disabled).toBe(true);
+  vi.mocked(f.source.groups).mockResolvedValue([
+    {
+      workerGroupId: "g1",
+      workerGroup: { workerGroupId: "g1", attributes: {}, eventCodes: ["event"] },
+      matching: { pools: [], functions: ["workerId"] }
+    }
+  ]);
+  button("刷新").click();
+  await vi.waitFor(() => expect(button("创建／复用 RPC Task").disabled).toBe(false));
+  const id = rpcTaskId("agentforge", "1001", "g1");
+  f.preparationClient.prepareTask.mockImplementationOnce(async () => {
+    vi.mocked(f.source.task).mockResolvedValue(row(id, "g1", true, "agentforge"));
+  });
+  button("创建／复用 RPC Task").click();
+  await vi.waitFor(() => expect(button("提交调用")?.disabled).toBe(false));
+  expect(f.preparationClient.prepareTask).toHaveBeenCalledExactlyOnceWith(id, {
+    projectId: "agentforge",
+    workerGroupId: "g1",
+    metadata: { userId: "1001" }
+  });
+  Object.assign(f.calls.draft(id), {
+    eventName: "event",
+    payloadText: "{}",
+    executorName: "workerId",
+    inputText: '"worker-1"'
+  });
+  await nextTick();
+  expect(f.host.textContent).toContain("JSON 字符串");
+  button("提交调用").click();
+  await vi.waitFor(() => expect(f.rpcClient.callTask).toHaveBeenCalledTimes(1));
+  expect(f.rpcClient.callTask).toHaveBeenCalledWith(
+    expect.objectContaining({
+      taskId: id,
+      workerSelector: { executorName: "workerId", input: "worker-1" }
+    })
+  );
+});
+it("Project switches isolate RPC identities and late preparation without moving the current page", async () => {
+  const f = await mount(
+    "/task-workbench?project=agentforge&tab=rpc&group=g1&user=1001",
+    { projects: twoProjects, missing: true }
+  );
+  await vi.waitFor(() => expect(f.session.rpc.detail.value.missing).toBe(true));
+  let release!: () => void;
+  f.preparationClient.prepareTask.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      })
+  );
+  button("创建／复用 RPC Task").click();
+  await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+  await f.router.push("/task-workbench?project=messages&tab=rpc&group=g1&user=1001");
+  const a = rpcTaskId("agentforge", "1001", "g1"),
+    b = rpcTaskId("messages", "1001", "g1");
+  await vi.waitFor(() => expect(f.session.rpc.detailKey.value).toBe("messages/" + b));
+  release();
+  await vi.waitFor(() => expect(f.session.rpcPreparations[a]?.outcome).toBe("ready"));
+  expect(f.session.rpcPreparations[b]).toBeUndefined();
+  expect(f.router.currentRoute.value.query.project).toBe("messages");
+  expect(f.session.rpc.detailKey.value).toBe("messages/" + b);
+  expect(f.preparationClient.prepareTask).toHaveBeenCalledTimes(1);
+});
+it("keeps finite drafts, filters and receipts in their owning Project and ignores wrong-Project detail", async () => {
+  const f = await mount("/task-workbench?project=agentforge&tab=finite&view=create", {
+    projects: twoProjects
+  });
+  await vi.waitFor(() =>
+    expect(document.body.textContent).toContain("创建有限任务 · agentforge")
+  );
+  f.ops.draft("agentforge", "create").payloadKey = "original";
+  f.session.project("agentforge").finiteFilter.search = "finite";
+  f.ops.project("agentforge").submission = {
+    taskId: "original",
+    fileName: "a.txt",
+    total: 3,
+    applied: 1,
+    rejected: 0,
+    unconfirmed: 2,
+    notSubmitted: 0,
+    complete: false
+  };
+  await f.router.push("/task-workbench?project=messages&tab=finite&view=create");
+  await vi.waitFor(() =>
+    expect(document.body.textContent).toContain("创建有限任务 · messages")
+  );
+  expect(f.ops.draft("messages", "create").payloadKey).not.toBe("original");
+  expect(f.ops.project("messages").submission).toBeUndefined();
+  expect(f.session.project("messages").finiteFilter.search).toBe("");
+  vi.mocked(f.source.task).mockResolvedValue(row("foreign", "g1", false, "agentforge"));
+  await f.router.push(
+    "/task-workbench?project=messages&tab=finite&taskId=foreign&view=append"
+  );
+  await vi.waitFor(() =>
+    expect(f.session.finite.detail.value.value?.taskId).toBe("foreign")
+  );
+  expect(button("追加 Items")?.disabled).toBe(true);
+  expect(f.client.approveTask).not.toHaveBeenCalled();
+  await f.router.push("/task-workbench?project=agentforge&tab=finite&view=create");
+  await vi.waitFor(() => expect(f.host.textContent).toContain("本会话提交"));
+  expect(f.ops.draft("agentforge", "create").payloadKey).toBe("original");
+  expect(f.session.project("agentforge").finiteFilter.search).toBe("finite");
+});
+it("Runtime links preserve non-default Project and actual Task identity even with an empty list", async () => {
+  const f = await mount("/runtime/tasks?project=agentforge&taskId=rpc-1", {
+    projects: twoProjects
+  });
+  await vi.waitFor(() => expect(document.body.textContent).toContain("PARK_WHEN_IDLE"));
+  expect(
+    [...document.querySelectorAll<HTMLAnchorElement>("a")].some(
+      (a) =>
+        a.getAttribute("href")?.includes("project=agentforge") &&
+        a.getAttribute("href")?.includes("taskId=rpc-1")
+    )
+  ).toBe(true);
+  vi.mocked(f.source.tasks).mockResolvedValue({
+    projectId: "messages",
+    tasks: [],
+    truncated: false
+  });
+  await f.router.push("/runtime/tasks?project=messages");
+  await vi.waitFor(() =>
+    expect(f.host.querySelector('a[href*="project=messages"]')).not.toBeNull()
+  );
+  expect(button("创建任务")).toBeUndefined();
 });

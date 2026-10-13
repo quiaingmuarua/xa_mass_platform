@@ -36,17 +36,30 @@ class RuntimeDistributionProofApiContractTest(unittest.TestCase):
             (200, json.dumps({"taskId": task_id}).encode(), "application/json"),
             (200, json.dumps(entry).encode(), "application/json"),
         ]) as request:
-            self.assertEqual(proof._prepare_rpc_task("http://runtime", "group-a"), task_id)
+            self.assertEqual(proof._prepare_rpc_task("http://runtime", "scenario-workers", "group-a"), task_id)
         self.assertEqual(request.call_args_list, [
             call("POST", f"http://runtime/api/v1/tasks/{task_id}/rpc:prepare",
                  {"projectId": "scenario-workers", "workerGroupId": "group-a"}),
             call("GET", f"http://runtime/api/v1/projects/scenario-workers/tasks/{task_id}"),
         ])
 
+    def test_preparation_uses_explicit_non_default_project_for_request_and_read(self) -> None:
+        task_id = "distribution-rpc-group-a"
+        entry = {"taskId": task_id, "scoreBand": "running-initial", "task": {
+            "taskId": task_id, "projectId": "agentforge", "workerGroupId": "group-a",
+            "idleDisposition": "PARK_WHEN_IDLE", "refill": []}}
+        with patch.object(proof, "_request", side_effect=[
+            (200, json.dumps({"taskId": task_id}).encode(), "application/json"),
+            (200, json.dumps(entry).encode(), "application/json"),
+        ]) as request:
+            self.assertEqual(proof._prepare_rpc_task("http://runtime", "agentforge", "group-a"), task_id)
+        self.assertEqual(request.call_args_list[0].args[2]["projectId"], "agentforge")
+        self.assertEqual(request.call_args_list[1].args[1], f"http://runtime/api/v1/projects/agentforge/tasks/{task_id}")
+
     def test_unconfirmed_preparation_does_not_retry_or_change_identity(self) -> None:
         with patch.object(proof, "_request", return_value=(503, b"{}", "application/json")) as request:
             with self.assertRaisesRegex(RuntimeError, "not confirmed"):
-                proof._prepare_rpc_task("http://runtime", "group-a")
+                proof._prepare_rpc_task("http://runtime", "scenario-workers", "group-a")
         self.assertEqual(request.call_count, 1)
 
     def test_preview_requests_use_direct_integer_bodies(self) -> None:

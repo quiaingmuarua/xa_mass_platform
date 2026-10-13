@@ -123,11 +123,32 @@ function mockProjectSource(): ProjectSource {
     workerGroup,
     matching: { pools: ["any"], functions: ["worker.any", "workerId"] }
   }));
+  const agentGroups: ProjectGroup[] = [
+    "detect-env",
+    "instagram",
+    "rcs",
+    "telegram"
+  ].map((name) => {
+    const workerGroupId = `agentforge-${name}-workers`;
+    return {
+      workerGroupId,
+      workerGroup:
+        name === "detect-env"
+          ? {
+              workerGroupId,
+              attributes: { source: "mock" },
+              eventCodes: ["extension.worker.detect-env.scenario-catalog"]
+            }
+          : null,
+      matching: { pools: [], functions: ["workerId"] }
+    };
+  });
   const projects: Project[] = [
     {
       projectId: "default",
       workerGroupIds: groups.map((g) => g.workerGroupId)
-    }
+    },
+    { projectId: "agentforge", workerGroupIds: agentGroups.map((g) => g.workerGroupId) }
   ];
   const tasks: ProjectTask[] = MOCK_TASK_PREVIEW.entries.map((row) => ({
     taskId: row.taskId,
@@ -160,6 +181,31 @@ function mockProjectSource(): ProjectSource {
         }
       });
   }
+  for (const managed of [true, false]) {
+    const groupId = agentGroups[0]!.workerGroupId;
+    const taskId = managed
+      ? rpcTaskId("agentforge", "demo", groupId)
+      : "mock-agentforge-finite";
+    tasks.push({
+      taskId,
+      createdAtMillis: Date.parse(MOCK_TASK_PREVIEW.generatedAt),
+      scoreBand: managed ? "running_visible" : "pre_review",
+      task: {
+        taskId,
+        projectId: "agentforge",
+        workerGroupId: groupId,
+        idleDisposition: managed ? "PARK_WHEN_IDLE" : "CLOSE_WHEN_IDLE",
+        name: managed ? "AgentForge RPC 示例" : "AgentForge 有限任务示例",
+        metadata: {
+          userId: "demo",
+          "server.projectId": "agentforge",
+          "server.createdAtMillis": String(Date.parse(MOCK_TASK_PREVIEW.generatedAt))
+        },
+        config: { priority: managed ? "0" : "50", maxRetryTimes: "3" },
+        refill: []
+      }
+    });
+  }
   const requireProject = (project: string) => {
     if (!projects.some((p) => p.projectId === project))
       throw new Error("Project 不可用");
@@ -170,7 +216,8 @@ function mockProjectSource(): ProjectSource {
     },
     async tasks(project) {
       requireProject(project);
-      const batch = [...tasks]
+      const owned = tasks.filter((row) => row.task?.projectId === project);
+      const batch = [...owned]
         .sort(
           (a, b) =>
             taskUserScore(a.task?.metadata.userId) -
@@ -185,19 +232,21 @@ function mockProjectSource(): ProjectSource {
       );
       return structuredClone({
         projectId: project,
-        truncated: tasks.length > 100,
+        truncated: owned.length > 100,
         tasks: batch
       });
     },
     async task(project, taskId) {
       requireProject(project);
-      const task = tasks.find((t) => t.taskId === taskId);
+      const task = tasks.find(
+        (t) => t.taskId === taskId && t.task?.projectId === project
+      );
       if (!task) throw new ProjectRequestError(400, 12002);
       return structuredClone(task);
     },
     async groups(project) {
       requireProject(project);
-      return structuredClone(groups);
+      return structuredClone(project === "agentforge" ? agentGroups : groups);
     }
   };
 }

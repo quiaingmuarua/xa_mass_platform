@@ -1,6 +1,6 @@
 # XA Mass Console
 
-Vue 3 console for Worker and Task runtime observation, a default-Project task
+Vue 3 console for Worker and Task runtime observation, a Project-scoped task
 workbench (RPC calls and finite Tasks), Scenario pages and public Demo. It is derived from Pure Admin Thin 6.2.0.
 The shared development identity selector provides fixed users for workflow verification,
 without a login service, token or user directory. App Checks checks the declared
@@ -579,7 +579,9 @@ Refresh failures retain the last snapshot and successful read time.
 The configured `default` Project remains an ordinary observed Project, preferred
 on first entry. `project`, `taskId` and the global `view` route query preserve the
 viewer context. TaskView decoding includes backend `name` and `metadata`. The
-drawer exposes original configuration and a link to the default task workbench.
+drawer exposes original configuration and a workbench link carrying the saved Project
+and actual Task ID. Every known Project also has a workbench entry above its list,
+including an empty list. Unknown/missing attribution cannot be used for navigation.
 It contains no create, append, approve, close or Task Call control. The former
 `view=create` parameter no longer opens a creation flow.
 
@@ -590,12 +592,17 @@ Export state is independent of finite-task mutations; Mock never exports.
 
 ## Task workbench
 
-`/task-workbench` has RPC and finite-task tabs, defaulting to `tab=rpc`. It binds
-only the explicitly configured `default` Project. A missing default shows an
-unavailable workspace; it never chooses a business Project instead. This is a
-frontend entry boundary, not new authorization in the generic Server API.
+`/task-workbench` has RPC and finite-task tabs, defaulting to `tab=rpc`. Admins can
+operate every Project in the immutable startup directory, including Scenario
+Projects. A single Project is a read-only label; multiple Projects use a selector.
+The `project` query selects the context. Without it, the console restores the last
+valid session choice or uses the first directory entry; no Project means no writes.
+An explicit unknown Project stays unavailable until the user chooses another.
+The operator navigation boundary is unchanged. These are trusted raw operations,
+not Scenario API orchestration or server authorization: generic creation does not
+invent Scenario metadata or run business import/approval validation.
 
-RPC uses `tab=rpc&group=...&user=...`, with the caller identifier initially blank.
+RPC uses `project=...&tab=rpc&group=...&user=...`, with the caller identifier initially blank.
 The workbench trims it and requires `^[1-9a-z][0-9a-z]{3,8}$`, matching
 App Checks and the Server codec. It does not use the top-bar identity. It mints
 `rpc-workbench-v1.<project>.<user>.<group>` using separately encoded UTF-8 Base64URL
@@ -607,13 +614,17 @@ route changes, reads and calls never create a Task. Preparation includes approva
 Unconfirmed attempts retain their original identity/request for manual read or
 explicit re-preparation. Re-preparing a known descriptor excludes reserved `server.*`
 metadata from the input. PRE_REVIEW, stale and terminal Tasks cannot be called.
-`tab=rpc&taskId=...` opens an existing Task directly, including Tasks without user
+`project=...&tab=rpc&taskId=...` opens an existing Task directly, including Tasks without user
 metadata; Runtime links preserve this actual identity. Group capabilities come from the existing
 Project worker-groups endpoint, not a random inventory sample. Task supply is
 read-only. The Event catalog supplies suggestions; custom full names remain
 accepted. The user explicitly selects an enabled Matching function and supplies
 non-null JSON input under the existing bounded query contract. There is no
 implicit `worker.any` selection or inference of business query parameters.
+A missing Group descriptor is explicitly unregistered; refresh after deployment
+registration, without preparing Tasks implicitly. A `workerId` input is a JSON
+string (for example `"worker-123"`), so a Group without Pools can still use directed
+calls and empty Task supply. Declared capabilities do not prove a live Handler.
 
 Calls continue to submit one Item through `items:call`, with a 3000ms initial
 wait and the existing 1..60000ms range. Per-Task history keeps the latest 20
@@ -624,12 +635,22 @@ automatically resubmitted. Caller/Group switching retains separate Task drafts a
 and late responses update only their original call or preparation. Mock includes
 read-only caller examples and disables preparation and calls.
 
-Finite tasks use `tab=finite`, `taskId=...` for details and `view=create` for the
-creation drawer. The current default Project collection excludes PARK_WHEN_IDLE
+Finite tasks use `project=...&tab=finite`, `taskId=...` for details and `view=create`
+for the creation drawer. The selected Project collection excludes PARK_WHEN_IDLE
 descriptors without fetching replacements. Unknown descriptors
 remain visible and cannot be mutated. Create, append, approve and close use
 fresh Server state, so reloading the browser does not lose the ability to manage
-existing tasks. Terminal export shares the viewer's download implementation.
+existing tasks. Mutations require matching Project attribution and a fresh legal
+lifecycle state; terminal export shares the viewer's download implementation.
+
+Finite filters, scroll positions, drafts and submission receipts belong to their
+Project; append drafts additionally belong to a Task. RPC identity selection is
+remembered per Project, while call records remain keyed by actual Task ID.
+Switching Projects closes the current drawer. Accepted submissions retain their
+captured Project, Group and inputs and may finish original batches, but cannot
+navigate or write into the newly selected context. Finite writes keep one shared
+in-flight gate; an uncertain receipt freezes only its own Project's submission.
+No drafts, numbers or receipts are persisted to browser storage.
 
 The create drawer separates Task supply from Item queries. Any/Country templates
 are offered only when enabled; other rules need explicit input. TXT maps each

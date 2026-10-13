@@ -17,10 +17,25 @@ export function createTaskSession(
   const runtimeFilters = reactive<
     Record<string, { search: string; group: string; kind: string; scroll: number }>
   >({});
-  const finiteFilter = reactive({ search: "", group: "", status: "", scroll: 0 });
+  const projects = reactive<
+    Record<
+      string,
+      {
+        finiteFilter: { search: string; group: string; status: string; scroll: number };
+        rpcQuery: Record<string, string>;
+      }
+    >
+  >(Object.create(null));
+  function project(projectId: string) {
+    projects[projectId] ??= {
+      finiteFilter: { search: "", group: "", status: "", scroll: 0 },
+      rpcQuery: {}
+    };
+    return projects[projectId]!;
+  }
   const navigation = reactive({
     runtimeQuery: {} as Record<string, string>,
-    rpcQuery: {} as Record<string, string>
+    projectId: ""
   });
   const rpcPreparations = reactive<
     Record<
@@ -75,7 +90,7 @@ export function createTaskSession(
     finite,
     rpc,
     runtimeFilters,
-    finiteFilter,
+    project,
     navigation,
     rpcPreparations,
     prepareRpc,

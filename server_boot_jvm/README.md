@@ -193,6 +193,13 @@ is a new binding, not an implicit data migration.
 Default and AgentForge have empty Project lists; downstream deployments provide
 Groups and Projects before explicitly preparing RPC Tasks. An external
 Group registration or Project declaration alone creates no Task. Projects have no mutation API.
+The Console workbench consumes this directory and works without a Project named
+`default`: use `/task-workbench?project=agentforge&tab=rpc` for a deployment that
+declares `agentforge`. The profile name does not select or create a Project.
+A null Group descriptor means registration is still required in the current scope;
+it does not mean the Project binding was omitted. Register through the existing
+WorkerGroup API, refresh capabilities, then explicitly prepare a Task. Groups with
+only `workerId` use directed calls with empty supply; no Any Pool is inferred.
 
 ## Assignment batch ceiling
 

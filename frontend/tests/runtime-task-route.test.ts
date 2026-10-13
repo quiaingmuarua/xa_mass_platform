@@ -145,7 +145,7 @@ it("late drawer and submission continuations cannot replace the current context"
     await router.push("/task-workbench?tab=finite&view=create");
     await new Promise((resolve) => setTimeout(resolve, 450));
     expect(router.currentRoute.value.query.view).toBe("create");
-    operations.submission = {
+    operations.project("default").submission = {
       taskId: "known",
       fileName: "old.txt",
       total: 1,
@@ -160,8 +160,8 @@ it("late drawer and submission continuations cannot replace the current context"
       document.querySelector('[data-testid="finish-submission"]') as HTMLButtonElement
     ).click();
     await vi.waitFor(() => expect(releaseRefresh).toBeTypeOf("function"));
-    operations.finishSubmission();
-    operations.submission = {
+    operations.finishSubmission("default");
+    operations.project("default").submission = {
       taskId: "next",
       fileName: "new.txt",
       total: 1,

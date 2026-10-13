@@ -508,9 +508,15 @@ class RuntimeBoundaryIntegrationTest {
             var firstRef = new AtomicReference<JavaWorker>();
             var secondRef = new AtomicReference<JavaWorker>();
             var firstOutcome = new AtomicReference<WorkerOutcomeReporter>();
+            var releaseFirstAfterCall = new AtomicReference<CountDownLatch>();
             var firstEvent = WorkerEventDefinition.extension("country.executor", WorkerEventParameterResolvers.jsonMap(),
                     (ignored, reporter) -> {
                         firstOutcome.set(reporter);
+                        var release = releaseFirstAfterCall.get();
+                        if (release != null && !release.await(
+                                RESULT_CONVERGENCE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                            throw new IllegalStateException("country result completion gate expired");
+                        }
                         return Jsons.toJson(Map.of("executor", firstRef.get().snapshot().workerId(), "host", "first"));
                     });
             var secondEvent = WorkerEventDefinition.extension("country.executor", WorkerEventParameterResolvers.jsonMap(),
@@ -525,7 +531,7 @@ class RuntimeBoundaryIntegrationTest {
                 String firstId = first.snapshot().workerId(), secondId = second.snapshot().workerId();
                 awaitRuntimeProperties(group, firstId, adapter, firstProperties.get());
                 awaitRuntimeProperties(group, secondId, adapter, secondProperties.get());
-                assertCountryExecutors(taskId, Map.of("CN", Map.of("executor", firstId, "host", "first"), "US", Map.of("executor", secondId, "host", "second")));
+                assertCountryExecutors(taskId, Map.of("CN", Map.of("executor", firstId, "host", "first"), "US", Map.of("executor", secondId, "host", "second")), null);
                 String indexedFirst = createIndexedTask(group);
                 String indexedSecond = createIndexedTask(group);
                 String indexedItem = assertFiniteCountryExecutor(indexedFirst, "CN", firstId, "first");
@@ -537,7 +543,16 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(second.reportProperties()).isTrue();
                 awaitRuntimeProperties(group, firstId, adapter, firstProperties.get());
                 awaitRuntimeProperties(group, secondId, adapter, secondProperties.get());
-                assertCountryExecutors(taskId, Map.of("CN", Map.of("executor", secondId, "host", "second"), "US", Map.of("executor", firstId, "host", "first")));
+                // Force an unobserved HTTP response; the same submitted Items must
+                // still converge through the actual country Pool and Result path.
+                var release = new CountDownLatch(1);
+                releaseFirstAfterCall.set(release);
+                try {
+                    assertCountryExecutors(taskId, Map.of("CN", Map.of("executor", secondId, "host", "second"), "US", Map.of("executor", firstId, "host", "first")), release);
+                } finally {
+                    release.countDown();
+                    releaseFirstAfterCall.set(null);
+                }
                 assertFiniteCountryExecutor(indexedSecond, "CN", secondId, "second");
                 assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(indexedFirst, indexedSecond)).values())
                         .allSatisfy(rule -> assertThat(rule.refill()).extracting(RefillTarget::poolName).containsOnly("country"));
@@ -881,7 +896,8 @@ class RuntimeBoundaryIntegrationTest {
         return messageId;
     }
 
-    private void assertCountryExecutors(String taskId, Map<String, Map<String, String>> expectedByCountry) throws Exception {
+    private void assertCountryExecutors(String taskId, Map<String, Map<String, String>> expectedByCountry,
+                                        CountDownLatch releaseAfterCall) throws Exception {
         var items = new ArrayList<Map<String, Object>>();
         var expected = new LinkedHashMap<String, Map<String, String>>();
         expectedByCountry.forEach((country, executor) -> {
@@ -889,14 +905,53 @@ class RuntimeBoundaryIntegrationTest {
             expected.put(messageId, executor);
             items.add(Map.of("messageId", messageId, "eventCode", "extension.worker.country.executor", "payload", Map.of(), "workerSelector", Map.of("executorName", "worker.country", "input", List.of(country))));
         });
-        var response = send("POST", "/api/v1/tasks/" + taskId + "/items:call", Jsons.toJson(Map.of("items", items, "waitTimeoutMillis", 10000)));
+        long deadline = System.nanoTime() + RESULT_CONVERGENCE_TIMEOUT.toNanos();
+        HttpResponse<String> response;
+        try {
+            response = send("POST", "/api/v1/tasks/" + taskId + "/items:call",
+                    Jsons.toJson(Map.of("items", items, "waitTimeoutMillis", releaseAfterCall == null ? 10000 : 1)));
+        } finally {
+            if (releaseAfterCall != null) releaseAfterCall.countDown();
+        }
         assertThat(response.statusCode()).isEqualTo(200);
         var results = JSON.readTree(response.body());
-        expected.forEach((id, executor) -> {
-            var result = results.get(id);
-            assertThat(result.get("status").asText()).isEqualTo("succeeded");
-            assertThat(Jsons.parseObject(result.get("opaqueResultPayload").asText())).containsAllEntriesOf(executor);
-        });
+        if (releaseAfterCall != null) {
+            var initialResults = results;
+            assertThat(expected.keySet()).anySatisfy(id ->
+                    assertThat(initialResults.get(id).get("status").asText()).isEqualTo("not_observed"));
+        }
+        var statuses = new LinkedHashMap<String, String>();
+        var tags = new LinkedHashMap<String, Integer>();
+        do {
+            for (var entry : expected.entrySet()) {
+                var result = results.get(entry.getKey());
+                String status = result.get("status").asText();
+                statuses.put(entry.getKey(), status);
+                assertThat(status).as("country Result status for %s", entry.getKey())
+                        .isIn("succeeded", "not_observed");
+                if ("succeeded".equals(status)) {
+                    assertThat(Jsons.parseObject(result.get("opaqueResultPayload").asText()))
+                            .containsAllEntriesOf(entry.getValue());
+                }
+            }
+            if (statuses.values().stream().allMatch("succeeded"::equals)) {
+                var states = send("POST", "/api/v1/tasks/" + taskId + "/items:states",
+                        Jsons.toJson(List.copyOf(expected.keySet())));
+                assertThat(states.statusCode()).isEqualTo(200);
+                var stateViews = JSON.readTree(states.body());
+                expected.keySet().forEach(id -> tags.put(id, stateViews.get(id).get("tag").asInt()));
+                if (tags.values().stream().allMatch(tag -> tag == 6)) return;
+            }
+            if (System.nanoTime() >= deadline) break;
+            Thread.sleep(20);
+            // Read only the original IDs. An expired HTTP waiter never resubmits work.
+            var loaded = send("POST", "/api/v1/tasks/" + taskId + "/results:load",
+                    Jsons.toJson(List.copyOf(expected.keySet())));
+            assertThat(loaded.statusCode()).isEqualTo(200);
+            results = JSON.readTree(loaded.body());
+        } while (true);
+        throw new AssertionError("Country execution did not converge for task " + taskId
+                + "; Result statuses=" + statuses + "; Item tags=" + tags);
     }
 
     @Test
