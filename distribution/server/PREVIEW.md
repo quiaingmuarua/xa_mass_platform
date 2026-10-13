@@ -34,6 +34,13 @@ Open the Console at `http://127.0.0.1:18500` and the device Host at
 [page mappings](../../server_boot_jvm/README.md#pages-and-configuration);
 the [Frontend Owner](../../frontend/README.md) describes page operations.
 
+The Console starts with the fixed admin development identity. Its top-bar selector
+also offers two operators for App Checks workflow verification; see
+[development identities](../../frontend/README.md#development-identities).
+Direct App Checks task/configuration requests declare their caller through the
+[scenario headers](../../scenarios/app-checks-jvm/README.md#api-和-task-数据).
+Catalog readiness remains caller-free. These identities do not authenticate users.
+
 ## Inventory and process lifecycle
 
 `--count 100 --seed 712` initializes a reproducible random demo-sim population:
@@ -89,6 +96,8 @@ readiness verifies actual Adapter routes. Source and ZIP use this same launcher.
 The shared HTTP client reuses a connection per thread and endpoint while requests
 remain less than five seconds apart. It closes an idle connection before the next
 request; a failed or uncertain mutation is surfaced without automatic replay.
+Optional headers belong to each request and are not retained on the connection;
+the shared client never injects a default developer caller.
 
 ## Messages multi-application cutover
 

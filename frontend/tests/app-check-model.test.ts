@@ -1,3 +1,4 @@
+import { CALLER } from "./app-check-fixture";
 import { importedTask } from "./app-check-fixture";
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -79,7 +80,7 @@ describe("App Checks admission and independent recomputation", () => {
     );
   });
   it("checks content independently, preserving failures and missing evidence", async () => {
-    const snapshot = await new MockAppCheckTaskSource().loadTask("check-mixed");
+    const snapshot = await new MockAppCheckTaskSource().loadTask(CALLER, "check-mixed");
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     const results = await verifyPreview(snapshot);
@@ -95,7 +96,7 @@ describe("App Checks admission and independent recomputation", () => {
     expect(snapshot.results[1].registered).toBe(false);
   });
   it("detects a success in the failure bucket, delay and Group mismatches", async () => {
-    const snapshot = await new MockAppCheckTaskSource().loadTask("check-mixed");
+    const snapshot = await new MockAppCheckTaskSource().loadTask(CALLER, "check-mixed");
     snapshot.results = [
       {
         ...snapshot.results[0],
@@ -114,7 +115,7 @@ describe("App Checks admission and independent recomputation", () => {
     expect(
       (
         await verifyPreview(
-          await new MockAppCheckTaskSource().loadTask("check-unregistered")
+          await new MockAppCheckTaskSource().loadTask(CALLER, "check-unregistered")
         )
       ).get("r-1")?.status
     ).toBe("matched");
@@ -122,7 +123,7 @@ describe("App Checks admission and independent recomputation", () => {
   it("does not silently switch to remote hashing", async () => {
     vi.stubGlobal("crypto", { randomUUID: webcrypto.randomUUID });
     await expect(
-      verifyPreview(await new MockAppCheckTaskSource().loadTask("check-mixed"))
+      verifyPreview(await new MockAppCheckTaskSource().loadTask(CALLER, "check-mixed"))
     ).rejects.toThrow("Web Crypto");
   });
 });
@@ -154,12 +155,12 @@ describe("App Checks data boundary", () => {
       );
     vi.stubGlobal("fetch", fetcher);
     const source = new ApiAppCheckTaskSource();
-    await source.createTask(create);
+    await source.createTask(CALLER, create);
     const file = new Blob(["86123"]);
-    await source.importNumbers("t", file);
-    await source.approveTask("t", 1);
-    await source.closeTask("t");
-    expect(await source.exportTask("t", "registered")).toMatchObject({
+    await source.importNumbers(CALLER, "t", file);
+    await source.approveTask(CALLER, "t", 1);
+    await source.closeTask(CALLER, "t");
+    expect(await source.exportTask(CALLER, "t", "registered")).toMatchObject({
       fileName: "t-registered.csv",
       count: 1
     });
@@ -186,16 +187,16 @@ describe("App Checks data boundary", () => {
       (_, i) => `+86138${String(i).padStart(8, "0")}`
     );
     const { taskId } = await importedTask(source, { ...create, numbers });
-    expect((await source.loadTask(taskId)).task.state).toBe("pre_review");
-    await expect(source.exportTask(taskId, "all")).rejects.toThrow();
-    await source.approveTask(taskId, numbers.length);
-    await source.completeTask(taskId);
-    expect((await source.loadTask(taskId)).results).toHaveLength(100);
-    const exported = await source.exportTask(taskId, "all");
+    expect((await source.loadTask(CALLER, taskId)).task.state).toBe("pre_review");
+    await expect(source.exportTask(CALLER, taskId, "all")).rejects.toThrow();
+    await source.approveTask(CALLER, taskId, numbers.length);
+    await source.completeTask(CALLER, taskId);
+    expect((await source.loadTask(CALLER, taskId)).results).toHaveLength(100);
+    const exported = await source.exportTask(CALLER, taskId, "all");
     expect(exported.count).toBe(997);
     expect(
-      (await source.exportTask(taskId, "registered")).count +
-        (await source.exportTask(taskId, "unregistered")).count
+      (await source.exportTask(CALLER, taskId, "registered")).count +
+        (await source.exportTask(CALLER, taskId, "unregistered")).count
     ).toBe(exported.count);
     expect(fetcher).not.toHaveBeenCalled();
     expect(new ApiAppCheckTaskSource()).toHaveProperty("approveTask");
@@ -204,7 +205,7 @@ describe("App Checks data boundary", () => {
   it("does not send prototype file metadata to the unchanged API", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response('{"taskId":"task"}'));
     vi.stubGlobal("fetch", fetcher);
-    await new ApiAppCheckTaskSource().createTask(create);
+    await new ApiAppCheckTaskSource().createTask(CALLER, create);
     expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({
       requestId: create.requestId,
       appId: create.appId,
@@ -217,23 +218,29 @@ describe("App Checks data boundary", () => {
     vi.stubGlobal("fetch", fetcher);
     const source = new MockAppCheckTaskSource();
     expect((await source.catalog()).projectId).toBe("app-checks");
-    const { taskId } = await source.createTask(create);
-    expect(await source.createTask(create)).toEqual({ taskId });
-    await expect(source.createTask({ ...create, country: "US" })).rejects.toThrow();
-    expect((await source.listTasks()).tasks[0].taskId).toBe(taskId);
-    expect((await source.loadTask(taskId)).results).toEqual([]);
-    expect((await source.loadTask("check-preview")).results).toHaveLength(100);
-    expect((await source.loadTask("check-preview")).resultsTruncated).toBe(true);
-    await expect(new MockAppCheckTaskSource().loadTask(taskId)).rejects.toThrow();
+    const { taskId } = await source.createTask(CALLER, create);
+    expect(await source.createTask(CALLER, create)).toEqual({ taskId });
+    await expect(
+      source.createTask(CALLER, { ...create, country: "US" })
+    ).rejects.toThrow();
+    expect((await source.listTasks(CALLER)).tasks[0].taskId).toBe(taskId);
+    expect((await source.loadTask(CALLER, taskId)).results).toEqual([]);
+    expect((await source.loadTask(CALLER, "check-preview")).results).toHaveLength(100);
+    expect((await source.loadTask(CALLER, "check-preview")).resultsTruncated).toBe(
+      true
+    );
+    await expect(
+      new MockAppCheckTaskSource().loadTask(CALLER, taskId)
+    ).rejects.toThrow();
     expect(fetcher).not.toHaveBeenCalled();
   });
   it("uses the existing API and checks requested identity", async () => {
-    const detail = await new MockAppCheckTaskSource().loadTask("check-mixed");
+    const detail = await new MockAppCheckTaskSource().loadTask(CALLER, "check-mixed");
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(detail)));
     vi.stubGlobal("fetch", fetcher);
-    await expect(new ApiAppCheckTaskSource().loadTask("wrong/id")).rejects.toThrow(
-      "身份"
-    );
+    await expect(
+      new ApiAppCheckTaskSource().loadTask(CALLER, "wrong/id")
+    ).rejects.toThrow("身份");
     expect(fetcher.mock.calls[0][0]).toBe("/api/v1/app-checks/tasks/wrong%2Fid");
   });
   it.each([400, 409, 429])(
@@ -244,7 +251,7 @@ describe("App Checks data boundary", () => {
         vi.fn().mockResolvedValue(new Response('{"message":"rejected"}', { status }))
       );
       await expect(
-        new ApiAppCheckTaskSource().createTask(create)
+        new ApiAppCheckTaskSource().createTask(CALLER, create)
       ).rejects.toBeInstanceOf(AppCheckApiError);
     }
   );
@@ -255,18 +262,20 @@ describe("App Checks data boundary", () => {
         new Response('{"message":"unknown","taskId":"retained"}', { status: 503 })
       );
     vi.stubGlobal("fetch", fetcher);
-    await expect(new ApiAppCheckTaskSource().createTask(create)).rejects.toMatchObject({
+    await expect(
+      new ApiAppCheckTaskSource().createTask(CALLER, create)
+    ).rejects.toMatchObject({
       taskId: "retained"
     });
     expect(fetcher).toHaveBeenCalledTimes(1);
     fetcher.mockResolvedValue(new Response("broken", { status: 201 }));
-    await expect(new ApiAppCheckTaskSource().createTask(create)).rejects.toBeInstanceOf(
-      AppCheckCreationUnconfirmed
-    );
+    await expect(
+      new ApiAppCheckTaskSource().createTask(CALLER, create)
+    ).rejects.toBeInstanceOf(AppCheckCreationUnconfirmed);
     fetcher.mockRejectedValue(new TypeError("network"));
-    await expect(new ApiAppCheckTaskSource().createTask(create)).rejects.toBeInstanceOf(
-      AppCheckCreationUnconfirmed
-    );
+    await expect(
+      new ApiAppCheckTaskSource().createTask(CALLER, create)
+    ).rejects.toBeInstanceOf(AppCheckCreationUnconfirmed);
   });
   it("catalog 404 disables only this scene; transient failure allows explicit retry", async () => {
     const source = new MockAppCheckTaskSource();

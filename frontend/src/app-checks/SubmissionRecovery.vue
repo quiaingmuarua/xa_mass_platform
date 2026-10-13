@@ -6,6 +6,9 @@ import { appLabel, countryLabel, type CheckTask } from "./model";
 import type { AppCheckTaskSource } from "./task-source";
 import { quantity, timestamp, type CheckDraft } from "./workbench";
 import TaskStatus from "./TaskStatus.vue";
+import { consoleIdentity } from "@/console-identity";
+import { canUseTask } from "./workbench";
+const identity = consoleIdentity.current.value;
 
 const props = defineProps<{
   draft: CheckDraft;
@@ -42,8 +45,9 @@ async function readTask() {
   reading.value = true;
   error.value = "";
   try {
-    const detail = await props.source.loadTask(id);
-    if (token !== generation) return;
+    const detail = await props.source.loadTask(identity, id);
+    if (token !== generation || consoleIdentity.current.value !== identity) return;
+    if (!canUseTask(detail.task, identity)) throw new Error("当前身份无法查看此任务。");
     observed.value = detail.task;
     readAt.value = Date.now();
   } catch (failure) {
@@ -125,7 +129,10 @@ onBeforeUnmount(() => {
     </p>
     <div v-if="observed" class="checks-recovery-observation" role="status">
       <strong>任务已记录 {{ quantity(observed.totalCount) }} 个号码</strong>
-      <TaskStatus :task="observed" :preview="source.previewState?.(observed.taskId)" />
+      <TaskStatus
+        :task="observed"
+        :preview="source.previewState?.(identity, observed.taskId)"
+      />
       <p class="checks-hint">
         读取于 {{ timestamp(readAt) }}。以上为任务快照，本次提交仍待人工核对。
       </p>

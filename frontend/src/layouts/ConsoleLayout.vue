@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, provide, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
+import { consoleIdentity, developmentIdentities } from "@/console-identity";
 import { Connection, Menu, Moon, Sunny, View } from "@element-plus/icons-vue";
 import ConsoleNavigation from "./ConsoleNavigation.vue";
+import ConfigErrorView from "@/views/ConfigErrorView.vue";
+import type { RuntimeViewerConfigError } from "@/runtime-viewer/types";
 
 import { createSmsAvailability, smsAvailabilityKey } from "@/sms/availability";
 import {
@@ -18,6 +21,7 @@ import { appCheckContextKey, createAppCheckContext } from "@/app-checks/context"
 import { ApiAppCheckTaskSource } from "@/app-checks/task-source";
 import { MockAppCheckTaskSource } from "@/app-checks/mock-task-source";
 
+defineProps<{ runtimeError?: RuntimeViewerConfigError }>();
 const demo = import.meta.env.VITE_RUNTIME_DATA_SOURCE === "mock";
 const appChecks = createAppCheckContext(
   demo ? new MockAppCheckTaskSource() : new ApiAppCheckTaskSource()
@@ -40,8 +44,10 @@ provide(
 provide(messageSessionKey, createMessageSession());
 const mobileNavigation = ref(false);
 onMounted(() => {
-  void sms.load();
-  void messages.load();
+  if (identity.value.role === "admin") {
+    void sms.load();
+    void messages.load();
+  }
   void appChecks.load();
 });
 onBeforeUnmount(() => {
@@ -51,6 +57,19 @@ onBeforeUnmount(() => {
 });
 const theme = useThemeStore();
 const route = useRoute();
+const router = useRouter();
+const identity = consoleIdentity.current;
+watch(
+  identity,
+  (next) => {
+    void router.replace("/app-checks");
+    if (next.role === "admin") {
+      void sms.load();
+      void messages.load();
+    }
+  },
+  { flush: "sync" }
+);
 watch(
   () => route.fullPath,
   () => {
@@ -132,6 +151,20 @@ onMounted(() => theme.apply());
           <el-breadcrumb-item>{{ pageTitle }}</el-breadcrumb-item>
         </el-breadcrumb>
         <div class="runtime-topbar__actions">
+          <span class="source-badge">开发身份 · {{ identity.role }}</span>
+          <el-select
+            :model-value="identity.userId"
+            aria-label="切换开发身份"
+            class="console-identity-selector"
+            @change="consoleIdentity.select(String($event))"
+          >
+            <el-option
+              v-for="entry in developmentIdentities"
+              :key="entry.userId"
+              :value="entry.userId"
+              :label="`${entry.displayName} · ${entry.userId}`"
+            />
+          </el-select>
           <span
             class="source-badge"
             :class="{
@@ -158,13 +191,22 @@ onMounted(() => theme.apply());
       </header>
 
       <main class="runtime-main">
-        <router-view />
+        <ConfigErrorView v-if="runtimeError" :error="runtimeError" />
+        <router-view v-else />
       </main>
     </div>
   </div>
 </template>
 
 <style>
+.el-select.console-identity-selector {
+  flex: 0 0 190px;
+  width: 190px;
+}
+.runtime-topbar__actions .source-badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 .el-button.console-menu-toggle {
   display: none;
 }

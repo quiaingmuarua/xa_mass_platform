@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  ref,
+  shallowRef,
+  toRef,
+  watch
+} from "vue";
+import { consoleIdentity, identityRouteAllowed } from "@/console-identity";
 import { useRoute, useRouter } from "vue-router";
 import { ElDialog } from "element-plus";
 import "element-plus/es/components/dialog/style/css";
@@ -9,9 +18,10 @@ import AppCheckPreviewDrawer from "./AppCheckPreviewDrawer.vue";
 import AppCheckConfiguration from "./AppCheckConfiguration.vue";
 import type { ConfigurationReadState } from "./configuration";
 import { appLabel, countryLabel, type Catalog, type CheckTask } from "./model";
-import type { AppCheckTaskSource } from "./task-source";
+import { AppCheckApiError, type AppCheckTaskSource } from "./task-source";
 import {
   createWorkbenchSession,
+  canUseTask,
   freshDraft,
   quantity,
   type WorkbenchSession,
@@ -27,13 +37,15 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ refreshConfiguration: [] }>();
 const session = props.session ?? createWorkbenchSession();
+const identity = consoleIdentity.current.value;
+const admin = identity.role === "admin";
 const route = useRoute(),
   router = useRouter();
 const taskId = computed(() =>
   typeof route.params.taskId === "string" ? route.params.taskId : undefined
 );
 const creating = computed(() => route.query.view === "create");
-const configuring = computed(() => route.query.view === "configuration");
+const configuring = computed(() => admin && route.query.view === "configuration");
 const listing = computed(() => !creating.value && !configuring.value);
 const listVisited = ref(false);
 const configurationView = ref<InstanceType<typeof AppCheckConfiguration>>();
@@ -56,9 +68,9 @@ const current = shallowRef<CheckTask>(),
 const listView = ref<InstanceType<typeof AppCheckList>>();
 const previewView = ref<InstanceType<typeof AppCheckPreviewDrawer>>();
 const importOpen = ref(false),
-  importTask = shallowRef<CheckTask>();
+  importTask = toRef(session, "importTask");
 const importForm = ref<InstanceType<typeof AppCheckCreate>>();
-const importSession = createWorkbenchSession();
+const importSession = session.import;
 const actionTask = shallowRef<CheckTask>(),
   confirmation = ref<"approve" | "close">();
 const displayConfirmation = ref<"approve" | "close">("approve");
@@ -120,20 +132,27 @@ async function loadList() {
   listBusy.value = true;
   listError.value = "";
   try {
-    const value = await props.source.listTasks();
+    const value = await props.source.listTasks(identity);
     if (disposed || token !== listGeneration) return;
-    tasks.value = value.tasks.slice(0, 100);
+    tasks.value = value.tasks
+      .slice(0, 100)
+      .filter((task) => canUseTask(task, identity));
     listReadAt.value = Date.now();
     truncated.value = value.truncated || value.tasks.length > 100;
     previews.value = Object.fromEntries(
       tasks.value.map((task) => [
         task.taskId,
-        props.source.previewState?.(task.taskId) ?? {}
+        props.source.previewState?.(identity, task.taskId) ?? {}
       ])
     );
   } catch (error) {
-    if (!disposed && token === listGeneration)
+    if (!disposed && token === listGeneration) {
+      if (error instanceof AppCheckApiError && error.status === 403) {
+        tasks.value = [];
+        previews.value = {};
+      }
       listError.value = error instanceof Error ? error.message : "任务读取失败";
+    }
   } finally {
     if (token === listGeneration) listBusy.value = false;
   }
@@ -186,6 +205,7 @@ function openCreate() {
 function openConfiguration(
   appId = session.configurationApp || props.catalog.apps[0].appId
 ) {
+  if (!admin || disposed) return;
   rememberList();
   configurationFromCreate.value = creating.value;
   void router.push({
@@ -200,6 +220,7 @@ function selectConfigurationApp(appId: string) {
   });
 }
 function created(id: string) {
+  if (disposed) return;
   newDraft();
   createdTaskId.value = id;
   notice.value = "任务已创建并导入，等待核对并启动。";
@@ -211,6 +232,7 @@ function endUnconfirmedDraft() {
   const draft = session.draft;
   if (!draft.uncertain || draft.busy) return;
   session.unconfirmedSubmissions.push({
+    userId: session.userId,
     requestId: draft.requestId,
     knownTaskId: draft.knownTaskId,
     appId: draft.appId,
@@ -236,6 +258,7 @@ function endImportDraft() {
   const draft = importSession.draft;
   if (!draft.uncertain || draft.busy) return;
   session.unconfirmedSubmissions.push({
+    userId: session.userId,
     requestId: draft.requestId,
     knownTaskId: draft.knownTaskId,
     appId: draft.appId,
@@ -259,7 +282,7 @@ async function openExport(task: CheckTask) {
   exportLoading.value = true;
   const token = ++exportGeneration;
   try {
-    const value = await props.source.exportCounts?.(task.taskId);
+    const value = await props.source.exportCounts?.(identity, task.taskId);
     if (token === exportGeneration && !disposed && exportOpen.value)
       counts.value = value;
   } catch (error) {
@@ -270,6 +293,7 @@ async function openExport(task: CheckTask) {
   }
 }
 function requestAction(task: CheckTask, action: TaskAction, trigger?: HTMLElement) {
+  if (disposed || !canUseTask(task, identity)) return;
   if (action === "preview") {
     openTask(task.taskId, trigger);
     return;
@@ -321,7 +345,7 @@ async function refreshVisible(targetId: string) {
 }
 async function perform(action: "approve" | "close") {
   const target = actionTask.value;
-  if (!target || actionBusy.value) return;
+  if (!target || disposed || !canUseTask(target, identity) || actionBusy.value) return;
   const method =
     action === "approve" ? props.source.approveTask : props.source.closeTask;
   if (!method) return;
@@ -330,7 +354,7 @@ async function perform(action: "approve" | "close") {
   actionError.value = "";
   dismissNotice();
   try {
-    await method.call(props.source, target.taskId, target.totalCount ?? 0);
+    await method.call(props.source, identity, target.taskId, target.totalCount ?? 0);
     if (disposed) return;
     confirmation.value = undefined;
     if (route.fullPath === origin)
@@ -353,14 +377,16 @@ async function perform(action: "approve" | "close") {
 }
 async function demo(action: "advance" | "complete" | "late") {
   const target = current.value;
-  if (!target || operationsBusy.value || detailStale.value) return;
+  if (!admin || disposed || !target || operationsBusy.value || detailStale.value)
+    return;
   const origin = route.fullPath;
   actionBusy.value = true;
   actionError.value = "";
   dismissNotice();
   try {
-    if (action === "complete") await props.source.completeTask?.(target.taskId);
-    else await props.source.advanceTask?.(target.taskId, action === "late");
+    if (action === "complete")
+      await props.source.completeTask?.(identity, target.taskId);
+    else await props.source.advanceTask?.(identity, target.taskId, action === "late");
     if (!disposed) await refreshVisible(target.taskId);
   } catch (error) {
     if (!disposed && route.fullPath === origin)
@@ -371,14 +397,21 @@ async function demo(action: "advance" | "complete" | "late") {
 }
 async function generateExport() {
   const target = actionTask.value;
-  if (!target || !props.source.exportTask || exportLoading.value) return;
+  if (
+    !target ||
+    disposed ||
+    !canUseTask(target, identity) ||
+    !props.source.exportTask ||
+    exportLoading.value
+  )
+    return;
   const token = ++exportGeneration,
     selected = exportFilter.value;
   exportLoading.value = true;
   exportError.value = "";
   clearExportFile();
   try {
-    const file = await props.source.exportTask(target.taskId, selected);
+    const file = await props.source.exportTask(identity, target.taskId, selected);
     if (disposed || token !== exportGeneration || !exportOpen.value) return;
     exportFile.value = {
       url: URL.createObjectURL(file.blob),
@@ -394,6 +427,26 @@ async function generateExport() {
   }
 }
 watch(exportFilter, clearExportFile);
+watch(
+  consoleIdentity.current,
+  (next) => {
+    if (next !== identity) {
+      disposed = true;
+      listGeneration++;
+      exportGeneration++;
+      clearExportFile();
+    }
+  },
+  { flush: "sync" }
+);
+watch(
+  () => route.fullPath,
+  () => {
+    if (!disposed && !identityRouteAllowed(identity, route))
+      void router.replace("/app-checks");
+  },
+  { immediate: true }
+);
 watch(exportOpen, (open) => {
   if (!open) {
     exportGeneration++;
@@ -414,7 +467,7 @@ watch(
       revealCreatedTask = false;
       if (listView.value?.revealTask(createdTaskId.value)) return;
     }
-    if (previous === false) {
+    if (previous === false || previous === undefined) {
       window.scrollTo({ top: session.listScroll, left: 0, behavior: "instant" });
       listView.value?.focusHeading();
     }
@@ -461,6 +514,7 @@ watch(
   { flush: "sync" }
 );
 onBeforeUnmount(() => {
+  rememberList();
   disposed = true;
   listGeneration++;
   exportGeneration++;
@@ -469,7 +523,7 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div class="checks-workspace" data-testid="app-check-workspace">
-    <nav class="checks-workspace-tabs" aria-label="应用注册查询工作区">
+    <nav v-if="admin" class="checks-workspace-tabs" aria-label="应用注册查询工作区">
       <router-link
         to="/app-checks"
         :aria-current="!configuring ? 'page' : undefined"
@@ -491,6 +545,14 @@ onBeforeUnmount(() => {
         >应用与运行策略</a
       >
     </nav>
+    <p
+      v-if="importSession.draft.uncertain && !importOpen"
+      class="checks-notice"
+      role="status"
+    >
+      本身份有一笔导入需要核对。
+      <button class="checks-link" @click="importOpen = true">恢复导入草稿</button>
+    </p>
     <div v-if="notice && !taskId && !configuring" role="status" class="checks-notice">
       <span>{{ notice }}</span>
       <button

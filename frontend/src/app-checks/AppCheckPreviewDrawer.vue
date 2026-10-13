@@ -12,7 +12,7 @@ import { ElDrawer } from "element-plus";
 import { Refresh, Search } from "@element-plus/icons-vue";
 import "element-plus/es/components/drawer/style/css";
 import { appLabel, countryLabel, type CheckDetail, type CheckTask } from "./model";
-import type { AppCheckTaskSource } from "./task-source";
+import { AppCheckApiError, type AppCheckTaskSource } from "./task-source";
 import type { ImportSnapshot } from "./import-model";
 import {
   filterResults,
@@ -32,6 +32,10 @@ import AppCheckDiagnostics from "./AppCheckDiagnostics.vue";
 import ConfigurationRows from "./ConfigurationRows.vue";
 import SimulationSummary from "./SimulationSummary.vue";
 import { savedTaskConfiguration } from "./configuration";
+import { consoleIdentity, identityLabel } from "@/console-identity";
+import { canUseTask } from "./workbench";
+const identity = consoleIdentity.current.value;
+const admin = identity.role === "admin";
 const props = defineProps<{
   source: AppCheckTaskSource;
   taskId?: string;
@@ -75,7 +79,9 @@ let generation = 0,
   disposed = false;
 const auxiliaryGeneration = { import: 0, activity: 0 };
 const preview = computed(() =>
-  detail.value ? (props.source.previewState?.(detail.value.task.taskId) ?? {}) : {}
+  detail.value
+    ? (props.source.previewState?.(identity, detail.value.task.taskId) ?? {})
+    : {}
 );
 const stage = computed(() => (detail.value ? taskStage(detail.value.task) : "unknown"));
 const resultPreview = computed(() => detail.value?.results.slice(0, 100) ?? []);
@@ -104,8 +110,8 @@ async function readAuxiliary(kind: Auxiliary) {
   try {
     const value =
       kind === "import"
-        ? await props.source.loadImport?.(id)
-        : await props.source.loadActivity?.(id);
+        ? await props.source.loadImport?.(identity, id)
+        : await props.source.loadActivity?.(identity, id);
     if (disposed || token !== auxiliaryGeneration[kind] || id !== props.taskId) return;
     if (kind === "import") imported.value = value as ImportSnapshot | undefined;
     else activities.value = (value as TaskActivity[] | undefined) ?? [];
@@ -133,8 +139,12 @@ async function refresh() {
   error.value = "";
   emit("loaded", detail.value?.task, true);
   try {
-    const value = await props.source.loadTask(id);
+    const value = await props.source.loadTask(identity, id);
     if (disposed || token !== generation || id !== props.taskId) return;
+    if (!canUseTask(value.task, identity)) {
+      detail.value = undefined;
+      throw new Error("当前身份无法查看此任务，请返回自己的任务列表。");
+    }
     const previous = detail.value?.task.state;
     if (
       !detail.value ||
@@ -148,6 +158,11 @@ async function refresh() {
     if (activityOpen.value) void readAuxiliary("activity");
   } catch (failure) {
     if (!disposed && token === generation && id === props.taskId) {
+      if (failure instanceof AppCheckApiError && failure.status === 403) {
+        detail.value = undefined;
+        imported.value = undefined;
+        activities.value = [];
+      }
       error.value = failure instanceof Error ? failure.message : "任务读取失败";
       emit("loaded", detail.value?.task, true);
     }
@@ -158,6 +173,18 @@ async function refresh() {
 function focusHeading() {
   heading.value?.focus({ preventScroll: true });
 }
+watch(
+  consoleIdentity.current,
+  (next) => {
+    if (next !== identity) {
+      disposed = true;
+      generation++;
+      navigation++;
+      invalidateAuxiliary();
+    }
+  },
+  { flush: "sync" }
+);
 watch(
   () => props.taskId,
   async (id) => {
@@ -233,7 +260,8 @@ defineExpose({ refresh, focusHeading });
               ><TaskStatus :task="detail.task" :preview="preview" />
             </div>
             <p class="checks-hint">
-              号码总量 {{ quantity(detail.task.totalCount) }} · 未结束
+              创建者 {{ identityLabel(detail.task.userId) }} · 号码总量
+              {{ quantity(detail.task.totalCount) }} · 未结束
               {{ quantity(detail.task.activeCount) }}
             </p>
             <small class="checks-hint">最近读取 {{ timestamp(readAt) }}</small>
@@ -367,7 +395,7 @@ defineExpose({ refresh, focusHeading });
             {{ detail.task.configurationError }}
           </p>
           <button
-            v-if="detail.task.appId"
+            v-if="admin && detail.task.appId"
             class="checks-link"
             @click="emit('configuration', detail.task.appId)"
           >
@@ -433,7 +461,7 @@ defineExpose({ refresh, focusHeading });
             </ol>
           </template>
         </details>
-        <AppCheckDiagnostics :detail="detail" :busy="busy">
+        <AppCheckDiagnostics v-if="admin" :detail="detail" :busy="busy">
           <div v-if="source.mode === 'mock'" class="checks-demo-tools">
             <strong>演示控制</strong>
             <div class="checks-actions">

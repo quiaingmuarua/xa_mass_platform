@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ConsoleIdentity } from "@/console-identity";
 import {
   configurationViewSchema,
   type AppCheckSettings,
@@ -16,33 +17,52 @@ import {
   type CreateCheckTask
 } from "./model";
 
+export type AppCheckCaller = Readonly<Pick<ConsoleIdentity, "userId" | "role">>;
 export interface AppCheckTaskSource {
   readonly mode: "api" | "mock";
   catalog(signal?: AbortSignal): Promise<Catalog>;
-  loadConfiguration(): Promise<AppCheckConfigurationView>;
+  loadConfiguration(caller: AppCheckCaller): Promise<AppCheckConfigurationView>;
   saveConfiguration(
+    caller: AppCheckCaller,
     expectedRevision: number,
     configuration: AppCheckSettings
   ): Promise<AppCheckConfigurationView>;
-  simulateConfigurationRestart?(): Promise<void>;
-  listTasks(): Promise<{ tasks: CheckTask[]; truncated: boolean }>;
-  loadTask(taskId: string): Promise<CheckDetail>;
-  createTask(input: CreateCheckTask): Promise<{ taskId: string }>;
+  simulateConfigurationRestart?(caller: AppCheckCaller): Promise<void>;
+  listTasks(
+    caller: AppCheckCaller
+  ): Promise<{ tasks: CheckTask[]; truncated: boolean }>;
+  loadTask(caller: AppCheckCaller, taskId: string): Promise<CheckDetail>;
+  createTask(
+    caller: AppCheckCaller,
+    input: CreateCheckTask
+  ): Promise<{ taskId: string }>;
   importNumbers?(
+    caller: AppCheckCaller,
     taskId: string,
     file: Blob,
     summary?: ImportSnapshot
   ): Promise<ImportReceipt>;
   // Explicit Mock interactions for the design preview; the API capabilities remain unchanged.
-  approveTask?(taskId: string, expectedCount: number): Promise<void>;
-  closeTask?(taskId: string): Promise<void>;
-  advanceTask?(taskId: string, late?: boolean): Promise<void>;
-  completeTask?(taskId: string): Promise<void>;
-  previewState?(taskId: string): PreviewState;
-  loadImport?(taskId: string): Promise<ImportSnapshot | undefined>;
-  loadActivity?(taskId: string): Promise<TaskActivity[]>;
-  exportCounts?(taskId: string): Promise<Record<ExportFilter, number>>;
+  approveTask?(
+    caller: AppCheckCaller,
+    taskId: string,
+    expectedCount: number
+  ): Promise<void>;
+  closeTask?(caller: AppCheckCaller, taskId: string): Promise<void>;
+  advanceTask?(caller: AppCheckCaller, taskId: string, late?: boolean): Promise<void>;
+  completeTask?(caller: AppCheckCaller, taskId: string): Promise<void>;
+  previewState?(caller: AppCheckCaller, taskId: string): PreviewState;
+  loadImport?(
+    caller: AppCheckCaller,
+    taskId: string
+  ): Promise<ImportSnapshot | undefined>;
+  loadActivity?(caller: AppCheckCaller, taskId: string): Promise<TaskActivity[]>;
+  exportCounts?(
+    caller: AppCheckCaller,
+    taskId: string
+  ): Promise<Record<ExportFilter, number>>;
   exportTask?(
+    caller: AppCheckCaller,
     taskId: string,
     filter: "all" | "registered" | "unregistered"
   ): Promise<{ blob: Blob; fileName: string; count: number }>;
@@ -55,6 +75,34 @@ export class AppCheckApiError extends Error {
   ) {
     super(message);
   }
+}
+export function requireCaller(caller: AppCheckCaller): AppCheckCaller {
+  if (
+    !caller ||
+    typeof caller.userId !== "string" ||
+    !caller.userId.trim() ||
+    caller.userId.trim().length > 128 ||
+    !["admin", "operator"].includes(caller.role)
+  )
+    throw new AppCheckApiError(400, "开发调用方无效");
+  return Object.freeze({ userId: caller.userId.trim(), role: caller.role });
+}
+export function requireAdminCaller(caller: AppCheckCaller) {
+  if (requireCaller(caller).role !== "admin")
+    throw new AppCheckApiError(403, "当前操作仅对管理员开发身份开放");
+}
+export function requireTaskCaller(caller: AppCheckCaller, task: CheckTask) {
+  const value = requireCaller(caller);
+  if (value.role !== "admin" && value.userId !== task.userId)
+    throw new AppCheckApiError(403, "当前开发身份不能访问此任务");
+}
+export function callerHeaders(caller: AppCheckCaller): Record<string, string> {
+  const value = requireCaller(caller);
+  const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(value.userId)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return { "X-XA-Dev-User": encoded, "X-XA-Dev-Role": value.role };
 }
 export class AppCheckCreationUnconfirmed extends Error {
   constructor(public readonly taskId?: string) {
@@ -92,11 +140,15 @@ async function requireResponse(response: Response): Promise<Response> {
 async function request(
   path: string,
   body?: unknown,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  caller?: AppCheckCaller
 ): Promise<unknown> {
   const response = await fetch(`/api/v1/app-checks${path}`, {
     method: body === undefined ? "GET" : "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(caller ? callerHeaders(caller) : {})
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal
   });
@@ -108,15 +160,24 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
   async catalog(signal?: AbortSignal) {
     return catalogSchema.parse(await request("/catalog", undefined, signal));
   }
-  async loadConfiguration() {
-    return configurationViewSchema.parse(await request("/configuration"));
+  async loadConfiguration(caller: AppCheckCaller) {
+    return configurationViewSchema.parse(
+      await request("/configuration", undefined, undefined, caller)
+    );
   }
-  async saveConfiguration(expectedRevision: number, configuration: AppCheckSettings) {
+  async saveConfiguration(
+    caller: AppCheckCaller,
+    expectedRevision: number,
+    configuration: AppCheckSettings
+  ) {
     try {
       const response = await requireResponse(
         await fetch("/api/v1/app-checks/configuration", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(caller ? callerHeaders(caller) : {})
+          },
           body: JSON.stringify({ expectedRevision, configuration })
         })
       );
@@ -132,18 +193,27 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
       throw new AppCheckConfigurationUnconfirmed();
     }
   }
-  async listTasks() {
-    return listSchema.parse(await request("/tasks?limit=100"));
+  async listTasks(caller: AppCheckCaller) {
+    return listSchema.parse(
+      await request("/tasks?limit=100", undefined, undefined, caller)
+    );
   }
-  async loadTask(taskId: string) {
+  async loadTask(caller: AppCheckCaller, taskId: string) {
     const value = detailSchema.parse(
-      await request(`/tasks/${encodeURIComponent(taskId)}`)
+      await request(
+        `/tasks/${encodeURIComponent(taskId)}`,
+        undefined,
+        undefined,
+        caller
+      )
     );
     if (value.task.taskId !== taskId) throw new Error("返回的任务身份不符");
     return value;
   }
-  async createTask(input: CreateCheckTask) {
+  async createTask(caller: AppCheckCaller, input: CreateCheckTask) {
     try {
+      if ("userId" in input || "role" in input)
+        throw new AppCheckApiError(400, "Unknown application check fields");
       const requestBody = {
         requestId: input.requestId,
         appId: input.appId,
@@ -152,7 +222,7 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
       };
       return z
         .object({ taskId: z.string().min(1) })
-        .parse(await request("/tasks", requestBody));
+        .parse(await request("/tasks", requestBody, undefined, caller));
     } catch (error) {
       if (
         error instanceof AppCheckApiError &&
@@ -167,6 +237,7 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
     }
   }
   async importNumbers(
+    caller: AppCheckCaller,
     taskId: string,
     file: Blob,
     summary?: ImportSnapshot
@@ -177,7 +248,10 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
           `/api/v1/app-checks/tasks/${encodeURIComponent(taskId)}/numbers:import`,
           {
             method: "POST",
-            headers: { "Content-Type": "text/plain;charset=UTF-8" },
+            headers: {
+              "Content-Type": "text/plain;charset=UTF-8",
+              ...callerHeaders(caller)
+            },
             body: file
           }
         )
@@ -209,21 +283,27 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
       );
     }
   }
-  async loadImport(taskId: string) {
+  async loadImport(caller: AppCheckCaller, taskId: string) {
+    requireCaller(caller);
     const saved = this.imports.get(taskId);
     return saved ? structuredClone(saved) : undefined;
   }
-  async approveTask(taskId: string, expectedCount: number) {
-    await request(`/tasks/${encodeURIComponent(taskId)}/approve`, expectedCount);
+  async approveTask(caller: AppCheckCaller, taskId: string, expectedCount: number) {
+    await request(
+      `/tasks/${encodeURIComponent(taskId)}/approve`,
+      expectedCount,
+      undefined,
+      caller
+    );
   }
-  async closeTask(taskId: string) {
-    await request(`/tasks/${encodeURIComponent(taskId)}/close`, {});
+  async closeTask(caller: AppCheckCaller, taskId: string) {
+    await request(`/tasks/${encodeURIComponent(taskId)}/close`, {}, undefined, caller);
   }
-  async exportTask(taskId: string, filter: ExportFilter) {
+  async exportTask(caller: AppCheckCaller, taskId: string, filter: ExportFilter) {
     const response = await requireResponse(
       await fetch(
         `/api/v1/app-checks/tasks/${encodeURIComponent(taskId)}/results:export?filter=${filter}`,
-        { method: "POST" }
+        { method: "POST", headers: callerHeaders(caller) }
       )
     );
     const header = response.headers.get("X-Export-Count");

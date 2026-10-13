@@ -1,3 +1,4 @@
+import { CALLER } from "./app-check-fixture";
 import { importedTask } from "./app-check-fixture";
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -206,7 +207,7 @@ describe("App Checks product workspace", () => {
     await settle();
     expect(create).toHaveBeenCalledTimes(1);
     expect(imports).toHaveBeenCalledTimes(2);
-    expect((await source.loadTask("mock-check-1")).task.totalCount).toBe(2);
+    expect((await source.loadTask(CALLER, "mock-check-1")).task.totalCount).toBe(2);
     expect(router.currentRoute.value.path).toBe("/app-checks");
   });
   it("adds a file through the pending task menu and confirms existing numbers separately", async () => {
@@ -230,12 +231,12 @@ describe("App Checks product workspace", () => {
       .querySelector("#app-check-import")!
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await settle();
-    expect((await source.loadTask(taskId)).task).toMatchObject({
+    expect((await source.loadTask(CALLER, taskId)).task).toMatchObject({
       state: "pre_review",
       totalCount: 2,
       activeCount: 2
     });
-    expect((await source.loadImport(taskId))?.receipt).toMatchObject({
+    expect((await source.loadImport(CALLER, taskId))?.receipt).toMatchObject({
       addedCount: 1,
       existingCount: 1
     });
@@ -248,8 +249,14 @@ describe("App Checks product workspace", () => {
       country: "CN" as const,
       simulation: mockCatalog.simulationExample
     };
-    const first = await source.createTask({ ...config, requestId: "first-import" });
-    const second = await source.createTask({ ...config, requestId: "second-import" });
+    const first = await source.createTask(CALLER, {
+      ...config,
+      requestId: "first-import"
+    });
+    const second = await source.createTask(CALLER, {
+      ...config,
+      requestId: "second-import"
+    });
     const imports = vi
       .spyOn(source, "importNumbers")
       .mockRejectedValueOnce(new AppCheckImportUnconfirmed(first.taskId));
@@ -270,12 +277,15 @@ describe("App Checks product workspace", () => {
     expect(field("号码列表").value).toBe("8613800000001");
     button("重新导入当前号码").click();
     await settle();
-    expect(imports.mock.calls.map(([id]) => id)).toEqual([first.taskId, first.taskId]);
-    expect((await source.loadTask(first.taskId)).task.totalCount).toBe(1);
-    expect((await source.loadTask(second.taskId)).task.totalCount).toBe(0);
+    expect(imports.mock.calls.map(([, id]) => id)).toEqual([
+      first.taskId,
+      first.taskId
+    ]);
+    expect((await source.loadTask(CALLER, first.taskId)).task.totalCount).toBe(1);
+    expect((await source.loadTask(CALLER, second.taskId)).task.totalCount).toBe(0);
   });
   it("keeps unavailable state only in all tasks and offers independent preview", async () => {
-    const task = (await source.loadTask("check-mixed")).task;
+    const task = (await source.loadTask(CALLER, "check-mixed")).task;
     vi.spyOn(source, "listTasks").mockResolvedValue({
       tasks: [{ ...task, state: null }],
       truncated: false
@@ -466,7 +476,7 @@ describe("App Checks product workspace", () => {
     vi.setSystemTime(new Date("2026-10-09T12:00:00Z"));
     const createdIds: string[] = [];
     for (let i = 0; i < 101; i++) {
-      const created = await source.createTask({
+      const created = await source.createTask(CALLER, {
         requestId: "bounded-" + i,
         appId: "app-a",
         country: "CN",
@@ -480,7 +490,7 @@ describe("App Checks product workspace", () => {
     expect(document.querySelectorAll(".checks-task-table tbody tr")).toHaveLength(100);
     expect(document.body.textContent).toContain("列表未完整加载");
     expect(document.body.textContent).toContain("当前载入 100 个");
-    input("搜索查询任务", (await source.loadTask(createdIds[0])).task.name!);
+    input("搜索查询任务", (await source.loadTask(CALLER, createdIds[0])).task.name!);
     await settle();
     expect(document.querySelectorAll(".checks-task-table tbody tr")).toHaveLength(0);
     input("搜索查询任务", "");
@@ -489,7 +499,7 @@ describe("App Checks product workspace", () => {
     await settle();
     expect(read).toHaveBeenCalledTimes(1);
     read.mockResolvedValueOnce({
-      tasks: [(await source.loadTask(createdIds[100])).task],
+      tasks: [(await source.loadTask(CALLER, createdIds[100])).task],
       truncated: false
     });
     button("刷新").click();
@@ -565,9 +575,11 @@ describe("App Checks product workspace", () => {
       "当前仍为已粘贴"
     );
     await submit();
-    expect(create.mock.calls[0][0]).not.toHaveProperty("numbers");
+    expect(create.mock.calls[0][1]).not.toHaveProperty("numbers");
     const { taskId } = await create.mock.results[0].value;
-    expect((await source.loadImport(taskId))?.sourceFile).toBe("replacement.txt");
+    expect((await source.loadImport(CALLER, taskId))?.sourceFile).toBe(
+      "replacement.txt"
+    );
   });
   it("shows preview scope beside the filters without deriving overall quantities from it", async () => {
     await mount("/app-checks/tasks/check-delivered");
@@ -685,8 +697,8 @@ describe("App Checks product workspace", () => {
       numbers,
       simulation: mockCatalog.simulationExample
     });
-    await source.approveTask(taskId, numbers.length);
-    await source.completeTask(taskId);
+    await source.approveTask(CALLER, taskId, numbers.length);
+    await source.completeTask(CALLER, taskId);
     const read = vi.spyOn(source, "loadTask");
     const exported = vi.spyOn(source, "exportTask");
     vi.stubGlobal(
@@ -724,7 +736,11 @@ describe("App Checks product workspace", () => {
     );
     button("生成 CSV 文件").click();
     await settle();
-    expect(exported).toHaveBeenCalledExactlyOnceWith(taskId, "all");
+    expect(exported).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ userId: "admin", role: "admin" }),
+      taskId,
+      "all"
+    );
     expect(document.querySelector("a[download]")?.getAttribute("href")).toBe(
       "blob:complete-export"
     );
@@ -738,7 +754,10 @@ describe("App Checks product workspace", () => {
     const { router } = await mount("/app-checks/tasks/check-delivered");
     expect(read).not.toHaveBeenCalled();
     await expand("导入摘要");
-    expect(read).toHaveBeenCalledExactlyOnceWith("check-delivered");
+    expect(read).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ userId: "admin", role: "admin" }),
+      "check-delivered"
+    );
     expect(document.body.textContent).toContain("october_existing_numbers.txt");
     expect(document.body.textContent).toContain("最终提交12,800");
     expect(disclosure("导入摘要").querySelector("table")).toBeNull();
@@ -810,7 +829,7 @@ describe("App Checks product workspace", () => {
     expect(document.querySelector("#app-check-create table")).toBeNull();
     await submit();
     expect(create).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0][0]).toMatchObject({
+    expect(create.mock.calls[0][1]).toMatchObject({
       simulation: mockCatalog.simulationExample
     });
     pending.resolve({ taskId: "check-review" });
@@ -892,7 +911,7 @@ describe("App Checks product workspace", () => {
       input("号码列表", "8613800000001\n8613800000002");
       await settle();
       await submit();
-      const originalRequestId = create.mock.calls[0][0].requestId;
+      const originalRequestId = create.mock.calls[0][1].requestId;
       expect(session.draft.uncertain).toBe(true);
       expect(
         document.querySelector<HTMLButtonElement>(
@@ -903,7 +922,10 @@ describe("App Checks product workspace", () => {
       if (knownTaskId) {
         button("读取关联任务").click();
         await settle();
-        expect(read).toHaveBeenCalledExactlyOnceWith(knownTaskId);
+        expect(read).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ userId: "admin", role: "admin" }),
+          knownTaskId
+        );
         expect(
           document.querySelector(".checks-recovery-observation")?.textContent
         ).toContain("任务已记录 1 个号码");
@@ -997,8 +1019,14 @@ describe("App Checks product workspace", () => {
     expect(approve).not.toHaveBeenCalled();
     button("确认启动").click();
     await settle();
-    expect(approve).toHaveBeenCalledWith("check-review", 24000);
-    expect((await source.loadTask("check-review")).task.state).toBe("running_visible");
+    expect(approve).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "admin", role: "admin" }),
+      "check-review",
+      24000
+    );
+    expect((await source.loadTask(CALLER, "check-review")).task.state).toBe(
+      "running_visible"
+    );
     expect(document.body.textContent).toContain("任务已核对并启动");
     expect(field("搜索查询号码")).not.toBeNull();
   });
@@ -1023,7 +1051,7 @@ describe("App Checks product workspace", () => {
     expect(menuItem("导出结果").getAttribute("aria-disabled")).toBe("true");
   });
   it("shows the legacy supply reason for import and approval while leaving cancellation available", async () => {
-    const detail = await source.loadTask("check-review");
+    const detail = await source.loadTask(CALLER, "check-review");
     detail.task.inputUnavailableReason = "旧供给配置任务不支持继续导入或启动";
     vi.spyOn(source, "loadTask").mockResolvedValue(detail);
     await mount("/app-checks/tasks/check-review");
@@ -1043,7 +1071,7 @@ describe("App Checks product workspace", () => {
     const search = field("搜索查询号码");
     search.focus();
     input("搜索查询号码", "138");
-    delayed.resolve(await new MockAppCheckTaskSource().loadTask("check-mixed"));
+    delayed.resolve(await new MockAppCheckTaskSource().loadTask(CALLER, "check-mixed"));
     await settle();
     expect(drawer().querySelector(".checks-preview-title")?.textContent).toBe(
       "补充号码查询"
@@ -1089,6 +1117,6 @@ describe("App Checks product workspace", () => {
     await settle();
     await submit();
     expect(create).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0][0].requestId).toMatch(/^app-check-/);
+    expect(create.mock.calls[0][1].requestId).toMatch(/^app-check-/);
   });
 });

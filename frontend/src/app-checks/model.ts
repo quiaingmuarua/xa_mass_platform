@@ -63,6 +63,7 @@ export const taskStateLabels = {
 };
 export const taskSchema = z.object({
   taskId: z.string().min(1),
+  userId: z.string().min(1).optional(),
   name: z.string().optional(),
   createdAtMillis: integer,
   workerGroupId: z.string().nullable(),

@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class AppCheckTaskServiceTest {
+    static final AppCheckCaller CALLER = new AppCheckCaller("proof", "admin");
     final ProjectDirectory projects = mock(ProjectDirectory.class);
     final ProjectTaskQueryService queries = mock(ProjectTaskQueryService.class);
     final TaskCreationService creation = mock(TaskCreationService.class);
@@ -47,7 +48,7 @@ class AppCheckTaskServiceTest {
         service.start(); return service;
     }
     ProjectTaskQueryService.Entry entry(String id, String state, boolean modern) {
-        var metadata = new HashMap<>(Map.of("scenario", "app-checks", "appId", "app-a", "country", "CN", "simulation", Jsons.toJson(simulation()), "salt", "fixed"));
+        var metadata = new HashMap<>(Map.of("scenario", "app-checks", "userId", "proof", "appId", "app-a", "country", "CN", "simulation", Jsons.toJson(simulation()), "salt", "fixed"));
         if (modern) metadata.put("inputVersion", "2");
         return new ProjectTaskQueryService.Entry(id, 1, new TaskView(id, "app-checks", "app-a-sim", "CLOSE_WHEN_IDLE",
                 List.of(RefillTarget.of(modern ? "assignment-window" : "any", new EligibilityQuery(Map.of()), 100)), Map.of(), "test", metadata), state);
@@ -63,35 +64,75 @@ class AppCheckTaskServiceTest {
     @Test void createsOnlyAnEmptyTaskAndDoesNotRetainAFiftyRequestBudget() {
         try (var service = service()) {
             var unknown = request(); unknown.put("appId", "not-configured");
-            assertThatThrownBy(() -> service.create(unknown)).hasMessageContaining("Unsupported appId");
-            for (int i = 0; i < 51; i++) { var input = request(); input.put("requestId", "r" + i); service.create(input); }
+            assertThatThrownBy(() -> service.create(CALLER, unknown)).hasMessageContaining("Unsupported appId");
+            for (int i = 0; i < 51; i++) { var input = request(); input.put("requestId", "r" + i); service.create(CALLER, input); }
             verify(creation, times(51)).createForRequest(argThat(req -> req.metadata().get("inputVersion").equals("2")
                     && !req.metadata().containsKey("numbers") && req.refill().getFirst().poolName().equals("assignment-window")), anyString(), anyString());
             verifyNoInteractions(data, lifecycle);
             var invalid = request(); invalid.put("numbers", List.of("+86123"));
-            assertThatThrownBy(() -> service.create(invalid)).hasMessageContaining("Unknown");
+            assertThatThrownBy(() -> service.create(CALLER, invalid)).hasMessageContaining("Unknown");
             when(creation.createForRequest(any(), anyString(), anyString())).thenThrow(new TaskCreationUnconfirmedException("stable", null));
-            assertThatThrownBy(() -> service.create(request())).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class,
+            assertThatThrownBy(() -> service.create(CALLER, request())).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class,
                     error -> assertThat(error.taskId).isEqualTo("stable"));
         }
     }
     @Test void creationFingerprintAndVersionedSaltAreStableWithoutInputNumbers() {
-        var first = AppCheckSpecification.parse(request());
+        var first = AppCheckSpecification.parse(CALLER, request());
         var other = request(); other.put("requestId", "other");
-        var second = AppCheckSpecification.parse(other);
+        var second = AppCheckSpecification.parse(CALLER, other);
         assertThat(first.fingerprint()).isEqualTo(second.fingerprint());
         assertThat(first.salt(LocalDate.of(2026, 9, 18))).isNotEqualTo(second.salt(LocalDate.of(2026, 9, 18)));
         other.put("simulation", Map.of());
-        assertThatThrownBy(() -> AppCheckSpecification.parse(other)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> AppCheckSpecification.parse(CALLER, other)).isInstanceOf(IllegalArgumentException.class);
+    }
+    @Test void creatorComesOnlyFromCallerAndRemainsInTheCreationFingerprint() {
+        var first = AppCheckSpecification.parse(new AppCheckCaller("  Caller-A  ", "operator"), request());
+        var same = AppCheckSpecification.parse(new AppCheckCaller("Caller-A", "admin"), request());
+        var other = AppCheckSpecification.parse(new AppCheckCaller("caller-a", "operator"), request());
+        assertThat(first.fingerprint()).isEqualTo(same.fingerprint()).isNotEqualTo(other.fingerprint());
+        assertThat(first.salt(LocalDate.of(2026, 10, 13))).isEqualTo(other.salt(LocalDate.of(2026, 10, 13)));
+        try (var service = service()) {
+            service.create(new AppCheckCaller("caller-not-in-ui", "operator"), request());
+            verify(creation).createForRequest(argThat(req -> "caller-not-in-ui".equals(req.metadata().get("userId"))
+                    && !req.metadata().containsKey("role")), eq("request"), anyString());
+        }
+        for (String field : List.of("userId", "role")) {
+            var input = request(); input.put(field, "admin");
+            assertThatThrownBy(() -> AppCheckSpecification.parse(CALLER, input)).hasMessageContaining("Unknown");
+        }
+    }
+    @Test void foreignTaskRejectionPrecedesFileAndResourceEffects() {
+        try (var service = service()) {
+            var foreign = new AppCheckCaller("other", "operator");
+            var unreadable = new InputStream() { public int read() { throw new AssertionError("must not read upload"); } };
+            for (org.assertj.core.api.ThrowableAssert.ThrowingCallable call : List.<org.assertj.core.api.ThrowableAssert.ThrowingCallable>of(
+                    () -> service.get(foreign, "task"), () -> service.importNumbers(foreign, "task", unreadable),
+                    () -> service.approve(foreign, "task", 1), () -> service.closeTask(foreign, "task"),
+                    () -> service.export(foreign, "task", "all")))
+                assertThatThrownBy(call).isInstanceOfSatisfying(AppCheckAccessException.class, error -> assertThat(error.status).isEqualTo(403));
+            verifyNoInteractions(data, lifecycle, exports, creation);
+            service.closeTask(new AppCheckCaller("proof", "operator"), "task");
+            verify(lifecycle).close("task");
+        }
+    }
+    @Test void filtersTheExistingProjectWindowBeforeCountsWithoutRefillingIt() {
+        try (var service = service()) {
+            when(queries.list("app-checks", 100)).thenReturn(new ProjectTaskQueryService.ProjectTasks("app-checks",
+                    IntStream.range(0, 100).mapToObj(i -> entry("task-" + i, "pre_review", true)).toList(), true));
+            assertThat(service.list(new AppCheckCaller("other", "operator"), 100))
+                    .containsEntry("tasks", List.of()).containsEntry("truncated", true);
+            verify(queries).list("app-checks", 100);
+            verifyNoInteractions(data);
+        }
     }
     @Test void importsOneHundredThousandNumbersInBoundedBatchesWithoutApproval() {
         try (var service = service()) {
             String text = IntStream.range(0, 100000).mapToObj(i -> "86138" + String.format("%08d", i)).collect(java.util.stream.Collectors.joining("\n"));
-            var report = service.importNumbers("task", file(text + "\n+8613800000000\n\n"));
+            var report = service.importNumbers(CALLER, "task", file(text + "\n+8613800000000\n\n"));
             assertThat(report.uniqueCount()).isEqualTo(100000);
             assertThat(report.addedCount()).isEqualTo(100000);
             assertThat(report.duplicateCount()).isEqualTo(1);
-            assertThatThrownBy(() -> service.importNumbers("task", file(text + "\n8613900000000"))).hasMessageContaining("100,000");
+            assertThatThrownBy(() -> service.importNumbers(CALLER, "task", file(text + "\n8613900000000"))).hasMessageContaining("100,000");
             verify(data, times(1000)).importFiniteTaskItems(eq("task"), argThat(batch -> batch.size() == 100
                     && batch.stream().allMatch(item -> item.ttlMillis() == null && item.payload().get("salt").equals("fixed"))));
             verifyNoInteractions(creation, lifecycle);
@@ -99,9 +140,9 @@ class AppCheckTaskServiceTest {
     }
     @Test void validatesTheWholeFileBeforeWritesAndAlwaysDeletesTheSpool() throws Exception {
         try (var service = service()) {
-            assertThatThrownBy(() -> service.importNumbers("task", file("86123\nwrong"))).hasMessageContaining("第 2 行");
-            assertThatThrownBy(() -> service.importNumbers("task", new ByteArrayInputStream(new byte[]{(byte)0xc3, 0x28}))).hasMessageContaining("UTF-8");
-            assertThatThrownBy(() -> service.importNumbers("task", file("1".repeat(AppCheckNumberFile.MAX_BYTES + 1)))).hasMessageContaining("10 MiB");
+            assertThatThrownBy(() -> service.importNumbers(CALLER, "task", file("86123\nwrong"))).hasMessageContaining("第 2 行");
+            assertThatThrownBy(() -> service.importNumbers(CALLER, "task", new ByteArrayInputStream(new byte[]{(byte)0xc3, 0x28}))).hasMessageContaining("UTF-8");
+            assertThatThrownBy(() -> service.importNumbers(CALLER, "task", file("1".repeat(AppCheckNumberFile.MAX_BYTES + 1)))).hasMessageContaining("10 MiB");
             verify(data, never()).importFiniteTaskItems(anyString(), anyList());
             var spool = AppCheckNumberFile.read(file("\uFEFF86123\r\n +86123 \r\n"), "CN");
             assertThat(spool.duplicateCount()).isEqualTo(1);
@@ -118,23 +159,23 @@ class AppCheckTaskServiceTest {
             })
                     .thenThrow(new IllegalStateException());
             String text = IntStream.range(0, 101).mapToObj(i -> "86138" + String.format("%08d", i)).collect(java.util.stream.Collectors.joining("\n"));
-            assertThatThrownBy(() -> service.importNumbers("task", file(text))).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class,
+            assertThatThrownBy(() -> service.importNumbers(CALLER, "task", file(text))).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class,
                     error -> { assertThat(error.status).isEqualTo(503); assertThat(error.taskId).isEqualTo("task");
                         assertThat(error.confirmedAdded).isEqualTo(100L); assertThat(error.existing).isZero(); });
             verify(data, times(2)).importFiniteTaskItems(eq("task"), anyList());
             when(data.observeItemScoreCounts(List.of("task"))).thenReturn(Map.of("task", new TaskItemScoreCounts(100, Map.of(1, 100L))));
-            assertThatThrownBy(() -> service.approve("task", 101)).hasMessageContaining("数量");
-            service.approve("task", 100); verify(lifecycle).approve("task");
+            assertThatThrownBy(() -> service.approve(CALLER, "task", 101)).hasMessageContaining("数量");
+            service.approve(CALLER, "task", 100); verify(lifecycle).approve("task");
             when(queries.get("app-checks", "task")).thenReturn(entry("task", "terminal", true));
-            assertThatThrownBy(() -> service.importNumbers("task", file("86123"))).hasMessageContaining("待审核");
+            assertThatThrownBy(() -> service.importNumbers(CALLER, "task", file("86123"))).hasMessageContaining("待审核");
         }
     }
     @Test void oldTasksRemainReadableButCannotAcceptNewNumberIdentities() {
         try (var service = service()) {
             when(queries.get("app-checks", "task")).thenReturn(entry("task", "pre_review", false));
-            assertThatThrownBy(() -> service.importNumbers("task", file("86123"))).hasMessageContaining("旧供给配置");
-            assertThatThrownBy(() -> service.approve("task", 1)).hasMessageContaining("旧供给配置");
-            service.closeTask("task"); verify(lifecycle).close("task");
+            assertThatThrownBy(() -> service.importNumbers(CALLER, "task", file("86123"))).hasMessageContaining("旧供给配置");
+            assertThatThrownBy(() -> service.approve(CALLER, "task", 1)).hasMessageContaining("旧供给配置");
+            service.closeTask(CALLER, "task"); verify(lifecycle).close("task");
         }
     }
     @Test void importConcurrencyIsReleasedAfterEachFile() throws Exception {
@@ -145,12 +186,12 @@ class AppCheckTaskServiceTest {
                 List<TaskItemRequest> items = call.getArgument(1);
                 return Map.of(items.getFirst().messageId(), ActionOutcome.applied());
             });
-            var a = executor.submit(() -> service.importNumbers("a", file("86123")));
-            var b = executor.submit(() -> service.importNumbers("b", file("86123")));
+            var a = executor.submit(() -> service.importNumbers(CALLER, "a", file("86123")));
+            var b = executor.submit(() -> service.importNumbers(CALLER, "b", file("86123")));
             try { assertThat(entered.await(2, TimeUnit.SECONDS)).isTrue();
-                assertThatThrownBy(() -> service.importNumbers("c", file("86123"))).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class, e -> assertThat(e.status).isEqualTo(429));
+                assertThatThrownBy(() -> service.importNumbers(CALLER, "c", file("86123"))).isInstanceOfSatisfying(AppCheckTaskService.RequestFailure.class, e -> assertThat(e.status).isEqualTo(429));
             } finally { release.countDown(); }
-            a.get(); b.get(); assertThat(service.importNumbers("c", file("86123")).addedCount()).isEqualTo(1);
+            a.get(); b.get(); assertThat(service.importNumbers(CALLER, "c", file("86123")).addedCount()).isEqualTo(1);
         }
     }
     @Test void queriesStoredTruthWithoutLocalSubmissionAndPreservesBadContentRows() {
@@ -168,7 +209,7 @@ class AppCheckTaskServiceTest {
                     new TaskDataService.ResultEntry("one", item, TaskItemResultResponse.succeeded(valid)),
                     new TaskDataService.ResultEntry("bad", item, TaskItemResultResponse.succeeded("not-json")),
                     new TaskDataService.ResultEntry("failed", item, TaskItemResultResponse.failed())), true));
-            var response = service.get("stored");
+            var response = service.get(CALLER, "stored");
             assertThat((Map<String, Object>) response.get("task")).containsEntry("totalCount", 1000L).containsEntry("succeededCount", 998L)
                     .containsEntry("failedCount", 2L).doesNotContainKey("registeredCount");
             var rows = (List<Map<String, Object>>) response.get("results");
@@ -187,12 +228,12 @@ class AppCheckTaskServiceTest {
             when(queries.get("app-checks", "task")).thenReturn(new ProjectTaskQueryService.Entry("task", 1, old, "pre_review"));
             when(data.observeItemScoreCounts(List.of("task"))).thenReturn(Map.of("task", new TaskItemScoreCounts(0, Map.of(1, 0L, 5, 0L, 6, 0L, 7, 0L, 8, 0L, 9, 0L))));
             when(data.previewTaskResults("task")).thenReturn(new TaskDataService.ResultPreview(List.of(), false));
-            assertThat((Map<String, Object>) service.get("task").get("task")).containsEntry("inputVersion", "2")
+            assertThat((Map<String, Object>) service.get(CALLER, "task").get("task")).containsEntry("inputVersion", "2")
                     .containsKey("inputUnavailableReason");
-            assertThatThrownBy(() -> service.importNumbers("task", file("86123"))).hasMessageContaining("旧供给配置");
-            assertThatThrownBy(() -> service.approve("task", 1)).hasMessageContaining("旧供给配置");
-            assertThat(service.create(request()).taskId()).isEqualTo("task");
-            service.closeTask("task");
+            assertThatThrownBy(() -> service.importNumbers(CALLER, "task", file("86123"))).hasMessageContaining("旧供给配置");
+            assertThatThrownBy(() -> service.approve(CALLER, "task", 1)).hasMessageContaining("旧供给配置");
+            assertThat(service.create(CALLER, request()).taskId()).isEqualTo("task");
+            service.closeTask(CALLER, "task");
             verify(lifecycle).close("task");
             verify(lifecycle, never()).approve(anyString());
             verify(data, never()).importFiniteTaskItems(anyString(), anyList());
@@ -219,7 +260,7 @@ class AppCheckTaskServiceTest {
                 var source = Files.createTempFile("app-check-export-test-", ".jsonl");
                 Files.write(source, records, StandardCharsets.UTF_8);
                 when(exports.export("task")).thenReturn(new TaskResultsExportService.TaskResultsExport(source));
-                var csv = service.export("task", filter);
+                var csv = service.export(CALLER, "task", filter);
                 try {
                     assertThat(source).doesNotExist();
                     assertThat(csv.count()).isEqualTo(filter.equals("all") ? 2L : 1L);

@@ -19,8 +19,9 @@ public final class AppCheckController {
     public AppCheckController(AppCheckTaskService tasks, AppCheckConfigurationStore configurations) {
         this.tasks = tasks; this.configurations = configurations;
     }
-    @GetMapping("/configuration") public Object configuration() { return configurations.view(); }
-    @PutMapping("/configuration") public Object saveConfiguration(@RequestBody Map<String, Object> input) {
+    @GetMapping("/configuration") public Object configuration(@RequestHeader HttpHeaders headers) { caller(headers).requireAdmin(); return configurations.view(); }
+    @PutMapping("/configuration") public Object saveConfiguration(@RequestHeader HttpHeaders headers, @RequestBody Map<String, Object> input) {
+        caller(headers).requireAdmin();
         final long revision;
         final AppCheckSettings settings;
         try {
@@ -39,24 +40,35 @@ public final class AppCheckController {
         return ResponseEntity.status(failure.status).body(Map.of("errorCode", failure.code.name(), "message", failure.getMessage()));
     }
     @GetMapping("/catalog") public Object catalog() { return tasks.catalog(); }
-    @PostMapping("/tasks") public ResponseEntity<?> create(@RequestBody Map<String, Object> input) {
-        return ResponseEntity.status(201).body(tasks.create(input));
+    @PostMapping("/tasks") public ResponseEntity<?> create(@RequestHeader HttpHeaders headers, @RequestBody Map<String, Object> input) {
+        return ResponseEntity.status(201).body(tasks.create(caller(headers), input));
     }
-    @GetMapping("/tasks") public Object list(@RequestParam(defaultValue = "100") int limit) { return tasks.list(limit); }
-    @GetMapping("/tasks/{taskId}") public Object get(@PathVariable String taskId) { return tasks.get(taskId); }
+    @GetMapping("/tasks") public Object list(@RequestHeader HttpHeaders headers, @RequestParam(defaultValue = "100") int limit) { return tasks.list(caller(headers), limit); }
+    @GetMapping("/tasks/{taskId}") public Object get(@RequestHeader HttpHeaders headers, @PathVariable String taskId) { return tasks.get(caller(headers), taskId); }
     @PostMapping(value = "/tasks/{taskId}/numbers:import", consumes = "text/plain")
-    public Object importNumbers(@PathVariable String taskId, InputStream input) { return tasks.importNumbers(taskId, input); }
+    public Object importNumbers(@RequestHeader HttpHeaders headers, @PathVariable String taskId, InputStream input) { return tasks.importNumbers(caller(headers), taskId, input); }
     @PostMapping("/tasks/{taskId}/approve")
-    public Object approve(@PathVariable String taskId, @RequestBody long expectedCount) { return tasks.approve(taskId, expectedCount); }
+    public Object approve(@RequestHeader HttpHeaders headers, @PathVariable String taskId, @RequestBody long expectedCount) { return tasks.approve(caller(headers), taskId, expectedCount); }
     @PostMapping("/tasks/{taskId}/close")
-    public Object close(@PathVariable String taskId) { return tasks.closeTask(taskId); }
+    public Object close(@RequestHeader HttpHeaders headers, @PathVariable String taskId) { return tasks.closeTask(caller(headers), taskId); }
     @PostMapping("/tasks/{taskId}/results:export")
-    public ResponseEntity<StreamingResponseBody> export(@PathVariable String taskId, @RequestParam(defaultValue = "all") String filter) {
-        var file = tasks.export(taskId, filter);
+    public ResponseEntity<StreamingResponseBody> export(@RequestHeader HttpHeaders headers, @PathVariable String taskId, @RequestParam(defaultValue = "all") String filter) {
+        var file = tasks.export(caller(headers), taskId, filter);
         return ResponseEntity.ok().contentType(new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8))
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(file.fileName()).build().toString())
                 .header("X-Export-Count", Long.toString(file.count()))
                 .body(output -> tasks.transferExport(file, output));
+    }
+    private static AppCheckCaller caller(HttpHeaders headers) {
+        var users = headers.get("X-XA-Dev-User");
+        var roles = headers.get("X-XA-Dev-Role");
+        if (users == null || roles == null || users.size() != 1 || roles.size() != 1)
+            throw new AppCheckAccessException(400, "需要唯一的开发调用方请求头");
+        return AppCheckCaller.fromHeaders(users.getFirst(), roles.getFirst());
+    }
+    @ExceptionHandler(AppCheckAccessException.class)
+    ResponseEntity<?> accessFailure(AppCheckAccessException failure) {
+        return ResponseEntity.status(failure.status).body(Map.of("message", failure.getMessage()));
     }
     @ExceptionHandler(OperationAlreadyRunningException.class)
     ResponseEntity<?> busy() { return ResponseEntity.status(409).body(Map.of("message", "任务导出正在进行，请稍后重试")); }

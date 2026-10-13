@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, provide, onBeforeUnmount } from "vue";
 import { useRoute } from "vue-router";
-import ConfigErrorView from "@/views/ConfigErrorView.vue";
 import {
   runtimeViewerConfigKey,
   runtimeViewerStoreKey,
@@ -68,9 +67,10 @@ if (configResult.ok) {
 }
 </script>
 <template>
-  <ConfigErrorView
-    v-if="!configResult.ok && needsRuntime"
-    :error="configResult.error"
-  />
-  <router-view v-else />
+  <router-view v-slot="{ Component }">
+    <component
+      :is="Component"
+      :runtime-error="!configResult.ok && needsRuntime ? configResult.error : undefined"
+    />
+  </router-view>
 </template>

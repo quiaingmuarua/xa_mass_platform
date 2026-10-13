@@ -78,7 +78,7 @@ class AppChecksIntegrationTest {
                     .limitsByGroup().get("app-c-sim").windowMillis()).isEqualTo(60000);
             // Deliberately make the storage owner unavailable before creating and executing the new app's task.
             ((AutoCloseable) world.context.getBean("appCheckConfigurationStore")).close();
-            assertThat(world.http.send(HttpRequest.newBuilder(world.base.resolve("/api/v1/app-checks/configuration")).build(),
+            assertThat(world.http.send(world.request("/api/v1/app-checks/configuration", "proof", "admin").build(),
                     HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(503);
             try (var workers = world.workers("app-c-sim")) {
                 workers.start();
@@ -262,6 +262,51 @@ class AppChecksIntegrationTest {
         }
     }
 
+    @Test @Timeout(75)
+    void declaredCallersRestrictScenarioOperationsWithoutBecomingAnAccountDirectory() throws Exception {
+        try (var world = new World()) {
+            String route = "/api/v1/app-checks/tasks";
+            assertThat(world.http.send(HttpRequest.newBuilder(world.base.resolve(route)).build(), HttpResponse.BodyHandlers.ofString())
+                    .statusCode()).isEqualTo(400);
+            assertThat(world.http.send(HttpRequest.newBuilder(world.base.resolve(route)).header("X-XA-Dev-User", "_w")
+                    .header("X-XA-Dev-Role", "operator").build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(400);
+            var simulation = Map.of("ranges", Map.of("registered", List.of(0, 1000), "unregistered", List.of(1000, 1000), "failed", List.of(1000, 1000)), "delayMs", List.of(0, 0));
+            var body = new LinkedHashMap<String, Object>(Map.of("requestId", "caller-a", "appId", "app-a", "country", "CN", "simulation", simulation));
+            String a = "外部用户-A", b = "external-B";
+            var response = world.postAs(route, Jsons.toJson(body), "application/json", a, "operator");
+            assertThat(response.statusCode()).isEqualTo(201);
+            String first = (String) Jsons.parseObject(response.body()).get("taskId");
+            body.put("requestId", "caller-b");
+            response = world.postAs(route, Jsons.toJson(body), "application/json", b, "operator");
+            assertThat(response.statusCode()).isEqualTo(201);
+            String second = (String) Jsons.parseObject(response.body()).get("taskId");
+            for (String user : List.of(a, b)) {
+                var listing = world.http.send(world.request(route, user, "operator").build(), HttpResponse.BodyHandlers.ofString());
+                assertThat(listing.statusCode()).isEqualTo(200);
+                assertThat((List<?>) Jsons.parseObject(listing.body()).get("tasks")).singleElement()
+                        .satisfies(row -> assertThat(((Map<?, ?>) row).get("userId")).isEqualTo(user));
+            }
+            assertThat((List<?>) world.get(route).get("tasks")).hasSize(2);
+            assertThat(world.http.send(world.request(route + "/" + first, b, "operator").build(), HttpResponse.BodyHandlers.ofString())
+                    .statusCode()).isEqualTo(403);
+            for (String suffix : List.of("/numbers:import", "/approve", "/close", "/results:export"))
+                assertThat(world.postAs(route + "/" + first + suffix, "1", suffix.equals("/numbers:import") ? "text/plain" : "application/json", b, "operator")
+                        .statusCode()).isEqualTo(403);
+            assertThat(task(world.get(route + "/" + first))).containsEntry("totalCount", 0L).containsEntry("state", "pre_review");
+            String config = "/api/v1/app-checks/configuration";
+            assertThat(world.http.send(world.request(config, a, "operator").build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
+            assertThat(world.http.send(world.request(config, a, "operator").header("Content-Type", "application/json")
+                    .PUT(HttpRequest.BodyPublishers.ofString("{}")).build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
+            world.restart();
+            assertThat(task(world.get(route + "/" + first))).containsEntry("userId", a);
+            assertThat(world.postAs(route + "/" + first + "/numbers:import", "8613800000001", "text/plain", a, "operator").statusCode()).isEqualTo(200);
+            assertThat(world.postAs(route + "/" + first + "/approve", "1", "application/json", a, "operator").statusCode()).isEqualTo(200);
+            assertThat(world.postAs(route + "/" + first + "/close", "", "application/json", a, "operator").statusCode()).isEqualTo(200);
+            assertThat(world.postAs(route + "/" + first + "/results:export", "", "application/json", a, "operator").statusCode()).isEqualTo(200);
+            assertThat(world.post(route + "/" + second + "/close", "", "application/json").statusCode()).isEqualTo(200);
+        }
+    }
+
     @Test @Timeout(180)
     void emptyCreationLargeImportIdempotencyAndManualClosureUseRealOwners() throws Exception {
         try (var world = new World()) {
@@ -273,6 +318,12 @@ class AppChecksIntegrationTest {
             assertThat(created.statusCode()).isEqualTo(201);
             String id = (String) Jsons.parseObject(created.body()).get("taskId");
             String target = path + "/" + id;
+            assertThat(task(world.get(target))).containsEntry("userId", "proof");
+            assertThat(world.postAs(path, json, "application/json", "another-proof-user", "admin").statusCode()).isEqualTo(400);
+            var bodyCreator = new LinkedHashMap<>(body); bodyCreator.put("userId", "proof");
+            assertThat(world.post(path, Jsons.toJson(bodyCreator), "application/json").statusCode()).isEqualTo(400);
+            assertThat(Jsons.parseObject(world.postAs(path, json, "application/json", "  proof  ", "operator").body()))
+                    .containsEntry("taskId", id);
             assertThat(task(world.get(target))).containsEntry("state", "pre_review").containsEntry("totalCount", 0L);
             assertThat(world.post(target + "/approve", "0", "application/json").statusCode()).isEqualTo(409);
             assertThat(world.post(target + "/numbers:import", "86123\nwrong", "text/plain").statusCode()).isEqualTo(400);
@@ -294,6 +345,10 @@ class AppChecksIntegrationTest {
             assertThat(repeated.statusCode()).isEqualTo(201);
             assertThat(Jsons.parseObject(repeated.body()).get("taskId")).isEqualTo(id);
             assertThat(task(world.get(target))).containsEntry("totalCount", 100001L).containsEntry("state", "pre_review");
+            assertThat(task(world.get(target))).containsEntry("userId", "proof");
+            assertThat(((List<?>) world.get(path + "?limit=100").get("tasks")).stream()
+                    .map(value -> (Map<?, ?>) value).filter(row -> id.equals(row.get("taskId"))).toList())
+                    .singleElement().satisfies(row -> assertThat(row.get("userId")).isEqualTo("proof"));
             assertThat(world.post(target + "/approve", "100000", "application/json").statusCode()).isEqualTo(409);
             assertThat(world.post(target + "/approve", "100001", "application/json").statusCode()).isEqualTo(200);
             assertThat(world.post(target + "/close", "", "application/json").statusCode()).isEqualTo(200);
@@ -447,7 +502,7 @@ class AppChecksIntegrationTest {
             var body = Map.of("requestId", request, "appId", app, "country", "CN",
                     "simulation", Map.of("ranges", Map.of("registered", List.of(0, registered), "unregistered", List.of(registered, unregistered),
                             "failed", List.of(unregistered, 1000)), "delayMs", List.of(delay, delay)));
-            var response = http.send(HttpRequest.newBuilder(base.resolve("/api/v1/app-checks/tasks"))
+            var response = http.send(request("/api/v1/app-checks/tasks", "proof", "admin")
                     .timeout(Duration.ofSeconds(10)).header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(Jsons.toJson(body))).build(), HttpResponse.BodyHandlers.ofString());
             assertThat(response.statusCode()).isEqualTo(201);
@@ -457,7 +512,15 @@ class AppChecksIntegrationTest {
             return id;
         }
         HttpResponse<String> post(String path, String body, String contentType) throws Exception {
-            return http.send(HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(90))
+            return postAs(path, body, contentType, "proof", "admin");
+        }
+        HttpRequest.Builder request(String path, String user, String role) {
+            return HttpRequest.newBuilder(base.resolve(path)).header("X-XA-Dev-User",
+                    java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(user.getBytes(StandardCharsets.UTF_8)))
+                    .header("X-XA-Dev-Role", role);
+        }
+        HttpResponse<String> postAs(String path, String body, String contentType, String user, String role) throws Exception {
+            return http.send(request(path, user, role).timeout(Duration.ofSeconds(90))
                     .header("Content-Type", contentType).POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
         }
         Map<String, Object> settled(String id, int total) throws Exception {
@@ -476,11 +539,11 @@ class AppChecksIntegrationTest {
             throw new AssertionError("Task did not close its finite execution observations");
         }
         Map<String, Object> get(String path) throws Exception {
-            var response = http.send(HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
+            var response = http.send(request(path, "proof", "admin").timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
             assertThat(response.statusCode()).isEqualTo(200); return Jsons.parseObject(response.body());
         }
         HttpResponse<String> putConfiguration(Map<String, Object> input) throws Exception {
-            return http.send(HttpRequest.newBuilder(base.resolve("/api/v1/app-checks/configuration"))
+            return http.send(request("/api/v1/app-checks/configuration", "proof", "admin")
                     .timeout(Duration.ofSeconds(5)).header("Content-Type", "application/json")
                     .PUT(HttpRequest.BodyPublishers.ofString(Jsons.toJson(input))).build(), HttpResponse.BodyHandlers.ofString());
         }

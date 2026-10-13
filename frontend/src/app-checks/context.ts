@@ -9,6 +9,15 @@ type Availability =
   | { status: "enabled"; catalog: Catalog }
   | { status: "unavailable"; message: string };
 export function createAppCheckContext(source: AppCheckTaskSource) {
+  const sessions = new Map<string, ReturnType<typeof createWorkbenchSession>>();
+  function sessionFor(userId: string) {
+    let session = sessions.get(userId);
+    if (!session) {
+      session = createWorkbenchSession(userId);
+      sessions.set(userId, session);
+    }
+    return session;
+  }
   const state = shallowRef<Availability>({ status: "loading" });
   const configurationRead = shallowRef<ConfigurationReadState>({
     readAt: 0,
@@ -62,7 +71,7 @@ export function createAppCheckContext(source: AppCheckTaskSource) {
   }
   return {
     source,
-    session: createWorkbenchSession(),
+    sessionFor,
     state,
     configurationRead,
     load,

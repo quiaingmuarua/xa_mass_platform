@@ -27,7 +27,16 @@ SDK 和 Worker 协议使用既有机制；Matching 基础规则由场景声明�
 | `GET /api/v1/app-checks/tasks?limit=100` | 最近一批 Project 任务，最多 100，无分页 |
 | `GET /api/v1/app-checks/tasks/{taskId}` | 有限场景 Task、数量观测和最多 100 条 Result 预览 |
 
-创建输入只包含以下配置，不接受号码数组或自定义名称：
+例如，以开发调用方 `proof` 创建任务时显式携带以下请求头；`cHJvb2Y` 是 `proof`
+的 UTF-8 Base64URL 编码。自动化或手动调用均须自行声明角色，不由 HTTP 客户端补入。
+
+```http
+X-XA-Dev-User: cHJvb2Y
+X-XA-Dev-Role: operator
+Content-Type: application/json
+```
+
+创建 JSON 只包含以下配置，不接受号码数组、自定义名称、userId 或 role：
 
 ```json
 {
@@ -46,6 +55,28 @@ Task ID，并在现有不可变 descriptor 保存请求身份与输入指纹。�
 Task；不同配置冲突。已有 descriptor、Project 目录和 Task Score 不完整时返回未确认，
 不另建或补造资源。关联在原 Task 资源保留期间跨 Server 重启成立，清理 scope 后不承诺。
 没有原先累计 50 请求、50,000 号码的内存账本。自动名称、salt 和日期首次创建后固定。
+
+任务和配置 HTTP 接口必须声明开发调用方：`X-XA-Dev-User` 为 userId 的 UTF-8
+Base64URL 编码，`X-XA-Dev-Role` 为 `admin` 或 `operator`。解码后的 userId 去首尾空白，
+非空且最多 128 字符，保留大小写。缺失、非法编码、非法角色或重复请求头返回 400，
+不默认补管理员；操作范围不符返回 403。`GET /catalog` 保留无身份的只读能力探测。
+
+App Checks 模块内的不可变调用方由 Controller 解析并显式传入场景服务。
+admin 可管理全部场景任务及配置；operator 只能读取和管理自己创建的任务，不能访问配置接口。
+先检查 Project、场景和有限 Task 类型，再检查创建者；拒绝发生在导入文件读取、Item 数量
+和 Result 读取、写入及导出扫描之前。配置接口在 H2 访问之前拒绝 operator。
+列表仍先读取 Project 最近最多 100 条，再按调用方筛选并读取匹配任务的数量；不补扫个人历史。
+缺少创建者不归属于任何 operator。Task 状态、部分失败与 OperationGuard 继续采用原有规则。
+
+创建 JSON 不再接收 `userId` 或 `role`，只从调用方保存 `metadata.userId`，列表/详情返回该保存值。
+创建指纹 `app-checks/v3/create` 覆盖规范化 userId 及原 App、国家、模拟参数；相同请求换创建者
+按现有冲突处理。role 不进入指纹或 descriptor。Task ID 推导、输入版本、salt、Item 身份及执行参数不变。
+不回填历史归属或提供旧请求兼容。H2 仍只保存配置。
+
+这是受信任开发环境的声明与核对契约，客户端可以自行声明 admin；不构成身份认证或客户数据隔离。
+检查只覆盖 App Checks，通用 Task/Runtime API 及其他 Scenario 没有因此增加访问控制。
+后端不维护前端三个账户的名单，不增加全局 Filter、ThreadLocal、用户表或身份注册服务。
+控制台固定身份和每身份草稿仍归前端；自动化证明显式携带验证 userId/role，不隐式给所有接口补管理员。
 
 导入仅允许 `inputVersion=2` 的待审核 Task。每个文件最多 10 MiB、100,000 个去重号码，
 前端将 TXT、CSV 或粘贴统一转换为逐行 UTF-8 文件；后端独立校验 UTF-8、号码和国家前缀，
@@ -219,10 +250,11 @@ FixedWindowPoolDefinition、各 Group 属性投影和创建映射。配置保存
 ## 页面与结果核对
 
 启动 [Preview](../../distribution/server/PREVIEW.md#source-launch)，打开 `/app-checks`，
-选择 App 和号码国家，前端依次创建空任务、上传号码文件，用户核对实际数量后启动。
+通过顶栏选择开发身份，再选择 App 和号码国家。前端依次创建空任务、上传号码文件，
+用户核对实际数量后启动。operator 只处理当前载入范围内自己创建的任务，admin 可管理全部任务。
 列表菜单管理任务，抽屉预览结果；未确认创建或导入保留请求身份及已知 Task ID，不自动重试。
 
-“核对当前预览”按上面的 SHA-256 协议，用存量 salt、实际 Worker、号码和模拟描述复算；
+admin 技术区中的“核对当前预览”按上面的 SHA-256 协议，用存量 salt、实际 Worker、号码和模拟描述复算；
 它只核对已展示内容，不证明执行次数或失败原因，模拟延迟也不是端到端耗时。
 [前端 Owner](../../frontend/README.md#app-checks-task-workspace) 维护文件导入、草稿、刷新、
 API/Mock 和浏览器核对的可用性及本地状态。
@@ -247,6 +279,10 @@ python scenarios/app-checks-jvm/run_acceptance.py --root <freshly-extracted-prev
 ```
 
 单元测试证明轻量创建、稳定身份、十万号码有界导入、全文件校验、部分失败、互斥及重复输入处理。
+调用方单测覆盖请求头校验、拒绝发生在任务内容读取/导入/导出及配置存储之前，以及先截取
+Project 窗口再筛选个人任务。Boot 真实 HTTP/Redis 证明 Unicode 调用方、缺失或非法调用方
+返回 400、跨用户及配置访问返回 403、admin 管理和重启后创建者保留。源码/ZIP runner
+显式携带验证调用方并核对创建者；这些证明不代表身份认证或客户数据隔离。
 真实 Redis/HTTP 另外验证十万号码写入、跨文件去重、原时间保持、默认有效期、重启幂等、审核数量检查和关闭。Boot 的
 真实 Redis/HTTP/Worker 测试用两个 Group 各两个 Worker，证明 101 条预览有界、真实
 异常调用、未注册成功、Group 隔离、6 秒迟到成功及 Server 重启读取。调用见证仅在测试

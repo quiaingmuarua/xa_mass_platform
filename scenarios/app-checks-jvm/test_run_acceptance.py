@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 from unittest.mock import patch
-from run_acceptance import hash_value, request, regression_window_configuration
+from run_acceptance import caller_headers, hash_value, request, creation_input, regression_window_configuration
 
 
 class AppCheckProofTest(unittest.TestCase):
@@ -59,6 +59,9 @@ class AppCheckProofTest(unittest.TestCase):
         self.assertEqual(16, len(set(case["numbers"])))
         self.assertTrue(all(number.startswith("+86") for number in case["numbers"]))
         self.assertNotIn("workerId", case)
+        self.assertEqual({"X-XA-Dev-User": "cHJvb2Y", "X-XA-Dev-Role": "admin"}, caller_headers(case["userId"], "admin"))
+        self.assertNotIn("userId", creation_input(case))
+        self.assertNotIn("numbers", creation_input(case))
 
 
 if __name__ == "__main__":

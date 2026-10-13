@@ -1,6 +1,13 @@
 import type { AppCheckTaskSource } from "./task-source";
+import { developmentIdentities } from "@/console-identity";
 import type { TaskPolicySnapshot } from "./configuration";
-import { AppCheckApiError } from "./task-source";
+import {
+  AppCheckApiError,
+  requireCaller,
+  requireAdminCaller,
+  requireTaskCaller,
+  type AppCheckCaller
+} from "./task-source";
 import {
   settingsSchema,
   settingsIdentity,
@@ -14,7 +21,8 @@ import {
   type CheckDetail,
   type CheckTask,
   type CreateCheckTask,
-  rangeExamples
+  rangeExamples,
+  simulationSchema
 } from "./model";
 
 export const mockCatalog: Catalog = {
@@ -50,6 +58,7 @@ const epoch = Date.UTC(2026, 9, 8, 2);
 function task(taskId: string, changes: Partial<CheckTask> = {}): CheckTask {
   return {
     taskId,
+    userId: developmentIdentities[0]!.userId,
     name: taskId,
     createdAtMillis: epoch,
     workerGroupId: "app-a-sim",
@@ -250,7 +259,11 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
   private sequence = 0;
 
   constructor() {
+    let ownerIndex = 0;
     for (const record of this.records.values()) {
+      if (record.task.appId && !record.task.managed)
+        record.task.userId =
+          developmentIdentities[ownerIndex++ % developmentIdentities.length]!.userId;
       if (record.task.state === "terminal")
         this.states.set(record.task.taskId, { endReason: "completed" });
     }
@@ -282,7 +295,8 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         this.effectiveConfiguration.configuration.common.simulationDefault
     });
   }
-  async loadConfiguration() {
+  async loadConfiguration(caller: AppCheckCaller) {
+    requireAdminCaller(caller);
     return structuredClone({
       saved: this.savedConfiguration,
       effective: this.effectiveConfiguration,
@@ -298,7 +312,12 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       )
     });
   }
-  async saveConfiguration(expectedRevision: number, configuration: AppCheckSettings) {
+  async saveConfiguration(
+    caller: AppCheckCaller,
+    expectedRevision: number,
+    configuration: AppCheckSettings
+  ) {
+    requireAdminCaller(caller);
     if (expectedRevision !== this.savedConfiguration.revision)
       throw new AppCheckApiError(409, "配置修订已变化，请重新读取后核对");
     const validated = settingsSchema.parse(configuration);
@@ -311,12 +330,14 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         revision: expectedRevision + 1,
         configuration: validated
       };
-    return this.loadConfiguration();
+    return this.loadConfiguration(caller);
   }
-  async simulateConfigurationRestart() {
+  async simulateConfigurationRestart(caller: AppCheckCaller) {
+    requireAdminCaller(caller);
     this.effectiveConfiguration = structuredClone(this.savedConfiguration);
   }
-  async listTasks() {
+  async listTasks(caller: AppCheckCaller) {
+    caller = requireCaller(caller);
     const tasks = [...this.records.values()]
       .map((r) => r.task)
       .sort(
@@ -324,16 +345,25 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
           b.createdAtMillis - a.createdAtMillis || a.taskId.localeCompare(b.taskId)
       );
     return structuredClone({
-      tasks: tasks.slice(0, 100),
+      tasks: tasks
+        .slice(0, 100)
+        .filter((task) => caller.role === "admin" || task.userId === caller.userId),
       truncated: tasks.length > 100
     });
+  }
+  private owned(caller: AppCheckCaller, id: string) {
+    caller = requireCaller(caller);
+    const record = this.require(id);
+    requireTaskCaller(caller, record.task);
+    return record;
   }
   private require(id: string) {
     const record = this.records.get(id);
     if (!record) throw new Error("没有找到 Mock 任务，刷新应用会重置会话数据。");
     return record;
   }
-  previewState(id: string): PreviewState {
+  previewState(caller: AppCheckCaller, id: string): PreviewState {
+    this.owned(caller, id);
     return { ...this.states.get(id) };
   }
   private recordActivity(id: string, label: string, detail?: string) {
@@ -341,20 +371,29 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     rows.push({ at: Date.now(), label, detail });
     this.activities.set(id, rows.slice(-100));
   }
-  async loadTask(id: string) {
-    const record = this.require(id);
+  async loadTask(caller: AppCheckCaller, id: string) {
+    const record = this.owned(caller, id);
     const count = (this.reads.get(id) ?? 0) + 1;
     this.reads.set(id, count);
     if (id === "check-read-error" && count === 2)
       throw new Error("Mock 读取失败；已保留上次数据，可再次刷新。");
     return structuredClone({ ...record, results: record.results.slice(0, 100) });
   }
-  async createTask(input: CreateCheckTask) {
+  async createTask(caller: AppCheckCaller, input: CreateCheckTask) {
+    caller = requireCaller(caller);
+    if ("userId" in input || "role" in input)
+      throw new AppCheckApiError(400, "Unknown application check fields");
     const app = this.effectiveConfiguration.configuration.applications.find(
       (app) => app.appId === input.appId
     );
     if (!app) throw new Error("当前生效配置不支持此应用");
-    const identity = JSON.stringify(input);
+    const identity = JSON.stringify([
+      "app-checks/v3/create",
+      caller.userId,
+      input.appId,
+      input.country,
+      simulationSchema.parse(input.simulation)
+    ]);
     const prior = this.requests.get(input.requestId);
     if (prior) {
       if (prior.input !== identity) throw new Error("requestId 已用于其他内容");
@@ -363,6 +402,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     const taskId = "mock-check-" + ++this.sequence;
     this.records.set(taskId, {
       task: task(taskId, {
+        userId: caller.userId,
         name: `${input.appId} · ${input.country} · ${new Date().toISOString()}`,
         appId: input.appId,
         workerGroupId: app.workerGroupId,
@@ -385,8 +425,13 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     this.recordActivity(taskId, "创建任务", "空任务已创建，等待导入号码");
     return { taskId };
   }
-  async importNumbers(id: string, file: Blob, summary?: ImportSnapshot) {
-    const record = this.require(id);
+  async importNumbers(
+    caller: AppCheckCaller,
+    id: string,
+    file: Blob,
+    summary?: ImportSnapshot
+  ) {
+    const record = this.owned(caller, id);
     if (record.task.state !== "pre_review" || record.task.inputVersion !== "2")
       throw new Error("只有新版本待审核任务支持导入");
     if (file.size > mockCatalog.limits.importFileBytes)
@@ -445,8 +490,8 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     this.recordActivity(id, "导入号码", `新增 ${added} 个，已存在 ${existing} 个`);
     return receipt;
   }
-  async approveTask(id: string, expectedCount: number) {
-    const record = this.require(id);
+  async approveTask(caller: AppCheckCaller, id: string, expectedCount: number) {
+    const record = this.owned(caller, id);
     if (record.task.state !== "pre_review") throw new Error("当前任务不在待审核状态");
     if (!expectedCount || expectedCount !== record.task.totalCount)
       throw new Error("号码数量已变化或为空，请重新核对");
@@ -460,8 +505,8 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       throw new Error("当前任务不在处理中");
     return record;
   }
-  async closeTask(id: string) {
-    const record = this.require(id);
+  async closeTask(caller: AppCheckCaller, id: string) {
+    const record = this.owned(caller, id);
     if (
       !["pre_review", "running_visible", "running-initial"].includes(
         record.task.state ?? ""
@@ -501,7 +546,8 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     record.resultsTruncated = record.results.length > 100;
     record.task.salt = undefined;
   }
-  async advanceTask(id: string, late = false) {
+  async advanceTask(caller: AppCheckCaller, id: string, late = false) {
+    requireAdminCaller(caller);
     const record = this.require(id),
       state = this.states.get(id);
     if (late) {
@@ -522,20 +568,21 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       this.recordActivity(id, "查询结束");
     }
   }
-  async completeTask(id: string) {
+  async completeTask(caller: AppCheckCaller, id: string) {
+    requireAdminCaller(caller);
     const record = this.running(id);
     this.appendResults(id, record.task.totalCount ?? 0);
     record.task.state = "terminal";
     this.states.set(id, { endReason: "completed" });
     this.recordActivity(id, "查询结束", "剩余演示结果已生成");
   }
-  async loadImport(id: string) {
-    this.require(id);
+  async loadImport(caller: AppCheckCaller, id: string) {
+    this.owned(caller, id);
     const snapshot = this.imports.get(id);
     return snapshot ? structuredClone(snapshot) : undefined;
   }
-  async loadActivity(id: string) {
-    this.require(id);
+  async loadActivity(caller: AppCheckCaller, id: string) {
+    this.owned(caller, id);
     return structuredClone(this.activities.get(id) ?? []);
   }
   private exportRows(id: string, filter: ExportFilter) {
@@ -548,15 +595,16 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         (filter === "all" || row.registered === (filter === "registered"))
     );
   }
-  async exportCounts(id: string) {
+  async exportCounts(caller: AppCheckCaller, id: string) {
+    this.owned(caller, id);
     return {
       all: this.exportRows(id, "all").length,
       registered: this.exportRows(id, "registered").length,
       unregistered: this.exportRows(id, "unregistered").length
     };
   }
-  async exportTask(id: string, filter: ExportFilter) {
-    const record = this.require(id);
+  async exportTask(caller: AppCheckCaller, id: string, filter: ExportFilter) {
+    const record = this.owned(caller, id);
     if (record.task.state !== "terminal") throw new Error("任务结束后可以导出演示结果");
     const rows = this.exportRows(id, filter);
     const lines = [

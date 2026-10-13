@@ -9,7 +9,7 @@ defineProps<{
 </script>
 
 <template>
-  <main class="standalone-state" data-testid="config-error">
+  <div class="standalone-state" data-testid="config-error">
     <section class="standalone-state__card">
       <img :src="'/logo.svg'" alt="" width="42" height="42" />
       <el-icon class="standalone-state__icon"><WarningFilled /></el-icon>
@@ -22,5 +22,5 @@ defineProps<{
         </li>
       </ul>
     </section>
-  </main>
+  </div>
 </template>

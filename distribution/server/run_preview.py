@@ -27,7 +27,7 @@ PRODUCT = Path(__file__).resolve().parent
 _connections = threading.local()
 
 
-def http(base, path, body=None, timeout=6, method=None):
+def http(base, path, body=None, timeout=6, method=None, headers=None):
     # One connection per calling thread and local endpoint. Never retry mutations.
     if not hasattr(_connections, "items"):
         _connections.items = {}
@@ -48,7 +48,7 @@ def http(base, path, body=None, timeout=6, method=None):
     try:
         connection.request(method or ("GET" if body is None else "POST"), path,
                            body=None if body is None else json.dumps(body).encode(),
-                           headers={"Content-Type": "application/json"})
+                           headers={"Content-Type": "application/json", **(headers or {})})
         response = connection.getresponse()
         raw = response.read()
         if response.status >= 400:

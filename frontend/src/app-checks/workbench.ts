@@ -1,4 +1,6 @@
 import { reactive } from "vue";
+import type { AppCheckCaller } from "./task-source";
+import { consoleIdentity, type ConsoleIdentity } from "@/console-identity";
 import type {
   Catalog,
   CheckTask,
@@ -41,8 +43,10 @@ export interface CheckDraft {
   error: string;
   simulation?: Simulation;
   frozenCreate?: CreateCheckTask;
+  frozenCaller?: AppCheckCaller;
 }
 export interface UnconfirmedSubmission {
+  userId: string;
   requestId: string;
   knownTaskId?: string;
   appId: string;
@@ -74,10 +78,17 @@ export function freshDraft(catalog?: Catalog): CheckDraft {
     error: ""
   };
 }
-export function createWorkbenchSession() {
+export function canUseTask(task: CheckTask, identity: ConsoleIdentity) {
+  return identity.role === "admin" || task.userId === identity.userId;
+}
+export function createWorkbenchSession(userId = consoleIdentity.current.value.userId) {
+  const unconfirmedSubmissions: UnconfirmedSubmission[] = [];
   return reactive({
+    userId,
     draft: freshDraft(),
-    unconfirmedSubmissions: [] as UnconfirmedSubmission[],
+    unconfirmedSubmissions,
+    import: { userId, draft: freshDraft(), unconfirmedSubmissions },
+    importTask: undefined as CheckTask | undefined,
     filters: {
       query: "",
       app: "all",

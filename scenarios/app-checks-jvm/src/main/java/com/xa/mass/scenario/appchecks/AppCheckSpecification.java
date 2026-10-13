@@ -10,17 +10,17 @@ import java.time.LocalDate;
 import java.util.*;
 
 /** API admission and immutable submission identity; the Worker validates its separate input boundary. */
-record AppCheckSpecification(String requestId, String appId, String country, Map<String, Object> simulation) {
+record AppCheckSpecification(String requestId, String userId, String appId, String country, Map<String, Object> simulation) {
     static final Map<String, String> PREFIXES = Map.of("CN", "+86", "US", "+1", "GB", "+44");
 
-    static AppCheckSpecification parse(Map<String, Object> input) {
+    static AppCheckSpecification parse(AppCheckCaller caller, Map<String, Object> input) {
         if (input == null || !Set.of("requestId", "appId", "country", "simulation").containsAll(input.keySet()))
             throw new IllegalArgumentException("Unknown application check fields");
         String app = text(input.get("appId"), 128);
         String country = text(input.get("country"), 2);
         String prefix = PREFIXES.get(country);
         if (prefix == null) throw new IllegalArgumentException("Unsupported country");
-        return new AppCheckSpecification(text(input.get("requestId"), 128), app, country, simulation(input.get("simulation")));
+        return new AppCheckSpecification(text(input.get("requestId"), 128), caller.userId(), app, country, simulation(input.get("simulation")));
     }
 
     static Map<String, Object> simulation(Object value) {
@@ -74,7 +74,7 @@ record AppCheckSpecification(String requestId, String appId, String country, Map
     }
 
     String fingerprint() {
-        return digest("app-checks/v2/create", appId, country, Jsons.toJson(simulation));
+        return digest("app-checks/v3/create", userId, appId, country, Jsons.toJson(simulation));
     }
 
     static String digest(String... values) {

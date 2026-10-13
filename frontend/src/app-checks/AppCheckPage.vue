@@ -2,15 +2,18 @@
 import { useAppChecks } from "./context";
 import AppCheckWorkspace from "./AppCheckWorkspace.vue";
 import "./style.css";
+import { consoleIdentity } from "@/console-identity";
+const identity = consoleIdentity.current;
 const context = useAppChecks();
 const state = context.state;
 </script>
 <template>
   <AppCheckWorkspace
     v-if="state.status === 'enabled'"
+    :key="identity.userId"
     :source="context.source"
     :catalog="state.catalog"
-    :session="context.session"
+    :session="context.sessionFor(identity.userId)"
     :configuration-read="context.configurationRead.value"
     @refresh-configuration="context.load(true)"
   />

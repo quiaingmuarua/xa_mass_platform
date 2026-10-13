@@ -1,8 +1,56 @@
 # XA Mass Console
 
 Vue 3 console for Worker and Task runtime observation, a default-Project task
-workbench (RPC calls and finite Tasks), Scenario pages and public Demo. It is derived from Pure Admin Thin 6.2.0 and contains no login,
-token, dynamic-permission, fake-user, or fabricated-user path.
+workbench (RPC calls and finite Tasks), Scenario pages and public Demo. It is derived from Pure Admin Thin 6.2.0.
+The shared development identity selector provides fixed users for workflow verification,
+without a login service, token or user directory. App Checks checks the declared
+caller and Task creator; the caller is not authenticated.
+
+## Development identities
+
+The top bar selects `admin` (管理员, admin), `user-a` (用户 A, operator), or
+`user-b` (用户 B, operator). Definitions live once in the console. Only the selected
+user ID is remembered in `sessionStorage`; missing or invalid selection uses admin.
+Identity does not select API/Mock mode and does not depend on Runtime availability.
+Runtime configuration errors stay in the content area; the identity selector and
+Scenario navigation remain available.
+
+Admin retains every existing page and operation. Operators use only App Checks
+Task creation and management. Navigation, SPA route admission and Task actions
+apply the same UI scope: unsupported operator routes return to `/app-checks`.
+Switching identity returns to that list, closes previews and does not submit work.
+App Checks task/configuration APIs also check the declared caller. Runtime, generic
+Task APIs, other Scenarios, `/scalar` and Server-owned static resources retain their
+trusted-development boundary. Clients can declare admin themselves: this is not
+customer data isolation or authentication.
+
+App Checks saves the creator as `metadata.userId`; role and display name are not
+Task identity or scheduling inputs. The API filters the current Project
+window of at most 100 Tasks by the declared operator before reading counts; the UI
+retains a creator check before search, state counts and actions.
+This is a recent observation window, not a complete user history. Foreign Task
+links do not display results or enable actions in the console. Admin lists show
+creators and all loaded business Tasks; Task creation uses the current admin ID,
+without an on-behalf-of selection. RPC caller naming and the other Scenarios keep
+their existing admin workflows.
+
+Each identity owns its in-memory App Checks creation/import drafts, filters,
+scroll position and recovery records. The data source and Mock Task collection
+are shared. Switching identities invalidates old reads/focus and never rewrites
+an in-flight operation's user, role, request ID or input. Late creation retains its
+known Task in the original draft without starting another import. A known or
+uncertain mutation remains available for explicit reconciliation by that identity.
+Numbers and Task drafts still disappear on reload; persisted Task attribution does not.
+
+App Checks task/configuration data-source methods take an explicit immutable caller
+snapshot. API requests encode its userId as UTF-8 Base64URL in `X-XA-Dev-User` and
+send `X-XA-Dev-Role`; create JSON contains no userId or role. Catalog remains a
+shared caller-free availability read. A frozen draft retains both caller and create
+payload, including during explicit reconciliation. 403 is a definite rejection,
+never an unconfirmed mutation or a reason to fall back to Mock. Foreign detail
+snapshots are cleared; ordinary read failures retain the stale snapshot. Mock
+checks the same ownership and admin-only configuration/demo operations at its
+method boundary, even when called without the UI.
 
 ## Requirements and local run
 
@@ -227,14 +275,14 @@ the existing Console theme/navigation and does not change the Tasks, Messages
 or SMS workspaces. Its Catalog probe independently controls availability:
 an initial 404 means disabled; transient errors allow explicit retry.
 
-The desktop workspace has two read-only observation entrypoints: Tasks at
+The admin desktop workspace has two entrypoints: Tasks at
 `/app-checks` and application configuration at
 `/app-checks?view=configuration&app=app-a`. The optional `app` selects an application;
 without it, the session selection or first Catalog application is used. An unknown
 application remains visibly invalid until the user selects an available one.
 Opening configuration directly does not load Tasks. Switching tabs keeps the Task
 table mounted, preserving filters and scrolling without another list request.
-Drafts and the selected application survive navigation within the console session.
+Drafts and the selected application survive navigation within that identity's console session.
 
 The Task workspace uses a list, one action menu per row and a 760px
 result-preview drawer. `/app-checks/tasks/:taskId` opens that drawer over the
@@ -268,7 +316,9 @@ Pending-review Tasks also allow additional number imports through the same form.
 number count. In-flight actions reject duplicate submission; failures retain
 the observed state. Unsupported API operations show their unavailable reason.
 
-Creation is one page containing App, country and number import, with one submit
+Creation supplies the current identity through caller headers. The userId and role
+are frozen alongside the request and simulation settings on first submit; the JSON
+body contains no creator field. It is one page containing App, country and number import, with one submit
 action. Names are generated by the server at first creation without an input-count dependency; there is no editable name or separate review step. Mock startup
 confirmation remains a separate action after creation. Successful creation
 returns to the list, refreshes its bounded snapshot and preserves filters. A
