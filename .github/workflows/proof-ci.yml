@@ -18,7 +18,7 @@ concurrency:
 env:
   XA_MASS_PYTHON_EXECUTABLE: python3
   XA_MASS_REDIS_EPHEMERAL: "true"
-  XA_MASS_DISTRIBUTION_VERSION: "1.0.0"
+  XA_MASS_DISTRIBUTION_VERSION: "1.0.1"
 
 jobs:
   changes:
