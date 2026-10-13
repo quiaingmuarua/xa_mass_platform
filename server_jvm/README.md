@@ -29,8 +29,9 @@ Read this Owner by use case:
 
 The generic frontend controller forwards `/runtime/workers`, `/runtime/tasks`
 and `/task-workbench` (including trailing slashes) to the Console entry. The
-workbench is a frontend-only default-Project operation surface; public Task
-API admission and managed provisioning are unchanged. Unknown API and asset
+workbench lets administrators operate any declared Project using the existing
+Task APIs. Its Project selection is frontend context, not new API authorization;
+Task preparation remains explicit and Project declarations never provision Tasks. Unknown API and asset
 paths are not forwarded.
 
 ### Runtime Shape

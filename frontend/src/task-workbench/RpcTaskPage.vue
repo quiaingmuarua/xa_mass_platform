@@ -12,7 +12,9 @@ import { useTaskSession } from "./session";
 import { rpcTaskId, type RpcTaskPrepareRequest } from "./rpc-task";
 import { normalizeTaskUserId } from "@/task-user-id";
 const props = defineProps<{ project: Project }>();
+const projectId = props.project.projectId;
 const session = useTaskSession();
+const projectSession = session.project(projectId);
 const workspace = session.rpc;
 const config = useRuntimeViewerConfig();
 const calls = useTaskCallDebugStore();
@@ -54,14 +56,14 @@ const validCaller = computed(() => {
     return false;
   }
 });
-const groups = computed(() => workspace.groups.default);
+const groups = computed(() => workspace.groups[projectId]);
 const group = computed(() =>
   groups.value?.value?.find((g) => g.workerGroupId === groupId.value)
 );
 const taskId = computed(() => {
   if (directTaskId.value) return directTaskId.value;
   try {
-    return rpcTaskId("default", userId.value, groupId.value);
+    return rpcTaskId(projectId, userId.value, groupId.value);
   } catch {
     return "";
   }
@@ -70,7 +72,7 @@ const valid = computed(
   () =>
     !!taskId.value &&
     row.value?.taskId === taskId.value &&
-    row.value.task?.projectId === "default" &&
+    row.value.task?.projectId === projectId &&
     row.value.task.workerGroupId === groupId.value &&
     row.value.task.idleDisposition === "PARK_WHEN_IDLE"
 );
@@ -100,6 +102,8 @@ const canPrepare = computed(
   () =>
     config.mode === "api" &&
     resourcesReady.value &&
+    (!directTaskId.value || !state.value.loading) &&
+    (!state.value.stale || state.value.missing) &&
     (changedCaller.value
       ? validCaller.value
       : !!taskId.value &&
@@ -117,7 +121,9 @@ function time(value?: string) {
   return value ? new Date(value).toLocaleTimeString() : "未提供";
 }
 async function selectIdentity(group: string, user: string) {
-  await router.push({ query: { tab: "rpc", group, user: user.trim() || undefined } });
+  await router.push({
+    query: { project: projectId, tab: "rpc", group, user: user.trim() || undefined }
+  });
 }
 function commitCaller() {
   callerInput.value = callerInput.value.trim();
@@ -126,32 +132,37 @@ function commitCaller() {
 async function sync() {
   const generation = ++navigation;
   validation.value = "";
-  if (!groups.value) await workspace.loadGroups("default");
+  if (!groups.value) await workspace.loadGroups(projectId);
   if (disposed || generation !== navigation) return;
   if (!directTaskId.value && !groupId.value) {
-    const remembered = session.navigation.rpcQuery;
+    const remembered = projectSession.rpcQuery;
     const query =
       typeof route.query.user === "string"
         ? { group: props.project.workerGroupIds[0], user: route.query.user }
         : Object.keys(remembered).length
           ? remembered
           : { group: props.project.workerGroupIds[0] };
-    await router.replace({ query: { tab: "rpc", ...query } });
+    await router.replace({ query: { project: projectId, tab: "rpc", ...query } });
     return;
   }
-  session.navigation.rpcQuery = directTaskId.value
-    ? { taskId: directTaskId.value }
+  projectSession.rpcQuery = directTaskId.value
+    ? { taskId: directTaskId.value, group: groupId.value, user: userId.value }
     : { group: groupId.value, user: userId.value };
   if (taskId.value) {
-    if (workspace.detailKey.value !== "default/" + taskId.value)
-      await workspace.loadDetail("default", taskId.value);
+    if (workspace.detailKey.value !== projectId + "/" + taskId.value)
+      await workspace.loadDetail(projectId, taskId.value);
   } else workspace.clearDetail();
 }
 onMounted(sync);
 watch(
   () => [route.query.group, route.query.user, route.query.taskId, props.project],
   () => {
-    if (route.path === "/task-workbench" && route.query.tab !== "finite") void sync();
+    if (
+      route.path === "/task-workbench" &&
+      route.query.tab !== "finite" &&
+      (!route.query.project || route.query.project === projectId)
+    )
+      void sync();
   }
 );
 onBeforeUnmount(() => {
@@ -162,8 +173,8 @@ async function refresh() {
   const id = taskId.value;
   await Promise.allSettled([
     session.loadDirectory(),
-    workspace.loadGroups("default"),
-    ...(id ? [workspace.loadDetail("default", id)] : [])
+    workspace.loadGroups(projectId),
+    ...(id ? [workspace.loadDetail(projectId, id)] : [])
   ]);
 }
 async function prepare() {
@@ -175,7 +186,7 @@ async function prepare() {
   const id = taskId.value;
   const request: RpcTaskPrepareRequest = directTaskId.value
     ? {
-        projectId: "default",
+        projectId: projectId,
         workerGroupId: groupId.value,
         name: row.value!.task!.name,
         metadata: Object.fromEntries(
@@ -185,7 +196,7 @@ async function prepare() {
         )
       }
     : {
-        projectId: "default",
+        projectId: projectId,
         workerGroupId: groupId.value,
         metadata: { userId: userId.value.trim() }
       };
@@ -193,7 +204,7 @@ async function prepare() {
   workspace.invalidateDetail();
   const outcome = await session.prepareRpc(id, request);
   if (!disposed && taskId.value === id && outcome === "ready")
-    await workspace.loadDetail("default", id);
+    await workspace.loadDetail(projectId, id);
 }
 async function send() {
   if (!enabled.value || busy.value) return;
@@ -230,7 +241,7 @@ async function loadResult(item: TaskCallDebugHistoryItem) {
   try {
     await calls.loadResult(item.taskId, item.localId);
   } catch (cause) {
-    if (taskId.value === item.taskId)
+    if (!disposed && taskId.value === item.taskId)
       validation.value = presentTaskCallDebugError(cause).message;
   }
 }
@@ -312,6 +323,18 @@ const labels: Record<string, string> = {
       :closable="false"
     />
     <el-alert
+      v-if="group && !group.workerGroup && !groups?.loading && !groups?.error"
+      :title="`Group ${groupId} 尚未注册。Project 绑定已声明，请完成资源注册后刷新。`"
+      type="warning"
+      :closable="false"
+    />
+    <el-alert
+      v-if="directTaskId && row?.task && !valid && !state.loading && !state.stale"
+      title="该任务的 Project、Group 或生命周期与当前 RPC 上下文不符。"
+      type="error"
+      :closable="false"
+    />
+    <el-alert
       v-if="!enabled"
       :title="
         config.mode === 'mock'
@@ -386,6 +409,10 @@ const labels: Record<string, string> = {
               spellcheck="false"
             />
           </label>
+          <p v-if="draft.executorName === 'workerId'" class="raw-muted">
+            workerId 的 input 是 JSON 字符串，例如 "worker-123"；定向调用不需要 Pool
+            供给。
+          </p>
           <label
             ><span>等待时间 · ms</span
             ><input

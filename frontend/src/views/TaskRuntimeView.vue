@@ -189,8 +189,16 @@ function workbenchLink() {
     path: "/task-workbench",
     query:
       task?.idleDisposition === "PARK_WHEN_IDLE"
-        ? { tab: "rpc", taskId: detail.value?.taskId }
-        : { tab: "finite", taskId: detail.value?.taskId }
+        ? {
+            project: task.projectId ?? undefined,
+            tab: "rpc",
+            taskId: detail.value?.taskId
+          }
+        : {
+            project: task?.projectId ?? undefined,
+            tab: "finite",
+            taskId: detail.value?.taskId
+          }
   };
 }
 </script>
@@ -199,6 +207,12 @@ function workbenchLink() {
     <header class="raw-tasks__heading">
       <h1>Runtime Tasks</h1>
       <div>
+        <router-link
+          v-if="!globalView && knownProject"
+          :to="{ path: '/task-workbench', query: { project, tab: 'rpc' } }"
+        >
+          <el-button>进入任务工作台</el-button>
+        </router-link>
         <span class="raw-muted">最近读取：{{ time(readAt) }}</span
         ><el-button :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
       </div>
@@ -309,9 +323,14 @@ function workbenchLink() {
           {{ detail.task?.projectId }} / {{ detail.task?.workerGroupId }} ·
           {{ detail.scoreBand ?? "状态不可用" }}
         </p>
-        <router-link v-if="detail.task?.projectId === 'default'" :to="workbenchLink()"
+        <router-link
+          v-if="directory.value?.some((p) => p.projectId === detail?.task?.projectId)"
+          :to="workbenchLink()"
           >进入任务工作台</router-link
         >
+        <p v-else class="raw-muted">
+          任务归属未提供或 Project 不在当前目录中，无法进入任务工作台。
+        </p>
         <TaskResultExport :key="detail.taskId" :task="detail" :fresh="fresh" />
         <JsonBlock :value="detail" />
       </template>

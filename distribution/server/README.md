@@ -49,6 +49,39 @@ The [Simulator entry](../../worker_simulator_jvm/README.md#one-configuration-one
 also supports standalone Host development; [Boot Run](../../server_boot_jvm/README.md#run)
 starts only the Server composition.
 
+## AgentForge workbench deployment
+
+The `agentforge` profile supplies Server/Adapter coordinates and no Project or
+Group resources. The host supplies an explicit Project and its bound Group IDs;
+the name need not equal the profile. The Console accepts any declared Project,
+including an environment whose only Project is `agentforge`.
+
+Deployment proceeds in order: declare the Project at startup, explicitly register
+its Group descriptors through `/api/v1/worker-groups/{id}:register`, connect Workers
+with the required installed Handlers, then prepare/call RPC Tasks or create/import/
+approve finite Tasks in `/task-workbench?project=agentforge`. Registration alone
+creates no Task. The capabilities page distinguishes an unregistered Group from
+an empty Pool configuration; `workerId` accepts a JSON string and needs no Pool.
+An old registration report is not evidence for a different Redis scope or process.
+
+The Runtime Distribution proof checks a caller-supplied AgentForge Project with
+four Group bindings, empty resources before registration, explicit registration
+and RPC preparation, finite creation/close, and direct workbench page routes in a
+fresh extracted archive. It retains the platform fixture and empty-resource
+assertions; it does not prove Android capability behavior. Runtime Boundary owns
+real Worker traversal; a desktop acceptance may additionally run a JVM test Worker
+against source and extracted Runtime, identified explicitly as a test capability.
+
+For an already running consumer, building this repository does not replace its
+locked installation. A local candidate ZIP is acceptance output, not a published
+Release. Formal delivery separately follows the [release contract](RELEASE-1.0.md):
+publish immutable artifacts, update the consumer's exact version/commit/checksums,
+resolve into a separate installation, and switch deliberately. The task-directory
+storage change after 1.0.0 requires a fresh Redis scope; do not reuse old descriptors
+or indexes. Register Groups and prepare required Tasks in the new scope. Keep the
+old installation/scope for rollback, and do not overwrite a running consumer's
+`.runtime` directory or restart its Server as part of local acceptance.
+
 ## Diagnostic dictionary
 
 The projection is produced from an explicit three-owner allowlist rather than

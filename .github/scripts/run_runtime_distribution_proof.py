@@ -148,17 +148,17 @@ def _preview_worker_groups(base_url: str) -> dict[str, Any]:
     return preview
 
 
-def _prepare_rpc_task(base_url: str, worker_group_id: str) -> str:
+def _prepare_rpc_task(base_url: str, project_id: str, worker_group_id: str) -> str:
     task_id = f"distribution-rpc-{worker_group_id}"
     status, payload, _ = _request(
         "POST",
         f"{base_url}/api/v1/tasks/{task_id}/rpc:prepare",
-        {"projectId": "scenario-workers", "workerGroupId": worker_group_id},
+        {"projectId": project_id, "workerGroupId": worker_group_id},
     )
     if status != 200 or json.loads(payload) != {"taskId": task_id}:
         raise RuntimeError(f"RPC preparation for {worker_group_id} was not confirmed")
     status, payload, _ = _request(
-        "GET", f"{base_url}/api/v1/projects/scenario-workers/tasks/{task_id}"
+        "GET", f"{base_url}/api/v1/projects/{project_id}/tasks/{task_id}"
     )
     if status != 200:
         raise RuntimeError(f"Prepared RPC Task point read returned HTTP {status}")
@@ -168,7 +168,7 @@ def _prepare_rpc_task(base_url: str, worker_group_id: str) -> str:
         entry.get("taskId") != task_id
         or not isinstance(task, dict)
         or task.get("taskId") != task_id
-        or task.get("projectId") != "scenario-workers"
+        or task.get("projectId") != project_id
         or task.get("workerGroupId") != worker_group_id
         or task.get("idleDisposition") != "PARK_WHEN_IDLE"
         or not isinstance(task.get("refill"), list)
@@ -301,7 +301,7 @@ def _prove_runtime(
                     raise RuntimeError(
                         "Packaged Server implicitly started Scenario Workers"
                     )
-                _prepare_rpc_task(base_url, worker_group_id)
+                _prepare_rpc_task(base_url, "scenario-workers", worker_group_id)
 
             status, scalar, scalar_type = _request("GET", f"{base_url}/scalar")
             if status != 200 or scalar_type != "text/html":
@@ -398,6 +398,60 @@ def _prove_runtime(
             _stop_process(server_process)
 
 
+_AGENTFORGE_GROUPS = tuple(f"agentforge-{name}-workers" for name in (
+    "detect-env", "instagram", "rcs", "telegram"
+))
+
+
+def _prove_agentforge_bindings(base_url: str) -> None:
+    status, payload, _ = _request("GET", f"{base_url}/api/v1/projects")
+    if status != 200 or json.loads(payload) != [
+        {"projectId": "agentforge", "workerGroupIds": list(_AGENTFORGE_GROUPS)}
+    ]:
+        raise RuntimeError("AgentForge directory must contain its declared Project, without default")
+    path = f"{base_url}/api/v1/projects/agentforge/worker-groups"
+    status, payload, _ = _request("GET", path)
+    groups = json.loads(payload)
+    if status != 200 or len(groups) != 4 or any(
+        row.get("workerGroup") is not None or row.get("matching") != {
+            "pools": [], "functions": ["workerId"]
+        } for row in groups
+    ):
+        raise RuntimeError("Unregistered Group bindings or directed-only capabilities differ")
+    # Generic JVM test capability, not an Android business Handler claim.
+    for group in _AGENTFORGE_GROUPS:
+        status, payload, _ = _request("POST", f"{base_url}/api/v1/worker-groups/{group}:register",
+            {"eventCodes": ["extension.worker.string.md5"]})
+        if status != 200 or json.loads(payload).get("workerGroupId") != group:
+            raise RuntimeError("Explicit AgentForge Group registration failed")
+    status, payload, _ = _request("GET", path)
+    if status != 200 or any(row.get("workerGroup") is None for row in json.loads(payload)):
+        raise RuntimeError("Registered Group capabilities cannot be refreshed")
+    if _preview_tasks(base_url) != []:
+        raise RuntimeError("Registering Groups implicitly created Tasks")
+    _prepare_rpc_task(base_url, "agentforge", _AGENTFORGE_GROUPS[0])
+    status, payload, _ = _request("POST", f"{base_url}/api/v1/tasks", {
+        "projectId": "agentforge", "workerGroupId": _AGENTFORGE_GROUPS[0],
+        "priority": 50, "maxRetryTimes": 3, "refill": []
+    })
+    if status != 200 or not isinstance(json.loads(payload).get("taskId"), str):
+        raise RuntimeError("Non-default finite creation failed")
+    task_id = json.loads(payload)["taskId"]
+    status, payload, _ = _request("GET", f"{base_url}/api/v1/projects/agentforge/tasks/{task_id}")
+    task = json.loads(payload).get("task", {})
+    if status != 200 or task.get("projectId") != "agentforge" or task.get("idleDisposition") != "CLOSE_WHEN_IDLE":
+        raise RuntimeError("Non-default finite attribution differs")
+    status, _, _ = _request("POST", f"{base_url}/api/v1/tasks/{task_id}/close")
+    if status != 200:
+        raise RuntimeError("Non-default finite close failed")
+    for path in ("/task-workbench?project=agentforge&tab=rpc",
+                 "/task-workbench/?project=agentforge&tab=finite&view=create",
+                 "/runtime/tasks?project=agentforge"):
+        status, payload, content_type = _request("GET", base_url + path)
+        if status != 200 or content_type != "text/html" or b'id="app"' not in payload:
+            raise RuntimeError("AgentForge workbench direct route unavailable")
+
+
 def _prove_agentforge_profile(
     runtime_root: Path,
     redis_url: str,
@@ -422,7 +476,11 @@ def _prove_agentforge_profile(
         flags["start_new_session"] = True
     with log_path.open("wb") as log:
         process = subprocess.Popen(
-            _server_command(runtime_root, "agentforge", []),
+            _server_command(runtime_root, "agentforge", [
+                "--xa.mass.project-assembly.projects[0].project-id=agentforge",
+                *(f"--xa.mass.project-assembly.projects[0].worker-group-ids[{i}]={group}"
+                  for i, group in enumerate(_AGENTFORGE_GROUPS))
+            ]),
             cwd=runtime_root,
             env=environment,
             stdout=log,
@@ -447,6 +505,7 @@ def _prove_agentforge_profile(
                 ("127.0.0.1", adapter_port), timeout=5
             ):
                 pass
+            _prove_agentforge_bindings(base_url)
             print(
                 "AgentForge Runtime Profile proof succeeded: "
                 f"scope={scope}, serverPort={server_port}, "

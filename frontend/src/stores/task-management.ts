@@ -13,10 +13,15 @@ import type {
   TaskItemApiRequest
 } from "@/task-management/types";
 
-export function canManageRawTask(task: ProjectTask, fresh: boolean): boolean {
+export function canManageRawTask(
+  task: ProjectTask,
+  projectId: string,
+  fresh: boolean
+): boolean {
   return (
     fresh &&
-    task.task?.projectId === "default" &&
+    !!projectId &&
+    task.task?.projectId === projectId &&
     task.task.idleDisposition === "CLOSE_WHEN_IDLE" &&
     task.scoreBand !== null &&
     task.scoreBand !== "terminal"
@@ -43,30 +48,43 @@ export function createTaskManagementStore(
 ) {
   return defineStore("taskManagement", () => {
     const busy = ref(false);
-    const submission = ref<ImportReceipt>();
-    const error = ref<FiniteTaskErrorPresentation>();
-    const drafts = reactive<Record<string, ReturnType<typeof newRawTaskDraft>>>({});
-    const submissionKey = ref("");
-    function draft(key: string) {
-      drafts[key] ??= newRawTaskDraft();
-      return drafts[key]!;
+    const projects = reactive<
+      Record<
+        string,
+        {
+          submission?: ImportReceipt;
+          error?: FiniteTaskErrorPresentation;
+          submissionKey: string;
+          drafts: Record<string, ReturnType<typeof newRawTaskDraft>>;
+        }
+      >
+    >(Object.create(null));
+    function project(projectId: string) {
+      if (!projectId) throw new Error("请选择 Project。");
+      projects[projectId] ??= { submissionKey: "", drafts: Object.create(null) };
+      return projects[projectId]!;
+    }
+    function draft(projectId: string, key: string) {
+      const state = project(projectId);
+      state.drafts[key] ??= newRawTaskDraft();
+      return state.drafts[key]!;
     }
     function admit() {
       if (mode !== "api") throw new Error("Mock 不执行原始任务写操作。");
       if (busy.value) throw new Error("操作进行中，请等待本次请求结束。");
-      error.value = undefined;
     }
-    function finishSubmission() {
+    function finishSubmission(projectId: string) {
       if (busy.value) return;
-      const current = drafts[submissionKey.value];
+      const state = project(projectId);
+      const current = state.drafts[state.submissionKey];
       if (current) {
         current.file = undefined;
         current.content = undefined;
         current.inputError = "";
       }
-      submissionKey.value = "";
-      submission.value = undefined;
-      error.value = undefined;
+      state.submissionKey = "";
+      state.submission = undefined;
+      state.error = undefined;
     }
     async function appendBatches(
       taskId: string,
@@ -93,6 +111,7 @@ export function createTaskManagementStore(
       receipt.complete = true;
     }
     async function submit(request: {
+      projectId: string;
       create?: TaskCreateApiRequest;
       existing?: ProjectTask;
       fresh?: boolean;
@@ -101,20 +120,26 @@ export function createTaskManagementStore(
       items: (taskId: string) => TaskItemApiRequest[];
     }): Promise<string | undefined> {
       admit();
-      if (submission.value)
+      const state = project(request.projectId);
+      if (state.submission)
         throw new Error("请先结束上一次提交；不会自动重传或重建任务。");
       if (
-        request.create?.projectId !== "default" &&
-        !(
-          request.existing &&
-          canManageRawTask(request.existing, request.fresh === true) &&
-          request.existing.scoreBand === "pre_review"
-        )
+        Boolean(request.create) === Boolean(request.existing) ||
+        (request.create
+          ? request.create.projectId !== request.projectId
+          : !request.existing ||
+            !canManageRawTask(
+              request.existing,
+              request.projectId,
+              request.fresh === true
+            ) ||
+            request.existing.scoreBand !== "pre_review")
       )
-        throw new Error("只能向 default 的待审核有限任务追加。");
+        throw new Error("只能创建当前 Project 的任务或向其待审核有限任务追加。");
+      state.error = undefined;
       busy.value = true;
-      submissionKey.value = request.existing?.taskId ?? "create";
-      submission.value = {
+      state.submissionKey = request.existing?.taskId ?? "create";
+      state.submission = {
         taskId: request.existing?.taskId,
         fileName: request.fileName,
         total: request.total,
@@ -124,25 +149,27 @@ export function createTaskManagementStore(
         notSubmitted: request.total,
         complete: false
       };
-      const receipt = submission.value;
+      const receipt = state.submission;
       try {
         if (request.create)
           receipt.taskId = (await client.createTask(request.create)).taskId;
         if (!receipt.taskId) throw new Error("创建结果未确认，请人工核对任务列表。");
         await appendBatches(receipt.taskId, request.items(receipt.taskId), receipt);
       } catch (failure) {
-        error.value = presentFiniteTaskError(failure);
-        receipt.taskId ??= error.value.taskId;
-        receipt.error = error.value.message;
+        state.error = presentFiniteTaskError(failure);
+        receipt.taskId ??= state.error.taskId;
+        receipt.error = state.error.message;
       } finally {
         busy.value = false;
       }
       return receipt.taskId;
     }
-    async function ensureDirectory(): Promise<boolean> {
+    async function ensureDirectory(projectId: string): Promise<boolean> {
       admit();
-      const receipt = submission.value;
+      const state = project(projectId);
+      const receipt = state.submission;
       if (!receipt?.taskId) return false;
+      state.error = undefined;
       busy.value = true;
       try {
         await client.ensureDirectory(receipt.taskId);
@@ -150,31 +177,34 @@ export function createTaskManagementStore(
           "任务目录已确认。请读取原任务，再显式追加号码或 Item；不会自动续提。";
         return true;
       } catch (failure) {
-        error.value = presentFiniteTaskError(failure);
-        receipt.error = error.value.message;
+        state.error = presentFiniteTaskError(failure);
+        receipt.error = state.error.message;
         return false;
       } finally {
         busy.value = false;
       }
     }
     async function mutate(
+      projectId: string,
       task: ProjectTask,
       action: "approve" | "close",
       fresh: boolean
     ): Promise<boolean> {
       admit();
       if (
-        !canManageRawTask(task, fresh) ||
+        !canManageRawTask(task, projectId, fresh) ||
         (action === "approve" && task.scoreBand !== "pre_review")
       )
         throw new Error("当前快照不允许此操作，请重新读取。");
+      const state = project(projectId);
+      state.error = undefined;
       busy.value = true;
       try {
         if (action === "approve") await client.approveTask(task.taskId);
         else await client.closeTask(task.taskId);
         return true;
       } catch (failure) {
-        error.value = presentFiniteTaskError(failure);
+        state.error = presentFiniteTaskError(failure);
         return false;
       } finally {
         busy.value = false;
@@ -182,9 +212,7 @@ export function createTaskManagementStore(
     }
     return {
       busy,
-      submission,
-      submissionKey,
-      error,
+      project,
       draft,
       submit,
       ensureDirectory,

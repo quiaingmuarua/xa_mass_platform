@@ -13,12 +13,14 @@ import { useRuntimeViewerConfig, useTaskManagementStore } from "@/runtime-contex
 import { canManageRawTask } from "@/stores/task-management";
 import type { Project } from "@/task-management/projects";
 import { useTaskSession } from "./session";
-defineProps<{ project: Project }>();
+const props = defineProps<{ project: Project }>();
+const projectId = props.project.projectId;
 const session = useTaskSession();
 const workspace = session.finite;
-const filter = session.finiteFilter;
+const filter = session.project(projectId).finiteFilter;
 const config = useRuntimeViewerConfig();
 const operations = useTaskManagementStore();
+const operationState = operations.project(projectId);
 const route = useRoute();
 const router = useRouter();
 const taskId = computed(() =>
@@ -26,12 +28,17 @@ const taskId = computed(() =>
 );
 const creating = computed(() => route.query.view === "create");
 const appending = computed(() => route.query.view === "append");
-const list = computed(() => workspace.windows.default);
-const groups = computed(() => workspace.groups.default);
+const list = computed(() => workspace.windows[projectId]);
+const groups = computed(() => workspace.groups[projectId]);
 const state = computed(() => workspace.detail.value);
 const detail = computed(() => state.value.value);
 const fresh = computed(
-  () => !!detail.value && !state.value.loading && !state.value.stale
+  () =>
+    !!detail.value &&
+    detail.value.taskId === taskId.value &&
+    detail.value.task?.projectId === projectId &&
+    !state.value.loading &&
+    !state.value.stale
 );
 const directoryFresh = computed(
   () => !session.directory.stale && !session.directory.loading
@@ -40,10 +47,13 @@ const api = computed(() => config.mode === "api");
 const canWrite = computed(() => api.value && directoryFresh.value);
 async function ensureKnownDirectory() {
   if (!canWrite.value || operations.busy) return;
-  if (await operations.ensureDirectory()) await workspace.loadTasks("default");
+  if (await operations.ensureDirectory(projectId)) await workspace.loadTasks(projectId);
 }
 const manage = computed(
-  () => canWrite.value && !!detail.value && canManageRawTask(detail.value, fresh.value)
+  () =>
+    canWrite.value &&
+    !!detail.value &&
+    canManageRawTask(detail.value, projectId, fresh.value)
 );
 const groupFresh = computed(
   () => !!groups.value?.value && !groups.value.stale && !groups.value.loading
@@ -80,14 +90,14 @@ async function sync() {
   const generation = ++navigation;
   const savedScroll = filter.scroll;
   restoringScroll = true;
-  if (!list.value) void workspace.loadTasks("default");
-  if (!groups.value) void workspace.loadGroups("default");
+  if (!list.value) void workspace.loadTasks(projectId);
+  if (!groups.value) void workspace.loadGroups(projectId);
   if (taskId.value) {
-    if (workspace.detailKey.value !== "default/" + taskId.value)
-      void workspace.loadDetail("default", taskId.value);
+    if (workspace.detailKey.value !== projectId + "/" + taskId.value)
+      void workspace.loadDetail(projectId, taskId.value);
   } else workspace.clearDetail();
   await nextTick();
-  if (!disposed && generation === navigation)
+  if (savedScroll !== 0 && !disposed && generation === navigation)
     await table.value?.restoreScrollTop(savedScroll);
   if (!disposed && generation === navigation) restoringScroll = false;
 }
@@ -97,7 +107,12 @@ function rememberScroll(event: { scrollTop: number }) {
 watch(
   () => route.fullPath,
   () => {
-    if (route.path === "/task-workbench" && route.query.tab === "finite") void sync();
+    if (
+      route.path === "/task-workbench" &&
+      route.query.tab === "finite" &&
+      (!route.query.project || route.query.project === projectId)
+    )
+      void sync();
   }
 );
 onMounted(sync);
@@ -107,24 +122,31 @@ onBeforeUnmount(() => {
 });
 async function refresh() {
   await Promise.allSettled([
-    workspace.loadTasks("default"),
-    workspace.loadGroups("default"),
+    workspace.loadTasks(projectId),
+    workspace.loadGroups(projectId),
     ...(session.directory.stale ? [session.loadDirectory()] : [])
   ]);
 }
 function open(row: TaskRow) {
   rememberFocus();
-  return router.push({ query: { tab: "finite", taskId: row.taskId } });
+  return router.push({
+    query: { project: projectId, tab: "finite", taskId: row.taskId }
+  });
 }
 function openCreate() {
   rememberFocus();
-  return router.push({ query: { tab: "finite", view: "create" } });
+  return router.push({ query: { project: projectId, tab: "finite", view: "create" } });
 }
 async function close(done: () => void) {
   done();
-  if (disposed || route.path !== "/task-workbench" || route.query.tab !== "finite")
+  if (
+    disposed ||
+    route.path !== "/task-workbench" ||
+    route.query.tab !== "finite" ||
+    (route.query.project && route.query.project !== projectId)
+  )
     return;
-  await router.push({ query: { tab: "finite" } });
+  await router.push({ query: { project: projectId, tab: "finite" } });
   const generation = navigation;
   await nextTick();
   if (
@@ -139,19 +161,19 @@ async function close(done: () => void) {
 async function changeTask(action: "approve" | "close", id = taskId.value) {
   if (operations.busy || !canWrite.value) return;
   const generation = navigation;
-  await workspace.loadDetail("default", id);
+  await workspace.loadDetail(projectId, id);
   const current = detail.value;
   if (
     disposed ||
     generation !== navigation ||
     !current ||
     current.taskId !== id ||
-    !canManageRawTask(current, fresh.value)
+    !canManageRawTask(current, projectId, fresh.value)
   )
     return;
   try {
     await ElMessageBox.confirm(
-      `Task: ${id}\nGroup: ${current.task?.workerGroupId}\n${action === "approve" ? "批准后开始调度已写入 Items。" : "关闭保留已有结果，已执行操作不会撤回。"}`,
+      `Project: ${projectId}\nTask: ${id}\nGroup: ${current.task?.workerGroupId}\n${action === "approve" ? "批准后开始调度已写入 Items。" : "关闭保留已有结果，已执行操作不会撤回。"}`,
       action === "approve" ? "批准原始任务" : "关闭原始任务",
       { confirmButtonText: "确认", cancelButtonText: "取消", type: "warning" }
     );
@@ -163,10 +185,10 @@ async function changeTask(action: "approve" | "close", id = taskId.value) {
       detail.value !== current
     )
       return;
-    await operations.mutate(current, action, fresh.value);
-    await workspace.loadTasks("default");
+    await operations.mutate(projectId, current, action, fresh.value);
+    await workspace.loadTasks(projectId);
     if (!disposed && generation === navigation)
-      await workspace.loadDetail("default", id);
+      await workspace.loadDetail(projectId, id);
   } catch (cause) {
     if (cause instanceof Error && !disposed) ElMessage.error(cause.message);
   }
@@ -179,6 +201,7 @@ async function action(row: TaskRow, value: string) {
   rememberFocus();
   await router.push({
     query: {
+      project: projectId,
       tab: "finite",
       taskId: row.taskId,
       view: value === "append" ? "append" : undefined
@@ -186,30 +209,36 @@ async function action(row: TaskRow, value: string) {
   });
 }
 async function afterSubmit(id: string) {
-  const receipt = operations.submission;
+  if (disposed) return;
+  const receipt = operationState.submission;
   const generation = navigation;
   const wasOpen = creating.value || taskId.value === id;
-  await workspace.loadTasks("default");
+  await workspace.loadTasks(projectId);
   if (
     disposed ||
     !wasOpen ||
     generation !== navigation ||
-    receipt !== operations.submission
+    receipt !== operationState.submission
   )
     return;
   if (receipt?.complete && receipt.taskId === id) {
-    await router.push({ query: { tab: "finite", taskId: id } });
-    if (!disposed && taskId.value === id) await workspace.loadDetail("default", id);
+    await router.push({ query: { project: projectId, tab: "finite", taskId: id } });
+    if (!disposed && taskId.value === id) await workspace.loadDetail(projectId, id);
   }
 }
 function inspect(id: string) {
-  return router.push({ query: { tab: "finite", taskId: id } });
+  return router.push({ query: { project: projectId, tab: "finite", taskId: id } });
 }
 function returnSubmission() {
-  return operations.submissionKey === "create"
+  return operationState.submissionKey === "create"
     ? openCreate()
     : router.push({
-        query: { tab: "finite", taskId: operations.submissionKey, view: "append" }
+        query: {
+          project: projectId,
+          tab: "finite",
+          taskId: operationState.submissionKey,
+          view: "append"
+        }
       });
 }
 </script>
@@ -239,26 +268,26 @@ function returnSubmission() {
       :closable="false"
     />
     <el-alert
-      v-if="operations.error"
-      :title="operations.error.message"
+      v-if="operationState.error"
+      :title="operationState.error.message"
       type="error"
       :closable="false"
     />
-    <div v-if="operations.submission" class="raw-submission">
-      本会话提交：{{ operations.submission.applied }} 已确认 /
-      {{ operations.submission.total }}；{{
-        operations.submission.error ||
-        (operations.submission.complete ? "本次导入完成" : "未完成")
+    <div v-if="operationState.submission" class="raw-submission">
+      本会话提交：{{ operationState.submission.applied }} 已确认 /
+      {{ operationState.submission.total }}；{{
+        operationState.submission.error ||
+        (operationState.submission.complete ? "本次导入完成" : "未完成")
       }}
       <el-button link @click="returnSubmission">返回提交与核对</el-button
       ><el-button
-        v-if="operations.submission.taskId"
+        v-if="operationState.submission.taskId"
         link
-        @click="inspect(operations.submission.taskId)"
+        @click="inspect(operationState.submission.taskId)"
         >查看已知任务</el-button
       >
       <el-button
-        v-if="operations.submission.taskId && !operations.submission.complete"
+        v-if="operationState.submission.taskId && !operationState.submission.complete"
         link
         :disabled="operations.busy || !canWrite"
         @click="ensureKnownDirectory"
@@ -312,7 +341,7 @@ function returnSubmission() {
             canWrite &&
             !list?.loading &&
             !list?.stale &&
-            !!row.task &&
+            row.task?.projectId === projectId &&
             row.task.idleDisposition === 'CLOSE_WHEN_IDLE'
           "
           :busy="operations.busy"
@@ -334,7 +363,7 @@ function returnSubmission() {
       <el-button
         :loading="state.loading"
         :icon="Refresh"
-        @click="workspace.loadDetail('default', taskId)"
+        @click="workspace.loadDetail(projectId, taskId)"
         >刷新任务</el-button
       ><span class="raw-muted"> {{ time(state.readAt) }}</span>
       <template v-if="detail">
@@ -353,7 +382,7 @@ function returnSubmission() {
         <router-link
           :to="{
             path: '/runtime/tasks',
-            query: { project: 'default', taskId: detail.taskId }
+            query: { project: projectId, taskId: detail.taskId }
           }"
           >查看 Runtime 原始观察</router-link
         >
@@ -363,13 +392,14 @@ function returnSubmission() {
           :title="groups.error"
           type="error"
           :closable="false"
-          ><el-button @click="workspace.loadGroups('default')"
+          ><el-button @click="workspace.loadGroups(projectId)"
             >重读 Group 能力</el-button
           ></el-alert
         >
         <RawTaskInput
           v-if="appending && detail.task?.idleDisposition === 'CLOSE_WHEN_IDLE'"
           :key="detail.taskId"
+          :project-id="projectId"
           :groups="groups?.value ?? []"
           :task="detail"
           :disabled="!manage || detail.scoreBand !== 'pre_review' || !groupFresh"
@@ -384,7 +414,7 @@ function returnSubmission() {
     </el-drawer>
     <el-drawer
       :model-value="creating"
-      title="创建有限任务 · default"
+      :title="`创建有限任务 · ${projectId}`"
       size="760px"
       :before-close="close"
     >
@@ -393,12 +423,13 @@ function returnSubmission() {
         :title="groups.error"
         type="error"
         :closable="false"
-        ><el-button @click="workspace.loadGroups('default')"
+        ><el-button @click="workspace.loadGroups(projectId)"
           >重读 Group 能力</el-button
         ></el-alert
       >
       <RawTaskInput
         key="create"
+        :project-id="projectId"
         :groups="groups?.value ?? []"
         :disabled="!canWrite || !groupFresh"
         @submitted="afterSubmit"

@@ -27,12 +27,15 @@ import {
 import type { ProjectGroup, ProjectTask } from "@/task-management/projects";
 import type { TaskItemApiRequest } from "@/task-management/types";
 const props = defineProps<{
+  projectId: string;
   groups: ProjectGroup[];
   task?: ProjectTask;
   disabled: boolean;
 }>();
 const emit = defineEmits<{ submitted: [taskId: string]; inspect: [taskId: string] }>();
 const operations = useTaskManagementStore();
+const projectId = props.projectId;
+const state = operations.project(projectId);
 const draftKey = props.task?.taskId ?? "create";
 const {
   groupId,
@@ -46,17 +49,18 @@ const {
   file,
   content,
   inputError
-} = toRefs(operations.draft(draftKey));
+} = toRefs(operations.draft(projectId, draftKey));
 const ownReceipt = computed(() =>
-  operations.submissionKey === draftKey ? operations.submission : undefined
+  state.submissionKey === draftKey ? state.submission : undefined
 );
 const parsing = ref(false);
 const inputKey = ref(0);
 let parseGeneration = 0;
+let disposed = false;
 const group = computed(() =>
   props.groups.find((g) => g.workerGroupId === groupId.value)
 );
-const frozen = computed(() => !!operations.submission || operations.busy);
+const frozen = computed(() => !!state.submission || operations.busy);
 const restoredDraft = !!groupId.value;
 watch(
   () => [props.task?.taskId, props.groups] as const,
@@ -113,6 +117,7 @@ async function chooseFile(event: Event) {
   }
 }
 onBeforeUnmount(() => {
+  disposed = true;
   parseGeneration++;
 });
 async function submit() {
@@ -164,10 +169,11 @@ async function submit() {
     )
       throw new Error("Task 调度参数超出范围");
     const taskId = await operations.submit({
+      projectId,
       create: props.task
         ? undefined
         : {
-            projectId: "default",
+            projectId,
             workerGroupId: groupId.value,
             priority: priority.value,
             maxRetryTimes: retries.value,
@@ -179,14 +185,15 @@ async function submit() {
       total,
       items
     });
-    if (taskId) emit("submitted", taskId);
+    if (taskId && !disposed) emit("submitted", taskId);
   } catch (failure) {
-    inputError.value = failure instanceof Error ? failure.message : "输入无效";
+    if (!disposed)
+      inputError.value = failure instanceof Error ? failure.message : "输入无效";
   }
 }
 function reset() {
   if (operations.busy) return;
-  operations.finishSubmission();
+  operations.finishSubmission(projectId);
   file.value = undefined;
   content.value = undefined;
   inputError.value = "";
@@ -217,6 +224,19 @@ function reset() {
         />
       </el-select>
     </el-form-item>
+    <el-alert
+      v-if="groups.some((g) => !g.workerGroup)"
+      :title="
+        '尚未注册的 Group：' +
+        groups
+          .filter((g) => !g.workerGroup)
+          .map((g) => g.workerGroupId)
+          .join('、') +
+        '。请完成资源注册后刷新 Group 能力。'
+      "
+      type="warning"
+      :closable="false"
+    />
     <p v-if="group" class="raw-task-help">
       已启用 Pool：{{ group.matching.pools.join("、") || "无" }}；函数：{{
         group.matching.functions.join("、")
@@ -325,7 +345,7 @@ function reset() {
       </p>
     </section>
     <el-button
-      v-else-if="!operations.submission"
+      v-else-if="!state.submission"
       type="primary"
       native-type="submit"
       :loading="operations.busy || parsing"

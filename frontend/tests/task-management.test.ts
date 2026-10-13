@@ -199,6 +199,7 @@ function observed(band: "pre_review" | "terminal" = "pre_review") {
 }
 function request(count = 101) {
   return {
+    projectId: "default",
     create: {
       projectId: "default",
       workerGroupId: "g",
@@ -259,7 +260,7 @@ describe("server-observed finite Task management", () => {
     const store = createTaskManagementStore("api", client);
     await store.submit(request());
     expect(client.appendItems).toHaveBeenCalledTimes(2);
-    expect(store.submission).toMatchObject({
+    expect(store.project("default").submission).toMatchObject({
       taskId: "task-1",
       total: 101,
       applied: 101,
@@ -267,12 +268,19 @@ describe("server-observed finite Task management", () => {
     });
     expect(client.approveTask).not.toHaveBeenCalled();
     await expect(store.submit(request())).rejects.toThrow("上一次");
-    store.finishSubmission();
-    await expect(store.mutate(observed(), "approve", true)).resolves.toBe(true);
-    await expect(store.mutate(observed(), "close", true)).resolves.toBe(true);
-    await expect(store.mutate(observed(), "approve", false)).rejects.toThrow("快照");
+    store.finishSubmission("default");
+    await expect(store.mutate("default", observed(), "approve", true)).resolves.toBe(
+      true
+    );
+    await expect(store.mutate("default", observed(), "close", true)).resolves.toBe(
+      true
+    );
+    await expect(store.mutate("default", observed(), "approve", false)).rejects.toThrow(
+      "快照"
+    );
     await expect(
       store.mutate(
+        "default",
         { ...observed(), task: { ...observed().task, projectId: "messages" } },
         "close",
         true
@@ -288,7 +296,7 @@ describe("server-observed finite Task management", () => {
     });
     const store = createTaskManagementStore("api", client);
     await store.submit(request(201));
-    expect(store.submission).toMatchObject({
+    expect(store.project("default").submission).toMatchObject({
       applied: 1,
       rejected: 1,
       unconfirmed: 98,
@@ -307,7 +315,7 @@ describe("server-observed finite Task management", () => {
     });
     const store = createTaskManagementStore("api", client);
     await store.submit(request());
-    expect(store.submission).toMatchObject({
+    expect(store.project("default").submission).toMatchObject({
       complete: false,
       notSubmitted: 101,
       error: "response lost"
@@ -319,7 +327,9 @@ describe("server-observed finite Task management", () => {
     const client = fakeClient();
     const store = createTaskManagementStore("mock", client);
     await expect(store.submit(request())).rejects.toThrow("Mock");
-    await expect(store.mutate(observed(), "approve", true)).rejects.toThrow("Mock");
+    await expect(store.mutate("default", observed(), "approve", true)).rejects.toThrow(
+      "Mock"
+    );
     expect(client.createTask).not.toHaveBeenCalled();
   });
   it("retains a known creation identity and only ensures the directory on explicit recovery", async () => {
@@ -335,13 +345,13 @@ describe("server-observed finite Task management", () => {
     });
     const store = createTaskManagementStore("api", client);
     await store.submit(request());
-    expect(store.submission).toMatchObject({
+    expect(store.project("default").submission).toMatchObject({
       taskId: "known",
       complete: false,
       notSubmitted: 101
     });
     expect(client.ensureDirectory).not.toHaveBeenCalled();
-    expect(await store.ensureDirectory()).toBe(true);
+    expect(await store.ensureDirectory("default")).toBe(true);
     expect(client.ensureDirectory).toHaveBeenCalledExactlyOnceWith("known");
     expect(client.createTask).toHaveBeenCalledTimes(1);
     expect(client.appendItems).not.toHaveBeenCalled();
@@ -369,3 +379,57 @@ function appended(ids: string[]): TaskItemsAppendApiResponse {
 function bytes(value: string): ArrayBuffer {
   return new TextEncoder().encode(value).buffer;
 }
+
+it("finite submissions keep their captured Project across batches and isolate recovery without increasing concurrency", async () => {
+  setActivePinia(createPinia());
+  let release!: () => void;
+  const client = fakeClient({
+    createTask: vi.fn(async (request) => ({ taskId: request.projectId + "-task" })),
+    appendItems: vi.fn(async (_taskId: string, items: TaskItemApiRequest[]) => {
+      if (items[0]!.messageId === "m0")
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      return appended(items.map((item) => item.messageId));
+    })
+  });
+  const store = createTaskManagementStore("api", client);
+  const a = {
+    ...request(),
+    projectId: "agentforge",
+    create: { ...request().create, projectId: "agentforge" }
+  };
+  const b = {
+    ...request(),
+    projectId: "messages",
+    create: { ...request().create, projectId: "messages" }
+  };
+  const pending = store.submit(a);
+  await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+  expect(store.project("messages").submission).toBeUndefined();
+  await expect(store.submit(b)).rejects.toThrow("操作进行中");
+  release();
+  await pending;
+  expect(
+    vi
+      .mocked(client.appendItems)
+      .mock.calls.every((call) => call[0] === "agentforge-task")
+  ).toBe(true);
+  expect(store.project("agentforge").submission).toMatchObject({
+    applied: 101,
+    complete: true
+  });
+  vi.mocked(client.createTask).mockRejectedValueOnce(new Error("unconfirmed"));
+  await store.submit(b);
+  expect(store.project("messages").submission).toMatchObject({
+    applied: 0,
+    notSubmitted: 101,
+    complete: false
+  });
+  expect(store.project("agentforge").submission?.complete).toBe(true);
+  store.finishSubmission("agentforge");
+  expect(store.project("messages").submission).toBeDefined();
+  await expect(store.mutate("messages", observed(), "close", true)).rejects.toThrow(
+    "快照"
+  );
+});

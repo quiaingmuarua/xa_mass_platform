@@ -19,6 +19,7 @@ it("registers lazy form, numeric and radio controls using only the console globa
   const host = document.createElement("div");
   document.body.append(host);
   const app = createApp(RawTaskInput, {
+    projectId: "default",
     groups: [
       {
         workerGroupId: "demo-sim",
