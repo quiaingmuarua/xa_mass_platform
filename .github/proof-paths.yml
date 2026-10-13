@@ -308,7 +308,8 @@ android_emulator:
   - '.github/proof-paths.yml'
   - '.github/scripts/cleanup_redis_test_scope.py'
   - '.github/scripts/requirements.txt'
-  - '.github/scripts/run_android_emulator_worker.sh'
+  - '.github/scripts/run_android_emulator_worker.py'
+  - '.github/scripts/test_run_android_emulator_worker.py'
   - '.github/workflows/proof-ci.yml'
   - '!**/*.md'
 frontend:
@@ -371,6 +372,8 @@ runtime_distribution:
   - '.github/scripts/run_runtime_distribution_proof.py'
   - '.github/workflows/proof-ci.yml'
   - '.github/workflows/release-server-runtime.yml'
+  - '.github/scripts/prepare_release.py'
+  - '.github/scripts/test_prepare_release.py'
   - '!**/*.md'
 product_coexistence:
   - 'integrations/worker_proof_support/platform-runtime.yaml'

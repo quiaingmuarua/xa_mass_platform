@@ -2,6 +2,9 @@
 
 This module owns Runtime and Scenario Preview ZIP delivery, frontend builds,
 diagnostic dictionaries, Preview process assembly and archive verification.
+
+The [1.0 release and upgrade contract](RELEASE-1.0.md) owns public compatibility,
+fresh-state cutover and exact-artifact release acceptance.
 It consumes the sole Boot JAR produced by
 [Server Boot composition](../../server_boot_jvm/README.md). It has no Java
 entrypoint, Spring composition, application services or platform Owner operations.
@@ -71,14 +74,14 @@ file is not committed and is not a compatibility contract.
 Build an explicit release version:
 
 ```powershell
-.\gradlew.bat :distribution:server:distZip "-PxaMassVersion=0.5.0"
+.\gradlew.bat :distribution:server:distZip "-PxaMassVersion=1.0.0"
 ```
 
 The archive is written under `distribution/server/build/distributions`. After
 extracting it on a machine with Java 21, run from the extracted Runtime root:
 
 ```powershell
-java -jar .\lib\xa-mass-server-jvm-0.5.0.jar `
+java -jar .\lib\xa-mass-server-jvm-1.0.0.jar `
   --spring.profiles.active=default `
   --spring.web.resources.static-locations=file:frontend/dist/ `
   --xa.mass.redis.url=redis://127.0.0.1:6379/15
@@ -87,7 +90,7 @@ java -jar .\lib\xa-mass-server-jvm-0.5.0.jar `
 Select the built-in clean `agentforge` deployment preset explicitly:
 
 ```powershell
-java -jar .\lib\xa-mass-server-jvm-0.5.0.jar `
+java -jar .\lib\xa-mass-server-jvm-1.0.0.jar `
   --spring.profiles.active=agentforge `
   --spring.web.resources.static-locations=file:frontend/dist/
 ```

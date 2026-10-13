@@ -80,9 +80,9 @@ admitted callback, and Core adds no cross-Attempt or cross-run Handler fence.
 Worker Core creates and closes no thread, executor, or scheduler.
 Preparation failure or Client reconnect exhaustion ends that run; only another
 explicit Host `start()` prepares again. Active stop revokes the run before
-closing its Client outside the run-state gate. The target is non-blocking stop;
-the [known Android stop difference](android-worker/README.md#known-android-stop-difference)
-records the current callback wait. Reconnect and physical connection state are
+closing its Client outside the run-state gate. Active stop does not wait for an
+admitted Handler; Android [callback admission and close](android-worker/README.md#callback-admission-and-close)
+revokes Listener under the state gate before socket teardown. Reconnect and physical connection state are
 not Worker lifecycle events or queries. Worker
 owns no pause or delivery-admission state; those remain Kernel and Adapter
 concerns. No Endpoint URI or Worker business message is persisted.

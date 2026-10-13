@@ -123,7 +123,7 @@ or observation replay.
 
 - **Primary Owner:** [Android Worker](../../transport/android-worker/README.md) and [XA Android](../../xa-android/README.md).
 - **Boundary:** library assembly, identity persistence, capability Definitions, local lifecycle, Control HTTP and Java proof-client compatibility.
-- **Required condition:** local tests do not establish the non-blocking stop target; the [known Android stop difference](../../transport/android-worker/README.md#known-android-stop-difference) remains open.
+- **Required condition:** focused tests establish stop returning while a Handler is blocked and suppressing later callbacks under the [callback admission contract](../../transport/android-worker/README.md#callback-admission-and-close). Emulator Proof separately witnesses the behavior through the Android Host API.
 - **Evidence:** the linked Owners' deterministic tests and assembly checks.
 - **Nonclaims:** real process, Doze, vendor policy or physical-device behavior.
 

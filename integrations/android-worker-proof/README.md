@@ -26,7 +26,7 @@ Android Worker Proof
 
 The module depends on the transport-neutral Delivery JSON contract only. It
 does not import Android Worker, Server, Adapter, Kernel, Redis, or their
-implementation types. The emulator shell owns ADB, port mapping, Server and App
+implementation types. The cross-platform launcher owns ADB, port mapping, Server and App
 processes; Java owns workload, observation, assertions, and evidence.
 
 ## Correctness
@@ -34,7 +34,11 @@ processes; Java owns workload, observation, assertions, and evidence.
 The correctness proof uses a clean App identity and Redis scope. It closes one
 Worker ID across Prepare, Adapter route, Properties observation, Kernel
 serviceability, ten sequential `extension.worker.lab.delay` Task Items,
-explicit stop/start, and App process restart.
+explicit stop/start, and App process restart. A separate thirty-second DELAY
+then establishes an admitted Handler: the local stop HTTP call must return
+within five seconds and its STOPPED snapshot must still show that Handler
+running. The new run must reconnect and Probe successfully. This observation
+budget is not a production latency SLA.
 
 Single-Worker Task Items explicitly use `workerSelector` with
 `{"executorName":"workerId","input":"<observed-worker-id>"}`, just like the
@@ -86,7 +90,7 @@ is not Adapter connectivity, Kernel state, or schedulability evidence.
 | Convergence | `server-restart` | restart Server, then explicit Host start | `active` | no automatic start and explicit recovery |
 | Triad | `baseline` / `outage` / `recovery` | force-stop/start `lab2` | `baseline` | partial outage isolation |
 
-Java phases own Runtime calls, observations, assertions and Evidence. The shell
+Java phases own Runtime calls, observations, assertions and Evidence. The launcher
 performs each ADB or process mutation once after the phase emits its stable
 checkpoint marker. A device-local state establishes that a local mutation
 happened; Network and Scheduling projections remain independent oracles.
@@ -132,7 +136,7 @@ owned by the single-Worker proof.
 
 ## Entrypoints
 
-The Java tasks execute one phase because the shell may need to change an
+The Java tasks execute one phase because the launcher may need to change an
 external process between phases:
 
 ```text
@@ -142,10 +146,17 @@ external process between phases:
 ./gradlew :integrations:android-worker-proof:runAndroidWorkerTriadConvergenceHealth --args="..."
 ```
 
+Stage the Java proof JARs with `:integrations:android-worker-proof:stageProofRuntime`.
+The Python launcher runs those existing Java mains directly so each phase is an
+owned process on both Windows and Linux. Pass `--android-serial`, `--server-jar`,
+`--apk-root` and a fresh `--proof-root`; release acceptance supplies the JAR
+from the verified Runtime ZIP. The Host Python requires the Redis dependency
+from `.github/scripts/requirements.txt`.
+
 The complete API 33 proof is owned by:
 
 ```text
-.github/scripts/run_android_emulator_worker.sh
+.github/scripts/run_android_emulator_worker.py
 ```
 
 Evidence contains identities, states, outcome classes, established mutations,
@@ -161,7 +172,7 @@ Before extending this lane:
 2. Add Emulator Proof only when the claim requires a physical Android process,
    data sandbox or network fact.
 3. Keep API calls, oracle decisions and Evidence in Java.
-4. Keep Shell limited to ADB, port mapping and process mutation.
+4. Keep Launcher limited to ADB, port mapping and process mutation.
 5. Use local Host state only to establish the mutation, never as Adapter or
    Kernel truth.
 6. Update this scenario contract, the Proof Registry and proof-path selection
@@ -185,12 +196,14 @@ it must not add a test-only Properties control API to the Demo Host.
 The real proof runs as `Android Worker Proof` in Proof CI on one API 33 x86_64
 emulator. `Android APK Assembly` builds and uploads the Debug and three fixed
 Lab APKs independently of `Android Host`; the Emulator depends only on that
-artifact job. The hosted shell reuses one Gradle daemon with a five-minute idle
-timeout for its Java phases without changing App, Server, Redis-scope or
-evidence lifecycles. Before installing the Apps, the harness disables Android's
+artifact job. The launcher starts one bounded Java process per phase without a Gradle
+wrapper or shared daemon in its process tree. App, Server, Redis-scope and
+evidence lifecycles remain the same. Before installing the Apps, the harness disables Android's
 cached-app freezer and reboots the disposable Emulator so all three Lab
 processes remain executable during the fixed topology proof. This is
-test-environment control, not a background-liveness mechanism. Physical-device
+test-environment control, not a background-liveness mechanism. The launcher
+restores the original freezer settings and reboots after stopping its owned
+processes and removing only its own ADB mappings and exact test scopes. Physical-device
 vendor policy and background execution remain manual proofs.
 
 ## Project fixture

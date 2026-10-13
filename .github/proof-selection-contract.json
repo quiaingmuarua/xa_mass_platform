@@ -2,6 +2,16 @@
   "schemaVersion": 1,
   "cases": [
     {
+      "path": ".github/scripts/run_android_emulator_worker.py",
+      "lanes": ["android_emulator"],
+      "reason": "Cross-platform ADB/process choreography preserves Java-owned Emulator verdicts."
+    },
+    {
+      "path": ".github/scripts/prepare_release.py",
+      "lanes": ["runtime_distribution"],
+      "reason": "Release promotion checks full-Proof coordinates and the exact Distribution ZIPs."
+    },
+    {
       "path": "integrations/worker-call-performance/src/main/java/com/xa/mass/integration/workercallperformance/TaskTraceSummary.java",
       "lanes": [
         "jvm_contracts"

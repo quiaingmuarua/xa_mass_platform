@@ -156,6 +156,7 @@ final class AndroidOkHttpTextWebSocketClient
             }
             closed = true;
             running = false;
+            listener = null;
             attempt = currentAttempt;
             currentAttempt = null;
             if (attempt != null) {
@@ -165,11 +166,6 @@ final class AndroidOkHttpTextWebSocketClient
         }
         handler.removeCallbacksAndMessages(null);
         closeAndCancel(attempt == null ? null : attempt.socket);
-        synchronized (callbackGate) {
-            synchronized (stateLock) {
-                listener = null;
-            }
-        }
     }
 
     private void connect() {

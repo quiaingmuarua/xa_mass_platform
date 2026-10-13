@@ -268,10 +268,11 @@ public class AndroidOkHttpTextWebSocketClientTest {
     }
 
     @Test
-    public void externalCloseWaitsForCurrentCallback() throws Exception {
+    public void externalCloseReturnsWhileCurrentCallbackIsBlocked() throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        client.start(blockingMessageListener(entered, release));
+        AtomicInteger messages = new AtomicInteger();
+        client.start(blockingMessageListener(entered, release, messages));
         FakeConnection connection = awaitConnection(0);
         connection.open();
         ExecutorService callers = Executors.newFixedThreadPool(2);
@@ -282,13 +283,18 @@ public class AndroidOkHttpTextWebSocketClientTest {
             assertTrue(entered.await(1, TimeUnit.SECONDS));
 
             Future<?> closing = callers.submit(client::close);
-            Thread.sleep(50L);
-            assertFalse(closing.isDone());
+            closing.get(1, TimeUnit.SECONDS);
+            assertFalse(handling.isDone());
+            assertFalse(client.send("late"));
+            assertTrue(connection.socket.cancelled);
+
+            Future<?> late = callers.submit(() -> connection.text("late"));
 
             release.countDown();
             handling.get(3, TimeUnit.SECONDS);
-            closing.get(3, TimeUnit.SECONDS);
-            assertTrue(connection.socket.cancelled);
+            late.get(3, TimeUnit.SECONDS);
+            assertEquals(1, messages.get());
+            client.close();
         } finally {
             release.countDown();
             callers.shutdownNow();
@@ -406,7 +412,8 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
     private static TextMessageClient.Listener blockingMessageListener(
             CountDownLatch entered,
-            CountDownLatch release
+            CountDownLatch release,
+            AtomicInteger messages
     ) {
         return new TextMessageClient.Listener() {
             @Override
@@ -415,6 +422,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
             @Override
             public void onMessage(String message) {
+                messages.incrementAndGet();
                 entered.countDown();
                 try {
                     release.await(3, TimeUnit.SECONDS);

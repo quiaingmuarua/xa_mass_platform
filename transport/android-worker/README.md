@@ -93,8 +93,8 @@ thread-safe.
 
 `ConnectionAttempt` object identity suppresses callbacks from a superseded
 physical connection even when reconnect uses the same Endpoint URI. The current
-callback gate also affects teardown, as recorded in the
-[known stop difference](#known-android-stop-difference). Closing one Client
+callback gate serializes admission, as recorded in
+[callback admission and close](#callback-admission-and-close). Closing one Client
 does not quit the shared Looper or close shared OkHttp resources.
 
 The single-Worker budget is one network HandlerThread and one Control thread,
@@ -135,14 +135,14 @@ preparation; Properties publication follows the
 During Preparation, `stop()` marks its eventual result for discard and keeps
 that one call single-flight until it returns. With an active Transport, it
 commits `STOPPED` and detaches the run before closing the Client outside the
-Core state gate. The target is for active stop to return without waiting for
-an admitted Handler. The [known Android stop difference](#known-android-stop-difference)
-describes why the current caller may still wait during Client teardown.
+Core state gate. Active stop returns without waiting for an admitted Handler.
+The old callback may finish independently; it cannot transfer its Reporter or
+send through the closed Client to a new run.
 
 ### Close
 
 `close()` is terminal and synchronous: it revokes the run, closes Preparation
-and the Client, then releases the Platform. Current Client teardown may wait
+and the Client, then releases the Platform. Client teardown does not wait
 for an admitted protocol callback. Closing the object does not preserve
 Commands, Results or Reporters for another Worker.
 
@@ -154,30 +154,28 @@ Looper automatically.
 Applications decide whether Android Backup may migrate the stable client key.
 The repository demo excludes the Android Worker preference file from backup.
 
-## Known Android Stop Difference
+## Callback Admission And Close
 
-The shared target remains non-blocking active stop: revoke the run before
-Client teardown and let already-admitted Handlers finish independently. Android
-currently differs from that target. `AndroidWorker.stop()` calls Core directly;
-Core commits `STOPPED` and detaches the Transport, then calls Client close on
-the caller's thread. `AndroidOkHttpTextWebSocketClient.close()` marks the Client
-closed and cancels its socket before waiting for `callbackGate`. The same gate
-covers the complete synchronous Transport callback, including its Handler.
+Core commits `STOPPED` and detaches the Transport before closing Client on the
+caller's thread. Client close revokes `running`, `currentAttempt` and Listener
+together under `stateLock`, removes queued reconnect work and cancels the socket
+outside that lock. It never waits for `callbackGate`.
 
-Consequently `snapshot()` can already report `STOPPED` while the `stop()` caller
-and its subsequent lifecycle notification wait for that Handler. There is no
-callback-wait timeout. A Handler can close its own Client reentrantly. This
-known implementation gap must remain visible until the Android lifecycle is
-reconciled with the shared target; callers must not infer a non-blocking return
-from the committed run state. Blocking or UI-sensitive Host code must account
-for the current wait.
+Callbacks retain their serial gate and validate Attempt identity under the
+state gate before capturing Listener. A callback admitted before revocation may
+finish afterwards; later callbacks cannot be admitted. A Handler may close its
+own Client reentrantly. Closing one Client leaves the shared Looper and OkHttp
+resources with Platform. No Handler interruption or callback-completion fence
+is added, and Host Lifecycle Listeners remain synchronous.
 
 The evidence is the [Core stop order](../worker-core/src/main/java/com/xa/mass/worker/runtime/WorkerRunController.java),
 the [Android Client callback and close gates](src/main/java/com/xa/mass/worker/android/AndroidOkHttpTextWebSocketClient.java),
-and `externalCloseWaitsForCurrentCallback` in the
+and `externalCloseReturnsWhileCurrentCallbackIsBlocked` in the
 [Client Owner test](src/test/java/com/xa/mass/worker/android/AndroidOkHttpTextWebSocketClientTest.java).
-Those establish the source contract and test expectation; they do not establish
-device-specific blocking symptoms.
+Those establish deterministic callback ordering. The Android Emulator Proof
+additionally requires stop to return within its five-second HTTP budget while
+an admitted thirty-second DELAY remains running; that budget is a proof witness,
+not a production latency SLA.
 
 ## Verification
 

@@ -306,10 +306,9 @@ installed from that result. This is control-call convergence, not a paused
 Worker. After a Transport is installed, `stop()` first commits `STOPPED` and
 detaches the current Transport, then closes its Client outside the state gate.
 It does not enter the Control Executor or wait for Adapter acknowledgement.
-The target is non-blocking active stop, allowing an admitted Handler to finish
-later and use the old Client best-effort. Java WebSocket follows that target;
-Android's current callback wait is recorded as a
-[known implementation difference](../android-worker/README.md#known-android-stop-difference).
+Active stop does not wait for an admitted Handler, which may finish later while
+its old Client rejects sends. Java and Android both follow that contract; see
+Android [callback admission and close](../android-worker/README.md#callback-admission-and-close).
 `close()` is terminal, closes Preparation and the current Client, and Core adds
 no callback-completion fence or cross-run pending Result.
 
@@ -358,9 +357,8 @@ the platform assembly; closing one Client closes only that connection.
 superseded physical connections. The target close contract establishes no
 callback-completion fence: admitted callbacks may finish naturally, including a
 callback that closes its own Client. Java WebSocket returns after committing
-terminal state and requesting socket teardown. The
-[known Android stop difference](../android-worker/README.md#known-android-stop-difference)
-documents its current callback wait against that target. Core adds no global
+terminal state and requesting socket teardown. Android follows the same
+[admission and close contract](../android-worker/README.md#callback-admission-and-close). Core adds no global
 serialization across physical Attempts. `send()` reports only whether the
 current network stack accepted the frame.
 

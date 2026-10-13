@@ -215,8 +215,8 @@ for the affected path.
 
 For lifecycle changes, preserve the stop target: revoke the run before closing
 Client outside the state gate and return without waiting for an admitted
-Handler/callback. Read the [known Android implementation difference](transport/android-worker/README.md#known-android-stop-difference);
-it remains pending repair, not a platform exception.
+Handler/callback. Read the Android [callback admission and close](transport/android-worker/README.md#callback-admission-and-close)
+contract; an admitted callback may finish independently after run revocation.
 
 ## Scenario And Android Capabilities
 

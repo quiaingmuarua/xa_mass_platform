@@ -18,6 +18,7 @@ concurrency:
 env:
   XA_MASS_PYTHON_EXECUTABLE: python3
   XA_MASS_REDIS_EPHEMERAL: "true"
+  XA_MASS_DISTRIBUTION_VERSION: "1.0.0"
 
 jobs:
   changes:
@@ -544,11 +545,16 @@ jobs:
         with:
           name: android-worker-demo-apk
           path: build/android-emulator-proof/apk
-      - name: Build Scenario Server
+      - name: Verify Emulator choreography
+        run: |
+          python3 -m pip install -r .github/scripts/requirements.txt
+          python3 .github/scripts/test_run_android_emulator_worker.py -v
+      - name: Build Server and Java proof runtime
         run: >-
-          ./gradlew --daemon
-          -Dorg.gradle.daemon.idletimeout=300000
+          ./gradlew --no-daemon
           :server_boot_jvm:bootJar
+          :integrations:android-worker-proof:stageProofRuntime
+          -PxaMassVersion=${{ env.XA_MASS_DISTRIBUTION_VERSION }}
       - name: Enable KVM access
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -565,7 +571,11 @@ jobs:
           emulator-options: >-
             -no-window -gpu swiftshader_indirect -no-snapshot -noaudio
             -no-boot-anim -camera-back none
-          script: bash .github/scripts/run_android_emulator_worker.sh
+          script: >-
+            python3 .github/scripts/run_android_emulator_worker.py
+            --android-serial emulator-5554
+            --server-jar server_boot_jvm/build/libs/xa-mass-server-jvm-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.jar
+            --apk-root build/android-emulator-proof/apk
       - name: Summarize Android Worker proof
         if: always()
         run: |
@@ -666,12 +676,14 @@ jobs:
           node-version: 22.19.0
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Verify release promotion contracts
+        run: python3 .github/scripts/test_prepare_release.py -v
       - name: Build and prove Runtime and Worker SDK archives
         run: >-
           ./gradlew --no-daemon
           :distribution:server:runtimeDistributionTest
           :distribution:worker-sdk:workerSdkDistributionTest
-          -PxaMassVersion=0.5.0
+          -PxaMassVersion=${{ env.XA_MASS_DISTRIBUTION_VERSION }}
       - name: Summarize Distribution proof
         if: always()
         run: |
@@ -682,17 +694,17 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: xa-mass-server-runtime-${{ github.run_attempt }}
-          path: distribution/server/build/distributions/xa-mass-server-runtime-0.5.0.zip
+          path: distribution/server/build/distributions/xa-mass-server-runtime-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 30
       - name: Upload Worker SDK archive
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
           name: xa-mass-worker-sdk-${{ github.run_attempt }}
-          path: distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-0.5.0.zip
+          path: distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 30
 
   product-coexistence:
     name: Product Coexistence

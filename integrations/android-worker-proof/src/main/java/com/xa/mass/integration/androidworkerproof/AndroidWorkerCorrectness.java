@@ -133,7 +133,29 @@ final class AndroidWorkerCorrectness {
         evidence.check("succeededItemCount", succeeded);
         evidence.check("messageIds", Set.copyOf(messageIds));
 
+        AndroidRuntimeApiClient.TaskCall inFlight = runtime.callItem(
+                AndroidWorkerProofConstants.DELAY_EVENT,
+                Map.of("delayMillis", 30_000L),
+                Map.of("executorName", "workerId", "input", workerId),
+                AndroidWorkerProofConstants.TASK_CALL_OBSERVATION_WAIT_MILLIS
+        );
+        evidence.check("nonBlockingStopMessageId", inFlight.messageId());
+        ProofWait.until(maximumWait, device::snapshot,
+                local -> local.activeDelayCount() == 1L,
+                "correctness.stop-handler-entered",
+                "DELAY Handler did not enter before active stop", workerId);
+        long stopStarted = System.nanoTime();
         device.stop();
+        long stopMillis = Duration.ofNanos(System.nanoTime() - stopStarted).toMillis();
+        AndroidDeviceHostClient.Snapshot afterStop = device.snapshot();
+        if (stopMillis >= 5_000L
+                || afterStop.activeDelayCount() != 1L
+                || !"STOPPED".equals(afterStop.state())) {
+            throw new ProofFailure("correctness.non-blocking-stop",
+                    "Active stop must return within five seconds while DELAY remains admitted");
+        }
+        evidence.check("activeStopMillis", stopMillis);
+        evidence.check("activeStopHandlerStillRunning", true);
         AndroidWorkerProofAssertions.awaitStopped(
                 device,
                 maximumWait,
@@ -158,6 +180,13 @@ final class AndroidWorkerCorrectness {
                 maximumWait
         );
         AndroidWorkerProofAssertions.awaitHot(runtime, workerId, maximumWait);
+        // The original Item may retry through Kernel on the new run. Observe
+        // the finite DELAY drain before sending the single Probe mutation.
+        ProofWait.until(maximumWait, device::snapshot,
+                local -> local.activeDelayCount() == 0L,
+                "correctness.restarted-delay-drained",
+                "Admitted DELAY did not drain after explicit restart", workerId);
+        evidence.check("restartedDelayDrained", true);
         AndroidWorkerProofAssertions.requireProbe(
                 runtime,
                 options.endpointManagerId(),

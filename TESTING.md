@@ -205,7 +205,7 @@ these correctness claims and add no heavy ordinary CI lane.
 | Android APK Assembly | Debug plus three fixed Lab APK variants in Proof CI | Android SDK |
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |
 | Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
-| Runtime Distribution | Distribution integration tests with `-PxaMassVersion=0.5.0` | Redis, Java, Android SDK, Node |
+| Runtime Distribution | Distribution integration tests with `-PxaMassVersion=1.0.0` | Redis, Java, Android SDK, Node |
 | Scenario Coexistence | `python integrations/scenario-coexistence/run_proof.py --build --scenario functional`, then `--scenario pool-selection`, `--scenario lifecycle`; fresh ZIP functional and pool-selection; explicit `--scenario messages-send-100k` verifies 105000 sends across 51 Tasks without receipts | Redis 7, Java 21, Python, Node for build |
 | Docs Contract | `python .github/scripts/check_docs.py` | None |
 

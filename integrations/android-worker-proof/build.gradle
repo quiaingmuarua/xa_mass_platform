@@ -56,3 +56,12 @@ tasks.named('test') {
     useJUnitPlatform()
     workingDir = project.projectDir
 }
+
+tasks.register('stageProofRuntime', Sync) {
+    description = 'Stages the Java proof JARs for the cross-platform process launcher.'
+    group = 'distribution'
+    dependsOn tasks.named('jar')
+    from(tasks.named('jar'))
+    from(configurations.runtimeClasspath)
+    into(layout.buildDirectory.dir('proof-runtime'))
+}
