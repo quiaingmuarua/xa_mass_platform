@@ -170,10 +170,14 @@ def prepare(repository: str, tag: str, commit: str, output: Path) -> None:
         notes = output / "release-notes.md"
         contract = (ROOT / "distribution/server/RELEASE-1.0.md").read_text(encoding="utf-8")
         notes.write_text(contract + f"\nVerified full Proof: {run['html_url']}\n\nCommit: `{commit}`\n", encoding="utf-8")
-        gh("release", "create", tag, "--repo", repository, "--verify-tag", "--draft",
-           "--title", "XA Mass " + tag, "--notes-file", str(notes))
-        release = next(candidate for candidate in paged(f"repos/{repository}/releases", None)
-                       if candidate.get("tag_name") == tag)
+        request = output / "draft-request.json"
+        request.write_text(json.dumps({"tag_name": tag, "name": "XA Mass " + tag,
+                                       "draft": True, "body": notes.read_text(encoding="utf-8")}),
+                           encoding="utf-8")
+        # The create response is authoritative; listing immediately afterwards
+        # may not yet expose the new Draft to the workflow token.
+        release = json.loads(gh("api", "--method", "POST", f"repos/{repository}/releases",
+                                "--input", str(request)))
     validate_draft(release, tag, assets)
     existing = {asset["name"] for asset in release.get("assets", [])}
     with tempfile.TemporaryDirectory(prefix="draft-assets-", dir=output) as temporary:

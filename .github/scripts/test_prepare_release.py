@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import Mock, patch
 
 import prepare_release as release
 
@@ -89,6 +90,50 @@ class ReleasePromotionTest(unittest.TestCase):
             for changes in [dict(draft=False), dict(tag_name="v0.5.0"), dict(assets=[{"name": "unknown"}])]:
                 with self.assertRaises(ValueError):
                     release.validate_draft({**dict(tag_name="v1.0.0", draft=True, assets=[]), **changes}, "v1.0.0", [expected])
+
+    def test_creation_uses_returned_draft_without_relisting_then_uploads_four_assets(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fixtures = {}
+            for component in release.COMPONENTS:
+                name = f"xa-mass-{component}-1.0.0.zip"
+                path = root / name
+                manifest = dict(version="1.0.0", gitCommit=self.commit,
+                                schemaVersion=6 if component == "server-runtime" else 1)
+                with zipfile.ZipFile(path, "w") as archive:
+                    archive.writestr(name[:-4] + "/manifest.json", json.dumps(manifest))
+                fixtures[component] = path
+            uploaded = []
+            created = dict(id=42, tag_name="v1.0.0", draft=True, assets=[])
+            def fake_gh(*arguments):
+                if arguments[:2] == ("run", "download"):
+                    component = next(component for component in release.COMPONENTS
+                                     if f"xa-mass-{component}-1" in arguments)
+                    target = Path(arguments[-1]) / fixtures[component].name
+                    target.write_bytes(fixtures[component].read_bytes())
+                    return ""
+                if arguments[:3] == ("api", "--method", "POST"):
+                    document = json.loads(Path(arguments[-1]).read_text())
+                    self.assertTrue(document["draft"])
+                    self.assertEqual("v1.0.0", document["tag_name"])
+                    return json.dumps(created)
+                if arguments[:2] == ("release", "upload"):
+                    uploaded.append(Path(arguments[3]).name)
+                    return ""
+                self.fail(f"Unexpected GitHub operation: {arguments[:3]}")
+            def fake_api(endpoint):
+                self.assertTrue(endpoint.endswith("/releases/42"))
+                return {**created, "assets": [{"name": name} for name in uploaded]}
+            run = dict(id=1, html_url="https://github.com/example/proof")
+            with patch.object(release, "verify_tag"), \
+                    patch.object(release, "find_run", return_value=(run, ["xa-mass-server-runtime-1", "xa-mass-worker-sdk-1"])), \
+                    patch.object(release, "paged", return_value=[]) as listing, \
+                    patch.object(release, "gh", side_effect=fake_gh), \
+                    patch.object(release, "api", side_effect=fake_api), \
+                    patch.object(release.runpy, "run_path", return_value={"verify": Mock(), "_verify_archive": Mock()}):
+                release.prepare(self.repository, "v1.0.0", self.commit, root / "output")
+            listing.assert_called_once()
+            self.assertEqual(4, len(uploaded))
 
 
 if __name__ == "__main__":
