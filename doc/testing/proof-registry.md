@@ -138,9 +138,9 @@ or observation replay.
 ## frontend
 
 - **Primary Owner:** [Frontend](../../frontend/README.md).
-- **Boundary:** Runtime projections, default-Project RPC/finite Task workbench and static API Reference.
+- **Boundary:** Runtime projections, default-Project RPC/finite Task workbench, static API Reference, shared development identities and App Checks per-identity navigation/draft recovery.
 - **Required evidence:** Owner lint, type, test and build checks; a successful build alone does not replace the other checks.
-- **Nonclaims:** browser compatibility or visual regression.
+- **Nonclaims:** browser compatibility, visual regression or authenticated user isolation.
 
 ## runtime_distribution
 
@@ -169,6 +169,7 @@ finite scenario within this lane.
 | Bounded optional observations | Reporter/observation/held/callback capacity does not gate confirmed sending. Short-window HTTP/Worker fixtures prove expiration and continued work; this does not extend Item retention or create reliable receipts. |
 | Explicit Messages sending | Optional messages-send-100k workload verifies 105000 messages and 51 Tasks through independent receiver acceptance fingerprints, complete Results and Item states, without receipts. It is separate from 100000-recipient import and the 12000-message mixed receipt workload. |
 | App Checks execution | Source/fresh-ZIP runners use actual App Workers across Groups to check business execution, Group correlation and independently recomputed successful answers/delays. [Boot integration proof](../../server_boot_jvm/src/test/java/com/xa/mass/serverboot/AppChecksIntegrationTest.java) separately covers witnessed Handler exceptions, late success, truncated Result preview and restart reads; the process runners do not cover those sequences. |
+| App Checks declared callers | Boot HTTP/Redis proof checks caller validation, creator-based operator reads/actions, admin access and creator retention after restart. Focused scenario tests prove refusal before file/results/storage effects and filtering within the Project window. Source/fresh-ZIP runners use explicit test callers; no authentication or customer isolation is claimed. |
 | Projection before Results | Handler barriers establish actual allocation identities/times and Platform Properties before success/failure/late Reports; properties survive restart. This is evidence of projection, not reliable execution counting. |
 | Configuration activation | Boot HTTP/Redis/Worker proof saves App C without changing the running Catalog, rejects missing host resources, then restarts from the same H2 file and executes C with matching Pool/projection parameters. Closing the store does not stop the existing runtime flow. No hot update or automatic resource provisioning is claimed. |
 | Assignment-window qualification | A real nonempty qualification rejection must precede execution after a window transition and candidate recycling. Empty stock or a busy Worker is insufficient evidence. Deterministic functions own exact/delayed/missing-projection cases; Redis Owner owns refill snapshot budgets, read-failure non-admission and take without Facts reads. |

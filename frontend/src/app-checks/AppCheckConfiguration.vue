@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { consoleIdentity } from "@/console-identity";
+const identity = consoleIdentity.current.value;
 import { computed, markRaw, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElDialog } from "element-plus";
 import "element-plus/es/components/dialog/style/css";
@@ -105,7 +107,7 @@ async function load(refreshCatalog = false) {
   busy.value = true;
   if (refreshCatalog) emit("refresh");
   try {
-    const value = await props.source.loadConfiguration();
+    const value = await props.source.loadConfiguration(identity);
     if (disposed || generation !== token) return;
     state.snapshot = markRaw(value);
     state.readAt = Date.now();
@@ -161,6 +163,7 @@ async function save() {
   state.notice = "";
   try {
     const value = await props.source.saveConfiguration(
+      identity,
       state.baseRevision,
       validated.data
     );
@@ -222,7 +225,7 @@ async function simulateRestart() {
   if (!props.source.simulateConfigurationRestart || busy.value || state.draft) return;
   busy.value = true;
   try {
-    await props.source.simulateConfigurationRestart();
+    await props.source.simulateConfigurationRestart(identity);
   } finally {
     busy.value = false;
   }

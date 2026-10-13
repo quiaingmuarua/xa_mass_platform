@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
 import ConsoleLayout from "@/layouts/ConsoleLayout.vue";
 import ConsoleSessionProvider from "@/layouts/ConsoleSessionProvider.vue";
+import { consoleIdentity, identityRouteAllowed } from "@/console-identity";
 
 const smsPage = () => import("@/sms/SmsPage.vue");
 const messagesPage = () => import("@/message-campaigns/MessagePage.vue");
@@ -101,6 +102,11 @@ export const router = createRouter({
     return { left: 0, top: 0 };
   }
 });
+router.beforeEach((to) =>
+  identityRouteAllowed(consoleIdentity.current.value, to)
+    ? undefined
+    : { path: "/app-checks", replace: true }
+);
 router.afterEach((to) => {
   document.title = `${String(to.meta.title ?? "页面未找到")} · XA Mass`;
 });

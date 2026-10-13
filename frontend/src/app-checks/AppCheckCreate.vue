@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, markRaw, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { ArrowLeft, UploadFilled } from "@element-plus/icons-vue";
+import { consoleIdentity } from "@/console-identity";
 import {
   appLabel,
   countryLabel,
@@ -30,7 +31,7 @@ import {
 const props = defineProps<{
   source: AppCheckTaskSource;
   catalog: Catalog;
-  session: WorkbenchSession;
+  session: Pick<WorkbenchSession, "userId" | "draft" | "unconfirmedSubmissions">;
   active: boolean;
   targetTask?: CheckTask;
   configurationRead?: ConfigurationReadState;
@@ -43,6 +44,8 @@ const emit = defineEmits<{
   configuration: [appId: string];
 }>();
 const draft = computed(() => props.session.draft);
+const identity = consoleIdentity.current.value;
+const activeIdentity = () => consoleIdentity.current.value === identity;
 const reading = ref(false),
   importError = ref(""),
   dragging = ref(false);
@@ -168,11 +171,20 @@ function drop(event: DragEvent) {
   if (event.dataTransfer?.files[0]) void readFile(event.dataTransfer.files[0]);
 }
 async function submit() {
-  if (!valid.value || !report.value) return;
+  if (!valid.value || !report.value || !activeIdentity()) return;
   const current = draft.value;
+  const inputFile = new Blob([report.value.numbers.join("\n")], {
+    type: "text/plain;charset=UTF-8"
+  });
+  const inputSummary = importSnapshot(report.value, current.fileName || "粘贴号码");
   current.createdAtMillis = Date.now();
   current.busy = true;
   current.error = "";
+  current.frozenCaller ??= Object.freeze({
+    userId: props.session.userId,
+    role: identity.role
+  });
+  let importConfirmed = false;
   try {
     if (!props.source.importNumbers) throw new Error("当前数据源未接入号码导入");
     if (!current.knownTaskId) {
@@ -183,22 +195,25 @@ async function submit() {
         simulation: simulationSchema.parse(current.simulation)
       });
       const response = await props.source.createTask(
+        current.frozenCaller,
         structuredClone(current.frozenCreate)
       );
       current.knownTaskId = response.taskId;
     }
     current.submissionPhase = "import";
-    if (!disposed && props.active) {
+    if (!disposed && props.active && activeIdentity()) {
       await props.source.importNumbers(
+        current.frozenCaller,
         current.knownTaskId,
-        new Blob([report.value.numbers.join("\n")], {
-          type: "text/plain;charset=UTF-8"
-        }),
-        importSnapshot(report.value, current.fileName || "粘贴号码")
+        inputFile,
+        inputSummary
       );
+      importConfirmed = true;
     }
-    if (disposed || !props.active) {
-      current.error = "离开页面时导入未确认，请核对已知任务；再次导入将复用这个任务。";
+    if (disposed || !props.active || !activeIdentity()) {
+      current.error = importConfirmed
+        ? "本次导入已确认，请返回原身份核对实际数量；不会重新创建任务。"
+        : "创建已确认，离开当前身份后尚未开始导入；请核对已知任务并显式继续。";
       current.uncertain = true;
     } else emit("created", current.knownTaskId);
   } catch (error) {
@@ -211,6 +226,7 @@ async function submit() {
     if (!current.uncertain && !current.knownTaskId) {
       current.requestId = requestIdentity();
       current.frozenCreate = undefined;
+      current.frozenCaller = undefined;
     }
   } finally {
     current.busy = false;
@@ -219,15 +235,18 @@ async function submit() {
 async function checkCreation() {
   const current = draft.value;
   if (
+    !activeIdentity() ||
     !current.uncertain ||
     current.busy ||
     !current.frozenCreate ||
+    !current.frozenCaller ||
     current.submissionPhase !== "create"
   )
     return;
   current.busy = true;
   try {
     const response = await props.source.createTask(
+      current.frozenCaller,
       structuredClone(current.frozenCreate)
     );
     current.knownTaskId = response.taskId;
@@ -412,6 +431,7 @@ onBeforeUnmount(() => {
           }}</span
         >
         <button
+          v-if="identity.role === 'admin'"
           type="button"
           class="checks-link"
           @click="emit('configuration', draft.appId)"

@@ -12,6 +12,8 @@ import {
 import { useSmsAvailability } from "@/sms/availability";
 import { useMessageAvailability } from "@/message-campaigns/availability";
 import { useAppChecks } from "@/app-checks/context";
+import { consoleIdentity } from "@/console-identity";
+const admin = computed(() => consoleIdentity.current.value.role === "admin");
 const emit = defineEmits<{ navigate: [] }>();
 const route = useRoute();
 const sms = useSmsAvailability();
@@ -30,27 +32,29 @@ const messagesEnabled = computed(() =>
     aria-label="Main navigation"
     @click="emit('navigate')"
   >
-    <span class="runtime-navigation__eyebrow">RUNTIME</span>
-    <router-link class="runtime-navigation__link" to="/runtime/workers">
-      <el-icon><Collection /></el-icon>
-      <span>Workers</span>
-    </router-link>
-    <router-link class="runtime-navigation__link" to="/runtime/tasks">
-      <el-icon><Tickets /></el-icon>
-      <span>Tasks</span>
-    </router-link>
-    <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
-      >WORKBENCH</span
-    >
-    <router-link class="runtime-navigation__link" to="/task-workbench">
-      <el-icon><Tickets /></el-icon><span>任务工作台</span>
-    </router-link>
-    <template v-if="smsEnabled || messagesEnabled || appChecksEnabled">
+    <template v-if="admin">
+      <span class="runtime-navigation__eyebrow">RUNTIME</span>
+      <router-link class="runtime-navigation__link" to="/runtime/workers">
+        <el-icon><Collection /></el-icon>
+        <span>Workers</span>
+      </router-link>
+      <router-link class="runtime-navigation__link" to="/runtime/tasks">
+        <el-icon><Tickets /></el-icon>
+        <span>Tasks</span>
+      </router-link>
+      <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
+        >WORKBENCH</span
+      >
+      <router-link class="runtime-navigation__link" to="/task-workbench">
+        <el-icon><Tickets /></el-icon><span>任务工作台</span>
+      </router-link>
+    </template>
+    <template v-if="(admin && (smsEnabled || messagesEnabled)) || appChecksEnabled">
       <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
         >SCENARIOS</span
       >
       <router-link
-        v-if="smsEnabled"
+        v-if="admin && smsEnabled"
         class="runtime-navigation__link"
         :class="{ 'router-link-active': route.path.startsWith('/sms') }"
         :aria-current="route.path.startsWith('/sms') ? 'page' : undefined"
@@ -59,7 +63,7 @@ const messagesEnabled = computed(() =>
         <el-icon><Message /></el-icon><span>SMS</span>
       </router-link>
       <router-link
-        v-if="messagesEnabled"
+        v-if="admin && messagesEnabled"
         class="runtime-navigation__link"
         to="/messages"
         :class="{ 'router-link-active': route.path.startsWith('/messages') }"
@@ -77,24 +81,26 @@ const messagesEnabled = computed(() =>
         <el-icon><Tickets /></el-icon><span>应用注册查询</span>
       </router-link>
     </template>
-    <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section">
-      REFERENCE
-    </span>
-    <a class="runtime-navigation__link" href="/scalar">
-      <el-icon><Link /></el-icon>
-      <span>API Docs</span>
-    </a>
-    <a class="runtime-navigation__link" href="/overview.htm">
-      <el-icon><Document /></el-icon>
-      <span>Architecture</span>
-    </a>
-    <router-link class="runtime-navigation__link" to="/reference/error-codes">
-      <el-icon><Collection /></el-icon>
-      <span>Code Dictionary</span>
-    </router-link>
+    <template v-if="admin">
+      <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section">
+        REFERENCE
+      </span>
+      <a class="runtime-navigation__link" href="/scalar">
+        <el-icon><Link /></el-icon>
+        <span>API Docs</span>
+      </a>
+      <a class="runtime-navigation__link" href="/overview.htm">
+        <el-icon><Document /></el-icon>
+        <span>Architecture</span>
+      </a>
+      <router-link class="runtime-navigation__link" to="/reference/error-codes">
+        <el-icon><Collection /></el-icon>
+        <span>Code Dictionary</span>
+      </router-link>
+    </template>
   </nav>
   <div
-    v-if="sms.state.value.status === 'unavailable'"
+    v-if="admin && sms.state.value.status === 'unavailable'"
     class="runtime-sidebar__note"
     role="status"
   >
@@ -102,7 +108,7 @@ const messagesEnabled = computed(() =>
     <el-button size="small" @click="sms.load(true)">重试 SMS 可用性</el-button>
   </div>
   <div
-    v-if="messages.state.value.status === 'unavailable'"
+    v-if="admin && messages.state.value.status === 'unavailable'"
     class="runtime-sidebar__note"
     role="status"
   >

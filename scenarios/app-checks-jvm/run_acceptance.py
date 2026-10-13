@@ -1,6 +1,8 @@
 """Finite app-checks proof through public APIs and the actual Simulator process."""
 from __future__ import annotations
 
+import base64
+import functools
 import argparse
 from contextlib import contextmanager
 import hashlib
@@ -72,31 +74,39 @@ def hash_value(domain, worker_id, salt, number):
 
 
 def request(label, app, offset, count, ranges, delay):
-    return {"requestId": label, "appId": app, "country": "CN",
+    return {"userId": "proof", "requestId": label, "appId": app, "country": "CN",
             "numbers": [f"+8613800{index:06d}" for index in range(offset, offset + count)],
             "simulation": {"ranges": dict(zip(("registered", "unregistered", "failed"), ranges)), "delayMs": delay}}
+
+
+def caller_headers(user, role):
+    return {"X-XA-Dev-User": base64.urlsafe_b64encode(user.encode("utf-8")).decode("ascii").rstrip("="),
+            "X-XA-Dev-Role": role}
 
 
 def creation_input(case):
     return {key: case[key] for key in ("requestId", "appId", "country", "simulation")}
 
 
-def create_import_approve(run, http, case, *, approve=True):
-    task_id = http(run.url, "/api/v1/app-checks/tasks", creation_input(case))["taskId"]
+def create_import_approve(run, http, case, *, approve=True, historical_baseline=False):
+    headers = {} if historical_baseline else caller_headers(case["userId"], "admin")
+    api = http if historical_baseline else functools.partial(http, headers=headers)
+    task_id = api(run.url, "/api/v1/app-checks/tasks", creation_input(case))["taskId"]
     route = f"/api/v1/app-checks/tasks/{task_id}"
-    require(http(run.url, route)["task"]["totalCount"] == 0, "Creation imported work implicitly")
+    require(api(run.url, route)["task"]["totalCount"] == 0, "Creation imported work implicitly")
     request = urllib.request.Request(run.url + route + "/numbers:import",
                                      data="\n".join(case["numbers"]).encode("utf-8"),
-                                     headers={"Content-Type": "text/plain;charset=UTF-8"}, method="POST")
+                                     headers={"Content-Type": "text/plain;charset=UTF-8", **headers}, method="POST")
     with urllib.request.urlopen(request, timeout=15) as response:
         receipt = json.load(response)
     require(receipt["addedCount"] == len(case["numbers"]), "Import did not confirm every input")
     if approve:
-        http(run.url, route + "/approve", len(case["numbers"]))
+        api(run.url, route + "/approve", len(case["numbers"]))
     return task_id
 
 
 def functional(run, http):
+    api = functools.partial(http, headers=caller_headers("proof", "admin"))
     catalog = http(run.url, "/api/v1/app-checks/catalog")
     require(catalog["projectId"] == "app-checks", "Wrong project")
     groups = {row["appId"]: row["workerGroupId"] for row in catalog["apps"]}
@@ -122,14 +132,14 @@ def functional(run, http):
     # Submit before observing closure: Tasks coexist within and across Groups.
     tasks = [(case, create_import_approve(run, http, case)) for case in cases]
     require(len({task for _, task in tasks}) == len(cases), "Task identities collided")
-    require(http(run.url, "/api/v1/app-checks/tasks", creation_input(cases[0]))["taskId"] == tasks[0][1], "Submission identity changed")
+    require(api(run.url, "/api/v1/app-checks/tasks", creation_input(cases[0]))["taskId"] == tasks[0][1], "Submission identity changed")
     summaries = []
     for case, task_id in tasks:
         detail = {}
 
         def observed():
             nonlocal detail
-            detail = http(run.url, "/api/v1/app-checks/tasks/" + task_id)
+            detail = api(run.url, "/api/v1/app-checks/tasks/" + task_id)
             task = detail["task"]
             return task["totalCount"] == len(case["numbers"]) and task["activeCount"] == 0 \
                 and task["state"] == "terminal" \
@@ -138,6 +148,7 @@ def functional(run, http):
 
         run.wait_for(observed, 45, "finite app-checks execution closure")
         task = detail["task"]
+        require(task["userId"] == case["userId"], "Task creator changed")
         require(task["appId"] == case["appId"] and task["simulation"] == case["simulation"], "Stored configuration changed")
         require(not detail["resultsTruncated"], "Small result preview is incomplete")
         require({row["number"] for row in detail["results"]} == set(case["numbers"]), "Item association mismatch")
@@ -163,10 +174,12 @@ def functional(run, http):
             recomputed += 1
         summaries.append({"case": case["requestId"], "total": task["totalCount"], "succeeded": task["succeededCount"],
                           "failed": task["failedCount"], "recomputed": recomputed})
-    listing = http(run.url, "/api/v1/app-checks/tasks?limit=100")
+    listing = api(run.url, "/api/v1/app-checks/tasks?limit=100")
     require({task for _, task in tasks} <= {row["taskId"] for row in listing["tasks"]}, "Project list lost a Task")
+    require(all(row.get("userId") == "proof" for row in listing["tasks"]
+                if row["taskId"] in {task for _, task in tasks}), "Project list lost Task creators")
     return {"passed": True, "appWorkers": 4, "tasks": summaries, "idempotentSubmission": True,
-            "groupIsolation": True, "hashAndDelayRecomputed": True,
+            "groupIsolation": True, "hashAndDelayRecomputed": True, "creatorRetained": True,
             "nonclaims": ["exact distribution", "fixed executor", "single execution", "failure attempt count"]}
 
 

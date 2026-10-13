@@ -1,5 +1,6 @@
 """Opt-in, isolated A/B workload; observation fixture never enters a production artifact."""
 from __future__ import annotations
+from run_acceptance import caller_headers
 
 import hashlib
 import json
@@ -73,15 +74,15 @@ def benchmark(preview, root, output, port, baseline, configure, create_import_ap
                     return ids <= {row["workerId"] for row in sample["workers"] if row["workerProperties"].get("application") == "app-a"}
                 run.wait_for(ready, 15, "benchmark Facts publication")
                 case = request("benchmark", "app-a", 0, 1360, ([0, 1000], [1000, 1000], [1000, 1000]), [0, 0])
-                task_id = create_import_approve(run, preview.http, case, approve=False)
+                task_id = create_import_approve(run, preview.http, case, approve=False, historical_baseline=baseline)
                 preview.http(run.url, "/__benchmark/app-checks/start", {})
                 started = time.perf_counter()
-                preview.http(run.url, f"/api/v1/app-checks/tasks/{task_id}/approve", 1360)
+                preview.http(run.url, f"/api/v1/app-checks/tasks/{task_id}/approve", 1360, **({} if baseline else {"headers": caller_headers("proof", "admin")}))
                 detail = {}
 
                 def completed():
                     nonlocal detail
-                    detail = preview.http(run.url, "/api/v1/app-checks/tasks/" + task_id)
+                    detail = preview.http(run.url, "/api/v1/app-checks/tasks/" + task_id, **({} if baseline else {"headers": caller_headers("proof", "admin")}))
                     task = detail["task"]
                     return task["state"] == "terminal" and task["activeCount"] == 0
                 run.wait_for(completed, 180, "benchmark completion")

@@ -1,3 +1,4 @@
+import { CALLER } from "./app-check-fixture";
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, h, nextTick, type App } from "vue";
@@ -77,7 +78,7 @@ async function mount(
   [ElButton, ElInput, ElSelect, ElOption].forEach((component) => app!.use(component));
   app.mount(host);
   await settle();
-  return { host, router, session: context.session };
+  return { host, router, session: context.sessionFor("admin") };
 }
 function button(text: string, scope: ParentNode = document) {
   const node = [...scope.querySelectorAll<HTMLButtonElement>("button")].find(
@@ -133,7 +134,7 @@ describe("App Checks configuration workspace", () => {
       "app-b"
     ]);
     await expect(
-      source.createTask({
+      source.createTask(CALLER, {
         requestId: "pending-c",
         appId: "app-c",
         country: "CN",
@@ -149,13 +150,15 @@ describe("App Checks configuration workspace", () => {
       workerGroupId: "app-c-sim"
     });
     expect((await source.catalog()).apps[0].label).toBe("Alpha");
-    const task = await source.createTask({
+    const task = await source.createTask(CALLER, {
       requestId: "active-c",
       appId: "app-c",
       country: "CN",
       simulation: mockCatalog.simulationExample
     });
-    expect((await source.loadTask(task.taskId)).task.workerGroupId).toBe("app-c-sim");
+    expect((await source.loadTask(CALLER, task.taskId)).task.workerGroupId).toBe(
+      "app-c-sim"
+    );
   });
   it("preserves unsaved edits across refresh, app selection and navigation and refuses stale overwrite", async () => {
     const { router, session, host } = await mount();
@@ -164,9 +167,9 @@ describe("App Checks configuration workspace", () => {
     await input("应用显示名称", "Local draft");
     await input("观察窗口", "30000");
     expect(host.textContent).toContain("需使用新的 Redis scope");
-    const concurrent = (await source.loadConfiguration()).saved.configuration;
+    const concurrent = (await source.loadConfiguration(CALLER)).saved.configuration;
     concurrent.applications[1].label = "Concurrent";
-    await source.saveConfiguration(1, concurrent);
+    await source.saveConfiguration(CALLER, 1, concurrent);
     button("刷新配置").click();
     await settle();
     selectApp("app-b");
@@ -190,8 +193,8 @@ describe("App Checks configuration workspace", () => {
     const actualSave = source.saveConfiguration.bind(source);
     const save = vi
       .spyOn(source, "saveConfiguration")
-      .mockImplementationOnce(async (revision, value) => {
-        await actualSave(revision, value);
+      .mockImplementationOnce(async (caller, revision, value) => {
+        await actualSave(caller, revision, value);
         throw new AppCheckConfigurationUnconfirmed();
       });
     const { session } = await mount();
@@ -229,7 +232,7 @@ describe("App Checks configuration workspace", () => {
     await settle();
     expect(button("保存配置").disabled).toBe(true);
     expect(button("取消编辑").disabled).toBe(true);
-    pending.resolve(await source.loadConfiguration());
+    pending.resolve(await source.loadConfiguration(CALLER));
     await settle();
     expect(session.configuration.uncertain).toBe(true);
     expect(session.configuration.draft?.applications[0].label).toBe("Still pending");
@@ -254,7 +257,9 @@ describe("App Checks configuration workspace", () => {
     expect(applicationConfiguration(mockCatalog, "app-a", "api")!.pool.rows).toEqual(
       []
     );
-    const detail = detailSchema.parse(await source.loadTask("check-unregistered"));
+    const detail = detailSchema.parse(
+      await source.loadTask(CALLER, "check-unregistered")
+    );
     expect(detail.task).not.toHaveProperty("mockPolicy");
     expect(savedTaskConfiguration(detail.task, "api").policy.unavailable).toContain(
       "当前接口未提供"
@@ -266,16 +271,16 @@ describe("App Checks configuration workspace", () => {
   });
   it("keeps task policy and simulation snapshots independent from returned Catalog and request objects", async () => {
     const simulation = structuredClone(mockCatalog.simulationExample);
-    const { taskId } = await source.createTask({
+    const { taskId } = await source.createTask(CALLER, {
       requestId: "config-snapshot",
       appId: "app-b",
       country: "GB",
       simulation
     });
-    const configuration = await source.loadConfiguration();
+    const configuration = await source.loadConfiguration(CALLER);
     configuration.saved.configuration.poolGroups["app-b-sim"].maxCount = 90;
     simulation.delayMs = [0, 0];
-    const task = (await source.loadTask(taskId)).task;
+    const task = (await source.loadTask(CALLER, taskId)).task;
     expect(task.mockPolicy?.priority).toBe(50);
     expect(task.simulation).toEqual(mockCatalog.simulationExample);
     expect(savedTaskConfiguration(task, "mock").binding.rows[1].value).toBe(
@@ -319,7 +324,7 @@ describe("App Checks configuration workspace", () => {
   });
   it("retains the selected app when a slow refresh finishes and preserves old data on failure", async () => {
     const { host } = await mount();
-    const before = context.session.configuration.readAt;
+    const before = context.sessionFor("admin").configuration.readAt;
     const pending = deferred<AppCheckConfigurationView>();
     vi.spyOn(source, "loadConfiguration").mockReturnValueOnce(pending.promise);
     button("刷新配置").click();
@@ -331,12 +336,12 @@ describe("App Checks configuration workspace", () => {
     expect(host.textContent).toContain("已保留上次快照");
     expect(host.textContent).toContain("app-b-sim");
     expect(context.state.value.status).toBe("enabled");
-    expect(context.session.configuration.readAt).toBe(before);
+    expect(context.sessionFor("admin").configuration.readAt).toBe(before);
     button("刷新配置").click();
     await settle();
-    expect(context.session.configuration.error).toBe("");
-    expect(context.session.configuration.readAt).toBeGreaterThan(before);
-    expect(context.session.configurationApp).toBe("app-b");
+    expect(context.sessionFor("admin").configuration.error).toBe("");
+    expect(context.sessionFor("admin").configuration.readAt).toBeGreaterThan(before);
+    expect(context.sessionFor("admin").configurationApp).toBe("app-b");
   });
   it("keeps the list instance, filters and scrolling across tabs without rereading", async () => {
     const list = vi.spyOn(source, "listTasks");
@@ -398,8 +403,8 @@ describe("App Checks configuration workspace", () => {
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await settle();
     expect(session.draft.uncertain).toBe(true);
-    expect(create.mock.calls[0][0].simulation).toEqual(original);
-    const frozen = create.mock.calls[0][0];
+    expect(create.mock.calls[0][1].simulation).toEqual(original);
+    const frozen = create.mock.calls[0][1];
     await router.push("/app-checks?view=configuration");
     await settle();
     await context.load(true);
@@ -408,10 +413,12 @@ describe("App Checks configuration workspace", () => {
     button("使用原请求核对创建").click();
     await settle();
     expect(create).toHaveBeenCalledTimes(2);
-    expect(create.mock.calls[1][0]).toEqual(frozen);
+    expect(create.mock.calls[1][1]).toEqual(frozen);
     expect(session.draft.knownTaskId).toBe("mock-check-1");
     expect(imports).not.toHaveBeenCalled();
-    expect((await source.loadTask("mock-check-1")).task.state).toBe("pre_review");
+    expect((await source.loadTask(CALLER, "mock-check-1")).task.state).toBe(
+      "pre_review"
+    );
   });
   it("shows saved task values instead of current defaults and returns from config to its drawer", async () => {
     const { host, router } = await mount("/app-checks/tasks/check-unregistered");
@@ -446,7 +453,7 @@ describe("App Checks configuration workspace", () => {
     const { router, host } = await mount("/app-checks/tasks/check-live");
     await router.push("/app-checks?view=configuration&app=app-b");
     await settle();
-    pending.resolve(await new MockAppCheckTaskSource().loadTask("check-live"));
+    pending.resolve(await new MockAppCheckTaskSource().loadTask(CALLER, "check-live"));
     await settle();
     expect(document.activeElement).toBe(
       host.querySelector(".checks-configuration-page h1")

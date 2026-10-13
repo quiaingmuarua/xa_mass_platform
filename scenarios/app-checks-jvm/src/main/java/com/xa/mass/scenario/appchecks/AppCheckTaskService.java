@@ -83,16 +83,16 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                 "simulationExample", settings.simulationDefault());
     }
 
-    public TaskCreateResponse create(Map<String, Object> input) {
+    public TaskCreateResponse create(AppCheckCaller caller, Map<String, Object> input) {
         requireRunning();
         final AppCheckSpecification specification;
         try {
-            specification = AppCheckSpecification.parse(input);
+            specification = AppCheckSpecification.parse(caller, input);
             settings.requireApplication(specification.appId());
         }
         catch (IllegalArgumentException invalid) { throw new RequestFailure(400, invalid.getMessage(), null); }
         LocalDate date = LocalDate.now(clock.withZone(ZoneOffset.UTC));
-        var metadata = Map.of("scenario", PROJECT, "inputVersion", "2", "appId", specification.appId(), "country", specification.country(),
+        var metadata = Map.of("scenario", PROJECT, "inputVersion", "2", "userId", specification.userId(), "appId", specification.appId(), "country", specification.country(),
                 "simulation", Jsons.toJson(specification.simulation()), "salt", specification.salt(date), "saltDate", date.toString());
         String name = specification.appId() + " · " + specification.country() + " · " + clock.instant();
         try {
@@ -104,10 +104,11 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         }
     }
 
-    private ProjectTaskQueryService.Entry requireCheck(String taskId) {
+    private ProjectTaskQueryService.Entry requireCheck(AppCheckCaller caller, String taskId) {
         requireRunning();
         var entry = queries.get(PROJECT, taskId);
         if (!isCheckTask(entry)) throw new RequestFailure(400, "只支持 App Checks 有限任务", taskId);
+        caller.requireOwner(entry.task().metadata().get("userId"));
         return entry;
     }
 
@@ -122,7 +123,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         if (!hasWindowSupply(entry)) throw new RequestFailure(409, OLD_SUPPLY, entry.taskId());
     }
 
-    public ImportReceipt importNumbers(String taskId, InputStream input) {
+    public ImportReceipt importNumbers(AppCheckCaller caller, String taskId, InputStream input) {
         synchronized (gate) {
             requireRunning();
             if (active >= MAX_ACTIVE_IMPORTS) throw new RequestFailure(429, "导入繁忙，请稍后重新发起", taskId);
@@ -130,7 +131,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         }
         try {
             return operations.taskMutation(taskId, () -> {
-                var entry = requireCheck(taskId);
+                var entry = requireCheck(caller, taskId);
                 requireWindowSupply(entry);
                 if (!"pre_review".equals(entry.scoreBand()) || !"2".equals(entry.task().metadata().get("inputVersion")))
                     throw new RequestFailure(409, "只有新版本待审核任务支持导入", taskId);
@@ -174,9 +175,9 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         } finally { synchronized (gate) { active--; gate.notifyAll(); } }
     }
 
-    public ActionOutcome approve(String taskId, long expectedCount) {
+    public ActionOutcome approve(AppCheckCaller caller, String taskId, long expectedCount) {
         return operations.taskMutation(taskId, () -> {
-            var entry = requireCheck(taskId);
+            var entry = requireCheck(caller, taskId);
             requireWindowSupply(entry);
             if (!"pre_review".equals(entry.scoreBand())) throw new RequestFailure(409, "任务不在待审核状态，请刷新核对", taskId);
             long actual = data.observeItemScoreCounts(List.of(taskId)).get(taskId).total();
@@ -186,13 +187,13 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         });
     }
 
-    public ActionOutcome closeTask(String taskId) {
-        return operations.taskMutation(taskId, () -> { requireCheck(taskId); return lifecycle.close(taskId); });
+    public ActionOutcome closeTask(AppCheckCaller caller, String taskId) {
+        return operations.taskMutation(taskId, () -> { requireCheck(caller, taskId); return lifecycle.close(taskId); });
     }
 
-    public CsvExport export(String taskId, String filter) {
+    public CsvExport export(AppCheckCaller caller, String taskId, String filter) {
         if (!Set.of("all", "registered", "unregistered").contains(filter)) throw new RequestFailure(400, "无效导出范围", taskId);
-        var task = requireCheck(taskId).task();
+        var task = requireCheck(caller, taskId).task();
         return operations.execute("app-checks-csv-export", taskId, () -> {
             Path source = exports.export(taskId).file();
             Path csv = null;
@@ -249,13 +250,17 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     public record CsvExport(Path file, String fileName, long count) { }
     public record ImportReceipt(String taskId, long inputCount, long emptyCount, long duplicateCount, int uniqueCount, long addedCount, long existingCount) { }
 
-    public Map<String, Object> list(int limit) {
+    public Map<String, Object> list(AppCheckCaller caller, int limit) {
         requireRunning();
         if (limit < 1 || limit > 100) throw new RequestFailure(400, "limit must be in 1..100", null);
         var page = queries.list(PROJECT, limit);
-        var ids = page.tasks().stream().filter(AppCheckTaskService::isCheckTask).map(ProjectTaskQueryService.Entry::taskId).toList();
+        var visible = page.tasks().stream().filter(entry -> caller.canRead(
+                isCheckTask(entry) ? entry.task().metadata().get("userId") : null)).toList();
+        var ids = visible.stream().filter(AppCheckTaskService::isCheckTask).map(ProjectTaskQueryService.Entry::taskId).toList();
+        if (ids.isEmpty()) return Map.of("tasks", visible.stream().map(AppCheckTaskService::taskView).toList(),
+                "truncated", page.truncated());
         var counts = data.observeItemScoreCounts(ids);
-        var rows = page.tasks().stream().map(entry -> {
+        var rows = visible.stream().map(entry -> {
             var row = taskView(entry);
             if (isCheckTask(entry)) addCounts(row, counts.get(entry.taskId()).total(), counts.get(entry.taskId()).countsByTag());
             return row;
@@ -263,8 +268,8 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         return Map.of("tasks", rows, "truncated", page.truncated());
     }
 
-    public Map<String, Object> get(String taskId) {
-        var entry = requireCheck(taskId);
+    public Map<String, Object> get(AppCheckCaller caller, String taskId) {
+        var entry = requireCheck(caller, taskId);
         var row = taskView(entry);
         if (isCheckTask(entry)) {
             var counts = data.observeItemScoreCounts(List.of(taskId)).get(taskId);
@@ -290,7 +295,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         if (isCheckTask(entry)) {
             if (!hasWindowSupply(entry)) row.put("inputUnavailableReason", OLD_SUPPLY);
             var metadata = entry.task().metadata();
-            for (String field : List.of("appId", "country", "salt", "saltDate", "inputVersion"))
+            for (String field : List.of("userId", "appId", "country", "salt", "saltDate", "inputVersion"))
                 if (metadata.containsKey(field)) row.put(field, metadata.get(field));
             if (metadata.containsKey("simulation")) {
                 try { row.put("simulation", Jsons.parseObject(metadata.get("simulation"))); }

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
 import { Plus, Refresh, Search } from "@element-plus/icons-vue";
+import { consoleIdentity, identityLabel } from "@/console-identity";
+const admin = consoleIdentity.current.value.role === "admin";
 import {
   ElTable,
   ElTableColumn,
@@ -148,7 +150,7 @@ defineExpose({ revealTask, focusHeading });
 <template>
   <section class="checks-list-page">
     <header class="checks-heading">
-      <h1 ref="heading" tabindex="-1">应用注册查询</h1>
+      <h1 ref="heading" tabindex="-1">{{ admin ? "应用注册查询" : "我的近期任务" }}</h1>
       <div class="checks-list-controls">
         <div class="checks-actions">
           <el-button :icon="Refresh" :loading="busy" @click="emit('refresh')"
@@ -244,6 +246,7 @@ defineExpose({ revealTask, focusHeading });
         开始日期不能晚于结束日期。
       </p>
       <p class="checks-table-note" role="status">
+        <template v-if="!admin">Project 最近一批中的个人任务 · </template>
         当前载入 {{ quantity(business.length) }} 个 · 匹配
         {{ quantity(filtered.length) }} 个 · 仅筛选本次载入，最多 100 条{{
           truncated ? " · 列表未完整加载" : ""
@@ -282,6 +285,11 @@ defineExpose({ revealTask, focusHeading });
           <template #default="{ row }"
             >{{ appLabel(row.appId, catalog)
             }}<small>{{ countryLabel(row.country) }}</small></template
+          >
+        </ElTableColumn>
+        <ElTableColumn v-if="admin" label="创建者" width="100">
+          <template #default="{ row }"
+            ><span :title="row.userId">{{ identityLabel(row.userId) }}</span></template
           >
         </ElTableColumn>
         <ElTableColumn label="号码数量" width="110" align="right">
@@ -327,14 +335,18 @@ defineExpose({ revealTask, focusHeading });
                     ? "暂时无法读取任务"
                     : business.length
                       ? "当前载入范围内没有匹配任务"
-                      : "暂无查询任务"
+                      : admin
+                        ? "暂无查询任务"
+                        : "当前载入范围内没有我的任务"
               }}
             </h3>
             <p>
               {{
-                business.length
-                  ? "调整筛选条件查看已载入任务。"
-                  : "选择应用并导入号码，创建第一批查询。"
+                !admin
+                  ? "这里只展示本次载入窗口中的个人任务，不代表全部历史任务。"
+                  : business.length
+                    ? "调整筛选条件查看已载入任务。"
+                    : "选择应用并导入号码，创建第一批查询。"
               }}
             </p>
           </div>
