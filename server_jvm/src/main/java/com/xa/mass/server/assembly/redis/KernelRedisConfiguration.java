@@ -10,6 +10,11 @@ import org.springframework.context.annotation.Configuration;
 @EnableConfigurationProperties(XaMassRedisProperties.class)
 public class KernelRedisConfiguration {
 
+    @Bean
+    public com.xa.mass.kernel.redis.RedisKeyspace redisKeyspace(XaMassRedisProperties properties) {
+        return properties.keyspace();
+    }
+
     @Bean(destroyMethod = "shutdown")
     public RedisClient kernelRedisClient(XaMassRedisProperties properties) {
         return RedisClient.create(RedisURI.create(properties.url()));

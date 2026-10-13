@@ -71,13 +71,13 @@ public final class ProjectController {
         return projects.require(projectId);
     }
 
-    @Operation(summary = "Read newest Project Tasks, without pagination or Result reads")
+    @Operation(summary = "Read a bounded Project or user Task batch, without pagination or Result reads")
     @GetMapping("/{projectId}/tasks")
     @ApiResponse(responseCode = "200", description = "Project Task window",
             content = @Content(schema = @Schema(
                     implementation = ProjectTaskQueryService.ProjectTasks.class)))
     public ProjectTaskQueryService.ProjectTasks tasks(@PathVariable String projectId,
-            @RequestParam(defaultValue = "100") int limit) {
-        return tasks.list(projectId, limit);
+            @RequestParam(defaultValue = "100") int limit, @RequestParam(required = false) String userId) {
+        return tasks.list(projectId, limit, userId);
     }
 }

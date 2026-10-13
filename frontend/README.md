@@ -8,8 +8,8 @@ caller and Task creator; the caller is not authenticated.
 
 ## Development identities
 
-The top bar selects `admin` (管理员, admin), `user-a` (用户 A, operator), or
-`user-b` (用户 B, operator). Definitions live once in the console. Only the selected
+The top bar selects `1000` (管理员, admin), `1001` (用户 A, operator), or
+`1002` (用户 B, operator). Definitions live once in the console. Only the selected
 user ID is remembered in `sessionStorage`; missing or invalid selection uses admin.
 Identity does not select API/Mock mode and does not depend on Runtime availability.
 Runtime configuration errors stay in the content area; the identity selector and
@@ -25,12 +25,12 @@ trusted-development boundary. Clients can declare admin themselves: this is not
 customer data isolation or authentication.
 
 App Checks saves the creator as `metadata.userId`; role and display name are not
-Task identity or scheduling inputs. The API filters the current Project
-window of at most 100 Tasks by the declared operator before reading counts; the UI
-retains a creator check before search, state counts and actions.
-This is a recent observation window, not a complete user history. Foreign Task
+Task identity or scheduling inputs. The API selects the operator
+range in the single Project directory before taking at most 100 identities and
+reading counts; the UI retains a creator check before search, counts and actions.
+The bounded batch is not the latest 100 Tasks or a complete user history. Foreign Task
 links do not display results or enable actions in the console. Admin lists show
-creators and all loaded business Tasks; Task creation uses the current admin ID,
+creators and all loaded business Tasks, with an explicit Base36 userId filter; Task creation uses the current admin ID,
 without an on-behalf-of selection. RPC caller naming and the other Scenarios keep
 their existing admin workflows.
 
@@ -171,8 +171,8 @@ reload the list or discard its filters, table position or focus. Browser history
 and direct links use the same routes; no new Server forwarding path is needed.
 
 The business list excludes managed Tasks without fetching replacements. It retains
-ordinary Tasks with missing metadata and shows unavailable values. The newest
-loaded window is capped at 100; state tabs, application/country/date filters and
+ordinary Tasks with missing metadata and shows unavailable values. The current
+loaded batch is capped at 100; state tabs, application/country/date filters and
 counts only describe that window. Both running bands display as sending, while
 unknown states appear only in All. Tables scroll within bounded areas, with no
 pagination, infinite loading or automatic polling.
@@ -568,7 +568,9 @@ not fabricate a response.
 ## Task page
 
 `/runtime/tasks` is a raw viewer. Project tabs use the immutable directory from
-`GET /api/v1/projects` and read at most 100 newest Tasks. Global observation keeps
+`GET /api/v1/projects` and read a current batch of at most 100 Tasks.
+The Server selects by attribution score/Task ID and only then sorts that batch by
+saved creation time; there is no latest-N guarantee or scan to fill missing rows. Global observation keeps
 its independent Score window (1..1000 coordinates in Owner order). Search, Group
 and finite/managed filters operate only on the loaded collection; scrolling
 never fetches more data. Missing descriptors and Score bands remain unavailable.
@@ -594,15 +596,17 @@ unavailable workspace; it never chooses a business Project instead. This is a
 frontend entry boundary, not new authorization in the generic Server API.
 
 RPC uses `tab=rpc&group=...&user=...`, with the caller identifier initially blank.
-The workbench trims it, preserves case and mints
+The workbench trims it and requires `^[1-9a-z][0-9a-z]{3,8}$`, matching
+App Checks and the Server codec. It does not use the top-bar identity. It mints
 `rpc-workbench-v1.<project>.<user>.<group>` using separately encoded UTF-8 Base64URL
 segments without padding. It saves the caller string as `metadata.userId`, solely
 for attribution. This convention adds no user registry, authorization or user quota.
-Existing Tasks are point-read by the stable ID, independent of the recent list.
+Existing Tasks are point-read by the stable ID, independent of the current batch.
 Only the explicit create/reuse button calls `POST /v1/tasks/{taskId}/rpc:prepare`;
 route changes, reads and calls never create a Task. Preparation includes approval.
 Unconfirmed attempts retain their original identity/request for manual read or
-explicit re-preparation. PRE_REVIEW, stale and terminal Tasks cannot be called.
+explicit re-preparation. Re-preparing a known descriptor excludes reserved `server.*`
+metadata from the input. PRE_REVIEW, stale and terminal Tasks cannot be called.
 `tab=rpc&taskId=...` opens an existing Task directly, including Tasks without user
 metadata; Runtime links preserve this actual identity. Group capabilities come from the existing
 Project worker-groups endpoint, not a random inventory sample. Task supply is
@@ -638,7 +642,11 @@ Append batches remain at most 100. Rejection or uncertainty stops further
 batches while retaining confirmed, rejected, unconfirmed and unsubmitted counts.
 The browser never automatically retries creation, replays Items or approves;
 generic requestId is diagnostic rather than an idempotency identity. Ending the
-local submission clears its input without closing the Server Task.
+local submission clears its input without closing the Server Task. A structured
+503 may include the known Task ID; the recovery button explicitly calls
+`directory:ensure`, without replaying creation, importing Items or approving.
+App Checks also offers an ID-based open action for Tasks outside the current batch.
+Mock selects score/Task ID batches before display sorting, matching this boundary.
 
 Viewer/workbench navigation retains filters, table scroll, RPC drafts/history
 and finite input drafts in the current console session. Create and append drafts

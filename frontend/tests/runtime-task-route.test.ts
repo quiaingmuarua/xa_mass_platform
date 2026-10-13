@@ -123,6 +123,7 @@ it("late drawer and submission continuations cannot replace the current context"
     appendItems: vi.fn(),
     approveTask: vi.fn(),
     closeTask: vi.fn(),
+    ensureDirectory: vi.fn(async () => {}),
     exportResults: vi.fn()
   });
   app.provide(taskManagementStoreKey, operations);

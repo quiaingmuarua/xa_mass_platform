@@ -263,6 +263,38 @@ class AppChecksIntegrationTest {
     }
 
     @Test @Timeout(75)
+    void userDirectoryRangesAreIndependentOfTheProjectBatchOverRealHttp() throws Exception {
+        try (var world = new World()) {
+            String route = "/api/v1/app-checks/tasks";
+            var simulation = Map.of("ranges", Map.of("registered", List.of(0, 1000), "unregistered", List.of(1000, 1000), "failed", List.of(1000, 1000)), "delayMs", List.of(0, 0));
+            var body = new LinkedHashMap<String, Object>(Map.of("requestId", "personal", "appId", "app-a", "country", "CN", "simulation", simulation));
+            var response = world.postAs(route, Jsons.toJson(body), "application/json", "1002", "operator");
+            assertThat(response.statusCode()).isEqualTo(201);
+            String target = (String) Jsons.parseObject(response.body()).get("taskId");
+            for (int i = 0; i < 101; i++) {
+                body.put("requestId", "other-" + i);
+                assertThat(world.postAs(route, Jsons.toJson(body), "application/json", "1001", "operator").statusCode()).isEqualTo(201);
+            }
+            var project = world.get(route);
+            assertThat(project).containsEntry("truncated", true);
+            assertThat((List<?>) project.get("tasks")).hasSize(100).allSatisfy(row ->
+                    assertThat(((Map<?, ?>) row).get("userId")).isEqualTo("1001"));
+            var own = world.http.send(world.request(route, "1002", "operator").build(), HttpResponse.BodyHandlers.ofString());
+            assertThat(own.statusCode()).isEqualTo(200);
+            var parsed = Jsons.parseObject(own.body());
+            assertThat(parsed).containsEntry("truncated", false);
+            assertThat((List<?>) parsed.get("tasks")).singleElement().satisfies(row ->
+                    assertThat(((Map<?, ?>) row).get("taskId")).isEqualTo(target));
+            assertThat(world.get(route + "?userId=1002")).isEqualTo(parsed);
+            assertThat(world.http.send(world.request(route + "?userId=1001", "1002", "operator").build(),
+                    HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
+            assertThat(world.http.send(world.request(route + "?userId=0001", "1002", "operator").build(),
+                    HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(400);
+            assertThat(task(world.get(route + "/" + target))).containsEntry("userId", "1002");
+        }
+    }
+
+    @Test @Timeout(75)
     void declaredCallersRestrictScenarioOperationsWithoutBecomingAnAccountDirectory() throws Exception {
         try (var world = new World()) {
             String route = "/api/v1/app-checks/tasks";
@@ -271,8 +303,8 @@ class AppChecksIntegrationTest {
             assertThat(world.http.send(HttpRequest.newBuilder(world.base.resolve(route)).header("X-XA-Dev-User", "_w")
                     .header("X-XA-Dev-Role", "operator").build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(400);
             var simulation = Map.of("ranges", Map.of("registered", List.of(0, 1000), "unregistered", List.of(1000, 1000), "failed", List.of(1000, 1000)), "delayMs", List.of(0, 0));
-            var body = new LinkedHashMap<String, Object>(Map.of("requestId", "caller-a", "appId", "app-a", "country", "CN", "simulation", simulation));
-            String a = "外部用户-A", b = "external-B";
+            var body = new LinkedHashMap<String, Object>(Map.of("requestId", "callerb", "appId", "app-a", "country", "CN", "simulation", simulation));
+            String a = "testa", b = "testb";
             var response = world.postAs(route, Jsons.toJson(body), "application/json", a, "operator");
             assertThat(response.statusCode()).isEqualTo(201);
             String first = (String) Jsons.parseObject(response.body()).get("taskId");
@@ -319,7 +351,7 @@ class AppChecksIntegrationTest {
             String id = (String) Jsons.parseObject(created.body()).get("taskId");
             String target = path + "/" + id;
             assertThat(task(world.get(target))).containsEntry("userId", "proof");
-            assertThat(world.postAs(path, json, "application/json", "another-proof-user", "admin").statusCode()).isEqualTo(400);
+            assertThat(world.postAs(path, json, "application/json", "another1", "admin").statusCode()).isEqualTo(400);
             var bodyCreator = new LinkedHashMap<>(body); bodyCreator.put("userId", "proof");
             assertThat(world.post(path, Jsons.toJson(bodyCreator), "application/json").statusCode()).isEqualTo(400);
             assertThat(Jsons.parseObject(world.postAs(path, json, "application/json", "  proof  ", "operator").body()))

@@ -44,9 +44,9 @@ class WorkerRefillDeficitIntegrationTest {
         String group = "g";
         var us = new RefillTarget("country", new EligibilityQuery(Map.of("worker.country", List.of("US"))), 100);
         var ca = new RefillTarget("country", new EligibilityQuery(Map.of("worker.country", List.of("CA"))), 100);
-        var dueTask = new TaskDescriptor("due-task", "test-project", group, TaskIdleDisposition.CLOSE_WHEN_IDLE,
+        var dueTask = new TaskDescriptor("due-task", group, TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 Map.of("priority", "0", "maxRetryTimes", "1"), List.of(us), null, Map.of());
-        var hiddenTask = new TaskDescriptor("hidden-task", "test-project", group, TaskIdleDisposition.CLOSE_WHEN_IDLE,
+        var hiddenTask = new TaskDescriptor("hidden-task", group, TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 Map.of("priority", "0", "maxRetryTimes", "1"), List.of(ca), null, Map.of());
         long sampled = System.currentTimeMillis();
         try (var connection = client.connect();
@@ -133,9 +133,9 @@ class WorkerRefillDeficitIntegrationTest {
         String group = "g";
         var country = new RefillTarget("country", new EligibilityQuery(Map.of()), 100);
         var messaging = new RefillTarget("messaging", new EligibilityQuery(Map.of("worker.country", List.of("US"))), 1);
-        var countryTask = new TaskDescriptor("country-task", "test-project", group, TaskIdleDisposition.PARK_WHEN_IDLE,
+        var countryTask = new TaskDescriptor("country-task", group, TaskIdleDisposition.PARK_WHEN_IDLE,
                 Map.of("priority", "0", "maxRetryTimes", "1"), List.of(country), null, Map.of());
-        var messagingTask = new TaskDescriptor("messaging-task", "test-project", group, TaskIdleDisposition.CLOSE_WHEN_IDLE,
+        var messagingTask = new TaskDescriptor("messaging-task", group, TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 Map.of("priority", "0", "maxRetryTimes", "1"), List.of(messaging), null, Map.of());
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
@@ -200,7 +200,7 @@ class WorkerRefillDeficitIntegrationTest {
         var client = RedisClient.create(REDIS_URL);
         String group = "g";
         var target = new RefillTarget("any", new EligibilityQuery(Map.of()), 1);
-        var task = new TaskDescriptor("task", "test-project", group, TaskIdleDisposition.PARK_WHEN_IDLE,
+        var task = new TaskDescriptor("task", group, TaskIdleDisposition.PARK_WHEN_IDLE,
                 Map.of("priority", "0", "maxRetryTimes", "1"), List.of(target), null, Map.of());
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
@@ -252,9 +252,9 @@ class WorkerRefillDeficitIntegrationTest {
         String group = "g";
         var country = new RefillTarget("country", new EligibilityQuery(Map.of()), 1);
         var messaging = new RefillTarget("messaging", new EligibilityQuery(Map.of()), 1);
-        var countryTask = new TaskDescriptor("country", "test-project", group, TaskIdleDisposition.PARK_WHEN_IDLE,
+        var countryTask = new TaskDescriptor("country", group, TaskIdleDisposition.PARK_WHEN_IDLE,
                 Map.of("priority", "0", "maxRetryTimes", "1"), List.of(country), null, Map.of());
-        var messagingTask = new TaskDescriptor("messaging", "test-project", group, TaskIdleDisposition.CLOSE_WHEN_IDLE,
+        var messagingTask = new TaskDescriptor("messaging", group, TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 Map.of("priority", "0", "maxRetryTimes", "1"), List.of(messaging), null, Map.of());
         try (var connection = client.connect();
                 var scores = new RedisWorkerScoreCore(client, scope.keyspace());
@@ -302,7 +302,7 @@ class WorkerRefillDeficitIntegrationTest {
         var client = RedisClient.create(REDIS_URL);
         String group = "g";
         var targets = List.of(new RefillTarget("any", new EligibilityQuery(Map.of()), 1));
-        var tasks = List.of(new TaskDescriptor("task", "test-project", group, TaskIdleDisposition.PARK_WHEN_IDLE,
+        var tasks = List.of(new TaskDescriptor("task", group, TaskIdleDisposition.PARK_WHEN_IDLE,
                 Map.of("priority", "0", "maxRetryTimes", "1"), targets, null, Map.of()));
         var query = Map.of("item", new WorkerQuery("worker.any", Map.of()));
         try (var connection = client.connect();
@@ -377,7 +377,7 @@ class WorkerRefillDeficitIntegrationTest {
         String group="g";
         var target=new RefillTarget("any",new EligibilityQuery(Map.of()),100);
         var declarations=List.of(target);
-        var tasks=List.of(new TaskDescriptor("task","test-project",group,TaskIdleDisposition.PARK_WHEN_IDLE,
+        var tasks=List.of(new TaskDescriptor("task",group,TaskIdleDisposition.PARK_WHEN_IDLE,
                 Map.of("priority","0","maxRetryTimes","1"),declarations,null,Map.of()));
         try (var connection=client.connect();
                 var scores=new RedisWorkerScoreCore(client,scope.keyspace());

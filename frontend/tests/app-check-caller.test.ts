@@ -10,9 +10,9 @@ import {
   mockCatalog
 } from "../src/app-checks/mock-task-source";
 
-const a: AppCheckCaller = Object.freeze({ userId: "外部-A", role: "operator" });
-const b: AppCheckCaller = Object.freeze({ userId: "external-B", role: "operator" });
-const admin: AppCheckCaller = Object.freeze({ userId: "proof-admin", role: "admin" });
+const a: AppCheckCaller = Object.freeze({ userId: "testa", role: "operator" });
+const b: AppCheckCaller = Object.freeze({ userId: "testb", role: "operator" });
+const admin: AppCheckCaller = Object.freeze({ userId: "proofadm", role: "admin" });
 const input = {
   requestId: "caller-test",
   appId: "app-a",
@@ -22,6 +22,28 @@ const input = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("App Checks declared callers", () => {
+  it("selects personal score ranges before limiting, including admin owner filters", async () => {
+    const source = new MockAppCheckTaskSource();
+    for (let i = 0; i < 105; i++)
+      await source.createTask(a, { ...input, requestId: `other-${i}` });
+    const target = await source.createTask(b, {
+      ...input,
+      requestId: "personal-target"
+    });
+    expect(
+      (await source.listTasks(admin)).tasks.some(
+        (task) => task.taskId === target.taskId
+      )
+    ).toBe(false);
+    expect((await source.listTasks(b)).tasks.map((task) => task.taskId)).toEqual([
+      target.taskId
+    ]);
+    expect(await source.listTasks(admin, b.userId)).toEqual(await source.listTasks(b));
+    const first = await source.listTasks(a);
+    expect(first.tasks).toHaveLength(100);
+    expect(first.truncated).toBe(true);
+    await expect(source.listTasks(a, b.userId)).rejects.toMatchObject({ status: 403 });
+  });
   it("checks every direct Mock operation before inspecting inputs or results", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
@@ -71,7 +93,7 @@ describe("App Checks declared callers", () => {
       source.createTask(a, { ...input, userId: b.userId } as typeof input)
     ).rejects.toMatchObject({ status: 400 });
   });
-  it("sends Unicode caller headers without a creator in JSON and never retries 403", async () => {
+  it("sends Base36 caller headers without a creator in JSON and never retries 403", async () => {
     const fetcher = vi
       .fn()
       .mockResolvedValue(

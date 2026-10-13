@@ -53,7 +53,7 @@ class FullCandidateRecycleIntegrationTest {
                 }
                 clock.addAndGet(10_000); nanos.set(TimeUnit.SECONDS.toNanos(10));
                 var policy = new WorkerEligibilityRefillPolicy(scores, matching.catalog(), null, 100, clock::get);
-                var tasks = groups.keySet().stream().map(group -> new TaskDescriptor("task-" + group, "project", group,
+                var tasks = groups.keySet().stream().map(group -> new TaskDescriptor("task-" + group, group,
                         TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "1"), List.of(), null, Map.of())).toList();
                 commands.clear(); policy.refill(List.copyOf(groups.keySet()), tasks, hints);
                 assertThat(Collections.frequency(commands, "ZRANGEBYSCORE")).isEqualTo(10);
@@ -86,7 +86,7 @@ class FullCandidateRecycleIntegrationTest {
             var redis = connection.sync();
             try {
                 var targets = List.of(target("CN"), target("US"));
-                var tasks = List.of(new TaskDescriptor("task", "project", "g", TaskIdleDisposition.PARK_WHEN_IDLE,
+                var tasks = List.of(new TaskDescriptor("task", "g", TaskIdleDisposition.PARK_WHEN_IDLE,
                         Map.of("priority", "0", "maxRetryTimes", "1"), targets, null, Map.of()));
                 var facts = Map.of("resident", Map.of("phone", "r", "country", "CN"),
                         "a-full", Map.of("phone", "a", "country", "CN"), "z-supply", Map.of("phone", "z", "country", "US"));

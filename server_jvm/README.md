@@ -114,9 +114,9 @@ Task type returns `400/12008`.
 | --- | --- | --- | --- | --- |
 | Project directory | Startup declarations only | Return configured Project views without Redis reads | No initialization or implicit default | [Project directory](#projects-and-explicit-rpc-tasks) |
 | Project Group capabilities | Known Project Group identities | Point-read descriptors in batches of 100 and immutable Matching enablement | Missing descriptors stay null; reads do not imply ready Workers | [Project directory](#projects-and-explicit-rpc-tasks) |
-| Known Project Task | Project plus Task identity | Read descriptor, membership and Score without discovery | Ownership checks precede state reads | [Project directory](#projects-and-explicit-rpc-tasks) |
+| Known Project Task | Project plus Task identity | Read descriptor attribution and Score without discovery | Ownership checks precede state reads | [Project directory](#projects-and-explicit-rpc-tasks) |
 | Project lookup | Configured Project; no default | Return Project identity and its bound Group list | Read never initializes resources | [Project directory](#projects-and-explicit-rpc-tasks) |
-| Project Task list | Configured Project; `limit=1..1000` | Read a bounded directory page and independent Task/Score projections | Missing projections stay null; corruption fails | [Task Owner](../kernel_jvm/doc/resource-model/task-resource-model.md#cross-owner-creation) |
+| Project Task list | Configured Project; `limit=1..1000` | Select a bounded Project or user batch and read independent Task/Score projections | Missing projections stay null; corruption fails | [Server task directory](#task-attribution-and-directory) |
 | Task create | Declared Project, one of its registered Groups, normalized supply and valid fields | Create a finite immutable Task descriptor | Validate before writes; unknown commit retains the generated identity | [TaskCreationService](src/main/java/com/xa/mass/server/task/TaskCreationService.java) |
 | RPC prepare | Caller Task ID and declared Project/Group | Create or reuse and approve a parked Task | 400 conflict/invalid; 503 retains the supplied identity | [RPC preparation](#projects-and-explicit-rpc-tasks) |
 | Approve / close | Finite Task only | Return the shared applied/unchanged effect | Missing/wrong-type rules above; Owner failure uses `503` | [TaskLifecycleService](src/main/java/com/xa/mass/server/task/TaskLifecycleService.java) |
@@ -130,8 +130,7 @@ Task type returns `400/12008`.
 
 Project declarations bind Groups without creating Tasks. `POST /api/v1/tasks` creates
 finite `CLOSE_WHEN_IDLE` Tasks. `POST /api/v1/tasks/{taskId}/rpc:prepare` explicitly
-creates or reuses and approves a `PARK_WHEN_IDLE` Task. Project membership remains
-passive Kernel data; all Tasks use the same global Pacer and shared Pool resources.
+creates or reuses and approves a `PARK_WHEN_IDLE` Task. Project membership is opaque application metadata to Kernel; all Tasks use the same global Pacer and shared Pool resources.
 
 `ProjectDefinition(projectId, workerGroupIds)` is the immutable topology value
 shared by the `xa.mass.project-assembly.projects` configuration list and module
@@ -150,27 +149,74 @@ Messages and App Checks validate bindings but create only finite business Tasks.
 
 `TaskRpcPreparationService.prepare(taskId, request)` is the common HTTP/Scenario
 entry. Its request contains `projectId`, `workerGroupId`, optional `name` and string
-`metadata`; the caller owns Task ID naming. The service never decodes a user or
-turns metadata into authorization. It validates the Project/registered Group and
+`metadata`; the caller owns Task ID naming. The service validates optional Base36 `metadata.userId` without decoding Task ID
+conventions or turning attribution into authorization. It validates the Project/registered Group and
 uses priority 0, maxRetryTimes 3 and the Group's configured RPC refill snapshot.
 Same-ID mutations share `OperationGuard.taskMutation`. A matching descriptor is
 reused and an unfinished approval can be completed; conflicts and terminal Tasks
-are rejected without overwrite or reopening. Creation and approval remain separate
-Owner commits. Only confirmed approval returns `{taskId}` with HTTP 200; unavailable
+are rejected without overwrite or reopening. Creation, Server directory registration and approval remain separate
+Owner commits. Directory confirmation precedes approval. Only confirmed approval returns `{taskId}` with HTTP 200; unavailable
 creation/approval returns 503 with the original identity already known to the caller.
 Explicit re-preparation uses that same identity. Existing Server error codes/status
 mapping remain in force. Ordinary reads and Item Calls do not prepare Tasks.
 
 The existing approval soft limit of 100 RUNNING Tasks includes parked Tasks;
 preparation does not bypass it. A limit failure can leave a PRE_REVIEW Task, which
-can later be explicitly prepared under the same identity. No user registry,
-additional Redis key, automatic retry, RPC close/delete API or new lifecycle is added.
+can later be explicitly prepared under the same identity. No user registry, automatic retry, RPC close/delete API or new lifecycle is added.
 
-Project Task pages are newest-first, with a one-member `truncated` lookahead and
-no cursor or total. Closed Tasks remain listed; same-millisecond order follows the
-Task Owner's reverse identity order. The read loads descriptors and decoded Score,
-never Results or the global preview, and is not an atomic scheduling snapshot.
-Physical directory definitions belong to the linked Task Owner.
+### Task attribution and directory
+
+`TaskUserId` is a pure Server identifier codec shared by App Checks and generic
+creation/RPC preparation: strip surrounding whitespace, then require
+`^[1-9a-z][0-9a-z]{3,8}$`. IDs stay strings; uppercase, leading zero and other
+lengths are rejected, not normalized into aliases. Optional generic `metadata.userId`
+uses the same contract. SMS, Messages and raw finite Tasks do not acquire users
+implicitly. Project/User have no Kernel interpretation or user lifecycle.
+
+Server stamps `server.projectId` and `server.createdAtMillis` on the first
+creation descriptor. Public metadata cannot contain any `server.*` key. Stored
+metadata is authoritative for Project, optional creator and first acceptance time;
+repeated creation, RPC preparation and directory recovery preserve that time.
+TaskView projects a nullable Project and creation time for incomplete/raw observations.
+
+`TaskDirectory` owns one ZSET per Project:
+`xa_mass:<scope>:server:task-directory:<Base64URL(projectId)>` (UTF-8, unpadded).
+Members are Task IDs. Score is `Base36(userId) * 64`, or zero when attribution is
+absent. Java uses long; the maximum is 6,499,837,226,778,560, exactly representable
+in Redis double. Low six bits are reserved and always zero; no flags API exists.
+There are no status/count/result/role copies, per-user keys, independent TTLs,
+100-entry pruning, worker threads or queues. The Owner opens/closes its own
+connection using the shared RedisClient. Terminal Tasks retain membership.
+
+All Server creation paths confirm the stored descriptor and Score before directory
+registration. One-key Lua checks the key type and existing member score, adds a
+missing member, and leaves the same score unchanged. A different score is corruption,
+never an attribution update. This is separate from Kernel creation. Failure returns
+503 with the known Task ID, without recreation or implicit approval. Same-request
+creation and same-ID RPC preparation can explicitly confirm a missing index using
+stored truth; missing descriptor/Score is not synthesized.
+
+`POST /api/v1/tasks/{taskId}/directory:ensure` accepts no attribution or time input.
+It uses `OperationGuard.taskMutation`, validates saved metadata, Project/Group and
+Task resource existence, and returns `applied` or `unchanged`. Unsupported inputs
+return 400; unconfirmed read/write returns 503. It never changes Task state, Items
+or Results. Generic creation errors include optional `taskId` when known; entirely
+lost non-idempotent creation responses still cannot safely be replayed.
+
+`GET /api/v1/projects/{projectId}/tasks?limit=...&userId=...` selects at most
+1..1000 members, with one additional member only for `truncated`. Project reads
+use ascending score/member order; user reads use `[u*64,u*64+63]`. The optional
+filter conveys attribution, not authorization. Selected identities are loaded in
+Owner-bounded batches of at most 100, then sorted by saved time descending and
+Task ID ascending. There is no latest-N, fair sampling, cursor or history claim.
+Missing projections remain unavailable without replacement reads; personal queries
+omit records whose ownership cannot be established. Descriptor/index disagreement
+fails rather than repairs. Counts and Results remain independent observations.
+
+Known-ID Project detail reads validate descriptor attribution without requiring or
+writing the directory. GET never repairs. Pure Kernel Tasks without Server metadata
+can be observed globally but are not automatically indexed. Use a new Redis scope
+for this storage change; no old descriptor/index/identity reader or migration exists.
 
 ### Task Admission
 
@@ -213,10 +259,10 @@ ordinary HTTP Task creation contract is unchanged. It derives `task-` plus SHA-2
 from length-prefixed UTF-8 `["xa-mass/task-create/v1", projectId, requestId]`.
 The scenario supplies a fingerprint of normalized creation inputs, excluding
 first-created display defaults. Existing immutable metadata records the request
-and fingerprint. A matching descriptor, Project membership and readable Task
-Score returns the same identity across service restarts. Conflicts reject; partial
-or unavailable observations retain that identity as unconfirmed without repair.
-No new keys, request registry or scheduling authority are introduced.
+and fingerprint. A matching descriptor and readable Task Score allow confirmation of the Server
+directory and return the same identity across restarts. Conflicts reject; missing
+Kernel resources remain unconfirmed without repair. Only a missing directory entry
+can be explicitly ensured. No request registry or scheduling authority is added.
 
 `OperationGuard.taskMutation` shares one instance-local Task admission among file
 import, ordinary finite append, approval and closure. Synchronous nested calls on

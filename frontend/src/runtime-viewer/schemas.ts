@@ -51,7 +51,7 @@ export const refillSchema = z
 export const taskViewSchema = z
   .object({
     taskId: z.string().min(1),
-    projectId: z.string().min(1),
+    projectId: z.string().min(1).nullable(),
     workerGroupId: z.string().min(1),
     idleDisposition: z.enum(["CLOSE_WHEN_IDLE", "PARK_WHEN_IDLE"]),
     refill: refillSchema,

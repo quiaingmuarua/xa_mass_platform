@@ -51,15 +51,12 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     private static final String CREATE_DESCRIPTOR_SCRIPT = """
             local key = KEYS[1]
             local descriptorType = redis.call("TYPE", key).ok
-            local indexType = redis.call("TYPE", KEYS[2]).ok
-            if (descriptorType ~= "none" and descriptorType ~= "hash")
-                or (indexType ~= "none" and indexType ~= "zset") then
-              return redis.error_reply("Task descriptor or project directory has invalid type")
+            if descriptorType ~= "none" and descriptorType ~= "hash" then
+              return redis.error_reply("Task descriptor has invalid type")
             end
             if redis.call("EXISTS", key) == 1 then
               return 0
             end
-            local createdAt = ARGV[9]
             redis.call(
               "HSET",
               key,
@@ -67,11 +64,9 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
               "idleDisposition", ARGV[2],
               "configJson", ARGV[3],
               "refillJson", ARGV[4],
-              "projectId", ARGV[5],
-              "metadataJson", ARGV[7]
+              "metadataJson", ARGV[5]
             )
-            if ARGV[8] ~= '' then redis.call('HSET', key, 'name', ARGV[8]) end
-            redis.call("ZADD", KEYS[2], "NX", createdAt, ARGV[6])
+            if ARGV[6] ~= '' then redis.call('HSET', key, 'name', ARGV[6]) end
             return 1
             """;
     private static final String STORE_SUCCESS_RESULTS_SCRIPT = """
@@ -318,7 +313,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 new TreeMap<>(descriptor.config())
         );
         Map<String, String> fields = new LinkedHashMap<>();
-        fields.put("projectId", descriptor.projectId());
         fields.put("workerGroupId", descriptor.workerGroupId());
         fields.put(
                 "idleDisposition",
@@ -338,17 +332,13 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         Long result = commands().eval(
                 CREATE_DESCRIPTOR_SCRIPT,
                 ScriptOutputType.INTEGER,
-                new String[]{taskDescriptorKey(taskId),
-                        keyspace.base() + ":task:project:" + fields.get("projectId")},
+                new String[]{taskDescriptorKey(taskId)},
                 fields.get("workerGroupId"),
                 fields.get("idleDisposition"),
                 fields.get("configJson"),
                 fields.get("refillJson"),
-                fields.get("projectId"),
-                taskId,
                 fields.get("metadataJson"),
-                fields.getOrDefault("name", ""),
-                Long.toString(currentTimeMillis.getAsLong())
+                fields.getOrDefault("name", "")
         );
         return result != null && result == 1L;
     }

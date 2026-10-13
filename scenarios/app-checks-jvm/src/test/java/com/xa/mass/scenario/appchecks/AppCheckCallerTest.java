@@ -15,11 +15,11 @@ class AppCheckCallerTest {
         headers.set("X-XA-Dev-Role", role);
         return headers;
     }
-    @Test void decodesUnicodeWithoutAnAccountDirectoryAndDoesNotDefaultMissingIdentity() {
-        var input = headers("  外部调用方-A  ", "operator");
+    @Test void decodesBase36WithoutAnAccountDirectoryAndDoesNotDefaultMissingIdentity() {
+        var input = headers("  outside1  ", "operator");
         var caller = AppCheckCaller.fromHeaders(input.getFirst("X-XA-Dev-User"), input.getFirst("X-XA-Dev-Role"));
-        assertThat(caller.userId()).isEqualTo("外部调用方-A");
-        assertThat(caller.canRead("外部调用方-a")).isFalse();
+        assertThat(caller.userId()).isEqualTo("outside1");
+        assertThat(caller.canRead("outside2")).isFalse();
         assertThat(caller.canRead(null)).isFalse();
         for (String invalid : new String[]{null, "", " ", "***", "_w"})
             assertThatThrownBy(() -> AppCheckCaller.fromHeaders(invalid, "operator"))
@@ -33,7 +33,7 @@ class AppCheckCallerTest {
         var tasks = mock(AppCheckTaskService.class);
         var store = mock(AppCheckConfigurationStore.class);
         var controller = new AppCheckController(tasks, store);
-        var operator = headers("not-in-ui", "operator");
+        var operator = headers("outside1", "operator");
         assertThatThrownBy(() -> controller.configuration(operator)).isInstanceOfSatisfying(AppCheckAccessException.class,
                 error -> assertThat(error.status).isEqualTo(403));
         assertThatThrownBy(() -> controller.saveConfiguration(operator, Map.of())).isInstanceOf(AppCheckAccessException.class);
@@ -42,7 +42,7 @@ class AppCheckCallerTest {
         assertThatThrownBy(() -> controller.configuration(operator)).isInstanceOfSatisfying(AppCheckAccessException.class,
                 error -> assertThat(error.status).isEqualTo(400));
         verifyNoInteractions(store, tasks);
-        controller.configuration(headers("arbitrary-admin", "admin"));
+        controller.configuration(headers("admin123", "admin"));
         verify(store).view();
         controller.catalog();
         verify(tasks).catalog();

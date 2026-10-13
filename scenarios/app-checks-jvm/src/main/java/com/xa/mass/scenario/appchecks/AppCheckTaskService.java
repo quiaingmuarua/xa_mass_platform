@@ -250,10 +250,16 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     public record CsvExport(Path file, String fileName, long count) { }
     public record ImportReceipt(String taskId, long inputCount, long emptyCount, long duplicateCount, int uniqueCount, long addedCount, long existingCount) { }
 
-    public Map<String, Object> list(AppCheckCaller caller, int limit) {
+    public Map<String, Object> list(AppCheckCaller caller, int limit, String userId) {
         requireRunning();
         if (limit < 1 || limit > 100) throw new RequestFailure(400, "limit must be in 1..100", null);
-        var page = queries.list(PROJECT, limit);
+        if (userId != null) {
+            try { userId = com.xa.mass.server.task.directory.TaskUserId.normalize(userId); }
+            catch (IllegalArgumentException invalid) { throw new RequestFailure(400, invalid.getMessage(), null); }
+            caller.requireOwner(userId);
+        }
+        String owner = "operator".equals(caller.role()) ? caller.userId() : userId;
+        var page = queries.list(PROJECT, limit, owner);
         var visible = page.tasks().stream().filter(entry -> caller.canRead(
                 isCheckTask(entry) ? entry.task().metadata().get("userId") : null)).toList();
         var ids = visible.stream().filter(AppCheckTaskService::isCheckTask).map(ProjectTaskQueryService.Entry::taskId).toList();

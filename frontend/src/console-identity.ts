@@ -8,9 +8,9 @@ export interface ConsoleIdentity {
 }
 
 export const developmentIdentities: readonly ConsoleIdentity[] = Object.freeze([
-  Object.freeze({ userId: "admin", displayName: "管理员", role: "admin" as const }),
-  Object.freeze({ userId: "user-a", displayName: "用户 A", role: "operator" as const }),
-  Object.freeze({ userId: "user-b", displayName: "用户 B", role: "operator" as const })
+  Object.freeze({ userId: "1000", displayName: "管理员", role: "admin" as const }),
+  Object.freeze({ userId: "1001", displayName: "用户 A", role: "operator" as const }),
+  Object.freeze({ userId: "1002", displayName: "用户 B", role: "operator" as const })
 ]);
 export const identityStorageKey = "xa-mass.development-user";
 

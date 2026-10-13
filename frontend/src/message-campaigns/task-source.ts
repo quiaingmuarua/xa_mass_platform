@@ -24,7 +24,7 @@ export interface MessageTask {
   name?: string;
   appId?: string;
   inputVersion?: string;
-  createdAtMillis: number;
+  createdAtMillis: number | null;
   workerGroupId: string | null;
   managed: boolean;
   state: MessageTaskState | null;

@@ -62,7 +62,10 @@ function mockTask(taskId: string, workerGroupId: string): TaskView {
     idleDisposition: "PARK_WHEN_IDLE",
     refill: [{ poolName: "any", target: {}, count: 100 }],
     name: null,
-    metadata: {},
+    metadata: {
+      "server.projectId": "default",
+      "server.createdAtMillis": String(Date.parse(MOCK_GENERATED_AT))
+    },
     config: {
       priority: "0",
       maxRetryTimes: "3"

@@ -25,7 +25,8 @@ public final class ApiExceptionHandler {
                 new ApiErrorResponse(
                         error.errorCode().code(),
                         error.errorCode().defaultMessage(),
-                        requestId(request)
+                        requestId(request),
+                        error instanceof com.xa.mass.server.task.TaskCreationUnconfirmedException unknown ? unknown.taskId() : null
                 )
         );
     }
@@ -44,7 +45,7 @@ public final class ApiExceptionHandler {
                 new ApiErrorResponse(
                         ServerErrorCode.MALFORMED_REQUEST.code(),
                         ServerErrorCode.MALFORMED_REQUEST.defaultMessage(),
-                        requestId(request)
+                        requestId(request), null
                 )
         );
     }

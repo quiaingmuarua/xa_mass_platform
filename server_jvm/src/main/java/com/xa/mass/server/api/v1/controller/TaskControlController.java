@@ -9,6 +9,7 @@ import com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest;
 import com.xa.mass.server.task.call.TaskRpcPreparationService;
 import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskLifecycleService;
+import com.xa.mass.server.task.directory.TaskDirectory;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -33,15 +34,33 @@ public class TaskControlController {
     private final TaskCreationService taskCreation;
     private final TaskLifecycleService taskLifecycle;
     private final TaskRpcPreparationService rpcPreparation;
+    private final TaskDirectory directory;
 
     public TaskControlController(
             TaskCreationService taskCreation,
             TaskLifecycleService taskLifecycle,
-            TaskRpcPreparationService rpcPreparation
+            TaskRpcPreparationService rpcPreparation,
+            TaskDirectory directory
     ) {
         this.taskCreation = taskCreation;
         this.taskLifecycle = taskLifecycle;
         this.rpcPreparation = rpcPreparation;
+        this.directory = directory;
+    }
+
+    @Operation(summary = "Confirm a known Task's directory entry from its immutable Server metadata",
+            description = "Does not create, approve, close or append work. No caller-supplied attribution is accepted.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Directory entry applied or unchanged",
+                    content = @Content(schema = @Schema(implementation = ActionOutcome.class))),
+            @ApiResponse(responseCode = "400", description = "Task is missing or has no valid Server attribution",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "503", description = "Task read or directory write not confirmed",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+    })
+    @PostMapping("/{taskId}/directory:ensure")
+    public ActionOutcome ensureDirectory(@PathVariable @NotBlank String taskId) {
+        return directory.ensure(taskId);
     }
 
     @Operation(summary = "Create or reuse and enable an RPC Task",

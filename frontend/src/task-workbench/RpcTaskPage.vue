@@ -10,6 +10,7 @@ import type { TaskCallDebugHistoryItem } from "@/stores/task-call-debug";
 import type { Project } from "@/task-management/projects";
 import { useTaskSession } from "./session";
 import { rpcTaskId, type RpcTaskPrepareRequest } from "./rpc-task";
+import { normalizeTaskUserId } from "@/task-user-id";
 const props = defineProps<{ project: Project }>();
 const session = useTaskSession();
 const workspace = session.rpc;
@@ -45,6 +46,14 @@ watch(userId, (value) => {
   callerInput.value = value;
 });
 const changedCaller = computed(() => callerInput.value.trim() !== userId.value.trim());
+const validCaller = computed(() => {
+  try {
+    normalizeTaskUserId(callerInput.value);
+    return true;
+  } catch {
+    return false;
+  }
+});
 const groups = computed(() => workspace.groups.default);
 const group = computed(() =>
   groups.value?.value?.find((g) => g.workerGroupId === groupId.value)
@@ -92,7 +101,7 @@ const canPrepare = computed(
     config.mode === "api" &&
     resourcesReady.value &&
     (changedCaller.value
-      ? !!callerInput.value.trim() && callerInput.value.trim().length <= 128
+      ? validCaller.value
       : !!taskId.value &&
         (!directTaskId.value || valid.value) &&
         (row.value?.taskId !== taskId.value || row.value.scoreBand !== "terminal") &&
@@ -169,7 +178,11 @@ async function prepare() {
         projectId: "default",
         workerGroupId: groupId.value,
         name: row.value!.task!.name,
-        metadata: { ...row.value!.task!.metadata }
+        metadata: Object.fromEntries(
+          Object.entries(row.value!.task!.metadata).filter(
+            ([key]) => !key.startsWith("server.")
+          )
+        )
       }
     : {
         projectId: "default",
@@ -236,8 +249,8 @@ const labels: Record<string, string> = {
       <el-input
         v-model="callerInput"
         aria-label="RPC 调用方标识"
-        maxlength="128"
-        placeholder="调用方标识（如 alice）"
+        maxlength="9"
+        placeholder="4～9 位小写 Base36（如 1001）"
         @blur="commitCaller"
         @keyup.enter="commitCaller"
       />

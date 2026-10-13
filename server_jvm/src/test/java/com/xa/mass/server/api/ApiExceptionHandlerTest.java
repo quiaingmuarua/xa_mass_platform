@@ -57,7 +57,7 @@ class ApiExceptionHandlerTest {
                 errorCode.code(),
                 errorCode.defaultMessage(),
                 "request-1"
-        ));
+        , null));
     }
 
     private static Stream<Arguments> statusMappings() {

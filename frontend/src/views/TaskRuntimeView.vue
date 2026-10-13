@@ -88,8 +88,8 @@ let disposed = false;
 let generation = 0;
 let restoringScroll = true;
 let focusReturn: HTMLElement | undefined;
-function time(value?: string | number) {
-  return value === undefined ? "未提供" : new Date(value).toLocaleString();
+function time(value?: string | number | null) {
+  return value == null ? "未提供" : new Date(value).toLocaleString();
 }
 async function syncRoute() {
   const current = ++generation;
@@ -233,7 +233,7 @@ function workbenchLink() {
       不证明正在执行。
     </p>
     <p v-else class="raw-muted">
-      当前 Project 最近 {{ rows.length }} 条，最多 100 条；筛选仅作用于当前载入集合。{{
+      当前 Project 批次 {{ rows.length }} 条，最多 100 条；筛选仅作用于当前载入集合。{{
         list?.value?.truncated ? "列表已截断。" : ""
       }}
     </p>

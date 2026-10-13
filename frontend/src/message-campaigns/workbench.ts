@@ -72,8 +72,8 @@ export function resultKind(row: MessageTaskResult): ResultFilter {
   return row.status ?? "unknown";
 }
 export const quantity = (value?: number) =>
-  value === undefined ? "—" : value.toLocaleString();
-export const timestamp = (value?: number) =>
+  value == null ? "—" : value.toLocaleString();
+export const timestamp = (value?: number | null) =>
   value
     ? new Intl.DateTimeFormat("zh-CN", {
         month: "2-digit",

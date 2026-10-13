@@ -70,12 +70,11 @@ public final class RedisTaskResourceCatalog
     ) {
         try {
             if (!fields.keySet().containsAll(Set.of(
-                    "projectId",
                     "workerGroupId",
                     "idleDisposition",
                     "configJson",
                     "refillJson"
-            )) || !Set.of("projectId", "workerGroupId", "idleDisposition", "configJson", "refillJson", "name", "metadataJson")
+            )) || !Set.of("workerGroupId", "idleDisposition", "configJson", "refillJson", "name", "metadataJson")
                     .containsAll(fields.keySet())) {
                 throw new IllegalArgumentException(
                         "Task descriptor fields are invalid"
@@ -117,7 +116,6 @@ public final class RedisTaskResourceCatalog
             }
             return new TaskDescriptor(
                     taskId,
-                    required(fields, "projectId"),
                     workerGroupId,
                     idleDisposition,
                     config,
@@ -130,38 +128,6 @@ public final class RedisTaskResourceCatalog
                     error
             );
         }
-    }
-
-    @Override
-    public ProjectTaskPage listProjectTasks(String projectId, int limit) {
-        if (projectId == null || projectId.isBlank() || limit < 1 || limit > 1000) {
-            throw new IllegalArgumentException("projectId is required and limit must be in 1..1000");
-        }
-        var rows = commands().zrevrangeWithScores(
-                keyspace.base() + ":task:project:" + projectId, 0, limit);
-        var entries = new java.util.ArrayList<ProjectTaskEntry>();
-        for (var row : rows) {
-            double time = row.getScore();
-            if (row.getValue().isBlank() || !Double.isFinite(time)
-                    || time < 0 || time != Math.floor(time) || time > 9_007_199_254_740_991d) {
-                throw new IllegalStateException("Task project directory is corrupt");
-            }
-            if (entries.size() < limit) {
-                entries.add(new ProjectTaskEntry(row.getValue(), (long) time));
-            }
-        }
-        return new ProjectTaskPage(entries, rows.size() > limit);
-    }
-
-    @Override
-    public ProjectTaskEntry getProjectTask(String projectId, String taskId) {
-        if (projectId == null || projectId.isBlank() || taskId == null || taskId.isBlank())
-            throw new IllegalArgumentException("Project and Task IDs are required");
-        Double time = commands().zscore(keyspace.base() + ":task:project:" + projectId, taskId);
-        if (time == null) return null;
-        if (!Double.isFinite(time) || time < 0 || time != Math.floor(time) || time > 9_007_199_254_740_991d)
-            throw new IllegalStateException("Task project directory is corrupt");
-        return new ProjectTaskEntry(taskId, time.longValue());
     }
 
     private RedisCommands<String, String> commands() {

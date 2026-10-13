@@ -10,11 +10,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import tools.jackson.databind.JsonNode;
 
-/** Caller-owned identity; metadata is display data, not an identity or authorization contract. */
+/** Caller-owned identity; optional userId attributes work without providing authorization. */
 public record TaskRpcPrepareRequest(
         @NotBlank String projectId,
         @NotBlank String workerGroupId,
         @Size(max = 128) String name,
+        @io.swagger.v3.oas.annotations.media.Schema(description = "String metadata; server.* keys are reserved. Optional userId must match ^[1-9a-z][0-9a-z]{3,8}$ after trimming.")
         Map<String, String> metadata
 ) {
     public TaskRpcPrepareRequest {

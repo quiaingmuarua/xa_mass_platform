@@ -1,6 +1,7 @@
 package com.xa.mass.server.task.call;
 
 import com.xa.mass.kernel.task.TaskLifecycleCommands;
+import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalResult;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
@@ -19,6 +20,8 @@ import com.xa.mass.server.api.v1.contract.task.TaskCreateResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest;
 import com.xa.mass.server.operation.OperationGuard;
 import com.xa.mass.server.project.ProjectDirectory;
+import com.xa.mass.server.task.directory.TaskAttribution;
+import com.xa.mass.server.task.directory.TaskDirectory;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -38,6 +41,8 @@ public final class TaskRpcPreparationService {
     private final TaskRpcProperties rpc;
     private final TaskLifecycleCommands taskLifecycle;
     private final OperationGuard operations;
+    private final TaskDirectory directory;
+    private final TaskScoreBandCore scores;
 
     public TaskRpcPreparationService(
             WorkerResourceCatalog workerCatalog,
@@ -47,10 +52,14 @@ public final class TaskRpcPreparationService {
             WorkerMatchingCatalog matching,
             TaskRpcProperties rpc,
             ProjectDirectory projects,
-            OperationGuard operations
+            OperationGuard operations,
+            TaskDirectory directory,
+            TaskScoreBandCore scores
     ) {
         this.projects = Objects.requireNonNull(projects, "projects");
         this.operations = Objects.requireNonNull(operations, "operations");
+        this.directory = Objects.requireNonNull(directory, "directory");
+        this.scores = Objects.requireNonNull(scores, "scores");
         this.rpc = Objects.requireNonNull(rpc, "rpc");
         this.matching = Objects.requireNonNull(matching, "matching");
         this.workerCatalog = Objects.requireNonNull(
@@ -70,18 +79,27 @@ public final class TaskRpcPreparationService {
                 || request.projectId() == null || request.projectId().isBlank()
                 || request.workerGroupId() == null || request.workerGroupId().isBlank())
             throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, REGISTER_OPERATION, "Invalid RPC Task preparation", null);
-        return operations.taskMutation(taskId, () -> prepareObserved(taskId, request));
+        final TaskRpcPrepareRequest admitted;
+        try { admitted = new TaskRpcPrepareRequest(request.projectId(), request.workerGroupId(), request.name(), TaskAttribution.input(request.metadata())); }
+        catch (IllegalArgumentException invalid) { throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, REGISTER_OPERATION, invalid.getMessage(), invalid); }
+        return operations.taskMutation(taskId, () -> prepareObserved(taskId, admitted));
     }
 
     private TaskCreateResponse prepareObserved(String taskId, TaskRpcPrepareRequest request) {
         projects.requireWorkerGroup(request.projectId(), request.workerGroupId());
         requireWorkerGroup(request.workerGroupId(), REGISTER_OPERATION);
-        TaskDescriptor expected = descriptor(taskId, request);
         TaskDescriptor existing = loadDescriptor(
-                expected.taskId(),
+                taskId,
                 REGISTER_OPERATION
         );
+        TaskDescriptor expected = descriptor(taskId, request, existing);
         if (existing == null) {
+            try {
+                if (scores.getScoreStates(List.of(taskId)).get(taskId) != null || directory.contains(request.projectId(), taskId))
+                    throw new IllegalStateException("RPC identity has incomplete Task resources");
+            } catch (RuntimeException failure) {
+                throw unavailable(REGISTER_OPERATION, "RPC Task resources are unconfirmed", failure);
+            }
             TaskCreationResult creation = create(expected);
             if (creation.status() == TaskCreationStatus.CONFLICT) {
                 existing = loadDescriptor(
@@ -96,7 +114,7 @@ public final class TaskRpcPreparationService {
                     );
                 }
                 requireEquivalent(
-                        expected,
+                        descriptor(taskId, request, existing),
                         existing,
                         REGISTER_OPERATION
                 );
@@ -113,6 +131,8 @@ public final class TaskRpcPreparationService {
             requireEquivalent(expected, existing, REGISTER_OPERATION);
         }
 
+        try { directory.ensure(taskId); }
+        catch (RuntimeException failure) { throw unavailable(REGISTER_OPERATION, "Task directory is unconfirmed", failure); }
         TaskApprovalResult approval = approve(expected.taskId());
         return switch (approval.status()) {
             case APPROVED, ALREADY_APPROVED -> new TaskCreateResponse(expected.taskId());
@@ -208,7 +228,7 @@ public final class TaskRpcPreparationService {
         }
     }
 
-    private TaskDescriptor descriptor(String taskId, TaskRpcPrepareRequest request) {
+    private TaskDescriptor descriptor(String taskId, TaskRpcPrepareRequest request, TaskDescriptor existing) {
         java.util.List<com.xa.mass.kernel.assignment.RefillTarget> refill;
         try {
             refill = Objects.requireNonNull(matching.normalizeRefill(request.workerGroupId(),
@@ -217,8 +237,10 @@ public final class TaskRpcPreparationService {
             throw unavailable(REGISTER_OPERATION, "Call Task targets unavailable", error);
         }
         try {
-            return new TaskDescriptor(taskId, request.projectId(), request.workerGroupId(), TaskIdleDisposition.PARK_WHEN_IDLE,
-                    TASK_CONFIG, refill, request.name(), request.metadata());
+            long created = existing == null ? System.currentTimeMillis() : TaskAttribution.require(existing.metadata()).createdAtMillis();
+            var metadata = new TaskAttribution(request.projectId(), created, request.metadata().get("userId")).stamp(request.metadata());
+            return new TaskDescriptor(taskId, request.workerGroupId(), TaskIdleDisposition.PARK_WHEN_IDLE,
+                    TASK_CONFIG, refill, request.name(), metadata);
         } catch (IllegalArgumentException error) {
             throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, REGISTER_OPERATION, null, error);
         }

@@ -50,7 +50,7 @@ class AppCheckTaskServiceTest {
     ProjectTaskQueryService.Entry entry(String id, String state, boolean modern) {
         var metadata = new HashMap<>(Map.of("scenario", "app-checks", "userId", "proof", "appId", "app-a", "country", "CN", "simulation", Jsons.toJson(simulation()), "salt", "fixed"));
         if (modern) metadata.put("inputVersion", "2");
-        return new ProjectTaskQueryService.Entry(id, 1, new TaskView(id, "app-checks", "app-a-sim", "CLOSE_WHEN_IDLE",
+        return new ProjectTaskQueryService.Entry(id, 1L, new TaskView(id, "app-checks", "app-a-sim", "CLOSE_WHEN_IDLE",
                 List.of(RefillTarget.of(modern ? "assignment-window" : "any", new EligibilityQuery(Map.of()), 100)), Map.of(), "test", metadata), state);
     }
     static Map<String, Object> simulation() {
@@ -86,14 +86,14 @@ class AppCheckTaskServiceTest {
         assertThatThrownBy(() -> AppCheckSpecification.parse(CALLER, other)).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void creatorComesOnlyFromCallerAndRemainsInTheCreationFingerprint() {
-        var first = AppCheckSpecification.parse(new AppCheckCaller("  Caller-A  ", "operator"), request());
-        var same = AppCheckSpecification.parse(new AppCheckCaller("Caller-A", "admin"), request());
-        var other = AppCheckSpecification.parse(new AppCheckCaller("caller-a", "operator"), request());
+        var first = AppCheckSpecification.parse(new AppCheckCaller("  callera  ", "operator"), request());
+        var same = AppCheckSpecification.parse(new AppCheckCaller("callera", "admin"), request());
+        var other = AppCheckSpecification.parse(new AppCheckCaller("callerb", "operator"), request());
         assertThat(first.fingerprint()).isEqualTo(same.fingerprint()).isNotEqualTo(other.fingerprint());
         assertThat(first.salt(LocalDate.of(2026, 10, 13))).isEqualTo(other.salt(LocalDate.of(2026, 10, 13)));
         try (var service = service()) {
-            service.create(new AppCheckCaller("caller-not-in-ui", "operator"), request());
-            verify(creation).createForRequest(argThat(req -> "caller-not-in-ui".equals(req.metadata().get("userId"))
+            service.create(new AppCheckCaller("outside1", "operator"), request());
+            verify(creation).createForRequest(argThat(req -> "outside1".equals(req.metadata().get("userId"))
                     && !req.metadata().containsKey("role")), eq("request"), anyString());
         }
         for (String field : List.of("userId", "role")) {
@@ -117,11 +117,11 @@ class AppCheckTaskServiceTest {
     }
     @Test void filtersTheExistingProjectWindowBeforeCountsWithoutRefillingIt() {
         try (var service = service()) {
-            when(queries.list("app-checks", 100)).thenReturn(new ProjectTaskQueryService.ProjectTasks("app-checks",
+            when(queries.list("app-checks", 100, "other")).thenReturn(new ProjectTaskQueryService.ProjectTasks("app-checks",
                     IntStream.range(0, 100).mapToObj(i -> entry("task-" + i, "pre_review", true)).toList(), true));
-            assertThat(service.list(new AppCheckCaller("other", "operator"), 100))
+            assertThat(service.list(new AppCheckCaller("other", "operator"), 100, null))
                     .containsEntry("tasks", List.of()).containsEntry("truncated", true);
-            verify(queries).list("app-checks", 100);
+            verify(queries).list("app-checks", 100, "other");
             verifyNoInteractions(data);
         }
     }
@@ -225,7 +225,7 @@ class AppCheckTaskServiceTest {
             var original = entry("task", "pre_review", true).task();
             var old = new TaskView(original.taskId(), original.projectId(), original.workerGroupId(), original.idleDisposition(),
                     List.of(RefillTarget.of("any", new EligibilityQuery(Map.of()), 100)), original.config(), original.name(), original.metadata());
-            when(queries.get("app-checks", "task")).thenReturn(new ProjectTaskQueryService.Entry("task", 1, old, "pre_review"));
+            when(queries.get("app-checks", "task")).thenReturn(new ProjectTaskQueryService.Entry("task", 1L, old, "pre_review"));
             when(data.observeItemScoreCounts(List.of("task"))).thenReturn(Map.of("task", new TaskItemScoreCounts(0, Map.of(1, 0L, 5, 0L, 6, 0L, 7, 0L, 8, 0L, 9, 0L))));
             when(data.previewTaskResults("task")).thenReturn(new TaskDataService.ResultPreview(List.of(), false));
             assertThat((Map<String, Object>) service.get(CALLER, "task").get("task")).containsEntry("inputVersion", "2")

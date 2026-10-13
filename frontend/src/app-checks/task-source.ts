@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ConsoleIdentity } from "@/console-identity";
+import { normalizeTaskUserId } from "@/task-user-id";
 import {
   configurationViewSchema,
   type AppCheckSettings,
@@ -29,7 +30,8 @@ export interface AppCheckTaskSource {
   ): Promise<AppCheckConfigurationView>;
   simulateConfigurationRestart?(caller: AppCheckCaller): Promise<void>;
   listTasks(
-    caller: AppCheckCaller
+    caller: AppCheckCaller,
+    userId?: string
   ): Promise<{ tasks: CheckTask[]; truncated: boolean }>;
   loadTask(caller: AppCheckCaller, taskId: string): Promise<CheckDetail>;
   createTask(
@@ -80,12 +82,17 @@ export function requireCaller(caller: AppCheckCaller): AppCheckCaller {
   if (
     !caller ||
     typeof caller.userId !== "string" ||
-    !caller.userId.trim() ||
-    caller.userId.trim().length > 128 ||
     !["admin", "operator"].includes(caller.role)
   )
     throw new AppCheckApiError(400, "开发调用方无效");
-  return Object.freeze({ userId: caller.userId.trim(), role: caller.role });
+  try {
+    return Object.freeze({
+      userId: normalizeTaskUserId(caller.userId),
+      role: caller.role
+    });
+  } catch (error) {
+    throw new AppCheckApiError(400, (error as Error).message);
+  }
 }
 export function requireAdminCaller(caller: AppCheckCaller) {
   if (requireCaller(caller).role !== "admin")
@@ -193,9 +200,13 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
       throw new AppCheckConfigurationUnconfirmed();
     }
   }
-  async listTasks(caller: AppCheckCaller) {
+  async listTasks(caller: AppCheckCaller, userId?: string) {
+    const query =
+      userId === undefined
+        ? ""
+        : "&userId=" + encodeURIComponent(normalizeTaskUserId(userId));
     return listSchema.parse(
-      await request("/tasks?limit=100", undefined, undefined, caller)
+      await request("/tasks?limit=100" + query, undefined, undefined, caller)
     );
   }
   async loadTask(caller: AppCheckCaller, taskId: string) {

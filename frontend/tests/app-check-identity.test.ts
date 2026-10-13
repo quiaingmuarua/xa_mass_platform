@@ -1,5 +1,5 @@
 import { webcrypto } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, nextTick, type App as VueApp } from "vue";
 import { createPinia } from "pinia";
 import { createRouter, createMemoryHistory } from "vue-router";
@@ -53,8 +53,12 @@ class ImportWorker {
 }
 let app: VueApp | undefined;
 const fetcher = vi.fn();
+beforeAll(async () => {
+  // Keep Vite's cold transformation of the lazy route outside the workflow assertion clock.
+  await import("../src/app-checks/AppCheckPage.vue");
+});
 beforeEach(() => {
-  consoleIdentity.select("admin");
+  consoleIdentity.select("1000");
   vi.useFakeTimers();
   vi.stubEnv("VITE_RUNTIME_DATA_SOURCE", "mock");
   vi.stubGlobal("fetch", fetcher.mockReset());
@@ -66,7 +70,7 @@ afterEach(() => {
   app?.unmount();
   app = undefined;
   document.body.replaceChildren();
-  consoleIdentity.select("admin");
+  consoleIdentity.select("1000");
   expect(fetcher).not.toHaveBeenCalled();
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -77,7 +81,7 @@ async function settle() {
   await vi.advanceTimersByTimeAsync(250);
   await nextTick();
 }
-async function mount(user = "user-a", path = "/app-checks") {
+async function mount(user = "1001", path = "/app-checks") {
   consoleIdentity.select(user);
   const router = createRouter({
     history: createMemoryHistory(),
@@ -158,15 +162,15 @@ function deferred<T>() {
 describe("shared identity and App Checks workspaces", () => {
   it("keeps identity switching available when Runtime configuration is invalid", async () => {
     vi.stubEnv("VITE_RUNTIME_API_BASE_URL", "https://invalid.example/api");
-    const router = await mount("admin", "/runtime/tasks");
+    const router = await mount("1000", "/runtime/tasks");
     expect(document.querySelector('[data-testid="config-error"]')).not.toBeNull();
     expect(document.querySelector('[aria-label="切换开发身份"]')).not.toBeNull();
-    await select("user-a");
+    await select("1001");
     await vi.dynamicImportSettled();
     await settle();
     expect(router.currentRoute.value.fullPath).toBe("/app-checks");
     expect(document.querySelector('[data-testid="config-error"]')).toBeNull();
-    expect(document.querySelector("h1")?.textContent).toBe("我的近期任务");
+    expect(document.querySelector("h1")?.textContent).toBe("我的任务 · 当前批次");
   });
 
   it("creates for each operator, filters their loaded tasks, and retains admin operations", async () => {
@@ -175,11 +179,11 @@ describe("shared identity and App Checks workspaces", () => {
       MockAppCheckTaskSource.prototype,
       "loadConfiguration"
     );
-    const router = await mount("user-a", "/runtime/tasks");
+    const router = await mount("1001", "/runtime/tasks");
     expect(router.currentRoute.value.path).toBe("/app-checks");
     expect(document.querySelector('a[href="/runtime/tasks"]')).toBeNull();
     expect(document.querySelector('a[href="/messages"]')).toBeNull();
-    expect(document.querySelector("h1")?.textContent).toBe("我的近期任务");
+    expect(document.querySelector("h1")?.textContent).toBe("我的任务 · 当前批次");
     await router.push("/app-checks?view=configuration");
     await settle();
     expect(router.currentRoute.value.fullPath).toBe("/app-checks");
@@ -187,17 +191,17 @@ describe("shared identity and App Checks workspaces", () => {
     await draft();
     await submit();
     const a = (await create.mock.results[0]!.value).taskId as string;
-    expect(create.mock.calls[0]![0].userId).toBe("user-a");
-    await select("user-b");
+    expect(create.mock.calls[0]![0].userId).toBe("1001");
+    await select("1002");
     expect(document.getElementById("check-task-" + a)).toBeNull();
     await draft("8613800000002");
     await submit();
     const b = (await create.mock.results[1]!.value).taskId as string;
-    expect(create.mock.calls[1]![0].userId).toBe("user-b");
-    await select("user-a");
+    expect(create.mock.calls[1]![0].userId).toBe("1002");
+    await select("1001");
     expect(document.getElementById("check-task-" + a)).not.toBeNull();
     expect(document.getElementById("check-task-" + b)).toBeNull();
-    await select("admin");
+    await select("1000");
     expect(document.getElementById("check-task-" + a)).not.toBeNull();
     expect(document.getElementById("check-task-" + b)).not.toBeNull();
     expect(document.querySelector('a[href="/runtime/tasks"]')).not.toBeNull();
@@ -207,7 +211,7 @@ describe("shared identity and App Checks workspaces", () => {
 
   it("refuses a foreign direct task before showing results or loading auxiliaries", async () => {
     const auxiliary = vi.spyOn(MockAppCheckTaskSource.prototype, "loadImport");
-    await mount("user-a", "/app-checks/tasks/check-delivered");
+    await mount("1001", "/app-checks/tasks/check-delivered");
     const drawer = document.querySelector(".checks-preview-drawer")!;
     expect(drawer.textContent).toContain("当前开发身份不能访问此任务");
     expect(drawer.textContent).not.toContain("存量号码 · 十月注册状态查询");
@@ -222,7 +226,7 @@ describe("shared identity and App Checks workspaces", () => {
       .mockResolvedValue({
         tasks: Array.from({ length: 100 }, (_, i) => ({
           taskId: "b-" + i,
-          userId: "user-b",
+          userId: "1002",
           appId: "app-a",
           workerGroupId: "app-a-sim",
           createdAtMillis: i,
@@ -256,14 +260,14 @@ describe("shared identity and App Checks workspaces", () => {
     await draft();
     await submit();
     const originalRequest = structuredClone(create.mock.calls[0]!);
-    await select("user-b");
+    await select("1002");
     await draft("8613800000002");
     gate.resolve();
     await settle();
     expect(imported).not.toHaveBeenCalled();
     expect(numberInput().value).toBe("8613800000002");
     expect(router.currentRoute.value.query.view).toBe("create");
-    await select("user-a");
+    await select("1001");
     button("创建任务").click();
     await settle();
     expect(numberInput().value).toBe("8613800000001");
@@ -283,15 +287,15 @@ describe("shared identity and App Checks workspaces", () => {
     await draft();
     await submit();
     const submitted = structuredClone(create.mock.calls[0]!);
-    await select("user-b");
-    await select("user-a");
+    await select("1002");
+    await select("1001");
     button("创建任务").click();
     await settle();
     button("使用原请求核对创建").click();
     await settle();
     expect(create).toHaveBeenCalledTimes(2);
     expect(create.mock.calls[1]!).toEqual(submitted);
-    expect(submitted[0].userId).toBe("user-a");
+    expect(submitted[0].userId).toBe("1001");
   });
 
   it("retains late import failure and its known task without overwriting the other user's draft", async () => {
@@ -304,13 +308,13 @@ describe("shared identity and App Checks workspaces", () => {
     await draft();
     await submit();
     const target = imported.mock.calls[0]![1];
-    await select("user-b");
+    await select("1002");
     await draft("8613800000002");
     gate.reject(new AppCheckImportUnconfirmed(target, "导入确认丢失"));
     await settle();
     expect(numberInput().value).toBe("8613800000002");
     expect(document.body.textContent).not.toContain("导入确认丢失");
-    await select("user-a");
+    await select("1001");
     button("创建任务").click();
     await settle();
     expect(document.body.textContent).toContain("导入确认丢失");
@@ -324,7 +328,7 @@ describe("shared identity and App Checks workspaces", () => {
     const exported = vi
       .spyOn(MockAppCheckTaskSource.prototype, "exportTask")
       .mockImplementationOnce(() => pending.promise);
-    await mount("user-a", "/app-checks/tasks/check-unregistered");
+    await mount("1001", "/app-checks/tasks/check-unregistered");
     document
       .querySelector<HTMLButtonElement>(
         '.checks-preview-drawer [aria-label^="任务操作"]'
@@ -338,10 +342,10 @@ describe("shared identity and App Checks workspaces", () => {
     button("生成 CSV 文件").click();
     await settle();
     expect(exported.mock.calls[0]![0]).toMatchObject({
-      userId: "user-a",
+      userId: "1001",
       role: "operator"
     });
-    await select("user-b");
+    await select("1002");
     pending.resolve({ blob: new Blob(["original-user"]), fileName: "a.csv", count: 1 });
     await settle();
     expect(document.querySelector("a[download]")).toBeNull();
@@ -354,12 +358,12 @@ describe("shared identity and App Checks workspaces", () => {
     vi.spyOn(MockAppCheckTaskSource.prototype, "loadTask").mockImplementationOnce(
       () => gate.promise
     );
-    const router = await mount("user-a", "/app-checks/tasks/late-a");
-    await select("user-b");
+    const router = await mount("1001", "/app-checks/tasks/late-a");
+    await select("1002");
     gate.resolve({
       task: {
         taskId: "late-a",
-        userId: "user-a",
+        userId: "1001",
         name: "Late user A",
         managed: false,
         workerGroupId: "app-a-sim",

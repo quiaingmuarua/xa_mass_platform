@@ -75,6 +75,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     private RedisTaskResourceCatalog catalog;
     private TaskLifecycleCommands lifecycle;
     private TaskCallItemSubmission callSubmission;
+    private com.xa.mass.server.task.directory.TaskDirectory applicationDirectory;
 
     @BeforeEach
     void setUp() {
@@ -116,6 +117,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         if (itemScoreCore != null) {
             itemScoreCore.close();
         }
+        if (applicationDirectory != null) applicationDirectory.close();
         if (catalog != null) {
             catalog.close();
         }
@@ -135,9 +137,12 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         when(matching.normalizeRefill(eq("phone-tools"), anyList())).thenAnswer(call -> call.getArgument(1));
         var projects = new com.xa.mass.server.project.ProjectDirectory(new com.xa.mass.server.project.ProjectAssemblyProperties(
                 List.of(new com.xa.mass.server.project.ProjectDefinition("test-project", List.of("phone-tools")))), List.of());
+        if (applicationDirectory != null) applicationDirectory.close();
+        applicationDirectory = new com.xa.mass.server.task.directory.TaskDirectory(redisClient, keyspace, projects, catalog, scoreCore, workers,
+                new com.xa.mass.server.operation.OperationGuard());
         return new com.xa.mass.server.task.call.TaskRpcPreparationService(workers, catalog, runtime, lifecycle, matching,
                 new com.xa.mass.server.task.call.TaskRpcProperties(1000, 1000, 10, 10, 10, 50, 100, 250, Map.of()),
-                projects, new com.xa.mass.server.operation.OperationGuard());
+                projects, new com.xa.mass.server.operation.OperationGuard(), applicationDirectory, scoreCore);
     }
 
     private static com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest rpcRequest(String user) {
@@ -146,26 +151,26 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @Test void explicitRpcReuseAfterProviderReopenPreservesIdentityWorkAndResults() {
         var service = rpcPreparation();
-        service.prepare("rpc-alice", rpcRequest("Alice"));
+        service.prepare("rpc-alice", rpcRequest("alice"));
         var item = new TaskItem("shared-id", "test.event", ownerClockMillis(), Map.of("value", "Alice"), 5,
                 ownerClockMillis() + 60_000, new WorkerQuery("workerId", "w"));
         runtime.appendItems("rpc-alice", List.of(item));
         runtime.storeTaskItemSuccessResults("rpc-alice", Map.of("shared-id", new TaskItemSuccessResult(6, ownerClockMillis(), "Alice")));
-        var order = catalog.getProjectTask("test-project", "rpc-alice");
+        var order = com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("rpc-alice")).get("rpc-alice").metadata());
         var score = scoreCore.getScoreStates(List.of("rpc-alice")).get("rpc-alice");
         runtime.close(); catalog.close();
         runtime = new RedisTaskRuntime(redisClient, scoreCore, itemScoreCore, keyspace);
         catalog = new RedisTaskResourceCatalog(redisClient, keyspace);
         lifecycle = new DefaultTaskLifecycleCommands(scoreCore, catalog);
-        rpcPreparation().prepare("rpc-alice", rpcRequest("Alice"));
-        assertThat(catalog.getProjectTask("test-project", "rpc-alice")).isEqualTo(order);
+        rpcPreparation().prepare("rpc-alice", rpcRequest("alice"));
+        assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("rpc-alice")).get("rpc-alice").metadata())).isEqualTo(order);
         assertThat(scoreCore.getScoreStates(List.of("rpc-alice")).get("rpc-alice")).isEqualTo(score);
         assertThat(runtime.loadTaskItems("rpc-alice", List.of("shared-id")).get("shared-id")).isEqualTo(item);
         assertThat(runtime.loadTaskItemResults("rpc-alice", List.of("shared-id")).get("shared-id").opaqueResultPayload()).isEqualTo("Alice");
-        assertThatThrownBy(() -> rpcPreparation().prepare("rpc-alice", rpcRequest("Bob")))
+        assertThatThrownBy(() -> rpcPreparation().prepare("rpc-alice", rpcRequest("bobby")))
                 .isInstanceOf(com.xa.mass.server.error.ServerException.class);
         lifecycle.closeTask("rpc-alice");
-        assertThatThrownBy(() -> rpcPreparation().prepare("rpc-alice", rpcRequest("Alice")))
+        assertThatThrownBy(() -> rpcPreparation().prepare("rpc-alice", rpcRequest("alice")))
                 .isInstanceOf(com.xa.mass.server.error.ServerException.class);
         assertThat(scoreCore.getScoreStates(List.of("rpc-alice")).get("rpc-alice").band()).isEqualTo(TaskScoreBandCore.TaskScoreBand.TERMINAL);
     }
@@ -174,7 +179,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         var service = rpcPreparation();
         for (int i = 0; i < 100; i++) {
             String id = "rpc-" + i;
-            service.prepare(id, rpcRequest("user-" + i));
+            service.prepare(id, rpcRequest("user" + i));
             var initial = scoreCore.getScoreStates(List.of(id)).get(id);
             assertThat(scoreCore.promoteObservedInitialTasks(Map.of(id, initial.score())).get(id).status())
                     .isEqualTo(TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED);
@@ -186,81 +191,30 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThatThrownBy(() -> service.prepare("pending", rpcRequest("next")))
                 .isInstanceOfSatisfying(com.xa.mass.server.error.ServerException.class,
                         error -> assertThat(error.errorCode()).isEqualTo(com.xa.mass.server.error.ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE));
-        var order = catalog.getProjectTask("test-project", "pending");
+        var order = com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("pending")).get("pending").metadata());
         assertThat(order).isNotNull();
         assertThat(scoreCore.getScoreStates(List.of("pending")).get("pending").band()).isEqualTo(TaskScoreBandCore.TaskScoreBand.PRE_REVIEW);
-        service.prepare("rpc-0", rpcRequest("user-0"));
+        service.prepare("rpc-0", rpcRequest("user0"));
         assertThat(scoreCore.countRunningTasks()).isEqualTo(100);
         lifecycle.closeTask("rpc-0");
         service.prepare("pending", rpcRequest("next"));
-        assertThat(catalog.getProjectTask("test-project", "pending")).isEqualTo(order);
+        assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("pending")).get("pending").metadata())).isEqualTo(order);
         assertThat(scoreCore.countRunningTasks()).isEqualTo(100);
     }
 
-    @Test void projectDirectoryRetainsFirstCreationTimeAndClosedTasks() {
-        long before = ownerClockMillis();
-        assertThat(runtime.createTask(descriptor("indexed", 0)).status()).isEqualTo(TaskCreationStatus.CREATED);
-        var page = catalog.listProjectTasks("test-project", 100);
-        assertThat(page.tasks()).hasSize(1);
-        long first = page.tasks().getFirst().createdAtMillis();
-        assertThat(first).isBetween(before, ownerClockMillis());
-        assertThat(runtime.createTask(descriptor("indexed", 0)).status()).isEqualTo(TaskCreationStatus.CONFLICT);
-        lifecycle.closeTask("indexed");
-        assertThat(catalog.listProjectTasks("test-project", 100)).isEqualTo(page);
-        assertThat(catalog.listProjectTasks("other", 100).tasks()).isEmpty();
-    }
-
-    @Test void projectIndexOrdersTiesTruncatesAndRejectsCorruptTypesBeforeDescriptorWrite() {
-        String index = keyspace.base() + ":task:project:test-project";
-        redis.zadd(index, 10d, "a", 10d, "b", 20d, "c");
-        var page = catalog.listProjectTasks("test-project", 2);
-        assertThat(page.tasks()).extracting(com.xa.mass.kernel.task.TaskResourceCatalog.ProjectTaskEntry::taskId)
-                .containsExactly("c", "b");
-        assertThat(page.truncated()).isTrue();
-        assertThat(catalog.listProjectTasks("test-project", 3).truncated()).isFalse();
-        assertThatThrownBy(() -> catalog.listProjectTasks("test-project", 1001)).isInstanceOf(IllegalArgumentException.class);
-        redis.unlink(index);
-        redis.set(index, "wrong-type");
-        assertThat(runtime.createTask(descriptor("wrong-index", 0)).status()).isEqualTo(TaskCreationStatus.RETRYABLE);
-        assertThat(redis.exists(keyspace.base() + ":task:wrong-index:descriptor")).isZero();
-        assertThat(redis.get(index)).isEqualTo("wrong-type");
-        redis.unlink(index);
-        assertThat(runtime.createTask(descriptor("wrong-index", 0)).status()).isEqualTo(TaskCreationStatus.CREATED);
-        assertThat(catalog.listProjectTasks("test-project", 100).tasks()).hasSize(1);
-    }
-
-    @Test void projectDirectoryRejectsCorruptTimesAndDescriptorsWithoutRepair() {
-        String index = keyspace.base() + ":task:project:test-project";
-        for (double invalid : new double[]{-1, 1.5, Double.POSITIVE_INFINITY}) {
-            redis.zadd(index, invalid, "broken");
-            assertThatThrownBy(() -> catalog.listProjectTasks("test-project", 100))
-                    .isInstanceOf(IllegalStateException.class);
-            assertThat(redis.zscore(index, "broken")).isEqualTo(invalid);
-        }
-        redis.unlink(index);
-        assertThat(runtime.createTask(descriptor("missing-project", 0)).status()).isEqualTo(TaskCreationStatus.CREATED);
-        redis.hdel(keyspace.base() + ":task:missing-project:descriptor", "projectId");
-        assertThatThrownBy(() -> catalog.loadTaskAllocationDescriptors(List.of("missing-project")))
-                .isInstanceOf(IllegalStateException.class);
-    }
-
-    @Test void concurrentDifferentProjectCreatesOnlyWinningMembership() throws Exception {
-        var first = new TaskDescriptor("shared-id", "first", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(0), List.of(), null, java.util.Map.of());
-        var second = new TaskDescriptor("shared-id", "second", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(0), List.of(), null, java.util.Map.of());
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var start = new CountDownLatch(1);
-            var a = executor.submit(() -> { start.await(); return runtime.createTask(first); });
-            var b = executor.submit(() -> { start.await(); return runtime.createTask(second); });
-            start.countDown(); a.get(); b.get();
-        }
-        var stored = catalog.loadTaskAllocationDescriptors(List.of("shared-id")).get("shared-id");
-        assertThat(stored).isIn(first, second);
-        assertThat(catalog.listProjectTasks(stored.projectId(), 100).tasks()).hasSize(1);
-        assertThat(catalog.listProjectTasks(stored.projectId().equals("first") ? "second" : "first", 100).tasks()).isEmpty();
+    @Test void pureKernelCreationDoesNotInterpretOrWriteApplicationDirectories() {
+        String applicationIndex = keyspace.base() + ":server:task-directory:dGVzdC1wcm9qZWN0";
+        redis.set(applicationIndex, "wrong-type");
+        var task = new TaskDescriptor("pure", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE,
+                config(0), List.of(), null, Map.of("userId", "not-a-user", "server.createdAtMillis", "opaque"));
+        assertThat(runtime.createTask(task).status()).isEqualTo(TaskCreationStatus.CREATED);
+        assertThat(catalog.loadTaskAllocationDescriptors(List.of("pure"))).containsEntry("pure", task);
+        assertThat(redis.get(applicationIndex)).isEqualTo("wrong-type");
+        assertThat(redis.exists(keyspace.base() + ":task:project:test-project")).isZero();
     }
 
     @Test void completeRuleConfigurationRoundTripsWithoutAMatchingOwner() {
-        var descriptor = new TaskDescriptor("rule-task", "test-project", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE, config(4), List.of(new RefillTarget("external.rule", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("custom.field",List.of("b","a","b"))), 73)), null, java.util.Map.of());
+        var descriptor = new TaskDescriptor("rule-task", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE, config(4), List.of(new RefillTarget("external.rule", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("custom.field",List.of("b","a","b"))), 73)), null, java.util.Map.of());
         var commands = new CopyOnWriteArrayList<String>();
         redisClient.addListener(new CommandListener() {
             @Override public void commandStarted(CommandStartedEvent event) {
@@ -270,14 +224,14 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(runtime.createTask(descriptor).status()).isEqualTo(TaskCreationStatus.CREATED);
         assertThat(catalog.loadTaskAllocationDescriptors(List.of("rule-task"))).containsEntry("rule-task",descriptor);
         assertThat(redis.hgetall(keyspace.base()+":task:rule-task:descriptor"))
-                .containsOnlyKeys("projectId","workerGroupId","idleDisposition","configJson","refillJson","metadataJson");
+                .containsOnlyKeys("workerGroupId","idleDisposition","configJson","refillJson","metadataJson");
         assertThat(commands).noneMatch(command -> command.contains(":matching:task:rules"));
         assertThat(redis.exists(keyspace.base()+":matching:task:rules")).isZero();
     }
 
     @Test void concurrentCreationNeverMixesRuleAndTargets() throws Exception {
-        var left = new TaskDescriptor("contended", "test-project", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(1), List.of(new RefillTarget("rule.left", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("field",List.of("left"))), 10)), null, java.util.Map.of());
-        var right = new TaskDescriptor("contended", "test-project", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(2), List.of(new RefillTarget("rule.right", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("field",List.of("right"))), 20)), null, java.util.Map.of());
+        var left = new TaskDescriptor("contended", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(1), List.of(new RefillTarget("rule.left", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("field",List.of("left"))), 10)), null, java.util.Map.of());
+        var right = new TaskDescriptor("contended", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(2), List.of(new RefillTarget("rule.right", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of("field",List.of("right"))), 20)), null, java.util.Map.of());
         var start = new CountDownLatch(1);
         try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
             var operations = new ArrayList<java.util.concurrent.Future<TaskRuntime.TaskCreationResult>>();
@@ -293,18 +247,14 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(catalog.loadTaskAllocationDescriptors(List.of("contended")).get("contended")).isIn(left,right);
     }
 
-    @Test void displayFieldsAreCreateOnlyAndSurviveNewReadersAlongsideFirstCreatedTime() {
-        var descriptor = new TaskDescriptor("display", "messages", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE,
+    @Test void displayFieldsAreCreateOnlyAndSurviveNewReaders() {
+        var descriptor = new TaskDescriptor("display", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 config(0), List.of(), "Saved name", Map.of("scenario", "messages", "body", "{}"));
         assertThat(runtime.createTask(descriptor).status()).isEqualTo(TaskCreationStatus.CREATED);
-        var first = catalog.getProjectTask("messages", "display");
-        assertThat(first).isNotNull();
-        runtime.createTask(new TaskDescriptor("display", "messages", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE,
+        runtime.createTask(new TaskDescriptor("display", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 config(0), List.of(), "Do not overwrite", Map.of("body", "different")));
         try (var reader = new RedisTaskResourceCatalog(redisClient, keyspace)) {
             assertThat(reader.loadTaskAllocationDescriptors(List.of("display"))).containsEntry("display", descriptor);
-            assertThat(reader.getProjectTask("messages", "display")).isEqualTo(first);
-            assertThat(reader.getProjectTask("other-project", "display")).isNull();
         }
         String key = keyspace.base() + ":task:display:descriptor";
         for (String corrupt : List.of("null", "[]", "{\"body\":123}", "{\"\":\"invalid\"}")) {
@@ -362,7 +312,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         redis.hdel(key,"refillJson");
         assertThatThrownBy(()->catalog.loadTaskAllocationDescriptors(List.of("invalid-descriptor")))
                 .isInstanceOf(IllegalStateException.class).hasMessage("Task descriptor is corrupt");
-        assertThat(redis.hgetall(key)).hasSize(4);
+        assertThat(redis.hgetall(key)).hasSize(3);
         redis.hset(key,original);
         for(String bad:List.of("null","{}","[{\"poolName\":\"any\",\"target\":{},\"count\":0}]",
                 "[{\"poolName\":\"any\",\"target\":{},\"count\":1001}]","[{\"poolName\":\"any\",\"target\":{},\"count\":\"1\"}]",
@@ -728,7 +678,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(redis.hgetall(
                 keyspace.base() + ":task:task-commands:descriptor"
         )).isEqualTo(Map.of(
-                "projectId", "test-project", "workerGroupId", "phone-tools",
+                "workerGroupId", "phone-tools",
 
                 "idleDisposition", "PARK_WHEN_IDLE",
                 "metadataJson", "{}",
@@ -1506,8 +1456,8 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 mock(TaskCreationService.class),
                 new TaskLifecycleService(lifecycle, catalog, new com.xa.mass.server.operation.OperationGuard()),
                 mock(com.xa.mass.server.task.call.TaskRpcPreparationService.class)
-        );
-        var created = runtime.createTask(new TaskDescriptor("public-task", "test-project", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "2", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of()));
+        , org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class));
+        var created = runtime.createTask(new TaskDescriptor("public-task", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "2", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of()));
 
         assertThat(created.status()).isEqualTo(TaskCreationStatus.CREATED);
         assertThat(controller.approveTask("public-task").status()
@@ -1826,7 +1776,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     private TaskDescriptor descriptor(String taskId, int priority) {
-        return new TaskDescriptor(taskId, "test-project", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(priority), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of());
+        return new TaskDescriptor(taskId, "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(priority), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of());
     }
 
     private static Map<String, String> config(int priority) {
@@ -1854,7 +1804,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         redis.hset(
                 keyspace.base() + ":task:" + taskId + ":descriptor",
                 Map.of(
-                        "projectId", "test-project", "workerGroupId", "phone-tools",
+                        "workerGroupId", "phone-tools",
 
                         "idleDisposition", "PARK_WHEN_IDLE",
                         "configJson",

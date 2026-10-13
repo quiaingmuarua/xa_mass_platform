@@ -38,6 +38,10 @@ const directoryFresh = computed(
 );
 const api = computed(() => config.mode === "api");
 const canWrite = computed(() => api.value && directoryFresh.value);
+async function ensureKnownDirectory() {
+  if (!canWrite.value || operations.busy) return;
+  if (await operations.ensureDirectory()) await workspace.loadTasks("default");
+}
 const manage = computed(
   () => canWrite.value && !!detail.value && canManageRawTask(detail.value, fresh.value)
 );
@@ -47,7 +51,7 @@ const groupFresh = computed(
 const rows = computed(() =>
   (list.value?.value?.tasks ?? [])
     .filter((r) => r.task?.idleDisposition !== "PARK_WHEN_IDLE")
-    .sort((a, b) => b.createdAtMillis - a.createdAtMillis)
+    .sort((a, b) => (b.createdAtMillis ?? -1) - (a.createdAtMillis ?? -1))
 );
 const filtered = computed(() =>
   rows.value.filter((r) => {
@@ -65,8 +69,8 @@ let disposed = false;
 let navigation = 0;
 let restoringScroll = true;
 let focusReturn: HTMLElement | undefined;
-function time(value?: string | number) {
-  return value === undefined ? "未提供" : new Date(value).toLocaleString();
+function time(value?: string | number | null) {
+  return value == null ? "未提供" : new Date(value).toLocaleString();
 }
 function rememberFocus() {
   focusReturn =
@@ -252,6 +256,13 @@ function returnSubmission() {
         link
         @click="inspect(operations.submission.taskId)"
         >查看已知任务</el-button
+      >
+      <el-button
+        v-if="operations.submission.taskId && !operations.submission.complete"
+        link
+        :disabled="operations.busy || !canWrite"
+        @click="ensureKnownDirectory"
+        >核对／补齐任务目录</el-button
       >
     </div>
     <div class="raw-tasks__filters">

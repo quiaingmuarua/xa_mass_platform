@@ -14,7 +14,7 @@ const task = z.object({
   name: z.string().optional(),
   appId: z.string().optional(),
   inputVersion: z.string().optional(),
-  createdAtMillis: count,
+  createdAtMillis: count.nullable(),
   workerGroupId: z.string().nullable(),
   managed: z.boolean(),
   state: z

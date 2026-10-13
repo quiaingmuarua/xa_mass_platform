@@ -23,6 +23,7 @@ public record TaskCreateRequest(
                 + "Equal targets in the same Group/Pool merge by MAX, never private quotas.")
         @Size(max = 100) List<RefillTarget> refill,
         @Size(max = 128) String name,
+        @Schema(description = "String metadata; server.* keys are reserved. Optional userId must match ^[1-9a-z][0-9a-z]{3,8}$ after trimming. Server stamps Project and first creation time.")
         Map<String, String> metadata
 ) {
     public TaskCreateRequest {

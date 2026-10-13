@@ -88,14 +88,17 @@ const filtered = computed(() =>
             ? task.senderCountry === null
             : task.senderCountry === filters.sender)) &&
         (!filters.from ||
-          task.createdAtMillis >= new Date(filters.from + "T00:00:00").getTime()) &&
+          (task.createdAtMillis ?? Number.NEGATIVE_INFINITY) >=
+            new Date(filters.from + "T00:00:00").getTime()) &&
         (!filters.to ||
-          task.createdAtMillis <= new Date(filters.to + "T23:59:59.999").getTime())
+          (task.createdAtMillis ?? Number.POSITIVE_INFINITY) <=
+            new Date(filters.to + "T23:59:59.999").getTime())
       );
     })
     .sort(
       (a, b) =>
-        b.createdAtMillis - a.createdAtMillis || a.taskId.localeCompare(b.taskId)
+        (b.createdAtMillis ?? -1) - (a.createdAtMillis ?? -1) ||
+        a.taskId.localeCompare(b.taskId)
     )
 );
 function reset() {

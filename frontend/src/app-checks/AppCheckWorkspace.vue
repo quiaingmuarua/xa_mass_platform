@@ -132,7 +132,10 @@ async function loadList() {
   listBusy.value = true;
   listError.value = "";
   try {
-    const value = await props.source.listTasks(identity);
+    const value = await props.source.listTasks(
+      identity,
+      admin ? session.ownerFilter || undefined : undefined
+    );
     if (disposed || token !== listGeneration) return;
     tasks.value = value.tasks
       .slice(0, 100)
@@ -588,6 +591,7 @@ onBeforeUnmount(() => {
       @create="openCreate"
       @refresh="loadList"
       @action="requestAction"
+      @open-known="openTask"
     />
     <AppCheckCreate
       v-if="creating"

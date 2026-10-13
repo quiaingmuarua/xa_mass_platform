@@ -11,6 +11,8 @@ import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateResponse;
 import com.xa.mass.server.project.ProjectDirectory;
+import com.xa.mass.server.task.directory.TaskAttribution;
+import com.xa.mass.server.task.directory.TaskDirectory;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
@@ -37,6 +39,7 @@ public final class TaskCreationService {
     private final TaskResourceCatalog taskCatalog;
     private final TaskScoreBandCore scores;
     private final OperationGuard operations;
+    private final TaskDirectory directory;
     private static final String REQUEST_KEY = "server.creationRequest";
     private static final String FINGERPRINT_KEY = "server.creationFingerprint";
 
@@ -48,7 +51,8 @@ public final class TaskCreationService {
             ProjectDirectory projects,
             TaskResourceCatalog taskCatalog,
             TaskScoreBandCore scores,
-            OperationGuard operations
+            OperationGuard operations,
+            TaskDirectory directory
     ) {
         this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
@@ -64,32 +68,38 @@ public final class TaskCreationService {
         this.taskCatalog = Objects.requireNonNull(taskCatalog, "taskCatalog");
         this.scores = Objects.requireNonNull(scores, "scores");
         this.operations = Objects.requireNonNull(operations, "operations");
+        this.directory = Objects.requireNonNull(directory, "directory");
     }
 
     public TaskCreateResponse create(TaskCreateRequest request) {
-        return create(request, taskIds.nextTaskId());
+        request = normalize(request);
+        var admitted = request;
+        String taskId = taskIds.nextTaskId();
+        return operations.taskMutation(taskId, () -> create(admitted, taskId));
     }
 
     /** The caller fingerprints normalized creation inputs, excluding first-creation display defaults. */
     public TaskCreateResponse createForRequest(TaskCreateRequest request, String requestId, String fingerprint) {
+        request = normalize(request);
         if (request == null || request.projectId() == null || request.projectId().isBlank()
                 || requestId == null || requestId.isBlank() || requestId.length() > 128
                 || fingerprint == null || !fingerprint.matches("[0-9a-f]{64}")
                 || request.metadata().containsKey(REQUEST_KEY) || request.metadata().containsKey(FINGERPRINT_KEY))
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION, "Invalid creation identity", null);
         String taskId = correlatedTaskId(request.projectId(), requestId);
+        var admitted = request;
         return operations.taskMutation(taskId, () -> {
-            var existing = existingCreation(taskId, request.projectId(), requestId, fingerprint);
+            var existing = existingCreation(taskId, admitted.projectId(), requestId, fingerprint);
             if (existing != null) return existing;
-            var metadata = new java.util.LinkedHashMap<>(request.metadata());
+            var metadata = new java.util.LinkedHashMap<>(admitted.metadata());
             metadata.put(REQUEST_KEY, requestId);
             metadata.put(FINGERPRINT_KEY, fingerprint);
             try {
-                return create(new TaskCreateRequest(request.projectId(), request.workerGroupId(), request.priority(),
-                        request.maxRetryTimes(), request.refill(), request.name(), metadata), taskId);
+                return create(new TaskCreateRequest(admitted.projectId(), admitted.workerGroupId(), admitted.priority(),
+                        admitted.maxRetryTimes(), admitted.refill(), admitted.name(), metadata), taskId);
             } catch (ServerException conflict) {
                 if (conflict.errorCode() != ServerErrorCode.TASK_STATE_CONFLICT) throw conflict;
-                existing = existingCreation(taskId, request.projectId(), requestId, fingerprint);
+                existing = existingCreation(taskId, admitted.projectId(), requestId, fingerprint);
                 if (existing != null) return existing;
                 throw new TaskCreationUnconfirmedException(taskId, conflict);
             }
@@ -99,18 +109,19 @@ public final class TaskCreationService {
     private TaskCreateResponse existingCreation(String taskId, String projectId, String requestId, String fingerprint) {
         try {
             var descriptor = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
-            var directory = taskCatalog.getProjectTask(projectId, taskId);
             var state = scores.getScoreStates(List.of(taskId)).get(taskId);
-            if (descriptor == null && directory == null && state == null) return null;
-            if (descriptor == null || directory == null || state == null)
+            if (descriptor == null && state == null && !directory.contains(projectId, taskId)) return null;
+            if (descriptor == null || state == null)
                 throw new TaskCreationUnconfirmedException(taskId, null);
-            if (!projectId.equals(descriptor.projectId()) || descriptor.idleDisposition() != TaskIdleDisposition.CLOSE_WHEN_IDLE
+            if (!projectId.equals(TaskAttribution.require(descriptor.metadata()).projectId()) || descriptor.idleDisposition() != TaskIdleDisposition.CLOSE_WHEN_IDLE
                     || !requestId.equals(descriptor.metadata().get(REQUEST_KEY))
                     || !fingerprint.equals(descriptor.metadata().get(FINGERPRINT_KEY)))
                 throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, OPERATION,
                         "Creation request has different content", null);
-            return new TaskCreateResponse(taskId);
-        } catch (ServerException known) { throw known;
+            return confirmDirectory(taskId);
+        } catch (ServerException known) {
+            if (known instanceof TaskCreationUnconfirmedException || known.errorCode() == ServerErrorCode.TASK_STATE_CONFLICT) throw known;
+            throw new TaskCreationUnconfirmedException(taskId, known);
         } catch (RuntimeException unavailable) { throw new TaskCreationUnconfirmedException(taskId, unavailable); }
     }
 
@@ -141,11 +152,11 @@ public final class TaskCreationService {
         try {
             descriptor = new TaskDescriptor(
                 taskId,
-                request.projectId(),
                 request.workerGroupId(),
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 config,
-                targets, request.name(), request.metadata());
+                targets, request.name(), new TaskAttribution(request.projectId(), System.currentTimeMillis(),
+                        request.metadata().get("userId")).stamp(request.metadata()));
         } catch (IllegalArgumentException error) {
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION, null, error);
         }
@@ -159,7 +170,7 @@ public final class TaskCreationService {
             throw new TaskCreationUnconfirmedException(taskId, null);
         }
         return switch (result.status()) {
-            case CREATED -> new TaskCreateResponse(taskId);
+            case CREATED -> confirmDirectory(taskId);
             case CONFLICT -> throw new ServerException(
                     ServerErrorCode.TASK_STATE_CONFLICT,
                     OPERATION,
@@ -174,6 +185,21 @@ public final class TaskCreationService {
             );
             case RETRYABLE -> throw new TaskCreationUnconfirmedException(taskId, null);
         };
+    }
+
+    private TaskCreateResponse confirmDirectory(String taskId) {
+        try { directory.ensure(taskId); return new TaskCreateResponse(taskId); }
+        catch (RuntimeException failure) { throw new TaskCreationUnconfirmedException(taskId, failure); }
+    }
+
+    private static TaskCreateRequest normalize(TaskCreateRequest request) {
+        try {
+            if (request == null) throw new IllegalArgumentException("Task request is required");
+            return new TaskCreateRequest(request.projectId(), request.workerGroupId(), request.priority(), request.maxRetryTimes(),
+                    request.refill(), request.name(), TaskAttribution.input(request.metadata()));
+        } catch (IllegalArgumentException invalid) {
+            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION, invalid.getMessage(), invalid);
+        }
     }
 
     private List<RefillTarget> resolveTargets(TaskCreateRequest request) {

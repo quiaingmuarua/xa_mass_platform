@@ -19,7 +19,7 @@ class TaskDataPreviewTest {
 
     @Test void oneScanAndOneItemReadClampAnOversizedHashPageAndKeepFailures() {
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task",
-                new TaskRuntime.TaskDescriptor("task", "messages", "g", TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE,
+                new TaskRuntime.TaskDescriptor("task", "g", TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE,
                         Map.of("priority", "0", "maxRetryTimes", "3"), List.of(), null, Map.of())));
         var results = new LinkedHashMap<String, TaskRuntime.TaskItemResult>();
         for (int i = 0; i < 101; i++) results.put("m" + i, i == 0 ? TaskRuntime.TaskItemResult.failed() : TaskRuntime.TaskItemResult.succeeded("{}"));

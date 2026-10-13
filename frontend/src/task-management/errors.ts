@@ -4,6 +4,7 @@ interface FiniteTaskErrorOptions {
   kind: FiniteTaskErrorKind;
   message: string;
   requestId?: string;
+  taskId?: string;
   code?: number;
   status?: number;
   cause?: unknown;
@@ -12,6 +13,7 @@ interface FiniteTaskErrorOptions {
 export class FiniteTaskError extends Error {
   readonly kind: FiniteTaskErrorKind;
   readonly requestId?: string;
+  readonly taskId?: string;
   readonly code?: number;
   readonly status?: number;
 
@@ -20,6 +22,7 @@ export class FiniteTaskError extends Error {
     this.name = "FiniteTaskError";
     this.kind = options.kind;
     this.requestId = options.requestId;
+    this.taskId = options.taskId;
     this.code = options.code;
     this.status = options.status;
   }
@@ -29,6 +32,7 @@ export interface FiniteTaskErrorPresentation {
   title: string;
   message: string;
   requestId?: string;
+  taskId?: string;
 }
 
 export function presentFiniteTaskError(error: unknown): FiniteTaskErrorPresentation {
@@ -36,7 +40,8 @@ export function presentFiniteTaskError(error: unknown): FiniteTaskErrorPresentat
     return {
       title: error.kind === "configuration" ? "Invalid Task" : "Task API failed",
       message: error.message,
-      requestId: error.requestId
+      requestId: error.requestId,
+      taskId: error.taskId
     };
   }
   return {

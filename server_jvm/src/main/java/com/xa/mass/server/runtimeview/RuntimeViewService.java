@@ -346,16 +346,7 @@ public final class RuntimeViewService {
     }
 
     private static TaskView toView(TaskDescriptor descriptor) {
-        return new TaskView(
-                descriptor.taskId(),
-                descriptor.projectId(),
-                descriptor.workerGroupId(),
-                descriptor.idleDisposition().name(),
-                descriptor.refill(),
-                Collections.unmodifiableMap(
-                        new LinkedHashMap<>(descriptor.config())
-                )
-        , descriptor.name(), descriptor.metadata());
+        return com.xa.mass.server.project.ProjectTaskQueryService.toView(descriptor);
     }
 
     private static WorkerView toView(

@@ -65,7 +65,7 @@ export const taskSchema = z.object({
   taskId: z.string().min(1),
   userId: z.string().min(1).optional(),
   name: z.string().optional(),
-  createdAtMillis: integer,
+  createdAtMillis: integer.nullable(),
   workerGroupId: z.string().nullable(),
   managed: z.boolean(),
   state: z

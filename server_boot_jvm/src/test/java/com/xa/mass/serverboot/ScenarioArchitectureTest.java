@@ -33,7 +33,7 @@ class ScenarioArchitectureTest {
     @Test void scenariosUseOnlyTheirExistingServerApplicationCapabilities() throws Exception {
         var allowed = Map.of(
                 "app-checks-jvm", Set.of("project.ProjectDirectory", "project.ProjectTaskQueryService", "project.ProjectDefinition", "project.ProjectWorkerRequirements",
-                        "task.TaskCreationService", "task.TaskCreationUnconfirmedException", "task.TaskDataService",
+                        "task.TaskCreationService", "task.TaskCreationUnconfirmedException", "task.TaskDataService", "task.directory.TaskUserId",
                         "task.TaskLifecycleService", "operation.OperationGuard", "operation.OperationAlreadyRunningException", "task.result.TaskResultsExportService", "api.v1.contract.ActionOutcome", "api.v1.contract.task.TaskItemResultResponse", "api.v1.contract.task.TaskCreateRequest",
                         "api.v1.contract.task.TaskCreateResponse", "api.v1.contract.task.TaskItemRequest",
                         "api.v1.contract.task.TaskItemResultStatus", "worker.observation.WorkerPropertyProjection"),
