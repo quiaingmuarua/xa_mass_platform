@@ -1076,6 +1076,14 @@ CONNECTED retains the future recheck coordinate, so its completion observation a
 It neither changes the production delay nor injects Score writes; the same Item must
 still complete through actual Worker execution and Result handling.
 
+The live-country-swap proof submits each RPC batch once and observes those same
+message IDs through Result and Item-state reads within the existing 15-second
+convergence budget, including the initial HTTP wait. It checks the actual Worker
+and Host before and after the swap on WebSocket and Socket. A completion gate
+forces a `not_observed` response after the swap: HTTP observation expiry is not
+execution failure, and subsequent reads must still show the expected executor
+and successful Item state. No resubmission or scheduling mutation repairs the proof.
+
 Ordinary Server tests use explicit test-only platform configuration with Pacer
 disabled and unreachable Redis, so a local Redis cannot hide accidental assembly
 connections. Named integration fixtures enable the real Owners and Pacer; their
