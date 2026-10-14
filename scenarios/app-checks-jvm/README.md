@@ -33,7 +33,7 @@ SDK 和 Worker 协议使用既有机制；Matching 基础规则由场景声明�
 的 UTF-8 Base64URL 编码。自动化或手动调用均须自行声明角色，不由 HTTP 客户端补入。
 
 ```http
-X-XA-Dev-User: MTAwMA
+X-XA-Dev-User: MTAwMQ
 X-XA-Dev-Role: operator
 Content-Type: application/json
 ```
