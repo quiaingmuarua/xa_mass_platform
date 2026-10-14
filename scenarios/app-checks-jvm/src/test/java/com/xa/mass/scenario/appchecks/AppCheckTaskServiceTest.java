@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class AppCheckTaskServiceTest {
-    static final TaskCaller CALLER = new TaskCaller("proof", "admin");
+    static final TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
     final ProjectDirectory projects = mock(ProjectDirectory.class);
     final ProjectTaskQueryService queries = mock(ProjectTaskQueryService.class);
     final TaskCreationService creation = mock(TaskCreationService.class);
@@ -87,14 +87,14 @@ class AppCheckTaskServiceTest {
         assertThatThrownBy(() -> AppCheckSpecification.parse(CALLER, other)).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void creatorComesOnlyFromCallerAndRemainsInTheCreationFingerprint() {
-        var first = AppCheckSpecification.parse(new TaskCaller("  callera  ", "operator"), request());
-        var same = AppCheckSpecification.parse(new TaskCaller("callera", "admin"), request());
-        var other = AppCheckSpecification.parse(new TaskCaller("callerb", "operator"), request());
+        var first = AppCheckSpecification.parse(com.xa.mass.server.testing.TaskCallers.caller("  callera  ", "operator", "app-checks"), request());
+        var same = AppCheckSpecification.parse(com.xa.mass.server.testing.TaskCallers.caller("callera", "admin"), request());
+        var other = AppCheckSpecification.parse(com.xa.mass.server.testing.TaskCallers.caller("callerb", "operator", "app-checks"), request());
         assertThat(first.fingerprint()).isEqualTo(same.fingerprint()).isNotEqualTo(other.fingerprint());
         assertThat(first.salt(LocalDate.of(2026, 10, 13))).isEqualTo(other.salt(LocalDate.of(2026, 10, 13)));
         try (var service = service()) {
-            service.create(new TaskCaller("outside1", "operator"), request());
-            verify(creation).createForRequest(eq(new TaskCaller("outside1", "operator")), eq("app-checks"), argThat(req -> !req.metadata().containsKey("userId")
+            service.create(com.xa.mass.server.testing.TaskCallers.caller("outside1", "operator", "app-checks"), request());
+            verify(creation).createForRequest(eq(com.xa.mass.server.testing.TaskCallers.caller("outside1", "operator", "app-checks")), eq("app-checks"), argThat(req -> !req.metadata().containsKey("userId")
                     && !req.metadata().containsKey("role")), anyString());
         }
         for (String field : List.of("userId", "role")) {
@@ -104,7 +104,7 @@ class AppCheckTaskServiceTest {
     }
     @Test void foreignTaskRejectionPrecedesFileAndResourceEffects() {
         try (var service = service()) {
-            var foreign = new TaskCaller("other", "operator");
+            var foreign = com.xa.mass.server.testing.TaskCallers.caller("other", "operator", "app-checks");
             when(queries.get(foreign, "app-checks", "task")).thenThrow(new com.xa.mass.server.error.ServerException(com.xa.mass.server.error.ServerErrorCode.TASK_ACCESS_DENIED, "test.access", null, null));
             var unreadable = new InputStream() { public int read() { throw new AssertionError("must not read upload"); } };
             for (org.assertj.core.api.ThrowableAssert.ThrowingCallable call : List.<org.assertj.core.api.ThrowableAssert.ThrowingCallable>of(

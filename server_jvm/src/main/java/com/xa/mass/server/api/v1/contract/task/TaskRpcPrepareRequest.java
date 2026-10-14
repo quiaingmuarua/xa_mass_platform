@@ -10,7 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import tools.jackson.databind.JsonNode;
 
-/** Caller-owned identity; optional userId attributes work without providing authorization. */
+/** Caller-owned RPC identity; Server stamps attribution from the directory-admitted caller. */
 public record TaskRpcPrepareRequest(
         @NotBlank String projectId,
         @NotBlank String workerGroupId,

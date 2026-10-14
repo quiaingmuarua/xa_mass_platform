@@ -1,3 +1,4 @@
+import type { MockUserDirectorySource } from "@/user-directory-source";
 import {
   type TaskCaller,
   TaskApiError,
@@ -100,10 +101,14 @@ export interface ProjectSource {
 export function createProjectSource(
   baseUrl: string,
   mode: "api" | "mock",
-  caller: TaskCaller
+  caller: TaskCaller,
+  directory?: MockUserDirectorySource
 ): ProjectSource {
   caller = requireCaller(caller);
-  if (mode === "mock") return mockProjectSource(caller);
+  if (mode === "mock") {
+    if (!directory) throw new Error("Mock user directory is required");
+    return mockProjectSource(caller, directory);
+  }
   const get = async (
     suffix: string,
     signal?: AbortSignal,
@@ -203,7 +208,10 @@ export function createProjectSource(
     }
   };
 }
-function mockProjectSource(caller: TaskCaller): ProjectSource {
+function mockProjectSource(
+  caller: TaskCaller,
+  directory: MockUserDirectorySource
+): ProjectSource {
   const groups: ProjectGroup[] = MOCK_WORKER_GROUPS.map((workerGroup) => ({
     workerGroupId: workerGroup.workerGroupId,
     workerGroup,
@@ -303,10 +311,11 @@ function mockProjectSource(caller: TaskCaller): ProjectSource {
   };
   return {
     async list() {
+      directory.resolveCaller(caller);
       return structuredClone(projects);
     },
     async tasks(project, _signal, userId) {
-      const actor = requireCaller(caller);
+      const actor = directory.resolveCaller(caller, project);
       const owner = selectTaskUser(actor, userId);
       requireProject(project);
       const owned = tasks.filter(
@@ -334,19 +343,20 @@ function mockProjectSource(caller: TaskCaller): ProjectSource {
       });
     },
     async task(project, taskId) {
+      const actor = directory.resolveCaller(caller, project);
       requireProject(project);
       const task = tasks.find(
         (t) => t.taskId === taskId && t.task?.projectId === project
       );
       if (!task) throw new ProjectRequestError(400, 12002);
-      requireTaskCaller(requireCaller(caller), {
+      requireTaskCaller(actor, {
         userId: task.task?.metadata.userId
       });
       return structuredClone(task);
     },
     async stats(project, taskIds) {
       requireProject(project);
-      const actor = requireCaller(caller);
+      const actor = directory.resolveCaller(caller, project);
       for (const id of taskIds) {
         const task = tasks.find(
           (row) => row.taskId === id && row.task?.projectId === project
@@ -367,6 +377,7 @@ function mockProjectSource(caller: TaskCaller): ProjectSource {
       );
     },
     async groups(project) {
+      directory.resolveCaller(caller);
       requireProject(project);
       const known = [...groups, ...agentGroups];
       return structuredClone(

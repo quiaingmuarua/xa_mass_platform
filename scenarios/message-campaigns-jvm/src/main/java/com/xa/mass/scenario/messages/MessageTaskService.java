@@ -63,6 +63,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     }
 
     public CreatedTask create(TaskCaller caller, Map<String, Object> input) {
+        caller.requireProject(PROJECT);
         return admitted(null, false, () -> {
             var spec = MessageSpecification.parse(input);
             String workerGroupId = config.findApplication(spec.appId())

@@ -1,3 +1,4 @@
+import { MockUserDirectorySource } from "@/user-directory-source";
 import { ADMIN, OPERATOR_A } from "./identity-fixture";
 import { AxiosError, type AxiosInstance } from "axios";
 import { describe, expect, it, vi } from "vitest";
@@ -20,7 +21,8 @@ describe("RuntimeViewerDataSource selection", () => {
         mode: "api",
         apiBaseUrl: "/api"
       },
-      ADMIN
+      ADMIN,
+      new MockUserDirectorySource()
     );
 
     expect(source).toBeInstanceOf(HttpRuntimeViewerDataSource);
@@ -33,7 +35,8 @@ describe("RuntimeViewerDataSource selection", () => {
         mode: "mock",
         apiBaseUrl: "/api"
       },
-      ADMIN
+      ADMIN,
+      new MockUserDirectorySource()
     );
 
     expect(source).toBeInstanceOf(MockRuntimeViewerDataSource);
@@ -43,11 +46,17 @@ describe("RuntimeViewerDataSource selection", () => {
 describe("MockRuntimeViewerDataSource", () => {
   it("rejects a global Task preview for an operator using the shared policy", async () => {
     await expect(
-      new MockRuntimeViewerDataSource(OPERATOR_A).previewTasks(100)
+      new MockRuntimeViewerDataSource(
+        OPERATOR_A,
+        new MockUserDirectorySource()
+      ).previewTasks(100)
     ).rejects.toMatchObject({ status: 403 });
   });
   it("returns a deterministic Task Preview with all four score bands", async () => {
-    const source = new MockRuntimeViewerDataSource(ADMIN);
+    const source = new MockRuntimeViewerDataSource(
+      ADMIN,
+      new MockUserDirectorySource()
+    );
 
     await expect(source.previewTasks(100)).resolves.toMatchObject({
       sampleLimit: 100,
@@ -61,7 +70,10 @@ describe("MockRuntimeViewerDataSource", () => {
   });
 
   it("mirrors the Runtime View business-not-found response class", async () => {
-    const source = new MockRuntimeViewerDataSource(ADMIN);
+    const source = new MockRuntimeViewerDataSource(
+      ADMIN,
+      new MockUserDirectorySource()
+    );
 
     await expect(source.previewWorkers("missing-group", 100)).rejects.toMatchObject({
       kind: "http",

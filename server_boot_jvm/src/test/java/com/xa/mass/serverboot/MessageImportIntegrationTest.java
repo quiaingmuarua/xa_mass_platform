@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.*;
 
 @Tag("scenario-composition")
 class MessageImportIntegrationTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
     static final String PATH = "/api/v1/messages/tasks";
     static Map<String, Object> input(String id) { return Map.of("appId", "demo", "requestId", id, "name", "import-proof", "recipientCountry", "CN", "body", "{}"); }
     @Test @Timeout(120)

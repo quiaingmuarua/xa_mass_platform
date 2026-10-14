@@ -63,7 +63,7 @@ import org.junit.jupiter.api.Test;
 
 @Tag("redis-owner")
 class RedisTaskOwnerRuntimeIntegrationTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
 
     private RedisTestScope testScope;
     private RedisKeyspace keyspace;
@@ -152,7 +152,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @Test void explicitRpcReuseAfterProviderReopenPreservesIdentityWorkAndResults() {
         var service = rpcPreparation();
-        service.prepare(new com.xa.mass.server.task.access.TaskCaller("alice", "admin"), "raw", "rpc-alice",rpcRequest());
+        service.prepare(com.xa.mass.server.testing.TaskCallers.caller("alice", "admin"), "raw", "rpc-alice",rpcRequest());
         var item = new TaskItem("shared-id", "test.event", ownerClockMillis(), Map.of("value", "Alice"), 5,
                 ownerClockMillis() + 60_000, new WorkerQuery("workerId", "w"));
         runtime.appendItems("rpc-alice", List.of(item));
@@ -163,17 +163,17 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         runtime = new RedisTaskRuntime(redisClient, scoreCore, itemScoreCore, keyspace);
         catalog = new RedisTaskResourceCatalog(redisClient, keyspace);
         lifecycle = new DefaultTaskLifecycleCommands(scoreCore, catalog);
-        rpcPreparation().prepare(new com.xa.mass.server.task.access.TaskCaller("alice", "admin"), "raw", "rpc-alice",rpcRequest());
+        rpcPreparation().prepare(com.xa.mass.server.testing.TaskCallers.caller("alice", "admin"), "raw", "rpc-alice",rpcRequest());
         assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("rpc-alice")).get("rpc-alice").metadata())).isEqualTo(order);
         assertThat(scoreCore.getScoreStates(List.of("rpc-alice")).get("rpc-alice")).isEqualTo(score);
         assertThat(runtime.loadTaskItems("rpc-alice", List.of("shared-id")).get("shared-id")).isEqualTo(item);
         assertThat(runtime.loadTaskItemResults("rpc-alice", List.of("shared-id")).get("shared-id").opaqueResultPayload()).isEqualTo("Alice");
-        assertThatThrownBy(() -> rpcPreparation().prepare(new com.xa.mass.server.task.access.TaskCaller("bobby", "operator"), "raw", "rpc-alice",rpcRequest()))
+        assertThatThrownBy(() -> rpcPreparation().prepare(com.xa.mass.server.testing.TaskCallers.caller("bobby", "operator", "test-project"), "raw", "rpc-alice",rpcRequest()))
                 .isInstanceOf(com.xa.mass.server.error.ServerException.class);
-        rpcPreparation().prepare(new com.xa.mass.server.task.access.TaskCaller("bobby", "admin"), "raw", "rpc-alice", rpcRequest());
+        rpcPreparation().prepare(com.xa.mass.server.testing.TaskCallers.caller("bobby", "admin"), "raw", "rpc-alice", rpcRequest());
         assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("rpc-alice")).get("rpc-alice").metadata())).isEqualTo(order);
         lifecycle.closeTask("rpc-alice");
-        assertThatThrownBy(() -> rpcPreparation().prepare(new com.xa.mass.server.task.access.TaskCaller("alice", "admin"), "raw", "rpc-alice",rpcRequest()))
+        assertThatThrownBy(() -> rpcPreparation().prepare(com.xa.mass.server.testing.TaskCallers.caller("alice", "admin"), "raw", "rpc-alice",rpcRequest()))
                 .isInstanceOf(com.xa.mass.server.error.ServerException.class);
         assertThat(scoreCore.getScoreStates(List.of("rpc-alice")).get("rpc-alice").band()).isEqualTo(TaskScoreBandCore.TaskScoreBand.TERMINAL);
     }
@@ -182,7 +182,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         var service = rpcPreparation();
         for (int i = 0; i < 100; i++) {
             String id = "rpc-" + i;
-            service.prepare(new com.xa.mass.server.task.access.TaskCaller("user" + i, "admin"), "raw", id,rpcRequest());
+            service.prepare(com.xa.mass.server.testing.TaskCallers.caller("user" + i, "admin"), "raw", id,rpcRequest());
             var initial = scoreCore.getScoreStates(List.of(id)).get(id);
             assertThat(scoreCore.promoteObservedInitialTasks(Map.of(id, initial.score())).get(id).status())
                     .isEqualTo(TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED);
@@ -191,16 +191,16 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                     .isEqualTo(TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED);
         }
         assertThat(scoreCore.countRunningTasks()).isEqualTo(100);
-        assertThatThrownBy(() -> service.prepare(new com.xa.mass.server.task.access.TaskCaller("next", "admin"), "raw", "pending",rpcRequest()))
+        assertThatThrownBy(() -> service.prepare(com.xa.mass.server.testing.TaskCallers.caller("next", "admin"), "raw", "pending",rpcRequest()))
                 .isInstanceOfSatisfying(com.xa.mass.server.error.ServerException.class,
                         error -> assertThat(error.errorCode()).isEqualTo(com.xa.mass.server.error.ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE));
         var order = com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("pending")).get("pending").metadata());
         assertThat(order).isNotNull();
         assertThat(scoreCore.getScoreStates(List.of("pending")).get("pending").band()).isEqualTo(TaskScoreBandCore.TaskScoreBand.PRE_REVIEW);
-        service.prepare(new com.xa.mass.server.task.access.TaskCaller("user0", "admin"), "raw", "rpc-0",rpcRequest());
+        service.prepare(com.xa.mass.server.testing.TaskCallers.caller("user0", "admin"), "raw", "rpc-0",rpcRequest());
         assertThat(scoreCore.countRunningTasks()).isEqualTo(100);
         lifecycle.closeTask("rpc-0");
-        service.prepare(new com.xa.mass.server.task.access.TaskCaller("next", "admin"), "raw", "pending",rpcRequest());
+        service.prepare(com.xa.mass.server.testing.TaskCallers.caller("next", "admin"), "raw", "pending",rpcRequest());
         assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("pending")).get("pending").metadata())).isEqualTo(order);
         assertThat(scoreCore.countRunningTasks()).isEqualTo(100);
     }

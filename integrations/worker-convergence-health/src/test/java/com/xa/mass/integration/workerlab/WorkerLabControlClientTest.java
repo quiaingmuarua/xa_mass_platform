@@ -72,7 +72,7 @@ class WorkerLabControlClientTest {
         server.start();
         try {
             WorkerLabControlClient client = new WorkerLabControlClient(
-                    new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"))
+                    new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))
             );
 
             assertThat(client.workers()).hasSize(1);

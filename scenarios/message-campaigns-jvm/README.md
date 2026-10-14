@@ -139,6 +139,7 @@ Server 重启核对，保证限于原 Task 资源保留期间。数据不完整�
 固定 `server.inputOwner=messages`；原始 Item 入口不能绕过已保存的发送配置。
 任务列表、详情、统计、批准、关闭、目录确认和原始结果/导出统一使用
 [Server Task API](../../server_jvm/README.md#shared-development-caller)，不另设场景管理路由。
+Server 从用户目录解析每次请求的角色和 Project 范围；Messages 创建、导入和结果视图与共同 Task API 一样检查 `messages` 授权及任务所有者。撤销授权影响下一请求，恢复授权不改写已有归属。
 
 ## 数量与结果读取
 

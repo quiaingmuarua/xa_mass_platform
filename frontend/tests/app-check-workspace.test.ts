@@ -1,3 +1,4 @@
+import { MockUserDirectorySource } from "@/user-directory-source";
 import { consoleIdentity } from "@/console-identity";
 import { CALLER } from "./app-check-fixture";
 import { importedTask } from "./app-check-fixture";
@@ -54,7 +55,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetcher.mockReset());
   vi.stubGlobal("Worker", ImportWorkerMock);
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
-  source = new MockAppCheckTaskSource();
+  source = new MockAppCheckTaskSource(new MockUserDirectorySource());
 });
 afterEach(() => {
   app?.unmount();
@@ -1099,7 +1100,12 @@ describe("App Checks product workspace", () => {
     const search = field("搜索查询号码");
     search.focus();
     input("搜索查询号码", "138");
-    delayed.resolve(await new MockAppCheckTaskSource().loadTask(CALLER, "check-mixed"));
+    delayed.resolve(
+      await new MockAppCheckTaskSource(new MockUserDirectorySource()).loadTask(
+        CALLER,
+        "check-mixed"
+      )
+    );
     await settle();
     expect(drawer().querySelector(".checks-preview-title")?.textContent).toBe(
       "补充号码查询"

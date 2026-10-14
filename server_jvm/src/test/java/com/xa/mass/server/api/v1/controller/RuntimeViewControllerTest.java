@@ -103,7 +103,7 @@ class RuntimeViewControllerTest {
                         )
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
-                .setCustomArgumentResolvers(com.xa.mass.server.api.TaskCallerHttpConfiguration.resolver())
+                .setCustomArgumentResolvers(com.xa.mass.server.api.TaskCallerHttpConfiguration.resolver(com.xa.mass.server.testing.TaskCallers.directory(new com.xa.mass.server.user.UserDirectory.User("proof", "Proof", "admin", java.util.List.of()))))
                 .defaultRequest(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/").header("X-XA-Dev-User", "cHJvb2Y").header("X-XA-Dev-Role", "admin"))
                 .setValidator(validator)
                 .addFilters(new RequestIdFilter())

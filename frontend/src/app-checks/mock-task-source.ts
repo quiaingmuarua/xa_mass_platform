@@ -1,8 +1,8 @@
+import type { MockUserDirectorySource } from "@/user-directory-source";
 import {
   TaskApiError,
   requireCallerPermission,
   selectTaskUser,
-  requireCaller,
   requireTaskCaller,
   type TaskCaller
 } from "@/task-caller";
@@ -261,7 +261,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
   private readonly imported = new Map<string, string[]>();
   private sequence = 0;
 
-  constructor() {
+  constructor(private readonly directory: MockUserDirectorySource) {
     let ownerIndex = 0;
     for (const record of this.records.values()) {
       if (record.task.appId && !record.task.managed)
@@ -299,6 +299,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     });
   }
   async loadConfiguration(caller: TaskCaller) {
+    caller = this.directory.resolveCaller(caller, "app-checks");
     requireCallerPermission(caller, "app-checks.configuration");
     return structuredClone({
       saved: this.savedConfiguration,
@@ -320,6 +321,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     expectedRevision: number,
     configuration: AppCheckSettings
   ) {
+    caller = this.directory.resolveCaller(caller, "app-checks");
     requireCallerPermission(caller, "app-checks.configuration");
     if (expectedRevision !== this.savedConfiguration.revision)
       throw new TaskApiError(409, "配置修订已变化，请重新读取后核对");
@@ -336,11 +338,12 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     return this.loadConfiguration(caller);
   }
   async simulateConfigurationRestart(caller: TaskCaller) {
+    caller = this.directory.resolveCaller(caller, "app-checks");
     requireCallerPermission(caller, "app-checks.configuration");
     this.effectiveConfiguration = structuredClone(this.savedConfiguration);
   }
   async listTasks(caller: TaskCaller, userId?: string) {
-    caller = requireCaller(caller);
+    caller = this.directory.resolveCaller(caller, "app-checks");
     const owner = selectTaskUser(caller, userId);
     const tasks = [...this.records.values()]
       .map((r) => r.task)
@@ -362,7 +365,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     });
   }
   private owned(caller: TaskCaller, id: string) {
-    caller = requireCaller(caller);
+    caller = this.directory.resolveCaller(caller, "app-checks");
     const record = this.require(id);
     requireTaskCaller(caller, record.task);
     return record;
@@ -390,7 +393,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     return structuredClone({ ...record, results: record.results.slice(0, 100) });
   }
   async createTask(caller: TaskCaller, input: CreateCheckTask) {
-    caller = requireCaller(caller);
+    caller = this.directory.resolveCaller(caller, "app-checks");
     if ("userId" in input || "role" in input)
       throw new TaskApiError(400, "Unknown application check fields");
     const app = this.effectiveConfiguration.configuration.applications.find(
@@ -565,6 +568,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     record.task.salt = undefined;
   }
   async advanceTask(caller: TaskCaller, id: string, late = false) {
+    caller = this.directory.resolveCaller(caller, "app-checks");
     requireCallerPermission(caller, "demo.control");
     const record = this.require(id),
       state = this.states.get(id);
@@ -587,6 +591,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     }
   }
   async completeTask(caller: TaskCaller, id: string) {
+    caller = this.directory.resolveCaller(caller, "app-checks");
     requireCallerPermission(caller, "demo.control");
     const record = this.running(id);
     this.appendResults(id, record.task.totalCount ?? 0);

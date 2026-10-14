@@ -15,6 +15,7 @@ dependencies {
     implementation project(':server_jvm')
     implementation project(':worker_matching_jvm')
     implementation project(':transport:worker-delivery-contract')
+    testImplementation testFixtures(project(':server_jvm'))
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

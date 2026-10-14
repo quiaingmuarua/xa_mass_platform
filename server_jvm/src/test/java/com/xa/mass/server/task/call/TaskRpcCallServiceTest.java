@@ -41,7 +41,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.web.context.request.async.DeferredResult;
 
 class TaskRpcCallServiceTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
 
     @Test
     void batchReturnsSucceededFailedAndNotObservedWithoutReadingItemState() {

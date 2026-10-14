@@ -97,7 +97,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 class RuntimeApiControllerTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
 
     private WorkerIdentityService workerIdentity;
     private WorkerEndpointDirectory workerEndpoints;
@@ -352,7 +352,7 @@ class RuntimeApiControllerTest {
                         )
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
-                .setCustomArgumentResolvers(com.xa.mass.server.api.TaskCallerHttpConfiguration.resolver())
+                .setCustomArgumentResolvers(com.xa.mass.server.api.TaskCallerHttpConfiguration.resolver(com.xa.mass.server.testing.TaskCallers.directory(new com.xa.mass.server.user.UserDirectory.User("proof", "Proof", "admin", java.util.List.of()))))
                 .defaultRequest(post("/").header("X-XA-Dev-User", "cHJvb2Y").header("X-XA-Dev-Role", "admin"))
                 .setValidator(validator)
                 .addFilters(new RequestIdFilter())

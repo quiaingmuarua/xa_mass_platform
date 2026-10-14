@@ -1,3 +1,4 @@
+import { MockUserDirectorySource } from "@/user-directory-source";
 import { HttpFiniteTaskClient } from "@/task-management/http-client";
 import { TaskApiError } from "@/task-caller";
 import { CALLER } from "./app-check-fixture";
@@ -81,7 +82,9 @@ describe("App Checks admission and independent recomputation", () => {
     );
   });
   it("checks content independently, preserving failures and missing evidence", async () => {
-    const snapshot = await new MockAppCheckTaskSource().loadTask(CALLER, "check-mixed");
+    const snapshot = await new MockAppCheckTaskSource(
+      new MockUserDirectorySource()
+    ).loadTask(CALLER, "check-mixed");
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     const results = await verifyPreview(snapshot);
@@ -97,7 +100,9 @@ describe("App Checks admission and independent recomputation", () => {
     expect(snapshot.results[1].registered).toBe(false);
   });
   it("detects a success in the failure bucket, delay and Group mismatches", async () => {
-    const snapshot = await new MockAppCheckTaskSource().loadTask(CALLER, "check-mixed");
+    const snapshot = await new MockAppCheckTaskSource(
+      new MockUserDirectorySource()
+    ).loadTask(CALLER, "check-mixed");
     snapshot.results = [
       {
         ...snapshot.results[0],
@@ -116,7 +121,10 @@ describe("App Checks admission and independent recomputation", () => {
     expect(
       (
         await verifyPreview(
-          await new MockAppCheckTaskSource().loadTask(CALLER, "check-unregistered")
+          await new MockAppCheckTaskSource(new MockUserDirectorySource()).loadTask(
+            CALLER,
+            "check-unregistered"
+          )
         )
       ).get("r-1")?.status
     ).toBe("matched");
@@ -124,7 +132,12 @@ describe("App Checks admission and independent recomputation", () => {
   it("does not silently switch to remote hashing", async () => {
     vi.stubGlobal("crypto", { randomUUID: webcrypto.randomUUID });
     await expect(
-      verifyPreview(await new MockAppCheckTaskSource().loadTask(CALLER, "check-mixed"))
+      verifyPreview(
+        await new MockAppCheckTaskSource(new MockUserDirectorySource()).loadTask(
+          CALLER,
+          "check-mixed"
+        )
+      )
     ).rejects.toThrow("Web Crypto");
   });
 });
@@ -186,7 +199,7 @@ describe("App Checks data boundary", () => {
   it("keeps prototype review and complete CSV export inside Mock", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
-    const source = new MockAppCheckTaskSource();
+    const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
     const numbers = Array.from(
       { length: 1001 },
       (_, i) => `+86138${String(i).padStart(8, "0")}`
@@ -221,7 +234,7 @@ describe("App Checks data boundary", () => {
   it("Mock catalog, creation, list and refresh are network-free, bounded and session-local", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
-    const source = new MockAppCheckTaskSource();
+    const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
     expect((await source.catalog()).projectId).toBe("app-checks");
     const { taskId } = await source.createTask(CALLER, create);
     expect(await source.createTask(CALLER, create)).toEqual({ taskId });
@@ -235,7 +248,7 @@ describe("App Checks data boundary", () => {
       true
     );
     await expect(
-      new MockAppCheckTaskSource().loadTask(CALLER, taskId)
+      new MockAppCheckTaskSource(new MockUserDirectorySource()).loadTask(CALLER, taskId)
     ).rejects.toThrow();
     expect(fetcher).not.toHaveBeenCalled();
   });
@@ -290,7 +303,7 @@ describe("App Checks data boundary", () => {
     ).rejects.toBeInstanceOf(AppCheckCreationUnconfirmed);
   });
   it("catalog 404 disables only this scene; transient failure allows explicit retry", async () => {
-    const source = new MockAppCheckTaskSource();
+    const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
     const read = vi
       .spyOn(source, "catalog")
       .mockRejectedValueOnce(new TaskApiError(404, "absent"));

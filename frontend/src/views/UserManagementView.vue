@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { consoleMockKey } from "@/console-mock";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, inject } from "vue";
 import { ElDialog } from "element-plus";
 import "element-plus/es/components/dialog/style/css";
 import { consoleIdentity } from "@/console-identity";
@@ -11,7 +12,12 @@ import { parseRuntimeViewerConfig } from "@/runtime-viewer/config";
 
 const config = parseRuntimeViewerConfig(import.meta.env);
 const source = config.ok
-  ? createProjectSource(config.value.apiBaseUrl, config.value.mode, captureTaskCaller())
+  ? createProjectSource(
+      config.value.apiBaseUrl,
+      config.value.mode,
+      captureTaskCaller(),
+      inject(consoleMockKey, undefined)?.directory
+    )
   : undefined;
 const projects = ref<Project[]>([]);
 const loading = ref(false);
@@ -89,7 +95,7 @@ async function save() {
     );
     if (!active) return;
     notice.value = editing.value
-      ? "用户已更新，下次登录时生效。"
+      ? "用户已更新，新权限用于后续操作；页面入口请刷新或重新登录。"
       : "用户已新增，退出后即可选择该用户登录。";
     opened.value = false;
   } catch (cause) {

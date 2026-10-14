@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { consoleMockKey } from "@/console-mock";
 import ConsoleLayout from "./ConsoleLayout.vue";
-import { computed, provide, onBeforeUnmount } from "vue";
+import { computed, provide, onBeforeUnmount, inject } from "vue";
 import { getActivePinia } from "pinia";
 import { captureTaskCaller } from "@/console-identity";
 import { useRoute } from "vue-router";
@@ -29,12 +30,17 @@ import { createProjectSource } from "@/task-management/projects";
 const configResult = parseRuntimeViewerConfig(import.meta.env);
 const route = useRoute();
 const caller = captureTaskCaller();
+const mock = inject(consoleMockKey, undefined);
 const pinia = getActivePinia()!;
 const needsRuntime = computed(() =>
   ["Runtime", "Workbench"].includes(String(route.meta.section))
 );
 if (configResult.ok) {
-  const dataSource = createRuntimeViewerDataSource(configResult.value, caller);
+  const dataSource = createRuntimeViewerDataSource(
+    configResult.value,
+    caller,
+    mock?.directory
+  );
   const runtimeViewerStore = createRuntimeViewerStore(configResult.value, dataSource);
   const taskManagementStore = createTaskManagementStore(
     configResult.value.mode,
@@ -59,7 +65,12 @@ if (configResult.ok) {
   provide(workerDirectDebugStoreKey, workerDirectDebugStore);
   provide(workerStatusStoreKey, workerStatusStore);
   const taskSession = createTaskSession(
-    createProjectSource(configResult.value.apiBaseUrl, configResult.value.mode, caller),
+    createProjectSource(
+      configResult.value.apiBaseUrl,
+      configResult.value.mode,
+      caller,
+      mock?.directory
+    ),
     taskCallClient,
     configResult.value.mode
   );

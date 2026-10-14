@@ -1,12 +1,14 @@
 import type { InjectionKey } from "vue";
 import { MockAppCheckTaskSource } from "@/app-checks/mock-task-source";
 import { MockMessageTaskSource } from "@/message-campaigns/mock-task-source";
+import type { MockUserDirectorySource } from "@/user-directory-source";
 
 // Business data lives for the application; login-specific views live in the console.
-export function createConsoleMock() {
+export function createConsoleMock(directory: MockUserDirectorySource) {
   return {
-    appChecks: new MockAppCheckTaskSource(),
-    messages: new MockMessageTaskSource()
+    directory,
+    appChecks: new MockAppCheckTaskSource(directory),
+    messages: new MockMessageTaskSource(directory)
   };
 }
 export const consoleMockKey: InjectionKey<ReturnType<typeof createConsoleMock>> =

@@ -1,3 +1,4 @@
+import { MockUserDirectorySource } from "@/user-directory-source";
 import { consoleIdentity } from "@/console-identity";
 import { ADMIN as CALLER } from "./identity-fixture";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,7 +30,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("fetch", fetcher.mockReset());
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
-  source = new MockMessageTaskSource();
+  source = new MockMessageTaskSource(new MockUserDirectorySource());
 });
 afterEach(() => {
   app?.unmount();
@@ -294,6 +295,7 @@ describe("Messages desktop workbench", () => {
   });
   it("bounds and sorts 101 tasks without pagination or scroll reads", async () => {
     source = new MockMessageTaskSource(
+      new MockUserDirectorySource(),
       Array.from({ length: 101 }, (_, i) => ({
         task: {
           taskId: `task-${i}`,
@@ -610,7 +612,7 @@ describe("Messages desktop workbench", () => {
       results: [],
       resultsTruncated: false
     };
-    source = new MockMessageTaskSource([unconfigured]);
+    source = new MockMessageTaskSource(new MockUserDirectorySource(), [unconfigured]);
     await mount("/messages/tasks/unconfigured");
     await openMenu();
     expect(menuItem("核对并启动").getAttribute("aria-disabled")).toBe("true");

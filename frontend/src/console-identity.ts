@@ -136,12 +136,14 @@ function browserStorage() {
     return undefined;
   }
 }
+export const consoleUserSource =
+  import.meta.env.VITE_RUNTIME_DATA_SOURCE === "mock"
+    ? new MockUserDirectorySource()
+    : new ApiUserDirectorySource();
 export const consoleIdentity = createConsoleIdentity(
   browserStorage(),
   [],
-  import.meta.env.VITE_RUNTIME_DATA_SOURCE === "mock"
-    ? new MockUserDirectorySource()
-    : new ApiUserDirectorySource()
+  consoleUserSource
 );
 export function identityLabel(userId?: string) {
   return (

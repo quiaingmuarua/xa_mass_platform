@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class TaskDataPreviewTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
     final TaskRuntime runtime = mock(TaskRuntime.class);
     final TaskResourceCatalog catalog = mock(TaskResourceCatalog.class);
     final TaskItemScoreBandCore scores = mock(TaskItemScoreBandCore.class);

@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ScenarioLifecycleTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
     @ParameterizedTest
     @ValueSource(ints = {-1, 0, 1, 2, 3, 4})
     void allScenariosStopBeforePlatformIncludingPartialStartupFailure(int failedRegistration) {

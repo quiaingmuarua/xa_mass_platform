@@ -1,6 +1,6 @@
+import type { MockUserDirectorySource } from "@/user-directory-source";
 import {
   type TaskCaller,
-  requireCaller,
   requireTaskCaller,
   requireCallerPermission
 } from "@/task-caller";
@@ -176,7 +176,10 @@ export class MockMessageTaskSource implements MessageTaskSource {
   private readonly mutations = new Set<string>();
   private activeImports = 0;
 
-  constructor(records: MessageTaskDetail[] = initialRecords()) {
+  constructor(
+    private readonly directory: MockUserDirectorySource,
+    records: MessageTaskDetail[] = initialRecords()
+  ) {
     this.records = new Map(
       structuredClone(records).map((record) => [record.task.taskId, record])
     );
@@ -199,7 +202,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
     }
   }
   async listTasks(caller: TaskCaller) {
-    caller = requireCaller(caller);
+    caller = this.directory.resolveCaller(caller, "messages");
     const tasks = [...this.records.values()]
       .map(({ task }) => task)
       .filter((task) => canAccessTask(caller, task))
@@ -216,6 +219,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
     });
   }
   async loadTask(caller: TaskCaller, taskId: string): Promise<MessageTaskDetail> {
+    caller = this.directory.resolveCaller(caller, "messages");
     const record = this.records.get(taskId);
     if (!record)
       throw new Error("没有找到这个 Mock 任务。刷新页面会重置本地创建的任务。");
@@ -229,7 +233,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
     });
   }
   async createTask(caller: TaskCaller, input: CreateMessageTask) {
-    caller = requireCaller(caller);
+    caller = this.directory.resolveCaller(caller, "messages");
     const requestKey = caller.userId + "/" + input.requestId;
     const app = this.applications.find((app) => app.id === input.appId);
     if (!app) throw new Error("应用配置不可用");
@@ -276,6 +280,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
     return { taskId };
   }
   private requireTask(caller: TaskCaller, taskId: string, review: boolean) {
+    caller = this.directory.resolveCaller(caller, "messages");
     const record = this.records.get(taskId);
     if (
       !record ||
@@ -361,6 +366,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
     };
   }
   async demonstrate(caller: TaskCaller, taskId: string, action: MessageDemoAction) {
+    caller = this.directory.resolveCaller(caller, "messages");
     requireCallerPermission(caller, "demo.control");
     if (action === "fail-read") {
       this.failedReads.add(taskId);

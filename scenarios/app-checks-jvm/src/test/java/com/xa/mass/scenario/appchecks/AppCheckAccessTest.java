@@ -13,12 +13,12 @@ class AppCheckAccessTest {
         var tasks = mock(AppCheckTaskService.class);
         var store = mock(AppCheckConfigurationStore.class);
         var controller = new AppCheckController(tasks, store);
-        var operator = new TaskCaller("outside1", "operator");
+        var operator = com.xa.mass.server.testing.TaskCallers.caller("outside1", "operator", "app-checks");
         assertThatThrownBy(() -> controller.configuration(operator)).isInstanceOfSatisfying(ServerException.class,
                 error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_ACCESS_DENIED));
         assertThatThrownBy(() -> controller.saveConfiguration(operator, Map.of())).isInstanceOf(ServerException.class);
         verifyNoInteractions(store, tasks);
-        controller.configuration(new TaskCaller("admin123", "admin"));
+        controller.configuration(com.xa.mass.server.testing.TaskCallers.caller("admin123", "admin"));
         verify(store).view();
         controller.catalog();
         verify(tasks).catalog();

@@ -1,3 +1,4 @@
+import { MockUserDirectorySource } from "@/user-directory-source";
 import { ADMIN } from "./identity-fixture";
 import taskWireFixture from "./fixtures/server-task-view.json";
 import { taskViewSchema } from "@/runtime-viewer/schemas";
@@ -77,7 +78,12 @@ it("reads startup Projects and complete backend-shaped TaskViews with null proje
 it("Mock has a consistent directory and no service requests", async () => {
   const fetcher = vi.fn();
   vi.stubGlobal("fetch", fetcher);
-  const source = createProjectSource("/api", "mock", ADMIN);
+  const source = createProjectSource(
+    "/api",
+    "mock",
+    ADMIN,
+    new MockUserDirectorySource()
+  );
   const projects = await source.list();
   expect(projects.map((project) => project.projectId)).toEqual(
     expect.arrayContaining(["messages", "app-checks"])

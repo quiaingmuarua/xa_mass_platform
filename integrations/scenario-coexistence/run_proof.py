@@ -28,7 +28,8 @@ spec = importlib.util.spec_from_file_location("product_preview", PREVIEW / "run_
 preview = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(preview)
 # This workload explicitly owns one development caller across create/import/observe.
-TASK_CALLER_HEADERS = {"X-XA-Dev-User": "cHJvb2Y", "X-XA-Dev-Role": "admin"}
+# Explicit administrator from the default Server user seed (1000).
+TASK_CALLER_HEADERS = {"X-XA-Dev-User": "MTAwMA", "X-XA-Dev-Role": "admin"}
 http, all_pages = partial(preview.http, headers=TASK_CALLER_HEADERS), preview.all_pages
 
 

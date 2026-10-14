@@ -48,8 +48,23 @@ public final class UserDirectory {
     public List<Role> roles() { return List.copyOf(roles.values()); }
     public synchronized List<User> users() { return List.copyOf(users.values()); }
 
+    /** One request's immutable identity and grants, resolved under the same gate as updates. */
+    public synchronized TaskCaller resolveCaller(String userId, String declaredRole) {
+        final String id;
+        try {
+            id = TaskUserId.normalize(userId);
+            if (!roles.containsKey(declaredRole)) throw new IllegalArgumentException("Invalid development role");
+        } catch (IllegalArgumentException | NullPointerException invalid) {
+            throw new ServerException(ServerErrorCode.INVALID_TASK_CALLER, "userDirectory.resolveCaller", null, invalid);
+        }
+        var user = users.get(id);
+        if (user == null || !user.role().equals(declaredRole))
+            throw new ServerException(ServerErrorCode.TASK_ACCESS_DENIED, "userDirectory.resolveCaller", null, null);
+        return TaskCaller.fromDirectory(user, roles.get(user.role()));
+    }
+
     public synchronized User create(TaskCaller caller, User input) {
-        requireAdmin(caller);
+        caller.requirePermission("users.manage");
         var user = normalize(input);
         if (users.containsKey(user.userId())) throw rejected("User already exists");
         user.projectIds().forEach(projects::require);
@@ -58,20 +73,13 @@ public final class UserDirectory {
     }
 
     public synchronized User update(TaskCaller caller, String userId, UpdateUser input) {
-        requireAdmin(caller);
+        caller.requirePermission("users.manage");
         if (!users.containsKey(userId)) throw rejected("User does not exist");
         if (Objects.equals(userId, caller.userId())) throw rejected("Use another administrator to edit the current user");
         var user = normalize(new User(userId, input.displayName(), input.role(), input.projectIds()));
         user.projectIds().forEach(projects::require);
         users.put(userId, user);
         return user;
-    }
-
-    private void requireAdmin(TaskCaller caller) {
-        caller.requireAdmin();
-        var user = users.get(caller.userId());
-        if (user == null || !user.role().equals(caller.role()))
-            throw new ServerException(ServerErrorCode.TASK_ACCESS_DENIED, "userDirectory.requireAdmin", null, null);
     }
 
     private User normalize(User input) {

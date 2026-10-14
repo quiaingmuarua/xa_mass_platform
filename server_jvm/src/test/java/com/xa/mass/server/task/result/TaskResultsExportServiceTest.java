@@ -35,7 +35,7 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.json.JsonMapper;
 
 class TaskResultsExportServiceTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
 
     private TaskResourceCatalog taskCatalog;
     private TaskScoreBandCore taskScores;

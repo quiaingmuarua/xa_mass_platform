@@ -1,3 +1,4 @@
+import { MockUserDirectorySource } from "@/user-directory-source";
 import { consoleIdentity } from "@/console-identity";
 import { CALLER } from "./app-check-fixture";
 import { webcrypto } from "node:crypto";
@@ -40,7 +41,7 @@ beforeEach(() => {
   vi.stubGlobal("crypto", webcrypto);
   vi.stubGlobal("fetch", fetcher.mockReset());
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
-  source = new MockAppCheckTaskSource();
+  source = new MockAppCheckTaskSource(new MockUserDirectorySource());
 });
 afterEach(() => {
   app?.unmount();
@@ -456,7 +457,12 @@ describe("App Checks configuration workspace", () => {
     const { router, host } = await mount("/app-checks/tasks/check-live");
     await router.push("/app-checks?view=configuration&app=app-b");
     await settle();
-    pending.resolve(await new MockAppCheckTaskSource().loadTask(CALLER, "check-live"));
+    pending.resolve(
+      await new MockAppCheckTaskSource(new MockUserDirectorySource()).loadTask(
+        CALLER,
+        "check-live"
+      )
+    );
     await settle();
     expect(document.activeElement).toBe(
       host.querySelector(".checks-configuration-page h1")

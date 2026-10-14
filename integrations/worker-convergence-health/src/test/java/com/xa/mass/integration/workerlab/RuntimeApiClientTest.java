@@ -28,7 +28,7 @@ class RuntimeApiClientTest {
                         "workerGroupId", "group-1", "workerId", "worker-1", "workerProperties", properties.get())))));
         server.start();
         try {
-            RuntimeApiClient client = new RuntimeApiClient(new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin")));
+            RuntimeApiClient client = new RuntimeApiClient(new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin")));
             assertThat(client.previewWorkers("group-1")).isEmpty();
             properties.set(Map.of("labInventoryKey", "workers.jsonl", "labInventoryLine", "1"));
             assertThat(client.previewWorkers("group-1").get("workers.jsonl:1").workerId()).isEqualTo("worker-1");
@@ -126,7 +126,7 @@ class RuntimeApiClientTest {
         server.start();
         try {
             RuntimeApiClient client = new RuntimeApiClient(
-                    new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"))
+                    new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))
             );
 
             assertThat(client.previewWorkers("group-1")
@@ -263,7 +263,7 @@ class RuntimeApiClientTest {
                 new JsonHttpClient(
                         URI.create("http://127.0.0.1:1"),
                         Duration.ofSeconds(1)
-                , java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"))
+                , java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))
         );
 
         assertThatThrownBy(() -> client.observeNetwork(

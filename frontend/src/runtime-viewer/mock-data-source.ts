@@ -1,5 +1,6 @@
+import type { MockUserDirectorySource } from "@/user-directory-source";
 import { RuntimeViewerError } from "./errors";
-import { type TaskCaller, requireCaller, requireCallerPermission } from "@/task-caller";
+import { type TaskCaller, requireCaller } from "@/task-caller";
 import { MOCK_PREVIEWS, MOCK_TASK_PREVIEW, MOCK_WORKER_GROUPS } from "./mock-data";
 import type {
   RuntimeViewerDataSource,
@@ -9,14 +10,17 @@ import type {
 } from "./types";
 
 export class MockRuntimeViewerDataSource implements RuntimeViewerDataSource {
-  constructor(private readonly caller: TaskCaller) {
+  constructor(
+    private readonly caller: TaskCaller,
+    private readonly directory: MockUserDirectorySource
+  ) {
     this.caller = requireCaller(caller);
   }
   async previewTasks(
     sampleLimit: number,
     signal?: AbortSignal
   ): Promise<TaskPreviewResponse> {
-    requireCallerPermission(this.caller, "runtime.view");
+    this.directory.resolveCaller(this.caller, undefined, "runtime.view");
     throwIfAborted(signal);
     return structuredClone({
       ...MOCK_TASK_PREVIEW,

@@ -13,6 +13,9 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
 class TaskCallerTest {
+    private final com.xa.mass.server.user.UserDirectory directory = com.xa.mass.server.testing.TaskCallers.directory(
+            new com.xa.mass.server.user.UserDirectory.User("outside1", "Outside", "operator", List.of("messages")),
+            new com.xa.mass.server.user.UserDirectory.User("1001", "A", "operator", List.of("messages")));
     private String encode(String value) { return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8)); }
     private TaskRuntime.TaskDescriptor task(String project, String owner, String input) {
         return new TaskRuntime.TaskDescriptor("t", "g", TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE,
@@ -20,25 +23,25 @@ class TaskCallerTest {
                 new TaskAttribution(project, 123, owner).stamp(Map.of(TaskCaller.INPUT_OWNER, input)));
     }
     @Test void parsesOnlyUnambiguousDevelopmentUsersAndNeverAnInternalIdentity() {
-        var caller = TaskCaller.fromHeaders(new String[]{encode("  outside1  ")}, new String[]{"operator"});
+        var caller = com.xa.mass.server.api.TaskCallerHttpConfiguration.resolveCaller(directory, new String[]{encode("  outside1  ")}, new String[]{"operator"});
         assertThat(caller.userId()).isEqualTo("outside1");
         assertThat(caller.selectUser(null)).isEqualTo("outside1");
         for (String[] users : new String[][]{null, {}, {"***"}, {"_w"}, {encode("1001"), encode("1002")}})
-            assertThatThrownBy(() -> TaskCaller.fromHeaders(users, new String[]{"admin"}))
+            assertThatThrownBy(() -> com.xa.mass.server.api.TaskCallerHttpConfiguration.resolveCaller(directory, users, new String[]{"admin"}))
                     .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.INVALID_TASK_CALLER));
         for (String[] roles : new String[][]{null, {}, {"service"}, {"ADMIN"}, {"admin", "operator"}})
-            assertThatThrownBy(() -> TaskCaller.fromHeaders(new String[]{encode("1001")}, roles)).isInstanceOf(ServerException.class);
+            assertThatThrownBy(() -> com.xa.mass.server.api.TaskCallerHttpConfiguration.resolveCaller(directory, new String[]{encode("1001")}, roles)).isInstanceOf(ServerException.class);
     }
     @Test void ownershipAndInputAuthorityAreIndependentAndServiceAccessIsProjectBounded() {
-        var own = new TaskCaller("1001", "operator");
+        var own = com.xa.mass.server.testing.TaskCallers.caller("1001", "operator", "messages", "sms");
         var descriptor = task("messages", "1001", "messages");
         own.requireTask(descriptor);
         assertThatThrownBy(() -> own.requireInput(descriptor, TaskCaller.RAW_INPUT))
                 .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED));
-        assertThatThrownBy(() -> new TaskCaller("1002", "operator").requireTask(descriptor))
+        assertThatThrownBy(() -> com.xa.mass.server.testing.TaskCallers.caller("1002", "operator", "messages", "sms").requireTask(descriptor))
                 .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_ACCESS_DENIED));
         assertThatThrownBy(() -> own.selectUser("1002")).isInstanceOf(ServerException.class);
-        new TaskCaller("1000", "admin").requireTask(descriptor);
+        com.xa.mass.server.testing.TaskCallers.caller("1000", "admin").requireTask(descriptor);
         var service = TaskCaller.forProjectService(new ProjectDefinition("sms", List.of("g")));
         service.requireInput(task("sms", null, "sms"), "sms");
         assertThatThrownBy(service::requireAdmin).isInstanceOf(ServerException.class);

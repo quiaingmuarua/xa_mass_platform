@@ -9,7 +9,7 @@ export class MessageApiError extends Error {
     public readonly confirmedAddedCount?: number,
     public readonly existingCount?: number
   ) {
-    super(message);
+    super(status === 403 ? `${message}，请刷新页面或退出后重新登录。` : message);
   }
 }
 export async function api<T>(

@@ -32,7 +32,8 @@ def load_preview(root):
 
 
 preview = load_preview(PREVIEW)
-TASK_CALLER_HEADERS = {"X-XA-Dev-User": "cHJvb2Y", "X-XA-Dev-Role": "admin"}
+# Explicit administrator from the default Server user seed (1000).
+TASK_CALLER_HEADERS = {"X-XA-Dev-User": "MTAwMA", "X-XA-Dev-Role": "admin"}
 http, all_pages = partial(preview.http, headers=TASK_CALLER_HEADERS), preview.all_pages
 
 

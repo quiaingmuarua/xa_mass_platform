@@ -59,7 +59,7 @@ class AppCheckProofTest(unittest.TestCase):
         self.assertEqual(16, len(set(case["numbers"])))
         self.assertTrue(all(number.startswith("+86") for number in case["numbers"]))
         self.assertNotIn("workerId", case)
-        self.assertEqual({"X-XA-Dev-User": "cHJvb2Y", "X-XA-Dev-Role": "admin"}, caller_headers(case["userId"], "admin"))
+        self.assertEqual({"X-XA-Dev-User": "MTAwMA", "X-XA-Dev-Role": "admin"}, caller_headers(case["userId"], "admin"))
         self.assertNotIn("userId", creation_input(case))
         self.assertNotIn("numbers", creation_input(case))
 

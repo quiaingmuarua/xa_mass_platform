@@ -3,8 +3,8 @@
 Vue 3 console for Worker and Task runtime observation, a Project-scoped task
 workbench (RPC calls and finite Tasks), Scenario pages and public Demo. It is derived from Pure Admin Thin 6.2.0.
 Development login reads Server-managed users without a password or real
-session authentication. Server continues to check the declared caller and Task
-creator across task entrypoints with the existing HTTP contract.
+session authentication. Server resolves the declared caller against its user directory and checks Project
+grants and Task ownership across task entrypoints with the existing HTTP contract.
 
 ## Development login and access
 
@@ -48,9 +48,8 @@ new backend page mapping or `/login` compatibility route is added.
 User management also uses that root mapping, so direct visits and reloads work
 without adding a page mapping. Login restoration waits for the API directory,
 including newly added users. Directory failures show an explicit retry and never
-substitute Mock users. Project grants control console navigation and routing;
-Task APIs retain their existing trusted-development caller and ownership contract,
-without a new session or general account-authentication layer.
+substitute Mock users. Project grants control console navigation and routing and are also enforced by
+Server task admission. Unknown users and stale role declarations are rejected with 403. This remains a trusted-development identity contract without session authentication.
 
 The top bar displays the current user, role and logout. Logout removes the login
 and unmounts the entire user console, releasing observations, Pinia state, filters
@@ -62,8 +61,9 @@ input; persisted Tasks are found through the shared Task API.
 
 Mock business sources live for the application, independently from the console's
 login lifetime. Logout keeps created Mock Tasks available to the next authorized
-user, while clearing page state. Mock operations use the shared permission and
-ownership helpers; API and Mock return their admitted Task window. Pages apply
+user, while clearing page state. Mock operations resolve the explicit caller through the same application-lifetime
+Mock directory used by login and user management, capturing its current role and
+Project grants before business work. A changed directory governs the next operation; API and Mock return their admitted Task window. Pages apply
 business display filters without another role-based ownership filter.
 The explicit Mock directory uses [frontend-only fixtures](src/development-users.ts)
 and simulates Server writes across console logins. Only Mock resets on browser
@@ -72,7 +72,8 @@ reload. API mode has no built-in user fallback or browser-owned user mutations.
 Task and Scenario methods take an explicit immutable caller snapshot. The existing
 client encodes its userId as UTF-8 Base64URL in `X-XA-Dev-User` and sends
 `X-XA-Dev-Role`; list query `userId` remains a target-owner filter. API payloads,
-responses and backend authorization are unchanged. Catalogs remain caller-free
+responses are unchanged; Server validates directory membership, role consistency
+and current Project grants before task access. Catalogs remain caller-free
 availability reads. Unauthenticated UI cannot issue protected operations; sources
 bound to a login never silently switch to a later global caller.
 
@@ -80,7 +81,9 @@ Server supplies `metadata.userId` from the caller. Operator lists select the
 caller's range before limiting and reject an explicit other owner; admin may
 filter by user. Known Task reads, counts, input, results, approval, closure and
 export continue using the shared Server policy. A 403 is a definite rejection,
-never an unconfirmed mutation or a reason to substitute Mock. Frontend login and
+never an unconfirmed mutation or a reason to substitute Mock. It prompts browser
+refresh or logout/login; it never retries a write or changes the caller. Directory
+list refresh alone does not replace the current login snapshot. Frontend login and
 visibility do not authenticate the HTTP headers; replacing development identity
 with real session verification is separate backend work.
 

@@ -1,3 +1,4 @@
+import { MockUserDirectorySource } from "@/user-directory-source";
 import { consoleIdentity } from "@/console-identity";
 import { ADMIN as CALLER } from "./identity-fixture";
 import { createApp, nextTick } from "vue";
@@ -173,7 +174,11 @@ async function mount(
     runtimeViewerStoreKey,
     createRuntimeViewerStore(
       config,
-      createRuntimeViewerDataSource({ ...config, mode: "mock" }, CALLER)
+      createRuntimeViewerDataSource(
+        { ...config, mode: "mock" },
+        CALLER,
+        new MockUserDirectorySource()
+      )
     )
   );
   app.provide(taskSessionKey, session);

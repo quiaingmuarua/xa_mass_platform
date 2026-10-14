@@ -21,7 +21,12 @@ export class RuntimeViewerError extends Error {
   readonly status?: number;
 
   constructor(options: RuntimeViewerErrorOptions) {
-    super(options.message, { cause: options.cause });
+    super(
+      options.status === 403
+        ? `${options.message}，请刷新页面或退出后重新登录。`
+        : options.message,
+      { cause: options.cause }
+    );
     this.name = "RuntimeViewerError";
     this.kind = options.kind;
     this.requestId = options.requestId;

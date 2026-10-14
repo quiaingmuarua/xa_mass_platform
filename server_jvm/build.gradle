@@ -2,6 +2,7 @@ import org.springframework.boot.gradle.plugin.SpringBootPlugin
 
 plugins {
     id 'java-library'
+    id 'java-test-fixtures'
 }
 
 base {
@@ -38,6 +39,9 @@ dependencies {
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testFixturesImplementation platform(SpringBootPlugin.BOM_COORDINATES)
+    testFixturesImplementation 'org.springframework:spring-core'
+    testFixturesImplementation 'tools.jackson.core:jackson-databind'
     testImplementation project(':transport:java-worker')
 }
 

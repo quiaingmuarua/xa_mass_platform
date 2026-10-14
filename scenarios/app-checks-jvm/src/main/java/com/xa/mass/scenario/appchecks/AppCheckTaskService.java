@@ -85,6 +85,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     }
 
     public TaskCreateResponse create(TaskCaller caller, Map<String, Object> input) {
+        caller.requireProject(PROJECT);
         requireRunning();
         final AppCheckSpecification specification;
         try {

@@ -41,8 +41,8 @@ public final class DynamicMatchingMain {
     private long dynamicStarted, dynamicElapsedMillis;
 
     private DynamicMatchingMain(Map<String, String> args) throws Exception {
-        runtime = new ProofApi(args.get("server"), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"));
-        lab = new ProofApi(args.get("lab"), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"));
+        runtime = new ProofApi(args.get("server"), java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"));
+        lab = new ProofApi(args.get("lab"), java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"));
         output = Path.of(args.get("output"));
         for (Object raw : array(Jsons.parseObject(Files.readString(Path.of(args.get("spec")))).get("workers"))) {
             var row = object(raw);
