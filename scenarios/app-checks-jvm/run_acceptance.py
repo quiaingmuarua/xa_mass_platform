@@ -201,12 +201,14 @@ def main():
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--root", type=Path, default=PREVIEW)
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--port", type=int, default=18620)
+    parser.add_argument("--port", type=int, default=18620, help="First functional fixture base port; second uses +10, each uses Adapter +3 and Host +4")
     parser.add_argument("--benchmark", action="store_true", help="Run three isolated 20-Worker/1360-number measurements")
     parser.add_argument("--baseline", action="store_true", help="Benchmark only: use the pinned pre-migration configuration")
     args = parser.parse_args()
     if args.baseline and not args.benchmark:
         parser.error("--baseline requires --benchmark")
+    if not args.benchmark and not 1 <= args.port <= 65521:
+        parser.error("--port must be in 1..65521 for the two independent functional fixture port sets")
     root = args.root.resolve()
     if args.build and root != PREVIEW.resolve():
         parser.error("--build requires the source Preview; omit it for an extracted ZIP")
@@ -243,10 +245,14 @@ def main():
         for index, cases in enumerate(fixtures):
             folder = output / ("fixture-" + str(index + 1))
             inventory = folder / "private" / ("inventory-" + uuid.uuid4().hex) / "data/scenario-workers"
-            run = preview.Preview(1, args.port, root=root, output=folder / "private", sandbox_root=inventory, app_count=2)
+            # A closed JVM can leave TCP connections behind. Each startup fixture owns
+            # separate ports; keep the launcher's strict occupancy check unchanged.
+            fixture_port = args.port + index * 10
+            run = preview.Preview(1, fixture_port, root=root, output=folder / "private", sandbox_root=inventory, app_count=2)
             with regression_window_configuration(parameters_by_app={case["appId"]: case["simulation"] for case in cases}), run:
                 evidence = functional(run, preview.http, cases)
                 evidence["windowThresholdOverride"] = 1000
+                evidence["basePort"] = fixture_port
             evidence["artifacts"] = run.artifacts
             result["fixtures"].append(evidence)
         result["passed"] = True

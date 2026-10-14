@@ -348,7 +348,10 @@ Worker 关联复算窗口，不用 Item 数量或 Result 数量推算。该见�
 保留并恢复调用环境，在摘要记录覆盖值。它验证原业务闭环，不声称验证默认窗口限额。
 Preview 的默认 60 秒／10 次保持。进程 runner 复用现有 Preview 启动/清理，四个 App Worker 加一个闲置 demo Worker，
 先只读确认已知 App Worker 的 Properties 已上报，再在两份独立启动配置中创建八个 Task 共 60 Items，
-分别覆盖全注册/全失败与全未注册/混合；参数来自 App 配置而非创建请求。每份配置内每组两个 Task，保留同 Group 与跨 Group 并存覆盖，
+分别覆盖全注册/全失败与全未注册/混合；参数来自 App 配置而非创建请求。两份配置分别使用
+`--port` 和 `--port + 10` 为基准的独立端口组（各加 3 为 Adapter、加 4 为 Host），避免关闭 JVM
+后立即复用尚未释放的 TCP 端口；启动器仍严格拒绝已占用端口。功能验收基准端口范围为 1..65521。
+每份配置内每组两个 Task，保留同 Group 与跨 Group 并存覆盖，
 最多每 Task 45 秒观察；独立 Python 复算成功结果和延迟。
 不要求混合比例、均匀分配或固定执行者；进程 runner 不以终态失败证明执行次数。
 CI 使用现有 `product_coexistence` lane 执行源码及新解压 ZIP；原 SMS/Messages
