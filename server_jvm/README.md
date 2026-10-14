@@ -132,11 +132,19 @@ Task type returns `400/12008`.
 
 `TaskCaller` is an explicit immutable application argument. Server's MVC argument
 resolver parses exactly one `X-XA-Dev-User` (strict UTF-8 Base64URL) and one
-`X-XA-Dev-Role` (`admin` or `operator`). Missing, malformed or ambiguous declarations
-return `400/12012`; access denial returns `403/12013` through the common error handler.
-There is no ThreadLocal, session or authentication claim. The development user
-directory below is a separate application resource; Task caller headers retain
-their current trusted-development contract.
+`X-XA-Dev-Role` (`admin` or `operator`), then resolves the user and role through
+`UserDirectory`. Missing, malformed or ambiguous declarations return `400/12012`;
+unknown users, role mismatches and resource denial return `403/12013` through the
+common error handler. The resulting snapshot contains the directory's role policy
+and assigned Projects. HTTP cannot supply these grants. There is no ThreadLocal,
+session or authentication claim: selecting an existing development identity remains
+trusted, while the directory determines that identity's access.
+
+Every request resolves once under the directory's update gate, then releases the
+gate before business work. Updates affect subsequent admissions; admitted work
+retains its snapshot, including already-issued writes. Each later HTTP request in
+a composed operation is admitted independently. Role, name and Project changes do
+not rewrite Task attribution or the Project/user/requestId creation identity.
 
 ### Development user directory
 
@@ -150,29 +158,34 @@ Projects. Seed grants may refer to a currently disabled business Project.
 `GET /api/v1/users` and `GET /api/v1/roles` provide public development discovery
 for the login chooser; there are no credentials or session endpoints. POST
 `/users` creates and PUT `/users/{userId}` replaces a user's name, role and Projects.
-Writes require an admin caller matching an admin in this directory. IDs are
+Writes require the admitted role's `users.manage` permission (admin in the default seed). IDs are
 immutable; duplicate IDs, unknown roles/Projects and current-user edits are rejected.
 New assignments must name declared Projects; admin's empty assignment list means
 all Projects according to its role. The selected frontend login captures a caller;
-user edits are reflected at the next login, not by rewriting in-flight requests.
+the UI reflects edits at browser reload or the next login. Server admission already
+uses the updated directory on the next request, without rewriting in-flight requests.
 
 Reads return immutable snapshots. Synchronized create/update keeps a duplicate
 create atomic within this Server instance. All clients share this map; refresh
 and logout retain mutations. Restart reloads the JSON without saving, migration,
 database writes, file writes, Redis data or inter-instance replication. This
-directory does not add a Kernel user domain or change scheduling. Its Console
-Project grants do not replace the existing Task ownership checks or authenticate
-declared Task headers.
+directory does not add a Kernel user domain or change scheduling. Project grants
+are enforced together with Task ownership. User IDs cannot be reassigned to another
+person while retaining their Tasks; Preview proof uses fresh isolated scopes and
+fixed user seeds for restart workloads, without historical migration.
 
-All Project reads require a valid caller. Admin manages every Task; operator creates
-and manages only Tasks whose stored `userId` matches. Lists automatically select the
+Project directory reads require a directory-admitted caller and remain discovery.
+Task access uses role `projectScope` and `taskScope`: default admin manages every
+Task; operator accesses assigned Projects and Tasks whose stored `userId` matches. Lists automatically select the
 operator's range and reject an explicit other owner. Global Runtime Task preview,
-App Checks configuration, and SMS business operations require admin. Catalogs remain
+App Checks configuration, and SMS business operations respectively require
+`runtime.view`, `app-checks.configuration`, and `sms.use`; these are admin-only in
+the default seed. Business management also checks its Project grant. Catalogs remain
 caller-free discovery. Headers cannot declare an internal service role.
 
 Assembly grants internal startup/projection paths a Project-scoped service caller.
 SMS retains one shared RPC Task with `server.inputOwner=sms`; public SMS requests
-check admin before invoking that service caller. This is not a per-user SMS Task.
+check `sms.use` and the SMS Project before invoking that service caller. This is not a per-user SMS Task.
 Task access is checked against immutable descriptor attribution before reading state,
 counts, Items or Results, scanning exports, parsing business input files or mutating
 resources. Pure Kernel observations without application attribution are admin-only.

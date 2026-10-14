@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.*;
 @Tag("scenario-composition")
 @SuppressWarnings("unchecked")
 class MessagesAssemblyIntegrationTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
     private static final String EVENT = "extension.worker.message.send";
 
     @ParameterizedTest @ValueSource(booleans = {false, true}) @Timeout(120)
@@ -205,7 +205,7 @@ class MessagesAssemblyIntegrationTest {
             application.setRegisterShutdownHook(false);
             var settings = new LinkedHashMap<String, String>();
             settings.put("spring.profiles.active", "default"); settings.put("server.port", Integer.toString(port));
-            settings.put("xa.mass.redis.url", redisUrl); settings.put("xa.mass.redis.scope", scope);
+            settings.put("xa.mass.users.seed", "classpath:users/proof-directory.json"); settings.put("xa.mass.redis.url", redisUrl); settings.put("xa.mass.redis.scope", scope);
             settings.put("xa.mass.kernel-pacer.enabled", "false"); settings.put("logging.level.root", "ERROR");
             if (messages) {
                 settings.put("xa.mass.scenarios.messages.applications[0].id", "demo");

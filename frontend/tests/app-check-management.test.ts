@@ -1,3 +1,4 @@
+import { MockUserDirectorySource } from "@/user-directory-source";
 import { CALLER } from "./app-check-fixture";
 import { importedTask } from "./app-check-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -23,7 +24,7 @@ describe("App Checks management prototype", () => {
   it("stops while retaining results and accepts only previously started work afterward", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
-    const source = new MockAppCheckTaskSource(),
+    const source = new MockAppCheckTaskSource(new MockUserDirectorySource()),
       { taskId } = await importedTask(source, input);
     await expect(source.advanceTask(CALLER, taskId)).rejects.toThrow();
     await source.approveTask(CALLER, taskId, input.numbers.length);
@@ -53,7 +54,7 @@ describe("App Checks management prototype", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
   it("cancels pending tasks without claiming that any number completed", async () => {
-    const source = new MockAppCheckTaskSource(),
+    const source = new MockAppCheckTaskSource(new MockUserDirectorySource()),
       { taskId } = await importedTask(source, input);
     await source.closeTask(CALLER, taskId);
     expect(source.previewState(CALLER, taskId).endReason).toBe("cancelled");
@@ -67,7 +68,7 @@ describe("App Checks management prototype", () => {
     await expect(source.closeTask(CALLER, taskId)).resolves.toBeUndefined();
   });
   it("bounds preview snapshots and independently exports complete valid successful answers", async () => {
-    const source = new MockAppCheckTaskSource(),
+    const source = new MockAppCheckTaskSource(new MockUserDirectorySource()),
       { taskId } = await importedTask(source, input);
     await expect(source.exportTask(CALLER, taskId, "all")).rejects.toThrow(
       "任务结束后"
@@ -114,7 +115,7 @@ describe("App Checks management prototype", () => {
     );
   });
   it("retains only import summaries and keeps all prototype fields out of API requests", async () => {
-    const source = new MockAppCheckTaskSource();
+    const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
     const report = inspectImport("8613800000001\n\n+8613800000001", {
       format: "txt",
       country: "CN",

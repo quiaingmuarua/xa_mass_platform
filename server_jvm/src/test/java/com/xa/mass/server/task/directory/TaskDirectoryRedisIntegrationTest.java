@@ -32,7 +32,7 @@ import static org.mockito.Mockito.*;
 
 @Tag("redis-owner")
 class TaskDirectoryRedisIntegrationTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("1001", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("1001", "admin");
     RedisTestScope scope;
     RedisClient client;
     StatefulRedisConnection<String, String> connection;

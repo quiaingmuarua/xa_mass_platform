@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ProjectTaskQueryServiceTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
     private final ProjectDirectory projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(
             new ProjectDefinition("p", List.of("g")))), List.of());
     private final TaskResourceCatalog tasks = mock(TaskResourceCatalog.class);

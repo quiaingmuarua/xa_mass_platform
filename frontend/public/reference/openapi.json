@@ -894,7 +894,7 @@
       "get" : {
         "operationId" : "list",
         "parameters" : [ {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -902,7 +902,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -971,7 +971,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -979,7 +979,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -1061,7 +1061,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -1069,7 +1069,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -1142,7 +1142,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -1150,7 +1150,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -1216,7 +1216,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -1224,7 +1224,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -1309,7 +1309,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -1317,7 +1317,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -1475,7 +1475,7 @@
       "post" : {
         "operationId" : "previewTasks",
         "parameters" : [ {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -1483,7 +1483,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -1787,7 +1787,7 @@
       "post" : {
         "operationId" : "createTask",
         "parameters" : [ {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -1795,7 +1795,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -1872,7 +1872,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -1880,7 +1880,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -1957,7 +1957,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -1965,7 +1965,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -2033,7 +2033,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -2041,7 +2041,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -2108,7 +2108,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -2116,7 +2116,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -2202,7 +2202,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -2210,7 +2210,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -2291,7 +2291,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -2299,7 +2299,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -2386,7 +2386,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -2394,7 +2394,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -2463,7 +2463,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -2471,7 +2471,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -2558,7 +2558,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -2566,7 +2566,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -2665,7 +2665,7 @@
       "post" : {
         "operationId" : "create",
         "parameters" : [ {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -2673,7 +2673,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,
@@ -2739,7 +2739,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
           "in" : "header",
           "name" : "X-XA-Dev-User",
           "required" : true,
@@ -2747,7 +2747,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "Development caller role",
+          "description" : "Declared role must match the current Server user directory",
           "in" : "header",
           "name" : "X-XA-Dev-Role",
           "required" : true,

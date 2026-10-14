@@ -34,7 +34,7 @@ final class AndroidDeviceHostClientTest {
         client = new AndroidDeviceHostClient(new JsonHttpClient(
                 URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
                 Duration.ofSeconds(2L)
-        , java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin")));
+        , java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin")));
     }
 
     @AfterEach

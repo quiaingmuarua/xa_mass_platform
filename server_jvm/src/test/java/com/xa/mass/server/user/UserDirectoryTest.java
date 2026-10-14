@@ -27,7 +27,7 @@ class UserDirectoryTest {
     }
     private MockMvc client(UserDirectory directory) {
         return MockMvcBuilders.standaloneSetup(new UserController(directory)).setControllerAdvice(new ApiExceptionHandler())
-                .setCustomArgumentResolvers(TaskCallerHttpConfiguration.resolver()).build();
+                .setCustomArgumentResolvers(TaskCallerHttpConfiguration.resolver(directory)).build();
     }
     @Test void independentClientsShareWritesWhileANewServerDirectoryReloadsTheSeed() throws Exception {
         var state = directory();
@@ -63,10 +63,10 @@ class UserDirectoryTest {
             client.perform(post("/api/v1/users").header("X-XA-Dev-User", "MTAwMA").header("X-XA-Dev-Role", "admin")
                     .contentType(MediaType.APPLICATION_JSON).content(invalid)).andExpect(status().isBadRequest());
         assertThat(state.users()).hasSize(3);
-        assertThatThrownBy(() -> state.update(new TaskCaller("1000", "admin"), "1000", new UserDirectory.UpdateUser("self", "operator", List.of())))
+        assertThatThrownBy(() -> state.update(state.resolveCaller("1000", "admin"), "1000", new UserDirectory.UpdateUser("self", "operator", List.of())))
                 .isInstanceOf(com.xa.mass.server.error.ServerException.class);
         var granted = new java.util.ArrayList<>(List.of("messages"));
-        var user = state.create(new TaskCaller("1000", "admin"), new UserDirectory.User("userc", "C", "operator", granted));
+        var user = state.create(state.resolveCaller("1000", "admin"), new UserDirectory.User("userc", "C", "operator", granted));
         granted.add("app-checks");
         assertThat(user.projectIds()).containsExactly("messages");
         assertThatThrownBy(() -> user.projectIds().add("sms")).isInstanceOf(UnsupportedOperationException.class);
@@ -75,7 +75,7 @@ class UserDirectoryTest {
         var state = directory();
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var results = executor.invokeAll(java.util.stream.IntStream.range(0, 8).mapToObj(index -> (java.util.concurrent.Callable<Boolean>) () -> {
-                try { state.create(new TaskCaller("1000", "admin"), new UserDirectory.User("userc", "C", "operator", List.of("messages"))); return true; }
+                try { state.create(state.resolveCaller("1000", "admin"), new UserDirectory.User("userc", "C", "operator", List.of("messages"))); return true; }
                 catch (com.xa.mass.server.error.ServerException conflict) { return false; }
             }).toList());
             int winners = 0;
@@ -83,5 +83,74 @@ class UserDirectoryTest {
             assertThat(winners).isEqualTo(1);
             assertThat(state.users()).hasSize(4);
         }
+    }
+
+    @Test void admissionRejectsUnknownUsersAndRoleSpoofingAndUsesDirectoryGrants() throws Exception {
+        var state = directory();
+        for (var declaration : List.of(new String[]{"missing", "operator"}, new String[]{"1001", "admin"}))
+            assertThatThrownBy(() -> state.resolveCaller(declaration[0], declaration[1]))
+                    .isInstanceOfSatisfying(com.xa.mass.server.error.ServerException.class,
+                            error -> assertThat(error.errorCode()).isEqualTo(com.xa.mass.server.error.ServerErrorCode.TASK_ACCESS_DENIED));
+        var actor = state.resolveCaller("1001", "operator");
+        actor.requireProject("messages");
+        assertThatThrownBy(() -> actor.requireProject("other")).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        assertThatThrownBy(() -> actor.selectUser("1002")).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        var admin = state.resolveCaller("1000", "admin");
+        state.update(admin, "1001", new UserDirectory.UpdateUser("A", "operator", List.of("app-checks")));
+        actor.requireProject("messages");
+        assertThatThrownBy(() -> state.resolveCaller("1001", "operator").requireProject("messages"))
+                .isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        state.update(admin, "1001", new UserDirectory.UpdateUser("A", "admin", List.of()));
+        assertThatThrownBy(() -> state.resolveCaller("1001", "operator")).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        var promoted = state.resolveCaller("1001", "admin");
+        assertThat(promoted.identityKey()).isEqualTo(actor.identityKey());
+        promoted.requirePermission("users.manage");
+        state.update(admin, "1001", new UserDirectory.UpdateUser("A", "operator", List.of("messages")));
+        promoted.requirePermission("users.manage");
+        assertThatThrownBy(() -> state.resolveCaller("1001", "admin")).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        assertThatThrownBy(() -> state.resolveCaller("1001", "operator").requirePermission("users.manage"))
+                .isInstanceOf(com.xa.mass.server.error.ServerException.class);
+    }
+
+    @Test void admittedBusinessWorkDoesNotHoldTheDirectoryGateOrChangeIdentityMidOperation() throws Exception {
+        var state = directory();
+        var admitted = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var work = executor.submit(() -> {
+                var caller = state.resolveCaller("1001", "operator");
+                admitted.countDown();
+                if (!release.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("Business gate timed out");
+                caller.requireProject("messages");
+                return caller.identityKey();
+            });
+            try {
+                assertThat(admitted.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                executor.submit(() -> state.update(state.resolveCaller("1000", "admin"), "1001",
+                        new UserDirectory.UpdateUser("A changed", "operator", List.of())))
+                        .get(5, java.util.concurrent.TimeUnit.SECONDS);
+                assertThatThrownBy(() -> state.resolveCaller("1001", "operator").requireProject("messages"))
+                        .isInstanceOf(com.xa.mass.server.error.ServerException.class);
+            } finally { release.countDown(); }
+            assertThat(work.get(5, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo("user:1001");
+        }
+    }
+
+    @Test void accessUsesTheSeedRolePolicyRatherThanRoleNameBranches() throws Exception {
+        var defaults = directory();
+        var roles = defaults.roles().stream().map(role -> role.id().equals("operator")
+                ? new UserDirectory.Role(role.id(), role.label(), List.of("runtime.view"), "all", "assigned", role.home())
+                : new UserDirectory.Role(role.id(), role.label(), List.of("users.manage"), role.taskScope(), role.projectScope(), role.home())).toList();
+        var mapper = JsonMapper.builder().build();
+        var state = new UserDirectory(mapper, new org.springframework.core.io.ByteArrayResource(
+                mapper.writeValueAsBytes(new UserDirectory.Seed(roles, defaults.users()))),
+                new ProjectDirectory(new ProjectAssemblyProperties(List.of()), List.of()));
+        var operator = state.resolveCaller("1001", "operator");
+        operator.requirePermission("runtime.view");
+        assertThat(operator.canRead("1002")).isTrue();
+        assertThat(operator.selectUser("1002")).isEqualTo("1002");
+        assertThatThrownBy(() -> operator.requireProject("unassigned")).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        assertThatThrownBy(() -> state.resolveCaller("1000", "admin").requirePermission("runtime.view"))
+                .isInstanceOf(com.xa.mass.server.error.ServerException.class);
     }
 }

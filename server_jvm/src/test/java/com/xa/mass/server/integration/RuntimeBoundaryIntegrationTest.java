@@ -99,7 +99,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Tag("runtime-boundary")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class RuntimeBoundaryIntegrationTest {
-    private static final TaskCaller TASK_CALLER = new TaskCaller("proof", "admin");
+    private static final TaskCaller TASK_CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
 
     @TestConfiguration(proxyBeanMethods=false)
     static class MatchingTestAssembly {
@@ -1732,7 +1732,7 @@ class RuntimeBoundaryIntegrationTest {
         var ids = new LinkedHashMap<String, String>();
         for (String user : List.of("alice", "bobby")) {
             String id = "caller-" + user + "-" + suffix;
-            var response = send(new TaskCaller(user, "operator"), "POST", "/api/v1/tasks/" + id + "/rpc:prepare",
+            var response = send(com.xa.mass.server.testing.TaskCallers.caller(user, "operator", "boundary"), "POST", "/api/v1/tasks/" + id + "/rpc:prepare",
                     Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group)));
             assertThat(response.statusCode()).isEqualTo(200);
             assertThat(JSON.readTree(response.body()).path("taskId").asText()).isEqualTo(id);
@@ -1745,14 +1745,14 @@ class RuntimeBoundaryIntegrationTest {
             for (var entry : ids.entrySet()) {
                 String user = entry.getKey(), id = entry.getValue();
                 var original = com.xa.mass.server.task.directory.TaskAttribution.require(taskCatalog.loadTaskAllocationDescriptors(List.of(id)).get(id).metadata());
-                var response = send(new TaskCaller(user, "operator"), "POST", "/api/v1/tasks/" + id + "/items:call", Jsons.toJson(Map.of(
+                var response = send(com.xa.mass.server.testing.TaskCallers.caller(user, "operator", "boundary"), "POST", "/api/v1/tasks/" + id + "/items:call", Jsons.toJson(Map.of(
                         "items", List.of(Map.of("messageId", "same-id", "eventCode", TEST_EVENT_CODE,
                                 "payload", Map.of("value", user), "workerSelector", Map.of("executorName", "workerId", "input", prepared.workerId()))),
                         "waitTimeoutMillis", 10_000)));
                 assertThat(response.statusCode()).isEqualTo(200);
                 assertThat(JSON.readTree(response.body()).path("same-id").path("status").asText()).isEqualTo("succeeded");
                 awaitTrackedState(id, "same-id", 6);
-                var repeated = send(new TaskCaller(user, "operator"), "POST", "/api/v1/tasks/" + id + "/rpc:prepare",
+                var repeated = send(com.xa.mass.server.testing.TaskCallers.caller(user, "operator", "boundary"), "POST", "/api/v1/tasks/" + id + "/rpc:prepare",
                         Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group)));
                 assertThat(repeated.statusCode()).isEqualTo(200);
                 assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(taskCatalog.loadTaskAllocationDescriptors(List.of(id)).get(id).metadata())).isEqualTo(original);

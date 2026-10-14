@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class SmsProfileTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
     private static final com.xa.mass.server.task.access.TaskCaller SERVICE = com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", List.of("g", "demo-sim")));
     @Test void platformWithoutScenarioImportRegistersNoBusinessOrGroups() {
         var registrations = mock(TaskRpcPreparationService.class);

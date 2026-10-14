@@ -1,11 +1,16 @@
 import { z } from "zod";
-import { type RoleDefinition, isRole, canUseConsole } from "@/access-policy";
+import { type RoleDefinition, type Permission, isRole } from "@/access-policy";
 import {
   developmentRoles,
   developmentUsers,
   type ConsoleUser
 } from "@/development-users";
-import { callerHeaders, TaskApiError, type TaskCaller } from "@/task-caller";
+import {
+  callerHeaders,
+  requireCaller,
+  TaskApiError,
+  type TaskCaller
+} from "@/task-caller";
 import { normalizeTaskUserId } from "@/task-user-id";
 
 export interface UserDirectory {
@@ -117,17 +122,43 @@ export class ApiUserDirectorySource implements UserDirectorySource {
 /** App-lifetime simulation of the Server directory; no browser persistence. */
 export class MockUserDirectorySource implements UserDirectorySource {
   private users: ConsoleUser[];
+  private readonly roles: readonly RoleDefinition[];
   readonly initial: UserDirectory;
-  constructor(initialUsers = developmentUsers) {
-    this.users = initialUsers.map((entry) => ({
-      ...entry,
-      projectIds: [...entry.projectIds]
-    }));
-    this.initial = { roles: developmentRoles, users: this.users };
+  constructor(initialUsers = developmentUsers, roles = developmentRoles) {
+    this.roles = roles.map((role) =>
+      Object.freeze({ ...role, permissions: Object.freeze([...role.permissions]) })
+    );
+    this.users = initialUsers.map((entry) =>
+      Object.freeze({
+        ...entry,
+        projectIds: Object.freeze([...entry.projectIds])
+      })
+    );
+    this.initial = { roles: this.roles, users: this.users };
+  }
+  resolveCaller(
+    declared: TaskCaller,
+    projectId?: string,
+    permission?: Permission
+  ): TaskCaller {
+    const caller = requireCaller(declared);
+    const user = this.users.find((user) => user.userId === caller.userId);
+    const role = this.roles.find((role) => role.id === user?.role);
+    if (!user || !role || user.role !== caller.role)
+      throw new TaskApiError(403, "用户不存在或声明角色与用户目录不一致");
+    if (
+      projectId &&
+      role.projectScope === "assigned" &&
+      !user.projectIds.includes(projectId)
+    )
+      throw new TaskApiError(403, "当前用户未获授权访问此 Project");
+    if (permission && !role.permissions.includes(permission))
+      throw new TaskApiError(403, "当前用户没有此操作权限");
+    return Object.freeze({ userId: user.userId, role: user.role, access: role });
   }
   async load(): Promise<UserDirectory> {
     return {
-      roles: developmentRoles,
+      roles: this.roles,
       users: this.users.map((entry) => ({
         ...entry,
         projectIds: [...entry.projectIds]
@@ -135,11 +166,7 @@ export class MockUserDirectorySource implements UserDirectorySource {
     };
   }
   async save(caller: TaskCaller, input: ConsoleUser, existingUserId?: string) {
-    const actor = this.users.find(
-      (entry) => entry.userId === caller.userId && entry.role === caller.role
-    );
-    if (!actor || !canUseConsole(actor, "users.manage"))
-      throw new TaskApiError(403, "当前用户没有用户管理权限");
+    caller = this.resolveCaller(caller, undefined, "users.manage");
     const userId = normalizeTaskUserId(input.userId);
     const displayName = input.displayName.trim();
     if (!displayName || displayName.length > 80 || !isRole(input.role))
@@ -158,12 +185,12 @@ export class MockUserDirectorySource implements UserDirectorySource {
       throw new Error("已创建用户的 userId 不能修改");
     if (existingUserId === caller.userId)
       throw new Error("请使用其他管理员修改当前登录用户");
-    const saved = {
+    const saved = Object.freeze({
       userId,
       displayName,
       role: input.role,
-      projectIds: [...input.projectIds]
-    };
+      projectIds: Object.freeze([...input.projectIds])
+    });
     this.users =
       existingUserId === undefined
         ? [...this.users, saved]

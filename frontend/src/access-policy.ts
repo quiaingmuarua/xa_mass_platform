@@ -34,6 +34,8 @@ export function installRoles(definitions: readonly RoleDefinition[]) {
 export interface AccessSubject {
   readonly userId: string;
   readonly role: RoleId;
+  /** Directory-admitted Mock operation snapshot; never sent as HTTP authority. */
+  readonly access?: RoleDefinition;
 }
 export interface ProjectAccessSubject extends AccessSubject {
   readonly projectIds: readonly string[];
@@ -54,7 +56,7 @@ export const projectEntrypoints = [
 ] as const;
 
 export function projectScope(subject: AccessSubject): "all" | "assigned" {
-  return roles[subject.role].projectScope;
+  return (subject.access ?? roles[subject.role]).projectScope;
 }
 export function canAccessProject(subject: ProjectAccessSubject, projectId: string) {
   return projectScope(subject) === "all" || subject.projectIds.includes(projectId);
@@ -87,11 +89,11 @@ export function can(subject: AccessSubject | null, permission: Permission): bool
   return (
     !!subject &&
     isRole(subject.role) &&
-    !!roles[subject.role]?.permissions.includes(permission)
+    !!(subject.access ?? roles[subject.role])?.permissions.includes(permission)
   );
 }
 export function taskScope(subject: AccessSubject): "all" | "own" {
-  return roles[subject.role].taskScope;
+  return (subject.access ?? roles[subject.role]).taskScope;
 }
 export function canAccessTask(
   subject: AccessSubject,

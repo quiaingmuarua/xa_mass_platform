@@ -34,7 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class TaskRpcPreparationServiceTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
 
     private com.xa.mass.workermatching.WorkerMatchingCatalog matching;
     private WorkerResourceCatalog workerCatalog;
@@ -302,7 +302,7 @@ class TaskRpcPreparationServiceTest {
     @Test void administratorsReuseTasksWithoutReplacingTheOriginalCreator() {
         when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("rpc-test", expectedDescriptor()));
         when(taskLifecycle.approveTask("rpc-test")).thenReturn(new TaskApprovalResult(TaskApprovalStatus.ALREADY_APPROVED));
-        var administrator = new com.xa.mass.server.task.access.TaskCaller("other", "admin");
+        var administrator = com.xa.mass.server.testing.TaskCallers.caller("other", "admin");
         assertThat(service.prepare(administrator, "raw", "rpc-test", request()).taskId()).isEqualTo("rpc-test");
         verify(taskRuntime, never()).createTask(any());
         verify(taskLifecycle).approveTask("rpc-test");
@@ -311,7 +311,7 @@ class TaskRpcPreparationServiceTest {
     @Test void aCreationRaceChecksOwnershipAgainBeforeReusingTheWinner() {
         when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of()).thenReturn(Map.of("rpc-test", expectedDescriptor()));
         when(taskRuntime.createTask(any())).thenReturn(new TaskCreationResult(TaskCreationStatus.CONFLICT));
-        var foreign = new com.xa.mass.server.task.access.TaskCaller("other", "operator");
+        var foreign = com.xa.mass.server.testing.TaskCallers.caller("other", "operator", "test-project");
         assertError(() -> service.prepare(foreign, "raw", "rpc-test", request()),
                 ServerErrorCode.TASK_ACCESS_DENIED, "taskAccess.require");
         org.mockito.Mockito.verifyNoInteractions(taskLifecycle);

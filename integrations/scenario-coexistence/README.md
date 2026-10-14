@@ -5,7 +5,7 @@ Status: current shared business integration proof owner.
 This proof witnesses [SMS](../../scenarios/sms-reception-jvm/README.md) and
 [Messages](../../scenarios/message-campaigns-jvm/README.md) on the same real Server,
 Redis scope, Adapter and Workers. Python owns two independent JVMs and a unique
-`test_products_*` scope. Its fixture explicitly declares one development admin caller. It calls product APIs,
+`test_products_*` scope. Its fixture explicitly declares the default seed administrator `1000` as its explicit development caller. It calls product APIs,
 common Project Task/count APIs, public Runtime APIs and Host business inputs. Only real `message.send` execution creates a simulated recipient record.
 It never constructs Reports, calls Worker methods or reads Redis owner storage.
 Single SMS and message receipts use the stable Worker coordinate `:inputs` API.

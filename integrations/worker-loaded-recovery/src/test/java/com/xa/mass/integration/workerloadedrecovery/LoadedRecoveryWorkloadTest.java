@@ -52,8 +52,8 @@ class LoadedRecoveryWorkloadTest {
         server.start();
         URI base = baseUri();
         client = new LoadedRecoveryApiClient(
-                new LoadedRecoveryHttpClient(base, Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin")),
-                new LoadedRecoveryHttpClient(base, Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"))
+                new LoadedRecoveryHttpClient(base, Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin")),
+                new LoadedRecoveryHttpClient(base, Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))
         );
     }
 

@@ -29,11 +29,11 @@ SDK 和 Worker 协议使用既有机制；Matching 基础规则由场景声明�
 `{expectedItemCount}`；待审核核对正数，已批准重复请求 unchanged，终态不重开。
 前端组合共同详情、共同统计和业务结果，注册答案仍是内容解释，不从预览推算全量统计。
 
-例如，以开发调用方 `proof` 创建任务时显式携带以下请求头；`cHJvb2Y` 是 `proof`
+例如，以开发调用方 `proof` 创建任务时显式携带以下请求头；`MTAwMA` 是 `proof`
 的 UTF-8 Base64URL 编码。自动化或手动调用均须自行声明角色，不由 HTTP 客户端补入。
 
 ```http
-X-XA-Dev-User: cHJvb2Y
+X-XA-Dev-User: MTAwMQ
 X-XA-Dev-Role: operator
 Content-Type: application/json
 ```
@@ -78,10 +78,10 @@ operator 默认自己的范围；显式查询其他 userId 返回 403。admin �
 输入版本、salt、Item 身份及执行参数保持原规则。
 不回填历史归属或提供旧请求兼容。H2 仍只保存配置。
 
-这是受信任开发环境的声明与核对契约，客户端可以自行声明 admin；不构成身份认证或客户数据隔离。
+这是受信任开发环境的目录核对契约，客户端仍可选择目录中的现有身份；不构成身份认证或生产客户数据隔离。
 相同检查覆盖共同 Task API、Messages 和业务结果；全局 Runtime Task 预览及 SMS 操作要求 admin。
-后端不维护前端三个账户的名单，不增加全局 Filter、ThreadLocal、用户表或身份注册服务。
-控制台固定身份和每身份草稿仍归前端；自动化证明显式携带验证 userId/role，不隐式给所有接口补管理员。
+业务模块不维护固定账户名单，统一消费 Server 用户目录准入后的调用方；不增加全局 Filter、ThreadLocal、持久用户表或身份注册服务。
+Server 在每次请求入口从用户目录解析 userId/role 和 Project 授权；配置操作使用 `app-checks.configuration` 权限。权限变更影响后续请求，已准入操作保留原快照。前端刷新或重新登录应用新目录；自动化证明使用显式用户 seed，重启证明复用该 seed，不依赖临时用户。
 
 导入仅允许 `server.inputOwner=app-checks` 的待审核 Task。原始 Item 入口不能绕过固定业务配置。每个文件最多 10 MiB、100,000 个去重号码，
 前端将 TXT、CSV 或粘贴统一转换为逐行 UTF-8 文件；后端独立校验 UTF-8、号码和国家前缀，

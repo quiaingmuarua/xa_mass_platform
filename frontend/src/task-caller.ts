@@ -16,7 +16,7 @@ export class TaskApiError extends Error {
     message: string,
     public readonly taskId?: string
   ) {
-    super(message);
+    super(status === 403 ? `${message}，请刷新页面或退出后重新登录。` : message);
   }
 }
 
@@ -26,7 +26,8 @@ export function requireCaller(caller: TaskCaller): TaskCaller {
   try {
     return Object.freeze({
       userId: normalizeTaskUserId(caller.userId),
-      role: caller.role
+      role: caller.role,
+      ...(caller.access ? { access: caller.access } : {})
     });
   } catch (error) {
     throw new TaskApiError(400, (error as Error).message);

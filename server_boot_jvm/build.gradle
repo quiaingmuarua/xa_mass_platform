@@ -16,6 +16,7 @@ dependencies {
     implementation project(':scenarios:sms-reception-jvm')
     implementation project(':scenarios:message-campaigns-jvm')
     implementation project(':scenarios:app-checks-jvm')
+    testImplementation testFixtures(project(':server_jvm'))
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation project(':kernel_jvm')

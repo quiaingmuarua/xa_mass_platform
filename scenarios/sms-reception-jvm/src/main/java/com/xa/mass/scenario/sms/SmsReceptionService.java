@@ -79,7 +79,7 @@ public final class SmsReceptionService implements SmartLifecycle, AutoCloseable 
                         "setupMillis", 30_000, "waitMillis", 3_000));
     }
     public DeferredResult<Map<String, Object>> lease(TaskCaller caller, Map<String, Object> input) {
-        caller.requireAdmin();
+        caller.requirePermission("sms.use"); caller.requireProject("sms");
         requireRunning();
         if (!Set.of("applicationId", "country", "leaseSeconds").containsAll(input.keySet()))
             throw new ProductError(400, "Unknown request fields");
@@ -106,7 +106,7 @@ public final class SmsReceptionService implements SmartLifecycle, AutoCloseable 
         } catch (RuntimeException failure) { errors.increment(); throw failure; }
     }
     public Map<String, Object> get(TaskCaller caller, String messageId) {
-        caller.requireAdmin();
+        caller.requirePermission("sms.use"); caller.requireProject("sms");
         requireRunning();
         if (messageId == null || messageId.isBlank() || messageId.length() > 256)
             throw new ProductError(400, "Invalid messageId");
@@ -155,7 +155,7 @@ public final class SmsReceptionService implements SmartLifecycle, AutoCloseable 
         return Collections.unmodifiableMap(updates);
     }
     public Map<String, Object> metrics(TaskCaller caller) {
-        caller.requireAdmin();
+        caller.requirePermission("sms.use"); caller.requireProject("sms");
         return Map.of("runId", runId, "requests", requests.sum(), "queries", queries.sum(), "errors", errors.sum(),
                 "acquisitionLatencyMillis", acquisition.view(), "queryLatencyMillis", query.view(), "projection", projections.metrics());
     }

@@ -34,7 +34,7 @@ import static org.mockito.Mockito.*;
 /** Failure-only composition proof: real Redis, HTTP, Worker connection and recipient facts. */
 @Tag("scenario-composition")
 class MessageFailureIntegrationTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
     @Test @Timeout(90)
     void newerBusinessReceiptSurvivesLateSynchronousExecutionResult() throws Exception {
         try (var fixture = new Fixture(false); var channel = new MessageScenario(0, MessageSettings.defaults(), Map.of("demo-sim", MessageContentMode.LAB_JSON)); var lab = new LabHttp(channel)) {
@@ -165,7 +165,7 @@ class MessageFailureIntegrationTest {
             var app = new SpringApplication(classes.toArray(Class<?>[]::new)); app.setRegisterShutdownHook(false);
             application = app;
             arguments = AppCheckConfigurationFixture.arguments(10, "--spring.profiles.active=preview", "--server.port=" + port,
-                    "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
+                    "--xa.mass.users.seed=classpath:users/proof-directory.json", "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                     "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,
                     "--xa.mass.worker-endpoints.endpoints.products-websocket.public-uri=ws://127.0.0.1:" + adapter + "/api/v1/worker-delivery/websocket",

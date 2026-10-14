@@ -39,7 +39,7 @@ import static org.mockito.Mockito.*;
 /** Real HTTP/Redis/Worker proof. The attempt witness exists only in this test assembly. */
 @Tag("scenario-composition")
 class AppChecksIntegrationTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
     @Test @Timeout(120)
     @SuppressWarnings("unchecked")
     void persistedConfigurationAddsAnApplicationOnlyAfterRestartAndNeverEntersExecutionReads() throws Exception {
@@ -297,7 +297,7 @@ class AppChecksIntegrationTest {
     }
 
     @Test @Timeout(75)
-    void declaredCallersRestrictScenarioOperationsWithoutBecomingAnAccountDirectory() throws Exception {
+    void directoryCallersRestrictScenarioOperationsAndRetainOwnershipAfterRestart() throws Exception {
         try (var world = new World()) {
             String route = "/api/v1/app-checks/tasks";
             String directory = "/api/v1/projects/app-checks/tasks";
@@ -349,6 +349,44 @@ class AppChecksIntegrationTest {
     }
 
     @Test @Timeout(180)
+    void directoryMutationsGovernBothTaskAndScenarioHttpWithoutRewritingAttribution() throws Exception {
+        try (var world = new World()) {
+            var inputs = Map.of(
+                    "app-checks", Map.of("requestId", "access-check", "appId", "app-a", "country", "CN", "simulation",
+                            Map.of("ranges", Map.of("registered", List.of(0, 1000), "unregistered", List.of(1000, 1000), "failed", List.of(1000, 1000)), "delayMs", List.of(0, 0))),
+                    "messages", Map.of("requestId", "access-message", "appId", "demo", "name", "Access", "recipientCountry", "CN", "body", "{}"));
+            for (var entry : inputs.entrySet()) {
+                String project = entry.getKey(), route = "/api/v1/" + project + "/tasks", directory = "/api/v1/projects/" + project + "/tasks";
+                String body = Jsons.toJson(entry.getValue());
+                var created = world.postAs(route, body, "application/json", "1001", "operator");
+                assertThat(created.statusCode()).as(project).isEqualTo(201);
+                String id = (String) Jsons.parseObject(created.body()).get("taskId");
+                var original = world.context.getBean(com.xa.mass.kernel.task.TaskResourceCatalog.class)
+                        .loadTaskAllocationDescriptors(List.of(id)).get(id);
+                world.updateUser("1001", "operator", List.of());
+                for (String path : List.of(directory, directory + "/" + id, route + "/" + id + "/results"))
+                    assertThat(world.http.send(world.request(path, "1001", "operator").build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
+                assertThat(world.postAs(route, body, "application/json", "1001", "operator").statusCode()).isEqualTo(403);
+                String suffix = project.equals("messages") ? "/recipients:import" : "/numbers:import";
+                assertThat(world.postAs(route + "/" + id + suffix, "invalid input", "text/plain", "1001", "operator").statusCode()).isEqualTo(403);
+                for (String action : List.of("/approve", "/close", "/directory:ensure", "/results:export"))
+                    assertThat(world.postAs("/api/v1/tasks/" + id + action, "{\"expectedItemCount\":1}", "application/json", "1001", "operator").statusCode()).isEqualTo(403);
+                for (String action : List.of("/items:states", "/results:load"))
+                    assertThat(world.postAs("/api/v1/tasks/" + id + action, "[\"m\"]", "application/json", "1001", "operator").statusCode()).isEqualTo(403);
+                assertThat(world.postAs(directory + ":stats", Jsons.toJson(List.of(id)), "application/json", "1001", "operator").statusCode()).isEqualTo(403);
+                world.updateUser("1001", "admin", List.of());
+                assertThat(world.postAs(route, body, "application/json", "1001", "operator").statusCode()).isEqualTo(403);
+                assertThat(Jsons.parseObject(world.postAs(route, body, "application/json", "1001", "admin").body())).containsEntry("taskId", id);
+                world.updateUser("1001", "operator", List.of("messages", "app-checks"));
+                assertThat(world.postAs(route, body, "application/json", "1001", "admin").statusCode()).isEqualTo(403);
+                assertThat(Jsons.parseObject(world.postAs(route, body, "application/json", "1001", "operator").body())).containsEntry("taskId", id);
+                assertThat(world.context.getBean(com.xa.mass.kernel.task.TaskResourceCatalog.class).loadTaskAllocationDescriptors(List.of(id)).get(id)).isEqualTo(original);
+                assertThat(world.http.send(world.request(directory, "missing", "admin").build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
+            }
+        }
+    }
+
+    @Test @Timeout(180)
     void emptyCreationLargeImportIdempotencyAndManualClosureUseRealOwners() throws Exception {
         try (var world = new World()) {
             String path = "/api/v1/app-checks/tasks";
@@ -363,7 +401,7 @@ class AppChecksIntegrationTest {
             assertThat(world.postAs(path, json, "application/json", "another1", "admin").statusCode()).isEqualTo(201);
             var bodyCreator = new LinkedHashMap<>(body); bodyCreator.put("userId", "proof");
             assertThat(world.post(path, Jsons.toJson(bodyCreator), "application/json").statusCode()).isEqualTo(400);
-            assertThat(Jsons.parseObject(world.postAs(path, json, "application/json", "  proof  ", "operator").body()))
+            assertThat(Jsons.parseObject(world.postAs(path, json, "application/json", "  proof  ", "admin").body()))
                     .containsEntry("taskId", id);
             assertThat(task(world.detail(id))).containsEntry("state", "pre_review").containsEntry("totalCount", 0L);
             assertThat(world.post("/api/v1/tasks/" + id + "/approve", "{\"expectedItemCount\":0}", "application/json").statusCode()).isEqualTo(400);
@@ -435,6 +473,13 @@ class AppChecksIntegrationTest {
         String[] arguments;
         ConfigurableApplicationContext context;
         int sequence;
+        void updateUser(String id, String role, List<String> projects) throws Exception {
+            var response = http.send(request("/api/v1/users/" + id, "proof", "admin")
+                    .header("Content-Type", "application/json")
+                    .PUT(HttpRequest.BodyPublishers.ofString(Jsons.toJson(Map.of("displayName", "Updated user", "role", role, "projectIds", projects)))).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(response.statusCode()).isEqualTo(200);
+        }
         World() throws Exception {
             this(1000, 2);
         }
@@ -445,7 +490,7 @@ class AppChecksIntegrationTest {
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(observations));
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(selections));
             arguments = AppCheckConfigurationFixture.arguments(maxAssignments, "--spring.profiles.active=preview", "--server.port=" + port,
-                    "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
+                    "--xa.mass.users.seed=classpath:users/proof-directory.json", "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                     "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,
                     "--xa.mass.worker-endpoints.endpoints.products-websocket.public-uri=ws://127.0.0.1:" + adapter + "/api/v1/worker-delivery/websocket",

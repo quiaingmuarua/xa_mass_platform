@@ -64,3 +64,5 @@ scalar:
   telemetry: false
   agent:
     disabled: true
+
+xa.mass.users.seed: classpath:users/proof-directory.json

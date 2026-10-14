@@ -50,7 +50,8 @@ arrive before the initial execution Result without losing its number or deadline
 | `GET /api/v1/sms/metrics` | Bounded acquisition/query latency samples, errors and lease projection/inventory counters |
 
 Except for read-only Catalog discovery, SMS HTTP operations require the shared Server
-development caller with admin role. Missing/invalid declarations return 400 and
+directory-admitted development caller with `sms.use` and SMS Project access
+(admin in the default seed). Missing/invalid declarations return 400 and
 operator access returns the common 403 before business/resource effects. HTTP cannot
 declare the internal service identity. No authentication or per-user RPC Task is added.
 

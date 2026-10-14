@@ -70,7 +70,7 @@ final class LaneCase {
         var invalid = new ArrayList<String>();
         Exception failure = null;
         try (var api = new CallApi(options.getOrDefault("--runtime-url", "http://127.0.0.1:18082"),
-                options.getOrDefault("--lab-url", "http://127.0.0.1:18086"), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"));
+                options.getOrDefault("--lab-url", "http://127.0.0.1:18086"), java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"));
              var execution = Executors.newVirtualThreadPerTaskExecutor()) {
             var world = LaneWorld.readWorld(java.nio.file.Path.of(options.get("--world")));
             var tasks = LaneWorld.readTasks(java.nio.file.Path.of(options.get("--world")));

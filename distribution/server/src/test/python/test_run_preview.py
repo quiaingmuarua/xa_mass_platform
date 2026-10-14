@@ -121,7 +121,7 @@ class PreviewLifecycleTest(unittest.TestCase):
         with patch.object(run_preview._connections, "items", {}, create=True), \
              patch("run_preview.http_client.HTTPConnection", side_effect=[recent, fresh]) as connect, \
              patch("run_preview.time.monotonic", side_effect=[0, 1, 1, 7, 7]):
-            run_preview.http("http://127.0.0.1:18504", "/lab/health", headers={"X-XA-Dev-User": "cHJvb2Y", "X-XA-Dev-Role": "operator"})
+            run_preview.http("http://127.0.0.1:18504", "/lab/health", headers={"X-XA-Dev-User": "MTAwMQ", "X-XA-Dev-Role": "operator"})
             run_preview.http("http://127.0.0.1:18504", "/lab/health")
             recent.close.assert_not_called()
             run_preview.http("http://127.0.0.1:18504", "/lab/action", {})

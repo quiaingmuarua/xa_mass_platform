@@ -51,7 +51,8 @@ def _free_port() -> int:
         return int(listener.getsockname()[1])
 
 
-TASK_CALLER_HEADERS = {"X-XA-Dev-User": "cHJvb2Y", "X-XA-Dev-Role": "admin"}
+# Explicit administrator (1000) from the packaged Server directory.
+TASK_CALLER_HEADERS = {"X-XA-Dev-User": "MTAwMA", "X-XA-Dev-Role": "admin"}
 
 def _request(
     method: str,

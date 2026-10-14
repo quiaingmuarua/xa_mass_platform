@@ -23,7 +23,7 @@ class ProofApiTest {
             finally { exchange.close(); }
         });
         server.start();
-        var api = new ProofApi("http://127.0.0.1:" + server.getAddress().getPort(), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"));
+        var api = new ProofApi("http://127.0.0.1:" + server.getAddress().getPort(), java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"));
         var reader = Executors.newSingleThreadExecutor();
         var request = reader.submit(() -> api.call("GET", "/", null, true));
         try {

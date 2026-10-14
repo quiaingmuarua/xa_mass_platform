@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class TaskAccessTest {
-    final TaskCaller caller = new TaskCaller("1001", "operator");
+    final TaskCaller caller = com.xa.mass.server.testing.TaskCallers.caller("1001", "operator", "p");
     final TaskResourceCatalog catalog = mock(TaskResourceCatalog.class);
     final TaskScoreBandCore scores = mock(TaskScoreBandCore.class);
     final TaskItemScoreBandCore items = mock(TaskItemScoreBandCore.class);

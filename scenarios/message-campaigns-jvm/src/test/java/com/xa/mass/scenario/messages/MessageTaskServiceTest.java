@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class MessageTaskServiceTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
     final TaskCreationService creation = mock(TaskCreationService.class);
     final TaskDataService data = mock(TaskDataService.class);
     final ProjectTaskQueryService queries = mock(ProjectTaskQueryService.class);

@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class TaskInputWorkflowTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
     final TaskRuntime runtime = mock(TaskRuntime.class);
     final TaskResourceCatalog catalog = mock(TaskResourceCatalog.class);
     final TaskScoreBandCore scores = mock(TaskScoreBandCore.class);
@@ -92,11 +92,11 @@ class TaskInputWorkflowTest {
                     TaskScoreBandCore.TaskScoreBand.PRE_REVIEW, 0L, 0));
             return new TaskRuntime.TaskCreationResult(TaskRuntime.TaskCreationStatus.CREATED);
         });
-        var alice = new com.xa.mass.server.task.access.TaskCaller("alice", "operator");
-        var bobby = new com.xa.mass.server.task.access.TaskCaller("bobby", "operator");
+        var alice = com.xa.mass.server.testing.TaskCallers.caller("alice", "operator", "p");
+        var bobby = com.xa.mass.server.testing.TaskCallers.caller("bobby", "operator", "p");
         var request = new TaskCreateRequest("same-request", "p", "g", 50, 3, List.of(), "name", Map.of("label", "one"));
         String first = creator().create(alice, request).taskId();
-        assertThat(creator().create(new com.xa.mass.server.task.access.TaskCaller("alice", "admin"), request).taskId()).isEqualTo(first);
+        assertThat(creator().create(com.xa.mass.server.testing.TaskCallers.caller("alice", "admin"), request).taskId()).isEqualTo(first);
         assertThat(creator().create(bobby, request).taskId()).isNotEqualTo(first);
         assertThat(descriptors.get(first).metadata()).containsEntry("userId", "alice").containsEntry("server.inputOwner", "raw").doesNotContainKey("role");
         assertThatThrownBy(() -> creator().create(alice,

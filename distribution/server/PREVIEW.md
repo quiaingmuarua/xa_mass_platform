@@ -41,7 +41,10 @@ user edits. Its top bar displays the current user and
 logout; see [development login](../../frontend/README.md#development-login-and-access).
 Direct App Checks task/configuration requests declare their caller through the
 [scenario headers](../../scenarios/app-checks-jvm/README.md#api-和-task-数据).
-Catalog readiness remains caller-free. These identities do not authenticate users.
+Task requests resolve those declarations against the Server directory on each
+request; role and Project changes affect the next admission. Single-user proof
+clients explicitly use seed administrator `1000`. Catalog readiness remains
+caller-free. These identities do not authenticate users.
 
 ## Inventory and process lifecycle
 

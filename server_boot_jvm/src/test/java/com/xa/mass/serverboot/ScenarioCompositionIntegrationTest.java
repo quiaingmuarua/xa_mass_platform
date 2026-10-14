@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.*;
 
 @Tag("scenario-composition")
 class ScenarioCompositionIntegrationTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
     @ParameterizedTest @ValueSource(booleans = {false, true}) @Timeout(90)
     void platformAndPreviewShareOnePlatform(boolean preview) throws Exception {
         boolean sms = preview, messages = preview;
@@ -42,7 +42,7 @@ class ScenarioCompositionIntegrationTest {
         application.setRegisterShutdownHook(false);
         String profiles = preview ? "preview" : "default";
         var arguments = new ArrayList<>(List.of("--spring.profiles.active=" + profiles, "--server.port=" + port,
-                "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
+                "--xa.mass.users.seed=classpath:users/proof-directory.json", "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                 "--spring.web.resources.static-locations=" + Path.of(System.getProperty("xa.mass.test.frontend")).toUri(),
                 "--logging.level.root=ERROR"));
         var storage = AppCheckConfigurationFixture.properties(10);

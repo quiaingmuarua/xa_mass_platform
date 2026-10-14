@@ -1,3 +1,4 @@
+import { MockUserDirectorySource } from "@/user-directory-source";
 import { TaskApiError, callerHeaders, type TaskCaller } from "@/task-caller";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiAppCheckTaskSource } from "../src/app-checks/task-source";
@@ -9,6 +10,15 @@ import {
 const a: TaskCaller = Object.freeze({ userId: "testa", role: "operator" });
 const b: TaskCaller = Object.freeze({ userId: "testb", role: "operator" });
 const admin: TaskCaller = Object.freeze({ userId: "proofadm", role: "admin" });
+function directory() {
+  return new MockUserDirectorySource(
+    [a, b, admin].map((caller) => ({
+      ...caller,
+      displayName: caller.userId,
+      projectIds: caller.role === "operator" ? ["app-checks"] : []
+    }))
+  );
+}
 const input = {
   requestId: "caller-test",
   appId: "app-a",
@@ -19,7 +29,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("App Checks declared callers", () => {
   it("selects personal score ranges before limiting, including admin owner filters", async () => {
-    const source = new MockAppCheckTaskSource();
+    const source = new MockAppCheckTaskSource(directory());
     for (let i = 0; i < 105; i++)
       await source.createTask(a, { ...input, requestId: `other-${i}` });
     const target = await source.createTask(b, {
@@ -43,7 +53,7 @@ describe("App Checks declared callers", () => {
   it("checks every direct Mock operation before inspecting inputs or results", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
-    const source = new MockAppCheckTaskSource();
+    const source = new MockAppCheckTaskSource(directory());
     const { taskId } = await source.createTask(a, input);
     const upload = {
       get size(): number {
@@ -81,12 +91,21 @@ describe("App Checks declared callers", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
   it("preserves creator identity independently of role and rejects a body creator", async () => {
-    const source = new MockAppCheckTaskSource();
+    const users = directory();
+    const source = new MockAppCheckTaskSource(users);
     const original = await source.createTask(a, input);
+    await users.save(
+      admin,
+      { ...a, role: "admin", displayName: "A", projectIds: [] },
+      a.userId
+    );
     expect(await source.createTask({ ...a, role: "admin" }, input)).toEqual(original);
     expect((await source.createTask(b, input)).taskId).not.toBe(original.taskId);
     await expect(
-      source.createTask(a, { ...input, userId: b.userId } as typeof input)
+      source.createTask({ ...a, role: "admin" }, {
+        ...input,
+        userId: b.userId
+      } as typeof input)
     ).rejects.toMatchObject({ status: 400 });
   });
   it("sends Base36 caller headers without a creator in JSON and never retries 403", async () => {

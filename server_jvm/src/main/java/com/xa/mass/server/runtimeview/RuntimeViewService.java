@@ -73,7 +73,7 @@ public final class RuntimeViewService {
             TaskCaller caller, int sampleLimit,
             String requestId
     ) {
-        caller.requireAdmin();
+        caller.requirePermission("runtime.view");
         try {
             List<TaskScoreState> scoreStates =
                     taskScores.previewScoreStates(sampleLimit);

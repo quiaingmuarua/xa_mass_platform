@@ -74,7 +74,7 @@ def hash_value(domain, worker_id, salt, number):
 
 
 def request(label, app, offset, count, ranges, delay):
-    return {"userId": "proof", "requestId": label, "appId": app, "country": "CN",
+    return {"userId": "1000", "requestId": label, "appId": app, "country": "CN",
             "numbers": [f"+8613800{index:06d}" for index in range(offset, offset + count)],
             "simulation": {"ranges": dict(zip(("registered", "unregistered", "failed"), ranges)), "delayMs": delay}}
 
@@ -121,7 +121,7 @@ def task_observations(run, api, task_id):
 
 
 def functional(run, http):
-    api = functools.partial(http, headers=caller_headers("proof", "admin"))
+    api = functools.partial(http, headers=caller_headers("1000", "admin"))
     catalog = http(run.url, "/api/v1/app-checks/catalog")
     require(catalog["projectId"] == "app-checks", "Wrong project")
     groups = {row["appId"]: row["workerGroupId"] for row in catalog["apps"]}
@@ -191,7 +191,7 @@ def functional(run, http):
                           "failed": task["failedCount"], "recomputed": recomputed})
     listing = api(run.url, "/api/v1/projects/app-checks/tasks?limit=100")
     require({task for _, task in tasks} <= {row["taskId"] for row in listing["tasks"]}, "Project list lost a Task")
-    require(all(row["task"]["metadata"].get("userId") == "proof" for row in listing["tasks"]
+    require(all(row["task"]["metadata"].get("userId") == "1000" for row in listing["tasks"]
                 if row["taskId"] in {task for _, task in tasks}), "Project list lost Task creators")
     return {"passed": True, "appWorkers": 4, "tasks": summaries, "idempotentSubmission": True,
             "groupIsolation": True, "hashAndDelayRecomputed": True, "creatorRetained": True,

@@ -31,7 +31,7 @@ class RuntimeApiClientTest {
                         "workerGroupId", "group-1", "workerId", "worker-1", "workerProperties", properties.get())))));
         server.start();
         try {
-            RuntimeApiClient client = new RuntimeApiClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"));
+            RuntimeApiClient client = new RuntimeApiClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"));
             assertEquals(Map.of(), client.previewWorkerIdentities("group-1"));
             properties.set(Map.of("labInventoryKey", "workers.jsonl", "labInventoryLine", "1"));
             assertEquals(Map.of("workers.jsonl:1", "worker-1"), client.previewWorkerIdentities("group-1"));
@@ -69,7 +69,7 @@ class RuntimeApiClientTest {
             RuntimeApiClient client = new RuntimeApiClient(
                     baseUri(server),
                     Duration.ofSeconds(2)
-            , java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"));
+            , java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"));
 
             client.prepareRpcTask("group-1");
             assertEquals(Map.of(

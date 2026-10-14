@@ -66,7 +66,7 @@ export class SmsApiError extends Error {
     public readonly status: number,
     message: string
   ) {
-    super(message);
+    super(status === 403 ? `${message}，请刷新页面或退出后重新登录。` : message);
   }
 }
 export async function loadCatalog(signal?: AbortSignal): Promise<Catalog> {

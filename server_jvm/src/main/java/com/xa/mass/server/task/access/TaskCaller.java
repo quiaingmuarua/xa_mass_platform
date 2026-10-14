@@ -6,11 +6,8 @@ import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.project.ProjectDefinition;
 import com.xa.mass.server.task.directory.TaskAttribution;
 import com.xa.mass.server.task.directory.TaskUserId;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+import com.xa.mass.server.user.UserDirectory;
+import java.util.List;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
@@ -22,42 +19,49 @@ public final class TaskCaller {
     private final @Nullable String userId;
     private final String role;
     private final @Nullable String serviceProject;
+    private final UserDirectory.@Nullable Role access;
+    private final List<String> projectIds;
 
-    public TaskCaller(String userId, String role) {
-        try { this.userId = TaskUserId.normalize(userId); }
-        catch (IllegalArgumentException invalid) { throw invalidCaller(invalid); }
-        if (!"admin".equals(role) && !"operator".equals(role)) throw invalidCaller(null);
-        this.role = role;
+    private TaskCaller(UserDirectory.User user, UserDirectory.Role access) {
+        this.userId = user.userId();
+        this.role = user.role();
+        if (!role.equals(access.id())) throw new IllegalArgumentException("Role differs from user directory");
+        this.access = access;
+        this.projectIds = List.copyOf(user.projectIds());
         this.serviceProject = null;
+    }
+
+    /** Called by the directory after admission; retains no mutable directory reference. */
+    public static TaskCaller fromDirectory(UserDirectory.User user, UserDirectory.Role access) {
+        return new TaskCaller(user, access);
     }
 
     private TaskCaller(ProjectDefinition project) {
         this.userId = null;
         this.role = "service";
         this.serviceProject = Objects.requireNonNull(project, "project").projectId();
+        this.access = null;
+        this.projectIds = List.of();
     }
 
     public static TaskCaller forProjectService(ProjectDefinition project) { return new TaskCaller(project); }
-
-    public static TaskCaller fromHeaders(String[] users, String[] roles) {
-        if (users == null || roles == null || users.length != 1 || roles.length != 1
-                || users[0] == null || roles[0] == null) throw invalidCaller(null);
-        try {
-            var decoder = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT);
-            return new TaskCaller(decoder.decode(ByteBuffer.wrap(Base64.getUrlDecoder().decode(users[0]))).toString(), roles[0]);
-        } catch (IllegalArgumentException | CharacterCodingException invalid) { throw invalidCaller(invalid); }
-    }
 
     public @Nullable String userId() { return userId; }
     public String role() { return role; }
     public String identityKey() { return serviceProject == null ? "user:" + userId : "service:" + serviceProject; }
     public boolean isService() { return serviceProject != null; }
     public void requireAdmin() { if (!"admin".equals(role)) throw forbidden(); }
-    public void requireProject(String projectId) {
-        if (serviceProject != null && !serviceProject.equals(projectId)) throw forbidden();
+    public void requirePermission(String permission) {
+        if (access == null || !access.permissions().contains(permission)) throw forbidden();
     }
-    public boolean canRead(@Nullable String creator) { return "admin".equals(role) || userId != null && userId.equals(creator); }
+    public void requireProject(String projectId) {
+        if (serviceProject != null) {
+            if (!serviceProject.equals(projectId)) throw forbidden();
+        } else if (!access.projectScope().equals("all") && !projectIds.contains(projectId)) throw forbidden();
+    }
+    public boolean canRead(@Nullable String creator) {
+        return access != null && (access.taskScope().equals("all") || userId.equals(creator));
+    }
     public void requireOwner(@Nullable String creator) { if (!canRead(creator)) throw forbidden(); }
     public void requireTask(TaskDescriptor task) {
         final TaskAttribution attribution;
@@ -73,7 +77,7 @@ public final class TaskCaller {
         final String normalized;
         try { normalized = requested == null ? null : TaskUserId.normalize(requested); }
         catch (IllegalArgumentException invalid) { throw invalidCaller(invalid); }
-        if ("operator".equals(role)) {
+        if (access != null && access.taskScope().equals("own")) {
             if (normalized != null) requireOwner(normalized);
             return userId;
         }
@@ -90,9 +94,10 @@ public final class TaskCaller {
     }
     @Override public boolean equals(Object other) {
         return other instanceof TaskCaller caller && Objects.equals(userId, caller.userId)
-                && role.equals(caller.role) && Objects.equals(serviceProject, caller.serviceProject);
+                && role.equals(caller.role) && Objects.equals(serviceProject, caller.serviceProject)
+                && Objects.equals(access, caller.access) && projectIds.equals(caller.projectIds);
     }
-    @Override public int hashCode() { return Objects.hash(userId, role, serviceProject); }
+    @Override public int hashCode() { return Objects.hash(userId, role, serviceProject, access, projectIds); }
     private static ServerException forbidden() {
         return new ServerException(ServerErrorCode.TASK_ACCESS_DENIED, "taskAccess.require", null, null);
     }

@@ -49,7 +49,7 @@ class ConvergenceWorkloadTest {
         server.start();
         try {
             RuntimeApiClient runtime = new RuntimeApiClient(
-                    new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"))
+                    new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))
             );
             runtime.prepareRpcTask(WorkerLabConvergenceSupport.PHONE_GROUP);
             runtime.prepareRpcTask(WorkerLabConvergenceSupport.STRING_GROUP);

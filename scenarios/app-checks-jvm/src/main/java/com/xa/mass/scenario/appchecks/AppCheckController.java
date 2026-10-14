@@ -21,9 +21,9 @@ public final class AppCheckController {
     public AppCheckController(AppCheckTaskService tasks, AppCheckConfigurationStore configurations) {
         this.tasks = tasks; this.configurations = configurations;
     }
-    @GetMapping("/configuration") public Object configuration(TaskCaller caller) { caller.requireAdmin(); return configurations.view(); }
+    @GetMapping("/configuration") public Object configuration(TaskCaller caller) { caller.requirePermission("app-checks.configuration"); caller.requireProject("app-checks"); return configurations.view(); }
     @PutMapping("/configuration") public Object saveConfiguration(TaskCaller caller, @RequestBody Map<String, Object> input) {
-        caller.requireAdmin();
+        caller.requirePermission("app-checks.configuration"); caller.requireProject("app-checks");
         final long revision;
         final AppCheckSettings settings;
         try {
