@@ -202,7 +202,9 @@ python integrations/scenario-coexistence/run_proof.py --scenario pool-selection 
 Ordinary `product_coexistence` Proof CI runs source functional, Pool selection and
 lifecycle, plus fresh ZIP functional and Pool selection. Each proof has its own
 step, output directory, port and scope. App Checks also runs in independent source
-and ZIP steps, with explicit development caller headers and saved-creator checks;
+and ZIP steps, with explicit development caller headers and saved-creator checks.
+App Checks uses two startup seed fixtures for success/failure and negative/mixed
+answers; the lightweight create request carries no execution parameters;
 its [Owner](../../scenarios/app-checks-jvm/README.md#装配与证明) defines the separate
 caller/ownership proof and its limits. After common preparation succeeds, one proof failure does not skip
 the others; ZIP execution additionally requires successful archive validation.

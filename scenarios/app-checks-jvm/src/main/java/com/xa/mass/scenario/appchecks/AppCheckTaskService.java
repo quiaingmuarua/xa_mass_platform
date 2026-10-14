@@ -2,9 +2,6 @@ package com.xa.mass.scenario.appchecks;
 
 import com.xa.mass.server.task.access.TaskCaller;
 
-import com.xa.mass.kernel.assignment.EligibilityQuery;
-import com.xa.mass.kernel.assignment.RefillTarget;
-import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
@@ -28,7 +25,6 @@ import com.xa.mass.server.task.result.TaskResultsExportService;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import org.springframework.context.SmartLifecycle;
-import static com.xa.mass.scenario.appchecks.AppCheckWorkerSupply.*;
 
 /** Request-driven creation, file import and result projection over existing Task application services. */
 public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable {
@@ -44,22 +40,24 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     private final OperationGuard operations;
     private final TaskResultsExportService exports;
     private final AppCheckSettings settings;
+    private final AppCheckContracts contracts;
     private volatile boolean running;
     private boolean closed;
     private int active;
 
     public AppCheckTaskService(ProjectDirectory projects, ProjectTaskQueryService queries, TaskCreationService creation,
                                TaskDataService data, OperationGuard operations, TaskResultsExportService exports,
-                               AppCheckSettings settings) {
-        this(projects, queries, creation, data, operations, exports, settings, Clock.systemUTC());
+                               AppCheckSettings settings, AppCheckContracts contracts) {
+        this(projects, queries, creation, data, operations, exports, settings, contracts, Clock.systemUTC());
     }
 
     AppCheckTaskService(ProjectDirectory projects, ProjectTaskQueryService queries, TaskCreationService creation,
                         TaskDataService data, OperationGuard operations, TaskResultsExportService exports,
-                        AppCheckSettings settings, Clock clock) {
+                        AppCheckSettings settings, AppCheckContracts contracts, Clock clock) {
         this.projects = projects; this.queries = queries; this.creation = creation;
         this.data = data;  this.clock = clock; this.operations = operations; this.exports = exports;
         this.settings = Objects.requireNonNull(settings);
+        this.contracts = Objects.requireNonNull(contracts);
     }
 
     @Override public void start() {
@@ -77,11 +75,10 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
 
     public Map<String, Object> catalog() {
         requireRunning();
-        return Map.of("projectId", PROJECT, "name", "应用注册查询", "version", "0.2.0-preview",
-                "apps", settings.applications().stream().map(app -> Map.of("appId", app.appId(), "label", app.label(), "workerGroupId", app.workerGroupId())).toList(),
+        return Map.of("projectId", PROJECT, "name", "应用注册查询", "version", "0.3.0-preview",
+                "apps", settings.applications().entrySet().stream().map(entry -> Map.of("appId", entry.getKey(), "label", entry.getValue().label(), "workerGroupId", entry.getValue().workerGroupId(), "contractId", entry.getValue().contractId())).toList(),
                 "countries", List.of("CN", "US", "GB"),
-                "limits", Map.of("numbersPerImport", AppCheckNumberFile.MAX_NUMBERS, "importFileBytes", AppCheckNumberFile.MAX_BYTES),
-                "simulationExample", settings.simulationDefault());
+                "limits", Map.of("numbersPerImport", AppCheckNumberFile.MAX_NUMBERS, "importFileBytes", AppCheckNumberFile.MAX_BYTES));
     }
 
     public TaskCreateResponse create(TaskCaller caller, Map<String, Object> input) {
@@ -94,12 +91,19 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         }
         catch (IllegalArgumentException invalid) { throw new RequestFailure(400, invalid.getMessage(), null); }
         LocalDate date = LocalDate.now(clock.withZone(ZoneOffset.UTC));
-        var metadata = Map.of("scenario", PROJECT, "inputVersion", "2", "appId", specification.appId(), "country", specification.country(),
-                "simulation", Jsons.toJson(specification.simulation()), "salt", specification.salt(date), "saltDate", date.toString());
+        var app = settings.requireApplication(specification.appId());
+        var parameters = contracts.require(app.contractId()).normalizeParameters(settings.parametersFor(app));
+        var metadata = Map.ofEntries(
+                Map.entry("scenario", PROJECT), Map.entry("inputVersion", "3"),
+                Map.entry("appId", specification.appId()), Map.entry("country", specification.country()),
+                Map.entry("contractId", app.contractId()), Map.entry("contractParameters", Jsons.toJson(parameters)),
+                Map.entry("eventCode", app.execution().eventCode()),
+                Map.entry("workerSelector", Jsons.toJson(AppCheckSettings.selectorMap(app.execution().workerSelector()))),
+                Map.entry("salt", specification.salt(date)), Map.entry("saltDate", date.toString()));
         String name = specification.appId() + " · " + specification.country() + " · " + clock.instant();
         try {
-            return creation.createForRequest(caller, PROJECT, new TaskCreateRequest(specification.requestId(), PROJECT, settings.requireApplication(specification.appId()).workerGroupId(), 50, 3,
-                    List.of(RefillTarget.of(POOL, new EligibilityQuery(Map.of()), 100)), name, metadata),
+            return creation.createForRequest(caller, PROJECT, new TaskCreateRequest(specification.requestId(), PROJECT, app.workerGroupId(), 50, 3,
+                    app.execution().refill(), name, metadata),
                     specification.fingerprint());
         } catch (TaskCreationUnconfirmedException unknown) {
             throw new RequestFailure(503, "创建结果未确认，请核对已知任务；不会自动重建", unknown.taskId());
@@ -125,10 +129,12 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                 var entry = requireCheck(caller, taskId);
                 if (!"pre_review".equals(entry.scoreBand()))
                     throw new RequestFailure(409, "只有新版本待审核任务支持导入", taskId);
+                final AppCheckTaskSnapshot snapshot;
+                try { snapshot = AppCheckTaskSnapshot.read(entry.task().workerGroupId(), entry.task().metadata(), contracts); }
+                catch (RuntimeException invalid) { throw new RequestFailure(400, "任务执行配置不可用：" + invalid.getMessage(), taskId); }
                 long added = 0, existing = 0;
                 try (var file = AppCheckNumberFile.read(input, entry.task().metadata().get("country"));
                      var reader = Files.newBufferedReader(file.file(), StandardCharsets.UTF_8)) {
-                    var simulation = AppCheckSpecification.simulation(Jsons.parseObject(entry.task().metadata().get("simulation")));
                     var batch = new ArrayList<TaskItemRequest>(100);
                     boolean finished = false;
                     while (!finished) {
@@ -137,10 +143,9 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                         while (batch.size() < 100) {
                             String number = reader.readLine();
                             if (number == null) { finished = true; break; }
-                            var payload = new LinkedHashMap<String, Object>(simulation);
-                            payload.put("number", number); payload.put("salt", entry.task().metadata().get("salt"));
+                            var payload = snapshot.contract().payload(snapshot.context(), number);
                             batch.add(new TaskItemRequest("number-" + AppCheckSpecification.digest("app-checks/v2/number", number),
-                                    EVENT, payload, 5, null, new WorkerQuery(FUNCTION, Map.of())));
+                                    snapshot.eventCode(), payload, 5, null, snapshot.selector()));
                         }
                         if (batch.isEmpty()) break;
                         var effects = data.importFiniteTaskItems(caller, PROJECT, taskId, List.copyOf(batch));
@@ -168,6 +173,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     public CsvExport export(TaskCaller caller, String taskId, String filter) {
         if (!Set.of("all", "registered", "unregistered").contains(filter)) throw new RequestFailure(400, "无效导出范围", taskId);
         var task = requireCheck(caller, taskId).task();
+        var snapshot = AppCheckTaskSnapshot.read(task.workerGroupId(), task.metadata(), contracts);
         return operations.execute("app-checks-csv-export", taskId, () -> {
             Path source = exports.export(caller, taskId).file();
             Path csv = null;
@@ -192,7 +198,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                         if (payloads.isEmpty()) break;
                         var items = data.loadTaskItems(caller, taskId, List.copyOf(payloads.keySet()));
                         for (var result : payloads.entrySet()) {
-                            var view = resultView(task.workerGroupId(), new TaskDataService.ResultEntry(result.getKey(), items.get(result.getKey()),
+                            var view = resultView(snapshot, new TaskDataService.ResultEntry(result.getKey(), items.get(result.getKey()),
                                     TaskItemResultResponse.succeeded(result.getValue())));
                             if (view.containsKey("contentError") || !(view.get("registered") instanceof Boolean registered)) continue;
                             if (filter.equals("registered") && !registered || filter.equals("unregistered") && registered) continue;
@@ -226,9 +232,10 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
 
     public Map<String, Object> results(TaskCaller caller, String taskId) {
         var task = requireCheck(caller, taskId).task();
+        var snapshot = AppCheckTaskSnapshot.read(task.workerGroupId(), task.metadata(), contracts);
         var preview = data.previewTaskResults(caller, taskId);
         return Map.of("taskId", taskId, "results", preview.results().stream()
-                .map(row -> resultView(task.workerGroupId(), row)).toList(), "truncated", preview.truncated());
+                .map(row -> resultView(snapshot, row)).toList(), "truncated", preview.truncated());
     }
 
     private static boolean isCheckTask(ProjectTaskQueryService.Entry entry) {
@@ -237,23 +244,26 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                 && PROJECT.equals(entry.task().metadata().get(TaskCaller.INPUT_OWNER));
     }
 
-    private static Map<String, Object> resultView(String group, TaskDataService.ResultEntry entry) {
+    private static Map<String, Object> resultView(AppCheckTaskSnapshot snapshot, TaskDataService.ResultEntry entry) {
         var row = new LinkedHashMap<String, Object>();
         row.put("messageId", entry.messageId()); row.put("resultStatus", entry.result().status().wireValue());
         var item = entry.item();
-        if (item != null && item.payload().get("number") instanceof String number) row.put("number", number);
+        if (item != null) {
+            try { row.put("number", snapshot.contract().inputNumber(item.payload())); }
+            catch (RuntimeException ignored) { /* Failed executions need no business answer. */ }
+        }
         if (entry.result().status() == TaskItemResultStatus.FAILED) return row;
         try {
-            var content = Jsons.parseObject(entry.result().opaqueResultPayload());
-            if (item == null || !entry.messageId().equals(item.messageId()) || !EVENT.equals(item.eventCode())
-                    || !(item.payload().get("number") instanceof String number) || number.isBlank()
-                    || !Objects.equals(content.get("number"), number)
-                    || group == null || !group.equals(content.get("workerGroupId")) || !(content.get("registered") instanceof Boolean))
+            if (item == null || !entry.messageId().equals(item.messageId()) || !snapshot.eventCode().equals(item.eventCode()))
+                throw new IllegalArgumentException("Item association mismatch");
+            var answer = snapshot.contract().result(snapshot.context(), item.payload(), Jsons.parseObject(entry.result().opaqueResultPayload()));
+            if (!answer.number().equals(snapshot.contract().inputNumber(item.payload()))
+                    || !entry.messageId().equals("number-" + AppCheckSpecification.digest("app-checks/v2/number", answer.number()))
+                    || !snapshot.context().workerGroupId().equals(answer.workerGroupId()))
                 throw new IllegalArgumentException("Result association mismatch");
-            AppCheckSpecification.text(content.get("workerId"), 256);
-            long delay = AppCheckSpecification.integer(content.get("simulatedDelayMillis"));
-            if (delay < 0 || delay > 30_000) throw new IllegalArgumentException("Invalid simulated delay");
-            for (String field : List.of("registered", "workerId", "workerGroupId", "simulatedDelayMillis")) row.put(field, content.get(field));
+            row.put("number", answer.number()); row.put("registered", answer.registered());
+            row.put("workerId", answer.workerId()); row.put("workerGroupId", answer.workerGroupId());
+            if (answer.simulatedDelayMillis() != null) row.put("simulatedDelayMillis", answer.simulatedDelayMillis());
         } catch (RuntimeException invalid) { row.put("contentError", "Application check result cannot be parsed or associated"); }
         return row;
     }

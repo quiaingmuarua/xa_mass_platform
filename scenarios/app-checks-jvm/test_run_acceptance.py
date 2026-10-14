@@ -1,4 +1,9 @@
 import unittest
+import io
+import tempfile
+from contextlib import redirect_stdout, redirect_stderr
+from types import SimpleNamespace
+import run_acceptance as acceptance
 import json
 import os
 from pathlib import Path
@@ -12,6 +17,62 @@ class AppCheckProofTest(unittest.TestCase):
     def read_seed(self):
         path = Path(url2pathname(urlparse(os.environ["XA_MASS_APP_CHECKS_SEED"]).path))
         return path, json.loads(path.read_text(encoding="utf-8"))
+
+    def test_sequential_configuration_fixtures_do_not_rebind_ports_from_a_closed_run(self):
+        retained_ports = set()
+        runs = []
+
+        class Preview:
+            def __init__(self, count, port, **settings):
+                self.port = port
+                self.artifacts = {}
+                self.settings = settings
+                runs.append(self)
+
+            def __enter__(self):
+                ports = {self.port, self.port + 3, self.port + 4}
+                if retained_ports & ports:
+                    raise OSError("previous TCP connection still occupies this port")
+                retained_ports.update(ports)
+                return self
+
+            def __exit__(self, *_):
+                # JVM exit need not immediately release every TCP bind constraint.
+                pass
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "run_preview.py").write_text("# fixture launcher\n", encoding="utf-8")
+            preview = SimpleNamespace(Preview=Preview, http=object())
+            spec = SimpleNamespace(loader=SimpleNamespace(exec_module=lambda _: None))
+            with patch("sys.argv", ["run_acceptance.py", "--root", str(root), "--output", str(root / "proof"), "--port", "18620"]), \
+                    patch.object(acceptance.importlib.util, "spec_from_file_location", return_value=spec), \
+                    patch.object(acceptance.importlib.util, "module_from_spec", return_value=preview), \
+                    patch.object(acceptance, "functional", side_effect=lambda *_: {"passed": True}) as workload, \
+                    redirect_stdout(io.StringIO()):
+                acceptance.main()
+            evidence = json.loads((root / "proof/summary.json").read_text(encoding="utf-8"))
+            self.assertTrue(evidence["passed"])
+            self.assertEqual([18620, 18630], [run.port for run in runs])
+            self.assertEqual(6, len(retained_ports))
+            self.assertEqual([18620, 18630], [fixture["basePort"] for fixture in evidence["fixtures"]])
+            self.assertNotEqual(runs[0].settings["sandbox_root"], runs[1].settings["sandbox_root"])
+            self.assertEqual([4, 4], [len(call.args[2]) for call in workload.call_args_list])
+
+    def test_functional_port_range_is_rejected_before_loading_or_starting_a_fixture(self):
+        for port in (0, 65522):
+            with patch("sys.argv", ["run_acceptance.py", "--port", str(port)]), \
+                    patch.object(acceptance.importlib.util, "spec_from_file_location") as load, \
+                    redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                acceptance.main()
+            load.assert_not_called()
+
+    def test_execution_variants_are_seed_parameters_not_create_overrides(self):
+        parameters = {"ranges": {"registered": [0,1000], "unregistered": [1000,1000], "failed": [1000,1000]}, "delayMs": [0,0]}
+        with regression_window_configuration(parameters_by_app={"app-a": parameters}):
+            _, document = self.read_seed()
+            self.assertEqual(document["applications"]["app-a"]["parameters"], parameters)
+            self.assertNotIn("parameters", document["applications"]["app-b"])
 
     def test_window_fixture_keeps_other_settings_and_restores_environment_on_failure(self):
         original = json.dumps({"some.setting": "retained"})
@@ -62,6 +123,7 @@ class AppCheckProofTest(unittest.TestCase):
         self.assertEqual({"X-XA-Dev-User": "MTAwMA", "X-XA-Dev-Role": "admin"}, caller_headers(case["userId"], "admin"))
         self.assertNotIn("userId", creation_input(case))
         self.assertNotIn("numbers", creation_input(case))
+        self.assertEqual(set(creation_input(case)), {"requestId", "appId", "country"})
 
 
 if __name__ == "__main__":

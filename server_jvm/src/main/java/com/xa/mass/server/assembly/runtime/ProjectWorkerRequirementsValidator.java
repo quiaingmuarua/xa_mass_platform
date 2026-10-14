@@ -22,7 +22,7 @@ final class ProjectWorkerRequirementsValidator {
         this.requirements = requirements.stream().sorted(Comparator.comparing(ProjectWorkerRequirements::projectId)).toList();
         var pairs = new HashSet<Map.Entry<String, String>>();
         for (var requirement : this.requirements) {
-            for (String group : requirement.workerGroupIds()) {
+            for (String group : requirement.requirementsByGroup().keySet()) {
                 if (!pairs.add(Map.entry(requirement.projectId(), group)))
                     throw failure(requirement, group, "duplicate Project/Group requirements", null);
                 var project = projects.projects().get(requirement.projectId());
@@ -36,10 +36,10 @@ final class ProjectWorkerRequirementsValidator {
     void validate() {
         var byGroup = new LinkedHashMap<String, List<ProjectWorkerRequirements>>();
         for (var requirement : requirements) {
-            for (String group : requirement.workerGroupIds()) {
+            for (String group : requirement.requirementsByGroup().keySet()) {
                 var available = matching.groups().getOrDefault(group, new MatchingGroup(Set.of(), Set.of()));
-                requireSubset(requirement, group, "Pools", requirement.pools(), available.pools());
-                requireSubset(requirement, group, "functions", requirement.functions(), available.functions());
+                requireSubset(requirement, group, "Pools", requirement.requirementsByGroup().get(group).pools(), available.pools());
+                requireSubset(requirement, group, "functions", requirement.requirementsByGroup().get(group).functions(), available.functions());
                 byGroup.computeIfAbsent(group, ignored -> new ArrayList<>()).add(requirement);
             }
         }
@@ -56,7 +56,7 @@ final class ProjectWorkerRequirementsValidator {
                 var descriptor = descriptors.get(group);
                 for (var requirement : byGroup.get(group)) {
                     if (descriptor == null) throw failure(requirement, group, "Group is not registered", null);
-                    requireSubset(requirement, group, "events", requirement.eventCodes(), descriptor.eventCodes());
+                    requireSubset(requirement, group, "events", requirement.requirementsByGroup().get(group).eventCodes(), descriptor.eventCodes());
                 }
             }
         }

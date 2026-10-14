@@ -33,10 +33,10 @@ class MessageScenarioPropertiesTest {
             var requirement = assembly.messageWorkerRequirements(config);
             assertThat(definition).isEqualTo(new ProjectDefinition("messages", List.of("bound-group", "another-group")));
             assertThat(requirement.projectId()).isEqualTo(definition.projectId());
-            assertThat(requirement.workerGroupIds()).containsExactly("bound-group", "another-group");
-            assertThat(requirement.eventCodes()).containsExactly("extension.worker.message.send");
-            assertThat(requirement.pools()).containsExactly("messaging");
-            assertThat(requirement.functions()).containsExactly("worker.messaging.available");
+            assertThat(requirement.requirementsByGroup().keySet()).containsExactly("bound-group", "another-group");
+            assertThat(requirement.requirementsByGroup().get("bound-group").eventCodes()).containsExactly("extension.worker.message.send");
+            assertThat(requirement.requirementsByGroup().get("bound-group").pools()).containsExactly("messaging");
+            assertThat(requirement.requirementsByGroup().get("bound-group").functions()).containsExactly("worker.messaging.available");
             var directory = new ProjectDirectory(new ProjectAssemblyProperties(List.of()), List.of(definition));
             try (var service = assembly.messageTasks(directory, mock(ProjectTaskQueryService.class), mock(TaskCreationService.class),
                     mock(TaskDataService.class), config, new com.xa.mass.server.operation.OperationGuard())) {

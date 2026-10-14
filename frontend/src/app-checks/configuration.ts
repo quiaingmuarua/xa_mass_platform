@@ -1,17 +1,9 @@
-import {
-  appLabel,
-  countryLabel,
-  simulationSchema,
-  type Catalog,
-  type CheckTask
-} from "./model";
-import type { AppCheckSettings } from "./settings";
+import { appLabel, countryLabel, type Catalog, type CheckTask } from "./model";
 
 export interface TaskPolicySnapshot {
   priority: number;
   maxRetries: number;
   validityMillis: number;
-  supply: { poolName: string; target: string; count: number };
 }
 export function scenarioConfiguration(
   catalog: Catalog,
@@ -72,55 +64,10 @@ export function policySection(
       ? [
           row("优先级", number(policy.priority)),
           row("最大重试", `${number(policy.maxRetries)} 次`),
-          row("有效期", `${number(policy.validityMillis / 86400000)} 天`),
-          row(
-            "供给目标",
-            `${policy.supply.poolName} / ${policy.supply.target} / ${number(policy.supply.count)}`
-          )
+          row("有效期", `${number(policy.validityMillis / 86400000)} 天`)
         ]
       : [],
-    unavailable: policy ? undefined : `${absent}：优先级、最大重试、有效期、供给目标。`
-  };
-}
-
-export function applicationConfiguration(
-  catalog: Catalog,
-  appId: string,
-  mode: "api" | "mock",
-  settings?: AppCheckSettings,
-  origin: ConfigurationSource = "saved"
-) {
-  const app = (settings?.applications ?? catalog.apps).find(
-    (candidate) => candidate.appId === appId
-  );
-  if (!app) return undefined;
-  const source = mode === "mock" ? "mock" : settings ? origin : "catalog";
-  const limit = settings?.poolGroups[app.workerGroupId];
-  return {
-    binding: {
-      source,
-      scope: "应用",
-      rows: [
-        row("应用名称", app.label),
-        row("应用 ID", appId),
-        row("WorkerGroup", app.workerGroupId)
-      ]
-    } satisfies ConfigurationSection,
-    pool: {
-      source,
-      scope: "Pool / Group",
-      rows: limit
-        ? [
-            row("Pool", "assignment-window"),
-            row("WorkerGroup", app.workerGroupId),
-            row("观察窗口", `${number(limit.windowMillis / 1000)} 秒`),
-            row("观察阈值", `单个 Worker 每窗口 ${number(limit.maxCount)} 次`)
-          ]
-        : [],
-      unavailable: limit
-        ? undefined
-        : `${absent}：Pool 身份、Group 范围、窗口长度、观察阈值。`
-    } satisfies ConfigurationSection
+    unavailable: policy ? undefined : `${absent}：优先级、最大重试、有效期。`
   };
 }
 
@@ -132,45 +79,19 @@ export function savedTaskConfiguration(task: CheckTask, mode: "api" | "mock") {
       rows: [
         row("应用", task.appId ? `${appLabel(task.appId)} / ${task.appId}` : undefined),
         row("实际 WorkerGroup", task.workerGroupId),
-        row("号码地区", task.country ? countryLabel(task.country) : undefined)
+        row("号码地区", task.country ? countryLabel(task.country) : undefined),
+        row("业务契约", task.contractId),
+        row("执行事件", task.eventCode),
+        row(
+          "Worker 查询",
+          task.workerSelector ? JSON.stringify(task.workerSelector) : undefined
+        ),
+        row("供给声明", task.refill ? JSON.stringify(task.refill) : undefined)
       ]
     } satisfies ConfigurationSection,
     policy: policySection(
       mode === "mock" ? task.mockPolicy : undefined,
       mode === "mock" ? "mock" : "task"
     )
-  };
-}
-
-export function simulationSection(
-  value: unknown,
-  source: ConfigurationSource,
-  scope: "任务" | "场景" = "任务"
-): ConfigurationSection {
-  const parsed = simulationSchema.safeParse(value);
-  if (!parsed.success)
-    return {
-      source,
-      scope,
-      rows: [],
-      unavailable:
-        value === undefined ? absent : "模拟参数无法解析，仍可预览结果及管理任务。"
-    };
-  const { ranges, delayMs } = parsed.data;
-  return {
-    source,
-    scope,
-    rows: [
-      ...(
-        [
-          ["已注册", ranges.registered],
-          ["未注册", ranges.unregistered],
-          ["查询失败", ranges.failed]
-        ] as const
-      ).map(([label, [start, end]]) =>
-        row(`${label}区间`, `${(end - start) / 10}% · [${start}, ${end})`)
-      ),
-      row("模拟延迟", `${number(delayMs[0])}–${number(delayMs[1])} ms`)
-    ]
   };
 }

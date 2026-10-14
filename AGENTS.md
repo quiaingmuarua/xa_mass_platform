@@ -271,7 +271,9 @@ configuration API inside its scenario module. Only configuration is persisted th
 Task/Item/Result and runtime identities remain with Redis Owners. Server consumes
 immutable startup declarations and must not query the scenario database. Saved
 configuration becomes effective on restart, without runtime registration or resource
-mutation. Multi-Group Worker property projections remain pure startup declarations.
+mutation. App Checks execution contracts are statically registered pure scenario code;
+Tasks retain their first execution binding and normalized parameters. Per-Group
+resource requirements and message-event/projection selections remain immutable startup declarations.
 
 ## Verification
 

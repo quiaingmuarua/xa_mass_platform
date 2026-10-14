@@ -13,6 +13,9 @@ const expanded = ref(false),
   error = ref("");
 const checks = shallowRef(new Map<string, Verification>());
 const available = cryptoAvailable();
+const simulated = computed(
+  () => props.detail.task.contractId === "simulated-registration-v1"
+);
 let generation = 0;
 watch(
   () => props.detail,
@@ -29,7 +32,7 @@ const summary = computed(() => {
   return result;
 });
 async function verify() {
-  if (!available || verifying.value || props.busy) return;
+  if (!simulated.value || !available || verifying.value || props.busy) return;
   const token = ++generation;
   verifying.value = true;
   try {
@@ -62,18 +65,19 @@ onBeforeUnmount(() => {
           <dt>原始状态</dt>
           <dd>{{ detail.task.state || "—" }}</dd>
         </div>
-        <div>
+        <div v-if="simulated">
           <dt>salt / 日期</dt>
           <dd>{{ detail.task.salt || "—" }} / {{ detail.task.saltDate || "—" }}</dd>
         </div>
       </dl>
-      <p class="checks-hint">
+      <p v-if="simulated" class="checks-hint">
         仅核对当前最多 100 条预览的业务内容，不审计调度与重试次数。
       </p>
-      <p v-if="!available" class="checks-hint">
+      <p v-if="simulated && !available" class="checks-hint">
         当前浏览器不支持 Web Crypto，请使用 HTTPS 或本机地址进行核对。
       </p>
       <el-button
+        v-if="simulated"
         :disabled="!available || busy || !detail.results.length"
         :loading="verifying"
         @click="verify"
@@ -90,16 +94,16 @@ onBeforeUnmount(() => {
             <tr>
               <th>Message ID</th>
               <th>实际 Worker</th>
-              <th>模拟延迟</th>
-              <th>复算</th>
+              <th v-if="simulated">模拟延迟</th>
+              <th v-if="simulated">复算</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="row in detail.results" :key="row.messageId">
               <td>{{ row.messageId }}</td>
               <td>{{ row.workerId || "—" }}</td>
-              <td>{{ row.simulatedDelayMillis ?? "—" }}</td>
-              <td>
+              <td v-if="simulated">{{ row.simulatedDelayMillis ?? "—" }}</td>
+              <td v-if="simulated">
                 {{
                   checks.get(row.messageId)
                     ? verificationLabels[checks.get(row.messageId)!.status]

@@ -44,21 +44,29 @@ class AppCheckTaskServiceTest {
         });
         when(queries.get(org.mockito.ArgumentMatchers.eq(CALLER), eq("app-checks"), anyString())).thenAnswer(call -> entry(call.getArgument(2), "pre_review"));
         var service = new AppCheckTaskService(projects, queries, creation, data, operations, exports,
-                AppCheckTestSettings.settings(),
+                AppCheckTestSettings.settings(), AppCheckTestSettings.contracts(),
                 Clock.fixed(Instant.parse("2026-09-18T01:00:00Z"), ZoneOffset.UTC));
         service.start(); return service;
     }
     ProjectTaskQueryService.Entry entry(String id, String state) {
-        var metadata = new HashMap<>(Map.of("server.inputOwner", "app-checks", "scenario", "app-checks", "userId", "proof", "appId", "app-a", "country", "CN", "simulation", Jsons.toJson(simulation()), "salt", "fixed"));
-        metadata.put("inputVersion", "2");
+        var metadata = metadata();
         return new ProjectTaskQueryService.Entry(id, 1L, new TaskView(id, "app-checks", "app-a-sim", "CLOSE_WHEN_IDLE",
                 List.of(RefillTarget.of("assignment-window", new EligibilityQuery(Map.of()), 100)), Map.of(), "test", metadata), state);
     }
+    static Map<String, String> metadata() {
+        var result = new HashMap<>(Map.of("server.inputOwner", "app-checks", "scenario", "app-checks",
+                "userId", "proof", "appId", "app-a", "country", "CN", "salt", "fixed"));
+        result.put("inputVersion", "3"); result.put("contractId", AppCheckContracts.SIMULATED);
+        result.put("contractParameters", Jsons.toJson(simulation())); result.put("eventCode", "extension.worker.app.registration.check");
+        result.put("workerSelector", Jsons.toJson(Map.of("executorName", "worker.assignment.available", "input", Map.of())));
+        return result;
+    }
+    static String numberId(String number) { return "number-" + AppCheckSpecification.digest("app-checks/v2/number", number); }
     static Map<String, Object> simulation() {
         return Map.of("ranges", Map.of("registered", List.of(0, 500), "unregistered", List.of(500, 900), "failed", List.of(900, 1000)), "delayMs", List.of(2000, 5000));
     }
     static Map<String, Object> request() {
-        return new LinkedHashMap<>(Map.of("requestId", "request", "appId", "app-a", "country", "CN", "simulation", simulation()));
+        return new LinkedHashMap<>(Map.of("requestId", "request", "appId", "app-a", "country", "CN"));
     }
     static InputStream file(String text) { return new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)); }
 
@@ -67,7 +75,7 @@ class AppCheckTaskServiceTest {
             var unknown = request(); unknown.put("appId", "not-configured");
             assertThatThrownBy(() -> service.create(CALLER, unknown)).hasMessageContaining("Unsupported appId");
             for (int i = 0; i < 51; i++) { var input = request(); input.put("requestId", "r" + i); service.create(CALLER, input); }
-            verify(creation, times(51)).createForRequest(org.mockito.ArgumentMatchers.eq(CALLER), org.mockito.ArgumentMatchers.eq("app-checks"), argThat(req -> req.metadata().get("inputVersion").equals("2")
+            verify(creation, times(51)).createForRequest(org.mockito.ArgumentMatchers.eq(CALLER), org.mockito.ArgumentMatchers.eq("app-checks"), argThat(req -> req.metadata().get("inputVersion").equals("3")
                     && !req.metadata().containsKey("numbers") && req.refill().getFirst().poolName().equals("assignment-window")), anyString());
             verifyNoInteractions(data);
             var invalid = request(); invalid.put("numbers", List.of("+86123"));
@@ -175,13 +183,13 @@ class AppCheckTaskServiceTest {
     @Test void queriesStoredTruthWithoutLocalSubmissionAndPreservesBadContentRows() {
         try (var service = service()) {
             var task = new TaskView("stored", "app-checks", "app-a-sim", "CLOSE_WHEN_IDLE", List.of(), Map.of(), "stored name",
-                    Map.of("server.inputOwner", "app-checks", "scenario", "app-checks", "appId", "app-a", "country", "CN", "simulation", Jsons.toJson(simulation())));
+                    metadata());
             var entry = new ProjectTaskQueryService.Entry("stored", 123L, task, "terminal");
             when(queries.get(CALLER, "app-checks", "stored")).thenReturn(entry);
-            var item = new TaskItem("one", AppCheckWorkerSupply.EVENT, 1L, Map.of("number", "+86123"), 5, 600_000L, new WorkerQuery("worker.any", Map.of()));
+            var item = new TaskItem(numberId("+86123"), "extension.worker.app.registration.check", 1L, Map.of("number", "+86123"), 5, 600_000L, new WorkerQuery("worker.any", Map.of()));
             var valid = Jsons.toJson(Map.of("number", "+86123", "workerGroupId", "app-a-sim", "workerId", "actual", "registered", false, "simulatedDelayMillis", 12));
             when(data.previewTaskResults(CALLER, "stored")).thenReturn(new TaskDataService.ResultPreview(List.of(
-                    new TaskDataService.ResultEntry("one", item, TaskItemResultResponse.succeeded(valid)),
+                    new TaskDataService.ResultEntry(numberId("+86123"), item, TaskItemResultResponse.succeeded(valid)),
                     new TaskDataService.ResultEntry("bad", item, TaskItemResultResponse.succeeded("not-json")),
                     new TaskDataService.ResultEntry("failed", item, TaskItemResultResponse.failed())), true));
             var response = service.results(CALLER, "stored");
@@ -198,16 +206,19 @@ class AppCheckTaskServiceTest {
             when(queries.get(CALLER, "app-checks", "task")).thenReturn(entry("task", "terminal"));
             var items = new LinkedHashMap<String, TaskItem>();
             var records = new ArrayList<String>();
-            for (String id : List.of("registered", "unregistered", "bad-json", "no-answer", "wrong-number", "no-item", "no-number", "wrong-id")) {
-                var payload = id.equals("no-number") ? Map.<String, Object>of() : Map.<String, Object>of("number", "+86123");
-                if (!id.equals("no-item")) items.put(id, new TaskItem(id.equals("wrong-id") ? "another" : id,
-                        AppCheckWorkerSupply.EVENT, 1L, payload, 5, 600_000L, new WorkerQuery("worker.any", Map.of())));
-                var content = new LinkedHashMap<String, Object>(Map.of("number", "+86123", "workerGroupId", "app-a-sim",
-                        "workerId", "worker", "registered", !id.equals("unregistered"), "simulatedDelayMillis", 2));
-                if (id.equals("no-answer")) content.remove("registered");
-                if (id.equals("no-number")) content.remove("number");
-                if (id.equals("wrong-number")) content.put("number", "+86124");
-                records.add(Jsons.toJson(Map.of("messageId", id, "opaqueResultPayload", id.equals("bad-json") ? "not-json" : Jsons.toJson(content))));
+            int index = 0;
+            for (String kind : List.of("registered", "unregistered", "bad-json", "no-answer", "wrong-number", "no-item", "no-number", "wrong-id", "wrong-group", "wrong-event")) {
+                String number = "+86123" + index++, id = numberId(number);
+                var payload = kind.equals("no-number") ? Map.<String, Object>of() : Map.<String, Object>of("number", number);
+                if (!kind.equals("no-item")) items.put(id, new TaskItem(kind.equals("wrong-id") ? "another" : id,
+                        kind.equals("wrong-event") ? "extension.worker.other" : "extension.worker.app.registration.check", 1L, payload, 5, 600_000L, new WorkerQuery("worker.any", Map.of())));
+                var content = new LinkedHashMap<String, Object>(Map.of("number", number, "workerGroupId", "app-a-sim",
+                        "workerId", "worker", "registered", !kind.equals("unregistered"), "simulatedDelayMillis", 2));
+                if (kind.equals("no-answer")) content.remove("registered");
+                if (kind.equals("no-number")) content.remove("number");
+                if (kind.equals("wrong-group")) content.put("workerGroupId", "another-group");
+                if (kind.equals("wrong-number")) content.put("number", "+86124");
+                records.add(Jsons.toJson(Map.of("messageId", id, "opaqueResultPayload", kind.equals("bad-json") ? "not-json" : Jsons.toJson(content))));
             }
             when(data.loadTaskItems(org.mockito.ArgumentMatchers.eq(CALLER), eq("task"), anyList())).thenReturn(items);
             for (String filter : List.of("all", "registered", "unregistered")) {
@@ -220,7 +231,7 @@ class AppCheckTaskServiceTest {
                     assertThat(csv.count()).isEqualTo(filter.equals("all") ? 2L : 1L);
                     var lines = Files.readAllLines(csv.file(), StandardCharsets.UTF_8);
                     assertThat(lines).hasSize((int) csv.count() + 1);
-                    assertThat(lines.get(1)).startsWith("\"'+86123\",");
+                    assertThat(lines.get(1)).startsWith("\"'+86123");
                     if (!filter.equals("all")) assertThat(lines.get(1)).contains(filter.equals("registered") ? "已注册" : "未注册");
                 } finally { Files.deleteIfExists(source); Files.deleteIfExists(csv.file()); }
             }

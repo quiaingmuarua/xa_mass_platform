@@ -11,15 +11,15 @@ class AppCheckAssignmentWindowTest {
     @Test void groupsProjectUsingTheirOwnInjectedWindowLength() {
         var configuration = new AppCheckScenarioConfiguration();
         var seed = AppCheckTestSettings.settings();
-        var settings = new AppCheckSettings(seed.simulationDefault(), seed.applications(), Map.of(
+        var settings = new AppCheckSettings(seed.contractDefaults(), seed.applications(), Map.of(
                 "app-a-sim", new com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit(100, 10),
                 "app-b-sim", new com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit(200, 20)));
-        var config = new AppCheckConfigurationStore.Snapshot(1, settings);
+        var config = new AppCheckConfigurationStore.Snapshot(settings);
         var projections = configuration.appCheckAssignmentProjections(config).projectionsByGroup();
         assertThat(configuration.appCheckWindowPool(config).limitsByGroup()).isEqualTo(settings.poolGroups());
-        assertThat(projections.get("app-a-sim").apply(Map.of(), List.of(99L, 100L)))
+        assertThat(projections.get("app-a-sim").project().apply(Map.of(), List.of(99L, 100L)))
                 .containsEntry("windowAssignmentCount", 1L);
-        assertThat(projections.get("app-b-sim").apply(Map.of(), List.of(99L, 100L)))
+        assertThat(projections.get("app-b-sim").project().apply(Map.of(), List.of(99L, 100L)))
                 .containsEntry("windowAssignmentCount", 2L);
         assertThat(projections.keySet()).containsExactly("app-a-sim", "app-b-sim");
     }

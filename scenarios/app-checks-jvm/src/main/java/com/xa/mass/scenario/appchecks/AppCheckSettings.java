@@ -1,80 +1,172 @@
 package com.xa.mass.scenario.appchecks;
 
+import com.xa.mass.kernel.assignment.EligibilityQuery;
+import com.xa.mass.kernel.assignment.RefillTarget;
+import com.xa.mass.kernel.assignment.WorkerQuery;
+import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit;
 import java.util.*;
 
-/** Scenario-owned configuration; executable identities and Task policy remain code-owned. */
-public record AppCheckSettings(Map<String, Object> simulationDefault,
-                               List<Application> applications, Map<String, WindowLimit> poolGroups) {
-    public record Application(String appId, String label, String workerGroupId) {
+/** Complete scenario configuration; resource ownership stays with the existing Owners. */
+public record AppCheckSettings(Map<String, Map<String, Object>> contractDefaults,
+                               Map<String, Application> applications, Map<String, WindowLimit> poolGroups) {
+    public record Execution(String eventCode, List<RefillTarget> refill, WorkerQuery workerSelector) {
+        public Execution {
+            AppCheckSpecification.text(eventCode, 256);
+            refill = List.copyOf(refill);
+            if (refill.size() > 100) throw new IllegalArgumentException("execution.refill: at most 100 declarations");
+            Objects.requireNonNull(workerSelector, "execution.workerSelector");
+            if (Jsons.toJson(selectorMap(workerSelector)).length() > 4096)
+                throw new IllegalArgumentException("execution.workerSelector: exceeds Task metadata bound");
+        }
+        public Map<String, Object> toMap() {
+            return Map.of("eventCode", eventCode, "refill", refill.stream().map(target -> Map.of(
+                    "poolName", target.poolName(), "target", target.target().query(), "count", target.count())).toList(),
+                    "workerSelector", selectorMap(workerSelector));
+        }
+    }
+    public record Application(String label, String workerGroupId, Execution execution,
+                              String contractId, Map<String, Object> parameters) {
         public Application {
-            AppCheckSpecification.text(appId, 128);
             AppCheckSpecification.text(label, 128);
-            AppCheckSpecification.text(workerGroupId, 128);
+            AppCheckSpecification.text(workerGroupId, 128); AppCheckSpecification.text(contractId, 128);
+            Objects.requireNonNull(execution, "execution");
+            if (parameters != null) parameters = AppCheckSettings.parameters(parameters, "parameters");
+        }
+        public Map<String, Object> toMap() {
+            var value = new LinkedHashMap<String, Object>();
+            value.put("label", label); value.put("workerGroupId", workerGroupId);
+            value.put("execution", execution.toMap()); value.put("contractId", contractId);
+            if (parameters != null) value.put("parameters", parameters);
+            return Collections.unmodifiableMap(value);
         }
     }
-
     public AppCheckSettings {
-        simulationDefault = AppCheckSpecification.simulation(simulationDefault);
-        if (applications == null || applications.isEmpty()) throw new IllegalArgumentException("应用列表不能为空");
-        applications = List.copyOf(applications);
-        var ids = new HashSet<String>();
+        var defaults = new LinkedHashMap<String, Map<String, Object>>();
+        contractDefaults.forEach((id, value) -> defaults.put(id, parameters(value, "common.contractDefaults." + id)));
+        contractDefaults = Collections.unmodifiableMap(defaults);
+        if (applications == null || applications.isEmpty()) throw new IllegalArgumentException("applications: 应用配置不能为空");
         var groups = new HashSet<String>();
-        for (var app : applications)
-            if (!ids.add(app.appId()) || !groups.add(app.workerGroupId()))
-                throw new IllegalArgumentException("应用 ID 和 WorkerGroup 必须分别唯一");
-        if (poolGroups == null || !poolGroups.keySet().equals(groups))
-            throw new IllegalArgumentException("窗口参数必须完整对应应用绑定的 WorkerGroup");
+        applications.forEach((appId, app) -> {
+            AppCheckSpecification.text(appId, 128);
+            if (!groups.add(app.workerGroupId())) throw new IllegalArgumentException("applications: WorkerGroup 必须唯一");
+        });
+        // Object key order is not configuration: Catalog uses stable appId order.
+        applications = Collections.unmodifiableMap(new TreeMap<>(applications));
         poolGroups = Map.copyOf(poolGroups);
-    }
-
-    public Application requireApplication(String appId) {
-        return applications.stream().filter(app -> app.appId().equals(appId)).findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Unsupported appId"));
-    }
-
-    public List<String> workerGroupIds() { return applications.stream().map(Application::workerGroupId).toList(); }
-
-    void requireUpdateOf(AppCheckSettings previous) {
-        for (var existing : previous.applications()) {
-            var current = applications.stream().filter(app -> app.appId().equals(existing.appId())).findFirst();
-            if (current.isEmpty() || !current.get().workerGroupId().equals(existing.workerGroupId()))
-                throw new IllegalArgumentException("已有应用不可删除或换绑 WorkerGroup：" + existing.appId());
+        if (!groups.containsAll(poolGroups.keySet())) throw new IllegalArgumentException("poolGroups: 存在未绑定的 WorkerGroup");
+        for (var app : applications.values()) {
+            if ((app.execution().refill().stream().anyMatch(target -> target.poolName().equals(AppCheckWorkerSupply.POOL))
+                    || app.execution().workerSelector().executorName().equals(AppCheckWorkerSupply.FUNCTION))
+                    && !poolGroups.containsKey(app.workerGroupId()))
+                throw new IllegalArgumentException("poolGroups." + app.workerGroupId() + ": 缺少窗口参数");
         }
     }
-
+    public Application requireApplication(String appId) {
+        var app = applications.get(appId);
+        if (app == null) throw new IllegalArgumentException("Unsupported appId");
+        return app;
+    }
+    public List<String> workerGroupIds() { return applications.values().stream().map(Application::workerGroupId).toList(); }
+    public Map<String, Object> parametersFor(Application app) {
+        var selected = app.parameters() == null ? contractDefaults.get(app.contractId()) : app.parameters();
+        if (selected == null) throw new IllegalArgumentException("parameters: 缺少契约参数：" + app.contractId());
+        return selected;
+    }
+    void requireUpdateOf(AppCheckSettings previous) {
+        for (var existing : previous.applications().entrySet()) {
+            var current = applications.get(existing.getKey());
+            if (current == null || !current.workerGroupId().equals(existing.getValue().workerGroupId()))
+                throw new IllegalArgumentException("applications: 已有应用不可删除或换绑 WorkerGroup：" + existing.getKey());
+        }
+    }
     public Map<String, Object> toMap() {
         var windows = new TreeMap<String, Object>();
-        poolGroups.forEach((group, limit) -> windows.put(group,
-                Map.of("windowMillis", limit.windowMillis(), "maxCount", limit.maxCount())));
-        return Map.of("common", Map.of("simulationDefault", simulationDefault),
-                "applications", applications.stream().map(app -> Map.of("appId", app.appId(),
-                        "label", app.label(), "workerGroupId", app.workerGroupId())).toList(), "poolGroups", windows);
+        poolGroups.forEach((group, limit) -> windows.put(group, Map.of("windowMillis", limit.windowMillis(), "maxCount", limit.maxCount())));
+        var apps = new TreeMap<String, Object>();
+        applications.forEach((id, app) -> apps.put(id, app.toMap()));
+        return Map.of("common", Map.of("contractDefaults", contractDefaults), "applications", apps, "poolGroups", windows);
     }
-
-    public static AppCheckSettings parse(Object input) {
-        var object = object(input, Set.of("common", "applications", "poolGroups"));
-        var common = object(object.get("common"), Set.of("simulationDefault"));
-        if (!(object.get("applications") instanceof List<?> values)) throw new IllegalArgumentException("应用列表无效");
-        var apps = values.stream().map(value -> {
-            var app = object(value, Set.of("appId", "label", "workerGroupId"));
-            return new Application(AppCheckSpecification.text(app.get("appId"), 128),
-                    AppCheckSpecification.text(app.get("label"), 128),
-                    AppCheckSpecification.text(app.get("workerGroupId"), 128));
-        }).toList();
-        if (!(object.get("poolGroups") instanceof Map<?, ?> groups)) throw new IllegalArgumentException("Pool / Group 配置无效");
+    public static AppCheckSettings parse(Object input, AppCheckContracts contracts) {
+        var root = object(input, Set.of("common", "applications", "poolGroups"), Set.of(), "configuration");
+        var common = object(root.get("common"), Set.of("contractDefaults"), Set.of(), "common");
+        var defaults = new LinkedHashMap<String, Map<String, Object>>();
+        map(common.get("contractDefaults"), "common.contractDefaults").forEach((id, value) ->
+                defaults.put(id, normalize(contracts, id, value, "common.contractDefaults." + id)));
+        var apps = new LinkedHashMap<String, Application>();
+        for (var entry : map(root.get("applications"), "applications").entrySet()) {
+            String path = "applications." + entry.getKey();
+            try {
+                String appId = AppCheckSpecification.text(entry.getKey(), 128);
+                var app = object(entry.getValue(), Set.of("label", "workerGroupId", "execution", "contractId"), Set.of("parameters"), path);
+                String id = AppCheckSpecification.text(app.get("contractId"), 128);
+                contracts.require(id);
+                var selected = app.containsKey("parameters") ? normalize(contracts, id, app.get("parameters"), path + ".parameters") : null;
+                if (selected == null && !defaults.containsKey(id)) throw new IllegalArgumentException("parameters: 缺少参数及共同默认值");
+                apps.put(appId, new Application(AppCheckSpecification.text(app.get("label"), 128),
+                        AppCheckSpecification.text(app.get("workerGroupId"), 128), execution(app.get("execution"), path + ".execution"), id, selected));
+            } catch (IllegalArgumentException invalid) { throw at(path, invalid); }
+        }
         var limits = new LinkedHashMap<String, WindowLimit>();
-        groups.forEach((group, value) -> {
-            var limit = object(value, Set.of("windowMillis", "maxCount"));
-            limits.put(AppCheckSpecification.text(group, 128), new WindowLimit(
-                    AppCheckSpecification.integer(limit.get("windowMillis")), AppCheckSpecification.integer(limit.get("maxCount"))));
+        map(root.get("poolGroups"), "poolGroups").forEach((group, value) -> {
+            String path = "poolGroups." + group;
+            try {
+                var limit = object(value, Set.of("windowMillis", "maxCount"), Set.of(), path);
+                limits.put(group, new WindowLimit(AppCheckSpecification.integer(limit.get("windowMillis")), AppCheckSpecification.integer(limit.get("maxCount"))));
+            } catch (IllegalArgumentException invalid) { throw at(path, invalid); }
         });
-        return new AppCheckSettings(AppCheckSpecification.simulation(common.get("simulationDefault")), apps, limits);
+        return new AppCheckSettings(defaults, apps, limits);
     }
-
-    static Map<?, ?> object(Object value, Set<String> keys) {
-        if (!(value instanceof Map<?, ?> object) || !object.keySet().equals(keys))
-            throw new IllegalArgumentException("配置字段缺失或包含未知字段：" + String.join(", ", new TreeSet<>(keys)));
-        return object;
+    private static Map<String, Object> normalize(AppCheckContracts contracts, String id, Object value, String path) {
+        try { return parameters(contracts.require(id).normalizeParameters(value), path); }
+        catch (IllegalArgumentException invalid) { throw at(path, invalid); }
+    }
+    private static Execution execution(Object value, String path) {
+        var execution = object(value, Set.of("eventCode", "refill", "workerSelector"), Set.of(), path);
+        if (!(execution.get("refill") instanceof List<?> targets)) throw new IllegalArgumentException(path + ".refill: 必须是数组");
+        var refill = new ArrayList<RefillTarget>();
+        for (int i = 0; i < targets.size(); i++) {
+            var target = object(targets.get(i), Set.of("poolName", "target", "count"), Set.of(), path + ".refill[" + i + "]");
+            var query = new LinkedHashMap<String, List<String>>();
+            map(target.get("target"), path + ".refill[" + i + "].target").forEach((key, items) -> {
+                if (!(items instanceof List<?> list) || list.stream().anyMatch(item -> !(item instanceof String)))
+                    throw new IllegalArgumentException(path + ".refill.target." + key + ": 必须是字符串数组");
+                query.put(key, ((List<?>) items).stream().map(String.class::cast).toList());
+            });
+            long count = AppCheckSpecification.integer(target.get("count"));
+            if (count <= 0 || count > Integer.MAX_VALUE) throw new IllegalArgumentException(path + ".refill[" + i + "].count: 必须是正整数且不超过 2147483647");
+            refill.add(RefillTarget.of(AppCheckSpecification.text(target.get("poolName"), 128), new EligibilityQuery(query),
+                    (int) count));
+        }
+        return new Execution(AppCheckSpecification.text(execution.get("eventCode"), 256), refill, selector(execution.get("workerSelector")));
+    }
+    static WorkerQuery selector(Object value) {
+        var query = object(value, Set.of("executorName", "input"), Set.of(), "workerSelector");
+        return new WorkerQuery(AppCheckSpecification.text(query.get("executorName"), 128), query.get("input"));
+    }
+    static Map<String, Object> selectorMap(WorkerQuery selector) { return Map.of("executorName", selector.executorName(), "input", selector.input()); }
+    static Map<String, Object> object(Object value, Set<String> required, Set<String> optional, String path) {
+        var result = map(value, path);
+        for (String key : required) if (!result.containsKey(key)) throw new IllegalArgumentException(path + "." + key + ": 缺少字段");
+        for (String key : result.keySet()) if (!required.contains(key) && !optional.contains(key)) throw new IllegalArgumentException(path + "." + key + ": 未知字段");
+        return result;
+    }
+    static Map<String, Object> map(Object value, String path) {
+        if (!(value instanceof Map<?, ?> source)) throw new IllegalArgumentException(path + ": 必须是对象");
+        var copy = new LinkedHashMap<String, Object>();
+        source.forEach((key, item) -> {
+            if (!(key instanceof String text) || text.isBlank()) throw new IllegalArgumentException(path + ": 无效键");
+            copy.put(text, item);
+        });
+        return copy;
+    }
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> parameters(Object value, String path) {
+        var input = map(value, path);
+        if (Jsons.toJson(input).length() > 4096) throw new IllegalArgumentException(path + ": 超过 Task metadata 4096 字符限制");
+        return (Map<String, Object>) new WorkerQuery("app-check-parameters", input).input();
+    }
+    private static IllegalArgumentException at(String path, IllegalArgumentException cause) {
+        return new IllegalArgumentException(path + ": " + cause.getMessage(), cause);
     }
 }

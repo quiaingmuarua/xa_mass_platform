@@ -103,7 +103,7 @@ const backgroundPath = computed(() =>
     : configuring.value
       ? router.resolve({
           path: "/app-checks",
-          query: { view: "configuration", app: session.configurationApp }
+          query: { view: "configuration" }
         }).fullPath
       : "/app-checks"
 );
@@ -209,23 +209,16 @@ function openCreate() {
   dismissNotice();
   void router.push("/app-checks?view=create");
 }
-function openConfiguration(
-  appId = session.configurationApp || props.catalog.apps[0].appId
-) {
+function openConfiguration() {
   if (!canConfigure || disposed) return;
   rememberList();
   configurationFromCreate.value = creating.value;
   void router.push({
     path: "/app-checks",
-    query: { view: "configuration", app: appId }
+    query: { view: "configuration" }
   });
 }
-function selectConfigurationApp(appId: string) {
-  void router.push({
-    path: "/app-checks",
-    query: { view: "configuration", app: appId }
-  });
-}
+
 function created(id: string) {
   if (disposed) return;
   newDraft();
@@ -476,14 +469,10 @@ watch(
   { immediate: true }
 );
 watch(
-  () => [configuring.value, route.query.app],
+  () => configuring.value,
   async (_value, previous) => {
     if (!configuring.value) return;
-    session.configurationApp =
-      typeof route.query.app === "string"
-        ? route.query.app
-        : session.configurationApp || props.catalog.apps[0].appId;
-    if (previous?.[0] === true) return;
+    if (previous === true) return;
     const origin = route.fullPath;
     await nextTick();
     if (!disposed && route.fullPath === origin && !taskId.value)
@@ -540,8 +529,7 @@ onBeforeUnmount(() => {
           router.resolve({
             path: '/app-checks',
             query: {
-              view: 'configuration',
-              app: session.configurationApp || catalog.apps[0].appId
+              view: 'configuration'
             }
           }).href
         "
@@ -611,12 +599,10 @@ onBeforeUnmount(() => {
       v-if="configuring"
       ref="configurationView"
       :catalog="catalog"
-      :app-id="session.configurationApp"
       :source="source"
       :session="session.configuration"
       :read="configurationRead"
       :return-to-create="configurationFromCreate"
-      @select="selectConfigurationApp"
       @refresh="emit('refreshConfiguration')"
       @return-to-draft="router.push('/app-checks?view=create')"
     />

@@ -1,3 +1,4 @@
+import { mockSimulation } from "../src/app-checks/mock-task-source";
 import { MockUserDirectorySource } from "@/user-directory-source";
 import { HttpFiniteTaskClient } from "@/task-management/http-client";
 import { TaskApiError } from "@/task-caller";
@@ -7,10 +8,7 @@ import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseSimulation, rangeExamples } from "../src/app-checks/model";
 import { hashValue, verifyPreview } from "../src/app-checks/verify";
-import {
-  MockAppCheckTaskSource,
-  mockCatalog
-} from "../src/app-checks/mock-task-source";
+import { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
 import {
   ApiAppCheckTaskSource,
   AppCheckCreationUnconfirmed
@@ -29,8 +27,7 @@ const create = {
   name: "display",
   appId: "app-a",
   country: "CN" as const,
-  numbers: ["+8613800000001"],
-  simulation: mockCatalog.simulationExample
+  numbers: ["+8613800000001"]
 };
 
 describe("App Checks admission and independent recomputation", () => {
@@ -47,7 +44,7 @@ describe("App Checks admission and independent recomputation", () => {
     "[]",
     "{",
     "{}",
-    JSON.stringify({ ...mockCatalog.simulationExample, rate: 0.5 }),
+    JSON.stringify({ ...mockSimulation, rate: 0.5 }),
     description({ ...rangeExamples.混合, registered: [0, 501] }),
     description({ ...rangeExamples.混合, registered: [0, 499] }),
     description({ ...rangeExamples.混合, registered: [0.5, 500] }),
@@ -211,7 +208,7 @@ describe("App Checks data boundary", () => {
     await source.completeTask(CALLER, taskId);
     expect((await source.loadTask(CALLER, taskId)).results).toHaveLength(100);
     const exported = await source.exportTask(CALLER, taskId, "all");
-    expect(exported.count).toBe(997);
+    expect(exported.count).toBe(901);
     expect(
       (await source.exportTask(CALLER, taskId, "registered")).count +
         (await source.exportTask(CALLER, taskId, "unregistered")).count
@@ -227,8 +224,7 @@ describe("App Checks data boundary", () => {
     expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({
       requestId: create.requestId,
       appId: create.appId,
-      country: create.country,
-      simulation: create.simulation
+      country: create.country
     });
   });
   it("Mock catalog, creation, list and refresh are network-free, bounded and session-local", async () => {

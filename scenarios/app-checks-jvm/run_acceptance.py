@@ -20,7 +20,7 @@ PREVIEW = SCENARIO.parents[1] / "distribution/server"
 
 
 @contextmanager
-def regression_window_configuration(*, baseline=False, window_millis=None):
+def regression_window_configuration(*, baseline=False, window_millis=None, parameters_by_app=None):
     """Keep the content/closure workload finite; the Boot window proof owns low-threshold recovery."""
     if not baseline:
         previous_seed = os.environ.get("XA_MASS_APP_CHECKS_SEED")
@@ -30,6 +30,9 @@ def regression_window_configuration(*, baseline=False, window_millis=None):
                 limit["maxCount"] = 1000
                 if window_millis is not None:
                     limit["windowMillis"] = window_millis
+            for app_id, app in configuration["applications"].items():
+                if parameters_by_app and app_id in parameters_by_app:
+                    app["parameters"] = parameters_by_app[app_id]
             seed = Path(directory) / "seed.json"
             seed.write_text(json.dumps(configuration), encoding="utf-8")
             os.environ["XA_MASS_APP_CHECKS_SEED"] = seed.resolve().as_uri()
@@ -85,7 +88,7 @@ def caller_headers(user, role):
 
 
 def creation_input(case):
-    return {key: case[key] for key in ("requestId", "appId", "country", "simulation")}
+    return {key: case[key] for key in ("requestId", "appId", "country")}
 
 
 def create_import_approve(run, http, case, *, approve=True):
@@ -116,11 +119,11 @@ def task_observations(run, api, task_id):
             "state": entry["scoreBand"], "totalCount": counts["total"], "activeCount": counts["countsByTag"]["1"],
             "failedCount": counts["countsByTag"]["5"],
             "succeededCount": sum(counts["countsByTag"][str(tag)] for tag in range(6, 10)),
-            "simulation": json.loads(metadata["simulation"])}
+            "simulation": json.loads(metadata["contractParameters"])}
     return {"task": task, "results": results["results"], "resultsTruncated": results["truncated"]}
 
 
-def functional(run, http):
+def functional(run, http, cases):
     api = functools.partial(http, headers=caller_headers("1000", "admin"))
     catalog = http(run.url, "/api/v1/app-checks/catalog")
     require(catalog["projectId"] == "app-checks", "Wrong project")
@@ -138,12 +141,6 @@ def functional(run, http):
                                 if row["workerProperties"].get("application") == app}
 
         run.wait_for(facts_observed, 15, "App Worker Properties publication")
-    cases = [
-        request("registered", "app-a", 0, 6, ([0, 1000], [1000, 1000], [1000, 1000]), [0, 30]),
-        request("unregistered", "app-a", 100, 6, ([0, 0], [0, 1000], [1000, 1000]), [10, 40]),
-        request("failed", "app-b", 200, 2, ([0, 0], [0, 0], [0, 1000]), [0, 0]),
-        request("mixed", "app-b", 300, 16, ([0, 500], [500, 900], [900, 1000]), [10, 50]),
-    ]
     # Submit before observing closure: Tasks coexist within and across Groups.
     tasks = [(case, create_import_approve(run, http, case)) for case in cases]
     require(len({task for _, task in tasks}) == len(cases), "Task identities collided")
@@ -167,9 +164,10 @@ def functional(run, http):
         require(task["appId"] == case["appId"] and task["simulation"] == case["simulation"], "Stored configuration changed")
         require(not detail["resultsTruncated"], "Small result preview is incomplete")
         require({row["number"] for row in detail["results"]} == set(case["numbers"]), "Item association mismatch")
-        if case["requestId"] == "failed":
-            require(task["failedCount"] == 2, "Full-failure Task unexpectedly succeeded")
-        elif case["requestId"] != "mixed":
+        failure_range = case["simulation"]["ranges"]["failed"]
+        if failure_range == [0, 1000]:
+            require(task["failedCount"] == len(case["numbers"]), "Full-failure Task unexpectedly succeeded")
+        elif failure_range[0] == failure_range[1]:
             require(task["succeededCount"] == len(case["numbers"]), "Success-only Task did not succeed")
         recomputed = 0
         for row in detail["results"]:
@@ -203,12 +201,14 @@ def main():
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--root", type=Path, default=PREVIEW)
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--port", type=int, default=18620)
+    parser.add_argument("--port", type=int, default=18620, help="First functional fixture base port; second uses +10, each uses Adapter +3 and Host +4")
     parser.add_argument("--benchmark", action="store_true", help="Run three isolated 20-Worker/1360-number measurements")
     parser.add_argument("--baseline", action="store_true", help="Benchmark only: use the pinned pre-migration configuration")
     args = parser.parse_args()
     if args.baseline and not args.benchmark:
         parser.error("--baseline requires --benchmark")
+    if not args.benchmark and not 1 <= args.port <= 65521:
+        parser.error("--port must be in 1..65521 for the two independent functional fixture port sets")
     root = args.root.resolve()
     if args.build and root != PREVIEW.resolve():
         parser.error("--build requires the source Preview; omit it for an extracted ZIP")
@@ -224,22 +224,42 @@ def main():
                            create_import_approve, request, require)
         print(json.dumps(result, indent=2), flush=True)
         return
-    inventory = output / "private" / ("inventory-" + uuid.uuid4().hex) / "data/scenario-workers"
-    run = preview.Preview(1, args.port, root=root, output=output / "private", sandbox_root=inventory, app_count=2)
-    result = {"passed": False}
-    phase = "startup"
+    # Each startup fixture fixes execution parameters; requests never override them.
+    fixtures = [
+        [request("registered", "app-a", 0, 6, ([0, 1000], [1000, 1000], [1000, 1000]), [0, 30]),
+         request("failed", "app-b", 200, 2, ([0, 0], [0, 0], [0, 1000]), [0, 0])],
+        [request("unregistered", "app-a", 100, 6, ([0, 0], [0, 1000], [1000, 1000]), [10, 40]),
+         request("mixed", "app-b", 300, 16, ([0, 500], [500, 900], [900, 1000]), [10, 50])]
+    ]
+    # Configuration is shared per app, but independent Tasks must still coexist in each Group.
+    for cases in fixtures:
+        peers = []
+        for case in cases:
+            peer = json.loads(json.dumps(case))
+            peer["requestId"] += "-peer"
+            peer["numbers"] = ["+8613900" + number[-6:] for number in case["numbers"]]
+            peers.append(peer)
+        cases.extend(peers)
+    result = {"passed": False, "fixtures": []}
     try:
-        with regression_window_configuration(), run:
-            phase = "execution"
-            result = functional(run, preview.http)
-            result["windowThresholdOverride"] = 1000
+        for index, cases in enumerate(fixtures):
+            folder = output / ("fixture-" + str(index + 1))
+            inventory = folder / "private" / ("inventory-" + uuid.uuid4().hex) / "data/scenario-workers"
+            # A closed JVM can leave TCP connections behind. Each startup fixture owns
+            # separate ports; keep the launcher's strict occupancy check unchanged.
+            fixture_port = args.port + index * 10
+            run = preview.Preview(1, fixture_port, root=root, output=folder / "private", sandbox_root=inventory, app_count=2)
+            with regression_window_configuration(parameters_by_app={case["appId"]: case["simulation"] for case in cases}), run:
+                evidence = functional(run, preview.http, cases)
+                evidence["windowThresholdOverride"] = 1000
+                evidence["basePort"] = fixture_port
+            evidence["artifacts"] = run.artifacts
+            result["fixtures"].append(evidence)
+        result["passed"] = True
     except Exception as error:
-        # No phone numbers, opaque Result content or HTTP body in public proof artifacts.
-        result.update(passed=False, failedPhase=phase, failureType=type(error).__name__)
-        print("App checks failed at " + phase + ": " + type(error).__name__, flush=True)
+        result.update(failureType=type(error).__name__)
         raise
     finally:
-        result["artifacts"] = run.artifacts
         result["launcherSha256"] = hashlib.sha256((root / "run_preview.py").read_bytes()).hexdigest()
         output.mkdir(parents=True, exist_ok=True)
         (output / "summary.json").write_text(json.dumps(result, indent=2), encoding="utf-8")

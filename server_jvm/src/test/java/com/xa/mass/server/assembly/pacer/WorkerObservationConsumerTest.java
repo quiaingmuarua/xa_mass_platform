@@ -36,6 +36,31 @@ class WorkerObservationConsumerTest {
     final WorkerResourceCommandService commands = new WorkerResourceCommandService(properties, scheduling);
     @TempDir Path temporary;
 
+    @Test void eachGroupRoutesOnlyItsOwnConfiguredMessageEvent() throws Exception {
+        var patched = new CountDownLatch(2);
+        var routes = new WorkerPropertyProjection("worker.assigned", Map.of(
+                "a", new WorkerPropertyProjection.Projection("event-a", (current,times) -> Map.of("count",times.size())),
+                "b", new WorkerPropertyProjection.Projection("event-b", (current,times) -> Map.of("count",times.size()))));
+        for (String group : List.of("a","b")) {
+            when(properties.loadWorkerFacts(group, List.of("w"))).thenReturn(Map.of("w", new WorkerFacts("w",group,Map.of(),Map.of())));
+            when(properties.patchWorkerPlatformProperties(group,"w",Map.of("count",1))).thenAnswer(call -> {
+                patched.countDown(); return new WorkerProperties.MutationResult(WorkerProperties.MutationStatus.UNCHANGED);
+            });
+        }
+        var consumer = consumer(routes); consumer.start();
+        try {
+            consumer.accept(new WorkerObservation("a",List.of("ignored"),1,"event-b","worker.assigned"));
+            consumer.accept(new WorkerObservation("b",List.of("ignored"),1,"event-a","worker.assigned"));
+            consumer.accept(new WorkerObservation("a",List.of("w"),1,"event-a","worker.assigned"));
+            consumer.accept(new WorkerObservation("b",List.of("w"),1,"event-b","worker.assigned"));
+            await(patched);
+        } finally { consumer.stop(); }
+        verify(properties).loadWorkerFacts("a",List.of("w")); verify(properties).loadWorkerFacts("b",List.of("w"));
+        verify(properties).patchWorkerPlatformProperties("a","w",Map.of("count",1));
+        verify(properties).patchWorkerPlatformProperties("b","w",Map.of("count",1));
+        verifyNoMoreInteractions(properties);
+    }
+
     @Test void unmatchedGroupAndEventsDoNotReadFactsAndAbsentFactsAreNotCreated() throws Exception {
         var read = new CountDownLatch(1);
         when(properties.loadWorkerFacts("g", List.of("absent"))).thenAnswer(call -> { read.countDown(); return Map.of(); });
@@ -251,7 +276,7 @@ class WorkerObservationConsumerTest {
     }
     static WorkerPropertyProjection projection(String group, String event,
             BiFunction<Map<String, Object>, List<Long>, Map<String, Object>> compute) {
-        return new WorkerPropertyProjection(event, "worker.assigned", Map.of(group, compute));
+        return new WorkerPropertyProjection("worker.assigned", Map.of(group, new WorkerPropertyProjection.Projection(event, compute)));
     }
     static WorkerObservation observation(String worker, long time) {
         return new WorkerObservation("g", List.of(worker), time, "event", "worker.assigned");

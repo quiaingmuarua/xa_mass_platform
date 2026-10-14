@@ -14,12 +14,11 @@ export async function importedTask(
     importSnapshot?: ImportSnapshot;
   }
 ) {
-  const { requestId, appId, country, simulation } = input;
+  const { requestId, appId, country } = input;
   const created = await source.createTask(CALLER, {
     requestId,
     appId,
-    country,
-    simulation
+    country
   });
   await source.importNumbers(
     CALLER,

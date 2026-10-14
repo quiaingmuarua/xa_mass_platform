@@ -32,7 +32,6 @@ import TaskActions from "./TaskActions.vue";
 import ImportSummary from "./ImportSummary.vue";
 import AppCheckDiagnostics from "./AppCheckDiagnostics.vue";
 import ConfigurationRows from "./ConfigurationRows.vue";
-import SimulationSummary from "./SimulationSummary.vue";
 import { savedTaskConfiguration } from "./configuration";
 import { consoleIdentity, identityLabel } from "@/console-identity";
 import { canUseConsole, canAccessTask } from "@/access-policy";
@@ -55,7 +54,7 @@ const emit = defineEmits<{
   action: [task: CheckTask, action: TaskAction, trigger?: HTMLElement];
   demo: [action: "advance" | "complete" | "late"];
   loaded: [task: CheckTask | undefined, stale: boolean];
-  configuration: [appId: string];
+  configuration: [];
 }>();
 const detail = shallowRef<CheckDetail>();
 const configuration = computed(() =>
@@ -390,18 +389,17 @@ defineExpose({ refresh, focusHeading });
           <ConfigurationRows :section="configuration.binding" />
           <h3>执行策略</h3>
           <ConfigurationRows :section="configuration.policy" />
-          <h3>已保存模拟参数</h3>
-          <SimulationSummary
-            :value="detail.task.simulation"
-            :source="source.mode === 'mock' ? 'mock' : 'task'"
-          />
+          <h3>已保存契约参数</h3>
+          <pre class="checks-json">{{
+            JSON.stringify(detail.task.contractParameters, null, 2) ?? "未提供"
+          }}</pre>
           <p v-if="detail.task.configurationError" class="checks-error">
             {{ detail.task.configurationError }}
           </p>
           <button
             v-if="canConfigure && detail.task.appId"
             class="checks-link"
-            @click="emit('configuration', detail.task.appId)"
+            @click="emit('configuration')"
           >
             查看当前应用配置
           </button>

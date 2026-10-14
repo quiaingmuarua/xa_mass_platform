@@ -17,17 +17,22 @@ import java.util.function.BiFunction;
  * replaying the original interleaving across selections.
  */
 public record WorkerPropertyProjection(
-        String messageEventName,
         String observationEventName,
-        Map<String, BiFunction<Map<String, Object>, List<Long>, Map<String, Object>>> projectionsByGroup
+        Map<String, Projection> projectionsByGroup
 ) {
+    public record Projection(String messageEventName,
+            BiFunction<Map<String, Object>, List<Long>, Map<String, Object>> project) {
+        public Projection {
+            if (messageEventName == null || messageEventName.isBlank()) throw new IllegalArgumentException("Projection event must be present");
+            Objects.requireNonNull(project, "project");
+        }
+    }
     public WorkerPropertyProjection {
-        Objects.requireNonNull(messageEventName, "messageEventName");
         Objects.requireNonNull(observationEventName, "observationEventName");
-        var copy = new LinkedHashMap<String, BiFunction<Map<String, Object>, List<Long>, Map<String, Object>>>();
-        Objects.requireNonNull(projectionsByGroup, "projectionsByGroup").forEach((group, project) -> {
+        var copy = new LinkedHashMap<String, Projection>();
+        Objects.requireNonNull(projectionsByGroup, "projectionsByGroup").forEach((group, projection) -> {
             if (group == null || group.isBlank()) throw new IllegalArgumentException("Projection Group must be present");
-            copy.put(group, Objects.requireNonNull(project, "project"));
+            copy.put(group, Objects.requireNonNull(projection, "projection"));
         });
         projectionsByGroup = Collections.unmodifiableMap(copy);
     }

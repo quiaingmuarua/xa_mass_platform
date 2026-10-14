@@ -4,15 +4,8 @@ import { ArrowLeft, UploadFilled } from "@element-plus/icons-vue";
 import { captureTaskCaller } from "@/console-identity";
 import { canUseConsole } from "@/access-policy";
 import { consoleIdentity } from "@/console-identity";
-import {
-  appLabel,
-  countryLabel,
-  simulationSchema,
-  type Catalog,
-  type CheckTask
-} from "./model";
+import { appLabel, countryLabel, type Catalog, type CheckTask } from "./model";
 import type { ConfigurationReadState } from "./configuration";
-import SimulationSummary from "./SimulationSummary.vue";
 import {
   AppCheckCreationUnconfirmed,
   AppCheckImportUnconfirmed,
@@ -43,7 +36,7 @@ const emit = defineEmits<{
   created: [taskId: string];
   endUnconfirmed: [];
   inspect: [];
-  configuration: [appId: string];
+  configuration: [];
 }>();
 const draft = computed(() => props.session.draft);
 const identity = consoleIdentity.requireCurrent();
@@ -190,8 +183,7 @@ async function submit() {
       current.frozenCreate ??= markRaw({
         requestId: current.requestId,
         appId: current.appId,
-        country: current.country,
-        simulation: simulationSchema.parse(current.simulation)
+        country: current.country
       });
       const response = await props.source.createTask(
         current.frozenCaller,
@@ -305,8 +297,6 @@ watch(
       draft.value.appId = props.catalog.apps[0].appId;
       draft.value.country = props.catalog.countries[0];
     }
-    if (!props.targetTask && !draft.value.simulation)
-      draft.value.simulation = simulationSchema.parse(props.catalog.simulationExample);
     if (props.targetTask) {
       draft.value.appId = props.targetTask.appId!;
       draft.value.country = props.targetTask.country!;
@@ -433,7 +423,7 @@ onBeforeUnmount(() => {
           v-if="canUseConsole(identity, 'app-checks.configuration')"
           type="button"
           class="checks-link"
-          @click="emit('configuration', draft.appId)"
+          @click="emit('configuration')"
         >
           查看应用配置
         </button>
@@ -445,21 +435,14 @@ onBeforeUnmount(() => {
         }}
       </p>
       <p v-if="configurationRead?.error" class="checks-error">
-        配置快照可能已过期，已保留原读取值；已有草稿参数保持不变。
+        应用目录读取失败，已保留上次快照。
       </p>
       <p v-if="source.mode === 'api'" class="checks-hint">
         任务优先级、最大重试、有效期和供给目标：当前接口未提供。
       </p>
-      <details>
-        <summary>本次创建携带模拟参数</summary>
-        <SimulationSummary
-          :value="draft.frozenCreate?.simulation ?? draft.simulation"
-          :source="source.mode === 'mock' ? 'mock' : 'draft'"
-        />
-        <p class="checks-hint">
-          参数已在草稿中保存，刷新 Catalog 不会替换；首次提交后使用相同请求与参数核对。
-        </p>
-      </details>
+      <p class="checks-hint">
+        执行绑定及契约参数由服务端在首次创建时保存；后续导入和结果解释沿用任务保存值。
+      </p>
     </section>
     <form
       :id="targetTask ? 'app-check-import' : 'app-check-create'"
