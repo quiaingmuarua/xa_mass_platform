@@ -13,7 +13,9 @@ import { useSmsAvailability } from "@/sms/availability";
 import { useMessageAvailability } from "@/message-campaigns/availability";
 import { useAppChecks } from "@/app-checks/context";
 import { consoleIdentity } from "@/console-identity";
-const admin = computed(() => consoleIdentity.current.value.role === "admin");
+import { can, type Permission } from "@/access-policy";
+const allowed = (permission: Permission) =>
+  can(consoleIdentity.current.value, permission);
 const emit = defineEmits<{ navigate: [] }>();
 const route = useRoute();
 const sms = useSmsAvailability();
@@ -32,7 +34,7 @@ const messagesEnabled = computed(() =>
     aria-label="Main navigation"
     @click="emit('navigate')"
   >
-    <template v-if="admin">
+    <template v-if="allowed('runtime.view')">
       <span class="runtime-navigation__eyebrow">RUNTIME</span>
       <router-link class="runtime-navigation__link" to="/runtime/workers">
         <el-icon><Collection /></el-icon>
@@ -43,18 +45,26 @@ const messagesEnabled = computed(() =>
         <span>Tasks</span>
       </router-link>
     </template>
-    <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
-      >WORKBENCH</span
+    <template v-if="allowed('workbench.use')">
+      <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
+        >WORKBENCH</span
+      >
+      <router-link class="runtime-navigation__link" to="/task-workbench">
+        <el-icon><Tickets /></el-icon><span>任务工作台</span>
+      </router-link>
+    </template>
+    <template
+      v-if="
+        (allowed('sms.use') && smsEnabled) ||
+        (allowed('messages.use') && messagesEnabled) ||
+        (allowed('app-checks.tasks') && appChecksEnabled)
+      "
     >
-    <router-link class="runtime-navigation__link" to="/task-workbench">
-      <el-icon><Tickets /></el-icon><span>任务工作台</span>
-    </router-link>
-    <template v-if="(admin && smsEnabled) || messagesEnabled || appChecksEnabled">
       <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
         >SCENARIOS</span
       >
       <router-link
-        v-if="admin && smsEnabled"
+        v-if="allowed('sms.use') && smsEnabled"
         class="runtime-navigation__link"
         :class="{ 'router-link-active': route.path.startsWith('/sms') }"
         :aria-current="route.path.startsWith('/sms') ? 'page' : undefined"
@@ -63,7 +73,7 @@ const messagesEnabled = computed(() =>
         <el-icon><Message /></el-icon><span>SMS</span>
       </router-link>
       <router-link
-        v-if="messagesEnabled"
+        v-if="allowed('messages.use') && messagesEnabled"
         class="runtime-navigation__link"
         to="/messages"
         :class="{ 'router-link-active': route.path.startsWith('/messages') }"
@@ -72,7 +82,7 @@ const messagesEnabled = computed(() =>
         <el-icon><ChatDotRound /></el-icon><span>Messages</span>
       </router-link>
       <router-link
-        v-if="appChecksEnabled"
+        v-if="allowed('app-checks.tasks') && appChecksEnabled"
         class="runtime-navigation__link"
         to="/app-checks"
         :class="{ 'router-link-active': route.path.startsWith('/app-checks') }"
@@ -81,7 +91,7 @@ const messagesEnabled = computed(() =>
         <el-icon><Tickets /></el-icon><span>应用注册查询</span>
       </router-link>
     </template>
-    <template v-if="admin">
+    <template v-if="allowed('reference.view')">
       <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section">
         REFERENCE
       </span>
@@ -100,7 +110,7 @@ const messagesEnabled = computed(() =>
     </template>
   </nav>
   <div
-    v-if="admin && sms.state.value.status === 'unavailable'"
+    v-if="allowed('sms.use') && sms.state.value.status === 'unavailable'"
     class="runtime-sidebar__note"
     role="status"
   >
@@ -108,7 +118,7 @@ const messagesEnabled = computed(() =>
     <el-button size="small" @click="sms.load(true)">重试 SMS 可用性</el-button>
   </div>
   <div
-    v-if="admin && messages.state.value.status === 'unavailable'"
+    v-if="allowed('messages.use') && messages.state.value.status === 'unavailable'"
     class="runtime-sidebar__note"
     role="status"
   >
@@ -118,7 +128,7 @@ const messagesEnabled = computed(() =>
     >
   </div>
   <div
-    v-if="appChecks.state.value.status === 'unavailable'"
+    v-if="allowed('app-checks.tasks') && appChecks.state.value.status === 'unavailable'"
     class="runtime-sidebar__note"
     role="status"
   >

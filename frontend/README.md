@@ -2,50 +2,65 @@
 
 Vue 3 console for Worker and Task runtime observation, a Project-scoped task
 workbench (RPC calls and finite Tasks), Scenario pages and public Demo. It is derived from Pure Admin Thin 6.2.0.
-The shared development identity selector provides fixed users for workflow verification,
-without a login service, token or user directory. Server checks the declared
-caller and Task creator across task entrypoints; the caller is not authenticated.
+Development login uses built-in users without a password, account service or real
+session authentication. Server continues to check the declared caller and Task
+creator across task entrypoints with the existing HTTP contract.
 
-## Development identities
+## Development login and access
 
-The top bar selects `1000` (管理员, admin), `1001` (用户 A, operator), or
-`1002` (用户 B, operator). Definitions live once in the console. Only the selected
-user ID is remembered in `sessionStorage`; missing or invalid selection uses admin.
-Identity does not select API/Mock mode and does not depend on Runtime availability.
-Runtime configuration errors stay in the content area; the identity selector and
-Scenario navigation remain available.
+`/` lists built-in users and enters the console only after an explicit selection.
+[User data](src/development-users.ts) contains `1000` (管理员), `1001` (用户 A) and
+`1002` (用户 B). Adding a user requires another declaration, without page changes.
+[Role policy](src/access-policy.ts) owns labels, permissions, Task scope and the
+home route for `admin` and `operator`. Pages do not interpret role strings or
+special-case user IDs.
 
-Admin retains every page and operation. Operators use Project Task observation,
-Task workbench, Messages and App Checks for their own Tasks. Configuration, global
-Runtime Task preview and SMS operations require admin. Unsupported SPA routes return
-to `/app-checks`; the server independently checks every protected operation.
-Switching identity closes previous views without submitting work. Clients can declare
-admin themselves: this is a trusted development convention, not authentication.
+Admin can use all enabled console features and reads Tasks across users. Operator
+can create and manage its own App Checks Tasks, including import, approval, closure
+and export. Messages, SMS, Runtime, Task workbench, Reference, configuration and
+Mock demonstration controls remain admin-only. Route metadata, navigation and
+operation controls consume the same permission policy; Catalog availability is a
+separate prerequisite. The App Checks configuration view declares its permission
+alongside the route, without a path-regex allowlist.
 
-Server supplies `metadata.userId` from the declared caller; role and display name
-are not Task identity or scheduling inputs. External creation cannot set another
-owner through metadata. Operator list requests select their own Project-directory
-range before limiting. The batch is not the latest N Tasks or a user history.
-Admin can use an explicit owner filter. Known Task point reads, counts, input,
-results, approval, closure and export share the same Server authorization policy.
+[Login state](src/console-identity.ts) starts anonymous. Only a selected user ID is
+stored in the current tab's `sessionStorage` under `xa-mass.console-user`; its role
+and label are resolved from user data on reload. Missing, invalid or removed users
+return to login. The old `xa-mass.development-user` selector value is not migrated
+and never grants a login. Storage failure still permits an in-memory login.
+Anonymous deep links lead to login and return to the permitted internal target;
+otherwise admin lands on `/runtime/workers` and operator on `/app-checks`.
+The existing Server root mapping serves login on direct visits and reloads; no
+new backend page mapping or `/login` compatibility route is added.
 
-Each identity owns its in-memory App Checks creation/import drafts, filters,
-scroll position and recovery records. The data source and Mock Task collection
-are shared. Switching identities invalidates old reads/focus and never rewrites
-an in-flight operation's user, role, request ID or input. Late creation retains its
-known Task in the original draft without starting another import. A known or
-uncertain mutation remains available for explicit reconciliation by that identity.
-Numbers and Task drafts still disappear on reload; persisted Task attribution does not.
+The top bar displays the current user, role and logout. Logout removes the login
+and unmounts the entire user console, releasing observations, Pinia state, filters
+and local input. New login instances are distinct even for the same user ID.
+Issued writes retain their original caller and may finish on the server; late
+responses cannot update another login or initiate chained import/write requests.
+Logout does not retry uncertain submissions. Reload and logout discard local
+input; persisted Tasks are found through the shared Task API.
 
-Task and Scenario data-source methods take an explicit immutable caller
-snapshot. API requests encode its userId as UTF-8 Base64URL in `X-XA-Dev-User` and
-send `X-XA-Dev-Role`; create JSON contains no userId or role. Catalog remains a
-shared caller-free availability read. A frozen draft retains both caller and create
-payload, including during explicit reconciliation. 403 is a definite rejection,
-never an unconfirmed mutation or a reason to fall back to Mock. Foreign detail
-snapshots are cleared; ordinary read failures retain the stale snapshot. Mock
-checks the same ownership and admin-only configuration/demo operations at its
-method boundary, even when called without the UI.
+Mock business sources live for the application, independently from the console's
+login lifetime. Logout keeps created Mock Tasks available to the next authorized
+user, while clearing page state. Mock operations use the shared permission and
+ownership helpers; API and Mock return their admitted Task window. Pages apply
+business display filters without another role-based ownership filter.
+
+Task and Scenario methods take an explicit immutable caller snapshot. The existing
+client encodes its userId as UTF-8 Base64URL in `X-XA-Dev-User` and sends
+`X-XA-Dev-Role`; list query `userId` remains a target-owner filter. API payloads,
+responses and backend authorization are unchanged. Catalogs remain caller-free
+availability reads. Unauthenticated UI cannot issue protected operations; sources
+bound to a login never silently switch to a later global caller.
+
+Server supplies `metadata.userId` from the caller. Operator lists select the
+caller's range before limiting and reject an explicit other owner; admin may
+filter by user. Known Task reads, counts, input, results, approval, closure and
+export continue using the shared Server policy. A 403 is a definite rejection,
+never an unconfirmed mutation or a reason to substitute Mock. Frontend login and
+visibility do not authenticate the HTTP headers; replacing development identity
+with real session verification is separate backend work.
 
 ## Requirements and local run
 
@@ -158,7 +173,7 @@ projection counters rather than scanning all business orders.
 
 ## Messages business pages
 
-`/messages` is the desktop Task workbench: one loaded list, one operation menu per
+`/messages` is the admin-only desktop Task workbench: one loaded list, one operation menu per
 row and a 760px result preview drawer. `/messages?view=create` is a single creation
 page. `/messages/tasks/:taskId` opens the same drawer over the list; adding
 `?view=create` opens it over the retained draft. Opening/closing previews does not
@@ -207,6 +222,10 @@ validation and whole-input rejection on errors. The Catalog limits remain
 100,000 unique recipients / 10 MiB per import. No CSV or number-detail table is
 added. Independent import reuses the same editor. Only the latest confirmed import
 receipt/source summary is retained in the console session, never persisted.
+
+The draft captures the logged-in caller on opening. Requests retain that caller
+through submission and reconciliation. Logout clears the local console and stops
+chained imports; it neither cancels an already-issued server write nor replays it.
 
 Request identity, application, generated name and wire payload freeze at first
 submission. A definitive creation rejection before any known Task unlocks the
@@ -292,7 +311,7 @@ without it, the session selection or first Catalog application is used. An unkno
 application remains visibly invalid until the user selects an available one.
 Opening configuration directly does not load Tasks. Switching tabs keeps the Task
 table mounted, preserving filters and scrolling without another list request.
-Drafts and the selected application survive navigation within that identity's console session.
+Drafts and the selected application survive navigation within the current login.
 
 The Task workspace uses a list, one action menu per row and a 760px
 result-preview drawer. `/app-checks/tasks/:taskId` opens that drawer over the
@@ -598,17 +617,17 @@ Export state is independent of finite-task mutations; Mock never exports.
 
 ## Task workbench
 
-`/task-workbench` has RPC and finite-task tabs, defaulting to `tab=rpc`. Valid callers can
-read every Project in the immutable startup directory, including Scenario
+`/task-workbench` is admin-only and has RPC and finite-task tabs, defaulting to
+`tab=rpc`. It reads every Project in the immutable startup directory, including Scenario
 Projects. A single Project is a read-only label; multiple Projects use a selector.
 The `project` query selects the context. Without it, the console restores the last
 valid session choice or uses the first directory entry; no Project means no writes.
 An explicit unknown Project stays unavailable until the user chooses another.
-Operator operations are constrained to owned Tasks. Raw Item append is enabled only
-for `server.inputOwner=raw`; business Tasks keep their Scenario import conversion.
+Raw Item append is enabled only for `server.inputOwner=raw`; business Tasks keep
+their Scenario import conversion.
 Approval and closure use the shared Task client, including for Scenario Tasks.
 
-RPC uses `project=...&tab=rpc&group=...` and the current top-bar development identity.
+RPC uses `project=...&tab=rpc&group=...` and the logged-in user.
 The caller display is read-only; a `user` URL parameter cannot select a creator.
 `rpc-workbench-v1.<project>.<user>.<group>` uses separately encoded UTF-8 Base64URL
 segments without padding. Server stamps the creator; the preparation payload excludes
@@ -636,7 +655,7 @@ wait and the existing 1..60000ms range. Per-Task history keeps the latest 20
 browser-session records. Execution failure, not-observed results, request
 rejection and uncertain requests are separate observations. Uncertain and
 not-observed calls may manually load the original message ID; neither is
-automatically resubmitted. Caller/Group switching retains separate Task drafts and histories,
+automatically resubmitted. Group switching retains separate Task drafts and histories within a login,
 and late responses update only their original call or preparation. Mock includes
 read-only caller examples and disables preparation and calls.
 

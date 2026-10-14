@@ -7,8 +7,8 @@ import type { AppCheckTaskSource } from "./task-source";
 import { quantity, timestamp, type CheckDraft } from "./workbench";
 import TaskStatus from "./TaskStatus.vue";
 import { consoleIdentity } from "@/console-identity";
-import { canUseTask } from "./workbench";
-const identity = consoleIdentity.current.value;
+import { canAccessTask } from "@/access-policy";
+const identity = consoleIdentity.requireCurrent();
 
 const props = defineProps<{
   draft: CheckDraft;
@@ -47,7 +47,8 @@ async function readTask() {
   try {
     const detail = await props.source.loadTask(identity, id);
     if (token !== generation || consoleIdentity.current.value !== identity) return;
-    if (!canUseTask(detail.task, identity)) throw new Error("当前身份无法查看此任务。");
+    if (!canAccessTask(identity, detail.task))
+      throw new Error("当前身份无法查看此任务。");
     observed.value = detail.task;
     readAt.value = Date.now();
   } catch (failure) {

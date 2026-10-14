@@ -1,3 +1,4 @@
+import { consoleIdentity } from "@/console-identity";
 import { CALLER } from "./app-check-fixture";
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -34,6 +35,7 @@ let context: ReturnType<typeof createAppCheckContext>;
 let source: MockAppCheckTaskSource;
 const fetcher = vi.fn();
 beforeEach(() => {
+  consoleIdentity.login("1000");
   vi.useFakeTimers();
   vi.stubGlobal("crypto", webcrypto);
   vi.stubGlobal("fetch", fetcher.mockReset());
@@ -43,6 +45,7 @@ beforeEach(() => {
 afterEach(() => {
   app?.unmount();
   app = undefined;
+  consoleIdentity.logout();
   context?.dispose();
   document.body.replaceChildren();
   expect(fetcher).not.toHaveBeenCalled();

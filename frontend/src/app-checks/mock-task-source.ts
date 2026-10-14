@@ -1,13 +1,14 @@
 import {
   TaskApiError,
-  requireAdminCaller,
+  requireCallerPermission,
+  selectTaskUser,
   requireCaller,
   requireTaskCaller,
   type TaskCaller
 } from "@/task-caller";
 import type { AppCheckTaskSource } from "./task-source";
-import { developmentIdentities } from "@/console-identity";
-import { normalizeTaskUserId, taskUserScore, compareTaskIds } from "@/task-user-id";
+import { developmentUsers } from "@/development-users";
+import { taskUserScore, compareTaskIds } from "@/task-user-id";
 import type { TaskPolicySnapshot } from "./configuration";
 
 import {
@@ -60,7 +61,7 @@ const epoch = Date.UTC(2026, 9, 8, 2);
 function task(taskId: string, changes: Partial<CheckTask> = {}): CheckTask {
   return {
     taskId,
-    userId: developmentIdentities[0]!.userId,
+    userId: developmentUsers[0]!.userId,
     name: taskId,
     createdAtMillis: epoch,
     workerGroupId: "app-a-sim",
@@ -265,7 +266,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     for (const record of this.records.values()) {
       if (record.task.appId && !record.task.managed)
         record.task.userId =
-          developmentIdentities[ownerIndex++ % developmentIdentities.length]!.userId;
+          developmentUsers[ownerIndex++ % developmentUsers.length]!.userId;
       if (record.task.state === "terminal")
         this.states.set(record.task.taskId, { endReason: "completed" });
     }
@@ -298,7 +299,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     });
   }
   async loadConfiguration(caller: TaskCaller) {
-    requireAdminCaller(caller);
+    requireCallerPermission(caller, "app-checks.configuration");
     return structuredClone({
       saved: this.savedConfiguration,
       effective: this.effectiveConfiguration,
@@ -319,7 +320,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     expectedRevision: number,
     configuration: AppCheckSettings
   ) {
-    requireAdminCaller(caller);
+    requireCallerPermission(caller, "app-checks.configuration");
     if (expectedRevision !== this.savedConfiguration.revision)
       throw new TaskApiError(409, "配置修订已变化，请重新读取后核对");
     const validated = settingsSchema.parse(configuration);
@@ -335,15 +336,12 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     return this.loadConfiguration(caller);
   }
   async simulateConfigurationRestart(caller: TaskCaller) {
-    requireAdminCaller(caller);
+    requireCallerPermission(caller, "app-checks.configuration");
     this.effectiveConfiguration = structuredClone(this.savedConfiguration);
   }
   async listTasks(caller: TaskCaller, userId?: string) {
     caller = requireCaller(caller);
-    const selected = userId === undefined ? undefined : normalizeTaskUserId(userId);
-    if (caller.role !== "admin" && selected !== undefined && selected !== caller.userId)
-      throw new TaskApiError(403, "当前开发身份不能查询其他用户的任务");
-    const owner = caller.role === "operator" ? caller.userId : selected;
+    const owner = selectTaskUser(caller, userId);
     const tasks = [...this.records.values()]
       .map((r) => r.task)
       .filter((task) => owner === undefined || task.userId === owner)
@@ -567,7 +565,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     record.task.salt = undefined;
   }
   async advanceTask(caller: TaskCaller, id: string, late = false) {
-    requireAdminCaller(caller);
+    requireCallerPermission(caller, "demo.control");
     const record = this.require(id),
       state = this.states.get(id);
     if (late) {
@@ -589,7 +587,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     }
   }
   async completeTask(caller: TaskCaller, id: string) {
-    requireAdminCaller(caller);
+    requireCallerPermission(caller, "demo.control");
     const record = this.running(id);
     this.appendResults(id, record.task.totalCount ?? 0);
     record.task.state = "terminal";

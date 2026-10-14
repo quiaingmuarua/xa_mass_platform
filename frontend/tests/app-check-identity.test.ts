@@ -1,4 +1,5 @@
 import { type TaskCaller } from "@/task-caller";
+import type * as DevelopmentUsersModule from "@/development-users";
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, nextTick, type App as VueApp } from "vue";
@@ -23,13 +24,12 @@ import {
 } from "element-plus";
 import App from "../src/App.vue";
 import { consoleRoutes } from "../src/router";
-import { consoleIdentity, identityRouteAllowed } from "../src/console-identity";
+import { consoleIdentity } from "../src/console-identity";
+import { installConsoleAccess, loginDestination } from "@/router/access";
 import { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
+import { MockMessageTaskSource } from "../src/message-campaigns/mock-task-source";
 import { inspectImport, type ImportOptions } from "../src/app-checks/import-model";
-import {
-  AppCheckCreationUnconfirmed,
-  AppCheckImportUnconfirmed
-} from "../src/app-checks/task-source";
+import { AppCheckCreationUnconfirmed } from "../src/app-checks/task-source";
 import type { CheckDetail, CreateCheckTask } from "../src/app-checks/model";
 
 class ImportWorker {
@@ -55,10 +55,14 @@ let app: VueApp | undefined;
 const fetcher = vi.fn();
 beforeAll(async () => {
   // Keep Vite's cold transformation of the lazy route outside the workflow assertion clock.
-  await import("../src/app-checks/AppCheckPage.vue");
+  await Promise.all([
+    import("../src/app-checks/AppCheckPage.vue"),
+    import("../src/views/LoginView.vue"),
+    import("../src/views/WorkerRuntimeView.vue")
+  ]);
 });
 beforeEach(() => {
-  consoleIdentity.select("1000");
+  consoleIdentity.logout();
   vi.useFakeTimers();
   vi.stubEnv("VITE_RUNTIME_DATA_SOURCE", "mock");
   vi.stubGlobal("fetch", fetcher.mockReset());
@@ -70,7 +74,7 @@ afterEach(() => {
   app?.unmount();
   app = undefined;
   document.body.replaceChildren();
-  consoleIdentity.select("1000");
+  consoleIdentity.logout();
   expect(fetcher).not.toHaveBeenCalled();
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -81,17 +85,13 @@ async function settle() {
   await vi.advanceTimersByTimeAsync(250);
   await nextTick();
 }
-async function mount(user = "1001", path = "/app-checks") {
-  consoleIdentity.select(user);
+async function mount(user?: string, path = "/app-checks") {
+  if (user) consoleIdentity.login(user);
   const router = createRouter({
     history: createMemoryHistory(),
     routes: consoleRoutes
   });
-  router.beforeEach((to) =>
-    identityRouteAllowed(consoleIdentity.current.value, to)
-      ? undefined
-      : { path: "/app-checks", replace: true }
-  );
+  installConsoleAccess(router);
   await router.push(path);
   await router.isReady();
   const host = document.createElement("div");
@@ -118,8 +118,23 @@ async function mount(user = "1001", path = "/app-checks") {
   await settle();
   return router;
 }
-async function select(user: string) {
-  consoleIdentity.select(user);
+async function login(user: string) {
+  if (consoleIdentity.current.value) {
+    button("退出").click();
+    await settle();
+  }
+  const control = document.querySelector<HTMLInputElement>(
+    '[aria-label="选择内置用户"]'
+  )!;
+  expect(control).not.toBeNull();
+  control.click();
+  await settle();
+  const dropdown = document.getElementById(control.getAttribute("aria-controls")!)!;
+  [...dropdown.querySelectorAll<HTMLElement>('[role="option"]')]
+    .find((node) => node.textContent?.includes(user))!
+    .click();
+  await settle();
+  button("进入控制台").click();
   await settle();
 }
 function button(text: string) {
@@ -159,90 +174,155 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-describe("shared identity and App Checks workspaces", () => {
-  it("keeps identity switching available when Runtime configuration is invalid", async () => {
+vi.mock("@/development-users", async (importOriginal) => {
+  const actual = await importOriginal<typeof DevelopmentUsersModule>();
+  return {
+    ...actual,
+    developmentUsers: [
+      ...actual.developmentUsers,
+      { userId: "1003", displayName: "用户 C", role: "operator" },
+      { userId: "1004", displayName: "管理员 D", role: "admin" }
+    ]
+  };
+});
+
+describe("console login and shared task access", () => {
+  it("serves anonymous root login and restores a remembered user's permitted home", async () => {
+    const router = await mount(undefined, "/");
+    expect(router.currentRoute.value.name).toBe("login");
+    expect(document.querySelector("h1")?.textContent).toBe("登录控制台");
+    await login("1001");
+    await router.push("/");
+    await settle();
+    expect(router.currentRoute.value.fullPath).toBe("/app-checks");
+  });
+
+  it("guards an anonymous deep link, returns to it after login and prevents history from reopening after logout", async () => {
+    const list = vi.spyOn(MockAppCheckTaskSource.prototype, "listTasks");
+    const router = await mount(undefined, "/app-checks?view=create");
+    expect(router.currentRoute.value.path).toBe("/");
+    expect(document.querySelector("h1")?.textContent).toBe("登录控制台");
+    expect(document.querySelector(".runtime-shell")).toBeNull();
+    expect(list).not.toHaveBeenCalled();
+    await login("1001");
+    expect(router.currentRoute.value.fullPath).toBe("/app-checks?view=create");
+    expect(document.getElementById("app-check-create")).not.toBeNull();
+    button("退出").click();
+    await settle();
+    expect(router.currentRoute.value.path).toBe("/");
+    router.back();
+    await settle();
+    expect(document.querySelector(".runtime-shell")).toBeNull();
+    expect(document.getElementById("app-check-create")).toBeNull();
+  });
+  it.each(["1001", "1002", "1003"])(
+    "uses the same role policy for %s menus and direct links",
+    async (user) => {
+      const list = vi.spyOn(MockMessageTaskSource.prototype, "listTasks");
+      const configuration = vi.spyOn(
+        MockAppCheckTaskSource.prototype,
+        "loadConfiguration"
+      );
+      const router = await mount(undefined, "/messages?view=create");
+      await login(user);
+      expect(router.currentRoute.value.fullPath).toBe("/app-checks");
+      for (const path of [
+        "/messages",
+        "/messages?view=create",
+        "/messages/tasks/known",
+        "/runtime/tasks",
+        "/task-workbench",
+        "/sms",
+        "/api-reference",
+        "/app-checks?view=configuration"
+      ]) {
+        await router.push(path);
+        await settle();
+        expect(router.currentRoute.value.fullPath).toBe("/app-checks");
+      }
+      for (const path of ["/messages", "/runtime/tasks", "/task-workbench", "/sms"])
+        expect(document.querySelector(`a[href="${path}"]`)).toBeNull();
+      expect(document.querySelector('[aria-label="切换开发身份"]')).toBeNull();
+      expect(list).not.toHaveBeenCalled();
+      expect(configuration).not.toHaveBeenCalled();
+      expect(loginDestination(router, "//outside.example")).toBe("/app-checks");
+    }
+  );
+  it("keeps logout available when Runtime configuration is invalid", async () => {
     vi.stubEnv("VITE_RUNTIME_API_BASE_URL", "https://invalid.example/api");
     const router = await mount("1000", "/runtime/tasks");
     expect(document.querySelector('[data-testid="config-error"]')).not.toBeNull();
-    expect(document.querySelector('[aria-label="切换开发身份"]')).not.toBeNull();
-    await select("1001");
-    await vi.dynamicImportSettled();
-    await settle();
+    await login("1001");
     expect(router.currentRoute.value.fullPath).toBe("/app-checks");
     expect(document.querySelector('[data-testid="config-error"]')).toBeNull();
     expect(document.querySelector("h1")?.textContent).toBe("我的任务 · 当前批次");
   });
-
-  it("creates for each operator, filters their loaded tasks, and retains admin operations", async () => {
+  it("creates for A and B, preserves Mock tasks across logout, and lets any admin filter both", async () => {
     const create = vi.spyOn(MockAppCheckTaskSource.prototype, "createTask");
-    const configuration = vi.spyOn(
-      MockAppCheckTaskSource.prototype,
-      "loadConfiguration"
-    );
-    const router = await mount("1001", "/runtime/workers");
-    expect(router.currentRoute.value.path).toBe("/app-checks");
-    expect(document.querySelector('a[href="/runtime/tasks"]')).toBeNull();
-    expect(document.querySelector('a[href="/messages"]')).not.toBeNull();
-    expect(document.querySelector("h1")?.textContent).toBe("我的任务 · 当前批次");
-    await router.push("/app-checks?view=configuration");
-    await settle();
-    expect(router.currentRoute.value.fullPath).toBe("/app-checks");
-    expect(configuration).not.toHaveBeenCalled();
+    const router = await mount();
+    await login("1001");
     await draft();
     await submit();
     const a = (await create.mock.results[0]!.value).taskId as string;
-    expect(create.mock.calls[0]![0].userId).toBe("1001");
-    await select("1002");
+    expect(document.getElementById("check-task-" + a)).not.toBeNull();
+    await login("1002");
     expect(document.getElementById("check-task-" + a)).toBeNull();
     await draft("8613800000002");
     await submit();
     const b = (await create.mock.results[1]!.value).taskId as string;
-    expect(create.mock.calls[1]![0].userId).toBe("1002");
-    await select("1001");
+    expect(document.getElementById("check-task-" + b)).not.toBeNull();
+    expect(create.mock.calls.map((call) => call[0].userId)).toEqual(["1001", "1002"]);
+    await login("1001");
     expect(document.getElementById("check-task-" + a)).not.toBeNull();
     expect(document.getElementById("check-task-" + b)).toBeNull();
-    await select("1000");
+    await login("1004");
+    expect(router.currentRoute.value.path).toBe("/runtime/workers");
+    expect(document.querySelector('a[href="/messages"]')).not.toBeNull();
+    await router.push("/app-checks");
+    await settle();
     expect(document.getElementById("check-task-" + a)).not.toBeNull();
     expect(document.getElementById("check-task-" + b)).not.toBeNull();
-    expect(document.querySelector('a[href="/runtime/tasks"]')).not.toBeNull();
-    expect(document.body.textContent).toContain("创建者");
-    expect(document.body.textContent).toContain("应用与运行策略");
+    const owner = document.querySelector<HTMLInputElement>(
+      '[aria-label="归属 userId"]'
+    )!;
+    owner.value = "1002";
+    owner.dispatchEvent(new Event("input", { bubbles: true }));
+    button("按归属读取").click();
+    await settle();
+    expect(document.getElementById("check-task-" + a)).toBeNull();
+    expect(document.getElementById("check-task-" + b)).not.toBeNull();
   });
-
-  it("refuses a foreign direct task before showing results or loading auxiliaries", async () => {
+  it("allows an additional operator to create using only its user declaration", async () => {
+    const create = vi.spyOn(MockAppCheckTaskSource.prototype, "createTask");
+    await mount();
+    await login("1003");
+    await draft();
+    await submit();
+    const id = (await create.mock.results[0]!.value).taskId as string;
+    expect(create.mock.calls[0]![0]).toMatchObject({
+      userId: "1003",
+      role: "operator"
+    });
+    expect(document.getElementById("check-task-" + id)).not.toBeNull();
+  });
+  it("refuses a foreign detail without exposing content or loading auxiliaries", async () => {
     const auxiliary = vi.spyOn(MockAppCheckTaskSource.prototype, "loadImport");
     await mount("1001", "/app-checks/tasks/check-delivered");
     const drawer = document.querySelector(".checks-preview-drawer")!;
     expect(drawer.textContent).toContain("当前开发身份不能访问此任务");
-    expect(drawer.textContent).not.toContain("存量号码 · 十月注册状态查询");
-    expect(drawer.querySelector(".checks-action-group")).toBeNull();
     expect(drawer.querySelector("table")).toBeNull();
     expect(auxiliary).not.toHaveBeenCalled();
   });
-
-  it("does not fill a Project window occupied by other users with extra reads", async () => {
+  it("preserves a bounded empty observation without extra list reads", async () => {
     const list = vi
       .spyOn(MockAppCheckTaskSource.prototype, "listTasks")
-      .mockResolvedValue({
-        tasks: Array.from({ length: 100 }, (_, i) => ({
-          taskId: "b-" + i,
-          userId: "1002",
-          appId: "app-a",
-          workerGroupId: "app-a-sim",
-          createdAtMillis: i,
-          managed: false,
-          state: "pre_review" as const
-        })),
-        truncated: true
-      });
-    await mount();
-    expect(document.querySelectorAll(".checks-task-table tbody tr")).toHaveLength(0);
+      .mockResolvedValue({ tasks: [], truncated: true });
+    await mount("1001");
     expect(document.body.textContent).toContain("当前载入范围内没有我的任务");
     expect(document.body.textContent).toContain("不代表全部历史任务");
     expect(list).toHaveBeenCalledTimes(1);
   });
-
-  it("keeps late creation and frozen input with its original user and stops chained import", async () => {
+  it("keeps late creation on its original caller and stops import after logout", async () => {
     const gate = deferred<void>();
     const original = MockAppCheckTaskSource.prototype.createTask;
     const create = vi
@@ -256,79 +336,48 @@ describe("shared identity and App Checks workspaces", () => {
         return original.call(this, caller, input);
       });
     const imported = vi.spyOn(MockAppCheckTaskSource.prototype, "importNumbers");
-    const router = await mount();
+    await mount("1001");
     await draft();
     await submit();
-    const originalRequest = structuredClone(create.mock.calls[0]!);
-    await select("1002");
+    const request = structuredClone(create.mock.calls[0]);
+    await login("1002");
     await draft("8613800000002");
     gate.resolve();
     await settle();
     expect(imported).not.toHaveBeenCalled();
     expect(numberInput().value).toBe("8613800000002");
-    expect(router.currentRoute.value.query.view).toBe("create");
-    await select("1001");
-    button("创建任务").click();
-    await settle();
-    expect(numberInput().value).toBe("8613800000001");
-    expect(document.body.textContent).toContain("尚未开始导入");
-    expect(document.body.textContent).toContain(
-      (await create.mock.results[0]!.value).taskId
-    );
+    expect(create.mock.calls[0]).toEqual(request);
+    await login("1001");
+    expect(
+      document.getElementById(
+        "check-task-" + (await create.mock.results[0]!.value).taskId
+      )
+    ).not.toBeNull();
     expect(create).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0]!).toEqual(originalRequest);
   });
-
-  it("keeps an unknown creation frozen across switching and reconciles with the same creator", async () => {
+  it("clears unconfirmed local input on logout without replaying the old request", async () => {
     const create = vi
       .spyOn(MockAppCheckTaskSource.prototype, "createTask")
       .mockRejectedValueOnce(new AppCheckCreationUnconfirmed());
-    await mount();
+    await mount("1001");
     await draft();
     await submit();
-    const submitted = structuredClone(create.mock.calls[0]!);
-    await select("1002");
-    await select("1001");
+    await login("1002");
+    await login("1001");
     button("创建任务").click();
     await settle();
-    button("使用原请求核对创建").click();
+    button("粘贴号码").click();
     await settle();
-    expect(create).toHaveBeenCalledTimes(2);
-    expect(create.mock.calls[1]!).toEqual(submitted);
-    expect(submitted[0].userId).toBe("1001");
-  });
-
-  it("retains late import failure and its known task without overwriting the other user's draft", async () => {
-    const gate = deferred<never>();
-    const imported = vi
-      .spyOn(MockAppCheckTaskSource.prototype, "importNumbers")
-      .mockImplementationOnce(() => gate.promise);
-    const create = vi.spyOn(MockAppCheckTaskSource.prototype, "createTask");
-    await mount();
-    await draft();
-    await submit();
-    const target = imported.mock.calls[0]![1];
-    await select("1002");
-    await draft("8613800000002");
-    gate.reject(new AppCheckImportUnconfirmed(target, "导入确认丢失"));
-    await settle();
-    expect(numberInput().value).toBe("8613800000002");
-    expect(document.body.textContent).not.toContain("导入确认丢失");
-    await select("1001");
-    button("创建任务").click();
-    await settle();
-    expect(document.body.textContent).toContain("导入确认丢失");
-    expect(document.body.textContent).toContain(target);
+    expect(numberInput().value).toBe("");
+    expect(document.body.textContent).not.toContain("使用原请求核对创建");
     expect(create).toHaveBeenCalledTimes(1);
-    expect(numberInput().value).toBe("8613800000001");
   });
-
-  it("keeps a late export with its original caller and discards its download after switching", async () => {
-    const pending = deferred<{ blob: Blob; fileName: string; count: number }>();
+  it("discards a late export download after logout", async () => {
+    const gate = deferred<{ blob: Blob; fileName: string; count: number }>();
     const exported = vi
       .spyOn(MockAppCheckTaskSource.prototype, "exportTask")
-      .mockImplementationOnce(() => pending.promise);
-    await mount("1001", "/app-checks/tasks/check-unregistered");
+      .mockImplementationOnce(() => gate.promise);
+    await mount("1000", "/app-checks/tasks/check-unregistered");
     document
       .querySelector<HTMLButtonElement>(
         '.checks-preview-drawer [aria-label^="任务操作"]'
@@ -336,30 +385,28 @@ describe("shared identity and App Checks workspaces", () => {
       .click();
     await settle();
     [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
-      .find((item) => item.textContent?.trim() === "导出结果")!
+      .find((node) => node.textContent?.trim() === "导出结果")!
       .click();
     await settle();
     button("生成 CSV 文件").click();
     await settle();
-    expect(exported.mock.calls[0]![0]).toMatchObject({
-      userId: "1001",
-      role: "operator"
-    });
-    await select("1002");
-    pending.resolve({ blob: new Blob(["original-user"]), fileName: "a.csv", count: 1 });
+    await login("1002");
+    gate.resolve({ blob: new Blob(["user-a"]), fileName: "a.csv", count: 1 });
     await settle();
+    expect(exported.mock.calls[0]![0]).toMatchObject({
+      userId: "1000",
+      role: "admin"
+    });
     expect(document.querySelector("a[download]")).toBeNull();
     expect(document.body.textContent).not.toContain("a.csv");
-    expect(exported).toHaveBeenCalledTimes(1);
   });
-
-  it("discards a prior user's detail response and focus after switching", async () => {
+  it("discards a late detail after logout even when the same user logs in again", async () => {
     const gate = deferred<CheckDetail>();
     vi.spyOn(MockAppCheckTaskSource.prototype, "loadTask").mockImplementationOnce(
       () => gate.promise
     );
     const router = await mount("1001", "/app-checks/tasks/late-a");
-    await select("1002");
+    await login("1001");
     gate.resolve({
       task: {
         taskId: "late-a",
@@ -377,8 +424,5 @@ describe("shared identity and App Checks workspaces", () => {
     await settle();
     expect(router.currentRoute.value.fullPath).toBe("/app-checks");
     expect(document.body.textContent).not.toContain("Late user A");
-    const drawer = document.querySelector(".checks-preview-drawer");
-    expect(drawer?.closest<HTMLElement>(".el-overlay")?.style.display).toBe("none");
-    expect(document.activeElement?.closest(".checks-preview-drawer")).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
-import { captureTaskCaller } from "@/task-caller";
-const CALLER = captureTaskCaller();
+import { consoleIdentity } from "@/console-identity";
+import { ADMIN as CALLER } from "./identity-fixture";
 import { createApp, nextTick } from "vue";
 import { createPinia } from "pinia";
 import { createMemoryHistory, createRouter } from "vue-router";
@@ -37,6 +37,7 @@ vi.mock("@/components/RawTaskInput.vue", () => ({
   }
 }));
 it("late drawer and submission continuations cannot replace the current context", async () => {
+  consoleIdentity.login("1000");
   const row = {
     taskId: "known",
     createdAtMillis: 1,
@@ -111,13 +112,13 @@ it("late drawer and submission continuations cannot replace the current context"
     runtimeViewerStoreKey,
     createRuntimeViewerStore(
       config,
-      createRuntimeViewerDataSource({ ...config, mode: "mock" })
+      createRuntimeViewerDataSource({ ...config, mode: "mock" }, CALLER)
     )
   );
   app.provide(
     taskSessionKey,
     createTaskSession(
-      createProjectSource("/api", "api"),
+      createProjectSource("/api", "api", CALLER),
       { prepareTask: vi.fn() },
       "api"
     )

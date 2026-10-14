@@ -1,40 +1,51 @@
 import { computed, shallowRef } from "vue";
-import type { RouteLocationNormalized } from "vue-router";
+import { isRole } from "./access-policy";
+import { developmentUsers, type ConsoleUser } from "./development-users";
 
-export interface ConsoleIdentity {
-  readonly userId: string;
-  readonly displayName: string;
-  readonly role: "admin" | "operator";
-}
+export const identityStorageKey = "xa-mass.console-user";
+type IdentityStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-export const developmentIdentities: readonly ConsoleIdentity[] = Object.freeze([
-  Object.freeze({ userId: "1000", displayName: "管理员", role: "admin" as const }),
-  Object.freeze({ userId: "1001", displayName: "用户 A", role: "operator" as const }),
-  Object.freeze({ userId: "1002", displayName: "用户 B", role: "operator" as const })
-]);
-export const identityStorageKey = "xa-mass.development-user";
-
-export function createConsoleIdentity(storage?: Pick<Storage, "getItem" | "setItem">) {
-  let initial = developmentIdentities[0]!;
+export function createConsoleIdentity(
+  storage?: IdentityStorage,
+  users = developmentUsers
+) {
+  const selected = shallowRef<ConsoleUser | null>(null);
+  const generation = shallowRef(0);
+  const find = (id: string | null) =>
+    users.find((user) => user.userId === id && isRole(user.role));
   try {
-    initial =
-      developmentIdentities.find(
-        (entry) => entry.userId === storage?.getItem(identityStorageKey)
-      ) ?? initial;
+    const user = find(storage?.getItem(identityStorageKey) ?? null);
+    if (user) selected.value = Object.freeze({ ...user });
+    else storage?.removeItem(identityStorageKey);
   } catch {
-    /* Identity selection still works when browser storage is unavailable. */
+    /* The login remains usable without browser storage. */
   }
-  const selected = shallowRef(initial);
   return {
+    users,
     current: computed(() => selected.value),
-    select(userId: string) {
-      const next = developmentIdentities.find((entry) => entry.userId === userId);
-      if (!next || next === selected.value) return;
-      selected.value = next;
+    generation: computed(() => generation.value),
+    requireCurrent(): ConsoleUser {
+      if (!selected.value) throw new Error("请先登录控制台");
+      return selected.value;
+    },
+    login(userId: string) {
+      const user = find(userId);
+      if (!user) throw new Error("请选择有效的内置用户");
+      selected.value = Object.freeze({ ...user });
+      generation.value++;
       try {
-        storage?.setItem(identityStorageKey, next.userId);
+        storage?.setItem(identityStorageKey, user.userId);
       } catch {
-        /* Session-only selection. */
+        /* In-memory login still works. */
+      }
+    },
+    logout() {
+      selected.value = null;
+      generation.value++;
+      try {
+        storage?.removeItem(identityStorageKey);
+      } catch {
+        /* In-memory logout still takes effect. */
       }
     }
   };
@@ -48,25 +59,11 @@ function browserStorage() {
   }
 }
 
-// UI development context only: it is neither authentication nor an API credential.
 export const consoleIdentity = createConsoleIdentity(browserStorage());
 export function identityLabel(userId?: string) {
   return (
-    developmentIdentities.find((entry) => entry.userId === userId)?.displayName ??
+    consoleIdentity.users.find((user) => user.userId === userId)?.displayName ??
     userId ??
     "未提供"
-  );
-}
-export function identityRouteAllowed(
-  identity: ConsoleIdentity,
-  route: Pick<RouteLocationNormalized, "path" | "query">
-) {
-  return (
-    identity.role === "admin" ||
-    route.path === "/task-workbench" ||
-    route.path === "/runtime/tasks" ||
-    /^\/messages(?:\/tasks\/[^/]+)?\/?$/.test(route.path) ||
-    (/^\/app-checks(?:\/tasks\/[^/]+)?\/?$/.test(route.path) &&
-      (route.query.view === undefined || route.query.view === "create"))
   );
 }

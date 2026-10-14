@@ -1,3 +1,4 @@
+import { ADMIN } from "./identity-fixture";
 import taskWireFixture from "./fixtures/server-task-view.json";
 import { taskViewSchema } from "@/runtime-viewer/schemas";
 import { afterEach, expect, it, vi } from "vitest";
@@ -61,7 +62,7 @@ it("reads startup Projects and complete backend-shaped TaskViews with null proje
       )
     );
   vi.stubGlobal("fetch", fetcher);
-  const source = createProjectSource("/api", "api");
+  const source = createProjectSource("/api", "api", ADMIN);
   expect(await source.list()).toHaveLength(1);
   fetcher.mockResolvedValueOnce(
     new Response(JSON.stringify({ t: { total: 2, countsByTag: { "1": 2 } } }))
@@ -76,7 +77,7 @@ it("reads startup Projects and complete backend-shaped TaskViews with null proje
 it("Mock has a consistent directory and no service requests", async () => {
   const fetcher = vi.fn();
   vi.stubGlobal("fetch", fetcher);
-  const source = createProjectSource("/api", "mock");
+  const source = createProjectSource("/api", "mock", ADMIN);
   const projects = await source.list();
   for (const project of projects) {
     const result = await source.tasks(project.projectId);

@@ -1,3 +1,4 @@
+import { ADMIN, OPERATOR_A } from "./identity-fixture";
 import { AxiosError, type AxiosInstance } from "axios";
 import { describe, expect, it, vi } from "vitest";
 
@@ -14,28 +15,39 @@ import {
 
 describe("RuntimeViewerDataSource selection", () => {
   it("uses HTTP in API mode and never installs a Mock fallback", () => {
-    const source = createRuntimeViewerDataSource({
-      mode: "api",
-      apiBaseUrl: "/api"
-    });
+    const source = createRuntimeViewerDataSource(
+      {
+        mode: "api",
+        apiBaseUrl: "/api"
+      },
+      ADMIN
+    );
 
     expect(source).toBeInstanceOf(HttpRuntimeViewerDataSource);
     expect(source).not.toBeInstanceOf(MockRuntimeViewerDataSource);
   });
 
   it("uses fixed Mock data only in explicit Mock mode", () => {
-    const source = createRuntimeViewerDataSource({
-      mode: "mock",
-      apiBaseUrl: "/api"
-    });
+    const source = createRuntimeViewerDataSource(
+      {
+        mode: "mock",
+        apiBaseUrl: "/api"
+      },
+      ADMIN
+    );
 
     expect(source).toBeInstanceOf(MockRuntimeViewerDataSource);
   });
 });
 
 describe("MockRuntimeViewerDataSource", () => {
+  it("rejects a global Task preview for an operator using the shared policy", async () => {
+    await expect(
+      new MockRuntimeViewerDataSource(OPERATOR_A).previewTasks(100)
+    ).rejects.toMatchObject({ status: 403 });
+  });
   it("returns a deterministic Task Preview with all four score bands", async () => {
-    const source = new MockRuntimeViewerDataSource();
+    const source = new MockRuntimeViewerDataSource(ADMIN);
 
     await expect(source.previewTasks(100)).resolves.toMatchObject({
       sampleLimit: 100,
@@ -49,7 +61,7 @@ describe("MockRuntimeViewerDataSource", () => {
   });
 
   it("mirrors the Runtime View business-not-found response class", async () => {
-    const source = new MockRuntimeViewerDataSource();
+    const source = new MockRuntimeViewerDataSource(ADMIN);
 
     await expect(source.previewWorkers("missing-group", 100)).rejects.toMatchObject({
       kind: "http",
@@ -64,7 +76,7 @@ describe("HttpRuntimeViewerDataSource", () => {
     const post = vi.fn().mockResolvedValue({
       data: taskPreview([taskPreviewEntry("group-a")])
     });
-    const source = new HttpRuntimeViewerDataSource("/api", {
+    const source = new HttpRuntimeViewerDataSource("/api", ADMIN, {
       post
     } as unknown as AxiosInstance);
 
@@ -81,7 +93,7 @@ describe("HttpRuntimeViewerDataSource", () => {
     const post = vi.fn().mockResolvedValue({
       data: preview("group/a", [worker("group/a", "worker-a")])
     });
-    const source = new HttpRuntimeViewerDataSource("/api", {
+    const source = new HttpRuntimeViewerDataSource("/api", ADMIN, {
       post
     } as unknown as AxiosInstance);
 
@@ -101,7 +113,7 @@ describe("HttpRuntimeViewerDataSource", () => {
     const post = vi.fn().mockResolvedValue({
       data: groupPreview(["group-b", "group-a"])
     });
-    const source = new HttpRuntimeViewerDataSource("/api", {
+    const source = new HttpRuntimeViewerDataSource("/api", ADMIN, {
       post
     } as unknown as AxiosInstance);
 
@@ -122,7 +134,7 @@ describe("HttpRuntimeViewerDataSource", () => {
         total: 42
       }
     });
-    const source = new HttpRuntimeViewerDataSource("/api", {
+    const source = new HttpRuntimeViewerDataSource("/api", ADMIN, {
       post
     } as unknown as AxiosInstance);
 
@@ -146,7 +158,7 @@ describe("HttpRuntimeViewerDataSource", () => {
       }
     });
     const post = vi.fn().mockRejectedValue(error);
-    const source = new HttpRuntimeViewerDataSource("/api", {
+    const source = new HttpRuntimeViewerDataSource("/api", ADMIN, {
       post
     } as unknown as AxiosInstance);
 
@@ -169,7 +181,7 @@ describe("HttpRuntimeViewerDataSource", () => {
     const post = vi.fn().mockResolvedValue({
       data: taskPreview([entry])
     });
-    const source = new HttpRuntimeViewerDataSource("/api", {
+    const source = new HttpRuntimeViewerDataSource("/api", ADMIN, {
       post
     } as unknown as AxiosInstance);
 
@@ -186,7 +198,7 @@ describe("HttpRuntimeViewerDataSource", () => {
         score: 42
       }
     });
-    const source = new HttpRuntimeViewerDataSource("/api", {
+    const source = new HttpRuntimeViewerDataSource("/api", ADMIN, {
       post
     } as unknown as AxiosInstance);
 

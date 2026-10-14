@@ -1,3 +1,6 @@
+import { consoleIdentity } from "@/console-identity";
+import { beforeEach } from "vitest";
+beforeEach(() => consoleIdentity.login("1000"));
 import { createApp, nextTick } from "vue";
 import { createPinia, setActivePinia } from "pinia";
 import { ElAlert, ElButton, ElInput, ElOption, ElSelect } from "element-plus";

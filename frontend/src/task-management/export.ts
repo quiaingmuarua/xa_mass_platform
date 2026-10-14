@@ -1,5 +1,5 @@
 import { captureTaskCaller } from "@/task-caller";
-import { ref } from "vue";
+import { ref, onScopeDispose } from "vue";
 import type { ProjectTask } from "./projects";
 import type { FiniteTaskClient } from "./types";
 import { presentFiniteTaskError } from "./errors";
@@ -10,8 +10,12 @@ export function createTaskExport(
 ) {
   const busy = ref(false);
   const error = ref("");
+  let disposed = false;
+  onScopeDispose(() => {
+    disposed = true;
+  }, true);
   async function download(task: ProjectTask, fresh: boolean) {
-    if (busy.value) return;
+    if (disposed || busy.value) return;
     error.value = "";
     if (
       mode !== "api" ||
@@ -28,6 +32,7 @@ export function createTaskExport(
     busy.value = true;
     try {
       const result = await client.exportResults(captureTaskCaller(), task.taskId);
+      if (disposed) return;
       if (!result.ready) throw new Error("结果尚未就绪，请刷新后重试。");
       const url = URL.createObjectURL(result.blob);
       const anchor = document.createElement("a");

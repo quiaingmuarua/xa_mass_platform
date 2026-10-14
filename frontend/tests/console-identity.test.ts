@@ -1,67 +1,97 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   createConsoleIdentity,
-  identityRouteAllowed,
+  consoleIdentity,
   identityStorageKey
-} from "../src/console-identity";
+} from "@/console-identity";
+import { can, canAccessTask, roles } from "@/access-policy";
+import { developmentUsers } from "@/development-users";
+import { captureTaskCaller, callerHeaders, selectTaskUser } from "@/task-caller";
+import { ADMIN, OPERATOR_A } from "./identity-fixture";
 
-describe("development identity context", () => {
-  it("restores only a known user ID and gets its role from the fixed definitions", () => {
-    const values = new Map<string, string>();
-    const storage = {
-      getItem: (key: string) => values.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        values.set(key, value);
-      }
-    };
-    const first = createConsoleIdentity(storage);
-    expect(first.current.value.role).toBe("admin");
-    first.select("1001");
-    expect([...values.entries()]).toEqual([[identityStorageKey, "1001"]]);
-    expect(createConsoleIdentity(storage).current.value).toMatchObject({
-      userId: "1001",
-      role: "operator"
-    });
-    values.set(identityStorageKey, '{"userId":"1001","role":"admin"}');
-    expect(createConsoleIdentity(storage).current.value.userId).toBe("1000");
+afterEach(() => consoleIdentity.logout());
+function memoryStorage() {
+  const values = new Map<string, string>();
+  return {
+    values,
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+    removeItem: (key: string) => {
+      values.delete(key);
+    }
+  };
+}
+describe("console login and role policy", () => {
+  it("starts signed out and never treats an old development selection as login", () => {
+    const storage = memoryStorage();
+    storage.setItem("xa-mass.development-user", "1000");
+    const identity = createConsoleIdentity(storage);
+    expect(identity.current.value).toBeNull();
+    expect(() => identity.requireCurrent()).toThrow("请先登录");
+    expect(() => captureTaskCaller()).toThrow("请先登录");
   });
-  it("keeps working without browser storage and limits operator SPA routes", () => {
+  it("persists only a known user ID, resolves its role from data and clears invalid users", () => {
+    const storage = memoryStorage();
+    const identity = createConsoleIdentity(storage);
+    identity.login("1001");
+    expect([...storage.values.entries()]).toEqual([[identityStorageKey, "1001"]]);
+    expect(createConsoleIdentity(storage).current.value).toMatchObject(OPERATOR_A);
+    identity.logout();
+    expect(createConsoleIdentity(storage).current.value).toBeNull();
+    for (const invalid of ["removed", '{"userId":"1001","role":"admin"}']) {
+      storage.setItem(identityStorageKey, invalid);
+      expect(createConsoleIdentity(storage).current.value).toBeNull();
+      expect(storage.getItem(identityStorageKey)).toBeNull();
+    }
+    expect(() => identity.login("removed")).toThrow("有效");
+  });
+  it("supports login/logout without storage and distinguishes consecutive logins as the same user", () => {
     const identity = createConsoleIdentity({
       getItem() {
-        throw new Error("blocked");
+        throw new Error();
       },
       setItem() {
-        throw new Error("blocked");
+        throw new Error();
+      },
+      removeItem() {
+        throw new Error();
       }
     });
-    identity.select("1002");
-    expect(identity.current.value.userId).toBe("1002");
-    for (const path of ["/runtime/workers", "/sms", "/api-reference"])
-      expect(identityRouteAllowed(identity.current.value, { path, query: {} })).toBe(
-        false
-      );
-    expect(
-      identityRouteAllowed(identity.current.value, {
-        path: "/app-checks",
-        query: { view: "configuration" }
-      })
-    ).toBe(false);
-    expect(
-      identityRouteAllowed(identity.current.value, {
-        path: "/app-checks/tasks/known",
-        query: { view: "create" }
-      })
-    ).toBe(true);
-    for (const path of ["/runtime/tasks", "/messages", "/task-workbench"])
-      expect(identityRouteAllowed(identity.current.value, { path, query: {} })).toBe(
-        true
-      );
-    identity.select("1000");
-    expect(
-      identityRouteAllowed(identity.current.value, {
-        path: "/app-checks",
-        query: { view: "configuration" }
-      })
-    ).toBe(true);
+    identity.login("1000");
+    const first = identity.current.value;
+    identity.logout();
+    expect(identity.current.value).toBeNull();
+    identity.login("1000");
+    expect(identity.current.value).toEqual(first);
+    expect(identity.current.value).not.toBe(first);
+  });
+  it("accepts additional users through data with the same role permissions", () => {
+    const identity = createConsoleIdentity(undefined, [
+      ...developmentUsers,
+      { userId: "1003", displayName: "用户 C", role: "operator" },
+      { userId: "1004", displayName: "管理员 D", role: "admin" }
+    ]);
+    identity.login("1003");
+    expect(can(identity.requireCurrent(), "app-checks.tasks")).toBe(true);
+    expect(can(identity.requireCurrent(), "messages.use")).toBe(false);
+    expect(canAccessTask(identity.requireCurrent(), { userId: "1003" })).toBe(true);
+    expect(canAccessTask(identity.requireCurrent(), { userId: "1001" })).toBe(false);
+    identity.login("1004");
+    expect(can(identity.requireCurrent(), "messages.use")).toBe(true);
+    expect(canAccessTask(identity.requireCurrent(), { userId: "1003" })).toBe(true);
+    expect(roles[identity.requireCurrent().role].home).toBe("/runtime/workers");
+  });
+  it("keeps explicit caller headers and shared Mock ownership selection", () => {
+    expect(callerHeaders(OPERATOR_A)).toEqual({
+      "X-XA-Dev-User": "MTAwMQ",
+      "X-XA-Dev-Role": "operator"
+    });
+    expect(selectTaskUser(OPERATOR_A)).toBe("1001");
+    expect(selectTaskUser(OPERATOR_A, "1001")).toBe("1001");
+    expect(() => selectTaskUser(OPERATOR_A, "1002")).toThrow();
+    expect(selectTaskUser(ADMIN)).toBeUndefined();
+    expect(selectTaskUser(ADMIN, "1002")).toBe("1002");
   });
 });

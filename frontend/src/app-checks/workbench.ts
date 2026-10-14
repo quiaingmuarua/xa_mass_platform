@@ -1,7 +1,7 @@
 import { type TaskCaller } from "@/task-caller";
 import { reactive } from "vue";
 
-import { consoleIdentity, type ConsoleIdentity } from "@/console-identity";
+import { consoleIdentity } from "@/console-identity";
 import type {
   Catalog,
   CheckTask,
@@ -79,10 +79,9 @@ export function freshDraft(catalog?: Catalog): CheckDraft {
     error: ""
   };
 }
-export function canUseTask(task: CheckTask, identity: ConsoleIdentity) {
-  return identity.role === "admin" || task.userId === identity.userId;
-}
-export function createWorkbenchSession(userId = consoleIdentity.current.value.userId) {
+export function createWorkbenchSession(
+  userId = consoleIdentity.requireCurrent().userId
+) {
   const unconfirmedSubmissions: UnconfirmedSubmission[] = [];
   return reactive({
     userId,

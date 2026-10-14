@@ -50,6 +50,7 @@ export function createTaskManagementStore(
   client: FiniteTaskClient
 ) {
   return defineStore("taskManagement", () => {
+    let disposed = false;
     const busy = ref(false);
     const projects = reactive<
       Record<
@@ -73,6 +74,7 @@ export function createTaskManagementStore(
       return state.drafts[key]!;
     }
     function admit() {
+      if (disposed) throw new Error("当前用户已退出");
       if (mode !== "api") throw new Error("Mock 不执行原始任务写操作。");
       if (busy.value) throw new Error("操作进行中，请等待本次请求结束。");
     }
@@ -97,6 +99,7 @@ export function createTaskManagementStore(
       receipt: ImportReceipt
     ) {
       for (const batch of chunkTaskItems(items)) {
+        if (disposed) return;
         receipt.notSubmitted -= batch.length;
         receipt.unconfirmed += batch.length;
         const response = await client.appendItems(receipt.caller, taskId, batch);
@@ -116,7 +119,7 @@ export function createTaskManagementStore(
       receipt.complete = true;
     }
     async function submit(request: {
-      caller?: TaskCaller;
+      caller: TaskCaller;
       projectId: string;
       create?: TaskCreateApiRequest;
       existing?: ProjectTask;
@@ -147,7 +150,7 @@ export function createTaskManagementStore(
       busy.value = true;
       state.submissionKey = request.existing?.taskId ?? "create";
       state.submission = {
-        caller: requireCaller(request.caller ?? captureTaskCaller()),
+        caller: requireCaller(request.caller),
         taskId: request.existing?.taskId,
         fileName: request.fileName,
         total: request.total,
@@ -164,7 +167,8 @@ export function createTaskManagementStore(
             await client.createTask(receipt.caller, request.create)
           ).taskId;
         if (!receipt.taskId) throw new Error("创建结果未确认，请人工核对任务列表。");
-        await appendBatches(receipt.taskId, request.items(receipt.taskId), receipt);
+        if (!disposed)
+          await appendBatches(receipt.taskId, request.items(receipt.taskId), receipt);
       } catch (failure) {
         state.error = presentFiniteTaskError(failure);
         receipt.taskId ??= state.error.taskId;
@@ -231,7 +235,10 @@ export function createTaskManagementStore(
       submit,
       ensureDirectory,
       mutate,
-      finishSubmission
+      finishSubmission,
+      dispose() {
+        disposed = true;
+      }
     };
   })();
 }

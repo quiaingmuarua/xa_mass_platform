@@ -1,10 +1,15 @@
 import { consoleIdentity } from "@/console-identity";
 import { normalizeTaskUserId } from "@/task-user-id";
+import {
+  can,
+  canAccessTask,
+  isRole,
+  taskScope,
+  type Permission,
+  type AccessSubject
+} from "@/access-policy";
 
-export interface TaskCaller {
-  readonly userId: string;
-  readonly role: "admin" | "operator";
-}
+export type TaskCaller = AccessSubject;
 
 export class TaskApiError extends Error {
   constructor(
@@ -17,11 +22,7 @@ export class TaskApiError extends Error {
 }
 
 export function requireCaller(caller: TaskCaller): TaskCaller {
-  if (
-    !caller ||
-    typeof caller.userId !== "string" ||
-    !["admin", "operator"].includes(caller.role)
-  )
+  if (!caller || typeof caller.userId !== "string" || !isRole(caller.role))
     throw new TaskApiError(400, "开发调用方无效");
   try {
     return Object.freeze({
@@ -34,7 +35,7 @@ export function requireCaller(caller: TaskCaller): TaskCaller {
 }
 
 export function captureTaskCaller(): TaskCaller {
-  return requireCaller(consoleIdentity.current.value);
+  return requireCaller(consoleIdentity.requireCurrent());
 }
 
 export function callerHeaders(caller: TaskCaller): Record<string, string> {
@@ -46,13 +47,26 @@ export function callerHeaders(caller: TaskCaller): Record<string, string> {
   return { "X-XA-Dev-User": encoded, "X-XA-Dev-Role": value.role };
 }
 
-export function requireAdminCaller(caller: TaskCaller) {
-  if (requireCaller(caller).role !== "admin")
-    throw new TaskApiError(403, "当前操作仅对管理员开发身份开放");
+export function requireCallerPermission(caller: TaskCaller, permission: Permission) {
+  if (!can(requireCaller(caller), permission))
+    throw new TaskApiError(403, "当前用户没有此操作权限");
 }
 
 export function requireTaskCaller(caller: TaskCaller, task: { userId?: string }) {
   const value = requireCaller(caller);
-  if (value.role !== "admin" && value.userId !== task.userId)
+  if (!canAccessTask(value, task))
     throw new TaskApiError(403, "当前开发身份不能访问此任务");
+}
+
+export function selectTaskUser(
+  caller: TaskCaller,
+  requested?: string
+): string | undefined {
+  const actor = requireCaller(caller);
+  const selected = requested === undefined ? undefined : normalizeTaskUserId(requested);
+  if (taskScope(actor) === "own") {
+    if (selected !== undefined) requireTaskCaller(actor, { userId: selected });
+    return actor.userId;
+  }
+  return selected;
 }

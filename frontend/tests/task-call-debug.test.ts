@@ -1,5 +1,6 @@
-import { captureTaskCaller, callerHeaders } from "@/task-caller";
-const CALLER = captureTaskCaller();
+import { consoleIdentity } from "@/console-identity";
+import { callerHeaders } from "@/task-caller";
+import { ADMIN as CALLER } from "./identity-fixture";
 import { AxiosError, type AxiosInstance, type AxiosResponse } from "axios";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -298,6 +299,7 @@ describe("HttpTaskCallDebugClient", () => {
 
 describe("Task Call Debug browser-memory store", () => {
   beforeEach(() => {
+    consoleIdentity.login("1000");
     setActivePinia(createPinia());
   });
 
@@ -400,6 +402,7 @@ describe("Task Call Debug browser-memory store", () => {
     expect(failedFromCall.state).toBe("failed");
     expect(failedFromCall.safeError).toBeUndefined();
 
+    consoleIdentity.login("1000");
     setActivePinia(createPinia());
     const loadFailed: TaskCallDebugClient = {
       callTask: vi.fn().mockResolvedValue({ status: "not_observed" }),
@@ -474,12 +477,14 @@ describe("Task Call Debug browser-memory store", () => {
     );
     expect(apiStore.history("task-1")).toEqual([]);
 
+    consoleIdentity.login("1000");
     setActivePinia(createPinia());
     const mockStore = createTaskCallDebugStore(client, "mock");
     await expect(mockStore.send(draft())).rejects.toThrow("Mock");
     expect(mockStore.history("task-1")).toEqual([]);
     expect(client.callTask).not.toHaveBeenCalled();
 
+    consoleIdentity.login("1000");
     setActivePinia(createPinia());
     const refreshed = createTaskCallDebugStore(client, "api");
     expect(refreshed.history("task-1")).toEqual([]);

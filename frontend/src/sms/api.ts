@@ -1,4 +1,4 @@
-import { captureTaskCaller, callerHeaders } from "@/task-caller";
+import { type TaskCaller, callerHeaders } from "@/task-caller";
 import { z } from "zod";
 
 export interface Reception {
@@ -71,7 +71,7 @@ export class SmsApiError extends Error {
 }
 export async function loadCatalog(signal?: AbortSignal): Promise<Catalog> {
   return catalogSchema.parse(
-    await api<unknown>("/api/v1/sms/catalog", undefined, signal)
+    await readResponse(await fetch("/api/v1/sms/catalog", { signal }))
   );
 }
 export const statusLabels: Record<Reception["status"], string> = {
@@ -90,6 +90,7 @@ export function waitingMessage(item: Reception) {
   return "租期内持续接收短信，收到后显示最新一条。";
 }
 export async function api<T>(
+  caller: TaskCaller,
   path: string,
   body?: unknown,
   signal?: AbortSignal
@@ -97,12 +98,15 @@ export async function api<T>(
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
     headers: {
-      ...callerHeaders(captureTaskCaller()),
+      ...callerHeaders(caller),
       "Content-Type": "application/json"
     },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal
   });
+  return readResponse(response) as Promise<T>;
+}
+async function readResponse(response: Response): Promise<unknown> {
   if (!response.ok) {
     const error: unknown = await response.json().catch(() => null);
     const message =
@@ -114,5 +118,5 @@ export async function api<T>(
         : "请求失败 (" + response.status + ")";
     throw new SmsApiError(response.status, message);
   }
-  return response.json() as Promise<T>;
+  return response.json();
 }

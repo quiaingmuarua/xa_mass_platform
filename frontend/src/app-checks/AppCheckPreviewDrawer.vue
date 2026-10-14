@@ -35,9 +35,11 @@ import ConfigurationRows from "./ConfigurationRows.vue";
 import SimulationSummary from "./SimulationSummary.vue";
 import { savedTaskConfiguration } from "./configuration";
 import { consoleIdentity, identityLabel } from "@/console-identity";
-import { canUseTask } from "./workbench";
-const identity = consoleIdentity.current.value;
-const admin = identity.role === "admin";
+import { can, canAccessTask } from "@/access-policy";
+const identity = consoleIdentity.requireCurrent();
+const canConfigure = can(identity, "app-checks.configuration");
+const canDiagnose = can(identity, "app-checks.diagnostics");
+const canDemonstrate = can(identity, "demo.control");
 const props = defineProps<{
   source: AppCheckTaskSource;
   taskId?: string;
@@ -143,7 +145,7 @@ async function refresh() {
   try {
     const value = await props.source.loadTask(identity, id);
     if (disposed || token !== generation || id !== props.taskId) return;
-    if (!canUseTask(value.task, identity)) {
+    if (!canAccessTask(identity, value.task)) {
       detail.value = undefined;
       throw new Error("当前身份无法查看此任务，请返回自己的任务列表。");
     }
@@ -397,7 +399,7 @@ defineExpose({ refresh, focusHeading });
             {{ detail.task.configurationError }}
           </p>
           <button
-            v-if="admin && detail.task.appId"
+            v-if="canConfigure && detail.task.appId"
             class="checks-link"
             @click="emit('configuration', detail.task.appId)"
           >
@@ -463,8 +465,11 @@ defineExpose({ refresh, focusHeading });
             </ol>
           </template>
         </details>
-        <AppCheckDiagnostics v-if="admin" :detail="detail" :busy="busy">
-          <div v-if="source.mode === 'mock'" class="checks-demo-tools">
+        <AppCheckDiagnostics v-if="canDiagnose" :detail="detail" :busy="busy">
+          <div
+            v-if="canDemonstrate && source.mode === 'mock'"
+            class="checks-demo-tools"
+          >
             <strong>演示控制</strong>
             <div class="checks-actions">
               <el-button

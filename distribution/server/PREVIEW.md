@@ -34,9 +34,9 @@ Open the Console at `http://127.0.0.1:18500` and the device Host at
 [page mappings](../../server_boot_jvm/README.md#pages-and-configuration);
 the [Frontend Owner](../../frontend/README.md) describes page operations.
 
-The Console starts with the fixed admin development identity. Its top-bar selector
-also offers two operators for App Checks workflow verification; see
-[development identities](../../frontend/README.md#development-identities).
+The Console starts at development login, with one built-in admin and two operators
+for App Checks workflow verification. Its top bar displays the current user and
+logout; see [development login](../../frontend/README.md#development-login-and-access).
 Direct App Checks task/configuration requests declare their caller through the
 [scenario headers](../../scenarios/app-checks-jvm/README.md#api-和-task-数据).
 Catalog readiness remains caller-free. These identities do not authenticate users.

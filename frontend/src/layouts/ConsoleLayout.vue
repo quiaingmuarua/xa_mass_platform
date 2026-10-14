@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, provide, ref, watch } from "vue";
+import { computed, onMounted, onBeforeUnmount, provide, ref, watch, inject } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { consoleIdentity, developmentIdentities } from "@/console-identity";
+import { consoleIdentity } from "@/console-identity";
+import { can, roles } from "@/access-policy";
+import { consoleMockKey } from "@/console-mock";
 import { Connection, Menu, Moon, Sunny, View } from "@element-plus/icons-vue";
 import ConsoleNavigation from "./ConsoleNavigation.vue";
 import ConfigErrorView from "@/views/ConfigErrorView.vue";
@@ -14,17 +16,17 @@ import {
 } from "@/message-campaigns/availability";
 import { useThemeStore } from "@/stores/theme";
 import { messageTaskSourceKey } from "@/message-campaigns/task-source";
-import { MockMessageTaskSource } from "@/message-campaigns/mock-task-source";
 import { ApiMessageTaskSource } from "@/message-campaigns/api-task-source";
 import { createMessageSession, messageSessionKey } from "@/message-campaigns/workbench";
 import { appCheckContextKey, createAppCheckContext } from "@/app-checks/context";
 import { ApiAppCheckTaskSource } from "@/app-checks/task-source";
-import { MockAppCheckTaskSource } from "@/app-checks/mock-task-source";
 
 defineProps<{ runtimeError?: RuntimeViewerConfigError }>();
 const demo = import.meta.env.VITE_RUNTIME_DATA_SOURCE === "mock";
+const identity = consoleIdentity.requireCurrent();
+const mock = inject(consoleMockKey, undefined);
 const appChecks = createAppCheckContext(
-  demo ? new MockAppCheckTaskSource() : new ApiAppCheckTaskSource()
+  demo ? mock!.appChecks : new ApiAppCheckTaskSource()
 );
 provide(appCheckContextKey, appChecks);
 const sms = createSmsAvailability(demo);
@@ -34,7 +36,7 @@ provide(messageAvailabilityKey, messages);
 provide(
   messageTaskSourceKey,
   demo
-    ? new MockMessageTaskSource()
+    ? mock!.messages
     : new ApiMessageTaskSource(() =>
         messages.state.value.status === "enabled"
           ? messages.state.value.catalog
@@ -44,11 +46,9 @@ provide(
 provide(messageSessionKey, createMessageSession());
 const mobileNavigation = ref(false);
 onMounted(() => {
-  if (identity.value.role === "admin") {
-    void sms.load();
-  }
-  void messages.load();
-  void appChecks.load();
+  if (can(identity, "sms.use")) void sms.load();
+  if (can(identity, "messages.use")) void messages.load();
+  if (can(identity, "app-checks.tasks")) void appChecks.load();
 });
 onBeforeUnmount(() => {
   sms.dispose();
@@ -58,18 +58,10 @@ onBeforeUnmount(() => {
 const theme = useThemeStore();
 const route = useRoute();
 const router = useRouter();
-const identity = consoleIdentity.current;
-watch(
-  identity,
-  (next) => {
-    void router.replace("/app-checks");
-    if (next.role === "admin") {
-      void sms.load();
-      void messages.load();
-    }
-  },
-  { flush: "sync" }
-);
+function logout() {
+  consoleIdentity.logout();
+  void router.replace({ name: "login" });
+}
 watch(
   () => route.fullPath,
   () => {
@@ -151,20 +143,11 @@ onMounted(() => theme.apply());
           <el-breadcrumb-item>{{ pageTitle }}</el-breadcrumb-item>
         </el-breadcrumb>
         <div class="runtime-topbar__actions">
-          <span class="source-badge">开发身份 · {{ identity.role }}</span>
-          <el-select
-            :model-value="identity.userId"
-            aria-label="切换开发身份"
-            class="console-identity-selector"
-            @change="consoleIdentity.select(String($event))"
+          <span class="console-current-user" data-testid="current-user"
+            >{{ identity.displayName }} · {{ identity.userId }}</span
           >
-            <el-option
-              v-for="entry in developmentIdentities"
-              :key="entry.userId"
-              :value="entry.userId"
-              :label="`${entry.displayName} · ${entry.userId}`"
-            />
-          </el-select>
+          <span class="source-badge">{{ roles[identity.role].label }}</span>
+          <el-button @click="logout">退出</el-button>
           <span
             class="source-badge"
             :class="{
@@ -199,9 +182,8 @@ onMounted(() => theme.apply());
 </template>
 
 <style>
-.el-select.console-identity-selector {
-  flex: 0 0 190px;
-  width: 190px;
+.console-current-user {
+  white-space: nowrap;
 }
 .runtime-topbar__actions .source-badge {
   flex-shrink: 0;

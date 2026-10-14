@@ -1,3 +1,4 @@
+import { consoleIdentity } from "@/console-identity";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, nextTick, type App as VueApp } from "vue";
 import { createPinia } from "pinia";
@@ -11,6 +12,7 @@ let mounted: VueApp | undefined;
 afterEach(() => {
   mounted?.unmount();
   mounted = undefined;
+  consoleIdentity.logout();
   document.body.replaceChildren();
   sessionStorage.clear();
   vi.useRealTimers();
@@ -81,6 +83,7 @@ async function settle() {
   await nextTick();
 }
 async function mountConsole(path = "/sms", mode = "api") {
+  consoleIdentity.login("1000");
   vi.useFakeTimers();
   vi.stubEnv("VITE_RUNTIME_DATA_SOURCE", mode);
   const router = createRouter({

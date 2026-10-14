@@ -2,8 +2,9 @@ import {
   type TaskCaller,
   requireCaller,
   requireTaskCaller,
-  requireAdminCaller
+  requireCallerPermission
 } from "@/task-caller";
+import { canAccessTask } from "@/access-policy";
 import { compareTaskIds } from "@/task-user-id";
 import { inspectRecipientInput, MESSAGE_IMPORT_LIMITS } from "@/files/phone-numbers";
 import type {
@@ -201,7 +202,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
     caller = requireCaller(caller);
     const tasks = [...this.records.values()]
       .map(({ task }) => task)
-      .filter((task) => caller.role === "admin" || task.userId === caller.userId)
+      .filter((task) => canAccessTask(caller, task))
       .sort((a, b) => compareTaskIds(a.taskId, b.taskId));
     return structuredClone({
       tasks: tasks
@@ -360,7 +361,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
     };
   }
   async demonstrate(caller: TaskCaller, taskId: string, action: MessageDemoAction) {
-    requireAdminCaller(caller);
+    requireCallerPermission(caller, "demo.control");
     if (action === "fail-read") {
       this.failedReads.add(taskId);
       return;
