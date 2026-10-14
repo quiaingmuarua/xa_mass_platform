@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, markRaw, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { ArrowLeft, UploadFilled } from "@element-plus/icons-vue";
+import { captureTaskCaller } from "@/console-identity";
+import { canUseConsole } from "@/access-policy";
 import { consoleIdentity } from "@/console-identity";
 import {
   appLabel,
@@ -44,7 +46,7 @@ const emit = defineEmits<{
   configuration: [appId: string];
 }>();
 const draft = computed(() => props.session.draft);
-const identity = consoleIdentity.current.value;
+const identity = consoleIdentity.requireCurrent();
 const activeIdentity = () => consoleIdentity.current.value === identity;
 const reading = ref(false),
   importError = ref(""),
@@ -180,10 +182,7 @@ async function submit() {
   current.createdAtMillis = Date.now();
   current.busy = true;
   current.error = "";
-  current.frozenCaller ??= Object.freeze({
-    userId: props.session.userId,
-    role: identity.role
-  });
+  current.frozenCaller ??= captureTaskCaller();
   let importConfirmed = false;
   try {
     if (!props.source.importNumbers) throw new Error("当前数据源未接入号码导入");
@@ -431,7 +430,7 @@ onBeforeUnmount(() => {
           }}</span
         >
         <button
-          v-if="identity.role === 'admin'"
+          v-if="canUseConsole(identity, 'app-checks.configuration')"
           type="button"
           class="checks-link"
           @click="emit('configuration', draft.appId)"

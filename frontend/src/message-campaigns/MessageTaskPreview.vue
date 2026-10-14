@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { captureTaskCaller } from "@/task-caller";
+import { can } from "@/access-policy";
+import { captureTaskCaller } from "@/console-identity";
 
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { ElDrawer, ElTable, ElTableColumn } from "element-plus";
@@ -25,6 +26,7 @@ import {
   type MessageAction,
   type ImportSummary
 } from "./workbench";
+const caller = captureTaskCaller();
 const props = defineProps<{
   taskId?: string;
   source: MessageTaskSource;
@@ -84,7 +86,7 @@ async function refresh() {
   busy.value = true;
   emit("loaded", detail.value?.task, true);
   try {
-    const value = await props.source.loadTask(captureTaskCaller(), id);
+    const value = await props.source.loadTask(caller, id);
     if (!disposed && token === generation && id === props.taskId) accept(value);
   } catch (failure) {
     if (!disposed && token === generation) {
@@ -296,7 +298,10 @@ defineExpose({
               </li>
             </ul>
           </details>
-          <div v-if="source.demonstrate" class="message-demo">
+          <div
+            v-if="can(caller, 'demo.control') && source.demonstrate"
+            class="message-demo"
+          >
             <p class="message-hint">Mock 演示，仅改变本地数据。</p>
             <div class="message-controls">
               <el-button

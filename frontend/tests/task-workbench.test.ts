@@ -1,6 +1,5 @@
 import { consoleIdentity } from "@/console-identity";
-import { captureTaskCaller } from "@/task-caller";
-const CALLER = captureTaskCaller();
+import { ADMIN as CALLER } from "./identity-fixture";
 import { createApp, nextTick } from "vue";
 import { createPinia, setActivePinia } from "pinia";
 import { createMemoryHistory, createRouter } from "vue-router";
@@ -17,7 +16,7 @@ import {
   ElTabPane,
   ElTag
 } from "element-plus";
-import { afterEach, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import TaskWorkbench from "@/task-workbench/TaskWorkbench.vue";
 import TaskRuntimeView from "@/views/TaskRuntimeView.vue";
 import { createTaskSession, taskSessionKey } from "@/task-workbench/session";
@@ -38,9 +37,10 @@ import { rpcTaskId } from "@/task-workbench/rpc-task";
 import { ProjectRequestError } from "@/task-management/projects";
 
 const disposals: (() => void)[] = [];
+beforeEach(() => consoleIdentity.login("1000"));
 afterEach(() => {
-  consoleIdentity.select("1000");
   disposals.splice(0).forEach((fn) => fn());
+  consoleIdentity.logout();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -173,7 +173,7 @@ async function mount(
     runtimeViewerStoreKey,
     createRuntimeViewerStore(
       config,
-      createRuntimeViewerDataSource({ ...config, mode: "mock" })
+      createRuntimeViewerDataSource({ ...config, mode: "mock" }, CALLER)
     )
   );
   app.provide(taskSessionKey, session);
@@ -182,13 +182,18 @@ async function mount(
   const host = document.createElement("div");
   document.body.append(host);
   app.mount(host);
-  disposals.push(() => {
+  let disposed = false;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
     app.unmount();
     session.dispose();
     host.remove();
-  });
+  };
+  disposals.push(dispose);
   await vi.waitFor(() => expect(session.directory.value).toBeDefined());
   return {
+    dispose,
     host,
     router,
     source,
@@ -232,9 +237,8 @@ it("uses the current development caller and prepares explicitly without listing 
   expect(f.preparationClient.prepareTask).toHaveBeenCalledTimes(1);
   expect(f.source.tasks).not.toHaveBeenCalled();
 });
-it("late preparation retains the original caller across an identity switch and PRE_REVIEW does not enable calls", async () => {
+it("late preparation stays with the disposed login and PRE_REVIEW does not enable calls", async () => {
   const original = rpcTaskId("default", "1000", "g1");
-  const next = rpcTaskId("default", "1001", "g1");
   const f = await mount("/task-workbench?tab=rpc&group=g1", { missing: true });
   await vi.waitFor(() => expect(f.session.rpc.detail.value.missing).toBe(true));
   let finish!: () => void;
@@ -248,18 +252,22 @@ it("late preparation retains the original caller across an identity switch and P
   await vi.waitFor(() =>
     expect(f.preparationClient.prepareTask).toHaveBeenCalledTimes(1)
   );
-  vi.mocked(f.source.task).mockResolvedValue({
-    ...row(next, "g1", true),
+  f.dispose();
+  consoleIdentity.logout();
+  consoleIdentity.login("1000");
+  const next = await mount("/task-workbench?tab=rpc&taskId=rpc-pending");
+  vi.mocked(next.source.task).mockResolvedValue({
+    ...row("rpc-pending", "g1", true),
     scoreBand: "pre_review"
   });
-  consoleIdentity.select("1001");
-  await vi.waitFor(() => expect(f.session.rpc.detail.value.value?.taskId).toBe(next));
+  await next.session.rpc.loadDetail("default", "rpc-pending");
   finish();
   await vi.waitFor(() =>
     expect(f.session.rpcPreparations[original]?.outcome).toBe("ready")
   );
   expect(f.session.rpcPreparations[original]?.caller).toEqual(CALLER);
-  expect(f.session.rpc.detail.value.value?.taskId).toBe(next);
+  expect(next.session.rpcPreparations[original]).toBeUndefined();
+  expect(next.session.rpc.detail.value.value?.taskId).toBe("rpc-pending");
   expect(button("提交调用").disabled).toBe(true);
 });
 it("a route user parameter cannot choose another RPC creator", async () => {

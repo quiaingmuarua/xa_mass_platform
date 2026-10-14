@@ -2,7 +2,7 @@
 import { TaskApiError } from "@/task-caller";
 
 import { consoleIdentity } from "@/console-identity";
-const identity = consoleIdentity.current.value;
+const identity = consoleIdentity.requireCurrent();
 import { computed, markRaw, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElDialog } from "element-plus";
 import "element-plus/es/components/dialog/style/css";

@@ -2,7 +2,8 @@ import {
   type TaskCaller,
   TaskApiError,
   callerHeaders,
-  captureTaskCaller,
+  requireCaller,
+  selectTaskUser,
   requireTaskCaller
 } from "@/task-caller";
 import { z } from "zod";
@@ -99,14 +100,15 @@ export interface ProjectSource {
 export function createProjectSource(
   baseUrl: string,
   mode: "api" | "mock",
-  caller?: TaskCaller
+  caller: TaskCaller
 ): ProjectSource {
+  caller = requireCaller(caller);
   if (mode === "mock") return mockProjectSource(caller);
   const get = async (
     suffix: string,
     signal?: AbortSignal,
     body?: unknown,
-    actor = caller ?? captureTaskCaller()
+    actor = requireCaller(caller)
   ): Promise<unknown> => {
     const response = await fetch(baseUrl.replace(/\/$/, "") + "/v1/projects" + suffix, {
       signal,
@@ -128,7 +130,7 @@ export function createProjectSource(
     project: string,
     taskIds: string[],
     signal?: AbortSignal,
-    actor = caller ?? captureTaskCaller()
+    actor = requireCaller(caller)
   ): Promise<Record<string, TaskStats>> {
     if (!taskIds.length) return {};
     const value = z
@@ -146,7 +148,7 @@ export function createProjectSource(
       return z.array(projectSchema).parse(await get("", signal));
     },
     async tasks(project, signal, userId) {
-      const actor = caller ?? captureTaskCaller();
+      const actor = requireCaller(caller);
       const result = tasksSchema.parse(
         await get(
           path(project) +
@@ -174,7 +176,7 @@ export function createProjectSource(
       };
     },
     async task(project, taskId, signal) {
-      const actor = caller ?? captureTaskCaller();
+      const actor = requireCaller(caller);
       const result = projectTaskSchema.parse(
         await get(
           path(project) + "/tasks/" + encodeURIComponent(taskId),
@@ -201,7 +203,7 @@ export function createProjectSource(
     }
   };
 }
-function mockProjectSource(caller?: TaskCaller): ProjectSource {
+function mockProjectSource(caller: TaskCaller): ProjectSource {
   const groups: ProjectGroup[] = MOCK_WORKER_GROUPS.map((workerGroup) => ({
     workerGroupId: workerGroup.workerGroupId,
     workerGroup,
@@ -232,7 +234,12 @@ function mockProjectSource(caller?: TaskCaller): ProjectSource {
       projectId: "default",
       workerGroupIds: groups.map((g) => g.workerGroupId)
     },
-    { projectId: "agentforge", workerGroupIds: agentGroups.map((g) => g.workerGroupId) }
+    {
+      projectId: "agentforge",
+      workerGroupIds: agentGroups.map((g) => g.workerGroupId)
+    },
+    { projectId: "app-checks", workerGroupIds: ["app-a-sim", "app-b-sim"] },
+    { projectId: "messages", workerGroupIds: ["demo-sim", "app-a-sim", "app-b-sim"] }
   ];
   const tasks: ProjectTask[] = MOCK_TASK_PREVIEW.entries.map((row) => ({
     taskId: row.taskId,
@@ -299,10 +306,8 @@ function mockProjectSource(caller?: TaskCaller): ProjectSource {
       return structuredClone(projects);
     },
     async tasks(project, _signal, userId) {
-      const actor = caller ?? captureTaskCaller();
-      if (actor.role === "operator" && userId && userId !== actor.userId)
-        throw new TaskApiError(403, "不能查询其他调用方");
-      const owner = actor.role === "operator" ? actor.userId : userId;
+      const actor = requireCaller(caller);
+      const owner = selectTaskUser(actor, userId);
       requireProject(project);
       const owned = tasks.filter(
         (row) =>
@@ -334,14 +339,14 @@ function mockProjectSource(caller?: TaskCaller): ProjectSource {
         (t) => t.taskId === taskId && t.task?.projectId === project
       );
       if (!task) throw new ProjectRequestError(400, 12002);
-      requireTaskCaller(caller ?? captureTaskCaller(), {
+      requireTaskCaller(requireCaller(caller), {
         userId: task.task?.metadata.userId
       });
       return structuredClone(task);
     },
     async stats(project, taskIds) {
       requireProject(project);
-      const actor = caller ?? captureTaskCaller();
+      const actor = requireCaller(caller);
       for (const id of taskIds) {
         const task = tasks.find(
           (row) => row.taskId === id && row.task?.projectId === project
@@ -363,7 +368,19 @@ function mockProjectSource(caller?: TaskCaller): ProjectSource {
     },
     async groups(project) {
       requireProject(project);
-      return structuredClone(project === "agentforge" ? agentGroups : groups);
+      const known = [...groups, ...agentGroups];
+      return structuredClone(
+        projects
+          .find((entry) => entry.projectId === project)!
+          .workerGroupIds.map(
+            (workerGroupId) =>
+              known.find((entry) => entry.workerGroupId === workerGroupId) ?? {
+                workerGroupId,
+                workerGroup: null,
+                matching: { pools: [], functions: [] }
+              }
+          )
+      );
     }
   };
 }

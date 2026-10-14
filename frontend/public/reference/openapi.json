@@ -221,6 +221,32 @@
         "required" : [ "count", "poolName", "target" ],
         "type" : "object"
       },
+      "Role" : {
+        "properties" : {
+          "home" : {
+            "type" : "string"
+          },
+          "id" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "permissions" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "projectScope" : {
+            "type" : "string"
+          },
+          "taskScope" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "TaskApproveRequest" : {
         "properties" : {
           "expectedItemCount" : {
@@ -494,6 +520,61 @@
             "type" : "string"
           }
         },
+        "type" : "object"
+      },
+      "UpdateUser" : {
+        "properties" : {
+          "displayName" : {
+            "maxLength" : 80,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "projectIds" : {
+            "items" : {
+              "minLength" : 1,
+              "type" : "string"
+            },
+            "maxItems" : 100,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "role" : {
+            "minLength" : 1,
+            "pattern" : "admin|operator",
+            "type" : "string"
+          }
+        },
+        "required" : [ "displayName", "projectIds", "role" ],
+        "type" : "object"
+      },
+      "User" : {
+        "properties" : {
+          "displayName" : {
+            "maxLength" : 80,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "projectIds" : {
+            "items" : {
+              "minLength" : 1,
+              "type" : "string"
+            },
+            "maxItems" : 100,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "role" : {
+            "minLength" : 1,
+            "pattern" : "admin|operator",
+            "type" : "string"
+          },
+          "userId" : {
+            "minLength" : 1,
+            "pattern" : "[1-9a-z][0-9a-z]{3,8}",
+            "type" : "string"
+          }
+        },
+        "required" : [ "displayName", "projectIds", "role", "userId" ],
         "type" : "object"
       },
       "WorkerCommandResponse" : {
@@ -1292,6 +1373,38 @@
         },
         "summary" : "Read bound Group descriptors and Matching enablement, without Worker discovery",
         "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/roles" : {
+      "get" : {
+        "operationId" : "roles",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Role"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "Current directory value"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid user, role, Project or update"
+          }
+        },
+        "summary" : "Read immutable development role definitions loaded at Server startup",
+        "tags" : [ "Development Users" ]
       }
     },
     "/api/v1/runtime-view/endpoint-managers/{endpointManagerId}/workers:network-observe" : {
@@ -2518,6 +2631,177 @@
         "tags" : [ "Tasks" ]
       }
     },
+    "/api/v1/users" : {
+      "get" : {
+        "operationId" : "users",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/User"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "Current directory value"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid user, role, Project or update"
+          }
+        },
+        "summary" : "Read development users for the login chooser and administration",
+        "tags" : [ "Development Users" ]
+      },
+      "post" : {
+        "operationId" : "create",
+        "parameters" : [ {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/User"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/User"
+                }
+              }
+            },
+            "description" : "Current directory value"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid user, role, Project or update"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          }
+        },
+        "summary" : "Add a development user to this Server process without persisting it",
+        "tags" : [ "Development Users" ]
+      }
+    },
+    "/api/v1/users/{userId}" : {
+      "put" : {
+        "operationId" : "update",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateUser"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/User"
+                }
+              }
+            },
+            "description" : "Current directory value"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid user, role, Project or update"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          }
+        },
+        "summary" : "Replace a development user's name, role and Projects in Server memory",
+        "tags" : [ "Development Users" ]
+      }
+    },
     "/api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/commands:consume" : {
       "post" : {
         "operationId" : "consumeWorkerCommands",
@@ -3193,6 +3477,9 @@
     }
   },
   "tags" : [ {
+    "description" : "Server-memory development users and roles, without session authentication",
+    "name" : "Development Users"
+  }, {
     "description" : "Declare WorkerGroups and prepare or control Worker resources.",
     "name" : "Worker Resources"
   }, {

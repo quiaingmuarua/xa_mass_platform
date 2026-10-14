@@ -3,7 +3,7 @@ import { useAppChecks } from "./context";
 import AppCheckWorkspace from "./AppCheckWorkspace.vue";
 import "./style.css";
 import { consoleIdentity } from "@/console-identity";
-const identity = consoleIdentity.current;
+const identity = consoleIdentity.requireCurrent();
 const context = useAppChecks();
 const state = context.state;
 </script>

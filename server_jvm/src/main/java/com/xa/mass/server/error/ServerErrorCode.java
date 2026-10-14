@@ -1,6 +1,7 @@
 package com.xa.mass.server.error;
 
 public enum ServerErrorCode {
+    INVALID_USER_REQUEST(18001, "User directory request is invalid"),
     INVALID_TASK_CALLER(12012, "Task caller declaration is invalid"),
     TASK_ACCESS_DENIED(12013, "Task access is denied"),
     KERNEL_REJECTED_CONFLICT(

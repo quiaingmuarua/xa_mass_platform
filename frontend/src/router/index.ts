@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
-import ConsoleLayout from "@/layouts/ConsoleLayout.vue";
 import ConsoleSessionProvider from "@/layouts/ConsoleSessionProvider.vue";
-import { consoleIdentity, identityRouteAllowed } from "@/console-identity";
+import { installConsoleAccess } from "./access";
 
 const smsPage = () => import("@/sms/SmsPage.vue");
 const messagesPage = () => import("@/message-campaigns/MessagePage.vue");
@@ -9,60 +8,80 @@ const appChecksPage = () => import("@/app-checks/AppCheckPage.vue");
 export const consoleRoutes: RouteRecordRaw[] = [
   {
     path: "/",
+    name: "login",
+    component: () => import("@/views/ConsoleEntryView.vue"),
+    meta: {
+      public: true,
+      title: "控制台",
+      viewPermissions: { users: "users.manage", home: "console.view" }
+    }
+  },
+  {
+    path: "/",
     component: ConsoleSessionProvider,
     children: [
       {
-        path: "",
-        component: ConsoleLayout,
+        path: "runtime",
+        meta: { section: "Runtime", permission: "runtime.view" },
         children: [
-          { path: "", redirect: "/runtime/workers" },
           {
-            path: "runtime",
-            meta: { section: "Runtime" },
-            children: [
-              {
-                path: "workers",
-                name: "runtime-workers",
-                component: () => import("@/views/WorkerRuntimeView.vue"),
-                meta: { title: "Worker Runtime" }
-              },
-              {
-                path: "tasks",
-                name: "runtime-tasks",
-                component: () => import("@/views/TaskRuntimeView.vue"),
-                meta: { title: "Tasks" }
-              }
-            ]
+            path: "workers",
+            name: "runtime-workers",
+            component: () => import("@/views/WorkerRuntimeView.vue"),
+            meta: { title: "Worker Runtime" }
           },
           {
-            path: "task-workbench",
-            name: "task-workbench",
-            component: () => import("@/task-workbench/TaskWorkbench.vue"),
-            meta: { section: "Workbench", title: "任务工作台" }
-          },
-          {
-            path: "reference/error-codes",
-            name: "reference-error-codes",
-            component: () => import("@/views/ErrorCodeReferenceView.vue"),
-            meta: { section: "Reference", title: "Diagnostic Codes" }
-          },
-          ...["sms", "sms/metrics"].map((path) => ({
-            path,
-            component: smsPage,
-            meta: { section: "Scenarios", title: "SMS" }
-          })),
-          ...["messages", "messages/tasks/:taskId"].map((path) => ({
-            path,
-            component: messagesPage,
-            meta: { section: "Scenarios", title: "Messages" }
-          })),
-          ...["app-checks", "app-checks/tasks/:taskId"].map((path) => ({
-            path,
-            component: appChecksPage,
-            meta: { section: "Scenarios", title: "应用注册查询" }
-          }))
+            path: "tasks",
+            name: "runtime-tasks",
+            component: () => import("@/views/TaskRuntimeView.vue"),
+            meta: { title: "Tasks" }
+          }
         ]
-      }
+      },
+      {
+        path: "task-workbench",
+        name: "task-workbench",
+        component: () => import("@/task-workbench/TaskWorkbench.vue"),
+        meta: {
+          section: "Workbench",
+          title: "任务工作台",
+          permission: "workbench.use"
+        }
+      },
+      {
+        path: "reference/error-codes",
+        name: "reference-error-codes",
+        component: () => import("@/views/ErrorCodeReferenceView.vue"),
+        meta: {
+          section: "Reference",
+          title: "Diagnostic Codes",
+          permission: "reference.view"
+        }
+      },
+      ...["sms", "sms/metrics"].map((path) => ({
+        path,
+        component: smsPage,
+        meta: { section: "Scenarios", title: "SMS", permission: "sms.use" as const }
+      })),
+      ...["messages", "messages/tasks/:taskId"].map((path) => ({
+        path,
+        component: messagesPage,
+        meta: {
+          section: "Scenarios",
+          title: "Messages",
+          permission: "messages.use" as const
+        }
+      })),
+      ...["app-checks", "app-checks/tasks/:taskId"].map((path) => ({
+        path,
+        component: appChecksPage,
+        meta: {
+          section: "Scenarios",
+          title: "应用注册查询",
+          permission: "app-checks.tasks" as const,
+          viewPermissions: { configuration: "app-checks.configuration" as const }
+        }
+      }))
     ]
   },
   {
@@ -70,7 +89,7 @@ export const consoleRoutes: RouteRecordRaw[] = [
     alias: "/scalar",
     name: "api-reference",
     component: () => import("@/views/ApiReferenceView.vue"),
-    meta: { title: "API Reference" }
+    meta: { title: "API Reference", permission: "reference.view" }
   },
   {
     path: "/:pathMatch(.*)*",
@@ -102,11 +121,7 @@ export const router = createRouter({
     return { left: 0, top: 0 };
   }
 });
-router.beforeEach((to) =>
-  identityRouteAllowed(consoleIdentity.current.value, to)
-    ? undefined
-    : { path: "/app-checks", replace: true }
-);
+installConsoleAccess(router);
 router.afterEach((to) => {
   document.title = `${String(to.meta.title ?? "页面未找到")} · XA Mass`;
 });

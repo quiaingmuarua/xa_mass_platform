@@ -1,5 +1,4 @@
-import { captureTaskCaller } from "@/task-caller";
-const CALLER = captureTaskCaller();
+import { ADMIN as CALLER } from "./identity-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiMessageTaskSource } from "../src/message-campaigns/api-task-source";
 import {

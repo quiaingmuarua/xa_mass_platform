@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { captureTaskCaller } from "@/task-caller";
+import { consoleIdentity } from "@/console-identity";
+import { captureTaskCaller } from "@/console-identity";
 
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import MessageRecipients from "./MessageRecipients.vue";
@@ -26,6 +27,8 @@ watch(
   },
   { immediate: true }
 );
+const identity = consoleIdentity.requireCurrent();
+const activeIdentity = () => consoleIdentity.current.value === identity;
 const reading = ref(false);
 const contentEdited = ref(false);
 let disposed = false;
@@ -64,6 +67,7 @@ const valid = computed(
     !draft.value.editor.error
 );
 function reset() {
+  if (!activeIdentity()) return;
   contentEdited.value = false;
   session.draft = freshMessageDraft(props.source.applications[0]?.id);
 }
@@ -73,7 +77,14 @@ function done(id: string) {
 }
 async function importOriginal() {
   const d = draft.value;
-  if (!d.knownTaskId || !d.confirmed || d.busy || !d.originalText.trim()) return;
+  if (
+    !activeIdentity() ||
+    !d.knownTaskId ||
+    !d.confirmed ||
+    d.busy ||
+    !d.originalText.trim()
+  )
+    return;
   d.busy = true;
   d.error = "";
   try {
@@ -86,7 +97,7 @@ async function importOriginal() {
       fileName: d.editor.fileName || "粘贴输入",
       receipt
     };
-    if (!disposed && draft.value === d) done(d.knownTaskId);
+    if (!disposed && activeIdentity() && draft.value === d) done(d.knownTaskId);
   } catch (failure) {
     if (!disposed) d.error = `任务已创建，导入未完成。${describe(failure)}`;
   } finally {
@@ -95,7 +106,12 @@ async function importOriginal() {
 }
 async function create(recheck = false) {
   const d = draft.value;
-  if (d.busy || (!recheck && (!valid.value || d.uncertain || d.knownTaskId))) return;
+  if (
+    !activeIdentity() ||
+    d.busy ||
+    (!recheck && (!valid.value || d.uncertain || d.knownTaskId))
+  )
+    return;
   // A rejected reconciliation does not settle the earlier unknown submission.
   const priorUnconfirmed = d.uncertain || !!d.knownTaskId;
   if (!d.frozen) {
@@ -118,7 +134,7 @@ async function create(recheck = false) {
     d.knownTaskId = result.taskId;
     d.confirmed = true;
     d.uncertain = false;
-    if (disposed) return;
+    if (disposed || !activeIdentity()) return;
     if (recheck)
       d.note = "创建已核对。可显式导入原号码或查看待审核任务，不会自动启动。";
     else if (!d.originalText.trim()) done(result.taskId);
@@ -156,7 +172,7 @@ async function create(recheck = false) {
 }
 async function inspect() {
   const d = draft.value;
-  if (!d.knownTaskId || d.busy) return;
+  if (!activeIdentity() || !d.knownTaskId || d.busy) return;
   d.busy = true;
   try {
     const result = await props.source.loadTask(d.caller!, d.knownTaskId);

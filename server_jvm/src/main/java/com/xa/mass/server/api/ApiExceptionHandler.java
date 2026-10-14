@@ -67,7 +67,7 @@ public final class ApiExceptionHandler {
                     HttpStatus.SERVICE_UNAVAILABLE;
             case DIRECT_CALL_CAPACITY_EXCEEDED ->
                     HttpStatus.TOO_MANY_REQUESTS;
-            case INVALID_TASK_CALLER, KERNEL_REJECTED_CONFLICT,
+            case INVALID_USER_REQUEST, INVALID_TASK_CALLER, KERNEL_REJECTED_CONFLICT,
                     TASK_NOT_FOUND,
                     TASK_OPERATION_NOT_SUPPORTED,
                     TASK_STATE_CONFLICT,

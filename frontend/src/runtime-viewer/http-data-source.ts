@@ -1,4 +1,4 @@
-import { captureTaskCaller, callerHeaders } from "@/task-caller";
+import { type TaskCaller, requireCaller, callerHeaders } from "@/task-caller";
 import axios, { AxiosError, type AxiosInstance } from "axios";
 
 import { RuntimeViewerError } from "./errors";
@@ -25,7 +25,12 @@ const SAFE_ERROR_MESSAGES: Record<number, string> = {
 export class HttpRuntimeViewerDataSource implements RuntimeViewerDataSource {
   private readonly client: AxiosInstance;
 
-  constructor(baseUrl: string, client?: AxiosInstance) {
+  constructor(
+    baseUrl: string,
+    private readonly caller: TaskCaller,
+    client?: AxiosInstance
+  ) {
+    this.caller = requireCaller(caller);
     this.client =
       client ??
       axios.create({
@@ -48,7 +53,7 @@ export class HttpRuntimeViewerDataSource implements RuntimeViewerDataSource {
         sampleLimit,
         {
           signal,
-          headers: { "X-Request-Id": requestId, ...callerHeaders(captureTaskCaller()) }
+          headers: { "X-Request-Id": requestId, ...callerHeaders(this.caller) }
         }
       );
       const parsed = parseResponse(taskPreviewResponseSchema, response.data, requestId);

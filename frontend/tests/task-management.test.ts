@@ -1,5 +1,6 @@
-import { captureTaskCaller, type TaskCaller } from "@/task-caller";
-const CALLER = captureTaskCaller();
+import { consoleIdentity } from "@/console-identity";
+import { type TaskCaller } from "@/task-caller";
+import { ADMIN as CALLER } from "./identity-fixture";
 import type { AxiosInstance } from "axios";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -203,6 +204,7 @@ function observed(band: "pre_review" | "terminal" = "pre_review") {
 }
 function request(count = 101) {
   return {
+    caller: CALLER,
     projectId: "default",
     create: {
       requestId: "request",
@@ -259,7 +261,10 @@ describe("raw JSONL", () => {
   });
 });
 describe("server-observed finite Task management", () => {
-  beforeEach(() => setActivePinia(createPinia()));
+  beforeEach(() => {
+    consoleIdentity.login("1000");
+    setActivePinia(createPinia());
+  });
   it("chunks without approval and manages rediscovered Tasks without a submission ledger", async () => {
     const client = fakeClient();
     const store = createTaskManagementStore("api", client);
@@ -442,4 +447,45 @@ it("finite submissions keep their captured Project across batches and isolate re
   await expect(store.mutate("messages", observed(), "close", true)).rejects.toThrow(
     "快照"
   );
+});
+
+it("does not start append after a disposed login's creation completes", async () => {
+  setActivePinia(createPinia());
+  let finish!: (value: TaskCreateApiResponse) => void;
+  const client = fakeClient({
+    createTask: vi.fn<FiniteTaskClient["createTask"]>(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    )
+  });
+  const store = createTaskManagementStore("api", client);
+  const pending = store.submit(request());
+  store.dispose();
+  finish({ taskId: "created-before-logout" });
+  await expect(pending).resolves.toBe("created-before-logout");
+  expect(client.appendItems).not.toHaveBeenCalled();
+  expect(client.createTask).toHaveBeenCalledExactlyOnceWith(CALLER, request().create);
+});
+it("stops remaining append batches after logout without changing the admitted caller", async () => {
+  setActivePinia(createPinia());
+  let finish!: () => void;
+  const client = fakeClient({
+    appendItems: vi.fn<FiniteTaskClient["appendItems"]>(
+      (_caller, _task, items) =>
+        new Promise((resolve) => {
+          finish = () => resolve(appended(items.map((item) => item.messageId)));
+        })
+    )
+  });
+  const store = createTaskManagementStore("api", client);
+  const pending = store.submit(request());
+  await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+  store.dispose();
+  finish();
+  await pending;
+  expect(client.appendItems).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(client.appendItems).mock.calls[0]![0]).toEqual(CALLER);
+  expect(store.project("default").submission?.notSubmitted).toBe(1);
 });

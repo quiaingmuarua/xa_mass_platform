@@ -82,7 +82,11 @@ Boot forwards `/sms`, `/sms/metrics`, `/messages`,
 to the shared Console, including trailing slashes, in platform and preview
 instances. Server's generic page controller also forwards `/task-workbench` and its trailing
 slash to the same Console. This route enables no Project or API capabilities.
-The root `/` remains the Runtime entry. Catalog observation controls feature
+The root `/` serves development login and `/?view=users` serves admin user management.
+Server loads its development user/role JSON into process memory; an installation may
+set `xa.mass.users.seed` to another resource. Browser refresh retains user edits;
+Server restart reloads that seed. This introduces no account database or session.
+Catalog observation controls feature
 availability; static assets never enable business. Unknown API and asset paths
 remain errors. The [Frontend Owner](../frontend/README.md) owns page data and
 polling lifetimes. Platform OpenAPI snapshots exclude scenarios; preview's live

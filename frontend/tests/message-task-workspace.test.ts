@@ -1,5 +1,5 @@
-import { captureTaskCaller } from "@/task-caller";
-const CALLER = captureTaskCaller();
+import { consoleIdentity } from "@/console-identity";
+import { ADMIN as CALLER } from "./identity-fixture";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, h, nextTick, type App } from "vue";
 import { createRouter, createMemoryHistory, RouterView } from "vue-router";
@@ -25,6 +25,7 @@ let app: App | undefined;
 let source: MockMessageTaskSource;
 const fetcher = vi.fn();
 beforeEach(() => {
+  consoleIdentity.login("1000");
   vi.useFakeTimers();
   vi.stubGlobal("fetch", fetcher.mockReset());
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
@@ -33,6 +34,7 @@ beforeEach(() => {
 afterEach(() => {
   app?.unmount();
   app = undefined;
+  consoleIdentity.logout();
   document.body.replaceChildren();
   expect(fetcher).not.toHaveBeenCalled();
   vi.useRealTimers();

@@ -134,7 +134,35 @@ Task type returns `400/12008`.
 resolver parses exactly one `X-XA-Dev-User` (strict UTF-8 Base64URL) and one
 `X-XA-Dev-Role` (`admin` or `operator`). Missing, malformed or ambiguous declarations
 return `400/12012`; access denial returns `403/12013` through the common error handler.
-There is no ThreadLocal, session, account directory or authentication claim.
+There is no ThreadLocal, session or authentication claim. The development user
+directory below is a separate application resource; Task caller headers retain
+their current trusted-development contract.
+
+### Development user directory
+
+`UserDirectory` owns one Server-process map initialized once from
+`xa.mass.users.seed` (default `classpath:users/development-directory.json`).
+The JSON declares the two fixed roles (`admin`, `operator`) with Console grants
+and the initial users, names, roles and Project assignments. Roles are immutable
+until restart. Default operators can use Messages and App Checks; admin uses all
+Projects. Seed grants may refer to a currently disabled business Project.
+
+`GET /api/v1/users` and `GET /api/v1/roles` provide public development discovery
+for the login chooser; there are no credentials or session endpoints. POST
+`/users` creates and PUT `/users/{userId}` replaces a user's name, role and Projects.
+Writes require an admin caller matching an admin in this directory. IDs are
+immutable; duplicate IDs, unknown roles/Projects and current-user edits are rejected.
+New assignments must name declared Projects; admin's empty assignment list means
+all Projects according to its role. The selected frontend login captures a caller;
+user edits are reflected at the next login, not by rewriting in-flight requests.
+
+Reads return immutable snapshots. Synchronized create/update keeps a duplicate
+create atomic within this Server instance. All clients share this map; refresh
+and logout retain mutations. Restart reloads the JSON without saving, migration,
+database writes, file writes, Redis data or inter-instance replication. This
+directory does not add a Kernel user domain or change scheduling. Its Console
+Project grants do not replace the existing Task ownership checks or authenticate
+declared Task headers.
 
 All Project reads require a valid caller. Admin manages every Task; operator creates
 and manages only Tasks whose stored `userId` matches. Lists automatically select the
@@ -200,7 +228,7 @@ mapping remain in force. Ordinary reads and Item Calls do not prepare Tasks.
 
 The existing approval soft limit of 100 RUNNING Tasks includes parked Tasks;
 preparation does not bypass it. A limit failure can leave a PRE_REVIEW Task, which
-can later be explicitly prepared under the same identity. No user registry, automatic retry, RPC close/delete API or new lifecycle is added.
+can later be explicitly prepared under the same identity. RPC preparation does not change the user directory, automatically retry, or add a close/delete API or new lifecycle.
 
 ### Task attribution and directory
 
@@ -779,7 +807,7 @@ dedup cache, activation ACK or replay is installed.
 ## Assembly Boundaries
 
 Production code separates HTTP adapters (`api.v1.controller` / `contract`), Task,
-Worker and Delivery use cases, Runtime View, and `assembly` provider/lifecycle
+Worker, User-directory and Delivery use cases, Runtime View, and `assembly` provider/lifecycle
 wiring. Those packages add no alternate Runtime Owners. Only assembly selects
 providers and imports the public `KernelPacerRuntime`.
 

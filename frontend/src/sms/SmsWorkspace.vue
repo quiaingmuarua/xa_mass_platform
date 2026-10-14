@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { captureTaskCaller } from "@/console-identity";
+const caller = captureTaskCaller();
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
 import { api, statusLabels, waitingMessage, type Reception, type Metrics } from "./api";
@@ -68,9 +70,10 @@ async function refresh(force = false) {
       current.value.status === "NOT_OBSERVED");
   try {
     const [nextMetrics, next] = await Promise.all([
-      api<Metrics>("/api/v1/sms/metrics", undefined, controller.signal),
+      api<Metrics>(caller, "/api/v1/sms/metrics", undefined, controller.signal),
       shouldRead
         ? api<Reception>(
+            caller,
             "/api/v1/sms/messages/" + encodeURIComponent(id),
             undefined,
             controller.signal
@@ -96,6 +99,7 @@ async function lease() {
   submitting = new AbortController();
   try {
     const row = await api<Reception>(
+      caller,
       "/api/v1/sms/numbers:lease",
       { ...form },
       submitting.signal

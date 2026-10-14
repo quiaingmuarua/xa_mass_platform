@@ -1,6 +1,7 @@
 package com.xa.mass.server.api;
 
 public final class ApiTags {
+    public static final String USERS = "Development Users";
 
     public static final String WORKER_RESOURCES = "Worker Resources";
     public static final String TASKS = "Tasks";

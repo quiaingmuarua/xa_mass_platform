@@ -1,3 +1,4 @@
+import { consoleIdentity } from "@/console-identity";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, nextTick, type App as VueApp } from "vue";
 import { createPinia } from "pinia";
@@ -26,6 +27,7 @@ let mounted: VueApp | undefined;
 afterEach(() => {
   mounted?.unmount();
   mounted = undefined;
+  consoleIdentity.logout();
   document.body.replaceChildren();
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -78,7 +80,7 @@ function entry(row: Record<string, unknown>) {
         "server.inputOwner": "messages",
         appId: "demo",
         recipientCountry: row.recipientCountry,
-        senderCountry: row.senderCountry ?? "ANY",
+        ...(row.senderCountry ? { senderCountry: row.senderCountry } : {}),
         body: row.body,
         userId: "1000"
       }
@@ -157,6 +159,7 @@ async function settle() {
   await nextTick();
 }
 async function mount(path = "/messages", mode = "api") {
+  consoleIdentity.login("1000");
   vi.useFakeTimers();
   vi.stubEnv("VITE_RUNTIME_DATA_SOURCE", mode);
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
@@ -240,6 +243,11 @@ describe("Messages Task API workspace", () => {
     expect(router.currentRoute.value.path).toBe("/messages");
     expect(host.textContent).toContain("待审核");
     expect(host.textContent).toContain("任务已创建");
+    expect(document.getElementById("message-task-new-task")).not.toBeNull();
+    expect(
+      document.getElementById("message-task-new-task")?.closest("tr")?.textContent
+    ).toContain("待审核");
+    expect(host.querySelector(".message-error")).toBeNull();
     const imports = fetcher.mock.calls.filter(([url]) =>
       String(url).endsWith("/recipients:import")
     );

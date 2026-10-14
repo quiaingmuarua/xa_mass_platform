@@ -11,6 +11,7 @@ import type { Project } from "@/task-management/projects";
 import { useTaskSession } from "./session";
 import { rpcTaskId, type RpcTaskPrepareRequest } from "./rpc-task";
 import { consoleIdentity } from "@/console-identity";
+const identity = consoleIdentity.requireCurrent();
 const props = defineProps<{ project: Project }>();
 const projectId = props.project.projectId;
 const session = useTaskSession();
@@ -39,7 +40,7 @@ const userId = computed(() =>
     ? row.value?.taskId === directTaskId.value
       ? (row.value.task?.metadata.userId ?? "")
       : ""
-    : consoleIdentity.current.value.userId
+    : identity.userId
 );
 const groups = computed(() => workspace.groups[projectId]);
 const group = computed(() =>
@@ -125,12 +126,7 @@ async function sync() {
 }
 onMounted(sync);
 watch(
-  () => [
-    route.query.group,
-    consoleIdentity.current.value.userId,
-    route.query.taskId,
-    props.project
-  ],
+  () => [route.query.group, identity.userId, route.query.taskId, props.project],
   () => {
     if (
       route.path === "/task-workbench" &&
@@ -229,7 +225,7 @@ const labels: Record<string, string> = {
   <section class="rpc-page" data-testid="rpc-task-page">
     <div class="rpc-page__scope">
       <el-input
-        :model-value="consoleIdentity.current.value.userId"
+        :model-value="identity.userId"
         readonly
         aria-label="RPC 调用方标识"
         maxlength="9"

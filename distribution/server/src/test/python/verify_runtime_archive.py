@@ -205,6 +205,7 @@ def verify(archive: Path, version: str) -> None:
         _require(
             [tag.get("name") for tag in openapi.get("tags", [])]
             == [
+                "Development Users",
                 "Worker Resources",
                 "Tasks",
                 "Runtime View",

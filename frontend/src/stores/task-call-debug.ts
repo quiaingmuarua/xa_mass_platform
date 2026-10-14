@@ -1,4 +1,5 @@
-import { type TaskCaller, captureTaskCaller } from "@/task-caller";
+import { type TaskCaller } from "@/task-caller";
+import { captureTaskCaller } from "@/console-identity";
 import { reactive } from "vue";
 import { defineStore } from "pinia";
 

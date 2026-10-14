@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { consoleIdentity } from "@/console-identity";
-import { captureTaskCaller } from "@/task-caller";
+import { can } from "@/access-policy";
+import { captureTaskCaller } from "@/console-identity";
 
 import {
   computed,
@@ -279,7 +280,14 @@ async function upload() {
 }
 async function demo(action: MessageDemoAction) {
   const task = current.value;
-  if (!task || !source.demonstrate || blocked.value || detailStale.value) return;
+  if (
+    !can(caller, "demo.control") ||
+    !task ||
+    !source.demonstrate ||
+    blocked.value ||
+    detailStale.value
+  )
+    return;
   const token = ++actionGeneration;
   actionBusy.value = true;
   actionError.value = "";
@@ -312,7 +320,7 @@ watch(
   { flush: "sync" }
 );
 onBeforeRouteLeave(
-  () => !session.draft.busy || caller.userId !== consoleIdentity.current.value.userId
+  () => !session.draft.busy || caller.userId !== consoleIdentity.current.value?.userId
 );
 onMounted(loadList);
 onBeforeUnmount(() => {

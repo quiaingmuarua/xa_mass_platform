@@ -1,0 +1,25 @@
+{
+  "roles": [
+    {
+      "id": "admin",
+      "label": "管理员",
+      "permissions": ["console.view", "users.manage", "runtime.view", "workbench.use", "messages.use", "sms.use", "app-checks.tasks", "app-checks.configuration", "app-checks.diagnostics", "reference.view", "demo.control"],
+      "taskScope": "all",
+      "projectScope": "all",
+      "home": "/runtime/workers"
+    },
+    {
+      "id": "operator",
+      "label": "普通用户",
+      "permissions": ["console.view", "app-checks.tasks", "messages.use"],
+      "taskScope": "own",
+      "projectScope": "assigned",
+      "home": "/app-checks"
+    }
+  ],
+  "users": [
+    { "userId": "1000", "displayName": "管理员", "role": "admin", "projectIds": [] },
+    { "userId": "1001", "displayName": "用户 A", "role": "operator", "projectIds": ["app-checks", "messages"] },
+    { "userId": "1002", "displayName": "用户 B", "role": "operator", "projectIds": ["app-checks", "messages"] }
+  ]
+}

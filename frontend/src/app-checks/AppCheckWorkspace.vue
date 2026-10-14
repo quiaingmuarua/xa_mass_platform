@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { canUseConsole, canAccessTask, taskScope } from "@/access-policy";
 import { TaskApiError } from "@/task-caller";
 
 import {
@@ -10,7 +11,7 @@ import {
   toRef,
   watch
 } from "vue";
-import { consoleIdentity, identityRouteAllowed } from "@/console-identity";
+import { consoleIdentity } from "@/console-identity";
 import { useRoute, useRouter } from "vue-router";
 import { ElDialog } from "element-plus";
 import "element-plus/es/components/dialog/style/css";
@@ -23,7 +24,6 @@ import { appLabel, countryLabel, type Catalog, type CheckTask } from "./model";
 import { type AppCheckTaskSource } from "./task-source";
 import {
   createWorkbenchSession,
-  canUseTask,
   freshDraft,
   quantity,
   type WorkbenchSession,
@@ -39,15 +39,19 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ refreshConfiguration: [] }>();
 const session = props.session ?? createWorkbenchSession();
-const identity = consoleIdentity.current.value;
-const admin = identity.role === "admin";
+const identity = consoleIdentity.requireCurrent();
+const canConfigure = canUseConsole(identity, "app-checks.configuration");
+const allTasks = taskScope(identity) === "all";
+const canDemonstrate = canUseConsole(identity, "demo.control");
 const route = useRoute(),
   router = useRouter();
 const taskId = computed(() =>
   typeof route.params.taskId === "string" ? route.params.taskId : undefined
 );
 const creating = computed(() => route.query.view === "create");
-const configuring = computed(() => admin && route.query.view === "configuration");
+const configuring = computed(
+  () => canConfigure && route.query.view === "configuration"
+);
 const listing = computed(() => !creating.value && !configuring.value);
 const listVisited = ref(false);
 const configurationView = ref<InstanceType<typeof AppCheckConfiguration>>();
@@ -136,12 +140,10 @@ async function loadList() {
   try {
     const value = await props.source.listTasks(
       identity,
-      admin ? session.ownerFilter || undefined : undefined
+      allTasks ? session.ownerFilter || undefined : undefined
     );
     if (disposed || token !== listGeneration) return;
-    tasks.value = value.tasks
-      .slice(0, 100)
-      .filter((task) => canUseTask(task, identity));
+    tasks.value = value.tasks.slice(0, 100);
     listReadAt.value = Date.now();
     truncated.value = value.truncated || value.tasks.length > 100;
     previews.value = Object.fromEntries(
@@ -210,7 +212,7 @@ function openCreate() {
 function openConfiguration(
   appId = session.configurationApp || props.catalog.apps[0].appId
 ) {
-  if (!admin || disposed) return;
+  if (!canConfigure || disposed) return;
   rememberList();
   configurationFromCreate.value = creating.value;
   void router.push({
@@ -298,7 +300,7 @@ async function openExport(task: CheckTask) {
   }
 }
 function requestAction(task: CheckTask, action: TaskAction, trigger?: HTMLElement) {
-  if (disposed || !canUseTask(task, identity)) return;
+  if (disposed || !canAccessTask(identity, task)) return;
   if (action === "preview") {
     openTask(task.taskId, trigger);
     return;
@@ -345,7 +347,8 @@ async function refreshVisible(targetId: string) {
 }
 async function perform(action: "approve" | "close") {
   const target = actionTask.value;
-  if (!target || disposed || !canUseTask(target, identity) || actionBusy.value) return;
+  if (!target || disposed || !canAccessTask(identity, target) || actionBusy.value)
+    return;
   const method =
     action === "approve" ? props.source.approveTask : props.source.closeTask;
   if (!method) return;
@@ -377,7 +380,13 @@ async function perform(action: "approve" | "close") {
 }
 async function demo(action: "advance" | "complete" | "late") {
   const target = current.value;
-  if (!admin || disposed || !target || operationsBusy.value || detailStale.value)
+  if (
+    !canDemonstrate ||
+    disposed ||
+    !target ||
+    operationsBusy.value ||
+    detailStale.value
+  )
     return;
   const origin = route.fullPath;
   actionBusy.value = true;
@@ -400,7 +409,7 @@ async function generateExport() {
   if (
     !target ||
     disposed ||
-    !canUseTask(target, identity) ||
+    !canAccessTask(identity, target) ||
     !props.source.exportTask ||
     exportLoading.value
   )
@@ -438,14 +447,6 @@ watch(
     }
   },
   { flush: "sync" }
-);
-watch(
-  () => route.fullPath,
-  () => {
-    if (!disposed && !identityRouteAllowed(identity, route))
-      void router.replace("/app-checks");
-  },
-  { immediate: true }
 );
 watch(exportOpen, (open) => {
   if (!open) {
@@ -523,7 +524,11 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div class="checks-workspace" data-testid="app-check-workspace">
-    <nav v-if="admin" class="checks-workspace-tabs" aria-label="应用注册查询工作区">
+    <nav
+      v-if="canConfigure"
+      class="checks-workspace-tabs"
+      aria-label="应用注册查询工作区"
+    >
       <router-link
         to="/app-checks"
         :aria-current="!configuring ? 'page' : undefined"

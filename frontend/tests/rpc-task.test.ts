@@ -1,5 +1,7 @@
-import { captureTaskCaller } from "@/task-caller";
-const CALLER = captureTaskCaller();
+import { consoleIdentity } from "@/console-identity";
+import { beforeEach } from "vitest";
+beforeEach(() => consoleIdentity.login("1000"));
+import { ADMIN as CALLER } from "./identity-fixture";
 import { expect, it, vi } from "vitest";
 import type { AxiosInstance } from "axios";
 import { rpcTaskId } from "@/task-workbench/rpc-task";

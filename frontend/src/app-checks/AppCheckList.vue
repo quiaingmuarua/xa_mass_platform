@@ -3,7 +3,8 @@ import { computed, nextTick, ref, watch } from "vue";
 import { Plus, Refresh, Search } from "@element-plus/icons-vue";
 import { consoleIdentity, identityLabel } from "@/console-identity";
 import { normalizeTaskUserId } from "@/task-user-id";
-const admin = consoleIdentity.current.value.role === "admin";
+import { taskScope } from "@/access-policy";
+const allTasks = taskScope(consoleIdentity.requireCurrent()) === "all";
 import {
   ElTable,
   ElTableColumn,
@@ -174,7 +175,7 @@ defineExpose({ revealTask, focusHeading });
   <section class="checks-list-page">
     <header class="checks-heading">
       <h1 ref="heading" tabindex="-1">
-        {{ admin ? "应用注册查询" : "我的任务 · 当前批次" }}
+        {{ allTasks ? "应用注册查询" : "我的任务 · 当前批次" }}
       </h1>
       <div class="checks-list-controls">
         <div class="checks-actions">
@@ -202,7 +203,7 @@ defineExpose({ revealTask, focusHeading });
       </div>
     </header>
     <div class="checks-filters">
-      <form v-if="admin" class="checks-actions" @submit.prevent="applyOwner">
+      <form v-if="allTasks" class="checks-actions" @submit.prevent="applyOwner">
         <input
           v-model="session.ownerQuery"
           aria-label="归属 userId"
@@ -292,7 +293,7 @@ defineExpose({ revealTask, focusHeading });
         开始日期不能晚于结束日期。
       </p>
       <p class="checks-table-note" role="status">
-        <template v-if="!admin">个人任务当前批次 · </template>
+        <template v-if="!allTasks">个人任务当前批次 · </template>
         当前载入 {{ quantity(business.length) }} 个 · 匹配
         {{ quantity(filtered.length) }} 个 · 仅筛选本次载入，最多 100 条{{
           truncated ? " · 列表未完整加载" : ""
@@ -333,7 +334,7 @@ defineExpose({ revealTask, focusHeading });
             }}<small>{{ countryLabel(row.country) }}</small></template
           >
         </ElTableColumn>
-        <ElTableColumn v-if="admin" label="创建者" width="100">
+        <ElTableColumn v-if="allTasks" label="创建者" width="100">
           <template #default="{ row }"
             ><span :title="row.userId">{{ identityLabel(row.userId) }}</span></template
           >
@@ -381,14 +382,14 @@ defineExpose({ revealTask, focusHeading });
                     ? "暂时无法读取任务"
                     : business.length
                       ? "当前载入范围内没有匹配任务"
-                      : admin
+                      : allTasks
                         ? "暂无查询任务"
                         : "当前载入范围内没有我的任务"
               }}
             </h3>
             <p>
               {{
-                !admin
+                !allTasks
                   ? "这里只展示本次载入窗口中的个人任务，不代表全部历史任务。"
                   : business.length
                     ? "调整筛选条件查看已载入任务。"

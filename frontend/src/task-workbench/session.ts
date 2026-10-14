@@ -1,4 +1,5 @@
-import { type TaskCaller, captureTaskCaller } from "@/task-caller";
+import { type TaskCaller } from "@/task-caller";
+import { captureTaskCaller } from "@/console-identity";
 import { inject, reactive, type InjectionKey } from "vue";
 import { createProjectWorkspace } from "@/task-management/workspace";
 import type { ProjectSource } from "@/task-management/projects";

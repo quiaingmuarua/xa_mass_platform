@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import ConsoleLayout from "./ConsoleLayout.vue";
 import { computed, provide, onBeforeUnmount } from "vue";
+import { getActivePinia } from "pinia";
+import { captureTaskCaller } from "@/console-identity";
 import { useRoute } from "vue-router";
 import {
   runtimeViewerConfigKey,
@@ -25,11 +28,13 @@ import { createProjectSource } from "@/task-management/projects";
 
 const configResult = parseRuntimeViewerConfig(import.meta.env);
 const route = useRoute();
+const caller = captureTaskCaller();
+const pinia = getActivePinia()!;
 const needsRuntime = computed(() =>
   ["Runtime", "Workbench"].includes(String(route.meta.section))
 );
 if (configResult.ok) {
-  const dataSource = createRuntimeViewerDataSource(configResult.value);
+  const dataSource = createRuntimeViewerDataSource(configResult.value, caller);
   const runtimeViewerStore = createRuntimeViewerStore(configResult.value, dataSource);
   const taskManagementStore = createTaskManagementStore(
     configResult.value.mode,
@@ -54,7 +59,7 @@ if (configResult.ok) {
   provide(workerDirectDebugStoreKey, workerDirectDebugStore);
   provide(workerStatusStoreKey, workerStatusStore);
   const taskSession = createTaskSession(
-    createProjectSource(configResult.value.apiBaseUrl, configResult.value.mode),
+    createProjectSource(configResult.value.apiBaseUrl, configResult.value.mode, caller),
     taskCallClient,
     configResult.value.mode
   );
@@ -63,14 +68,23 @@ if (configResult.ok) {
     taskSession.dispose();
     runtimeViewerStore.dispose();
     workerStatusStore.dispose();
+    taskManagementStore.dispose();
+    for (const store of [
+      runtimeViewerStore,
+      taskManagementStore,
+      taskCallDebugStore,
+      workerDirectDebugStore,
+      workerStatusStore
+    ]) {
+      store.$dispose();
+      delete pinia.state.value[store.$id];
+    }
   });
 }
 </script>
 <template>
-  <router-view v-slot="{ Component }">
-    <component
-      :is="Component"
-      :runtime-error="!configResult.ok && needsRuntime ? configResult.error : undefined"
-    />
-  </router-view>
+  <ConsoleLayout
+    :runtime-error="!configResult.ok && needsRuntime ? configResult.error : undefined"
+    ><slot><router-view /></slot
+  ></ConsoleLayout>
 </template>
