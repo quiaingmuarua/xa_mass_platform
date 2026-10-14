@@ -11,11 +11,7 @@ import {
   callerHeaders
 } from "@/task-caller";
 import { z } from "zod";
-import {
-  configurationViewSchema,
-  type AppCheckSettings,
-  type AppCheckConfigurationView
-} from "./settings";
+import { configurationViewSchema, type AppCheckConfigurationView } from "./settings";
 import type { ImportSnapshot, ImportReceipt } from "./import-model";
 import type { PreviewState, ExportFilter, TaskActivity } from "./workbench";
 import {
@@ -35,8 +31,8 @@ export interface AppCheckTaskSource {
   loadConfiguration(caller: TaskCaller): Promise<AppCheckConfigurationView>;
   saveConfiguration(
     caller: TaskCaller,
-    expectedRevision: number,
-    configuration: AppCheckSettings
+    expectedFingerprint: string,
+    configuration: Record<string, unknown>
   ): Promise<AppCheckConfigurationView>;
   simulateConfigurationRestart?(caller: TaskCaller): Promise<void>;
   listTasks(
@@ -137,8 +133,8 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
   }
   async saveConfiguration(
     caller: TaskCaller,
-    expectedRevision: number,
-    configuration: AppCheckSettings
+    expectedFingerprint: string,
+    configuration: Record<string, unknown>
   ) {
     try {
       const response = await requireResponse(
@@ -148,7 +144,7 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
             "Content-Type": "application/json",
             ...(caller ? callerHeaders(caller) : {})
           },
-          body: JSON.stringify({ expectedRevision, configuration })
+          body: JSON.stringify({ expectedFingerprint, configuration })
         })
       );
       return configurationViewSchema.parse(await response.json());
@@ -200,13 +196,12 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
   }
   async createTask(caller: TaskCaller, input: CreateCheckTask) {
     try {
-      if ("userId" in input || "role" in input)
+      if ("userId" in input || "role" in input || "simulation" in input)
         throw new TaskApiError(400, "Unknown application check fields");
       const requestBody = {
         requestId: input.requestId,
         appId: input.appId,
-        country: input.country,
-        simulation: input.simulation
+        country: input.country
       };
       return z
         .object({ taskId: z.string().min(1) })
@@ -308,13 +303,24 @@ function checkTaskView(entry: ProjectTask): CheckTask {
     ...(metadata.userId ? { userId: metadata.userId } : {})
   };
   if (metadata["server.inputOwner"] === "app-checks") {
-    for (const key of ["appId", "country", "salt", "saltDate", "inputVersion"])
+    for (const key of [
+      "appId",
+      "country",
+      "salt",
+      "saltDate",
+      "inputVersion",
+      "contractId",
+      "eventCode"
+    ])
       if (metadata[key] !== undefined) row[key] = metadata[key];
-    if (metadata.simulation) {
-      try {
-        row.simulation = JSON.parse(metadata.simulation);
-      } catch {
-        row.configurationError = "Simulation cannot be parsed";
+    row.refill = entry.task?.refill;
+    for (const key of ["contractParameters", "workerSelector"]) {
+      if (metadata[key]) {
+        try {
+          row[key] = JSON.parse(metadata[key]);
+        } catch {
+          row.configurationError = "任务执行配置无法解析";
+        }
       }
     }
     if (entry.stats)

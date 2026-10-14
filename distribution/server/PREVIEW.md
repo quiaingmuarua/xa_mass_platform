@@ -83,6 +83,14 @@ The ZIP contains code and the seed resource, never a database file. Acceptance r
 use their private inventory sibling for a distinct database; source/ZIP starts do not
 touch an already running Preview's configuration.
 
+App Checks configuration uses an appId-keyed applications object, named contract
+defaults, per-App event/refill/query bindings and optional window Pool groups.
+H2 stores the whole document without format/revision counters; saves compare a content fingerprint. The admin page edits the whole JSON document;
+saving does not affect the running process. Use a new H2 file and Redis scope when
+switching from the old table/document shape; there is no migration or fallback. Creation sends only
+requestId, appId and country. Tasks retain their execution snapshot across later
+configuration saves/restarts; changing an existing window length requires a new scope.
+
 `run.json` records count, appCount, seed, appChecksDatabase and fixed `scenarios: ["sms", "messages", "app-checks"]`, not a
 promised country distribution. The Host uses the existing combined capability
 configuration; no Simulator runtime mode selects business deployment.

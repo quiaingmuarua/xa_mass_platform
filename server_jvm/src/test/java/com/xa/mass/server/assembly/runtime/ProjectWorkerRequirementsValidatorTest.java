@@ -14,8 +14,25 @@ import static org.mockito.Mockito.*;
 
 class ProjectWorkerRequirementsValidatorTest {
     private final WorkerResourceCatalog workers = mock(WorkerResourceCatalog.class);
-    private static final ProjectWorkerRequirements REQUIRED = new ProjectWorkerRequirements(
-            "messages", List.of("shared"), Set.of("send"), Set.of("delivery"), Set.of("delivery.take", "delivery.phone"));
+    private static final ProjectWorkerRequirements REQUIRED = new ProjectWorkerRequirements("messages", Map.of("shared", new ProjectWorkerRequirements.Resources(Set.of("send"), Set.of("delivery"), Set.of("delivery.take", "delivery.phone"))));
+
+    @Test void groupRequirementsDoNotBecomeAUnionAcrossDifferentProtocols() {
+        var requirements = new ProjectWorkerRequirements("checks", Map.of(
+                "window", new ProjectWorkerRequirements.Resources(Set.of("simulate"), Set.of("window"), Set.of("window.take")),
+                "plain", new ProjectWorkerRequirements.Resources(Set.of("lookup"), Set.of("any"), Set.of("worker.any"))));
+        when(workers.getWorkerGroupDescriptors(anyList())).thenReturn(Map.of(
+                "window", new WorkerGroupDescriptor("window", Map.of(), Set.of("simulate", "extra")),
+                "plain", new WorkerGroupDescriptor("plain", Map.of(), Set.of("lookup"))));
+        var matching = new MatchingProperties(Map.of(
+                "window", new MatchingGroup(Set.of("window"), Set.of("window.take")),
+                "plain", new MatchingGroup(Set.of("any"), Set.of("worker.any"))));
+        var validator = validator(directory(new ProjectDefinition("checks", List.of("window","plain"))), matching, List.of(requirements));
+        validator.validate();
+        when(workers.getWorkerGroupDescriptors(anyList())).thenReturn(Map.of(
+                "window", new WorkerGroupDescriptor("window", Map.of(), Set.of("simulate")),
+                "plain", new WorkerGroupDescriptor("plain", Map.of(), Set.of("simulate"))));
+        assertThatThrownBy(validator::validate).hasMessageContaining("group=plain").hasMessageContaining("missing events: [lookup]");
+    }
 
     @Test void noRequirementsMakeNoOwnerCalls() {
         new ProjectWorkerRequirementsValidator(directory(), workers, new MatchingProperties(Map.of()), List.of()).validate();
@@ -23,7 +40,7 @@ class ProjectWorkerRequirementsValidatorTest {
     }
 
     @Test void projectsCanShareAnExistingGroupWithExtraCapabilitiesAndOnlyOneRead() {
-        var other = new ProjectWorkerRequirements("sms", List.of("shared"), Set.of("listen"), Set.of(), Set.of());
+        var other = new ProjectWorkerRequirements("sms", Map.of("shared", new ProjectWorkerRequirements.Resources(Set.of("listen"), Set.of(), Set.of())));
         when(workers.getWorkerGroupDescriptors(List.of("shared"))).thenReturn(Map.of("shared",
                 new WorkerGroupDescriptor("shared", Map.of("host", "retained"), Set.of("send", "listen", "extra"))));
         var validator = new ProjectWorkerRequirementsValidator(directory(new ProjectDefinition("messages", List.of("shared")),
@@ -36,7 +53,7 @@ class ProjectWorkerRequirementsValidatorTest {
 
     @Test void callerKnownGroupReadsAreDeduplicatedAndBoundedWithoutLimitingTheProject() {
         var groups = IntStream.range(0, 205).mapToObj(i -> "g" + i).toList();
-        var requirements = List.of(new ProjectWorkerRequirements("p", groups, Set.of("send"), Set.of(), Set.of()));
+        var requirements = List.of(new ProjectWorkerRequirements("p", groups.stream().collect(java.util.stream.Collectors.toMap(group -> group, group -> new ProjectWorkerRequirements.Resources(Set.of("send"), Set.of(), Set.of()), (left, right) -> { throw new IllegalArgumentException("Duplicate Group"); }, java.util.LinkedHashMap::new))));
         var pages = new ArrayList<List<String>>();
         when(workers.getWorkerGroupDescriptors(anyList())).thenAnswer(call -> {
             List<String> ids = List.copyOf(call.getArgument(0)); pages.add(ids);
@@ -59,7 +76,7 @@ class ProjectWorkerRequirementsValidatorTest {
                 .hasMessageContaining("Group is not declared").hasMessageContaining("group=shared");
         assertThatThrownBy(() -> validator(knownProject(), available(), List.of(REQUIRED, REQUIRED)))
                 .hasMessageContaining("duplicate Project/Group");
-        var overlap = new ProjectWorkerRequirements("messages", List.of("other", "shared"), Set.of(), Set.of(), Set.of());
+        var overlap = new ProjectWorkerRequirements("messages", List.of("other", "shared").stream().collect(java.util.stream.Collectors.toMap(group -> group, group -> new ProjectWorkerRequirements.Resources(Set.of(), Set.of(), Set.of()), (left, right) -> { throw new IllegalArgumentException("Duplicate Group"); }, java.util.LinkedHashMap::new)));
         assertThatThrownBy(() -> validator(directory(new ProjectDefinition("messages", List.of("shared", "other"))),
                 available(), List.of(REQUIRED, overlap))).hasMessageContaining("duplicate Project/Group").hasMessageContaining("group=shared");
         verifyNoInteractions(workers);
@@ -95,20 +112,19 @@ class ProjectWorkerRequirementsValidatorTest {
     @Test void declarationCapturesExactNamesAndAllowsEmptySets() {
         var events = new HashSet<>(Set.of("send"));
         var groups = new ArrayList<>(List.of("g"));
-        var requirement = new ProjectWorkerRequirements("p", groups, events, Set.of(), Set.of());
+        var requirement = new ProjectWorkerRequirements("p", groups.stream().collect(java.util.stream.Collectors.toMap(group -> group, group -> new ProjectWorkerRequirements.Resources(events, Set.of(), Set.of()), (left, right) -> { throw new IllegalArgumentException("Duplicate Group"); }, java.util.LinkedHashMap::new)));
         groups.clear();
         events.clear();
-        assertThat(requirement.workerGroupIds()).containsExactly("g");
-        assertThatThrownBy(() -> requirement.workerGroupIds().clear()).isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> new ProjectWorkerRequirements("p", List.of("g", "g"), events, Set.of(), Set.of())).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ProjectWorkerRequirements("p", List.of(), events, Set.of(), Set.of())).isInstanceOf(IllegalArgumentException.class);
-        assertThat(requirement.eventCodes()).containsExactly("send");
-        assertThatThrownBy(() -> requirement.eventCodes().clear()).isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> new ProjectWorkerRequirements(" ", List.of("g"), Set.of(), Set.of(), Set.of())).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ProjectWorkerRequirements("p", List.of(" "), Set.of(), Set.of(), Set.of())).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ProjectWorkerRequirements("p", List.of("g"), null, Set.of(), Set.of())).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ProjectWorkerRequirements("p", List.of("g"), Set.of(), Set.of(" "), Set.of())).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ProjectWorkerRequirements("p", List.of("g"), Set.of(), Set.of(), Set.of(""))).isInstanceOf(IllegalArgumentException.class);
+        assertThat(requirement.requirementsByGroup().keySet()).containsExactly("g");
+        assertThatThrownBy(() -> requirement.requirementsByGroup().keySet().clear()).isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> new ProjectWorkerRequirements("p", Map.of())).isInstanceOf(IllegalArgumentException.class);
+        assertThat(requirement.requirementsByGroup().get("g").eventCodes()).containsExactly("send");
+        assertThatThrownBy(() -> requirement.requirementsByGroup().get("g").eventCodes().clear()).isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> new ProjectWorkerRequirements(" ", Map.of("g", new ProjectWorkerRequirements.Resources(Set.of(), Set.of(), Set.of())))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new ProjectWorkerRequirements("p", Map.of(" ", new ProjectWorkerRequirements.Resources(Set.of(), Set.of(), Set.of())))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new ProjectWorkerRequirements("p", Map.of("g", new ProjectWorkerRequirements.Resources(null, Set.of(), Set.of())))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new ProjectWorkerRequirements("p", Map.of("g", new ProjectWorkerRequirements.Resources(Set.of(), Set.of(" "), Set.of())))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new ProjectWorkerRequirements("p", Map.of("g", new ProjectWorkerRequirements.Resources(Set.of(), Set.of(), Set.of(""))))).isInstanceOf(IllegalArgumentException.class);
     }
 
     private ProjectWorkerRequirementsValidator validator(ProjectDirectory projects, MatchingProperties matching,

@@ -902,9 +902,9 @@ can come from configuration or module Beans, with one existing initialization pa
 Missing declarations for enabled functions fail startup without a business fallback.
 
 Modules may additionally expose `ProjectDefinition` and `ProjectWorkerRequirements`
-values. Requirements declare one Project, a nonempty immutable unique `workerGroupIds`
-list and the same exact event/Pool/explicit function requirements for every Group.
-Resource sets may be empty. The validator expands Project/Group pairs; overlapping
+values. Requirements declare one Project and a nonempty immutable `requirementsByGroup`
+map. Each Group has its own event/Pool/explicit function sets; sets may be empty.
+Different protocols do not impose a union of dependencies on every Group. The validator expands Project/Group pairs; overlapping
 declarations, unknown Projects and undeclared bindings fail during assembly.
 These Beans depend only on configuration/static bindings, never Task services or
 initialized resources. No lifecycle hook or mutation capability is supplied by them.
@@ -970,8 +970,8 @@ The receiver has no Properties dependency; handler-owned operations run outside
 its short admission/lifecycle gate.
 
 One `PlatformPropertiesHandler` serves all `WorkerPropertyProjection` definitions.
-Each definition selects message/observation events and provides an immutable Group-to-function
-map. Each function is pure `(current Platform Properties, observation times) ->
+Each definition selects one observation event and provides an immutable Group-to-projection
+map; each projection selects its own message event and pure function. Each function is `(current Platform Properties, observation times) ->
 local patch`. Server expands this map only at startup; duplicate expanded Group/event
 selections fail assembly. There is no runtime registration or configuration read. The
 handler groups selected times by Group/Worker, chunks reads at the existing

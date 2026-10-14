@@ -36,7 +36,7 @@ class ScenarioArchitectureTest {
                         "task.TaskCreationService", "task.TaskCreationUnconfirmedException", "task.TaskDataService", "task.directory.TaskUserId",
                         "operation.OperationGuard", "operation.OperationAlreadyRunningException", "task.result.TaskResultsExportService", "api.v1.contract.ActionOutcome", "api.v1.contract.task.TaskItemResultResponse", "api.v1.contract.task.TaskCreateRequest",
                         "api.v1.contract.task.TaskCreateResponse", "api.v1.contract.task.TaskItemRequest",
-                        "api.v1.contract.task.TaskItemResultStatus", "worker.observation.WorkerPropertyProjection"),
+                        "api.v1.contract.task.TaskItemResultStatus", "api.v1.contract.runtimeview.TaskView", "worker.observation.WorkerPropertyProjection"),
                 "sms-reception-jvm", Set.of("task.access.TaskCaller", "task.call.TaskRpcPreparationService", "api.v1.contract.task.TaskRpcPrepareRequest",
                         "task.call.TaskRpcCallService", "task.TaskDataService", "task.observation.TaskLeaseProjection",
                         "task.observation.TaskLeaseProjectionMetrics", "api.v1.contract.task.TaskRpcCallRequest",

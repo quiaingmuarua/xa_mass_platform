@@ -1,11 +1,9 @@
+import { webcrypto } from "node:crypto";
 import { MockUserDirectorySource } from "@/user-directory-source";
 import { TaskApiError, callerHeaders, type TaskCaller } from "@/task-caller";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { ApiAppCheckTaskSource } from "../src/app-checks/task-source";
-import {
-  MockAppCheckTaskSource,
-  mockCatalog
-} from "../src/app-checks/mock-task-source";
+import { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
 
 const a: TaskCaller = Object.freeze({ userId: "testa", role: "operator" });
 const b: TaskCaller = Object.freeze({ userId: "testb", role: "operator" });
@@ -22,9 +20,9 @@ function directory() {
 const input = {
   requestId: "caller-test",
   appId: "app-a",
-  country: "CN" as const,
-  simulation: mockCatalog.simulationExample
+  country: "CN" as const
 };
+beforeEach(() => vi.stubGlobal("crypto", webcrypto));
 afterEach(() => vi.unstubAllGlobals());
 
 describe("App Checks declared callers", () => {
@@ -71,7 +69,8 @@ describe("App Checks declared callers", () => {
       () => source.loadImport(b, taskId),
       () => source.loadActivity(b, taskId),
       () => source.loadConfiguration(a),
-      () => source.saveConfiguration(a, 1, saved.saved.configuration),
+      () =>
+        source.saveConfiguration(a, saved.saved.fingerprint, saved.saved.configuration),
       () => source.simulateConfigurationRestart(a),
       () => source.advanceTask(a, taskId),
       () => source.completeTask(a, taskId)

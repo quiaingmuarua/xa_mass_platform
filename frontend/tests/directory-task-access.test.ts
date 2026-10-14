@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { MockUserDirectorySource } from "@/user-directory-source";
-import { MockAppCheckTaskSource, mockCatalog } from "@/app-checks/mock-task-source";
+import { MockAppCheckTaskSource } from "@/app-checks/mock-task-source";
 import { MockMessageTaskSource } from "@/message-campaigns/mock-task-source";
 import { MockRuntimeViewerDataSource } from "@/runtime-viewer/mock-data-source";
 import { createConsoleIdentity } from "@/console-identity";
@@ -32,8 +32,7 @@ function world(project: "messages" | "app-checks") {
       source.createTask(caller, {
         requestId: "directory-access",
         appId: "app-a",
-        country: "CN",
-        simulation: mockCatalog.simulationExample
+        country: "CN"
       })
   };
 }
@@ -101,8 +100,7 @@ it("keeps an admitted import's snapshot and denies the next operation before rea
   const { taskId } = await source.createTask(A, {
     requestId: "import-snapshot",
     appId: "app-a",
-    country: "CN",
-    simulation: mockCatalog.simulationExample
+    country: "CN"
   });
   let release!: (text: string) => void;
   const text = vi.fn(

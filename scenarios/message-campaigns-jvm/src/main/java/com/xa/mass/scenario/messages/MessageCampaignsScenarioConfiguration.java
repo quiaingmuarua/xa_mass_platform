@@ -23,8 +23,10 @@ public class MessageCampaignsScenarioConfiguration {
 
     @Bean
     ProjectWorkerRequirements messageWorkerRequirements(MessageScenarioProperties config) {
-        return new ProjectWorkerRequirements(PROJECT, config.workerGroupIds(), Set.of(EVENT),
-                Set.of(POOL), Set.of(POOL_FUNCTION));
+        var groups = new java.util.LinkedHashMap<String, ProjectWorkerRequirements.Resources>();
+        config.workerGroupIds().forEach(group -> groups.put(group,
+                new ProjectWorkerRequirements.Resources(Set.of(EVENT), Set.of(POOL), Set.of(POOL_FUNCTION))));
+        return new ProjectWorkerRequirements(PROJECT, groups);
     }
 
     @Bean

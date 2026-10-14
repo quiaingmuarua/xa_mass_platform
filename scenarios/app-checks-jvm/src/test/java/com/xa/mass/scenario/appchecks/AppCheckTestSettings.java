@@ -9,5 +9,12 @@ final class AppCheckTestSettings {
             return new String(input.readAllBytes(), StandardCharsets.UTF_8);
         } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
     }
-    static AppCheckSettings settings() { return AppCheckSettings.parse(Jsons.parseObject(seed())); }
+    static AppCheckContracts contracts() {
+        return new AppCheckContracts(java.util.List.of(AppCheckContracts.registration(), AppCheckContracts.simulatedRegistration()));
+    }
+    static AppCheckSettings.Application simulated(String label, String group) {
+        return new AppCheckSettings.Application(label, group, settings().requireApplication("app-a").execution(),
+                AppCheckContracts.SIMULATED, null);
+    }
+    static AppCheckSettings settings() { return AppCheckSettings.parse(Jsons.parseObject(seed()), contracts()); }
 }

@@ -24,18 +24,15 @@ public final class AppCheckController {
     @GetMapping("/configuration") public Object configuration(TaskCaller caller) { caller.requirePermission("app-checks.configuration"); caller.requireProject("app-checks"); return configurations.view(); }
     @PutMapping("/configuration") public Object saveConfiguration(TaskCaller caller, @RequestBody Map<String, Object> input) {
         caller.requirePermission("app-checks.configuration"); caller.requireProject("app-checks");
-        final long revision;
-        final AppCheckSettings settings;
+        final String fingerprint;
         try {
-            AppCheckSettings.object(input, java.util.Set.of("expectedRevision", "configuration"));
-            revision = AppCheckSpecification.integer(input.get("expectedRevision"));
-            if (revision <= 0) throw new IllegalArgumentException("expectedRevision 必须为正整数");
-            settings = AppCheckSettings.parse(input.get("configuration"));
+            AppCheckSettings.object(input, java.util.Set.of("expectedFingerprint", "configuration"), java.util.Set.of(), "request");
+            fingerprint = AppCheckSpecification.text(input.get("expectedFingerprint"), 64);
         } catch (IllegalArgumentException invalid) {
             throw new AppCheckConfigurationException(400, AppCheckConfigurationException.Code.INVALID_CONFIGURATION,
                     "save", invalid.getMessage(), invalid);
         }
-        return configurations.save(revision, settings);
+        return configurations.save(fingerprint, input.get("configuration"));
     }
     @ExceptionHandler(AppCheckConfigurationException.class)
     ResponseEntity<?> configurationFailure(AppCheckConfigurationException failure) {

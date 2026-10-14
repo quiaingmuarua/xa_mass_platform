@@ -42,7 +42,9 @@ async function verifyResult(
   task: CheckDetail["task"],
   result: CheckResult
 ): Promise<Verification> {
-  const simulation = simulationSchema.safeParse(task.simulation);
+  if (task.contractId !== "simulated-registration-v1")
+    return { status: "unavailable", reason: "当前契约不使用模拟复算" };
+  const simulation = simulationSchema.safeParse(task.contractParameters);
   if (result.resultStatus === "failed")
     return { status: "unavailable", reason: "失败记录没有原执行者，无法复算异常原因" };
   if (

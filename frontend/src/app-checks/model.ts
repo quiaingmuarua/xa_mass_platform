@@ -75,7 +75,11 @@ export const taskSchema = z.object({
   country: z.enum(["CN", "US", "GB"]).optional(),
   salt: z.string().optional(),
   saltDate: z.string().optional(),
-  simulation: z.unknown().optional(),
+  contractId: z.string().optional(),
+  contractParameters: z.unknown().optional(),
+  eventCode: z.string().optional(),
+  workerSelector: z.unknown().optional(),
+  refill: z.unknown().optional(),
   configurationError: z.string().optional(),
   sourceFile: z.string().optional(),
   inputVersion: z.string().optional(),
@@ -113,7 +117,8 @@ export const catalogSchema = z.object({
       z.object({
         appId: z.string().min(1),
         label: z.string().min(1),
-        workerGroupId: z.string().min(1)
+        workerGroupId: z.string().min(1),
+        contractId: z.string().min(1)
       })
     )
     .min(1),
@@ -121,8 +126,7 @@ export const catalogSchema = z.object({
   limits: z.object({
     numbersPerImport: integer.positive().max(100000),
     importFileBytes: integer.positive()
-  }),
-  simulationExample: simulationSchema
+  })
 });
 // Local Mock snapshots are not part of the API schema; API parsing strips them.
 export type Catalog = z.infer<typeof catalogSchema>;
@@ -137,7 +141,6 @@ export interface CreateCheckTask {
   requestId: string;
   appId: string;
   country: Country;
-  simulation: Simulation;
 }
 export const appLabel = (app?: string, catalog?: Catalog) =>
   catalog?.apps.find((candidate) => candidate.appId === app)?.label ?? app ?? "—";

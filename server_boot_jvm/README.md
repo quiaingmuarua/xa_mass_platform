@@ -41,7 +41,7 @@ The shared String Bean remains for SMS. New API creation requires an application
 only Messaging Pool selection is used. Simulator App Workers install both Messages
 and App Checks, with explicit nonoverlapping phone ranges and country Properties.
 
-Each App Group enables `assignment-window`. App Checks owns its H2 configuration
+The Preview seed binds each App Group to `assignment-window`. App Checks owns its H2 configuration
 and reads one immutable startup snapshot. That snapshot contributes the Project,
 resource requirements, Pool definition, multi-Group projection and Catalog.
 Boot passes `xa.mass.scenarios.app-checks.storage.path` through
@@ -50,7 +50,8 @@ Boot passes `xa.mass.scenarios.app-checks.storage.path` through
 A/B and explicit 60000 ms/10 limits and is used only for an empty configuration table.
 Generic Matching Group binding still holds only enablement. Boot opens no database;
 ordinary platform composition does not instantiate the scenario store.
-App Checks declares only that Pool's supply. Any remains available for other
+App Checks derives event/refill/query dependencies per Group from the H2 configuration document keyed by appId.
+Other applications can select Any without a window entry. Any remains available to
 explicit callers, without a default Group-wide window gate. The old Group-level
 `assignment-window-pool` path and `max-assignments` field have no aliases. The
 scenario no longer reads window parameters from YAML. Saves require manual restart;

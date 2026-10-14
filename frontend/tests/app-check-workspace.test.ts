@@ -219,7 +219,7 @@ describe("App Checks product workspace", () => {
       requestId: "append-ui",
       appId: "app-a",
       country: "CN",
-      simulation: mockCatalog.simulationExample,
+
       numbers: ["+8613800000001"]
     });
     const create = vi.spyOn(source, "createTask");
@@ -250,8 +250,7 @@ describe("App Checks product workspace", () => {
   it("keeps an unconfirmed append draft attached to its original task when another import is opened", async () => {
     const config = {
       appId: "app-a",
-      country: "CN" as const,
-      simulation: mockCatalog.simulationExample
+      country: "CN" as const
     };
     const first = await source.createTask(CALLER, {
       ...config,
@@ -439,8 +438,7 @@ describe("App Checks product workspace", () => {
         requestId: "scroll-" + i,
         appId: "app-a",
         country: "CN",
-        numbers: ["+8613800000001"],
-        simulation: mockCatalog.simulationExample
+        numbers: ["+8613800000001"]
       });
     const read = vi.spyOn(source, "listTasks");
     const { router } = await mount();
@@ -509,8 +507,7 @@ describe("App Checks product workspace", () => {
       const created = await source.createTask(CALLER, {
         requestId: "bounded-" + i,
         appId: "app-a",
-        country: "CN",
-        simulation: mockCatalog.simulationExample
+        country: "CN"
       });
       createdIds.push(created.taskId);
       vi.setSystemTime(Date.now() + 1000);
@@ -735,8 +732,7 @@ describe("App Checks product workspace", () => {
       requestId: "preview-export",
       appId: "app-a",
       country: "CN",
-      numbers,
-      simulation: mockCatalog.simulationExample
+      numbers
     });
     await source.approveTask(CALLER, taskId, numbers.length);
     await source.completeTask(CALLER, taskId);
@@ -773,7 +769,7 @@ describe("App Checks product workspace", () => {
     expect(read).toHaveBeenCalledTimes(1);
     await command("导出结果");
     expect(document.querySelector(".checks-export-count")!.textContent).toContain(
-      "997 条"
+      "901 条"
     );
     button("生成 CSV 文件").click();
     await settle();
@@ -786,7 +782,7 @@ describe("App Checks product workspace", () => {
       "blob:complete-export"
     );
     expect(document.querySelector(".checks-download-ready")?.textContent).toContain(
-      "997 条"
+      "901 条"
     );
   });
   it("shows only an available import summary and discards late summaries across tasks", async () => {
@@ -870,9 +866,7 @@ describe("App Checks product workspace", () => {
     expect(document.querySelector("#app-check-create table")).toBeNull();
     await submit();
     expect(create).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0][1]).toMatchObject({
-      simulation: mockCatalog.simulationExample
-    });
+    expect(create.mock.calls[0][1]).toMatchObject({});
     pending.resolve({ taskId: "check-review" });
     await settle();
     expect(router.currentRoute.value.path).toBe("/app-checks");

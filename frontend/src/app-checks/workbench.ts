@@ -7,10 +7,8 @@ import type {
   CheckTask,
   CheckResult,
   Country,
-  CreateCheckTask,
-  Simulation
+  CreateCheckTask
 } from "./model";
-import { simulationSchema } from "./model";
 import type { ConfigurationSession } from "./settings";
 import type { ImportReport } from "./import-model";
 
@@ -42,7 +40,6 @@ export interface CheckDraft {
   submissionPhase: "create" | "import";
   busy: boolean;
   error: string;
-  simulation?: Simulation;
   frozenCreate?: CreateCheckTask;
   frozenCaller?: TaskCaller;
 }
@@ -65,7 +62,6 @@ export function freshDraft(catalog?: Catalog): CheckDraft {
     createdAtMillis: Date.now(),
     appId: catalog?.apps[0].appId ?? "",
     country: catalog?.countries[0] ?? "CN",
-    simulation: catalog ? simulationSchema.parse(catalog.simulationExample) : undefined,
     inputMode: "file",
     text: "",
     fileName: "",
@@ -101,7 +97,6 @@ export function createWorkbenchSession(
       to: ""
     },
     filtersExpanded: false,
-    configurationApp: "",
     configuration: {
       readAt: 0,
       error: "",

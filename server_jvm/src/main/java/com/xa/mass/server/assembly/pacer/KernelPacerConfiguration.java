@@ -46,7 +46,7 @@ public class KernelPacerConfiguration {
             for (var projection : projections) {
                 for (String group : projection.projectionsByGroup().keySet())
                     routes.computeIfAbsent(group, ignored -> new LinkedHashMap<>())
-                        .put(new EventKey(projection.messageEventName(), projection.observationEventName()), List.of(handler));
+                        .put(new EventKey(projection.projectionsByGroup().get(group).messageEventName(), projection.observationEventName()), List.of(handler));
             }
         }
         return new WorkerObservationConsumer(routes, running, failures);

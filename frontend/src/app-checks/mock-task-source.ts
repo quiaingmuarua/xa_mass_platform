@@ -12,9 +12,13 @@ import { taskUserScore, compareTaskIds } from "@/task-user-id";
 import type { TaskPolicySnapshot } from "./configuration";
 
 import {
-  settingsSchema,
+  validateMockSettings,
+  mockConfigurationFingerprint,
+  SIMULATED_CONTRACT,
+  REGISTRATION_CONTRACT,
   settingsIdentity,
   requireSettingsUpdate,
+  type AppCheckConfigurationView,
   type AppCheckSettings
 } from "./settings";
 import { csvCell, inspectImport, type ImportSnapshot } from "./import-model";
@@ -28,22 +32,40 @@ import {
   simulationSchema
 } from "./model";
 
+export const mockSimulation = { ranges: rangeExamples.混合, delayMs: [2000, 5000] };
 export const mockCatalog: Catalog = {
   projectId: "app-checks",
   name: "应用注册查询",
-  version: "0.1.0-preview",
+  version: "0.3.0-preview",
   apps: ["app-a", "app-b"].map((appId) => ({
     appId,
     label: appId === "app-a" ? "App A" : "App B",
-    workerGroupId: `${appId}-sim`
+    workerGroupId: appId + "-sim",
+    contractId: SIMULATED_CONTRACT
   })),
   countries: ["CN", "US", "GB"],
-  limits: { numbersPerImport: 100000, importFileBytes: 10 * 1024 * 1024 },
-  simulationExample: { ranges: rangeExamples.混合, delayMs: [2000, 5000] }
+  limits: { numbersPerImport: 100000, importFileBytes: 10 * 1024 * 1024 }
 };
 export const mockSettings: AppCheckSettings = {
-  common: { simulationDefault: structuredClone(mockCatalog.simulationExample) },
-  applications: structuredClone(mockCatalog.apps),
+  common: {
+    contractDefaults: {
+      [SIMULATED_CONTRACT]: structuredClone(mockSimulation),
+      [REGISTRATION_CONTRACT]: {}
+    }
+  },
+  applications: Object.fromEntries(
+    mockCatalog.apps.map(({ appId, ...app }) => [
+      appId,
+      {
+        ...app,
+        execution: {
+          eventCode: "extension.worker.app.registration.check",
+          refill: [{ poolName: "assignment-window", target: {}, count: 100 }],
+          workerSelector: { executorName: "worker.assignment.available", input: {} }
+        }
+      }
+    ])
+  ),
   poolGroups: Object.fromEntries(
     mockCatalog.apps.map((app) => [
       app.workerGroupId,
@@ -51,11 +73,37 @@ export const mockSettings: AppCheckSettings = {
     ])
   )
 };
+const mockContracts = [
+  {
+    id: SIMULATED_CONTRACT,
+    description: "确定性模拟协议；按实际 Worker、salt、区间和延迟复算",
+    parameterExample: mockSimulation,
+    inputExample: { number: "+8613800000001", salt: "fixed-salt", ...mockSimulation },
+    resultExample: {
+      number: "+8613800000001",
+      registered: true,
+      workerId: "worker-a",
+      workerGroupId: "app-a-sim",
+      simulatedDelayMillis: 4067
+    }
+  },
+  {
+    id: REGISTRATION_CONTRACT,
+    description: "号码查询协议；不要求模拟字段",
+    parameterExample: {},
+    inputExample: { number: "+8613800000001" },
+    resultExample: {
+      number: "+8613800000001",
+      registered: true,
+      workerId: "worker-c",
+      workerGroupId: "app-c"
+    }
+  }
+];
 const mockTaskPolicy: TaskPolicySnapshot = {
   priority: 50,
   maxRetries: 3,
-  validityMillis: 365 * 86400000,
-  supply: { poolName: "assignment-window", target: "{}", count: 100 }
+  validityMillis: 365 * 86400000
 };
 const epoch = Date.UTC(2026, 9, 8, 2);
 function task(taskId: string, changes: Partial<CheckTask> = {}): CheckTask {
@@ -66,11 +114,17 @@ function task(taskId: string, changes: Partial<CheckTask> = {}): CheckTask {
     createdAtMillis: epoch,
     workerGroupId: "app-a-sim",
     managed: false,
-    inputVersion: "2",
+    inputVersion: "3",
     state: "terminal",
     appId: "app-a",
     country: "CN",
-    simulation: structuredClone(mockCatalog.simulationExample),
+    contractId: SIMULATED_CONTRACT,
+    contractParameters: structuredClone(mockSimulation),
+    eventCode: mockSettings.applications["app-a"].execution.eventCode,
+    workerSelector: structuredClone(
+      mockSettings.applications["app-a"].execution.workerSelector
+    ),
+    refill: structuredClone(mockSettings.applications["app-a"].execution.refill),
     salt: "fixed-salt",
     saltDate: "2026-09-18",
     totalCount: 1,
@@ -156,7 +210,7 @@ function records(): CheckDetail[] {
     {
       task: task("check-unregistered", {
         name: "补充号码查询",
-        simulation: { ranges: rangeExamples.全未注册, delayMs: [0, 0] }
+        contractParameters: { ranges: rangeExamples.全未注册, delayMs: [0, 0] }
       }),
       results: [{ ...registered, registered: false, simulatedDelayMillis: 0 }],
       resultsTruncated: false
@@ -248,7 +302,6 @@ function sampleRows(count: number, group: string, country: string, numbers?: str
 export class MockAppCheckTaskSource implements AppCheckTaskSource {
   readonly mode = "mock";
   private savedConfiguration = {
-    revision: 1,
     configuration: structuredClone(mockSettings)
   };
   private effectiveConfiguration = structuredClone(this.savedConfiguration);
@@ -293,48 +346,57 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
   async catalog() {
     return structuredClone({
       ...mockCatalog,
-      apps: this.effectiveConfiguration.configuration.applications,
-      simulationExample:
-        this.effectiveConfiguration.configuration.common.simulationDefault
+      apps: Object.entries(this.effectiveConfiguration.configuration.applications)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([appId, { label, workerGroupId, contractId }]) => ({
+          appId,
+          label,
+          workerGroupId,
+          contractId
+        }))
     });
   }
-  async loadConfiguration(caller: TaskCaller) {
+  async loadConfiguration(caller: TaskCaller): Promise<AppCheckConfigurationView> {
     caller = this.directory.resolveCaller(caller, "app-checks");
     requireCallerPermission(caller, "app-checks.configuration");
+    const saved = structuredClone(this.savedConfiguration);
+    const effective = structuredClone(this.effectiveConfiguration);
+    const [savedFingerprint, effectiveFingerprint] = await Promise.all([
+      mockConfigurationFingerprint(saved.configuration),
+      mockConfigurationFingerprint(effective.configuration)
+    ]);
     return structuredClone({
-      saved: this.savedConfiguration,
-      effective: this.effectiveConfiguration,
-      restartRequired:
-        settingsIdentity(this.savedConfiguration.configuration) !==
-        settingsIdentity(this.effectiveConfiguration.configuration),
-      newScopeRequired: Object.entries(
-        this.effectiveConfiguration.configuration.poolGroups
-      ).some(
+      contracts: mockContracts,
+      saved: { ...saved, fingerprint: savedFingerprint },
+      effective: { ...effective, fingerprint: effectiveFingerprint },
+      restartRequired: savedFingerprint !== effectiveFingerprint,
+      newScopeRequired: Object.entries(effective.configuration.poolGroups).some(
         ([group, limit]) =>
-          this.savedConfiguration.configuration.poolGroups[group]?.windowMillis !==
-          limit.windowMillis
+          saved.configuration.poolGroups[group] !== undefined &&
+          saved.configuration.poolGroups[group].windowMillis !== limit.windowMillis
       )
     });
   }
   async saveConfiguration(
     caller: TaskCaller,
-    expectedRevision: number,
-    configuration: AppCheckSettings
+    expectedFingerprint: string,
+    configuration: Record<string, unknown>
   ) {
     caller = this.directory.resolveCaller(caller, "app-checks");
     requireCallerPermission(caller, "app-checks.configuration");
-    if (expectedRevision !== this.savedConfiguration.revision)
-      throw new TaskApiError(409, "配置修订已变化，请重新读取后核对");
-    const validated = settingsSchema.parse(configuration);
-    requireSettingsUpdate(this.savedConfiguration.configuration, validated);
+    if (!/^[0-9a-f]{64}$/.test(expectedFingerprint))
+      throw new TaskApiError(400, "expectedFingerprint 必须是读取到的 SHA-256 指纹");
+    const validated = validateMockSettings(configuration);
+    const previous = this.savedConfiguration;
+    const fingerprint = await mockConfigurationFingerprint(previous.configuration);
     if (
-      settingsIdentity(validated) !==
-      settingsIdentity(this.savedConfiguration.configuration)
+      expectedFingerprint !== fingerprint ||
+      settingsIdentity(previous.configuration) !==
+        settingsIdentity(this.savedConfiguration.configuration)
     )
-      this.savedConfiguration = {
-        revision: expectedRevision + 1,
-        configuration: validated
-      };
+      throw new TaskApiError(409, "配置内容已变化，请重新读取后核对");
+    requireSettingsUpdate(previous.configuration, validated);
+    this.savedConfiguration = { configuration: validated };
     return this.loadConfiguration(caller);
   }
   async simulateConfigurationRestart(caller: TaskCaller) {
@@ -394,18 +456,16 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
   }
   async createTask(caller: TaskCaller, input: CreateCheckTask) {
     caller = this.directory.resolveCaller(caller, "app-checks");
-    if ("userId" in input || "role" in input)
+    if ("userId" in input || "role" in input || "simulation" in input)
       throw new TaskApiError(400, "Unknown application check fields");
-    const app = this.effectiveConfiguration.configuration.applications.find(
-      (app) => app.appId === input.appId
-    );
+    const apps = this.effectiveConfiguration.configuration.applications;
+    const app = Object.hasOwn(apps, input.appId) ? apps[input.appId] : undefined;
     if (!app) throw new Error("当前生效配置不支持此应用");
     const identity = JSON.stringify([
-      "app-checks/v3/create",
+      "app-checks/v4/create",
       caller.userId,
       input.appId,
-      input.country,
-      simulationSchema.parse(input.simulation)
+      input.country
     ]);
     const prior = this.requests.get(caller.userId + "/" + input.requestId);
     if (prior) {
@@ -421,7 +481,16 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         workerGroupId: app.workerGroupId,
         country: input.country,
         createdAtMillis: Date.now(),
-        simulation: structuredClone(input.simulation),
+        contractId: app.contractId,
+        contractParameters: structuredClone(
+          app.parameters ??
+            this.effectiveConfiguration.configuration.common.contractDefaults[
+              app.contractId
+            ]
+        ),
+        eventCode: app.execution.eventCode,
+        workerSelector: structuredClone(app.execution.workerSelector),
+        refill: structuredClone(app.execution.refill),
         mockPolicy: structuredClone(mockTaskPolicy),
         salt: undefined,
         saltDate: undefined,
@@ -555,6 +624,34 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       record.task.country ?? "CN",
       this.imported.get(id)
     );
+    if (record.task.contractId === REGISTRATION_CONTRACT) {
+      for (const row of all) delete row.simulatedDelayMillis;
+    } else {
+      const parameters = simulationSchema.parse(record.task.contractParameters);
+      for (let i = start; i < all.length; i++) {
+        const row = all[i],
+          bucket = i % 1000;
+        const failed =
+          parameters.ranges.failed[0] <= bucket && bucket < parameters.ranges.failed[1];
+        if (failed)
+          all[i] = {
+            messageId: row.messageId,
+            number: row.number,
+            resultStatus: "failed"
+          };
+        else
+          all[i] = {
+            ...row,
+            resultStatus: "succeeded",
+            registered:
+              parameters.ranges.registered[0] <= bucket &&
+              bucket < parameters.ranges.registered[1],
+            workerId: row.workerId ?? "demo-worker-1",
+            workerGroupId: record.task.workerGroupId!,
+            simulatedDelayMillis: parameters.delayMs[0]
+          };
+      }
+    }
     record.results.push(...all.slice(start, Math.min(end, start + 1000)));
     // Avoid spreading large imports into a function's argument list.
     for (let offset = start + 1000; offset < end; offset += 1000)

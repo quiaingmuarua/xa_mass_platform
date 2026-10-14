@@ -47,48 +47,54 @@ class AppChecksIntegrationTest {
             var initial = world.get("/api/v1/app-checks/configuration");
             var saved = (Map<String, Object>) initial.get("saved");
             var config = (Map<String, Object>) saved.get("configuration");
-            ((List<Object>) config.get("applications")).add(Map.of("appId", "app-c", "label", "App C", "workerGroupId", "app-c-sim"));
-            ((Map<String, Object>) config.get("poolGroups")).put("app-c-sim", Map.of("windowMillis", 60000, "maxCount", 1000));
-            var request = Map.of("expectedRevision", 1, "configuration", config);
+            ((Map<String, Object>) config.get("applications")).put("app-c", Map.of("label", "App C", "workerGroupId", "app-c-sim",
+                    "contractId", "registration-v1", "execution", Map.of("eventCode", "extension.worker.catalog.lookup",
+                            "refill", List.of(Map.of("poolName", "any", "target", Map.of(), "count", 100)),
+                            "workerSelector", Map.of("executorName", "worker.any", "input", Map.of()))));
+            var request = Map.of("expectedFingerprint", saved.get("fingerprint"), "configuration", config);
             var response = world.putConfiguration(request);
             assertThat(response.statusCode()).isEqualTo(200);
+            String updatedFingerprint = (String) ((Map<?, ?>) Jsons.parseObject(response.body()).get("saved")).get("fingerprint");
+            assertThat(updatedFingerprint).matches("[0-9a-f]{64}").isNotEqualTo(saved.get("fingerprint"));
             assertThat(Jsons.parseObject(response.body())).containsEntry("restartRequired", true).containsEntry("newScopeRequired", false);
             assertThat(world.get("/api/v1/app-checks/catalog").get("apps").toString()).doesNotContain("app-c");
             assertThat(world.putConfiguration(request).statusCode()).isEqualTo(409);
-            assertThat(world.putConfiguration(Map.of("expectedRevision", 2, "configuration", config, "unexpected", true)).statusCode()).isEqualTo(400);
-            var noChange = world.putConfiguration(Map.of("expectedRevision", 2, "configuration", config));
-            assertThat(((Map<?, ?>) Jsons.parseObject(noChange.body()).get("saved")).get("revision")).isEqualTo(2L);
+            assertThat(world.putConfiguration(Map.of("expectedFingerprint", updatedFingerprint, "configuration", config, "unexpected", true)).statusCode()).isEqualTo(400);
+            var noChange = world.putConfiguration(Map.of("expectedFingerprint", updatedFingerprint, "configuration", config));
+            assertThat(((Map<?, ?>) Jsons.parseObject(noChange.body()).get("saved")).get("fingerprint")).isEqualTo(updatedFingerprint);
             assertThat(world.post("/api/v1/app-checks/tasks", Jsons.toJson(Map.of("requestId", "not-effective",
-                    "appId", "app-c", "country", "CN", "simulation", ((Map<?, ?>) config.get("common")).get("simulationDefault"))), "application/json")
+                    "appId", "app-c", "country", "CN")), "application/json")
                     .statusCode()).isEqualTo(400);
 
             var groups = Jsons.parseObject(world.context.getEnvironment().getProperty("xa.mass.worker-assembly.group-config-json"));
             assertThatThrownBy(() -> world.restart(
-                    "--xa.mass.worker-matching.groups.app-c-sim.pools[0]=assignment-window",
-                    "--xa.mass.worker-matching.groups.app-c-sim.functions[0]=worker.assignment.available"))
+                    "--xa.mass.worker-matching.groups.app-c-sim.pools[0]=any",
+                    "--xa.mass.worker-matching.groups.app-c-sim.functions[0]=worker.any"))
                     .hasStackTraceContaining("project=app-checks group=app-c-sim Group is not registered");
-            groups.put("app-c-sim", Map.of("attributes", Map.of(), "eventCodes", List.of("extension.worker.app.registration.check")));
+            groups.put("app-c-sim", Map.of("attributes", Map.of(), "eventCodes", List.of("extension.worker.catalog.lookup")));
             world.restart("--xa.mass.worker-assembly.group-config-json=" + Jsons.toJson(groups));
             var active = world.get("/api/v1/app-checks/configuration");
             assertThat(active).containsEntry("restartRequired", false);
-            assertThat(((Map<?, ?>) active.get("effective")).get("revision")).isEqualTo(2L);
+            assertThat(((Map<?, ?>) active.get("effective")).get("fingerprint")).isEqualTo(updatedFingerprint);
             assertThat(world.get("/api/v1/app-checks/catalog").get("apps").toString()).contains("app-c-sim", "App C");
             var projection = world.context.getBean(com.xa.mass.server.worker.observation.WorkerPropertyProjection.class);
-            assertThat(projection.projectionsByGroup()).containsKey("app-c-sim");
+            assertThat(projection.projectionsByGroup()).doesNotContainKey("app-c-sim");
             assertThat(world.context.getBean(com.xa.mass.workermatching.FixedWindowPoolDefinition.class)
-                    .limitsByGroup().get("app-c-sim").windowMillis()).isEqualTo(60000);
+                    .limitsByGroup()).doesNotContainKey("app-c-sim");
             // Deliberately make the storage owner unavailable before creating and executing the new app's task.
             ((AutoCloseable) world.context.getBean("appCheckConfigurationStore")).close();
             assertThat(world.http.send(world.request("/api/v1/app-checks/configuration", "proof", "admin").build(),
                     HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(503);
-            try (var workers = world.workers("app-c-sim")) {
+            try (var workers = world.registrationWorkers("app-c-sim")) {
                 workers.start();
                 var ids = world.readyFacts(workers, "app-c-sim");
-                String taskId = world.create("app-c-real-path", "app-c", 3, 1000, 1000, 0);
+                String taskId = world.create("app-c-real-path", "app-c", 3);
                 var detail = world.settled(taskId, 3);
                 assertThat(task(detail)).containsEntry("workerGroupId", "app-c-sim").containsEntry("succeededCount", 3L);
                 assertThat(rows(detail)).hasSize(3).allSatisfy(row -> assertThat(row).containsEntry("registered", true));
-                world.assertAllocationProjection("app-c-sim", ids);
+                assertThat(rows(detail)).allSatisfy(row -> assertThat(row).doesNotContainKeys("simulatedDelayMillis", "contentError"));
+                assertThat(world.context.getBean(WorkerProperties.class).loadWorkerFacts("app-c-sim", ids).values())
+                        .allSatisfy(facts -> assertThat(facts.platformProperties()).doesNotContainKeys("lastAssignedAt", "windowAssignmentCount"));
                 assertThat(world.post("/api/v1/app-checks/tasks/" + taskId + "/results:export", "", "application/json")
                         .headers().firstValue("X-Export-Count")).contains("3");
             }
@@ -102,14 +108,14 @@ class AppChecksIntegrationTest {
             List<String> ids = world.readyFacts(worker, "app-a-sim");
             // Leave room to witness a real rejected take in the original window, not a timing-only absence.
             while (60_000 - System.currentTimeMillis() % 60_000 < 20_000) Thread.sleep(100);
-            String first = world.create("window-first", "app-a", 1, 1000, 1000, 0);
+            String first = world.create("window-first", "app-a", 1);
             world.settled(first, 1);
             world.assertAllocationProjection("app-a-sim", ids);
             var before = world.context.getBean(WorkerProperties.class).loadWorkerFacts("app-a-sim", ids)
                     .get(ids.getFirst()).platformProperties();
             long firstWindow = ((Number) before.get("lastAssignedAt")).longValue() / 60_000;
             assertThat(((Number) before.get("windowAssignmentCount")).longValue()).isEqualTo(1);
-            String second = world.create("window-second", "app-a", 1, 1000, 1000, 0);
+            String second = world.create("window-second", "app-a", 1);
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
             while (world.selections.rejectedAt.get() == 0 && System.nanoTime() < deadline) Thread.sleep(20);
             long rejectedAt = world.selections.rejectedAt.get();
@@ -182,11 +188,12 @@ class AppChecksIntegrationTest {
     void allocationProjectionPrecedesReportAndSurvivesSuccessFailureAndLateResults(
             int registered, int unregistered, int delay, boolean failure) throws Exception {
         var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
-        try (var world = new World(); var workers = world.workers("app-a-sim", entered, release)) {
+        try (var world = new World(1000, 2, Map.of("app-a", simulation(registered, unregistered, delay),
+                "app-b", simulation(0, 0, 0))); var workers = world.workers("app-a-sim", entered, release)) {
             workers.start();
             // Establish the independent first Facts publication before exercising this lossy projection.
             List<String> ids = world.readyFacts(workers, "app-a-sim");
-            String task = world.create("allocation-observation", "app-a", 1, registered, unregistered, delay);
+            String task = world.create("allocation-observation", "app-a", 1);
             try {
                 assertThat(entered.await(15, TimeUnit.SECONDS)).isTrue();
                 assertThat(rows(world.detail(task)))
@@ -212,13 +219,19 @@ class AppChecksIntegrationTest {
             a.start(); b.start();
             world.readyFacts(a, "app-a-sim");
             world.readyFacts(b, "app-b-sim");
-            String registered = world.create("registered", "app-a", 101, 1000, 1000, 0);
-            String unregistered = world.create("unregistered", "app-a", 4, 0, 1000, 0);
-            String failed = world.create("failed", "app-b", 2, 0, 0, 0);
-            String mixed = world.create("mixed", "app-b", 12, 500, 900, 10);
+            String registered = world.create("registered", "app-a", 101);
+            String failed = world.create("failed", "app-b", 2);
             var positive = world.settled(registered, 101);
-            var negative = world.settled(unregistered, 4);
             var failures = world.settled(failed, 2);
+            world.configure(Map.of("app-a", simulation(0, 1000, 0), "app-b", simulation(500, 900, 10)));
+            world.readyFacts(a, "app-a-sim"); world.readyFacts(b, "app-b-sim");
+            var replay = world.post("/api/v1/app-checks/tasks", Jsons.toJson(Map.of("requestId","registered", "appId","app-a", "country","CN")), "application/json");
+            assertThat(replay.statusCode()).isEqualTo(201);
+            assertThat(Jsons.parseObject(replay.body()).get("taskId")).isEqualTo(registered);
+            assertThat(rows(world.detail(registered))).containsExactlyInAnyOrderElementsOf(rows(positive));
+            String unregistered = world.create("unregistered", "app-a", 4);
+            String mixed = world.create("mixed", "app-b", 12);
+            var negative = world.settled(unregistered, 4);
             var mix = world.settled(mixed, 12);
             assertThat(task(positive)).containsEntry("succeededCount", 101L).containsEntry("failedCount", 0L);
             assertThat(rows(positive)).hasSizeLessThanOrEqualTo(100).isNotEmpty();
@@ -242,7 +255,9 @@ class AppChecksIntegrationTest {
                 assertThat(row.get("registered")).isEqualTo(bucket < 500);
             }
             // A delayed real Handler crosses the existing five-second claim. No single-execution assertion.
-            String delayed = world.create("delayed", "app-a", 1, 1000, 1000, 6000);
+            world.configure(Map.of("app-a", simulation(1000, 1000, 6000)));
+            world.readyFacts(a, "app-a-sim");
+            String delayed = world.create("delayed", "app-a", 1);
             var late = world.settled(delayed, 1);
             assertThat(task(late)).containsEntry("succeededCount", 1L);
             assertThat(rows(late)).allSatisfy(row -> assertThat(row).containsEntry("simulatedDelayMillis", 6000L));
@@ -268,8 +283,8 @@ class AppChecksIntegrationTest {
         try (var world = new World()) {
             String route = "/api/v1/app-checks/tasks";
             String directory = "/api/v1/projects/app-checks/tasks";
-            var simulation = Map.of("ranges", Map.of("registered", List.of(0, 1000), "unregistered", List.of(1000, 1000), "failed", List.of(1000, 1000)), "delayMs", List.of(0, 0));
-            var body = new LinkedHashMap<String, Object>(Map.of("requestId", "personal", "appId", "app-a", "country", "CN", "simulation", simulation));
+
+            var body = new LinkedHashMap<String, Object>(Map.of("requestId", "personal", "appId", "app-a", "country", "CN"));
             var response = world.postAs(route, Jsons.toJson(body), "application/json", "1002", "operator");
             assertThat(response.statusCode()).isEqualTo(201);
             String target = (String) Jsons.parseObject(response.body()).get("taskId");
@@ -305,8 +320,8 @@ class AppChecksIntegrationTest {
                     .statusCode()).isEqualTo(400);
             assertThat(world.http.send(HttpRequest.newBuilder(world.base.resolve(directory)).header("X-XA-Dev-User", "_w")
                     .header("X-XA-Dev-Role", "operator").build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(400);
-            var simulation = Map.of("ranges", Map.of("registered", List.of(0, 1000), "unregistered", List.of(1000, 1000), "failed", List.of(1000, 1000)), "delayMs", List.of(0, 0));
-            var body = new LinkedHashMap<String, Object>(Map.of("requestId", "callerb", "appId", "app-a", "country", "CN", "simulation", simulation));
+
+            var body = new LinkedHashMap<String, Object>(Map.of("requestId", "callerb", "appId", "app-a", "country", "CN"));
             String a = "testa", b = "testb";
             var response = world.postAs(route, Jsons.toJson(body), "application/json", a, "operator");
             assertThat(response.statusCode()).isEqualTo(201);
@@ -352,8 +367,7 @@ class AppChecksIntegrationTest {
     void directoryMutationsGovernBothTaskAndScenarioHttpWithoutRewritingAttribution() throws Exception {
         try (var world = new World()) {
             var inputs = Map.of(
-                    "app-checks", Map.of("requestId", "access-check", "appId", "app-a", "country", "CN", "simulation",
-                            Map.of("ranges", Map.of("registered", List.of(0, 1000), "unregistered", List.of(1000, 1000), "failed", List.of(1000, 1000)), "delayMs", List.of(0, 0))),
+                    "app-checks", Map.of("requestId", "access-check", "appId", "app-a", "country", "CN"),
                     "messages", Map.of("requestId", "access-message", "appId", "demo", "name", "Access", "recipientCountry", "CN", "body", "{}"));
             for (var entry : inputs.entrySet()) {
                 String project = entry.getKey(), route = "/api/v1/" + project + "/tasks", directory = "/api/v1/projects/" + project + "/tasks";
@@ -390,8 +404,7 @@ class AppChecksIntegrationTest {
     void emptyCreationLargeImportIdempotencyAndManualClosureUseRealOwners() throws Exception {
         try (var world = new World()) {
             String path = "/api/v1/app-checks/tasks";
-            var body = Map.of("requestId", "large-import", "appId", "app-a", "country", "CN", "simulation",
-                    Map.of("ranges", Map.of("registered", List.of(0, 1000), "unregistered", List.of(1000, 1000), "failed", List.of(1000, 1000)), "delayMs", List.of(0, 0)));
+            var body = Map.of("requestId", "large-import", "appId", "app-a", "country", "CN");
             String json = Jsons.toJson(body);
             var created = world.post(path, json, "application/json");
             assertThat(created.statusCode()).isEqualTo(201);
@@ -460,6 +473,10 @@ class AppChecksIntegrationTest {
 
     record Attempt(String group, String number, boolean failed, long elapsedNanos) {}
 
+    static Map<String,Object> simulation(int registered, int unregistered, int delay) {
+        return Map.of("ranges", Map.of("registered", List.of(0,registered), "unregistered", List.of(registered,unregistered),
+                "failed", List.of(unregistered,1000)), "delayMs", List.of(delay,delay));
+    }
     static final class World implements AutoCloseable {
         final String scope = "test_app_checks_" + UUID.randomUUID().toString().replace("-", "");
         final String redisUrl = System.getenv().getOrDefault("XA_MASS_REDIS_URL", "redis://127.0.0.1:6379/15");
@@ -484,18 +501,48 @@ class AppChecksIntegrationTest {
             this(1000, 2);
         }
         World(long maxAssignments, int workerCount) throws Exception {
+            this(maxAssignments, workerCount, Map.of("app-a", simulation(1000,1000,0), "app-b", simulation(0,0,0)));
+        }
+        World(long maxAssignments, int workerCount, Map<String,Object> parameters) throws Exception {
             replicas = IntStream.range(0, workerCount).mapToObj(i -> "replica-" + i).toList();
             int port = port(), adapter = port(); base = URI.create("http://127.0.0.1:" + port);
             application.setRegisterShutdownHook(false);
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(observations));
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(selections));
-            arguments = AppCheckConfigurationFixture.arguments(maxAssignments, "--spring.profiles.active=preview", "--server.port=" + port,
+            arguments = new String[] { "--spring.profiles.active=preview", "--server.port=" + port,
                     "--xa.mass.users.seed=classpath:users/proof-directory.json", "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                     "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,
                     "--xa.mass.worker-endpoints.endpoints.products-websocket.public-uri=ws://127.0.0.1:" + adapter + "/api/v1/worker-delivery/websocket",
-                    "--logging.level.root=ERROR");
+                    "--logging.level.root=ERROR"};
+            var argumentsWithStorage = new ArrayList<>(List.of(arguments));
+            AppCheckConfigurationFixture.properties(maxAssignments, parameters).forEach((key,value) -> argumentsWithStorage.add("--" + key + "=" + value));
+            arguments = argumentsWithStorage.toArray(String[]::new);
             context = application.run(arguments);
+        }
+        @SuppressWarnings("unchecked")
+        void configure(Map<String,Object> parameters) throws Exception {
+            var current = get("/api/v1/app-checks/configuration");
+            var saved = (Map<String,Object>) current.get("saved");
+            var config = (Map<String,Object>) saved.get("configuration");
+            ((Map<String, Map<String,Object>>) config.get("applications")).forEach((appId, app) -> {
+                if (parameters.containsKey(appId)) app.put("parameters", parameters.get(appId));
+            });
+            assertThat(putConfiguration(Map.of("expectedFingerprint", saved.get("fingerprint"), "configuration", config)).statusCode()).isEqualTo(200);
+            restart();
+        }
+        JavaWorkerManager registrationWorkers(String group) {
+            var reference = new AtomicReference<JavaWorkerManager>();
+            var builder = JavaWorkerManager.builder(base, group, WorkerTransportType.WEBSOCKET);
+            for (String replica : replicas) {
+                builder.replica(replica, () -> Map.of("simulated", "true"), List.of(
+                        WorkerEventDefinition.extension("catalog.lookup", WorkerEventParameterResolvers.jsonMap(), input -> {
+                            assertThat(input).containsOnlyKeys("number");
+                            return Jsons.toJson(Map.of("number", input.get("number"), "registered", true,
+                                    "workerId", reference.get().snapshot(replica).workerId(), "workerGroupId", group));
+                        })));
+            }
+            var manager = builder.build(); reference.set(manager); return manager;
         }
         JavaWorkerManager workers(String group) {
             return workers(group, null, null);
@@ -558,12 +605,10 @@ class AppChecksIntegrationTest {
             } while (System.nanoTime() < deadline);
             throw new AssertionError("Platform window did not match the bounded allocation source witness");
         }
-        String create(String request, String app, int count, int registered, int unregistered, int delay) throws Exception {
+        String create(String request, String app, int count) throws Exception {
             int offset = ++sequence * 1000;
             var numbers = IntStream.range(offset, offset + count).mapToObj(i -> "+8613800" + String.format("%06d", i)).toList();
-            var body = Map.of("requestId", request, "appId", app, "country", "CN",
-                    "simulation", Map.of("ranges", Map.of("registered", List.of(0, registered), "unregistered", List.of(registered, unregistered),
-                            "failed", List.of(unregistered, 1000)), "delayMs", List.of(delay, delay)));
+            var body = Map.of("requestId", request, "appId", app, "country", "CN");
             var response = http.send(request("/api/v1/app-checks/tasks", "proof", "admin")
                     .timeout(Duration.ofSeconds(10)).header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(Jsons.toJson(body))).build(), HttpResponse.BodyHandlers.ofString());

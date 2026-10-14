@@ -1,10 +1,9 @@
 package com.xa.mass.scenario.appchecks;
 
-/** Shared scenario binding for Task supply, Item queries and Worker property projections. */
+/** Identity of the optional fixed-window Pool and its observed properties. */
 final class AppCheckWorkerSupply {
     static final String POOL = "assignment-window";
     static final String FUNCTION = "worker.assignment.available";
-    static final String EVENT = "extension.worker.app.registration.check";
     static final String LAST = "lastAssignedAt";
     static final String COUNT = "windowAssignmentCount";
 

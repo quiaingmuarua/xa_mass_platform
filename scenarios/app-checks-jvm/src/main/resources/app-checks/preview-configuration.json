@@ -1,16 +1,77 @@
 {
   "common": {
-    "simulationDefault": {
-      "ranges": {"registered": [0, 500], "unregistered": [500, 900], "failed": [900, 1000]},
-      "delayMs": [2000, 5000]
+    "contractDefaults": {
+      "simulated-registration-v1": {
+        "ranges": {
+          "registered": [
+            0,
+            500
+          ],
+          "unregistered": [
+            500,
+            900
+          ],
+          "failed": [
+            900,
+            1000
+          ]
+        },
+        "delayMs": [
+          2000,
+          5000
+        ]
+      },
+      "registration-v1": {}
     }
   },
-  "applications": [
-    {"appId": "app-a", "label": "App A", "workerGroupId": "app-a-sim"},
-    {"appId": "app-b", "label": "App B", "workerGroupId": "app-b-sim"}
-  ],
+  "applications": {
+    "app-a": {
+      "label": "App A",
+      "workerGroupId": "app-a-sim",
+      "contractId": "simulated-registration-v1",
+      "execution": {
+        "eventCode": "extension.worker.app.registration.check",
+        "refill": [
+          {
+            "poolName": "assignment-window",
+            "target": {},
+            "count": 100
+          }
+        ],
+        "workerSelector": {
+          "executorName": "worker.assignment.available",
+          "input": {}
+        }
+      }
+    },
+    "app-b": {
+      "label": "App B",
+      "workerGroupId": "app-b-sim",
+      "contractId": "simulated-registration-v1",
+      "execution": {
+        "eventCode": "extension.worker.app.registration.check",
+        "refill": [
+          {
+            "poolName": "assignment-window",
+            "target": {},
+            "count": 100
+          }
+        ],
+        "workerSelector": {
+          "executorName": "worker.assignment.available",
+          "input": {}
+        }
+      }
+    }
+  },
   "poolGroups": {
-    "app-a-sim": {"windowMillis": 60000, "maxCount": 10},
-    "app-b-sim": {"windowMillis": 60000, "maxCount": 10}
+    "app-a-sim": {
+      "windowMillis": 60000,
+      "maxCount": 10
+    },
+    "app-b-sim": {
+      "windowMillis": 60000,
+      "maxCount": 10
+    }
   }
 }

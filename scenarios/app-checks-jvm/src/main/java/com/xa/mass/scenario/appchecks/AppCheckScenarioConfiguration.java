@@ -17,20 +17,23 @@ import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.io.UncheckedIOException;
 import java.util.*;
-import java.util.function.BiFunction;
 import static com.xa.mass.scenario.appchecks.AppCheckWorkerSupply.*;
 
 @Configuration(proxyBeanMethods = false)
 @Import(AppCheckController.class)
 @EnableConfigurationProperties(AppCheckStorageProperties.class)
 public class AppCheckScenarioConfiguration {
+    @Bean AppCheckContract registrationContract() { return AppCheckContracts.registration(); }
+    @Bean AppCheckContract simulatedRegistrationContract() { return AppCheckContracts.simulatedRegistration(); }
+    @Bean AppCheckContracts appCheckContracts(List<AppCheckContract> definitions) { return new AppCheckContracts(definitions); }
+
     @Bean(destroyMethod = "close")
-    AppCheckConfigurationStore appCheckConfigurationStore(AppCheckStorageProperties properties, ResourceLoader resources) {
+    AppCheckConfigurationStore appCheckConfigurationStore(AppCheckStorageProperties properties, ResourceLoader resources, AppCheckContracts contracts) {
         return new AppCheckConfigurationStore(Path.of(properties.storage().path()), () -> {
             try (var input = resources.getResource(properties.storage().seed()).getInputStream()) {
                 return new String(input.readAllBytes(), StandardCharsets.UTF_8);
             } catch (java.io.IOException failure) { throw new UncheckedIOException(failure); }
-        });
+        }, contracts);
     }
 
     @Bean
@@ -45,8 +48,14 @@ public class AppCheckScenarioConfiguration {
 
     @Bean
     ProjectWorkerRequirements appCheckRequirements(AppCheckConfigurationStore.Snapshot config) {
-        return new ProjectWorkerRequirements("app-checks", config.configuration().workerGroupIds(),
-                Set.of(EVENT), Set.of(POOL), Set.of(FUNCTION));
+        var groups = new LinkedHashMap<String, ProjectWorkerRequirements.Resources>();
+        for (var app : config.configuration().applications().values()) {
+            var pools = new LinkedHashSet<String>();
+            app.execution().refill().forEach(target -> pools.add(target.poolName()));
+            groups.put(app.workerGroupId(), new ProjectWorkerRequirements.Resources(Set.of(app.execution().eventCode()),
+                    pools, Set.of(app.execution().workerSelector().executorName())));
+        }
+        return new ProjectWorkerRequirements("app-checks", groups);
     }
 
     @Bean
@@ -56,19 +65,22 @@ public class AppCheckScenarioConfiguration {
 
     @Bean
     WorkerPropertyProjection appCheckAssignmentProjections(AppCheckConfigurationStore.Snapshot config) {
-        var projections = new LinkedHashMap<String, BiFunction<Map<String, Object>, List<Long>, Map<String, Object>>>();
-        config.configuration().applications().forEach(app -> {
-            var window = new AppCheckAssignmentWindow(config.configuration().poolGroups().get(app.workerGroupId()).windowMillis());
-            projections.put(app.workerGroupId(), window::project);
+        var projections = new LinkedHashMap<String, WorkerPropertyProjection.Projection>();
+        config.configuration().applications().values().forEach(app -> {
+            var limit = config.configuration().poolGroups().get(app.workerGroupId());
+            if (limit != null) {
+                var window = new AppCheckAssignmentWindow(limit.windowMillis());
+                projections.put(app.workerGroupId(), new WorkerPropertyProjection.Projection(app.execution().eventCode(), window::project));
+            }
         });
-        return new WorkerPropertyProjection(EVENT, "worker.assigned", projections);
+        return new WorkerPropertyProjection("worker.assigned", projections);
     }
 
     @Bean(destroyMethod = "close")
     AppCheckTaskService appChecks(ProjectDirectory projects, ProjectTaskQueryService queries,
                                   TaskCreationService creation, TaskDataService data,
                                   OperationGuard operations, TaskResultsExportService exports,
-                                  AppCheckConfigurationStore.Snapshot config) {
-        return new AppCheckTaskService(projects, queries, creation, data, operations, exports, config.configuration());
+                                  AppCheckConfigurationStore.Snapshot config, AppCheckContracts contracts) {
+        return new AppCheckTaskService(projects, queries, creation, data, operations, exports, config.configuration(), contracts);
     }
 }

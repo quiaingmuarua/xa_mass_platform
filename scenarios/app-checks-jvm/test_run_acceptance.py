@@ -13,6 +13,13 @@ class AppCheckProofTest(unittest.TestCase):
         path = Path(url2pathname(urlparse(os.environ["XA_MASS_APP_CHECKS_SEED"]).path))
         return path, json.loads(path.read_text(encoding="utf-8"))
 
+    def test_execution_variants_are_seed_parameters_not_create_overrides(self):
+        parameters = {"ranges": {"registered": [0,1000], "unregistered": [1000,1000], "failed": [1000,1000]}, "delayMs": [0,0]}
+        with regression_window_configuration(parameters_by_app={"app-a": parameters}):
+            _, document = self.read_seed()
+            self.assertEqual(document["applications"]["app-a"]["parameters"], parameters)
+            self.assertNotIn("parameters", document["applications"]["app-b"])
+
     def test_window_fixture_keeps_other_settings_and_restores_environment_on_failure(self):
         original = json.dumps({"some.setting": "retained"})
         with patch.dict(os.environ, {"SPRING_APPLICATION_JSON": original}):
@@ -62,6 +69,7 @@ class AppCheckProofTest(unittest.TestCase):
         self.assertEqual({"X-XA-Dev-User": "MTAwMA", "X-XA-Dev-Role": "admin"}, caller_headers(case["userId"], "admin"))
         self.assertNotIn("userId", creation_input(case))
         self.assertNotIn("numbers", creation_input(case))
+        self.assertEqual(set(creation_input(case)), {"requestId", "appId", "country"})
 
 
 if __name__ == "__main__":

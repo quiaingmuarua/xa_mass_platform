@@ -33,8 +33,8 @@ final class PlatformPropertiesHandler implements FunctionHandler {
         for (var projection : projections) {
             projection.projectionsByGroup().forEach((group, project) -> {
                 var key = new Selection(group,
-                        new EventKey(projection.messageEventName(), projection.observationEventName()));
-                if (selected.putIfAbsent(key, new Projection(key, project)) != null) {
+                        new EventKey(project.messageEventName(), projection.observationEventName()));
+                if (selected.putIfAbsent(key, new Projection(key, project.project())) != null) {
                     throw new IllegalArgumentException("operation=workerObservation.assemble duplicate projection selection");
                 }
             });

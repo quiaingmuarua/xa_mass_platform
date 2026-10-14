@@ -2,10 +2,7 @@ import { MockUserDirectorySource } from "@/user-directory-source";
 import { CALLER } from "./app-check-fixture";
 import { importedTask } from "./app-check-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  MockAppCheckTaskSource,
-  mockCatalog
-} from "../src/app-checks/mock-task-source";
+import { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
 import { inspectImport, importSnapshot } from "../src/app-checks/import-model";
 import { ApiAppCheckTaskSource } from "../src/app-checks/task-source";
 
@@ -13,11 +10,7 @@ const input = {
   requestId: "workflow",
   appId: "app-a",
   country: "CN" as const,
-  numbers: Array.from(
-    { length: 1001 },
-    (_, i) => "+86138" + String(i).padStart(8, "0")
-  ),
-  simulation: mockCatalog.simulationExample
+  numbers: Array.from({ length: 1001 }, (_, i) => "+86138" + String(i).padStart(8, "0"))
 };
 afterEach(() => vi.unstubAllGlobals());
 describe("App Checks management prototype", () => {
@@ -86,11 +79,11 @@ describe("App Checks management prototype", () => {
     );
     expect(snapshot.task).toMatchObject({
       totalCount: 1001,
-      succeededCount: 997,
-      failedCount: 4
+      succeededCount: 901,
+      failedCount: 100
     });
     const counts = await source.exportCounts(CALLER, taskId);
-    expect(counts.all).toBe(997);
+    expect(counts.all).toBe(901);
     expect(counts.registered + counts.unregistered).toBe(counts.all);
     expect((await source.loadActivity(CALLER, taskId)).map((row) => row.label)).toEqual(
       ["创建任务", "导入号码", "核对并启动", "查询结束"]
@@ -102,10 +95,10 @@ describe("App Checks management prototype", () => {
       reader.onerror = reject;
       reader.readAsText(exported.blob);
     });
-    expect(exported.count).toBe(997);
-    expect(csv.split("\r\n")).toHaveLength(998);
+    expect(exported.count).toBe(901);
+    expect(csv.split("\r\n")).toHaveLength(902);
     expect(csv).toContain(input.numbers[1000]);
-    expect(csv).not.toContain(input.numbers[249]);
+    expect(csv).not.toContain(input.numbers[900]);
     expect((await source.exportTask(CALLER, "check-mixed", "all")).count).toBe(2);
     expect((await source.exportTask(CALLER, taskId, "registered")).count).toBe(
       counts.registered

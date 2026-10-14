@@ -8,6 +8,10 @@ import java.util.*;
 /** Isolated test files, reused by a fixture's Server restarts; never a Preview database. */
 public final class AppCheckConfigurationFixture {
     public static Map<String, Object> properties(long maxCount) {
+        return properties(maxCount, Map.of());
+    }
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> properties(long maxCount, Map<String, Object> parametersByApp) {
         try {
             Path root = Path.of("build", "app-check-config-fixtures", UUID.randomUUID().toString()).toAbsolutePath();
             Files.createDirectories(root);
@@ -17,6 +21,9 @@ public final class AppCheckConfigurationFixture {
             }
             seed.put("poolGroups", Map.of("app-a-sim", Map.of("windowMillis", 60000, "maxCount", maxCount),
                     "app-b-sim", Map.of("windowMillis", 60000, "maxCount", maxCount)));
+            ((Map<String, Map<String,Object>>) seed.get("applications")).forEach((appId, app) -> {
+                if (parametersByApp.containsKey(appId)) app.put("parameters", parametersByApp.get(appId));
+            });
             Path file = root.resolve("seed.json"); Files.writeString(file, Jsons.toJson(seed));
             return Map.of("xa.mass.scenarios.app-checks.storage.path", root.resolve("configuration").toString(),
                     "xa.mass.scenarios.app-checks.storage.seed", file.toUri().toString());
