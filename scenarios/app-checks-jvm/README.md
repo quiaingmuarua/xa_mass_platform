@@ -71,6 +71,7 @@ operator 默认自己的范围；显式查询其他 userId 返回 403。admin �
 
 创建 JSON 不再接收 `userId` 或 `role`，只从调用方保存 `metadata.userId`，列表/详情返回该保存值。
 创建指纹 `app-checks/v4/create` 只覆盖规范化 userId、App 和国家；相同 requestId 的不同调用方独立创建。role 不进入指纹或 descriptor。
+任务快照解析只接收已保存的 Group 和 metadata，不依赖版本化 HTTP TaskView。
 输入版本为 `3`，salt 和号码 Item 身份算法不变。首次创建保存 `contractId`、`contractParameters`、
 `eventCode`、`workerSelector` 以及 salt/date；Group 和 refill 保存在 descriptor 原字段中。
 服务端配置不进入客户端重试指纹；相同请求跨配置保存/重启仍复用原 Task，不重新套用当前执行配置。

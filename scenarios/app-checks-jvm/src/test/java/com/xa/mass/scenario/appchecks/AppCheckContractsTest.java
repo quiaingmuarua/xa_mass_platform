@@ -1,7 +1,6 @@
 package com.xa.mass.scenario.appchecks;
 
 import com.xa.mass.kernel.assignment.*;
-import com.xa.mass.server.api.v1.contract.runtimeview.TaskView;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.*;
 import org.junit.jupiter.api.Test;
@@ -40,8 +39,7 @@ class AppCheckContractsTest {
         metadata.put("eventCode", app.execution().eventCode());
         metadata.put("workerSelector", Jsons.toJson(AppCheckSettings.selectorMap(app.execution().workerSelector())));
         metadata.put("contractParameters", Jsons.toJson(config.parametersFor(app)));
-        var task = new TaskView("task", "app-checks", app.workerGroupId(), "CLOSE_WHEN_IDLE", app.execution().refill(), Map.of(), "proof", metadata);
-        var saved = AppCheckTaskSnapshot.read(task, registry);
+        var saved = AppCheckTaskSnapshot.read(app.workerGroupId(), metadata, registry);
         assertThat(saved.eventCode()).isEqualTo("extension.worker.vendor.lookup");
         assertThat(saved.selector().executorName()).isEqualTo("worker.any");
         var input = saved.contract().payload(saved.context(), "+86123");
@@ -73,8 +71,7 @@ class AppCheckContractsTest {
         apps.get("app-a").put("parameters", Map.of("ranges", Map.of("registered", List.of(0,0), "unregistered", List.of(0,1000), "failed", List.of(1000,1000)), "delayMs", List.of(0,0)));
         var changed = AppCheckSettings.parse(document, contracts);
         assertThat(changed.parametersFor(changed.requireApplication("app-a"))).isNotEqualTo(original.parametersFor(original.requireApplication("app-a")));
-        var saved = AppCheckTaskSnapshot.read(new TaskView("t", "app-checks", "app-a-sim", "CLOSE_WHEN_IDLE",
-                List.of(), Map.of(), "saved", AppCheckTaskServiceTest.metadata()), contracts);
+        var saved = AppCheckTaskSnapshot.read("app-a-sim", AppCheckTaskServiceTest.metadata(), contracts);
         assertThat(saved.context().parameters().get("delayMs")).isEqualTo(List.of(2000L,5000L));
         apps.get("app-a").put("parameters", Map.of("delayMs", List.of(0,0)));
         assertThatThrownBy(() -> AppCheckSettings.parse(document, contracts)).hasMessageContaining("applications.app-a");

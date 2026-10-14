@@ -130,7 +130,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                 if (!"pre_review".equals(entry.scoreBand()))
                     throw new RequestFailure(409, "只有新版本待审核任务支持导入", taskId);
                 final AppCheckTaskSnapshot snapshot;
-                try { snapshot = AppCheckTaskSnapshot.read(entry.task(), contracts); }
+                try { snapshot = AppCheckTaskSnapshot.read(entry.task().workerGroupId(), entry.task().metadata(), contracts); }
                 catch (RuntimeException invalid) { throw new RequestFailure(400, "任务执行配置不可用：" + invalid.getMessage(), taskId); }
                 long added = 0, existing = 0;
                 try (var file = AppCheckNumberFile.read(input, entry.task().metadata().get("country"));
@@ -173,7 +173,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     public CsvExport export(TaskCaller caller, String taskId, String filter) {
         if (!Set.of("all", "registered", "unregistered").contains(filter)) throw new RequestFailure(400, "无效导出范围", taskId);
         var task = requireCheck(caller, taskId).task();
-        var snapshot = AppCheckTaskSnapshot.read(task, contracts);
+        var snapshot = AppCheckTaskSnapshot.read(task.workerGroupId(), task.metadata(), contracts);
         return operations.execute("app-checks-csv-export", taskId, () -> {
             Path source = exports.export(caller, taskId).file();
             Path csv = null;
@@ -232,7 +232,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
 
     public Map<String, Object> results(TaskCaller caller, String taskId) {
         var task = requireCheck(caller, taskId).task();
-        var snapshot = AppCheckTaskSnapshot.read(task, contracts);
+        var snapshot = AppCheckTaskSnapshot.read(task.workerGroupId(), task.metadata(), contracts);
         var preview = data.previewTaskResults(caller, taskId);
         return Map.of("taskId", taskId, "results", preview.results().stream()
                 .map(row -> resultView(snapshot, row)).toList(), "truncated", preview.truncated());
