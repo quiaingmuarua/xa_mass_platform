@@ -1,3 +1,5 @@
+import { captureTaskCaller } from "@/task-caller";
+const CALLER = captureTaskCaller();
 import { createApp, nextTick } from "vue";
 import { createPinia } from "pinia";
 import { createMemoryHistory, createRouter } from "vue-router";
@@ -57,19 +59,21 @@ it("late drawer and submission continuations cannot replace the current context"
       }
       return new Response(
         JSON.stringify(
-          url.endsWith("/worker-groups")
-            ? [
-                {
-                  workerGroupId: "g",
-                  workerGroup: { workerGroupId: "g", attributes: {}, eventCodes: [] },
-                  matching: { pools: [], functions: ["workerId"] }
-                }
-              ]
-            : url.endsWith("/tasks/known")
-              ? row
-              : url.includes("/tasks?")
-                ? { projectId: "default", truncated: false, tasks: [row] }
-                : [{ projectId: "default", workerGroupIds: ["g"] }]
+          url.endsWith("/tasks:stats")
+            ? { known: { total: 1, countsByTag: { "1": 1 } } }
+            : url.endsWith("/worker-groups")
+              ? [
+                  {
+                    workerGroupId: "g",
+                    workerGroup: { workerGroupId: "g", attributes: {}, eventCodes: [] },
+                    matching: { pools: [], functions: ["workerId"] }
+                  }
+                ]
+              : url.endsWith("/tasks/known")
+                ? row
+                : url.includes("/tasks?")
+                  ? { projectId: "default", truncated: false, tasks: [row] }
+                  : [{ projectId: "default", workerGroupIds: ["g"] }]
         )
       );
     })
@@ -146,6 +150,7 @@ it("late drawer and submission continuations cannot replace the current context"
     await new Promise((resolve) => setTimeout(resolve, 450));
     expect(router.currentRoute.value.query.view).toBe("create");
     operations.project("default").submission = {
+      caller: CALLER,
       taskId: "known",
       fileName: "old.txt",
       total: 1,
@@ -162,6 +167,7 @@ it("late drawer and submission continuations cannot replace the current context"
     await vi.waitFor(() => expect(releaseRefresh).toBeTypeOf("function"));
     operations.finishSubmission("default");
     operations.project("default").submission = {
+      caller: CALLER,
       taskId: "next",
       fileName: "new.txt",
       total: 1,

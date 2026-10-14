@@ -27,6 +27,7 @@ describe("App Checks management prototype", () => {
       { taskId } = await importedTask(source, input);
     await expect(source.advanceTask(CALLER, taskId)).rejects.toThrow();
     await source.approveTask(CALLER, taskId, input.numbers.length);
+    await source.approveTask(CALLER, taskId, 1); // Already-approved requests are unchanged, even with a stale positive count.
     await source.advanceTask(CALLER, taskId);
     const partial = await source.loadTask(CALLER, taskId);
     expect(partial.task.activeCount).toBe(900);
@@ -41,7 +42,7 @@ describe("App Checks management prototype", () => {
     expect(source.previewState(CALLER, taskId).endReason).toBe("stopped");
     await expect(source.advanceTask(CALLER, taskId)).rejects.toThrow();
     await expect(source.completeTask(CALLER, taskId)).rejects.toThrow();
-    await expect(source.closeTask(CALLER, taskId)).rejects.toThrow();
+    await expect(source.closeTask(CALLER, taskId)).resolves.toBeUndefined();
     await expect(
       source.approveTask(CALLER, taskId, input.numbers.length)
     ).rejects.toThrow();
@@ -63,7 +64,7 @@ describe("App Checks management prototype", () => {
     });
     expect((await source.exportTask(CALLER, taskId, "all")).count).toBe(0);
     await expect(source.advanceTask(CALLER, taskId, true)).rejects.toThrow();
-    await expect(source.closeTask(CALLER, taskId)).rejects.toThrow();
+    await expect(source.closeTask(CALLER, taskId)).resolves.toBeUndefined();
   });
   it("bounds preview snapshots and independently exports complete valid successful answers", async () => {
     const source = new MockAppCheckTaskSource(),

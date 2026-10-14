@@ -38,7 +38,7 @@ final class AndroidRuntimeApiClientTest {
         client = new AndroidRuntimeApiClient(new JsonHttpClient(
                 URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
                 Duration.ofSeconds(2L)
-        ));
+        , java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin")));
         client.prepareRpcTask();
     }
 

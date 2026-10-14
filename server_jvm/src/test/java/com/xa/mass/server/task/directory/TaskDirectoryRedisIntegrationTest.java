@@ -16,7 +16,6 @@ import com.xa.mass.server.operation.OperationGuard;
 import com.xa.mass.server.project.*;
 import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskCreationUnconfirmedException;
-import com.xa.mass.server.task.TaskIdGenerator;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import io.lettuce.core.RedisClient;
@@ -33,6 +32,7 @@ import static org.mockito.Mockito.*;
 
 @Tag("redis-owner")
 class TaskDirectoryRedisIntegrationTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("1001", "admin");
     RedisTestScope scope;
     RedisClient client;
     StatefulRedisConnection<String, String> connection;
@@ -61,10 +61,10 @@ class TaskDirectoryRedisIntegrationTest {
                 new WorkerResourceCatalog.WorkerGroupDescriptor("g", Map.of(), Set.of("event"))));
         matching = mock(WorkerMatchingCatalog.class);
         when(matching.normalizeRefill(anyString(), anyList())).thenAnswer(call -> call.getArgument(1));
-        directory = newDirectory(); queries = new ProjectTaskQueryService(projects, catalog, scores, directory);
+        directory = newDirectory(); queries = new ProjectTaskQueryService(projects, catalog, scores, directory, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class));
     }
     TaskDirectory newDirectory() { return new TaskDirectory(client, scope.keyspace(), projects, catalog, scores, groups, guard); }
-    TaskCreationService creator() { return new TaskCreationService(groups, matching, runtime, new TaskIdGenerator(), projects, catalog, scores, guard, directory); }
+    TaskCreationService creator() { return new TaskCreationService(groups, matching, runtime, projects, catalog, scores, guard, directory); }
     String key(String project) {
         return scope.keyspace().base() + ":server:task-directory:" + Base64.getUrlEncoder().withoutPadding().encodeToString(project.getBytes(StandardCharsets.UTF_8));
     }
@@ -73,7 +73,7 @@ class TaskDirectoryRedisIntegrationTest {
                 Map.of("priority", "0", "maxRetryTimes", "3"), List.of(), null,
                 new TaskAttribution(project, time, user).stamp(user == null ? Map.of() : Map.of("userId", user)));
         assertThat(runtime.createTask(task).status()).isEqualTo(TaskCreationStatus.CREATED);
-        directory.ensure(id);
+        directory.ensure(CALLER, id);
         return task;
     }
     @AfterEach void stop() {
@@ -85,12 +85,12 @@ class TaskDirectoryRedisIntegrationTest {
         create("unowned", "p", null, 1);
         for (int i = 0; i < 105; i++) create("other-" + i, "p", "1001", i + 2);
         create("target", "p", "1002", 9999);
-        assertThat(queries.list("p", 1000, null).tasks()).hasSize(107);
-        assertThat(queries.list("p", 100, null).tasks()).noneMatch(row -> row.taskId().equals("target"));
-        assertThat(queries.list("p", 100, "1002").tasks()).extracting(ProjectTaskQueryService.Entry::taskId).containsExactly("target");
-        assertThat(queries.list("p", 100, "1001").truncated()).isTrue();
+        assertThat(queries.list(CALLER, "p", 1000, null).tasks()).hasSize(107);
+        assertThat(queries.list(CALLER, "p", 100, null).tasks()).noneMatch(row -> row.taskId().equals("target"));
+        assertThat(queries.list(CALLER, "p", 100, "1002").tasks()).extracting(ProjectTaskQueryService.Entry::taskId).containsExactly("target");
+        assertThat(queries.list(CALLER, "p", 100, "1001").truncated()).isTrue();
         assertThat(directory.list("p", "1001", 1).members().getFirst().taskId()).isEqualTo("other-0");
-        assertThat(queries.list("p", 1, "1001").tasks().getFirst().createdAtMillis()).isEqualTo(2L);
+        assertThat(queries.list(CALLER, "p", 1, "1001").tasks().getFirst().createdAtMillis()).isEqualTo(2L);
         assertThat(connection.sync().zscore(key("p"), "unowned")).isZero();
         assertThat(connection.sync().zscore(key("p"), "target")).isEqualTo((double) TaskUserId.score("1002"));
         var keys = new ArrayList<String>(); ScanCursor cursor = ScanCursor.INITIAL;
@@ -105,13 +105,13 @@ class TaskDirectoryRedisIntegrationTest {
     @Test void projectDirectoriesRemainSeparateAndForeignMembershipIsNotReinterpreted() {
         create("p-task", "p", "1001", 1);
         create("q-task", "q", "1001", 2);
-        assertThat(queries.list("p", 100, "1001").tasks()).extracting(ProjectTaskQueryService.Entry::taskId).containsExactly("p-task");
-        assertThat(queries.list("q", 100, "1001").tasks()).extracting(ProjectTaskQueryService.Entry::taskId).containsExactly("q-task");
+        assertThat(queries.list(CALLER, "p", 100, "1001").tasks()).extracting(ProjectTaskQueryService.Entry::taskId).containsExactly("p-task");
+        assertThat(queries.list(CALLER, "q", 100, "1001").tasks()).extracting(ProjectTaskQueryService.Entry::taskId).containsExactly("q-task");
         connection.sync().zadd(key("q"), TaskUserId.score("1001"), "p-task");
-        assertThatThrownBy(() -> queries.list("q", 100, null)).isInstanceOf(ServerException.class);
-        assertThatThrownBy(() -> queries.get("q", "p-task")).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> queries.list(CALLER, "q", 100, null)).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> queries.get(CALLER, "q", "p-task")).isInstanceOf(ServerException.class);
         assertThat(connection.sync().zcard(key("q"))).isEqualTo(2);
-        assertThat(directory.ensure("p-task").status()).isEqualTo(ActionOutcome.Status.UNCHANGED);
+        assertThat(directory.ensure(CALLER, "p-task").status()).isEqualTo(ActionOutcome.Status.UNCHANGED);
         assertThat(connection.sync().zcard(key("p"))).isEqualTo(1);
     }
 
@@ -122,56 +122,56 @@ class TaskDirectoryRedisIntegrationTest {
             connection.sync().set(key("p"), "wrong-type");
             return outcome;
         });
-        var interrupted = new TaskCreationService(groups, matching, interruptedRuntime, new TaskIdGenerator(), projects, catalog, scores, guard, directory);
-        var request = new TaskCreateRequest("p", "g", 50, 3, List.of(), "first", Map.of("userId", "1001"));
+        var interrupted = new TaskCreationService(groups, matching, interruptedRuntime, projects, catalog, scores, guard, directory);
+        var request = new TaskCreateRequest("request", "p", "g", 50, 3, List.of(), "first", Map.of());
         var failure = catchThrowableOfType(TaskCreationUnconfirmedException.class,
-                () -> interrupted.createForRequest(request, "request", "a".repeat(64)));
+                () -> interrupted.createForRequest(CALLER, "raw", request, "a".repeat(64)));
         var saved = catalog.loadTaskAllocationDescriptors(List.of(failure.taskId())).get(failure.taskId());
         assertThat(saved).isNotNull();
-        assertThat(queries.get("p", failure.taskId()).task().metadata()).isEqualTo(saved.metadata());
+        assertThat(queries.get(CALLER, "p", failure.taskId()).task().metadata()).isEqualTo(saved.metadata());
         assertThat(connection.sync().get(key("p"))).isEqualTo("wrong-type");
         connection.sync().unlink(key("p"));
-        assertThat(creator().createForRequest(request, "request", "a".repeat(64)).taskId()).isEqualTo(failure.taskId());
+        assertThat(creator().createForRequest(CALLER, "raw", request, "a".repeat(64)).taskId()).isEqualTo(failure.taskId());
         assertThat(catalog.loadTaskAllocationDescriptors(List.of(failure.taskId())).get(failure.taskId())).isEqualTo(saved);
         assertThat(connection.sync().zcard(key("p"))).isEqualTo(1);
         assertThat(connection.sync().zcard(scope.keyspace().base() + ":task:score")).isEqualTo(1);
         directory.close(); directory = newDirectory();
-        assertThat(directory.ensure(failure.taskId()).status()).isEqualTo(ActionOutcome.Status.UNCHANGED);
-        assertThatThrownBy(() -> creator().createForRequest(request, "request", "b".repeat(64))).isInstanceOf(ServerException.class);
+        assertThat(directory.ensure(CALLER, failure.taskId()).status()).isEqualTo(ActionOutcome.Status.UNCHANGED);
+        assertThatThrownBy(() -> creator().createForRequest(CALLER, "raw", request, "b".repeat(64))).isInstanceOf(ServerException.class);
     }
 
     @Test void explicitEnsureIsIdempotentAcrossOwnersAndNeverOverwritesOrRepairsKernelState() throws Exception {
         var saved = create("t", "p", "zzzzzzzzz", 123);
         connection.sync().unlink(key("p"));
-        assertThat(queries.get("p", "t").createdAtMillis()).isEqualTo(123L);
+        assertThat(queries.get(CALLER, "p", "t").createdAtMillis()).isEqualTo(123L);
         assertThat(connection.sync().exists(key("p"))).isZero();
         try (var other = new TaskDirectory(client, scope.keyspace(), projects, catalog, scores, groups, new OperationGuard());
              var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var a = executor.submit(() -> directory.ensure("t"));
-            var b = executor.submit(() -> other.ensure("t"));
+            var a = executor.submit(() -> directory.ensure(CALLER, "t"));
+            var b = executor.submit(() -> other.ensure(CALLER, "t"));
             assertThat(List.of(a.get().status(), b.get().status())).containsExactlyInAnyOrder(ActionOutcome.Status.APPLIED, ActionOutcome.Status.UNCHANGED);
         }
         assertThat(catalog.loadTaskAllocationDescriptors(List.of("t")).get("t")).isEqualTo(saved);
         connection.sync().zadd(key("p"), TaskUserId.score("1001"), "t");
-        assertThatThrownBy(() -> directory.ensure("t")).isInstanceOf(ServerException.class);
-        assertThatThrownBy(() -> queries.list("p", 100, "1001")).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> directory.ensure(CALLER, "t")).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> queries.list(CALLER, "p", 100, "1001")).isInstanceOf(ServerException.class);
         assertThat(connection.sync().zscore(key("p"), "t")).isEqualTo((double) TaskUserId.score("1001"));
         connection.sync().unlink(key("p"));
         connection.sync().zrem(scope.keyspace().base() + ":task:score", "t");
-        assertThatThrownBy(() -> directory.ensure("t")).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> directory.ensure(CALLER, "t")).isInstanceOf(ServerException.class);
         assertThat(connection.sync().exists(key("p"))).isZero();
-        assertThatThrownBy(() -> directory.ensure("missing")).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> directory.ensure(CALLER, "missing")).isInstanceOf(ServerException.class);
     }
 
     @Test void invalidAndReservedMetadataIsRejectedBeforeTaskCreation() {
         for (var metadata : List.of(Map.of("userId", "0001"), Map.of("userId", "TOOLONGID10"), Map.of("server.projectId", "q")))
-            assertThatThrownBy(() -> creator().create(new TaskCreateRequest("p", "g", 50, 3, List.of(), null, metadata)))
+            assertThatThrownBy(() -> creator().create(CALLER, new TaskCreateRequest("request", "p", "g", 50, 3, List.of(), null, metadata)))
                     .isInstanceOf(ServerException.class);
         assertThat(connection.sync().exists(key("p"), scope.keyspace().base() + ":task:score")).isZero();
     }
 
     @Test void rpcPreparationNeverRepairsMissingKernelResourcesOrApprovesBeforeDirectoryConfirmation() {
-        var request = new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("p", "g", null, Map.of("userId", "1001"));
+        var request = new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("p", "g", null, Map.of());
         var lifecycle = new com.xa.mass.kernel.task.DefaultTaskLifecycleCommands(scores, catalog);
         var rpc = new com.xa.mass.server.task.call.TaskRpcProperties(1000, 1000, 10, 10, 10, 50, 100, 250, Map.of());
         var interruptedRuntime = mock(com.xa.mass.kernel.task.TaskRuntime.class);
@@ -182,21 +182,21 @@ class TaskDirectoryRedisIntegrationTest {
         });
         var interruptedPreparation = new com.xa.mass.server.task.call.TaskRpcPreparationService(groups, catalog, interruptedRuntime,
                 lifecycle, matching, rpc, projects, guard, directory, scores);
-        assertThatThrownBy(() -> interruptedPreparation.prepare("rpc", request)).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> interruptedPreparation.prepare(CALLER, "raw", "rpc", request)).isInstanceOf(ServerException.class);
         var saved = catalog.loadTaskAllocationDescriptors(List.of("rpc")).get("rpc");
         assertThat(saved).isNotNull();
         assertThat(scores.getScoreStates(List.of("rpc")).get("rpc").band()).isEqualTo(com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand.PRE_REVIEW);
         connection.sync().unlink(key("p"));
         var preparation = new com.xa.mass.server.task.call.TaskRpcPreparationService(groups, catalog, runtime,
                 lifecycle, matching, rpc, projects, guard, directory, scores);
-        preparation.prepare("rpc", request);
+        preparation.prepare(CALLER, "raw", "rpc", request);
         assertThat(catalog.loadTaskAllocationDescriptors(List.of("rpc")).get("rpc")).isEqualTo(saved);
         assertThat(scores.getScoreStates(List.of("rpc")).get("rpc").isInitial()).isTrue();
 
         create("partial", "p", "1001", 123);
         connection.sync().unlink(scope.keyspace().base() + ":task:partial:descriptor", key("p"));
         var service = preparation;
-        assertThatThrownBy(() -> service.prepare("partial", request)).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> service.prepare(CALLER, "raw", "partial", request)).isInstanceOf(ServerException.class);
         assertThat(catalog.loadTaskAllocationDescriptors(List.of("partial")).get("partial")).isNull();
         assertThat(connection.sync().exists(key("p"))).isZero();
     }

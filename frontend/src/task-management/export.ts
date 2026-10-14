@@ -1,3 +1,4 @@
+import { captureTaskCaller } from "@/task-caller";
 import { ref } from "vue";
 import type { ProjectTask } from "./projects";
 import type { FiniteTaskClient } from "./types";
@@ -26,7 +27,7 @@ export function createTaskExport(
     }
     busy.value = true;
     try {
-      const result = await client.exportResults(task.taskId);
+      const result = await client.exportResults(captureTaskCaller(), task.taskId);
       if (!result.ready) throw new Error("结果尚未就绪，请刷新后重试。");
       const url = URL.createObjectURL(result.blob);
       const anchor = document.createElement("a");

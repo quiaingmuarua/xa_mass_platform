@@ -22,7 +22,8 @@ class TaskUserIdTest {
     }
 
     @Test void metadataHasOneCanonicalOwnerAndTimeAndRejectsCallerReservedFields() {
-        var input = TaskAttribution.input(Map.of("userId", " 1001 ", "scenario", "custom"));
+        var input = TaskAttribution.input(Map.of("scenario", "custom"));
+        assertThatThrownBy(() -> TaskAttribution.input(Map.of("userId", "1001"))).isInstanceOf(IllegalArgumentException.class);
         var attribution = new TaskAttribution("p", 123, "1001");
         assertThat(TaskAttribution.read(attribution.stamp(input))).isEqualTo(attribution);
         assertThat(TaskAttribution.read(Map.of("other", "opaque"))).isNull();

@@ -1,3 +1,5 @@
+import { captureTaskCaller } from "@/task-caller";
+const CALLER = captureTaskCaller();
 import { expect, it, vi } from "vitest";
 import type { AxiosInstance } from "axios";
 import { rpcTaskId } from "@/task-workbench/rpc-task";
@@ -25,15 +27,15 @@ it("prepares only the requested identity and rejects a mismatched success respon
   const request = {
     projectId: "default",
     workerGroupId: "g",
-    metadata: { userId: "alice" }
+    metadata: { label: "alice" }
   };
-  await client.prepareTask("chosen", request);
+  await client.prepareTask(CALLER, "chosen", request);
   expect(post).toHaveBeenCalledWith(
     "/v1/tasks/chosen/rpc:prepare",
     request,
     expect.objectContaining({ timeout: 5000 })
   );
-  await expect(client.prepareTask("chosen", request)).rejects.toMatchObject({
+  await expect(client.prepareTask(CALLER, "chosen", request)).rejects.toMatchObject({
     kind: "schema"
   });
 });
@@ -55,18 +57,19 @@ it("retains the frozen request through uncertainty without automatic retries or 
   const request = {
     projectId: "default",
     workerGroupId: "g",
-    metadata: { userId: "alice" }
+    metadata: { label: "alice" }
   };
   await session.prepareRpc("original", request);
-  request.metadata.userId = "changed";
+  request.metadata.label = "changed";
   expect(client.prepareTask).toHaveBeenCalledTimes(1);
   expect(session.rpcPreparations.original?.outcome).toBe("unconfirmed");
   const retry = session.prepareRpc("original", request);
   await session.prepareRpc("original", request);
   expect(client.prepareTask).toHaveBeenCalledTimes(2);
   expect(client.prepareTask.mock.calls[1]).toEqual([
+    CALLER,
     "original",
-    { ...request, metadata: { userId: "alice" } }
+    { ...request, metadata: { label: "alice" } }
   ]);
   finish();
   await retry;

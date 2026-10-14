@@ -128,7 +128,7 @@ final class WorkerCorrectness {
         RuntimeApiClient api = new RuntimeApiClient(
                 options.serverBaseUrl(),
                 Duration.ofMillis(options.requestTimeoutMillis())
-        );
+        , java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"));
         CAPABILITY_GROUPS.forEach(group -> api.prepareRpcTask(group.workerGroupId()));
         Map<String, Map<String, String>> inventory;
         try {

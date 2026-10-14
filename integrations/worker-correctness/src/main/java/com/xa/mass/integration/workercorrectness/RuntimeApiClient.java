@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Set;
 
 final class RuntimeApiClient {
+    private final Map<String, String> taskCallerHeaders;
 
     private static final long DIRECT_CALL_WAIT_MILLIS = 10_000L;
 
@@ -23,7 +24,8 @@ final class RuntimeApiClient {
     private final Duration requestTimeout;
     private final HttpClient http;
 
-    RuntimeApiClient(URI baseUrl, Duration requestTimeout) {
+    RuntimeApiClient(URI baseUrl, Duration requestTimeout, Map<String, String> taskCallerHeaders) {
+        this.taskCallerHeaders = Map.copyOf(taskCallerHeaders);
         this.baseUrl = baseUrl;
         this.requestTimeout = requestTimeout;
         http = HttpClient.newBuilder()
@@ -263,13 +265,14 @@ final class RuntimeApiClient {
     }
 
     private Map<String, Object> request(String method, String path, Object body, String operation) {
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(endpoint(path))
                 .timeout(requestTimeout)
                 .header("Content-Type", "application/json")
                 .method(method, body == null ? HttpRequest.BodyPublishers.noBody()
-                        : HttpRequest.BodyPublishers.ofString(Jsons.toJson(body), StandardCharsets.UTF_8))
-                .build();
+                        : HttpRequest.BodyPublishers.ofString(Jsons.toJson(body), StandardCharsets.UTF_8));
+        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) taskCallerHeaders.forEach(requestBuilder::header);
+        HttpRequest request = requestBuilder.build();
         try {
             HttpResponse<String> response = http.send(
                     request,

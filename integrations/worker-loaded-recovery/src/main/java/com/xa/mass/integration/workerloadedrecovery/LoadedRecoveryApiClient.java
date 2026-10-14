@@ -166,7 +166,7 @@ final class LoadedRecoveryApiClient {
                 "POST",
                 "/api/v1/tasks",
                 Map.of(
-                        "projectId", "scenario-workers", "workerGroupId", workerGroupId,
+                        "requestId", java.util.UUID.randomUUID().toString(), "projectId", "scenario-workers", "workerGroupId", workerGroupId,
                         "refill", List.of(Map.of("poolName", "any", "target", Map.of(), "count", 1000)),
                         "priority", 50,
                         "maxRetryTimes", 3
@@ -211,11 +211,11 @@ final class LoadedRecoveryApiClient {
         }
     }
 
-    void approveTask(String taskId) {
+    void approveTask(String taskId, int expectedItemCount) {
         LoadedRecoveryHttpClient.JsonResponse response = runtime.json(
                 "POST",
                 "/api/v1/tasks/" + segment(taskId) + "/approve",
-                null
+                Map.of("expectedItemCount", expectedItemCount)
         );
         requireStatus(response.statusCode(), 200, "approve Task");
         String status = LoadedRecoveryJson.string(response.body(), "status");

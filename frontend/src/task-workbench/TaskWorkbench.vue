@@ -44,12 +44,12 @@ watch(
 );
 function selectProject(id: string) {
   if (id === projectId.value) return;
-  const { group, user } = session.project(id).rpcQuery;
+  const { group } = session.project(id).rpcQuery;
   return router.push({
     query: {
       project: id,
       tab: tab.value,
-      ...(tab.value === "rpc" ? { group, user } : {})
+      ...(tab.value === "rpc" ? { group } : {})
     }
   });
 }

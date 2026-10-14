@@ -313,11 +313,11 @@ public final class WorkerLoadedRecoveryMain {
                 new LoadedRecoveryHttpClient(
                         options.labBaseUri(),
                         options.requestTimeout()
-                ),
+                , java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin")),
                 new LoadedRecoveryHttpClient(
                         options.serverBaseUri(),
                         options.requestTimeout()
-                )
+                , java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"))
         );
     }
 

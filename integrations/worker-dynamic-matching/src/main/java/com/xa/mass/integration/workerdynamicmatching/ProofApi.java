@@ -13,15 +13,18 @@ import java.util.Map;
 import java.util.Set;
 
 final class ProofApi implements AutoCloseable {
+    private final Map<String, String> taskCallerHeaders;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
     private final URI base;
-    ProofApi(String base) { this.base = URI.create(base); }
+    ProofApi(String base, Map<String, String> taskCallerHeaders) { this.taskCallerHeaders = Map.copyOf(taskCallerHeaders); this.base = URI.create(base); }
 
     Map<String, Object> call(String method, String path, Object body, boolean observation) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(2))
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(2))
                 .header("Content-Type", "application/json")
                 .method(method, body == null ? HttpRequest.BodyPublishers.noBody()
-                        : HttpRequest.BodyPublishers.ofString(Jsons.toJson(body), StandardCharsets.UTF_8)).build();
+                        : HttpRequest.BodyPublishers.ofString(Jsons.toJson(body), StandardCharsets.UTF_8));
+        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) taskCallerHeaders.forEach(requestBuilder::header);
+        HttpRequest request = requestBuilder.build();
         HttpResponse<String> response;
         try { response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)); }
         catch (IOException error) {

@@ -1,3 +1,4 @@
+import type { TaskCaller } from "@/task-caller";
 import type { WorkerQuery } from "@/task-call-debug/types";
 import type { JsonValue, RefillTarget } from "@/runtime-viewer/types";
 
@@ -11,6 +12,7 @@ export interface FiniteTaskSeedItem {
   payload: Record<string, JsonValue>;
 }
 export interface TaskCreateApiRequest extends FiniteTaskConfig {
+  requestId: string;
   projectId: string;
   workerGroupId: string;
 }
@@ -37,17 +39,26 @@ export type TaskExportResult =
   | { ready: true; fileName: string; blob: Blob }
   | { ready: false };
 export interface FiniteTaskClient {
-  createTask(request: TaskCreateApiRequest): Promise<TaskCreateApiResponse>;
+  createTask(
+    caller: TaskCaller,
+    request: TaskCreateApiRequest
+  ): Promise<TaskCreateApiResponse>;
   appendItems(
+    caller: TaskCaller,
     taskId: string,
     items: TaskItemApiRequest[]
   ): Promise<TaskItemsAppendApiResponse>;
-  approveTask(taskId: string): Promise<void>;
-  closeTask(taskId: string): Promise<void>;
-  ensureDirectory(taskId: string): Promise<void>;
-  exportResults(taskId: string): Promise<TaskExportResult>;
+  approveTask(
+    caller: TaskCaller,
+    taskId: string,
+    expectedItemCount: number
+  ): Promise<void>;
+  closeTask(caller: TaskCaller, taskId: string): Promise<void>;
+  ensureDirectory(caller: TaskCaller, taskId: string): Promise<void>;
+  exportResults(caller: TaskCaller, taskId: string): Promise<TaskExportResult>;
 }
 export interface ImportReceipt {
+  caller: TaskCaller;
   taskId?: string;
   fileName: string;
   total: number;

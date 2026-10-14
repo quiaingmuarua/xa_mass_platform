@@ -51,19 +51,22 @@ def _free_port() -> int:
         return int(listener.getsockname()[1])
 
 
+TASK_CALLER_HEADERS = {"X-XA-Dev-User": "cHJvb2Y", "X-XA-Dev-Role": "admin"}
+
 def _request(
     method: str,
     url: str,
     body: object | None = None,
     *,
     timeout: float = 5.0,
+    headers: dict[str, str] | None = None,
 ) -> tuple[int, bytes, str]:
     payload = None if body is None else json.dumps(body).encode("utf-8")
     request = urllib.request.Request(
         url,
         data=payload,
         method=method,
-        headers={"Content-Type": "application/json"} if payload else {},
+        headers={**({"Content-Type": "application/json"} if payload else {}), **(headers or {})},
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -119,6 +122,7 @@ def _preview_tasks(base_url: str) -> list[dict[str, Any]]:
         "POST",
         f"{base_url}/api/v1/runtime-view/tasks:preview",
         100,
+        headers=TASK_CALLER_HEADERS,
     )
     if status != 200:
         raise RuntimeError(f"Task preview returned HTTP {status}")
@@ -154,11 +158,13 @@ def _prepare_rpc_task(base_url: str, project_id: str, worker_group_id: str) -> s
         "POST",
         f"{base_url}/api/v1/tasks/{task_id}/rpc:prepare",
         {"projectId": project_id, "workerGroupId": worker_group_id},
+        headers=TASK_CALLER_HEADERS,
     )
     if status != 200 or json.loads(payload) != {"taskId": task_id}:
         raise RuntimeError(f"RPC preparation for {worker_group_id} was not confirmed")
     status, payload, _ = _request(
-        "GET", f"{base_url}/api/v1/projects/{project_id}/tasks/{task_id}"
+        "GET", f"{base_url}/api/v1/projects/{project_id}/tasks/{task_id}",
+        headers=TASK_CALLER_HEADERS,
     )
     if status != 200:
         raise RuntimeError(f"Prepared RPC Task point read returned HTTP {status}")
@@ -404,13 +410,13 @@ _AGENTFORGE_GROUPS = tuple(f"agentforge-{name}-workers" for name in (
 
 
 def _prove_agentforge_bindings(base_url: str) -> None:
-    status, payload, _ = _request("GET", f"{base_url}/api/v1/projects")
+    status, payload, _ = _request("GET", f"{base_url}/api/v1/projects", headers=TASK_CALLER_HEADERS)
     if status != 200 or json.loads(payload) != [
         {"projectId": "agentforge", "workerGroupIds": list(_AGENTFORGE_GROUPS)}
     ]:
         raise RuntimeError("AgentForge directory must contain its declared Project, without default")
     path = f"{base_url}/api/v1/projects/agentforge/worker-groups"
-    status, payload, _ = _request("GET", path)
+    status, payload, _ = _request("GET", path, headers=TASK_CALLER_HEADERS)
     groups = json.loads(payload)
     if status != 200 or len(groups) != 4 or any(
         row.get("workerGroup") is not None or row.get("matching") != {
@@ -424,24 +430,25 @@ def _prove_agentforge_bindings(base_url: str) -> None:
             {"eventCodes": ["extension.worker.string.md5"]})
         if status != 200 or json.loads(payload).get("workerGroupId") != group:
             raise RuntimeError("Explicit AgentForge Group registration failed")
-    status, payload, _ = _request("GET", path)
+    status, payload, _ = _request("GET", path, headers=TASK_CALLER_HEADERS)
     if status != 200 or any(row.get("workerGroup") is None for row in json.loads(payload)):
         raise RuntimeError("Registered Group capabilities cannot be refreshed")
     if _preview_tasks(base_url) != []:
         raise RuntimeError("Registering Groups implicitly created Tasks")
     _prepare_rpc_task(base_url, "agentforge", _AGENTFORGE_GROUPS[0])
     status, payload, _ = _request("POST", f"{base_url}/api/v1/tasks", {
+        "requestId": "distribution-agentforge-task",
         "projectId": "agentforge", "workerGroupId": _AGENTFORGE_GROUPS[0],
         "priority": 50, "maxRetryTimes": 3, "refill": []
-    })
+    }, headers=TASK_CALLER_HEADERS)
     if status != 200 or not isinstance(json.loads(payload).get("taskId"), str):
         raise RuntimeError("Non-default finite creation failed")
     task_id = json.loads(payload)["taskId"]
-    status, payload, _ = _request("GET", f"{base_url}/api/v1/projects/agentforge/tasks/{task_id}")
+    status, payload, _ = _request("GET", f"{base_url}/api/v1/projects/agentforge/tasks/{task_id}", headers=TASK_CALLER_HEADERS)
     task = json.loads(payload).get("task", {})
     if status != 200 or task.get("projectId") != "agentforge" or task.get("idleDisposition") != "CLOSE_WHEN_IDLE":
         raise RuntimeError("Non-default finite attribution differs")
-    status, _, _ = _request("POST", f"{base_url}/api/v1/tasks/{task_id}/close")
+    status, _, _ = _request("POST", f"{base_url}/api/v1/tasks/{task_id}/close", headers=TASK_CALLER_HEADERS)
     if status != 200:
         raise RuntimeError("Non-default finite close failed")
     for path in ("/task-workbench?project=agentforge&tab=rpc",

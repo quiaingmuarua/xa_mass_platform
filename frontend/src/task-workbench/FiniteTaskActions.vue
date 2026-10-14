@@ -16,7 +16,7 @@ defineEmits<{ action: [action: string] }>();
         <el-dropdown-item
           v-if="row.scoreBand === 'pre_review'"
           command="append"
-          :disabled="!writable"
+          :disabled="!writable || row.task?.metadata['server.inputOwner'] !== 'raw'"
           >追加 Items</el-dropdown-item
         >
         <el-dropdown-item

@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.*;
 @Tag("scenario-composition")
 @SuppressWarnings("unchecked")
 class MessagesAssemblyIntegrationTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
     private static final String EVENT = "extension.worker.message.send";
 
     @ParameterizedTest @ValueSource(booleans = {false, true}) @Timeout(120)
@@ -81,7 +82,7 @@ class MessagesAssemblyIntegrationTest {
         var numbers = java.util.stream.IntStream.range(0, count).mapToObj(i -> "+86138000000" + i)
                 .collect(java.util.stream.Collectors.joining("\n"));
         assertThat(fixture.upload(task, numbers).statusCode()).isEqualTo(200);
-        assertThat(fixture.post("/api/v1/messages/tasks/" + task + "/approve", count).statusCode()).isEqualTo(200);
+        assertThat(fixture.post("/api/v1/tasks/" + task + "/approve", Map.of("expectedItemCount", count)).statusCode()).isEqualTo(200);
         return task;
     }
 
@@ -108,7 +109,7 @@ class MessagesAssemblyIntegrationTest {
                 String task = (String) Jsons.parseObject(created.body()).get("taskId");
                 assertThat(fixture.upload(task, "+8613800000000").statusCode()).isEqualTo(200);
                 Thread.sleep(61_000); // Review may outlast the retired 60-second Item TTL.
-                assertThat(fixture.post("/api/v1/messages/tasks/" + task + "/approve", 1).statusCode()).isEqualTo(200);
+                assertThat(fixture.post("/api/v1/tasks/" + task + "/approve", Map.of("expectedItemCount", 1)).statusCode()).isEqualTo(200);
                 await(() -> "terminal".equals(((Map<?, ?>) fixture.detail(task).get("task")).get("state")));
                 await(() -> fixture.hasStatus(task, "SENT", null));
                 var local = (Map<String, Object>) ((List<?>) channel.lab().page(null, null, 0, 1).get("items")).getFirst();
@@ -136,20 +137,20 @@ class MessagesAssemblyIntegrationTest {
             var before = fixture.context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("demo-sim")).get("demo-sim");
             fixture.restart(true, Map.of("xa.mass.worker-assembly.group-config-json", "{}"));
             var tasks = fixture.context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class);
-            assertThat(tasks.list("messages", 100, null).tasks()).isEmpty();
+            assertThat(tasks.list(CALLER, "messages", 100, null).tasks()).isEmpty();
             var created = fixture.post("/api/v1/messages/tasks", Map.of("appId", "demo", "requestId", "restart-binding",
                     "name", "retained", "recipientCountry", "CN", "body", "text"));
             assertThat(created.statusCode()).isEqualTo(201);
             String id = (String) Jsons.parseObject(created.body()).get("taskId");
             var descriptor = fixture.context.getBean(TaskResourceCatalog.class).loadTaskAllocationDescriptors(List.of(id)).get(id);
-            var order = tasks.get("messages", id);
+            var order = tasks.get(CALLER, "messages", id);
             assertThat(order).isNotNull();
             fixture.restart(true, Map.of("xa.mass.worker-assembly.group-config-json", "{}"));
             assertThat(fixture.context.getBean(ProjectDirectory.class).require("messages").workerGroupIds()).containsExactly("demo-sim");
             tasks = fixture.context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class);
             assertThat(fixture.context.getBean(TaskResourceCatalog.class).loadTaskAllocationDescriptors(List.of(id)).get(id)).isEqualTo(descriptor);
-            assertThat(tasks.get("messages", id)).isEqualTo(order);
-            assertThat(tasks.list("messages", 100, null).tasks()).containsExactly(order);
+            assertThat(tasks.get(CALLER, "messages", id)).isEqualTo(order);
+            assertThat(tasks.list(CALLER, "messages", 100, null).tasks()).containsExactly(order);
             assertThat(fixture.context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("demo-sim")).get("demo-sim"))
                     .isEqualTo(before);
         }
@@ -236,19 +237,19 @@ class MessagesAssemblyIntegrationTest {
         }
         void restart(boolean messages, Map<String, String> overrides) { context.close(); context = null; start(messages, overrides); }
         HttpResponse<String> get(String path) {
-            try { return http.send(HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(3)).build(), HttpResponse.BodyHandlers.ofString()); }
+            try { return http.send(TaskObservations.request(base, path, CALLER).timeout(Duration.ofSeconds(3)).build(), HttpResponse.BodyHandlers.ofString()); }
             catch (Exception failure) { throw new IllegalStateException(failure); }
         }
         HttpResponse<String> post(String path, Object input) throws Exception {
-            return http.send(HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(5)).header("Content-Type", "application/json")
+            return http.send(TaskObservations.request(base, path, CALLER).timeout(Duration.ofSeconds(5)).header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(Jsons.toJson(input))).build(), HttpResponse.BodyHandlers.ofString());
         }
         HttpResponse<String> upload(String taskId, String text) throws Exception {
-            return http.send(HttpRequest.newBuilder(base.resolve("/api/v1/messages/tasks/" + taskId + "/recipients:import"))
+            return http.send(TaskObservations.request(base, "/api/v1/messages/tasks/" + taskId + "/recipients:import", CALLER)
                     .timeout(Duration.ofSeconds(180)).header("Content-Type", "text/plain;charset=UTF-8")
                     .POST(HttpRequest.BodyPublishers.ofString(text)).build(), HttpResponse.BodyHandlers.ofString());
         }
-        Map<String, Object> detail(String id) { return Jsons.parseObject(get("/api/v1/messages/tasks/" + id).body()); }
+        Map<String, Object> detail(String id) { return TaskObservations.detail(http, base, CALLER, "messages", id); }
         boolean hasStatus(String task, String status, String reply) {
             return ((List<Map<String, Object>>) detail(task).get("results")).stream()
                     .anyMatch(row -> status.equals(row.get("status")) && (reply == null || reply.equals(row.get("reply"))));

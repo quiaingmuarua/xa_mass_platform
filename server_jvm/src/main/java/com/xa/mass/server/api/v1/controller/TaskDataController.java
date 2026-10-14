@@ -1,5 +1,7 @@
 package com.xa.mass.server.api.v1.controller;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
@@ -89,11 +91,11 @@ public class TaskDataController {
             )
     })
     @PostMapping("/{taskId}/items:call")
-    public DeferredResult<Map<String, TaskItemResultResponse>> callTaskItems(
+    public DeferredResult<Map<String, TaskItemResultResponse>> callTaskItems(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller,
             @PathVariable @NotBlank String taskId,
             @Valid @RequestBody TaskRpcCallRequest request
     ) {
-        return taskCall.call(taskId, request);
+        return taskCall.call(caller, TaskCaller.RAW_INPUT, taskId, request);
     }
 
     @Operation(summary = "Append Items to a finite Task")
@@ -124,7 +126,7 @@ public class TaskDataController {
             )
     })
     @PostMapping("/{taskId}/items")
-    public ResponseEntity<Map<String, ActionOutcome>> appendTaskItems(
+    public ResponseEntity<Map<String, ActionOutcome>> appendTaskItems(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller,
             @PathVariable @NotBlank String taskId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     required = true,
@@ -141,7 +143,7 @@ public class TaskDataController {
             List<@NotNull @Valid TaskItemRequest> items
     ) {
         return ResponseEntity.ok(taskData.appendFiniteTaskItems(
-                taskId,
+                caller, taskId,
                 List.copyOf(items)
         ));
     }
@@ -179,7 +181,7 @@ public class TaskDataController {
     })
     @PostMapping("/{taskId}/results:load")
     public ResponseEntity<Map<String, TaskItemResultResponse>>
-            loadTaskItemResults(
+            loadTaskItemResults(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller,
             @PathVariable @NotBlank String taskId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     required = true,
@@ -194,7 +196,7 @@ public class TaskDataController {
             List<@NotBlank String> messageIds
     ) {
         return ResponseEntity.ok(taskData.loadTaskItemResults(
-                taskId,
+                caller, taskId,
                 List.copyOf(messageIds)
         ));
     }
@@ -215,7 +217,7 @@ public class TaskDataController {
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @PostMapping("/{taskId}/items:states")
-    public ResponseEntity<Map<String, TaskItemStateResponse>> loadTaskItemStates(
+    public ResponseEntity<Map<String, TaskItemStateResponse>> loadTaskItemStates(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller,
             @PathVariable @NotBlank String taskId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     required = true,
@@ -225,7 +227,7 @@ public class TaskDataController {
             @RequestBody @NotNull @Size(min = 1, max = 100)
             List<@NotBlank String> messageIds
     ) {
-        return ResponseEntity.ok(taskData.loadTaskItemStates(taskId, List.copyOf(messageIds)));
+        return ResponseEntity.ok(taskData.loadTaskItemStates(caller, taskId, List.copyOf(messageIds)));
     }
 
     @Operation(
@@ -258,10 +260,10 @@ public class TaskDataController {
             )
     })
     @PostMapping("/{taskId}/results:export")
-    public ResponseEntity<StreamingResponseBody> exportTaskItemResults(
+    public ResponseEntity<StreamingResponseBody> exportTaskItemResults(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller,
             @PathVariable @NotBlank String taskId
     ) {
-        var export = taskResultsExport.export(taskId);
+        var export = taskResultsExport.export(caller, taskId);
         StreamingResponseBody body = output ->
                 taskResultsExport.transferAndDelete(export.file(), output);
         return ResponseEntity.ok()

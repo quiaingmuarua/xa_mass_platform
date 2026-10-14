@@ -33,13 +33,15 @@ class ProofAssertionsTest(unittest.TestCase):
 
     def test_load_pacing_waits_for_reporter_admission_and_never_tolerates_loss(self):
         metrics = {"callbackFailed": 0, "droppedReceipts": 0, "callbackQueued": 2, "httpSucceeded": 2, "reportAccepted": 1}
+        run = SimpleNamespace(host="host")
         with patch.object(proof, "http", return_value=metrics):
-            self.assertFalse(proof.load_callbacks_drained(SimpleNamespace(host="host")))
+            self.assertFalse(proof.load_callbacks_drained(run))
             metrics["reportAccepted"] = 2
             self.assertTrue(proof.load_callbacks_drained(SimpleNamespace(host="host")))
             metrics["droppedReceipts"] = 1
             with self.assertRaisesRegex(AssertionError, "dropped or failed"):
-                proof.load_callbacks_drained(SimpleNamespace(host="host"))
+                proof.load_callbacks_drained(run)
+            self.assertEqual(1, run.load_callback_metrics["droppedReceipts"])
 
     def test_large_sending_world_has_exact_group_counts_and_independent_phone_ranges(self):
         world = proof.message_send_worker_world()
@@ -222,9 +224,12 @@ class PoolSelectionTest(unittest.TestCase):
                 return {"taskId": identity, "confirmedAddedCount": len(body), "existingCount": 0}
             if path.endswith("/approve"):
                 return {"status": "applied"}
-            if path == "/api/v1/messages/tasks/opaque-text":
-                return {"task": {"body": specifications["opaque-text"]["body"], "failedCount": 1, "sentCount": 0, "deliveredCount": 0},
-                        "results": [{"resultStatus": "failed"}]}
+            if path == "/api/v1/messages/tasks/opaque-text/results":
+                return {"taskId": "opaque-text", "results": [{"resultStatus": "failed"}], "truncated": False}
+            if path == "/api/v1/projects/messages/tasks/opaque-text":
+                return {"task": {"metadata": {"body": specifications["opaque-text"]["body"]}}}
+            if path == "/api/v1/projects/messages/tasks:stats":
+                return {"opaque-text": {"total": 1, "countsByTag": {str(tag): int(tag == 5) for tag in range(1, 10)}}}
             raise AssertionError("Unexpected API call in Pool-only fixture")
         return run, http, messages, requests
 

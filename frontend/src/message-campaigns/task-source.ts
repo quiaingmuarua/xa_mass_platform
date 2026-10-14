@@ -1,3 +1,4 @@
+import type { TaskCaller } from "@/task-caller";
 import type { InjectionKey } from "vue";
 
 // Page data, not a proposed HTTP contract. Scheduling state is independent of Results.
@@ -20,6 +21,7 @@ export type MessageDemoAction =
   | "reply"
   | "fail-read";
 export interface MessageTask {
+  userId?: string;
   taskId: string;
   name?: string;
   appId?: string;
@@ -37,7 +39,6 @@ export interface MessageTask {
   readCount?: number;
   repliedCount?: number;
   failedCount?: number;
-  senderPhone?: string;
   body?: string;
 }
 export interface MessageTaskResult {
@@ -67,13 +68,21 @@ export interface CreateMessageTask {
 export interface MessageTaskSource {
   readonly mode: "api" | "mock";
   readonly applications: readonly MessageApplication[];
-  listTasks(): Promise<{ tasks: MessageTask[]; truncated: boolean }>;
-  loadTask(taskId: string): Promise<MessageTaskDetail>;
-  createTask(input: CreateMessageTask): Promise<{ taskId: string }>;
-  importRecipients(taskId: string, text: string): Promise<MessageImportReceipt>;
-  approveTask(taskId: string, expectedCount: number): Promise<void>;
-  closeTask(taskId: string): Promise<void>;
-  demonstrate?(taskId: string, action: MessageDemoAction): Promise<void>;
+  listTasks(caller: TaskCaller): Promise<{ tasks: MessageTask[]; truncated: boolean }>;
+  loadTask(caller: TaskCaller, taskId: string): Promise<MessageTaskDetail>;
+  createTask(caller: TaskCaller, input: CreateMessageTask): Promise<{ taskId: string }>;
+  importRecipients(
+    caller: TaskCaller,
+    taskId: string,
+    text: string
+  ): Promise<MessageImportReceipt>;
+  approveTask(caller: TaskCaller, taskId: string, expectedCount: number): Promise<void>;
+  closeTask(caller: TaskCaller, taskId: string): Promise<void>;
+  demonstrate?(
+    caller: TaskCaller,
+    taskId: string,
+    action: MessageDemoAction
+  ): Promise<void>;
 }
 export interface MessageImportReceipt {
   taskId: string;

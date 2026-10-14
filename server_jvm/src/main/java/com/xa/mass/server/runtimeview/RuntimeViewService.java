@@ -1,5 +1,7 @@
 package com.xa.mass.server.runtimeview;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreState;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
@@ -68,9 +70,10 @@ public final class RuntimeViewService {
     }
 
     public TaskPreviewResponse previewTasks(
-            int sampleLimit,
+            TaskCaller caller, int sampleLimit,
             String requestId
     ) {
+        caller.requireAdmin();
         try {
             List<TaskScoreState> scoreStates =
                     taskScores.previewScoreStates(sampleLimit);

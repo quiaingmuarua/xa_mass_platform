@@ -15,6 +15,7 @@ import java.util.Map;
 import tools.jackson.databind.JsonNode;
 
 public record TaskCreateRequest(
+        @NotBlank @Size(max = 128) String requestId,
         @NotBlank String projectId,
         @NotBlank String workerGroupId,
         @Min(0) @Max(99) Integer priority,
@@ -23,7 +24,7 @@ public record TaskCreateRequest(
                 + "Equal targets in the same Group/Pool merge by MAX, never private quotas.")
         @Size(max = 100) List<RefillTarget> refill,
         @Size(max = 128) String name,
-        @Schema(description = "String metadata; server.* keys are reserved. Optional userId must match ^[1-9a-z][0-9a-z]{3,8}$ after trimming. Server stamps Project and first creation time.")
+        @Schema(description = "String metadata; userId and server.* keys are reserved. Server stamps the caller, Project, input owner and first creation time.")
         Map<String, String> metadata
 ) {
     public TaskCreateRequest {
@@ -36,6 +37,7 @@ public record TaskCreateRequest(
     /** Preserve existing scalar binding while distinguishing omitted supply from explicit null. */
     @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
     public static TaskCreateRequest fromJson(
+            @JsonProperty("requestId") String requestId,
             @JsonProperty("projectId") String projectId,
             @JsonProperty("workerGroupId") String workerGroupId,
             @JsonProperty("priority") Integer priority,
@@ -53,7 +55,7 @@ public record TaskCreateRequest(
             });
         }
         if (refill == null) {
-            return new TaskCreateRequest(projectId, workerGroupId, priority, maxRetryTimes, List.of(), name, attributes);
+            return new TaskCreateRequest(requestId, projectId, workerGroupId, priority, maxRetryTimes, List.of(), name, attributes);
         }
         if (!refill.isArray()) {
             throw new IllegalArgumentException("refill must be a list");
@@ -66,7 +68,7 @@ public record TaskCreateRequest(
             var value = (Map<String, Object>) fields;
             return RefillTarget.parse(value);
         }).toList();
-        return new TaskCreateRequest(projectId, workerGroupId, priority, maxRetryTimes, declarations, name, attributes);
+        return new TaskCreateRequest(requestId, projectId, workerGroupId, priority, maxRetryTimes, declarations, name, attributes);
     }
 
     @JsonAnySetter

@@ -34,6 +34,7 @@ import static org.mockito.Mockito.*;
 /** Failure-only composition proof: real Redis, HTTP, Worker connection and recipient facts. */
 @Tag("scenario-composition")
 class MessageFailureIntegrationTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
     @Test @Timeout(90)
     void newerBusinessReceiptSurvivesLateSynchronousExecutionResult() throws Exception {
         try (var fixture = new Fixture(false); var channel = new MessageScenario(0, MessageSettings.defaults(), Map.of("demo-sim", MessageContentMode.LAB_JSON)); var lab = new LabHttp(channel)) {
@@ -63,7 +64,7 @@ class MessageFailureIntegrationTest {
                 assertThat(channel.lab().act(sender.group(), sender.replica(), id, "reply", Map.of("requestId", "reply", "text", "newer content"))).containsEntry("callbackQueued", true);
                 var observed = fixture.awaitCampaign(campaign, "REPLIED");
                 String task = (String) observed.get("taskId");
-                assertThat(fixture.context.getBean(TaskDataService.class).loadTaskItemStates(task, List.of(id)).get(id).tag()).isEqualTo(9);
+                assertThat(fixture.context.getBean(TaskDataService.class).loadTaskItemStates(CALLER, task, List.of(id)).get(id).tag()).isEqualTo(9);
                 finishSend.countDown();
                 // A synchronous query on this same Worker can finish only after the send handler's Result was emitted.
                 var direct = fixture.post("/api/v1/worker-delivery/endpoint-managers/products-websocket/direct-calls", Map.of(
@@ -73,13 +74,13 @@ class MessageFailureIntegrationTest {
                 assertThat(Jsons.parseObject(direct.body())).containsEntry("status", "observed");
                 long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
                 do {
-                    var results = fixture.context.getBean(TaskDataService.class).loadTaskItemResults(task, List.of(id));
+                    var results = fixture.context.getBean(TaskDataService.class).loadTaskItemResults(CALLER, task, List.of(id));
                     assertThat(Jsons.parseObject(results.get(id).opaqueResultPayload())).containsEntry("status", "REPLIED").containsEntry("reply", "newer content");
-                    assertThat(fixture.context.getBean(TaskDataService.class).loadTaskItemStates(task, List.of(id)).get(id).tag()).isEqualTo(9);
+                    assertThat(fixture.context.getBean(TaskDataService.class).loadTaskItemStates(CALLER, task, List.of(id)).get(id).tag()).isEqualTo(9);
                     Thread.sleep(50);
                 } while (System.nanoTime() < until);
                 fixture.restart();
-                var retained = fixture.get("/api/v1/messages/tasks/" + task);
+                var retained = fixture.detail(task);
                 assertThat((Map<String,Object>) retained.get("task")).containsEntry("name", "proof")
                         .containsEntry("body", "{}").containsEntry("sendTotal", 1L).containsEntry("repliedCount", 1L);
                 assertThat((List<Map<String,Object>>) retained.get("results")).anySatisfy(row ->
@@ -98,9 +99,9 @@ class MessageFailureIntegrationTest {
             assertThat(retried.statusCode()).isEqualTo(200);
             assertThat(Jsons.parseObject(retried.body())).containsEntry("existingCount", 101L).containsEntry("confirmedAddedCount", 0L);
             var service = fixture.context.getBean(TaskDataService.class);
-            verify(service, times(4)).importFiniteTaskItems(eq((String) unknown.get("taskId")), anyList());
-            verify(fixture.context.getBean(TaskLifecycleService.class), never()).approve(anyString());
-            var detail = fixture.get("/api/v1/messages/tasks/" + first.get("taskId"));
+            verify(service, times(4)).importFiniteTaskItems(org.mockito.ArgumentMatchers.eq(CALLER), org.mockito.ArgumentMatchers.eq("messages"), eq((String) unknown.get("taskId")), anyList());
+            verify(fixture.context.getBean(TaskLifecycleService.class), never()).approve(org.mockito.ArgumentMatchers.eq(CALLER), anyString(), org.mockito.ArgumentMatchers.anyLong());
+            var detail = fixture.detail((String) first.get("taskId"));
             assertThat((List<?>) detail.get("results")).isEmpty();
             assertThat((Map<String,Object>) detail.get("task")).containsEntry("sendTotal", 101L)
                     .containsEntry("state", "pre_review").containsEntry("deliveredCount", 0L);
@@ -140,7 +141,7 @@ class MessageFailureIntegrationTest {
                         Object result = call.callRealMethod();
                         if (calls.incrementAndGet() == 2) throw new IllegalStateException("Append completed but its caller lost confirmation");
                         return result;
-                    }).when(decorated).importFiniteTaskItems(anyString(), anyList());
+                    }).when(decorated).importFiniteTaskItems(org.mockito.ArgumentMatchers.eq(CALLER), org.mockito.ArgumentMatchers.eq("messages"), anyString(), anyList());
                     return decorated;
                 }
             };
@@ -181,18 +182,18 @@ class MessageFailureIntegrationTest {
             var imported = importRecipients((String) created.get("taskId"), size);
             assertThat(imported.statusCode()).isEqualTo(failure ? 503 : 200);
             if (failure) return Jsons.parseObject(imported.body());
-            assertThat(post("/api/v1/messages/tasks/" + created.get("taskId") + "/approve", size).statusCode()).isEqualTo(200);
+            assertThat(post("/api/v1/tasks/" + created.get("taskId") + "/approve", Map.of("expectedItemCount", size)).statusCode()).isEqualTo(200);
             return created;
         }
         HttpResponse<String> importRecipients(String taskId, int size) throws Exception {
             String numbers = IntStream.range(0, size).mapToObj(i -> "+861380000" + String.format("%04d", i)).collect(java.util.stream.Collectors.joining("\n"));
-            return http.send(HttpRequest.newBuilder(base.resolve("/api/v1/messages/tasks/" + taskId + "/recipients:import"))
+            return http.send(TaskObservations.request(base, "/api/v1/messages/tasks/" + taskId + "/recipients:import", CALLER)
                     .timeout(Duration.ofSeconds(10)).header("Content-Type", "text/plain;charset=UTF-8")
                     .POST(HttpRequest.BodyPublishers.ofString(numbers)).build(), HttpResponse.BodyHandlers.ofString());
         }
         Map<String, Object> awaitCampaign(Map<String, Object> task, String expected) throws Exception {
             long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-            do { var value = get("/api/v1/messages/tasks/" + task.get("taskId"));
+            do { var value = detail((String) task.get("taskId"));
                 if (((List<?>) value.get("results")).stream().anyMatch(row -> expected.equals(((Map<?,?>)row).get("status"))))
                     return (Map<String,Object>) value.get("task");
                 Thread.sleep(20);
@@ -200,11 +201,12 @@ class MessageFailureIntegrationTest {
             throw new AssertionError("Receipt not observed");
         }
         HttpResponse<String> post(String path, Object body) throws Exception {
-            return http.send(HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(6)).header("Content-Type", "application/json")
+            return http.send(TaskObservations.request(base, path, CALLER).timeout(Duration.ofSeconds(6)).header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(Jsons.toJson(body))).build(), HttpResponse.BodyHandlers.ofString());
         }
+        Map<String, Object> detail(String id) { return TaskObservations.detail(http, base, CALLER, "messages", id); }
         Map<String, Object> get(String path) throws Exception {
-            return Jsons.parseObject(http.send(HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(3)).build(), HttpResponse.BodyHandlers.ofString()).body());
+            return Jsons.parseObject(http.send(TaskObservations.request(base, path, CALLER).timeout(Duration.ofSeconds(3)).build(), HttpResponse.BodyHandlers.ofString()).body());
         }
         public void close() {
             context.close(); http.close();

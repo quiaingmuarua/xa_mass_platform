@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { TaskApiError } from "@/task-caller";
+
 import { consoleIdentity } from "@/console-identity";
 const identity = consoleIdentity.current.value;
 import { computed, markRaw, onBeforeUnmount, onMounted, reactive, ref } from "vue";
@@ -18,7 +20,6 @@ import {
 } from "./settings";
 import {
   AppCheckConfigurationUnconfirmed,
-  AppCheckApiError,
   type AppCheckTaskSource
 } from "./task-source";
 import { timestamp } from "./workbench";
@@ -181,8 +182,7 @@ async function save() {
       state.error =
         failure instanceof Error ? failure.message : "保存失败，编辑内容已保留";
       state.uncertain = failure instanceof AppCheckConfigurationUnconfirmed;
-      if (failure instanceof AppCheckApiError && failure.status === 409)
-        state.stale = true;
+      if (failure instanceof TaskApiError && failure.status === 409) state.stale = true;
     }
   } finally {
     state.saving = false;

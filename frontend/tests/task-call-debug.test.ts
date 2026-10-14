@@ -1,3 +1,5 @@
+import { captureTaskCaller, callerHeaders } from "@/task-caller";
+const CALLER = captureTaskCaller();
 import { AxiosError, type AxiosInstance, type AxiosResponse } from "axios";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -181,7 +183,7 @@ describe("HttpTaskCallDebugClient", () => {
         waitTimeoutMillis: 3_000
       },
       {
-        headers: { "X-Request-Id": expect.any(String) },
+        headers: { "X-Request-Id": expect.any(String), ...callerHeaders(CALLER) },
         timeout: 8_000
       }
     );
@@ -237,10 +239,10 @@ describe("HttpTaskCallDebugClient", () => {
       post
     } as unknown as AxiosInstance);
 
-    await expect(client.loadResult("task/a", "message-1")).resolves.toEqual({
+    await expect(client.loadResult(CALLER, "task/a", "message-1")).resolves.toEqual({
       status: "not_observed"
     });
-    await expect(client.loadResult("task/a", "message-1")).resolves.toEqual({
+    await expect(client.loadResult(CALLER, "task/a", "message-1")).resolves.toEqual({
       status: "succeeded",
       opaqueResultPayload: '{"valid":true}'
     });
@@ -248,7 +250,7 @@ describe("HttpTaskCallDebugClient", () => {
       "/v1/tasks/task%2Fa/results:load",
       ["message-1"],
       {
-        headers: { "X-Request-Id": expect.any(String) },
+        headers: { "X-Request-Id": expect.any(String), ...callerHeaders(CALLER) },
         timeout: 5_000
       }
     );
@@ -256,9 +258,9 @@ describe("HttpTaskCallDebugClient", () => {
     const wrongIdentity = httpClient({
       "message-2": { status: "failed" }
     });
-    await expect(wrongIdentity.loadResult("task-1", "message-1")).rejects.toMatchObject(
-      { kind: "schema" }
-    );
+    await expect(
+      wrongIdentity.loadResult(CALLER, "task-1", "message-1")
+    ).rejects.toMatchObject({ kind: "schema" });
   });
 
   it("maps Task API failures to safe messages and keeps the request ID", async () => {
@@ -344,7 +346,11 @@ describe("Task Call Debug browser-memory store", () => {
     expect(client.loadResult).not.toHaveBeenCalled();
 
     await store.loadResult("task-1", accepted.localId);
-    expect(client.loadResult).toHaveBeenCalledWith("task-1", accepted.messageId);
+    expect(client.loadResult).toHaveBeenCalledWith(
+      CALLER,
+      "task-1",
+      accepted.messageId
+    );
     expect(accepted).toMatchObject({
       state: "succeeded",
       opaqueResultPayload: '{"valid":true}',
@@ -496,6 +502,7 @@ function clientRequest(
   overrides: Partial<TaskCallDebugClientRequest> = {}
 ): TaskCallDebugClientRequest {
   return {
+    caller: CALLER,
     taskId: "task-1",
     messageId: "message-1",
     eventName: "extension.worker.custom",

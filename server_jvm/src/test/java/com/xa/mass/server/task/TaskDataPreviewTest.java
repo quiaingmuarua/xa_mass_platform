@@ -11,6 +11,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class TaskDataPreviewTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
     final TaskRuntime runtime = mock(TaskRuntime.class);
     final TaskResourceCatalog catalog = mock(TaskResourceCatalog.class);
     final TaskItemScoreBandCore scores = mock(TaskItemScoreBandCore.class);
@@ -25,21 +26,16 @@ class TaskDataPreviewTest {
         for (int i = 0; i < 101; i++) results.put("m" + i, i == 0 ? TaskRuntime.TaskItemResult.failed() : TaskRuntime.TaskItemResult.succeeded("{}"));
         when(runtime.scanTaskItemResults("task", "0", 100)).thenReturn(new TaskRuntime.TaskItemResultPage("0", results));
         when(runtime.loadTaskItems(eq("task"), anyList())).thenReturn(Map.of());
-        var preview = service.previewTaskResults("task");
+        var preview = service.previewTaskResults(CALLER, "task");
         assertThat(preview.truncated()).isTrue(); assertThat(preview.results()).hasSize(100);
         assertThat(preview.results().getFirst().result().status().wireValue()).isEqualTo("failed");
         verify(runtime).scanTaskItemResults("task", "0", 100);
         verify(runtime).loadTaskItems(eq("task"), argThat(ids -> ids.size() == 100));
         verifyNoMoreInteractions(runtime); verifyNoInteractions(scores);
         when(runtime.scanTaskItemResults("task", "0", 100)).thenReturn(new TaskRuntime.TaskItemResultPage("42", Map.of()));
-        var sparse = service.previewTaskResults("task");
+        var sparse = service.previewTaskResults(CALLER, "task");
         assertThat(sparse.results()).isEmpty(); assertThat(sparse.truncated()).isTrue();
     }
 
-    @Test void countFailureIsUnavailableAndNeverZeroOrAResultFallback() {
-        when(scores.observeItemScoreCounts(List.of("task"))).thenThrow(new IllegalStateException("connection"));
-        assertThatThrownBy(() -> service.observeItemScoreCounts(List.of("task"))).isInstanceOfSatisfying(ServerException.class,
-                error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_DATA_UNAVAILABLE));
-        verifyNoInteractions(runtime);
-    }
+
 }

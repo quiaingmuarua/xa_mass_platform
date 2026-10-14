@@ -1,3 +1,4 @@
+import { type TaskCaller } from "@/task-caller";
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, nextTick, type App as VueApp } from "vue";
@@ -26,7 +27,6 @@ import { consoleIdentity, identityRouteAllowed } from "../src/console-identity";
 import { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
 import { inspectImport, type ImportOptions } from "../src/app-checks/import-model";
 import {
-  type AppCheckCaller,
   AppCheckCreationUnconfirmed,
   AppCheckImportUnconfirmed
 } from "../src/app-checks/task-source";
@@ -179,10 +179,10 @@ describe("shared identity and App Checks workspaces", () => {
       MockAppCheckTaskSource.prototype,
       "loadConfiguration"
     );
-    const router = await mount("1001", "/runtime/tasks");
+    const router = await mount("1001", "/runtime/workers");
     expect(router.currentRoute.value.path).toBe("/app-checks");
     expect(document.querySelector('a[href="/runtime/tasks"]')).toBeNull();
-    expect(document.querySelector('a[href="/messages"]')).toBeNull();
+    expect(document.querySelector('a[href="/messages"]')).not.toBeNull();
     expect(document.querySelector("h1")?.textContent).toBe("我的任务 · 当前批次");
     await router.push("/app-checks?view=configuration");
     await settle();
@@ -249,7 +249,7 @@ describe("shared identity and App Checks workspaces", () => {
       .spyOn(MockAppCheckTaskSource.prototype, "createTask")
       .mockImplementationOnce(async function (
         this: MockAppCheckTaskSource,
-        caller: AppCheckCaller,
+        caller: TaskCaller,
         input: CreateCheckTask
       ) {
         await gate.promise;

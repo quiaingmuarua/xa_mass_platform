@@ -52,8 +52,8 @@ class LoadedRecoveryWorkloadTest {
         server.start();
         URI base = baseUri();
         client = new LoadedRecoveryApiClient(
-                new LoadedRecoveryHttpClient(base, Duration.ofSeconds(2)),
-                new LoadedRecoveryHttpClient(base, Duration.ofSeconds(2))
+                new LoadedRecoveryHttpClient(base, Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin")),
+                new LoadedRecoveryHttpClient(base, Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"))
         );
     }
 
@@ -273,7 +273,7 @@ class LoadedRecoveryWorkloadTest {
                     exchange.getRequestBody().readAllBytes(),
                     StandardCharsets.UTF_8
             ));
-            assertThat(request).containsOnlyKeys("projectId", "workerGroupId", "refill", "priority", "maxRetryTimes");
+            assertThat(request).containsOnlyKeys("requestId", "projectId", "workerGroupId", "refill", "priority", "maxRetryTimes");
             String taskId = String.format(
                     "task-%02d",
                     createdTasks.incrementAndGet()
@@ -290,6 +290,7 @@ class LoadedRecoveryWorkloadTest {
         switch (operation) {
             case "items" -> appendItems(exchange, taskId);
             case "approve" -> {
+                assertThat(Jsons.parseObject(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8))).containsExactlyEntriesOf(Map.of("expectedItemCount", (long) messageIdsByTask.get(taskId).size()));
                 operations.add("approve-" + taskId);
                 respondJson(exchange, 200, Map.of("status", "applied"));
             }

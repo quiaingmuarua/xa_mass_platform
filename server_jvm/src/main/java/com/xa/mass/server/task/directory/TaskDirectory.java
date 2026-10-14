@@ -1,5 +1,7 @@
 package com.xa.mass.server.task.directory;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
@@ -54,12 +56,13 @@ public final class TaskDirectory implements AutoCloseable {
         this.tasks = tasks; this.scores = scores; this.groups = groups; this.operations = operations;
     }
 
-    public ActionOutcome ensure(String taskId) {
+    public ActionOutcome ensure(TaskCaller caller, String taskId) {
         if (taskId == null || taskId.isBlank()) throw invalid("Task ID is required", null);
         return operations.taskMutation(taskId, () -> {
             try {
                 var task = tasks.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
                 if (task == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskDirectory.ensure", null, null);
+                caller.requireTask(task);
                 final TaskAttribution attribution;
                 try { attribution = TaskAttribution.require(task.metadata()); }
                 catch (IllegalArgumentException invalid) { throw invalid("Task has no valid Server attribution", invalid); }

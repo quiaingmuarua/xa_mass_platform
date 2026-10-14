@@ -1,14 +1,15 @@
+import {
+  TaskApiError,
+  requireAdminCaller,
+  requireCaller,
+  requireTaskCaller,
+  type TaskCaller
+} from "@/task-caller";
 import type { AppCheckTaskSource } from "./task-source";
 import { developmentIdentities } from "@/console-identity";
 import { normalizeTaskUserId, taskUserScore, compareTaskIds } from "@/task-user-id";
 import type { TaskPolicySnapshot } from "./configuration";
-import {
-  AppCheckApiError,
-  requireCaller,
-  requireAdminCaller,
-  requireTaskCaller,
-  type AppCheckCaller
-} from "./task-source";
+
 import {
   settingsSchema,
   settingsIdentity,
@@ -296,7 +297,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         this.effectiveConfiguration.configuration.common.simulationDefault
     });
   }
-  async loadConfiguration(caller: AppCheckCaller) {
+  async loadConfiguration(caller: TaskCaller) {
     requireAdminCaller(caller);
     return structuredClone({
       saved: this.savedConfiguration,
@@ -314,13 +315,13 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     });
   }
   async saveConfiguration(
-    caller: AppCheckCaller,
+    caller: TaskCaller,
     expectedRevision: number,
     configuration: AppCheckSettings
   ) {
     requireAdminCaller(caller);
     if (expectedRevision !== this.savedConfiguration.revision)
-      throw new AppCheckApiError(409, "配置修订已变化，请重新读取后核对");
+      throw new TaskApiError(409, "配置修订已变化，请重新读取后核对");
     const validated = settingsSchema.parse(configuration);
     requireSettingsUpdate(this.savedConfiguration.configuration, validated);
     if (
@@ -333,15 +334,15 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       };
     return this.loadConfiguration(caller);
   }
-  async simulateConfigurationRestart(caller: AppCheckCaller) {
+  async simulateConfigurationRestart(caller: TaskCaller) {
     requireAdminCaller(caller);
     this.effectiveConfiguration = structuredClone(this.savedConfiguration);
   }
-  async listTasks(caller: AppCheckCaller, userId?: string) {
+  async listTasks(caller: TaskCaller, userId?: string) {
     caller = requireCaller(caller);
     const selected = userId === undefined ? undefined : normalizeTaskUserId(userId);
     if (caller.role !== "admin" && selected !== undefined && selected !== caller.userId)
-      throw new AppCheckApiError(403, "当前开发身份不能查询其他用户的任务");
+      throw new TaskApiError(403, "当前开发身份不能查询其他用户的任务");
     const owner = caller.role === "operator" ? caller.userId : selected;
     const tasks = [...this.records.values()]
       .map((r) => r.task)
@@ -362,7 +363,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       truncated: tasks.length > 100
     });
   }
-  private owned(caller: AppCheckCaller, id: string) {
+  private owned(caller: TaskCaller, id: string) {
     caller = requireCaller(caller);
     const record = this.require(id);
     requireTaskCaller(caller, record.task);
@@ -373,7 +374,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     if (!record) throw new Error("没有找到 Mock 任务，刷新应用会重置会话数据。");
     return record;
   }
-  previewState(caller: AppCheckCaller, id: string): PreviewState {
+  previewState(caller: TaskCaller, id: string): PreviewState {
     this.owned(caller, id);
     return { ...this.states.get(id) };
   }
@@ -382,7 +383,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     rows.push({ at: Date.now(), label, detail });
     this.activities.set(id, rows.slice(-100));
   }
-  async loadTask(caller: AppCheckCaller, id: string) {
+  async loadTask(caller: TaskCaller, id: string) {
     const record = this.owned(caller, id);
     const count = (this.reads.get(id) ?? 0) + 1;
     this.reads.set(id, count);
@@ -390,10 +391,10 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       throw new Error("Mock 读取失败；已保留上次数据，可再次刷新。");
     return structuredClone({ ...record, results: record.results.slice(0, 100) });
   }
-  async createTask(caller: AppCheckCaller, input: CreateCheckTask) {
+  async createTask(caller: TaskCaller, input: CreateCheckTask) {
     caller = requireCaller(caller);
     if ("userId" in input || "role" in input)
-      throw new AppCheckApiError(400, "Unknown application check fields");
+      throw new TaskApiError(400, "Unknown application check fields");
     const app = this.effectiveConfiguration.configuration.applications.find(
       (app) => app.appId === input.appId
     );
@@ -405,7 +406,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       input.country,
       simulationSchema.parse(input.simulation)
     ]);
-    const prior = this.requests.get(input.requestId);
+    const prior = this.requests.get(caller.userId + "/" + input.requestId);
     if (prior) {
       if (prior.input !== identity) throw new Error("requestId 已用于其他内容");
       return { taskId: prior.taskId };
@@ -432,18 +433,21 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       resultsTruncated: false
     });
     this.imported.set(taskId, []);
-    this.requests.set(input.requestId, { input: identity, taskId });
+    this.requests.set(caller.userId + "/" + input.requestId, {
+      input: identity,
+      taskId
+    });
     this.recordActivity(taskId, "创建任务", "空任务已创建，等待导入号码");
     return { taskId };
   }
   async importNumbers(
-    caller: AppCheckCaller,
+    caller: TaskCaller,
     id: string,
     file: Blob,
     summary?: ImportSnapshot
   ) {
     const record = this.owned(caller, id);
-    if (record.task.state !== "pre_review" || record.task.inputVersion !== "2")
+    if (record.task.state !== "pre_review")
       throw new Error("只有新版本待审核任务支持导入");
     if (file.size > mockCatalog.limits.importFileBytes)
       throw new Error("号码文件不能超过 10 MiB");
@@ -501,8 +505,12 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     this.recordActivity(id, "导入号码", `新增 ${added} 个，已存在 ${existing} 个`);
     return receipt;
   }
-  async approveTask(caller: AppCheckCaller, id: string, expectedCount: number) {
+  async approveTask(caller: TaskCaller, id: string, expectedCount: number) {
     const record = this.owned(caller, id);
+    if (!Number.isInteger(expectedCount) || expectedCount <= 0)
+      throw new Error("数量必须为正整数");
+    if (["running_visible", "running-initial"].includes(record.task.state ?? ""))
+      return;
     if (record.task.state !== "pre_review") throw new Error("当前任务不在待审核状态");
     if (!expectedCount || expectedCount !== record.task.totalCount)
       throw new Error("号码数量已变化或为空，请重新核对");
@@ -516,8 +524,9 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       throw new Error("当前任务不在处理中");
     return record;
   }
-  async closeTask(caller: AppCheckCaller, id: string) {
+  async closeTask(caller: TaskCaller, id: string) {
     const record = this.owned(caller, id);
+    if (record.task.state === "terminal") return;
     if (
       !["pre_review", "running_visible", "running-initial"].includes(
         record.task.state ?? ""
@@ -557,7 +566,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     record.resultsTruncated = record.results.length > 100;
     record.task.salt = undefined;
   }
-  async advanceTask(caller: AppCheckCaller, id: string, late = false) {
+  async advanceTask(caller: TaskCaller, id: string, late = false) {
     requireAdminCaller(caller);
     const record = this.require(id),
       state = this.states.get(id);
@@ -579,7 +588,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       this.recordActivity(id, "查询结束");
     }
   }
-  async completeTask(caller: AppCheckCaller, id: string) {
+  async completeTask(caller: TaskCaller, id: string) {
     requireAdminCaller(caller);
     const record = this.running(id);
     this.appendResults(id, record.task.totalCount ?? 0);
@@ -587,12 +596,12 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     this.states.set(id, { endReason: "completed" });
     this.recordActivity(id, "查询结束", "剩余演示结果已生成");
   }
-  async loadImport(caller: AppCheckCaller, id: string) {
+  async loadImport(caller: TaskCaller, id: string) {
     this.owned(caller, id);
     const snapshot = this.imports.get(id);
     return snapshot ? structuredClone(snapshot) : undefined;
   }
-  async loadActivity(caller: AppCheckCaller, id: string) {
+  async loadActivity(caller: TaskCaller, id: string) {
     this.owned(caller, id);
     return structuredClone(this.activities.get(id) ?? []);
   }
@@ -606,7 +615,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         (filter === "all" || row.registered === (filter === "registered"))
     );
   }
-  async exportCounts(caller: AppCheckCaller, id: string) {
+  async exportCounts(caller: TaskCaller, id: string) {
     this.owned(caller, id);
     return {
       all: this.exportRows(id, "all").length,
@@ -614,7 +623,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       unregistered: this.exportRows(id, "unregistered").length
     };
   }
-  async exportTask(caller: AppCheckCaller, id: string, filter: ExportFilter) {
+  async exportTask(caller: TaskCaller, id: string, filter: ExportFilter) {
     const record = this.owned(caller, id);
     if (record.task.state !== "terminal") throw new Error("任务结束后可以导出演示结果");
     const rows = this.exportRows(id, filter);

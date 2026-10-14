@@ -18,12 +18,13 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ProjectTaskQueryServiceTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
     private final ProjectDirectory projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(
             new ProjectDefinition("p", List.of("g")))), List.of());
     private final TaskResourceCatalog tasks = mock(TaskResourceCatalog.class);
     private final TaskScoreBandCore scores = mock(TaskScoreBandCore.class);
     private final TaskDirectory directory = mock(TaskDirectory.class);
-    private final ProjectTaskQueryService service = new ProjectTaskQueryService(projects, tasks, scores, directory);
+    private final ProjectTaskQueryService service = new ProjectTaskQueryService(projects, tasks, scores, directory, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class));
 
     private TaskDescriptor task(String id, String project, long time, String user) {
         return new TaskDescriptor(id, "g", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"),
@@ -35,7 +36,7 @@ class ProjectTaskQueryServiceTest {
                 new TaskDirectory.Member("a", 0), new TaskDirectory.Member("b", 0)), true));
         when(tasks.loadTaskAllocationDescriptors(List.of("a", "b"))).thenReturn(Map.of("b", task("b", "p", 20, null)));
         when(scores.getScoreStates(List.of("a", "b"))).thenReturn(Map.of("b", new TaskScoreState("b", -1, TaskScoreBand.TERMINAL, null, null)));
-        var result = service.list("p", 2, null);
+        var result = service.list(CALLER, "p", 2, null);
         assertThat(result.truncated()).isTrue();
         assertThat(result.tasks()).extracting(ProjectTaskQueryService.Entry::taskId).containsExactly("b", "a");
         assertThat(result.tasks().getFirst().createdAtMillis()).isEqualTo(20);
@@ -50,21 +51,21 @@ class ProjectTaskQueryServiceTest {
                 new TaskDirectory.Member("missing", TaskUserId.score("1001")), new TaskDirectory.Member("mine", TaskUserId.score("1001"))), true));
         when(tasks.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("mine", task("mine", "p", 5, "1001")));
         when(scores.getScoreStates(anyList())).thenReturn(Map.of());
-        assertThat(service.list("p", 2, "1001").tasks()).extracting(ProjectTaskQueryService.Entry::taskId).containsExactly("mine");
+        assertThat(service.list(CALLER, "p", 2, "1001").tasks()).extracting(ProjectTaskQueryService.Entry::taskId).containsExactly("mine");
         verify(directory).list("p", "1001", 2);
         when(tasks.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("mine", task("mine", "p", 5, "1002")));
-        assertThatThrownBy(() -> service.list("p", 2, "1001")).isInstanceOfSatisfying(ServerException.class,
+        assertThatThrownBy(() -> service.list(CALLER, "p", 2, "1001")).isInstanceOfSatisfying(ServerException.class,
                 error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_DATA_UNAVAILABLE));
     }
 
     @Test void knownTaskReadsDoNotDependOnOrRepairTheDirectoryAndCheckProjectBeforeScores() {
         when(tasks.loadTaskAllocationDescriptors(List.of("known"))).thenReturn(Map.of("known", task("known", "p", 123, "1001")));
         when(scores.getScoreStates(anyList())).thenReturn(Map.of());
-        assertThat(service.get("p", "known").createdAtMillis()).isEqualTo(123);
+        assertThat(service.get(CALLER, "p", "known").createdAtMillis()).isEqualTo(123);
         verifyNoInteractions(directory);
         clearInvocations(scores);
         when(tasks.loadTaskAllocationDescriptors(List.of("foreign"))).thenReturn(Map.of("foreign", task("foreign", "other", 123, null)));
-        assertThatThrownBy(() -> service.get("p", "foreign")).isInstanceOfSatisfying(ServerException.class,
+        assertThatThrownBy(() -> service.get(CALLER, "p", "foreign")).isInstanceOfSatisfying(ServerException.class,
                 error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_NOT_FOUND));
         verifyNoInteractions(scores);
         assertThat(ProjectTaskQueryService.toView(new TaskDescriptor("pure", "g", TaskIdleDisposition.CLOSE_WHEN_IDLE,

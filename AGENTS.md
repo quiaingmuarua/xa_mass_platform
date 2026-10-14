@@ -259,7 +259,7 @@ the business API; the receiving event owns its format interpretation.
 Server validates dependencies after host Group initialization and before Adapter startup.
 Project bindings do not provision Tasks. RPC preparation is an explicit Server use case;
 SMS prepares a shared Task at Scenario startup, while the workbench owns its caller-based
-Task ID convention. Server owns Project/User metadata interpretation and its single per-Project Task directory; Kernel stores opaque metadata without Project fields or index operations. Caller metadata is attribution, not a user domain or scheduling input. Shared Group definitions remain host-owned; scenario requirements
+Task ID convention. Server owns Project/User metadata interpretation and its single per-Project Task directory; Kernel stores opaque metadata without Project fields or index operations. Server owns one explicit TaskCaller policy across Task and Scenario entrypoints. External creators come from the declared caller; immutable server.inputOwner separates raw input from scenario conversion. Internal startup/projection callers are Project-scoped assembly values and cannot be declared over HTTP. Caller metadata supports application access checks, not a user domain or scheduling input. Shared Group definitions remain host-owned; scenario requirements
 may read through the startup validator but must not register, amend or enable
 resources. Configuration and module Project identities cannot shadow each other.
 

@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ScenarioLifecycleTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
     @ParameterizedTest
     @ValueSource(ints = {-1, 0, 1, 2, 3, 4})
     void allScenariosStopBeforePlatformIncludingPartialStartupFailure(int failedRegistration) {
@@ -77,7 +78,7 @@ class ScenarioLifecycleTest {
                     definition -> definition.setDestroyMethodName("stop"));
             context.register(PreviewConfiguration.class);
             doAnswer(call -> { events.add("platform-start"); return null; }).when(adapters).start();
-            when(results.loadTaskItemResults(anyString(), anyList())).thenReturn(java.util.Map.of());
+            when(results.loadTaskItemResults(org.mockito.ArgumentMatchers.eq(CALLER), anyString(), anyList())).thenReturn(java.util.Map.of());
             java.util.function.BiConsumer<String, String> observe = (project, id) -> {
                 assertThat(platform.isRunning()).isTrue();
                 events.add("register");
@@ -88,10 +89,10 @@ class ScenarioLifecycleTest {
             };
             doAnswer(call -> { observe.accept(call.getArgument(0), call.getArgument(1)); return null; })
                     .when(registrations).requireWorkerGroup(anyString(), anyString());
-            when(preparations.prepare(anyString(), any())).thenAnswer(call -> {
-                var request = call.<com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest>getArgument(1);
+            when(preparations.prepare(org.mockito.ArgumentMatchers.eq(com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", java.util.List.of("demo-sim")))), org.mockito.ArgumentMatchers.eq("sms"), anyString(), any())).thenAnswer(call -> {
+                var request = call.<com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest>getArgument(3);
                 observe.accept(request.projectId(), request.workerGroupId());
-                return new com.xa.mass.server.api.v1.contract.task.TaskCreateResponse(call.getArgument(0));
+                return new com.xa.mass.server.api.v1.contract.task.TaskCreateResponse(call.getArgument(2));
             });
             doAnswer(call -> {
                 assertThat(scenarios).hasSize(3).allSatisfy(scenario -> assertThat(scenario.isRunning()).isFalse());
@@ -111,7 +112,7 @@ class ScenarioLifecycleTest {
                 });
                 context.close();
                 assertThatThrownBy(() -> ((SmsReceptionService) scenarios.stream()
-                        .filter(SmsReceptionService.class::isInstance).findFirst().orElseThrow()).lease(java.util.Map.of(
+                        .filter(SmsReceptionService.class::isInstance).findFirst().orElseThrow()).lease(CALLER, java.util.Map.of(
                                 "applicationId", "A", "country", "CN", "leaseSeconds", 60)))
                         .isInstanceOf(SmsReceptionService.ProductError.class);
             }

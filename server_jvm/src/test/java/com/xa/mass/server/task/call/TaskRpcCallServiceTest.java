@@ -41,6 +41,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.web.context.request.async.DeferredResult;
 
 class TaskRpcCallServiceTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
 
     @Test
     void batchReturnsSucceededFailedAndNotObservedWithoutReadingItemState() {
@@ -67,7 +68,7 @@ class TaskRpcCallServiceTest {
         )).thenReturn(loaded);
 
         DeferredResult<Map<String, TaskItemResultResponse>> deferred =
-                service(submission, taskRuntime, registry, properties).call(
+                service(submission, taskRuntime, registry, properties).call(CALLER, "raw",
                         "task-1",
                         new TaskRpcCallRequest(
                                 List.of(
@@ -107,7 +108,7 @@ class TaskRpcCallServiceTest {
         ));
 
         DeferredResult<Map<String, TaskItemResultResponse>> deferred =
-                service(submission, taskRuntime, registry, properties).call(
+                service(submission, taskRuntime, registry, properties).call(CALLER, "raw",
                         "task-1",
                         new TaskRpcCallRequest(
                                 List.of(
@@ -149,7 +150,7 @@ class TaskRpcCallServiceTest {
                 TaskItemResult.succeeded("done")
         ));
 
-        service(submission, taskRuntime, registry, properties).call(
+        service(submission, taskRuntime, registry, properties).call(CALLER, "raw",
                 "task-1",
                 new TaskRpcCallRequest(
                         List.of(
@@ -194,7 +195,7 @@ class TaskRpcCallServiceTest {
         );
 
         DeferredResult<Map<String, TaskItemResultResponse>> first =
-                service.call(
+                service.call(CALLER, "raw",
                         "task-1",
                         new TaskRpcCallRequest(
                                 List.of(item("message-1", Map.of())),
@@ -202,7 +203,7 @@ class TaskRpcCallServiceTest {
                         )
                 );
         DeferredResult<Map<String, TaskItemResultResponse>> second =
-                service.call(
+                service.call(CALLER, "raw",
                         "task-2",
                         new TaskRpcCallRequest(
                                 List.of(item("message-2", Map.of())),
@@ -242,7 +243,7 @@ class TaskRpcCallServiceTest {
         )).thenReturn(loaded);
 
         DeferredResult<Map<String, TaskItemResultResponse>> deferred =
-                service(submission, taskRuntime, registry, properties).call(
+                service(submission, taskRuntime, registry, properties).call(CALLER, "raw",
                         "task-1",
                         new TaskRpcCallRequest(
                                 List.of(
@@ -278,7 +279,7 @@ class TaskRpcCallServiceTest {
         )).thenReturn(Map.of());
 
         DeferredResult<Map<String, TaskItemResultResponse>> deferred =
-                service(submission, taskRuntime, registry, properties).call(
+                service(submission, taskRuntime, registry, properties).call(CALLER, "raw",
                         "task-1",
                         new TaskRpcCallRequest(
                                 List.of(item("message-1", Map.of())),
@@ -314,7 +315,7 @@ class TaskRpcCallServiceTest {
         ));
 
         DeferredResult<Map<String, TaskItemResultResponse>> deferred =
-                service(submission, taskRuntime, registry, properties).call(
+                service(submission, taskRuntime, registry, properties).call(CALLER, "raw",
                         "task-1",
                         new TaskRpcCallRequest(
                                 List.of(item("message-1", Map.of())),
@@ -363,7 +364,7 @@ class TaskRpcCallServiceTest {
                     properties
             );
 
-            assertThatThrownBy(() -> service.call(
+            assertThatThrownBy(() -> service.call(CALLER, "raw",
                     "task-1",
                     new TaskRpcCallRequest(
                             List.of(item("message-1", Map.of())),
@@ -401,7 +402,7 @@ class TaskRpcCallServiceTest {
                 taskRuntime,
                 registry,
                 properties
-        ).call(
+        ).call(CALLER, "raw",
                 "task-1",
                 new TaskRpcCallRequest(
                         List.of(new TaskItemRequest(
@@ -442,7 +443,7 @@ class TaskRpcCallServiceTest {
                 taskRuntime,
                 registry,
                 properties
-        ).call(
+        ).call(CALLER, "raw",
                 "task-1",
                 new TaskRpcCallRequest(
                         List.of(new TaskItemRequest(
@@ -499,7 +500,7 @@ class TaskRpcCallServiceTest {
         return new TaskDescriptor(taskId, "group-1", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of());
+                ), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of("server.inputOwner", "raw"));
     }
 
     private static TaskItemRequest item(

@@ -41,8 +41,8 @@ public final class DynamicMatchingMain {
     private long dynamicStarted, dynamicElapsedMillis;
 
     private DynamicMatchingMain(Map<String, String> args) throws Exception {
-        runtime = new ProofApi(args.get("server"));
-        lab = new ProofApi(args.get("lab"));
+        runtime = new ProofApi(args.get("server"), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"));
+        lab = new ProofApi(args.get("lab"), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"));
         output = Path.of(args.get("output"));
         for (Object raw : array(Jsons.parseObject(Files.readString(Path.of(args.get("spec")))).get("workers"))) {
             var row = object(raw);
@@ -210,7 +210,7 @@ public final class DynamicMatchingMain {
 
     private Task createTask(String label, String group, Map<String, Object> rule, int count, int delay,
                             boolean witness, String pool, boolean admitted) throws Exception {
-        var response = runtime.call("POST", "/api/v1/tasks", Map.of("projectId", "scenario-workers", "workerGroupId", group, "priority", witness ? 10 : 50, "maxRetryTimes", 3, "refill", List.of(Map.of("poolName","proof-facts","target", rule, "count", 100))), false);
+        var response = runtime.call("POST", "/api/v1/tasks", Map.of("requestId", UUID.randomUUID().toString(), "projectId", "scenario-workers", "workerGroupId", group, "priority", witness ? 10 : 50, "maxRetryTimes", 3, "refill", List.of(Map.of("poolName","proof-facts","target", rule, "count", 100))), false);
         String id = text(response.get("taskId"));
         Set<String> allowed = new HashSet<>();
         for (Worker w : workers) {
@@ -241,7 +241,7 @@ public final class DynamicMatchingMain {
 
     private void approve(Task t) throws Exception {
         if (t.mayExecute.get()) t.admit();
-        var result = runtime.call("POST", "/api/v1/tasks/" + t.id + "/approve", null, false);
+        var result = runtime.call("POST", "/api/v1/tasks/" + t.id + "/approve", Map.of("expectedItemCount", t.tokens.size()), false);
         require("applied".equals(result.get("status")), "task-approval-rejected");
         t.approved = true;
     }

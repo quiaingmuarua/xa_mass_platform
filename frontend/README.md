@@ -3,8 +3,8 @@
 Vue 3 console for Worker and Task runtime observation, a Project-scoped task
 workbench (RPC calls and finite Tasks), Scenario pages and public Demo. It is derived from Pure Admin Thin 6.2.0.
 The shared development identity selector provides fixed users for workflow verification,
-without a login service, token or user directory. App Checks checks the declared
-caller and Task creator; the caller is not authenticated.
+without a login service, token or user directory. Server checks the declared
+caller and Task creator across task entrypoints; the caller is not authenticated.
 
 ## Development identities
 
@@ -15,24 +15,19 @@ Identity does not select API/Mock mode and does not depend on Runtime availabili
 Runtime configuration errors stay in the content area; the identity selector and
 Scenario navigation remain available.
 
-Admin retains every existing page and operation. Operators use only App Checks
-Task creation and management. Navigation, SPA route admission and Task actions
-apply the same UI scope: unsupported operator routes return to `/app-checks`.
-Switching identity returns to that list, closes previews and does not submit work.
-App Checks task/configuration APIs also check the declared caller. Runtime, generic
-Task APIs, other Scenarios, `/scalar` and Server-owned static resources retain their
-trusted-development boundary. Clients can declare admin themselves: this is not
-customer data isolation or authentication.
+Admin retains every page and operation. Operators use Project Task observation,
+Task workbench, Messages and App Checks for their own Tasks. Configuration, global
+Runtime Task preview and SMS operations require admin. Unsupported SPA routes return
+to `/app-checks`; the server independently checks every protected operation.
+Switching identity closes previous views without submitting work. Clients can declare
+admin themselves: this is a trusted development convention, not authentication.
 
-App Checks saves the creator as `metadata.userId`; role and display name are not
-Task identity or scheduling inputs. The API selects the operator
-range in the single Project directory before taking at most 100 identities and
-reading counts; the UI retains a creator check before search, counts and actions.
-The bounded batch is not the latest 100 Tasks or a complete user history. Foreign Task
-links do not display results or enable actions in the console. Admin lists show
-creators and all loaded business Tasks, with an explicit Base36 userId filter; Task creation uses the current admin ID,
-without an on-behalf-of selection. RPC caller naming and the other Scenarios keep
-their existing admin workflows.
+Server supplies `metadata.userId` from the declared caller; role and display name
+are not Task identity or scheduling inputs. External creation cannot set another
+owner through metadata. Operator list requests select their own Project-directory
+range before limiting. The batch is not the latest N Tasks or a user history.
+Admin can use an explicit owner filter. Known Task point reads, counts, input,
+results, approval, closure and export share the same Server authorization policy.
 
 Each identity owns its in-memory App Checks creation/import drafts, filters,
 scroll position and recovery records. The data source and Mock Task collection
@@ -42,7 +37,7 @@ known Task in the original draft without starting another import. A known or
 uncertain mutation remains available for explicit reconciliation by that identity.
 Numbers and Task drafts still disappear on reload; persisted Task attribution does not.
 
-App Checks task/configuration data-source methods take an explicit immutable caller
+Task and Scenario data-source methods take an explicit immutable caller
 snapshot. API requests encode its userId as UTF-8 Base64URL in `X-XA-Dev-User` and
 send `X-XA-Dev-Role`; create JSON contains no userId or role. Catalog remains a
 shared caller-free availability read. A frozen draft retains both caller and create
@@ -189,8 +184,7 @@ senderCountry and body. It rejects unlisted applications before submission and
 never sends senderPhone or a client workerGroupId. New Tasks use inputVersion=3;
 labels require the saved appId and actual Group to agree with Catalog. Historical
 Tasks without appId show their Group without inventing an application identity.
-Old senderPhone is read-only; non-v3 Tasks support preview/closure, not import or
-approval. API and Mock use the same version boundary.
+Preview has no historical input-version or senderPhone compatibility path.
 
 ### Creation, import and management
 
@@ -227,8 +221,7 @@ survive local navigation within the console session; reload loses them. Numbers
 are never stored in localStorage or other persistent browser storage.
 
 Review menus offer import, count-confirmed approval and cancellation. Running menus
-offer preview/closure; ended and unknown Tasks offer preview. Old input versions
-retain their existing restrictions, and managed or incomplete business Tasks cannot
+offer preview/closure; ended and unknown Tasks offer preview. Managed or incomplete business Tasks cannot
 be mutated. Every management entry reads a fresh Task first; approval confirms that
 observed count. Conflict requires a new read/confirmation. Closure preserves partial
 progress and later receipts. Busy/stale state disables mutation, with independent
@@ -267,6 +260,23 @@ pnpm dev:mock --host 127.0.0.1 --port 18501
 Real multi-application assembly follows the
 [Messages startup contract](../scenarios/message-campaigns-jvm/README.md#worker-供给与装配).
 Mock behavior is not proof of real assembly, environment migration or Worker delivery.
+
+### Shared Task observations and operations
+
+Messages and App Checks compose `/projects/{projectId}/tasks` or its point-read
+with `/projects/{projectId}/tasks:stats`; the latter sends at most 100 Task IDs.
+Their `/{scenario}/tasks/{taskId}/results` response is only `{taskId, results,
+truncated}`. Shared client code captures one caller for the composed request, maps
+Score tags to display counts and preserves the bounded window. Result previews never
+supply whole-task registered-answer statistics. Raw Result/Item-state reads remain
+independent. The common finite client submits approval as `{expectedItemCount}`.
+Scenario routes retain creation, import, business results and configuration/CSV.
+
+Raw creation has a business requestId independent of `X-Request-Id`. Drafts retain
+their original caller and request identity through parsing, submission and explicit
+reconciliation; ending a raw attempt allocates a new requestId. New reads use the
+current identity, old list/detail snapshots are invalidated on identity change, and
+late preparation/call responses stay attached to their original operation.
 
 ## App Checks Task workspace
 
@@ -375,11 +385,7 @@ Successful import receipts and source summaries are likewise session-only; after
 refresh the UI reports unavailable history rather than reconstructing it from
 execution counts. Shared Messages and finite Task file limits are unchanged.
 
-When the API returns `inputUnavailableReason` for a Task using retired supply,
-the import and approval menu entries show that reason and stay disabled.
-Preview, closure and terminal export remain available. The UI does not infer
-supply compatibility from the number input version. Pool settings are edited in the
-configuration page and become effective only after Server restart.
+Business input is admitted by the fixed input owner. Preview has no retired supply/input-version compatibility path. Pool configuration becomes effective only after Server restart.
 
 ### Preview drawer, management and results
 
@@ -592,22 +598,21 @@ Export state is independent of finite-task mutations; Mock never exports.
 
 ## Task workbench
 
-`/task-workbench` has RPC and finite-task tabs, defaulting to `tab=rpc`. Admins can
-operate every Project in the immutable startup directory, including Scenario
+`/task-workbench` has RPC and finite-task tabs, defaulting to `tab=rpc`. Valid callers can
+read every Project in the immutable startup directory, including Scenario
 Projects. A single Project is a read-only label; multiple Projects use a selector.
 The `project` query selects the context. Without it, the console restores the last
 valid session choice or uses the first directory entry; no Project means no writes.
 An explicit unknown Project stays unavailable until the user chooses another.
-The operator navigation boundary is unchanged. These are trusted raw operations,
-not Scenario API orchestration or server authorization: generic creation does not
-invent Scenario metadata or run business import/approval validation.
+Operator operations are constrained to owned Tasks. Raw Item append is enabled only
+for `server.inputOwner=raw`; business Tasks keep their Scenario import conversion.
+Approval and closure use the shared Task client, including for Scenario Tasks.
 
-RPC uses `project=...&tab=rpc&group=...&user=...`, with the caller identifier initially blank.
-The workbench trims it and requires `^[1-9a-z][0-9a-z]{3,8}$`, matching
-App Checks and the Server codec. It does not use the top-bar identity. It mints
-`rpc-workbench-v1.<project>.<user>.<group>` using separately encoded UTF-8 Base64URL
-segments without padding. It saves the caller string as `metadata.userId`, solely
-for attribution. This convention adds no user registry, authorization or user quota.
+RPC uses `project=...&tab=rpc&group=...` and the current top-bar development identity.
+The caller display is read-only; a `user` URL parameter cannot select a creator.
+`rpc-workbench-v1.<project>.<user>.<group>` uses separately encoded UTF-8 Base64URL
+segments without padding. Server stamps the creator; the preparation payload excludes
+`metadata.userId` and reserved `server.*` fields. No user registry or quota is added.
 Existing Tasks are point-read by the stable ID, independent of the current batch.
 Only the explicit create/reuse button calls `POST /v1/tasks/{taskId}/rpc:prepare`;
 route changes, reads and calls never create a Task. Preparation includes approval.
@@ -644,10 +649,10 @@ existing tasks. Mutations require matching Project attribution and a fresh legal
 lifecycle state; terminal export shares the viewer's download implementation.
 
 Finite filters, scroll positions, drafts and submission receipts belong to their
-Project; append drafts additionally belong to a Task. RPC identity selection is
+Project; append drafts additionally belong to a Task. RPC Group selection is
 remembered per Project, while call records remain keyed by actual Task ID.
 Switching Projects closes the current drawer. Accepted submissions retain their
-captured Project, Group and inputs and may finish original batches, but cannot
+captured caller, Project, Group and inputs and may finish original batches, but cannot
 navigate or write into the newly selected context. Finite writes keep one shared
 in-flight gate; an uncertain receipt freezes only its own Project's submission.
 No drafts, numbers or receipts are persisted to browser storage.
@@ -661,8 +666,9 @@ the file. Additional TXT imports keep a unique fixed import prefix.
 
 Append batches remain at most 100. Rejection or uncertainty stops further
 batches while retaining confirmed, rejected, unconfirmed and unsubmitted counts.
-The browser never automatically retries creation, replays Items or approves;
-generic requestId is diagnostic rather than an idempotency identity. Ending the
+The browser never automatically retries creation, replays Items or approves.
+The business requestId identifies creation for the captured caller; HTTP
+`X-Request-Id` remains diagnostic. Ending the
 local submission clears its input without closing the Server Task. A structured
 503 may include the known Task ID; the recovery button explicitly calls
 `directory:ensure`, without replaying creation, importing Items or approving.

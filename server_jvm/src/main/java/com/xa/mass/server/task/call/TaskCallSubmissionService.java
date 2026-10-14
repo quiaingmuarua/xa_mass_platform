@@ -1,5 +1,7 @@
 package com.xa.mass.server.task.call;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import org.springframework.stereotype.Service;
 import com.xa.mass.kernel.task.TaskCallItemSubmission;
 import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionStatus;
@@ -58,22 +60,22 @@ public final class TaskCallSubmissionService {
     record SubmittedCall(List<String> messageIds, Map<String, TaskItemResult> observed, long observationStarted) {
     }
 
-    public List<String> submit(String taskId, List<TaskItemRequest> items) {
-        return submit(taskId, items, false).messageIds();
+    public List<String> submit(TaskCaller caller, String inputOwner, String taskId, List<TaskItemRequest> items) {
+        return submit(caller, inputOwner, taskId, items, false).messageIds();
     }
 
     /** Submits a synchronous Item Call and reads its already stored Results once. */
-    SubmittedCall submitCall(String taskId, List<TaskItemRequest> items) {
-        return submit(taskId, items, true);
+    SubmittedCall submitCall(TaskCaller caller, String inputOwner, String taskId, List<TaskItemRequest> items) {
+        return submit(caller, inputOwner, taskId, items, true);
     }
 
-    private SubmittedCall submit(String taskId, List<TaskItemRequest> items, boolean observe) {
+    private SubmittedCall submit(TaskCaller caller, String inputOwner, String taskId, List<TaskItemRequest> items, boolean observe) {
         if (taskId == null || taskId.isBlank()) {
             throw invalid("taskId must be non-blank");
         }
         // Capture every input, including duplicates, before any Owner call.
         List<WorkerQuery> selectors = captureSelectors(items);
-        TaskDescriptor descriptor = requireCallableTask(taskId);
+        TaskDescriptor descriptor = requireCallableTask(caller, inputOwner, taskId);
         long createdAtMillis = taskItems.nowMillis();
         var latest = new LinkedHashMap<String, TaskItem>();
         try {
@@ -147,11 +149,12 @@ public final class TaskCallSubmissionService {
         return new TaskCallSubmissionBatcher.BatchOutcome(submission, observed, observationStarted);
     }
 
-    private TaskDescriptor requireCallableTask(String taskId) {
+    private TaskDescriptor requireCallableTask(TaskCaller caller, String inputOwner, String taskId) {
         TaskDescriptor descriptor = descriptors.get(taskId);
         if (descriptor == null) {
             descriptor = loadDescriptor(taskId);
         }
+        caller.requireInput(descriptor, inputOwner);
         if (descriptor.idleDisposition()
                 != TaskIdleDisposition.PARK_WHEN_IDLE) {
             throw new ServerException(

@@ -1,3 +1,4 @@
+import { captureTaskCaller, callerHeaders } from "@/task-caller";
 import { z } from "zod";
 
 export interface Reception {
@@ -95,7 +96,10 @@ export async function api<T>(
 ): Promise<T> {
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      ...callerHeaders(captureTaskCaller()),
+      "Content-Type": "application/json"
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal
   });

@@ -22,11 +22,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 class TaskCallSubmissionServiceTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
     @Test void itemFunctionCanDifferFromTheTasksSupplyRule() {
         var submission = mock(TaskCallItemSubmission.class);
         var catalog = mock(TaskResourceCatalog.class);
         var matching = mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
-        var descriptor = new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), List.of(new RefillTarget("country", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 100)), null, java.util.Map.of());
+        var descriptor = new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), List.of(new RefillTarget("country", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 100)), null, java.util.Map.of("server.inputOwner", "raw"));
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task", descriptor));
         var raw = new WorkerQuery("worker.messaging.phone", Map.of("phone", "+8613800000000"));
         when(matching.normalizeQuery("group", raw)).thenReturn(raw);
@@ -34,7 +35,7 @@ class TaskCallSubmissionServiceTest {
                 TaskCallItemSubmission.TaskCallSubmissionStatus.SUBMITTED,
                 Map.of("id", new TaskRuntime.TaskItemAppendResult(TaskRuntime.TaskItemAppendStatus.APPENDED)), null));
         var service = new TaskCallSubmissionService(submission, catalog, new TaskItemMapper(), matching, mock(TaskRuntime.class));
-        org.assertj.core.api.Assertions.assertThat(service.submit("task", List.of(
+        org.assertj.core.api.Assertions.assertThat(service.submit(CALLER, "raw", "task", List.of(
                 new TaskItemRequest("id", "event", Map.of(), 5, 1000L, raw)))).containsExactly("id");
         verify(submission).submit(eq("task"), argThat(items -> raw.equals(items.getFirst().workerSelector())));
         verify(matching).normalizeQuery("group", raw);
@@ -45,7 +46,7 @@ class TaskCallSubmissionServiceTest {
         var submission = mock(TaskCallItemSubmission.class);
         var catalog = mock(TaskResourceCatalog.class);
         var matching = mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
-        var descriptor = new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), List.of(), null, java.util.Map.of());
+        var descriptor = new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), List.of(), null, java.util.Map.of("server.inputOwner", "raw"));
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task", descriptor));
         when(catalog.loadTaskAllocationDescriptors(List.of("missing"))).thenReturn(Collections.singletonMap("missing", null));
         var query = new WorkerQuery("worker.any", Map.of());
@@ -56,10 +57,10 @@ class TaskCallSubmissionServiceTest {
                         new TaskRuntime.TaskItemAppendResult(TaskRuntime.TaskItemAppendStatus.APPENDED)), null));
         var service = new TaskCallSubmissionService(submission, catalog, new TaskItemMapper(), matching, mock(TaskRuntime.class));
 
-        service.submit("task", List.of(new TaskItemRequest("one", "event", Map.of(), 5, 1000L, query)));
-        service.submit("task", List.of(new TaskItemRequest("two", "event", Map.of(), 5, 1000L, query)));
+        service.submit(CALLER, "raw", "task", List.of(new TaskItemRequest("one", "event", Map.of(), 5, 1000L, query)));
+        service.submit(CALLER, "raw", "task", List.of(new TaskItemRequest("two", "event", Map.of(), 5, 1000L, query)));
         for (int attempt = 0; attempt < 2; attempt++) {
-            assertThatThrownBy(() -> service.submit("missing", List.of(new TaskItemRequest("x", "event", Map.of(), 5, 1000L, query))))
+            assertThatThrownBy(() -> service.submit(CALLER, "raw", "missing", List.of(new TaskItemRequest("x", "event", Map.of(), 5, 1000L, query))))
                     .isInstanceOf(ServerException.class);
         }
 
@@ -73,12 +74,12 @@ class TaskCallSubmissionServiceTest {
         var catalog = mock(TaskResourceCatalog.class);
         var matching = mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of(
-                "task", new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of())));
+                "task", new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of("server.inputOwner", "raw"))));
 
         when(matching.normalizeQuery(anyString(),any())).thenThrow(new IllegalStateException("unavailable"));
         var service = new TaskCallSubmissionService(submission, catalog, new TaskItemMapper(), matching, mock(TaskRuntime.class));
         var item = new TaskItemRequest("id", "event", Map.of(), 5, 1000L, new WorkerQuery("worker.any", Map.of()));
-        assertThatThrownBy(() -> service.submit("task", List.of(item))).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> service.submit(CALLER, "raw", "task", List.of(item))).isInstanceOf(ServerException.class);
         verifyNoInteractions(submission);
         verify(matching).normalizeQuery("group", item.workerSelector());
         verifyNoMoreInteractions(matching);
@@ -90,7 +91,7 @@ class TaskCallSubmissionServiceTest {
         var matching = mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
         when(matching.normalizeQuery(eq("group"),any())).thenAnswer(call -> call.getArgument(1));
 
-        var descriptor = new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of());
+        var descriptor = new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of("server.inputOwner", "raw"));
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task", descriptor));
         var service = new TaskCallSubmissionService(submission, catalog, new TaskItemMapper(), matching, mock(TaskRuntime.class));
         var cn = new WorkerQuery("worker.country", List.of("CN"));
@@ -98,16 +99,16 @@ class TaskCallSubmissionServiceTest {
         doThrow(new IllegalArgumentException("invalid country")).when(matching).normalizeQuery("group",malformed);
         var bad = new TaskItemRequest("id", "event", Map.of(), 5, 1000L, new WorkerQuery("worker.country", List.of("cn")));
         var good = new TaskItemRequest("id", "event", Map.of(), 5, 1000L, new WorkerQuery("worker.country", List.of("CN")));
-        assertThatThrownBy(() -> service.submit("task", List.of(bad, good))).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> service.submit(CALLER, "raw", "task", List.of(bad, good))).isInstanceOf(ServerException.class);
         verifyNoInteractions(submission);
         doThrow(new IllegalArgumentException("index disabled")).when(matching).normalizeQuery("group",cn);
-        assertThatThrownBy(() -> service.submit("task", List.of(good))).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> service.submit(CALLER, "raw", "task", List.of(good))).isInstanceOf(ServerException.class);
         verifyNoInteractions(submission);
         doReturn(cn).when(matching).normalizeQuery("group",cn);
         when(submission.submit(eq("task"), anyList())).thenReturn(new TaskCallItemSubmission.TaskCallSubmissionResult(
                 TaskCallItemSubmission.TaskCallSubmissionStatus.SUBMITTED,
                 Map.of("id", new TaskRuntime.TaskItemAppendResult(TaskRuntime.TaskItemAppendStatus.APPENDED)), null));
-        org.assertj.core.api.Assertions.assertThat(service.submit("task", List.of(good))).containsExactly("id");
+        org.assertj.core.api.Assertions.assertThat(service.submit(CALLER, "raw", "task", List.of(good))).containsExactly("id");
         verify(submission).submit(eq("task"), argThat(items -> items.size() == 1
                 && cn.equals(items.getFirst().workerSelector())));
         verify(matching,never()).take(anyString(),anyMap());
@@ -129,14 +130,14 @@ class TaskCallSubmissionServiceTest {
         assertThatThrownBy(() -> new WorkerQuery("worker.any", new Object()))
                 .isInstanceOf(IllegalArgumentException.class);
         for (var item : invalid) {
-            assertThatThrownBy(() -> service.submit("task", List.of(item, valid)))
+            assertThatThrownBy(() -> service.submit(CALLER, "raw", "task", List.of(item, valid)))
                     .isInstanceOf(ServerException.class);
         }
-        assertThatThrownBy(() -> service.submit("task", null)).isInstanceOf(ServerException.class);
-        assertThatThrownBy(() -> service.submit("task", List.of())).isInstanceOf(ServerException.class);
-        assertThatThrownBy(() -> service.submit("task", Collections.nCopies(101, valid)))
+        assertThatThrownBy(() -> service.submit(CALLER, "raw", "task", null)).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> service.submit(CALLER, "raw", "task", List.of())).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> service.submit(CALLER, "raw", "task", Collections.nCopies(101, valid)))
                 .isInstanceOf(ServerException.class);
-        assertThatThrownBy(() -> service.submit(" ", List.of(valid))).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> service.submit(CALLER, "raw", " ", List.of(valid))).isInstanceOf(ServerException.class);
         verifyNoInteractions(submission, catalog);
     }
 
@@ -147,7 +148,7 @@ class TaskCallSubmissionServiceTest {
         var matching = mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
         when(matching.normalizeQuery(eq("group"),any())).thenAnswer(call -> call.getArgument(1));
 
-        var descriptor = new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of());
+        var descriptor = new TaskRuntime.TaskDescriptor("task", "group", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of("server.inputOwner", "raw"));
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task", descriptor));
         var service = new TaskCallSubmissionService(submission, catalog, new TaskItemMapper(), matching, mock(TaskRuntime.class));
         var any = new TaskItemRequest("id", "event", Map.of(), 5, 1000L, new WorkerQuery("worker.any", Map.of()));
@@ -157,7 +158,7 @@ class TaskCallSubmissionServiceTest {
             var selector = new WorkerQuery("worker.any", expression);
             doThrow(new IllegalArgumentException("unsupported")).when(matching).normalizeQuery("group",selector);
             var rejected = new TaskItemRequest("id", "event", Map.of(), 5, 1000L, new WorkerQuery("worker.any", new HashMap<>(expression)));
-            assertThatThrownBy(() -> service.submit("task", List.of(rejected, any))).isInstanceOf(ServerException.class);
+            assertThatThrownBy(() -> service.submit(CALLER, "raw", "task", List.of(rejected, any))).isInstanceOf(ServerException.class);
             verify(matching).normalizeQuery("group",selector);
         }
         verifyNoInteractions(submission);
@@ -178,9 +179,9 @@ class TaskCallSubmissionServiceTest {
         cases.add(List.of(" "));
         cases.add(Collections.nCopies(1001, "id"));
         for (var ids : cases) {
-            assertThatThrownBy(() -> service.loadTaskItemResults("task", ids)).isInstanceOf(ServerException.class);
+            assertThatThrownBy(() -> service.loadTaskItemResults(CALLER, "task", ids)).isInstanceOf(ServerException.class);
         }
-        assertThatThrownBy(() -> service.loadTaskItemResults(null, List.of("id")))
+        assertThatThrownBy(() -> service.loadTaskItemResults(CALLER, null, List.of("id")))
                 .isInstanceOf(ServerException.class);
         verifyNoInteractions(runtime, catalog);
     }

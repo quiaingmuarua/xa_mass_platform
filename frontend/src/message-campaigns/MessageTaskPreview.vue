@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { captureTaskCaller } from "@/task-caller";
+
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { ElDrawer, ElTable, ElTableColumn } from "element-plus";
 import MessageTaskActions from "./MessageTaskActions.vue";
@@ -82,7 +84,7 @@ async function refresh() {
   busy.value = true;
   emit("loaded", detail.value?.task, true);
   try {
-    const value = await props.source.loadTask(id);
+    const value = await props.source.loadTask(captureTaskCaller(), id);
     if (!disposed && token === generation && id === props.taskId) accept(value);
   } catch (failure) {
     if (!disposed && token === generation) {
@@ -191,12 +193,6 @@ defineExpose({
         <h3>核对信息</h3>
         <p>实际收件人数：{{ quantity(detail.task.sendTotal) }}。导入后不会自动启动。</p>
         <MessageTemplateContent :content="detail.task.body" />
-        <p v-if="detail.task.senderPhone" class="message-warning">
-          历史指定发送号码：{{ detail.task.senderPhone }}，原任务发送方式保持不变。
-        </p>
-        <p v-if="detail.task.inputVersion !== '3'" class="message-warning">
-          旧输入版本仅支持读取和取消，不支持继续导入或启动。
-        </p>
       </template>
       <template v-else>
         <h3>结果预览</h3>
@@ -286,9 +282,6 @@ defineExpose({
           ><p>
             Task {{ detail.task.taskId }} · Group
             {{ detail.task.workerGroupId ?? "不可用" }}
-          </p>
-          <p v-if="detail.task.senderPhone">
-            历史指定发送号码：{{ detail.task.senderPhone }}
           </p>
           <pre v-if="detail.task.state !== 'pre_review'">{{
             detail.task.body ?? "配置不可用"

@@ -60,6 +60,31 @@ const result = {
   phone: "+12025550123",
   reply: "latest reply"
 };
+function entry(row: Record<string, unknown>) {
+  return {
+    taskId: row.taskId,
+    createdAtMillis: row.createdAtMillis,
+    scoreBand: row.state,
+    task: {
+      taskId: row.taskId,
+      projectId: "messages",
+      workerGroupId: row.workerGroupId,
+      idleDisposition: "CLOSE_WHEN_IDLE",
+      name: row.name,
+      config: {},
+      refill: [],
+      metadata: {
+        scenario: "messages",
+        "server.inputOwner": "messages",
+        appId: "demo",
+        recipientCountry: row.recipientCountry,
+        senderCountry: row.senderCountry ?? "ANY",
+        body: row.body,
+        userId: "1000"
+      }
+    }
+  };
+}
 function installApi() {
   let created: Record<string, unknown> | undefined;
   const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -92,11 +117,34 @@ function installApi() {
     } else if (path.endsWith("/approve") || path.endsWith("/close")) {
       created!.state = path.endsWith("/approve") ? "running_visible" : "terminal";
       value = { status: "applied" };
-    } else if (path.endsWith("/tasks/new-task"))
-      value = { task: created, results: [], resultsTruncated: false };
-    else if (path.endsWith("/tasks/finite-task"))
-      value = { task, results: [result], resultsTruncated: true };
-    else value = { tasks: created ? [created, task] : [task], truncated: false };
+    } else if (path.endsWith("/tasks/new-task/results"))
+      value = { taskId: "new-task", results: [], truncated: false };
+    else if (path.endsWith("/tasks/finite-task/results"))
+      value = { taskId: "finite-task", results: [result], truncated: true };
+    else if (path.endsWith("/tasks/new-task")) value = entry(created!);
+    else if (path.endsWith("/tasks/finite-task")) value = entry(task);
+    else if (path.endsWith("/tasks:stats"))
+      value = Object.fromEntries(
+        (JSON.parse(String(init!.body)) as string[]).map((id) => {
+          const row = id === "new-task" ? created! : task;
+          return [
+            id,
+            {
+              total: row.sendTotal,
+              countsByTag: {
+                "1": Number(row.sendTotal) - Number(row.deliveredCount),
+                "7": row.deliveredCount
+              }
+            }
+          ];
+        })
+      );
+    else
+      value = {
+        projectId: "messages",
+        tasks: (created ? [created, task] : [task]).map(entry),
+        truncated: false
+      };
     return new Response(JSON.stringify(value), {
       status: init?.method === "POST" && path.endsWith("/tasks") ? 201 : 200
     });
@@ -175,7 +223,10 @@ describe("Messages Task API workspace", () => {
     await draft();
     submit();
     await settle();
-    const posted = fetcher.mock.calls.find(([, init]) => init?.method === "POST")!;
+    const posted = fetcher.mock.calls.find(
+      ([url, init]) =>
+        init?.method === "POST" && String(url).endsWith("/messages/tasks")
+    )!;
     expect(posted[0]).toBe("/api/v1/messages/tasks");
     expect(JSON.parse(String(posted[1]?.body))).toMatchObject({
       appId: "demo",
@@ -223,7 +274,7 @@ describe("Messages Task API workspace", () => {
     );
     button("刷新预览").click();
     await settle();
-    expect(document.body.textContent).toContain("Owner unavailable");
+    expect(document.body.textContent).toContain("Project 请求失败 (503)");
     expect(document.body.textContent).toContain("latest reply");
     expect(host.textContent).not.toContain("Mock 数据");
   });
@@ -247,7 +298,10 @@ describe("Messages Task API workspace", () => {
     ).toContain("+8613800000001");
     await vi.advanceTimersByTimeAsync(10000);
     expect(
-      fetcher.mock.calls.filter(([, init]) => init?.method === "POST")
+      fetcher.mock.calls.filter(
+        ([url, init]) =>
+          init?.method === "POST" && String(url).endsWith("/messages/tasks")
+      )
     ).toHaveLength(1);
   });
   it("keeps unavailable business routes gated instead of substituting Mock", async () => {

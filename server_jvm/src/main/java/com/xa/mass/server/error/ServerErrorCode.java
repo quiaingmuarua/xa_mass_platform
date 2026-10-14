@@ -1,6 +1,8 @@
 package com.xa.mass.server.error;
 
 public enum ServerErrorCode {
+    INVALID_TASK_CALLER(12012, "Task caller declaration is invalid"),
+    TASK_ACCESS_DENIED(12013, "Task access is denied"),
     KERNEL_REJECTED_CONFLICT(
             11005,
             "Kernel control request conflicts with current state"

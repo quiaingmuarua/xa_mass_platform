@@ -11,12 +11,14 @@ import java.time.Duration;
 import java.util.Map;
 
 final class LoadedRecoveryHttpClient {
+    private final Map<String, String> taskCallerHeaders;
 
     private final URI baseUri;
     private final Duration timeout;
     private final HttpClient client;
 
-    LoadedRecoveryHttpClient(URI baseUri, Duration timeout) {
+    LoadedRecoveryHttpClient(URI baseUri, Duration timeout, Map<String, String> taskCallerHeaders) {
+        this.taskCallerHeaders = Map.copyOf(taskCallerHeaders);
         this.baseUri = requireBaseUri(baseUri);
         if (timeout == null || timeout.isZero() || timeout.isNegative()) {
             throw new IllegalArgumentException("timeout must be positive");
@@ -46,11 +48,12 @@ final class LoadedRecoveryHttpClient {
                         Jsons.toJson(body),
                         StandardCharsets.UTF_8
                 );
-        HttpRequest request = HttpRequest.newBuilder(endpoint(path))
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(endpoint(path))
                 .timeout(timeout)
                 .header("Content-Type", "application/json")
-                .method(method, publisher)
-                .build();
+                .method(method, publisher);
+        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) taskCallerHeaders.forEach(requestBuilder::header);
+        HttpRequest request = requestBuilder.build();
         try {
             HttpResponse<byte[]> response = client.send(
                     request,

@@ -1,3 +1,5 @@
+import { HttpFiniteTaskClient } from "@/task-management/http-client";
+import { TaskApiError } from "@/task-caller";
 import { CALLER } from "./app-check-fixture";
 import { importedTask } from "./app-check-fixture";
 import { webcrypto } from "node:crypto";
@@ -10,7 +12,6 @@ import {
 } from "../src/app-checks/mock-task-source";
 import {
   ApiAppCheckTaskSource,
-  AppCheckApiError,
   AppCheckCreationUnconfirmed
 } from "../src/app-checks/task-source";
 import { createAppCheckContext } from "../src/app-checks/context";
@@ -146,8 +147,7 @@ describe("App Checks data boundary", () => {
           })
         )
       )
-      .mockResolvedValueOnce(new Response('{"status":"applied"}'))
-      .mockResolvedValueOnce(new Response('{"status":"applied"}'))
+
       .mockResolvedValueOnce(
         new Response("号码,注册状态,应用,地区\n'86123,已注册,app-a,CN", {
           headers: { "X-Export-Count": "1" }
@@ -158,6 +158,12 @@ describe("App Checks data boundary", () => {
     await source.createTask(CALLER, create);
     const file = new Blob(["86123"]);
     await source.importNumbers(CALLER, "t", file);
+    const approve = vi
+      .spyOn(HttpFiniteTaskClient.prototype, "approveTask")
+      .mockResolvedValue();
+    const close = vi
+      .spyOn(HttpFiniteTaskClient.prototype, "closeTask")
+      .mockResolvedValue();
     await source.approveTask(CALLER, "t", 1);
     await source.closeTask(CALLER, "t");
     expect(await source.exportTask(CALLER, "t", "registered")).toMatchObject({
@@ -167,8 +173,6 @@ describe("App Checks data boundary", () => {
     expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
       "/api/v1/app-checks/tasks",
       "/api/v1/app-checks/tasks/t/numbers:import",
-      "/api/v1/app-checks/tasks/t/approve",
-      "/api/v1/app-checks/tasks/t/close",
       "/api/v1/app-checks/tasks/t/results:export?filter=registered"
     ]);
     expect(fetcher.mock.calls[1][1]).toMatchObject({
@@ -176,7 +180,8 @@ describe("App Checks data boundary", () => {
       body: file,
       headers: { "Content-Type": "text/plain;charset=UTF-8" }
     });
-    expect(fetcher.mock.calls[2][1].body).toBe("1");
+    expect(approve).toHaveBeenCalledWith(CALLER, "t", 1);
+    expect(close).toHaveBeenCalledWith(CALLER, "t");
   });
   it("keeps prototype review and complete CSV export inside Mock", async () => {
     const fetcher = vi.fn();
@@ -235,13 +240,20 @@ describe("App Checks data boundary", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
   it("uses the existing API and checks requested identity", async () => {
-    const detail = await new MockAppCheckTaskSource().loadTask(CALLER, "check-mixed");
+    const detail = {
+      taskId: "another",
+      createdAtMillis: 1,
+      scoreBand: "pre_review",
+      task: null
+    };
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(detail)));
     vi.stubGlobal("fetch", fetcher);
     await expect(
       new ApiAppCheckTaskSource().loadTask(CALLER, "wrong/id")
-    ).rejects.toThrow("身份");
-    expect(fetcher.mock.calls[0][0]).toBe("/api/v1/app-checks/tasks/wrong%2Fid");
+    ).rejects.toThrow("identity");
+    expect(fetcher.mock.calls[0][0]).toBe(
+      "/api/v1/projects/app-checks/tasks/wrong%2Fid"
+    );
   });
   it.each([400, 409, 429])(
     "keeps an explicit %i rejection distinct from unknown submission",
@@ -252,7 +264,7 @@ describe("App Checks data boundary", () => {
       );
       await expect(
         new ApiAppCheckTaskSource().createTask(CALLER, create)
-      ).rejects.toBeInstanceOf(AppCheckApiError);
+      ).rejects.toBeInstanceOf(TaskApiError);
     }
   );
   it("preserves generated task ID on unknown writes and never retries", async () => {
@@ -281,7 +293,7 @@ describe("App Checks data boundary", () => {
     const source = new MockAppCheckTaskSource();
     const read = vi
       .spyOn(source, "catalog")
-      .mockRejectedValueOnce(new AppCheckApiError(404, "absent"));
+      .mockRejectedValueOnce(new TaskApiError(404, "absent"));
     const context = createAppCheckContext(source);
     await context.load();
     expect(context.state.value.status).toBe("disabled");

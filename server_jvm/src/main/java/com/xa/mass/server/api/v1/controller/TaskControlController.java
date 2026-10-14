@@ -1,5 +1,7 @@
 package com.xa.mass.server.api.v1.controller;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
@@ -59,8 +61,8 @@ public class TaskControlController {
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @PostMapping("/{taskId}/directory:ensure")
-    public ActionOutcome ensureDirectory(@PathVariable @NotBlank String taskId) {
-        return directory.ensure(taskId);
+    public ActionOutcome ensureDirectory(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller, @PathVariable @NotBlank String taskId) {
+        return directory.ensure(caller, taskId);
     }
 
     @Operation(summary = "Create or reuse and enable an RPC Task",
@@ -75,9 +77,9 @@ public class TaskControlController {
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @PostMapping("/{taskId}/rpc:prepare")
-    public TaskCreateResponse prepareRpcTask(@PathVariable @NotBlank String taskId,
+    public TaskCreateResponse prepareRpcTask(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller, @PathVariable @NotBlank String taskId,
             @Valid @RequestBody TaskRpcPrepareRequest request) {
-        return rpcPreparation.prepare(taskId, request);
+        return rpcPreparation.prepare(caller, TaskCaller.RAW_INPUT, taskId, request);
     }
 
     @Operation(summary = "Create a finite Task")
@@ -105,10 +107,10 @@ public class TaskControlController {
             )
     })
     @PostMapping
-    public TaskCreateResponse createTask(
+    public TaskCreateResponse createTask(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller,
             @Valid @RequestBody TaskCreateRequest request
     ) {
-        return taskCreation.create(request);
+        return taskCreation.create(caller, request);
     }
 
     @Operation(summary = "Approve a finite Task")
@@ -136,10 +138,11 @@ public class TaskControlController {
             )
     })
     @PostMapping("/{taskId}/approve")
-    public ActionOutcome approveTask(
-            @PathVariable @NotBlank String taskId
+    public ActionOutcome approveTask(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller,
+            @PathVariable @NotBlank String taskId,
+            @Valid @RequestBody com.xa.mass.server.api.v1.contract.task.TaskApproveRequest request
     ) {
-        return taskLifecycle.approve(taskId);
+        return taskLifecycle.approve(caller, taskId, request.expectedItemCount());
     }
 
     @Operation(summary = "Close a finite Task")
@@ -167,10 +170,10 @@ public class TaskControlController {
             )
     })
     @PostMapping("/{taskId}/close")
-    public ActionOutcome closeTask(
+    public ActionOutcome closeTask(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller,
             @PathVariable @NotBlank String taskId
     ) {
-        return taskLifecycle.close(taskId);
+        return taskLifecycle.close(caller, taskId);
     }
 
 }

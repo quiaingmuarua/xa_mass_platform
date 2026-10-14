@@ -1,5 +1,7 @@
 package com.xa.mass.server.api.v1.controller;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
@@ -73,13 +75,13 @@ public class RuntimeViewController {
                     ))
             )
     })
-    public TaskPreviewResponse previewTasks(
+    public TaskPreviewResponse previewTasks(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller,
             @RequestBody
             @NotNull @Min(1) @Max(1000) Integer sampleLimit,
             HttpServletRequest httpRequest
     ) {
         return runtimeView.previewTasks(
-                sampleLimit,
+                caller, sampleLimit,
                 requestId(httpRequest)
         );
     }

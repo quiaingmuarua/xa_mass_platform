@@ -1,6 +1,7 @@
+import { TaskApiError } from "@/task-caller";
 import { inject, shallowRef, type InjectionKey } from "vue";
 import type { Catalog } from "./model";
-import { AppCheckApiError, type AppCheckTaskSource } from "./task-source";
+import { type AppCheckTaskSource } from "./task-source";
 import { createWorkbenchSession } from "./workbench";
 import type { ConfigurationReadState } from "./configuration";
 
@@ -54,7 +55,7 @@ export function createAppCheckContext(source: AppCheckTaskSource) {
           };
           state.value =
             previous ??
-            (error instanceof AppCheckApiError && error.status === 404
+            (error instanceof TaskApiError && error.status === 404
               ? { status: "disabled" }
               : {
                   status: "unavailable",

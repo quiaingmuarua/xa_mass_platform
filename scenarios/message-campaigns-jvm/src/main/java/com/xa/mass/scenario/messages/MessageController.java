@@ -1,5 +1,7 @@
 package com.xa.mass.scenario.messages;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import java.util.Map;
 import java.io.InputStream;
 import org.springframework.http.ResponseEntity;
@@ -11,17 +13,14 @@ public class MessageController {
     private final MessageTaskService tasks;
     MessageController(MessageTaskService tasks) { this.tasks = tasks; }
     @GetMapping("/catalog") public Object catalog() { return tasks.catalog(); }
-    @PostMapping("/tasks") public ResponseEntity<?> create(@RequestBody Map<String, Object> body) {
-        return ResponseEntity.status(201).body(tasks.create(body));
+    @PostMapping("/tasks") public ResponseEntity<?> create(TaskCaller caller, @RequestBody Map<String, Object> body) {
+        return ResponseEntity.status(201).body(tasks.create(caller, body));
     }
-    @GetMapping("/tasks") public Object list(@RequestParam(defaultValue = "100") int limit) { return tasks.list(limit); }
-    @GetMapping("/tasks/{taskId}") public Object get(@PathVariable String taskId) { return tasks.get(taskId); }
     @PostMapping(value = "/tasks/{taskId}/recipients:import", consumes = "text/plain")
-    public Object importRecipients(@PathVariable String taskId, InputStream input) { return tasks.importRecipients(taskId, input); }
-    @PostMapping("/tasks/{taskId}/approve")
-    public Object approve(@PathVariable String taskId, @RequestBody long expectedCount) { return tasks.approve(taskId, expectedCount); }
-    @PostMapping("/tasks/{taskId}/close")
-    public Object close(@PathVariable String taskId) { return tasks.closeTask(taskId); }
+    public Object importRecipients(TaskCaller caller, @PathVariable String taskId, InputStream input) { return tasks.importRecipients(caller, taskId, input); }
+    @GetMapping("/tasks/{taskId}/results")
+    public Object results(TaskCaller caller,
+            @PathVariable String taskId) { return tasks.results(caller, taskId); }
     @ExceptionHandler(MessageError.class) ResponseEntity<?> error(MessageError error) {
         var body = new java.util.LinkedHashMap<String, Object>();
         body.put("message", error.getMessage());

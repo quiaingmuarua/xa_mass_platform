@@ -63,6 +63,9 @@ export function identityRouteAllowed(
 ) {
   return (
     identity.role === "admin" ||
+    route.path === "/task-workbench" ||
+    route.path === "/runtime/tasks" ||
+    /^\/messages(?:\/tasks\/[^/]+)?\/?$/.test(route.path) ||
     (/^\/app-checks(?:\/tasks\/[^/]+)?\/?$/.test(route.path) &&
       (route.query.view === undefined || route.query.view === "create"))
   );

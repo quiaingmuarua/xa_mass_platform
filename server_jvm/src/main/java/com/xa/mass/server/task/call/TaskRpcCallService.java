@@ -1,5 +1,7 @@
 package com.xa.mass.server.task.call;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.server.task.call.TaskCallSubmissionService;
 import com.xa.mass.server.task.call.TaskRpcStageEvent;
 
@@ -28,15 +30,15 @@ public final class TaskRpcCallService {
         this.maxWaitTimeoutMillis = properties.maxWaitTimeoutMillis();
     }
 
-    public DeferredResult<Map<String, TaskItemResultResponse>> call(String taskId, TaskRpcCallRequest request) {
-        return call(taskId, request, java.util.function.Function.identity());
+    public DeferredResult<Map<String, TaskItemResultResponse>> call(TaskCaller caller, String inputOwner, String taskId, TaskRpcCallRequest request) {
+        return call(caller, inputOwner, taskId, request, java.util.function.Function.identity());
     }
 
     /** One servlet waiter, with a pure application response mapping. */
-    public <T> DeferredResult<T> call(String taskId, TaskRpcCallRequest request,
+    public <T> DeferredResult<T> call(TaskCaller caller, String inputOwner, String taskId, TaskRpcCallRequest request,
             java.util.function.Function<Map<String, TaskItemResultResponse>, T> mapping) {
         long timeoutMillis = resolveTimeout(request.waitTimeoutMillis());
-        TaskCallSubmissionService.SubmittedCall submitted = submissions.submitCall(taskId, request.items());
+        TaskCallSubmissionService.SubmittedCall submitted = submissions.submitCall(caller, inputOwner, taskId, request.items());
         List<String> messageIds = submitted.messageIds();
         Map<String, TaskItemResult> observed = submitted.observed();
         long immediateStarted = submitted.observationStarted();

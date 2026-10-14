@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { TaskApiError } from "@/task-caller";
+
 import {
   computed,
   nextTick,
@@ -12,7 +14,7 @@ import { ElDrawer } from "element-plus";
 import { Refresh, Search } from "@element-plus/icons-vue";
 import "element-plus/es/components/drawer/style/css";
 import { appLabel, countryLabel, type CheckDetail, type CheckTask } from "./model";
-import { AppCheckApiError, type AppCheckTaskSource } from "./task-source";
+import { type AppCheckTaskSource } from "./task-source";
 import type { ImportSnapshot } from "./import-model";
 import {
   filterResults,
@@ -158,7 +160,7 @@ async function refresh() {
     if (activityOpen.value) void readAuxiliary("activity");
   } catch (failure) {
     if (!disposed && token === generation && id === props.taskId) {
-      if (failure instanceof AppCheckApiError && failure.status === 403) {
+      if (failure instanceof TaskApiError && failure.status === 403) {
         detail.value = undefined;
         imported.value = undefined;
         activities.value = [];

@@ -1,3 +1,4 @@
+import { type TaskCaller, captureTaskCaller, requireCaller } from "@/task-caller";
 import { reactive, ref } from "vue";
 import { defineStore } from "pinia";
 import { chunkTaskItems } from "@/task-management/model";
@@ -29,6 +30,8 @@ export function canManageRawTask(
 }
 export function newRawTaskDraft() {
   return {
+    caller: captureTaskCaller(),
+    requestId: crypto.randomUUID(),
     groupId: "",
     format: "txt" as "txt" | "jsonl",
     eventCode: "",
@@ -78,6 +81,8 @@ export function createTaskManagementStore(
       const state = project(projectId);
       const current = state.drafts[state.submissionKey];
       if (current) {
+        current.requestId = crypto.randomUUID();
+        current.caller = captureTaskCaller();
         current.file = undefined;
         current.content = undefined;
         current.inputError = "";
@@ -94,7 +99,7 @@ export function createTaskManagementStore(
       for (const batch of chunkTaskItems(items)) {
         receipt.notSubmitted -= batch.length;
         receipt.unconfirmed += batch.length;
-        const response = await client.appendItems(taskId, batch);
+        const response = await client.appendItems(receipt.caller, taskId, batch);
         for (const item of batch) {
           const outcome = response[item.messageId];
           if (outcome?.status === "applied") {
@@ -111,6 +116,7 @@ export function createTaskManagementStore(
       receipt.complete = true;
     }
     async function submit(request: {
+      caller?: TaskCaller;
       projectId: string;
       create?: TaskCreateApiRequest;
       existing?: ProjectTask;
@@ -133,13 +139,15 @@ export function createTaskManagementStore(
               request.projectId,
               request.fresh === true
             ) ||
-            request.existing.scoreBand !== "pre_review")
+            request.existing.scoreBand !== "pre_review" ||
+            request.existing.task?.metadata["server.inputOwner"] !== "raw")
       )
         throw new Error("只能创建当前 Project 的任务或向其待审核有限任务追加。");
       state.error = undefined;
       busy.value = true;
       state.submissionKey = request.existing?.taskId ?? "create";
       state.submission = {
+        caller: requireCaller(request.caller ?? captureTaskCaller()),
         taskId: request.existing?.taskId,
         fileName: request.fileName,
         total: request.total,
@@ -152,7 +160,9 @@ export function createTaskManagementStore(
       const receipt = state.submission;
       try {
         if (request.create)
-          receipt.taskId = (await client.createTask(request.create)).taskId;
+          receipt.taskId = (
+            await client.createTask(receipt.caller, request.create)
+          ).taskId;
         if (!receipt.taskId) throw new Error("创建结果未确认，请人工核对任务列表。");
         await appendBatches(receipt.taskId, request.items(receipt.taskId), receipt);
       } catch (failure) {
@@ -172,7 +182,7 @@ export function createTaskManagementStore(
       state.error = undefined;
       busy.value = true;
       try {
-        await client.ensureDirectory(receipt.taskId);
+        await client.ensureDirectory(receipt.caller, receipt.taskId);
         receipt.error =
           "任务目录已确认。请读取原任务，再显式追加号码或 Item；不会自动续提。";
         return true;
@@ -200,8 +210,12 @@ export function createTaskManagementStore(
       state.error = undefined;
       busy.value = true;
       try {
-        if (action === "approve") await client.approveTask(task.taskId);
-        else await client.closeTask(task.taskId);
+        const caller = captureTaskCaller();
+        if (action === "approve") {
+          if (!task.stats || task.stats.total <= 0)
+            throw new Error("请刷新并核对非空任务的 Item 数量。");
+          await client.approveTask(caller, task.taskId, task.stats.total);
+        } else await client.closeTask(caller, task.taskId);
         return true;
       } catch (failure) {
         state.error = presentFiniteTaskError(failure);

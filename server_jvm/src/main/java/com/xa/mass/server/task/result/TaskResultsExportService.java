@@ -1,5 +1,7 @@
 package com.xa.mass.server.task.result;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
@@ -86,8 +88,8 @@ public final class TaskResultsExportService {
         );
     }
 
-    public TaskResultsExport export(String taskId) {
-        validateFiniteTask(taskId);
+    public TaskResultsExport export(TaskCaller caller, String taskId) {
+        validateFiniteTask(caller, taskId);
         requireTerminal(taskId);
         try {
             return operations.execute(
@@ -116,7 +118,7 @@ public final class TaskResultsExportService {
         }
     }
 
-    private void validateFiniteTask(String taskId) {
+    private void validateFiniteTask(TaskCaller caller, String taskId) {
         try {
             TaskDescriptor descriptor = taskCatalog
                     .loadTaskAllocationDescriptors(List.of(taskId))
@@ -129,6 +131,7 @@ public final class TaskResultsExportService {
                         null
                 );
             }
+            caller.requireTask(descriptor);
             if (descriptor.idleDisposition()
                     != TaskIdleDisposition.CLOSE_WHEN_IDLE) {
                 throw new ServerException(

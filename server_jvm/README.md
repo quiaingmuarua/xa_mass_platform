@@ -30,7 +30,7 @@ Read this Owner by use case:
 The generic frontend controller forwards `/runtime/workers`, `/runtime/tasks`
 and `/task-workbench` (including trailing slashes) to the Console entry. The
 workbench lets administrators operate any declared Project using the existing
-Task APIs. Its Project selection is frontend context, not new API authorization;
+Task APIs. Project selection is frontend context; Server independently checks the declared caller and stored ownership;
 Task preparation remains explicit and Project declarations never provision Tasks. Unknown API and asset
 paths are not forwarded.
 
@@ -79,6 +79,7 @@ After a public route matches, application outcomes use:
 | --- | --- |
 | `200` | Completed, including idempotent no-op and bounded partial observation |
 | `400 + ApiErrorResponse` | Input, business resource, precondition or state rejection |
+| `403 + ApiErrorResponse` | The declared Task caller has no access to this resource |
 | `429 + ApiErrorResponse` | Admission capacity exhausted; currently Direct Call only |
 | `503 + ApiErrorResponse` | An Owner or required dependency is temporarily unavailable |
 
@@ -118,14 +119,51 @@ Task type returns `400/12008`.
 | Known Project Task | Project plus Task identity | Read descriptor attribution and Score without discovery | Ownership checks precede state reads | [Project directory](#projects-and-explicit-rpc-tasks) |
 | Project lookup | Configured Project; no default | Return Project identity and its bound Group list | Read never initializes resources | [Project directory](#projects-and-explicit-rpc-tasks) |
 | Project Task list | Configured Project; `limit=1..1000` | Select a bounded Project or user batch and read independent Task/Score projections | Missing projections stay null; corruption fails | [Server task directory](#task-attribution-and-directory) |
-| Task create | Declared Project, one of its registered Groups, normalized supply and valid fields | Create a finite immutable Task descriptor | Validate before writes; unknown commit retains the generated identity | [TaskCreationService](src/main/java/com/xa/mass/server/task/TaskCreationService.java) |
+| Task create | Business requestId, declared caller, declared Project, one of its registered Groups, normalized supply and valid fields | Create a finite immutable Task descriptor | Validate before writes; unknown commit retains the generated identity | [TaskCreationService](src/main/java/com/xa/mass/server/task/TaskCreationService.java) |
 | RPC prepare | Caller Task ID and declared Project/Group | Create or reuse and approve a parked Task | 400 conflict/invalid; 503 retains the supplied identity | [RPC preparation](#projects-and-explicit-rpc-tasks) |
-| Approve / close | Finite Task only | Return the shared applied/unchanged effect | Missing/wrong-type rules above; Owner failure uses `503` | [TaskLifecycleService](src/main/java/com/xa/mass/server/task/TaskLifecycleService.java) |
-| Ordinary Item append | Finite Task; structurally valid batch | Persist admitted Items without releasing idle park | Query rejection is per Item; whole-request failure is non-2xx | [TaskDataService](src/main/java/com/xa/mass/server/task/TaskDataService.java) |
+| Approve / close | Admitted caller; finite Task; approval body `{expectedItemCount}` with a positive integer | Return the shared applied/unchanged effect | Missing/wrong-type rules above; Owner failure uses `503` | [TaskLifecycleService](src/main/java/com/xa/mass/server/task/TaskLifecycleService.java) |
+| Ordinary Item append | Finite Task with `server.inputOwner=raw`; structurally valid batch | Persist admitted Items without releasing idle park | Query rejection is per Item; whole-request failure is non-2xx | [TaskDataService](src/main/java/com/xa/mass/server/task/TaskDataService.java) |
 | Item Call | Managed Task; all original queries admitted | Submit once, then observe within the wait bound | Submission may commit before `503`; observation limits yield `not_observed` | [Call sequence](#managed-task-call) |
 | Result load | Finite or managed Task | Read stored `succeeded`, `failed` or `not_observed`; only success carries content | No inference from Score or repair of independent resources | [Result observation](#result-and-item-state-observation) |
 | Item states | Finite or managed Task | Read decoded Score, independently of Results | Missing Items return null; Owner failure uses `503` | [Item Score Owner](../kernel_jvm/doc/score/task-item-score-band-scheduling.md) |
 | Result export | Finite Task; one observed Task Score is `TERMINAL` | Stream only successful content through bounded Owner pages | Nonterminal: `400/12010`; overlapping generation: `400/12009` | [Result Owner](../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md#taskitem-result-projection) |
+
+### Shared development caller
+
+`TaskCaller` is an explicit immutable application argument. Server's MVC argument
+resolver parses exactly one `X-XA-Dev-User` (strict UTF-8 Base64URL) and one
+`X-XA-Dev-Role` (`admin` or `operator`). Missing, malformed or ambiguous declarations
+return `400/12012`; access denial returns `403/12013` through the common error handler.
+There is no ThreadLocal, session, account directory or authentication claim.
+
+All Project reads require a valid caller. Admin manages every Task; operator creates
+and manages only Tasks whose stored `userId` matches. Lists automatically select the
+operator's range and reject an explicit other owner. Global Runtime Task preview,
+App Checks configuration, and SMS business operations require admin. Catalogs remain
+caller-free discovery. Headers cannot declare an internal service role.
+
+Assembly grants internal startup/projection paths a Project-scoped service caller.
+SMS retains one shared RPC Task with `server.inputOwner=sms`; public SMS requests
+check admin before invoking that service caller. This is not a per-user SMS Task.
+Task access is checked against immutable descriptor attribution before reading state,
+counts, Items or Results, scanning exports, parsing business input files or mutating
+resources. Pure Kernel observations without application attribution are admin-only.
+
+The creator is stamped by Server. Public `metadata.userId` and `server.*` fields
+are rejected; role is not part of Task identity. `server.inputOwner` is fixed at
+creation (`raw`, `messages`, `app-checks`, or `sms`). Raw append and Item Call can
+write only raw-input Tasks. Business imports must pass the corresponding module's
+conversion and then the shared input-owner check, even when the caller is admin.
+
+`POST /api/v1/projects/{projectId}/tasks:stats` accepts an array of 1..100 nonblank
+Task IDs and returns a map of `{total, countsByTag}`. The whole batch is checked for
+Project membership and access before any Item count read. It uses existing bounded
+Item Score observations without new storage, global discovery or background aggregation.
+Counts, Task status, Item states and Result contents remain independent observations;
+none is an atomic snapshot, execution-attempt count or operation history.
+
+Preview switches directly: no route aliases, old-input compatibility, historical
+backfill or migration. Proofs use new `test_*` scopes without touching old environments.
 
 ### Projects and explicit RPC Tasks
 
@@ -148,13 +186,12 @@ Adapter ingress before scenarios. Project responses are `{projectId, workerGroup
 lookup never provisions a Task. SMS prepares its own shared RPC Task when starting.
 Messages and App Checks validate bindings but create only finite business Tasks.
 
-`TaskRpcPreparationService.prepare(taskId, request)` is the common HTTP/Scenario
+`TaskRpcPreparationService.prepare(caller, inputOwner, taskId, request)` is the common HTTP/Scenario
 entry. Its request contains `projectId`, `workerGroupId`, optional `name` and string
-`metadata`; the caller owns Task ID naming. The service validates optional Base36 `metadata.userId` without decoding Task ID
-conventions or turning attribution into authorization. It validates the Project/registered Group and
+`metadata`; the caller owns Task ID naming. Server supplies the creator from the caller without decoding Task ID conventions. It validates the Project/registered Group and
 uses priority 0, maxRetryTimes 3 and the Group's configured RPC refill snapshot.
 Same-ID mutations share `OperationGuard.taskMutation`. A matching descriptor is
-reused and an unfinished approval can be completed; conflicts and terminal Tasks
+reused and an unfinished approval can be completed; an admitted admin reusing another caller's Task preserves its original creator and creation time; conflicts and terminal Tasks
 are rejected without overwrite or reopening. Creation, Server directory registration and approval remain separate
 Owner commits. Directory confirmation precedes approval. Only confirmed approval returns `{taskId}` with HTTP 200; unavailable
 creation/approval returns 503 with the original identity already known to the caller.
@@ -170,12 +207,12 @@ can later be explicitly prepared under the same identity. No user registry, auto
 `TaskUserId` is a pure Server identifier codec shared by App Checks and generic
 creation/RPC preparation: strip surrounding whitespace, then require
 `^[1-9a-z][0-9a-z]{3,8}$`. IDs stay strings; uppercase, leading zero and other
-lengths are rejected, not normalized into aliases. Optional generic `metadata.userId`
-uses the same contract. SMS, Messages and raw finite Tasks do not acquire users
-implicitly. Project/User have no Kernel interpretation or user lifecycle.
+lengths are rejected, not normalized into aliases. Every external Task creation uses
+the declared caller; scoped internal service Tasks may have no human creator.
+Project/User have no Kernel interpretation or user lifecycle.
 
-Server stamps `server.projectId` and `server.createdAtMillis` on the first
-creation descriptor. Public metadata cannot contain any `server.*` key. Stored
+Server stamps `userId`, `server.projectId`, `server.inputOwner` and `server.createdAtMillis`
+on the first external creation descriptor. Public metadata cannot supply these fields. Stored
 metadata is authoritative for Project, optional creator and first acceptance time;
 repeated creation, RPC preparation and directory recovery preserve that time.
 TaskView projects a nullable Project and creation time for incomplete/raw observations.
@@ -202,12 +239,12 @@ It uses `OperationGuard.taskMutation`, validates saved metadata, Project/Group a
 Task resource existence, and returns `applied` or `unchanged`. Unsupported inputs
 return 400; unconfirmed read/write returns 503. It never changes Task state, Items
 or Results. Generic creation errors include optional `taskId` when known; entirely
-lost non-idempotent creation responses still cannot safely be replayed.
+lost creation responses can be explicitly reconciled using the same business requestId and normalized input.
 
 `GET /api/v1/projects/{projectId}/tasks?limit=...&userId=...` selects at most
 1..1000 members, with one additional member only for `truncated`. Project reads
 use ascending score/member order; user reads use `[u*64,u*64+63]`. The optional
-filter conveys attribution, not authorization. Selected identities are loaded in
+filter is additionally constrained by the shared caller policy. Selected identities are loaded in
 Owner-bounded batches of at most 100, then sorted by saved time descending and
 Task ID ascending. There is no latest-N, fair sampling, cursor or history claim.
 Missing projections remain unavailable without replacement reads; personal queries
@@ -255,15 +292,25 @@ Items are unreadable. No query is inferred from supply declarations. See
 
 ### Request-correlated creation and finite import
 
-`TaskCreationService.createForRequest` is an application entry for App Checks and Messages; the
-ordinary HTTP Task creation contract is unchanged. It derives `task-` plus SHA-256
-from length-prefixed UTF-8 `["xa-mass/task-create/v1", projectId, requestId]`.
-The scenario supplies a fingerprint of normalized creation inputs, excluding
-first-created display defaults. Existing immutable metadata records the request
-and fingerprint. A matching descriptor and readable Task Score allow confirmation of the Server
-directory and return the same identity across restarts. Conflicts reject; missing
-Kernel resources remain unconfirmed without repair. Only a missing directory entry
-can be explicitly ensured. No request registry or scheduling authority is added.
+Both raw HTTP creation and Scenario creation use `TaskCreationService.createForRequest`.
+A required business `requestId` (1..128 characters) is distinct from diagnostic HTTP
+`X-Request-Id`. The Task ID is `task-` plus SHA-256 of length-prefixed UTF-8
+`["xa-mass/task-create/v2", projectId, caller.identityKey(), requestId]`.
+External identity keys are `user:<normalized-id>`; role is excluded. Internal service
+keys are `service:<project>`. Different callers do not collide on requestId.
+Raw creation fingerprints normalized supply/configuration and metadata; the business
+module supplies its own normalized-input fingerprint, excluding first-created display
+defaults. Immutable metadata retains the request and fingerprint. Matching inputs
+return the same Task across restarts; different inputs conflict. Missing Kernel
+resources remain unconfirmed without repair. Only directory membership can be
+explicitly confirmed from saved truth. No request registry or scheduling owner is added.
+
+Finite approval accepts `{expectedItemCount}` with a positive integer. Inside the
+same `OperationGuard.taskMutation` admission, PRE_REVIEW compares the actual Item
+count before calling the existing lifecycle Owner. A mismatched count returns
+`400/12009`; zero is invalid. Already-approved Tasks return `unchanged` regardless
+of subsequent count changes; terminal Tasks are never reopened. RPC preparation
+keeps its independent approval path and does not require a finite-input count.
 
 `OperationGuard.taskMutation` shares one instance-local Task admission among file
 import, ordinary finite append, approval and closure. Synchronous nested calls on
@@ -272,7 +319,7 @@ existing general export guard remains non-reentrant. No distributed lock or
 cross-Server guarantee is implied.
 
 `TaskDataService.importFiniteTaskItems` admits at most 100 Items to a PRE_REVIEW
-finite Task using Runtime default TTL. It reads existing Items and Score states,
+finite Task with matching caller and immutable input owner, using Runtime default TTL. It reads existing Items and Score states,
 skips matching complete identities without rewriting them, and rejects content
 conflicts. Explicit re-import uses the original stored Item to initialize a
 missing Score through the existing append operation. A Score without Item data

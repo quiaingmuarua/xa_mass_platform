@@ -11,12 +11,14 @@ import java.time.Duration;
 import java.util.Map;
 
 final class JsonHttpClient {
+    private final Map<String, String> taskCallerHeaders;
 
     private final URI baseUri;
     private final Duration timeout;
     private final HttpClient http;
 
-    JsonHttpClient(URI baseUri, Duration timeout) {
+    JsonHttpClient(URI baseUri, Duration timeout, Map<String, String> taskCallerHeaders) {
+        this.taskCallerHeaders = Map.copyOf(taskCallerHeaders);
         this.baseUri = requireHttpBaseUri(baseUri);
         this.timeout = java.util.Objects.requireNonNull(timeout, "timeout");
         http = HttpClient.newBuilder()
@@ -43,11 +45,12 @@ final class JsonHttpClient {
                         Jsons.toJson(body),
                         StandardCharsets.UTF_8
                 );
-        HttpRequest request = HttpRequest.newBuilder(endpoint(path))
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(endpoint(path))
                 .timeout(timeout)
                 .header("Content-Type", "application/json")
-                .method(method, publisher)
-                .build();
+                .method(method, publisher);
+        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) taskCallerHeaders.forEach(requestBuilder::header);
+        HttpRequest request = requestBuilder.build();
         try {
             HttpResponse<byte[]> response = http.send(
                     request,

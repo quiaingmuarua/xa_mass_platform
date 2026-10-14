@@ -1,3 +1,4 @@
+import { type TaskCaller, captureTaskCaller } from "@/task-caller";
 import { inject, reactive, type InjectionKey } from "vue";
 import { createProjectWorkspace } from "@/task-management/workspace";
 import type { ProjectSource } from "@/task-management/projects";
@@ -41,6 +42,7 @@ export function createTaskSession(
     Record<
       string,
       {
+        caller: TaskCaller;
         request: RpcTaskPrepareRequest;
         busy: boolean;
         outcome?: "ready" | "unconfirmed" | "rejected";
@@ -51,6 +53,7 @@ export function createTaskSession(
   async function prepareRpc(taskId: string, request: RpcTaskPrepareRequest) {
     if (mode !== "api") return;
     const attempt = (rpcPreparations[taskId] ??= {
+      caller: captureTaskCaller(),
       request: { ...request, metadata: { ...request.metadata } },
       busy: false
     });
@@ -59,14 +62,15 @@ export function createTaskSession(
     attempt.error = undefined;
     attempt.outcome = undefined;
     try {
-      await preparations.prepareTask(taskId, {
+      await preparations.prepareTask(attempt.caller, taskId, {
         ...attempt.request,
         metadata: { ...attempt.request.metadata }
       });
       attempt.outcome = "ready";
     } catch (error) {
       attempt.outcome =
-        error instanceof TaskCallDebugError && error.status === 400
+        error instanceof TaskCallDebugError &&
+        (error.status === 400 || error.status === 403)
           ? "rejected"
           : "unconfirmed";
       attempt.error = error instanceof Error ? error.message : "RPC Task 准备未确认。";

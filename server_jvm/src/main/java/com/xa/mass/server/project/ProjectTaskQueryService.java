@@ -1,5 +1,7 @@
 package com.xa.mass.server.project;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
@@ -21,12 +23,15 @@ public final class ProjectTaskQueryService {
     private final TaskResourceCatalog tasks;
     private final TaskScoreBandCore scores;
     private final TaskDirectory directory;
+    private final com.xa.mass.kernel.score.TaskItemScoreBandCore itemScores;
 
-    public ProjectTaskQueryService(ProjectDirectory projects, TaskResourceCatalog tasks, TaskScoreBandCore scores, TaskDirectory directory) {
-        this.projects = projects; this.tasks = tasks; this.scores = scores; this.directory = directory;
+    public ProjectTaskQueryService(ProjectDirectory projects, TaskResourceCatalog tasks, TaskScoreBandCore scores, TaskDirectory directory, com.xa.mass.kernel.score.TaskItemScoreBandCore itemScores) {
+        this.projects = projects; this.tasks = tasks; this.scores = scores; this.directory = directory; this.itemScores = itemScores;
     }
 
-    public ProjectTasks list(String projectId, int limit, @Nullable String userId) {
+    public ProjectTasks list(TaskCaller caller, String projectId, int limit, @Nullable String userId) {
+        caller.requireProject(projectId);
+        userId = caller.selectUser(userId);
         var page = directory.list(projectId, userId, limit);
         try {
             var result = new ArrayList<Entry>();
@@ -34,12 +39,17 @@ public final class ProjectTaskQueryService {
                 var batch = page.members().subList(from, Math.min(from + READ_BATCH, page.members().size()));
                 var ids = batch.stream().map(TaskDirectory.Member::taskId).toList();
                 var descriptors = tasks.loadTaskAllocationDescriptors(ids);
-                var states = scores.getScoreStates(ids);
                 for (var member : batch) {
                     var task = descriptors.get(member.taskId());
                     TaskAttribution attribution = task == null ? null : TaskAttribution.require(task.metadata());
                     if (attribution != null && (!projectId.equals(attribution.projectId()) || attribution.score() != member.attributionScore()))
                         throw new IllegalStateException("Task directory attribution differs from descriptor");
+                    if (task != null) caller.requireTask(task);
+                }
+                var states = scores.getScoreStates(ids);
+                for (var member : batch) {
+                    var task = descriptors.get(member.taskId());
+                    var attribution = task == null ? null : TaskAttribution.require(task.metadata());
                     // Missing descriptors cannot establish personal attribution; do not refill the batch.
                     if (attribution == null && userId != null) continue;
                     var state = states.get(member.taskId());
@@ -49,18 +59,41 @@ public final class ProjectTaskQueryService {
             }
             result.sort(Comparator.comparing(Entry::createdAtMillis, Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(Entry::taskId));
             return new ProjectTasks(projectId, List.copyOf(result), page.truncated());
+        } catch (ServerException known) { throw known;
         } catch (RuntimeException error) { throw unavailable("project.listTasks", error); }
+    }
+
+    public java.util.Map<String, com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreCounts> stats(
+            TaskCaller caller, String projectId, List<String> taskIds) {
+        caller.requireProject(projectId);
+        projects.require(projectId);
+        if (taskIds == null || taskIds.isEmpty() || taskIds.size() > 100 || taskIds.stream().anyMatch(id -> id == null || id.isBlank()))
+            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "project.taskStats", null, null);
+        var ids = List.copyOf(new java.util.LinkedHashSet<>(taskIds));
+        try {
+            var descriptors = tasks.loadTaskAllocationDescriptors(ids);
+            for (String id : ids) {
+                var task = descriptors.get(id);
+                if (task == null || !projectId.equals(TaskAttribution.require(task.metadata()).projectId()))
+                    throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "project.taskStats", null, null);
+                caller.requireTask(task);
+            }
+            return itemScores.observeItemScoreCounts(ids);
+        } catch (ServerException known) { throw known;
+        } catch (RuntimeException error) { throw unavailable("project.taskStats", error); }
     }
 
     public record ProjectTasks(String projectId, List<Entry> tasks, boolean truncated) {}
 
-    public Entry get(String projectId, String taskId) {
+    public Entry get(TaskCaller caller, String projectId, String taskId) {
+        caller.requireProject(projectId);
         projects.require(projectId);
         try {
             var task = tasks.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
             var attribution = task == null ? null : TaskAttribution.read(task.metadata());
             if (attribution == null || !projectId.equals(attribution.projectId()))
                 throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "project.getTask", null, null);
+            caller.requireTask(task);
             var state = scores.getScoreStates(List.of(taskId)).get(taskId);
             return new Entry(taskId, attribution.createdAtMillis(), toView(task),
                     state == null ? null : state.isInitial() ? "running-initial" : state.band().wireValue());

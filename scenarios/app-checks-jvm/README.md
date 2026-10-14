@@ -21,11 +21,13 @@ SDK 和 Worker 协议使用既有机制；Matching 基础规则由场景声明�
 | `PUT /api/v1/app-checks/configuration` | `{expectedRevision, configuration}` 整份校验与事务保存；不热更新 |
 | `POST /api/v1/app-checks/tasks` | 创建空待审核任务，201 返回 `{"taskId":"..."}` |
 | `POST /api/v1/app-checks/tasks/{taskId}/numbers:import` | `text/plain` UTF-8 号码文件；全文件校验后每批最多 100 个 Item |
-| `POST /api/v1/app-checks/tasks/{taskId}/approve` | JSON 整数为用户确认的号码数量；与当前数量一致且非零才批准 |
-| `POST /api/v1/app-checks/tasks/{taskId}/close` | 取消或中止有限任务，复用通用关闭能力 |
 | `POST /api/v1/app-checks/tasks/{taskId}/results:export?filter=all` | 终态 CSV；filter 为 all、registered 或 unregistered |
-| `GET /api/v1/app-checks/tasks?limit=100` | Project 或 userId 当前批次，最多 100，无分页 |
-| `GET /api/v1/app-checks/tasks/{taskId}` | 有限场景 Task、数量观测和最多 100 条 Result 预览 |
+| `GET /api/v1/app-checks/tasks/{taskId}/results` | `{taskId, results, truncated}`，最多 100 条业务结果 |
+
+任务列表、基础详情、统计、批准、关闭、目录确认及原始结果/导出使用
+[共同 Server Task API](../../server_jvm/README.md#shared-development-caller)。批准请求统一为
+`{expectedItemCount}`；待审核核对正数，已批准重复请求 unchanged，终态不重开。
+前端组合共同详情、共同统计和业务结果，注册答案仍是内容解释，不从预览推算全量统计。
 
 例如，以开发调用方 `proof` 创建任务时显式携带以下请求头；`cHJvb2Y` 是 `proof`
 的 UTF-8 Base64URL 编码。自动化或手动调用均须自行声明角色，不由 HTTP 客户端补入。
@@ -50,7 +52,7 @@ Content-Type: application/json
 }
 ```
 
-Server 以版本化命名空间、Project、requestId 的长度前缀 UTF-8 SHA-256 生成稳定
+Server 以版本化命名空间、Project、调用方 ID、requestId 的长度前缀 UTF-8 SHA-256 生成稳定
 Task ID，并在现有不可变 descriptor 保存请求身份与输入指纹。同身份同配置读取原
 Task；不同配置冲突。已有 descriptor 或 Task Score 不完整时返回未确认，不另建或补造资源。
 Project 目录由 Server 登记；目录未确认保留已知 Task ID，同请求显式核对可以从原 descriptor 补齐目录。关联在原 Task 资源保留期间跨 Server 重启成立，清理 scope 后不承诺。
@@ -61,9 +63,9 @@ Base64URL 编码，`X-XA-Dev-Role` 为 `admin` 或 `operator`。解码后的 use
 必须符合 `^[1-9a-z][0-9a-z]{3,8}$`，不转换大小写或接受前导零，复用 Server 的纯标识校验。缺失、非法编码、非法角色或重复请求头返回 400，
 不默认补管理员；操作范围不符返回 403。`GET /catalog` 保留无身份的只读能力探测。
 
-App Checks 模块内的不可变调用方由 Controller 解析并显式传入场景服务。
+不可变调用方由 Server 统一解析并显式传入场景服务；不由 Scenario Controller 重复实现所有权检查。
 admin 可管理全部场景任务及配置；operator 只能读取和管理自己创建的任务，不能访问配置接口。
-先检查 Project、场景和有限 Task 类型，再检查创建者；拒绝发生在导入文件读取、Item 数量
+共同服务先检查 Project 和创建者，再由场景检查业务归属和有限 Task 类型；拒绝发生在导入文件读取、Item 数量
 和 Result 读取、写入及导出扫描之前。配置接口在 H2 访问之前拒绝 operator。
 列表直接从 Server 的 Project 单 ZSET 按用户 score 范围取最多 100 条，再读取数量。
 operator 默认自己的范围；显式查询其他 userId 返回 403。admin 可用 `?userId=` 查询指定创建者，
@@ -72,16 +74,16 @@ operator 默认自己的范围；显式查询其他 userId 返回 403。admin �
 缺少创建者不归属于任何 operator。Task 状态、部分失败与 OperationGuard 继续采用原有规则。
 
 创建 JSON 不再接收 `userId` 或 `role`，只从调用方保存 `metadata.userId`，列表/详情返回该保存值。
-创建指纹 `app-checks/v3/create` 覆盖规范化 userId 及原 App、国家、模拟参数；相同请求换创建者
-按现有冲突处理。role 不进入指纹或 descriptor。Task ID 推导、输入版本、salt、Item 身份及执行参数不变。
+创建指纹 `app-checks/v3/create` 覆盖规范化 userId 及原 App、国家、模拟参数；相同 requestId 的不同调用方独立创建。role 不进入指纹或 descriptor。
+输入版本、salt、Item 身份及执行参数保持原规则。
 不回填历史归属或提供旧请求兼容。H2 仍只保存配置。
 
 这是受信任开发环境的声明与核对契约，客户端可以自行声明 admin；不构成身份认证或客户数据隔离。
-检查只覆盖 App Checks，通用 Task/Runtime API 及其他 Scenario 没有因此增加访问控制。
+相同检查覆盖共同 Task API、Messages 和业务结果；全局 Runtime Task 预览及 SMS 操作要求 admin。
 后端不维护前端三个账户的名单，不增加全局 Filter、ThreadLocal、用户表或身份注册服务。
 控制台固定身份和每身份草稿仍归前端；自动化证明显式携带验证 userId/role，不隐式给所有接口补管理员。
 
-导入仅允许 `inputVersion=2` 的待审核 Task。每个文件最多 10 MiB、100,000 个去重号码，
+导入仅允许 `server.inputOwner=app-checks` 的待审核 Task。原始 Item 入口不能绕过固定业务配置。每个文件最多 10 MiB、100,000 个去重号码，
 前端将 TXT、CSV 或粘贴统一转换为逐行 UTF-8 文件；后端独立校验 UTF-8、号码和国家前缀，
 允许省略 `+`，去首尾空白、忽略空行并去重。无效文件整批拒绝，返回错误数量和首个错误行，
 不会写入有效子集。请求局部原始与规范化临时文件在结束或失败后清理，不构成导入历史。
@@ -94,13 +96,8 @@ Runtime 默认有效期（当前 365 天），不从批准时重新计时。已�
 
 Task priority=50、maxRetryTimes=3；Item priority=5。供给为 `assignment-window / {} / 100`，
 新 Item 仍使用 `worker.assignment.available({})`。这些数字各自属于原 Owner 的边界。
-v1 任务及其 salt、随机 Item ID 不迁移；仍可读取、关闭和导出，不能追加 v2 号码。
-
-窗口 Pool 切换不改变号码输入版本、v2 salt、号码身份或创建指纹。
-descriptor 仍声明旧 Any 供给的任务只能读取、关闭和导出，不能继续导入或批准；
-响应通过 `inputUnavailableReason` 告知原因。相同创建请求仍关联原 Task ID，不自动重建。
-部署前先完成或关闭旧的待审核／运行中任务，确认切换前置条件；不自动关闭用户任务、
-重写 descriptor 或清理现有 scope。新任务显式声明独立窗口 Pool。
+Preview 使用新 scope 直接切换，不支持历史输入版本、旧 Any 供给兼容、数据迁移或回填，
+不删除旧环境数据。新的 Task 固定独立窗口 Pool 和输入归属。
 
 同一 Server 实例通过既有 OperationGuard 串行化一个 Task 的导入、普通追加、批准和关闭；
 一个同步导入的全部批次共享持有期。最多两个文件同时导入，结束释放容量，满时写入前背压。
@@ -323,7 +320,8 @@ python scenarios/app-checks-jvm/run_acceptance.py --benchmark --baseline --root 
 python scenarios/app-checks-jvm/run_acceptance.py --benchmark --root <current-preview> --output <current-output> --port 18720
 ```
 
-`--baseline` 仅是基准运行器对已固定旧产物的配置选择，不进入生产配置解析。
+以上旧产物对比属于版本范围内的历史命令，须使用该版本的运行器。当前运行器只调用本轮共同 Task API，
+不提供旧任务 API 兼容；不能以当前运行器执行上述旧二进制作为本轮验证。`--baseline` 的配置选择不进入生产配置解析。
 两个版本按相同启动方式展开 Boot JAR，并用相同的 benchmark-only Java 观察器启动原
 Boot composition。观察器只记录 App A 的 refill/take 调用耗时、失败数和固定 Facts
 快照命令次数，不保留 Command 参数或业务内容；其计量入口只存在于该独立 loopback

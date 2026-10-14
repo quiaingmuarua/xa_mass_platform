@@ -38,7 +38,7 @@ final class LaneWorld {
         Exception failure = null;
         long started = System.nanoTime();
         try (var api = new CallApi(options.getOrDefault("--runtime-url", "http://127.0.0.1:18082"),
-                options.getOrDefault("--lab-url", "http://127.0.0.1:18086"))) {
+                options.getOrDefault("--lab-url", "http://127.0.0.1:18086"), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"))) {
             switch (phase) {
                 case "bootstrap" -> summary.putAll(bootstrap(api, ExperimentConfig.settings(options).workers()));
                 case "quiesce" -> summary.putAll(quiesce(api, readWorld(Path.of(require(options, "--world")))));

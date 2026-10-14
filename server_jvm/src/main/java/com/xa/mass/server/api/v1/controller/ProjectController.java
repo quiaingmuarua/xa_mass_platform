@@ -1,5 +1,7 @@
 package com.xa.mass.server.api.v1.controller;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -44,21 +46,21 @@ public final class ProjectController {
     @Operation(summary = "Read the immutable startup Project directory without Runtime reads")
     @GetMapping
     @ApiResponse(responseCode = "200", description = "Configured Project directory")
-    public List<ProjectDirectory.ProjectView> list() {
+    public List<ProjectDirectory.ProjectView> list(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller) {
         return List.copyOf(projects.projects().values());
     }
 
     @Operation(summary = "Point-read a known Task in a configured Project")
     @GetMapping("/{projectId}/tasks/{taskId}")
     @ApiResponse(responseCode = "200", description = "Known Project Task")
-    public ProjectTaskQueryService.Entry task(@PathVariable String projectId, @PathVariable String taskId) {
-        return tasks.get(projectId, taskId);
+    public ProjectTaskQueryService.Entry task(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller, @PathVariable String projectId, @PathVariable String taskId) {
+        return tasks.get(caller, projectId, taskId);
     }
 
     @Operation(summary = "Read bound Group descriptors and Matching enablement, without Worker discovery")
     @GetMapping("/{projectId}/worker-groups")
     @ApiResponse(responseCode = "200", description = "Bound Group evidence and Matching enablement")
-    public List<ProjectWorkerGroupQueryService.ProjectWorkerGroup> groups(@PathVariable String projectId) {
+    public List<ProjectWorkerGroupQueryService.ProjectWorkerGroup> groups(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller, @PathVariable String projectId) {
         return groups.list(projectId);
     }
 
@@ -67,7 +69,7 @@ public final class ProjectController {
     @ApiResponse(responseCode = "200", description = "Configured Project",
             content = @Content(schema = @Schema(
                     implementation = ProjectDirectory.ProjectView.class)))
-    public ProjectDirectory.ProjectView get(@PathVariable String projectId) {
+    public ProjectDirectory.ProjectView get(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller, @PathVariable String projectId) {
         return projects.require(projectId);
     }
 
@@ -76,8 +78,20 @@ public final class ProjectController {
     @ApiResponse(responseCode = "200", description = "Project Task window",
             content = @Content(schema = @Schema(
                     implementation = ProjectTaskQueryService.ProjectTasks.class)))
-    public ProjectTaskQueryService.ProjectTasks tasks(@PathVariable String projectId,
+    public ProjectTaskQueryService.ProjectTasks tasks(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller, @PathVariable String projectId,
             @RequestParam(defaultValue = "100") int limit, @RequestParam(required = false) String userId) {
-        return tasks.list(projectId, limit, userId);
+        return tasks.list(caller, projectId, limit, userId);
+    }
+
+    @org.springframework.web.bind.annotation.PostMapping("/{projectId}/tasks:stats")
+    @Operation(summary = "Read bounded Task Item counts after validating every Project and caller identity")
+    @ApiResponse(responseCode = "200", description = "Current Item counts keyed by requested Task ID")
+    public java.util.Map<String, com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreCounts> stats(
+            @io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller,
+            @PathVariable String projectId,
+            @org.springframework.web.bind.annotation.RequestBody
+            @io.swagger.v3.oas.annotations.media.ArraySchema(minItems = 1, maxItems = 100,
+                    schema = @Schema(type = "string", minLength = 1)) java.util.List<String> taskIds) {
+        return tasks.stats(caller, projectId, taskIds);
     }
 }

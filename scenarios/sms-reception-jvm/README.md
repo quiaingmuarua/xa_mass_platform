@@ -22,6 +22,7 @@ GET messages/{messageId} -> Server Result point read -> business snapshot
 
 [SmsReceptionService](src/main/java/com/xa/mass/scenario/sms/SmsReceptionService.java)
 uses `TaskRpcPreparationService`, mapped `TaskRpcCallService` and `TaskDataService`.
+Assembly grants a Project-scoped internal TaskCaller and fixes `server.inputOwner=sms`.
 Initialization explicitly prepares and approves one shared Task per Group before
 opening business admission. SMS retains its stable `project-rpc-` identity built
 from independently Base64URL-encoded `sms` and Group coordinates; it adds no user
@@ -47,6 +48,11 @@ arrive before the initial execution Result without losing its number or deadline
 | `GET /api/v1/sms/messages/{messageId}` | Repeatable, non-consuming latest Result read; never creates a Command or renews the lease |
 | `GET /api/v1/sms/catalog` | Immutable application/template/country directory and limits |
 | `GET /api/v1/sms/metrics` | Bounded acquisition/query latency samples, errors and lease projection/inventory counters |
+
+Except for read-only Catalog discovery, SMS HTTP operations require the shared Server
+development caller with admin role. Missing/invalid declarations return 400 and
+operator access returns the common 403 before business/resource effects. HTTP cannot
+declare the internal service identity. No authentication or per-user RPC Task is added.
 
 Each acquisition creates a new Item. Default duration is 60 seconds, bounded to
 1–300 seconds. The Worker sets the absolute deadline when it establishes the

@@ -42,7 +42,7 @@ final class LoadedRecoveryWorkload {
         requireNetworkThreshold(options, connected);
         long nextNetworkScan = System.nanoTime() + options.scanInterval().toNanos();
         for (TaskTracker task : tasks) {
-            api.approveTask(task.taskId());
+            api.approveTask(task.taskId(), task.expectedMessageIds.size());
         }
         return new InFlightWorkload(
                 options,

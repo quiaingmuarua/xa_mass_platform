@@ -1,5 +1,7 @@
 package com.xa.mass.server.task;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.kernel.assignment.WorkerQuery;
 
 import org.springframework.stereotype.Service;
@@ -59,13 +61,13 @@ public final class TaskDataService {
     }
 
     public Map<String, ActionOutcome> appendFiniteTaskItems(
-            String taskId,
+            TaskCaller caller, String taskId,
             List<TaskItemRequest> requestedItems
     ) {
-        return operations.taskMutation(taskId, () -> appendFiniteTaskItemsObserved(taskId, requestedItems));
+        return operations.taskMutation(taskId, () -> appendFiniteTaskItemsObserved(caller, taskId, requestedItems));
     }
 
-    private Map<String, ActionOutcome> appendFiniteTaskItemsObserved(String taskId, List<TaskItemRequest> requestedItems) {
+    private Map<String, ActionOutcome> appendFiniteTaskItemsObserved(TaskCaller caller, String taskId, List<TaskItemRequest> requestedItems) {
         if (taskId == null || taskId.isBlank() || requestedItems == null || requestedItems.isEmpty() || requestedItems.size() > 100)
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.appendItems", "Expected taskId and 1..100 Items", null);
         for (TaskItemRequest item : requestedItems) {
@@ -75,13 +77,13 @@ public final class TaskDataService {
                 throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.appendItems", "Invalid TaskItem fields", null);
         }
         return appendResponse(appendItems(
-                taskId,
+                caller, taskId,
                 requestedItems
         ));
     }
 
     private Map<String, TaskItemAppendResult> appendItems(
-            String taskId,
+            TaskCaller caller, String taskId,
             List<TaskItemRequest> requestedItems
     ) {
         try {
@@ -98,6 +100,7 @@ public final class TaskDataService {
                         null
                 );
             }
+            caller.requireInput(descriptor, TaskCaller.RAW_INPUT);
             if (!isPublicFiniteTask(descriptor)) {
                 throw new ServerException(
                         ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
@@ -148,7 +151,7 @@ public final class TaskDataService {
     }
 
     public Map<String, TaskItemResultResponse> loadTaskItemResults(
-            String taskId,
+            TaskCaller caller, String taskId,
             List<String> messageIds
     ) {
         if (taskId == null || taskId.isBlank() || messageIds == null || messageIds.isEmpty()
@@ -161,7 +164,7 @@ public final class TaskDataService {
             List<String> uniqueIds = new ArrayList<>(
                     new LinkedHashSet<>(messageIds)
             );
-            requireQueryableTask(taskId, "taskData.loadResults");
+            requireQueryableTask(caller, taskId, "taskData.loadResults");
             return TaskItemResultResponse.fromObservedResults(
                     uniqueIds,
                     taskRuntime.loadTaskItemResults(taskId, uniqueIds)
@@ -179,7 +182,7 @@ public final class TaskDataService {
     }
 
     public Map<String, TaskItemStateResponse> loadTaskItemStates(
-            String taskId,
+            TaskCaller caller, String taskId,
             List<String> messageIds
     ) {
         if (taskId == null || taskId.isBlank() || messageIds == null || messageIds.isEmpty() || messageIds.size() > 100
@@ -187,7 +190,7 @@ public final class TaskDataService {
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.loadStates", "Expected taskId and 1..100 IDs", null);
         try {
             List<String> uniqueIds = new ArrayList<>(new LinkedHashSet<>(messageIds));
-            requireQueryableTask(taskId, "taskData.loadStates");
+            requireQueryableTask(caller, taskId, "taskData.loadStates");
             var states = itemScores.getItemScoreStates(taskId, uniqueIds);
             var response = new LinkedHashMap<String, TaskItemStateResponse>();
             for (String messageId : uniqueIds) {
@@ -212,16 +215,8 @@ public final class TaskDataService {
         }
     }
 
-    /** Admitted project roots are supplied by the calling query service. */
-    public Map<String, TaskItemScoreBandCore.TaskItemScoreCounts> observeItemScoreCounts(List<String> taskIds) {
-        try { return itemScores.observeItemScoreCounts(taskIds); }
-        catch (RuntimeException error) {
-            throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.observeCounts", null, error);
-        }
-    }
-
     /** Caller owns a whole-file Task mutation; nested batches retain that same admission. */
-    public Map<String, ActionOutcome> importFiniteTaskItems(String taskId, List<TaskItemRequest> requestedItems) {
+    public Map<String, ActionOutcome> importFiniteTaskItems(TaskCaller caller, String inputOwner, String taskId, List<TaskItemRequest> requestedItems) {
         return operations.taskMutation(taskId, () -> {
             if (requestedItems == null || requestedItems.isEmpty() || requestedItems.size() > 100
                     || requestedItems.stream().anyMatch(item -> item == null || item.messageId() == null || item.messageId().isBlank()
@@ -230,7 +225,10 @@ public final class TaskDataService {
                 throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.importItems", "Expected 1..100 Items using default TTL", null);
             try {
                 var descriptor = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
-                if (descriptor == null || !isPublicFiniteTask(descriptor))
+                if (descriptor == null)
+                    throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskData.importItems", null, null);
+                caller.requireInput(descriptor, inputOwner);
+                if (!isPublicFiniteTask(descriptor))
                     throw new ServerException(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, "taskData.importItems", null, null);
                 var taskState = taskScores.getScoreStates(List.of(taskId)).get(taskId);
                 if (taskState == null) throw new IllegalStateException("Task state is unavailable");
@@ -276,12 +274,12 @@ public final class TaskDataService {
                 .equals(com.xa.mass.workerdelivery.json.Jsons.parseObject(com.xa.mass.workerdelivery.json.Jsons.toJson(Collections.singletonMap("value", right))));
     }
 
-    public Map<String, TaskItem> loadTaskItems(String taskId, List<String> messageIds) {
+    public Map<String, TaskItem> loadTaskItems(TaskCaller caller, String taskId, List<String> messageIds) {
         if (taskId == null || taskId.isBlank() || messageIds == null || messageIds.isEmpty() || messageIds.size() > 100
                 || messageIds.stream().anyMatch(id -> id == null || id.isBlank()))
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.loadItems", "Expected 1..100 IDs", null);
         try {
-            requireQueryableTask(taskId, "taskData.loadItems");
+            requireQueryableTask(caller, taskId, "taskData.loadItems");
             return taskRuntime.loadTaskItems(taskId, messageIds);
         } catch (ServerException known) { throw known;
         } catch (RuntimeException error) {
@@ -289,9 +287,9 @@ public final class TaskDataService {
         }
     }
 
-    public ResultPreview previewTaskResults(String taskId) {
+    public ResultPreview previewTaskResults(TaskCaller caller, String taskId) {
         try {
-            requireQueryableTask(taskId, "taskData.previewResults");
+            requireQueryableTask(caller, taskId, "taskData.previewResults");
             var page = taskRuntime.scanTaskItemResults(taskId, "0", 100);
             var ids = page.results().keySet().stream().limit(100).toList();
             var items = ids.isEmpty() ? Map.<String, TaskItem>of() : taskRuntime.loadTaskItems(taskId, ids);
@@ -307,12 +305,13 @@ public final class TaskDataService {
     public record ResultEntry(String messageId, @org.jspecify.annotations.Nullable TaskItem item, TaskItemResultResponse result) {}
     public record ResultPreview(List<ResultEntry> results, boolean truncated) {}
 
-    private void requireQueryableTask(String taskId, String operation) {
+    private void requireQueryableTask(TaskCaller caller, String taskId, String operation) {
         TaskDescriptor descriptor = taskCatalog
                 .loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
         if (descriptor == null) {
             throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, operation, null, null);
         }
+        caller.requireTask(descriptor);
         if (!isPublicFiniteTask(descriptor) && !isManagedCallTask(descriptor)) {
             throw new ServerException(
                     ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,

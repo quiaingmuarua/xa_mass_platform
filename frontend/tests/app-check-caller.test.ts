@@ -1,18 +1,14 @@
+import { TaskApiError, callerHeaders, type TaskCaller } from "@/task-caller";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  ApiAppCheckTaskSource,
-  AppCheckApiError,
-  callerHeaders,
-  type AppCheckCaller
-} from "../src/app-checks/task-source";
+import { ApiAppCheckTaskSource } from "../src/app-checks/task-source";
 import {
   MockAppCheckTaskSource,
   mockCatalog
 } from "../src/app-checks/mock-task-source";
 
-const a: AppCheckCaller = Object.freeze({ userId: "testa", role: "operator" });
-const b: AppCheckCaller = Object.freeze({ userId: "testb", role: "operator" });
-const admin: AppCheckCaller = Object.freeze({ userId: "proofadm", role: "admin" });
+const a: TaskCaller = Object.freeze({ userId: "testa", role: "operator" });
+const b: TaskCaller = Object.freeze({ userId: "testb", role: "operator" });
+const admin: TaskCaller = Object.freeze({ userId: "proofadm", role: "admin" });
 const input = {
   requestId: "caller-test",
   appId: "app-a",
@@ -71,7 +67,7 @@ describe("App Checks declared callers", () => {
       () => source.completeTask(a, taskId)
     ])
       await expect(operation()).rejects.toMatchObject({ status: 403 });
-    expect(() => source.previewState(b, taskId)).toThrow(AppCheckApiError);
+    expect(() => source.previewState(b, taskId)).toThrow(TaskApiError);
     expect(
       (await source.listTasks(b)).tasks.every((task) => task.userId === b.userId)
     ).toBe(true);
@@ -88,7 +84,7 @@ describe("App Checks declared callers", () => {
     const source = new MockAppCheckTaskSource();
     const original = await source.createTask(a, input);
     expect(await source.createTask({ ...a, role: "admin" }, input)).toEqual(original);
-    await expect(source.createTask(b, input)).rejects.toThrow("requestId");
+    expect((await source.createTask(b, input)).taskId).not.toBe(original.taskId);
     await expect(
       source.createTask(a, { ...input, userId: b.userId } as typeof input)
     ).rejects.toMatchObject({ status: 400 });

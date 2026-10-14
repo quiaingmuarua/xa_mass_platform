@@ -34,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class TaskRpcPreparationServiceTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
 
     private com.xa.mass.workermatching.WorkerMatchingCatalog matching;
     private WorkerResourceCatalog workerCatalog;
@@ -75,7 +76,7 @@ class TaskRpcPreparationServiceTest {
                         TaskApprovalStatus.APPROVED
                 ));
 
-        var registration = service.prepare("rpc-test", request());
+        var registration = service.prepare(CALLER, "raw", "rpc-test", request());
 
         assertThat(registration.taskId())
                 .isEqualTo("rpc-test");
@@ -95,7 +96,7 @@ class TaskRpcPreparationServiceTest {
         when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of());
         when(taskRuntime.createTask(any())).thenReturn(new TaskCreationResult(TaskCreationStatus.CREATED));
         when(taskLifecycle.approveTask("rpc-test")).thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED));
-        service.prepare("rpc-test", request());
+        service.prepare(CALLER, "raw", "rpc-test", request());
         var descriptor=ArgumentCaptor.forClass(TaskDescriptor.class); verify(taskRuntime).createTask(descriptor.capture());
         assertThat(descriptor.getValue().refill()).isEmpty();
         verify(matching).normalizeRefill("phone-tools",List.of());
@@ -113,11 +114,11 @@ class TaskRpcPreparationServiceTest {
                         TaskApprovalStatus.ALREADY_APPROVED
                 ));
 
-        var registration = service.prepare("rpc-test", request());
+        var registration = service.prepare(CALLER, "raw", "rpc-test", request());
 
         assertThat(registration.taskId())
                 .isEqualTo("rpc-test");
-        assertThat(service.prepare("rpc-test", request()).taskId()).isEqualTo(registration.taskId());
+        assertThat(service.prepare(CALLER, "raw", "rpc-test", request()).taskId()).isEqualTo(registration.taskId());
         verify(taskRuntime, never()).createTask(any());
     }
 
@@ -129,7 +130,7 @@ class TaskRpcPreparationServiceTest {
                 .thenReturn(List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 20)));
         assertThat("rpc-test").isEqualTo(saved.taskId());
         org.mockito.Mockito.verifyNoInteractions(matching);
-        assertError(()->service.prepare("rpc-test", request()),ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT,"taskRpc.prepare");
+        assertError(()->service.prepare(CALLER, "raw", "rpc-test", request()),ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT,"taskRpc.prepare");
         verify(taskRuntime,never()).createTask(any());
         verify(taskLifecycle,never()).approveTask(any());
     }
@@ -137,7 +138,7 @@ class TaskRpcPreparationServiceTest {
     @Test void targetResolutionFailureCannotCreateOrApproveATask() {
         when(matching.normalizeRefill(org.mockito.ArgumentMatchers.eq("phone-tools"),anyList()))
                 .thenThrow(new IllegalArgumentException("invalid targets"));
-        assertError(()->service.prepare("rpc-test", request()),ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE,"taskRpc.prepare");
+        assertError(()->service.prepare(CALLER, "raw", "rpc-test", request()),ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE,"taskRpc.prepare");
         org.mockito.Mockito.verifyNoInteractions(taskRuntime,taskLifecycle);
         verify(taskCatalog).loadTaskAllocationDescriptors(List.of("rpc-test"));
     }
@@ -152,7 +153,7 @@ class TaskRpcPreparationServiceTest {
                 .thenReturn(Map.of(conflict.taskId(), conflict));
 
         assertError(
-                () -> service.prepare("rpc-test", request()),
+                () -> service.prepare(CALLER, "raw", "rpc-test", request()),
                 ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT,
                 "taskRpc.prepare"
         );
@@ -176,7 +177,7 @@ class TaskRpcPreparationServiceTest {
                         TaskApprovalStatus.ALREADY_APPROVED
                 ));
 
-        assertThat(service.prepare("rpc-test", request()).taskId()).isEqualTo("rpc-test");
+        assertThat(service.prepare(CALLER, "raw", "rpc-test", request()).taskId()).isEqualTo("rpc-test");
     }
 
     @Test
@@ -196,7 +197,7 @@ class TaskRpcPreparationServiceTest {
         );
 
         assertError(
-                () -> service.prepare("rpc-test", request()),
+                () -> service.prepare(CALLER, "raw", "rpc-test", request()),
                 ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE,
                 "taskRpc.prepare"
         );
@@ -215,7 +216,7 @@ class TaskRpcPreparationServiceTest {
         );
 
         assertError(
-                () -> service.prepare("rpc-test", request()),
+                () -> service.prepare(CALLER, "raw", "rpc-test", request()),
                 ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE,
                 "taskRpc.prepare"
         );
@@ -236,7 +237,7 @@ class TaskRpcPreparationServiceTest {
                 ));
 
         assertError(
-                () -> service.prepare("rpc-test", request()),
+                () -> service.prepare(CALLER, "raw", "rpc-test", request()),
                 ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT,
                 "taskRpc.prepare"
         );
@@ -250,8 +251,8 @@ class TaskRpcPreparationServiceTest {
         when(taskLifecycle.approveTask(expectedDescriptor().taskId()))
                 .thenReturn(new TaskApprovalResult(TaskApprovalStatus.RETRYABLE))
                 .thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED));
-        assertError(() -> service.prepare("rpc-test", request()), ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE, "taskRpc.prepare");
-        service.prepare("rpc-test", request());
+        assertError(() -> service.prepare(CALLER, "raw", "rpc-test", request()), ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE, "taskRpc.prepare");
+        service.prepare(CALLER, "raw", "rpc-test", request());
         verify(taskRuntime, org.mockito.Mockito.times(1)).createTask(any());
         verify(taskLifecycle, org.mockito.Mockito.times(2)).approveTask(expectedDescriptor().taskId());
     }
@@ -275,33 +276,51 @@ class TaskRpcPreparationServiceTest {
         var initializer = new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle,
                 matching, new TaskRpcProperties(1000,1000,10,10,10,50,100,250,Map.of()), directory, new OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class));
         for (int repeat = 0; repeat < 2; repeat++) {
-            initializer.prepare("rpc-one", new TaskRpcPrepareRequest("one", "phone-tools", null, Map.of()));
-            initializer.prepare("rpc-two", new TaskRpcPrepareRequest("two", "phone-tools", null, Map.of()));
+            initializer.prepare(CALLER, "raw", "rpc-one", new TaskRpcPrepareRequest("one", "phone-tools", null, Map.of()));
+            initializer.prepare(CALLER, "raw", "rpc-two", new TaskRpcPrepareRequest("two", "phone-tools", null, Map.of()));
         }
         assertThat(saved.values()).extracting(task -> com.xa.mass.server.task.directory.TaskAttribution.require(task.metadata()).projectId()).containsExactly("one", "two");
         verify(taskRuntime, org.mockito.Mockito.times(2)).createTask(any());
     }
 
     @Test void callerIdentityAndMetadataAreOpaqueAndImmutable() {
-        var attributes = new java.util.HashMap<>(Map.of("userId", "alice"));
+        var attributes = new java.util.HashMap<>(Map.of("label", "alice"));
         var request = new TaskRpcPrepareRequest("test-project", "phone-tools", "RPC", attributes);
-        attributes.put("userId", "bobby");
+        attributes.put("label", "bobby");
         when(taskRuntime.createTask(any())).thenReturn(new TaskCreationResult(TaskCreationStatus.CREATED));
         when(taskLifecycle.approveTask("caller-chosen"))
                 .thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED));
-        assertThat(service.prepare("caller-chosen", request).taskId()).isEqualTo("caller-chosen");
+        assertThat(service.prepare(CALLER, "raw", "caller-chosen", request).taskId()).isEqualTo("caller-chosen");
         var descriptor = ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime).createTask(descriptor.capture());
-        assertThat(descriptor.getValue().metadata()).containsEntry("userId", "alice")
-                .containsOnlyKeys("userId", "server.projectId", "server.createdAtMillis");
+        assertThat(descriptor.getValue().metadata()).containsEntry("label", "alice").containsEntry("userId", "proof").containsEntry("server.inputOwner", "raw")
+                .containsOnlyKeys("label", "userId", "server.projectId", "server.createdAtMillis", "server.inputOwner");
         assertThat(descriptor.getValue().name()).isEqualTo("RPC");
         assertThatThrownBy(() -> request.metadata().clear()).isInstanceOf(UnsupportedOperationException.class);
     }
 
+    @Test void administratorsReuseTasksWithoutReplacingTheOriginalCreator() {
+        when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("rpc-test", expectedDescriptor()));
+        when(taskLifecycle.approveTask("rpc-test")).thenReturn(new TaskApprovalResult(TaskApprovalStatus.ALREADY_APPROVED));
+        var administrator = new com.xa.mass.server.task.access.TaskCaller("other", "admin");
+        assertThat(service.prepare(administrator, "raw", "rpc-test", request()).taskId()).isEqualTo("rpc-test");
+        verify(taskRuntime, never()).createTask(any());
+        verify(taskLifecycle).approveTask("rpc-test");
+    }
+
+    @Test void aCreationRaceChecksOwnershipAgainBeforeReusingTheWinner() {
+        when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of()).thenReturn(Map.of("rpc-test", expectedDescriptor()));
+        when(taskRuntime.createTask(any())).thenReturn(new TaskCreationResult(TaskCreationStatus.CONFLICT));
+        var foreign = new com.xa.mass.server.task.access.TaskCaller("other", "operator");
+        assertError(() -> service.prepare(foreign, "raw", "rpc-test", request()),
+                ServerErrorCode.TASK_ACCESS_DENIED, "taskAccess.require");
+        org.mockito.Mockito.verifyNoInteractions(taskLifecycle);
+    }
+
     @Test void invalidDisplayDataAndUndeclaredBindingDoNotCreateOrApprove() {
-        assertError(() -> service.prepare("rpc-test", new TaskRpcPrepareRequest("test-project", "phone-tools", " ", Map.of())),
+        assertError(() -> service.prepare(CALLER, "raw", "rpc-test", new TaskRpcPrepareRequest("test-project", "phone-tools", " ", Map.of())),
                 ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskRpc.prepare");
-        assertError(() -> service.prepare("rpc-test", new TaskRpcPrepareRequest("test-project", "absent", null, Map.of())),
+        assertError(() -> service.prepare(CALLER, "raw", "rpc-test", new TaskRpcPrepareRequest("test-project", "absent", null, Map.of())),
                 ServerErrorCode.INVALID_TASK_DATA_REQUEST, "project.requireWorkerGroup");
         org.mockito.Mockito.verifyNoInteractions(taskRuntime, taskLifecycle);
     }
@@ -315,17 +334,17 @@ class TaskRpcPreparationServiceTest {
             throw new IllegalStateException("commit not confirmed");
         });
         try (var executor = java.util.concurrent.Executors.newSingleThreadExecutor()) {
-            var first = executor.submit(() -> service.prepare("rpc-test", request()));
+            var first = executor.submit(() -> service.prepare(CALLER, "raw", "rpc-test", request()));
             try {
                 assertThat(entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
-                assertError(() -> service.prepare("rpc-test", request()), ServerErrorCode.TASK_STATE_CONFLICT, "taskMutation.execute");
+                assertError(() -> service.prepare(CALLER, "raw", "rpc-test", request()), ServerErrorCode.TASK_STATE_CONFLICT, "taskMutation.execute");
             } finally { release.countDown(); }
             assertThatThrownBy(first::get).hasCauseInstanceOf(ServerException.class);
         }
         when(taskCatalog.loadTaskAllocationDescriptors(List.of("rpc-test")))
                 .thenReturn(Map.of("rpc-test", expectedDescriptor()));
         when(taskLifecycle.approveTask("rpc-test")).thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED));
-        assertThat(service.prepare("rpc-test", request()).taskId()).isEqualTo("rpc-test");
+        assertThat(service.prepare(CALLER, "raw", "rpc-test", request()).taskId()).isEqualTo("rpc-test");
         verify(taskRuntime).createTask(any());
         verify(taskLifecycle).approveTask("rpc-test");
     }
@@ -343,7 +362,7 @@ class TaskRpcPreparationServiceTest {
         return new TaskDescriptor("rpc-test", "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, Map.of(
                         "priority", "0",
                         "maxRetryTimes", "3"
-                ), java.util.List.of(), null, new com.xa.mass.server.task.directory.TaskAttribution("test-project", 123L, null).stamp(Map.of()));
+                ), java.util.List.of(), null, new com.xa.mass.server.task.directory.TaskAttribution("test-project", 123L, "proof").stamp(Map.of("server.inputOwner", "raw")));
     }
 
     private static void assertError(

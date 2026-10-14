@@ -1,5 +1,7 @@
 package com.xa.mass.server.task.observation;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.workermatching.MatchingComposition;
@@ -72,7 +74,10 @@ public final class TaskLeaseProjectionService implements TaskLeaseProjectionMetr
     private void process(String task, List<String> ids) {
         for (int offset = 0; offset < ids.size() && running; offset += 1000) {
             try {
-                var snapshots = results.loadTaskItemResults(task, ids.subList(offset, Math.min(ids.size(), offset + 1000)));
+                var definition = routes.get(task).getFirst();
+                var caller = TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition(
+                        definition.projectId(), List.of(definition.workerGroupId())));
+                var snapshots = results.loadTaskItemResults(caller, task, ids.subList(offset, Math.min(ids.size(), offset + 1000)));
                 for (var route : routes.get(task)) {
                     if (!running) return;
                     try {

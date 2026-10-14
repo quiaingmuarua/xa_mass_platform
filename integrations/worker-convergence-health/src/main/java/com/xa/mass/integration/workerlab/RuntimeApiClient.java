@@ -258,7 +258,7 @@ final class RuntimeApiClient {
         JsonHttpClient.Response created = http.send(
                 "POST",
                 "/api/v1/tasks",
-                Map.of("projectId", "scenario-workers", "workerGroupId", workerGroupId, "refill", List.of(Map.of("poolName","proof-facts","target", workerSelector, "count", 1)), "priority", 50, "maxRetryTimes", 3)
+                Map.of("requestId", messageId, "projectId", "scenario-workers", "workerGroupId", workerGroupId, "refill", List.of(Map.of("poolName","proof-facts","target", workerSelector, "count", 1)), "priority", 50, "maxRetryTimes", 3)
         );
         requireStatus(created, 200, "create Rule witness Task");
         String taskId = JsonValues.requiredString(created.body(), "taskId");
@@ -287,7 +287,7 @@ final class RuntimeApiClient {
         JsonHttpClient.Response approved = http.send(
                 "POST",
                 "/api/v1/tasks/" + segment(taskId) + "/approve",
-                null
+                Map.of("expectedItemCount", 1)
         );
         requireStatus(approved, 200, "approve Rule witness Task");
         String approvalStatus = JsonValues.requiredString(

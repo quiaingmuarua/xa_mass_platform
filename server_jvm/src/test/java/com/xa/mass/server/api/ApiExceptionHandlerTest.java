@@ -70,6 +70,7 @@ class ApiExceptionHandlerTest {
 
     private static HttpStatus expectedStatus(ServerErrorCode errorCode) {
         return switch (errorCode) {
+            case TASK_ACCESS_DENIED -> HttpStatus.FORBIDDEN;
             case TASK_DATA_UNAVAILABLE,
                     TASK_CALL_REGISTRATION_UNAVAILABLE,
                     WORKER_DELIVERY_UNAVAILABLE,
@@ -84,7 +85,7 @@ class ApiExceptionHandlerTest {
                     HttpStatus.SERVICE_UNAVAILABLE;
             case DIRECT_CALL_CAPACITY_EXCEEDED ->
                     HttpStatus.TOO_MANY_REQUESTS;
-            case KERNEL_REJECTED_CONFLICT,
+            case INVALID_TASK_CALLER, KERNEL_REJECTED_CONFLICT,
                     INVALID_TASK_DATA_REQUEST,
                     TASK_NOT_FOUND,
                     TASK_CALL_NOT_REGISTERED,
