@@ -124,7 +124,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
     @SuppressWarnings("unchecked")
     void lostDisconnectIsReplacedByActualTaskDeliveryExpiryAndWorkRecovers() throws Exception {
         post("/api/v1/worker-groups/" + GROUP + ":register", Map.of("eventCodes", List.of(EVENT)));
-        String task = (String) post("/api/v1/tasks", Map.of("projectId", "offline-boundary", "workerGroupId", GROUP, "maxRetryTimes", 3, "refill", List.of(Map.of("poolName","any","target",Map.of(),"count",100)))).get("taskId");
+        String task = (String) post("/api/v1/tasks", Map.of("requestId", "offline-recovery", "projectId", "offline-boundary", "workerGroupId", GROUP, "maxRetryTimes", 3, "refill", List.of(Map.of("poolName","any","target",Map.of(),"count",100)))).get("taskId");
         var invoked = evidence.invoked;
         var lostDisconnects = evidence.lostDisconnects;
         var deliveryEvidence = evidence.deliveryEvidence;
@@ -150,7 +150,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
                     && connectionState(workerId).equals("disconnected"));
             assertThat(isHot(workerId)).isTrue();
             post("/api/v1/tasks/" + task + "/items", List.of(Map.of("messageId", "offline-item", "eventCode", EVENT, "payload", Map.of(), "workerSelector", Map.of("executorName","worker.any","input",Map.of()))));
-            post("/api/v1/tasks/" + task + "/approve", null);
+            post("/api/v1/tasks/" + task + "/approve", Map.of("expectedItemCount", 1));
             await("actual expiry evidence changes Score", () -> deliveryEvidence.get() > 0
                     && rejectedDeliveries.get() > 0 && applied.get() != null
                     && applied.get().status() == TRANSITIONED
@@ -310,10 +310,12 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
     }
 
     private Map<String, Object> post(String path, Object body) throws Exception {
-        var request = HttpRequest.newBuilder(BASE.resolve(path)).timeout(Duration.ofSeconds(5))
+        var builder = HttpRequest.newBuilder(BASE.resolve(path)).timeout(Duration.ofSeconds(5))
                 .header("Content-Type", "application/json").POST(body == null
                         ? HttpRequest.BodyPublishers.noBody()
-                        : HttpRequest.BodyPublishers.ofString(Jsons.toJson(body))).build();
+                        : HttpRequest.BodyPublishers.ofString(Jsons.toJson(body)));
+        if (path.startsWith("/api/v1/tasks")) builder.header("X-XA-Dev-User", "cHJvb2Y").header("X-XA-Dev-Role", "admin");
+        var request = builder.build();
         var response = http.send(request, HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).as("POST %s; evidence=%s", path, evidence.trace).isEqualTo(200);
         return response.body().isBlank() ? Map.of() : Jsons.parseObject(response.body());

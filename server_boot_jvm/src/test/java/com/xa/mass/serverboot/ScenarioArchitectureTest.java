@@ -32,20 +32,20 @@ class ScenarioArchitectureTest {
 
     @Test void scenariosUseOnlyTheirExistingServerApplicationCapabilities() throws Exception {
         var allowed = Map.of(
-                "app-checks-jvm", Set.of("project.ProjectDirectory", "project.ProjectTaskQueryService", "project.ProjectDefinition", "project.ProjectWorkerRequirements",
+                "app-checks-jvm", Set.of("task.access.TaskCaller", "project.ProjectDirectory", "project.ProjectTaskQueryService", "project.ProjectDefinition", "project.ProjectWorkerRequirements",
                         "task.TaskCreationService", "task.TaskCreationUnconfirmedException", "task.TaskDataService", "task.directory.TaskUserId",
-                        "task.TaskLifecycleService", "operation.OperationGuard", "operation.OperationAlreadyRunningException", "task.result.TaskResultsExportService", "api.v1.contract.ActionOutcome", "api.v1.contract.task.TaskItemResultResponse", "api.v1.contract.task.TaskCreateRequest",
+                        "operation.OperationGuard", "operation.OperationAlreadyRunningException", "task.result.TaskResultsExportService", "api.v1.contract.ActionOutcome", "api.v1.contract.task.TaskItemResultResponse", "api.v1.contract.task.TaskCreateRequest",
                         "api.v1.contract.task.TaskCreateResponse", "api.v1.contract.task.TaskItemRequest",
                         "api.v1.contract.task.TaskItemResultStatus", "worker.observation.WorkerPropertyProjection"),
-                "sms-reception-jvm", Set.of("task.call.TaskRpcPreparationService", "api.v1.contract.task.TaskRpcPrepareRequest",
+                "sms-reception-jvm", Set.of("task.access.TaskCaller", "task.call.TaskRpcPreparationService", "api.v1.contract.task.TaskRpcPrepareRequest",
                         "task.call.TaskRpcCallService", "task.TaskDataService", "task.observation.TaskLeaseProjection",
                         "task.observation.TaskLeaseProjectionMetrics", "api.v1.contract.task.TaskRpcCallRequest",
                         "api.v1.contract.task.TaskItemRequest", "api.v1.contract.task.TaskItemResultResponse",
                         "api.v1.contract.task.TaskItemResultStatus"),
-                "message-campaigns-jvm", Set.of("project.ProjectDirectory",
+                "message-campaigns-jvm", Set.of("task.access.TaskCaller", "project.ProjectDirectory",
                         "project.ProjectDefinition", "project.ProjectWorkerRequirements", "operation.OperationGuard", "error.ServerException", "api.v1.contract.ActionOutcome",
                         "project.ProjectTaskQueryService", "task.TaskCreationUnconfirmedException",
-                        "task.TaskCreationService", "task.TaskDataService", "task.TaskLifecycleService",
+                        "task.TaskCreationService", "task.TaskDataService",
                         "api.v1.contract.task.TaskCreateRequest", "api.v1.contract.task.TaskItemRequest",
                         "api.v1.contract.task.TaskItemResultResponse", "api.v1.contract.task.TaskItemResultStatus"));
         var imports = Pattern.compile("import\\s+com\\.xa\\.mass\\.server\\.([\\w.*]+)\\s*;");

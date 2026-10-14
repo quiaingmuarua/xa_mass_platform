@@ -1,3 +1,4 @@
+import { type TaskCaller, callerHeaders } from "@/task-caller";
 import axios, { AxiosError, type AxiosInstance } from "axios";
 import type { ZodType } from "zod";
 
@@ -24,6 +25,8 @@ const SAFE_ERROR_MESSAGES: Record<number, string> = {
   12008: "This Task does not support the requested operation.",
   12009: "The Task lifecycle conflicts with its current state.",
   12010: "Task results are not ready.",
+  12012: "开发调用方无效。",
+  12013: "当前调用方不能访问此任务。",
   12011: "The selected WorkerGroup no longer exists.",
   19001: "The Task request body is invalid."
 };
@@ -35,11 +38,14 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
     this.client = client ?? axios.create({ baseURL: baseUrl, timeout: 5_000 });
   }
 
-  async createTask(request: TaskCreateApiRequest): Promise<TaskCreateApiResponse> {
+  async createTask(
+    caller: TaskCaller,
+    request: TaskCreateApiRequest
+  ): Promise<TaskCreateApiResponse> {
     const requestId = createRequestId();
     try {
       const response = await this.client.post("/v1/tasks", request, {
-        headers: requestHeaders(requestId)
+        headers: requestHeaders(caller, requestId)
       });
       if (response.status !== 200) throw schemaError(requestId);
       return parseResponse(taskCreateResponseSchema, response.data, requestId);
@@ -49,6 +55,7 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
   }
 
   async appendItems(
+    caller: TaskCaller,
     taskId: string,
     items: TaskItemApiRequest[]
   ): Promise<TaskItemsAppendApiResponse> {
@@ -57,7 +64,7 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
       const response = await this.client.post(
         `/v1/tasks/${encodeURIComponent(taskId)}/items`,
         items,
-        { headers: requestHeaders(requestId) }
+        { headers: requestHeaders(caller, requestId) }
       );
       if (response.status !== 200) throw schemaError(requestId);
       return parseResponse(taskItemsAppendResponseSchema, response.data, requestId);
@@ -66,13 +73,17 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
     }
   }
 
-  async approveTask(taskId: string): Promise<void> {
+  async approveTask(
+    caller: TaskCaller,
+    taskId: string,
+    expectedItemCount: number
+  ): Promise<void> {
     const requestId = createRequestId();
     try {
       const response = await this.client.post(
         `/v1/tasks/${encodeURIComponent(taskId)}/approve`,
-        undefined,
-        { headers: requestHeaders(requestId) }
+        { expectedItemCount },
+        { headers: requestHeaders(caller, requestId) }
       );
       if (response.status !== 200) throw schemaError(requestId);
       parseResponse(taskActionOutcomeSchema, response.data, requestId);
@@ -81,14 +92,14 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
     }
   }
 
-  async exportResults(taskId: string): Promise<TaskExportResult> {
+  async exportResults(caller: TaskCaller, taskId: string): Promise<TaskExportResult> {
     const requestId = createRequestId();
     try {
       const response = await this.client.post(
         `/v1/tasks/${encodeURIComponent(taskId)}/results:export`,
         undefined,
         {
-          headers: requestHeaders(requestId),
+          headers: requestHeaders(caller, requestId),
           responseType: "blob",
           validateStatus: () => true
         }
@@ -109,13 +120,13 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
     }
   }
 
-  async closeTask(taskId: string): Promise<void> {
+  async closeTask(caller: TaskCaller, taskId: string): Promise<void> {
     const requestId = createRequestId();
     try {
       const response = await this.client.post(
         `/v1/tasks/${encodeURIComponent(taskId)}/close`,
         undefined,
-        { headers: requestHeaders(requestId) }
+        { headers: requestHeaders(caller, requestId) }
       );
       if (response.status !== 200) throw schemaError(requestId);
       parseResponse(taskActionOutcomeSchema, response.data, requestId);
@@ -124,13 +135,13 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
     }
   }
 
-  async ensureDirectory(taskId: string): Promise<void> {
+  async ensureDirectory(caller: TaskCaller, taskId: string): Promise<void> {
     const requestId = createRequestId();
     try {
       const response = await this.client.post(
         `/v1/tasks/${encodeURIComponent(taskId)}/directory:ensure`,
         undefined,
-        { headers: requestHeaders(requestId) }
+        { headers: requestHeaders(caller, requestId) }
       );
       if (response.status !== 200) throw schemaError(requestId);
       parseResponse(taskActionOutcomeSchema, response.data, requestId);
@@ -140,8 +151,8 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
   }
 }
 
-function requestHeaders(requestId: string): Record<string, string> {
-  return { "X-Request-Id": requestId };
+function requestHeaders(caller: TaskCaller, requestId: string): Record<string, string> {
+  return { "X-Request-Id": requestId, ...callerHeaders(caller) };
 }
 
 function parseResponse<T>(schema: ZodType<T>, value: unknown, requestId: string): T {

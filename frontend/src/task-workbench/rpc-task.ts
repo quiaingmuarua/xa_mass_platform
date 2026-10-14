@@ -1,3 +1,4 @@
+import type { TaskCaller } from "@/task-caller";
 import { normalizeTaskUserId } from "@/task-user-id";
 
 export interface RpcTaskPrepareRequest {
@@ -8,7 +9,11 @@ export interface RpcTaskPrepareRequest {
 }
 
 export interface RpcTaskPreparationClient {
-  prepareTask(taskId: string, request: RpcTaskPrepareRequest): Promise<void>;
+  prepareTask(
+    caller: TaskCaller,
+    taskId: string,
+    request: RpcTaskPrepareRequest
+  ): Promise<void>;
 }
 
 /** A workbench naming convention; the Server does not decode or enforce it. */

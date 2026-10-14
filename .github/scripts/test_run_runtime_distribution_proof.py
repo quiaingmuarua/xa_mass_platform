@@ -39,8 +39,8 @@ class RuntimeDistributionProofApiContractTest(unittest.TestCase):
             self.assertEqual(proof._prepare_rpc_task("http://runtime", "scenario-workers", "group-a"), task_id)
         self.assertEqual(request.call_args_list, [
             call("POST", f"http://runtime/api/v1/tasks/{task_id}/rpc:prepare",
-                 {"projectId": "scenario-workers", "workerGroupId": "group-a"}),
-            call("GET", f"http://runtime/api/v1/projects/scenario-workers/tasks/{task_id}"),
+                 {"projectId": "scenario-workers", "workerGroupId": "group-a"}, headers=proof.TASK_CALLER_HEADERS),
+            call("GET", f"http://runtime/api/v1/projects/scenario-workers/tasks/{task_id}", headers=proof.TASK_CALLER_HEADERS),
         ])
 
     def test_preparation_uses_explicit_non_default_project_for_request_and_read(self) -> None:
@@ -99,7 +99,7 @@ class RuntimeDistributionProofApiContractTest(unittest.TestCase):
                     "POST",
                     "http://runtime/api/v1/runtime-view/tasks:preview",
                     100,
-                ),
+                 headers=proof.TASK_CALLER_HEADERS),
                 call(
                     "POST",
                     "http://runtime/api/v1/runtime-view/worker-groups:preview",

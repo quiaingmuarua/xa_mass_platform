@@ -1,5 +1,7 @@
 package com.xa.mass.scenario.messages;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.server.api.v1.contract.task.TaskCreateRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.project.ProjectDirectory;
@@ -7,7 +9,6 @@ import com.xa.mass.server.project.ProjectTaskQueryService;
 import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskCreationUnconfirmedException;
 import com.xa.mass.server.task.TaskDataService;
-import com.xa.mass.server.task.TaskLifecycleService;
 import java.util.*;
 import java.io.*;
 import java.nio.file.Files;
@@ -29,7 +30,6 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     private final ProjectTaskQueryService queries;
     private final TaskCreationService creation;
     private final TaskDataService data;
-    private final TaskLifecycleService lifecycle;
     private final MessageScenarioProperties config;
     private final OperationGuard operations;
     private final Object gate = new Object();
@@ -38,9 +38,9 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     private int active, activeImports;
 
     public MessageTaskService(ProjectDirectory projects, ProjectTaskQueryService queries, TaskCreationService creation,
-            TaskDataService data, TaskLifecycleService lifecycle, MessageScenarioProperties config, OperationGuard operations) {
+            TaskDataService data, MessageScenarioProperties config, OperationGuard operations) {
         this.projects = projects; this.queries = queries; this.creation = creation;
-        this.data = data; this.lifecycle = lifecycle; this.config = Objects.requireNonNull(config);
+        this.data = data; this.config = Objects.requireNonNull(config);
         this.operations = Objects.requireNonNull(operations);
     }
 
@@ -62,23 +62,23 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
                 "limits", Map.of("recipientsPerImport", MessageRecipientFile.MAX_RECIPIENTS, "importFileBytes", MessageRecipientFile.MAX_BYTES));
     }
 
-    public CreatedTask create(Map<String, Object> input) {
+    public CreatedTask create(TaskCaller caller, Map<String, Object> input) {
         return admitted(null, false, () -> {
             var spec = MessageSpecification.parse(input);
             String workerGroupId = config.findApplication(spec.appId())
                     .orElseThrow(() -> new MessageError(400, "Unsupported appId", null)).workerGroupId();
             try {
-                return new CreatedTask(creation.createForRequest(new TaskCreateRequest(PROJECT, workerGroupId, 50, 3,
-                        spec.refill(), spec.name(), spec.metadata()), spec.requestId(), spec.fingerprint(workerGroupId)).taskId());
+                return new CreatedTask(creation.createForRequest(caller, PROJECT, new TaskCreateRequest(spec.requestId(), PROJECT, workerGroupId, 50, 3,
+                        spec.refill(), spec.name(), spec.metadata()), spec.fingerprint(workerGroupId)).taskId());
             } catch (TaskCreationUnconfirmedException unknown) {
                 throw failure(503, "创建结果未确认，请使用原请求身份核对；不会自动重建", unknown.taskId(), unknown);
             }
         });
     }
 
-    public ImportReceipt importRecipients(String taskId, InputStream input) {
+    public ImportReceipt importRecipients(TaskCaller caller, String taskId, InputStream input) {
         return admitted(taskId, true, () -> operations.taskMutation(taskId, () -> {
-            var entry = requireMessage(taskId, true);
+            var entry = requireMessage(caller, taskId);
             requireReview(entry);
             MessageSpecification spec;
             try {
@@ -106,7 +106,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
                                 "country", spec.recipientCountry(), "recipientId", number, "body", spec.body()), 5, null, spec.selector()));
                     }
                     if (batch.isEmpty()) break;
-                    var effects = data.importFiniteTaskItems(taskId, List.copyOf(batch));
+                    var effects = data.importFiniteTaskItems(caller, PROJECT, taskId, List.copyOf(batch));
                     boolean confirmed = true;
                     for (var item : batch) {
                         var effect = effects.get(item.messageId());
@@ -125,29 +125,10 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
         }));
     }
 
-    public ActionOutcome approve(String taskId, long expectedCount) {
-        return admitted(taskId, false, () -> operations.taskMutation(taskId, () -> {
-            var entry = requireMessage(taskId, true);
-            requireReview(entry);
-            long actual = data.observeItemScoreCounts(List.of(taskId)).get(taskId).total();
-            if (actual <= 0 || expectedCount != actual) throw new MessageError(409, "收件人数为空或已变化，请刷新后重新核对", taskId);
-            return lifecycle.approve(taskId);
-        }));
-    }
-
-    public ActionOutcome closeTask(String taskId) {
-        return admitted(taskId, false, () -> operations.taskMutation(taskId, () -> {
-            requireMessage(taskId, false);
-            return lifecycle.close(taskId);
-        }));
-    }
-
-    private ProjectTaskQueryService.Entry requireMessage(String taskId, boolean newInput) {
-        var entry = queries.get(PROJECT, taskId);
+    private ProjectTaskQueryService.Entry requireMessage(TaskCaller caller, String taskId) {
+        var entry = queries.get(caller, PROJECT, taskId);
         if (!isMessageTask(entry)) throw new MessageError(400, "只支持 Messages 有限任务", taskId);
         if (entry.scoreBand() == null) throw new MessageError(503, "任务状态不可用，请刷新后核对", taskId);
-        if (newInput && !"3".equals(entry.task().metadata().get("inputVersion")))
-            throw new MessageError(409, "旧输入版本仅支持读取和关闭，不支持导入或启动", taskId);
         return entry;
     }
 
@@ -174,6 +155,8 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
             return associated;
         }
         if (error instanceof ServerException server) {
+            if (server.errorCode() == com.xa.mass.server.error.ServerErrorCode.TASK_ACCESS_DENIED
+                    || server.errorCode() == com.xa.mass.server.error.ServerErrorCode.INVALID_TASK_CALLER) throw server;
             return switch (server.errorCode()) {
                 case TASK_STATE_CONFLICT, KERNEL_REJECTED_CONFLICT -> failure(409, "任务或请求内容冲突，或有其他操作正在进行，请核对后重试", taskId, error);
                 case TASK_NOT_FOUND, TASK_WORKER_GROUP_NOT_FOUND -> failure(404, "任务或 WorkerGroup 不存在", taskId, error);
@@ -191,30 +174,12 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
     public record ImportReceipt(String taskId, long inputCount, long emptyCount, long duplicateCount, int uniqueCount,
                                 long confirmedAddedCount, long existingCount) { }
 
-    public Map<String, Object> list(int limit) {
+    public Map<String, Object> results(TaskCaller caller, String taskId) {
         requireRunning();
-        if (limit < 1 || limit > 100) throw new MessageError(400, "limit must be in 1..100", null);
-        var page = queries.list(PROJECT, limit, null);
-        var ids = page.tasks().stream().filter(MessageViews::isMessageTask).map(ProjectTaskQueryService.Entry::taskId).toList();
-        var counts = data.observeItemScoreCounts(ids);
-        return Map.of("tasks", page.tasks().stream().map(entry -> {
-            var row = taskView(entry);
-            if (isMessageTask(entry)) addCounts(row, counts.get(entry.taskId()).total(), counts.get(entry.taskId()).countsByTag());
-            return row;
-        }).toList(), "truncated", page.truncated());
-    }
-
-    public Map<String, Object> get(String taskId) {
-        requireRunning();
-        var entry = queries.get(PROJECT, taskId);
-        var task = taskView(entry);
-        if (isMessageTask(entry)) {
-            var counts = data.observeItemScoreCounts(List.of(taskId)).get(taskId);
-            addCounts(task, counts.total(), counts.countsByTag());
-        }
-        var preview = data.previewTaskResults(taskId);
-        return Map.of("task", task, "results", preview.results().stream().map(row -> resultView(taskId, row)).toList(),
-                "resultsTruncated", preview.truncated());
+        requireMessage(caller, taskId);
+        var preview = data.previewTaskResults(caller, taskId);
+        return Map.of("taskId", taskId, "results", preview.results().stream().map(row -> resultView(taskId, row)).toList(),
+                "truncated", preview.truncated());
     }
 
     @Override public void stop() {

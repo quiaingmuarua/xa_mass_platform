@@ -5,8 +5,8 @@ Status: current shared business integration proof owner.
 This proof witnesses [SMS](../../scenarios/sms-reception-jvm/README.md) and
 [Messages](../../scenarios/message-campaigns-jvm/README.md) on the same real Server,
 Redis scope, Adapter and Workers. Python owns two independent JVMs and a unique
-`test_products_*` scope. It calls product APIs, public Runtime APIs and Host business
-inputs. Only real `message.send` execution creates a simulated recipient record.
+`test_products_*` scope. Its fixture explicitly declares one development admin caller. It calls product APIs,
+common Project Task/count APIs, public Runtime APIs and Host business inputs. Only real `message.send` execution creates a simulated recipient record.
 It never constructs Reports, calls Worker methods or reads Redis owner storage.
 Single SMS and message receipts use the stable Worker coordinate `:inputs` API.
 The runner retains fixture identity-to-coordinate addresses, not a second business
@@ -31,16 +31,17 @@ Functional first checks the Messages application's empty creation identity and
 conflict response, then closes that empty Task. SMS uses its partitioned lease Pool and returns number plus messageId. The
 same-Worker/Reporter witness uses a generic finite Task with an explicit workerId
 selector targeting the actual SMS Worker, not a Messages senderPhone parameter.
-The Task has no Pool supply. Its metadata permits the existing Messages observation
-projection, but it is a Runtime-directed mechanism fixture, not product API creation.
+The Task has no Pool supply and has raw input ownership. Its known Item IDs are
+observed through the common Result API; ordinary Messages Tasks use the business
+result view plus common Project state/counts. It is a Runtime-directed mechanism fixture.
 Kernel
 still requires due HOT for execution. Both execute on the same Worker and the SMS
 listener subsequently receives input. The finite Task must automatically become
 terminal before releasing the automatically generated delivered receipt (hold is
 enabled before send), then before manual read/reply; another Task is explicitly
 closed first. Lab already records DELIVERED while the platform retains SENT during hold.
-Each receipt is checked independently through Result, Item Score and product
-projection. No cross-owner atomicity is inferred. Normal checkpoints allow 5 seconds
+Each receipt is checked independently through Result and Item Score; product-created
+Tasks additionally use the business result view. No cross-owner atomicity is inferred. Normal checkpoints allow 5 seconds
 from the business request to both platform and product observations; temporary
 observation failures may be retried only within that deadline. Mutations are never
 automatically replayed. Each small scenario is bounded to 180 seconds, excluding
@@ -154,6 +155,8 @@ An early producer/recipient failure retains its safe stage, exception type and
 accepted count instead of only a generic load-aborted assertion. The first failure
 also prints call-site names and elapsed time, never request or response bodies;
 diagnostics do not retry the failed mutation or relax the final oracle.
+Failure summaries also retain the last observed callback/held-receipt counters,
+without extra observation requests or receipt content.
 
 ## Explicit Messages sending workload
 
@@ -227,13 +230,14 @@ approves the confirmed count. No mutation is automatically retried; an unconfirm
 phase stops that workflow. Pool-selection and load worlds use this three-operation submission path. The
 functional/lifecycle directed controls use public generic Task create/append/approve
 for their distinct identity/Reporter assertions; mutation failures stop either path. Small worlds verify
-the bounded Messages detail against independent Item states and Results. Large
+the bounded business Result view against independent Item states and raw Results. Large
 mixed worlds discover actually executed message IDs from retained Lab observations,
 then use public results:load in batches of 100. The large text workload instead
 derives its complete expected identity set from frozen Task inputs and point-reads
 acceptance fingerprints; missing evidence fails rather than shrinking the expected set.
 The UI's 100-row preview is never promoted to a full-task count. Quantities come
-from the Task list's Score observations. The retired Campaign cache, asynchronous
+from common Project `tasks:stats` observations; Server Task queries independently
+provide lifecycle state. The retired Campaign cache, asynchronous
 submission queue and Messages metrics API are not proof inputs. The existing
 three manual actions plus automatic delivered still require four committed receipt
 facts per message. Boot also restarts Server and reads the same saved Task and reply.

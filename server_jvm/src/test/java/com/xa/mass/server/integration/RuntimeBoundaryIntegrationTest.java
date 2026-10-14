@@ -1,6 +1,7 @@
 package com.xa.mass.server.integration;
 
 import com.xa.mass.server.testsupport.QualifiedCountryFixtures;
+import com.xa.mass.server.task.access.TaskCaller;
 
 import com.xa.mass.workermatching.functions.QualifiedCountryQueryFunction;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -98,6 +99,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Tag("runtime-boundary")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class RuntimeBoundaryIntegrationTest {
+    private static final TaskCaller TASK_CALLER = new TaskCaller("proof", "admin");
 
     @TestConfiguration(proxyBeanMethods=false)
     static class MatchingTestAssembly {
@@ -577,10 +579,10 @@ class RuntimeBoundaryIntegrationTest {
             awaitCondition(() -> worker.snapshot().workerId()!=null);
             String workerId=worker.snapshot().workerId();
             awaitRuntimeProperties(group,workerId,WEBSOCKET_ENDPOINT_MANAGER_ID,Map.of("testBucket", "red"));
-            assertThat(send("POST","/api/v1/tasks",Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName",BucketPoolFixture.ID,"target", Map.of("workerId", List.of(workerId)), "count", 1))))).statusCode()).isEqualTo(400);
+            assertThat(send("POST","/api/v1/tasks",Jsons.toJson(Map.of("requestId", UUID.randomUUID().toString(), "projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName",BucketPoolFixture.ID,"target", Map.of("workerId", List.of(workerId)), "count", 1))))).statusCode()).isEqualTo(400);
             var tasks=new LinkedHashMap<String,List<String>>();
             for(int t=0;t<2;t++) {
-                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName",BucketPoolFixture.ID,"target", Map.of("test.bucket", List.of("red")), "count", t+1)))));
+                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("requestId", UUID.randomUUID().toString(), "projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName",BucketPoolFixture.ID,"target", Map.of("test.bucket", List.of("red")), "count", t+1)))));
                 assertThat(response.statusCode()).isEqualTo(200);
                 String task=JSON.readTree(response.body()).get("taskId").asText();
                 String rejectedId=UUID.randomUUID().toString();
@@ -597,7 +599,7 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(send("POST","/api/v1/tasks/"+task+"/items",Jsons.toJson(items)).statusCode()).isEqualTo(200);
                 tasks.put(task,ids);
             }
-            for(String task:tasks.keySet())assertThat(send("POST","/api/v1/tasks/"+task+"/approve",null).statusCode()).isEqualTo(200);
+            for(String task:tasks.keySet())assertThat(send("POST","/api/v1/tasks/"+task+"/approve",Jsons.toJson(Map.of("expectedItemCount", tasks.get(task).size()))).statusCode()).isEqualTo(200);
             for(var task:tasks.entrySet()) {
                 awaitTaskExport(task.getKey());
                 var response=send("POST","/api/v1/tasks/"+task.getKey()+"/results:load",Jsons.toJson(task.getValue()));
@@ -629,7 +631,7 @@ class RuntimeBoundaryIntegrationTest {
             awaitCondition(() -> worker.snapshot().workerId() != null);
             String workerId = worker.snapshot().workerId();
             awaitRuntimeProperties(group, workerId, WEBSOCKET_ENDPOINT_MANAGER_ID, Map.of("fixture", "identity-hint"));
-            var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName",IdentityHintPoolFixture.ID,"target", Map.of(), "count", 1)))));
+            var created = send("POST", "/api/v1/tasks",Jsons.toJson(Map.of("requestId", UUID.randomUUID().toString(), "projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName",IdentityHintPoolFixture.ID,"target", Map.of(), "count", 1)))));
             assertThat(created.statusCode()).isEqualTo(200);
             String task = JSON.readTree(created.body()).get("taskId").asText();
             var ids = new ArrayList<String>();
@@ -640,7 +642,7 @@ class RuntimeBoundaryIntegrationTest {
                 items.add(Map.of("messageId", id, "eventCode", event, "payload", Map.of(), "workerSelector", Map.of("executorName", IdentityHintPoolFixture.ID, "input", Map.of())));
             }
             assertThat(send("POST", "/api/v1/tasks/" + task + "/items", Jsons.toJson(items)).statusCode()).isEqualTo(200);
-            assertThat(send("POST", "/api/v1/tasks/" + task + "/approve", null).statusCode()).isEqualTo(200);
+            assertThat(send("POST", "/api/v1/tasks/" + task + "/approve",Jsons.toJson(Map.of("expectedItemCount", ids.size()))).statusCode()).isEqualTo(200);
             awaitTaskExport(task);
             var response = send("POST", "/api/v1/tasks/" + task + "/results:load", Jsons.toJson(ids));
             assertThat(response.statusCode()).isEqualTo(200);
@@ -677,14 +679,14 @@ class RuntimeBoundaryIntegrationTest {
                 org.assertj.core.api.Assertions.assertThatThrownBy(() -> matchingCatalog.take(group,
                         Map.of("pool", new com.xa.mass.kernel.assignment.WorkerQuery("worker.any", Map.of()))))
                         .isInstanceOf(IllegalArgumentException.class);
-                var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", List.of())));
+                var created = send("POST", "/api/v1/tasks",Jsons.toJson(Map.of("requestId", UUID.randomUUID().toString(), "projectId", "boundary", "workerGroupId", group, "refill", List.of())));
                 assertThat(created.statusCode()).isEqualTo(200);
                 String task = JSON.readTree(created.body()).get("taskId").asText(), id = UUID.randomUUID().toString();
                 var item = Map.of("messageId", id, "eventCode", event, "payload", Map.of(), "workerSelector", Map.of("executorName", function, "input", function.equals("workerId") ? workerId : phone));
                 var appended = send("POST", "/api/v1/tasks/" + task + "/items", Jsons.toJson(List.of(item)));
                 assertThat(appended.statusCode()).isEqualTo(200);
                 assertThat(JSON.readTree(appended.body()).get(id).get("status").asText()).isEqualTo("applied");
-                assertThat(send("POST", "/api/v1/tasks/" + task + "/approve", null).statusCode()).isEqualTo(200);
+                assertThat(send("POST", "/api/v1/tasks/" + task + "/approve",Jsons.toJson(Map.of("expectedItemCount", 1))).statusCode()).isEqualTo(200);
                 awaitTaskExport(task);
                 var loaded = send("POST", "/api/v1/tasks/" + task + "/results:load", Jsons.toJson(List.of(id)));
                 var result = JSON.readTree(loaded.body()).get(id);
@@ -707,15 +709,15 @@ class RuntimeBoundaryIntegrationTest {
                 ()->facts,List.of(handler),WorkerConnectionOptions.of(Duration.ofSeconds(2),connectionPolicy()))) {
             host.set(worker);worker.start();awaitCondition(()->worker.snapshot().workerId()!=null);
             String workerId=worker.snapshot().workerId();awaitRuntimeProperties(group,workerId,WEBSOCKET_ENDPOINT_MANAGER_ID,facts);
-            var supplied=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("projectId","boundary","workerGroupId",group,"refill",List.of(Map.of("poolName","messaging","target",Map.of(),"count",1)))));
+            var supplied=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("requestId", UUID.randomUUID().toString(), "projectId","boundary","workerGroupId",group,"refill",List.of(Map.of("poolName","messaging","target",Map.of(),"count",1)))));
             String supplier=JSON.readTree(supplied.body()).get("taskId").asText();
             // An unresolved identity keeps the supplier active while its demand drives stock.
             String pending=UUID.randomUUID().toString();
             assertThat(send("POST","/api/v1/tasks/"+supplier+"/items",Jsons.toJson(List.of(Map.of("messageId",pending,"eventCode",event,
                     "payload",Map.of(),"workerSelector",Map.of("executorName","workerId","input","absent-worker"))))).statusCode()).isEqualTo(200);
-            assertThat(send("POST","/api/v1/tasks/"+supplier+"/approve",null).statusCode()).isEqualTo(200);
+            assertThat(send("POST","/api/v1/tasks/"+supplier+"/approve",Jsons.toJson(Map.of("expectedItemCount", 1))).statusCode()).isEqualTo(200);
             for(String function:List.of("proof.messaging.country","proof.messaging.countries")) {
-                var consumer=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("projectId","boundary","workerGroupId",group,"refill",List.of())));
+                var consumer=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("requestId", UUID.randomUUID().toString(), "projectId","boundary","workerGroupId",group,"refill",List.of())));
                 String task=JSON.readTree(consumer.body()).get("taskId").asText(), id=UUID.randomUUID().toString();
                 assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(task)).get(task).refill()).isEmpty();
                 Object input=function.endsWith("country")?"CN":List.of("CN");
@@ -723,7 +725,7 @@ class RuntimeBoundaryIntegrationTest {
                         "workerSelector",Map.of("executorName",function,"input",input)))));
                 assertThat(appended.statusCode()).isEqualTo(200);
                 assertThat(JSON.readTree(appended.body()).get(id).get("status").asText()).as(function).isEqualTo("applied");
-                assertThat(send("POST","/api/v1/tasks/"+task+"/approve",null).statusCode()).isEqualTo(200);
+                assertThat(send("POST","/api/v1/tasks/"+task+"/approve",Jsons.toJson(Map.of("expectedItemCount", 1))).statusCode()).isEqualTo(200);
                 try { awaitTaskExport(task); }
                 catch (AssertionError failure) { throw new AssertionError("Shared Pool function did not execute: " + function, failure); }
                 var observed=JSON.readTree(send("POST","/api/v1/tasks/"+task+"/results:load",Jsons.toJson(List.of(id))).body()).get(id);
@@ -767,7 +769,7 @@ class RuntimeBoundaryIntegrationTest {
                 String group=t==3?groupB:groupA;
                 String rule=t<2?"worker.country":t==2?"worker.messaging.available":"worker.any";
                 Map<String,Object> query=t<2?Map.of("worker.country", List.of("CN")):Map.of();
-                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName",poolName(rule),"target", query, "count", t<2?t+1:2)))));
+                var response=send("POST","/api/v1/tasks",Jsons.toJson(Map.of("requestId", UUID.randomUUID().toString(), "projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName",poolName(rule),"target", query, "count", t<2?t+1:2)))));
                 assertThat(response.statusCode()).isEqualTo(200);
                 String task=JSON.readTree(response.body()).get("taskId").asText();
                 taskGroups.put(task,group);taskRules.put(task,rule);
@@ -812,7 +814,7 @@ class RuntimeBoundaryIntegrationTest {
                 }
                 return call.callRealMethod();
             }).when(matchingCatalog).refill(anyString(), anyList(), anyMap());
-            for(String task:tasks.keySet())assertThat(send("POST","/api/v1/tasks/"+task+"/approve",null).statusCode()).isEqualTo(200);
+            for(String task:tasks.keySet())assertThat(send("POST","/api/v1/tasks/"+task+"/approve",Jsons.toJson(Map.of("expectedItemCount", tasks.get(task).size()))).statusCode()).isEqualTo(200);
             var pending=new LinkedHashMap<String,List<String>>();tasks.forEach((task,ids)->pending.put(task,new ArrayList<>(ids)));
             long deadline=System.nanoTime()+Duration.ofSeconds(90).toNanos();
             while(!pending.isEmpty() && System.nanoTime()<deadline) {
@@ -860,7 +862,7 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     private String createIndexedTask(String group) throws Exception {
-        var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName","country","target", Map.of("worker.country", List.of("CN")), "count", 1)))));
+        var created = send("POST", "/api/v1/tasks",Jsons.toJson(Map.of("requestId", UUID.randomUUID().toString(), "projectId", "boundary", "workerGroupId", group, "refill", List.of(Map.of("poolName","country","target", Map.of("worker.country", List.of("CN")), "count", 1)))));
         assertThat(created.statusCode()).isEqualTo(200);
         return JSON.readTree(created.body()).get("taskId").asText();
     }
@@ -870,7 +872,7 @@ class RuntimeBoundaryIntegrationTest {
         var appended = send("POST", "/api/v1/tasks/"+taskId+"/items", Jsons.toJson(List.of(Map.of("messageId", messageId, "eventCode", "extension.worker.country.executor", "payload", Map.of(), "workerSelector", Map.of("executorName", "worker.country", "input", List.of(country))))));
         assertThat(appended.statusCode()).isEqualTo(200);
         assertThat(JSON.readTree(appended.body()).get(messageId).get("status").asText()).isEqualTo("applied");
-        assertThat(send("POST", "/api/v1/tasks/"+taskId+"/approve", null).statusCode()).isEqualTo(200);
+        assertThat(send("POST", "/api/v1/tasks/"+taskId+"/approve",Jsons.toJson(Map.of("expectedItemCount", 1))).statusCode()).isEqualTo(200);
         long deadline = System.nanoTime() + RESULT_CONVERGENCE_TIMEOUT.toNanos();
         boolean observed = false;
         while (System.nanoTime() < deadline) {
@@ -1209,9 +1211,7 @@ class RuntimeBoundaryIntegrationTest {
             appendItem(taskId, secondMessageId, selector);
             assertThat(send(
                     "POST",
-                    "/api/v1/tasks/" + taskId + "/approve",
-                    null
-            ).statusCode()).isEqualTo(200);
+                    "/api/v1/tasks/" + taskId + "/approve",Jsons.toJson(Map.of("expectedItemCount", 2))).statusCode()).isEqualTo(200);
 
             awaitStoredResult(taskId, firstMessageId);
             awaitStoredResult(taskId, secondMessageId);
@@ -1242,7 +1242,7 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(taskId, otherTaskId)).values())
                     .containsExactlyInAnyOrderElementsOf(sharedRules.values());
             appendItem(otherTaskId, "after-other-task-closed", selector);
-            assertThat(send("POST", "/api/v1/tasks/" + otherTaskId + "/approve", null).statusCode()).isEqualTo(200);
+            assertThat(send("POST", "/api/v1/tasks/" + otherTaskId + "/approve",Jsons.toJson(Map.of("expectedItemCount", 1))).statusCode()).isEqualTo(200);
             awaitStoredResult(otherTaskId, "after-other-task-closed");
             awaitTaskExport(otherTaskId);
             assertThat(send("POST", "/api/v1/tasks/" + otherTaskId + "/close", null).statusCode()).isEqualTo(200);
@@ -1632,8 +1632,7 @@ class RuntimeBoundaryIntegrationTest {
         );
         assertThat(timeMillis(recovery)).isEqualTo(timeMillis(before));
         assertThat(send(
-                "POST", "/api/v1/tasks/" + demandTaskId + "/approve", null
-        ).statusCode()).isEqualTo(200);
+                "POST", "/api/v1/tasks/" + demandTaskId + "/approve",Jsons.toJson(Map.of("expectedItemCount", 1))).statusCode()).isEqualTo(200);
         Long after = awaitWorkerScore(
                 workerGroupId,
                 workerId,
@@ -1733,8 +1732,8 @@ class RuntimeBoundaryIntegrationTest {
         var ids = new LinkedHashMap<String, String>();
         for (String user : List.of("alice", "bobby")) {
             String id = "caller-" + user + "-" + suffix;
-            var response = send("POST", "/api/v1/tasks/" + id + "/rpc:prepare",
-                    Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "metadata", Map.of("userId", user))));
+            var response = send(new TaskCaller(user, "operator"), "POST", "/api/v1/tasks/" + id + "/rpc:prepare",
+                    Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group)));
             assertThat(response.statusCode()).isEqualTo(200);
             assertThat(JSON.readTree(response.body()).path("taskId").asText()).isEqualTo(id);
             ids.put(user, id);
@@ -1746,15 +1745,15 @@ class RuntimeBoundaryIntegrationTest {
             for (var entry : ids.entrySet()) {
                 String user = entry.getKey(), id = entry.getValue();
                 var original = com.xa.mass.server.task.directory.TaskAttribution.require(taskCatalog.loadTaskAllocationDescriptors(List.of(id)).get(id).metadata());
-                var response = send("POST", "/api/v1/tasks/" + id + "/items:call", Jsons.toJson(Map.of(
+                var response = send(new TaskCaller(user, "operator"), "POST", "/api/v1/tasks/" + id + "/items:call", Jsons.toJson(Map.of(
                         "items", List.of(Map.of("messageId", "same-id", "eventCode", TEST_EVENT_CODE,
                                 "payload", Map.of("value", user), "workerSelector", Map.of("executorName", "workerId", "input", prepared.workerId()))),
                         "waitTimeoutMillis", 10_000)));
                 assertThat(response.statusCode()).isEqualTo(200);
                 assertThat(JSON.readTree(response.body()).path("same-id").path("status").asText()).isEqualTo("succeeded");
                 awaitTrackedState(id, "same-id", 6);
-                var repeated = send("POST", "/api/v1/tasks/" + id + "/rpc:prepare",
-                        Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "metadata", Map.of("userId", user))));
+                var repeated = send(new TaskCaller(user, "operator"), "POST", "/api/v1/tasks/" + id + "/rpc:prepare",
+                        Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group)));
                 assertThat(repeated.statusCode()).isEqualTo(200);
                 assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(taskCatalog.loadTaskAllocationDescriptors(List.of(id)).get(id).metadata())).isEqualTo(original);
                 assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(id)).get(id).metadata()).containsEntry("userId", user);
@@ -2304,20 +2303,19 @@ class RuntimeBoundaryIntegrationTest {
     ) throws Exception {
         HttpResponse<String> response = send(
                 "POST",
-                "/api/v1/tasks",
-                """
+                "/api/v1/tasks","""
                 {
+                  "requestId": "%s",
                   "projectId": "boundary",
                   "workerGroupId": "%s",
                   "refill": [{"poolName":"%s","target":{},"count":100}],
                   "priority": 0,
                   "maxRetryTimes": 3
                 }
-                """.formatted(
+                """.formatted(UUID.randomUUID().toString(),
                 workerGroupId,
                 poolName(ruleId)
-                )
-        );
+                ));
         assertThat(response.statusCode()).isEqualTo(200);
         String taskId = JSON.readTree(response.body())
                 .get("taskId")
@@ -2331,6 +2329,10 @@ class RuntimeBoundaryIntegrationTest {
             String path,
             String body
     ) throws Exception {
+        return send(TASK_CALLER, method, path, body);
+    }
+
+    private HttpResponse<String> send(TaskCaller caller, String method, String path, String body) throws Exception {
         HttpRequest.BodyPublisher publisher = body == null
                 ? HttpRequest.BodyPublishers.noBody()
                 : HttpRequest.BodyPublishers.ofString(
@@ -2340,6 +2342,8 @@ class RuntimeBoundaryIntegrationTest {
         HttpRequest.Builder request = HttpRequest.newBuilder()
                 .uri(URI.create("http://127.0.0.1:" + port + path))
                 .method(method, publisher);
+        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks"))
+            request.header("X-XA-Dev-User", java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(caller.userId().getBytes(StandardCharsets.UTF_8))).header("X-XA-Dev-Role", caller.role());
         if (body != null) {
             request.header("Content-Type", "application/json");
         }

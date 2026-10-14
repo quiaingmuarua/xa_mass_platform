@@ -19,7 +19,7 @@ final class AndroidWorkerTriad {
         runtime = new AndroidRuntimeApiClient(new JsonHttpClient(
                 options.serverBaseUrl(),
                 options
-        ));
+        , java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin")));
         Map<AndroidWorkerTriadTopology.WorkerAddress,
                 AndroidDeviceHostClient> assembled = new LinkedHashMap<>();
         for (AndroidWorkerTriadTopology.WorkerAddress worker
@@ -28,7 +28,7 @@ final class AndroidWorkerTriad {
                     new JsonHttpClient(
                             worker.deviceBaseUrl(),
                             options
-                    )
+                    , java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"))
             ));
         }
         devices = Map.copyOf(assembled);

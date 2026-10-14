@@ -221,6 +221,16 @@
         "required" : [ "count", "poolName", "target" ],
         "type" : "object"
       },
+      "TaskApproveRequest" : {
+        "properties" : {
+          "expectedItemCount" : {
+            "format" : "int64",
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
       "TaskCreateRequest" : {
         "properties" : {
           "maxRetryTimes" : {
@@ -233,7 +243,7 @@
             "additionalProperties" : {
               "type" : "string"
             },
-            "description" : "String metadata; server.* keys are reserved. Optional userId must match ^[1-9a-z][0-9a-z]{3,8}$ after trimming. Server stamps Project and first creation time.",
+            "description" : "String metadata; userId and server.* keys are reserved. Server stamps the caller, Project, input owner and first creation time.",
             "type" : "object"
           },
           "name" : {
@@ -260,12 +270,17 @@
             "minItems" : 0,
             "type" : "array"
           },
+          "requestId" : {
+            "maxLength" : 128,
+            "minLength" : 0,
+            "type" : "string"
+          },
           "workerGroupId" : {
             "minLength" : 1,
             "type" : "string"
           }
         },
-        "required" : [ "projectId", "workerGroupId" ],
+        "required" : [ "projectId", "requestId", "workerGroupId" ],
         "type" : "object"
       },
       "TaskCreateResponse" : {
@@ -317,6 +332,22 @@
           "status" : {
             "enum" : [ "succeeded", "failed", "not_observed" ],
             "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "TaskItemScoreCounts" : {
+        "properties" : {
+          "countsByTag" : {
+            "additionalProperties" : {
+              "format" : "int64",
+              "type" : "integer"
+            },
+            "type" : "object"
+          },
+          "total" : {
+            "format" : "int64",
+            "type" : "integer"
           }
         },
         "type" : "object"
@@ -781,6 +812,24 @@
     "/api/v1/projects" : {
       "get" : {
         "operationId" : "list",
+        "parameters" : [ {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
+        } ],
         "responses" : {
           "200" : {
             "content" : {
@@ -804,6 +853,16 @@
               }
             },
             "description" : "Project or limit is invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
           },
           "503" : {
             "content" : {
@@ -830,6 +889,23 @@
           "schema" : {
             "type" : "string"
           }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -851,6 +927,16 @@
               }
             },
             "description" : "Project or limit is invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
           },
           "503" : {
             "content" : {
@@ -893,6 +979,23 @@
           "schema" : {
             "type" : "string"
           }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -914,6 +1017,16 @@
               }
             },
             "description" : "Project or limit is invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
           },
           "503" : {
             "content" : {
@@ -947,6 +1060,23 @@
           "schema" : {
             "type" : "string"
           }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -969,6 +1099,16 @@
             },
             "description" : "Project or limit is invalid"
           },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -984,6 +1124,99 @@
         "tags" : [ "Tasks" ]
       }
     },
+    "/api/v1/projects/{projectId}/tasks:stats" : {
+      "post" : {
+        "operationId" : "stats",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "projectId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "minLength" : 1,
+                  "type" : "string"
+                },
+                "maxItems" : 100,
+                "minItems" : 1,
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "additionalProperties" : {
+                    "$ref" : "#/components/schemas/TaskItemScoreCounts"
+                  },
+                  "type" : "object"
+                }
+              }
+            },
+            "description" : "Current Item counts keyed by requested Task ID"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Project or limit is invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task Owner is unavailable"
+          }
+        },
+        "summary" : "Read bounded Task Item counts after validating every Project and caller identity",
+        "tags" : [ "Tasks" ]
+      }
+    },
     "/api/v1/projects/{projectId}/worker-groups" : {
       "get" : {
         "operationId" : "groups",
@@ -992,6 +1225,23 @@
           "name" : "projectId",
           "required" : true,
           "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -1018,6 +1268,16 @@
               }
             },
             "description" : "Project or limit is invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
           },
           "503" : {
             "content" : {
@@ -1101,6 +1361,24 @@
     "/api/v1/runtime-view/tasks:preview" : {
       "post" : {
         "operationId" : "previewTasks",
+        "parameters" : [ {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
+        } ],
         "requestBody" : {
           "content" : {
             "application/json" : {
@@ -1134,6 +1412,16 @@
               }
             },
             "description" : "Runtime View request was rejected"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
           },
           "503" : {
             "content" : {
@@ -1385,6 +1673,24 @@
     "/api/v1/tasks" : {
       "post" : {
         "operationId" : "createTask",
+        "parameters" : [ {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
+        } ],
         "requestBody" : {
           "content" : {
             "application/json" : {
@@ -1416,6 +1722,16 @@
             },
             "description" : "Task business request was rejected"
           },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -1442,7 +1758,34 @@
             "minLength" : 1,
             "type" : "string"
           }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
         } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/TaskApproveRequest"
+              }
+            }
+          },
+          "required" : true
+        },
         "responses" : {
           "200" : {
             "content" : {
@@ -1463,6 +1806,16 @@
               }
             },
             "description" : "Task business request was rejected"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
           },
           "503" : {
             "content" : {
@@ -1490,6 +1843,23 @@
             "minLength" : 1,
             "type" : "string"
           }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -1511,6 +1881,16 @@
               }
             },
             "description" : "Task business request was rejected"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
           },
           "503" : {
             "content" : {
@@ -1539,6 +1919,23 @@
             "minLength" : 1,
             "type" : "string"
           }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -1560,6 +1957,16 @@
               }
             },
             "description" : "Task is missing or has no valid Server attribution"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
           },
           "503" : {
             "content" : {
@@ -1585,6 +1992,23 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -1627,6 +2051,16 @@
             },
             "description" : "Task business request was rejected"
           },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -1652,6 +2086,23 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -1689,6 +2140,16 @@
             },
             "description" : "Task business request was rejected"
           },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -1714,6 +2175,23 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -1757,6 +2235,16 @@
             },
             "description" : "Task query was rejected"
           },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -1784,6 +2272,23 @@
             "minLength" : 1,
             "type" : "string"
           }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -1806,6 +2311,16 @@
               }
             },
             "description" : "Task business request was rejected"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
           },
           "503" : {
             "content" : {
@@ -1832,6 +2347,23 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -1875,6 +2407,16 @@
             },
             "description" : "Task business request was rejected"
           },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -1900,6 +2442,23 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL development user ID; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Development caller role",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -1933,6 +2492,16 @@
               }
             },
             "description" : "Invalid request or conflicting Task"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
           },
           "503" : {
             "content" : {

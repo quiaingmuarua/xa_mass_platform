@@ -1,3 +1,5 @@
+import { captureTaskCaller } from "@/task-caller";
+const CALLER = captureTaskCaller();
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, h, nextTick, type App } from "vue";
 import { createRouter, createMemoryHistory, RouterView } from "vue-router";
@@ -188,7 +190,7 @@ describe("Messages desktop workbench", () => {
     submit();
     await settle();
     expect(create).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0][0]).toMatchObject({ appId: "demo", body: "测试消息" });
+    expect(create.mock.calls[0][1]).toMatchObject({ appId: "demo", body: "测试消息" });
     expect(router.currentRoute.value.fullPath).toBe("/messages");
     const noticeTrigger = button("预览新任务");
     noticeTrigger.focus();
@@ -197,7 +199,7 @@ describe("Messages desktop workbench", () => {
     closeDrawer();
     await settle();
     expect(document.activeElement).toBe(noticeTrigger);
-    expect((await source.loadTask("mock-message-task-1")).task).toMatchObject({
+    expect((await source.loadTask(CALLER, "mock-message-task-1")).task).toMatchObject({
       sendTotal: 0,
       state: "pre_review"
     });
@@ -206,10 +208,10 @@ describe("Messages desktop workbench", () => {
     const original = source.createTask.bind(source);
     let finish!: () => void;
     const create = vi.spyOn(source, "createTask").mockImplementationOnce(
-      (input) =>
+      (actor, input) =>
         new Promise((resolve) => {
           finish = () => {
-            void original(input).then(resolve);
+            void original(actor, input).then(resolve);
           };
         })
     );
@@ -232,7 +234,7 @@ describe("Messages desktop workbench", () => {
     expect(button("返回任务列表").disabled).toBe(true);
     finish();
     await settle();
-    expect((await source.loadTask("mock-message-task-1")).task).toMatchObject({
+    expect((await source.loadTask(CALLER, "mock-message-task-1")).task).toMatchObject({
       workerGroupId: "app-b-sim",
       sendTotal: 2,
       state: "pre_review"
@@ -362,7 +364,7 @@ describe("Messages desktop workbench", () => {
     submit();
     await settle();
     expect(create).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0][0].body).toBe(text);
+    expect(create.mock.calls[0][1].body).toBe(text);
   });
   it("keeps the file and unused request identity editable after a definitive creation rejection", async () => {
     const create = vi
@@ -381,7 +383,7 @@ describe("Messages desktop workbench", () => {
     await settle();
     submit();
     await settle();
-    const rejected = structuredClone(create.mock.calls[0][0]);
+    const rejected = structuredClone(create.mock.calls[0][1]);
     expect(field("模板内容").disabled).toBe(false);
     expect(field("号码文件").disabled).toBe(false);
     expect(session.draft.editor.source).toBe(file);
@@ -395,18 +397,24 @@ describe("Messages desktop workbench", () => {
     submit();
     await settle();
     expect(create).toHaveBeenCalledTimes(2);
-    expect(create.mock.calls[1][0]).toEqual({ ...rejected, body: '{"text":"Hello"}' });
+    expect(create.mock.calls[1][1]).toEqual({ ...rejected, body: '{"text":"Hello"}' });
     expect(importing).toHaveBeenCalledTimes(1);
-    expect(importing).toHaveBeenCalledWith("mock-message-task-1", "86123\n86124");
+    expect(importing).toHaveBeenCalledWith(
+      CALLER,
+      "mock-message-task-1",
+      "86123\n86124"
+    );
     expect(router.currentRoute.value.fullPath).toBe("/messages");
-    expect((await source.loadTask("mock-message-task-1")).task.sendTotal).toBe(2);
+    expect((await source.loadTask(CALLER, "mock-message-task-1")).task.sendTotal).toBe(
+      2
+    );
   });
   it("does not unlock an earlier unknown submission when reconciliation is rejected", async () => {
     const original = source.createTask.bind(source);
     const create = vi
       .spyOn(source, "createTask")
-      .mockImplementationOnce(async (input) => {
-        const result = await original(input);
+      .mockImplementationOnce(async (actor, input) => {
+        const result = await original(actor, input);
         throw new MessageTaskCreationUnconfirmed("unknown", result.taskId);
       })
       .mockRejectedValueOnce(new MessageApiError(400, "reconciliation rejected"));
@@ -415,7 +423,7 @@ describe("Messages desktop workbench", () => {
     await createDraft();
     submit();
     await settle();
-    const frozen = structuredClone(create.mock.calls[0][0]);
+    const frozen = structuredClone(create.mock.calls[0][1]);
     button("使用原身份核对创建").click();
     await settle();
     expect(field("模板内容").disabled).toBe(true);
@@ -427,8 +435,8 @@ describe("Messages desktop workbench", () => {
     expect(create).toHaveBeenCalledTimes(2);
     button("使用原身份核对创建").click();
     await settle();
-    expect(create.mock.calls[1][0]).toEqual(frozen);
-    expect(create.mock.calls[2][0]).toEqual(frozen);
+    expect(create.mock.calls[1][1]).toEqual(frozen);
+    expect(create.mock.calls[2][1]).toEqual(frozen);
     expect(importing).not.toHaveBeenCalled();
   });
   it("keeps an identity conflict frozen for explicit resolution", async () => {
@@ -459,8 +467,8 @@ describe("Messages desktop workbench", () => {
     const original = source.createTask.bind(source);
     const create = vi
       .spyOn(source, "createTask")
-      .mockImplementationOnce(async (input) => {
-        const result = await original(input);
+      .mockImplementationOnce(async (actor, input) => {
+        const result = await original(actor, input);
         throw new MessageTaskCreationUnconfirmed("unknown", result.taskId);
       });
     const importing = vi.spyOn(source, "importRecipients");
@@ -468,7 +476,7 @@ describe("Messages desktop workbench", () => {
     await createDraft();
     submit();
     await settle();
-    const frozen = structuredClone(create.mock.calls[0][0]);
+    const frozen = structuredClone(create.mock.calls[0][1]);
     button("查看已知任务 mock-message-task-1").click();
     await settle();
     expect(router.currentRoute.value.query.view).toBe("create");
@@ -482,7 +490,7 @@ describe("Messages desktop workbench", () => {
     expect(create).toHaveBeenCalledTimes(1);
     button("使用原身份核对创建").click();
     await settle();
-    expect(create.mock.calls[1][0]).toEqual(frozen);
+    expect(create.mock.calls[1][1]).toEqual(frozen);
     expect(importing).not.toHaveBeenCalled();
     button("结束本次提交").click();
     await settle();
@@ -492,15 +500,15 @@ describe("Messages desktop workbench", () => {
     await settle();
     submit();
     await settle();
-    expect(create.mock.calls[2][0].requestId).not.toBe(frozen.requestId);
+    expect(create.mock.calls[2][1].requestId).not.toBe(frozen.requestId);
   });
   it("retains a created task after import uncertainty and only reimports explicitly", async () => {
     const create = vi.spyOn(source, "createTask"),
       original = source.importRecipients.bind(source);
     const importing = vi
       .spyOn(source, "importRecipients")
-      .mockImplementationOnce(async (id, text) => {
-        await original(id, text);
+      .mockImplementationOnce(async (actor, id, text) => {
+        await original(actor, id, text);
         throw new MessageApiError(503, "导入未确认", id, 0, 0);
       });
     await mount();
@@ -515,10 +523,12 @@ describe("Messages desktop workbench", () => {
     await settle();
     expect(create).toHaveBeenCalledTimes(1);
     expect(importing).toHaveBeenCalledTimes(2);
-    expect((await source.loadTask("mock-message-task-1")).task.sendTotal).toBe(2);
+    expect((await source.loadTask(CALLER, "mock-message-task-1")).task.sendTotal).toBe(
+      2
+    );
   });
   it("imports via the unified menu and uses a fresh count in the approval confirmation", async () => {
-    await source.createTask(baseInput);
+    await source.createTask(CALLER, baseInput);
     const approve = vi.spyOn(source, "approveTask");
     await mount();
     await command("导入收件人", "mock-message-task-1");
@@ -527,16 +537,16 @@ describe("Messages desktop workbench", () => {
     await settle();
     button("确认导入", dialog).click();
     await settle();
-    await source.importRecipients("mock-message-task-1", "86125");
+    await source.importRecipients(CALLER, "mock-message-task-1", "86125");
     await command("核对并启动", "mock-message-task-1");
     expect(document.body.textContent).toContain("实际收件人数 3");
     button("确认").click();
     await settle();
-    expect(approve).toHaveBeenCalledWith("mock-message-task-1", 3);
+    expect(approve).toHaveBeenCalledWith(CALLER, "mock-message-task-1", 3);
     await command("中止任务", "mock-message-task-1");
     button("确认").click();
     await settle();
-    expect((await source.loadTask("mock-message-task-1")).task).toMatchObject({
+    expect((await source.loadTask(CALLER, "mock-message-task-1")).task).toMatchObject({
       state: "terminal",
       sendTotal: 3,
       sentCount: 0
@@ -544,8 +554,8 @@ describe("Messages desktop workbench", () => {
   });
   it("shows unchanged template content in pending review and approval without empty execution metrics", async () => {
     const body = "发送给 {{name}}\n<b>原样文本</b>";
-    await source.createTask({ ...baseInput, body });
-    await source.importRecipients("mock-message-task-1", "86123");
+    await source.createTask(CALLER, { ...baseInput, body });
+    await source.importRecipients(CALLER, "mock-message-task-1", "86123");
     await mount("/messages/tasks/mock-message-task-1");
     const preview = drawer().querySelector('[aria-label="模板内容预览"]')!;
     expect(preview.textContent).toBe(body);
@@ -553,7 +563,7 @@ describe("Messages desktop workbench", () => {
     expect(preview.closest("details")).toBeNull();
     expect(drawer().textContent).toContain("实际收件人数：1");
     expect(drawer().querySelector(".message-counts")).toBeNull();
-    await source.importRecipients("mock-message-task-1", "86124");
+    await source.importRecipients(CALLER, "mock-message-task-1", "86124");
     await command("核对并启动");
     const dialog = document.querySelector(".el-dialog")!;
     expect(dialog.textContent).toContain("实际收件人数 2");
@@ -564,11 +574,11 @@ describe("Messages desktop workbench", () => {
     expect(count("已发送")).toBe("0");
   });
   it("does not approve changed counts and requires a fresh read after a rejected operation", async () => {
-    await source.createTask(baseInput);
-    await source.importRecipients("mock-message-task-1", "86123");
+    await source.createTask(CALLER, baseInput);
+    await source.importRecipients(CALLER, "mock-message-task-1", "86123");
     await mount();
     await command("核对并启动", "mock-message-task-1");
-    await source.importRecipients("mock-message-task-1", "86124");
+    await source.importRecipients(CALLER, "mock-message-task-1", "86124");
     button("确认").click();
     await settle();
     expect(document.body.textContent).toContain("收件人数为空或已变化");
@@ -576,32 +586,30 @@ describe("Messages desktop workbench", () => {
     expect(menuItem("核对并启动").getAttribute("aria-disabled")).toBe("true");
     button("刷新").click();
     await settle();
-    expect((await source.loadTask("mock-message-task-1")).task.state).toBe(
+    expect((await source.loadTask(CALLER, "mock-message-task-1")).task.state).toBe(
       "pre_review"
     );
   });
-  it("shows historical sender restrictions and blocks old Task imports and approval", async () => {
-    const legacy = {
+  it("blocks import and approval when business configuration is missing", async () => {
+    const unconfigured = {
       task: {
-        taskId: "legacy",
-        name: "Legacy",
+        taskId: "unconfigured",
+        name: "Unconfigured",
         workerGroupId: "demo-sim",
         managed: false,
         state: "pre_review",
-        inputVersion: "2",
+
         createdAtMillis: 1,
         body: "{}",
         recipientCountry: "CN",
         senderCountry: "US",
-        senderPhone: "12025550123",
         sendTotal: 1
       } as MessageTask,
       results: [],
       resultsTruncated: false
     };
-    source = new MockMessageTaskSource([legacy]);
-    await mount("/messages/tasks/legacy");
-    expect(drawer().textContent).toContain("12025550123");
+    source = new MockMessageTaskSource([unconfigured]);
+    await mount("/messages/tasks/unconfigured");
     await openMenu();
     expect(menuItem("核对并启动").getAttribute("aria-disabled")).toBe("true");
     expect(menuItem("导入收件人").getAttribute("aria-disabled")).toBe("true");
@@ -666,43 +674,50 @@ describe("Messages desktop workbench", () => {
     await settle();
     const focus = button("刷新预览", drawer());
     focus.focus();
-    finish(await original("msg-autumn-cn"));
+    finish(await original(CALLER, "msg-autumn-cn"));
     await settle();
     expect(drawer().querySelector("h2")!.textContent).toContain("持续回执");
     expect(document.activeElement).toBe(focus);
   });
   it("supports 100000 local inputs, app-sensitive identity, partial closure and later receipts", async () => {
-    const created = await source.createTask(baseInput);
-    await expect(source.createTask({ ...baseInput, appId: "app-a" })).rejects.toThrow(
-      "不同"
-    );
+    const created = await source.createTask(CALLER, baseInput);
+    await expect(
+      source.createTask(CALLER, { ...baseInput, appId: "app-a" })
+    ).rejects.toThrow("不同");
     const text = Array.from({ length: 100000 }, (_, i) => `86138${10000000 + i}`).join(
       "\n"
     );
     expect(
-      (await source.importRecipients(created.taskId, text)).confirmedAddedCount
+      (await source.importRecipients(CALLER, created.taskId, text)).confirmedAddedCount
     ).toBe(100000);
     expect(
-      (await source.importRecipients(created.taskId, "8613810000000\n+8613810000000"))
-        .existingCount
+      (
+        await source.importRecipients(
+          CALLER,
+          created.taskId,
+          "8613810000000\n+8613810000000"
+        )
+      ).existingCount
     ).toBe(1);
-    await source.approveTask(created.taskId, 100000);
-    await source.demonstrate(created.taskId, "advance");
-    await source.closeTask(created.taskId);
-    await source.demonstrate(created.taskId, "reply");
-    const snapshot = await source.loadTask(created.taskId);
+    await source.approveTask(CALLER, created.taskId, 100000);
+    await source.demonstrate(CALLER, created.taskId, "advance");
+    await source.closeTask(CALLER, created.taskId);
+    await source.demonstrate(CALLER, created.taskId, "reply");
+    const snapshot = await source.loadTask(CALLER, created.taskId);
     expect(snapshot.task).toMatchObject({
       state: "terminal",
       sendTotal: 100000,
       sentCount: 50,
       repliedCount: 50
     });
-    await expect(source.importRecipients(created.taskId, "86123")).rejects.toThrow(
+    await expect(
+      source.importRecipients(CALLER, created.taskId, "86123")
+    ).rejects.toThrow("待审核");
+    await expect(source.approveTask(CALLER, created.taskId, 100000)).rejects.toThrow(
       "待审核"
     );
-    await expect(source.approveTask(created.taskId, 100000)).rejects.toThrow("待审核");
-    await expect(source.demonstrate(created.taskId, "complete")).rejects.toThrow(
-      "调度已结束"
-    );
+    await expect(
+      source.demonstrate(CALLER, created.taskId, "complete")
+    ).rejects.toThrow("调度已结束");
   });
 });

@@ -1,6 +1,16 @@
+import {
+  createProjectSource,
+  countFrom,
+  type ProjectTask
+} from "@/task-management/projects";
+import { HttpFiniteTaskClient } from "@/task-management/http-client";
+import {
+  type TaskCaller,
+  TaskApiError,
+  requireCaller,
+  callerHeaders
+} from "@/task-caller";
 import { z } from "zod";
-import type { ConsoleIdentity } from "@/console-identity";
-import { normalizeTaskUserId } from "@/task-user-id";
 import {
   configurationViewSchema,
   type AppCheckSettings,
@@ -10,7 +20,8 @@ import type { ImportSnapshot, ImportReceipt } from "./import-model";
 import type { PreviewState, ExportFilter, TaskActivity } from "./workbench";
 import {
   catalogSchema,
-  detailSchema,
+  taskSchema,
+  resultSchema,
   listSchema,
   type Catalog,
   type CheckDetail,
@@ -18,98 +29,49 @@ import {
   type CreateCheckTask
 } from "./model";
 
-export type AppCheckCaller = Readonly<Pick<ConsoleIdentity, "userId" | "role">>;
 export interface AppCheckTaskSource {
   readonly mode: "api" | "mock";
   catalog(signal?: AbortSignal): Promise<Catalog>;
-  loadConfiguration(caller: AppCheckCaller): Promise<AppCheckConfigurationView>;
+  loadConfiguration(caller: TaskCaller): Promise<AppCheckConfigurationView>;
   saveConfiguration(
-    caller: AppCheckCaller,
+    caller: TaskCaller,
     expectedRevision: number,
     configuration: AppCheckSettings
   ): Promise<AppCheckConfigurationView>;
-  simulateConfigurationRestart?(caller: AppCheckCaller): Promise<void>;
+  simulateConfigurationRestart?(caller: TaskCaller): Promise<void>;
   listTasks(
-    caller: AppCheckCaller,
+    caller: TaskCaller,
     userId?: string
   ): Promise<{ tasks: CheckTask[]; truncated: boolean }>;
-  loadTask(caller: AppCheckCaller, taskId: string): Promise<CheckDetail>;
-  createTask(
-    caller: AppCheckCaller,
-    input: CreateCheckTask
-  ): Promise<{ taskId: string }>;
+  loadTask(caller: TaskCaller, taskId: string): Promise<CheckDetail>;
+  createTask(caller: TaskCaller, input: CreateCheckTask): Promise<{ taskId: string }>;
   importNumbers?(
-    caller: AppCheckCaller,
+    caller: TaskCaller,
     taskId: string,
     file: Blob,
     summary?: ImportSnapshot
   ): Promise<ImportReceipt>;
   // Explicit Mock interactions for the design preview; the API capabilities remain unchanged.
   approveTask?(
-    caller: AppCheckCaller,
+    caller: TaskCaller,
     taskId: string,
     expectedCount: number
   ): Promise<void>;
-  closeTask?(caller: AppCheckCaller, taskId: string): Promise<void>;
-  advanceTask?(caller: AppCheckCaller, taskId: string, late?: boolean): Promise<void>;
-  completeTask?(caller: AppCheckCaller, taskId: string): Promise<void>;
-  previewState?(caller: AppCheckCaller, taskId: string): PreviewState;
-  loadImport?(
-    caller: AppCheckCaller,
-    taskId: string
-  ): Promise<ImportSnapshot | undefined>;
-  loadActivity?(caller: AppCheckCaller, taskId: string): Promise<TaskActivity[]>;
+  closeTask?(caller: TaskCaller, taskId: string): Promise<void>;
+  advanceTask?(caller: TaskCaller, taskId: string, late?: boolean): Promise<void>;
+  completeTask?(caller: TaskCaller, taskId: string): Promise<void>;
+  previewState?(caller: TaskCaller, taskId: string): PreviewState;
+  loadImport?(caller: TaskCaller, taskId: string): Promise<ImportSnapshot | undefined>;
+  loadActivity?(caller: TaskCaller, taskId: string): Promise<TaskActivity[]>;
   exportCounts?(
-    caller: AppCheckCaller,
+    caller: TaskCaller,
     taskId: string
   ): Promise<Record<ExportFilter, number>>;
   exportTask?(
-    caller: AppCheckCaller,
+    caller: TaskCaller,
     taskId: string,
     filter: "all" | "registered" | "unregistered"
   ): Promise<{ blob: Blob; fileName: string; count: number }>;
-}
-export class AppCheckApiError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-    public readonly taskId?: string
-  ) {
-    super(message);
-  }
-}
-export function requireCaller(caller: AppCheckCaller): AppCheckCaller {
-  if (
-    !caller ||
-    typeof caller.userId !== "string" ||
-    !["admin", "operator"].includes(caller.role)
-  )
-    throw new AppCheckApiError(400, "开发调用方无效");
-  try {
-    return Object.freeze({
-      userId: normalizeTaskUserId(caller.userId),
-      role: caller.role
-    });
-  } catch (error) {
-    throw new AppCheckApiError(400, (error as Error).message);
-  }
-}
-export function requireAdminCaller(caller: AppCheckCaller) {
-  if (requireCaller(caller).role !== "admin")
-    throw new AppCheckApiError(403, "当前操作仅对管理员开发身份开放");
-}
-export function requireTaskCaller(caller: AppCheckCaller, task: CheckTask) {
-  const value = requireCaller(caller);
-  if (value.role !== "admin" && value.userId !== task.userId)
-    throw new AppCheckApiError(403, "当前开发身份不能访问此任务");
-}
-export function callerHeaders(caller: AppCheckCaller): Record<string, string> {
-  const value = requireCaller(caller);
-  const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(value.userId)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-  return { "X-XA-Dev-User": encoded, "X-XA-Dev-Role": value.role };
 }
 export class AppCheckCreationUnconfirmed extends Error {
   constructor(public readonly taskId?: string) {
@@ -134,7 +96,7 @@ async function requireResponse(response: Response): Promise<Response> {
     const value = z
       .object({ message: z.string().optional(), taskId: z.string().optional() })
       .safeParse(await response.json().catch(() => null));
-    throw new AppCheckApiError(
+    throw new TaskApiError(
       response.status,
       value.success
         ? (value.data.message ?? `请求失败 (${response.status})`)
@@ -148,7 +110,7 @@ async function request(
   path: string,
   body?: unknown,
   signal?: AbortSignal,
-  caller?: AppCheckCaller
+  caller?: TaskCaller
 ): Promise<unknown> {
   const response = await fetch(`/api/v1/app-checks${path}`, {
     method: body === undefined ? "GET" : "POST",
@@ -163,17 +125,18 @@ async function request(
 }
 export class ApiAppCheckTaskSource implements AppCheckTaskSource {
   readonly mode = "api";
+  private readonly taskClient = new HttpFiniteTaskClient("/api");
   private readonly imports = new Map<string, ImportSnapshot>();
   async catalog(signal?: AbortSignal) {
     return catalogSchema.parse(await request("/catalog", undefined, signal));
   }
-  async loadConfiguration(caller: AppCheckCaller) {
+  async loadConfiguration(caller: TaskCaller) {
     return configurationViewSchema.parse(
       await request("/configuration", undefined, undefined, caller)
     );
   }
   async saveConfiguration(
-    caller: AppCheckCaller,
+    caller: TaskCaller,
     expectedRevision: number,
     configuration: AppCheckSettings
   ) {
@@ -191,7 +154,7 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
       return configurationViewSchema.parse(await response.json());
     } catch (error) {
       if (
-        error instanceof AppCheckApiError &&
+        error instanceof TaskApiError &&
         error.status >= 400 &&
         error.status < 500 &&
         error.status !== 408
@@ -200,31 +163,45 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
       throw new AppCheckConfigurationUnconfirmed();
     }
   }
-  async listTasks(caller: AppCheckCaller, userId?: string) {
-    const query =
-      userId === undefined
-        ? ""
-        : "&userId=" + encodeURIComponent(normalizeTaskUserId(userId));
-    return listSchema.parse(
-      await request("/tasks?limit=100" + query, undefined, undefined, caller)
-    );
+  async listTasks(caller: TaskCaller, userId?: string) {
+    const source = createProjectSource("/api", "api", requireCaller(caller));
+    const page = await source.tasks("app-checks", undefined, userId);
+    return listSchema.parse({
+      tasks: page.tasks.map(checkTaskView),
+      truncated: page.truncated
+    });
   }
-  async loadTask(caller: AppCheckCaller, taskId: string) {
-    const value = detailSchema.parse(
-      await request(
-        `/tasks/${encodeURIComponent(taskId)}`,
-        undefined,
-        undefined,
-        caller
-      )
+  async loadTask(caller: TaskCaller, taskId: string): Promise<CheckDetail> {
+    caller = requireCaller(caller);
+    const entry = await createProjectSource("/api", "api", caller).task(
+      "app-checks",
+      taskId
     );
-    if (value.task.taskId !== taskId) throw new Error("返回的任务身份不符");
-    return value;
+    const preview = z
+      .object({
+        taskId: z.literal(taskId),
+        results: z.array(resultSchema).max(100),
+        truncated: z.boolean()
+      })
+      .strict()
+      .parse(
+        await request(
+          `/tasks/${encodeURIComponent(taskId)}/results`,
+          undefined,
+          undefined,
+          caller
+        )
+      );
+    return {
+      task: checkTaskView(entry),
+      results: preview.results,
+      resultsTruncated: preview.truncated
+    };
   }
-  async createTask(caller: AppCheckCaller, input: CreateCheckTask) {
+  async createTask(caller: TaskCaller, input: CreateCheckTask) {
     try {
       if ("userId" in input || "role" in input)
-        throw new AppCheckApiError(400, "Unknown application check fields");
+        throw new TaskApiError(400, "Unknown application check fields");
       const requestBody = {
         requestId: input.requestId,
         appId: input.appId,
@@ -236,19 +213,19 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
         .parse(await request("/tasks", requestBody, undefined, caller));
     } catch (error) {
       if (
-        error instanceof AppCheckApiError &&
+        error instanceof TaskApiError &&
         error.status >= 400 &&
         error.status < 500 &&
         error.status !== 408
       )
         throw error;
       throw new AppCheckCreationUnconfirmed(
-        error instanceof AppCheckApiError ? error.taskId : undefined
+        error instanceof TaskApiError ? error.taskId : undefined
       );
     }
   }
   async importNumbers(
-    caller: AppCheckCaller,
+    caller: TaskCaller,
     taskId: string,
     file: Blob,
     summary?: ImportSnapshot
@@ -279,14 +256,14 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
           existingCount: count
         })
         .parse(await response.json());
-      if (summary) this.imports.set(taskId, structuredClone({ ...summary, receipt }));
+      if (summary)
+        this.imports.set(
+          caller.userId + "/" + taskId,
+          structuredClone({ ...summary, receipt })
+        );
       return receipt;
     } catch (error) {
-      if (
-        error instanceof AppCheckApiError &&
-        error.status < 500 &&
-        error.status !== 408
-      )
+      if (error instanceof TaskApiError && error.status < 500 && error.status !== 408)
         throw error;
       throw new AppCheckImportUnconfirmed(
         taskId,
@@ -294,23 +271,18 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
       );
     }
   }
-  async loadImport(caller: AppCheckCaller, taskId: string) {
+  async loadImport(caller: TaskCaller, taskId: string) {
     requireCaller(caller);
-    const saved = this.imports.get(taskId);
+    const saved = this.imports.get(caller.userId + "/" + taskId);
     return saved ? structuredClone(saved) : undefined;
   }
-  async approveTask(caller: AppCheckCaller, taskId: string, expectedCount: number) {
-    await request(
-      `/tasks/${encodeURIComponent(taskId)}/approve`,
-      expectedCount,
-      undefined,
-      caller
-    );
+  async approveTask(caller: TaskCaller, taskId: string, expectedCount: number) {
+    await this.taskClient.approveTask(requireCaller(caller), taskId, expectedCount);
   }
-  async closeTask(caller: AppCheckCaller, taskId: string) {
-    await request(`/tasks/${encodeURIComponent(taskId)}/close`, {}, undefined, caller);
+  async closeTask(caller: TaskCaller, taskId: string) {
+    await this.taskClient.closeTask(requireCaller(caller), taskId);
   }
-  async exportTask(caller: AppCheckCaller, taskId: string, filter: ExportFilter) {
+  async exportTask(caller: TaskCaller, taskId: string, filter: ExportFilter) {
     const response = await requireResponse(
       await fetch(
         `/api/v1/app-checks/tasks/${encodeURIComponent(taskId)}/results:export?filter=${filter}`,
@@ -322,4 +294,36 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
     const count = z.number().int().nonnegative().parse(Number(header));
     return { blob: await response.blob(), fileName: `${taskId}-${filter}.csv`, count };
   }
+}
+
+function checkTaskView(entry: ProjectTask): CheckTask {
+  const metadata = entry.task?.metadata ?? {};
+  const row: Record<string, unknown> = {
+    taskId: entry.taskId,
+    createdAtMillis: entry.createdAtMillis,
+    workerGroupId: entry.task?.workerGroupId ?? null,
+    managed: entry.task?.idleDisposition === "PARK_WHEN_IDLE",
+    state: entry.scoreBand,
+    ...(entry.task?.name ? { name: entry.task.name } : {}),
+    ...(metadata.userId ? { userId: metadata.userId } : {})
+  };
+  if (metadata["server.inputOwner"] === "app-checks") {
+    for (const key of ["appId", "country", "salt", "saltDate", "inputVersion"])
+      if (metadata[key] !== undefined) row[key] = metadata[key];
+    if (metadata.simulation) {
+      try {
+        row.simulation = JSON.parse(metadata.simulation);
+      } catch {
+        row.configurationError = "Simulation cannot be parsed";
+      }
+    }
+    if (entry.stats)
+      Object.assign(row, {
+        totalCount: entry.stats.total,
+        activeCount: countFrom(entry.stats, 1),
+        failedCount: countFrom(entry.stats, 5),
+        succeededCount: countFrom(entry.stats, 6, 9)
+      });
+  }
+  return taskSchema.parse(row);
 }

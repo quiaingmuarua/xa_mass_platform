@@ -46,8 +46,8 @@ const mobileNavigation = ref(false);
 onMounted(() => {
   if (identity.value.role === "admin") {
     void sms.load();
-    void messages.load();
   }
+  void messages.load();
   void appChecks.load();
 });
 onBeforeUnmount(() => {

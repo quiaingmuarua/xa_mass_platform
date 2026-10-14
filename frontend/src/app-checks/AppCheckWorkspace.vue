@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { TaskApiError } from "@/task-caller";
+
 import {
   computed,
   nextTick,
@@ -18,7 +20,7 @@ import AppCheckPreviewDrawer from "./AppCheckPreviewDrawer.vue";
 import AppCheckConfiguration from "./AppCheckConfiguration.vue";
 import type { ConfigurationReadState } from "./configuration";
 import { appLabel, countryLabel, type Catalog, type CheckTask } from "./model";
-import { AppCheckApiError, type AppCheckTaskSource } from "./task-source";
+import { type AppCheckTaskSource } from "./task-source";
 import {
   createWorkbenchSession,
   canUseTask,
@@ -150,7 +152,7 @@ async function loadList() {
     );
   } catch (error) {
     if (!disposed && token === listGeneration) {
-      if (error instanceof AppCheckApiError && error.status === 403) {
+      if (error instanceof TaskApiError && error.status === 403) {
         tasks.value = [];
         previews.value = {};
       }
@@ -311,12 +313,7 @@ function requestAction(task: CheckTask, action: TaskAction, trigger?: HTMLElemen
   dialogOrigin = route.fullPath;
   dialogTrigger = trigger;
   if (action === "import") {
-    if (
-      !props.source.importNumbers ||
-      task.state !== "pre_review" ||
-      task.inputVersion !== "2"
-    )
-      return;
+    if (!props.source.importNumbers || task.state !== "pre_review") return;
     if (
       importSession.draft.uncertain &&
       importSession.draft.knownTaskId !== task.taskId

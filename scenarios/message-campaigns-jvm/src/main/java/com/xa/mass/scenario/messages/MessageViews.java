@@ -8,35 +8,15 @@ import java.util.*;
 import static com.xa.mass.scenario.messages.MessageInputs.text;
 import static com.xa.mass.scenario.messages.MessageWorkerSupply.*;
 
-/** Stateless business projection of existing Task, Item Score and Result observations. */
+/** Stateless business Result projection with Task and Item association checks. */
 final class MessageViews {
     private static final Set<String> STAGES = Set.of("SENT", "DELIVERED", "READ", "REPLIED");
     private MessageViews() {}
 
     static boolean isMessageTask(ProjectTaskQueryService.Entry entry) {
         return entry != null && entry.task() != null && PROJECT.equals(entry.task().projectId()) && "CLOSE_WHEN_IDLE".equals(entry.task().idleDisposition())
-                && PROJECT.equals(entry.task().metadata().get("scenario"));
-    }
-    static Map<String, Object> taskView(ProjectTaskQueryService.Entry entry) {
-        var row = new LinkedHashMap<String, Object>();
-        row.put("taskId", entry.taskId()); row.put("createdAtMillis", entry.createdAtMillis()); row.put("state", entry.scoreBand());
-        row.put("workerGroupId", entry.task() == null ? null : entry.task().workerGroupId());
-        row.put("managed", entry.task() != null && "PARK_WHEN_IDLE".equals(entry.task().idleDisposition()));
-        if (entry.task() != null && entry.task().name() != null) row.put("name", entry.task().name());
-        if (isMessageTask(entry)) {
-            var metadata = entry.task().metadata();
-            for (String field : List.of("appId", "recipientCountry", "senderPhone", "body", "inputVersion"))
-                if (metadata.containsKey(field)) row.put(field, metadata.get(field));
-            row.put("senderCountry", metadata.get("senderCountry"));
-        }
-        return row;
-    }
-    static void addCounts(Map<String, Object> row, long total, Map<Integer, Long> tags) {
-        row.put("sendTotal", total); row.put("sentCount", sum(tags, 6)); row.put("deliveredCount", sum(tags, 7));
-        row.put("readCount", sum(tags, 8)); row.put("repliedCount", tags.get(9)); row.put("failedCount", tags.get(5));
-    }
-    static long sum(Map<Integer, Long> tags, int first) {
-        long count = 0; for (int tag = first; tag <= 9; tag++) count += tags.get(tag); return count;
+                && PROJECT.equals(entry.task().metadata().get("scenario"))
+                && PROJECT.equals(entry.task().metadata().get("server.inputOwner"));
     }
     static Map<String, Object> resultView(String taskId, TaskDataService.ResultEntry entry) {
         var row = new LinkedHashMap<String, Object>();

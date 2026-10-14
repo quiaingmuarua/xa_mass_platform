@@ -39,7 +39,7 @@ class MessageScenarioPropertiesTest {
             assertThat(requirement.functions()).containsExactly("worker.messaging.available");
             var directory = new ProjectDirectory(new ProjectAssemblyProperties(List.of()), List.of(definition));
             try (var service = assembly.messageTasks(directory, mock(ProjectTaskQueryService.class), mock(TaskCreationService.class),
-                    mock(TaskDataService.class), mock(TaskLifecycleService.class), config, new com.xa.mass.server.operation.OperationGuard())) {
+                    mock(TaskDataService.class), config, new com.xa.mass.server.operation.OperationGuard())) {
                 service.start();
                 assertThat(service.catalog().get("applications")).isEqualTo(config.applications());
                 assertThat(service.catalog().get("countries").toString()).doesNotContain("workerGroupId");

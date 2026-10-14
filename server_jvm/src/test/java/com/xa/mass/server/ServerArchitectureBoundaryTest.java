@@ -197,6 +197,7 @@ class ServerArchitectureBoundaryTest {
                 .containsExactlyInAnyOrder(
                         "DirectCallRequest",
                         "TaskCreateRequest",
+                        "TaskApproveRequest",
                         "TaskItemRequest",
                         "TaskRpcCallRequest",
                         "TaskRpcPrepareRequest",

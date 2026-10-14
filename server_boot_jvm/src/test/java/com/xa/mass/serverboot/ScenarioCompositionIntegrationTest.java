@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.*;
 
 @Tag("scenario-composition")
 class ScenarioCompositionIntegrationTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
     @ParameterizedTest @ValueSource(booleans = {false, true}) @Timeout(90)
     void platformAndPreviewShareOnePlatform(boolean preview) throws Exception {
         boolean sms = preview, messages = preview;
@@ -64,9 +65,9 @@ class ScenarioCompositionIntegrationTest {
                 assertThat(capabilityHttp.statusCode()).isEqualTo(200);
                 assertThat(capabilityHttp.body()).contains("demo-sim", "app-a-sim", "app-b-sim", "workerId", "worker.country", "worker.any");
                 var rpc = context.getBean(com.xa.mass.server.task.call.TaskRpcPreparationService.class);
-                assertThat(context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class).list("default", 100, null).tasks()).isEmpty();
-                String id = rpc.prepare("composition-rpc", new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest(
-                        "default", "demo-sim", null, Map.of("userId", "fixture"))).taskId();
+                assertThat(context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class).list(CALLER, "default", 100, null).tasks()).isEmpty();
+                String id = rpc.prepare(CALLER, "raw", "composition-rpc", new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest(
+                        "default", "demo-sim", null, Map.of())).taskId();
                 assertThat(get(client, base, "/api/v1/projects/default/tasks/" + id).statusCode()).isEqualTo(200);
                 assertThat(get(client, base, "/api/v1/projects/messages/tasks/" + id).statusCode()).isEqualTo(400);
             } else assertThat(directoryHttp.body()).isEqualTo("[]");
@@ -101,7 +102,7 @@ class ScenarioCompositionIntegrationTest {
                 assertThat(groups.values()).doesNotContainNull();
                 assertThat(context.getBean(com.xa.mass.server.project.ProjectDirectory.class).require("app-checks").workerGroupIds())
                         .containsExactly("app-a-sim", "app-b-sim");
-                assertThat(context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class).list("app-checks", 100, null).tasks()).isEmpty();
+                assertThat(context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class).list(CALLER, "app-checks", 100, null).tasks()).isEmpty();
             }
             assertThat(context.getBean(com.xa.mass.server.delivery.adapter.ServerWorkerDeliveryAdapterProperties.class)
                     .instances()).hasSize(preview ? 1 : 0);
@@ -116,8 +117,8 @@ class ScenarioCompositionIntegrationTest {
                         .contains("workerGroupId=demo-sim");
                 var directory = context.getBean(com.xa.mass.server.project.ProjectDirectory.class);
                 var tasks = context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class);
-                assertThat(tasks.list("sms", 100, null).tasks()).hasSize(1);
-                assertThat(tasks.list("messages", 100, null).tasks()).isEmpty();
+                assertThat(tasks.list(CALLER, "sms", 100, null).tasks()).hasSize(1);
+                assertThat(tasks.list(CALLER, "messages", 100, null).tasks()).isEmpty();
                 for (String project : List.of("sms", "messages")) {
                     var projectResponse = get(client, base, "/api/v1/projects/" + project);
                     assertThat(projectResponse.statusCode()).isEqualTo(200);
@@ -164,6 +165,6 @@ class ScenarioCompositionIntegrationTest {
     }
     private static int port() throws Exception { try (var socket = new ServerSocket(0)) { return socket.getLocalPort(); } }
     private static HttpResponse<String> get(HttpClient client, URI base, String path) throws Exception {
-        return client.send(HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(3)).build(), HttpResponse.BodyHandlers.ofString());
+        return client.send(TaskObservations.request(base, path, CALLER).timeout(Duration.ofSeconds(3)).build(), HttpResponse.BodyHandlers.ofString());
     }
 }

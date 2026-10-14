@@ -1,3 +1,4 @@
+import { captureTaskCaller, callerHeaders } from "@/task-caller";
 import axios, { AxiosError, type AxiosInstance } from "axios";
 
 import { RuntimeViewerError } from "./errors";
@@ -47,7 +48,7 @@ export class HttpRuntimeViewerDataSource implements RuntimeViewerDataSource {
         sampleLimit,
         {
           signal,
-          headers: { "X-Request-Id": requestId }
+          headers: { "X-Request-Id": requestId, ...callerHeaders(captureTaskCaller()) }
         }
       );
       const parsed = parseResponse(taskPreviewResponseSchema, response.data, requestId);

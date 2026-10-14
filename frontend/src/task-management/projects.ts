@@ -1,15 +1,25 @@
+import {
+  type TaskCaller,
+  TaskApiError,
+  callerHeaders,
+  captureTaskCaller,
+  requireTaskCaller
+} from "@/task-caller";
 import { z } from "zod";
 import { taskViewSchema, workerGroupViewSchema } from "@/runtime-viewer/schemas";
 import { MOCK_TASK_PREVIEW, MOCK_WORKER_GROUPS } from "@/runtime-viewer/mock-data";
 import { rpcTaskId } from "@/task-workbench/rpc-task";
 import { compareTaskIds, taskUserScore } from "@/task-user-id";
 
-export class ProjectRequestError extends Error {
+export class ProjectRequestError extends TaskApiError {
   constructor(
     public readonly status: number,
     public readonly code?: number
   ) {
-    super(code === 12002 ? "Task 不存在。" : "Project 请求失败 (" + status + ")");
+    super(
+      status,
+      code === 12002 ? "Task 不存在。" : "Project 请求失败 (" + status + ")"
+    );
   }
 }
 
@@ -34,7 +44,7 @@ export const projectTaskSchema = z
     (row) => row.task === null || row.task.taskId === row.taskId,
     "Task identity differs"
   );
-export type ProjectTask = z.infer<typeof projectTaskSchema>;
+export type ProjectTask = z.infer<typeof projectTaskSchema> & { stats?: TaskStats };
 const tasksSchema = z
   .object({
     projectId: z.string().min(1),
@@ -42,7 +52,9 @@ const tasksSchema = z
     tasks: z.array(projectTaskSchema).max(100)
   })
   .strict();
-export type ProjectTasks = z.infer<typeof tasksSchema>;
+export type ProjectTasks = Omit<z.infer<typeof tasksSchema>, "tasks"> & {
+  tasks: ProjectTask[];
+};
 const groupSchema = z
   .object({
     workerGroupId: z.string().min(1),
@@ -59,20 +71,48 @@ const groupSchema = z
   );
 export type ProjectGroup = z.infer<typeof groupSchema>;
 
+export const taskStatsSchema = z
+  .object({
+    total: z.number().int().nonnegative(),
+    countsByTag: z.record(z.string(), z.number().int().nonnegative())
+  })
+  .strict();
+export type TaskStats = z.infer<typeof taskStatsSchema>;
+export function countFrom(stats: TaskStats, first: number, last = first) {
+  let count = 0;
+  for (let tag = first; tag <= last; tag++)
+    count += stats.countsByTag[String(tag)] ?? 0;
+  return count;
+}
+
 export interface ProjectSource {
   list(signal?: AbortSignal): Promise<Project[]>;
-  tasks(project: string, signal?: AbortSignal): Promise<ProjectTasks>;
+  tasks(project: string, signal?: AbortSignal, userId?: string): Promise<ProjectTasks>;
+  stats(
+    project: string,
+    taskIds: string[],
+    signal?: AbortSignal
+  ): Promise<Record<string, TaskStats>>;
   task(project: string, task: string, signal?: AbortSignal): Promise<ProjectTask>;
   groups(project: string, signal?: AbortSignal): Promise<ProjectGroup[]>;
 }
 export function createProjectSource(
   baseUrl: string,
-  mode: "api" | "mock"
+  mode: "api" | "mock",
+  caller?: TaskCaller
 ): ProjectSource {
-  if (mode === "mock") return mockProjectSource();
-  const get = async (suffix: string, signal?: AbortSignal): Promise<unknown> => {
+  if (mode === "mock") return mockProjectSource(caller);
+  const get = async (
+    suffix: string,
+    signal?: AbortSignal,
+    body?: unknown,
+    actor = caller ?? captureTaskCaller()
+  ): Promise<unknown> => {
     const response = await fetch(baseUrl.replace(/\/$/, "") + "/v1/projects" + suffix, {
-      signal
+      signal,
+      method: body === undefined ? "GET" : "POST",
+      headers: { "Content-Type": "application/json", ...callerHeaders(actor) },
+      body: body === undefined ? undefined : JSON.stringify(body)
     });
     if (!response.ok) {
       const body = await response.json().catch(() => null);
@@ -84,32 +124,76 @@ export function createProjectSource(
     return response.json();
   };
   const path = (project: string) => "/" + encodeURIComponent(project);
+  async function stats(
+    project: string,
+    taskIds: string[],
+    signal?: AbortSignal,
+    actor = caller ?? captureTaskCaller()
+  ): Promise<Record<string, TaskStats>> {
+    if (!taskIds.length) return {};
+    const value = z
+      .record(z.string(), taskStatsSchema)
+      .parse(await get(path(project) + "/tasks:stats", signal, taskIds, actor));
+    if (
+      Object.keys(value).length !== new Set(taskIds).size ||
+      taskIds.some((id) => !value[id])
+    )
+      throw new Error("Task statistics identities differ");
+    return value;
+  }
   return {
     async list(signal) {
       return z.array(projectSchema).parse(await get("", signal));
     },
-    async tasks(project, signal) {
+    async tasks(project, signal, userId) {
+      const actor = caller ?? captureTaskCaller();
       const result = tasksSchema.parse(
-        await get(path(project) + "/tasks?limit=100", signal)
+        await get(
+          path(project) +
+            "/tasks?limit=100" +
+            (userId ? "&userId=" + encodeURIComponent(userId) : ""),
+          signal,
+          undefined,
+          actor
+        )
       );
       if (
         result.projectId !== project ||
         result.tasks.some((row) => row.task && row.task.projectId !== project)
       )
         throw new Error("Project identity differs");
-      return result;
+      const counts = await stats(
+        project,
+        result.tasks.filter((row) => row.task).map((row) => row.taskId),
+        signal,
+        actor
+      );
+      return {
+        ...result,
+        tasks: result.tasks.map((row) => ({ ...row, stats: counts[row.taskId] }))
+      };
     },
     async task(project, taskId, signal) {
+      const actor = caller ?? captureTaskCaller();
       const result = projectTaskSchema.parse(
-        await get(path(project) + "/tasks/" + encodeURIComponent(taskId), signal)
+        await get(
+          path(project) + "/tasks/" + encodeURIComponent(taskId),
+          signal,
+          undefined,
+          actor
+        )
       );
       if (
         result.taskId !== taskId ||
         (result.task && result.task.projectId !== project)
       )
         throw new Error("Task identity differs");
-      return result;
+      return {
+        ...result,
+        stats: (await stats(project, [taskId], signal, actor))[taskId]
+      };
     },
+    stats,
     async groups(project, signal) {
       return z
         .array(groupSchema)
@@ -117,7 +201,7 @@ export function createProjectSource(
     }
   };
 }
-function mockProjectSource(): ProjectSource {
+function mockProjectSource(caller?: TaskCaller): ProjectSource {
   const groups: ProjectGroup[] = MOCK_WORKER_GROUPS.map((workerGroup) => ({
     workerGroupId: workerGroup.workerGroupId,
     workerGroup,
@@ -214,9 +298,17 @@ function mockProjectSource(): ProjectSource {
     async list() {
       return structuredClone(projects);
     },
-    async tasks(project) {
+    async tasks(project, _signal, userId) {
+      const actor = caller ?? captureTaskCaller();
+      if (actor.role === "operator" && userId && userId !== actor.userId)
+        throw new TaskApiError(403, "不能查询其他调用方");
+      const owner = actor.role === "operator" ? actor.userId : userId;
       requireProject(project);
-      const owned = tasks.filter((row) => row.task?.projectId === project);
+      const owned = tasks.filter(
+        (row) =>
+          row.task?.projectId === project &&
+          (!owner || row.task.metadata.userId === owner)
+      );
       const batch = [...owned]
         .sort(
           (a, b) =>
@@ -242,7 +334,32 @@ function mockProjectSource(): ProjectSource {
         (t) => t.taskId === taskId && t.task?.projectId === project
       );
       if (!task) throw new ProjectRequestError(400, 12002);
+      requireTaskCaller(caller ?? captureTaskCaller(), {
+        userId: task.task?.metadata.userId
+      });
       return structuredClone(task);
+    },
+    async stats(project, taskIds) {
+      requireProject(project);
+      const actor = caller ?? captureTaskCaller();
+      for (const id of taskIds) {
+        const task = tasks.find(
+          (row) => row.taskId === id && row.task?.projectId === project
+        );
+        if (!task) throw new ProjectRequestError(400, 12002);
+        requireTaskCaller(actor, { userId: task.task?.metadata.userId });
+      }
+      return Object.fromEntries(
+        taskIds.map((id) => [
+          id,
+          {
+            total: 0,
+            countsByTag: Object.fromEntries(
+              Array.from({ length: 9 }, (_, i) => [String(i + 1), 0])
+            )
+          }
+        ])
+      );
     },
     async groups(project) {
       requireProject(project);

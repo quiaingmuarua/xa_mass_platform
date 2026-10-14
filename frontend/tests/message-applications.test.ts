@@ -1,3 +1,5 @@
+import { captureTaskCaller } from "@/task-caller";
+const CALLER = captureTaskCaller();
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiMessageTaskSource } from "../src/message-campaigns/api-task-source";
 import {
@@ -79,11 +81,11 @@ describe("Messages application boundary", () => {
       senderCountry: null,
       body: "{}"
     };
-    await expect(source.createTask({ ...input, appId: "unknown" })).rejects.toThrow(
-      "应用配置不可用"
-    );
+    await expect(
+      source.createTask(CALLER, { ...input, appId: "unknown" })
+    ).rejects.toThrow("应用配置不可用");
     expect(fetcher).not.toHaveBeenCalled();
-    await source.createTask({
+    await source.createTask(CALLER, {
       ...input,
       appId: "app-b",
       senderPhone: "hidden",
@@ -98,17 +100,18 @@ describe("Messages application boundary", () => {
       body: "{}"
     });
   });
-  it("keeps old input restrictions and separates malformed results from delivery", () => {
+  it("validates business configuration and separates malformed results from delivery", () => {
     const task = {
       taskId: "old",
       managed: false,
       body: "{}",
       recipientCountry: "CN",
       state: "pre_review",
-      inputVersion: "1",
+      appId: "demo",
+      inputVersion: "3",
       sendTotal: 2
     } as MessageTask;
-    expect(actionReason(task, "approve", false)).toContain("旧输入版本");
+    expect(actionReason(task, "approve", false)).toBe("");
     expect(actionReason(task, "close", false)).toBe("");
     expect(actionReason({ ...task, managed: true }, "close", false)).toContain(
       "不可用"

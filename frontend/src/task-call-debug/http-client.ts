@@ -1,3 +1,4 @@
+import { type TaskCaller, callerHeaders } from "@/task-caller";
 import axios, { AxiosError, type AxiosInstance } from "axios";
 
 import { TaskCallDebugError } from "./errors";
@@ -36,13 +37,20 @@ export class HttpTaskCallDebugClient
     this.client = client ?? axios.create({ baseURL: baseUrl });
   }
 
-  async prepareTask(taskId: string, request: RpcTaskPrepareRequest): Promise<void> {
+  async prepareTask(
+    caller: TaskCaller,
+    taskId: string,
+    request: RpcTaskPrepareRequest
+  ): Promise<void> {
     const requestId = createRequestId("rpc-prepare");
     try {
       const response = await this.client.post(
         `/v1/tasks/${encodeURIComponent(taskId)}/rpc:prepare`,
         request,
-        { headers: { "X-Request-Id": requestId }, timeout: 5_000 }
+        {
+          headers: { "X-Request-Id": requestId, ...callerHeaders(caller) },
+          timeout: 5_000
+        }
       );
       if (response.status !== 200) throw schemaError(requestId);
       const parsed = taskCreateResponseSchema.safeParse(response.data);
@@ -71,7 +79,7 @@ export class HttpTaskCallDebugClient
           waitTimeoutMillis: request.waitTimeoutMillis
         },
         {
-          headers: { "X-Request-Id": requestId },
+          headers: { "X-Request-Id": requestId, ...callerHeaders(request.caller) },
           timeout: request.waitTimeoutMillis + 5_000
         }
       );
@@ -93,14 +101,18 @@ export class HttpTaskCallDebugClient
     }
   }
 
-  async loadResult(taskId: string, messageId: string): Promise<TaskCallDebugOutcome> {
+  async loadResult(
+    caller: TaskCaller,
+    taskId: string,
+    messageId: string
+  ): Promise<TaskCallDebugOutcome> {
     const requestId = createRequestId("task-result-load");
     try {
       const response = await this.client.post(
         `/v1/tasks/${encodeURIComponent(taskId)}/results:load`,
         [messageId],
         {
-          headers: { "X-Request-Id": requestId },
+          headers: { "X-Request-Id": requestId, ...callerHeaders(caller) },
           timeout: 5_000
         }
       );

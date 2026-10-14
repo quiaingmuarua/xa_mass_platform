@@ -1,5 +1,7 @@
 package com.xa.mass.scenario.appchecks;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
@@ -13,7 +15,7 @@ import java.util.*;
 record AppCheckSpecification(String requestId, String userId, String appId, String country, Map<String, Object> simulation) {
     static final Map<String, String> PREFIXES = Map.of("CN", "+86", "US", "+1", "GB", "+44");
 
-    static AppCheckSpecification parse(AppCheckCaller caller, Map<String, Object> input) {
+    static AppCheckSpecification parse(TaskCaller caller, Map<String, Object> input) {
         if (input == null || !Set.of("requestId", "appId", "country", "simulation").containsAll(input.keySet()))
             throw new IllegalArgumentException("Unknown application check fields");
         String app = text(input.get("appId"), 128);

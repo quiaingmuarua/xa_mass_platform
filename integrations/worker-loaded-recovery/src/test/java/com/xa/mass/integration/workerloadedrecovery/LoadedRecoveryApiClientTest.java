@@ -98,8 +98,8 @@ class LoadedRecoveryApiClientTest {
                 "http://127.0.0.1:" + server.getAddress().getPort()
         );
         client = new LoadedRecoveryApiClient(
-                new LoadedRecoveryHttpClient(base, Duration.ofSeconds(2)),
-                new LoadedRecoveryHttpClient(base, Duration.ofSeconds(2))
+                new LoadedRecoveryHttpClient(base, Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin")),
+                new LoadedRecoveryHttpClient(base, Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"))
         );
     }
 
@@ -140,10 +140,10 @@ class LoadedRecoveryApiClientTest {
                 "event.one",
                 Map.of()
         )));
-        client.approveTask("task-1");
+        client.approveTask("task-1", 1);
 
         approvalResponse.set(Map.of("status", "unchanged"));
-        client.approveTask("task-1");
+        client.approveTask("task-1", 1);
     }
 
     @Test
@@ -161,7 +161,7 @@ class LoadedRecoveryApiClientTest {
                         Map.of()
                 ))
         )).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> client.approveTask("task-1"))
+        assertThatThrownBy(() -> client.approveTask("task-1", 1))
                 .isInstanceOf(IllegalStateException.class);
     }
 

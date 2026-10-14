@@ -1,5 +1,7 @@
 package com.xa.mass.scenario.appchecks;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.WorkerQuery;
@@ -12,7 +14,6 @@ import com.xa.mass.server.project.ProjectTaskQueryService;
 import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskCreationUnconfirmedException;
 import com.xa.mass.server.task.TaskDataService;
-import com.xa.mass.server.task.TaskLifecycleService;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -37,7 +38,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     private final ProjectTaskQueryService queries;
     private final TaskCreationService creation;
     private final TaskDataService data;
-    private final TaskLifecycleService lifecycle;
+
     private final Clock clock;
     private final Object gate = new Object();
     private final OperationGuard operations;
@@ -48,16 +49,16 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     private int active;
 
     public AppCheckTaskService(ProjectDirectory projects, ProjectTaskQueryService queries, TaskCreationService creation,
-                               TaskDataService data, TaskLifecycleService lifecycle, OperationGuard operations, TaskResultsExportService exports,
+                               TaskDataService data, OperationGuard operations, TaskResultsExportService exports,
                                AppCheckSettings settings) {
-        this(projects, queries, creation, data, lifecycle, operations, exports, settings, Clock.systemUTC());
+        this(projects, queries, creation, data, operations, exports, settings, Clock.systemUTC());
     }
 
     AppCheckTaskService(ProjectDirectory projects, ProjectTaskQueryService queries, TaskCreationService creation,
-                        TaskDataService data, TaskLifecycleService lifecycle, OperationGuard operations, TaskResultsExportService exports,
+                        TaskDataService data, OperationGuard operations, TaskResultsExportService exports,
                         AppCheckSettings settings, Clock clock) {
         this.projects = projects; this.queries = queries; this.creation = creation;
-        this.data = data; this.lifecycle = lifecycle; this.clock = clock; this.operations = operations; this.exports = exports;
+        this.data = data;  this.clock = clock; this.operations = operations; this.exports = exports;
         this.settings = Objects.requireNonNull(settings);
     }
 
@@ -83,7 +84,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                 "simulationExample", settings.simulationDefault());
     }
 
-    public TaskCreateResponse create(AppCheckCaller caller, Map<String, Object> input) {
+    public TaskCreateResponse create(TaskCaller caller, Map<String, Object> input) {
         requireRunning();
         final AppCheckSpecification specification;
         try {
@@ -92,38 +93,27 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         }
         catch (IllegalArgumentException invalid) { throw new RequestFailure(400, invalid.getMessage(), null); }
         LocalDate date = LocalDate.now(clock.withZone(ZoneOffset.UTC));
-        var metadata = Map.of("scenario", PROJECT, "inputVersion", "2", "userId", specification.userId(), "appId", specification.appId(), "country", specification.country(),
+        var metadata = Map.of("scenario", PROJECT, "inputVersion", "2", "appId", specification.appId(), "country", specification.country(),
                 "simulation", Jsons.toJson(specification.simulation()), "salt", specification.salt(date), "saltDate", date.toString());
         String name = specification.appId() + " · " + specification.country() + " · " + clock.instant();
         try {
-            return creation.createForRequest(new TaskCreateRequest(PROJECT, settings.requireApplication(specification.appId()).workerGroupId(), 50, 3,
+            return creation.createForRequest(caller, PROJECT, new TaskCreateRequest(specification.requestId(), PROJECT, settings.requireApplication(specification.appId()).workerGroupId(), 50, 3,
                     List.of(RefillTarget.of(POOL, new EligibilityQuery(Map.of()), 100)), name, metadata),
-                    specification.requestId(), specification.fingerprint());
+                    specification.fingerprint());
         } catch (TaskCreationUnconfirmedException unknown) {
             throw new RequestFailure(503, "创建结果未确认，请核对已知任务；不会自动重建", unknown.taskId());
         }
     }
 
-    private ProjectTaskQueryService.Entry requireCheck(AppCheckCaller caller, String taskId) {
+    private ProjectTaskQueryService.Entry requireCheck(TaskCaller caller, String taskId) {
         requireRunning();
-        var entry = queries.get(PROJECT, taskId);
+        var entry = queries.get(caller, PROJECT, taskId);
         if (!isCheckTask(entry)) throw new RequestFailure(400, "只支持 App Checks 有限任务", taskId);
-        caller.requireOwner(entry.task().metadata().get("userId"));
         return entry;
     }
 
-    private static boolean hasWindowSupply(ProjectTaskQueryService.Entry entry) {
-        return entry.task().refill().stream().anyMatch(target -> target.poolName().equals(POOL)
-                && target.target().query().isEmpty());
-    }
 
-    private static final String OLD_SUPPLY = "旧供给配置任务不支持继续导入或启动，请关闭后创建新任务";
-
-    private static void requireWindowSupply(ProjectTaskQueryService.Entry entry) {
-        if (!hasWindowSupply(entry)) throw new RequestFailure(409, OLD_SUPPLY, entry.taskId());
-    }
-
-    public ImportReceipt importNumbers(AppCheckCaller caller, String taskId, InputStream input) {
+    public ImportReceipt importNumbers(TaskCaller caller, String taskId, InputStream input) {
         synchronized (gate) {
             requireRunning();
             if (active >= MAX_ACTIVE_IMPORTS) throw new RequestFailure(429, "导入繁忙，请稍后重新发起", taskId);
@@ -132,8 +122,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         try {
             return operations.taskMutation(taskId, () -> {
                 var entry = requireCheck(caller, taskId);
-                requireWindowSupply(entry);
-                if (!"pre_review".equals(entry.scoreBand()) || !"2".equals(entry.task().metadata().get("inputVersion")))
+                if (!"pre_review".equals(entry.scoreBand()))
                     throw new RequestFailure(409, "只有新版本待审核任务支持导入", taskId);
                 long added = 0, existing = 0;
                 try (var file = AppCheckNumberFile.read(input, entry.task().metadata().get("country"));
@@ -153,7 +142,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                                     EVENT, payload, 5, null, new WorkerQuery(FUNCTION, Map.of())));
                         }
                         if (batch.isEmpty()) break;
-                        var effects = data.importFiniteTaskItems(taskId, List.copyOf(batch));
+                        var effects = data.importFiniteTaskItems(caller, PROJECT, taskId, List.copyOf(batch));
                         boolean confirmed = true;
                         for (var item : batch) {
                             var effect = effects.get(item.messageId());
@@ -175,27 +164,11 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         } finally { synchronized (gate) { active--; gate.notifyAll(); } }
     }
 
-    public ActionOutcome approve(AppCheckCaller caller, String taskId, long expectedCount) {
-        return operations.taskMutation(taskId, () -> {
-            var entry = requireCheck(caller, taskId);
-            requireWindowSupply(entry);
-            if (!"pre_review".equals(entry.scoreBand())) throw new RequestFailure(409, "任务不在待审核状态，请刷新核对", taskId);
-            long actual = data.observeItemScoreCounts(List.of(taskId)).get(taskId).total();
-            if (expectedCount <= 0 || actual != expectedCount)
-                throw new RequestFailure(409, "号码数量已变化或为空，请重新核对后启动", taskId);
-            return lifecycle.approve(taskId);
-        });
-    }
-
-    public ActionOutcome closeTask(AppCheckCaller caller, String taskId) {
-        return operations.taskMutation(taskId, () -> { requireCheck(caller, taskId); return lifecycle.close(taskId); });
-    }
-
-    public CsvExport export(AppCheckCaller caller, String taskId, String filter) {
+    public CsvExport export(TaskCaller caller, String taskId, String filter) {
         if (!Set.of("all", "registered", "unregistered").contains(filter)) throw new RequestFailure(400, "无效导出范围", taskId);
         var task = requireCheck(caller, taskId).task();
         return operations.execute("app-checks-csv-export", taskId, () -> {
-            Path source = exports.export(taskId).file();
+            Path source = exports.export(caller, taskId).file();
             Path csv = null;
             boolean complete = false;
             try {
@@ -216,7 +189,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                             payloads.put((String) record.get("messageId"), (String) record.get("opaqueResultPayload"));
                         }
                         if (payloads.isEmpty()) break;
-                        var items = data.loadTaskItems(taskId, List.copyOf(payloads.keySet()));
+                        var items = data.loadTaskItems(caller, taskId, List.copyOf(payloads.keySet()));
                         for (var result : payloads.entrySet()) {
                             var view = resultView(task.workerGroupId(), new TaskDataService.ResultEntry(result.getKey(), items.get(result.getKey()),
                                     TaskItemResultResponse.succeeded(result.getValue())));
@@ -250,72 +223,17 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     public record CsvExport(Path file, String fileName, long count) { }
     public record ImportReceipt(String taskId, long inputCount, long emptyCount, long duplicateCount, int uniqueCount, long addedCount, long existingCount) { }
 
-    public Map<String, Object> list(AppCheckCaller caller, int limit, String userId) {
-        requireRunning();
-        if (limit < 1 || limit > 100) throw new RequestFailure(400, "limit must be in 1..100", null);
-        if (userId != null) {
-            try { userId = com.xa.mass.server.task.directory.TaskUserId.normalize(userId); }
-            catch (IllegalArgumentException invalid) { throw new RequestFailure(400, invalid.getMessage(), null); }
-            caller.requireOwner(userId);
-        }
-        String owner = "operator".equals(caller.role()) ? caller.userId() : userId;
-        var page = queries.list(PROJECT, limit, owner);
-        var visible = page.tasks().stream().filter(entry -> caller.canRead(
-                isCheckTask(entry) ? entry.task().metadata().get("userId") : null)).toList();
-        var ids = visible.stream().filter(AppCheckTaskService::isCheckTask).map(ProjectTaskQueryService.Entry::taskId).toList();
-        if (ids.isEmpty()) return Map.of("tasks", visible.stream().map(AppCheckTaskService::taskView).toList(),
-                "truncated", page.truncated());
-        var counts = data.observeItemScoreCounts(ids);
-        var rows = visible.stream().map(entry -> {
-            var row = taskView(entry);
-            if (isCheckTask(entry)) addCounts(row, counts.get(entry.taskId()).total(), counts.get(entry.taskId()).countsByTag());
-            return row;
-        }).toList();
-        return Map.of("tasks", rows, "truncated", page.truncated());
-    }
-
-    public Map<String, Object> get(AppCheckCaller caller, String taskId) {
-        var entry = requireCheck(caller, taskId);
-        var row = taskView(entry);
-        if (isCheckTask(entry)) {
-            var counts = data.observeItemScoreCounts(List.of(taskId)).get(taskId);
-            addCounts(row, counts.total(), counts.countsByTag());
-        }
-        var preview = data.previewTaskResults(taskId);
-        String group = entry.task() == null ? null : entry.task().workerGroupId();
-        return Map.of("task", row, "results", preview.results().stream().map(result -> resultView(group, result)).toList(),
-                "resultsTruncated", preview.truncated());
+    public Map<String, Object> results(TaskCaller caller, String taskId) {
+        var task = requireCheck(caller, taskId).task();
+        var preview = data.previewTaskResults(caller, taskId);
+        return Map.of("taskId", taskId, "results", preview.results().stream()
+                .map(row -> resultView(task.workerGroupId(), row)).toList(), "truncated", preview.truncated());
     }
 
     private static boolean isCheckTask(ProjectTaskQueryService.Entry entry) {
         return entry.task() != null && "CLOSE_WHEN_IDLE".equals(entry.task().idleDisposition())
-                && PROJECT.equals(entry.task().metadata().get("scenario"));
-    }
-
-    private static Map<String, Object> taskView(ProjectTaskQueryService.Entry entry) {
-        var row = new LinkedHashMap<String, Object>();
-        row.put("taskId", entry.taskId()); row.put("createdAtMillis", entry.createdAtMillis()); row.put("state", entry.scoreBand());
-        row.put("workerGroupId", entry.task() == null ? null : entry.task().workerGroupId());
-        row.put("managed", entry.task() != null && "PARK_WHEN_IDLE".equals(entry.task().idleDisposition()));
-        if (entry.task() != null && entry.task().name() != null) row.put("name", entry.task().name());
-        if (isCheckTask(entry)) {
-            if (!hasWindowSupply(entry)) row.put("inputUnavailableReason", OLD_SUPPLY);
-            var metadata = entry.task().metadata();
-            for (String field : List.of("userId", "appId", "country", "salt", "saltDate", "inputVersion"))
-                if (metadata.containsKey(field)) row.put(field, metadata.get(field));
-            if (metadata.containsKey("simulation")) {
-                try { row.put("simulation", Jsons.parseObject(metadata.get("simulation"))); }
-                catch (IllegalArgumentException invalid) { row.put("configurationError", "Simulation cannot be parsed"); }
-            }
-        }
-        return row;
-    }
-
-    private static void addCounts(Map<String, Object> row, long total, Map<Integer, Long> tags) {
-        row.put("totalCount", total); row.put("activeCount", tags.get(1)); row.put("failedCount", tags.get(5));
-        long succeeded = 0;
-        for (int tag = 6; tag <= 9; tag++) succeeded += tags.get(tag);
-        row.put("succeededCount", succeeded);
+                && PROJECT.equals(entry.task().metadata().get("scenario"))
+                && PROJECT.equals(entry.task().metadata().get(TaskCaller.INPUT_OWNER));
     }
 
     private static Map<String, Object> resultView(String group, TaskDataService.ResultEntry entry) {

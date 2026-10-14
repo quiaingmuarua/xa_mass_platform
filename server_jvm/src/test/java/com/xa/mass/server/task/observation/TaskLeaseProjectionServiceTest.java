@@ -13,6 +13,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class TaskLeaseProjectionServiceTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", List.of("g")));
     final ProjectDirectory projects = mock(ProjectDirectory.class);
     final TaskDataService results = mock(TaskDataService.class);
     final MatchingComposition matching = mock(MatchingComposition.class);
@@ -26,19 +27,19 @@ class TaskLeaseProjectionServiceTest {
     }
     @Test void onlyDeclaredTasksReadStoredResultsAndWriteTheirAbsoluteDeadline() throws Exception {
         var service = service(); var written = new CountDownLatch(1);
-        when(results.loadTaskItemResults("task", List.of("m"))).thenReturn(Map.of("m", TaskItemResultResponse.succeeded("snapshot")));
+        when(results.loadTaskItemResults(CALLER, "task", List.of("m"))).thenReturn(Map.of("m", TaskItemResultResponse.succeeded("snapshot")));
         doAnswer(call -> { written.countDown(); return null; }).when(leases).record("g", "pool", Map.of(coordinate, 2000L));
         service.start();
         try {
             service.accept("unrelated", List.of("m")); service.accept("task", List.of("m"));
             assertThat(written.await(2, TimeUnit.SECONDS)).isTrue();
-            verify(results).loadTaskItemResults("task", List.of("m"));
+            verify(results).loadTaskItemResults(CALLER, "task", List.of("m"));
             verifyNoMoreInteractions(results);
         } finally { service.stop(); }
     }
     @Test void capacityAndShutdownDropHintsWithoutBlockingTheProducer() throws Exception {
         var service = service(); var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
-        when(results.loadTaskItemResults(anyString(), anyList())).thenAnswer(call -> {
+        when(results.loadTaskItemResults(org.mockito.ArgumentMatchers.eq(CALLER), anyString(), anyList())).thenAnswer(call -> {
             entered.countDown(); release.await(5, TimeUnit.SECONDS); return Map.of();
         });
         service.start();
@@ -53,7 +54,7 @@ class TaskLeaseProjectionServiceTest {
     }
     @Test void projectionFailuresDoNotStopLaterNotices() throws Exception {
         var service = service(); var written = new CountDownLatch(2);
-        when(results.loadTaskItemResults(anyString(), anyList())).thenReturn(Map.of("m", TaskItemResultResponse.succeeded("snapshot")));
+        when(results.loadTaskItemResults(org.mockito.ArgumentMatchers.eq(CALLER), anyString(), anyList())).thenReturn(Map.of("m", TaskItemResultResponse.succeeded("snapshot")));
         doAnswer(call -> { written.countDown(); throw new IllegalStateException("Redis unavailable"); })
                 .when(leases).record(anyString(), anyString(), anyMap());
         service.start();

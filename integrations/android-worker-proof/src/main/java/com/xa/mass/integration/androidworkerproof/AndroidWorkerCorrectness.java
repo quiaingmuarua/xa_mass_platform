@@ -22,11 +22,11 @@ final class AndroidWorkerCorrectness {
         device = new AndroidDeviceHostClient(new JsonHttpClient(
                 options.deviceBaseUrl(),
                 options
-        ));
+        , java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin")));
         runtime = new AndroidRuntimeApiClient(new JsonHttpClient(
                 options.serverBaseUrl(),
                 options
-        ));
+        , java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin")));
         evidence = new ProofEvidence(options, SCENARIO, options.phase());
     }
 

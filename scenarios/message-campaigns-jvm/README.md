@@ -22,13 +22,13 @@ lease、claim、TRACKED 与 Worker/Lab 协议保持原归属。
 | 执行结果、回执、最新回复 | Result |
 
 场景通过 Server 的 ProjectDirectory、ProjectTaskQueryService、TaskCreationService、
-TaskDataService 和 TaskLifecycleService 组合读取与写入，不直接访问 Redis 或调度 Owner。
+TaskDataService 组合读取与写入，不直接访问 Redis 或调度 Owner。
 实现见 [MessageTaskService](src/main/java/com/xa/mass/scenario/messages/MessageTaskService.java)。
 
 服务保持唯一的业务编排和生命周期准入；`MessageInputs` 承接纯输入规则，
 `MessageSpecification` 保留冻结配置、指纹和供给声明，`MessageRecipientFile` 只管理请求级文件材料。
 它们使用模块内 `MessageError`，不反向引用服务。`MessageViews` 无状态地解释已读取的
-Task、Item Score 和 Result，保留业务关联校验、内容异常与累计阶段计数；它不读取资源、
+Item 和 Result，保留业务关联校验、内容异常与累计阶段计数；它不读取资源、
 保存快照或管理生命周期。Controller 的 HTTP 字段、状态码和异常关联信息不变。
 
 Worker 侧发送接入和 Lab 的独立状态归属见
@@ -78,10 +78,7 @@ Task 创建时固定一个 Group，ANY 只省略该 Group 内的国家条件，�
 | `GET /api/v1/messages/catalog` | Project、版本 `0.3.0-preview`、有序 applications、国家和单次导入限制；国家不再携带 Group |
 | `POST /api/v1/messages/tasks` | 只创建空的待审核 Task，201 返回 `{taskId}` |
 | `POST /api/v1/messages/tasks/{taskId}/recipients:import` | `text/plain` UTF-8 文件，返回读取／空行／重复／唯一／确认写入／已存在数量 |
-| `POST /api/v1/messages/tasks/{taskId}/approve` | JSON 整数为用户看到的实际数量，核对后批准 |
-| `POST /api/v1/messages/tasks/{taskId}/close` | 取消或中止发送调度，保留数据和后续回执 |
-| `GET /api/v1/messages/tasks?limit=100` | 创建时间倒序，1..100 个 Task，带 truncated，不分页 |
-| `GET /api/v1/messages/tasks/{taskId}` | 项目内 Task、数量及最多 100 条 Result 预览 |
+| `GET /api/v1/messages/tasks/{taskId}/results` | `{taskId, results, truncated}`，最多 100 条，保留内容解析与关联校验 |
 
 ```json
 {"appId":"demo","requestId":"cross-country","name":"msg-US-CN-example","recipientCountry":"CN","senderCountry":"US","body":"{}"}
@@ -107,11 +104,11 @@ Task 优先级 50、最大重试 3、Item 优先级 5 和 Worker tracked 协议�
 name 是前端生成的显示名称；Task ID 由 Server 生成。metadata 保存 scenario=messages、
 inputVersion=3、appId、recipientCountry、可选 senderCountry 和原始 body。
 不保存号码列表或统计。Command/Result 的 campaignId 使用 Task ID，country 仍表示收件国家。
-列表及详情返回保存的 appId 和实际 workerGroupId；旧任务缺少 appId 时不重建应用身份。
+共同 Project Task 详情返回保存的 metadata 和实际 workerGroupId；前端解释业务配置。
 
 ## 幂等、容量与失败
 
-新任务写入 `inputVersion=3`。Server 的 `createForRequest` 以 Project/requestId 关联稳定
+新任务写入 `inputVersion=3`。Server 的 `createForRequest` 以 Project/调用方 ID/requestId 关联稳定
 Task ID；`messages/v3/create` 指纹覆盖 appId、解析后的 Group、name、recipientCountry、senderCountry 和
 原始 body。可选字段沿用原归一规则，body 按字符串比较；同身份不同配置冲突，相同配置可跨
 Server 重启核对，保证限于原 Task 资源保留期间。数据不完整返回未确认及固定身份，不修复。
@@ -130,26 +127,32 @@ Server 重启核对，保证限于原 Task 资源保留期间。数据不完整�
 部分不计为拒绝，不自动重传或启动。用户可显式重传，或按 Owner 当前实际数量批准已导入部分。
 参数／状态／内容冲突为 409，输入无效为 400，文件过大为 413，未确认结果为 503。
 
-批准必须处于新版本待审核状态，实际数量大于零且与请求一致；读数与批准在同一次准入内。
+批准由 Server 共同接口处理：`{expectedItemCount}` 为正整数，待审核时核对实际数量；已批准重复请求 unchanged，终态不重开。
 关闭保留已有结果和未发送数量，终态不能重启；已经发送的消息仍可通过原 Reporter 返回回执。
 服务关闭停止新准入，以共享 5 秒预算等待在途写操作，导入停止后续批次；不清理 Redis scope。
 
-旧任务保留原身份、Item、有效期和 Result，继续读取、关闭及通用导出；非 v3 输入禁止导入和
-批准。历史 senderPhone 只读，旧定向任务不改写成 Pool 任务。旧随机 ID 与进程账本不迁移为持久请求关联，不重放旧未确认提交。旧整单创建入口无别名。
+当前为 Preview 直接切换；不保留旧路由、历史输入兼容、数据迁移或回填。
+验证使用新 scope，旧环境数据不删除。
+
+除 Catalog 外，HTTP 使用 Server 统一解析的开发调用方。operator 只能创建和管理自己
+的 Task，admin 可管理全部；拒绝发生在文件读取或业务结果读取前。创建者由 Server 保存，
+固定 `server.inputOwner=messages`；原始 Item 入口不能绕过已保存的发送配置。
+任务列表、详情、统计、批准、关闭、目录确认和原始结果/导出统一使用
+[Server Task API](../../server_jvm/README.md#shared-development-caller)，不另设场景管理路由。
 
 ## 数量与结果读取
 
-TaskDataService 使用 Item Score Owner 的 observeItemScoreCounts，最多 100 个 Task，
+Server 的共同 Project 统计使用 Item Score Owner 的 observeItemScoreCounts，最多 100 个 Task，
 每 Task 一次只读 Lua 的 ZCARD 和九次 ZCOUNT，批量发送。无 Result 读取、成员扫描或计数保存。
-发送总数=成员总数；已发送=6..9；送达=7..9；已读=8..9；已回复=9；当前失败=5。
+前端解释：发送总数=成员总数；已发送=6..9；送达=7..9；已读=8..9；已回复=9；当前失败=5。
 SENT 不计送达，7→8→9 不重复计数，5→6 可减少失败。部分追加的发送总数可能小于输入数。
 读取失败不以零替代；区间计数不是逐成员完整性审计。
 
 Result 预览只有一次 HSCAN COUNT 100，响应截取最多 100 个唯一 ID，再批量读取这些 Items。
 COUNT 是提示：原页超出 100 或游标未结束均标 truncated，不补扫、不公开游标。
 成功与失败都保留；无法解析或关联不符的内容单列 contentError，保持原执行 resultStatus。
-缺少 Item/业务信息仍保留结果行。列表也保留 managed Task 与缺少业务元数据的 Task；
-只有明确的消息 Task 才解释发送配置与数量。详情点查项目索引，不从列表前 100 条寻找。
+缺少 Item/业务信息仍保留结果行。业务视图要求 Task 属于 messages 输入模块，
+通过共同 Project 点读先完成所有权检查，不从列表前 100 条寻找。共同列表保留有界窗口和 truncated；前端过滤业务任务，不补扫。
 
 数量、调度状态和内容独立读取，没有共同快照；Score 推进但内容未更新时不互相修复。
 Task 结束后仍可 read/reply，Result 查询不删除最新内容；上层不据预览行数计算完成率。

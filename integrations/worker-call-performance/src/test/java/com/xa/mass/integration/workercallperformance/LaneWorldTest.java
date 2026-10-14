@@ -35,7 +35,7 @@ class LaneWorldTest {
             exchange.close();
         });
         server.start();
-        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused")) {
+        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"))) {
             assertThat(LaneWorld.observeScheduling(api, "perf-a", ids("w", 4000))).hasSize(4000);
             assertThat(requests).hasValue(40);
         } finally { server.stop(0); }

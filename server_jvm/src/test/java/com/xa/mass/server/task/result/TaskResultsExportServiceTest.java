@@ -35,6 +35,7 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.json.JsonMapper;
 
 class TaskResultsExportServiceTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
 
     private TaskResourceCatalog taskCatalog;
     private TaskScoreBandCore taskScores;
@@ -99,7 +100,7 @@ class TaskResultsExportServiceTest {
                         )
                 ));
 
-        var export = service.export("task-1");
+        var export = service.export(CALLER, "task-1");
 
         assertThat(Files.readAllLines(export.file())).containsExactly(
                 "{\"messageId\":\"message-1\","
@@ -128,7 +129,7 @@ class TaskResultsExportServiceTest {
                         score("task-1", TaskScoreBand.RUNNING_VISIBLE)
                 ));
 
-        assertThatThrownBy(() -> service.export("task-1"))
+        assertThatThrownBy(() -> service.export(CALLER, "task-1"))
                 .isInstanceOfSatisfying(ServerException.class, error ->
                         assertThat(error.errorCode()).isEqualTo(
                                 ServerErrorCode.TASK_RESULTS_NOT_READY
@@ -141,7 +142,7 @@ class TaskResultsExportServiceTest {
         when(taskRuntime.scanTaskItemResults("task-1", "0", 1000))
                 .thenReturn(new TaskItemResultPage("0", Map.of()));
 
-        var export = service.export("task-1");
+        var export = service.export(CALLER, "task-1");
         var output = new ByteArrayOutputStream();
         service.transferAndDelete(export.file(), output);
 
@@ -156,12 +157,12 @@ class TaskResultsExportServiceTest {
         when(taskCatalog.loadTaskAllocationDescriptors(List.of("managed")))
                 .thenReturn(Map.of("managed", managedTask("managed")));
 
-        assertThatThrownBy(() -> service.export("missing"))
+        assertThatThrownBy(() -> service.export(CALLER, "missing"))
                 .isInstanceOfSatisfying(ServerException.class, error ->
                         assertThat(error.errorCode()).isEqualTo(
                                 ServerErrorCode.TASK_NOT_FOUND
                         ));
-        assertThatThrownBy(() -> service.export("managed"))
+        assertThatThrownBy(() -> service.export(CALLER, "managed"))
                 .isInstanceOfSatisfying(ServerException.class, error ->
                         assertThat(error.errorCode()).isEqualTo(
                                 ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED
@@ -175,7 +176,7 @@ class TaskResultsExportServiceTest {
         when(taskRuntime.scanTaskItemResults("task-1", "0", 1000))
                 .thenThrow(new IllegalStateException("redis unavailable"));
 
-        assertThatThrownBy(() -> service.export("task-1"))
+        assertThatThrownBy(() -> service.export(CALLER, "task-1"))
                 .isInstanceOfSatisfying(ServerException.class, error ->
                         assertThat(error.errorCode()).isEqualTo(
                                 ServerErrorCode.TASK_DATA_UNAVAILABLE
@@ -189,7 +190,7 @@ class TaskResultsExportServiceTest {
     void scoreAndTemporaryFileFailuresAreUnavailable() throws Exception {
         when(taskScores.getScoreStates(List.of("task-1")))
                 .thenThrow(new IllegalStateException("score unavailable"));
-        assertThatThrownBy(() -> service.export("task-1"))
+        assertThatThrownBy(() -> service.export(CALLER, "task-1"))
                 .isInstanceOfSatisfying(ServerException.class, error ->
                         assertThat(error.errorCode()).isEqualTo(
                                 ServerErrorCode.TASK_DATA_UNAVAILABLE
@@ -211,7 +212,7 @@ class TaskResultsExportServiceTest {
                 ))
                 .when(taskScores)
                 .getScoreStates(List.of("task-1"));
-        assertThatThrownBy(() -> invalidFileService.export("task-1"))
+        assertThatThrownBy(() -> invalidFileService.export(CALLER, "task-1"))
                 .isInstanceOfSatisfying(ServerException.class, error ->
                         assertThat(error.errorCode()).isEqualTo(
                                 ServerErrorCode.TASK_DATA_UNAVAILABLE
@@ -229,7 +230,7 @@ class TaskResultsExportServiceTest {
                                 TaskItemResult.succeeded("result")
                         )
                 ));
-        var export = service.export("task-1");
+        var export = service.export(CALLER, "task-1");
         OutputStream failingOutput = new OutputStream() {
             @Override
             public void write(int value) throws IOException {
@@ -250,7 +251,7 @@ class TaskResultsExportServiceTest {
                 TaskResultsExportService.OPERATION_NAMESPACE,
                 "task-1",
                 () -> {
-                    assertThatThrownBy(() -> service.export("task-1"))
+                    assertThatThrownBy(() -> service.export(CALLER, "task-1"))
                             .isInstanceOfSatisfying(
                                     ServerException.class,
                                     error -> assertThat(error.errorCode())
@@ -265,7 +266,7 @@ class TaskResultsExportServiceTest {
         when(taskRuntime.scanTaskItemResults("task-1", "0", 1000))
                 .thenReturn(new TaskItemResultPage("0", Map.of()));
 
-        var export = service.export("task-1");
+        var export = service.export(CALLER, "task-1");
 
         assertThat(export.file()).exists();
     }

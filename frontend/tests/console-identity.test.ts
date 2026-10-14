@@ -36,14 +36,7 @@ describe("development identity context", () => {
     });
     identity.select("1002");
     expect(identity.current.value.userId).toBe("1002");
-    for (const path of [
-      "/runtime/tasks",
-      "/runtime/workers",
-      "/messages",
-      "/sms",
-      "/task-workbench",
-      "/api-reference"
-    ])
+    for (const path of ["/runtime/workers", "/sms", "/api-reference"])
       expect(identityRouteAllowed(identity.current.value, { path, query: {} })).toBe(
         false
       );
@@ -59,6 +52,10 @@ describe("development identity context", () => {
         query: { view: "create" }
       })
     ).toBe(true);
+    for (const path of ["/runtime/tasks", "/messages", "/task-workbench"])
+      expect(identityRouteAllowed(identity.current.value, { path, query: {} })).toBe(
+        true
+      );
     identity.select("1000");
     expect(
       identityRouteAllowed(identity.current.value, {

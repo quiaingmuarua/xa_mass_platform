@@ -11,6 +11,8 @@ expand a lane's claim. Evidence links identify assertions, not a fresh passing r
 
 ## jvm_contracts
 
+Shared Task admission is a Server Owner claim: explicit development callers, stored ownership/input ownership, request-correlated creation, full-batch statistics preflight and guarded finite approval. Scenario proofs retain business conversion/content oracles while using the common Task management routes. No session authentication, operation-history store or historical migration is claimed.
+
 **Primary Owner:** each touched JVM module; CI aggregates their deterministic
 contracts and architecture guards.
 

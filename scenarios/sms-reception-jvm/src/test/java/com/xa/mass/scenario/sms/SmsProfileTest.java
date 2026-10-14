@@ -20,6 +20,8 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class SmsProfileTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller SERVICE = com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", List.of("g", "demo-sim")));
     @Test void platformWithoutScenarioImportRegistersNoBusinessOrGroups() {
         var registrations = mock(TaskRpcPreparationService.class);
         var submissions = mock(TaskRpcCallService.class);
@@ -41,7 +43,7 @@ class SmsProfileTest {
         var submissions = mock(TaskRpcCallService.class);
         var results = mock(TaskDataService.class);
         var events = List.of("extension.worker.sms.number.lease");
-        when(registrations.prepare(eq(SmsReceptionService.rpcTaskId("demo-sim")), any()))
+        when(registrations.prepare(org.mockito.ArgumentMatchers.eq(SERVICE), org.mockito.ArgumentMatchers.eq("sms"), eq(SmsReceptionService.rpcTaskId("demo-sim")), any()))
                 .thenReturn(new com.xa.mass.server.api.v1.contract.task.TaskCreateResponse("managed"));
         SmsReceptionService service;
         try (var context = new AnnotationConfigApplicationContext()) {
@@ -56,7 +58,7 @@ class SmsProfileTest {
             service = context.getBean(SmsReceptionService.class);
             assertThat(service.isRunning()).isTrue();
             assertThat(context.getBeansOfType(SmsController.class)).hasSize(1);
-            verify(registrations).prepare(SmsReceptionService.rpcTaskId("demo-sim"),
+            verify(registrations).prepare(SERVICE, "sms", SmsReceptionService.rpcTaskId("demo-sim"),
                     new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("sms", "demo-sim", null, Map.of()));
         }
         assertThat(service.isRunning()).isFalse();
@@ -66,7 +68,7 @@ class SmsProfileTest {
         assertThat(Files.readString(Path.of("build.gradle")))
                 .contains("implementation project(':server_jvm')", "id 'java-library'")
                 .doesNotContain("id 'org.springframework.boot'", "project(':distribution:", "project(':server_boot_jvm')");
-        Set<String> allowed = Set.of("com.xa.mass.server.task.call.TaskRpcPreparationService",
+        Set<String> allowed = Set.of("com.xa.mass.server.task.access.TaskCaller", "com.xa.mass.server.task.call.TaskRpcPreparationService",
                 "com.xa.mass.server.task.call.TaskRpcCallService", "com.xa.mass.server.task.TaskDataService",
                 "com.xa.mass.server.task.observation.TaskLeaseProjection", "com.xa.mass.server.task.observation.TaskLeaseProjectionMetrics",
                 "com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest", "com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest", "com.xa.mass.server.api.v1.contract.task.TaskItemRequest",

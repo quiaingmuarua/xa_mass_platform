@@ -1,3 +1,5 @@
+import { captureTaskCaller, type TaskCaller } from "@/task-caller";
+const CALLER = captureTaskCaller();
 import type { AxiosInstance } from "axios";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -85,14 +87,15 @@ describe("HttpFiniteTaskClient", () => {
       post
     } as unknown as AxiosInstance);
 
-    await client.createTask({
+    await client.createTask(CALLER, {
+      requestId: "request",
       projectId: "test-project",
       workerGroupId: "group-1",
       priority: 50,
       refill: [],
       maxRetryTimes: 3
     });
-    await client.appendItems("task-1", [
+    await client.appendItems(CALLER, "task-1", [
       {
         messageId: "task-1-00001",
         eventCode: "event",
@@ -100,8 +103,8 @@ describe("HttpFiniteTaskClient", () => {
         payload: { value: "a" }
       }
     ]);
-    await client.approveTask("task-1");
-    await expect(client.exportResults("task-1")).resolves.toMatchObject({
+    await client.approveTask(CALLER, "task-1", 1);
+    await expect(client.exportResults(CALLER, "task-1")).resolves.toMatchObject({
       ready: true,
       fileName: "task-1-results.jsonl"
     });
@@ -133,7 +136,7 @@ describe("HttpFiniteTaskClient", () => {
       post
     } as unknown as AxiosInstance);
 
-    await expect(client.exportResults("task-1")).resolves.toEqual({
+    await expect(client.exportResults(CALLER, "task-1")).resolves.toEqual({
       ready: false
     });
     expect(post.mock.calls[0]?.[2].validateStatus(503)).toBe(true);
@@ -152,7 +155,7 @@ describe("HttpFiniteTaskClient", () => {
     } as unknown as AxiosInstance);
 
     await expect(
-      client.appendItems("task-1", [
+      client.appendItems(CALLER, "task-1", [
         {
           messageId: "message-1",
           eventCode: "event",
@@ -161,7 +164,7 @@ describe("HttpFiniteTaskClient", () => {
         }
       ])
     ).rejects.toMatchObject({ kind: "schema" });
-    await expect(client.approveTask("task-1")).rejects.toMatchObject({
+    await expect(client.approveTask(CALLER, "task-1", 1)).rejects.toMatchObject({
       kind: "schema"
     });
   });
@@ -185,6 +188,7 @@ function observed(band: "pre_review" | "terminal" = "pre_review") {
     taskId: "task-1",
     createdAtMillis: 1,
     scoreBand: band,
+    stats: { total: 101, countsByTag: { "1": 101 } },
     task: {
       taskId: "task-1",
       projectId: "default",
@@ -201,6 +205,7 @@ function request(count = 101) {
   return {
     projectId: "default",
     create: {
+      requestId: "request",
       projectId: "default",
       workerGroupId: "g",
       priority: 50,
@@ -352,7 +357,7 @@ describe("server-observed finite Task management", () => {
     });
     expect(client.ensureDirectory).not.toHaveBeenCalled();
     expect(await store.ensureDirectory("default")).toBe(true);
-    expect(client.ensureDirectory).toHaveBeenCalledExactlyOnceWith("known");
+    expect(client.ensureDirectory).toHaveBeenCalledExactlyOnceWith(CALLER, "known");
     expect(client.createTask).toHaveBeenCalledTimes(1);
     expect(client.appendItems).not.toHaveBeenCalled();
     expect(client.approveTask).not.toHaveBeenCalled();
@@ -363,8 +368,9 @@ function fakeClient(overrides: Partial<FiniteTaskClient> = {}): FiniteTaskClient
     createTask: vi.fn(
       async (): Promise<TaskCreateApiResponse> => ({ taskId: "task-1" })
     ),
-    appendItems: vi.fn(async (_taskId: string, items: TaskItemApiRequest[]) =>
-      appended(items.map((i) => i.messageId))
+    appendItems: vi.fn(
+      async (_caller: TaskCaller, _taskId: string, items: TaskItemApiRequest[]) =>
+        appended(items.map((i) => i.messageId))
     ),
     approveTask: vi.fn(async () => undefined),
     closeTask: vi.fn(async () => undefined),
@@ -384,14 +390,18 @@ it("finite submissions keep their captured Project across batches and isolate re
   setActivePinia(createPinia());
   let release!: () => void;
   const client = fakeClient({
-    createTask: vi.fn(async (request) => ({ taskId: request.projectId + "-task" })),
-    appendItems: vi.fn(async (_taskId: string, items: TaskItemApiRequest[]) => {
-      if (items[0]!.messageId === "m0")
-        await new Promise<void>((resolve) => {
-          release = resolve;
-        });
-      return appended(items.map((item) => item.messageId));
-    })
+    createTask: vi.fn(async (_caller, request) => ({
+      taskId: request.projectId + "-task"
+    })),
+    appendItems: vi.fn(
+      async (_caller: TaskCaller, _taskId: string, items: TaskItemApiRequest[]) => {
+        if (items[0]!.messageId === "m0")
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        return appended(items.map((item) => item.messageId));
+      }
+    )
   });
   const store = createTaskManagementStore("api", client);
   const a = {
@@ -413,7 +423,7 @@ it("finite submissions keep their captured Project across batches and isolate re
   expect(
     vi
       .mocked(client.appendItems)
-      .mock.calls.every((call) => call[0] === "agentforge-task")
+      .mock.calls.every((call) => call[1] === "agentforge-task")
   ).toBe(true);
   expect(store.project("agentforge").submission).toMatchObject({
     applied: 101,

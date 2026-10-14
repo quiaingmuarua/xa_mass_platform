@@ -1,3 +1,4 @@
+import { type TaskCaller, callerHeaders } from "@/task-caller";
 import { z } from "zod";
 
 export class MessageApiError extends Error {
@@ -15,11 +16,13 @@ export async function api<T>(
   path: string,
   body?: unknown,
   signal?: AbortSignal,
-  encoding: "json" | "text" = "json"
+  encoding: "json" | "text" = "json",
+  caller?: TaskCaller
 ): Promise<T> {
   const response = await fetch(`/api/v1/messages${path}`, {
     method: body === undefined ? "GET" : "POST",
     headers: {
+      ...(caller ? callerHeaders(caller) : {}),
       "Content-Type":
         encoding === "text" ? "text/plain;charset=UTF-8" : "application/json"
     },

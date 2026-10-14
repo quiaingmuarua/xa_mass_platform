@@ -311,7 +311,7 @@ replace Group manifests must also replace the complete Project list under
 the lane's intended Project/Group bindings. Each lane owns its workload, fault,
 deadline and outcome assertions.
 
-Finite Task creation includes `projectId`. Correctness, Convergence Health and
+Finite Task creation includes `projectId` and a fixture-owned `requestId`; task HTTP clients explicitly declare development user/role headers. Approval supplies `{expectedItemCount}` from the fixture input set. Correctness, Convergence Health and
 Android clients explicitly prepare their stable fixture RPC Task IDs through
 `POST /api/v1/tasks/{taskId}/rpc:prepare` during setup. Project reads expose Group
 bindings only; Group registration never creates Tasks. Dynamic Matching and

@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.concurrent.Executors;
 
 final class CallApi implements AutoCloseable {
+    private final Map<String, String> taskCallerHeaders;
     static final String GROUP = "scenario-string-utils-workers";
     static final String INPUT = "x".repeat(64);
     enum ExpectedResult { MD5, DELAY }
@@ -38,7 +39,7 @@ final class CallApi implements AutoCloseable {
     private final String runtime;
     private final String lab;
 
-    CallApi(String runtime, String lab) { this.runtime = runtime; this.lab = lab; }
+    CallApi(String runtime, String lab, Map<String, String> taskCallerHeaders) { this.taskCallerHeaders = Map.copyOf(taskCallerHeaders); this.runtime = runtime; this.lab = lab; }
 
     Map<String, Object> post(String path, Object body) throws Exception { return json(runtime + path, body); }
     Map<String, Object> get(String path) throws Exception { return json(runtime + path, null); }
@@ -69,6 +70,8 @@ final class CallApi implements AutoCloseable {
 
     private HttpResponse<String> send(String url, Object body, Duration timeout) throws Exception {
         var request = HttpRequest.newBuilder(URI.create(url)).timeout(timeout);
+        String path = URI.create(url).getPath();
+        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) taskCallerHeaders.forEach(request::header);
         if (body == null) request.GET();
         else request.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(Jsons.toJson(body)));
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
@@ -83,7 +86,7 @@ final class CallApi implements AutoCloseable {
         item.put("workerSelector", worker == null ? Map.of("executorName","worker.any","input",Map.of()) : Map.of("executorName","workerId","input",worker));
         var response = send(runtime + "/api/v1/tasks/" + task + "/items:call",
                 Map.of("items", List.of(item), "waitTimeoutMillis", 1_000));
-        if (Set.of(400, 404, 405, 415, 422).contains(response.statusCode()))
+        if (Set.of(400, 401, 403, 404, 405, 415, 422).contains(response.statusCode()))
             return new CallLoad.Reply(response.statusCode(), CallLoad.Outcome.PROTOCOL_ERROR);
         if (response.statusCode() != 200) return new CallLoad.Reply(response.statusCode(), CallLoad.Outcome.UNKNOWN);
         try {

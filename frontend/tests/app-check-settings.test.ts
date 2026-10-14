@@ -1,8 +1,8 @@
+import { TaskApiError } from "@/task-caller";
 import { CALLER } from "./app-check-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiAppCheckTaskSource,
-  AppCheckApiError,
   AppCheckConfigurationUnconfirmed
 } from "../src/app-checks/task-source";
 import { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
@@ -55,7 +55,7 @@ describe("App Checks configuration API boundary", () => {
           view.saved.configuration
         )
       ).rejects.toBeInstanceOf(
-        status === 503 ? AppCheckConfigurationUnconfirmed : AppCheckApiError
+        status === 503 ? AppCheckConfigurationUnconfirmed : TaskApiError
       );
       expect(fetcher).toHaveBeenCalledTimes(1);
     }

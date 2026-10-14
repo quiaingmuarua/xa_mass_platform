@@ -1,4 +1,5 @@
-import { ref, reactive } from "vue";
+import { consoleIdentity } from "@/console-identity";
+import { ref, reactive, watch } from "vue";
 import { ProjectRequestError } from "./projects";
 import type {
   Project,
@@ -98,6 +99,15 @@ export function createProjectWorkspace(source: ProjectSource) {
     requests.forEach((c) => c.abort());
     requests.clear();
   }
+  const stopIdentity = watch(
+    consoleIdentity.current,
+    () => {
+      dispose();
+      Object.keys(windows).forEach((key) => delete windows[key]);
+      clearDetail();
+    },
+    { flush: "sync" }
+  );
   return {
     directory,
     windows,
@@ -110,6 +120,9 @@ export function createProjectWorkspace(source: ProjectSource) {
     loadDetail,
     clearDetail,
     invalidateDetail,
-    dispose
+    dispose() {
+      stopIdentity();
+      dispose();
+    }
   };
 }

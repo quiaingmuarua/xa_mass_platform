@@ -1,5 +1,7 @@
 package com.xa.mass.scenario.sms;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
@@ -34,6 +36,7 @@ public final class SmsReceptionService implements SmartLifecycle, AutoCloseable 
     private final TaskLeaseProjectionMetrics projections;
     private final String group;
     private final Clock clock;
+    private final TaskCaller serviceCaller;
     private final String runId = UUID.randomUUID().toString();
     private final LongAdder requests = new LongAdder(), queries = new LongAdder(), errors = new LongAdder();
     private final Latency acquisition = new Latency(), query = new Latency();
@@ -41,14 +44,17 @@ public final class SmsReceptionService implements SmartLifecycle, AutoCloseable 
     private volatile boolean running;
     private boolean closed;
     public SmsReceptionService(TaskRpcPreparationService preparations, TaskRpcCallService calls, TaskDataService results,
-            TaskLeaseProjectionMetrics projections, String group, Clock clock) {
+            TaskLeaseProjectionMetrics projections, String group, Clock clock, TaskCaller serviceCaller) {
+        if (!serviceCaller.isService()) throw new IllegalArgumentException("SMS requires a Project service caller");
+        serviceCaller.requireProject("sms");
+        this.serviceCaller = serviceCaller;
         this.preparations = preparations; this.calls = calls; this.results = results;
         this.projections = projections; this.group = group; this.clock = clock;
     }
     @Override public synchronized void start() {
         if (running) return;
         if (closed) throw new IllegalStateException("SMS run is closed");
-        taskId = preparations.prepare(rpcTaskId(group), new TaskRpcPrepareRequest("sms", group, null, Map.of())).taskId();
+        taskId = preparations.prepare(serviceCaller, "sms", rpcTaskId(group), new TaskRpcPrepareRequest("sms", group, null, Map.of())).taskId();
         running = true;
     }
     @Override public synchronized void stop() { running = false; closed = true; }
@@ -72,7 +78,8 @@ public final class SmsReceptionService implements SmartLifecycle, AutoCloseable 
                 "countries", COUNTRIES, "limits", Map.of("defaultLeaseSeconds", 60, "maxLeaseSeconds", 300,
                         "setupMillis", 30_000, "waitMillis", 3_000));
     }
-    public DeferredResult<Map<String, Object>> lease(Map<String, Object> input) {
+    public DeferredResult<Map<String, Object>> lease(TaskCaller caller, Map<String, Object> input) {
+        caller.requireAdmin();
         requireRunning();
         if (!Set.of("applicationId", "country", "leaseSeconds").containsAll(input.keySet()))
             throw new ProductError(400, "Unknown request fields");
@@ -91,20 +98,21 @@ public final class SmsReceptionService implements SmartLifecycle, AutoCloseable 
                 new WorkerQuery(FUNCTION, Map.of("partition", app, "country", country)));
         requests.increment();
         try {
-            return calls.call(taskId, new TaskRpcCallRequest(List.of(item), 3_000L), rows -> {
+            return calls.call(serviceCaller, "sms", taskId, new TaskRpcCallRequest(List.of(item), 3_000L), rows -> {
                 var response = view(id, rows.get(id), clock.millis());
                 acquisition.add((System.nanoTime() - started) / 1_000_000);
                 return response;
             });
         } catch (RuntimeException failure) { errors.increment(); throw failure; }
     }
-    public Map<String, Object> get(String messageId) {
+    public Map<String, Object> get(TaskCaller caller, String messageId) {
+        caller.requireAdmin();
         requireRunning();
         if (messageId == null || messageId.isBlank() || messageId.length() > 256)
             throw new ProductError(400, "Invalid messageId");
         queries.increment();
         long started = System.nanoTime();
-        try { return view(messageId, results.loadTaskItemResults(taskId, List.of(messageId)).get(messageId), clock.millis()); }
+        try { return view(messageId, results.loadTaskItemResults(serviceCaller, taskId, List.of(messageId)).get(messageId), clock.millis()); }
         catch (RuntimeException failure) { errors.increment(); throw failure; }
         finally { query.add((System.nanoTime() - started) / 1_000_000); }
     }
@@ -146,7 +154,8 @@ public final class SmsReceptionService implements SmartLifecycle, AutoCloseable 
         });
         return Collections.unmodifiableMap(updates);
     }
-    public Map<String, Object> metrics() {
+    public Map<String, Object> metrics(TaskCaller caller) {
+        caller.requireAdmin();
         return Map.of("runId", runId, "requests", requests.sum(), "queries", queries.sum(), "errors", errors.sum(),
                 "acquisitionLatencyMillis", acquisition.view(), "queryLatencyMillis", query.view(), "projection", projections.metrics());
     }

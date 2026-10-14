@@ -1,3 +1,4 @@
+import type { TaskCaller } from "@/task-caller";
 import { reactive, type InjectionKey } from "vue";
 import type { Catalog } from "./api";
 import type { RecipientInput } from "@/files/phone-numbers";
@@ -51,8 +52,7 @@ export function actionReason(
   if (task.state === "terminal") return "调度已结束";
   if (action === "close") return "";
   if (task.state !== "pre_review") return "任务不在待审核状态";
-  if (task.inputVersion !== "3") return "旧输入版本不支持导入或启动";
-  if (!task.appId || task.senderPhone) return "任务发送配置不可用";
+  if (!task.appId) return "任务发送配置不可用";
   return action === "approve" && !task.sendTotal ? "请先导入收件人" : "";
 }
 export const resultLabels = {
@@ -119,6 +119,7 @@ export function freshMessageDraft(appId = "") {
     body: "",
     createdAt: Date.now(),
     requestId: crypto.randomUUID(),
+    caller: undefined as TaskCaller | undefined,
     editor: recipientEditor(),
     frozen: undefined as CreateMessageTask | undefined,
     knownTaskId: undefined as string | undefined,

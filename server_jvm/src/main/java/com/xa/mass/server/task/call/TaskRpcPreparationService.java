@@ -1,5 +1,7 @@
 package com.xa.mass.server.task.call;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalResult;
@@ -74,25 +76,27 @@ public final class TaskRpcPreparationService {
         );
     }
 
-    public TaskCreateResponse prepare(String taskId, TaskRpcPrepareRequest request) {
+    public TaskCreateResponse prepare(TaskCaller caller, String inputOwner, String taskId, TaskRpcPrepareRequest request) {
         if (taskId == null || taskId.isBlank() || request == null
                 || request.projectId() == null || request.projectId().isBlank()
                 || request.workerGroupId() == null || request.workerGroupId().isBlank())
             throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, REGISTER_OPERATION, "Invalid RPC Task preparation", null);
+        caller.requireProject(request.projectId());
         final TaskRpcPrepareRequest admitted;
         try { admitted = new TaskRpcPrepareRequest(request.projectId(), request.workerGroupId(), request.name(), TaskAttribution.input(request.metadata())); }
         catch (IllegalArgumentException invalid) { throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, REGISTER_OPERATION, invalid.getMessage(), invalid); }
-        return operations.taskMutation(taskId, () -> prepareObserved(taskId, admitted));
+        return operations.taskMutation(taskId, () -> prepareObserved(caller, inputOwner, taskId, admitted));
     }
 
-    private TaskCreateResponse prepareObserved(String taskId, TaskRpcPrepareRequest request) {
+    private TaskCreateResponse prepareObserved(TaskCaller caller, String inputOwner, String taskId, TaskRpcPrepareRequest request) {
         projects.requireWorkerGroup(request.projectId(), request.workerGroupId());
         requireWorkerGroup(request.workerGroupId(), REGISTER_OPERATION);
         TaskDescriptor existing = loadDescriptor(
                 taskId,
                 REGISTER_OPERATION
         );
-        TaskDescriptor expected = descriptor(taskId, request, existing);
+        if (existing != null) caller.requireInput(existing, inputOwner);
+        TaskDescriptor expected = descriptor(caller, inputOwner, taskId, request, existing);
         if (existing == null) {
             try {
                 if (scores.getScoreStates(List.of(taskId)).get(taskId) != null || directory.contains(request.projectId(), taskId))
@@ -113,8 +117,9 @@ public final class TaskRpcPreparationService {
                             null
                     );
                 }
+                caller.requireInput(existing, inputOwner);
                 requireEquivalent(
-                        descriptor(taskId, request, existing),
+                        descriptor(caller, inputOwner, taskId, request, existing),
                         existing,
                         REGISTER_OPERATION
                 );
@@ -131,7 +136,7 @@ public final class TaskRpcPreparationService {
             requireEquivalent(expected, existing, REGISTER_OPERATION);
         }
 
-        try { directory.ensure(taskId); }
+        try { directory.ensure(caller, taskId); }
         catch (RuntimeException failure) { throw unavailable(REGISTER_OPERATION, "Task directory is unconfirmed", failure); }
         TaskApprovalResult approval = approve(expected.taskId());
         return switch (approval.status()) {
@@ -228,7 +233,7 @@ public final class TaskRpcPreparationService {
         }
     }
 
-    private TaskDescriptor descriptor(String taskId, TaskRpcPrepareRequest request, TaskDescriptor existing) {
+    private TaskDescriptor descriptor(TaskCaller caller, String inputOwner, String taskId, TaskRpcPrepareRequest request, TaskDescriptor existing) {
         java.util.List<com.xa.mass.kernel.assignment.RefillTarget> refill;
         try {
             refill = Objects.requireNonNull(matching.normalizeRefill(request.workerGroupId(),
@@ -237,8 +242,11 @@ public final class TaskRpcPreparationService {
             throw unavailable(REGISTER_OPERATION, "Call Task targets unavailable", error);
         }
         try {
-            long created = existing == null ? System.currentTimeMillis() : TaskAttribution.require(existing.metadata()).createdAtMillis();
-            var metadata = new TaskAttribution(request.projectId(), created, request.metadata().get("userId")).stamp(request.metadata());
+            var saved = existing == null ? null : TaskAttribution.require(existing.metadata());
+            long created = saved == null ? System.currentTimeMillis() : saved.createdAtMillis();
+            String creator = saved == null ? caller.userId() : saved.userId();
+            var metadata = new java.util.LinkedHashMap<>(new TaskAttribution(request.projectId(), created, creator).stamp(request.metadata()));
+            metadata.put(TaskCaller.INPUT_OWNER, inputOwner);
             return new TaskDescriptor(taskId, request.workerGroupId(), TaskIdleDisposition.PARK_WHEN_IDLE,
                     TASK_CONFIG, refill, request.name(), metadata);
         } catch (IllegalArgumentException error) {

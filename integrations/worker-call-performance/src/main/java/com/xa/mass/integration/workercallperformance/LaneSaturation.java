@@ -59,7 +59,7 @@ final class LaneSaturation {
         var invalid = new ArrayList<String>();
         Exception failure = null;
         try (var api = new CallApi(options.getOrDefault("--runtime-url", "http://127.0.0.1:18082"),
-                options.getOrDefault("--lab-url", "http://127.0.0.1:18086"))) {
+                options.getOrDefault("--lab-url", "http://127.0.0.1:18086"), java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin"))) {
             var world = LaneWorld.readWorld(java.nio.file.Path.of(options.get("--world")));
             if (world.values().stream().anyMatch(ids -> ids.size() != settings.workers()))
                 throw new IllegalStateException("Experiment and bootstrap Worker counts disagree");
@@ -74,7 +74,7 @@ final class LaneSaturation {
             summary.put("stage", "window");
             var sampling = new AtomicBoolean(true);
             summary.put("lifecycleStartedEpochMillis", System.currentTimeMillis());
-            for (String task : tasks.values()) approve(api, task);
+            for (String task : tasks.values()) approve(api, task, settings.items());
             Thread.sleep(settings.warmupSeconds() * 1000L);
             long started = System.currentTimeMillis();
             long startedNanos = System.nanoTime();
@@ -139,7 +139,7 @@ final class LaneSaturation {
         var refill = path == Path.TASK_ANY
                 ? List.of(Map.of("poolName", "any", "target", Map.of(), "count", LaneCase.ASSIGNMENT_BATCH_LIMIT))
                 : List.of();
-        return CallApi.string(api.post("/api/v1/tasks", Map.of("projectId", LaneWorld.PROJECT, "workerGroupId", group,
+        return CallApi.string(api.post("/api/v1/tasks", Map.of("requestId", UUID.randomUUID().toString(), "projectId", LaneWorld.PROJECT, "workerGroupId", group,
                 "refill", refill, "priority", 50, "maxRetryTimes", 3)), "taskId");
     }
 
@@ -190,8 +190,8 @@ final class LaneSaturation {
             throw new CallLoad.ProtocolFailure("Saturation append did not apply the exact Item set");
     }
 
-    private static void approve(CallApi api, String task) throws Exception {
-        var approval = api.post("/api/v1/tasks/" + task + "/approve", Map.of());
+    private static void approve(CallApi api, String task, int expectedItemCount) throws Exception {
+        var approval = api.post("/api/v1/tasks/" + task + "/approve", Map.of("expectedItemCount", expectedItemCount));
         if (!Set.of("applied", "unchanged").contains(approval.get("status"))) throw new CallLoad.ProtocolFailure("Task approval failed");
     }
 

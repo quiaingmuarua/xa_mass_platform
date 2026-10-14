@@ -1,5 +1,7 @@
 package com.xa.mass.server.task;
 
+import com.xa.mass.server.task.access.TaskCaller;
+
 import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
@@ -18,27 +20,43 @@ public final class TaskLifecycleService {
     private final TaskLifecycleCommands lifecycle;
     private final TaskResourceCatalog catalog;
     private final OperationGuard operations;
+    private final com.xa.mass.kernel.score.TaskItemScoreBandCore itemScores;
+    private final com.xa.mass.kernel.score.TaskScoreBandCore taskScores;
 
     public TaskLifecycleService(
             TaskLifecycleCommands lifecycle,
             TaskResourceCatalog catalog,
-            OperationGuard operations
+            OperationGuard operations,
+            com.xa.mass.kernel.score.TaskItemScoreBandCore itemScores,
+            com.xa.mass.kernel.score.TaskScoreBandCore taskScores
     ) {
         this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.operations = Objects.requireNonNull(operations, "operations");
+        this.itemScores = Objects.requireNonNull(itemScores, "itemScores");
+        this.taskScores = Objects.requireNonNull(taskScores, "taskScores");
     }
 
-    public ActionOutcome approve(String taskId) {
-        return operations.taskMutation(taskId, () -> approveObserved(taskId));
+    public ActionOutcome approve(TaskCaller caller, String taskId, long expectedItemCount) {
+        if (expectedItemCount <= 0) throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskLifecycle.approve");
+        return operations.taskMutation(taskId, () -> approveObserved(caller, taskId, expectedItemCount));
     }
 
-    private ActionOutcome approveObserved(String taskId) {
+    private ActionOutcome approveObserved(TaskCaller caller, String taskId, long expectedItemCount) {
         String operation = "taskLifecycle.approve";
-        requireFiniteTask(taskId, operation);
+        requireFiniteTask(caller, taskId, operation);
         TaskLifecycleCommands.TaskApprovalResult result;
         try {
+            var state = taskScores.getScoreStates(List.of(taskId)).get(taskId);
+            if (state == null) throw unavailable(operation, null);
+            if (state.band() == com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand.PRE_REVIEW) {
+                var count = itemScores.observeItemScoreCounts(List.of(taskId)).get(taskId);
+                if (count == null) throw unavailable(operation, null);
+                if (count.total() != expectedItemCount) throw failure(ServerErrorCode.TASK_STATE_CONFLICT, operation);
+            }
             result = lifecycle.approveTask(taskId);
+        } catch (ServerException known) {
+            throw known;
         } catch (RuntimeException error) {
             throw unavailable(operation, error);
         }
@@ -63,16 +81,18 @@ public final class TaskLifecycleService {
         };
     }
 
-    public ActionOutcome close(String taskId) {
-        return operations.taskMutation(taskId, () -> closeObserved(taskId));
+    public ActionOutcome close(TaskCaller caller, String taskId) {
+        return operations.taskMutation(taskId, () -> closeObserved(caller, taskId));
     }
 
-    private ActionOutcome closeObserved(String taskId) {
+    private ActionOutcome closeObserved(TaskCaller caller, String taskId) {
         String operation = "taskLifecycle.close";
-        requireFiniteTask(taskId, operation);
+        requireFiniteTask(caller, taskId, operation);
         TaskLifecycleCommands.TaskCloseResult result;
         try {
             result = lifecycle.closeTask(taskId);
+        } catch (ServerException known) {
+            throw known;
         } catch (RuntimeException error) {
             throw unavailable(operation, error);
         }
@@ -97,7 +117,7 @@ public final class TaskLifecycleService {
         };
     }
 
-    private void requireFiniteTask(String taskId, String operation) {
+    private void requireFiniteTask(TaskCaller caller, String taskId, String operation) {
         TaskDescriptor descriptor;
         try {
             descriptor = catalog.loadTaskAllocationDescriptors(
@@ -114,6 +134,7 @@ public final class TaskLifecycleService {
         if (descriptor == null) {
             throw failure(ServerErrorCode.TASK_NOT_FOUND, operation);
         }
+        caller.requireTask(descriptor);
         if (descriptor.idleDisposition()
                 != TaskIdleDisposition.CLOSE_WHEN_IDLE) {
             throw failure(

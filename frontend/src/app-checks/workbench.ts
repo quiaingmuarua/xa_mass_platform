@@ -1,5 +1,6 @@
+import { type TaskCaller } from "@/task-caller";
 import { reactive } from "vue";
-import type { AppCheckCaller } from "./task-source";
+
 import { consoleIdentity, type ConsoleIdentity } from "@/console-identity";
 import type {
   Catalog,
@@ -43,7 +44,7 @@ export interface CheckDraft {
   error: string;
   simulation?: Simulation;
   frozenCreate?: CreateCheckTask;
-  frozenCaller?: AppCheckCaller;
+  frozenCaller?: TaskCaller;
 }
 export interface UnconfirmedSubmission {
   userId: string;

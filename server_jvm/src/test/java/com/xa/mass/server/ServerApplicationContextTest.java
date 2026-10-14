@@ -544,6 +544,7 @@ class ServerApplicationContextTest {
     }
 
     private static Set<String> expectedResponseCodes(String tag, String path) {
+        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) return Set.of("200", "400", "403", "503");
         if (!ApiTags.WORKER_DELIVERY.equals(tag)) {
             return Set.of("200", "400", "503");
         }

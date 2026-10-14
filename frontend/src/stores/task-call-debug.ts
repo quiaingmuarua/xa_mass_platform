@@ -1,3 +1,4 @@
+import { type TaskCaller, captureTaskCaller } from "@/task-caller";
 import { reactive } from "vue";
 import { defineStore } from "pinia";
 
@@ -26,6 +27,7 @@ export type TaskCallDebugHistoryState =
 
 /** Browser-memory diagnostic evidence. This is not a Task or Server resource. */
 export interface TaskCallDebugHistoryItem {
+  caller: TaskCaller;
   localId: string;
   taskId: string;
   workerGroupId: string;
@@ -96,6 +98,7 @@ export function createTaskCallDebugStore(
       const sentAtValue = now();
       const messageId = nextMessageId(sentAtValue.getTime());
       const created: TaskCallDebugHistoryItem = {
+        caller: captureTaskCaller(),
         localId: `task-call-debug-${messageId}`,
         taskId: validated.taskId,
         workerGroupId: validated.workerGroupId,
@@ -116,6 +119,7 @@ export function createTaskCallDebugStore(
 
       try {
         const outcome = await client.callTask({
+          caller: item.caller,
           taskId: validated.taskId,
           messageId,
           eventName: validated.eventName,
@@ -164,7 +168,11 @@ export function createTaskCallDebugStore(
       item.checkingResult = true;
       item.resultLoadError = undefined;
       try {
-        const outcome = await client.loadResult(item.taskId, item.messageId);
+        const outcome = await client.loadResult(
+          item.caller,
+          item.taskId,
+          item.messageId
+        );
         item.lastCheckedAt = now().toISOString();
         if (outcome.status === "succeeded") {
           item.opaqueResultPayload = outcome.opaqueResultPayload;

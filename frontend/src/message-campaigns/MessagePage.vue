@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { consoleIdentity } from "@/console-identity";
 import { useMessageAvailability } from "./availability";
 import MessageTaskWorkspace from "./MessageTaskWorkspace.vue";
 const availability = useMessageAvailability();
@@ -6,7 +7,10 @@ const state = availability.state;
 </script>
 
 <template>
-  <MessageTaskWorkspace v-if="state.status === 'demo' || state.status === 'enabled'" />
+  <MessageTaskWorkspace
+    v-if="state.status === 'demo' || state.status === 'enabled'"
+    :key="consoleIdentity.current.value.userId"
+  />
   <section v-else class="message-unavailable" aria-live="polite">
     <h1>Messages</h1>
     <p v-if="state.status === 'loading'">正在确认 Messages 可用性…</p>

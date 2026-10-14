@@ -88,12 +88,12 @@ def creation_input(case):
     return {key: case[key] for key in ("requestId", "appId", "country", "simulation")}
 
 
-def create_import_approve(run, http, case, *, approve=True, historical_baseline=False):
-    headers = {} if historical_baseline else caller_headers(case["userId"], "admin")
-    api = http if historical_baseline else functools.partial(http, headers=headers)
+def create_import_approve(run, http, case, *, approve=True):
+    headers = caller_headers(case["userId"], "admin")
+    api = functools.partial(http, headers=headers)
     task_id = api(run.url, "/api/v1/app-checks/tasks", creation_input(case))["taskId"]
     route = f"/api/v1/app-checks/tasks/{task_id}"
-    require(api(run.url, route)["task"]["totalCount"] == 0, "Creation imported work implicitly")
+    require(api(run.url, "/api/v1/projects/app-checks/tasks:stats", [task_id])[task_id]["total"] == 0, "Creation imported work implicitly")
     request = urllib.request.Request(run.url + route + "/numbers:import",
                                      data="\n".join(case["numbers"]).encode("utf-8"),
                                      headers={"Content-Type": "text/plain;charset=UTF-8", **headers}, method="POST")
@@ -101,8 +101,23 @@ def create_import_approve(run, http, case, *, approve=True, historical_baseline=
         receipt = json.load(response)
     require(receipt["addedCount"] == len(case["numbers"]), "Import did not confirm every input")
     if approve:
-        api(run.url, route + "/approve", len(case["numbers"]))
+        api(run.url, f"/api/v1/tasks/{task_id}/approve", {"expectedItemCount": len(case["numbers"])})
     return task_id
+
+
+def task_observations(run, api, task_id):
+    """The workload composes independent descriptor/count/business-content observations."""
+    entry = api(run.url, "/api/v1/projects/app-checks/tasks/" + task_id)
+    counts = api(run.url, "/api/v1/projects/app-checks/tasks:stats", [task_id])[task_id]
+    results = api(run.url, "/api/v1/app-checks/tasks/" + task_id + "/results")
+    require(set(results) == {"taskId", "results", "truncated"} and results["taskId"] == task_id, "Business view shape changed")
+    metadata = entry["task"]["metadata"]
+    task = {**metadata, "taskId": task_id, "workerGroupId": entry["task"]["workerGroupId"],
+            "state": entry["scoreBand"], "totalCount": counts["total"], "activeCount": counts["countsByTag"]["1"],
+            "failedCount": counts["countsByTag"]["5"],
+            "succeededCount": sum(counts["countsByTag"][str(tag)] for tag in range(6, 10)),
+            "simulation": json.loads(metadata["simulation"])}
+    return {"task": task, "results": results["results"], "resultsTruncated": results["truncated"]}
 
 
 def functional(run, http):
@@ -139,7 +154,7 @@ def functional(run, http):
 
         def observed():
             nonlocal detail
-            detail = api(run.url, "/api/v1/app-checks/tasks/" + task_id)
+            detail = task_observations(run, api, task_id)
             task = detail["task"]
             return task["totalCount"] == len(case["numbers"]) and task["activeCount"] == 0 \
                 and task["state"] == "terminal" \
@@ -174,9 +189,9 @@ def functional(run, http):
             recomputed += 1
         summaries.append({"case": case["requestId"], "total": task["totalCount"], "succeeded": task["succeededCount"],
                           "failed": task["failedCount"], "recomputed": recomputed})
-    listing = api(run.url, "/api/v1/app-checks/tasks?limit=100")
+    listing = api(run.url, "/api/v1/projects/app-checks/tasks?limit=100")
     require({task for _, task in tasks} <= {row["taskId"] for row in listing["tasks"]}, "Project list lost a Task")
-    require(all(row.get("userId") == "proof" for row in listing["tasks"]
+    require(all(row["task"]["metadata"].get("userId") == "proof" for row in listing["tasks"]
                 if row["taskId"] in {task for _, task in tasks}), "Project list lost Task creators")
     return {"passed": True, "appWorkers": 4, "tasks": summaries, "idempotentSubmission": True,
             "groupIsolation": True, "hashAndDelayRecomputed": True, "creatorRetained": True,

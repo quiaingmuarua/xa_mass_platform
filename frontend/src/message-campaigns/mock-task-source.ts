@@ -1,3 +1,9 @@
+import {
+  type TaskCaller,
+  requireCaller,
+  requireTaskCaller,
+  requireAdminCaller
+} from "@/task-caller";
 import { compareTaskIds } from "@/task-user-id";
 import { inspectRecipientInput, MESSAGE_IMPORT_LIMITS } from "@/files/phone-numbers";
 import type {
@@ -191,9 +197,11 @@ export class MockMessageTaskSource implements MessageTaskSource {
       }
     }
   }
-  async listTasks() {
+  async listTasks(caller: TaskCaller) {
+    caller = requireCaller(caller);
     const tasks = [...this.records.values()]
       .map(({ task }) => task)
+      .filter((task) => caller.role === "admin" || task.userId === caller.userId)
       .sort((a, b) => compareTaskIds(a.taskId, b.taskId));
     return structuredClone({
       tasks: tasks
@@ -206,10 +214,11 @@ export class MockMessageTaskSource implements MessageTaskSource {
       truncated: tasks.length > 100
     });
   }
-  async loadTask(taskId: string): Promise<MessageTaskDetail> {
+  async loadTask(caller: TaskCaller, taskId: string): Promise<MessageTaskDetail> {
     const record = this.records.get(taskId);
     if (!record)
       throw new Error("没有找到这个 Mock 任务。刷新页面会重置本地创建的任务。");
+    requireTaskCaller(caller, record.task);
     if (this.failedReads.delete(taskId))
       throw new Error("Mock 结果读取失败。已保留上次数据，可再次刷新。");
     return structuredClone({
@@ -218,7 +227,9 @@ export class MockMessageTaskSource implements MessageTaskSource {
       resultsTruncated: record.resultsTruncated || record.results.length > 100
     });
   }
-  async createTask(input: CreateMessageTask) {
+  async createTask(caller: TaskCaller, input: CreateMessageTask) {
+    caller = requireCaller(caller);
+    const requestKey = caller.userId + "/" + input.requestId;
     const app = this.applications.find((app) => app.id === input.appId);
     if (!app) throw new Error("应用配置不可用");
     const fingerprint = JSON.stringify([
@@ -229,7 +240,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
       input.senderCountry ?? null,
       input.body
     ]);
-    const prior = this.requests.get(input.requestId);
+    const prior = this.requests.get(requestKey);
     if (prior) {
       if (prior.input !== fingerprint)
         throw new Error("这个申请已用于不同的任务内容。");
@@ -239,6 +250,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
     this.records.set(taskId, {
       task: {
         taskId,
+        userId: caller.userId,
         name: input.name,
         appId: input.appId,
         createdAtMillis: Math.max(Date.now(), epoch) + this.sequence,
@@ -259,10 +271,10 @@ export class MockMessageTaskSource implements MessageTaskSource {
       results: [],
       resultsTruncated: false
     });
-    this.requests.set(input.requestId, { input: fingerprint, taskId });
+    this.requests.set(requestKey, { input: fingerprint, taskId });
     return { taskId };
   }
-  private requireTask(taskId: string, review: boolean) {
+  private requireTask(caller: TaskCaller, taskId: string, review: boolean) {
     const record = this.records.get(taskId);
     if (
       !record ||
@@ -271,20 +283,19 @@ export class MockMessageTaskSource implements MessageTaskSource {
       !record.task.recipientCountry
     )
       throw new Error("只支持 Messages 有限任务");
+    requireTaskCaller(caller, record.task);
     if (record.task.state === null) throw new Error("任务状态不可用");
-    if (review && record.task.inputVersion !== "3")
-      throw new Error("旧输入版本仅支持读取和关闭");
     if (review && record.task.state !== "pre_review")
       throw new Error("任务不在待审核状态");
     return record;
   }
-  async importRecipients(taskId: string, text: string) {
+  async importRecipients(caller: TaskCaller, taskId: string, text: string) {
     if (this.activeImports >= 2) throw new Error("导入繁忙，请稍后重试");
     if (this.mutations.has(taskId)) throw new Error("任务有其他操作正在进行");
     this.mutations.add(taskId);
     this.activeImports++;
     try {
-      const record = this.requireTask(taskId, true);
+      const record = this.requireTask(caller, taskId, true);
       const checked = await inspectRecipientInput(
         text,
         record.task.recipientCountry!,
@@ -314,16 +325,21 @@ export class MockMessageTaskSource implements MessageTaskSource {
       this.activeImports--;
     }
   }
-  async approveTask(taskId: string, expectedCount: number) {
+  async approveTask(caller: TaskCaller, taskId: string, expectedCount: number) {
     if (this.mutations.has(taskId)) throw new Error("任务有其他操作正在进行");
-    const record = this.requireTask(taskId, true);
+    const record = this.requireTask(caller, taskId, false);
+    if (!Number.isInteger(expectedCount) || expectedCount <= 0)
+      throw new Error("数量必须为正整数");
+    if (["running_visible", "running-initial"].includes(record.task.state ?? ""))
+      return;
+    if (record.task.state === "terminal") throw new Error("任务不在待审核状态");
     if (!expectedCount || expectedCount !== record.task.sendTotal)
       throw new Error("收件人数为空或已变化，请刷新后重新核对");
     record.task.state = "running_visible";
   }
-  async closeTask(taskId: string) {
+  async closeTask(caller: TaskCaller, taskId: string) {
     if (this.mutations.has(taskId)) throw new Error("任务有其他操作正在进行");
-    this.requireTask(taskId, false).task.state = "terminal";
+    this.requireTask(caller, taskId, false).task.state = "terminal";
   }
   private counts(rows: MessageTaskResult[]) {
     const successful = rows.filter(
@@ -343,12 +359,13 @@ export class MockMessageTaskSource implements MessageTaskSource {
       failedCount: rows.filter((row) => row.resultStatus === "failed").length
     };
   }
-  async demonstrate(taskId: string, action: MessageDemoAction) {
+  async demonstrate(caller: TaskCaller, taskId: string, action: MessageDemoAction) {
+    requireAdminCaller(caller);
     if (action === "fail-read") {
       this.failedReads.add(taskId);
       return;
     }
-    const record = this.requireTask(taskId, false);
+    const record = this.requireTask(caller, taskId, false);
     if (record.task.state === "pre_review") throw new Error("请先核对并启动任务");
     if (action === "advance" || action === "complete") {
       if (record.task.state === "terminal") throw new Error("调度已结束，不能继续发送");

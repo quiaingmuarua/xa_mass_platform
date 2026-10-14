@@ -1,5 +1,6 @@
-import type { AppCheckCaller } from "../src/app-checks/task-source";
-export const CALLER: AppCheckCaller = Object.freeze({ userId: "proof", role: "admin" });
+import { type TaskCaller } from "@/task-caller";
+
+export const CALLER: TaskCaller = Object.freeze({ userId: "proof", role: "admin" });
 import { Blob as NodeBlob } from "node:buffer";
 import type { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
 import type { CreateCheckTask } from "../src/app-checks/model";

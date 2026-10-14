@@ -45,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @Tag("sms-composition")
 class SmsCompositionIntegrationTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
     @Test @Timeout(90)
     void productTraversesRealWorkerWhileTaskHttpRoutesAreBlocked() throws Exception {
         String scope = "test_sms_" + UUID.randomUUID().toString().replace("-", "");
@@ -167,7 +168,7 @@ class SmsCompositionIntegrationTest {
     }
 
     private static HttpResponse<String> send(HttpClient http, URI base, String path, Object body) throws Exception {
-        var request = HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(6));
+        var request = TaskObservations.request(base, path, CALLER).timeout(Duration.ofSeconds(6));
         if (body != null) request.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(Jsons.toJson(body)));
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }

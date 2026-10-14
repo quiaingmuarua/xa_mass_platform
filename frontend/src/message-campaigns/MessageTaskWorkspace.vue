@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { consoleIdentity } from "@/console-identity";
+import { captureTaskCaller } from "@/task-caller";
+
 import {
   computed,
   inject,
@@ -37,6 +40,7 @@ import {
   type MessageAction
 } from "./workbench";
 import "./style.css";
+const caller = captureTaskCaller();
 const source = inject(messageTaskSourceKey)!;
 if (!source) throw new Error("Messages requires an explicit task source");
 const session = inject(messageSessionKey, createMessageSession, true);
@@ -89,7 +93,7 @@ async function loadList() {
   const token = ++listGeneration;
   listBusy.value = true;
   try {
-    const value = await source.listTasks();
+    const value = await source.listTasks(caller);
     if (disposed || token !== listGeneration) return;
     tasks.value = value.tasks.slice(0, 100);
     truncated.value = value.truncated || value.tasks.length > 100;
@@ -157,7 +161,7 @@ async function requestAction(
   actionBusy.value = true;
   actionError.value = "";
   try {
-    const value = await source.loadTask(task.taskId);
+    const value = await source.loadTask(caller, task.taskId);
     if (disposed || token !== actionGeneration || route.fullPath !== origin) return;
     preview.value?.accept(value);
     const reason = actionReason(value.task, action, false);
@@ -199,8 +203,9 @@ async function confirm() {
   actionBusy.value = true;
   actionError.value = "";
   try {
-    if (action === "approve") await source.approveTask(task.taskId, task.sendTotal!);
-    else await source.closeTask(task.taskId);
+    if (action === "approve")
+      await source.approveTask(caller, task.taskId, task.sendTotal!);
+    else await source.closeTask(caller, task.taskId);
     if (disposed || token !== actionGeneration) return;
     confirmation.value = undefined;
     notice.value = `${confirmationLabel.value}已确认。`;
@@ -224,7 +229,7 @@ async function refreshImport() {
     token = ++actionGeneration;
   actionBusy.value = true;
   try {
-    const value = await source.loadTask(id);
+    const value = await source.loadTask(caller, id);
     if (disposed || token !== actionGeneration) return;
     target.value = value.task;
     preview.value?.accept(value);
@@ -257,7 +262,7 @@ async function upload() {
   actionBusy.value = true;
   actionError.value = "";
   try {
-    const receipt = await source.importRecipients(task.taskId, input.text);
+    const receipt = await source.importRecipients(caller, task.taskId, input.text);
     session.imports[task.taskId] = { fileName: editor.fileName || "粘贴输入", receipt };
     if (disposed || token !== actionGeneration) return;
     importOpen.value = false;
@@ -279,7 +284,7 @@ async function demo(action: MessageDemoAction) {
   actionBusy.value = true;
   actionError.value = "";
   try {
-    await source.demonstrate(task.taskId, action);
+    await source.demonstrate(caller, task.taskId, action);
     if (!disposed && token === actionGeneration) {
       if (action === "fail-read") await preview.value?.refresh();
       else await refreshAfter(task.taskId);
@@ -306,7 +311,9 @@ watch(
   },
   { flush: "sync" }
 );
-onBeforeRouteLeave(() => !session.draft.busy);
+onBeforeRouteLeave(
+  () => !session.draft.busy || caller.userId !== consoleIdentity.current.value.userId
+);
 onMounted(loadList);
 onBeforeUnmount(() => {
   disposed = true;
@@ -417,9 +424,6 @@ onBeforeUnmount(() => {
           v-if="confirmation === 'approve'"
           :content="target.body"
         />
-        <p v-if="target.senderPhone" class="message-warning">
-          旧任务指定发送号码：{{ target.senderPhone }}。该限制保持不变。
-        </p>
         <p class="message-hint">
           {{
             confirmation === "approve"

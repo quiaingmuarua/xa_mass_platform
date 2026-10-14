@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from functools import partial
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 import hashlib
@@ -31,7 +32,8 @@ def load_preview(root):
 
 
 preview = load_preview(PREVIEW)
-http, all_pages = preview.http, preview.all_pages
+TASK_CALLER_HEADERS = {"X-XA-Dev-User": "cHJvb2Y", "X-XA-Dev-Role": "admin"}
+http, all_pages = partial(preview.http, headers=TASK_CALLER_HEADERS), preview.all_pages
 
 
 def require(condition, message):
@@ -87,9 +89,9 @@ def prepare_counts(path):
     return counts
 
 def require_idle_messages(run):
-    backend = http(run.url, "/api/v1/messages/tasks?limit=100")
+    backend = http(run.url, "/api/v1/projects/messages/tasks?limit=100")
     host = http(run.host, "/lab/v1/messages/metrics")
-    require(all(task.get("managed") for task in backend["tasks"]) and host["messages"] == 0,
+    require(not backend["tasks"] and host["messages"] == 0,
             "SMS-only workload created Messages business records")
     return {"messageTasks": sum(not task.get("managed") for task in backend["tasks"]),
             "backendMessages": sum(task.get("sendTotal", 0) for task in backend["tasks"]),
@@ -148,12 +150,12 @@ def await_sms(run, reception, sms_id):
 
 def mixed_capabilities(run, reception):
     # A separate real execution must run while the SMS association remains active.
-    task = http(run.url, "/api/v1/tasks", {"projectId": "sms", "workerGroupId": "demo-sim", "refill": []})["taskId"]
+    task = http(run.url, "/api/v1/tasks", {"requestId": "shared-sms-worker", "projectId": "sms", "workerGroupId": "demo-sim", "refill": []})["taskId"]
     message_id = str(uuid.uuid4())
     http(run.url, f"/api/v1/tasks/{task}/items", [{"messageId": message_id,
          "eventCode": "extension.worker.string.md5", "payload": {"value": "shared-sms-worker"},
          "workerSelector": {"executorName": "workerId", "input": reception["workerId"]}, "ttlMillis": 30000}])
-    http(run.url, f"/api/v1/tasks/{task}/approve", {})
+    http(run.url, f"/api/v1/tasks/{task}/approve", {"expectedItemCount": 1})
     result = {}
     def observed():
         nonlocal result
@@ -439,7 +441,7 @@ def main():
     parser.add_argument("--port", type=int, default=18400)
     args = parser.parse_args()
     preview = load_preview(args.root)
-    http, all_pages = preview.http, preview.all_pages
+    http, all_pages = partial(preview.http, headers=TASK_CALLER_HEADERS), preview.all_pages
     if args.build:
         if args.root.resolve() != PREVIEW:
             parser.error("--build requires the checkout Scenario Preview; omit it for an extracted ZIP")

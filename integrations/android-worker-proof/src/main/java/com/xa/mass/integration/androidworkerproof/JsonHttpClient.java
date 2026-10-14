@@ -13,30 +13,32 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 final class JsonHttpClient {
+    private final Map<String, String> taskCallerHeaders;
 
     private final URI baseUrl;
     private final Duration requestTimeout;
     private final HttpClient http;
     private final long requestStartDeadlineNanos;
 
-    JsonHttpClient(URI baseUrl, Duration requestTimeout) {
-        this(baseUrl, requestTimeout, Long.MAX_VALUE);
+    JsonHttpClient(URI baseUrl, Duration requestTimeout, Map<String, String> taskCallerHeaders) {
+        this(baseUrl, requestTimeout, Long.MAX_VALUE, taskCallerHeaders);
     }
 
-    JsonHttpClient(URI baseUrl, AndroidWorkerProofOptions options) {
+    JsonHttpClient(URI baseUrl, AndroidWorkerProofOptions options, Map<String, String> taskCallerHeaders) {
         this(
                 baseUrl,
                 options.requestTimeout(),
-                options.phaseDeadlineNanos()
+                options.phaseDeadlineNanos(), taskCallerHeaders
         );
     }
 
     private JsonHttpClient(
             URI baseUrl,
             Duration requestTimeout,
-            long requestStartDeadlineNanos
+            long requestStartDeadlineNanos, Map<String, String> taskCallerHeaders
     ) {
         this.baseUrl = requireHttpBase(baseUrl);
+        this.taskCallerHeaders = Map.copyOf(taskCallerHeaders);
         if (requestTimeout == null
                 || requestTimeout.isZero()
                 || requestTimeout.isNegative()) {
@@ -62,6 +64,7 @@ final class JsonHttpClient {
         HttpRequest.Builder request = HttpRequest.newBuilder()
                 .uri(endpoint(path))
                 .timeout(requestTimeout);
+        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) taskCallerHeaders.forEach(request::header);
         if (body == null) {
             request.method(method, HttpRequest.BodyPublishers.noBody());
         } else {

@@ -1,3 +1,4 @@
+import type { TaskCaller } from "@/task-caller";
 import type { JsonValue } from "@/runtime-viewer/types";
 
 export interface WorkerQuery {
@@ -20,6 +21,7 @@ export interface ValidatedTaskCallDebugDraft extends TaskCallDebugDraft {
 }
 
 export interface TaskCallDebugClientRequest {
+  caller: TaskCaller;
   taskId: string;
   messageId: string;
   eventName: string;
@@ -42,5 +44,9 @@ export type TaskCallDebugOutcome =
 
 export interface TaskCallDebugClient {
   callTask(request: TaskCallDebugClientRequest): Promise<TaskCallDebugOutcome>;
-  loadResult(taskId: string, messageId: string): Promise<TaskCallDebugOutcome>;
+  loadResult(
+    caller: TaskCaller,
+    taskId: string,
+    messageId: string
+  ): Promise<TaskCallDebugOutcome>;
 }

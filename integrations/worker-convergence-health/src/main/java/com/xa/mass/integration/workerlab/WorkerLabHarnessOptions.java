@@ -93,14 +93,14 @@ record WorkerLabHarnessOptions(
         return new WorkerLabControlClient(new JsonHttpClient(
                 labControlBaseUrl,
                 requestTimeout()
-        ));
+        , java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin")));
     }
 
     RuntimeApiClient runtimeClient() {
         return new RuntimeApiClient(new JsonHttpClient(
                 runtimeApiBaseUrl,
                 requestTimeout()
-        ));
+        , java.util.Map.of("X-XA-Dev-User", "cHJvb2Y", "X-XA-Dev-Role", "admin")));
     }
 
     private static void requireHttp(URI value, String name) {

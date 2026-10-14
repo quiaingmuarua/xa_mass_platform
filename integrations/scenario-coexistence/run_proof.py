@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from functools import partial
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 import hashlib
@@ -26,7 +27,9 @@ PREVIEW = REPO / "distribution" / "server"
 spec = importlib.util.spec_from_file_location("product_preview", PREVIEW / "run_preview.py")
 preview = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(preview)
-http, all_pages = preview.http, preview.all_pages
+# This workload explicitly owns one development caller across create/import/observe.
+TASK_CALLER_HEADERS = {"X-XA-Dev-User": "cHJvb2Y", "X-XA-Dev-Role": "admin"}
+http, all_pages = partial(preview.http, headers=TASK_CALLER_HEADERS), preview.all_pages
 
 
 def require(condition, message):
@@ -74,7 +77,7 @@ def campaign(run, request="batch", count=2, country="CN", instructions=None, rec
     created = http(run.url, "/api/v1/messages/tasks", body, timeout=2)
     receipt = upload_recipients(run.url, created["taskId"], recipients)
     require(receipt["confirmedAddedCount"] == count and receipt["existingCount"] == 0, "Recipient import was not fully confirmed")
-    http(run.url, f'/api/v1/messages/tasks/{created["taskId"]}/approve', count, timeout=2)
+    http(run.url, f'/api/v1/tasks/{created["taskId"]}/approve', {"expectedItemCount": count}, timeout=2)
     return {**created, "expectedCount": count, "recipientIds": recipients}, body
 
 
@@ -82,7 +85,7 @@ def directed_control_task(run, worker_id, request="control", count=2, instructio
     """Generic Task identity witness, never a Messages creation API escape hatch."""
     group = run.input_workers_by_id[worker_id]["workerGroupId"]
     content = json.dumps(instructions or {})
-    created = http(run.url, "/api/v1/tasks", {"projectId": "messages", "workerGroupId": group,
+    created = http(run.url, "/api/v1/tasks", {"requestId": request, "projectId": "messages", "workerGroupId": group,
         "name": request, "priority": 50, "maxRetryTimes": 3, "refill": [],
         "metadata": {"scenario": "messages", "recipientCountry": "CN", "body": content}})
     task = created["taskId"]
@@ -96,24 +99,26 @@ def directed_control_task(run, worker_id, request="control", count=2, instructio
     appended = http(run.url, f"/api/v1/tasks/{task}/items", items)
     require(set(appended) == {item["messageId"] for item in items}
             and all(value["status"] == "applied" for value in appended.values()), "Control Items were not confirmed")
-    http(run.url, f"/api/v1/tasks/{task}/approve", {})
-    return {**created, "expectedCount": count, "recipientIds": recipients}, items
+    http(run.url, f"/api/v1/tasks/{task}/approve", {"expectedItemCount": count})
+    return {**created, "expectedCount": count, "recipientIds": recipients, "rawMessageIds": [item["messageId"] for item in items]}, items
 
 
 def upload_recipients(base, task, recipients, timeout=10):
     request = urllib.request.Request(base + f"/api/v1/messages/tasks/{task}/recipients:import",
-            data="\n".join(recipients).encode("utf-8"), headers={"Content-Type": "text/plain;charset=UTF-8"}, method="POST")
+            data="\n".join(recipients).encode("utf-8"), headers={"Content-Type": "text/plain;charset=UTF-8", **TASK_CALLER_HEADERS}, method="POST")
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
 def campaign_messages(run, value):
-    if value.get("expectedCount", 0) <= 100:
-        detail = http(run.url, f'/api/v1/messages/tasks/{value["taskId"]}')
+    if value.get("expectedCount", 0) <= 100 and "rawMessageIds" not in value:
+        detail = http(run.url, f'/api/v1/messages/tasks/{value["taskId"]}/results')
         return [{**row, "id": row["messageId"]} for row in detail["results"]]
     # Large proof reads known execution IDs through the existing Result API; UI stays bounded.
-    ids = [row["messageId"] for row in all_pages(run.host, "/lab/v1/messages/records")
-           if row["campaignId"] == value["taskId"]]
+    ids = value.get("rawMessageIds")
+    if ids is None:
+        ids = [row["messageId"] for row in all_pages(run.host, "/lab/v1/messages/records")
+               if row["campaignId"] == value["taskId"]]
     rows = []
     for start in range(0, len(ids), 100):
         results = http(run.url, f'/api/v1/tasks/{value["taskId"]}/results:load', ids[start:start + 100])
@@ -133,13 +138,28 @@ def sent(run, value):
     return value, rows
 
 
+def message_counts(run, task_ids=None):
+    if task_ids is None:
+        page = http(run.url, "/api/v1/projects/messages/tasks?limit=100")
+        require(not page["truncated"], "Workload Task window was truncated")
+        task_ids = [row["taskId"] for row in page["tasks"]]
+    if not task_ids:
+        return {}
+    observed = http(run.url, "/api/v1/projects/messages/tasks:stats", task_ids)
+    require(set(observed) == set(task_ids), "Statistics identities differ")
+    return {identity: {"sendTotal": counts["total"], "failedCount": counts["countsByTag"]["5"],
+            **{name: sum(counts["countsByTag"][str(tag)] for tag in range(first, 10))
+               for name, first in (("sentCount", 6), ("deliveredCount", 7), ("readCount", 8), ("repliedCount", 9))}}
+            for identity, counts in observed.items()}
+
+
 def task_state(run, task):
     entries = http(run.url, "/api/v1/runtime-view/tasks:preview", 1000)["entries"]
     return next((e["scoreBand"] for e in entries if e["taskId"] == task), None)
 
 
 def export_results(run, task):
-    request = urllib.request.Request(run.url + f"/api/v1/tasks/{task}/results:export", data=b"", method="POST")
+    request = urllib.request.Request(run.url + f"/api/v1/tasks/{task}/results:export", data=b"", method="POST", headers=TASK_CALLER_HEADERS)
     with urllib.request.urlopen(request, timeout=5) as response:
         require(response.headers.get_content_type() == "application/x-ndjson", "Unexpected export content type")
         lines = [json.loads(line) for line in response.read().decode("utf-8").splitlines()]
@@ -257,7 +277,7 @@ def functional(run):
         raise AssertionError("Conflicting campaign was accepted")
     except urllib.error.HTTPError as error:
         require(error.code == 409, "Expected campaign conflict")
-    http(run.url, f'/api/v1/messages/tasks/{created["taskId"]}/close', {})
+    http(run.url, f'/api/v1/tasks/{created["taskId"]}/close', {})
     begin_stage(run, "shared-worker-control-send")
     http(run.host, "/lab/v1/messages/receipts:hold", {"enabled": True})
     created, _ = directed_control_task(run, listener["workerId"])
@@ -313,7 +333,7 @@ def functional(run):
     require(duplicate["unchanged"] and not duplicate["callbackQueued"], "Reply operation was replayed")
     begin_stage(run, "duplicate-execution-association")
     # A separate finite control Task executes the duplicate; SMS owns no country Tasks.
-    task = http(run.url, "/api/v1/tasks", {"projectId": "messages", "workerGroupId": target["workerGroupId"],
+    task = http(run.url, "/api/v1/tasks", {"requestId": "duplicate-execution-control", "projectId": "messages", "workerGroupId": target["workerGroupId"],
         "name": "duplicate-execution-control", "refill": []})["taskId"]
     payload = {k: rows[0][k] for k in ("campaignId", "messageId", "country", "recipientId", "body")}
     duplicate_id = str(uuid.uuid4())
@@ -321,7 +341,7 @@ def functional(run):
         "eventCode": "extension.worker.message.send", "payload": payload, "ttlMillis": 10000,
         "workerSelector": {"executorName": "workerId", "input": rows[0]["workerId"]}}])
     require(appended[duplicate_id]["status"] == "applied", "Duplicate control Item was not confirmed")
-    http(run.url, f"/api/v1/tasks/{task}/approve", {})
+    http(run.url, f"/api/v1/tasks/{task}/approve", {"expectedItemCount": 1})
     wait(run, lambda: http(run.url, f"/api/v1/tasks/{task}/results:load", [duplicate_id])[duplicate_id]["status"] == "succeeded", 20, "duplicate real execution")
     require(http(run.host, "/lab/v1/messages/metrics")["messages"] == 2, "Duplicate execution delivered another message")
     # Same Reporter must still target the original Item, not the duplicate execution Item.
@@ -452,12 +472,14 @@ def pool_selection(run):
     begin_stage(run, "opaque-text-lab-rejection")
     content = "  你好 {{name}}\nplain template text  "
     value, _ = campaign(run, "opaque-text", 1, country=None, app="app-b", content=content)
-    detail = wait(run, lambda: (d if (d := http(run.url, f'/api/v1/messages/tasks/{value["taskId"]}'))["task"].get("failedCount") == 1
-                              and len(d["results"]) == 1 and d["results"][0]["resultStatus"] == "failed" else None),
-                  30, "Lab rejection observed")
-    require(detail["task"]["body"] == content and detail["task"]["sentCount"] == 0
-            and detail["task"]["deliveredCount"] == 0 and all(row["resultStatus"] == "failed" for row in detail["results"]),
-            "Rejected Lab content fabricated successful sending")
+    results = wait(run, lambda: (rows if len(rows := http(run.url,
+        f'/api/v1/messages/tasks/{value["taskId"]}/results')["results"]) == 1 and rows[0]["resultStatus"] == "failed" else None),
+        30, "Lab rejection observed")
+    counts = message_counts(run, [value["taskId"]])[value["taskId"]]
+    descriptor = http(run.url, f'/api/v1/projects/messages/tasks/{value["taskId"]}')["task"]
+    require(descriptor["metadata"]["body"] == content and counts["failedCount"] == 1
+            and counts["sentCount"] == counts["deliveredCount"] == 0
+            and all(row["resultStatus"] == "failed" for row in results), "Rejected Lab content fabricated successful sending")
     require(not any(row["campaignId"] == value["taskId"] for row in all_pages(run.host, "/lab/v1/messages/records")),
             "Lab accepted ordinary text")
     begin_stage(run, "pool-supply-isolation")
@@ -522,15 +544,24 @@ def percentiles(values):
 
 def load_callbacks_drained(run):
     metrics = http(run.host, "/lab/v1/messages/metrics")
+    retain_callback_counts(run, metrics)
     require(metrics["callbackFailed"] == metrics["droppedReceipts"] == 0, "Load callback was dropped or failed")
     return metrics["callbackQueued"] == metrics["httpSucceeded"] == metrics["reportAccepted"]
 
 
 def load_callback_capacity(run):
     metrics = http(run.host, "/lab/v1/messages/metrics")
+    retain_callback_counts(run, metrics)
     require(metrics["callbackFailed"] == metrics["droppedReceipts"] == 0, "Load callback was dropped or failed")
     completed = min(metrics["httpSucceeded"], metrics["reportAccepted"])
     return metrics["callbackQueued"] - completed + 4 <= 32
+
+
+def retain_callback_counts(run, metrics):
+    # Retain only already-observed counters if the original proof fails; no extra reads or retries.
+    run.load_callback_metrics = {key: metrics[key] for key in (
+        "held", "callbackQueued", "httpSucceeded", "reportAccepted", "callbackFailed", "droppedReceipts"
+    ) if key in metrics}
 
 
 def load_recipient_actions(run, message, stop, record_latency):
@@ -665,12 +696,12 @@ def load_1k(run):
 
         def converged():
             require(not errors, "Recipient flow failed")
-            messages = http(run.url, "/api/v1/messages/tasks?limit=100")
+            messages = message_counts(run)
             peak["hostActiveSms"] = max(peak["hostActiveSms"], http(run.host, "/lab/v1/sms/metrics")["host"]["activeAssociations"])
             active_sms = http(run.host, "/lab/v1/sms/metrics")["host"]["activeAssociations"]
             run.load_progress = {"acceptedSms": len(accepted), "campaigns": len(campaigns),
-                "sent": sum(task.get("sendTotal", 0) for task in messages["tasks"]),
-                "replied": sum(task.get("repliedCount", 0) for task in messages["tasks"]),
+                "sent": sum(task.get("sendTotal", 0) for task in messages.values()),
+                "replied": sum(task.get("repliedCount", 0) for task in messages.values()),
                 "activeSms": active_sms, "receiptMessages": len(receipts_scheduled),
                 "manualActions": len(action_latencies), "errors": dict(Counter(errors))}
             return run.load_progress["replied"] == total and active_sms == 0
@@ -714,7 +745,7 @@ def load_1k(run):
                 "recipientActionLatencyMillis": percentiles(action_latencies), "backlogPeaks": peak,
                 "messagesIdentityDigest": hashlib.sha256(json.dumps(sorted(compared)).encode()).hexdigest(),
                 "messageCounts": [{key: task.get(key) for key in ("sendTotal", "sentCount", "deliveredCount", "readCount", "repliedCount", "failedCount")}
-                    for task in http(run.url, "/api/v1/messages/tasks?limit=100")["tasks"]], "smsMetrics": http(run.url, "/api/v1/sms/metrics"),
+                    for task in message_counts(run).values()], "smsMetrics": http(run.url, "/api/v1/sms/metrics"),
                 "hostMessageMetrics": http(run.host, "/lab/v1/messages/metrics"), "claim": "fixed combined load, no capacity or fairness claim"}
     finally:
         stop.set()
@@ -775,7 +806,7 @@ def verify_send_evidence(task, expected, results, states, accepted, group, inven
 def read_sending_observation(run, base, path, body=None):
     """Retry observation only, within the existing sending-phase deadline."""
     require(path.endswith(("/results:load", "/items:states", "/acceptances:load", "/messages/metrics"))
-            or body is None and "/api/v1/messages/tasks/" in path, "Sending observation must be read-only")
+            or path == "/api/v1/projects/messages/tasks:stats", "Sending observation must be read-only")
     return wait(run, lambda: (http(base, path, body, timeout=5),),
                 max(0, run.phase_deadline - time.monotonic()), "read-only sending observation")[0]
 
@@ -833,7 +864,7 @@ def messages_send_100k(run):
         remaining_seconds = 900 - send_seconds
         require(remaining_seconds > 0, "Sending phases exceeded 15 minutes")
         run.phase_deadline = began_send + remaining_seconds
-        http(run.url, f"/api/v1/messages/tasks/{task}/approve", count, timeout=5)
+        http(run.url, f"/api/v1/tasks/{task}/approve", {"expectedItemCount": count}, timeout=5)
         while pending:
             require(time.monotonic() < run.phase_deadline, "Sending evidence did not converge within 15 minutes")
             before = len(pending)
@@ -860,7 +891,7 @@ def messages_send_100k(run):
             if len(pending) == before:
                 time.sleep(.05)
         wait(run, lambda: task_state(run, task) == "terminal", remaining_seconds, "sending Task terminal")
-        detail = read_sending_observation(run, run.url, f"/api/v1/messages/tasks/{task}")["task"]
+        detail = wait(run, lambda: message_counts(run, [task]), remaining_seconds, "sending statistics")[task]
         require(detail["sendTotal"] == detail["sentCount"] == count and detail["failedCount"] == 0
                 and detail["deliveredCount"] == detail["readCount"] == detail["repliedCount"] == 0,
                 "Task counts differ from exact no-receipt sending evidence")
@@ -914,6 +945,8 @@ def execute_scenario(run, scenario, output):
             result["sendingProgress"] = run.sending_progress
         if hasattr(run, "load_progress"):
             result["loadProgress"] = run.load_progress
+        if hasattr(run, "load_callback_metrics"):
+            result["loadCallbackMetrics"] = run.load_callback_metrics
     if small:
         result["completedStages"] = run.completed_stages
         if run.current_stage is not None:
@@ -940,7 +973,7 @@ def main():
     loaded = importlib.util.spec_from_file_location("selected_product_preview", launcher)
     preview = importlib.util.module_from_spec(loaded)
     loaded.loader.exec_module(preview)
-    http, all_pages = preview.http, preview.all_pages
+    http, all_pages = partial(preview.http, headers=TASK_CALLER_HEADERS), preview.all_pages
     output = (args.output or Path(__file__).parent / "build" / args.scenario).resolve()
     output.mkdir(parents=True, exist_ok=True)
     counts = (400, 0, 0) if args.scenario == "messages-send-100k" else (700, 200, 100) if args.scenario == "load-1k" else (4, 4, 4)

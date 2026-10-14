@@ -63,10 +63,14 @@ it("reads startup Projects and complete backend-shaped TaskViews with null proje
   vi.stubGlobal("fetch", fetcher);
   const source = createProjectSource("/api", "api");
   expect(await source.list()).toHaveLength(1);
+  fetcher.mockResolvedValueOnce(
+    new Response(JSON.stringify({ t: { total: 2, countsByTag: { "1": 2 } } }))
+  );
   expect((await source.tasks("p")).tasks[0]?.task).toEqual(descriptor);
   expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
     "/api/v1/projects",
-    "/api/v1/projects/p/tasks?limit=100"
+    "/api/v1/projects/p/tasks?limit=100",
+    "/api/v1/projects/p/tasks:stats"
   ]);
 });
 it("Mock has a consistent directory and no service requests", async () => {

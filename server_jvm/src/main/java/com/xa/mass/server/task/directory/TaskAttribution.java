@@ -22,7 +22,7 @@ public record TaskAttribution(String projectId, long createdAtMillis, @Nullable 
         var copy = new LinkedHashMap<>(metadata);
         if (copy.keySet().stream().anyMatch(key -> key.startsWith("server.")))
             throw new IllegalArgumentException("server.* metadata is reserved");
-        if (copy.containsKey("userId")) copy.put("userId", TaskUserId.normalize(copy.get("userId")));
+        if (copy.containsKey("userId")) throw new IllegalArgumentException("userId is supplied by the Task caller");
         return Map.copyOf(copy);
     }
 
@@ -30,6 +30,7 @@ public record TaskAttribution(String projectId, long createdAtMillis, @Nullable 
         var copy = new LinkedHashMap<>(metadata);
         copy.put(PROJECT, projectId);
         copy.put(CREATED, Long.toString(createdAtMillis));
+        if (userId != null) copy.put("userId", userId);
         return Map.copyOf(copy);
     }
 

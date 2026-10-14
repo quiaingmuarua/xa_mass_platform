@@ -38,6 +38,8 @@ const projectId = props.projectId;
 const state = operations.project(projectId);
 const draftKey = props.task?.taskId ?? "create";
 const {
+  caller,
+  requestId,
   groupId,
   format,
   eventCode,
@@ -169,12 +171,14 @@ async function submit() {
     )
       throw new Error("Task 调度参数超出范围");
     const taskId = await operations.submit({
+      caller: caller.value,
       projectId,
       create: props.task
         ? undefined
         : {
             projectId,
             workerGroupId: groupId.value,
+            requestId: requestId.value,
             priority: priority.value,
             maxRetryTimes: retries.value,
             refill
@@ -203,6 +207,7 @@ function reset() {
 </script>
 <template>
   <el-form label-position="top" class="raw-task-form" @submit.prevent="submit">
+    <p class="raw-muted">本次草稿调用方：{{ caller.userId }}</p>
     <el-alert
       v-if="disabled"
       title="当前模式、读取状态或任务状态不允许写入。"

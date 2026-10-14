@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { captureTaskCaller } from "@/task-caller";
+
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import MessageRecipients from "./MessageRecipients.vue";
 import { MessageApiError } from "./api";
@@ -17,6 +19,13 @@ const emit = defineEmits<{
 }>();
 const session = props.session;
 const draft = computed(() => session.draft);
+watch(
+  draft,
+  (value) => {
+    value.caller ??= captureTaskCaller();
+  },
+  { immediate: true }
+);
 const reading = ref(false);
 const contentEdited = ref(false);
 let disposed = false;
@@ -68,7 +77,11 @@ async function importOriginal() {
   d.busy = true;
   d.error = "";
   try {
-    const receipt = await props.source.importRecipients(d.knownTaskId, d.originalText);
+    const receipt = await props.source.importRecipients(
+      (d.caller ??= captureTaskCaller()),
+      d.knownTaskId,
+      d.originalText
+    );
     session.imports[d.knownTaskId] = {
       fileName: d.editor.fileName || "粘贴输入",
       receipt
@@ -86,6 +99,7 @@ async function create(recheck = false) {
   // A rejected reconciliation does not settle the earlier unknown submission.
   const priorUnconfirmed = d.uncertain || !!d.knownTaskId;
   if (!d.frozen) {
+    d.caller ??= captureTaskCaller();
     d.frozen = {
       appId: d.appId,
       requestId: d.requestId,
@@ -100,7 +114,7 @@ async function create(recheck = false) {
   d.error = "";
   d.note = "";
   try {
-    const result = await props.source.createTask({ ...d.frozen });
+    const result = await props.source.createTask(d.caller!, { ...d.frozen });
     d.knownTaskId = result.taskId;
     d.confirmed = true;
     d.uncertain = false;
@@ -145,7 +159,7 @@ async function inspect() {
   if (!d.knownTaskId || d.busy) return;
   d.busy = true;
   try {
-    const result = await props.source.loadTask(d.knownTaskId);
+    const result = await props.source.loadTask(d.caller!, d.knownTaskId);
     if (!disposed)
       d.note = `当前实际收件人数：${result.task.sendTotal ?? "不可用"}；${result.task.state === "pre_review" ? "仍待审核" : "请在任务预览中核对调度状态"}。`;
   } catch (failure) {
@@ -166,6 +180,7 @@ onBeforeUnmount(() => {
           >返回任务列表</el-button
         >
         <h1>创建消息任务</h1>
+        <p class="message-hint">本次草稿调用方：{{ draft.caller?.userId }}</p>
       </div>
     </header>
     <div v-if="!source.applications.length" class="message-error" role="alert">

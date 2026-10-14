@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.*;
 
 @Tag("scenario-composition")
 class MessageImportIntegrationTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
     static final String PATH = "/api/v1/messages/tasks";
     static Map<String, Object> input(String id) { return Map.of("appId", "demo", "requestId", id, "name", "import-proof", "recipientCountry", "CN", "body", "{}"); }
     @Test @Timeout(120)
@@ -51,8 +52,8 @@ class MessageImportIntegrationTest {
             assertThat(item.payload()).containsEntry("body", body);
             assertThat(item.workerSelector().executorName()).isEqualTo("worker.messaging.available");
             assertThat(task(fixture, taskId)).containsEntry("workerGroupId", "app-a-sim").containsEntry("appId", "app-a");
-            assertThat(fixture.post(PATH + "/" + taskId + "/approve", 1).statusCode()).isEqualTo(200);
-            assertThat(fixture.post(PATH + "/" + taskId + "/close", Map.of()).statusCode()).isEqualTo(200);
+            assertThat(fixture.post("/api/v1/tasks/" + taskId + "/approve", Map.of("expectedItemCount", 1)).statusCode()).isEqualTo(200);
+            assertThat(fixture.post("/api/v1/tasks/" + taskId + "/close", Map.of()).statusCode()).isEqualTo(200);
             for (String field : List.of("senderPhone", "workerGroupId", "recipientIds")) {
                 var rejected = new HashMap<>(input("invalid")); rejected.put(field, "unexpected");
                 assertThat(fixture.post(PATH, rejected).statusCode()).isEqualTo(400);
@@ -86,7 +87,7 @@ class MessageImportIntegrationTest {
             String id = (String) Jsons.parseObject(create.body()).get("taskId");
             String target = PATH + "/" + id;
             assertThat(task(fixture, id)).containsEntry("state", "pre_review").containsEntry("sendTotal", 0L);
-            assertThat(fixture.post(target + "/approve", 0).statusCode()).isEqualTo(409);
+            assertThat(fixture.post("/api/v1/tasks/" + id + "/approve", Map.of("expectedItemCount", 0)).statusCode()).isEqualTo(400);
             String numbers = IntStream.range(0, 100000).mapToObj(i -> "86138" + (10000000 + i)).collect(java.util.stream.Collectors.joining("\n"));
             assertThat(fixture.upload(id, numbers + "\nbad").statusCode()).isEqualTo(400);
             assertThat(task(fixture, id)).containsEntry("sendTotal", 0L);
@@ -104,11 +105,11 @@ class MessageImportIntegrationTest {
             var conflict = new HashMap<>(input("bulk")); conflict.put("body", "{ }");
             assertThat(fixture.post(PATH, conflict).statusCode()).isEqualTo(409);
             assertThat(fixture.context.getBean(TaskRuntime.class).loadTaskItems(id, List.of(message)).get(message)).isEqualTo(original);
-            assertThat(fixture.post(target + "/approve", 100000).statusCode()).isEqualTo(409);
-            assertThat(fixture.post(target + "/approve", 100001).statusCode()).isEqualTo(200);
-            assertThat(fixture.post(target + "/close", Map.of()).statusCode()).isEqualTo(200);
+            assertThat(fixture.post("/api/v1/tasks/" + id + "/approve", Map.of("expectedItemCount", 100000)).statusCode()).isEqualTo(400);
+            assertThat(fixture.post("/api/v1/tasks/" + id + "/approve", Map.of("expectedItemCount", 100001)).statusCode()).isEqualTo(200);
+            assertThat(fixture.post("/api/v1/tasks/" + id + "/close", Map.of()).statusCode()).isEqualTo(200);
             assertThat(task(fixture, id)).containsEntry("state", "terminal").containsEntry("sendTotal", 100001L).containsEntry("sentCount", 0L);
-            assertThat(fixture.post(target + "/approve", 100001).statusCode()).isEqualTo(409);
+            assertThat(fixture.post("/api/v1/tasks/" + id + "/approve", Map.of("expectedItemCount", 100001)).statusCode()).isEqualTo(400);
             assertThat(fixture.upload(id, "8613810000000").statusCode()).isEqualTo(409);
             String other = (String) Jsons.parseObject(fixture.post(PATH, input("other")).body()).get("taskId");
             assertThat(Jsons.parseObject(fixture.upload(other, "8613810000000").body())).containsEntry("confirmedAddedCount", 1L);
@@ -118,28 +119,21 @@ class MessageImportIntegrationTest {
         }
     }
     @Test @Timeout(60)
-    void legacyTasksRemainReadableAndClosableWhileManagedAndForeignBusinessTasksAreProtected() throws Exception {
+    void rawMetadataCannotClaimScenarioInputAndBusinessTasksRejectRawAppend() throws Exception {
         try (var fixture = new MessagesAssemblyIntegrationTest.Fixture()) {
             fixture.start(true, Map.of());
             var creation = fixture.context.getBean(TaskCreationService.class);
-            String legacy = creation.create(new TaskCreateRequest("messages", "demo-sim", 50, 3, List.of(), "legacy",
+            String raw = creation.create(CALLER, new TaskCreateRequest("raw", "messages", "demo-sim", 50, 3, List.of(), "raw",
                     Map.of("scenario", "messages", "recipientCountry", "CN", "body", "{}"))).taskId();
-            assertThat(task(fixture, legacy)).containsEntry("name", "legacy").doesNotContainKey("inputVersion");
-            assertThat(fixture.upload(legacy, "86123").statusCode()).isEqualTo(409);
-            assertThat(fixture.post(PATH + "/" + legacy + "/approve", 1).statusCode()).isEqualTo(409);
-            assertThat(fixture.post(PATH + "/" + legacy + "/close", Map.of()).statusCode()).isEqualTo(200);
-            assertThat(fixture.post("/api/v1/tasks/" + legacy + "/results:export", Map.of()).statusCode()).isEqualTo(200);
-            String managed = fixture.context.getBean(com.xa.mass.server.task.call.TaskRpcPreparationService.class).prepare(
-                    "explicit-foreign-rpc", new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest(
-                            "messages", "demo-sim", null, Map.of())).taskId();
-            String foreign = creation.create(new TaskCreateRequest("messages", "demo-sim", 50, 3, List.of(), "foreign", Map.of("scenario", "other"))).taskId();
-            for (String task : List.of(managed, foreign)) {
-                assertThat(fixture.upload(task, "86123").statusCode()).isEqualTo(400);
-                assertThat(fixture.post(PATH + "/" + task + "/approve", 1).statusCode()).isEqualTo(400);
-                assertThat(fixture.post(PATH + "/" + task + "/close", Map.of()).statusCode()).isEqualTo(400);
-            }
-            var old = new HashMap<>(input("old")); old.put("recipientIds", List.of("+86123"));
-            assertThat(fixture.post(PATH, old).statusCode()).isEqualTo(400);
+            assertThat(fixture.upload(raw, "86123").statusCode()).isEqualTo(400);
+            assertThat(fixture.get(PATH + "/" + raw + "/results").statusCode()).isEqualTo(400);
+            String business = (String) Jsons.parseObject(fixture.post(PATH, input("business")).body()).get("taskId");
+            assertThat(fixture.post("/api/v1/tasks/" + business + "/items", List.of(Map.of("messageId", "bypass", "eventCode", "event",
+                    "payload", Map.of(), "workerSelector", Map.of("executorName", "workerId", "input", "w")))).statusCode()).isEqualTo(400);
+            assertThat(task(fixture, business)).containsEntry("sendTotal", 0L);
+            assertThat(fixture.post("/api/v1/tasks/" + business + "/close", Map.of()).statusCode()).isEqualTo(200);
+            assertThat(fixture.get(PATH + "/" + business).statusCode()).isEqualTo(404);
+            assertThat(fixture.get(PATH).statusCode()).isEqualTo(405);
         }
     }
     @SuppressWarnings("unchecked")

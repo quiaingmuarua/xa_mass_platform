@@ -2,7 +2,6 @@ package com.xa.mass.scenario.messages;
 
 import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskDataService;
-import com.xa.mass.server.task.TaskLifecycleService;
 import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.server.project.ProjectDefinition;
 import com.xa.mass.server.project.ProjectWorkerRequirements;
@@ -36,8 +35,8 @@ public class MessageCampaignsScenarioConfiguration {
 
     @Bean(destroyMethod = "close")
     MessageTaskService messageTasks(ProjectDirectory projects, com.xa.mass.server.project.ProjectTaskQueryService queries, TaskCreationService creation,
-            TaskDataService data, TaskLifecycleService lifecycle,
+            TaskDataService data,
             MessageScenarioProperties config, OperationGuard operations) {
-        return new MessageTaskService(projects, queries, creation, data, lifecycle, config, operations);
+        return new MessageTaskService(projects, queries, creation, data, config, operations);
     }
 }

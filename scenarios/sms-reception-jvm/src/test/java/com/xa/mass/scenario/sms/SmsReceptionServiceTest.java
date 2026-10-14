@@ -16,12 +16,14 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class SmsReceptionServiceTest {
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = new com.xa.mass.server.task.access.TaskCaller("proof", "admin");
+    private static final com.xa.mass.server.task.access.TaskCaller SERVICE = com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", List.of("g", "demo-sim")));
     final TaskRpcPreparationService projects = mock(TaskRpcPreparationService.class);
     final TaskRpcCallService calls = mock(TaskRpcCallService.class);
     final TaskDataService results = mock(TaskDataService.class);
     final TaskLeaseProjectionService projections = mock(TaskLeaseProjectionService.class);
-    final SmsReceptionService service = new SmsReceptionService(projects, calls, results, projections, "g", Clock.fixed(Instant.ofEpochMilli(1000), ZoneOffset.UTC));
-    void start() { when(projects.prepare(SmsReceptionService.rpcTaskId("g"), new TaskRpcPrepareRequest("sms", "g", null, Map.of()))).thenReturn(new TaskCreateResponse("task")); service.start(); }
+    final SmsReceptionService service = new SmsReceptionService(projects, calls, results, projections, "g", Clock.fixed(Instant.ofEpochMilli(1000), ZoneOffset.UTC), SERVICE);
+    void start() { when(projects.prepare(SERVICE, "sms", SmsReceptionService.rpcTaskId("g"), new TaskRpcPrepareRequest("sms", "g", null, Map.of()))).thenReturn(new TaskCreateResponse("task")); service.start(); }
     Map<String, Object> snapshot(String id, boolean sms) {
         var value = new LinkedHashMap<String, Object>(Map.of("messageId", id, "applicationId", "A", "country", "CN",
                 "phoneNumber", "123", "workerId", "w", "leaseUntil", 2000, "status", sms ? "RECEIVED" : "WAITING"));
@@ -31,35 +33,35 @@ class SmsReceptionServiceTest {
     TaskItemResultResponse result(Map<String, Object> value) { return new TaskItemResultResponse(TaskItemResultStatus.SUCCEEDED, Jsons.toJson(value)); }
     @Test void constructionHasNoSideEffectsAndLifecycleRevokesAdmission() {
         verifyNoInteractions(projects, calls, results, projections);
-        assertThatThrownBy(() -> service.lease(Map.of())).isInstanceOf(SmsReceptionService.ProductError.class);
+        assertThatThrownBy(() -> service.lease(CALLER, Map.of())).isInstanceOf(SmsReceptionService.ProductError.class);
         start(); service.stop();
-        assertThatThrownBy(() -> service.get("id")).isInstanceOf(SmsReceptionService.ProductError.class);
+        assertThatThrownBy(() -> service.get(CALLER, "id")).isInstanceOf(SmsReceptionService.ProductError.class);
         verifyNoInteractions(calls, results, projections);
     }
     @Test void acquisitionUsesOriginalMessageIdentityAndSingleMappedCall() {
         start();
-        when(calls.call(eq("task"), any(), any())).thenAnswer(invocation -> {
-            TaskRpcCallRequest request = invocation.getArgument(1);
+        when(calls.call(org.mockito.ArgumentMatchers.eq(SERVICE), org.mockito.ArgumentMatchers.eq("sms"), eq("task"), any(), any())).thenAnswer(invocation -> {
+            TaskRpcCallRequest request = invocation.getArgument(3);
             assertThat(request.waitTimeoutMillis()).isEqualTo(3000L);
             TaskItemRequest item = request.items().getFirst();
             assertThat(item.eventCode()).isEqualTo(SmsReceptionService.EVENT);
             assertThat(item.workerSelector().input()).isEqualTo(Map.of("partition", "A", "country", "CN"));
             @SuppressWarnings("unchecked") var payload = (Map<String, Object>) item.payload();
             assertThat(payload).containsEntry("messageId", item.messageId()).containsEntry("setupDeadline", 31000L).containsEntry("leaseSeconds", 60L);
-            Function<Map<String, TaskItemResultResponse>, Map<String, Object>> mapping = invocation.getArgument(2);
+            Function<Map<String, TaskItemResultResponse>, Map<String, Object>> mapping = invocation.getArgument(4);
             var deferred = new DeferredResult<Map<String, Object>>();
             deferred.setResult(mapping.apply(Map.of(item.messageId(), result(snapshot(item.messageId(), false)))));
             return deferred;
         });
-        var response = (Map<?, ?>) service.lease(Map.of("applicationId", "A", "country", "CN")).getResult();
+        var response = (Map<?, ?>) service.lease(CALLER, Map.of("applicationId", "A", "country", "CN")).getResult();
         assertThat(response.get("phoneNumber")).isEqualTo("123");
         assertThat(response.get("messageId").toString()).startsWith("sms-");
         assertThat(response.get("leaseActive")).isEqualTo(true);
         verifyNoInteractions(results, projections);
     }
     @Test void readsAreRepeatableAndNeverSubmitOrExtendLease() {
-        start(); when(results.loadTaskItemResults("task", List.of("id"))).thenReturn(Map.of("id", result(snapshot("id", true))));
-        assertThat(service.get("id")).isEqualTo(service.get("id")).containsEntry("status", "RECEIVED");
+        start(); when(results.loadTaskItemResults(SERVICE, "task", List.of("id"))).thenReturn(Map.of("id", result(snapshot("id", true))));
+        assertThat(service.get(CALLER, "id")).isEqualTo(service.get(CALLER, "id")).containsEntry("status", "RECEIVED");
         verifyNoInteractions(calls, projections);
     }
     @Test void expiryRetainsLatestSmsAndUnobservedDoesNotInventFailure() {
@@ -77,7 +79,7 @@ class SmsReceptionServiceTest {
         for (var input : List.of(Map.<String,Object>of("applicationId", "A", "country", "CN", "requestId", "old"),
                 Map.<String,Object>of("applicationId", "A", "country", "CN", "leaseSeconds", 1.5),
                 Map.<String,Object>of("applicationId", "A", "country", "cn")))
-            assertThatThrownBy(() -> service.lease(input)).isInstanceOf(SmsReceptionService.ProductError.class);
+            assertThatThrownBy(() -> service.lease(CALLER, input)).isInstanceOf(SmsReceptionService.ProductError.class);
         verifyNoInteractions(calls, results);
     }
 }
