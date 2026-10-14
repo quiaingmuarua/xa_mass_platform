@@ -1,5 +1,10 @@
 import type { RouteLocationNormalized, Router } from "vue-router";
-import { can, roles, type Permission, type AccessSubject } from "@/access-policy";
+import {
+  canUseConsole,
+  consoleHome,
+  type Permission,
+  type ProjectAccessSubject
+} from "@/access-policy";
 import { consoleIdentity } from "@/console-identity";
 
 declare module "vue-router" {
@@ -10,17 +15,22 @@ declare module "vue-router" {
   }
 }
 
+export function isPublicRoute(route: Pick<RouteLocationNormalized, "meta" | "query">) {
+  const view = typeof route.query.view === "string" ? route.query.view : "";
+  return !!route.meta.public && !route.meta.viewPermissions?.[view];
+}
+
 export function routeAllowed(
-  user: AccessSubject | null,
+  user: ProjectAccessSubject | null,
   route: Pick<RouteLocationNormalized, "meta" | "query">
 ): boolean {
-  if (route.meta.public) return true;
+  if (isPublicRoute(route)) return true;
   if (!user) return false;
   const view = typeof route.query.view === "string" ? route.query.view : "";
   return (
-    (!route.meta.permission || can(user, route.meta.permission)) &&
+    (!route.meta.permission || canUseConsole(user, route.meta.permission)) &&
     (!route.meta.viewPermissions?.[view] ||
-      can(user, route.meta.viewPermissions[view]!))
+      canUseConsole(user, route.meta.viewPermissions[view]!))
   );
 }
 
@@ -33,27 +43,27 @@ export function loginDestination(router: Router, requested: unknown): string {
   ) {
     const target = router.resolve(requested);
     if (
-      target.name !== "login" &&
       target.name !== "not-found" &&
-      target.path !== "/" &&
+      !isPublicRoute(target) &&
       routeAllowed(user, target)
     )
       return target.fullPath;
   }
-  return roles[user.role].home;
+  return consoleHome(user);
 }
 
 export function installConsoleAccess(router: Router) {
-  router.beforeEach((to) => {
+  router.beforeEach(async (to) => {
+    await consoleIdentity.load();
     const user = consoleIdentity.current.value;
-    if (to.meta.public)
+    if (isPublicRoute(to))
       return to.name === "login" && user
         ? loginDestination(router, to.query.redirect)
         : undefined;
     if (!user)
       return { name: "login", query: { redirect: to.fullPath }, replace: true };
-    if (to.path === "/" || !routeAllowed(user, to))
-      return { path: roles[user.role].home, replace: true };
+    if (!routeAllowed(user, to))
+      return { ...router.resolve(consoleHome(user)), replace: true };
     return undefined;
   });
 }

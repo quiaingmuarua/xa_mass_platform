@@ -2,23 +2,34 @@
 
 Vue 3 console for Worker and Task runtime observation, a Project-scoped task
 workbench (RPC calls and finite Tasks), Scenario pages and public Demo. It is derived from Pure Admin Thin 6.2.0.
-Development login uses built-in users without a password, account service or real
+Development login reads Server-managed users without a password or real
 session authentication. Server continues to check the declared caller and Task
 creator across task entrypoints with the existing HTTP contract.
 
 ## Development login and access
 
-`/` lists built-in users and enters the console only after an explicit selection.
-[User data](src/development-users.ts) contains `1000` (管理员), `1001` (用户 A) and
-`1002` (用户 B). Adding a user requires another declaration, without page changes.
-[Role policy](src/access-policy.ts) owns labels, permissions, Task scope and the
-home route for `admin` and `operator`. Pages do not interpret role strings or
+`/` lists current development users and enters the console only after an explicit selection.
+[Directory source](src/user-directory-source.ts) reads `/api/v1/users` and
+`/api/v1/roles`. Server owns the initial JSON and process-memory mutations; its
+default seed includes `1000` (管理员), `1001` (用户 A) and `1002` (用户 B).
+Admin manages users at `/?view=users`: userId, name, role and supported Projects.
+POST `/users` and PUT `/users/{userId}` change the shared Server directory. Other
+clients observe changes on refresh; browser reload and logout do not reset them.
+Only Server restart reloads the seed. No database or file write persists changes.
+User IDs cannot be changed after creation; the
+currently logged-in user is read-only to avoid changing an active caller.
+[Role policy](src/access-policy.ts) applies the Server-provided labels, permissions,
+Task scope, Project scope and home route for `admin` and `operator`. Pages do not interpret role strings or
 special-case user IDs.
 
 Admin can use all enabled console features and reads Tasks across users. Operator
-can create and manage its own App Checks Tasks, including import, approval, closure
-and export. Messages, SMS, Runtime, Task workbench, Reference, configuration and
-Mock demonstration controls remain admin-only. Route metadata, navigation and
+can create and manage its own Messages and App Checks Tasks in assigned Projects,
+including their existing import, approval, closure and result operations. Both
+built-in operators have `messages` and `app-checks`. Admin has all Projects; user
+management choices come from the common Project directory. Project assignment
+does not grant a role's missing operations: SMS, Runtime, Task workbench, Reference,
+configuration, user management and Mock demonstration controls remain admin-only.
+Route metadata, navigation and
 operation controls consume the same permission policy; Catalog availability is a
 separate prerequisite. The App Checks configuration view declares its permission
 alongside the route, without a path-regex allowlist.
@@ -29,9 +40,17 @@ and label are resolved from user data on reload. Missing, invalid or removed use
 return to login. The old `xa-mass.development-user` selector value is not migrated
 and never grants a login. Storage failure still permits an in-memory login.
 Anonymous deep links lead to login and return to the permitted internal target;
-otherwise admin lands on `/runtime/workers` and operator on `/app-checks`.
+otherwise admin lands on `/runtime/workers`. Operator prefers `/app-checks`, then
+`/messages` according to its Projects; without an admitted business entry it sees
+the empty console at `/?view=home` with logout available.
 The existing Server root mapping serves login on direct visits and reloads; no
 new backend page mapping or `/login` compatibility route is added.
+User management also uses that root mapping, so direct visits and reloads work
+without adding a page mapping. Login restoration waits for the API directory,
+including newly added users. Directory failures show an explicit retry and never
+substitute Mock users. Project grants control console navigation and routing;
+Task APIs retain their existing trusted-development caller and ownership contract,
+without a new session or general account-authentication layer.
 
 The top bar displays the current user, role and logout. Logout removes the login
 and unmounts the entire user console, releasing observations, Pinia state, filters
@@ -46,6 +65,9 @@ login lifetime. Logout keeps created Mock Tasks available to the next authorized
 user, while clearing page state. Mock operations use the shared permission and
 ownership helpers; API and Mock return their admitted Task window. Pages apply
 business display filters without another role-based ownership filter.
+The explicit Mock directory uses [frontend-only fixtures](src/development-users.ts)
+and simulates Server writes across console logins. Only Mock resets on browser
+reload. API mode has no built-in user fallback or browser-owned user mutations.
 
 Task and Scenario methods take an explicit immutable caller snapshot. The existing
 client encodes its userId as UTF-8 Base64URL in `X-XA-Dev-User` and sends
@@ -113,6 +135,7 @@ The live Server continues to own `/scalar` and `/v3/api-docs`.
 Routes:
 
 ```text
+/?view=users
 /runtime/workers
 /runtime/tasks
 /task-workbench?tab=rpc
@@ -173,7 +196,8 @@ projection counters rather than scanning all business orders.
 
 ## Messages business pages
 
-`/messages` is the admin-only desktop Task workbench: one loaded list, one operation menu per
+`/messages` is the desktop Task workbench for users admitted to the Messages Project:
+one loaded list, one operation menu per
 row and a 760px result preview drawer. `/messages?view=create` is a single creation
 page. `/messages/tasks/:taskId` opens the same drawer over the list; adding
 `?view=create` opens it over the retained draft. Opening/closing previews does not

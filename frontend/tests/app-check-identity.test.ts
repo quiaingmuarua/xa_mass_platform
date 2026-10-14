@@ -31,20 +31,29 @@ import { MockMessageTaskSource } from "../src/message-campaigns/mock-task-source
 import { inspectImport, type ImportOptions } from "../src/app-checks/import-model";
 import { AppCheckCreationUnconfirmed } from "../src/app-checks/task-source";
 import type { CheckDetail, CreateCheckTask } from "../src/app-checks/model";
+import { inspectRecipientInput, type RecipientLimits } from "@/files/phone-numbers";
 
 class ImportWorker {
   onmessage?: (event: MessageEvent) => void;
   onerror?: () => void;
   stopped = false;
-  postMessage(input: { content: string; options: ImportOptions }) {
-    queueMicrotask(() => {
-      if (!this.stopped)
-        this.onmessage?.({
-          data: {
-            text: input.content,
-            report: inspectImport(input.content, input.options)
-          }
-        } as MessageEvent);
+  postMessage(
+    input:
+      | { content: string; options: ImportOptions }
+      | { source: string; country: string; limits: RecipientLimits }
+  ) {
+    queueMicrotask(async () => {
+      const data =
+        "options" in input
+          ? { text: input.content, report: inspectImport(input.content, input.options) }
+          : {
+              value: await inspectRecipientInput(
+                input.source,
+                input.country,
+                input.limits
+              )
+            };
+      if (!this.stopped) this.onmessage?.({ data } as MessageEvent);
     });
   }
   terminate() {
@@ -57,7 +66,8 @@ beforeAll(async () => {
   // Keep Vite's cold transformation of the lazy route outside the workflow assertion clock.
   await Promise.all([
     import("../src/app-checks/AppCheckPage.vue"),
-    import("../src/views/LoginView.vue"),
+    import("../src/views/ConsoleEntryView.vue"),
+    import("../src/message-campaigns/MessagePage.vue"),
     import("../src/views/WorkerRuntimeView.vue")
   ]);
 });
@@ -123,9 +133,7 @@ async function login(user: string) {
     button("退出").click();
     await settle();
   }
-  const control = document.querySelector<HTMLInputElement>(
-    '[aria-label="选择内置用户"]'
-  )!;
+  const control = document.querySelector<HTMLInputElement>('[aria-label="选择用户"]')!;
   expect(control).not.toBeNull();
   control.click();
   await settle();
@@ -148,6 +156,26 @@ function numberInput() {
   return document.querySelector<HTMLTextAreaElement>(
     'textarea[aria-label="号码列表"]'
   )!;
+}
+function input(label: string, value: string) {
+  const control = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+    `[aria-label="${label}"]`
+  )!;
+  expect(control).not.toBeNull();
+  control.value = value;
+  control.dispatchEvent(new Event("input", { bubbles: true }));
+}
+async function select(label: string, text: string) {
+  const control = document.querySelector<HTMLInputElement>(`[aria-label="${label}"]`)!;
+  control.click();
+  await settle();
+  const dropdown = document.getElementById(control.getAttribute("aria-controls")!)!;
+  const option = [...dropdown.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (node) => node.textContent?.trim() === text
+  );
+  expect(option, text).toBeDefined();
+  option!.click();
+  await settle();
 }
 async function draft(number = "8613800000001") {
   button("创建任务").click();
@@ -180,13 +208,103 @@ vi.mock("@/development-users", async (importOriginal) => {
     ...actual,
     developmentUsers: [
       ...actual.developmentUsers,
-      { userId: "1003", displayName: "用户 C", role: "operator" },
-      { userId: "1004", displayName: "管理员 D", role: "admin" }
+      {
+        userId: "1003",
+        displayName: "用户 C",
+        role: "operator",
+        projectIds: ["app-checks", "messages"]
+      },
+      { userId: "1004", displayName: "管理员 D", role: "admin", projectIds: [] }
     ]
   };
 });
 
 describe("console login and shared task access", () => {
+  it("manages an in-memory Messages-only user, creates its task and preserves shared ownership across login", async () => {
+    const create = vi.spyOn(MockMessageTaskSource.prototype, "createTask");
+    const checks = vi.spyOn(MockAppCheckTaskSource.prototype, "listTasks");
+    const router = await mount(undefined, "/?view=users");
+    await login("1000");
+    expect(router.currentRoute.value.fullPath).toBe("/?view=users");
+    expect(document.querySelector("h1")?.textContent).toBe("用户管理");
+    button("新增用户").click();
+    await settle();
+    input("userId", "userc");
+    input("用户名称", "消息用户 C");
+    await select("支持的 Project", "messages");
+    document
+      .getElementById("console-user-form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await settle();
+    expect(consoleIdentity.users.find((user) => user.userId === "userc")).toMatchObject(
+      { role: "operator", projectIds: ["messages"] }
+    );
+    await login("userc");
+    expect(router.currentRoute.value.fullPath).toBe("/messages");
+    expect(document.querySelector('a[href="/app-checks"]')).toBeNull();
+    expect(document.querySelector('a[href="/?view=users"]')).toBeNull();
+    for (const path of ["/app-checks", "/app-checks/tasks/known", "/?view=users"]) {
+      await router.push(path);
+      await settle();
+      expect(router.currentRoute.value.fullPath).toBe("/messages");
+    }
+    expect(checks).not.toHaveBeenCalled();
+    await router.push("/messages?view=create");
+    await settle();
+    input("模板内容", "新用户 Messages 验证");
+    await settle();
+    document
+      .getElementById("message-task-form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await settle();
+    const id = (await create.mock.results[0]!.value).taskId as string;
+    expect(create.mock.calls[0]![0]).toEqual({ userId: "userc", role: "operator" });
+    expect(document.getElementById("message-task-" + id)).not.toBeNull();
+    await login("1001");
+    await router.push("/messages");
+    await settle();
+    expect(document.getElementById("message-task-" + id)).toBeNull();
+    await login("1000");
+    await router.push("/messages");
+    await settle();
+    expect(document.getElementById("message-task-" + id)).not.toBeNull();
+    await router.push("/?view=users");
+    await settle();
+    document.querySelector<HTMLButtonElement>('[aria-label="编辑用户 userc"]')!.click();
+    await settle();
+    await select("支持的 Project", "messages");
+    await select("支持的 Project", "app-checks");
+    document
+      .getElementById("console-user-form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await settle();
+    await login("userc");
+    expect(router.currentRoute.value.fullPath).toBe("/app-checks");
+    await router.push("/messages/tasks/" + id);
+    await settle();
+    expect(router.currentRoute.value.fullPath).toBe("/app-checks");
+  }, 15000);
+  it("lands an unassigned user on an empty console without protected task reads", async () => {
+    consoleIdentity.login("1000");
+    await consoleIdentity.saveUser({
+      userId: "noproject",
+      displayName: "待分配用户",
+      role: "operator",
+      projectIds: ["default"]
+    });
+    consoleIdentity.logout();
+    const checks = vi.spyOn(MockAppCheckTaskSource.prototype, "listTasks");
+    const messages = vi.spyOn(MockMessageTaskSource.prototype, "listTasks");
+    const router = await mount();
+    await login("noproject");
+    expect(router.currentRoute.value.fullPath).toBe("/?view=home");
+    expect(document.body.textContent).toContain("尚未分配可用的业务 Project");
+    expect(checks).not.toHaveBeenCalled();
+    expect(messages).not.toHaveBeenCalled();
+    button("退出").click();
+    await settle();
+    expect(document.querySelector(".runtime-shell")).toBeNull();
+  });
   it("serves anonymous root login and restores a remembered user's permitted home", async () => {
     const router = await mount(undefined, "/");
     expect(router.currentRoute.value.name).toBe("login");
@@ -218,18 +336,17 @@ describe("console login and shared task access", () => {
   it.each(["1001", "1002", "1003"])(
     "uses the same role policy for %s menus and direct links",
     async (user) => {
-      const list = vi.spyOn(MockMessageTaskSource.prototype, "listTasks");
       const configuration = vi.spyOn(
         MockAppCheckTaskSource.prototype,
         "loadConfiguration"
       );
       const router = await mount(undefined, "/messages?view=create");
       await login(user);
-      expect(router.currentRoute.value.fullPath).toBe("/app-checks");
+      expect(router.currentRoute.value.fullPath).toBe("/messages?view=create");
+      expect(document.querySelector("#message-task-form")).not.toBeNull();
+      expect(document.querySelector('a[href="/messages"]')).not.toBeNull();
       for (const path of [
-        "/messages",
-        "/messages?view=create",
-        "/messages/tasks/known",
+        "/?view=users",
         "/runtime/tasks",
         "/task-workbench",
         "/sms",
@@ -240,10 +357,9 @@ describe("console login and shared task access", () => {
         await settle();
         expect(router.currentRoute.value.fullPath).toBe("/app-checks");
       }
-      for (const path of ["/messages", "/runtime/tasks", "/task-workbench", "/sms"])
+      for (const path of ["/?view=users", "/runtime/tasks", "/task-workbench", "/sms"])
         expect(document.querySelector(`a[href="${path}"]`)).toBeNull();
       expect(document.querySelector('[aria-label="切换开发身份"]')).toBeNull();
-      expect(list).not.toHaveBeenCalled();
       expect(configuration).not.toHaveBeenCalled();
       expect(loginDestination(router, "//outside.example")).toBe("/app-checks");
     }

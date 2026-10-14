@@ -85,7 +85,7 @@ class ApiExceptionHandlerTest {
                     HttpStatus.SERVICE_UNAVAILABLE;
             case DIRECT_CALL_CAPACITY_EXCEEDED ->
                     HttpStatus.TOO_MANY_REQUESTS;
-            case INVALID_TASK_CALLER, KERNEL_REJECTED_CONFLICT,
+            case INVALID_USER_REQUEST, INVALID_TASK_CALLER, KERNEL_REJECTED_CONFLICT,
                     INVALID_TASK_DATA_REQUEST,
                     TASK_NOT_FOUND,
                     TASK_CALL_NOT_REGISTERED,

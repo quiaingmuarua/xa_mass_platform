@@ -35,11 +35,11 @@ import ConfigurationRows from "./ConfigurationRows.vue";
 import SimulationSummary from "./SimulationSummary.vue";
 import { savedTaskConfiguration } from "./configuration";
 import { consoleIdentity, identityLabel } from "@/console-identity";
-import { can, canAccessTask } from "@/access-policy";
+import { canUseConsole, canAccessTask } from "@/access-policy";
 const identity = consoleIdentity.requireCurrent();
-const canConfigure = can(identity, "app-checks.configuration");
-const canDiagnose = can(identity, "app-checks.diagnostics");
-const canDemonstrate = can(identity, "demo.control");
+const canConfigure = canUseConsole(identity, "app-checks.configuration");
+const canDiagnose = canUseConsole(identity, "app-checks.diagnostics");
+const canDemonstrate = canUseConsole(identity, "demo.control");
 const props = defineProps<{
   source: AppCheckTaskSource;
   taskId?: string;

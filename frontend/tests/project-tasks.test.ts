@@ -79,13 +79,19 @@ it("Mock has a consistent directory and no service requests", async () => {
   vi.stubGlobal("fetch", fetcher);
   const source = createProjectSource("/api", "mock", ADMIN);
   const projects = await source.list();
+  expect(projects.map((project) => project.projectId)).toEqual(
+    expect.arrayContaining(["messages", "app-checks"])
+  );
   for (const project of projects) {
     const result = await source.tasks(project.projectId);
     expect(result.tasks.every((row) => row.task?.projectId === project.projectId)).toBe(
       true
     );
-    await source.groups(project.projectId);
-    await source.task(project.projectId, result.tasks[0]!.taskId);
+    expect(
+      (await source.groups(project.projectId)).map((group) => group.workerGroupId)
+    ).toEqual(project.workerGroupIds);
+    for (const row of result.tasks)
+      expect(await source.task(project.projectId, row.taskId)).toEqual(row);
   }
   expect(fetcher).not.toHaveBeenCalled();
 });

@@ -7,15 +7,16 @@ import {
   Link,
   Message,
   ChatDotRound,
-  Tickets
+  Tickets,
+  User
 } from "@element-plus/icons-vue";
 import { useSmsAvailability } from "@/sms/availability";
 import { useMessageAvailability } from "@/message-campaigns/availability";
 import { useAppChecks } from "@/app-checks/context";
 import { consoleIdentity } from "@/console-identity";
-import { can, type Permission } from "@/access-policy";
+import { canUseConsole, type Permission } from "@/access-policy";
 const allowed = (permission: Permission) =>
-  can(consoleIdentity.current.value, permission);
+  canUseConsole(consoleIdentity.current.value, permission);
 const emit = defineEmits<{ navigate: [] }>();
 const route = useRoute();
 const sms = useSmsAvailability();
@@ -89,6 +90,20 @@ const messagesEnabled = computed(() =>
         :aria-current="route.path.startsWith('/app-checks') ? 'page' : undefined"
       >
         <el-icon><Tickets /></el-icon><span>应用注册查询</span>
+      </router-link>
+    </template>
+    <template v-if="allowed('users.manage')">
+      <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
+        >CONSOLE</span
+      >
+      <router-link
+        class="runtime-navigation__link"
+        :class="{
+          'router-link-active': route.path === '/' && route.query.view === 'users'
+        }"
+        to="/?view=users"
+      >
+        <el-icon><User /></el-icon><span>用户管理</span>
       </router-link>
     </template>
     <template v-if="allowed('reference.view')">

@@ -1,4 +1,9 @@
 import { afterEach, vi } from "vitest";
+import { installRoles } from "@/access-policy";
+import { developmentRoles } from "@/development-users";
+
+vi.stubEnv("VITE_RUNTIME_DATA_SOURCE", "mock");
+installRoles(developmentRoles);
 
 class ResizeObserverMock implements ResizeObserver {
   observe(): void {}

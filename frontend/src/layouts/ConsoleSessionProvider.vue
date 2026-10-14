@@ -2,7 +2,7 @@
 import ConsoleLayout from "./ConsoleLayout.vue";
 import { computed, provide, onBeforeUnmount } from "vue";
 import { getActivePinia } from "pinia";
-import { captureTaskCaller } from "@/task-caller";
+import { captureTaskCaller } from "@/console-identity";
 import { useRoute } from "vue-router";
 import {
   runtimeViewerConfigKey,
@@ -85,5 +85,6 @@ if (configResult.ok) {
 <template>
   <ConsoleLayout
     :runtime-error="!configResult.ok && needsRuntime ? configResult.error : undefined"
-  />
+    ><slot><router-view /></slot
+  ></ConsoleLayout>
 </template>

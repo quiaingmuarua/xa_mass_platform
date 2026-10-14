@@ -333,6 +333,7 @@ class ServerApplicationContextTest {
         document.path("tags").forEach(tag ->
                 tagNames.add(tag.path("name").asText()));
         assertThat(tagNames).containsExactly(
+                ApiTags.USERS,
                 ApiTags.WORKER_RESOURCES,
                 ApiTags.TASKS,
                 ApiTags.RUNTIME_VIEW,
@@ -362,7 +363,7 @@ class ServerApplicationContextTest {
                 assertThat(responseCodes)
                         .as("responses for %s %s", candidate.getKey(), path.getKey())
                         .containsExactlyInAnyOrderElementsOf(
-                                expectedResponseCodes(operationTag, path.getKey())
+                                expectedResponseCodes(operationTag, path.getKey(), candidate.getKey())
                         )
                         .doesNotContain("404", "409", "422");
                 var successCodes = responseCodes.stream()
@@ -543,7 +544,8 @@ class ServerApplicationContextTest {
         }
     }
 
-    private static Set<String> expectedResponseCodes(String tag, String path) {
+    private static Set<String> expectedResponseCodes(String tag, String path, String method) {
+        if (ApiTags.USERS.equals(tag)) return "get".equals(method) ? Set.of("200", "400") : Set.of("200", "400", "403");
         if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) return Set.of("200", "400", "403", "503");
         if (!ApiTags.WORKER_DELIVERY.equals(tag)) {
             return Set.of("200", "400", "503");

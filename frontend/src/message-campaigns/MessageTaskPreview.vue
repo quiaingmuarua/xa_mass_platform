@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { can } from "@/access-policy";
-import { captureTaskCaller } from "@/task-caller";
+import { captureTaskCaller } from "@/console-identity";
 
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { ElDrawer, ElTable, ElTableColumn } from "element-plus";

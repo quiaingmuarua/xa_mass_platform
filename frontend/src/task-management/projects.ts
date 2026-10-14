@@ -234,7 +234,12 @@ function mockProjectSource(caller: TaskCaller): ProjectSource {
       projectId: "default",
       workerGroupIds: groups.map((g) => g.workerGroupId)
     },
-    { projectId: "agentforge", workerGroupIds: agentGroups.map((g) => g.workerGroupId) }
+    {
+      projectId: "agentforge",
+      workerGroupIds: agentGroups.map((g) => g.workerGroupId)
+    },
+    { projectId: "app-checks", workerGroupIds: ["app-a-sim", "app-b-sim"] },
+    { projectId: "messages", workerGroupIds: ["demo-sim", "app-a-sim", "app-b-sim"] }
   ];
   const tasks: ProjectTask[] = MOCK_TASK_PREVIEW.entries.map((row) => ({
     taskId: row.taskId,
@@ -363,7 +368,19 @@ function mockProjectSource(caller: TaskCaller): ProjectSource {
     },
     async groups(project) {
       requireProject(project);
-      return structuredClone(project === "agentforge" ? agentGroups : groups);
+      const known = [...groups, ...agentGroups];
+      return structuredClone(
+        projects
+          .find((entry) => entry.projectId === project)!
+          .workerGroupIds.map(
+            (workerGroupId) =>
+              known.find((entry) => entry.workerGroupId === workerGroupId) ?? {
+                workerGroupId,
+                workerGroup: null,
+                matching: { pools: [], functions: [] }
+              }
+          )
+      );
     }
   };
 }

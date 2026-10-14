@@ -9,8 +9,12 @@ export const consoleRoutes: RouteRecordRaw[] = [
   {
     path: "/",
     name: "login",
-    component: () => import("@/views/LoginView.vue"),
-    meta: { public: true, title: "登录控制台" }
+    component: () => import("@/views/ConsoleEntryView.vue"),
+    meta: {
+      public: true,
+      title: "控制台",
+      viewPermissions: { users: "users.manage", home: "console.view" }
+    }
   },
   {
     path: "/",

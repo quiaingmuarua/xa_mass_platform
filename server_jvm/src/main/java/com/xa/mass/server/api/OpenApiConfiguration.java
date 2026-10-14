@@ -40,6 +40,7 @@ import org.springframework.context.annotation.Configuration;
                         + "cross-version compatibility."
         ),
         tags = {
+                @Tag(name = ApiTags.USERS, description = "Server-memory development users and roles, without session authentication"),
                 @Tag(
                         name = ApiTags.WORKER_RESOURCES,
                         description = "Declare WorkerGroups and prepare or "

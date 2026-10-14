@@ -4,9 +4,10 @@ import {
   consoleIdentity,
   identityStorageKey
 } from "@/console-identity";
-import { can, canAccessTask, roles } from "@/access-policy";
+import { canUseConsole, canAccessTask, consoleHome, roles } from "@/access-policy";
 import { developmentUsers } from "@/development-users";
-import { captureTaskCaller, callerHeaders, selectTaskUser } from "@/task-caller";
+import { callerHeaders, selectTaskUser } from "@/task-caller";
+import { captureTaskCaller } from "@/console-identity";
 import { ADMIN, OPERATOR_A } from "./identity-fixture";
 
 afterEach(() => consoleIdentity.logout());
@@ -70,16 +71,21 @@ describe("console login and role policy", () => {
   it("accepts additional users through data with the same role permissions", () => {
     const identity = createConsoleIdentity(undefined, [
       ...developmentUsers,
-      { userId: "1003", displayName: "用户 C", role: "operator" },
-      { userId: "1004", displayName: "管理员 D", role: "admin" }
+      {
+        userId: "1003",
+        displayName: "用户 C",
+        role: "operator",
+        projectIds: ["app-checks"]
+      },
+      { userId: "1004", displayName: "管理员 D", role: "admin", projectIds: [] }
     ]);
     identity.login("1003");
-    expect(can(identity.requireCurrent(), "app-checks.tasks")).toBe(true);
-    expect(can(identity.requireCurrent(), "messages.use")).toBe(false);
+    expect(canUseConsole(identity.requireCurrent(), "app-checks.tasks")).toBe(true);
+    expect(canUseConsole(identity.requireCurrent(), "messages.use")).toBe(false);
     expect(canAccessTask(identity.requireCurrent(), { userId: "1003" })).toBe(true);
     expect(canAccessTask(identity.requireCurrent(), { userId: "1001" })).toBe(false);
     identity.login("1004");
-    expect(can(identity.requireCurrent(), "messages.use")).toBe(true);
+    expect(canUseConsole(identity.requireCurrent(), "messages.use")).toBe(true);
     expect(canAccessTask(identity.requireCurrent(), { userId: "1003" })).toBe(true);
     expect(roles[identity.requireCurrent().role].home).toBe("/runtime/workers");
   });
@@ -93,5 +99,60 @@ describe("console login and role policy", () => {
     expect(() => selectTaskUser(OPERATOR_A, "1002")).toThrow();
     expect(selectTaskUser(ADMIN)).toBeUndefined();
     expect(selectTaskUser(ADMIN, "1002")).toBe("1002");
+  });
+  it("keeps Mock users across logout and resets only when the Mock source is recreated", async () => {
+    const storage = memoryStorage();
+    const identity = createConsoleIdentity(storage);
+    const user = {
+      userId: "userc",
+      displayName: "用户 C",
+      role: "operator" as const,
+      projectIds: ["messages"]
+    };
+    await expect(identity.saveUser(user)).rejects.toThrow("用户管理权限");
+    identity.login("1000");
+    await identity.saveUser(user);
+    await expect(identity.saveUser(user)).rejects.toThrow("已存在");
+    user.projectIds.push("app-checks");
+    identity.logout();
+    identity.login("userc");
+    expect(identity.requireCurrent().projectIds).toEqual(["messages"]);
+    expect(consoleHome(identity.requireCurrent())).toBe("/messages");
+    expect(canUseConsole(identity.requireCurrent(), "messages.use")).toBe(true);
+    expect(canUseConsole(identity.requireCurrent(), "app-checks.tasks")).toBe(false);
+    expect(canUseConsole(identity.requireCurrent(), "users.manage")).toBe(false);
+    await expect(identity.saveUser(user)).rejects.toThrow("用户管理权限");
+    expect([...storage.values.keys()]).toEqual([identityStorageKey]);
+    const reloaded = createConsoleIdentity(storage);
+    expect(reloaded.users.some((entry) => entry.userId === "userc")).toBe(false);
+    expect(reloaded.current.value).toBeNull();
+  });
+  it("edits role and project grants for the next login without changing caller encoding", async () => {
+    const identity = createConsoleIdentity();
+    identity.login("1000");
+    const user = {
+      userId: "1001",
+      displayName: "用户 A",
+      role: "operator" as const,
+      projectIds: []
+    };
+    await identity.saveUser(user, "1001");
+    identity.login("1001");
+    expect(consoleHome(identity.requireCurrent())).toBe("/?view=home");
+    expect(callerHeaders(identity.requireCurrent())).toEqual(callerHeaders(OPERATOR_A));
+    identity.login("1000");
+    await identity.saveUser({ ...user, role: "admin" }, "1001");
+    identity.login("1001");
+    expect(consoleHome(identity.requireCurrent())).toBe("/runtime/workers");
+    expect(canUseConsole(identity.requireCurrent(), "users.manage")).toBe(true);
+    await expect(
+      identity.saveUser({ ...user, role: "operator" }, "1001")
+    ).rejects.toThrow("当前登录用户");
+    await expect(identity.saveUser({ ...user, userId: "INVALID" })).rejects.toThrow(
+      "userId"
+    );
+    await expect(
+      identity.saveUser({ ...user, userId: "userz" }, "1002")
+    ).rejects.toThrow("不能修改");
   });
 });

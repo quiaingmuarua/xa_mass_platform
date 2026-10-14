@@ -35,7 +35,9 @@ Open the Console at `http://127.0.0.1:18500` and the device Host at
 the [Frontend Owner](../../frontend/README.md) describes page operations.
 
 The Console starts at development login, with one built-in admin and two operators
-for App Checks workflow verification. Its top bar displays the current user and
+for Messages and App Checks workflow verification. Server owns a JSON-initialized,
+process-memory user directory shared by all clients; only Server restart resets
+user edits. Its top bar displays the current user and
 logout; see [development login](../../frontend/README.md#development-login-and-access).
 Direct App Checks task/configuration requests declare their caller through the
 [scenario headers](../../scenarios/app-checks-jvm/README.md#api-和-task-数据).

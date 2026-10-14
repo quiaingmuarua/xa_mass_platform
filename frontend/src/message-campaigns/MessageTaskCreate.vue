@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { consoleIdentity } from "@/console-identity";
-import { captureTaskCaller } from "@/task-caller";
+import { captureTaskCaller } from "@/console-identity";
 
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import MessageRecipients from "./MessageRecipients.vue";

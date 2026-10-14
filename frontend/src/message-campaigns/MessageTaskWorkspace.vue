@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { consoleIdentity } from "@/console-identity";
 import { can } from "@/access-policy";
-import { captureTaskCaller } from "@/task-caller";
+import { captureTaskCaller } from "@/console-identity";
 
 import {
   computed,

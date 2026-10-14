@@ -150,6 +150,7 @@ class ServerArchitectureBoundaryTest {
                             "operation", "project",
                             "runtimeview",
                             "task",
+                            "user",
                             "worker"
                     );
         }
@@ -185,7 +186,7 @@ class ServerArchitectureBoundaryTest {
                     );
         }
 
-        assertThat(countJavaSources(CONTROLLERS)).isEqualTo(11L);
+        assertThat(countJavaSources(CONTROLLERS)).isEqualTo(12L);
         assertThat(CONTRACTS.resolve("ApiErrorResponse.java"))
                 .isRegularFile();
         assertThat(CONTRACTS.resolve("ActionOutcome.java"))

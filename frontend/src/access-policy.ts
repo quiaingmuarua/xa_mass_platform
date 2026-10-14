@@ -1,4 +1,8 @@
+import { shallowReactive } from "vue";
+
 export type Permission =
+  | "console.view"
+  | "users.manage"
   | "runtime.view"
   | "workbench.use"
   | "messages.use"
@@ -9,51 +13,81 @@ export type Permission =
   | "reference.view"
   | "demo.control";
 
-interface RoleDefinition {
+export interface RoleDefinition {
+  readonly id: RoleId;
   readonly label: string;
   readonly permissions: readonly Permission[];
   readonly taskScope: "all" | "own";
+  readonly projectScope: "all" | "assigned";
   readonly home: string;
 }
 
-export const roles = {
-  admin: {
-    label: "管理员",
-    permissions: [
-      "runtime.view",
-      "workbench.use",
-      "messages.use",
-      "sms.use",
-      "app-checks.tasks",
-      "app-checks.configuration",
-      "app-checks.diagnostics",
-      "reference.view",
-      "demo.control"
-    ],
-    taskScope: "all",
-    home: "/runtime/workers"
-  },
-  operator: {
-    label: "普通用户",
-    permissions: ["app-checks.tasks"],
-    taskScope: "own",
-    home: "/app-checks"
-  }
-} as const satisfies Record<string, RoleDefinition>;
-export type RoleId = keyof typeof roles;
+export type RoleId = "admin" | "operator";
+export const roles = shallowReactive({} as Record<RoleId, RoleDefinition>);
+export function installRoles(definitions: readonly RoleDefinition[]) {
+  for (const definition of definitions)
+    roles[definition.id] = Object.freeze({
+      ...definition,
+      permissions: Object.freeze([...definition.permissions])
+    });
+}
 export interface AccessSubject {
   readonly userId: string;
   readonly role: RoleId;
 }
+export interface ProjectAccessSubject extends AccessSubject {
+  readonly projectIds: readonly string[];
+}
+
+// Console feature bindings; these do not add fields to the HTTP caller contract.
+const permissionProjects: Partial<Record<Permission, string>> = {
+  "messages.use": "messages",
+  "app-checks.tasks": "app-checks",
+  "app-checks.configuration": "app-checks",
+  "app-checks.diagnostics": "app-checks",
+  "sms.use": "sms"
+};
+export const projectEntrypoints = [
+  { projectId: "app-checks", permission: "app-checks.tasks", path: "/app-checks" },
+  { projectId: "messages", permission: "messages.use", path: "/messages" },
+  { projectId: "sms", permission: "sms.use", path: "/sms" }
+] as const;
+
+export function projectScope(subject: AccessSubject): "all" | "assigned" {
+  return roles[subject.role].projectScope;
+}
+export function canAccessProject(subject: ProjectAccessSubject, projectId: string) {
+  return projectScope(subject) === "all" || subject.projectIds.includes(projectId);
+}
+export function canUseConsole(
+  subject: ProjectAccessSubject | null,
+  permission: Permission
+) {
+  const project = permissionProjects[permission];
+  return (
+    can(subject, permission) &&
+    !!subject &&
+    (!project || canAccessProject(subject, project))
+  );
+}
+export function consoleHome(subject: ProjectAccessSubject): string {
+  const preferred = roles[subject.role].home;
+  const binding = projectEntrypoints.find((entry) => entry.path === preferred);
+  if (!binding || canUseConsole(subject, binding.permission)) return preferred;
+  return (
+    projectEntrypoints.find((entry) => canUseConsole(subject, entry.permission))
+      ?.path ?? "/?view=home"
+  );
+}
 
 export function isRole(value: unknown): value is RoleId {
-  return typeof value === "string" && Object.hasOwn(roles, value);
+  return value === "admin" || value === "operator";
 }
 export function can(subject: AccessSubject | null, permission: Permission): boolean {
   return (
     !!subject &&
     isRole(subject.role) &&
-    (roles[subject.role].permissions as readonly Permission[]).includes(permission)
+    !!roles[subject.role]?.permissions.includes(permission)
   );
 }
 export function taskScope(subject: AccessSubject): "all" | "own" {

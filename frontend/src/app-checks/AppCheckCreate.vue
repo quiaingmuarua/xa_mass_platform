@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, markRaw, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { ArrowLeft, UploadFilled } from "@element-plus/icons-vue";
-import { captureTaskCaller } from "@/task-caller";
-import { can } from "@/access-policy";
+import { captureTaskCaller } from "@/console-identity";
+import { canUseConsole } from "@/access-policy";
 import { consoleIdentity } from "@/console-identity";
 import {
   appLabel,
@@ -430,7 +430,7 @@ onBeforeUnmount(() => {
           }}</span
         >
         <button
-          v-if="can(identity, 'app-checks.configuration')"
+          v-if="canUseConsole(identity, 'app-checks.configuration')"
           type="button"
           class="checks-link"
           @click="emit('configuration', draft.appId)"

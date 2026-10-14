@@ -1,4 +1,3 @@
-import { consoleIdentity } from "@/console-identity";
 import { normalizeTaskUserId } from "@/task-user-id";
 import {
   can,
@@ -32,10 +31,6 @@ export function requireCaller(caller: TaskCaller): TaskCaller {
   } catch (error) {
     throw new TaskApiError(400, (error as Error).message);
   }
-}
-
-export function captureTaskCaller(): TaskCaller {
-  return requireCaller(consoleIdentity.requireCurrent());
 }
 
 export function callerHeaders(caller: TaskCaller): Record<string, string> {

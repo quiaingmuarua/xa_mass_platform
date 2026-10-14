@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { can, canAccessTask, taskScope } from "@/access-policy";
+import { canUseConsole, canAccessTask, taskScope } from "@/access-policy";
 import { TaskApiError } from "@/task-caller";
 
 import {
@@ -40,9 +40,9 @@ const props = defineProps<{
 const emit = defineEmits<{ refreshConfiguration: [] }>();
 const session = props.session ?? createWorkbenchSession();
 const identity = consoleIdentity.requireCurrent();
-const canConfigure = can(identity, "app-checks.configuration");
+const canConfigure = canUseConsole(identity, "app-checks.configuration");
 const allTasks = taskScope(identity) === "all";
-const canDemonstrate = can(identity, "demo.control");
+const canDemonstrate = canUseConsole(identity, "demo.control");
 const route = useRoute(),
   router = useRouter();
 const taskId = computed(() =>

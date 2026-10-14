@@ -1,4 +1,4 @@
-import { captureTaskCaller } from "@/task-caller";
+import { captureTaskCaller } from "@/console-identity";
 import { ref, onScopeDispose } from "vue";
 import type { ProjectTask } from "./projects";
 import type { FiniteTaskClient } from "./types";

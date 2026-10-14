@@ -2,7 +2,7 @@
 import { computed, onMounted, onBeforeUnmount, provide, ref, watch, inject } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { consoleIdentity } from "@/console-identity";
-import { can, roles } from "@/access-policy";
+import { canUseConsole, roles } from "@/access-policy";
 import { consoleMockKey } from "@/console-mock";
 import { Connection, Menu, Moon, Sunny, View } from "@element-plus/icons-vue";
 import ConsoleNavigation from "./ConsoleNavigation.vue";
@@ -46,9 +46,9 @@ provide(
 provide(messageSessionKey, createMessageSession());
 const mobileNavigation = ref(false);
 onMounted(() => {
-  if (can(identity, "sms.use")) void sms.load();
-  if (can(identity, "messages.use")) void messages.load();
-  if (can(identity, "app-checks.tasks")) void appChecks.load();
+  if (canUseConsole(identity, "sms.use")) void sms.load();
+  if (canUseConsole(identity, "messages.use")) void messages.load();
+  if (canUseConsole(identity, "app-checks.tasks")) void appChecks.load();
 });
 onBeforeUnmount(() => {
   sms.dispose();
@@ -71,13 +71,22 @@ watch(
 const referencePage = computed(() => route.meta.section === "Reference");
 const runtimePage = computed(() => route.meta.section === "Runtime");
 const sourceLabel = computed(() => {
+  if (route.path === "/") return "开发环境";
   if (referencePage.value) return "Build reference";
   if (route.meta.section === "Scenarios")
     return demo ? "Mock source" : `${String(route.meta.title)} API`;
   return demo ? "Mock source" : "API source";
 });
-const pageTitle = computed(() => String(route.meta.title ?? "Runtime"));
-const pageSection = computed(() => String(route.meta.section ?? "Runtime"));
+const pageTitle = computed(() =>
+  route.path === "/"
+    ? route.query.view === "users"
+      ? "用户管理"
+      : "控制台"
+    : String(route.meta.title ?? "Runtime")
+);
+const pageSection = computed(() =>
+  route.path === "/" ? "Console" : String(route.meta.section ?? "Runtime")
+);
 
 onMounted(() => theme.apply());
 </script>
@@ -175,7 +184,7 @@ onMounted(() => theme.apply());
 
       <main class="runtime-main">
         <ConfigErrorView v-if="runtimeError" :error="runtimeError" />
-        <router-view v-else />
+        <slot v-else><router-view /></slot>
       </main>
     </div>
   </div>
