@@ -29,11 +29,11 @@ SDK 和 Worker 协议使用既有机制；Matching 基础规则由场景声明�
 `{expectedItemCount}`；待审核核对正数，已批准重复请求 unchanged，终态不重开。
 前端组合共同详情、共同统计和业务结果，注册答案仍是内容解释，不从预览推算全量统计。
 
-例如，以开发调用方 `proof` 创建任务时显式携带以下请求头；`cHJvb2Y` 是 `proof`
+例如，以开发调用方 `proof` 创建任务时显式携带以下请求头；`MTAwMA` 是 `proof`
 的 UTF-8 Base64URL 编码。自动化或手动调用均须自行声明角色，不由 HTTP 客户端补入。
 
 ```http
-X-XA-Dev-User: cHJvb2Y
+X-XA-Dev-User: MTAwMA
 X-XA-Dev-Role: operator
 Content-Type: application/json
 ```
