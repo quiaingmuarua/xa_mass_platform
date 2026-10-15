@@ -39,7 +39,7 @@ class ScenarioArchitectureTest {
                         "api.v1.contract.task.TaskItemResultStatus", "worker.observation.WorkerPropertyProjection"),
                 "sms-reception-jvm", Set.of("task.access.TaskCaller", "task.call.TaskRpcPreparationService", "api.v1.contract.task.TaskRpcPrepareRequest",
                         "task.call.TaskRpcCallService", "task.TaskDataService", "task.observation.TaskLeaseProjection",
-                        "task.observation.TaskLeaseProjectionMetrics", "api.v1.contract.task.TaskRpcCallRequest",
+                        "task.observation.TaskLeaseProjectionAccess", "api.v1.contract.task.TaskRpcCallRequest",
                         "api.v1.contract.task.TaskItemRequest", "api.v1.contract.task.TaskItemResultResponse",
                         "api.v1.contract.task.TaskItemResultStatus"),
                 "message-campaigns-jvm", Set.of("task.access.TaskCaller", "project.ProjectDirectory",

@@ -147,10 +147,10 @@ describe("HTTP batch adapter", () => {
       post
     } as unknown as AxiosInstance);
     await expect(
-      client.loadResults(CALLER, "task", ["message-1", "message-1"])
+      client.takeResults(CALLER, "task", ["message-1", "message-1"])
     ).resolves.toEqual(success);
     expect(post).toHaveBeenLastCalledWith(
-      "/v1/tasks/task/results:load",
+      "/v1/tasks/task/results:take",
       ["message-1"],
       expect.any(Object)
     );
@@ -167,6 +167,57 @@ describe("HTTP batch adapter", () => {
   });
 });
 describe("session request evidence", () => {
+  it("keeps denied takes distinct from uncertain consumption without retrying execution", async () => {
+    const client = {
+      callTask: vi.fn().mockResolvedValue(success),
+      takeResults: vi.fn().mockRejectedValue(
+        new TaskCallDebugError({
+          kind: "http",
+          status: 403,
+          message: "访问被拒绝，请刷新页面或重新登录。"
+        })
+      )
+    };
+    const store = createTaskCallDebugStore(client, "api");
+    const denied = await store.takeResults("task", ["message-1"]);
+    expect(denied.state).toBe("request_rejected");
+    expect(denied.resultTakeError?.rejected).toBe(true);
+    expect(denied.results).toBeUndefined();
+    expect(client.callTask).not.toHaveBeenCalled();
+    const original = await store.send("task", JSON.stringify(request()));
+    await store.takeResults("task", original.messageIds, original.localId);
+    expect(original.state).toBe("observed");
+    expect(original.results).toEqual(success);
+    expect(original.resultTakeError?.rejected).toBe(true);
+    expect(client.callTask).toHaveBeenCalledTimes(1);
+    expect(client.takeResults).toHaveBeenCalledTimes(2);
+  });
+  it("takes only pending IDs for follow-up and never erases received content with an empty take", async () => {
+    const client = {
+      callTask: vi
+        .fn()
+        .mockResolvedValue({ ...success, pending: { status: "not_observed" } }),
+      takeResults: vi
+        .fn()
+        .mockResolvedValueOnce({ pending: { status: "failed" } })
+        .mockResolvedValueOnce({
+          "message-1": { status: "not_observed" },
+          pending: { status: "not_observed" }
+        })
+    };
+    const store = createTaskCallDebugStore(client, "api");
+    const record = await store.send(
+      "task",
+      JSON.stringify({ items: [item(), item("pending")] })
+    );
+    await store.takeResults("task", record.messageIds, record.localId, true);
+    expect(client.takeResults).toHaveBeenLastCalledWith(CALLER, "task", ["pending"]);
+    await store.takeResults("task", record.messageIds, record.localId);
+    expect(record.results).toEqual({ ...success, pending: { status: "failed" } });
+    await store.takeResults("task", record.messageIds, record.localId, true);
+    expect(client.takeResults).toHaveBeenCalledTimes(2);
+    expect(client.callTask).toHaveBeenCalledTimes(1);
+  });
   it("freezes caller and input, blocks double submit and attributes late responses to the original Task", async () => {
     let release!: (value: TaskCallDebugResults) => void;
     const client = {
@@ -176,7 +227,7 @@ describe("session request evidence", () => {
             release = r;
           })
       ),
-      loadResults: vi.fn().mockResolvedValue(success)
+      takeResults: vi.fn().mockResolvedValue(success)
     };
     const store = createTaskCallDebugStore(client, "api");
     store.draft("task").requestText = JSON.stringify(request());
@@ -192,8 +243,8 @@ describe("session request evidence", () => {
     expect(record.caller).toEqual(CALLER);
     expect(record.request).toEqual(request());
     expect(store.history("other")).toEqual([]);
-    await store.loadResults("task", record.messageIds, record.localId);
-    expect(client.loadResults).toHaveBeenCalledWith(CALLER, "task", ["message-1"]);
+    await store.takeResults("task", record.messageIds, record.localId);
+    expect(client.takeResults).toHaveBeenCalledWith(CALLER, "task", ["message-1"]);
   });
   it("preserves mixed results and last successful read on later read failure", async () => {
     const mixed: TaskCallDebugResults = {
@@ -203,7 +254,7 @@ describe("session request evidence", () => {
     };
     const client = {
       callTask: vi.fn().mockResolvedValue(mixed),
-      loadResults: vi.fn().mockRejectedValue(new Error("down"))
+      takeResults: vi.fn().mockRejectedValue(new Error("down"))
     };
     const store = createTaskCallDebugStore(client, "api");
     const record = await store.send(
@@ -211,10 +262,10 @@ describe("session request evidence", () => {
       JSON.stringify({ items: [item(), item("waiting"), item("failure")] })
     );
     const time = record.readAt;
-    await store.loadResults("task", record.messageIds, record.localId);
+    await store.takeResults("task", record.messageIds, record.localId);
     expect(record.results).toEqual(mixed);
     expect(record.readAt).toBe(time);
-    expect(record.resultLoadError).toBeDefined();
+    expect(record.resultTakeError).toBeDefined();
     expect(client.callTask).toHaveBeenCalledTimes(1);
   });
   it("keeps uncertain calls and HTTP rejection separate from per-Item failure without automatic resend", async () => {
@@ -227,26 +278,26 @@ describe("session request evidence", () => {
         .mockRejectedValueOnce(
           new TaskCallDebugError({ kind: "http", status: 400, message: "rejected" })
         ),
-      loadResults: vi.fn().mockResolvedValue(success)
+      takeResults: vi.fn().mockResolvedValue(success)
     };
     const store = createTaskCallDebugStore(client, "api");
     const unknown = await store.send("task", JSON.stringify(request()));
     expect(unknown.state).toBe("unconfirmed");
     expect(unknown.results).toBeUndefined();
-    await store.loadResults("task", unknown.messageIds, unknown.localId);
+    await store.takeResults("task", unknown.messageIds, unknown.localId);
     expect(unknown.results).toEqual(success);
     const rejected = await store.send("task", JSON.stringify(request()));
     expect(rejected.state).toBe("request_rejected");
-    await store.loadResults("task", rejected.messageIds, rejected.localId);
+    await store.takeResults("task", rejected.messageIds, rejected.localId);
     expect(client.callTask).toHaveBeenCalledTimes(2);
   });
   it("supports reads without browser history and bounds requests per Task", async () => {
     const client = {
       callTask: vi.fn().mockResolvedValue(success),
-      loadResults: vi.fn().mockResolvedValue(success)
+      takeResults: vi.fn().mockResolvedValue(success)
     };
     const store = createTaskCallDebugStore(client, "api");
-    const read = await store.loadResults("known", ["message-1"]);
+    const read = await store.takeResults("known", ["message-1"]);
     expect(read.request).toBeUndefined();
     for (let n = 0; n < 22; n++) await store.send("task", JSON.stringify(request()));
     expect(store.history("task")).toHaveLength(TASK_CALL_DEBUG_HISTORY_LIMIT);
@@ -254,11 +305,11 @@ describe("session request evidence", () => {
     expect(store.clear("task")).toBe(true);
   });
   it("Mock cannot call or read through the network client", async () => {
-    const client = { callTask: vi.fn(), loadResults: vi.fn() };
+    const client = { callTask: vi.fn(), takeResults: vi.fn() };
     const store = createTaskCallDebugStore(client, "mock");
     await expect(store.send("task", JSON.stringify(request()))).rejects.toThrow("Mock");
-    await expect(store.loadResults("task", ["message-1"])).rejects.toThrow("Mock");
+    await expect(store.takeResults("task", ["message-1"])).rejects.toThrow("Mock");
     expect(client.callTask).not.toHaveBeenCalled();
-    expect(client.loadResults).not.toHaveBeenCalled();
+    expect(client.takeResults).not.toHaveBeenCalled();
   });
 });

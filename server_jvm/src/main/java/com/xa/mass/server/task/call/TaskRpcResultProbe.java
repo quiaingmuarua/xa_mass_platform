@@ -97,7 +97,7 @@ public final class TaskRpcResultProbe implements SmartLifecycle {
                     .map(TaskRpcWaitRegistry.ProbeRequest::messageId)
                     .toList();
             Map<String, TaskItemResult> results =
-                    taskRuntime.loadTaskItemResults(
+                    taskRuntime.takeTaskItemResults(
                             taskId,
                             messageIds
                     );

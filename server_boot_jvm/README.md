@@ -234,6 +234,18 @@ explicit generic Task supply. The Scenario contributes its passive partitioned l
 resource and stored-Result projection; host configuration owns enabling both Pool and
 function and admitting the `extension.worker.sms.number.lease` event.
 
+## RPC Result and SMS cache configuration
+
+RPC Results use `xa.mass.task-rpc.result-idle-ttl=7d`, a positive duration passed
+to the Kernel provider. It is renewed only by actual RPC Result writes and does
+not expire finite Task results. SMS Preview supplies
+`xa.mass.sms.result-cache.maximum-size=10000` and
+`xa.mass.sms.result-cache.expire-after-write=10m`; the SMS module validates and
+owns this process-local Caffeine cache. Reads and unchanged revisions do not
+renew the cache lifetime. Restart discards consumed SMS cache entries; unread
+Redis Results retain their existing expiration. Use a fresh scope for this
+cutover; no TTL backfill or old-result migration is performed.
+
 ## Finite Task retention configuration
 
 All profiles explicitly provide `xa.mass.task-retention` defaults: 1h grace, 7d

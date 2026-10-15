@@ -304,12 +304,12 @@ final class WorkerTaskFaultConvergence {
                     "disconnected"
             );
             require(
-                    runtime.loadResultStatuses(
+                    runtime.takeResultStatuses(
                             runtime.rpcTaskId(STRING_GROUP),
                             List.of(state.checkpointMessageId())
                     ).get(state.checkpointMessageId())
                             == RuntimeApiClient.CallStatus.SUCCEEDED,
-                    "Checkpoint successful Result was not retained after "
+                    "Checkpoint successful Result receipt was not retained by the proof after "
                             + "Worker loss"
             );
             evidence.record(

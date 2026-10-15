@@ -243,3 +243,26 @@ test fixture shared by existing Worker proofs and Runtime archive acceptance.
 Its migration out of the Boot classpath changes no workload, deadline, assertion
 or lane claim. Preview contributes a separate explicit `default` Project for raw
 Task use; business and platform proofs remain independently assembled.
+
+## RPC Result consumption and SMS snapshot cache
+
+`RpcResultConsumptionRedisIntegrationTest` proves bounded atomic take, concurrent
+consumers/writers, complete-batch corruption rejection, RPC-only write-refreshed
+idle expiration and preservation of Item/Task resources. Focused Call tests prove
+submit-only IDs are not consumed by mixed batches. Access and Runtime Boundary
+proofs cover the consuming HTTP route and original-ID receipts without execution
+resubmission. `SmsResultCacheTest` uses controllable Ticker/Clock for revision
+merging, no read/duplicate renewal, capacity/expiry, failure and restart limits.
+The projection proof covers already taken content without another Redis read and
+retains the existing bounded lossy queue. SMS source/ZIP acceptance preserves
+actual HTTP receipts, proves consumed-cache loss on restart, unclaimed Result
+retention, continued original Reporter updates and persistent Matching deadlines.
+No per-result age bound, durable delivery, cache recovery or cross-instance SMS
+cache consistency is claimed. Finite archival proofs remain independent.
+
+The explicit [RPC Result memory proof](../../integrations/scenario-coexistence/README.md#rpc-result-memory-proof)
+uses 10,000 HTTP calls through real Workers in a new scope, records Result HASH
+fields/bytes, HTTP batch latency and Redis PING latency, then verifies short-test
+idle expiry and subsequent writes on the same Task. SMS functional evidence also
+records Result HASH memory, cache size and query latency. These are fixed-workload
+observations, not platform capacity or RSS-release guarantees.

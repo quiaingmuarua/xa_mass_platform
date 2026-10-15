@@ -302,3 +302,15 @@ persistent data fence and exact terminal/resource operations. Task Score records
 first termination time and remains the cleanup entry until final removal. Reads,
 Scenario CSV and Mock must follow the common retention semantics. Use new scopes;
 no historical -1 decoding, identity migration or permanent tombstones are added.
+
+## RPC Result Consumption
+
+Kernel owns atomic RPC Result take and write-refreshed HASH idle expiration;
+Server owns caller admission and the shared consuming wait path. Consumption
+does not close Items, change Scores or block later legal outcomes. SMS owns its
+bounded process-local Caffeine snapshot cache and revision merge. Its Server
+projection capability may offer already obtained Results without receiving a
+Matching writer or consumer lifecycle handle. The existing bounded projection
+queue retains best-effort semantics. No acknowledgment, replay, persistence or
+cross-instance cache guarantee is introduced. These rules do not replace finite
+Task archival or grant Server execution scheduling authority.

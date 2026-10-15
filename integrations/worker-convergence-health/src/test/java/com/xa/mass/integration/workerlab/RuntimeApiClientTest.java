@@ -18,6 +18,27 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class RuntimeApiClientTest {
+    @org.junit.jupiter.api.Test
+    void receivedRpcEvidenceSurvivesProofClientReconstructionWithoutRetakingOrLoggingContent(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            requests.incrementAndGet();
+            respondJson(exchange, 200, Map.of("id", Map.of("status", "succeeded", "opaqueResultPayload", "fixture-only-output")));
+        });
+        server.start();
+        try {
+            var path = directory.resolve("receipts.json");
+            var http = new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"));
+            var first = new RuntimeApiClient(http, path);
+            assertThat(first.takeResultStatuses("rpc", List.of("id")).get("id")).isEqualTo(RuntimeApiClient.CallStatus.SUCCEEDED);
+            var resumed = new RuntimeApiClient(http, path);
+            assertThat(resumed.takeResultStatuses("rpc", List.of("id")).get("id")).isEqualTo(RuntimeApiClient.CallStatus.SUCCEEDED);
+            assertThat(requests.get()).isEqualTo(1);
+            assertThat(java.nio.file.Files.readString(path)).contains("payloadSha256").doesNotContain("fixture-only-output");
+        } finally { server.stop(0); }
+    }
 
     @Test
     void awaitsEmptyPropertiesButRejectsMalformedObservedLabCoordinates() throws Exception {
@@ -94,7 +115,7 @@ class RuntimeApiClientTest {
                 ));
             } else if (path.endsWith("/items:call")) {
                 respondJson(exchange, 200, Map.of(
-                        "message-1", Map.of("status", "succeeded"),
+                        "message-1", Map.of("status", "succeeded", "opaqueResultPayload", "result"),
                         "message-2", Map.of("status", "not_observed")
                 ));
             } else if (path.equals("/api/v1/tasks")) {

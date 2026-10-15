@@ -45,6 +45,7 @@ const initialMetrics = {
 };
 const reception: Reception = {
   messageId: "sms-one",
+  revision: 0,
   applicationId: "A",
   country: "CN",
   phoneNumber: "+861700000001",
@@ -74,7 +75,11 @@ function installApi() {
       runId = "two";
     },
     update: (change: Partial<Reception>) => {
-      current = { ...current, ...change };
+      current = {
+        ...current,
+        ...(change.sms ? { revision: (current.revision ?? 0) + 1 } : {}),
+        ...change
+      };
     }
   };
 }
@@ -108,7 +113,7 @@ async function submit(host: HTMLElement) {
 describe("unified SMS console", () => {
   it("keeps an unobserved acquisition distinct from an expired lease", () => {
     expect(waitingMessage({ messageId: "id", status: "NOT_OBSERVED" })).toContain(
-      "暂未观察"
+      "本次未取得"
     );
     expect(waitingMessage({ ...reception, leaseActive: false })).toContain(
       "租期已结束"
@@ -207,6 +212,34 @@ describe("unified SMS console", () => {
     expect(
       fetcher.mock.calls.filter(([url]) => String(url).includes("/sms/messages/"))
     ).not.toHaveLength(0);
+  });
+  it("keeps received content through empty and older responses and labels its local origin", async () => {
+    const { update } = installApi();
+    const { host } = await mountConsole();
+    await submit(host);
+    update({
+      status: "RECEIVED",
+      revision: 3,
+      sms: { smsId: "new", text: "latest message", templateId: "A-code", receivedAt: 3 }
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    await settle();
+    update({
+      revision: 1,
+      sms: { smsId: "old", text: "older message", templateId: "A-code", receivedAt: 1 }
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    await settle();
+    expect(host.querySelector(".sms-content")?.textContent).toContain("latest message");
+    update({ status: "FAILED", revision: undefined });
+    await vi.advanceTimersByTimeAsync(1000);
+    await settle();
+    expect(host.querySelector(".sms-content")?.textContent).toContain("latest message");
+    update({ status: "NOT_OBSERVED" });
+    await vi.advanceTimersByTimeAsync(1000);
+    await settle();
+    expect(host.querySelector(".sms-content")?.textContent).toContain("latest message");
+    expect(host.textContent).toContain("本次未取得服务端结果");
   });
   it("continues a slow manual ID lookup across the next polling tick", async () => {
     const { fetcher } = installApi();

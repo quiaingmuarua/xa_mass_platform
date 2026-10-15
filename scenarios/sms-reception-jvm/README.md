@@ -3,7 +3,7 @@
 Status: current business API and tracked reception contract.
 
 SMS is a tracked TaskItem scenario. Number acquisition returns promptly; later SMS
-observations update that same Item's Result. Client queries read the Result directly.
+observations update that same Item's Result. Client queries take new Results and retain short-lived local snapshots.
 The platform does not poll a registry of outstanding SMS orders. Device SMS input is
 simulated; scheduling, transport, result storage and queries use the real platform.
 
@@ -17,7 +17,7 @@ POST numbers:lease -> Server managed Call -> Matching partition/country stock
 
 stored Result notice -> bounded Server projection -> Matching lease ZSET
 raw sms.receive input -> original Reporter(tag 9) -> same Item's latest Result
-GET messages/{messageId} -> Server Result point read -> business snapshot
+GET messages/{messageId} -> Server Result take -> revision-merged Caffeine snapshot -> business view
 ```
 
 [SmsReceptionService](src/main/java/com/xa/mass/scenario/sms/SmsReceptionService.java)
@@ -32,7 +32,7 @@ from the Project directory. Neither leases nor Result reads implicitly prepare T
 SMS contributes immutable `PartitionedLeasePoolDefinition` and pure
 `TaskLeaseProjection` values. Server owns the bounded result handoff and Matching
 owns its storage effects. No Scenario Redis client, Pacer dependency, waiter,
-submission queue, business result mirror or background Result scan exists.
+submission queue or background Result scan exists. SMS owns its bounded Caffeine business cache; it is not a persistent result mirror.
 
 The `sms` Project's managed Task retains the original messageId. It is generated
 before submission and is also carried in the opaque Worker payload. There is no
@@ -45,7 +45,7 @@ arrive before the initial execution Result without losing its number or deadline
 | API | Contract |
 | --- | --- |
 | `POST /api/v1/sms/numbers:lease` | `{applicationId,country,leaseSeconds?}`; returns the original messageId and, once observed, phoneNumber and leaseUntil |
-| `GET /api/v1/sms/messages/{messageId}` | Repeatable, non-consuming latest Result read; never creates a Command or renews the lease |
+| `GET /api/v1/sms/messages/{messageId}` | Takes new Result content then returns the bounded local snapshot; repeatable within cache retention, without a new Command or lease renewal |
 | `GET /api/v1/sms/catalog` | Immutable application/template/country directory and limits |
 | `GET /api/v1/sms/metrics` | Bounded acquisition/query latency samples, errors and lease projection/inventory counters |
 
@@ -72,11 +72,45 @@ is introduced. There is no cancellation, renewal or server-side history API.
 
 The independent state is a Matching resource-local ZSET:
 `encode(number, app, workerId) -> leaseUntil`. Only successful establishment Results
-produce updates. Refill and queries never write deadlines. Missing or expired
+produce updates. Initial stored-Result notices and SMS-offered consumed snapshots share the Server projection queue. Queries can offer the original deadline after obtaining new content; neither queries nor refill extend it. Missing or expired
 members qualify even while the expired member remains stored. Repeated writes
 keep the greater deadline. There is no lease CAS, distributed exclusivity, reliable
 projection replay or expiry deletion in this slice. Delayed/lost projection may
 permit repeated allocations; this is measured best-effort behavior.
+
+## Result consumption and local snapshots
+
+Ordinary RPC and SMS share Kernel atomic take. Each public query is authorized
+before Redis or cache access, then takes current content even if a cache entry
+exists. Empty takes keep a prior snapshot; Redis failures remain explicit errors.
+Initial Call responses enter the same cache before HTTP publication. Cache keys
+are `(taskId,messageId)` and are independent of tabs or development-user identity.
+SMS still uses one shared service Task per Group.
+
+Caffeine 3.2.4 is a direct SMS dependency. Boot supplies maximum-size=10000 and
+expire-after-write=10m under `xa.mass.sms.result-cache`. Immutable successful
+snapshots require the existing nonnegative `revision`; greater revisions replace
+older ones through conditional cache insertion/replacement. Equal/older values,
+failed outcomes and empty reads cannot overwrite a newer success or renew its
+expiration. An initial failed outcome can be retained. No version tombstone
+survives eviction. `leaseActive` and expiry views are computed with the current
+clock from the original `leaseUntil`, never cached as permanent state.
+
+On a new successful cache value, SMS offers that obtained Result to the Server's
+bounded projection capability before returning the view. Conversion and queueing
+perform no Redis I/O on the waiter callback. The existing stored-Result notice
+still covers unclaimed results; both use the same Matching writer. No projection
+replay or extra consumer is introduced. Stop clears the cache.
+
+Take-to-cache and cache-to-HTTP are not a transaction. Lost responses, process
+failure, eviction or routing to another API instance may make consumed content
+unavailable. Cache retention supports short-term repeated business queries, not
+reliable delivery or historical retrieval. There is no ACK, persistent cache,
+execution resubmission or distributed cache. RPC Result HASHes independently use
+the conservative 7d write-refreshed idle TTL; Items and Score lifetimes are unchanged.
+Acceptance retains actual HTTP receipts outside Server memory and verifies them
+against Host identities and revisions; a missing post-restart cache entry is not
+used as evidence that a previously observed SMS never arrived.
 
 ## 分区库存
 
@@ -95,7 +129,7 @@ available/full, and become consumable at the deadline without rereading Facts. T
 are replaceable under capacity pressure and share the existing stock TTL. This
 avoids coupling short lease expiry to a 30-second candidate recycle. Consumption
 uses these admitted snapshots without rereading Facts. Pool loss is recoverable through
-ordinary refill; persistent lease state and Results survive Server restart.
+ordinary refill; persistent lease state and unclaimed Redis Results survive Server restart; consumed local snapshots do not.
 
 ## 持续收码与 Worker 生命周期
 
@@ -162,7 +196,7 @@ python scenarios/sms-reception-jvm/run_acceptance.py --scenario concurrency
 
 Functional uses CN/US/GB = 1/1/1 real Workers. It witnesses cross-app sharing, latest
 SMS replacement, repeatable reads without Handler execution, another execution during
-reception, expiry/reuse, persisted leases and Results across actual Server restart,
+reception, expiry/reuse, persisted leases and unclaimed Results across actual Server restart, explicit loss of consumed cache entries,
 refill recovery, and Worker property/address changes. Lifecycle witnesses actual
 Worker stop/start and old Reporter isolation. Boot composition blocks public Task
 HTTP while the Scenario calls the shared application services. Coexistence retains

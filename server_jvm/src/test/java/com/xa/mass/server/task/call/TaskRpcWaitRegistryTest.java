@@ -23,6 +23,46 @@ import org.springframework.web.context.request.async.DeferredResultProcessingInt
 
 class TaskRpcWaitRegistryTest {
 
+    @Test void cancellationAfterTakeDoesNotRetainTheConsumedValueForANewWaiter() throws Exception {
+        var registry = registry(10, 10, 256);
+        var runtime = mock(TaskRuntime.class);
+        var response = deferred();
+        register(registry, "task", "message", response);
+        when(runtime.takeTaskItemResults("task", List.of("message"))).thenAnswer(ignored -> {
+            lifecycle(response).afterCompletion(null, response);
+            return Map.of("message", TaskItemResult.succeeded("consumed before cancellation"));
+        }).thenReturn(Map.of());
+        var probe = new TaskRpcResultProbe(runtime, registry, properties(10, 10, 256));
+        probe.probe(registry.takeDueBatch(10));
+        assertEmpty(registry);
+        var later = deferred();
+        register(registry, "task", "message", later);
+        probe.probe(registry.takeDueBatch(10));
+        lifecycle(later).handleTimeout(null, later);
+        assertThat(result(later).get("message").status().wireValue()).isEqualTo("not_observed");
+        verify(runtime, org.mockito.Mockito.times(2)).takeTaskItemResults("task", List.of("message"));
+        org.mockito.Mockito.verifyNoMoreInteractions(runtime);
+    }
+
+    @Test void lostTakeResponseCanLeaveNoResultWithoutResubmittingExecution() throws Exception {
+        var registry = registry(10, 10, 256);
+        var runtime = mock(TaskRuntime.class);
+        var response = deferred();
+        register(registry, "task", "message", response);
+        when(runtime.takeTaskItemResults("task", List.of("message")))
+                .thenThrow(new IllegalStateException("response lost after atomic take"))
+                .thenReturn(Map.of());
+        var probe = new TaskRpcResultProbe(runtime, registry, properties(10, 10, 256));
+        var batch = registry.takeDueBatch(10);
+        probe.probe(batch);
+        probe.probe(batch);
+        lifecycle(response).handleTimeout(null, response);
+        assertThat(result(response).get("message").status().wireValue()).isEqualTo("not_observed");
+        verify(runtime, org.mockito.Mockito.times(2)).takeTaskItemResults("task", List.of("message"));
+        org.mockito.Mockito.verifyNoMoreInteractions(runtime);
+        assertEmpty(registry);
+    }
+
     @Test void applicationMappingUsesTheSameWaiterAndReleasesItEvenIfMappingFails() {
         var registry = registry(10, 10, 256);
         var response = new DeferredResult<String>();
@@ -275,11 +315,11 @@ class TaskRpcWaitRegistryTest {
                 Map.of(),
                 second
         )).isTrue();
-        when(taskRuntime.loadTaskItemResults(eq("task-1"), anyList()))
+        when(taskRuntime.takeTaskItemResults(eq("task-1"), anyList()))
                 .thenAnswer(invocation -> resultsFor(
                         invocation.getArgument(1)
                 ));
-        when(taskRuntime.loadTaskItemResults(eq("task-2"), anyList()))
+        when(taskRuntime.takeTaskItemResults(eq("task-2"), anyList()))
                 .thenAnswer(invocation -> resultsFor(
                         invocation.getArgument(1)
                 ));
@@ -294,11 +334,11 @@ class TaskRpcWaitRegistryTest {
         ArgumentCaptor<List<String>> secondIds = ArgumentCaptor.forClass(
                 List.class
         );
-        verify(taskRuntime).loadTaskItemResults(
+        verify(taskRuntime).takeTaskItemResults(
                 eq("task-1"),
                 firstIds.capture()
         );
-        verify(taskRuntime).loadTaskItemResults(
+        verify(taskRuntime).takeTaskItemResults(
                 eq("task-2"),
                 secondIds.capture()
         );
@@ -330,7 +370,7 @@ class TaskRpcWaitRegistryTest {
                 Map.of(),
                 deferred
         )).isTrue();
-        when(taskRuntime.loadTaskItemResults(
+        when(taskRuntime.takeTaskItemResults(
                 eq("task-1"),
                 anyList()
         )).thenReturn(Map.of(
@@ -365,7 +405,7 @@ class TaskRpcWaitRegistryTest {
         TaskRpcResultProbe probe = new TaskRpcResultProbe(taskRuntime, registry, properties);
         DeferredResult<Map<String, TaskItemResultResponse>> deferred = deferred();
         assertThat(register(registry, "task-1", "message-1", deferred)).isTrue();
-        when(taskRuntime.loadTaskItemResults(eq("task-1"), anyList()))
+        when(taskRuntime.takeTaskItemResults(eq("task-1"), anyList()))
                 .thenReturn(Map.of())
                 .thenReturn(Map.of("message-1", TaskItemResult.succeeded("stored")));
         probe.probe(registry.takeDueBatch(10));
@@ -394,7 +434,7 @@ class TaskRpcWaitRegistryTest {
         TaskRpcResultProbe probe = new TaskRpcResultProbe(taskRuntime, registry, properties);
         DeferredResult<Map<String, TaskItemResultResponse>> deferred = deferred();
         assertThat(register(registry, "task-1", "message-1", deferred)).isTrue();
-        when(taskRuntime.loadTaskItemResults(eq("task-1"), anyList())).thenReturn(Map.of());
+        when(taskRuntime.takeTaskItemResults(eq("task-1"), anyList())).thenReturn(Map.of());
         var inFlight = registry.takeDueBatch(10);
 
         // The Result is stored after this probe began reading; the notice must not be lost.
@@ -419,7 +459,7 @@ class TaskRpcWaitRegistryTest {
         TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
         TaskRpcResultProbe probe = new TaskRpcResultProbe(taskRuntime, registry, properties);
         assertThat(register(registry, "task-1", "message-1", deferred())).isTrue();
-        when(taskRuntime.loadTaskItemResults(eq("task-1"), anyList())).thenReturn(Map.of());
+        when(taskRuntime.takeTaskItemResults(eq("task-1"), anyList())).thenReturn(Map.of());
         probe.probe(registry.takeDueBatch(10));
 
         try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
@@ -461,11 +501,11 @@ class TaskRpcWaitRegistryTest {
                 "message-2",
                 succeeded
         )).isTrue();
-        when(taskRuntime.loadTaskItemResults(
+        when(taskRuntime.takeTaskItemResults(
                 "task-failed",
                 List.of("message-1")
         )).thenThrow(new IllegalStateException("Redis unavailable"));
-        when(taskRuntime.loadTaskItemResults(
+        when(taskRuntime.takeTaskItemResults(
                 "task-succeeded",
                 List.of("message-2")
         )).thenReturn(Map.of(
@@ -592,15 +632,15 @@ class TaskRpcWaitRegistryTest {
             int maxPendingObservations,
             int maxProbeItemsPerRound
     ) {
-        return new TaskRpcProperties(30_000, 60_000, maxWaiters, maxPendingObservations, maxProbeItemsPerRound, 50, 100, 250, java.util.Map.of());
+        return new TaskRpcProperties(java.time.Duration.ofDays(7), 30_000, 60_000, maxWaiters, maxPendingObservations, maxProbeItemsPerRound, 50, 100, 250, java.util.Map.of());
     }
 
     /** A ten-second probe interval: anything due sooner was made due by a wake. */
     private static TaskRpcProperties slowProperties() {
-        return new TaskRpcProperties(30_000, 60_000, 10, 10, 10, 10_000, 10_000, 10_000, java.util.Map.of());
+        return new TaskRpcProperties(java.time.Duration.ofDays(7), 30_000, 60_000, 10, 10, 10, 10_000, 10_000, 10_000, java.util.Map.of());
     }
 
     private static TaskRpcProperties fastProperties() {
-        return new TaskRpcProperties(30_000, 60_000, 10, 10, 10, 1, 1, 1, java.util.Map.of());
+        return new TaskRpcProperties(java.time.Duration.ofDays(7), 30_000, 60_000, 10, 10, 10, 1, 1, 1, java.util.Map.of());
     }
 }

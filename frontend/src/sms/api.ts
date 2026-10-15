@@ -3,6 +3,7 @@ import { z } from "zod";
 
 export interface Reception {
   messageId: string;
+  revision?: number;
   status: "NOT_OBSERVED" | "WAITING" | "RECEIVED" | "EXPIRED" | "FAILED";
   applicationId?: string;
   country?: string;
@@ -84,11 +85,35 @@ export const statusLabels: Record<Reception["status"], string> = {
 export function waitingMessage(item: Reception) {
   if (item.reason) return item.reason;
   if (item.status === "NOT_OBSERVED")
-    return "暂未观察到取号结果，可继续使用此 messageId 查询。";
-  if (item.leaseActive === false) return "租期已结束，仍可查询最后收到的短信。";
+    return "本次未取得结果，可继续使用此 messageId 查询；已领取结果受服务端本地缓存期限限制。";
+  if (item.leaseActive === false) return "租期已结束，最后收到的短信仅作短期保留。";
   if (item.status === "FAILED") return "本次取号失败，请重新申请。";
   return "租期内持续接收短信，收到后显示最新一条。";
 }
+/** Keep received evidence when the server has no current value or an older revision. */
+export function mergeReception(
+  previous: Reception | undefined,
+  next: Reception
+): Reception {
+  if (
+    previous &&
+    (next.status === "NOT_OBSERVED" ||
+      (previous.revision !== undefined && next.status === "FAILED") ||
+      (previous.revision !== undefined &&
+        next.revision !== undefined &&
+        previous.revision > next.revision))
+  ) {
+    if (previous.leaseUntil !== undefined && Date.now() >= previous.leaseUntil)
+      return {
+        ...previous,
+        leaseActive: false,
+        status: previous.sms ? "RECEIVED" : "EXPIRED"
+      };
+    return previous;
+  }
+  return next;
+}
+
 export async function api<T>(
   caller: TaskCaller,
   path: string,

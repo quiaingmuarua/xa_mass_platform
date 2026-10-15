@@ -71,41 +71,58 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             if ARGV[6] ~= '' then redis.call('HSET', key, 'name', ARGV[6]) end
             return 1
             """;
-    private static final String STORE_SUCCESS_RESULTS_SCRIPT = """
+    private static final String RESULT_CODEC_SCRIPT = """
+            local function decode_result(stored)
+              local ok, current = pcall(cjson.decode, stored)
+              if not ok or type(current) ~= 'table' or type(current.code) ~= 'string' or current.code == ''
+                  or type(current.opaqueResultPayload) ~= 'string' or current.opaqueResultPayload == '' then
+                error('TaskItem Result is corrupt')
+              end
+              local fields = 0
+              for field, _ in pairs(current) do
+                if field ~= 'code' and field ~= 'opaqueResultPayload' and field ~= 'tag' and field ~= 'observedAtMillis' then
+                  error('TaskItem Result is corrupt')
+                end
+                fields = fields + 1
+              end
+              if current.code == '200' then
+                if fields ~= 4 or type(current.tag) ~= 'number' or current.tag < 2 or current.tag > 9
+                    or current.tag ~= math.floor(current.tag) or type(current.observedAtMillis) ~= 'number'
+                    or current.observedAtMillis < 0 or current.observedAtMillis > 9999999999900
+                    or current.observedAtMillis ~= math.floor(current.observedAtMillis) then
+                  error('TaskItem Result is corrupt')
+                end
+              elseif fields ~= 2 then error('TaskItem Result is corrupt') end
+              return current
+            end
+            """;
+    private static final String TAKE_RESULTS_SCRIPT = RESULT_CODEC_SCRIPT + """
+            if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN'
+                or redis.call('HGET', KEYS[2], 'idleDisposition') ~= 'PARK_WHEN_IDLE' then
+              return redis.error_reply('Task does not support Result consumption')
+            end
+            local rows = redis.call('HMGET', KEYS[1], unpack(ARGV))
+            for index, value in ipairs(rows) do
+              if value then
+                local current = decode_result(value)
+                rows[index] = {current.code, current.opaqueResultPayload}
+              end
+            end
+            redis.call('HDEL', KEYS[1], unpack(ARGV))
+            return rows
+            """;
+    private static final String STORE_SUCCESS_RESULTS_SCRIPT = RESULT_CODEC_SCRIPT + """
             if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return 0 end
             local updates = {}
-            for i = 1, #ARGV, 2 do
+            for i = 2, #ARGV, 2 do
               local target = cjson.decode(ARGV[i + 1])
               local stored = redis.call("HGET", KEYS[1], ARGV[i])
               local replace = true
               if stored then
-                local ok, current = pcall(cjson.decode, stored)
-                if not ok or type(current) ~= "table"
-                    or type(current.code) ~= "string" or current.code == ""
-                    or type(current.opaqueResultPayload) ~= "string"
-                    or current.opaqueResultPayload == "" then
-                  return redis.error_reply("TaskItem Result is corrupt")
-                end
-                local fields = 0
-                for field, _ in pairs(current) do
-                  if field ~= "code" and field ~= "opaqueResultPayload"
-                      and field ~= "tag" and field ~= "observedAtMillis" then
-                    return redis.error_reply("TaskItem Result is corrupt")
-                  end
-                  fields = fields + 1
-                end
+                local current = decode_result(stored)
                 if current.code == "200" then
-                  if fields ~= 4 or type(current.tag) ~= "number"
-                      or current.tag < 2 or current.tag > 9 or current.tag ~= math.floor(current.tag)
-                      or type(current.observedAtMillis) ~= "number"
-                      or current.observedAtMillis < 0 or current.observedAtMillis > 9999999999900
-                      or current.observedAtMillis ~= math.floor(current.observedAtMillis) then
-                    return redis.error_reply("TaskItem Result is corrupt")
-                  end
                   replace = target.tag > current.tag or
                       (target.tag == current.tag and target.observedAtMillis > current.observedAtMillis)
-                elseif fields ~= 2 then
-                  return redis.error_reply("TaskItem Result is corrupt")
                 end
               end
               if replace then
@@ -115,25 +132,31 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             end
             if #updates > 0 then
               redis.call("HSET", KEYS[1], unpack(updates))
+              if redis.call('HGET', KEYS[2], 'idleDisposition') == 'PARK_WHEN_IDLE' then
+                redis.call('PEXPIRE', KEYS[1], ARGV[1])
+              end
             end
             return #updates / 2
             """;
     private static final String STORE_FAILED_RESULTS_SCRIPT = """
             if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return 0 end
             local results_key = KEYS[1]
-            local failed_result = ARGV[1]
+            local failed_result = ARGV[2]
             local results_type = redis.call("TYPE", results_key).ok
             if results_type ~= "none" and results_type ~= "hash" then
               return redis.error_reply("Task results key must be a hash")
             end
             local stored = 0
-            for index = 2, #ARGV do
+            for index = 3, #ARGV do
               stored = stored + redis.call(
                 "HSETNX",
                 results_key,
                 ARGV[index],
                 failed_result
               )
+            end
+            if stored > 0 and redis.call('HGET', KEYS[2], 'idleDisposition') == 'PARK_WHEN_IDLE' then
+              redis.call('PEXPIRE', results_key, ARGV[1])
             end
             return stored
             """;
@@ -196,15 +219,17 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     private final ObjectMapper mapper = JsonMapper.builder().build();
     private final RedisKeyspace keyspace;
     private final LongSupplier currentTimeMillis;
+    private final long rpcResultIdleTtlMillis;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisTaskRuntime(
             RedisClient redisClient,
             TaskScoreBandCore scoreBand,
             TaskItemScoreBandCore itemScoreBand,
-            RedisKeyspace keyspace
+            RedisKeyspace keyspace,
+            long rpcResultIdleTtlMillis
     ) {
-        this(redisClient, scoreBand, itemScoreBand, keyspace, System::currentTimeMillis);
+        this(redisClient, scoreBand, itemScoreBand, keyspace, rpcResultIdleTtlMillis, System::currentTimeMillis);
     }
 
     public RedisTaskRuntime(
@@ -212,8 +237,11 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             TaskScoreBandCore scoreBand,
             TaskItemScoreBandCore itemScoreBand,
             RedisKeyspace keyspace,
+            long rpcResultIdleTtlMillis,
             LongSupplier currentTimeMillis
     ) {
+        if (rpcResultIdleTtlMillis <= 0) throw new IllegalArgumentException("RPC Result idle TTL must be positive");
+        this.rpcResultIdleTtlMillis = rpcResultIdleTtlMillis;
         if (redisClient == null) {
             throw new IllegalArgumentException("redisClient must be present");
         }
@@ -565,7 +593,8 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         if (results.isEmpty()) {
             return;
         }
-        List<String> arguments = new ArrayList<>(results.size() * 2);
+        List<String> arguments = new ArrayList<>(results.size() * 2 + 1);
+        arguments.add(Long.toString(rpcResultIdleTtlMillis));
         results.forEach((messageId, result) -> {
             requireNonBlank(messageId, "messageId");
             if (result == null) {
@@ -602,7 +631,8 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                     "messageIds must be non-blank"
             );
         }
-        List<String> arguments = new ArrayList<>(uniqueIds.size() + 1);
+        List<String> arguments = new ArrayList<>(uniqueIds.size() + 2);
+        arguments.add(Long.toString(rpcResultIdleTtlMillis));
         arguments.add(encodeTaskItemResult(TaskItemResult.failed()));
         arguments.addAll(uniqueIds);
         commands().eval(
@@ -611,6 +641,23 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 new String[]{resultsKey(taskId), taskDescriptorKey(taskId)},
                 arguments.toArray(String[]::new)
         );
+    }
+
+    @Override
+    public Map<String, TaskItemResult> takeTaskItemResults(String taskId, List<String> messageIds) {
+        requireNonBlank(taskId, "taskId");
+        if (messageIds == null || messageIds.isEmpty() || messageIds.size() > 1000
+                || messageIds.stream().anyMatch(RedisTaskRuntime::isBlank))
+            throw new IllegalArgumentException("Expected 1..1000 non-blank messageIds");
+        var ids = new ArrayList<>(new LinkedHashSet<>(messageIds));
+        List<List<String>> values = commands().eval(TAKE_RESULTS_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{resultsKey(taskId), taskDescriptorKey(taskId)}, ids.toArray(String[]::new));
+        var results = new LinkedHashMap<String, TaskItemResult>();
+        for (int index = 0; index < ids.size(); index++) {
+            List<String> value = values.get(index);
+            results.put(ids.get(index), value == null ? null : new TaskItemResult(value.get(0), value.get(1)));
+        }
+        return results;
     }
 
     @Override

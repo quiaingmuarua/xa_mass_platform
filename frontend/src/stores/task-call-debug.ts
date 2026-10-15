@@ -5,7 +5,7 @@ import { defineStore } from "pinia";
 import type { RuntimeDataSourceMode } from "@/runtime-viewer/types";
 import {
   presentTaskCallDebugError,
-  TaskCallDebugError,
+  isTaskCallDebugRejection,
   taskCallDebugConfigurationError,
   type TaskCallDebugErrorPresentation
 } from "@/task-call-debug/errors";
@@ -33,7 +33,7 @@ export interface TaskCallDebugHistoryItem {
   state: "sending" | "observed" | "unconfirmed" | "request_rejected";
   results?: TaskCallDebugResults;
   safeError?: TaskCallDebugErrorPresentation;
-  resultLoadError?: TaskCallDebugErrorPresentation;
+  resultTakeError?: TaskCallDebugErrorPresentation;
   readAt?: string;
   checkingResult?: boolean;
 }
@@ -124,20 +124,19 @@ export function createTaskCallDebugStore(
         item.readAt = now().toISOString();
         item.state = "observed";
       } catch (cause) {
-        item.state =
-          cause instanceof TaskCallDebugError &&
-          cause.kind === "http" &&
-          cause.status !== undefined &&
-          cause.status >= 400 &&
-          cause.status < 500 &&
-          cause.status !== 408
-            ? "request_rejected"
-            : "unconfirmed";
+        item.state = isTaskCallDebugRejection(cause)
+          ? "request_rejected"
+          : "unconfirmed";
         item.safeError = presentTaskCallDebugError(cause);
       }
       return item;
     }
-    async function loadResults(taskId: string, messageIds: string[], localId?: string) {
+    async function takeResults(
+      taskId: string,
+      messageIds: string[],
+      localId?: string,
+      onlyPending = false
+    ) {
       admit(taskId);
       if (
         !messageIds.length ||
@@ -153,17 +152,30 @@ export function createTaskCallDebugStore(
       const item =
         existing ??
         retain(taskId, JSON.stringify(messageIds), [...new Set(messageIds)]);
+      const ids = [...new Set(messageIds)].filter(
+        (id) =>
+          !onlyPending ||
+          !item.results?.[id] ||
+          item.results[id].status === "not_observed"
+      );
+      if (!ids.length) return item;
       item.checkingResult = true;
-      item.resultLoadError = undefined;
+      item.resultTakeError = undefined;
       try {
-        item.results = await client.loadResults(item.caller, item.taskId, [
-          ...item.messageIds
-        ]);
+        const taken = await client.takeResults(item.caller, item.taskId, ids);
+        const merged = { ...item.results };
+        for (const [id, result] of Object.entries(taken)) {
+          if (result.status !== "not_observed" || !merged[id]) merged[id] = result;
+        }
+        item.results = merged;
         item.readAt = now().toISOString();
         item.state = "observed";
       } catch (cause) {
-        item.resultLoadError = presentTaskCallDebugError(cause);
-        if (!existing) item.state = "unconfirmed";
+        item.resultTakeError = presentTaskCallDebugError(cause);
+        if (!existing)
+          item.state = isTaskCallDebugRejection(cause)
+            ? "request_rejected"
+            : "unconfirmed";
       } finally {
         item.checkingResult = false;
       }
@@ -174,7 +186,7 @@ export function createTaskCallDebugStore(
       delete histories[taskId];
       return true;
     }
-    return { histories, draft, history, isBusy, send, loadResults, clear };
+    return { histories, draft, history, isBusy, send, takeResults, clear };
   })();
 }
 export type TaskCallDebugStore = ReturnType<typeof createTaskCallDebugStore>;

@@ -150,7 +150,7 @@ async function mount(
   };
   const rpcClient = {
     callTask: vi.fn().mockResolvedValue({ sample: { status: "not_observed" } }),
-    loadResults: vi
+    takeResults: vi
       .fn()
       .mockResolvedValue({ sample: { status: "succeeded", opaqueResultPayload: "ok" } })
   };
@@ -462,7 +462,7 @@ it("Mock keeps RPC writes and batch reads disabled", async () => {
   });
   await vi.waitFor(() => expect(button("提交调用")?.disabled).toBe(true));
   expect(f.rpcClient.callTask).not.toHaveBeenCalled();
-  expect(f.rpcClient.loadResults).not.toHaveBeenCalled();
+  expect(f.rpcClient.takeResults).not.toHaveBeenCalled();
 });
 
 it("failed RPC refresh keeps its old snapshot and time but blocks submission until recovery", async () => {
@@ -510,15 +510,15 @@ it("request uncertainty reads the original batch without another submission", as
     callTask: vi
       .fn()
       .mockRejectedValue(new TaskCallDebugError({ kind: "network", message: "lost" })),
-    loadResults: vi.fn().mockResolvedValue({
+    takeResults: vi.fn().mockResolvedValue({
       sample: { status: "succeeded", opaqueResultPayload: "verified" }
     })
   };
   const calls = createTaskCallDebugStore(client, "api");
   const result = await calls.send("rpc", requestText());
   expect(result.state).toBe("unconfirmed");
-  await calls.loadResults("rpc", result.messageIds, result.localId);
-  expect(client.loadResults).toHaveBeenCalledWith(CALLER, "rpc", ["sample"]);
+  await calls.takeResults("rpc", result.messageIds, result.localId);
+  expect(client.takeResults).toHaveBeenCalledWith(CALLER, "rpc", ["sample"]);
   expect(result.results?.sample?.status).toBe("succeeded");
   expect(client.callTask).toHaveBeenCalledTimes(1);
 });

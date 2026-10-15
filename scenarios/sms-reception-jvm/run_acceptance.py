@@ -105,11 +105,30 @@ def create(run, app="A", country="CN", seconds=60):
     if not hasattr(run, "sms_ids"):
         run.sms_ids = []
     run.sms_ids.append(result["messageId"])
+    retain_received(run, result)
     return result
 
 
 def read(run, message_id):
-    return http(run.url, "/api/v1/sms/messages/" + urllib.parse.quote(message_id, safe=""))
+    result = http(run.url, "/api/v1/sms/messages/" + urllib.parse.quote(message_id, safe=""))
+    retain_received(run, result)
+    return result
+
+
+def retain_received(run, result):
+    """The proof retains actual HTTP receipts across Server restarts, never inferred successes."""
+    if result["status"] == "NOT_OBSERVED":
+        return
+    gate = run.__dict__.setdefault("sms_receipt_lock", threading.Lock())
+    with gate:
+        receipts = run.__dict__.setdefault("sms_receipts", {})
+        previous = receipts.get(result["messageId"])
+        if previous and "revision" in previous and "revision" in result:
+            if result["revision"] < previous["revision"]:
+                return
+            if result["revision"] == previous["revision"]:
+                require(result.get("sms") == previous.get("sms"), "Same SMS revision changed content")
+        receipts[result["messageId"]] = result
 
 
 def wait_state(run, reception, expected, timeout=30):
@@ -129,10 +148,12 @@ def query_records(run):
 
 def compare(run):
     host = all_records(run.host, "/lab/v1/sms/records")
-    observed = query_records(run)
+    for result in query_records(run):
+        retain_received(run, result)
+    observed = list(getattr(run, "sms_receipts", {}).values())
     expected = {(item["messageId"], item["smsId"]) for item in host if item.get("smsId")}
     actual = {(item["messageId"], item["sms"]["smsId"]) for item in observed if item.get("sms")}
-    return {"hostRecords": len(host), "observedRecords": len(observed), "hostMatched": len(expected),
+    return {"evidenceSource": "actual HTTP receipts retained by proof", "hostRecords": len(host), "observedRecords": len(observed), "hostMatched": len(expected),
             "observedSms": len(actual), "missingSmsObservations": len(expected - actual),
             "falseSuccesses": len(actual - expected),
             "smsObservationRate": len(expected & actual) / len(expected) if expected else None,
@@ -211,7 +232,7 @@ def functional(run):
     require(inject(run, cn["phone"], "[A] 333333", "a-2")["status"] == "DUPLICATE", "SMS dedup failed")
     before = http(run.host, "/lab/v1/sms/metrics")["host"]["leaseExecutions"]
     for _ in range(5):
-        require(read(run, a["messageId"])["sms"]["smsId"] == "a-2", "Result read consumed or regressed content")
+        require(read(run, a["messageId"])["sms"]["smsId"] == "a-2", "Repeated query lost or regressed the cached snapshot")
     require(http(run.host, "/lab/v1/sms/metrics")["host"]["leaseExecutions"] == before, "Queries executed Worker handlers")
     mixed = mixed_capabilities(run, a)
     run.stage = "expiry"
@@ -228,9 +249,23 @@ def functional(run):
     require(reused["phoneNumber"] == short["phoneNumber"], "Expired number was not reusable")
     run.wait_for(lambda: http(run.url, "/api/v1/sms/metrics")["projection"]["recorded"] >= 5, 5, "lease state projection")
     deadline = a["leaseUntil"]
+    # Keep one newer Result in Redis without consuming it through the SMS API.
+    inject(run, cn["phone"], "[B] 888888", "unclaimed-before-restart")
+    sms_task = next(task["taskId"] for task in http(run.url, "/api/v1/projects/sms/tasks?limit=100")["tasks"]
+                    if task["task"]["idleDisposition"] == "PARK_WHEN_IDLE")
+    def unclaimed_stored():
+        result = http(run.url, f"/api/v1/tasks/{sms_task}/results:load", [b["messageId"]])[b["messageId"]]
+        return result["status"] == "succeeded" and json.loads(result["opaqueResultPayload"]).get("sms", {}).get("smsId") == "unclaimed-before-restart"
+    run.wait_for(unclaimed_stored, 10, "unclaimed Result committed before restart")
+    result_key = "xa_mass:" + run.scope + ":task:" + sms_task + ":results"
+    def result_memory():
+        return {"fields": run.redis.hlen(result_key), "bytes": run.redis.memory_usage(result_key) or 0,
+                "ttlMillis": run.redis.pttl(result_key)}
+    unclaimed_memory = result_memory()
     run.stage = "server-restart"
     restart_server(run)
-    require(read(run, a["messageId"])["leaseUntil"] == deadline, "Restart lost the stored Result")
+    require(read(run, a["messageId"])["status"] == "NOT_OBSERVED", "Restart restored an already consumed local cache entry")
+    require(read(run, b["messageId"])["sms"]["smsId"] == "unclaimed-before-restart", "Restart lost an unclaimed Redis Result")
     exhausted = create(run, "A", "CN", 60)
     require(exhausted["status"] == "NOT_OBSERVED" and "phoneNumber" not in exhausted,
             "Persisted same-app lease was ignored after restart")
@@ -240,17 +275,21 @@ def functional(run):
     refill_seconds = time.monotonic() - began
     require(fresh["phoneNumber"] == short["phoneNumber"], "Restarted Pool did not refill")
     inject(run, cn["phone"], "[A] 666666", "after-server-restart")
-    await_sms(run, a, "after-server-restart")
+    renewed = await_sms(run, a, "after-server-restart")
+    require(renewed["leaseUntil"] == deadline, "Cache restoration changed the original Worker lease")
     evidence = compare(run)
     require(evidence["falseSuccesses"] == 0 and evidence["missingSmsObservations"] == 0,
-            "Host and stored latest SMS results differ")
+            "Host and actually received latest SMS results differ")
     run.stage = "hot-properties"
     hot = dynamic_properties(run, inventory, a)
     return {"passed": True, "scenario": "functional", "checks": ["shared number across apps", "continuous latest SMS",
-            "repeatable pure Result query", "expiry retains content", "expired tuple reuse", "persisted lease after Server restart",
+            "repeatable bounded cached query", "expiry retains cached content", "expired tuple reuse", "persisted lease after Server restart",
+            "consumed cache lost after restart", "unclaimed Redis Result survives restart",
             "original Reporter after Server restart", "stock exhaustion returns original messageId", "memory Pool refill"],
             "expiredNumberReuseSeconds": reuse_seconds, "restartRefillSeconds": refill_seconds,
-            "comparison": evidence, "mixedCapabilities": mixed, "dynamicProperties": hot, "metrics": http(run.url, "/api/v1/sms/metrics")}
+            "comparison": evidence, "mixedCapabilities": mixed, "dynamicProperties": hot,
+            "resultHashMemory": {"unclaimedBeforeRestart": unclaimed_memory, "afterQueries": result_memory()},
+            "metrics": http(run.url, "/api/v1/sms/metrics")}
 
 
 def dynamic_properties(run, inventory, old):

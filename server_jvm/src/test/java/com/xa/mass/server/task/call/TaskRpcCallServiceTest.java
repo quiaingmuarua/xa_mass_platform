@@ -62,7 +62,7 @@ class TaskRpcCallServiceTest {
         );
         loaded.put("message-2", TaskItemResult.failed());
         loaded.put("message-3", null);
-        when(taskRuntime.loadTaskItemResults(
+        when(taskRuntime.takeTaskItemResults(
                 "task-1",
                 List.of("message-1", "message-2", "message-3")
         )).thenReturn(loaded);
@@ -99,7 +99,7 @@ class TaskRpcCallServiceTest {
         TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
         when(submission.submit(eq("task-1"), anyList()))
                 .thenReturn(submitted("message-1", "message-2"));
-        when(taskRuntime.loadTaskItemResults(
+        when(taskRuntime.takeTaskItemResults(
                 "task-1",
                 List.of("message-1", "message-2")
         )).thenReturn(Map.of(
@@ -142,7 +142,7 @@ class TaskRpcCallServiceTest {
         TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
         when(submission.submit(eq("task-1"), anyList()))
                 .thenReturn(submitted("message-1"));
-        when(taskRuntime.loadTaskItemResults(
+        when(taskRuntime.takeTaskItemResults(
                 "task-1",
                 List.of("message-1")
         )).thenReturn(Map.of(
@@ -183,7 +183,7 @@ class TaskRpcCallServiceTest {
                     List<TaskItem> items = invocation.getArgument(1);
                     return submitted(items.get(0).messageId());
                 });
-        when(taskRuntime.loadTaskItemResults(
+        when(taskRuntime.takeTaskItemResults(
                 anyString(),
                 anyList()
         )).thenReturn(Map.of());
@@ -237,7 +237,7 @@ class TaskRpcCallServiceTest {
         var loaded = new LinkedHashMap<String, TaskItemResult>();
         loaded.put("message-1", TaskItemResult.succeeded("observed"));
         loaded.put("message-2", null);
-        when(taskRuntime.loadTaskItemResults(
+        when(taskRuntime.takeTaskItemResults(
                 "task-1",
                 List.of("message-1", "message-2")
         )).thenReturn(loaded);
@@ -273,7 +273,7 @@ class TaskRpcCallServiceTest {
         registry.shutdown();
         when(submission.submit(eq("task-1"), anyList()))
                 .thenReturn(submitted("message-1"));
-        when(taskRuntime.loadTaskItemResults(
+        when(taskRuntime.takeTaskItemResults(
                 "task-1",
                 List.of("message-1")
         )).thenReturn(Map.of());
@@ -306,7 +306,7 @@ class TaskRpcCallServiceTest {
         )).isTrue();
         when(submission.submit(eq("task-1"), anyList()))
                 .thenReturn(submitted("message-1"));
-        when(taskRuntime.loadTaskItemResults(
+        when(taskRuntime.takeTaskItemResults(
                 "task-1",
                 List.of("message-1")
         )).thenReturn(Map.of(
@@ -373,7 +373,7 @@ class TaskRpcCallServiceTest {
             )).isInstanceOfSatisfying(ServerException.class, error ->
                     assertThat(error.errorCode()).isEqualTo(entry.getValue())
             );
-            verify(taskRuntime, never()).loadTaskItemResults(
+            verify(taskRuntime, never()).takeTaskItemResults(
                     anyString(),
                     anyList()
             );
@@ -389,7 +389,7 @@ class TaskRpcCallServiceTest {
         TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
         when(submission.submit(eq("task-1"), anyList()))
                 .thenReturn(submitted("message-1"));
-        when(taskRuntime.loadTaskItemResults(
+        when(taskRuntime.takeTaskItemResults(
                 "task-1",
                 List.of("message-1")
         )).thenReturn(Map.of(
@@ -547,6 +547,6 @@ class TaskRpcCallServiceTest {
             int maxWaiters,
             int maxPendingObservations
     ) {
-        return new TaskRpcProperties(30_000, 60_000, maxWaiters, maxPendingObservations, 256, 50, 100, 250, java.util.Map.of());
+        return new TaskRpcProperties(java.time.Duration.ofDays(7), 30_000, 60_000, maxWaiters, maxPendingObservations, 256, 50, 100, 250, java.util.Map.of());
     }
 }

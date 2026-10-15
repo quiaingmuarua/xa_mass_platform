@@ -123,8 +123,9 @@ Task type returns `400/12008`.
 | RPC prepare | Caller Task ID and declared Project/Group | Create or reuse and approve a parked Task | 400 conflict/invalid; 503 retains the supplied identity | [RPC preparation](#projects-and-explicit-rpc-tasks) |
 | Approve / close | Admitted caller; finite Task; approval body `{expectedItemCount}` with a positive integer | Return the shared applied/unchanged effect | Missing/wrong-type rules above; Owner failure uses `503` | [TaskLifecycleService](src/main/java/com/xa/mass/server/task/TaskLifecycleService.java) |
 | Ordinary Item append | Finite Task with `server.inputOwner=raw`; structurally valid batch | Persist admitted Items without releasing idle park | Query rejection is per Item; whole-request failure is non-2xx | [TaskDataService](src/main/java/com/xa/mass/server/task/TaskDataService.java) |
-| Item Call | Managed Task; all original queries admitted | Submit once, then observe within the wait bound | Submission may commit before `503`; observation limits yield `not_observed` | [Call sequence](#managed-task-call) |
+| Item Call | Managed Task; all original queries admitted | Submit once, then consume Results within the wait bound | Submission or consumption may commit before response loss; wait limits yield `not_observed` | [Call sequence](#managed-task-call) |
 | Result load | Finite or managed Task | Read stored `succeeded`, `failed` or `not_observed`; only success carries content | No inference from Score or repair of independent resources | [Result observation](#result-and-item-state-observation) |
+| Result take | Raw RPC Task; authorized Project and owner; 1..1000 IDs | Atomically consume current Result fields; missing fields are `not_observed` | A lost response can lose consumed content; no execution resubmission | [Call sequence](#managed-task-call) |
 | Item states | Finite or managed Task | Read decoded Score, independently of Results | Missing Items return null; Owner failure uses `503` | [Item Score Owner](../kernel_jvm/doc/score/task-item-score-band-scheduling.md) |
 | Result export | Finite Task; one observed Task Score is `TERMINAL` | Stream only successful content through bounded Owner pages | Nonterminal: `400/12010`; overlapping generation: `400/12009` | [Result Owner](../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md#taskitem-result-projection) |
 
@@ -466,11 +467,11 @@ the next batch for itself and the calls behind it before handing the lane on. A 
 keeps arrival order, holds at most 100 Items, never splits a call, and starts a new
 batch before a call that repeats an earlier call's message ID, so repeated IDs keep
 sequential semantics. The batch makes one Kernel Task Call submission (one idle-park
-release before and after, one append) and one immediate Result read; every call
+release before and after, one append) and one immediate Result take for only the IDs whose callers requested observation; submit-only IDs are never consumed by another call in that batch. Every call
 interprets only its own Item outcomes and observations, and a whole-batch failure
 fails each call in it as it would have alone. Waiter registration is per call.
 
-Waiters complete only from a stored-Result read by the probe thread. Pacer's
+Waiters complete only from an atomic Result take by the probe thread. The immediate path also takes Results. Pacer's
 best-effort `ResultObservation` (after TASK success Results or Dispatch-terminal
 failures are stored) makes matching in-process waiters due immediately, or probes
 an in-flight Item again right after its current read; with no waiters it returns
@@ -483,18 +484,41 @@ observation capacity, or Registry shutdown marks only the remainder
 failed Result completes that Item's waiter without a payload. It preserves all
 immediately observed succeeded or failed entries.
 Observation saturation does not return `429`. Duplicate Message IDs in one
-request use the latest Item and produce one response entry. The caller can
-later read the same Message IDs through the same Task-ID-scoped result route.
+request use the latest Item and produce one response entry. The caller retains received entries and takes unresolved Message IDs through `results:take`. Empty takes do not retract previously received content; a later legal write can be taken again.
 
 Task Call remains at-least-once. Submission spans existing owner operations,
 so an Item write followed by an unconfirmed idle-park release repair can still return `503`.
 Server does not retry or roll back that submission; callers should retain the
-original Message IDs and reconcile them through `results:load` rather than
+original Message IDs and take any current content through `results:take` rather than
 assuming every non-2xx response means no execution occurred.
+
+### RPC Result consumption and idle reclamation
+
+`POST /api/v1/tasks/{taskId}/results:take` takes 1..1000 message IDs and returns
+existing `succeeded`/`failed`/`not_observed` DTOs. UserDirectory, Project, owner,
+RPC disposition and immutable input ownership are checked before consumption.
+The public route requires raw input ownership; SMS uses the same application
+method with its scoped service caller and `sms` ownership. `results:load` remains
+a non-consuming observation for finite Tasks, diagnostics and projection.
+
+The Kernel provider applies `xa.mass.task-rpc.result-idle-ttl` (7d default) only
+on actual RPC Result writes. Reads, takes, preparation and submission do not
+renew it. The whole HASH expires when idle; it is not a per-field age bound or
+an Item/Task cleanup mechanism. No maintenance thread or new index is added.
+
+A take may commit before its Redis or HTTP response is lost. Wait cancellation
+can race an admitted take. `not_observed` cannot distinguish pending, already
+consumed or expired content and does not establish execution absence. No ACK,
+compensation, response replay or automatic execution resubmission is provided.
+Existing local wait groups may share an obtained value, but concurrent consumers
+or API instances have no global broadcast or per-request delivery guarantee.
+SMS optionally retains a bounded local business snapshot; its cache is neither
+persistent nor shared between instances. Restart and eviction can lose consumed
+content; new legal results may still arrive under the original identity.
 
 ### Result and Item State Observation
 
-Call and Result reads use deduplicated Message IDs. A failed entry carries no
+Call, Result take and non-consuming Result reads use deduplicated Message IDs. A failed entry carries no
 Worker payload or reason; late success may replace an earlier failed snapshot.
 Each response is a read-time view, not an immutable historical event. Consequently `items:call` or
 `results:load` may report `succeeded` while the independent Item Score remains
@@ -556,7 +580,7 @@ Scenarios call the same application admission as HTTP, with the same bounds and
 existing Task/Item/Result DTOs, never Controllers, providers, policy or mirrored
 contracts. Do not add HTTP fallbacks, Runtime bridges or a generic Scenario
 framework. Scenarios own neither HTTP waiters nor a Direct Call registry.
-`TaskRpcCallService` supplies SMS with managed submission and a pure business response mapping over the same servlet waiter/probe as platform HTTP. SMS owns no waiter or submission queue; its later reads use `TaskDataService`.
+`TaskRpcCallService` supplies SMS with managed submission and the same consuming servlet waiter/probe as platform HTTP. Its bounded response mapping may merge a local business cache and offer projection facts, but cannot perform remote I/O while completing the waiter. SMS owns no waiter or submission queue; its later takes use `TaskDataService` before consulting its local cache.
 Messages uses `TaskCreationService`, `TaskLifecycleService`, `ProjectTaskQueryService`
 and `TaskDataService`; App Checks reuses TaskCreateResponse. Creation validates
 Group, supply and numeric inputs before writes; finite append validates the input
@@ -945,27 +969,29 @@ and Kernel Binding/Score operations independently of Properties admission.
 
 ### Stored Result Lease Projections
 
-Scenarios may contribute immutable `TaskLeaseProjection` values: explicit Task ID,
-Project, Group, Matching Pool, and a pure stored-Result-to-coordinate/deadline function.
-Server validates the Project/Group binding and routes by the declared Task ID; the Scenario sees no Pacer type or
-storage handle. The concrete SMS caller imports the Matching definition and
-coordinate value contracts only, plus the read-only `TaskLeaseProjectionMetrics` capability; it receives no consumer lifecycle or producer-admission handle.
+Scenarios contribute immutable `TaskLeaseProjection` values: declared Task ID,
+Project, Group, Pool and a pure Result-to-coordinate/deadline function. Server
+validates startup bindings and retains the one bounded projection queue and
+Matching writer. SMS receives `TaskLeaseProjectionAccess`: metrics plus a bounded
+`acceptResults` entry for already consumed content, without consumer lifecycle
+or Matching write access. It admits only declared Project-scoped service callers.
 
-The existing Pacer ResultObservation first wakes Call waiters, then offers IDs to
-`TaskLeaseProjectionService`. The producer performs no I/O. Its one consumer uses
-a 256-notice queue, drains at most 16 notices, coalesces IDs per Task and reads at
-most 1,000 Results per operation through `TaskDataService`. Successful projections
-are recorded through Matching's bounded `PlatformLeaseState` operation. Deadline
-comes from the stored result, never from consumption time. No later-SMS notification
-is needed for this effect, and Result queries themselves have no lease side effect.
+The Pacer ResultObservation still wakes waiters and offers IDs without I/O.
+The projection consumer may non-destructively read those IDs to project unclaimed
+Results. SMS additionally offers its actually obtained Results before returning
+them, so ordinary consumption cannot deprive projection of its input. This second
+entry applies the pure function before enqueueing only coordinates and absolute
+deadlines; it never queues full SMS payloads. Both triggers use the same 256-notice
+queue, drain budget of 16, per-operation bound of 1000 and Matching write path.
+Repeated facts keep the greater original deadline. Cache hits alone do not offer
+facts; queries never derive a renewed lease from their current time.
 
-The handoff is lossy: full/stopped queues count dropped IDs; read, projection and
-write failures count without replay or blocking Result handling, Worker release or
-Call completion. It is not execution truth. Consumer starts after configured platform resources and before the Scenario API,
-and stops before platform resources with a bounded five-second join; shutdown drops queued notices. Empty
-projection composition starts no thread. Metrics expose queue, failures, recorded
-coordinates, mean queue delay and Matching stock diagnostics. SMS has no long-lived
-order observer or duplicate Result store.
+The handoff remains lossy: full/stopped queues and read/projection/write failures
+are counted without replay, execution retry or blocking HTTP/Worker release.
+It is not execution truth. The consumer starts before Scenario admission and
+stops before platform resources with the existing bounded five-second join.
+Empty composition starts no thread. SMS snapshot caching is owned by its Scenario,
+not by this projection consumer or the Pacer.
 
 ### Worker And Scenario Assembly
 

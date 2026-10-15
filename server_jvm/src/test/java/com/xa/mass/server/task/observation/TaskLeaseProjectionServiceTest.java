@@ -67,4 +67,20 @@ class TaskLeaseProjectionServiceTest {
             assertThat(service.isRunning()).isTrue();
         } finally { service.stop(); }
     }
+
+    @Test void alreadyTakenContentProjectsWithoutReadingRedisAndRemainsBoundToTheDeclaredService() throws Exception {
+        var service = service(); var written = new CountDownLatch(1);
+        doAnswer(call -> { written.countDown(); return null; }).when(leases).record("g", "pool", Map.of(coordinate, 2000L));
+        service.start();
+        try {
+            var snapshot = Map.of("m", TaskItemResultResponse.succeeded("already taken"));
+            var admin = com.xa.mass.server.testing.TaskCallers.caller("admin", "admin");
+            assertThatThrownBy(() -> service.acceptResults(admin, "task", snapshot)).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+            var wrong = com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("other", List.of("g")));
+            assertThatThrownBy(() -> service.acceptResults(wrong, "task", snapshot)).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+            service.acceptResults(CALLER, "task", snapshot);
+            assertThat(written.await(2, TimeUnit.SECONDS)).isTrue();
+            verifyNoInteractions(results);
+        } finally { service.stop(); }
+    }
 }

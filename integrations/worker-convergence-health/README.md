@@ -126,8 +126,9 @@ String Item in wave two is the only checkpoint execution promoted to an oracle.
    HOT while due work is present.
 5. Complete both wave-three recovery witnesses.
 6. Kill Host again, observe the recovered world disconnected, and require the
-   checkpoint's successful Result to remain observable through `results:load`.
-   This is Result retention, not TaskItem Score finality.
+   checkpoint's actually received Result evidence to remain available to the
+   proof across its process phases. This is client receipt retention, not
+   permanent Redis Result storage or TaskItem Score finality.
 
 Acceptance fixes `300 offered / 30 invalid` and five named successful witnesses,
 not 300 successful Results. The synchronous checkpoint path bounds the
@@ -138,8 +139,9 @@ Neither scenario fixes intermediate score order, absence of transient
 serviceability regression, retry count, exact latency, executing Worker,
 non-witness outcome or capability payload. `NOT_OBSERVED` is an immediate
 observation, not a Worker failure; `FAILED` is a Result state but not a
-successful witness. Witnesses are observed with
-`results:load`; this lane does not poll `results:export`. In-flight loss also
+successful witness. RPC witnesses are received through `items:call` and
+`results:take`; finite property witnesses use `results:load`. This lane does not
+poll `results:export`. In-flight loss also
 offers three delay and three fail background Items. There is no assertion that
 these background Items execute once, produce a terminal Result or determine a
 specific Worker state. There is no random campaign, seed, round count, fault
@@ -250,3 +252,15 @@ before this lane's overlay/CLI flags. It preserves the test Project, Group and
 Adapter identities and existing budgets without activating a business profile.
 The fixture is not packaged in the production Server. Historical benchmark
 checkouts retain their version-specific configuration inputs.
+
+## RPC Result receipts
+
+Managed calls and their unresolved IDs consume Results through `results:take`.
+The proof client validates response shape/identity and retains the received
+status and payload SHA-256 in its per-proof artifact file across JVM phases;
+the file does not contain opaque Result content. This is proof evidence, not a
+Server result cache; a later empty take cannot erase previously received evidence.
+Finite property witnesses continue to use non-consuming `results:load`. Worker
+fault assertions distinguish retained receipts from persistent Item Score truth
+and do not require consumed Redis Result fields to remain present. No execution
+is resubmitted to retrieve a missing response.

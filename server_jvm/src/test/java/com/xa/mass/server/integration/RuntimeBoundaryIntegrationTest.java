@@ -971,7 +971,7 @@ class RuntimeBoundaryIntegrationTest {
             if (releaseAfterCall != null) releaseAfterCall.countDown();
         }
         assertThat(response.statusCode()).isEqualTo(200);
-        var results = JSON.readTree(response.body());
+        var results = (tools.jackson.databind.node.ObjectNode) JSON.readTree(response.body());
         if (releaseAfterCall != null) {
             var initialResults = results;
             assertThat(expected.keySet()).anySatisfy(id ->
@@ -1001,11 +1001,13 @@ class RuntimeBoundaryIntegrationTest {
             }
             if (System.nanoTime() >= deadline) break;
             Thread.sleep(20);
-            // Read only the original IDs. An expired HTTP waiter never resubmits work.
-            var loaded = send("POST", "/api/v1/tasks/" + taskId + "/results:load",
-                    Jsons.toJson(List.copyOf(expected.keySet())));
-            assertThat(loaded.statusCode()).isEqualTo(200);
-            results = JSON.readTree(loaded.body());
+            // Keep actual receipts; only unresolved IDs need another take.
+            var pending = expected.keySet().stream().filter(id -> !"succeeded".equals(results.path(id).path("status").asText())).toList();
+            if (!pending.isEmpty()) {
+                var loaded = send("POST", "/api/v1/tasks/" + taskId + "/results:take", Jsons.toJson(pending));
+                assertThat(loaded.statusCode()).isEqualTo(200);
+                results.setAll((tools.jackson.databind.node.ObjectNode) JSON.readTree(loaded.body()));
+            }
         } while (true);
         throw new AssertionError("Country execution did not converge for task " + taskId
                 + "; Result statuses=" + statuses + "; Item tags=" + tags);
@@ -1172,7 +1174,7 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(JSON.readTree(unobserved.body()).get(messageId).get("status").asText())
                         .isEqualTo("not_observed");
                 finish.countDown();
-                awaitStoredResult(taskId, messageId);
+                awaitStoredResult(taskId, messageId, true);
                 assertStoredItemAndFinalSuccess(taskId, messageId);
             } finally {
                 finish.countDown();
@@ -1268,8 +1270,8 @@ class RuntimeBoundaryIntegrationTest {
                     "POST",
                     "/api/v1/tasks/" + taskId + "/approve",Jsons.toJson(Map.of("expectedItemCount", 2))).statusCode()).isEqualTo(200);
 
-            awaitStoredResult(taskId, firstMessageId);
-            awaitStoredResult(taskId, secondMessageId);
+            awaitStoredResult(taskId, firstMessageId, false);
+            awaitStoredResult(taskId, secondMessageId, false);
 
             HttpResponse<String> exported = awaitTaskExport(taskId);
             assertThat(exported.headers().firstValue("Content-Type"))
@@ -1298,7 +1300,7 @@ class RuntimeBoundaryIntegrationTest {
                     .containsExactlyInAnyOrderElementsOf(sharedRules.values());
             appendItem(otherTaskId, "after-other-task-closed", selector);
             assertThat(send("POST", "/api/v1/tasks/" + otherTaskId + "/approve",Jsons.toJson(Map.of("expectedItemCount", 1))).statusCode()).isEqualTo(200);
-            awaitStoredResult(otherTaskId, "after-other-task-closed");
+            awaitStoredResult(otherTaskId, "after-other-task-closed", false);
             awaitTaskExport(otherTaskId);
             assertThat(send("POST", "/api/v1/tasks/" + otherTaskId + "/close", null).statusCode()).isEqualTo(200);
         } finally {
@@ -1809,11 +1811,14 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(JSON.readTree(call.body()).size()).isEqualTo(100);
             var ids = items.stream().map(item -> (String)item.get("messageId")).toList();
             long deadline = System.nanoTime()+RESULT_CONVERGENCE_TIMEOUT.toNanos();
-            tools.jackson.databind.JsonNode results = JSON.readTree(call.body());
+            var results = (tools.jackson.databind.node.ObjectNode) JSON.readTree(call.body());
             while (System.nanoTime()<deadline) {
-                var loaded = send("POST","/api/v1/tasks/"+taskId+"/results:load",Jsons.toJson(ids));
-                assertThat(loaded.statusCode()).isEqualTo(200);
-                results=JSON.readTree(loaded.body());
+                var pending = ids.stream().filter(id -> !"succeeded".equals(results.path(id).path("status").asText())).toList();
+                if (!pending.isEmpty()) {
+                    var loaded = send("POST","/api/v1/tasks/"+taskId+"/results:take",Jsons.toJson(pending));
+                    assertThat(loaded.statusCode()).isEqualTo(200);
+                    results.setAll((tools.jackson.databind.node.ObjectNode) JSON.readTree(loaded.body()));
+                }
                 boolean complete=true;
                 for(String id:ids) if(!"succeeded".equals(results.path(id).path("status").asText())) { complete=false; break; }
                 if(complete) break;
@@ -1859,6 +1864,8 @@ class RuntimeBoundaryIntegrationTest {
                         "waitTimeoutMillis", 10_000)));
                 assertThat(response.statusCode()).isEqualTo(200);
                 assertThat(JSON.readTree(response.body()).path("same-id").path("status").asText()).isEqualTo("succeeded");
+                assertThat(JSON.readTree(response.body()).path("same-id").path("opaqueResultPayload").asText())
+                        .isEqualTo(Jsons.toJson(Map.of("observed", user)));
                 awaitTrackedState(id, "same-id", 6);
                 var repeated = send(com.xa.mass.server.testing.TaskCallers.caller(user, "operator", "boundary"), "POST", "/api/v1/tasks/" + id + "/rpc:prepare",
                         Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group)));
@@ -1867,10 +1874,9 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(id)).get(id).metadata()).containsEntry("userId", user);
             }
             for (var entry : ids.entrySet()) {
-                var result = send("POST", "/api/v1/tasks/" + entry.getValue() + "/results:load", "[\"same-id\"]");
+                var result = send("POST", "/api/v1/tasks/" + entry.getValue() + "/results:take", "[\"same-id\"]");
                 assertThat(result.statusCode()).isEqualTo(200);
-                assertThat(JSON.readTree(result.body()).path("same-id").path("opaqueResultPayload").asText())
-                        .isEqualTo(Jsons.toJson(Map.of("observed", entry.getKey())));
+                assertThat(JSON.readTree(result.body()).path("same-id").path("status").asText()).isEqualTo("not_observed");
             }
         }
     }
@@ -2050,10 +2056,8 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(loaded.statusCode()).isEqualTo(200);
             var loadedResult = JSON.readTree(loaded.body())
                     .get(firstMessageId);
-            assertThat(loadedResult.get("status").asText())
-                    .isEqualTo("succeeded");
-            assertThat(loadedResult.get("opaqueResultPayload").asText())
-                    .isEqualTo(TEST_RESULT);
+            assertThat(loadedResult.get("status").asText()).isEqualTo("not_observed");
+            assertThat(loadedResult.has("opaqueResultPayload")).isFalse();
 
             HttpResponse<String> repeatedRegistration = send(
                     "POST",
@@ -2355,14 +2359,14 @@ class RuntimeBoundaryIntegrationTest {
 
     private void awaitStoredResult(
             String taskId,
-            String messageId
+            String messageId, boolean consume
     ) throws Exception {
         long deadline = System.nanoTime()
                 + RESULT_CONVERGENCE_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
             HttpResponse<String> response = send(
                     "POST",
-                    "/api/v1/tasks/" + taskId + "/results:load",
+                    "/api/v1/tasks/" + taskId + (consume ? "/results:take" : "/results:load"),
                     "[\"" + messageId + "\"]"
             );
             if (response.statusCode() == 200) {

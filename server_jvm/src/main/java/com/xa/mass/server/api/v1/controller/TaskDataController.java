@@ -61,8 +61,8 @@ public class TaskDataController {
             description = "Submission is accepted before synchronous Result "
                     + "observation. Items not observed within the wait budget "
                     + "or observation capacity are represented by the "
-                    + "not_observed outcome and can be loaded later by "
-                    + "messageId."
+                    + "not_observed outcome and can be taken later by "
+                    + "messageId. Observed Results are consumed. A lost response may lose the Result; never resubmit execution merely to retrieve it."
     )
     @ApiResponses({
             @ApiResponse(
@@ -215,6 +215,26 @@ public class TaskDataController {
                 caller, taskId,
                 List.copyOf(messageIds)
         ));
+    }
+
+    @Operation(summary = "Take current RPC Results",
+            description = "Atomically reads and deletes current Results for a raw RPC Task. Later valid writes remain legal. "
+                    + "not_observed may mean pending, previously consumed or expired. Consumption can succeed despite a lost response; no delivery acknowledgment or replay is provided.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Consumed Result states keyed by messageId"),
+            @ApiResponse(responseCode = "400", description = "Invalid request or Task does not support consumption",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Task access denied",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "503", description = "Result consumption is unavailable or unconfirmed",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+    })
+    @PostMapping("/{taskId}/results:take")
+    public Map<String, TaskItemResultResponse> takeTaskItemResults(
+            @io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller,
+            @PathVariable @NotBlank String taskId,
+            @RequestBody @NotNull @Size(min = 1, max = 1000) List<@NotBlank String> messageIds) {
+        return taskData.takeTaskItemResults(caller, TaskCaller.RAW_INPUT, taskId, List.copyOf(messageIds));
     }
 
     @Operation(

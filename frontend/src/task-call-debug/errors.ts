@@ -29,6 +29,19 @@ export interface TaskCallDebugErrorPresentation {
   title: string;
   message: string;
   requestId?: string;
+  rejected: boolean;
+}
+
+export function isTaskCallDebugRejection(error: unknown): boolean {
+  return (
+    error instanceof TaskCallDebugError &&
+    (error.kind === "configuration" ||
+      (error.kind === "http" &&
+        error.status !== undefined &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        error.status !== 408))
+  );
 }
 
 export function presentTaskCallDebugError(
@@ -38,12 +51,14 @@ export function presentTaskCallDebugError(
     return {
       title: error.kind === "configuration" ? "Task Call 配置无效" : "Task Call 失败",
       message: error.message,
-      requestId: error.requestId
+      requestId: error.requestId,
+      rejected: isTaskCallDebugRejection(error)
     };
   }
   return {
     title: "Task Call 失败",
-    message: "发生了未识别的 Task Call 错误。"
+    message: "发生了未识别的 Task Call 错误。",
+    rejected: false
   };
 }
 

@@ -74,7 +74,7 @@ class KernelPacerPropertiesTest {
                     .withBean(
                             com.xa.mass.server.task.call.TaskRpcWaitRegistry.class,
                             () -> new com.xa.mass.server.task.call.TaskRpcWaitRegistry(
-                                    new com.xa.mass.server.task.call.TaskRpcProperties(
+                                    new com.xa.mass.server.task.call.TaskRpcProperties(java.time.Duration.ofDays(7),
                                             30_000, 60_000, 10, 10, 10, 50, 100, 250, java.util.Map.of()))
                     )
                     .withPropertyValues(

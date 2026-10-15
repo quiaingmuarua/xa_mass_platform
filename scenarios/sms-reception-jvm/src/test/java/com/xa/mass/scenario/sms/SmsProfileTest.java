@@ -70,7 +70,7 @@ class SmsProfileTest {
                 .doesNotContain("id 'org.springframework.boot'", "project(':distribution:", "project(':server_boot_jvm')");
         Set<String> allowed = Set.of("com.xa.mass.server.task.access.TaskCaller", "com.xa.mass.server.task.call.TaskRpcPreparationService",
                 "com.xa.mass.server.task.call.TaskRpcCallService", "com.xa.mass.server.task.TaskDataService",
-                "com.xa.mass.server.task.observation.TaskLeaseProjection", "com.xa.mass.server.task.observation.TaskLeaseProjectionMetrics",
+                "com.xa.mass.server.task.observation.TaskLeaseProjection", "com.xa.mass.server.task.observation.TaskLeaseProjectionAccess",
                 "com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest", "com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest", "com.xa.mass.server.api.v1.contract.task.TaskItemRequest",
                 "com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse",
                 "com.xa.mass.server.api.v1.contract.task.TaskItemResultStatus");

@@ -160,7 +160,7 @@ class AssignmentBatchIntegrationTest {
         });
         try (var taskScores = new RedisTaskScoreBandCore(client, scope.keyspace());
              var itemScores = new RedisTaskItemScoreBandCore(client, scope.keyspace());
-             var tasks = new RedisTaskRuntime(client, taskScores, itemScores, scope.keyspace());
+             var tasks = new RedisTaskRuntime(client, taskScores, itemScores, scope.keyspace(), java.time.Duration.ofDays(7).toMillis());
              var workerScores = new RedisWorkerScoreCore(client, scope.keyspace());
              var catalog = new RedisWorkerResourceCatalog(client, workerScores, scope.keyspace());
              var delivery = new RedisWorkerCommandRuntime(client, new com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec(), scope.keyspace());

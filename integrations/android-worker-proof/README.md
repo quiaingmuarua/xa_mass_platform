@@ -21,7 +21,7 @@ Android Worker Proof
      -> Adapter network projection
      -> Kernel scheduling projection
      -> Direct Call
-     -> items:call and results:load
+     -> items:call and results:take
 ```
 
 The module depends on the transport-neutral Delivery JSON contract only. It
@@ -51,8 +51,8 @@ device-matrix compatibility.
 
 Task submissions use a 250 millisecond `items:call` observation window so the
 accepted message identity returns well inside the HTTP request timeout. A
-`NOT_OBSERVED` response is completed by passively waiting on `results:load`;
-the Harness never retries an ambiguously timed-out mutation request. A
+`NOT_OBSERVED` response is completed by passively waiting on `results:take`;
+received success is retained by the proof client; the Harness never retries an ambiguously timed-out mutation request. A
 `FAILED` snapshot is not counted as a successful witness; because late success
 may replace failed, bounded observation continues until success or its
 deadline.

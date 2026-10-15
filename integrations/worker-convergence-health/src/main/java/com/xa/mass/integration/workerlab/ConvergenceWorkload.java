@@ -128,7 +128,7 @@ final class ConvergenceWorkload {
         WorkerLabConvergenceSupport.await(
                 "witness-" + batch.wave() + "-" + batch.workerGroupId(),
                 maximumWait,
-                () -> runtime.loadResultStatuses(
+                () -> runtime.takeResultStatuses(
                         batch.taskId(),
                         List.of(batch.witnessMessageId())
                 ),
@@ -140,7 +140,7 @@ final class ConvergenceWorkload {
     }
 
     boolean witnessObserved(Batch batch) {
-        return runtime.loadResultStatuses(
+        return runtime.takeResultStatuses(
                 batch.taskId(),
                 List.of(batch.witnessMessageId())
         ).get(batch.witnessMessageId()) == CallStatus.SUCCEEDED;

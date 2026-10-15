@@ -21,6 +21,8 @@ class KernelResourceLifecycleTest {
         TestPropertyValues.of("xa.mass.redis.url=redis://localhost:6379/15",
                 "xa.mass.redis.scope=test_server_resources").applyTo(context);
         context.register(KernelRedisConfiguration.class, KernelOwnerAssemblyConfiguration.class);
+        context.registerBean(com.xa.mass.server.task.call.TaskRpcProperties.class, () ->
+                new com.xa.mass.server.task.call.TaskRpcProperties(java.time.Duration.ofDays(7), 1000, 1000, 10, 10, 10, 50, 100, 250, java.util.Map.of()));
         return context;
     }
 

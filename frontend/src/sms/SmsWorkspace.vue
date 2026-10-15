@@ -3,7 +3,14 @@ import { captureTaskCaller } from "@/console-identity";
 const caller = captureTaskCaller();
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
-import { api, statusLabels, waitingMessage, type Reception, type Metrics } from "./api";
+import {
+  api,
+  statusLabels,
+  waitingMessage,
+  mergeReception,
+  type Reception,
+  type Metrics
+} from "./api";
 import { useSmsAvailability } from "./availability";
 
 const route = useRoute();
@@ -40,11 +47,17 @@ const current = computed(() =>
 const metrics = ref<Metrics>();
 const busy = ref(false),
   error = ref("");
+const missingResults = reactive(new Set<string>());
 let stopped = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let reading: AbortController | undefined;
 let submitting: AbortController | undefined;
 function remember(row: Reception) {
+  const previous = records.value.find((item) => item.messageId === row.messageId);
+  if (row.status === "NOT_OBSERVED" && previous && previous.status !== "NOT_OBSERVED")
+    missingResults.add(row.messageId);
+  else missingResults.delete(row.messageId);
+  row = mergeReception(previous, row);
   records.value = [
     row,
     ...records.value.filter((item) => item.messageId !== row.messageId)
@@ -230,6 +243,9 @@ onBeforeUnmount(() => {
               </div>
               <p>{{ waitingMessage(current) }}</p>
               <div class="record-id">{{ current.messageId }}</div>
+              <p v-if="missingResults.has(current.messageId)" class="hint">
+                本次未取得服务端结果，下方保留上次取得的内容。
+              </p>
             </template>
             <p v-else class="hint">申请号码，或输入已有的 messageId 查询。</p>
             <form class="lookup" @submit.prevent="lookup">
@@ -245,7 +261,7 @@ onBeforeUnmount(() => {
         <section class="panel records">
           <h2>本次浏览器会话</h2>
           <p class="hint">
-            仅在当前浏览器保留最近 100 条，可随时按 messageId 重新查询。
+            当前浏览器保留最近 100 条；服务端仅短期缓存，重启或淘汰后不保证再次查询。
           </p>
           <div class="table-scroll">
             <table>

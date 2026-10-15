@@ -94,7 +94,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 redisClient,
                 scoreCore,
                 itemScoreCore,
-                keyspace
+                keyspace, java.time.Duration.ofDays(7).toMillis()
         );
         catalog = new RedisTaskResourceCatalog(redisClient, keyspace);
         lifecycle = new DefaultTaskLifecycleCommands(scoreCore, catalog);
@@ -142,7 +142,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         applicationDirectory = new com.xa.mass.server.task.directory.TaskDirectory(redisClient, keyspace, projects, catalog, scoreCore, workers,
                 new com.xa.mass.server.operation.OperationGuard(), runtime);
         return new com.xa.mass.server.task.call.TaskRpcPreparationService(workers, catalog, runtime, lifecycle, matching,
-                new com.xa.mass.server.task.call.TaskRpcProperties(1000, 1000, 10, 10, 10, 50, 100, 250, Map.of()),
+                new com.xa.mass.server.task.call.TaskRpcProperties(java.time.Duration.ofDays(7), 1000, 1000, 10, 10, 10, 50, 100, 250, Map.of()),
                 projects, new com.xa.mass.server.operation.OperationGuard(), applicationDirectory, scoreCore);
     }
 
@@ -160,7 +160,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         var order = com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("rpc-alice")).get("rpc-alice").metadata());
         var score = scoreCore.getScoreStates(List.of("rpc-alice")).get("rpc-alice");
         runtime.close(); catalog.close();
-        runtime = new RedisTaskRuntime(redisClient, scoreCore, itemScoreCore, keyspace);
+        runtime = new RedisTaskRuntime(redisClient, scoreCore, itemScoreCore, keyspace, java.time.Duration.ofDays(7).toMillis());
         catalog = new RedisTaskResourceCatalog(redisClient, keyspace);
         lifecycle = new DefaultTaskLifecycleCommands(scoreCore, catalog);
         rpcPreparation().prepare(com.xa.mass.server.testing.TaskCallers.caller("alice", "admin"), "raw", "rpc-alice",rpcRequest());
@@ -799,7 +799,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 redisClient,
                 releaseFailure,
                 itemScoreCore,
-                keyspace
+                keyspace, java.time.Duration.ofDays(7).toMillis()
         )) {
             assertThat(interrupted.createTask(
                     descriptor(taskId, 4)

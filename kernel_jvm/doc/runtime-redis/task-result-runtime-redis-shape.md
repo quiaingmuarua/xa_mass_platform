@@ -62,8 +62,26 @@ exists. `TaskItemResult(code, opaqueResultPayload)` remains the read projection;
 ordering fields are validated by the Owner and are not exposed in Server Result
 responses.
 
-Point reads use one `HMGET`; scans use bounded `HSCAN COUNT 1000` pages. Missing
-fields remain not observed. Reads neither consume content nor read Item Score.
+Non-consuming point reads use one `HMGET`; scans use bounded `HSCAN COUNT 1000`
+pages. Neither reads Item Score. `takeTaskItemResults` consumes 1..1000 requested
+RPC fields in one Lua: validate the OPEN descriptor, PARK_WHEN_IDLE disposition
+and every present Result before deleting any field. It returns the validated
+code/payload projection. Missing fields remain not observed. Concurrent takes
+compete for current content; a write after a take remains available.
+
+RPC writes refresh the whole Result HASH's configured idle TTL in the same Lua,
+only when at least one success or failure is actually added or replaced. Reads,
+takes, unchanged/ignored writes, Item submission and preparation do not renew it.
+Partial consumption keeps the existing expiration; an empty or expired HASH can
+be created again by a valid write. No Item, Score, Worker lease or Task is removed
+by Result consumption or expiration. Finite Results do not receive this TTL.
+Boot supplies the positive duration (default 7d) through Server assembly.
+
+The TTL is idle reclamation, not a per-Result age bound. A continuously active
+Task can retain unclaimed fields. No consumed-field tombstone, ordering watermark
+or acknowledgment is stored: ordering compares current content only. Loss after
+a committed take may lose the response and the content. This contract provides
+neither exactly-once delivery nor automatic execution retry.
 
 ## Execution And Observation Calls
 

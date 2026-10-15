@@ -2305,7 +2305,7 @@
     },
     "/api/v1/tasks/{taskId}/items:call" : {
       "post" : {
-        "description" : "Submission is accepted before synchronous Result observation. Items not observed within the wait budget or observation capacity are represented by the not_observed outcome and can be loaded later by messageId.",
+        "description" : "Submission is accepted before synchronous Result observation. Items not observed within the wait budget or observation capacity are represented by the not_observed outcome and can be taken later by messageId. Observed Results are consumed. A lost response may lose the Result; never resubmit execution merely to retrieve it.",
         "operationId" : "callTaskItems",
         "parameters" : [ {
           "in" : "path",
@@ -2732,6 +2732,98 @@
           }
         },
         "summary" : "Preview at most 100 raw Task results without continuation",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/results:take" : {
+      "post" : {
+        "description" : "Atomically reads and deletes current Results for a raw RPC Task. Later valid writes remain legal. not_observed may mean pending, previously consumed or expired. Consumption can succeed despite a lost response; no delivery acknowledgment or replay is provided.",
+        "operationId" : "takeTaskItemResults",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Declared role must match the current Server user directory",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "type" : "string"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "additionalProperties" : {
+                    "$ref" : "#/components/schemas/TaskItemResultResponse"
+                  },
+                  "type" : "object"
+                }
+              }
+            },
+            "description" : "Consumed Result states keyed by messageId"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid request or Task does not support consumption"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Result consumption is unavailable or unconfirmed"
+          }
+        },
+        "summary" : "Take current RPC Results",
         "tags" : [ "Tasks" ]
       }
     },

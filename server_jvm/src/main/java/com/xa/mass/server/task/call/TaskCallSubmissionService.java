@@ -64,7 +64,7 @@ public final class TaskCallSubmissionService {
         return submit(caller, inputOwner, taskId, items, false).messageIds();
     }
 
-    /** Submits a synchronous Item Call and reads its already stored Results once. */
+    /** Submits a synchronous Item Call and consumes its already stored Results once. */
     SubmittedCall submitCall(TaskCaller caller, String inputOwner, String taskId, List<TaskItemRequest> items) {
         return submit(caller, inputOwner, taskId, items, true);
     }
@@ -124,7 +124,7 @@ public final class TaskCallSubmissionService {
     }
 
     /** One Kernel submission and, when requested, one Result read for a whole batch. */
-    private TaskCallSubmissionBatcher.BatchOutcome submitBatch(String taskId, List<TaskItem> items, boolean observe) {
+    private TaskCallSubmissionBatcher.BatchOutcome submitBatch(String taskId, List<TaskItem> items, List<String> resultMessageIds) {
         List<String> messageIds = items.stream().map(TaskItem::messageId).toList();
         TaskCallSubmissionResult submission = null;
         long submissionStarted = TaskRpcStageEvent.start();
@@ -136,16 +136,16 @@ public final class TaskCallSubmissionService {
             TaskRpcStageEvent.items(submissionStarted, "SUBMISSION", taskId, messageIds, submitted ? messageIds.size() : 0, !submitted);
         }
         long observationStarted = TaskRpcStageEvent.start();
-        if (!observe || !submitted) {
+        if (resultMessageIds.isEmpty() || !submitted) {
             return new TaskCallSubmissionBatcher.BatchOutcome(submission, Map.of(), observationStarted);
         }
         Map<String, TaskItemResult> observed;
         try {
-            observed = taskRuntime.loadTaskItemResults(taskId, messageIds);
+            observed = taskRuntime.takeTaskItemResults(taskId, resultMessageIds);
         } catch (RuntimeException ignored) {
             observed = Map.of();
         }
-        TaskRpcStageEvent.batch(observationStarted, "IMMEDIATE_PROBE", messageIds.size(), observed.size(), false);
+        TaskRpcStageEvent.batch(observationStarted, "IMMEDIATE_PROBE", resultMessageIds.size(), observed.size(), false);
         return new TaskCallSubmissionBatcher.BatchOutcome(submission, observed, observationStarted);
     }
 
