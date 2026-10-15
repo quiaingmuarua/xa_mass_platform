@@ -27,12 +27,16 @@ It does not write scores or synthesize Worker results.
 
 The proof overrides grace to two seconds, keeps seven-day retention during
 archive comparisons, and triggers the ordinary administrator maintenance API.
-It checks preserved counts, identical JSONL/CSV content, bounded preview,
+It checks preserved totals, stable frozen counts, identical completed JSONL/CSV
+content, archive-backed export content, bounded preview,
 archived point-query refusal and retained creation identity. It then restarts
 Server with one-millisecond retention to exercise startup expiry, verifies the
 old resources and files are gone, and recreates each request with a new Task ID.
 This policy override accelerates eligibility; it is not a production default or
 a force-delete API. Focused Owner tests separately prove exact default thresholds.
+For early closes, pre-freeze observations may still change while exports are
+generated; the oracle compares the frozen archive and its exports, not two
+independent live observations as though they were an atomic snapshot.
 
 The summary contains per-Task Redis key memory, file bytes, archive duration,
 sampled heap/RSS and Redis PING latency. JFR allocation samples and `jstat` heap

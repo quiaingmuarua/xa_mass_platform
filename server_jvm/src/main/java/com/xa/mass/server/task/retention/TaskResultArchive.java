@@ -66,7 +66,9 @@ public final class TaskResultArchive {
             } while (!cursor.equals("0"));
         }
         force(data);
-        var manifest = new Manifest(1, task, state.frozenAtMillis(), records, Files.size(data), digest(data));
+        var written = fingerprint(data);
+        if (written.records() != records) throw new IOException("Archive record count differs");
+        var manifest = new Manifest(1, task, state.frozenAtMillis(), records, written.bytes(), written.sha256());
         Path metadata = pending.resolve("manifest.json");
         Files.writeString(metadata, mapper.writeValueAsString(manifest), StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
         force(metadata);
@@ -104,9 +106,10 @@ public final class TaskResultArchive {
         if (!Files.isRegularFile(data, LinkOption.NOFOLLOW_LINKS) || !Files.isRegularFile(metadata, LinkOption.NOFOLLOW_LINKS))
             throw new IOException("Task archive is missing");
         var manifest = mapper.readValue(Files.readString(metadata, StandardCharsets.UTF_8), Manifest.class);
+        var observed = fingerprint(data);
         if (manifest.version() != 1 || manifest.task() == null || !taskId.equals(manifest.task().taskId())
-                || manifest.frozenAtMillis() <= 0 || manifest.records() < 0 || Files.size(data) != manifest.bytes()
-                || !digest(data).equals(manifest.sha256())) throw new IOException("Task archive is corrupt");
+                || manifest.frozenAtMillis() <= 0 || manifest.records() != observed.records() || observed.bytes() != manifest.bytes()
+                || !observed.sha256().equals(manifest.sha256())) throw new IOException("Task archive is corrupt");
         return manifest;
     }
 
@@ -140,9 +143,22 @@ public final class TaskResultArchive {
         catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
     private static String digest(byte[] value) { return HexFormat.of().formatHex(sha256().digest(value)); }
-    private static String digest(Path file) throws IOException {
+    private record Fingerprint(long bytes, long records, String sha256) { }
+    private static Fingerprint fingerprint(Path file) throws IOException {
         var digest = sha256();
-        try (var input = new java.security.DigestInputStream(Files.newInputStream(file), digest)) { input.transferTo(OutputStream.nullOutputStream()); }
-        return HexFormat.of().formatHex(digest.digest());
+        long bytes = 0, records = 0;
+        int last = '\n';
+        byte[] buffer = new byte[65536];
+        try (var input = Files.newInputStream(file)) {
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                digest.update(buffer, 0, count);
+                bytes += count;
+                for (int i = 0; i < count; i++) if (buffer[i] == '\n') records++;
+                if (count > 0) last = buffer[count - 1];
+            }
+        }
+        if (last != '\n') throw new IOException("Archive last record is incomplete");
+        return new Fingerprint(bytes, records, HexFormat.of().formatHex(digest.digest()));
     }
 }

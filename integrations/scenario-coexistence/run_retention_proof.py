@@ -57,6 +57,19 @@ def snapshot(client, prefix, task):
     return {"resources": rows, "bytes": sum(row["bytes"] for row in rows.values())}
 
 
+def archived_successes(folder):
+    count = 0
+    digest = hashlib.sha256()
+    with (folder / "results.jsonl").open(encoding="utf-8") as records:
+        for line in records:
+            row = json.loads(line)
+            if row["result"]["code"] == "200":
+                value = {"messageId": row["messageId"], "opaqueResultPayload": row["result"]["opaqueResultPayload"]}
+                digest.update((json.dumps(value, ensure_ascii=False, separators=(",", ":")) + os.linesep).encode())
+                count += 1
+    return count, digest.hexdigest()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=REPO / "distribution/server")
@@ -148,7 +161,7 @@ def main():
                     run.check()
                     time.sleep(.2)
                 case["before"] = snapshot(client, prefix, task)
-                before_counts = request(run.url, "/projects/app-checks/tasks:stats", [task])[task]
+                case["countsBeforeFreeze"] = request(run.url, "/projects/app-checks/tasks:stats", [task])[task]
                 case["liveJsonl"] = export(run.url, f"/tasks/{task}/results:export")
                 case["liveCsv"] = export(run.url, f"/app-checks/tasks/{task}/results:export?filter=all")
                 stage = f"archive-{mode}-{count}"
@@ -162,15 +175,21 @@ def main():
                 require(not case["after"]["resources"]["items"]["exists"] and not case["after"]["resources"]["results"]["exists"],
                         "Payload hashes survived archive release")
                 case["counts"] = request(run.url, "/projects/app-checks/tasks:stats", [task])[task]
-                require(case["counts"] == before_counts, "Archive changed Item counts")
+                require(case["counts"]["total"] == case["countsBeforeFreeze"]["total"] == count, "Archive lost Item counts")
                 case["archivedJsonl"] = export(run.url, f"/tasks/{task}/results:export")
                 case["archivedCsv"] = export(run.url, f"/app-checks/tasks/{task}/results:export?filter=all")
-                for kind in ("Jsonl", "Csv"):
-                    require(case["live" + kind]["sha256"] == case["archived" + kind]["sha256"], "Archive changed export content")
+                if mode == "natural":
+                    require(case["counts"] == case["countsBeforeFreeze"], "Completed Task counts changed")
+                    for kind in ("Jsonl", "Csv"):
+                        require(case["live" + kind]["sha256"] == case["archived" + kind]["sha256"], "Archive changed completed export content")
                 view = request(run.url, f"/app-checks/tasks/{task}/results")
                 require(len(view["results"]) <= 100, "Preview exceeded its bound")
                 folder = run.task_archives / hashlib.sha256(prefix.encode()).hexdigest() / hashlib.sha256(task.encode()).hexdigest()
                 manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+                successes, raw_digest = archived_successes(folder)
+                require(case["archivedJsonl"]["sha256"] == raw_digest, "Raw export differs from frozen archive content")
+                require(case["archivedCsv"]["lines"] == successes + 1, "CSV lost valid App results")
+                require(request(run.url, "/projects/app-checks/tasks:stats", [task])[task] == case["counts"], "Frozen counts continued changing")
                 case["archive"] = {key: manifest[key] for key in ("records", "bytes", "sha256")}
                 case["previewCount"], case["truncated"] = len(view["results"]), view["truncated"]
                 require(request(run.url, "/app-checks/tasks", body)["taskId"] == task, "Retained creation changed execution identity")

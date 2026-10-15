@@ -153,6 +153,21 @@ class TaskRetentionServiceRedisIntegrationTest {
         maintenance(archive, creations).maintain(old, clock.get());
         assertThat(create()).isEqualTo(next);
     }
+    @Test void aCorruptManifestCountRejectsPreviewBeforeReturningAnyRows() throws Exception {
+        String id = create(); closeWithResult(id);
+        clock.addAndGet(Duration.ofHours(1).toMillis());
+        maintenance(archive, creations).maintain(id, clock.get());
+        Path metadata;
+        try (var paths = Files.walk(files)) {
+            metadata = paths.filter(path -> path.getFileName().toString().equals("manifest.json")).findFirst().orElseThrow();
+        }
+        var mapper = JsonMapper.builder().build();
+        var manifest = (tools.jackson.databind.node.ObjectNode) mapper.readTree(Files.readString(metadata));
+        manifest.put("records", 0);
+        Files.writeString(metadata, mapper.writeValueAsString(manifest));
+        assertThatThrownBy(() -> exports.preview(CALLER, id)).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        assertThat(runtime.loadTaskDataStates(List.of(id)).get(id).phase()).isEqualTo(TaskDataPhase.RELEASED);
+    }
     @Test void authorizationPrecedesFilesAndExpiredTasksDoNotRequireAnArchive() throws Exception {
         var files = spy(archive);
         var service = maintenance(files, creations);
