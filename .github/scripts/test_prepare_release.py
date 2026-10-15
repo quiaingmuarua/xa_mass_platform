@@ -92,19 +92,26 @@ class ReleasePromotionTest(unittest.TestCase):
                     release.validate_draft({**dict(tag_name="v1.0.0", draft=True, assets=[]), **changes}, "v1.0.0", [expected])
 
     def test_creation_uses_returned_draft_without_relisting_then_uploads_four_assets(self):
+        self._assert_draft_creation("1.0.0")
+
+    def test_major_two_uses_its_own_contract_and_exact_asset_versions(self):
+        self._assert_draft_creation("2.0.0")
+
+    def _assert_draft_creation(self, version):
+        tag = "v" + version
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             fixtures = {}
             for component in release.COMPONENTS:
-                name = f"xa-mass-{component}-1.0.0.zip"
+                name = f"xa-mass-{component}-{version}.zip"
                 path = root / name
-                manifest = dict(version="1.0.0", gitCommit=self.commit,
+                manifest = dict(version=version, gitCommit=self.commit,
                                 schemaVersion=6 if component == "server-runtime" else 1)
                 with zipfile.ZipFile(path, "w") as archive:
                     archive.writestr(name[:-4] + "/manifest.json", json.dumps(manifest))
                 fixtures[component] = path
             uploaded = []
-            created = dict(id=42, tag_name="v1.0.0", draft=True, assets=[])
+            created = dict(id=42, tag_name=tag, draft=True, assets=[])
             def fake_gh(*arguments):
                 if arguments[:2] == ("run", "download"):
                     component = next(component for component in release.COMPONENTS
@@ -115,7 +122,8 @@ class ReleasePromotionTest(unittest.TestCase):
                 if arguments[:3] == ("api", "--method", "POST"):
                     document = json.loads(Path(arguments[-1]).read_text())
                     self.assertTrue(document["draft"])
-                    self.assertEqual("v1.0.0", document["tag_name"])
+                    self.assertEqual(tag, document["tag_name"])
+                    self.assertIn(f"# XA Mass {version.split('.')[0]}.0 release", document["body"])
                     return json.dumps(created)
                 if arguments[:2] == ("release", "upload"):
                     uploaded.append(Path(arguments[3]).name)
@@ -131,7 +139,7 @@ class ReleasePromotionTest(unittest.TestCase):
                     patch.object(release, "gh", side_effect=fake_gh), \
                     patch.object(release, "api", side_effect=fake_api), \
                     patch.object(release.runpy, "run_path", return_value={"verify": Mock(), "_verify_archive": Mock()}):
-                release.prepare(self.repository, "v1.0.0", self.commit, root / "output")
+                release.prepare(self.repository, tag, self.commit, root / "output")
             listing.assert_called_once()
             self.assertEqual(4, len(uploaded))
 

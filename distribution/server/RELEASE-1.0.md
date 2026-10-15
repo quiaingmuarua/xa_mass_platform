@@ -1,6 +1,6 @@
 # XA Mass 1.0 release and upgrade contract
 
-Status: current 1.x public release contract.
+Status: version-scoped 1.0 release record; current delivery follows [2.0](RELEASE-2.0.md).
 
 ## Public compatibility
 
