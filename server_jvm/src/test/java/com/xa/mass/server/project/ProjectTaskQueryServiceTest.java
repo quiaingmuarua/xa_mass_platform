@@ -36,7 +36,7 @@ class ProjectTaskQueryServiceTest {
         when(directory.list("p", null, 2)).thenReturn(new TaskDirectory.Batch(List.of(
                 new TaskDirectory.Member("a", 0), new TaskDirectory.Member("b", 0)), true));
         when(tasks.loadTaskAllocationDescriptors(List.of("a", "b"))).thenReturn(Map.of("b", task("b", "p", 20, null)));
-        when(scores.getScoreStates(List.of("a", "b"))).thenReturn(Map.of("b", new TaskScoreState("b", -1, TaskScoreBand.TERMINAL, null, null)));
+        when(scores.getScoreStates(List.of("a", "b"))).thenReturn(Map.of("b", new TaskScoreState("b", -2_000_000_000_000L, TaskScoreBand.TERMINAL, null, null)));
         var result = service.list(CALLER, "p", 2, null);
         assertThat(result.truncated()).isTrue();
         assertThat(result.tasks()).extracting(ProjectTaskQueryService.Entry::taskId).containsExactly("b");

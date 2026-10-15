@@ -40,7 +40,6 @@
       "RUNNING_VISIBLE_TAG": 1,
       "SLOT_MILLIS": 100,
       "SUFFIX_FACTOR": 100,
-      "TERMINAL_SCORE_MAX": -1,
       "TIME_SCALE": 10,
       "TIME_SLOT_FACTOR": 100000000000
     },

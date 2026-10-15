@@ -152,7 +152,7 @@ class TaskInputWorkflowTest {
         when(itemScores.getItemScoreStates(eq("t"), anyList())).thenReturn(Map.of("one",
                 new TaskItemScoreBandCore.TaskItemScoreState(1, TaskItemScoreBandCore.TaskItemScoreBand.ACTIVE, 1, 0, 3)));
         assertThatThrownBy(() -> data.importFiniteTaskItems(CALLER, "raw", "t", List.of(input("one")))).isInstanceOf(com.xa.mass.server.error.ServerException.class);
-        states.put("t", new TaskScoreBandCore.TaskScoreState("t", -1, TaskScoreBandCore.TaskScoreBand.TERMINAL, null, null));
+        states.put("t", new TaskScoreBandCore.TaskScoreState("t", -2_000_000_000_000L, TaskScoreBandCore.TaskScoreBand.TERMINAL, null, null));
         assertThatThrownBy(() -> data.importFiniteTaskItems(CALLER, "raw", "t", List.of(input("one")))).hasMessageContaining("await review");
         verify(runtime, never()).appendItems(anyString(), anyList());
     }

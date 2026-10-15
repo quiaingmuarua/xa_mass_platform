@@ -299,7 +299,7 @@ class DefaultTaskCommandsTest {
         boolean terminal = band == TaskScoreBandCore.TaskScoreBand.TERMINAL;
         return new TaskScoreBandCore.TaskScoreState(
                 "task-1",
-                terminal ? TaskScoreBandCore.TERMINAL_SCORE_MAX : 1,
+                terminal ? -2_000_000_000_000L : 1,
                 band,
                 terminal ? null : 100L,
                 terminal ? null : 0

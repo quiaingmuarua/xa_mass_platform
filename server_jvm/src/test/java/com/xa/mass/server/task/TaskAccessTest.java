@@ -94,7 +94,7 @@ class TaskAccessTest {
         when(commands.approveTask("t")).thenReturn(new TaskLifecycleCommands.TaskApprovalResult(TaskLifecycleCommands.TaskApprovalStatus.ALREADY_APPROVED));
         assertThat(lifecycle.approve(caller, "t", 99).status().name()).isEqualTo("UNCHANGED");
         verifyNoInteractions(items);
-        when(scores.getScoreStates(List.of("t"))).thenReturn(Map.of("t", new TaskScoreBandCore.TaskScoreState("t", -1,
+        when(scores.getScoreStates(List.of("t"))).thenReturn(Map.of("t", new TaskScoreBandCore.TaskScoreState("t", -2_000_000_000_000L,
                 TaskScoreBandCore.TaskScoreBand.TERMINAL, null, null)));
         when(commands.approveTask("t")).thenReturn(new TaskLifecycleCommands.TaskApprovalResult(TaskLifecycleCommands.TaskApprovalStatus.CONFLICT));
         assertThatThrownBy(() -> lifecycle.approve(caller, "t", 3)).isInstanceOfSatisfying(ServerException.class,

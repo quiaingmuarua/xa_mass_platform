@@ -14,7 +14,6 @@ public interface TaskScoreBandCore {
             RUNNING_VISIBLE_TAG,
             PRE_REVIEW_TAG
     );
-    long TERMINAL_SCORE_MAX = -1;
     long MUTABLE_SCORE_MIN = 1;
     long MIN_TIME_SLOT = 0;
     int TIME_SCALE = 10;
