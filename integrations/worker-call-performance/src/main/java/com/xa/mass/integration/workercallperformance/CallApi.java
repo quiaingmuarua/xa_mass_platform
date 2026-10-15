@@ -69,12 +69,17 @@ final class CallApi implements AutoCloseable {
     }
 
     private HttpResponse<String> send(String url, Object body, Duration timeout) throws Exception {
-        var request = HttpRequest.newBuilder(URI.create(url)).timeout(timeout);
-        String path = URI.create(url).getPath();
-        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) taskCallerHeaders.forEach(request::header);
+        var request = request(url, timeout);
         if (body == null) request.GET();
         else request.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(Jsons.toJson(body)));
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpRequest.Builder request(String url, Duration timeout) {
+        var request = HttpRequest.newBuilder(URI.create(url)).timeout(timeout);
+        String path = URI.create(url).getPath();
+        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) taskCallerHeaders.forEach(request::header);
+        return request;
     }
 
     CallLoad.Reply call(String task, String id, String worker) throws Exception {
@@ -160,8 +165,8 @@ final class CallApi implements AutoCloseable {
 
     /** Number of success lines in the streamed export of a terminal Task; payloads are not retained. */
     long exportCount(String task) throws Exception {
-        var request = HttpRequest.newBuilder(URI.create(runtime + "/api/v1/tasks/" + task + "/results:export"))
-                .timeout(Duration.ofSeconds(120)).POST(HttpRequest.BodyPublishers.noBody()).build();
+        var request = request(runtime + "/api/v1/tasks/" + task + "/results:export", Duration.ofSeconds(120))
+                .POST(HttpRequest.BodyPublishers.noBody()).build();
         var response = http.send(request, HttpResponse.BodyHandlers.ofLines());
         try (var lines = response.body()) {
             if (response.statusCode() != 200) throw new IllegalStateException("Export HTTP " + response.statusCode());
@@ -170,8 +175,8 @@ final class CallApi implements AutoCloseable {
     }
 
     long exportVerified(String task, String prefix, int items) throws Exception {
-        var request = HttpRequest.newBuilder(URI.create(runtime + "/api/v1/tasks/" + task + "/results:export"))
-                .timeout(Duration.ofSeconds(180)).POST(HttpRequest.BodyPublishers.noBody()).build();
+        var request = request(runtime + "/api/v1/tasks/" + task + "/results:export", Duration.ofSeconds(180))
+                .POST(HttpRequest.BodyPublishers.noBody()).build();
         var response = http.send(request, HttpResponse.BodyHandlers.ofLines());
         try (var lines = response.body()) {
             if (response.statusCode() != 200) throw new IllegalStateException("Export HTTP " + response.statusCode());
