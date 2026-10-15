@@ -67,7 +67,7 @@ class ScenarioCompositionIntegrationTest {
                 var rpc = context.getBean(com.xa.mass.server.task.call.TaskRpcPreparationService.class);
                 assertThat(context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class).list(CALLER, "default", 100, null).tasks()).isEmpty();
                 String id = rpc.prepare(CALLER, "raw", "composition-rpc", new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest(
-                        "default", "demo-sim", null, Map.of())).taskId();
+                        "default", "demo-sim", null, Map.of(), null)).taskId();
                 assertThat(get(client, base, "/api/v1/projects/default/tasks/" + id).statusCode()).isEqualTo(200);
                 assertThat(get(client, base, "/api/v1/projects/messages/tasks/" + id).statusCode()).isEqualTo(400);
             } else assertThat(directoryHttp.body()).isEqualTo("[]");

@@ -413,7 +413,7 @@ _AGENTFORGE_GROUPS = tuple(f"agentforge-{name}-workers" for name in (
 def _prove_agentforge_bindings(base_url: str) -> None:
     status, payload, _ = _request("GET", f"{base_url}/api/v1/projects", headers=TASK_CALLER_HEADERS)
     if status != 200 or json.loads(payload) != [
-        {"projectId": "agentforge", "workerGroupIds": list(_AGENTFORGE_GROUPS)}
+        {"projectId": "agentforge", "workerGroupIds": list(_AGENTFORGE_GROUPS), "workerGroupSource": "declared"}
     ]:
         raise RuntimeError("AgentForge directory must contain its declared Project, without default")
     path = f"{base_url}/api/v1/projects/agentforge/worker-groups"
@@ -421,7 +421,7 @@ def _prove_agentforge_bindings(base_url: str) -> None:
     groups = json.loads(payload)
     if status != 200 or len(groups) != 4 or any(
         row.get("workerGroup") is not None or row.get("matching") != {
-            "pools": [], "functions": ["workerId"]
+            "pools": [], "functions": [{"name": "workerId", "poolName": None}]
         } for row in groups
     ):
         raise RuntimeError("Unregistered Group bindings or directed-only capabilities differ")

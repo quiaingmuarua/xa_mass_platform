@@ -32,7 +32,9 @@ canonical encoding sorts fields and escapes non-ASCII characters. Worker ID
 comes from the HASH field and is not duplicated in JSON. Extra fields,
 Properties, non-string or empty values and malformed JSON are rejected.
 Read returns null for a corrupt record; registration returns INVALID without
-overwriting it. WorkerGroup JSON and create-only equality remain unchanged.
+overwriting it. WorkerGroup JSON and create-only equality remain unchanged. The Group catalog
+supports caller-driven HSCAN pages on this existing HASH in addition to point
+reads and random samples; there is no additional discovery index or key.
 
 `registerWorkers` runs a single bounded Lua over the Group and Binding HASHes,
 checking Group existence once and processing 1..100 IDs. Missing Binding is

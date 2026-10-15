@@ -10,6 +10,16 @@ import org.springframework.core.env.MapPropertySource;
 import static org.assertj.core.api.Assertions.*;
 
 class ProjectDirectoryTest {
+    @Test void defaultDeclaresRegisteredScopeWithoutDiscoveringOrProvisioningResources() {
+        var directory = new ProjectDirectory(new ProjectAssemblyProperties(List.of(
+                new ProjectDefinition("default", List.of()), new ProjectDefinition("business", List.of("bound")))), List.of());
+        assertThat(directory.require("default").workerGroupSource()).isEqualTo("registered");
+        assertThat(directory.require("default").workerGroupIds()).isEmpty();
+        directory.requireWorkerGroup("default", "registered-after-startup");
+        assertThat(directory.require("business").workerGroupSource()).isEqualTo("declared");
+        assertThatThrownBy(() -> directory.requireWorkerGroup("business", "registered-after-startup")).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        assertThatThrownBy(() -> new ProjectDefinition("default", List.of("bound"))).hasMessageContaining("do not declare bindings");
+    }
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(ProjectAssemblyProperties.class)
     @Import(ProjectDirectory.class)

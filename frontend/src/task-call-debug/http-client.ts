@@ -11,7 +11,7 @@ import type {
 import type {
   TaskCallDebugClient,
   TaskCallDebugClientRequest,
-  TaskCallDebugOutcome
+  TaskCallDebugResults
 } from "./types";
 
 const SAFE_ERROR_MESSAGES: Record<number, string> = {
@@ -61,78 +61,65 @@ export class HttpTaskCallDebugClient
     }
   }
 
-  async callTask(request: TaskCallDebugClientRequest): Promise<TaskCallDebugOutcome> {
+  async callTask(request: TaskCallDebugClientRequest): Promise<TaskCallDebugResults> {
     const requestId = createRequestId("task-call");
     try {
       const response = await this.client.post(
         `/v1/tasks/${encodeURIComponent(request.taskId)}/items:call`,
-        {
-          items: [
-            {
-              messageId: request.messageId,
-              eventCode: request.eventName,
-              payload: request.payload,
-              priority: 5,
-              workerSelector: request.workerSelector
-            }
-          ],
-          waitTimeoutMillis: request.waitTimeoutMillis
-        },
+        request.request,
         {
           headers: { "X-Request-Id": requestId, ...callerHeaders(request.caller) },
-          timeout: request.waitTimeoutMillis + 5_000
+          timeout: (request.request.waitTimeoutMillis ?? 60_000) + 5_000
         }
       );
-      if (response.status !== 200) throw schemaError(requestId);
-      const parsed = taskCallDebugResultsSchema.safeParse(response.data);
-      if (!parsed.success) throw schemaError(requestId);
-      const resultIds = Object.keys(parsed.data);
-      const outcome = parsed.data[request.messageId];
-      if (
-        resultIds.length !== 1 ||
-        resultIds[0] !== request.messageId ||
-        outcome === undefined
-      ) {
-        throw schemaError(requestId);
-      }
-      return outcome;
+      return readResults(
+        response.status,
+        response.data,
+        request.request.items.map((item) => item.messageId),
+        requestId
+      );
     } catch (error) {
       throw mapHttpError(error, requestId);
     }
   }
-
-  async loadResult(
+  async loadResults(
     caller: TaskCaller,
     taskId: string,
-    messageId: string
-  ): Promise<TaskCallDebugOutcome> {
+    messageIds: string[]
+  ): Promise<TaskCallDebugResults> {
     const requestId = createRequestId("task-result-load");
     try {
       const response = await this.client.post(
         `/v1/tasks/${encodeURIComponent(taskId)}/results:load`,
-        [messageId],
+        [...new Set(messageIds)],
         {
           headers: { "X-Request-Id": requestId, ...callerHeaders(caller) },
           timeout: 5_000
         }
       );
-      if (response.status !== 200) throw schemaError(requestId);
-      const parsed = taskCallDebugResultsSchema.safeParse(response.data);
-      if (!parsed.success) throw schemaError(requestId);
-      const resultIds = Object.keys(parsed.data);
-      const outcome = parsed.data[messageId];
-      if (
-        resultIds.length !== 1 ||
-        resultIds[0] !== messageId ||
-        outcome === undefined
-      ) {
-        throw schemaError(requestId);
-      }
-      return outcome;
+      return readResults(response.status, response.data, messageIds, requestId);
     } catch (error) {
       throw mapHttpError(error, requestId);
     }
   }
+}
+
+function readResults(
+  status: number,
+  data: unknown,
+  ids: string[],
+  requestId: string
+): TaskCallDebugResults {
+  if (status !== 200) throw schemaError(requestId);
+  const parsed = taskCallDebugResultsSchema.safeParse(data);
+  const expected = new Set(ids);
+  if (
+    !parsed.success ||
+    Object.keys(parsed.data).length !== expected.size ||
+    [...expected].some((id) => !Object.hasOwn(parsed.data, id))
+  )
+    throw schemaError(requestId);
+  return parsed.data;
 }
 
 function mapHttpError(error: unknown, fallbackRequestId: string): TaskCallDebugError {

@@ -1,8 +1,7 @@
-import { type TaskCaller } from "@/task-caller";
+import type { TaskCaller } from "@/task-caller";
 import { captureTaskCaller } from "@/console-identity";
 import { reactive } from "vue";
 import { defineStore } from "pinia";
-
 import type { RuntimeDataSourceMode } from "@/runtime-viewer/types";
 import {
   presentTaskCallDebugError,
@@ -11,127 +10,119 @@ import {
   type TaskCallDebugErrorPresentation
 } from "@/task-call-debug/errors";
 import {
-  DEFAULT_TASK_CALL_TIMEOUT_MILLIS,
-  validateTaskCallDebugDraft
+  EMPTY_RPC_REQUEST,
+  parseRpcRequest,
+  rpcMessageIds
 } from "@/task-call-debug/model";
-import type { TaskCallDebugClient, TaskCallDebugDraft } from "@/task-call-debug/types";
+import type {
+  TaskCallDebugClient,
+  RpcCallRequest,
+  TaskCallDebugResults
+} from "@/task-call-debug/types";
 
 export const TASK_CALL_DEBUG_HISTORY_LIMIT = 20;
-
-export type TaskCallDebugHistoryState =
-  | "sending"
-  | "succeeded"
-  | "not_observed"
-  | "unconfirmed"
-  | "request_rejected"
-  | "failed";
-
-/** Browser-memory diagnostic evidence. This is not a Task or Server resource. */
+/** Browser-session evidence, never an execution-state owner. */
 export interface TaskCallDebugHistoryItem {
   caller: TaskCaller;
   localId: string;
   taskId: string;
-  workerGroupId: string;
-  messageId: string;
-  eventName: string;
-  payloadText: string;
-  workerSelectorText: string;
+  request?: RpcCallRequest;
+  requestText: string;
+  messageIds: string[];
   sentAt: string;
-  state: TaskCallDebugHistoryState;
-  opaqueResultPayload?: string;
+  state: "sending" | "observed" | "unconfirmed" | "request_rejected";
+  results?: TaskCallDebugResults;
   safeError?: TaskCallDebugErrorPresentation;
   resultLoadError?: TaskCallDebugErrorPresentation;
-  completedAt?: string;
-  lastCheckedAt?: string;
+  readAt?: string;
   checkingResult?: boolean;
 }
-
 export function createTaskCallDebugStore(
   client: TaskCallDebugClient,
   mode: RuntimeDataSourceMode,
   now: () => Date = () => new Date()
 ) {
   return defineStore("taskCallDebug", () => {
-    const histories = reactive<Record<string, TaskCallDebugHistoryItem[]>>({});
+    const histories = reactive<Record<string, TaskCallDebugHistoryItem[]>>(
+      Object.create(null)
+    );
     const drafts = reactive<
-      Record<
-        string,
-        {
-          eventName: string;
-          payloadText: string;
-          executorName: string;
-          inputText: string;
-          waitTimeoutMillis: number;
-        }
-      >
-    >({});
+      Record<string, { requestText: string; resultIdsText: string }>
+    >(Object.create(null));
     function draft(taskId: string) {
-      drafts[taskId] ??= {
-        eventName: "",
-        payloadText: "{}",
-        executorName: "",
-        inputText: "{}",
-        waitTimeoutMillis: DEFAULT_TASK_CALL_TIMEOUT_MILLIS
-      };
+      if (mode === "mock" && !histories[taskId]) {
+        histories[taskId] = [
+          {
+            caller: captureTaskCaller(),
+            localId: "mock-batch",
+            taskId,
+            requestText: "Mock 批量结果样例",
+            messageIds: ["demo-success", "demo-failure", "demo-waiting"],
+            sentAt: "2026-01-01T00:00:00.000Z",
+            readAt: "2026-01-01T00:00:00.000Z",
+            state: "observed",
+            results: {
+              "demo-success": {
+                status: "succeeded",
+                opaqueResultPayload: '{"value":"Mock 原始输出"}'
+              },
+              "demo-failure": { status: "failed" },
+              "demo-waiting": { status: "not_observed" }
+            }
+          }
+        ];
+      }
+      drafts[taskId] ??= { requestText: EMPTY_RPC_REQUEST, resultIdsText: "" };
       return drafts[taskId]!;
     }
-    let lastMessageMillis = 0;
-    let messageSequence = 0;
-
-    function history(taskId: string): TaskCallDebugHistoryItem[] {
+    function history(taskId: string) {
       return histories[taskId] ?? [];
     }
-
-    function isBusy(taskId: string): boolean {
+    function isBusy(taskId: string) {
       return history(taskId).some(
-        (item) => item.state === "sending" || item.checkingResult === true
+        (item) => item.state === "sending" || item.checkingResult
       );
     }
-
-    async function send(draft: TaskCallDebugDraft): Promise<TaskCallDebugHistoryItem> {
-      requireApiMode();
-      const validated = validateTaskCallDebugDraft(draft);
-      if (isBusy(validated.taskId)) {
-        throw taskCallDebugConfigurationError(
-          "This Task already has a Task Call operation in progress."
-        );
-      }
-      const sentAtValue = now();
-      const messageId = nextMessageId(sentAtValue.getTime());
-      const created: TaskCallDebugHistoryItem = {
+    function admit(taskId: string) {
+      if (mode !== "api")
+        throw taskCallDebugConfigurationError("Mock 不执行真实 RPC 调用或结果读取。");
+      if (!taskId.trim()) throw taskCallDebugConfigurationError("请选择 Task ID。");
+      if (isBusy(taskId))
+        throw taskCallDebugConfigurationError("此 Task 的请求仍在进行中。");
+    }
+    function retain(
+      taskId: string,
+      requestText: string,
+      messageIds: string[],
+      request?: RpcCallRequest
+    ) {
+      histories[taskId] ??= [];
+      const entries = histories[taskId]!;
+      entries.push({
         caller: captureTaskCaller(),
-        localId: `task-call-debug-${messageId}`,
-        taskId: validated.taskId,
-        workerGroupId: validated.workerGroupId,
-        messageId,
-        eventName: validated.eventName,
-        payloadText: validated.payloadText,
-        workerSelectorText: validated.workerSelectorText,
-        sentAt: sentAtValue.toISOString(),
+        localId: crypto.randomUUID(),
+        taskId,
+        request,
+        requestText,
+        messageIds,
+        sentAt: now().toISOString(),
         state: "sending"
-      };
-      if (histories[validated.taskId] === undefined) {
-        histories[validated.taskId] = [];
-      }
-      const items = histories[validated.taskId]!;
-      items.push(created);
-      const item = items.at(-1)!;
-      trimHistory(items);
-
+      });
+      while (entries.length > TASK_CALL_DEBUG_HISTORY_LIMIT) entries.shift();
+      return entries[entries.length - 1]!;
+    }
+    async function send(taskId: string, requestText: string) {
+      admit(taskId);
+      const request = parseRpcRequest(requestText);
+      const item = retain(taskId, requestText, rpcMessageIds(request), request);
       try {
-        const outcome = await client.callTask({
+        item.results = await client.callTask({
           caller: item.caller,
-          taskId: validated.taskId,
-          messageId,
-          eventName: validated.eventName,
-          payload: validated.payload,
-          workerSelector: validated.workerSelector,
-          waitTimeoutMillis: validated.waitTimeoutMillis
+          taskId,
+          request: JSON.parse(JSON.stringify(request)) as RpcCallRequest
         });
-        item.state = outcome.status;
-        if (outcome.status === "succeeded") {
-          item.opaqueResultPayload = outcome.opaqueResultPayload;
-        }
+        item.readAt = now().toISOString();
+        item.state = "observed";
       } catch (cause) {
         item.state =
           cause instanceof TaskCallDebugError &&
@@ -143,102 +134,47 @@ export function createTaskCallDebugStore(
             ? "request_rejected"
             : "unconfirmed";
         item.safeError = presentTaskCallDebugError(cause);
-      } finally {
-        item.completedAt = now().toISOString();
-        trimHistory(items);
       }
       return item;
     }
-
-    async function loadResult(
-      taskId: string,
-      localId: string
-    ): Promise<TaskCallDebugHistoryItem> {
-      requireApiMode();
-      if (isBusy(taskId)) {
-        throw taskCallDebugConfigurationError(
-          "This Task already has a Task Call operation in progress."
-        );
-      }
-      const item = history(taskId).find((candidate) => candidate.localId === localId);
-      if (item === undefined || !["not_observed", "unconfirmed"].includes(item.state)) {
-        throw taskCallDebugConfigurationError(
-          "Only a not_observed or unconfirmed Task Call can load its Result."
-        );
-      }
+    async function loadResults(taskId: string, messageIds: string[], localId?: string) {
+      admit(taskId);
+      if (
+        !messageIds.length ||
+        messageIds.length > 100 ||
+        messageIds.some((id) => !id.trim())
+      )
+        throw taskCallDebugConfigurationError("每次读取 1～100 个 messageId。");
+      const existing = localId
+        ? history(taskId).find((item) => item.localId === localId)
+        : undefined;
+      if (localId && !existing)
+        throw taskCallDebugConfigurationError("会话请求已不存在。");
+      const item =
+        existing ??
+        retain(taskId, JSON.stringify(messageIds), [...new Set(messageIds)]);
       item.checkingResult = true;
       item.resultLoadError = undefined;
       try {
-        const outcome = await client.loadResult(
-          item.caller,
-          item.taskId,
-          item.messageId
-        );
-        item.lastCheckedAt = now().toISOString();
-        if (outcome.status === "succeeded") {
-          item.opaqueResultPayload = outcome.opaqueResultPayload;
-          item.state = "succeeded";
-          item.safeError = undefined;
-          item.completedAt = item.lastCheckedAt;
-        } else if (outcome.status === "failed") {
-          item.state = "failed";
-          item.safeError = undefined;
-          item.completedAt = item.lastCheckedAt;
-        }
+        item.results = await client.loadResults(item.caller, item.taskId, [
+          ...item.messageIds
+        ]);
+        item.readAt = now().toISOString();
+        item.state = "observed";
       } catch (cause) {
-        item.lastCheckedAt = now().toISOString();
         item.resultLoadError = presentTaskCallDebugError(cause);
+        if (!existing) item.state = "unconfirmed";
       } finally {
         item.checkingResult = false;
       }
       return item;
     }
-
-    function clear(taskId: string): boolean {
+    function clear(taskId: string) {
       if (isBusy(taskId)) return false;
       delete histories[taskId];
       return true;
     }
-
-    function requireApiMode(): void {
-      if (mode !== "api") {
-        throw taskCallDebugConfigurationError(
-          "Task Call is disabled while the Runtime Viewer uses Mock data."
-        );
-      }
-    }
-
-    function nextMessageId(currentMillis: number): string {
-      const monotonicMillis = Math.max(currentMillis, lastMessageMillis);
-      if (monotonicMillis === lastMessageMillis) {
-        messageSequence += 1;
-      } else {
-        lastMessageMillis = monotonicMillis;
-        messageSequence = 1;
-      }
-      return `task-debug-${monotonicMillis}-${messageSequence}`;
-    }
-
-    function trimHistory(items: TaskCallDebugHistoryItem[]): void {
-      while (items.length > TASK_CALL_DEBUG_HISTORY_LIMIT) {
-        const removableIndex = items.findIndex(
-          (item) => item.state !== "sending" && item.checkingResult !== true
-        );
-        if (removableIndex < 0) return;
-        items.splice(removableIndex, 1);
-      }
-    }
-
-    return {
-      histories,
-      draft,
-      history,
-      isBusy,
-      send,
-      loadResult,
-      clear
-    };
+    return { histories, draft, history, isBusy, send, loadResults, clear };
   })();
 }
-
 export type TaskCallDebugStore = ReturnType<typeof createTaskCallDebugStore>;

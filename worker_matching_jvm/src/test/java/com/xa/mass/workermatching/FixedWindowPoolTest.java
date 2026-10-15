@@ -19,6 +19,25 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class FixedWindowPoolTest {
+    @Test void capabilityReadsExposeArbitraryBindingsWithoutFactsOrInventoryOperations() {
+        var store = mock(FactsIndexStore.class);
+        when(store.keyspace()).thenReturn(new RedisKeyspace("test_capability_metadata"));
+        when(store.indexedGroups()).thenReturn(Set.of());
+        var config = Map.of("g", new MatchingGroup(Set.of("custom-window", "any"),
+                Set.of("custom.available", "worker.any")));
+        var definition = new FixedWindowPoolDefinition("custom-window", "custom.available", "time", "count",
+                Map.of("g", new WindowLimit(60000, 10)));
+        try (var composition = new MatchingComposition(store, config, () -> 1L, List.of(definition), List.of(), List.of())) {
+            clearInvocations(store);
+            assertEquals(List.of(new WorkerMatchingCatalog.FunctionCapability("custom.available", "custom-window"),
+                    new WorkerMatchingCatalog.FunctionCapability("worker.any", "any"),
+                    new WorkerMatchingCatalog.FunctionCapability("workerId", null)), composition.catalog().capabilities("g").functions());
+            assertEquals(List.of(new WorkerMatchingCatalog.FunctionCapability("workerId", null)),
+                    composition.catalog().capabilities("late-group").functions());
+            assertTrue(composition.catalog().capabilities("late-group").pools().isEmpty());
+            verifyNoInteractions(store);
+        }
+    }
     final AtomicLong clock = new AtomicLong(120_000), clockReads = new AtomicLong();
     final CandidateBudget budget = new CandidateBudget();
     final WorkerCandidatePool pool = new WorkerCandidatePool(clock::get, budget);

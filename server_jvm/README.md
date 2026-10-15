@@ -115,7 +115,7 @@ Task type returns `400/12008`.
 | Operation | Admission | State effect | Failure boundary | Reference |
 | --- | --- | --- | --- | --- |
 | Project directory | Startup declarations only | Return configured Project views without Redis reads | No initialization or implicit default | [Project directory](#projects-and-explicit-rpc-tasks) |
-| Project Group capabilities | Known Project Group identities | Point-read descriptors in batches of 100 and immutable Matching enablement | Missing descriptors stay null; reads do not imply ready Workers | [Project directory](#projects-and-explicit-rpc-tasks) |
+| Project Group capabilities | Declared bindings, or all registered Groups for explicit default | Point-read bound descriptors; default traverses existing Group HASH pages; attach immutable Matching enablement | Missing/corrupt descriptors stay null; discovery is not an atomic snapshot or evidence of ready Workers | [Project directory](#projects-and-explicit-rpc-tasks) |
 | Known Project Task | Project plus Task identity | Read descriptor attribution and Score without discovery | Ownership checks precede state reads | [Project directory](#projects-and-explicit-rpc-tasks) |
 | Project lookup | Configured Project; no default | Return Project identity and its bound Group list | Read never initializes resources | [Project directory](#projects-and-explicit-rpc-tasks) |
 | Project Task list | Configured Project; `limit=1..1000` | Select a bounded Project or user batch and read independent Task/Score projections | Missing projections stay null; corruption fails | [Server task directory](#task-attribution-and-directory) |
@@ -216,21 +216,35 @@ creates or reuses and approves a `PARK_WHEN_IDLE` Task. Project membership is op
 shared by the `xa.mass.project-assembly.projects` configuration list and module
 Beans. ProjectDirectory combines the configuration list with name-sorted module
 declarations into one immutable directory. IDs must be unique across all sources,
-even for identical declarations; Group lists remain nonempty and unique. YAML
+even for identical declarations; Group lists remain unique and nonempty except for explicit `default`, which must declare an empty list. YAML
 list overlays replace only the configuration contribution, not enabled modules.
-There is no override precedence, merge-by-ID, registration/update/deletion API,
-Redis registry, dynamic association or default Project. Boot owns environment
+There is no override precedence, merge-by-ID, Project registration/update/deletion API or implicit default Project. Boot owns environment
 bindings; enabled modules can contribute their own Project identities.
 
 Startup initializes configured WorkerGroups, validates module dependencies and starts
-Adapter ingress before scenarios. Project responses are `{projectId, workerGroupIds}`;
-lookup never provisions a Task. SMS prepares its own shared RPC Task when starting.
+Adapter ingress before scenarios. Project responses are `{projectId, workerGroupIds, workerGroupSource}`;
+lookup never provisions a Task. `workerGroupSource` is `registered` for explicit
+`default` and `declared` otherwise. The IDs describe startup declarations, not a
+resolved registered directory. Only default's worker-groups read traverses the
+existing Group HASH via WorkerResourceCatalog, deduplicates and sorts IDs. A read
+failure returns 503 rather than a partial successful catalog; repeated cursors
+are rejected. No discovery cache, background scan or new Redis key is added.
+Default admission accepts any registered Group; each write still point-checks
+registration. Other Projects retain explicit binding checks. Directory recovery,
+RPC preparation and requirement validation use the same scope rule. Matching
+still owns per-Group enablement; registration does not enable Pools/functions.
+SMS prepares its own shared RPC Task when starting.
 Messages and App Checks validate bindings but create only finite business Tasks.
 
 `TaskRpcPreparationService.prepare(caller, inputOwner, taskId, request)` is the common HTTP/Scenario
-entry. Its request contains `projectId`, `workerGroupId`, optional `name` and string
-`metadata`; the caller owns Task ID naming. Server supplies the creator from the caller without decoding Task ID conventions. It validates the Project/registered Group and
-uses priority 0, maxRetryTimes 3 and the Group's configured RPC refill snapshot.
+entry. Its request contains `projectId`, `workerGroupId`, optional `name`, string
+`metadata` and optional `refill` (at most 100 declarations). Explicit supply is
+normalized by Matching and fully replaces the host Group default; `[]` means no
+supply, explicit null is invalid. Omission retains host-default resolution for
+SMS and programmatic callers. Malformed explicit supply is rejected before
+creation. Saved supply participates in exact descriptor comparison and cannot be
+updated through preparation; the caller owns Task ID naming. Server supplies the creator from the caller without decoding Task ID conventions. It validates the Project/registered Group and
+uses priority 0, maxRetryTimes 3 and the resolved RPC refill snapshot.
 Same-ID mutations share `OperationGuard.taskMutation`. A matching descriptor is
 reused and an unfinished approval can be completed; an admitted admin reusing another caller's Task preserves its original creator and creation time; conflicts and terminal Tasks
 are rejected without overwrite or reopening. Creation, Server directory registration and approval remain separate
@@ -313,7 +327,7 @@ The [Matching Owner](../worker_matching_jvm/README.md#item-queries-and-pool-main
 owns function names, input shapes, bounds and Pool semantics; Server gains no
 predicate interpretation, candidate selection, alternative search or lease authority.
 
-Explicit RPC preparation saves `[]` unless `xa.mass.task-rpc.refill-by-worker-group`
+RPC preparation without an explicit refill saves `[]` unless `xa.mass.task-rpc.refill-by-worker-group`
 supplies complete RefillTarget JSON strings (Lab overrides remain 1000).
 Re-registration compares the complete expected descriptor; lookup reads saved
 declarations without resolving new defaults. Old Task layouts require a new scope,
@@ -365,6 +379,13 @@ skips matching complete identities without rewriting them, and rejects content
 conflicts. Explicit re-import uses the original stored Item to initialize a
 missing Score through the existing append operation. A Score without Item data
 is unavailable, not reconstructed. Ordinary append semantics remain unchanged.
+GET `/api/v1/tasks/{taskId}/results:preview` exposes the existing bounded
+TaskDataService preview after TaskCaller admission: at most 100 entries and a
+truncation flag, without continuation. Entries contain messageId, nullable Item,
+and the existing Result state with opaque successful output. It is neither a
+latest-result ordering nor Task progress. Terminal successful JSONL export remains
+independent and complete; neither path applies Scenario business interpretation.
+
 `loadTaskItems` supplies bounded 100-ID reads to business export without Redis
 access from scenarios. None of these operations scans for substitute identities.
 

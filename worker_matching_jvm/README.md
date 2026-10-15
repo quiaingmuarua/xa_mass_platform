@@ -444,8 +444,13 @@ needed. Platform-only composition passes empty declaration collections.
 
 ## Capability Observation
 
-`WorkerMatchingCatalog.capabilities(group)` returns immutable enabled Pool and
-query names, including global `workerId`. It reads startup values only: no Facts,
+Capabilities expose functions as `{name,poolName}`. The nullable Pool name comes
+from the same immutable dependency bindings used at composition: stock consumers
+name their resource; independent identity/Phone functions have null. There is no
+name-derived inference or requirement that a Task supply its own consumption Pool.
+
+`WorkerMatchingCatalog.capabilities(group)` returns immutable enabled Pool names and
+function descriptors, including global `workerId`. It reads startup values only: no Facts,
 Redis, stock or readiness lookup. The Server separately checks Project binding
 and registered Group evidence. This metadata transfers no selection or mutation
 authority.

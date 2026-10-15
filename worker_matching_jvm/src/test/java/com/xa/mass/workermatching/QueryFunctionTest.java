@@ -14,14 +14,14 @@ class QueryFunctionTest {
 
     DefaultWorkerMatchingCatalog catalog(Map<String, QueryFunction> functions) {
         return new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis, Map.of(),
-                functions, Map.of("g", new MatchingGroup(Set.of(), functions.keySet())), List.of(), Set.of());
+                functions, Map.of("g", new MatchingGroup(Set.of(), functions.keySet())), List.of(), Set.of(), Map.of());
     }
 
     @Test void globalAvailabilityIsCompositionDataAndAllowsUnknownGroups() {
         {
             var catalog = new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis,
                      Map.of(), Map.of("renamed", new com.xa.mass.workermatching.functions.IdentityQueryFunction()),
-                     Map.of(), List.of(), Set.of("renamed"));
+                     Map.of(), List.of(), Set.of("renamed"), Map.of());
             assertEquals("w", catalog.take("not-configured", Map.of("m", new WorkerQuery("renamed", "w"))).get("m").workerId());
             assertThrows(IllegalArgumentException.class, () -> catalog.normalizeQuery("g", new WorkerQuery("workerId", "w")));
         }
@@ -170,7 +170,7 @@ class QueryFunctionTest {
 
         {
             var catalog = new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis,
-                        Map.of("map", rule), Map.of("map", function), Map.of("g", new MatchingGroup(Set.of("map"), Set.of("map"))), List.of("map"), Set.of());
+                        Map.of("map", rule), Map.of("map", function), Map.of("g", new MatchingGroup(Set.of("map"), Set.of("map"))), List.of("map"), Set.of(), Map.of());
             var targets = List.of(new RefillTarget("map", new EligibilityQuery(Map.of()), 1));
             assertEquals(Map.of("g",1), catalog.observeRefillDeficits(Map.of("g", targets)));
             assertEquals(1, catalog.refill("g", targets, Map.ofEntries(Map.entry("w", (long) (44)))).admittedWorkerIds().size());

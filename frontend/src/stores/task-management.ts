@@ -34,11 +34,16 @@ export function newRawTaskDraft() {
     caller: captureTaskCaller(),
     requestId: crypto.randomUUID(),
     groupId: "",
-    format: "txt" as "txt" | "jsonl",
+    format: "payload" as "payload" | "txt" | "jsonl",
+    inputMode: "paste" as "paste" | "file",
+    pasteText: "",
     eventCode: "",
     payloadKey: "",
-    selectorText: "",
+    executorName: "",
+    queryInput: "{}",
     refillText: "[]",
+    refillMode: "rows" as "rows" | "json",
+    supplyRows: [] as { poolName: string; targetText: string; count: number }[],
     priority: 50,
     retries: 3,
     file: undefined as File | undefined,
@@ -88,6 +93,7 @@ export function createTaskManagementStore(
         current.caller = captureTaskCaller();
         current.file = undefined;
         current.content = undefined;
+        current.pasteText = "";
         current.inputError = "";
       }
       state.submissionKey = "";

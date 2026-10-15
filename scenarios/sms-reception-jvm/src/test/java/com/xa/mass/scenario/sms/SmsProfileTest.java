@@ -59,7 +59,7 @@ class SmsProfileTest {
             assertThat(service.isRunning()).isTrue();
             assertThat(context.getBeansOfType(SmsController.class)).hasSize(1);
             verify(registrations).prepare(SERVICE, "sms", SmsReceptionService.rpcTaskId("demo-sim"),
-                    new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("sms", "demo-sim", null, Map.of()));
+                    new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("sms", "demo-sim", null, Map.of(), null));
         }
         assertThat(service.isRunning()).isFalse();
     }

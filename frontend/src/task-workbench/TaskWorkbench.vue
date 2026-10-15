@@ -44,12 +44,11 @@ watch(
 );
 function selectProject(id: string) {
   if (id === projectId.value) return;
-  const { group } = session.project(id).rpcQuery;
   return router.push({
     query: {
       project: id,
       tab: tab.value,
-      ...(tab.value === "rpc" ? { group } : {})
+      ...(tab.value === "rpc" ? session.project(id).rpcQuery : {})
     }
   });
 }
@@ -90,7 +89,7 @@ function selectTab(value: string | number) {
       >
     </header>
     <el-tabs :model-value="tab" @tab-change="selectTab"
-      ><el-tab-pane label="RPC 调用" name="rpc" /><el-tab-pane
+      ><el-tab-pane label="RPC 任务" name="rpc" /><el-tab-pane
         label="有限任务"
         name="finite"
     /></el-tabs>

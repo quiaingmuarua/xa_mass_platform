@@ -640,40 +640,56 @@ Raw Item append is enabled only for `server.inputOwner=raw`; business Tasks keep
 their Scenario import conversion.
 Approval and closure use the shared Task client, including for Scenario Tasks.
 
-RPC uses `project=...&tab=rpc&group=...` and the logged-in user.
-The caller display is read-only; a `user` URL parameter cannot select a creator.
-`rpc-workbench-v1.<project>.<user>.<group>` uses separately encoded UTF-8 Base64URL
-segments without padding. Server stamps the creator; the preparation payload excludes
-`metadata.userId` and reserved `server.*` fields. No user registry or quota is added.
-Existing Tasks are point-read by the stable ID, independent of the current batch.
-Only the explicit create/reuse button calls `POST /v1/tasks/{taskId}/rpc:prepare`;
-route changes, reads and calls never create a Task. Preparation includes approval.
-Unconfirmed attempts retain their original identity/request for manual read or
-explicit re-preparation. Re-preparing a known descriptor excludes reserved `server.*`
-metadata from the input. PRE_REVIEW, stale and terminal Tasks cannot be called.
-`project=...&tab=rpc&taskId=...` opens an existing Task directly, including Tasks without user
-metadata; Runtime links preserve this actual identity. Group capabilities come from the existing
-Project worker-groups endpoint, not a random inventory sample. Task supply is
-read-only. The Event catalog supplies suggestions; custom full names remain
-accepted. The user explicitly selects an enabled Matching function and supplies
-non-null JSON input under the existing bounded query contract. There is no
-implicit `worker.any` selection or inference of business query parameters.
-A missing Group descriptor is explicitly unregistered; refresh after deployment
-registration, without preparing Tasks implicitly. A `workerId` input is a JSON
-string (for example `"worker-123"`), so a Group without Pools can still use directed
-calls and empty Task supply. Declared capabilities do not prove a live Handler.
+RPC uses a Task list at `project=...&tab=rpc`, content-area creation at
+`view=create`, a read-only configuration drawer at `taskId=...`, and one JSON
+debug page at `view=debug&taskId=...`. The current Project batch is filtered for
+PARK_WHEN_IDLE Tasks; missing descriptors remain unavailable and no refill read
+is made to fill the list. This is not a complete or latest RPC history. Known IDs
+can be point-read outside that batch. Runtime links open configuration first.
 
-Calls continue to submit one Item through `items:call`, with a 3000ms initial
-wait and the existing 1..60000ms range. Per-Task history keeps the latest 20
-browser-session records. Execution failure, not-observed results, request
-rejection and uncertain requests are separate observations. Uncertain and
-not-observed calls may manually load the original message ID; neither is
-automatically resubmitted. Group switching retains separate Task drafts and histories within a login,
-and late responses update only their original call or preparation. Mock includes
-read-only caller examples and disables preparation and calls.
+Creation uses the logged-in user; a `user` query parameter cannot select another
+creator. `rpc-workbench-v1.<project>.<user>.<group>` retains independently encoded
+UTF-8 Base64URL segments without padding. One triple reuses one immutable Task.
+The form selects a registered Group, optional name and explicit Pool supply,
+initially `[]`. The finite-task supply editor is shared. Target `{}` and count
+100 are editable initial values, not guaranteed eligibility, concurrency or
+exclusive Worker quotas. Priority 0 and maxRetryTimes 3 remain read-only.
+
+Only explicit creation or resumption calls `rpc:prepare`; route changes, reads
+and calls never prepare Tasks. The workbench always sends `refill`, including
+empty supply, and freezes its caller, ID and full request on first preparation.
+Same-ID configuration conflicts cannot update a Task. Unconfirmed preparation
+retains that request for manual reconciliation; PRE_REVIEW can be explicitly
+prepared, terminal Tasks cannot reopen. Existing raw Tasks can also be opened
+by their actual ID. Scenario-owned RPC Tasks remain read-only in this workbench.
+
+Web debugging submits the existing `{items, waitTimeoutMillis}` request as JSON.
+Each request holds 1..100 Items; one Item uses the same editor and adapter. There
+is no chunking, automatic replay, synthesized message ID on submission or implicit
+Task creation. Example insertion generates a visible ID before submission.
+Worker queries accept bounded non-null JSON, including `workerId` strings;
+Matching retains local parameter interpretation. Duplicate IDs keep the Server's
+last-input behavior and are disclosed before submission. Shared Pool supply and
+per-Item queries remain independent.
+
+The adapter checks the full deduplicated response identity set. Each message
+independently shows succeeded, failed or not_observed with original Worker output.
+Uncertain HTTP outcomes and rejected requests are separate from Item execution
+failure; non-2xx does not prove no work occurred. Manual `results:load` reads use
+original IDs and caller snapshots, including batches entered without browser
+history. Failed reads preserve the previous results and successful read time.
+The UI never automatically resends; same message IDs are not an exactly-once
+promise. The default example waits 3000ms; omission follows the Server default.
+
+A Task keeps 20 browser-session request records and its JSON draft. Project list
+filters, scroll and creation drafts remain separate. Late responses update only
+their original Task/session. Request and POSIX cURL examples use current API paths
+and declared caller headers; no SDK or persistent invocation journal is added.
+Mock includes static mixed batch observations and disables preparation/calls/reads;
+API never falls back to Mock.
 
 Finite tasks use `project=...&tab=finite`, `taskId=...` for details and `view=create`
-for the creation drawer. The selected Project collection excludes PARK_WHEN_IDLE
+for the content-area creation page. The selected Project collection excludes PARK_WHEN_IDLE
 descriptors without fetching replacements. Unknown descriptors
 remain visible and cannot be mutated. Create, append, approve and close use
 fresh Server state, so reloading the browser does not lose the ability to manage
@@ -689,12 +705,34 @@ navigate or write into the newly selected context. Finite writes keep one shared
 in-flight gate; an uncertain receipt freezes only its own Project's submission.
 No drafts, numbers or receipts are persisted to browser storage.
 
-The create drawer separates Task supply from Item queries. Any/Country templates
-are offered only when enabled; other rules need explicit input. TXT maps each
-line into one payload field; JSONL accepts complete TaskItem envelopes with
-object payload and optional priority/TTL. Both are UTF-8, limited to 1 MiB/10,000
-lines and fully validated before creation. Duplicate JSONL identities reject
-the file. Additional TXT imports keep a unique fixed import prefix.
+The creation page separates execution configuration, raw input and submission
+summary. Group/Event/function/Pool choices come from the capabilities response.
+Functions expose their actual nullable Pool binding; applying a supply suggestion
+is explicit, starts at target `{}` and count 100, and never overwrites edits on
+refresh. Complete refill JSON remains available and supply/query may differ.
+Priority 50 and retry 3 remain under advanced settings.
+
+Payload JSONL is the default: each object is a raw payload using the selected
+Event/query. TXT maps each physical line, including empty lines, to an explicit
+field. Complete Item JSONL retains its own identity, Event, query and optional
+priority/TTL. All support UTF-8 file or paste, 1 MiB/10,000 physical lines and
+whole-input validation before creation. JSONL ignores blank lines while preserving
+physical error/identity coordinates; duplicate Item identities fail. Payload/TXT
+content is not deduplicated; extra imports use a fixed submission prefix. Only
+three examples are rendered. Matching remains the semantic parameter validator.
+
+Project reads include `workerGroupSource`: explicit default uses registered Groups,
+other Projects use declared IDs. Both RPC and finite selectors use the capabilities
+endpoint; startup declarations are not used as a resolved inventory. Default lists
+all registered Groups on manual refresh and never automatically enables Pools.
+Failed capability refresh keeps the old snapshot and disables dependent writes.
+
+Finite detail exposes GET `tasks/{id}/results:preview`: at most 100 raw Results,
+with truncation, refresh time and stale snapshot feedback. It does not interpret
+business answers. JSON formatting is optional; copying and terminal successful
+JSONL export preserve original strings. Preview/filters do not bound export.
+Mock demonstrates the same shapes with zero service calls while raw writes and
+export remain disabled.
 
 Append batches remain at most 100. Rejection or uncertainty stops further
 batches while retaining confirmed, rejected, unconfirmed and unsubmitted counts.

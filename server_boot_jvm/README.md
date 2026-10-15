@@ -23,7 +23,7 @@ Preview's host configuration and enabled module declarations form this topology:
 
 | Project | Groups | Declared events and Matching resources |
 | --- | --- | --- |
-| `default` | `demo-sim`, `app-a-sim`, `app-b-sim` | Explicit raw Task workspace; existing Group capabilities are reused |
+| `default` | All currently registered Groups, read on demand | Explicit raw Task workspace; existing Group capabilities are reused |
 | `sms` | `demo-sim` | String/SMS/Messages events; Partitioned SMS, Country and Messaging Pools; independent `worker.phone` query |
 | `messages` | `demo-sim`, `app-a-sim`, `app-b-sim` | `extension.worker.message.send`; Group-isolated Messaging Pool and `worker.messaging.available` |
 | `app-checks` | `app-a → app-a-sim`, `app-b → app-b-sim` | `extension.worker.app.registration.check`; Any and assignment-window Pools, `worker.any` and `worker.assignment.available` |
@@ -167,6 +167,13 @@ connection, unique scope and endpoints. Distribution owns
 finite vertical Worker proof.
 
 ## Project topology
+
+Preview explicitly declares `default` with `worker-group-ids: []`. Server resolves
+its available Groups from current registration when capabilities are requested;
+new HTTP registrations appear on refresh. Nonempty default bindings fail startup.
+Other Projects retain explicit lists. Plain platform and AgentForge do not receive
+an implicit default Project. No Group, Pool or Worker is registered by this convention.
+
 
 Production profiles can declare `xa.mass.project-assembly.projects` as a list:
 

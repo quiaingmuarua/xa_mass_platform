@@ -11,6 +11,7 @@ export const MAX_TASK_SEED_LINES = 10_000;
 export const TASK_APPEND_CHUNK_SIZE = 100;
 
 export function parseSeedLines(content: ArrayBuffer): string[] {
+  if (content.byteLength > MAX_TASK_SEED_BYTES) throw new Error("单次输入最多 1 MiB");
   const lines = splitTextLines(decodeUtf8(content));
   if (lines.length > MAX_TASK_SEED_LINES) {
     throw new Error(`The input file must not exceed ${MAX_TASK_SEED_LINES} lines.`);
@@ -66,14 +67,15 @@ export function parseJsonlItems(
   group: ProjectGroup
 ): TaskItemApiRequest[] {
   const identities = new Set<string>();
-  return parseSeedLines(content).map((line, index) => {
+  return parseSeedLines(content).flatMap((line, index) => {
+    if (!line.trim()) return [];
     try {
       const parsed = itemSchema.parse(JSON.parse(line));
       if (identities.has(parsed.messageId)) throw new Error("messageId 重复");
       identities.add(parsed.messageId);
       const workerSelector = parseWorkerSelector(JSON.stringify(parsed.workerSelector));
       requireItemCapability(group, parsed.eventCode, workerSelector.executorName);
-      return { ...parsed, workerSelector };
+      return [{ ...parsed, workerSelector }];
     } catch (error) {
       const reason =
         error instanceof z.ZodError
@@ -93,19 +95,23 @@ export function requireItemCapability(
 ): void {
   if (!group.workerGroup?.eventCodes.includes(event))
     throw new Error("事件未由当前 Group 声明");
-  if (!group.matching.functions.includes(executor))
+  if (!group.matching.functions.some((fn) => fn.name === executor))
     throw new Error("查询函数未由当前 Group 启用");
 }
-export function defaultSupply(group: ProjectGroup) {
-  const pool = ["any", "country"].find(
-    (name) =>
-      group.matching.pools.includes(name) &&
-      group.matching.functions.includes("worker." + name)
-  );
-  return pool
-    ? {
-        refill: [{ poolName: pool, target: {}, count: 100 }],
-        selector: { executorName: "worker." + pool, input: {} }
-      }
-    : { refill: [], selector: undefined };
+export function suggestedSupply(group: ProjectGroup, executor: string) {
+  const fn = group.matching.functions.find((fn) => fn.name === executor);
+  if (!fn) throw new Error("请选择当前 Group 的查询函数");
+  return fn.poolName ? [{ poolName: fn.poolName, target: {}, count: 100 }] : [];
+}
+
+export function parsePayloadLines(content: ArrayBuffer): FiniteTaskSeedItem[] {
+  return parseSeedLines(content).flatMap((line, index) => {
+    if (!line.trim()) return [];
+    try {
+      const payload = z.record(z.string(), jsonValueSchema).parse(JSON.parse(line));
+      return [{ lineNumber: index + 1, payload }];
+    } catch {
+      throw new Error(`第 ${index + 1} 行无效：payload 必须是 JSON 对象`);
+    }
+  });
 }

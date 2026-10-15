@@ -148,6 +148,22 @@ public class TaskDataController {
         ));
     }
 
+    @org.springframework.web.bind.annotation.GetMapping("/{taskId}/results:preview")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Bounded raw Result preview"),
+            @ApiResponse(responseCode = "400", description = "Task identity or type is invalid",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "503", description = "Task data is unavailable",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+    })
+    @Operation(summary = "Preview at most 100 raw Task results without continuation",
+            description = "A bounded observed batch, not latest results or full task progress. Worker output is not interpreted.")
+    public TaskDataService.ResultPreview previewTaskResults(
+            @io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller,
+            @PathVariable @NotBlank String taskId) {
+        return taskData.previewTaskResults(caller, taskId);
+    }
+
     @Operation(
             summary = "Load TaskItem result states",
             description = "Returns succeeded, failed, or not_observed for "

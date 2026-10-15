@@ -1,11 +1,13 @@
 import type { TaskCaller } from "@/task-caller";
 import { normalizeTaskUserId } from "@/task-user-id";
+import type { RefillTarget } from "@/runtime-viewer/types";
 
 export interface RpcTaskPrepareRequest {
   projectId: string;
   workerGroupId: string;
   name?: string | null;
   metadata: Record<string, string>;
+  refill?: RefillTarget[];
 }
 
 export interface RpcTaskPreparationClient {

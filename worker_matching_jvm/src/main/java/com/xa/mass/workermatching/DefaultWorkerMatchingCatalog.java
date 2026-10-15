@@ -14,15 +14,17 @@ public final class DefaultWorkerMatchingCatalog implements WorkerMatchingCatalog
     private final Map<String, QueryFunction> queryFunctions;
     private final Map<String, MatchingGroup> groups;
     private final Set<String> globalFunctions;
+    private final Map<String, String> poolByFunction;
     private final PoolRefillCoordinator refillCoordinator;
 
     public DefaultWorkerMatchingCatalog(CandidateBudget budget, Map<String, WorkerCandidatePool> pools,
             LongSupplier clock, Map<String, PoolRefillPolicy> poolPolicies,
             Map<String, QueryFunction> queryFunctions, Map<String, MatchingGroup> groups,
-            List<String> poolOrder, Set<String> globalFunctions) {
+            List<String> poolOrder, Set<String> globalFunctions, Map<String, String> poolByFunction) {
         this.queryFunctions = Map.copyOf(queryFunctions);
         this.groups = Map.copyOf(groups);
         this.globalFunctions = Set.copyOf(globalFunctions);
+        this.poolByFunction = Map.copyOf(poolByFunction);
         if (!queryFunctions.keySet().containsAll(this.globalFunctions))
             throw new IllegalArgumentException("unknown global function");
         queryFunctions.keySet().forEach(id -> requireNonBlank(id, "executorName"));
@@ -38,7 +40,8 @@ public final class DefaultWorkerMatchingCatalog implements WorkerMatchingCatalog
         var enabled = groups.getOrDefault(group, new MatchingGroup(Set.of(), Set.of()));
         var functions = new TreeSet<>(globalFunctions);
         functions.addAll(enabled.functions());
-        return new Capabilities(enabled.pools(), functions);
+        return new Capabilities(enabled.pools(), functions.stream()
+                .map(name -> new FunctionCapability(name, poolByFunction.get(name))).toList());
     }
 
     private QueryFunction requireFunction(String group, String name) {

@@ -39,10 +39,9 @@
         "properties" : {
           "functions" : {
             "items" : {
-              "type" : "string"
+              "$ref" : "#/components/schemas/FunctionCapability"
             },
-            "type" : "array",
-            "uniqueItems" : true
+            "type" : "array"
           },
           "pools" : {
             "items" : {
@@ -154,6 +153,17 @@
         },
         "type" : "object"
       },
+      "FunctionCapability" : {
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "poolName" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ProjectTasks" : {
         "properties" : {
           "projectId" : {
@@ -181,6 +191,9 @@
               "type" : "string"
             },
             "type" : "array"
+          },
+          "workerGroupSource" : {
+            "type" : "string"
           }
         },
         "type" : "object"
@@ -219,6 +232,34 @@
           }
         },
         "required" : [ "count", "poolName", "target" ],
+        "type" : "object"
+      },
+      "ResultEntry" : {
+        "properties" : {
+          "item" : {
+            "$ref" : "#/components/schemas/TaskItem"
+          },
+          "messageId" : {
+            "type" : "string"
+          },
+          "result" : {
+            "$ref" : "#/components/schemas/TaskItemResultResponse"
+          }
+        },
+        "type" : "object"
+      },
+      "ResultPreview" : {
+        "properties" : {
+          "results" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ResultEntry"
+            },
+            "type" : "array"
+          },
+          "truncated" : {
+            "type" : "boolean"
+          }
+        },
         "type" : "object"
       },
       "Role" : {
@@ -313,6 +354,36 @@
         "properties" : {
           "taskId" : {
             "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "TaskItem" : {
+        "properties" : {
+          "createdAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "eventCode" : {
+            "type" : "string"
+          },
+          "expireAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "messageId" : {
+            "type" : "string"
+          },
+          "payload" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "priority" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "workerSelector" : {
+            "$ref" : "#/components/schemas/WorkerQuery"
           }
         },
         "type" : "object"
@@ -464,7 +535,7 @@
             "additionalProperties" : {
               "type" : "string"
             },
-            "description" : "String metadata; server.* keys are reserved. Optional userId must match ^[1-9a-z][0-9a-z]{3,8}$ after trimming.",
+            "description" : "String metadata; userId and server.* keys are reserved. Server stamps the admitted creator.",
             "type" : "object"
           },
           "name" : {
@@ -475,6 +546,15 @@
           "projectId" : {
             "minLength" : 1,
             "type" : "string"
+          },
+          "refill" : {
+            "description" : "Optional explicit Pool supply. Omission uses the host Group RPC default; [] means no supply. Explicit null is invalid. Saved supply is immutable.",
+            "items" : {
+              "$ref" : "#/components/schemas/RefillTarget"
+            },
+            "maxItems" : 100,
+            "minItems" : 0,
+            "type" : "array"
           },
           "workerGroupId" : {
             "minLength" : 1,
@@ -2542,6 +2622,82 @@
           }
         },
         "summary" : "Load TaskItem result states",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/results:preview" : {
+      "get" : {
+        "description" : "A bounded observed batch, not latest results or full task progress. Worker output is not interpreted.",
+        "operationId" : "previewTaskResults",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Declared role must match the current Server user directory",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultPreview"
+                }
+              }
+            },
+            "description" : "Bounded raw Result preview"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task identity or type is invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task data is unavailable"
+          }
+        },
+        "summary" : "Preview at most 100 raw Task results without continuation",
         "tags" : [ "Tasks" ]
       }
     },

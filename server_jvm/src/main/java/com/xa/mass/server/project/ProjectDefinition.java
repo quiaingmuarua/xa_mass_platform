@@ -8,7 +8,10 @@ public record ProjectDefinition(String projectId, List<String> workerGroupIds) {
     public ProjectDefinition {
         if (projectId == null || projectId.isBlank())
             throw new IllegalArgumentException("projectId must be non-blank");
-        if (workerGroupIds == null || workerGroupIds.isEmpty())
+        workerGroupIds = workerGroupIds == null ? List.of() : List.copyOf(workerGroupIds);
+        if ("default".equals(projectId) && !workerGroupIds.isEmpty())
+            throw new IllegalArgumentException("default uses registered WorkerGroups; do not declare bindings");
+        if (!"default".equals(projectId) && workerGroupIds.isEmpty())
             throw new IllegalArgumentException("Project must declare WorkerGroups");
         var groups = new HashSet<String>();
         for (String group : workerGroupIds)

@@ -257,7 +257,7 @@ Its applications are startup bindings; only new Task creation resolves an applic
 to a Group. Stored Tasks retain their original Group. Template content is opaque to
 the business API; the receiving event owns its format interpretation.
 Server validates dependencies after host Group initialization and before Adapter startup.
-Project bindings do not provision Tasks. RPC preparation is an explicit Server use case;
+Explicit default Project scope uses current registered Groups; other Project bindings stay declared. Group discovery uses caller-driven read-only Worker catalog pages, without Project interpretation in Kernel. Project bindings do not provision Tasks. RPC preparation is an explicit Server use case;
 SMS prepares a shared Task at Scenario startup, while the workbench owns its caller-based
 Task ID convention. Server owns Project/User metadata interpretation and its single per-Project Task directory; Kernel stores opaque metadata without Project fields or index operations. Server owns one explicit TaskCaller policy across Task and Scenario entrypoints. External creators come from the declared caller; immutable server.inputOwner separates raw input from scenario conversion. Internal startup/projection callers are Project-scoped assembly values and cannot be declared over HTTP. Caller metadata supports application access checks, not a Kernel user domain or scheduling input. Server separately owns the JSON-initialized development user directory and its process-memory management API; it resolves each HTTP TaskCaller against the current directory into an immutable
 role/Project snapshot, shared by Task and Scenario access checks. Updates affect

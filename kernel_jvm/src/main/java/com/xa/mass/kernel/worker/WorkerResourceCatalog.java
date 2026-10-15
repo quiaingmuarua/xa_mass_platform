@@ -36,6 +36,16 @@ public interface WorkerResourceCatalog {
             int sampleLimit
     );
 
+    /** One read-only page of the existing Group HASH. Count is a Redis work hint, not a row limit. */
+    WorkerGroupPage scanWorkerGroupDescriptors(String cursor, int count);
+
+    record WorkerGroupPage(String nextCursor, Map<String, @Nullable WorkerGroupDescriptor> groups) {
+        public WorkerGroupPage {
+            Objects.requireNonNull(nextCursor, "nextCursor");
+            groups = Collections.unmodifiableMap(new LinkedHashMap<>(groups));
+        }
+    }
+
     Map<String, @Nullable WorkerGroupDescriptor> getWorkerGroupDescriptors(
             List<String> workerGroupIds
     );

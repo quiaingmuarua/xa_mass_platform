@@ -171,7 +171,7 @@ class TaskDirectoryRedisIntegrationTest {
     }
 
     @Test void rpcPreparationNeverRepairsMissingKernelResourcesOrApprovesBeforeDirectoryConfirmation() {
-        var request = new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("p", "g", null, Map.of());
+        var request = new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("p", "g", null, Map.of(), null);
         var lifecycle = new com.xa.mass.kernel.task.DefaultTaskLifecycleCommands(scores, catalog);
         var rpc = new com.xa.mass.server.task.call.TaskRpcProperties(1000, 1000, 10, 10, 10, 50, 100, 250, Map.of());
         var interruptedRuntime = mock(com.xa.mass.kernel.task.TaskRuntime.class);

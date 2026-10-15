@@ -29,7 +29,8 @@ it("prepares only the requested identity and rejects a mismatched success respon
   const request = {
     projectId: "default",
     workerGroupId: "g",
-    metadata: { label: "alice" }
+    metadata: { label: "alice" },
+    refill: [{ poolName: "country", target: { country: ["CN"] }, count: 100 }]
   };
   await client.prepareTask(CALLER, "chosen", request);
   expect(post).toHaveBeenCalledWith(
@@ -59,10 +60,12 @@ it("retains the frozen request through uncertainty without automatic retries or 
   const request = {
     projectId: "default",
     workerGroupId: "g",
-    metadata: { label: "alice" }
+    metadata: { label: "alice" },
+    refill: [{ poolName: "country", target: { country: ["CN"] }, count: 100 }]
   };
   await session.prepareRpc("original", request);
   request.metadata.label = "changed";
+  request.refill[0]!.target.country[0] = "US";
   expect(client.prepareTask).toHaveBeenCalledTimes(1);
   expect(session.rpcPreparations.original?.outcome).toBe("unconfirmed");
   const retry = session.prepareRpc("original", request);
@@ -71,7 +74,11 @@ it("retains the frozen request through uncertainty without automatic retries or 
   expect(client.prepareTask.mock.calls[1]).toEqual([
     CALLER,
     "original",
-    { ...request, metadata: { label: "alice" } }
+    {
+      ...request,
+      metadata: { label: "alice" },
+      refill: [{ poolName: "country", target: { country: ["CN"] }, count: 100 }]
+    }
   ]);
   finish();
   await retry;

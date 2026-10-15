@@ -187,6 +187,17 @@ public final class RedisWorkerResourceCatalog
     }
 
     @Override
+    public WorkerGroupPage scanWorkerGroupDescriptors(String cursor, int count) {
+        if (cursor == null || !cursor.matches("[0-9]+") || count < 1 || count > 1000)
+            throw new IllegalArgumentException("Expected a numeric cursor and count in 1..1000");
+        var page = commands().hscan(groupsKey(), io.lettuce.core.ScanCursor.of(cursor),
+                io.lettuce.core.ScanArgs.Builder.limit(count));
+        var rows = page.getMap().entrySet().stream()
+                .map(row -> KeyValue.just(row.getKey(), row.getValue())).toList();
+        return new WorkerGroupPage(page.getCursor(), decodeGroups(rows));
+    }
+
+    @Override
     public Map<String, WorkerGroupDescriptor> getWorkerGroupDescriptors(
             List<String> workerGroupIds
     ) {

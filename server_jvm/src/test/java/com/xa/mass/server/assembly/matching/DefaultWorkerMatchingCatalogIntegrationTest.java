@@ -79,7 +79,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         var composition=new MatchingComposition(storage,groups,clock, java.util.List.of(), QualifiedCountryFixtures.DEFINITIONS, java.util.List.of());
         var traced=new LinkedHashMap<String,PoolRefillPolicy>(); composition.policies().forEach((id,policy)->traced.put(id,trace(policy)));
         var result=new DefaultWorkerMatchingCatalog(composition.budget(),composition.pools(),
-                clock,traced,composition.functions(),groups, composition.poolOrder(), composition.globalFunctions());
+                clock,traced,composition.functions(),groups, composition.poolOrder(), composition.globalFunctions(), Map.of());
         stores.put(result,storage);
         return result;
     }
@@ -97,7 +97,7 @@ class DefaultWorkerMatchingCatalogIntegrationTest {
         var policies=new LinkedHashMap<>(composition.policies()); policies.put(BucketPoolFixture.ID,bucket);
         var functions=new LinkedHashMap<>(composition.functions()); functions.put(BucketPoolFixture.ID,bucket.functions());
         var result=new DefaultWorkerMatchingCatalog(composition.budget(),pools,
-                System::currentTimeMillis,policies,functions,groups, java.util.stream.Stream.concat(composition.poolOrder().stream(), java.util.stream.Stream.of(BucketPoolFixture.ID)).toList(), composition.globalFunctions());
+                System::currentTimeMillis,policies,functions,groups, java.util.stream.Stream.concat(composition.poolOrder().stream(), java.util.stream.Stream.of(BucketPoolFixture.ID)).toList(), composition.globalFunctions(), Map.of());
         stores.put(result,storage);
         return result;
     }

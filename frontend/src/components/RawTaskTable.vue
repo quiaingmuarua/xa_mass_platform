@@ -6,7 +6,7 @@ import "element-plus/es/components/loading/style/css";
 export type TaskRow = Omit<ProjectTask, "createdAtMillis"> & {
   createdAtMillis?: number | null;
 };
-defineProps<{ rows: TaskRow[]; loading?: boolean; error?: string }>();
+defineProps<{ rows: TaskRow[]; loading?: boolean; error?: string; rpc?: boolean }>();
 const emit = defineEmits<{
   open: [row: TaskRow];
   scroll: [event: { scrollTop: number }];
@@ -53,7 +53,12 @@ function time(value?: string | number | null) {
         }}<small>{{ row.task?.workerGroupId ?? "未提供" }}</small></template
       ></el-table-column
     >
-    <el-table-column label="生命周期" min-width="165"
+    <el-table-column v-if="rpc" label="创建者" min-width="115"
+      ><template #default="{ row }">{{
+        row.task?.metadata.userId ?? "未提供"
+      }}</template></el-table-column
+    >
+    <el-table-column v-else label="生命周期" min-width="165"
       ><template #default="{ row }">{{
         row.task?.idleDisposition ?? "未提供"
       }}</template></el-table-column
