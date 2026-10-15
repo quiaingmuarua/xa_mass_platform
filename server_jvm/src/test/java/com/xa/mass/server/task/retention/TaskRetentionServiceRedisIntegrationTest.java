@@ -29,6 +29,8 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 @Tag("redis-owner")
@@ -188,5 +190,83 @@ class TaskRetentionServiceRedisIntegrationTest {
             assertThatThrownBy(() -> creator.create(CALLER, input)).isInstanceOf(com.xa.mass.server.error.ServerException.class);
             assertThat(creations.find("p", CALLER.identityKey(), "invalid", "raw", "0".repeat(64))).isNull();
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"release", "directory", "finish"})
+    void resumesAfterEachCommittedStepLosesItsResponse(String step) {
+        String id = create(); closeWithResult(id);
+        var interruptedRuntime = spy(runtime);
+        var interruptedDirectory = spy(directory);
+        var interrupted = new TaskRetentionService(interruptedRuntime, catalog, scores, interruptedDirectory,
+                creations, archive, guard, properties, clock::get);
+        clock.addAndGet(step.equals("release") ? Duration.ofHours(1).toMillis() : Duration.ofDays(8).toMillis());
+        if (step.equals("release")) doAnswer(call -> {
+            call.callRealMethod(); throw new IllegalStateException("release response lost");
+        }).when(interruptedRuntime).releaseTaskPayloads(eq(id), anyLong());
+        else if (step.equals("directory")) doAnswer(call -> {
+            call.callRealMethod(); throw new IllegalStateException("directory response lost");
+        }).when(interruptedDirectory).remove("p", id);
+        else doAnswer(call -> {
+            call.callRealMethod(); throw new IllegalStateException("final response lost");
+        }).when(interruptedRuntime).finishTaskPurge(eq(id), anyLong());
+        assertThatThrownBy(() -> interrupted.maintain(id, clock.get())).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        var resumed = maintenance(archive, creations).maintain(id, clock.get());
+        assertThat(resumed.retention().phase()).isEqualTo(step.equals("release") ? "RELEASED" : "PURGED");
+        if (step.equals("release")) {
+            assertThat(create()).isEqualTo(id);
+            assertThat(exports.preview(CALLER, id).results()).hasSize(1);
+        } else {
+            assertThat(directory.contains("p", id)).isFalse();
+            assertThat(create()).isNotEqualTo(id);
+        }
+    }
+
+    @Test void interruptedJsonlWriteIsRebuiltFromTheFrozenSource() throws Exception {
+        String id = create(); closeWithResult(id);
+        clock.addAndGet(Duration.ofHours(1).toMillis());
+        var interruptedRuntime = spy(runtime);
+        doReturn(new TaskItemResultPage("42", Map.of("one", TaskItemResult.succeeded("answer"))))
+                .when(interruptedRuntime).scanTaskItemResults(eq(id), eq("0"), anyInt());
+        doThrow(new IllegalStateException("process interrupted during scan"))
+                .when(interruptedRuntime).scanTaskItemResults(eq(id), eq("42"), anyInt());
+        var partialArchive = new TaskResultArchive(interruptedRuntime, JsonMapper.builder().build(), scope.keyspace(), properties);
+        assertThatThrownBy(() -> maintenance(partialArchive, creations).maintain(id, clock.get()))
+                .isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        assertThat(runtime.loadTaskDataStates(List.of(id)).get(id).phase()).isEqualTo(TaskDataPhase.FROZEN);
+        assertThat(runtime.loadTaskItemResults(id, List.of("one")).get("one")).isNotNull();
+        try (var paths = Files.walk(files)) {
+            assertThat(paths.anyMatch(path -> path.getFileName().toString().endsWith(".pending"))).isTrue();
+        }
+        maintenance(archive, creations).maintain(id, clock.get());
+        assertThat(archive.verify(id).records()).isEqualTo(1);
+        try (var paths = Files.walk(files)) {
+            assertThat(paths.anyMatch(path -> path.getFileName().toString().endsWith(".pending"))).isFalse();
+        }
+    }
+
+    @Test void sweepAdvancesPastArchivedAndFailingPagesAndLaterDeletesThemAll() throws Exception {
+        var failing = spy(archive);
+        doThrow(new IOException("unavailable file")).when(failing).publish(
+                argThat(task -> task.taskId().equals("page-0101") || task.taskId().equals("page-0102")), any());
+        var service = maintenance(failing, creations);
+        for (int i = 0; i < 205; i++) {
+            String id = "page-%04d".formatted(i);
+            runtime.createTask(new TaskDescriptor(id, "g", TaskIdleDisposition.CLOSE_WHEN_IDLE,
+                    Map.of("priority", "1", "maxRetryTimes", "1"), List.of(), null, Map.of()));
+            scores.closeScore(id);
+        }
+        clock.addAndGet(Duration.ofHours(1).toMillis());
+        for (int i = 0; i < 101; i++) service.maintain("page-%04d".formatted(i), clock.get());
+        service.runOnce();
+        assertThat(runtime.loadTaskDataStates(List.of("page-0101", "page-0102", "page-0204")))
+                .satisfies(states -> {
+                    assertThat(states.get("page-0101").phase()).isEqualTo(TaskDataPhase.FROZEN);
+                    assertThat(states.get("page-0102").phase()).isEqualTo(TaskDataPhase.FROZEN);
+                    assertThat(states.get("page-0204").phase()).isEqualTo(TaskDataPhase.RELEASED);
+                });
+        clock.addAndGet(Duration.ofDays(7).toMillis());
+        service.runOnce();
+        assertThat(connection.sync().zcard(TaskRedisKeys.scores(scope.keyspace()))).isZero();
     }
 }

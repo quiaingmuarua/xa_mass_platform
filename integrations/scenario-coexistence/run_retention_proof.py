@@ -225,6 +225,7 @@ def main():
                 case["newTaskId"] = new_task
             report["passed"] = True
     except Exception as failure:
+        report["passed"] = False
         report["failureType"] = type(failure).__name__
         if isinstance(failure, AssertionError):
             report["failure"] = str(failure)

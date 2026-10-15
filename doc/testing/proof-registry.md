@@ -73,6 +73,9 @@ retained Item counts, exact purge fences and RPC exclusion. TaskRetentionService
 proves file publication/reuse, archive corruption refusal, authorization before files,
 expiry without an archive, resumed cleanup and fresh execution identity after conditional
 creation-association removal. These tests use unique scopes and private file roots.
+Faults include partial JSONL writes and committed release, directory removal or
+final purge with a lost response. A multi-page sweep passes already archived and
+continuously failing entries before expiring the same complete set.
 FrozenTaskResultReleaseRedisIntegrationTest traverses the production result policy
 and real Redis Owners: ignored content after freeze, release and purge still
 releases the original Worker lease.
