@@ -170,15 +170,13 @@ describe("session request evidence", () => {
   it("keeps denied takes distinct from uncertain consumption without retrying execution", async () => {
     const client = {
       callTask: vi.fn().mockResolvedValue(success),
-      takeResults: vi
-        .fn()
-        .mockRejectedValue(
-          new TaskCallDebugError({
-            kind: "http",
-            status: 403,
-            message: "访问被拒绝，请刷新页面或重新登录。"
-          })
-        )
+      takeResults: vi.fn().mockRejectedValue(
+        new TaskCallDebugError({
+          kind: "http",
+          status: 403,
+          message: "访问被拒绝，请刷新页面或重新登录。"
+        })
+      )
     };
     const store = createTaskCallDebugStore(client, "api");
     const denied = await store.takeResults("task", ["message-1"]);
