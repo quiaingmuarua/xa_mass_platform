@@ -152,7 +152,7 @@ class RuntimeBoundaryIntegrationTest {
                 }
             });
             var catalog=new DefaultWorkerMatchingCatalog(composition.budget(),pools,
-                    System::currentTimeMillis,handlers,functions,rules.groups(), java.util.stream.Stream.concat(composition.poolOrder().stream(), java.util.stream.Stream.of(BucketPoolFixture.ID, IdentityHintPoolFixture.ID)).toList(), composition.globalFunctions());
+                    System::currentTimeMillis,handlers,functions,rules.groups(), java.util.stream.Stream.concat(composition.poolOrder().stream(), java.util.stream.Stream.of(BucketPoolFixture.ID, IdentityHintPoolFixture.ID)).toList(), composition.globalFunctions(), Map.of());
             return catalog;
         }
 
@@ -265,6 +265,7 @@ class RuntimeBoundaryIntegrationTest {
         groups.put("identity-hint-boundary", Map.of("eventCodes", List.of("extension.worker.identity.hint")));
         groups.put("direct-query-boundary", Map.of("eventCodes", List.of("extension.worker.direct.query")));
         groups.put("shared-pool-functions", Map.of("eventCodes", List.of("extension.worker.pool.share")));
+        groups.put("rpc-explicit-pool", Map.of("eventCodes", List.of(TEST_EVENT_CODE)));
         for (String group : List.of("group-refill-a", "group-refill-b"))
             groups.put(group, Map.of("eventCodes", List.of("extension.worker.group.refill")));
         for (String group : List.of("property-tools-boundary", SERVICEABILITY_WORKER_GROUP_ID))
@@ -275,6 +276,11 @@ class RuntimeBoundaryIntegrationTest {
         }
         registry.add("xa.mass.worker-assembly.group-config-json", () -> Jsons.toJson(groups));
         registry.add("xa.mass.project-assembly.projects[0].project-id", () -> "boundary");
+        registry.add("xa.mass.project-assembly.projects[1].project-id", () -> "default");
+        registry.add("xa.mass.worker-matching.groups[default-pool-boundary].pools[0]", () -> "any");
+        registry.add("xa.mass.worker-matching.groups[default-pool-boundary].functions[0]", () -> "worker.any");
+        registry.add("xa.mass.worker-matching.groups[rpc-explicit-pool].pools[0]", () -> "any");
+        registry.add("xa.mass.worker-matching.groups[rpc-explicit-pool].functions[0]", () -> "worker.any");
         int groupIndex = 0;
         for (String group : groups.keySet()) {
             registry.add("xa.mass.project-assembly.projects[0].worker-group-ids[" + groupIndex++ + "]", () -> group);
@@ -652,6 +658,55 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(Jsons.parseObject(results.get(id).get("opaqueResultPayload").asText())).containsEntry("executor", workerId);
             }
             assertThat(identityHintRule.hintsReturned()).isGreaterThanOrEqualTo(ids.size());
+        }
+    }
+
+    @Test
+    void defaultDiscoversLateGroupsAndExecutesRawFiniteInputsThroughIdentityAndPool() throws Exception {
+        String event = "extension.worker.default.raw";
+        for (String group : List.of("default-late-" + UUID.randomUUID(), "default-pool-boundary")) {
+            assertThat(send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("requestId", UUID.randomUUID().toString(),
+                    "projectId", "default", "workerGroupId", group, "refill", List.of()))).statusCode()).isEqualTo(400);
+            assertThat(send("POST", "/api/v1/worker-groups/" + group + ":register",
+                    Jsons.toJson(Map.of("eventCodes", List.of(event)))).statusCode()).isEqualTo(200);
+            var available = send("GET", "/api/v1/projects/default/worker-groups", null);
+            assertThat(available.statusCode()).isEqualTo(200);
+            assertThat(available.body()).contains(group);
+            assertThat(send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("requestId", UUID.randomUUID().toString(),
+                    "projectId", "boundary", "workerGroupId", group, "refill", List.of()))).statusCode()).isEqualTo(400);
+            var handler = WorkerEventDefinition.extension("default.raw", WorkerEventParameterResolvers.jsonMap(),
+                    input -> "原始文本\n" + Jsons.toJson(new java.util.TreeMap<>(input)));
+            var facts = Map.of("fixture", "default");
+            try (var worker = JavaWorker.create(URI.create("http://127.0.0.1:" + port), group, "default-host",
+                    WorkerTransportType.WEBSOCKET, () -> facts, List.of(handler),
+                    WorkerConnectionOptions.of(Duration.ofSeconds(2), connectionPolicy()))) {
+                worker.start(); awaitCondition(() -> worker.snapshot().workerId() != null);
+                String workerId = worker.snapshot().workerId();
+                awaitRuntimeProperties(group, workerId, WEBSOCKET_ENDPOINT_MANAGER_ID, facts);
+                boolean pool = group.equals("default-pool-boundary");
+                var refill = pool ? List.of(Map.of("poolName", "any", "target", Map.of(), "count", 100)) : List.of();
+                var created = send("POST", "/api/v1/tasks", Jsons.toJson(Map.of("requestId", UUID.randomUUID().toString(),
+                        "projectId", "default", "workerGroupId", group, "refill", refill)));
+                assertThat(created.statusCode()).isEqualTo(200);
+                String task = JSON.readTree(created.body()).get("taskId").asText();
+                var input = Map.of("registered", "opaque-not-a-scenario-answer", "nested", List.of("你好", true, 7));
+                String expected = "原始文本\n" + Jsons.toJson(new java.util.TreeMap<>(input));
+                var items = List.of(Map.of("messageId", "raw-1", "eventCode", event, "payload", input,
+                        "workerSelector", Map.of("executorName", pool ? "worker.any" : "workerId", "input", pool ? Map.of() : workerId)));
+                assertThat(send("POST", "/api/v1/tasks/" + task + "/items", Jsons.toJson(items)).statusCode()).isEqualTo(200);
+                assertThat(send("POST", "/api/v1/tasks/" + task + "/approve", Jsons.toJson(Map.of("expectedItemCount", 1))).statusCode()).isEqualTo(200);
+                var exported = awaitTaskExport(task);
+                assertThat(JSON.readTree(exported.body().strip()).get("opaqueResultPayload").asText()).isEqualTo(expected);
+                var preview = send("GET", "/api/v1/tasks/" + task + "/results:preview", null);
+                assertThat(preview.statusCode()).isEqualTo(200);
+                var body = JSON.readTree(preview.body());
+                assertThat(body.get("truncated").asBoolean()).isFalse();
+                assertThat(body.get("results").size()).isEqualTo(1);
+                assertThat(body.get("results").get(0).get("result").get("opaqueResultPayload").asText()).isEqualTo(expected);
+                var saved = taskCatalog.loadTaskAllocationDescriptors(List.of(task)).get(task);
+                assertThat(saved.metadata()).containsEntry("server.projectId", "default").containsEntry("server.inputOwner", "raw");
+                assertThat(saved.metadata()).doesNotContainKey("scenario");
+            }
         }
     }
 
@@ -1723,6 +1778,59 @@ class RuntimeBoundaryIntegrationTest {
         );
         assertThat(readiness.statusCode()).isEqualTo(200);
         assertThat(readiness.body()).contains("\"status\":\"UP\"");
+    }
+
+    @Test
+    void explicitRpcSupplyExecutesHundredItemBatchAndEmptySupplySupportsIdentityCalls() throws Exception {
+        String group = "rpc-explicit-pool", taskId = "rpc-batch-" + UUID.randomUUID();
+        var refill = List.of(Map.of("poolName", "any", "target", Map.of(), "count", 100));
+        String preparation = Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", refill));
+        assertThat(send("POST", "/api/v1/tasks/"+taskId+"/rpc:prepare", preparation).statusCode()).isEqualTo(200);
+        var original = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
+        assertThat(original.refill()).hasSize(1);
+        var prepared = prepareWorker(group, "batch-worker", TransportProfile.WEBSOCKET, Map.of());
+        var running = new java.util.ArrayList<RunningWorker>();
+        try {
+            running.add(startWorker(group, "batch-worker", prepared.workerId(), prepared.endpointUri(), Map.of(), TransportProfile.WEBSOCKET));
+            awaitWorkerRegistered(group, prepared.workerId());
+            for (int workerIndex=1; workerIndex<10; workerIndex++) {
+                String client = "batch-worker-"+workerIndex;
+                var peer = prepareWorker(group,client,TransportProfile.WEBSOCKET,Map.of());
+                running.add(startWorker(group,client,peer.workerId(),peer.endpointUri(),Map.of(),TransportProfile.WEBSOCKET));
+                awaitWorkerRegistered(group,peer.workerId());
+            }
+            var items = java.util.stream.IntStream.range(0,100).mapToObj(n -> Map.<String,Object>of(
+                    "messageId", "batch-"+n, "eventCode", TEST_EVENT_CODE, "payload", Map.of("value","value-"+n),
+                    "workerSelector", Map.of("executorName","worker.any","input",Map.of()))).toList();
+            var tooMany = new java.util.ArrayList<>(items); tooMany.add(items.getFirst());
+            assertThat(send("POST","/api/v1/tasks/"+taskId+"/items:call",Jsons.toJson(Map.of("items",tooMany,"waitTimeoutMillis",1))).statusCode()).isEqualTo(400);
+            var call = send("POST","/api/v1/tasks/"+taskId+"/items:call",Jsons.toJson(Map.of("items",items,"waitTimeoutMillis",1)));
+            assertThat(call.statusCode()).isEqualTo(200);
+            assertThat(JSON.readTree(call.body()).size()).isEqualTo(100);
+            var ids = items.stream().map(item -> (String)item.get("messageId")).toList();
+            long deadline = System.nanoTime()+RESULT_CONVERGENCE_TIMEOUT.toNanos();
+            tools.jackson.databind.JsonNode results = JSON.readTree(call.body());
+            while (System.nanoTime()<deadline) {
+                var loaded = send("POST","/api/v1/tasks/"+taskId+"/results:load",Jsons.toJson(ids));
+                assertThat(loaded.statusCode()).isEqualTo(200);
+                results=JSON.readTree(loaded.body());
+                boolean complete=true;
+                for(String id:ids) if(!"succeeded".equals(results.path(id).path("status").asText())) { complete=false; break; }
+                if(complete) break;
+                Thread.sleep(20);
+            }
+            for(int n=0;n<100;n++) {
+                assertThat(results.path("batch-"+n).path("status").asText()).as("message %s", "batch-"+n).isEqualTo("succeeded");
+                assertThat(results.path("batch-"+n).path("opaqueResultPayload").asText()).isEqualTo(Jsons.toJson(Map.of("observed","value-"+n)));
+            }
+            assertThat(send("POST","/api/v1/tasks/"+taskId+"/rpc:prepare",preparation).statusCode()).isEqualTo(200);
+            assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId)).isEqualTo(original);
+            assertThat(send("POST","/api/v1/tasks/"+taskId+"/rpc:prepare",Jsons.toJson(Map.of("projectId","boundary","workerGroupId",group,"refill",List.of()))).statusCode()).isEqualTo(400);
+            String directed=taskId+"-direct";
+            assertThat(send("POST","/api/v1/tasks/"+directed+"/rpc:prepare",Jsons.toJson(Map.of("projectId","boundary","workerGroupId",group,"refill",List.of()))).statusCode()).isEqualTo(200);
+            assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(directed)).get(directed).refill()).isEmpty();
+            assertTaskCallSucceeded(directed,prepared.workerId(),"direct-item");
+        } finally { for (var worker : running) worker.close(); }
     }
 
     @Test

@@ -20,7 +20,8 @@ public final class ProjectDirectory {
         definitions.addAll(declarations.stream().sorted(Comparator.comparing(ProjectDefinition::projectId)).toList());
         var result = new LinkedHashMap<String, ProjectView>();
         for (var project : definitions) {
-            if (result.putIfAbsent(project.projectId(), new ProjectView(project.projectId(), project.workerGroupIds())) != null)
+            if (result.putIfAbsent(project.projectId(), new ProjectView(project.projectId(), project.workerGroupIds(),
+                    "default".equals(project.projectId()) ? "registered" : "declared")) != null)
                 throw new IllegalArgumentException("Duplicate Project ID across startup declarations: " + project.projectId());
         }
         projects = Collections.unmodifiableMap(result);
@@ -36,12 +37,16 @@ public final class ProjectDirectory {
     }
 
     public void requireWorkerGroup(String projectId, String workerGroupId) {
-        if (!require(projectId).workerGroupIds().contains(workerGroupId))
+        if (workerGroupId == null || workerGroupId.isBlank() || !require(projectId).allowsWorkerGroup(workerGroupId))
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST,
                     "project.requireWorkerGroup", "WorkerGroup is not declared by Project", null);
     }
 
-    public record ProjectView(String projectId, List<String> workerGroupIds) {
+    public record ProjectView(String projectId, List<String> workerGroupIds, String workerGroupSource) {
         public ProjectView { workerGroupIds = List.copyOf(workerGroupIds); }
+        /** Scope only; the operation must still point-read registration before writes. */
+        public boolean allowsWorkerGroup(String group) {
+            return "registered".equals(workerGroupSource) || workerGroupIds.contains(group);
+        }
     }
 }

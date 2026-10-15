@@ -111,7 +111,7 @@ class MatchingResourceIntegrationTest {
             });
             {
             var catalog = new DefaultWorkerMatchingCatalog(composition.budget(), composition.pools(),
-                    System::currentTimeMillis, composition.policies(), functions, groups, composition.poolOrder(), composition.globalFunctions());
+                    System::currentTimeMillis, composition.policies(), functions, groups, composition.poolOrder(), composition.globalFunctions(), Map.of());
                 composition.properties().upsertWorkerFactsBatch("g", Map.of("w", Map.of("phone", "number")));
                 var requests = new LinkedHashMap<String, WorkerQuery>();
                 requests.put("direct", new WorkerQuery("worker.phone", "number"));

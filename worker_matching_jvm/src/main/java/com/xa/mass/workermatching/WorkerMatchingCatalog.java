@@ -11,10 +11,12 @@ public interface WorkerMatchingCatalog extends WorkerMatching {
     /** Startup enablement only; does not read Facts, inspect stock or promise executable Workers. */
     Capabilities capabilities(String workerGroupId);
 
-    record Capabilities(Set<String> pools, Set<String> functions) {
+    record FunctionCapability(String name, @org.jspecify.annotations.Nullable String poolName) {}
+
+    record Capabilities(Set<String> pools, List<FunctionCapability> functions) {
         public Capabilities {
             pools = java.util.Collections.unmodifiableSet(new java.util.TreeSet<>(pools));
-            functions = java.util.Collections.unmodifiableSet(new java.util.TreeSet<>(functions));
+            functions = functions.stream().sorted(java.util.Comparator.comparing(FunctionCapability::name)).toList();
         }
     }
 

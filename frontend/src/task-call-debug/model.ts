@@ -1,40 +1,110 @@
+import { z } from "zod";
+import { callerHeaders, type TaskCaller } from "@/task-caller";
+import { jsonValueSchema } from "@/runtime-viewer/schemas";
 import type { JsonValue } from "@/runtime-viewer/types";
-
 import { taskCallDebugConfigurationError } from "./errors";
-import type {
-  TaskCallDebugDraft,
-  WorkerQuery,
-  ValidatedTaskCallDebugDraft
-} from "./types";
+import type { WorkerQuery, RpcCallRequest } from "./types";
 
 export const DEFAULT_TASK_CALL_TIMEOUT_MILLIS = 3_000;
 export const MAX_TASK_CALL_TIMEOUT_MILLIS = 60_000;
-
-export function validateTaskCallDebugDraft(
-  draft: TaskCallDebugDraft
-): ValidatedTaskCallDebugDraft {
-  const taskId = requireNonBlank(draft.taskId, "Task ID");
-  const workerGroupId = requireNonBlank(draft.workerGroupId, "WorkerGroup");
-  const eventName = requireNonBlank(draft.eventName, "Event Name");
-  if (
-    !Number.isInteger(draft.waitTimeoutMillis) ||
-    draft.waitTimeoutMillis < 1 ||
-    draft.waitTimeoutMillis > MAX_TASK_CALL_TIMEOUT_MILLIS
-  ) {
-    throw taskCallDebugConfigurationError(
-      `Wait Timeout 必须是 1..${MAX_TASK_CALL_TIMEOUT_MILLIS} 的整数。`
-    );
+export const EMPTY_RPC_REQUEST = JSON.stringify(
+  { items: [], waitTimeoutMillis: DEFAULT_TASK_CALL_TIMEOUT_MILLIS },
+  null,
+  2
+);
+const nonblank = z.string().refine((value) => value.trim().length > 0, "不能为空");
+const requestSchema = z
+  .object({
+    items: z
+      .array(
+        z
+          .object({
+            messageId: nonblank,
+            eventCode: nonblank,
+            payload: z.record(z.string(), jsonValueSchema),
+            workerSelector: z.unknown(),
+            priority: z.number().int().min(0).max(10).nullable().optional(),
+            ttlMillis: z.number().int().positive().nullable().optional()
+          })
+          .strict()
+      )
+      .min(1)
+      .max(100),
+    waitTimeoutMillis: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_TASK_CALL_TIMEOUT_MILLIS)
+      .nullable()
+      .optional()
+  })
+  .strict();
+export function parseRpcRequest(text: string): RpcCallRequest {
+  try {
+    const value = requestSchema.parse(JSON.parse(text));
+    return {
+      ...value,
+      items: value.items.map((item, index) => {
+        try {
+          return {
+            ...item,
+            workerSelector: parseWorkerSelector(JSON.stringify(item.workerSelector))
+          };
+        } catch (cause) {
+          throw new Error(
+            `items.${index}.workerSelector: ${cause instanceof Error ? cause.message : "无效"}`
+          );
+        }
+      })
+    };
+  } catch (cause) {
+    const message =
+      cause instanceof z.ZodError && cause.issues[0]?.path.join(".") === "items"
+        ? "items：每次调用需要 1～100 个 Item，可展开示例或粘贴完整请求。"
+        : cause instanceof z.ZodError
+          ? `${cause.issues[0]?.path.join(".") || "请求"}: ${cause.issues[0]?.message}`
+          : cause instanceof Error
+            ? cause.message
+            : "请求 JSON 无效";
+    throw taskCallDebugConfigurationError(message);
   }
-  return {
-    taskId,
-    workerGroupId,
-    eventName,
-    payloadText: draft.payloadText,
-    workerSelectorText: draft.workerSelectorText,
-    waitTimeoutMillis: draft.waitTimeoutMillis,
-    payload: parseJsonObject(draft.payloadText, "Payload"),
-    workerSelector: parseWorkerSelector(draft.workerSelectorText)
-  };
+}
+export function rpcMessageIds(request: RpcCallRequest): string[] {
+  return [...new Set(request.items.map((item) => item.messageId))];
+}
+export function parseResultIds(text: string): string[] {
+  const ids = text
+    .split(/\r?\n/)
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (!ids.length || ids.length > 100)
+    throw taskCallDebugConfigurationError("每次读取 1～100 个 messageId，每行一个。");
+  return [...new Set(ids)];
+}
+export function rpcCurl(
+  baseUrl: string,
+  taskId: string,
+  caller: TaskCaller,
+  body: unknown,
+  operation = "items:call"
+): string {
+  const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
+  const url =
+    baseUrl.replace(/\/$/, "") +
+    "/v1/tasks/" +
+    encodeURIComponent(taskId) +
+    "/" +
+    operation;
+  const headers = { "Content-Type": "application/json", ...callerHeaders(caller) };
+  return (
+    "curl -X POST " +
+    quote(url) +
+    Object.entries(headers)
+      .map(([name, value]) => " -H " + quote(name + ": " + value))
+      .join("") +
+    " --data-raw " +
+    quote(JSON.stringify(body))
+  );
 }
 
 export function parseTaskCallResultJson(value?: string): JsonValue | undefined {
@@ -91,12 +161,4 @@ function invalidWorkerSelector(): Error {
 
 function isNonBlankString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
-}
-
-function requireNonBlank(value: string, label: string): string {
-  const normalized = value.trim();
-  if (normalized.length === 0) {
-    throw taskCallDebugConfigurationError(`${label} 不能为空。`);
-  }
-  return normalized;
 }

@@ -428,7 +428,7 @@ class ServerArchitectureBoundaryTest {
                 "hrandfieldWithvalues"
         )).isEqualTo(1);
         assertThat(catalog)
-                .doesNotContain(".hscan(")
+                .contains("hscan(groupsKey()")
                 .doesNotContain(".scan(")
                 .doesNotContain(".keys(")
                 .doesNotContain(".hlen(")

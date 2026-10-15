@@ -54,7 +54,7 @@ public final class SmsReceptionService implements SmartLifecycle, AutoCloseable 
     @Override public synchronized void start() {
         if (running) return;
         if (closed) throw new IllegalStateException("SMS run is closed");
-        taskId = preparations.prepare(serviceCaller, "sms", rpcTaskId(group), new TaskRpcPrepareRequest("sms", group, null, Map.of())).taskId();
+        taskId = preparations.prepare(serviceCaller, "sms", rpcTaskId(group), new TaskRpcPrepareRequest("sms", group, null, Map.of(), null)).taskId();
         running = true;
     }
     @Override public synchronized void stop() { running = false; closed = true; }

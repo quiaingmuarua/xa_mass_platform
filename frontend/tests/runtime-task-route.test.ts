@@ -68,14 +68,23 @@ it("late drawer and submission continuations cannot replace the current context"
                   {
                     workerGroupId: "g",
                     workerGroup: { workerGroupId: "g", attributes: {}, eventCodes: [] },
-                    matching: { pools: [], functions: ["workerId"] }
+                    matching: {
+                      pools: [],
+                      functions: [{ name: "workerId", poolName: null }]
+                    }
                   }
                 ]
               : url.endsWith("/tasks/known")
                 ? row
                 : url.includes("/tasks?")
                   ? { projectId: "default", truncated: false, tasks: [row] }
-                  : [{ projectId: "default", workerGroupIds: ["g"] }]
+                  : [
+                      {
+                        projectId: "default",
+                        workerGroupSource: "registered",
+                        workerGroupIds: ["g"]
+                      }
+                    ]
         )
       );
     })
@@ -86,7 +95,13 @@ it("late drawer and submission continuations cannot replace the current context"
       {
         path: "/task-workbench",
         component: FiniteTaskPage,
-        props: { project: { projectId: "default", workerGroupIds: ["g"] } }
+        props: {
+          project: {
+            projectId: "default",
+            workerGroupSource: "registered",
+            workerGroupIds: ["g"]
+          }
+        }
       }
     ]
   });

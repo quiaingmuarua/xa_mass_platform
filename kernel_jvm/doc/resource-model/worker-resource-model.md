@@ -82,7 +82,13 @@ the returned Group where required.
 to sample registered members once, then reads their Bindings in batches of at
 most 100 (at most ten HMGET calls). Missing or wrong-Group
 Bindings map to null; address-only rows do not appear in the sample. Group
-directory reads retain their bounded HMGET and HRANDFIELD behavior.
+directory point/sample reads retain HMGET and HRANDFIELD. The caller-driven
+`scanWorkerGroupDescriptors(cursor, count)` reads one page of the same Group HASH
+with HSCAN, accepting a count hint of 1..1000. COUNT is not a hard returned-row
+limit. It returns the next cursor and descriptor-or-null entries; corrupt entries
+remain unavailable. Server owns traversal, deduplication and discovery policy.
+This read does not inspect Workers, Facts or Scores, write state, or interpret
+Project/User. Concurrent registrations do not form an atomic directory snapshot.
 
 Normal Catalog registration is two Redis client commands, regardless of batch
 size. Normal Prepare is four: Group HMGET, Identity Lua, Binding Lua, Score Lua.

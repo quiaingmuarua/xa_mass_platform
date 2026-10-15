@@ -27,7 +27,7 @@ final class ProjectWorkerRequirementsValidator {
                     throw failure(requirement, group, "duplicate Project/Group requirements", null);
                 var project = projects.projects().get(requirement.projectId());
                 if (project == null) throw failure(requirement, group, "Project is not declared", null);
-                if (!project.workerGroupIds().contains(group))
+                if (!project.allowsWorkerGroup(group))
                     throw failure(requirement, group, "Group is not declared by Project", null);
             }
         }

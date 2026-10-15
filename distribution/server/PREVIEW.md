@@ -209,11 +209,18 @@ validation: build and run a separate source copy, port, scope and inventory.
 
 ## Raw Task workspace
 
-Preview declares `default` over `demo-sim`, `app-a-sim` and `app-b-sim` in addition
-to the three business Projects. `/runtime/tasks` observes all Projects and keeps
-read-only terminal JSONL export. `/task-workbench` provides RPC calls and finite
-Task management only for `default`. RPC users enter a caller identifier and explicitly
-create/reuse their Task; SMS prepares its shared Task at startup. Project bindings
-do not generate Tasks or automatically include new applications. RPC preparation
-retains the existing Group-level supply configuration. No migration, scope cleanup or running-process restart is performed
-by this UI change.
+Preview explicitly declares `default` with an empty Group binding list alongside
+the business Projects. Its Group capabilities include all registered resources,
+including later API registrations after manual refresh. Other Projects retain
+their declared bindings. The admin task workbench supports RPC and finite tasks
+for declared Projects. RPC lists long-lived Tasks separately from its JSON debug
+page. Creation uses the logged-in caller, explicit immutable supply (initially
+empty), and creation-time approval; SMS retains the host-configured default.
+Programmatic and web calls use the same 1..100 Item HTTP batch and known-ID Result
+reads. Neither opening the debugger nor switching Groups creates work. The list
+is a bounded current batch; known Task IDs remain directly accessible.
+Finite creation uses a content-area page with payload JSONL, TXT and full Item
+JSONL, followed by independent quantity approval. Raw result previews and terminal
+successful JSONL exports preserve Worker output without Scenario interpretation.
+Project declarations never create Tasks. Existing caller and input-owner checks
+continue to apply.

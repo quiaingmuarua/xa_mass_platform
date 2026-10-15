@@ -21,8 +21,8 @@ class DirectQueryFunctionTest {
     final CandidateBudget budget = new CandidateBudget();
     @Test void capabilityReadsOnlyStartupEnablementIncludingGlobalFunctions() {
         var configured = catalog();
-        assertEquals(Set.of("workerId", "worker.phone"), configured.capabilities("g").functions());
-        assertEquals(Set.of("workerId"), configured.capabilities("other").functions());
+        assertEquals(Set.of("workerId", "worker.phone"), configured.capabilities("g").functions().stream().map(WorkerMatchingCatalog.FunctionCapability::name).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(Set.of("workerId"), configured.capabilities("other").functions().stream().map(WorkerMatchingCatalog.FunctionCapability::name).collect(java.util.stream.Collectors.toSet()));
         assertTrue(configured.capabilities("g").pools().isEmpty());
         assertThrows(UnsupportedOperationException.class, () -> configured.capabilities("g").functions().clear());
         assertThrows(IllegalArgumentException.class, () -> configured.capabilities(" "));
@@ -73,7 +73,7 @@ class DirectQueryFunctionTest {
 
         {
             var catalog=new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis, Map.of(),
-                    Map.of("workerId", new IdentityQueryFunction()), Map.of(), List.of(), Set.of("workerId"));
+                    Map.of("workerId", new IdentityQueryFunction()), Map.of(), List.of(), Set.of("workerId"), Map.of());
             assertEquals(List.of(),catalog.normalizeRefill("g",List.of()));
             assertEquals(Map.of(),catalog.observeRefillDeficits(Map.of("g",List.of())));
             for(String pool:List.of("any","default"))
@@ -87,6 +87,6 @@ class DirectQueryFunctionTest {
     }
 
     private DefaultWorkerMatchingCatalog catalog() {
-        return new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis, Map.of(), Map.of("workerId", new IdentityQueryFunction(), "worker.phone", new PhoneQueryFunction((group, values) -> { throw new AssertionError("admission must not read the index"); })), Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))), List.of(), Set.of("workerId"));
+        return new DefaultWorkerMatchingCatalog(budget, Map.of(), System::currentTimeMillis, Map.of(), Map.of("workerId", new IdentityQueryFunction(), "worker.phone", new PhoneQueryFunction((group, values) -> { throw new AssertionError("admission must not read the index"); })), Map.of("g",new MatchingGroup(Set.of(),Set.of("worker.phone"))), List.of(), Set.of("workerId"), Map.of());
     }
 }

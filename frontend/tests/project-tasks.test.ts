@@ -8,6 +8,43 @@ import { createProjectSource, type ProjectSource } from "@/task-management/proje
 import { createProjectWorkspace } from "@/task-management/workspace";
 import { task } from "./fixtures";
 afterEach(() => vi.unstubAllGlobals());
+it("raw previews retain old snapshots on failure and discard cross-task late responses", async () => {
+  let release!: (value: unknown) => void;
+  const current = {
+    results: [
+      {
+        messageId: "b",
+        item: null,
+        result: { status: "succeeded", opaqueResultPayload: "原文\n" }
+      }
+    ],
+    truncated: true
+  };
+  const source = {
+    results: vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      )
+      .mockResolvedValueOnce(current)
+  } as unknown as ProjectSource;
+  const workspace = createProjectWorkspace(source);
+  const old = workspace.loadResults("p", "a");
+  await workspace.loadResults("p", "b");
+  release({ results: [], truncated: false });
+  await old;
+  expect(workspace.results.value.value).toEqual(current);
+  const time = workspace.results.value.readAt;
+  vi.mocked(source.results).mockRejectedValueOnce(new Error("offline"));
+  await workspace.loadResults("p", "b");
+  expect(workspace.results.value.stale).toBe(true);
+  expect(workspace.results.value.readAt).toBe(time);
+  expect(workspace.results.value.value).toEqual(current);
+  workspace.dispose();
+});
 it("first asynchronous loads notify computed list and Group consumers", async () => {
   const source = {
     tasks: vi.fn().mockResolvedValue({
@@ -19,7 +56,7 @@ it("first asynchronous loads notify computed list and Group consumers", async ()
       {
         workerGroupId: "g",
         workerGroup: null,
-        matching: { pools: [], functions: ["workerId"] }
+        matching: { pools: [], functions: [{ name: "workerId", poolName: null }] }
       }
     ])
   } as unknown as ProjectSource;
@@ -43,7 +80,11 @@ it("reads startup Projects and complete backend-shaped TaskViews with null proje
   const fetcher = vi
     .fn()
     .mockResolvedValueOnce(
-      new Response(JSON.stringify([{ projectId: "p", workerGroupIds: ["g"] }]))
+      new Response(
+        JSON.stringify([
+          { projectId: "p", workerGroupSource: "declared", workerGroupIds: ["g"] }
+        ])
+      )
     )
     .mockResolvedValueOnce(
       new Response(
@@ -93,9 +134,18 @@ it("Mock has a consistent directory and no service requests", async () => {
     expect(result.tasks.every((row) => row.task?.projectId === project.projectId)).toBe(
       true
     );
-    expect(
-      (await source.groups(project.projectId)).map((group) => group.workerGroupId)
-    ).toEqual(project.workerGroupIds);
+    const groups = await source.groups(project.projectId);
+    if (project.workerGroupSource === "declared")
+      expect(groups.map((group) => group.workerGroupId)).toEqual(
+        project.workerGroupIds
+      );
+    else {
+      expect(project.workerGroupIds).toEqual([]);
+      expect(groups.map((group) => group.workerGroupId)).toContain(
+        "agentforge-detect-env-workers"
+      );
+      expect(groups.every((group) => group.workerGroup !== null)).toBe(true);
+    }
     for (const row of result.tasks)
       expect(await source.task(project.projectId, row.taskId)).toEqual(row);
   }
@@ -134,7 +184,11 @@ it("late detail responses cannot overwrite another task; refresh failure retains
 });
 it("failed task reads do not erase the directory or Group capabilities", async () => {
   const source = {
-    list: vi.fn().mockResolvedValue([{ projectId: "p", workerGroupIds: ["g"] }]),
+    list: vi
+      .fn()
+      .mockResolvedValue([
+        { projectId: "p", workerGroupSource: "declared", workerGroupIds: ["g"] }
+      ]),
     tasks: vi.fn().mockRejectedValue(new Error("bad Task response")),
     groups: vi.fn().mockResolvedValue([])
   } as unknown as ProjectSource;

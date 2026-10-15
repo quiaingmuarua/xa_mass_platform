@@ -6,6 +6,7 @@ import { Plus, Refresh } from "@element-plus/icons-vue";
 import "element-plus/es/components/message-box/style/css";
 import JsonBlock from "@/components/JsonBlock.vue";
 import RawTaskInput from "@/components/RawTaskInput.vue";
+import RawTaskResults from "@/components/RawTaskResults.vue";
 import RawTaskTable, { type TaskRow } from "@/components/RawTaskTable.vue";
 import TaskResultExport from "@/components/TaskResultExport.vue";
 import FiniteTaskActions from "./FiniteTaskActions.vue";
@@ -40,6 +41,20 @@ const fresh = computed(
     !state.value.loading &&
     !state.value.stale
 );
+watch(
+  () => [taskId.value, fresh.value],
+  () => {
+    if (fresh.value && workspace.resultsKey.value !== projectId + "/" + taskId.value)
+      void workspace.loadResults(projectId, taskId.value);
+  }
+);
+function refreshResults() {
+  if (
+    detail.value?.task?.projectId === projectId &&
+    detail.value.taskId === taskId.value
+  )
+    void workspace.loadResults(projectId, taskId.value);
+}
 const directoryFresh = computed(
   () => !session.directory.stale && !session.directory.loading
 );
@@ -75,6 +90,8 @@ const filtered = computed(() =>
   })
 );
 const table = ref<InstanceType<typeof RawTaskTable>>();
+const createHeading = ref<HTMLElement>();
+let creatingPreviously = false;
 let disposed = false;
 let navigation = 0;
 let restoringScroll = true;
@@ -97,6 +114,10 @@ async function sync() {
       void workspace.loadDetail(projectId, taskId.value);
   } else workspace.clearDetail();
   await nextTick();
+  if (!disposed && generation === navigation) {
+    if (creating.value && !creatingPreviously) createHeading.value?.focus();
+    creatingPreviously = creating.value;
+  }
   if (savedScroll !== 0 && !disposed && generation === navigation)
     await table.value?.restoreScrollTop(savedScroll);
   if (!disposed && generation === navigation) restoringScroll = false;
@@ -173,7 +194,7 @@ async function changeTask(action: "approve" | "close", id = taskId.value) {
     return;
   try {
     await ElMessageBox.confirm(
-      `Project: ${projectId}\nTask: ${id}\nGroup: ${current.task?.workerGroupId}\n${action === "approve" ? "批准后开始调度已写入 Items。" : "关闭保留已有结果，已执行操作不会撤回。"}`,
+      `Project: ${projectId}\nTask: ${id}\nGroup: ${current.task?.workerGroupId}\nItem 数量: ${current.stats?.total ?? "不可用"}\n${action === "approve" ? "批准后开始调度已写入 Items。" : "关闭保留已有结果，已执行操作不会撤回。"}`,
       action === "approve" ? "批准原始任务" : "关闭原始任务",
       { confirmButtonText: "确认", cancelButtonText: "取消", type: "warning" }
     );
@@ -244,109 +265,142 @@ function returnSubmission() {
 </script>
 <template>
   <section class="raw-tasks" data-testid="finite-task-page">
-    <header class="raw-tasks__heading">
-      <h2>有限任务</h2>
-      <div>
-        <span class="raw-muted">最近读取：{{ time(list?.readAt) }}</span
-        ><el-button :icon="Plus" :disabled="!canWrite" @click="openCreate"
-          >创建任务</el-button
-        ><el-button :icon="Refresh" :loading="list?.loading" @click="refresh"
-          >刷新</el-button
+    <section v-show="creating" aria-label="创建有限任务">
+      <header class="raw-tasks__heading">
+        <h2 ref="createHeading" tabindex="-1">创建有限任务</h2>
+        <div>
+          <el-button :loading="groups?.loading" @click="workspace.loadGroups(projectId)"
+            >刷新 Group 能力</el-button
+          >
+          <el-button @click="close(() => {})">返回列表</el-button>
+        </div>
+      </header>
+      <p v-if="project.workerGroupSource === 'registered'" class="raw-muted">
+        default 可使用当前环境全部已注册 Group；新注册后手动刷新。每个任务绑定一个
+        Group。
+      </p>
+      <el-alert
+        v-if="groups?.error"
+        :title="'Group 能力读取失败：' + groups.error"
+        type="error"
+        :closable="false"
+      />
+      <RawTaskInput
+        v-if="creating"
+        key="create"
+        :project-id="projectId"
+        :groups="groups?.value ?? []"
+        :disabled="!canWrite || !groupFresh"
+        :disabled-reason="!api ? 'Mock 仅演示输入与读取，不提交原始任务。' : undefined"
+        @submitted="afterSubmit"
+        @inspect="inspect"
+      />
+    </section>
+    <div v-show="!creating">
+      <header class="raw-tasks__heading">
+        <h2>有限任务</h2>
+        <div>
+          <span class="raw-muted">最近读取：{{ time(list?.readAt) }}</span
+          ><el-button :icon="Plus" :disabled="!canWrite" @click="openCreate"
+            >创建任务</el-button
+          ><el-button :icon="Refresh" :loading="list?.loading" @click="refresh"
+            >刷新</el-button
+          >
+        </div>
+      </header>
+      <p class="raw-muted">
+        当前载入 {{ list?.value?.tasks.length ?? 0 }} 条（最多 100
+        条），其中有限或类型未知任务 {{ rows.length }} 条。筛选仅作用于当前集合。{{
+          list?.value?.truncated ? "列表已截断。" : ""
+        }}
+      </p>
+      <el-alert
+        v-if="list?.error"
+        :title="(list.stale ? '读取失败，保留旧快照：' : '读取失败：') + list.error"
+        type="error"
+        :closable="false"
+      />
+      <el-alert
+        v-if="operationState.error"
+        :title="operationState.error.message"
+        type="error"
+        :closable="false"
+      />
+      <div v-if="operationState.submission" class="raw-submission">
+        本会话提交：{{ operationState.submission.applied }} 已确认 /
+        {{ operationState.submission.total }}；{{
+          operationState.submission.error ||
+          (operationState.submission.complete ? "本次导入完成" : "未完成")
+        }}
+        <el-button link @click="returnSubmission">返回提交与核对</el-button
+        ><el-button
+          v-if="operationState.submission.taskId"
+          link
+          @click="inspect(operationState.submission.taskId)"
+          >查看已知任务</el-button
+        >
+        <el-button
+          v-if="operationState.submission.taskId && !operationState.submission.complete"
+          link
+          :disabled="operations.busy || !canWrite"
+          @click="ensureKnownDirectory"
+          >核对／补齐任务目录</el-button
         >
       </div>
-    </header>
-    <p class="raw-muted">
-      当前载入 {{ list?.value?.tasks.length ?? 0 }} 条（最多 100
-      条），其中有限或类型未知任务 {{ rows.length }} 条。筛选仅作用于当前集合。{{
-        list?.value?.truncated ? "列表已截断。" : ""
-      }}
-    </p>
-    <el-alert
-      v-if="list?.error"
-      :title="(list.stale ? '读取失败，保留旧快照：' : '读取失败：') + list.error"
-      type="error"
-      :closable="false"
-    />
-    <el-alert
-      v-if="operationState.error"
-      :title="operationState.error.message"
-      type="error"
-      :closable="false"
-    />
-    <div v-if="operationState.submission" class="raw-submission">
-      本会话提交：{{ operationState.submission.applied }} 已确认 /
-      {{ operationState.submission.total }}；{{
-        operationState.submission.error ||
-        (operationState.submission.complete ? "本次导入完成" : "未完成")
-      }}
-      <el-button link @click="returnSubmission">返回提交与核对</el-button
-      ><el-button
-        v-if="operationState.submission.taskId"
-        link
-        @click="inspect(operationState.submission.taskId)"
-        >查看已知任务</el-button
-      >
-      <el-button
-        v-if="operationState.submission.taskId && !operationState.submission.complete"
-        link
-        :disabled="operations.busy || !canWrite"
-        @click="ensureKnownDirectory"
-        >核对／补齐任务目录</el-button
-      >
+      <div class="raw-tasks__filters">
+        <el-input
+          v-model="filter.search"
+          placeholder="名称 / 编号（当前集合）"
+          clearable
+          aria-label="有限任务搜索"
+        /><el-select
+          v-model="filter.group"
+          placeholder="所有 Group"
+          clearable
+          aria-label="有限任务 Group"
+          ><el-option
+            v-for="g in groups?.value ?? []"
+            :key="g.workerGroupId"
+            :label="g.workerGroupId"
+            :value="g.workerGroupId" /></el-select
+        ><el-select
+          v-model="filter.status"
+          placeholder="全部状态"
+          clearable
+          aria-label="有限任务状态"
+          ><el-option
+            v-for="status in [
+              'pre_review',
+              'running-initial',
+              'running_visible',
+              'terminal'
+            ]"
+            :key="status"
+            :label="status"
+            :value="status"
+        /></el-select>
+      </div>
+      <RawTaskTable
+        ref="table"
+        :rows="filtered"
+        :loading="list?.loading"
+        :error="list?.error"
+        @open="open"
+        @scroll="rememberScroll"
+        ><template #actions="{ row }"
+          ><FiniteTaskActions
+            :row="row"
+            :writable="
+              canWrite &&
+              !list?.loading &&
+              !list?.stale &&
+              row.task?.projectId === projectId &&
+              row.task.idleDisposition === 'CLOSE_WHEN_IDLE'
+            "
+            :busy="operations.busy"
+            @action="action(row, $event)" /></template
+      ></RawTaskTable>
     </div>
-    <div class="raw-tasks__filters">
-      <el-input
-        v-model="filter.search"
-        placeholder="名称 / 编号（当前集合）"
-        clearable
-        aria-label="有限任务搜索"
-      /><el-select
-        v-model="filter.group"
-        placeholder="所有 Group"
-        clearable
-        aria-label="有限任务 Group"
-        ><el-option
-          v-for="g in groups?.value ?? []"
-          :key="g.workerGroupId"
-          :label="g.workerGroupId"
-          :value="g.workerGroupId" /></el-select
-      ><el-select
-        v-model="filter.status"
-        placeholder="全部状态"
-        clearable
-        aria-label="有限任务状态"
-        ><el-option
-          v-for="status in [
-            'pre_review',
-            'running-initial',
-            'running_visible',
-            'terminal'
-          ]"
-          :key="status"
-          :label="status"
-          :value="status"
-      /></el-select>
-    </div>
-    <RawTaskTable
-      ref="table"
-      :rows="filtered"
-      :loading="list?.loading"
-      :error="list?.error"
-      @open="open"
-      @scroll="rememberScroll"
-      ><template #actions="{ row }"
-        ><FiniteTaskActions
-          :row="row"
-          :writable="
-            canWrite &&
-            !list?.loading &&
-            !list?.stale &&
-            row.task?.projectId === projectId &&
-            row.task.idleDisposition === 'CLOSE_WHEN_IDLE'
-          "
-          :busy="operations.busy"
-          @action="action(row, $event)" /></template
-    ></RawTaskTable>
     <el-drawer
       :key="taskId"
       :model-value="!!taskId"
@@ -371,6 +425,7 @@ function returnSubmission() {
           <code>{{ detail.taskId }}</code>
         </p>
         <p>{{ detail.task?.workerGroupId }} · {{ detail.scoreBand ?? "状态不可用" }}</p>
+        <p>实际 Item 数量：{{ detail.stats?.total ?? "不可用" }}</p>
         <FiniteTaskActions
           v-if="detail.task?.idleDisposition === 'CLOSE_WHEN_IDLE'"
           :row="detail"
@@ -387,6 +442,12 @@ function returnSubmission() {
           >查看 Runtime 原始观察</router-link
         >
         <TaskResultExport :key="detail.taskId" :task="detail" :fresh="fresh" />
+        <RawTaskResults
+          v-if="workspace.resultsKey.value === projectId + '/' + taskId"
+          :key="detail.taskId"
+          :state="workspace.results.value"
+          @refresh="refreshResults"
+        />
         <el-alert
           v-if="groups?.error"
           :title="groups.error"
@@ -411,30 +472,6 @@ function returnSubmission() {
           <JsonBlock :value="detail" />
         </details>
       </template>
-    </el-drawer>
-    <el-drawer
-      :model-value="creating"
-      :title="`创建有限任务 · ${projectId}`"
-      size="760px"
-      :before-close="close"
-    >
-      <el-alert
-        v-if="groups?.error"
-        :title="groups.error"
-        type="error"
-        :closable="false"
-        ><el-button @click="workspace.loadGroups(projectId)"
-          >重读 Group 能力</el-button
-        ></el-alert
-      >
-      <RawTaskInput
-        key="create"
-        :project-id="projectId"
-        :groups="groups?.value ?? []"
-        :disabled="!canWrite || !groupFresh"
-        @submitted="afterSubmit"
-        @inspect="inspect"
-      />
     </el-drawer>
   </section>
 </template>

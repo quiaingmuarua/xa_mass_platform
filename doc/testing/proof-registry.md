@@ -41,6 +41,7 @@ cost; it does not combine independent commits.
 
 | Proven boundary | Conditions that distinguish the claim |
 | --- | --- |
+| Group directory discovery | Existing Group HASH traversal is read-only, preserves corrupt entries as unavailable, and covers more than the sample bound. Server default scope and point-checked creation do not depend on random previews; other Project bindings remain explicit. |
 | Registration and Task descriptors | Cold NX registration, concurrent default-Endpoint selection and retry after partial Prepare stages preserve identity. Kernel descriptors remain create-only and opaque to Project/User. Server independently ensures its single per-Project attribution ZSET; Base36 precision, user-range batches, first-time preservation, concurrent ensure, missing-index recovery and corruption rejection are proved by TaskDirectoryRedisIntegrationTest. Directory registration is not atomic with Kernel creation. |
 | Worker generation and execution | Exact candidateization does not renew time; bounded aged heads progress without admitting the current slot. Properties invalidation advances past HOT and clears its mark, while cold registration, RECOVERY marks and an execution-first future hold remain protected. Pool/Direct races have one acquisition winner; stale stock can neither acquire nor release that hold. Both strict and current acquisition reject current/future HOT, RECOVERY, missing and corrupt entries. |
 | Network transitions and recovery | Evidence applied to a stored current/future Score preserves its time/mark; polarity change alone grants no execution. Accepted past polarity changes advance generation and clear the mark, including same-slot evidence, while ordinary same-polarity Polling is unchanged. Below-floor activation needs post-floor evidence. Pause and relative targets retain representable bounds; Recovery has no age/attempt cutoff and uses the Owner clock. |
@@ -70,6 +71,8 @@ rollback or loss repair.
 
 | Proven boundary | Conditions that distinguish the claim |
 | --- | --- |
+| Generic default finite tasks | Post-startup Group registration, raw payload execution through identity and Pool queries, bounded raw Result preview and full successful JSONL export use real HTTP/Worker evidence without Scenario conversion. |
+| Explicit RPC configuration and batch debug | HTTP preparation saves explicit Pool supply or empty supply, reuses unchanged descriptors and rejects configuration conflicts. A 100-Item batch traverses a real Worker and is reconciled by known IDs; 101 Items are rejected, and empty-supply identity calls remain supported. No exactly-once or throughput claim is made. |
 | Public Task/Result/Direct/Serviceability paths | One Java Server context traverses real WebSocket, Socket and Polling Workers. Prepare establishes identity/cold membership without Facts; network evidence and Properties have independent effects. Preview may expose identity before baseline, and explicit Any Polling executes without Facts. |
 | Continuous Task observations | Actual Handlers return send success before later delivered/read/replied observations. Item-state queries, repeatable latest replies and subsequent execution establish the boundary through all three transports. |
 | Matching traversal | Shared/different supply and query paths across Groups prove supplied-batch candidateization before qualification and finite execution. No-Pool identity queries and empty-supply Tasks retain real Worker traversal. |
@@ -140,7 +143,7 @@ or observation replay.
 ## frontend
 
 - **Primary Owner:** [Frontend](../../frontend/README.md).
-- **Boundary:** Runtime projections, default-Project RPC/finite Task workbench, static API Reference, development login/logout, centralized role policy and login-scoped Task observations and operations.
+- **Boundary:** Runtime projections, Project-scoped RPC/finite Task workbench, static API Reference, development login/logout, centralized role policy and login-scoped Task observations and operations.
 - **Required evidence:** Owner lint, type, test and build checks; a successful build alone does not replace the other checks.
 - **Nonclaims:** browser compatibility, visual regression or authenticated user isolation.
 

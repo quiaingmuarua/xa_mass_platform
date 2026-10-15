@@ -4,6 +4,7 @@ import { inject, reactive, type InjectionKey } from "vue";
 import { createProjectWorkspace } from "@/task-management/workspace";
 import type { ProjectSource } from "@/task-management/projects";
 import type { RpcTaskPreparationClient, RpcTaskPrepareRequest } from "./rpc-task";
+import { newSupplyDraft, type SupplyDraft } from "@/task-management/supply";
 import { TaskCallDebugError } from "@/task-call-debug/errors";
 
 export function createTaskSession(
@@ -25,13 +26,19 @@ export function createTaskSession(
       {
         finiteFilter: { search: string; group: string; status: string; scroll: number };
         rpcQuery: Record<string, string>;
+        rpcFilter: { search: string; group: string; scroll: number };
+        rpcCreate: { groupId: string; name: string; supply: SupplyDraft };
+        rpcCreatedId: string;
       }
     >
   >(Object.create(null));
   function project(projectId: string) {
     projects[projectId] ??= {
       finiteFilter: { search: "", group: "", status: "", scroll: 0 },
-      rpcQuery: {}
+      rpcQuery: {},
+      rpcFilter: { search: "", group: "", scroll: 0 },
+      rpcCreate: { groupId: "", name: "", supply: newSupplyDraft() },
+      rpcCreatedId: ""
     };
     return projects[projectId]!;
   }
@@ -53,25 +60,27 @@ export function createTaskSession(
   >(Object.create(null));
   async function prepareRpc(taskId: string, request: RpcTaskPrepareRequest) {
     if (mode !== "api") return;
-    const attempt = (rpcPreparations[taskId] ??= {
+    rpcPreparations[taskId] ??= {
       caller: captureTaskCaller(),
-      request: { ...request, metadata: { ...request.metadata } },
+      request: JSON.parse(JSON.stringify(request)) as RpcTaskPrepareRequest,
       busy: false
-    });
+    };
+    const attempt = rpcPreparations[taskId]!;
     if (attempt.busy) return;
     attempt.busy = true;
     attempt.error = undefined;
     attempt.outcome = undefined;
     try {
-      await preparations.prepareTask(attempt.caller, taskId, {
-        ...attempt.request,
-        metadata: { ...attempt.request.metadata }
-      });
+      await preparations.prepareTask(
+        attempt.caller,
+        taskId,
+        JSON.parse(JSON.stringify(attempt.request)) as RpcTaskPrepareRequest
+      );
       attempt.outcome = "ready";
     } catch (error) {
       attempt.outcome =
         error instanceof TaskCallDebugError &&
-        (error.status === 400 || error.status === 403)
+        (error.status === 400 || error.status === 403 || error.status === 409)
           ? "rejected"
           : "unconfirmed";
       attempt.error = error instanceof Error ? error.message : "RPC Task 准备未确认。";

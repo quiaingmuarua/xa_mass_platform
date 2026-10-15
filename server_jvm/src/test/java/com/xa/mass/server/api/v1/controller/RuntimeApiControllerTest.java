@@ -154,6 +154,24 @@ class RuntimeApiControllerTest {
         org.mockito.Mockito.verifyNoInteractions(taskCatalog, itemScores, taskLifecycle);
     }
 
+    @Test void rpcRefillUsesExplicitArraysAndRejectsNullAndMalformedSupply() throws Exception {
+        when(taskCatalog.loadTaskAllocationDescriptors(List.of("caller-rpc"))).thenReturn(Map.of());
+        when(taskLifecycle.approveTask("caller-rpc")).thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED,null));
+        mockMvc.perform(post("/api/v1/tasks/caller-rpc/rpc:prepare").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":[]}"))
+                .andExpect(status().isOk());
+        var captured = org.mockito.ArgumentCaptor.forClass(TaskDescriptor.class);
+        verify(taskRuntime).createTask(captured.capture());
+        assertThat(captured.getValue().refill()).isEmpty();
+        org.mockito.Mockito.clearInvocations(taskRuntime,taskLifecycle);
+        for (String invalid : List.of("null","{}","[null]","[{\"poolName\":\"any\",\"target\":{},\"count\":0}]")) {
+            mockMvc.perform(post("/api/v1/tasks/caller-rpc/rpc:prepare").contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":"+invalid+"}"))
+                    .andExpect(status().isBadRequest());
+        }
+        org.mockito.Mockito.verifyNoInteractions(taskRuntime,taskLifecycle);
+    }
+
     @BeforeEach
     void setUp() {
         workerIdentity = mock(WorkerIdentityService.class);

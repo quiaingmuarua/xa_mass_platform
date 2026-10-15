@@ -81,7 +81,7 @@ API and the fixed production Pacers, including:
 - Task create/lifecycle/Call submission, Item record access and Result storage;
 - Task, TaskItem and Worker score range reads, exact CAS transitions, leases,
   idle park/close, final promotion and completed-HOT release;
-- Worker registration and minimal identity/Group/Endpoint descriptors;
+- Worker registration and minimal identity/Group/Endpoint descriptors, including caller-driven read-only Group HASH pages;
 - authoritative and non-overwriting Worker Command writes plus bounded
   consume;
 - explicit EXECUTION_SUCCESS/EXECUTION_FAILURE/OUTCOME_OBSERVATION Task evidence append/consume without diagnostic-code policy;

@@ -5,6 +5,9 @@ import { createApp, nextTick } from "vue";
 import { createPinia, setActivePinia } from "pinia";
 import { createMemoryHistory, createRouter } from "vue-router";
 import {
+  ElDropdown,
+  ElDropdownMenu,
+  ElDropdownItem,
   ElAlert,
   ElButton,
   ElDrawer,
@@ -63,7 +66,7 @@ function row(
       idleDisposition: managed ? "PARK_WHEN_IDLE" : "CLOSE_WHEN_IDLE",
       refill: [],
       name: null,
-      metadata: {},
+      metadata: { "server.inputOwner": "raw" },
       config: {}
     }
   };
@@ -79,11 +82,14 @@ async function mount(
   } = {}
 ) {
   const source: ProjectSource = {
+    results: vi.fn().mockResolvedValue({ results: [], truncated: false }),
     stats: vi.fn().mockResolvedValue({}),
     list: vi
       .fn()
       .mockResolvedValue(
-        options.projects ?? [{ projectId: "default", workerGroupIds: ["g1", "g2"] }]
+        options.projects ?? [
+          { projectId: "default", workerGroupSource: "registered", workerGroupIds: [] }
+        ]
       ),
     groups: vi.fn().mockResolvedValue(
       ["g1", "g2"].map((workerGroupId) => ({
@@ -96,8 +102,14 @@ async function mount(
               eventCodes: ["extension.worker.string.md5"]
             },
         matching: options.identityOnly
-          ? { pools: [], functions: ["workerId"] }
-          : { pools: ["country"], functions: ["worker.country", "workerId"] }
+          ? { pools: [], functions: [{ name: "workerId", poolName: null }] }
+          : {
+              pools: ["country"],
+              functions: [
+                { name: "worker.country", poolName: "country" },
+                { name: "workerId", poolName: null }
+              ]
+            }
       }))
     ),
     tasks: vi.fn(async (projectId) => ({
@@ -136,10 +148,10 @@ async function mount(
     exportResults: vi.fn()
   };
   const rpcClient = {
-    callTask: vi.fn().mockResolvedValue({ status: "not_observed" }),
-    loadResult: vi
+    callTask: vi.fn().mockResolvedValue({ sample: { status: "not_observed" } }),
+    loadResults: vi
       .fn()
-      .mockResolvedValue({ status: "succeeded", opaqueResultPayload: "ok" })
+      .mockResolvedValue({ sample: { status: "succeeded", opaqueResultPayload: "ok" } })
   };
   const mode = options.mode ?? "api";
   const ops = createTaskManagementStore(mode, client);
@@ -156,6 +168,9 @@ async function mount(
   app.use(pinia);
   app.use(router);
   [
+    ElDropdown,
+    ElDropdownMenu,
+    ElDropdownItem,
     ElAlert,
     ElButton,
     ElDrawer,
@@ -216,36 +231,62 @@ function button(text: string) {
   )!;
 }
 
-it("uses the current development caller and prepares explicitly without listing Tasks", async () => {
-  const f = await mount("/task-workbench?tab=rpc&group=g1", { missing: true });
-  const id = rpcTaskId("default", "1000", "g1");
-  await vi.waitFor(() => expect(f.session.rpc.detail.value.missing).toBe(true));
-  const input = f.host.querySelector<HTMLInputElement>(
-    'input[aria-label="RPC 调用方标识"]'
-  )!;
-  expect(input.readOnly).toBe(true);
-  expect(input.value).toBe("1000");
-  expect(f.source.task).toHaveBeenCalledWith("default", id, expect.any(AbortSignal));
-  expect(f.preparationClient.prepareTask).not.toHaveBeenCalled();
-  f.preparationClient.prepareTask.mockImplementationOnce(async () => {
-    vi.mocked(f.source.task).mockResolvedValue(row(id, "g1", true));
+function requestText(value = "first") {
+  return JSON.stringify({
+    items: [
+      {
+        messageId: "sample",
+        eventCode: "custom",
+        payload: { value },
+        workerSelector: { executorName: "workerId", input: "known-worker" }
+      }
+    ],
+    waitTimeoutMillis: 3000
   });
-  button("创建／复用 RPC Task").click();
-  await vi.waitFor(() => expect(button("提交调用")?.disabled).toBe(false));
-  expect(f.preparationClient.prepareTask).toHaveBeenCalledExactlyOnceWith(CALLER, id, {
+}
+async function selectCreateGroup(
+  f: Awaited<ReturnType<typeof mount>>,
+  project = "default"
+) {
+  f.session.project(project).rpcCreate.groupId = "g1";
+  await vi.waitFor(() => expect(f.session.rpc.detail.value.missing).toBe(true));
+}
+
+it("lists RPC tasks without creating and prepares only from explicit creation with captured supply", async () => {
+  const f = await mount("/task-workbench?tab=rpc", { missing: true });
+  await vi.waitFor(() => expect(f.host.textContent).toContain("rpc-1"));
+  expect(f.host.textContent).toContain("broken");
+  expect(f.preparationClient.prepareTask).not.toHaveBeenCalled();
+  expect(button("提交调用")).toBeUndefined();
+  await f.router.push("/task-workbench?project=default&tab=rpc&view=create");
+  await selectCreateGroup(f);
+  const id = rpcTaskId("default", "1000", "g1");
+  expect(f.host.querySelector('[aria-label="RPC 调用方标识"]')).toBeNull();
+  const supply = [
+    { poolName: "country", targetText: '{"worker.country":["CN"]}', count: 100 }
+  ];
+  f.session.project("default").rpcCreate.supply.supplyRows = supply;
+  await nextTick();
+  button("创建并启用").click();
+  await vi.waitFor(() =>
+    expect(f.preparationClient.prepareTask).toHaveBeenCalledTimes(1)
+  );
+  expect(f.preparationClient.prepareTask).toHaveBeenCalledWith(CALLER, id, {
     projectId: "default",
     workerGroupId: "g1",
-    metadata: {}
+    metadata: {},
+    refill: [{ poolName: "country", target: { "worker.country": ["CN"] }, count: 100 }]
   });
-  button("刷新").click();
-  await vi.waitFor(() => expect(f.session.rpc.detail.value.loading).toBe(false));
-  expect(f.preparationClient.prepareTask).toHaveBeenCalledTimes(1);
-  expect(f.source.tasks).not.toHaveBeenCalled();
+  await vi.waitFor(() =>
+    expect(f.router.currentRoute.value.query.view).toBeUndefined()
+  );
+  expect(f.session.project("default").rpcCreatedId).toBe(id);
+  expect(f.rpcClient.callTask).not.toHaveBeenCalled();
 });
 it("late preparation stays with the disposed login and PRE_REVIEW does not enable calls", async () => {
   const original = rpcTaskId("default", "1000", "g1");
-  const f = await mount("/task-workbench?tab=rpc&group=g1", { missing: true });
-  await vi.waitFor(() => expect(f.session.rpc.detail.value.missing).toBe(true));
+  const f = await mount("/task-workbench?tab=rpc&view=create", { missing: true });
+  await selectCreateGroup(f);
   let finish!: () => void;
   f.preparationClient.prepareTask.mockImplementationOnce(
     () =>
@@ -253,14 +294,12 @@ it("late preparation stays with the disposed login and PRE_REVIEW does not enabl
         finish = resolve;
       })
   );
-  button("创建／复用 RPC Task").click();
-  await vi.waitFor(() =>
-    expect(f.preparationClient.prepareTask).toHaveBeenCalledTimes(1)
-  );
+  button("创建并启用").click();
+  await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
   f.dispose();
   consoleIdentity.logout();
   consoleIdentity.login("1000");
-  const next = await mount("/task-workbench?tab=rpc&taskId=rpc-pending");
+  const next = await mount("/task-workbench?tab=rpc&view=debug&taskId=rpc-pending");
   vi.mocked(next.source.task).mockResolvedValue({
     ...row("rpc-pending", "g1", true),
     scoreBand: "pre_review"
@@ -270,30 +309,22 @@ it("late preparation stays with the disposed login and PRE_REVIEW does not enabl
   await vi.waitFor(() =>
     expect(f.session.rpcPreparations[original]?.outcome).toBe("ready")
   );
-  expect(f.session.rpcPreparations[original]?.caller).toEqual(CALLER);
   expect(next.session.rpcPreparations[original]).toBeUndefined();
-  expect(next.session.rpc.detail.value.value?.taskId).toBe("rpc-pending");
   expect(button("提交调用").disabled).toBe(true);
 });
 it("a route user parameter cannot choose another RPC creator", async () => {
-  const f = await mount("/task-workbench?tab=rpc&group=g1&user=someone", {
+  const f = await mount("/task-workbench?tab=rpc&view=create&user=someone", {
     missing: true
   });
-  await vi.waitFor(() => expect(f.session.rpc.detail.value.missing).toBe(true));
-  const id = rpcTaskId("default", "1000", "g1");
-  button("创建／复用 RPC Task").click();
+  await selectCreateGroup(f);
+  button("创建并启用").click();
   await vi.waitFor(() =>
     expect(f.preparationClient.prepareTask).toHaveBeenCalledExactlyOnceWith(
       CALLER,
-      id,
-      {
-        projectId: "default",
-        workerGroupId: "g1",
-        metadata: {}
-      }
+      rpcTaskId("default", "1000", "g1"),
+      { projectId: "default", workerGroupId: "g1", metadata: {}, refill: [] }
     )
   );
-  expect(f.rpcClient.callTask).not.toHaveBeenCalled();
 });
 
 it("Runtime remains a viewer including readonly export, while finite tasks exclude PARK descriptors", async () => {
@@ -317,16 +348,13 @@ it("Runtime remains a viewer including readonly export, while finite tasks exclu
   expect(f.client.createTask).not.toHaveBeenCalled();
 });
 
-it("RPC point-loads explicit identities, has no Any default, and retains per-Group drafts and late call ownership", async () => {
-  const f = await mount("/task-workbench?tab=rpc&taskId=rpc-1");
-  await vi.waitFor(() => expect(button("提交调用")?.disabled).toBe(false));
-  expect(f.source.tasks).not.toHaveBeenCalled();
-  expect(f.source.task).toHaveBeenCalledWith(
-    "default",
-    "rpc-1",
-    expect.any(AbortSignal)
+it("RPC debug point-loads explicit identities and retains JSON drafts and late batch ownership", async () => {
+  const f = await mount("/task-workbench?tab=rpc&view=debug&taskId=rpc-1");
+  await vi.waitFor(() =>
+    expect(f.session.rpc.detail.value.value?.taskId).toBe("rpc-1")
   );
-  expect(f.calls.draft("rpc-1").executorName).toBe("");
+  expect(f.source.tasks).not.toHaveBeenCalled();
+  expect(JSON.parse(f.calls.draft("rpc-1").requestText).items).toEqual([]);
   let finish!: (value: unknown) => void;
   f.rpcClient.callTask.mockImplementationOnce(
     () =>
@@ -334,39 +362,41 @@ it("RPC point-loads explicit identities, has no Any default, and retains per-Gro
         finish = resolve;
       })
   );
-  Object.assign(f.calls.draft("rpc-1"), {
-    eventName: "custom",
-    payloadText: '{"value":"first"}',
-    executorName: "workerId",
-    inputText: '"known-worker"'
-  });
-  await nextTick();
+  f.calls.draft("rpc-1").requestText = requestText();
+  await vi.waitFor(() =>
+    expect(button("提交调用").disabled, f.host.textContent ?? "").toBe(false)
+  );
   button("提交调用").click();
   await vi.waitFor(() => expect(f.rpcClient.callTask).toHaveBeenCalledTimes(1));
   expect(f.rpcClient.callTask.mock.calls[0]![0]).toMatchObject({
     taskId: "rpc-1",
-    workerSelector: { executorName: "workerId", input: "known-worker" }
+    request: {
+      items: [{ workerSelector: { executorName: "workerId", input: "known-worker" } }]
+    }
   });
-  await f.router.push("/task-workbench?tab=rpc&taskId=rpc-2");
+  await f.router.push("/task-workbench?tab=rpc&view=debug&taskId=rpc-2");
   await vi.waitFor(() =>
     expect(f.session.rpc.detail.value.value?.taskId).toBe("rpc-2")
   );
-  expect(f.calls.draft("rpc-2").executorName).toBe("");
-  finish({ status: "succeeded", opaqueResultPayload: "first-result" });
-  await vi.waitFor(() => expect(f.calls.history("rpc-1")[0]?.state).toBe("succeeded"));
+  finish({ sample: { status: "succeeded", opaqueResultPayload: "first-result" } });
+  await vi.waitFor(() => expect(f.calls.history("rpc-1")[0]?.state).toBe("observed"));
   expect(f.host.textContent).not.toContain("first-result");
   await f.router.push("/runtime/tasks?project=default");
-  await f.router.push("/task-workbench?tab=rpc&taskId=rpc-1");
+  await f.router.push("/task-workbench?tab=rpc&view=debug&taskId=rpc-1");
   await vi.waitFor(() => expect(f.host.textContent).toContain("first-result"));
-  expect(f.calls.draft("rpc-1").payloadText).toContain("first");
+  expect(f.calls.draft("rpc-1").requestText).toContain("first");
 });
 
 it("finite create drafts survive tabs and Runtime without resetting file or supplying them to another task", async () => {
   const f = await mount("/task-workbench?tab=finite&view=create");
   await vi.waitFor(() =>
-    expect(document.querySelector('textarea[aria-label="Item 查询"]')).not.toBeNull()
+    expect(
+      document.querySelector('textarea[aria-label="Item 查询参数"]')
+    ).not.toBeNull()
   );
   const draft = f.ops.draft("default", "create");
+  draft.inputMode = "file";
+  draft.format = "txt";
   draft.content = new TextEncoder().encode("kept").buffer;
   draft.file = new File(["kept"], "kept.txt");
   draft.payloadKey = "custom";
@@ -384,7 +414,9 @@ it("finite create drafts survive tabs and Runtime without resetting file or supp
 
 it("uses the sole declared non-default Project and leaves an empty directory unavailable", async () => {
   const f = await mount("/task-workbench?tab=rpc", {
-    projects: [{ projectId: "agentforge", workerGroupIds: ["g1"] }],
+    projects: [
+      { projectId: "agentforge", workerGroupSource: "declared", workerGroupIds: ["g1"] }
+    ],
     identityOnly: true
   });
   await vi.waitFor(() =>
@@ -423,25 +455,33 @@ it("initial table scroll events cannot erase the saved finite-list position when
   expect(f.session.project("default").finiteFilter.scroll).toBe(640);
 });
 
-it("Mock keeps the RPC form read-only", async () => {
-  const f = await mount("/task-workbench?tab=rpc&taskId=rpc-1", { mode: "mock" });
+it("Mock keeps RPC writes and batch reads disabled", async () => {
+  const f = await mount("/task-workbench?tab=rpc&view=debug&taskId=rpc-1", {
+    mode: "mock"
+  });
   await vi.waitFor(() => expect(button("提交调用")?.disabled).toBe(true));
   expect(f.rpcClient.callTask).not.toHaveBeenCalled();
+  expect(f.rpcClient.loadResults).not.toHaveBeenCalled();
 });
 
 it("failed RPC refresh keeps its old snapshot and time but blocks submission until recovery", async () => {
-  const f = await mount("/task-workbench?tab=rpc&taskId=rpc-1");
-  await vi.waitFor(() => expect(button("提交调用")?.disabled).toBe(false));
-  const previous = f.session.rpc.detail.value.value;
-  const readAt = f.session.rpc.detail.value.readAt;
-  vi.mocked(f.source.task).mockRejectedValueOnce(new Error("read unavailable"));
-  button("刷新").click();
-  await vi.waitFor(() => expect(f.session.rpc.detail.value.stale).toBe(true));
-  expect(f.session.rpc.detail.value.value).toEqual(previous);
+  const f = await mount("/task-workbench?tab=rpc&view=debug&taskId=rpc-1");
+  f.calls.draft("rpc-1").requestText = requestText();
+  await vi.waitFor(() =>
+    expect(button("提交调用")?.disabled, f.host.textContent ?? "").toBe(false)
+  );
+  const old = f.session.rpc.detail.value.value,
+    readAt = f.session.rpc.detail.value.readAt;
+  vi.mocked(f.source.task).mockRejectedValueOnce(new Error("down"));
+  await f.session.rpc.loadDetail("default", "rpc-1");
+  await nextTick();
+  expect(f.session.rpc.detail.value.value).toEqual(old);
   expect(f.session.rpc.detail.value.readAt).toBe(readAt);
   expect(button("提交调用").disabled).toBe(true);
-  button("刷新").click();
-  await vi.waitFor(() => expect(button("提交调用").disabled).toBe(false));
+  await f.session.rpc.loadDetail("default", "rpc-1");
+  await vi.waitFor(() =>
+    expect(button("提交调用").disabled, f.host.textContent ?? "").toBe(false)
+  );
   expect(f.rpcClient.callTask).not.toHaveBeenCalled();
 });
 
@@ -463,29 +503,22 @@ it("completed import receipts do not claim the task is still awaiting approval",
   expect(f.host.textContent).not.toContain("等待审核");
 });
 
-it("request uncertainty can be read with the original message ID without being recorded as failed execution", async () => {
+it("request uncertainty reads the original batch without another submission", async () => {
   setActivePinia(createPinia());
   const client = {
     callTask: vi
       .fn()
       .mockRejectedValue(new TaskCallDebugError({ kind: "network", message: "lost" })),
-    loadResult: vi
-      .fn()
-      .mockResolvedValue({ status: "succeeded", opaqueResultPayload: "verified" })
+    loadResults: vi.fn().mockResolvedValue({
+      sample: { status: "succeeded", opaqueResultPayload: "verified" }
+    })
   };
   const calls = createTaskCallDebugStore(client, "api");
-  const result = await calls.send({
-    taskId: "rpc",
-    workerGroupId: "g",
-    eventName: "event",
-    payloadText: "{}",
-    workerSelectorText: '{"executorName":"workerId","input":"w"}',
-    waitTimeoutMillis: 3000
-  });
+  const result = await calls.send("rpc", requestText());
   expect(result.state).toBe("unconfirmed");
-  await calls.loadResult("rpc", result.localId);
-  expect(client.loadResult).toHaveBeenCalledWith(CALLER, "rpc", result.messageId);
-  expect(result.state).toBe("succeeded");
+  await calls.loadResults("rpc", result.messageIds, result.localId);
+  expect(client.loadResults).toHaveBeenCalledWith(CALLER, "rpc", ["sample"]);
+  expect(result.results?.sample?.status).toBe("succeeded");
   expect(client.callTask).toHaveBeenCalledTimes(1);
 });
 
@@ -506,8 +539,12 @@ it("export uses the whole-task API independently, rejecting stale, running and M
 });
 
 const twoProjects: Project[] = [
-  { projectId: "agentforge", workerGroupIds: ["g1", "g2"] },
-  { projectId: "messages", workerGroupIds: ["g1", "g2"] }
+  {
+    projectId: "agentforge",
+    workerGroupSource: "declared",
+    workerGroupIds: ["g1", "g2"]
+  },
+  { projectId: "messages", workerGroupSource: "declared", workerGroupIds: ["g1", "g2"] }
 ];
 it("never silently replaces an explicit unknown Project and restores a valid session selection", async () => {
   const f = await mount("/task-workbench?project=unknown&tab=finite", {
@@ -526,61 +563,41 @@ it("never silently replaces an explicit unknown Project and restores a valid ses
     expect(f.router.currentRoute.value.query.project).toBe("messages")
   );
 });
-it("prepares the non-default caller identity using workerId-only capabilities and refreshes missing Groups", async () => {
-  const f = await mount(
-    "/task-workbench?project=agentforge&tab=rpc&group=g1&user=1001",
-    {
-      projects: twoProjects,
-      identityOnly: true,
-      unregistered: true,
-      missing: true
-    }
-  );
-  await vi.waitFor(() => expect(f.host.textContent).toContain("尚未注册"));
-  expect(button("创建／复用 RPC Task").disabled).toBe(true);
+it("prepares non-default identity-only supply after a missing Group is registered", async () => {
+  const f = await mount("/task-workbench?project=agentforge&tab=rpc&view=create", {
+    projects: twoProjects,
+    identityOnly: true,
+    unregistered: true,
+    missing: true
+  });
+  await selectCreateGroup(f, "agentforge");
+  expect(button("创建并启用").disabled).toBe(true);
   vi.mocked(f.source.groups).mockResolvedValue([
     {
       workerGroupId: "g1",
       workerGroup: { workerGroupId: "g1", attributes: {}, eventCodes: ["event"] },
-      matching: { pools: [], functions: ["workerId"] }
+      matching: { pools: [], functions: [{ name: "workerId", poolName: null }] }
     }
   ]);
-  button("刷新").click();
-  await vi.waitFor(() => expect(button("创建／复用 RPC Task").disabled).toBe(false));
+  await f.session.rpc.loadGroups("agentforge");
+  await vi.waitFor(() => expect(button("创建并启用").disabled).toBe(false));
   const id = rpcTaskId("agentforge", "1000", "g1");
-  f.preparationClient.prepareTask.mockImplementationOnce(async () => {
-    vi.mocked(f.source.task).mockResolvedValue(row(id, "g1", true, "agentforge"));
-  });
-  button("创建／复用 RPC Task").click();
-  await vi.waitFor(() => expect(button("提交调用")?.disabled).toBe(false));
-  expect(f.preparationClient.prepareTask).toHaveBeenCalledExactlyOnceWith(CALLER, id, {
-    projectId: "agentforge",
-    workerGroupId: "g1",
-    metadata: {}
-  });
-  Object.assign(f.calls.draft(id), {
-    eventName: "event",
-    payloadText: "{}",
-    executorName: "workerId",
-    inputText: '"worker-1"'
-  });
-  await nextTick();
-  expect(f.host.textContent).toContain("JSON 字符串");
-  button("提交调用").click();
-  await vi.waitFor(() => expect(f.rpcClient.callTask).toHaveBeenCalledTimes(1));
-  expect(f.rpcClient.callTask).toHaveBeenCalledWith(
-    expect.objectContaining({
-      taskId: id,
-      workerSelector: { executorName: "workerId", input: "worker-1" }
-    })
+  button("创建并启用").click();
+  await vi.waitFor(() =>
+    expect(f.preparationClient.prepareTask).toHaveBeenCalledExactlyOnceWith(
+      CALLER,
+      id,
+      { projectId: "agentforge", workerGroupId: "g1", metadata: {}, refill: [] }
+    )
   );
+  expect(f.rpcClient.callTask).not.toHaveBeenCalled();
 });
 it("Project switches isolate RPC identities and late preparation without moving the current page", async () => {
-  const f = await mount(
-    "/task-workbench?project=agentforge&tab=rpc&group=g1&user=1001",
-    { projects: twoProjects, missing: true }
-  );
-  await vi.waitFor(() => expect(f.session.rpc.detail.value.missing).toBe(true));
+  const f = await mount("/task-workbench?project=agentforge&tab=rpc&view=create", {
+    projects: twoProjects,
+    missing: true
+  });
+  await selectCreateGroup(f, "agentforge");
   let release!: () => void;
   f.preparationClient.prepareTask.mockImplementationOnce(
     () =>
@@ -588,25 +605,24 @@ it("Project switches isolate RPC identities and late preparation without moving 
         release = resolve;
       })
   );
-  button("创建／复用 RPC Task").click();
+  button("创建并启用").click();
   await vi.waitFor(() => expect(release).toBeTypeOf("function"));
-  await f.router.push("/task-workbench?project=messages&tab=rpc&group=g1&user=1001");
+  await f.router.push("/task-workbench?project=messages&tab=rpc&view=create");
+  await selectCreateGroup(f, "messages");
   const a = rpcTaskId("agentforge", "1000", "g1"),
     b = rpcTaskId("messages", "1000", "g1");
-  await vi.waitFor(() => expect(f.session.rpc.detailKey.value).toBe("messages/" + b));
   release();
   await vi.waitFor(() => expect(f.session.rpcPreparations[a]?.outcome).toBe("ready"));
   expect(f.session.rpcPreparations[b]).toBeUndefined();
   expect(f.router.currentRoute.value.query.project).toBe("messages");
   expect(f.session.rpc.detailKey.value).toBe("messages/" + b);
-  expect(f.preparationClient.prepareTask).toHaveBeenCalledTimes(1);
 });
 it("keeps finite drafts, filters and receipts in their owning Project and ignores wrong-Project detail", async () => {
   const f = await mount("/task-workbench?project=agentforge&tab=finite&view=create", {
     projects: twoProjects
   });
   await vi.waitFor(() =>
-    expect(document.body.textContent).toContain("创建有限任务 · agentforge")
+    expect(document.body.textContent).toContain("Project · agentforge")
   );
   f.ops.draft("agentforge", "create").payloadKey = "original";
   f.session.project("agentforge").finiteFilter.search = "finite";
@@ -623,7 +639,7 @@ it("keeps finite drafts, filters and receipts in their owning Project and ignore
   };
   await f.router.push("/task-workbench?project=messages&tab=finite&view=create");
   await vi.waitFor(() =>
-    expect(document.body.textContent).toContain("创建有限任务 · messages")
+    expect(document.body.textContent).toContain("Project · messages")
   );
   expect(f.ops.draft("messages", "create").payloadKey).not.toBe("original");
   expect(f.ops.project("messages").submission).toBeUndefined();
@@ -635,7 +651,7 @@ it("keeps finite drafts, filters and receipts in their owning Project and ignore
   await vi.waitFor(() =>
     expect(f.session.finite.detail.value.value?.taskId).toBe("foreign")
   );
-  expect(button("追加 Items")?.disabled).toBe(true);
+  expect(button("追加 Items，待审核")?.disabled).toBe(true);
   expect(f.client.approveTask).not.toHaveBeenCalled();
   await f.router.push("/task-workbench?project=agentforge&tab=finite&view=create");
   await vi.waitFor(() => expect(f.host.textContent).toContain("本会话提交"));
@@ -664,4 +680,74 @@ it("Runtime links preserve non-default Project and actual Task identity even wit
     expect(f.host.querySelector('a[href*="project=messages"]')).not.toBeNull()
   );
   expect(button("创建任务")).toBeUndefined();
+});
+
+it("known Task debug rejects finite, foreign-Project and scenario-owned Tasks without side effects", async () => {
+  const f = await mount("/task-workbench?tab=rpc&view=debug&taskId=rpc-1");
+  f.calls.draft("rpc-1").requestText = requestText();
+  await vi.waitFor(() =>
+    expect(button("提交调用").disabled, f.host.textContent ?? "").toBe(false)
+  );
+  for (const bad of [
+    row("rpc-1", "g1", false),
+    row("rpc-1", "g1", true, "foreign"),
+    {
+      ...row("rpc-1", "g1", true),
+      task: {
+        ...row("rpc-1", "g1", true).task!,
+        metadata: { "server.inputOwner": "sms" }
+      }
+    }
+  ]) {
+    vi.mocked(f.source.task).mockResolvedValueOnce(bad);
+    await f.session.rpc.loadDetail("default", "rpc-1");
+    await nextTick();
+    expect(button("提交调用")).toBeUndefined();
+  }
+  expect(f.rpcClient.callTask).not.toHaveBeenCalled();
+  expect(f.preparationClient.prepareTask).not.toHaveBeenCalled();
+});
+
+it("an uncertain preparation keeps its exact supply and requires a fresh nonterminal observation", async () => {
+  const f = await mount("/task-workbench?project=default&tab=rpc&view=create", {
+    missing: true
+  });
+  await selectCreateGroup(f);
+  f.preparationClient.prepareTask.mockRejectedValueOnce(new Error("lost"));
+  f.session.project("default").rpcCreate.name = "original frozen name";
+  f.session.project("default").rpcCreate.supply.supplyRows = [
+    { poolName: "country", targetText: "{}", count: 100 }
+  ];
+  button("创建并启用").click();
+  const id = rpcTaskId("default", "1000", "g1");
+  await vi.waitFor(() =>
+    expect(f.session.rpcPreparations[id]?.outcome).toBe("unconfirmed")
+  );
+  expect(f.session.rpcPreparations[id]?.request.refill).toEqual([
+    { poolName: "country", target: {}, count: 100 }
+  ]);
+  f.session.project("default").rpcCreate.groupId = "g2";
+  await vi.waitFor(() =>
+    expect(f.session.rpc.detailKey.value).toBe(
+      "default/" + rpcTaskId("default", "1000", "g2")
+    )
+  );
+  f.session.project("default").rpcCreate.name = "other draft";
+  f.session.project("default").rpcCreate.groupId = "g1";
+  await vi.waitFor(() => expect(f.session.rpc.detailKey.value).toBe("default/" + id));
+  expect(
+    f.host.querySelector<HTMLInputElement>('[aria-label="RPC 任务名称"]')?.value
+  ).toBe("original frozen name");
+  vi.mocked(f.source.task).mockRejectedValueOnce(new Error("read failed"));
+  await f.session.rpc.loadDetail("default", id);
+  await nextTick();
+  expect(button("继续准备原 Task").disabled).toBe(true);
+  vi.mocked(f.source.task).mockResolvedValueOnce({
+    ...row(id, "g1", true),
+    scoreBand: "terminal"
+  });
+  await f.session.rpc.loadDetail("default", id);
+  await nextTick();
+  expect(button("继续准备原 Task").disabled).toBe(true);
+  expect(f.preparationClient.prepareTask).toHaveBeenCalledTimes(1);
 });

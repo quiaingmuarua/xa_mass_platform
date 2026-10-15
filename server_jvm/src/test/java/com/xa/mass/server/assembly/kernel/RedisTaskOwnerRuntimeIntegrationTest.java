@@ -147,7 +147,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     private static com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest rpcRequest() {
-        return new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("test-project", "phone-tools", null, Map.of());
+        return new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("test-project", "phone-tools", null, Map.of(), null);
     }
 
     @Test void explicitRpcReuseAfterProviderReopenPreservesIdentityWorkAndResults() {

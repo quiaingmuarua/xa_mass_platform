@@ -182,7 +182,7 @@ public final class MatchingComposition implements AutoCloseable {
             if (!groups.keySet().containsAll(storage.indexedGroups()))
                 throw new IllegalArgumentException("Index Group unavailable");
             this.catalog = new DefaultWorkerMatchingCatalog(budget, this.pools, clock, this.policies,
-                    this.functions, this.groups, poolOrder, globalFunctions);
+                    this.functions, this.groups, poolOrder, globalFunctions, dependencies);
         } catch (RuntimeException | Error failure) {
             try { storage.close(); }
             catch (RuntimeException closeFailure) { failure.addSuppressed(closeFailure); }

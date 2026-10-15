@@ -43,7 +43,7 @@ class NamedPoolOperationsTest {
         rule=new CountingRule(clock::get,budget); failingRule=new CountingRule(clock::get,budget);
         var defaultStock=new WorkerCandidatePool(clock::get, budget);
         var defaults=new AnyPoolPolicy(defaultStock);
-        catalog=new DefaultWorkerMatchingCatalog(budget, Map.of("any", defaultStock, "test.pool", rule.stock, "zz.fail", failingRule.stock), clock::get, Map.of("any",defaults,"test.pool",rule,"zz.fail",failingRule), Map.of("worker.any",new EmptyInputPoolQueryFunction(defaultStock),"test.pool",rule.functions(),"zz.fail",failingRule.functions()), configuredGroups(), List.of("any", "test.pool", "zz.fail"), Set.of());
+        catalog=new DefaultWorkerMatchingCatalog(budget, Map.of("any", defaultStock, "test.pool", rule.stock, "zz.fail", failingRule.stock), clock::get, Map.of("any",defaults,"test.pool",rule,"zz.fail",failingRule), Map.of("worker.any",new EmptyInputPoolQueryFunction(defaultStock),"test.pool",rule.functions(),"zz.fail",failingRule.functions()), configuredGroups(), List.of("any", "test.pool", "zz.fail"), Set.of(), Map.of());
     }
     private Map<String,MatchingGroup> configuredGroups() {
         var groups=new LinkedHashMap<String,MatchingGroup>();
@@ -343,7 +343,7 @@ class NamedPoolOperationsTest {
         var configured = new DefaultWorkerMatchingCatalog(budget,
                 Map.of("a", rule.stock, "z", failingRule.stock), clock::get,
                 Map.of("a", rule, "z", failingRule), Map.of(), Map.of("g", new MatchingGroup(Set.of("a", "z"), Set.of())),
-                List.of("z", "a"), Set.of());
+                List.of("z", "a"), Set.of(), Map.of());
         var targets = List.of(new RefillTarget("a", ANY, 1), new RefillTarget("z", ANY, 1));
         assertEquals(1, configured.refill("g", targets, Map.of("w", 42L)).admittedWorkerIds().size());
         assertTrue(rule.snapshots.isEmpty());
@@ -412,7 +412,7 @@ class NamedPoolOperationsTest {
         b.offerBatch("idle", "any", List.of(new WorkerCandidate("live", 21)));
         var local = new DefaultWorkerMatchingCatalog(budget, Map.of("a", a, "b", b), clock::get,
                 Map.of("a", new AnyPoolPolicy(a), "b", new AnyPoolPolicy(b)), Map.of(),
-                Map.of("g", new MatchingGroup(Set.of("a", "b"), Set.of())), List.of("a", "b"), Set.of());
+                Map.of("g", new MatchingGroup(Set.of("a", "b"), Set.of())), List.of("a", "b"), Set.of(), Map.of());
         clearInvocations(a, b);
         clock.set(61_000);
         assertEquals(Map.of("g", 2), local.observeRefillDeficits(Map.of("g", List.of(

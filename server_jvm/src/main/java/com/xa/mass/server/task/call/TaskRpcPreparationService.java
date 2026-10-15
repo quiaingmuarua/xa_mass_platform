@@ -83,7 +83,7 @@ public final class TaskRpcPreparationService {
             throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, REGISTER_OPERATION, "Invalid RPC Task preparation", null);
         caller.requireProject(request.projectId());
         final TaskRpcPrepareRequest admitted;
-        try { admitted = new TaskRpcPrepareRequest(request.projectId(), request.workerGroupId(), request.name(), TaskAttribution.input(request.metadata())); }
+        try { admitted = new TaskRpcPrepareRequest(request.projectId(), request.workerGroupId(), request.name(), TaskAttribution.input(request.metadata()), request.refill()); }
         catch (IllegalArgumentException invalid) { throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, REGISTER_OPERATION, invalid.getMessage(), invalid); }
         return operations.taskMutation(taskId, () -> prepareObserved(caller, inputOwner, taskId, admitted));
     }
@@ -237,7 +237,13 @@ public final class TaskRpcPreparationService {
         java.util.List<com.xa.mass.kernel.assignment.RefillTarget> refill;
         try {
             refill = Objects.requireNonNull(matching.normalizeRefill(request.workerGroupId(),
-                    rpc.refillByWorkerGroup().getOrDefault(request.workerGroupId(), List.of())));
+                    request.refill() == null
+                            ? rpc.refillByWorkerGroup().getOrDefault(request.workerGroupId(), List.of())
+                            : request.refill()));
+        } catch (IllegalArgumentException invalid) {
+            if (request.refill() != null) throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST,
+                    REGISTER_OPERATION, invalid.getMessage(), invalid);
+            throw unavailable(REGISTER_OPERATION, "Call Task targets unavailable", invalid);
         } catch (RuntimeException error) {
             throw unavailable(REGISTER_OPERATION, "Call Task targets unavailable", error);
         }

@@ -110,7 +110,8 @@ owns the shared-Worker business proof. The independent
 [Android Host](xa-android/README.md) exercise real Worker SDK capabilities and lifecycle.
 
 [Projects](server_jvm/README.md#projects-and-explicit-rpc-tasks) provide
-business attribution and configured Group associations. RPC Tasks are explicitly
+business attribution and configured Group associations; an explicitly declared
+`default` instead admits all registered Groups through Server. RPC Tasks are explicitly
 prepared by callers; Project declarations do not create them.
 They do not partition Kernel scheduling or Matching stock. Read scenario
 workloads after the platform mainline, so business state remains distinct from

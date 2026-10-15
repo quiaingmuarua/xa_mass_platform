@@ -5,48 +5,33 @@ export interface WorkerQuery {
   executorName: string;
   input: Exclude<JsonValue, null>;
 }
-
-export interface TaskCallDebugDraft {
-  taskId: string;
-  workerGroupId: string;
-  eventName: string;
-  payloadText: string;
-  workerSelectorText: string;
-  waitTimeoutMillis: number;
-}
-
-export interface ValidatedTaskCallDebugDraft extends TaskCallDebugDraft {
+export interface RpcCallItem {
+  messageId: string;
+  eventCode: string;
   payload: Record<string, JsonValue>;
   workerSelector: WorkerQuery;
+  priority?: number | null;
+  ttlMillis?: number | null;
 }
-
+export interface RpcCallRequest {
+  items: RpcCallItem[];
+  waitTimeoutMillis?: number | null;
+}
 export interface TaskCallDebugClientRequest {
   caller: TaskCaller;
   taskId: string;
-  messageId: string;
-  eventName: string;
-  payload: Record<string, JsonValue>;
-  workerSelector: WorkerQuery;
-  waitTimeoutMillis: number;
+  request: RpcCallRequest;
 }
-
 export type TaskCallDebugOutcome =
-  | {
-      status: "succeeded";
-      opaqueResultPayload: string;
-    }
-  | {
-      status: "failed";
-    }
-  | {
-      status: "not_observed";
-    };
-
+  | { status: "succeeded"; opaqueResultPayload: string }
+  | { status: "failed" }
+  | { status: "not_observed" };
+export type TaskCallDebugResults = Record<string, TaskCallDebugOutcome>;
 export interface TaskCallDebugClient {
-  callTask(request: TaskCallDebugClientRequest): Promise<TaskCallDebugOutcome>;
-  loadResult(
+  callTask(request: TaskCallDebugClientRequest): Promise<TaskCallDebugResults>;
+  loadResults(
     caller: TaskCaller,
     taskId: string,
-    messageId: string
-  ): Promise<TaskCallDebugOutcome>;
+    messageIds: string[]
+  ): Promise<TaskCallDebugResults>;
 }

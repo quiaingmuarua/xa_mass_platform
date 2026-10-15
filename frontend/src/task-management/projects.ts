@@ -8,6 +8,8 @@ import {
   requireTaskCaller
 } from "@/task-caller";
 import { z } from "zod";
+import { taskCallDebugOutcomeSchema } from "@/task-call-debug/schemas";
+import { jsonValueSchema } from "@/runtime-viewer/schemas";
 import { taskViewSchema, workerGroupViewSchema } from "@/runtime-viewer/schemas";
 import { MOCK_TASK_PREVIEW, MOCK_WORKER_GROUPS } from "@/runtime-viewer/mock-data";
 import { rpcTaskId } from "@/task-workbench/rpc-task";
@@ -28,7 +30,8 @@ export class ProjectRequestError extends TaskApiError {
 export const projectSchema = z
   .object({
     projectId: z.string().min(1),
-    workerGroupIds: z.array(z.string().min(1))
+    workerGroupIds: z.array(z.string().min(1)),
+    workerGroupSource: z.enum(["registered", "declared"])
   })
   .strict();
 export type Project = z.infer<typeof projectSchema>;
@@ -62,7 +65,14 @@ const groupSchema = z
     workerGroupId: z.string().min(1),
     workerGroup: workerGroupViewSchema.nullable(),
     matching: z
-      .object({ pools: z.array(z.string()), functions: z.array(z.string()) })
+      .object({
+        pools: z.array(z.string()),
+        functions: z.array(
+          z
+            .object({ name: z.string().min(1), poolName: z.string().min(1).nullable() })
+            .strict()
+        )
+      })
       .strict()
   })
   .strict()
@@ -72,6 +82,24 @@ const groupSchema = z
     "Group identity differs"
   );
 export type ProjectGroup = z.infer<typeof groupSchema>;
+
+export const rawResultPreviewSchema = z
+  .object({
+    results: z
+      .array(
+        z
+          .object({
+            messageId: z.string().min(1),
+            item: z.record(z.string(), jsonValueSchema).nullable(),
+            result: taskCallDebugOutcomeSchema
+          })
+          .strict()
+      )
+      .max(100),
+    truncated: z.boolean()
+  })
+  .strict();
+export type RawResultPreview = z.infer<typeof rawResultPreviewSchema>;
 
 export const taskStatsSchema = z
   .object({
@@ -97,6 +125,11 @@ export interface ProjectSource {
   ): Promise<Record<string, TaskStats>>;
   task(project: string, task: string, signal?: AbortSignal): Promise<ProjectTask>;
   groups(project: string, signal?: AbortSignal): Promise<ProjectGroup[]>;
+  results(
+    project: string,
+    task: string,
+    signal?: AbortSignal
+  ): Promise<RawResultPreview>;
 }
 export function createProjectSource(
   baseUrl: string,
@@ -113,9 +146,10 @@ export function createProjectSource(
     suffix: string,
     signal?: AbortSignal,
     body?: unknown,
-    actor = requireCaller(caller)
+    actor = requireCaller(caller),
+    resource = "/v1/projects"
   ): Promise<unknown> => {
-    const response = await fetch(baseUrl.replace(/\/$/, "") + "/v1/projects" + suffix, {
+    const response = await fetch(baseUrl.replace(/\/$/, "") + resource + suffix, {
       signal,
       method: body === undefined ? "GET" : "POST",
       headers: { "Content-Type": "application/json", ...callerHeaders(actor) },
@@ -201,6 +235,17 @@ export function createProjectSource(
       };
     },
     stats,
+    async results(_project, taskId, signal) {
+      return rawResultPreviewSchema.parse(
+        await get(
+          `/${encodeURIComponent(taskId)}/results:preview`,
+          signal,
+          undefined,
+          requireCaller(caller),
+          "/v1/tasks"
+        )
+      );
+    },
     async groups(project, signal) {
       return z
         .array(groupSchema)
@@ -215,7 +260,13 @@ function mockProjectSource(
   const groups: ProjectGroup[] = MOCK_WORKER_GROUPS.map((workerGroup) => ({
     workerGroupId: workerGroup.workerGroupId,
     workerGroup,
-    matching: { pools: ["any"], functions: ["worker.any", "workerId"] }
+    matching: {
+      pools: ["any"],
+      functions: [
+        { name: "worker.any", poolName: "any" },
+        { name: "workerId", poolName: null }
+      ]
+    }
   }));
   const agentGroups: ProjectGroup[] = [
     "detect-env",
@@ -234,20 +285,30 @@ function mockProjectSource(
               eventCodes: ["extension.worker.detect-env.scenario-catalog"]
             }
           : null,
-      matching: { pools: [], functions: ["workerId"] }
+      matching: { pools: [], functions: [{ name: "workerId", poolName: null }] }
     };
   });
   const projects: Project[] = [
     {
       projectId: "default",
-      workerGroupIds: groups.map((g) => g.workerGroupId)
+      workerGroupSource: "registered",
+      workerGroupIds: []
     },
     {
       projectId: "agentforge",
+      workerGroupSource: "declared",
       workerGroupIds: agentGroups.map((g) => g.workerGroupId)
     },
-    { projectId: "app-checks", workerGroupIds: ["app-a-sim", "app-b-sim"] },
-    { projectId: "messages", workerGroupIds: ["demo-sim", "app-a-sim", "app-b-sim"] }
+    {
+      projectId: "app-checks",
+      workerGroupSource: "declared",
+      workerGroupIds: ["app-a-sim", "app-b-sim"]
+    },
+    {
+      projectId: "messages",
+      workerGroupSource: "declared",
+      workerGroupIds: ["demo-sim", "app-a-sim", "app-b-sim"]
+    }
   ];
   const tasks: ProjectTask[] = MOCK_TASK_PREVIEW.entries.map((row) => ({
     taskId: row.taskId,
@@ -272,6 +333,7 @@ function mockProjectSource(
           name: null,
           metadata: {
             userId: "demo",
+            "server.inputOwner": "raw",
             "server.projectId": "default",
             "server.createdAtMillis": String(Date.parse(MOCK_TASK_PREVIEW.generatedAt))
           },
@@ -297,6 +359,7 @@ function mockProjectSource(
         name: managed ? "AgentForge RPC 示例" : "AgentForge 有限任务示例",
         metadata: {
           userId: "demo",
+          "server.inputOwner": "raw",
           "server.projectId": "agentforge",
           "server.createdAtMillis": String(Date.parse(MOCK_TASK_PREVIEW.generatedAt))
         },
@@ -376,21 +439,49 @@ function mockProjectSource(
         ])
       );
     },
+    async results(project, taskId) {
+      const task = await this.task(project, taskId);
+      if (task.scoreBand === "pre_review") return { results: [], truncated: false };
+      return {
+        truncated: false,
+        results: [
+          {
+            messageId: "mock-raw-1",
+            item: {
+              eventCode: "extension.worker.string.md5",
+              payload: { value: "示例" },
+              workerSelector: { executorName: "workerId", input: "mock-worker" }
+            },
+            result: {
+              status: "succeeded",
+              opaqueResultPayload: '{"workerValue":"原始输出","nested":{"value":42}}'
+            }
+          },
+          { messageId: "mock-raw-2", item: null, result: { status: "failed" } }
+        ]
+      };
+    },
     async groups(project) {
       directory.resolveCaller(caller);
       requireProject(project);
       const known = [...groups, ...agentGroups];
+      const declaration = projects.find((entry) => entry.projectId === project)!;
+      const ids =
+        declaration.workerGroupSource === "registered"
+          ? known
+              .filter((entry) => entry.workerGroup)
+              .map((entry) => entry.workerGroupId)
+              .sort()
+          : declaration.workerGroupIds;
       return structuredClone(
-        projects
-          .find((entry) => entry.projectId === project)!
-          .workerGroupIds.map(
-            (workerGroupId) =>
-              known.find((entry) => entry.workerGroupId === workerGroupId) ?? {
-                workerGroupId,
-                workerGroup: null,
-                matching: { pools: [], functions: [] }
-              }
-          )
+        ids.map(
+          (workerGroupId) =>
+            known.find((entry) => entry.workerGroupId === workerGroupId) ?? {
+              workerGroupId,
+              workerGroup: null,
+              matching: { pools: [], functions: [] }
+            }
+        )
       );
     }
   };

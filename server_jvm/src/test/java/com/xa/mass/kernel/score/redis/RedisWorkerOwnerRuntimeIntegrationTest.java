@@ -83,6 +83,31 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
+    void groupDirectoryTraversalIsReadOnlyAndNotLimitedToTheRandomSample() {
+        for (int i = 0; i < 603; i++) catalog.registerWorkerGroup(
+                new WorkerGroupDescriptor("scan-" + i, Map.of(), Set.of("event")));
+        String key = keyspace.base() + ":worker:groups";
+        redis.hset(key, "corrupt", "{broken");
+        var before = redis.hgetall(key);
+        var seen = new LinkedHashMap<String, WorkerGroupDescriptor>();
+        String cursor = "0";
+        do {
+            var page = catalog.scanWorkerGroupDescriptors(cursor, 7);
+            seen.putAll(page.groups()); cursor = page.nextCursor();
+        } while (!cursor.equals("0"));
+        assertThat(seen).hasSize(604).containsKey("corrupt");
+        assertThat(seen.get("corrupt")).isNull();
+        assertThat(redis.hgetall(key)).isEqualTo(before);
+        assertThat(redis.pttl(key)).isEqualTo(-1);
+        catalog.registerWorkerGroup(new WorkerGroupDescriptor("later", Map.of(), Set.of("event")));
+        assertThat(catalog.getWorkerGroupDescriptors(List.of("later"))).containsKey("later");
+        assertThatThrownBy(() -> catalog.scanWorkerGroupDescriptors("bad", 100)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> catalog.scanWorkerGroupDescriptors("0", 0)).isInstanceOf(IllegalArgumentException.class);
+        redis.del(key); redis.set(key, "wrong-type");
+        assertThatThrownBy(() -> catalog.scanWorkerGroupDescriptors("0", 100)).isInstanceOf(RuntimeException.class);
+    }
+
+    @Test
     void networkActivationRefreshesPastGenerationAndPreservesExecutionTime() {
         long now = ownerClockMillis() / SLOT_MILLIS;
         long floor = now - 100;

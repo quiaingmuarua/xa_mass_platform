@@ -1,132 +1,219 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Refresh } from "@element-plus/icons-vue";
-import JsonBlock from "@/components/JsonBlock.vue";
-import { useRuntimeViewerConfig, useTaskCallDebugStore } from "@/runtime-context";
-import { parseWorkerSelector } from "@/task-call-debug/model";
-import { presentTaskCallDebugError } from "@/task-call-debug/errors";
-import type { TaskCallDebugHistoryItem } from "@/stores/task-call-debug";
-import type { Project } from "@/task-management/projects";
-import { useTaskSession } from "./session";
-import { rpcTaskId, type RpcTaskPrepareRequest } from "./rpc-task";
+import { ElMessage, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
+import "element-plus/es/components/dropdown/style/css";
+import "element-plus/es/components/dropdown-menu/style/css";
+import "element-plus/es/components/dropdown-item/style/css";
+import { useRuntimeViewerConfig } from "@/runtime-context";
 import { consoleIdentity } from "@/console-identity";
-const identity = consoleIdentity.requireCurrent();
+import JsonBlock from "@/components/JsonBlock.vue";
+import RawTaskTable, { type TaskRow } from "@/components/RawTaskTable.vue";
+import TaskSupplyEditor from "@/components/TaskSupplyEditor.vue";
+import RpcTaskDebug from "./RpcTaskDebug.vue";
+import { readSupply } from "@/task-management/supply";
+import type { Project } from "@/task-management/projects";
+import { rpcTaskId, type RpcTaskPrepareRequest } from "./rpc-task";
+import { useTaskSession } from "./session";
+
 const props = defineProps<{ project: Project }>();
 const projectId = props.project.projectId;
 const session = useTaskSession();
-const projectSession = session.project(projectId);
 const workspace = session.rpc;
+const saved = session.project(projectId);
+const draft = saved.rpcCreate;
 const config = useRuntimeViewerConfig();
-const calls = useTaskCallDebugStore();
 const route = useRoute();
 const router = useRouter();
-const directTaskId = computed(() =>
+const view = computed(() =>
+  route.query.view === "create"
+    ? "create"
+    : route.query.view === "debug"
+      ? "debug"
+      : "list"
+);
+const routeTask = computed(() =>
   typeof route.query.taskId === "string" ? route.query.taskId : ""
 );
+const user = computed(() => consoleIdentity.requireCurrent());
+const createId = computed(() =>
+  draft.groupId ? rpcTaskId(projectId, user.value.userId, draft.groupId) : ""
+);
+const taskId = computed(() =>
+  view.value === "create" ? createId.value : routeTask.value
+);
 const state = computed(() => workspace.detail.value);
-const row = computed(() => state.value.value);
-const groupId = computed(() =>
-  directTaskId.value
-    ? row.value?.taskId === directTaskId.value
-      ? (row.value.task?.workerGroupId ?? "")
-      : ""
-    : typeof route.query.group === "string"
-      ? route.query.group
-      : ""
-);
-const userId = computed(() =>
-  directTaskId.value
-    ? row.value?.taskId === directTaskId.value
-      ? (row.value.task?.metadata.userId ?? "")
-      : ""
-    : identity.userId
-);
+const detail = computed(() => state.value.value);
 const groups = computed(() => workspace.groups[projectId]);
-const group = computed(() =>
-  groups.value?.value?.find((g) => g.workerGroupId === groupId.value)
+const list = computed(() => workspace.windows[projectId]);
+const groupId = computed(() =>
+  view.value === "create" ? draft.groupId : (detail.value?.task?.workerGroupId ?? "")
 );
-const taskId = computed(() => {
-  if (directTaskId.value) return directTaskId.value;
-  try {
-    return rpcTaskId(projectId, userId.value, groupId.value);
-  } catch {
-    return "";
+const group = computed(() =>
+  groups.value?.value?.find((item) => item.workerGroupId === groupId.value)
+);
+const attempt = computed(() => session.rpcPreparations[taskId.value]);
+const createName = computed({
+  get: () =>
+    detail.value?.task?.name ??
+    (attempt.value ? (attempt.value.request.name ?? "") : draft.name),
+  set: (value: string) => {
+    if (!attempt.value && !detail.value?.task) draft.name = value;
   }
 });
-const valid = computed(
-  () =>
-    !!taskId.value &&
-    row.value?.taskId === taskId.value &&
-    row.value.task?.projectId === projectId &&
-    row.value.task.workerGroupId === groupId.value &&
-    row.value.task.idleDisposition === "PARK_WHEN_IDLE"
-);
-const resourcesReady = computed(
-  () =>
-    !!group.value?.workerGroup &&
-    props.project.workerGroupIds.includes(groupId.value) &&
-    !groups.value?.loading &&
-    !groups.value?.stale &&
-    !session.directory.loading &&
-    !session.directory.stale
-);
-const preparation = computed(() => session.rpcPreparations[taskId.value]);
 const fresh = computed(
   () =>
-    valid.value &&
-    resourcesReady.value &&
-    ["running-initial", "running_visible"].includes(row.value?.scoreBand ?? "") &&
-    !state.value.loading &&
+    !!detail.value &&
+    detail.value.taskId === taskId.value &&
+    detail.value.task?.projectId === projectId &&
     !state.value.stale &&
-    !preparation.value?.busy
+    !state.value.loading
 );
-const enabled = computed(() => config.mode === "api" && fresh.value);
+const resourceFresh = computed(
+  () =>
+    !!group.value?.workerGroup &&
+    !!groups.value?.value &&
+    !groups.value.stale &&
+    !groups.value.loading &&
+    !session.directory.stale &&
+    !session.directory.loading
+);
+const debuggable = computed(
+  () =>
+    detail.value?.taskId === taskId.value &&
+    detail.value?.task?.projectId === projectId &&
+    detail.value.task.idleDisposition === "PARK_WHEN_IDLE" &&
+    detail.value.task.metadata["server.inputOwner"] === "raw"
+);
+const rawRpc = computed(() => fresh.value && debuggable.value);
+const callable = computed(
+  () =>
+    rawRpc.value &&
+    resourceFresh.value &&
+    ["running-initial", "running_visible"].includes(detail.value?.scoreBand ?? "")
+);
+const api = computed(() => config.mode === "api");
 const canPrepare = computed(
   () =>
-    config.mode === "api" &&
-    resourcesReady.value &&
-    (!directTaskId.value || !state.value.loading) &&
+    api.value &&
+    resourceFresh.value &&
+    !attempt.value?.busy &&
+    !state.value.loading &&
     (!state.value.stale || state.value.missing) &&
-    !!taskId.value &&
-    (!directTaskId.value || valid.value) &&
-    (row.value?.taskId !== taskId.value || row.value.scoreBand !== "terminal") &&
-    !preparation.value?.busy
+    attempt.value?.outcome !== "rejected" &&
+    (state.value.missing ||
+      (rawRpc.value &&
+        detail.value?.scoreBand !== null &&
+        detail.value?.scoreBand !== "terminal")) &&
+    ((!!attempt.value && attempt.value.outcome === "unconfirmed") ||
+      (view.value === "create" && state.value.missing) ||
+      (rawRpc.value && detail.value?.scoreBand === "pre_review"))
 );
-const draft = computed(() => calls.draft(taskId.value));
-const history = computed(() => calls.history(taskId.value));
-const busy = computed(() => calls.isBusy(taskId.value));
-const validation = ref("");
+const rows = computed(() =>
+  (list.value?.value?.tasks ?? [])
+    .filter((row) => !row.task || row.task.idleDisposition === "PARK_WHEN_IDLE")
+    .sort(
+      (a, b) =>
+        (b.createdAtMillis ?? -1) - (a.createdAtMillis ?? -1) ||
+        a.taskId.localeCompare(b.taskId)
+    )
+);
+const filtered = computed(() =>
+  rows.value.filter((row) => {
+    const search = saved.rpcFilter.search.trim().toLowerCase();
+    return (
+      (!search ||
+        [row.taskId, row.task?.name ?? ""].some((v) =>
+          v.toLowerCase().includes(search)
+        )) &&
+      (!saved.rpcFilter.group || row.task?.workerGroupId === saved.rpcFilter.group)
+    );
+  })
+);
+const table = ref<InstanceType<typeof RawTaskTable>>();
+const heading = ref<HTMLElement>();
+let focusReturn: HTMLElement | undefined;
+let generation = 0;
 let disposed = false;
-let navigation = 0;
-function time(value?: string) {
-  return value ? new Date(value).toLocaleTimeString() : "未提供";
+let previousView = "";
+let restoring = false;
+const error = ref("");
+const knownId = ref(routeTask.value);
+watch(routeTask, (id) => {
+  knownId.value = id;
+});
+const createFrozen = computed(
+  () => !!attempt.value || !!detail.value || state.value.loading
+);
+
+function rememberFocus() {
+  focusReturn =
+    document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
 }
-async function selectIdentity(group: string) {
-  await router.push({ query: { project: projectId, tab: "rpc", group } });
+function go(value: "list" | "create" | "debug", id = "") {
+  if (view.value === "list" && !routeTask.value) rememberFocus();
+  return router.push({
+    path: "/task-workbench",
+    query: {
+      project: projectId,
+      tab: "rpc",
+      ...(value !== "list" ? { view: value } : {}),
+      ...(id ? { taskId: id } : {})
+    }
+  });
+}
+function open(row: TaskRow) {
+  return go("list", row.taskId);
+}
+function debug(id: string) {
+  return go("debug", id);
+}
+function eligible(row: TaskRow) {
+  return (
+    row.task?.idleDisposition === "PARK_WHEN_IDLE" &&
+    row.task.metadata["server.inputOwner"] === "raw"
+  );
+}
+async function copy(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    ElMessage.success("已复制");
+  } catch {
+    ElMessage.error("复制失败，请手动复制 Task ID。");
+  }
 }
 async function sync() {
-  const generation = ++navigation;
-  validation.value = "";
-  if (!groups.value) await workspace.loadGroups(projectId);
-  if (disposed || generation !== navigation) return;
-  if (!directTaskId.value && !groupId.value) {
-    await router.replace({
-      query: { project: projectId, tab: "rpc", group: props.project.workerGroupIds[0] }
-    });
-    return;
-  }
-  projectSession.rpcQuery = directTaskId.value
-    ? { taskId: directTaskId.value, group: groupId.value }
-    : { group: groupId.value };
+  const ticket = ++generation;
+  const changedView = previousView !== view.value;
+  previousView = view.value;
+  error.value = "";
+  saved.rpcQuery = {
+    ...(view.value !== "list" ? { view: view.value } : {}),
+    ...(routeTask.value ? { taskId: routeTask.value } : {})
+  };
+  if (!groups.value) void workspace.loadGroups(projectId);
+  if (view.value === "list" && !list.value) void workspace.loadTasks(projectId);
   if (taskId.value) {
     if (workspace.detailKey.value !== projectId + "/" + taskId.value)
-      await workspace.loadDetail(projectId, taskId.value);
+      void workspace.loadDetail(projectId, taskId.value);
   } else workspace.clearDetail();
+  const scroll = saved.rpcFilter.scroll;
+  restoring = true;
+  await nextTick();
+  if (disposed || ticket !== generation) return;
+  if (view.value !== "list" && changedView) heading.value?.focus();
+  else if (
+    view.value === "list" &&
+    changedView &&
+    !routeTask.value &&
+    focusReturn?.isConnected
+  )
+    focusReturn.focus();
+  if (view.value === "list" && scroll) await table.value?.restoreScrollTop(scroll);
+  if (!disposed && ticket === generation) restoring = false;
 }
-onMounted(sync);
 watch(
-  () => [route.query.group, identity.userId, route.query.taskId, props.project],
+  () => [route.fullPath, createId.value],
   () => {
     if (
       route.path === "/task-workbench" &&
@@ -136,347 +223,390 @@ watch(
       void sync();
   }
 );
+onMounted(sync);
 onBeforeUnmount(() => {
   disposed = true;
-  navigation++;
+  generation++;
 });
+watch(
+  () => draft.groupId,
+  () => {
+    if (attempt.value) return;
+    draft.supply.supplyRows = draft.supply.supplyRows.filter((row) =>
+      group.value?.matching.pools.includes(row.poolName)
+    );
+    // Keep manually edited JSON unchanged and validate it against the new Group.
+  }
+);
 async function refresh() {
   const id = taskId.value;
   await Promise.allSettled([
-    session.loadDirectory(),
     workspace.loadGroups(projectId),
-    ...(id ? [workspace.loadDetail(projectId, id)] : [])
+    ...(view.value === "list" ? [workspace.loadTasks(projectId)] : []),
+    ...(id ? [workspace.loadDetail(projectId, id)] : []),
+    ...(session.directory.stale ? [session.loadDirectory()] : [])
   ]);
 }
 async function prepare() {
   if (!canPrepare.value) return;
   const id = taskId.value;
-  const request: RpcTaskPrepareRequest = directTaskId.value
-    ? {
-        projectId: projectId,
-        workerGroupId: groupId.value,
-        name: row.value!.task!.name,
-        metadata: Object.fromEntries(
-          Object.entries(row.value!.task!.metadata).filter(
+  const ticket = generation;
+  error.value = "";
+  try {
+    const existing = detail.value?.task;
+    const metadata = existing
+      ? Object.fromEntries(
+          Object.entries(existing.metadata).filter(
             ([key]) => key !== "userId" && !key.startsWith("server.")
           )
         )
-      }
-    : {
-        projectId: projectId,
-        workerGroupId: groupId.value,
-        metadata: {}
-      };
-  // A previous snapshot cannot confirm the outcome of a new preparation attempt.
-  workspace.invalidateDetail();
-  const outcome = await session.prepareRpc(id, request);
-  if (!disposed && taskId.value === id && outcome === "ready")
-    await workspace.loadDetail(projectId, id);
-}
-async function send() {
-  if (!enabled.value || busy.value) return;
-  validation.value = "";
-  const id = taskId.value;
-  const generation = navigation;
-  try {
-    if (!group.value?.matching.functions.includes(draft.value.executorName))
-      throw new Error("请选择当前 Group 已启用的查询函数。");
-    const selector = parseWorkerSelector(
-      JSON.stringify({
-        executorName: draft.value.executorName,
-        input: JSON.parse(draft.value.inputText)
-      })
-    );
-    await calls.send({
-      taskId: id,
+      : {};
+    const request: RpcTaskPrepareRequest = attempt.value?.request ?? {
+      projectId,
       workerGroupId: groupId.value,
-      eventName: draft.value.eventName,
-      payloadText: draft.value.payloadText,
-      workerSelectorText: JSON.stringify(selector),
-      waitTimeoutMillis: draft.value.waitTimeoutMillis
-    });
-    await nextTick();
+      ...(existing?.name
+        ? { name: existing.name }
+        : draft.name.trim()
+          ? { name: draft.name.trim() }
+          : {}),
+      metadata,
+      refill:
+        existing?.refill ?? readSupply(draft.supply, group.value?.matching.pools ?? [])
+    };
+    const result = await session.prepareRpc(id, request);
+    if (result === "ready") {
+      saved.rpcCreatedId = id;
+      await workspace.loadTasks(projectId);
+      if (!disposed && ticket === generation) await go("list");
+    } else if (!disposed && ticket === generation)
+      await workspace.loadDetail(projectId, id);
   } catch (cause) {
-    if (!disposed && generation === navigation)
-      validation.value =
-        cause instanceof Error
-          ? cause.message
-          : presentTaskCallDebugError(cause).message;
+    if (!disposed && ticket === generation)
+      error.value = cause instanceof Error ? cause.message : "准备失败";
   }
 }
-async function loadResult(item: TaskCallDebugHistoryItem) {
-  try {
-    await calls.loadResult(item.taskId, item.localId);
-  } catch (cause) {
-    if (!disposed && taskId.value === item.taskId)
-      validation.value = presentTaskCallDebugError(cause).message;
-  }
+async function close(done: () => void) {
+  const id = routeTask.value;
+  done();
+  if (
+    disposed ||
+    view.value !== "list" ||
+    !id ||
+    taskId.value !== id ||
+    (route.query.project && route.query.project !== projectId)
+  )
+    return;
+  await router.push({ query: { project: projectId, tab: "rpc" } });
+  const ticket = generation;
+  await nextTick();
+  if (
+    !disposed &&
+    ticket === generation &&
+    !routeTask.value &&
+    focusReturn?.isConnected
+  )
+    focusReturn.focus();
 }
-const labels: Record<string, string> = {
-  sending: "调用中",
-  succeeded: "执行成功",
-  failed: "执行失败",
-  not_observed: "尚未观测到结果",
-  unconfirmed: "请求结果未确认",
-  request_rejected: "请求被拒绝"
-};
+function forgetRejected() {
+  if (attempt.value?.outcome === "rejected")
+    delete session.rpcPreparations[taskId.value];
+}
+function time(value?: string | number) {
+  return value == null ? "尚未成功读取" : new Date(value).toLocaleString();
+}
+function scroll(event: { scrollTop: number }) {
+  if (!restoring && view.value === "list") saved.rpcFilter.scroll = event.scrollTop;
+}
 </script>
 <template>
-  <section class="rpc-page" data-testid="rpc-task-page">
-    <div class="rpc-page__scope">
-      <el-input
-        :model-value="identity.userId"
-        readonly
-        aria-label="RPC 调用方标识"
-        maxlength="9"
-        placeholder="4～9 位小写 Base36（如 1001）"
-      />
-      <el-select
-        :model-value="groupId"
-        aria-label="RPC WorkerGroup"
-        placeholder="选择 Group"
-        @change="selectIdentity(String($event))"
-        ><el-option
-          v-for="id in project.workerGroupIds"
-          :key="id"
-          :value="id"
-          :label="id"
-      /></el-select>
-      <el-button :disabled="!canPrepare" :loading="preparation?.busy" @click="prepare">
-        {{
-          preparation?.outcome === "unconfirmed"
-            ? "再次准备原 Task"
-            : "创建／复用 RPC Task"
+  <section class="rpc-page raw-tasks">
+    <div v-show="view === 'list'">
+      <header class="raw-tasks__heading">
+        <h2>RPC 任务</h2>
+        <div>
+          <el-button type="primary" @click="go('create')">创建 RPC Task</el-button
+          ><el-button @click="go('debug')">按 Task ID 调试</el-button
+          ><el-button :loading="list?.loading" @click="refresh">刷新</el-button>
+        </div>
+      </header>
+      <p class="raw-muted">
+        当前批次 {{ rows.length }} 条 RPC／类型待确认任务，筛选匹配
+        {{ filtered.length }} 条。{{
+          list?.value?.truncated ? "Project 当前批次未完整展示，不补读其他任务。" : ""
         }}
-      </el-button>
-      <el-button
-        :icon="Refresh"
-        :loading="state.loading || groups?.loading"
-        @click="refresh"
-        >刷新</el-button
+        最近读取：{{ time(list?.readAt) }}
+      </p>
+      <el-alert
+        v-if="saved.rpcCreatedId"
+        type="success"
+        title="RPC Task 已确认启用"
+        closable
+        @close="saved.rpcCreatedId = ''"
       >
-      <span class="raw-muted">最近读取：{{ time(state.readAt) }}</span>
-    </div>
-    <p v-if="taskId" class="raw-muted rpc-page__identity">
-      Task ID：<code>{{ taskId }}</code>
-    </p>
-    <el-alert
-      v-if="preparation?.error"
-      :title="preparation.error"
-      type="error"
-      :closable="false"
-    >
-      {{
-        preparation.outcome === "unconfirmed"
-          ? "准备结果未确认，已保留原身份和请求。可刷新核对，或显式再次准备原 Task；不会自动重试。"
-          : "请求被拒绝，原 Task 状态保持不变。"
-      }}
-    </el-alert>
-    <el-alert
-      v-if="state.missing"
-      :title="
-        directTaskId
-          ? '指定 Task 不存在，请核对 Task ID。'
-          : '尚未创建此 RPC Task，请点击创建／复用。'
-      "
-      type="info"
-      :closable="false"
-    />
-    <el-alert
-      v-if="(state.error && !state.missing) || groups?.error"
-      :title="'读取失败，保留已有快照：' + (state.error || groups?.error)"
-      type="error"
-      :closable="false"
-    />
-    <el-alert
-      v-if="group && !group.workerGroup && !groups?.loading && !groups?.error"
-      :title="`Group ${groupId} 尚未注册。Project 绑定已声明，请完成资源注册后刷新。`"
-      type="warning"
-      :closable="false"
-    />
-    <el-alert
-      v-if="directTaskId && row?.task && !valid && !state.loading && !state.stale"
-      title="该任务的 Project、Group 或生命周期与当前 RPC 上下文不符。"
-      type="error"
-      :closable="false"
-    />
-    <el-alert
-      v-if="!enabled"
-      :title="
-        config.mode === 'mock'
-          ? 'Mock 只展示配置，不执行真实 RPC 调用。'
-          : !taskId
-            ? '请选择 Group，再显式创建 RPC Task。'
-            : '当前 RPC Task 尚未确认可调用，请先准备或刷新核对。'
-      "
-      type="info"
-      :closable="false"
-    />
-    <template v-if="valid">
-      <p class="raw-muted">
-        Task：<code>{{ taskId }}</code> · {{ row?.scoreBand ?? "状态不可用" }}
-      </p>
-      <details>
-        <summary>Task 供给与原始配置（只读）</summary>
-        <JsonBlock :value="row!" />
-      </details>
-      <p class="raw-muted">
-        查询能力来自 Group 配置，不证明当前存在库存或可调度 Worker。调用通过 Kernel
-        调度。
-      </p>
-      <div class="rpc-page__grid">
-        <form class="rpc-page__form" @submit.prevent="send">
-          <label
-            ><span>Event</span
-            ><el-select
-              v-model="draft.eventName"
-              filterable
-              allow-create
-              default-first-option
-              :disabled="!enabled || busy"
-              aria-label="RPC Event"
-              placeholder="选择事件或输入完整名称"
-              ><el-option
-                v-for="event in group?.workerGroup?.eventCodes ?? []"
-                :key="event"
-                :value="event"
-                :label="event" /></el-select
-          ></label>
-          <label
-            ><span>Payload · JSON 对象</span
-            ><textarea
-              v-model="draft.payloadText"
-              rows="6"
-              aria-label="RPC Payload"
-              :disabled="!enabled || busy"
-              spellcheck="false"
-            />
-          </label>
-          <label
-            ><span>Worker 查询函数</span
-            ><el-select
-              v-model="draft.executorName"
-              :disabled="!enabled || busy"
-              aria-label="RPC 查询函数"
-              placeholder="请选择查询函数"
-              ><el-option
-                v-for="fn in group?.matching.functions ?? []"
-                :key="fn"
-                :value="fn"
-                :label="fn" /></el-select
-          ></label>
-          <label
-            ><span>查询 input · 非 null JSON</span
-            ><textarea
-              v-model="draft.inputText"
-              rows="4"
-              aria-label="RPC 查询参数"
-              :disabled="!enabled || busy"
-              spellcheck="false"
-            />
-          </label>
-          <p v-if="draft.executorName === 'workerId'" class="raw-muted">
-            workerId 的 input 是 JSON 字符串，例如 "worker-123"；定向调用不需要 Pool
-            供给。
-          </p>
-          <label
-            ><span>等待时间 · ms</span
-            ><input
-              v-model.number="draft.waitTimeoutMillis"
-              type="number"
-              min="1"
-              max="60000"
-              aria-label="RPC 等待时间"
-              :disabled="!enabled || busy"
-          /></label>
-          <el-alert
-            v-if="validation"
-            :title="validation"
-            type="error"
-            :closable="false"
-          />
-          <el-button
-            type="primary"
-            native-type="submit"
-            :loading="busy"
-            :disabled="!enabled || busy"
-            >提交调用</el-button
-          >
-          <p class="raw-muted">
-            会提交真实 Item；等待超时不代表执行失败，离开页面不会撤回已接受的工作。
-          </p>
-        </form>
-        <section aria-label="RPC 调用记录">
-          <div class="rpc-call__heading">
-            <strong>本会话调用 · {{ history.length }} / 20</strong
-            ><el-button
-              link
-              :disabled="busy || !history.length"
-              @click="calls.clear(taskId)"
-              >清空记录</el-button
-            >
-          </div>
-          <p v-if="!history.length" class="raw-muted">
-            暂无调用记录。记录仅保留在浏览器内存，刷新页面后清空。
-          </p>
-          <div class="rpc-history">
-            <article
-              v-for="item in [...history].reverse()"
-              :key="item.localId"
-              class="rpc-call"
-            >
-              <div class="rpc-call__heading">
-                <el-tag
-                  :type="
-                    item.state === 'succeeded'
-                      ? 'success'
-                      : item.state === 'failed'
-                        ? 'danger'
-                        : 'info'
-                  "
-                  >{{ labels[item.state] }}</el-tag
-                ><span class="raw-muted">{{ time(item.sentAt) }}</span>
-              </div>
-              <p>
-                <code>{{ item.messageId }}</code>
-              </p>
-              <p>{{ item.eventName }}</p>
-              <p v-if="item.safeError" role="alert">
-                {{ item.safeError.message }}
-                <small>{{ item.safeError.requestId }}</small>
-              </p>
-              <p
-                v-if="item.state === 'not_observed' || item.state === 'unconfirmed'"
-                class="raw-muted"
-              >
-                执行结果尚未确认；可读取原 messageId，不自动重发。
-              </p>
-              <el-button
-                v-if="['not_observed', 'unconfirmed'].includes(item.state)"
-                size="small"
-                :loading="item.checkingResult"
-                :disabled="busy && !item.checkingResult"
-                @click="loadResult(item)"
-                >读取结果</el-button
-              >
-              <p v-if="item.lastCheckedAt" class="raw-muted">
-                最近读取：{{ time(item.lastCheckedAt) }}
-              </p>
-              <p v-if="item.resultLoadError" role="alert">
-                {{ item.resultLoadError.message }}
-              </p>
-              <pre v-if="item.opaqueResultPayload !== undefined">{{
-                item.opaqueResultPayload
-              }}</pre>
-              <details>
-                <summary>查看请求</summary>
-                <pre>{{ item.payloadText }}</pre>
-                <pre>{{ item.workerSelectorText }}</pre>
-              </details>
-            </article>
-          </div>
-        </section>
+        <el-button link @click="go('list', saved.rpcCreatedId)"
+          >打开 {{ saved.rpcCreatedId }}</el-button
+        >
+      </el-alert>
+      <el-alert
+        v-if="list?.error"
+        :title="'读取失败，保留已有快照：' + list.error"
+        type="error"
+        :closable="false"
+      />
+      <div class="raw-tasks__filters">
+        <el-input
+          v-model="saved.rpcFilter.search"
+          placeholder="名称／Task ID"
+          aria-label="RPC 任务搜索"
+          clearable
+        />
+        <el-select
+          v-model="saved.rpcFilter.group"
+          placeholder="全部 Group"
+          aria-label="RPC Group 筛选"
+          clearable
+          ><el-option
+            v-for="g in groups?.value ?? []"
+            :key="g.workerGroupId"
+            :label="g.workerGroupId"
+            :value="g.workerGroupId"
+        /></el-select>
       </div>
+      <RawTaskTable
+        ref="table"
+        :rows="filtered"
+        :loading="list?.loading"
+        :error="list?.error"
+        rpc
+        @open="open"
+        @scroll="scroll"
+      >
+        <template #actions="{ row }">
+          <el-dropdown
+            trigger="click"
+            @command="
+              (command: string) =>
+                command === 'debug'
+                  ? debug(row.taskId)
+                  : command === 'copy'
+                    ? copy(row.taskId)
+                    : open(row)
+            "
+          >
+            <el-button link>操作 ▾</el-button
+            ><template #dropdown
+              ><el-dropdown-menu>
+                <el-dropdown-item command="view">查看配置</el-dropdown-item>
+                <el-dropdown-item command="debug" :disabled="!eligible(row)"
+                  >网页调试</el-dropdown-item
+                >
+                <el-dropdown-item command="copy">复制 Task ID</el-dropdown-item>
+              </el-dropdown-menu></template
+            >
+          </el-dropdown>
+        </template>
+      </RawTaskTable>
+    </div>
+    <template v-if="view !== 'list'">
+      <header class="raw-tasks__heading">
+        <h2 ref="heading" tabindex="-1">
+          {{ view === "create" ? "创建 RPC Task" : "RPC 网页调试" }}
+        </h2>
+        <el-button @click="go('list')">返回任务列表</el-button>
+      </header>
+      <p class="raw-muted">
+        Project · {{ projectId }} · 当前用户 {{ user.displayName }}（{{ user.userId }}）
+      </p>
     </template>
+    <template v-if="view === 'create'">
+      <div class="rpc-create-fields">
+        <label
+          >WorkerGroup<el-select
+            v-model="draft.groupId"
+            filterable
+            aria-label="RPC WorkerGroup"
+            placeholder="选择已注册 Group"
+            ><el-option
+              v-for="g in groups?.value ?? []"
+              :key="g.workerGroupId"
+              :value="g.workerGroupId"
+              :label="g.workerGroupId + (g.workerGroup ? '' : '（未注册）')"
+              :disabled="!g.workerGroup" /></el-select
+        ></label>
+        <label
+          >任务名称（可选）<el-input
+            v-model="createName"
+            :disabled="createFrozen"
+            :maxlength="128"
+            aria-label="RPC 任务名称"
+        /></label>
+      </div>
+      <p v-if="createId" class="rpc-page__identity">
+        Task ID：<code>{{ createId }}</code>
+      </p>
+      <p class="raw-muted">
+        同一 Project、用户和 Group 复用一个长期任务。优先级 0，最大重试
+        3；创建时一并批准。
+      </p>
+      <template v-if="detail?.task && fresh">
+        <el-alert title="此身份已有任务，配置保持不变" type="info" :closable="false" />
+        <JsonBlock :value="detail.task" />
+        <el-button @click="go('list', detail.taskId)">打开已有任务</el-button>
+      </template>
+      <template v-else>
+        <h3>Task Pool 供给</h3>
+        <JsonBlock
+          v-if="attempt"
+          :value="(attempt.request.refill ?? []).map((row) => ({ ...row }))"
+        />
+        <TaskSupplyEditor
+          v-else
+          v-model:mode="draft.supply.refillMode"
+          v-model:text="draft.supply.refillText"
+          v-model:rows="draft.supply.supplyRows"
+          :pools="group?.matching.pools ?? []"
+          :disabled="createFrozen || !resourceFresh"
+        />
+      </template>
+      <div class="raw-tasks__actions">
+        <el-button
+          type="primary"
+          :disabled="!canPrepare"
+          :loading="attempt?.busy"
+          @click="prepare"
+          >{{
+            attempt?.outcome === "unconfirmed" || detail?.scoreBand === "pre_review"
+              ? "继续准备原 Task"
+              : "创建并启用"
+          }}</el-button
+        ><el-button :loading="state.loading || groups?.loading" @click="refresh"
+          >刷新核对</el-button
+        >
+      </div>
+      <el-alert
+        v-if="!api"
+        title="Mock 仅展示创建配置，不执行准备。"
+        type="info"
+        :closable="false"
+      />
+    </template>
+    <template v-if="view === 'debug'">
+      <form class="rpc-task-target" @submit.prevent="debug(knownId.trim())">
+        <el-input
+          v-model="knownId"
+          placeholder="输入已知 Task ID"
+          aria-label="调试 Task ID"
+        /><el-button native-type="submit" :disabled="!knownId.trim()"
+          >读取 Task</el-button
+        ><el-button :disabled="!taskId" @click="refresh">刷新</el-button>
+      </form>
+      <p v-if="taskId" class="rpc-page__identity">
+        Task ID：<code>{{ taskId }}</code> · 最近读取 {{ time(state.readAt) }}
+      </p>
+      <el-alert
+        v-if="detail?.task && !debuggable && !state.loading"
+        title="该任务的 Project、生命周期或输入 Owner 不支持当前通用 RPC 调试。"
+        type="info"
+        :closable="false"
+      />
+      <RpcTaskDebug
+        v-if="taskId && debuggable"
+        :key="taskId"
+        :task-id="taskId"
+        :task="detail"
+        :group="group"
+        :enabled="api && callable"
+        :readable="api && rawRpc"
+        :mode="config.mode"
+      />
+    </template>
+    <template v-if="view !== 'list'">
+      <el-alert
+        v-if="groups?.error"
+        :title="'Group 能力读取失败：' + groups.error"
+        type="error"
+        :closable="false"
+      />
+      <el-alert
+        v-if="state.error && !state.missing"
+        :title="'读取失败，保留已有快照：' + state.error"
+        type="error"
+        :closable="false"
+      />
+      <el-alert
+        v-if="state.missing && view === 'debug'"
+        title="Task 不存在，请核对身份；调试不会创建任务。"
+        type="info"
+        :closable="false"
+      />
+      <el-alert
+        v-if="group && !group.workerGroup"
+        title="Group 尚未注册，请完成资源注册后刷新。"
+        type="warning"
+        :closable="false"
+      />
+      <el-alert
+        v-if="attempt?.error"
+        :title="attempt.error"
+        type="error"
+        :closable="false"
+        >{{
+          attempt.outcome === "unconfirmed"
+            ? "准备未确认，保留原 Task ID 和请求，不自动重试。"
+            : "请求被拒绝，请核对配置和任务状态。"
+        }}<el-button v-if="attempt.outcome === 'rejected'" link @click="forgetRejected"
+          >结束本次准备</el-button
+        ></el-alert
+      >
+      <el-alert v-if="error" :title="error" type="error" :closable="false" />
+    </template>
+    <el-drawer
+      :model-value="view === 'list' && !!routeTask"
+      title="RPC Task 配置"
+      size="760px"
+      :before-close="close"
+      destroy-on-close
+    >
+      <p class="rpc-page__identity">
+        <code>{{ routeTask }}</code>
+      </p>
+      <div class="raw-tasks__actions">
+        <el-button @click="copy(routeTask)">复制 Task ID</el-button
+        ><el-button @click="refresh">刷新</el-button
+        ><el-button :disabled="!rawRpc" @click="debug(routeTask)">网页调试</el-button>
+      </div>
+      <p class="raw-muted">
+        最近读取：{{ time(state.readAt) }}{{ state.stale ? " · 快照已过期" : "" }}
+      </p>
+      <el-alert
+        v-if="state.error"
+        :title="state.error"
+        type="error"
+        :closable="false"
+      />
+      <template v-if="detail?.task">
+        <p v-if="!rawRpc && fresh" class="raw-muted">
+          该任务仅可查看；通用调试要求原始输入 Owner 和 PARK_WHEN_IDLE。
+        </p>
+        <JsonBlock :value="detail.task" />
+        <p class="raw-muted">
+          代码使用此 Task ID 调用 items:call，按 messageId 通过 results:load
+          核对结果。网页调试可生成完整请求与 cURL。
+        </p>
+        <el-button
+          v-if="rawRpc && detail.scoreBand === 'pre_review'"
+          :disabled="!canPrepare"
+          :loading="attempt?.busy"
+          @click="prepare"
+          >继续准备原 Task</el-button
+        >
+        <el-alert
+          v-if="attempt?.error || error"
+          :title="attempt?.error || error"
+          type="error"
+          :closable="false"
+        />
+      </template>
+    </el-drawer>
   </section>
 </template>

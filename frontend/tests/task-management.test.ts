@@ -13,7 +13,8 @@ import {
   MAX_TASK_SEED_LINES,
   parseSeedLines,
   parseJsonlItems,
-  defaultSupply
+  suggestedSupply,
+  parsePayloadLines
 } from "@/task-management/model";
 import type {
   FiniteTaskClient,
@@ -174,7 +175,13 @@ describe("HttpFiniteTaskClient", () => {
 const group = {
   workerGroupId: "g",
   workerGroup: { workerGroupId: "g", eventCodes: ["event"], attributes: {} },
-  matching: { pools: ["country"], functions: ["worker.country", "workerId"] }
+  matching: {
+    pools: ["country"],
+    functions: [
+      { name: "worker.country", poolName: "country" },
+      { name: "workerId", poolName: null }
+    ]
+  }
 };
 function item(id: string): TaskItemApiRequest {
   return {
@@ -247,17 +254,25 @@ describe("raw JSONL", () => {
       )
     ).toThrow("函数");
   });
-  it("selects only available built-in supply, never a business rule fallback", () => {
-    expect(defaultSupply(group)).toEqual({
-      refill: [{ poolName: "country", target: {}, count: 100 }],
-      selector: { executorName: "worker.country", input: {} }
-    });
-    expect(
-      defaultSupply({
-        ...group,
-        matching: { pools: ["custom"], functions: ["custom.query", "workerId"] }
-      })
-    ).toEqual({ refill: [], selector: undefined });
+  it("uses declared consumption relationships without inferring names", () => {
+    expect(suggestedSupply(group, "worker.country")).toEqual([
+      { poolName: "country", target: {}, count: 100 }
+    ]);
+    const custom = {
+      ...group,
+      matching: {
+        pools: ["renamed"],
+        functions: [
+          { name: "choose", poolName: "renamed" },
+          { name: "workerId", poolName: null }
+        ]
+      }
+    };
+    expect(suggestedSupply(custom, "choose")).toEqual([
+      { poolName: "renamed", target: {}, count: 100 }
+    ]);
+    expect(suggestedSupply(custom, "workerId")).toEqual([]);
+    expect(() => suggestedSupply(custom, "missing")).toThrow();
   });
 });
 describe("server-observed finite Task management", () => {
@@ -488,4 +503,22 @@ it("stops remaining append batches after logout without changing the admitted ca
   expect(client.appendItems).toHaveBeenCalledTimes(1);
   expect(vi.mocked(client.appendItems).mock.calls[0]![0]).toEqual(CALLER);
   expect(store.project("default").submission?.notSubmitted).toBe(1);
+});
+
+describe("payload JSONL input", () => {
+  it("preserves nested payloads, physical line identities and repeated content", () => {
+    const content = '{"text":"你好\\nworld","nested":[true,1]}';
+    const rows = parsePayloadLines(
+      bytes("\ufeff" + content + "\n \n" + content + "\n")
+    );
+    expect(rows.map((r) => r.lineNumber)).toEqual([1, 3]);
+    expect(rows[0]?.payload).toEqual(rows[1]?.payload);
+    expect(rows[0]?.payload.text).toBe("你好\nworld");
+    expect(() => parsePayloadLines(bytes(content + "\n\n[]"))).toThrow("第 3 行");
+    expect(() => parsePayloadLines(bytes("{}\n".repeat(10001)))).toThrow();
+    expect(() =>
+      parsePayloadLines(bytes('{"value":"' + "x".repeat(1024 * 1024) + '"}'))
+    ).toThrow("1 MiB");
+    expect(() => parsePayloadLines(new Uint8Array([255]).buffer)).toThrow("UTF-8");
+  });
 });

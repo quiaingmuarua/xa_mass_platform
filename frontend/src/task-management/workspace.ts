@@ -8,6 +8,7 @@ import type {
   ProjectTask,
   ProjectTasks
 } from "./projects";
+import type { RawResultPreview } from "./projects";
 
 export interface Snapshot<T> {
   value?: T;
@@ -26,6 +27,8 @@ export function createProjectWorkspace(source: ProjectSource) {
   const groups = reactive<Record<string, Snapshot<ProjectGroup[]>>>({});
   const detail = ref<Snapshot<ProjectTask>>(snapshot());
   const detailKey = ref("");
+  const results = ref<Snapshot<RawResultPreview>>(snapshot());
+  const resultsKey = ref("");
   const requests = new Map<string, AbortController>();
   const sequences = new Map<string, number>();
   async function read<T>(
@@ -85,8 +88,21 @@ export function createProjectWorkspace(source: ProjectSource) {
   }
   function clearDetail() {
     requests.get("detail")?.abort();
+    requests.get("results")?.abort();
+    results.value = snapshot();
+    resultsKey.value = "";
     detailKey.value = "";
     detail.value = snapshot();
+  }
+  function loadResults(project: string, task: string) {
+    const key = project + "/" + task;
+    if (resultsKey.value !== key) {
+      results.value = snapshot();
+      resultsKey.value = key;
+    }
+    return read("results", results.value, (signal) =>
+      source.results(project, task, signal)
+    );
   }
   function invalidateDetail() {
     requests.get("detail")?.abort();
@@ -114,6 +130,9 @@ export function createProjectWorkspace(source: ProjectSource) {
     groups,
     detail,
     detailKey,
+    results,
+    resultsKey,
+    loadResults,
     loadDirectory,
     loadTasks,
     loadGroups,

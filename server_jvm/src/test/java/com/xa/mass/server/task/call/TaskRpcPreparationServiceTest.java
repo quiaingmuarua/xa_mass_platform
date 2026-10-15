@@ -122,6 +122,40 @@ class TaskRpcPreparationServiceTest {
         verify(taskRuntime, never()).createTask(any());
     }
 
+    @Test void explicitSupplyReplacesHostDefaultsIncludingEmptySupply() {
+        var host = List.of(new com.xa.mass.kernel.assignment.RefillTarget("host", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 40));
+        var explicit = List.of(new com.xa.mass.kernel.assignment.RefillTarget("chosen", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 100));
+        var rpc = new TaskRpcProperties(1000,1000,10,10,10,50,100,250,Map.of("phone-tools",host));
+        service = new TaskRpcPreparationService(workerCatalog,taskCatalog,taskRuntime,taskLifecycle,matching,rpc,projects(),new OperationGuard(),mock(com.xa.mass.server.task.directory.TaskDirectory.class),mock(com.xa.mass.kernel.score.TaskScoreBandCore.class));
+        when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of());
+        when(taskRuntime.createTask(any())).thenReturn(new TaskCreationResult(TaskCreationStatus.CREATED));
+        when(taskLifecycle.approveTask(any())).thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED));
+        service.prepare(CALLER,"raw","explicit",new TaskRpcPrepareRequest("test-project","phone-tools",null,Map.of(),explicit));
+        service.prepare(CALLER,"raw","empty",new TaskRpcPrepareRequest("test-project","phone-tools",null,Map.of(),List.of()));
+        service.prepare(CALLER,"raw","host",request());
+        var captured = ArgumentCaptor.forClass(TaskDescriptor.class);
+        org.mockito.Mockito.verify(taskRuntime,org.mockito.Mockito.times(3)).createTask(captured.capture());
+        assertThat(captured.getAllValues()).extracting(TaskDescriptor::refill).containsExactly(explicit,List.of(),host);
+    }
+
+    @Test void explicitSavedSupplyCanBeReconciledAndChangedSupplyIsRejected() {
+        var saved = expectedDescriptor();
+        when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of(saved.taskId(),saved));
+        when(taskLifecycle.approveTask(saved.taskId())).thenReturn(new TaskApprovalResult(TaskApprovalStatus.ALREADY_APPROVED));
+        service.prepare(CALLER,"raw",saved.taskId(),new TaskRpcPrepareRequest("test-project","phone-tools",null,Map.of(),List.of()));
+        var other = List.of(new com.xa.mass.kernel.assignment.RefillTarget("any",new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()),100));
+        assertError(() -> service.prepare(CALLER,"raw",saved.taskId(),new TaskRpcPrepareRequest("test-project","phone-tools",null,Map.of(),other)),ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT,"taskRpc.prepare");
+        verify(taskRuntime,never()).createTask(any());
+        verify(taskLifecycle).approveTask(saved.taskId());
+    }
+
+    @Test void invalidExplicitSupplyIsInputRejectionWithoutCreatingOrApproving() {
+        when(matching.normalizeRefill(org.mockito.ArgumentMatchers.eq("phone-tools"),anyList()))
+                .thenThrow(new IllegalArgumentException("unknown Pool"));
+        assertError(() -> service.prepare(CALLER,"raw","rpc-test",new TaskRpcPrepareRequest("test-project","phone-tools",null,Map.of(),List.of())),ServerErrorCode.INVALID_TASK_DATA_REQUEST,"taskRpc.prepare");
+        org.mockito.Mockito.verifyNoInteractions(taskRuntime,taskLifecycle);
+    }
+
     @Test void savedTargetsSurviveDefaultChangesButReregistrationConflicts() {
         var saved=expectedDescriptor();
         when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of(saved.taskId(),saved));
@@ -276,8 +310,8 @@ class TaskRpcPreparationServiceTest {
         var initializer = new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle,
                 matching, new TaskRpcProperties(1000,1000,10,10,10,50,100,250,Map.of()), directory, new OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class));
         for (int repeat = 0; repeat < 2; repeat++) {
-            initializer.prepare(CALLER, "raw", "rpc-one", new TaskRpcPrepareRequest("one", "phone-tools", null, Map.of()));
-            initializer.prepare(CALLER, "raw", "rpc-two", new TaskRpcPrepareRequest("two", "phone-tools", null, Map.of()));
+            initializer.prepare(CALLER, "raw", "rpc-one", new TaskRpcPrepareRequest("one", "phone-tools", null, Map.of(), null));
+            initializer.prepare(CALLER, "raw", "rpc-two", new TaskRpcPrepareRequest("two", "phone-tools", null, Map.of(), null));
         }
         assertThat(saved.values()).extracting(task -> com.xa.mass.server.task.directory.TaskAttribution.require(task.metadata()).projectId()).containsExactly("one", "two");
         verify(taskRuntime, org.mockito.Mockito.times(2)).createTask(any());
@@ -285,7 +319,7 @@ class TaskRpcPreparationServiceTest {
 
     @Test void callerIdentityAndMetadataAreOpaqueAndImmutable() {
         var attributes = new java.util.HashMap<>(Map.of("label", "alice"));
-        var request = new TaskRpcPrepareRequest("test-project", "phone-tools", "RPC", attributes);
+        var request = new TaskRpcPrepareRequest("test-project", "phone-tools", "RPC", attributes, null);
         attributes.put("label", "bobby");
         when(taskRuntime.createTask(any())).thenReturn(new TaskCreationResult(TaskCreationStatus.CREATED));
         when(taskLifecycle.approveTask("caller-chosen"))
@@ -318,9 +352,9 @@ class TaskRpcPreparationServiceTest {
     }
 
     @Test void invalidDisplayDataAndUndeclaredBindingDoNotCreateOrApprove() {
-        assertError(() -> service.prepare(CALLER, "raw", "rpc-test", new TaskRpcPrepareRequest("test-project", "phone-tools", " ", Map.of())),
+        assertError(() -> service.prepare(CALLER, "raw", "rpc-test", new TaskRpcPrepareRequest("test-project", "phone-tools", " ", Map.of(), null)),
                 ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskRpc.prepare");
-        assertError(() -> service.prepare(CALLER, "raw", "rpc-test", new TaskRpcPrepareRequest("test-project", "absent", null, Map.of())),
+        assertError(() -> service.prepare(CALLER, "raw", "rpc-test", new TaskRpcPrepareRequest("test-project", "absent", null, Map.of(), null)),
                 ServerErrorCode.INVALID_TASK_DATA_REQUEST, "project.requireWorkerGroup");
         org.mockito.Mockito.verifyNoInteractions(taskRuntime, taskLifecycle);
     }
@@ -350,7 +384,7 @@ class TaskRpcPreparationServiceTest {
     }
 
     private static TaskRpcPrepareRequest request() {
-        return new TaskRpcPrepareRequest("test-project", "phone-tools", null, Map.of());
+        return new TaskRpcPrepareRequest("test-project", "phone-tools", null, Map.of(), null);
     }
 
     private static ProjectDirectory projects() {

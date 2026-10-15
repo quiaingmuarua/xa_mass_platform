@@ -133,7 +133,8 @@
       "register_worker_group",
       "register_workers",
       "sample_worker_descriptors",
-      "sample_worker_group_descriptors"
+      "sample_worker_group_descriptors",
+      "scan_worker_group_descriptors"
     ],
     "WorkerScoreCore": [
       "acquire_current_hot_score_leases",
