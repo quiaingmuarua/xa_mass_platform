@@ -406,7 +406,9 @@ RPC and SMS shared Tasks are excluded by disposition.
 
 TaskRetentionService first scans expired Tasks, then archive-eligible Tasks, using
 bounded keyset pages of the existing Score index. Per-Task failures do not block
-subsequent identities. It freezes through Kernel, publishes immutable UTF-8 JSONL
+subsequent identities. The traversal window is fixed at pass start, while each
+Task rechecks the current time before acting; a Task expiring during traversal
+goes directly to deletion. It freezes through Kernel, publishes immutable UTF-8 JSONL
 and a manifest atomically, and only then releases Redis inputs and Results. The
 archive stores each observed success/failure with its original Item association,
 including content whose independent Score is still ACTIVE. There is no random

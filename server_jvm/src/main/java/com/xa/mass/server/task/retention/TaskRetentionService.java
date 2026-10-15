@@ -122,7 +122,7 @@ public final class TaskRetentionService implements SmartLifecycle {
             var page = scores.scanTerminalTasks(cutoff, cursor, 100);
             for (var task : page.tasks()) {
                 if (archivePass && task.terminatedAtMillis() <= now - properties.retention().toMillis()) continue;
-                try { maintain(task.taskId(), now); }
+                try { maintain(task.taskId(), clock.getAsLong()); }
                 catch (RuntimeException failed) { LOG.log(System.Logger.Level.WARNING, "Task retention deferred for {0}: {1}", task.taskId(), failed.getClass().getSimpleName()); }
             }
             cursor = page.nextCursor();

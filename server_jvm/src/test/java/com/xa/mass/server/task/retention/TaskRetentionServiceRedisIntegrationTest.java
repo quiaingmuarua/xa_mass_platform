@@ -269,4 +269,21 @@ class TaskRetentionServiceRedisIntegrationTest {
         service.runOnce();
         assertThat(connection.sync().zcard(TaskRedisKeys.scores(scope.keyspace()))).isZero();
     }
+
+    @Test void aTaskThatExpiresDuringTraversalIsDeletedWithoutAnArchive() throws Exception {
+        String id = create(); closeWithResult(id);
+        clock.addAndGet(properties.retention().toMillis() - 1);
+        var observedScores = spy(scores);
+        doAnswer(call -> {
+            Object page = call.callRealMethod();
+            clock.incrementAndGet();
+            return page;
+        }).when(observedScores).scanTerminalTasks(anyLong(), anyString(), anyInt());
+        var files = spy(archive);
+        var service = new TaskRetentionService(runtime, catalog, observedScores, directory, creations,
+                files, guard, properties, clock::get);
+        service.runOnce();
+        verify(files, never()).publish(any(), any());
+        assertThat(scores.getScoreStates(List.of(id)).get(id)).isNull();
+    }
 }
