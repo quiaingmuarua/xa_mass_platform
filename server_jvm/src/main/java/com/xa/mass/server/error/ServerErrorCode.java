@@ -5,6 +5,7 @@ public enum ServerErrorCode {
     INVALID_TASK_CALLER(12012, "Task caller declaration is invalid"),
     TASK_ACCESS_DENIED(12013, "Task access is denied"),
     TASK_RESULTS_ARCHIVED(12014, "Task results are archived; use preview or export instead of point queries"),
+    TASK_CLEANUP_IN_PROGRESS(12015, "Task cleanup is in progress"),
     KERNEL_REJECTED_CONFLICT(
             11005,
             "Kernel control request conflicts with current state"

@@ -141,7 +141,7 @@ public final class TaskLifecycleService {
         var data = runtime.loadTaskDataStates(List.of(taskId)).get(taskId);
         if (data == null) throw failure(ServerErrorCode.TASK_NOT_FOUND, operation);
         if (data.phase() == com.xa.mass.kernel.task.TaskRuntime.TaskDataPhase.PURGING)
-            throw failure(ServerErrorCode.TASK_STATE_CONFLICT, operation);
+            throw failure(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, operation);
         if (descriptor.idleDisposition()
                 != TaskIdleDisposition.CLOSE_WHEN_IDLE) {
             throw failure(

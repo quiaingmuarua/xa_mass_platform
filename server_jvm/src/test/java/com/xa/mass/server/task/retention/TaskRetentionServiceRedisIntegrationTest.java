@@ -286,4 +286,17 @@ class TaskRetentionServiceRedisIntegrationTest {
         verify(files, never()).publish(any(), any());
         assertThat(scores.getScoreStates(List.of(id)).get(id)).isNull();
     }
+
+    @Test void purgingHasAnExplicitRejectionAndCannotReopenOrRepairTheDirectory() {
+        String id = create(); long terminal = closeWithResult(id);
+        runtime.beginTaskPurge(id, terminal);
+        directory.remove("p", id);
+        for (Runnable operation : List.<Runnable>of(() -> create(), () -> directory.ensure(CALLER, id),
+                () -> exports.preview(CALLER, id), () -> exports.export(CALLER, id))) {
+            assertThatThrownBy(operation::run).isInstanceOfSatisfying(com.xa.mass.server.error.ServerException.class,
+                    error -> assertThat(error.errorCode()).isEqualTo(com.xa.mass.server.error.ServerErrorCode.TASK_CLEANUP_IN_PROGRESS));
+        }
+        assertThat(directory.contains("p", id)).isFalse();
+        assertThat(runtime.loadTaskDataStates(List.of(id)).get(id).phase()).isEqualTo(TaskDataPhase.PURGING);
+    }
 }

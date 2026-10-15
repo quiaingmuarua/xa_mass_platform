@@ -72,6 +72,16 @@ class MessageTaskServiceTest {
         }
     }
 
+    @Test void cleanupRejectionIsNotTranslatedIntoAnUnknownCreation() {
+        try (var service = service()) {
+            var rejected = new com.xa.mass.server.error.ServerException(
+                    com.xa.mass.server.error.ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, "taskCreation.create", null, null);
+            when(creation.createForRequest(eq(CALLER), eq("messages"), any(), anyString())).thenThrow(rejected);
+            assertThatThrownBy(() -> service.create(CALLER, input())).isSameAs(rejected);
+            verifyNoInteractions(data);
+        }
+    }
+
     @Test void wholeFileValidationDeduplicatesAndWritesBoundedBatchesWithoutApproval() {
         try (var service = service()) {
             assertThatThrownBy(() -> service.importRecipients(CALLER, "finite-task", file(numbers(201) + "\nbad")))

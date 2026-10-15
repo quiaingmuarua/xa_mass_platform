@@ -67,8 +67,9 @@ public final class TaskDirectory implements AutoCloseable {
                 if (task == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskDirectory.ensure", null, null);
                 caller.requireTask(task);
                 var data = runtime.loadTaskDataStates(List.of(taskId)).get(taskId);
-                if (data == null || data.phase() == com.xa.mass.kernel.task.TaskRuntime.TaskDataPhase.PURGING)
-                    throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "taskDirectory.ensure", "Task cleanup is in progress", null);
+                if (data == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskDirectory.ensure", null, null);
+                if (data.phase() == com.xa.mass.kernel.task.TaskRuntime.TaskDataPhase.PURGING)
+                    throw new ServerException(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, "taskDirectory.ensure", null, null);
                 final TaskAttribution attribution;
                 try { attribution = TaskAttribution.require(task.metadata()); }
                 catch (IllegalArgumentException invalid) { throw invalid("Task has no valid Server attribution", invalid); }

@@ -431,7 +431,9 @@ precede file reads. Reads crossing a data-phase change are rejected rather than
 returning a partial view. These remain independent observations, not an atomic
 execution snapshot or execution history.
 
-At expiry, PURGING prevents new application reads or directory confirmation. The
+At expiry, PURGING prevents new application reads or directory confirmation with
+`400/12015` (Task cleanup is in progress). Creation retries return the same explicit
+rejection until association removal, without reopening or reporting an unknown submission. The
 service deletes archive/pending files and Kernel payloads/Item Score, removes its
 Project membership, conditionally removes the creation association, then asks
 Kernel to atomically delete descriptor and final Score membership. The descriptor

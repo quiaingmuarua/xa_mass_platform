@@ -49,6 +49,7 @@ public final class TaskResultsExportService {
             try {
                 // Admission precedes even temporary-file creation.
                 requireTask(caller, taskId, true);
+                requireReadableState(taskId);
                 file = Files.createTempFile(temporaryDirectory, "xa-mass-task-results-", ".jsonl");
                 try (var writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
                     forEachResult(caller, taskId, row -> {
@@ -151,7 +152,7 @@ public final class TaskResultsExportService {
             var state = taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId);
             if (state == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskResults.read", null, null);
             if (state.phase() == TaskDataPhase.PURGING)
-                throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "taskResults.read", "Task cleanup is in progress", null);
+                throw new ServerException(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, "taskResults.read", null, null);
             return state;
         } catch (ServerException known) { throw known;
         } catch (RuntimeException unavailable) { throw unavailable("phase", unavailable); }

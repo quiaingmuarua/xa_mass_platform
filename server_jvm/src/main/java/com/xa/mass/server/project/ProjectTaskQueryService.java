@@ -125,7 +125,7 @@ public final class ProjectTaskQueryService {
     private static void requireReadable(com.xa.mass.kernel.task.TaskRuntime.TaskDataState state) {
         if (state == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "project.taskRead", null, null);
         if (state.phase() == com.xa.mass.kernel.task.TaskRuntime.TaskDataPhase.PURGING)
-            throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "project.taskRead", "Task cleanup is in progress", null);
+            throw new ServerException(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, "project.taskRead", null, null);
     }
     private com.xa.mass.server.task.retention.TaskRetentionService.Info retentionInfo(TaskDescriptor task,
             TaskScoreBandCore.TaskScoreState score, com.xa.mass.kernel.task.TaskRuntime.TaskDataState data) {

@@ -318,7 +318,7 @@ public final class TaskDataService {
         var dataState = taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId);
         if (dataState == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, operation, null, null);
         if (dataState.phase() == TaskRuntime.TaskDataPhase.PURGING)
-            throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, operation, "Task cleanup is in progress", null);
+            throw new ServerException(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, operation, null, null);
         if (!isPublicFiniteTask(descriptor) && !isManagedCallTask(descriptor)) {
             throw new ServerException(
                     ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,

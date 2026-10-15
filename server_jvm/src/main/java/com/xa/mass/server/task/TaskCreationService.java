@@ -146,7 +146,7 @@ public final class TaskCreationService {
                 var dataState = taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId);
                 if (dataState == null) throw new TaskCreationUnconfirmedException(taskId, null);
                 if (dataState.phase() == TaskRuntime.TaskDataPhase.PURGING)
-                    throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, OPERATION, "Task cleanup is in progress", null);
+                    throw new ServerException(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, OPERATION, null, null);
             }
             var state = scores.getScoreStates(List.of(taskId)).get(taskId);
             if (descriptor == null && state == null && !directory.contains(projectId, taskId)) return null;
@@ -163,7 +163,8 @@ public final class TaskCreationService {
                         "Creation request has different content", null);
             return confirmDirectory(caller, taskId);
         } catch (ServerException known) {
-            if (known instanceof TaskCreationUnconfirmedException || known.errorCode() == ServerErrorCode.TASK_STATE_CONFLICT || known.errorCode() == ServerErrorCode.TASK_ACCESS_DENIED) throw known;
+            if (known instanceof TaskCreationUnconfirmedException || known.errorCode() == ServerErrorCode.TASK_STATE_CONFLICT
+                    || known.errorCode() == ServerErrorCode.TASK_CLEANUP_IN_PROGRESS || known.errorCode() == ServerErrorCode.TASK_ACCESS_DENIED) throw known;
             throw new TaskCreationUnconfirmedException(taskId, known);
         } catch (RuntimeException unavailable) { throw new TaskCreationUnconfirmedException(taskId, unavailable); }
     }
