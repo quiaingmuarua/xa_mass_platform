@@ -168,7 +168,8 @@ def prepare(repository: str, tag: str, commit: str, output: Path) -> None:
                     if candidate.get("tag_name") == tag), None)
     if release is None:
         notes = output / "release-notes.md"
-        contract = (ROOT / "distribution/server/RELEASE-1.0.md").read_text(encoding="utf-8")
+        contract_path = ROOT / "distribution/server" / f"RELEASE-{version.split('.')[0]}.0.md"
+        contract = contract_path.read_text(encoding="utf-8")
         notes.write_text(contract + f"\nVerified full Proof: {run['html_url']}\n\nCommit: `{commit}`\n", encoding="utf-8")
         request = output / "draft-request.json"
         request.write_text(json.dumps({"tag_name": tag, "name": "XA Mass " + tag,
