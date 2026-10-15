@@ -1,6 +1,10 @@
 package com.xa.mass.server.task.observation;
 
 import com.xa.mass.server.task.access.TaskCaller;
+import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
+import com.xa.mass.workermatching.PlatformLeaseState.Coordinate;
 
 import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.server.task.TaskDataService;
@@ -15,8 +19,9 @@ import org.springframework.stereotype.Service;
 
 /** Bounded, lossy stored-Result projection. The Pacer callback never reads or writes Redis. */
 @Service
-public final class TaskLeaseProjectionService implements TaskLeaseProjectionMetrics, SmartLifecycle, DisposableBean {
-    private record Notice(String taskId, List<String> ids, long queuedAt) { }
+public final class TaskLeaseProjectionService implements TaskLeaseProjectionAccess, SmartLifecycle, DisposableBean {
+    private record LeaseWrite(String group, String pool, Map<Coordinate, Long> deadlines) { }
+    private record Notice(String taskId, List<String> ids, List<LeaseWrite> writes, int count, long queuedAt) { }
     private final List<TaskLeaseProjection> definitions;
     private final ProjectDirectory projects;
     private final TaskDataService results;
@@ -50,11 +55,35 @@ public final class TaskLeaseProjectionService implements TaskLeaseProjectionMetr
     public void accept(String taskId, List<String> messageIds) {
         if (!routes.containsKey(taskId)) return;
         if (messageIds.isEmpty()) return;
-        synchronized (this) {
-            if (!running || messageIds.size() > 1000 || !queue.offer(new Notice(taskId, List.copyOf(messageIds), System.nanoTime())))
-                dropped.add(messageIds.size());
-            else accepted.add(messageIds.size());
+        if (messageIds.size() > 1000) { dropped.add(messageIds.size()); return; }
+        offer(new Notice(taskId, List.copyOf(messageIds), List.of(), messageIds.size(), System.nanoTime()));
+    }
+
+    /** Converts already consumed content before enqueueing; the callback performs no Redis I/O. */
+    @Override public void acceptResults(TaskCaller caller, String taskId, Map<String, TaskItemResultResponse> snapshots) {
+        if (!caller.isService()) throw new ServerException(ServerErrorCode.TASK_ACCESS_DENIED, "taskLeaseProjection.acceptResults", null, null);
+        var selected = routes.get(taskId);
+        if (selected == null) throw new ServerException(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, "taskLeaseProjection.acceptResults", "Task has no declared projection", null);
+        selected.forEach(route -> caller.requireProject(route.projectId()));
+        if (snapshots == null || snapshots.size() > 1000 || snapshots.entrySet().stream().anyMatch(entry ->
+                entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null))
+            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskLeaseProjection.acceptResults", "Expected at most 1000 Results", null);
+        if (snapshots.isEmpty()) return;
+        var captured = Map.copyOf(snapshots);
+        var writes = new ArrayList<LeaseWrite>();
+        for (var route : selected) {
+            try {
+                var deadlines = Map.copyOf(route.project().apply(captured));
+                if (deadlines.size() > 1000) throw new IllegalArgumentException("Projection exceeds its batch bound");
+                if (!deadlines.isEmpty()) writes.add(new LeaseWrite(route.workerGroupId(), route.poolName(), deadlines));
+            } catch (RuntimeException failure) { failures.increment(); }
         }
+        if (!writes.isEmpty()) offer(new Notice(taskId, List.of(), List.copyOf(writes), captured.size(), System.nanoTime()));
+    }
+
+    private synchronized void offer(Notice notice) {
+        if (!running || !queue.offer(notice)) dropped.add(notice.count());
+        else accepted.add(notice.count());
     }
     private void consume() {
         try {
@@ -63,7 +92,8 @@ public final class TaskLeaseProjectionService implements TaskLeaseProjectionMetr
                 notices.add(queue.take()); queue.drainTo(notices, 15);
                 var idsByTask = new LinkedHashMap<String, Set<String>>();
                 for (var notice : notices) {
-                    idsByTask.computeIfAbsent(notice.taskId(), ignored -> new LinkedHashSet<>()).addAll(notice.ids());
+                    if (!notice.ids().isEmpty()) idsByTask.computeIfAbsent(notice.taskId(), ignored -> new LinkedHashSet<>()).addAll(notice.ids());
+                    notice.writes().forEach(this::record);
                     latencyNanos.add(System.nanoTime() - notice.queuedAt()); processed.increment();
                 }
                 idsByTask.forEach((task, ids) -> process(task, List.copyOf(ids)));
@@ -82,12 +112,18 @@ public final class TaskLeaseProjectionService implements TaskLeaseProjectionMetr
                     if (!running) return;
                     try {
                         var deadlines = route.project().apply(snapshots);
-                        matching.platformLeases().record(route.workerGroupId(), route.poolName(), deadlines);
-                        recorded.add(deadlines.size());
+                        record(new LeaseWrite(route.workerGroupId(), route.poolName(), deadlines));
                     } catch (RuntimeException failure) { failures.increment(); }
                 }
             } catch (RuntimeException failure) { failures.increment(); }
         }
+    }
+    private void record(LeaseWrite write) {
+        if (!running) return;
+        try {
+            matching.platformLeases().record(write.group(), write.pool(), write.deadlines());
+            recorded.add(write.deadlines().size());
+        } catch (RuntimeException failure) { failures.increment(); }
     }
     @Override public Map<String, Object> metrics() {
         return Map.of("accepted", accepted.sum(), "dropped", dropped.sum(), "failures", failures.sum(),
@@ -100,7 +136,7 @@ public final class TaskLeaseProjectionService implements TaskLeaseProjectionMetr
         synchronized (this) {
             running = false; stopping = thread;
             Notice notice;
-            while ((notice = queue.poll()) != null) dropped.add(notice.ids().size());
+            while ((notice = queue.poll()) != null) dropped.add(notice.count());
             if (stopping != null) stopping.interrupt();
         }
         if (stopping != null) try {

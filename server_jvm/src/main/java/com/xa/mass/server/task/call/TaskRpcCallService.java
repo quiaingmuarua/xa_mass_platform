@@ -34,7 +34,7 @@ public final class TaskRpcCallService {
         return call(caller, inputOwner, taskId, request, java.util.function.Function.identity());
     }
 
-    /** One servlet waiter, with a pure application response mapping. */
+    /** One servlet waiter; application mapping may retain bounded local state, but must not block on remote I/O. */
     public <T> DeferredResult<T> call(TaskCaller caller, String inputOwner, String taskId, TaskRpcCallRequest request,
             java.util.function.Function<Map<String, TaskItemResultResponse>, T> mapping) {
         long timeoutMillis = resolveTimeout(request.waitTimeoutMillis());

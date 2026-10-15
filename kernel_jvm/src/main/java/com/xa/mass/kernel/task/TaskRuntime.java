@@ -49,6 +49,11 @@ public interface TaskRuntime {
             List<String> messageIds
     );
 
+    /** Atomically consumes at most 1000 current RPC Results; later writes remain legal. */
+    default Map<String, @Nullable TaskItemResult> takeTaskItemResults(String taskId, List<String> messageIds) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("TaskRuntime", "takeTaskItemResults");
+    }
+
     TaskItemResultPage scanTaskItemResults(
             String taskId,
             String cursor,

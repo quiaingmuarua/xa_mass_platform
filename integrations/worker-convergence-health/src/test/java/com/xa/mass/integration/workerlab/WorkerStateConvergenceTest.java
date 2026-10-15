@@ -184,11 +184,12 @@ class WorkerStateConvergenceTest {
                 }
                 offeredItems.addAndGet(results.size());
                 body = results;
-            } else if (path.endsWith("/results:load")) {
+            } else if (path.endsWith("/results:load") || path.endsWith("/results:take")) {
                 resultReads.incrementAndGet();
                 var results = new LinkedHashMap<String, Object>();
                 for (Object id : Jsons.parseArray(request)) {
-                    results.put((String) id, Map.of("status", failure.equals("witness-failed") ? "failed" : "succeeded"));
+                    results.put((String) id, failure.equals("witness-failed") ? Map.of("status", "failed")
+                            : Map.of("status", "succeeded", "opaqueResultPayload", "fixture-result"));
                 }
                 body = results;
             } else if (path.endsWith("/tasks:preview")) {

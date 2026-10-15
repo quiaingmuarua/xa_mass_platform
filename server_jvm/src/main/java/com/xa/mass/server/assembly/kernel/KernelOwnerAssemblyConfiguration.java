@@ -49,13 +49,15 @@ public class KernelOwnerAssemblyConfiguration {
             RedisClient redisClient,
             TaskScoreBandCore taskScore,
             TaskItemScoreBandCore taskItemScore,
-            XaMassRedisProperties properties
+            XaMassRedisProperties properties,
+            com.xa.mass.server.task.call.TaskRpcProperties rpc
     ) {
         return new RedisTaskRuntime(
                 redisClient,
                 taskScore,
                 taskItemScore,
-                properties.keyspace()
+                properties.keyspace(),
+                rpc.resultIdleTtl().toMillis()
         );
     }
 

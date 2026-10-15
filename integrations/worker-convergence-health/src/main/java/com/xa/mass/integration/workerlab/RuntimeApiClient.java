@@ -18,9 +18,93 @@ final class RuntimeApiClient {
     private static final int MAX_WORKER_OBSERVATION_SIZE = 1_000;
 
     private final JsonHttpClient http;
+    /** Proof-side receipts, including earlier JVM phases; never a runtime result mirror. */
+    private final Map<String, Map<String, Map<String, Object>>> receipts = new LinkedHashMap<>();
+    private final java.nio.file.Path receiptsFile;
 
     RuntimeApiClient(JsonHttpClient http) {
+        this(http, null);
+    }
+
+    RuntimeApiClient(JsonHttpClient http, java.nio.file.Path receiptsFile) {
         this.http = java.util.Objects.requireNonNull(http, "http");
+        this.receiptsFile = receiptsFile;
+        if (receiptsFile != null && java.nio.file.Files.exists(receiptsFile)) {
+            try {
+                var stored = com.xa.mass.workerdelivery.json.Jsons.parseObject(java.nio.file.Files.readString(receiptsFile));
+                stored.forEach((task, rows) -> {
+                    var taskRows = new LinkedHashMap<String, Map<String, Object>>();
+                    JsonValues.object(rows, "receipt Task").forEach((id, row) -> {
+                        var result = JsonValues.object(row, "receipt Result"); receiptStatus(result);
+                        taskRows.put(id, Map.copyOf(result));
+                    });
+                    receipts.put(task, taskRows);
+                });
+            } catch (java.io.IOException error) { throw new IllegalStateException("Could not read proof Result receipts", error); }
+        }
+    }
+
+    private static CallStatus checkedResult(Map<String, Object> result) {
+        var status = CallStatus.fromWire(JsonValues.requiredString(result, "status"));
+        var fields = status == CallStatus.SUCCEEDED ? Set.of("status", "opaqueResultPayload") : Set.of("status");
+        if (!result.keySet().equals(fields) || status == CallStatus.SUCCEEDED && !(result.get("opaqueResultPayload") instanceof String))
+            throw JsonValues.invalid("Result payload boundary changed");
+        return status;
+    }
+
+    private static CallStatus receiptStatus(Map<String, Object> result) {
+        var status = CallStatus.fromWire(JsonValues.requiredString(result, "status"));
+        var fields = status == CallStatus.SUCCEEDED ? Set.of("status", "payloadSha256") : Set.of("status");
+        if (status == CallStatus.NOT_OBSERVED || !result.keySet().equals(fields)
+                || status == CallStatus.SUCCEEDED && (!(result.get("payloadSha256") instanceof String digest) || !digest.matches("[0-9a-f]{64}")))
+            throw JsonValues.invalid("Proof Result receipt is invalid");
+        return status;
+    }
+
+    private static String payloadDigest(String payload) {
+        try { return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(payload.getBytes(StandardCharsets.UTF_8))); }
+        catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+    }
+
+    private void remember(String task, Map<String, Object> observed) {
+        var retained = receipts.computeIfAbsent(task, ignored -> new LinkedHashMap<>());
+        boolean[] changed = {false};
+        observed.forEach((id, raw) -> {
+            var result = JsonValues.object(raw, "Result receipt");
+            var status = checkedResult(result);
+            if (status != CallStatus.NOT_OBSERVED) {
+                Map<String, Object> value = status == CallStatus.SUCCEEDED
+                        ? Map.of("status", status.wireValue(), "payloadSha256", payloadDigest((String) result.get("opaqueResultPayload")))
+                        : Map.of("status", status.wireValue());
+                if (!value.equals(retained.put(id, value))) changed[0] = true;
+            }
+        });
+        if (receiptsFile != null && changed[0]) {
+            try {
+                java.nio.file.Files.createDirectories(receiptsFile.toAbsolutePath().getParent());
+                var temporary = java.nio.file.Files.createTempFile(receiptsFile.toAbsolutePath().getParent(), "rpc-receipts-", ".tmp");
+                try {
+                    java.nio.file.Files.writeString(temporary, com.xa.mass.workerdelivery.json.Jsons.toJson(receipts));
+                    java.nio.file.Files.move(temporary, receiptsFile, java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } finally { java.nio.file.Files.deleteIfExists(temporary); }
+            } catch (java.io.IOException error) { throw new IllegalStateException("Could not save proof Result receipts", error); }
+        }
+    }
+
+    Map<String, CallStatus> takeResultStatuses(String taskId, List<String> messageIds) {
+        if (messageIds == null || messageIds.isEmpty() || messageIds.size() > 1000)
+            throw new IllegalArgumentException("Expected 1..1000 message IDs");
+        var retained = receipts.computeIfAbsent(taskId, ignored -> new LinkedHashMap<>());
+        var pending = messageIds.stream().filter(id -> !retained.containsKey(id) || receiptStatus(retained.get(id)) != CallStatus.SUCCEEDED).distinct().toList();
+        if (!pending.isEmpty()) {
+            var response = http.send("POST", "/api/v1/tasks/" + segment(taskId) + "/results:take", pending);
+            requireStatus(response, 200, "take Task results");
+            if (!response.body().keySet().equals(Set.copyOf(pending))) throw JsonValues.invalid("Taken result identities changed");
+            remember(taskId, response.body());
+        }
+        var statuses = new LinkedHashMap<String, CallStatus>();
+        messageIds.forEach(id -> statuses.put(id, retained.containsKey(id) ? receiptStatus(retained.get(id)) : CallStatus.NOT_OBSERVED));
+        return Collections.unmodifiableMap(statuses);
     }
 
     Map<String, WorkerView> previewWorkers(String workerGroupId) {
@@ -188,6 +272,7 @@ final class RuntimeApiClient {
             throw JsonValues.invalid("Task call result identities changed");
         }
         Map<String, CallStatus> statuses = new LinkedHashMap<>();
+        remember(taskId, results);
         for (TaskItem item : items) {
             Map<String, Object> result = JsonValues.object(
                     results.get(item.messageId()),

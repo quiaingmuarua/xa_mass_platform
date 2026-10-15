@@ -46,6 +46,7 @@ xa:
       names:
         6: succeeded
     task-rpc:
+      result-idle-ttl: 7d
       default-wait-timeout-millis: 30000
       max-wait-timeout-millis: 60000
       max-waiters: 10000

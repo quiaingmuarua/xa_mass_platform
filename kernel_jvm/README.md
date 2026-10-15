@@ -78,7 +78,7 @@ requires a new scope; no compatibility decoder or migration is added.
 The Java providers implement the operations currently called by the Runtime
 API and the fixed production Pacers, including:
 
-- Task create/lifecycle/Call submission, Item record access and Result storage;
+- Task create/lifecycle/Call submission, Item record access, Result storage and bounded atomic RPC Result consumption;
 - Task, TaskItem and Worker score range reads, exact CAS transitions, leases,
   idle park/close, final promotion and completed-HOT release;
 - Worker registration and minimal identity/Group/Endpoint descriptors, including caller-driven read-only Group HASH pages;
@@ -121,6 +121,11 @@ owns offline joins and their incomplete/overlap limits. An observed Result write
 does not establish the later separate TaskItem Score promotion.
 
 ## Finite Task Retention
+
+RPC Result HASHes use write-refreshed idle expiration and bounded `takeTaskItemResults`
+through the [Result Owner](doc/runtime-redis/task-result-runtime-redis-shape.md).
+These operations reclaim content only; Item/Task scheduling and resource lifetimes
+are unchanged. They do not use the finite retention scheduler or archive.
 
 [Task resources](doc/resource-model/task-resource-model.md#finite-task-data-retention)
 own the persistent data fence and resource reclamation. The existing Score ZSET

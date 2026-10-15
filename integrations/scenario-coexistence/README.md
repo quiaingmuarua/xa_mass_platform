@@ -259,6 +259,26 @@ Every invocation selects a fresh private inventory directory, even when reusing
 an explicit output location. Host restarts within that invocation reuse its same
 inventory; the interactive Preview instead keeps its persistent inventory.
 
+## RPC Result memory proof
+
+`run_rpc_result_proof.py` uses the same real Server/Worker Preview and a fresh
+`test_*` scope. The default workload submits 10,000 raw RPC Items in batches of
+100 through 200 directed Workers. It checks each returned identity and MD5
+payload, retains actual receipts, and takes only unresolved IDs. Sampling records
+Result HASH fields/bytes and Redis PING latency; the summary also records HTTP
+batch latency and execution-resource memory. A stopped Worker produces an
+unclaimed late Result, a 15-second test idle TTL expires it, and a new call on the
+same Task proves continued operation. The production default remains seven days.
+
+```powershell
+python integrations/scenario-coexistence/run_rpc_result_proof.py --output build/rpc-result-memory --port 18730
+python integrations/scenario-coexistence/run_rpc_result_proof.py --root <extracted-preview-root> --output build/rpc-result-zip-memory --port 18730
+```
+
+This explicit proof measures Result reclamation, not RPC Item cleanup, reliable
+delivery, a capacity limit or a latency SLA. It does not run the large coexistence
+workload or replace its business assertions.
+
 ## Task management read boundary
 
 Product preparation creates an empty Task with appId through /api/v1/messages/tasks, retains its

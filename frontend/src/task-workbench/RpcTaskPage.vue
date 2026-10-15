@@ -590,7 +590,7 @@ function scroll(event: { scrollTop: number }) {
         </p>
         <JsonBlock :value="detail.task" />
         <p class="raw-muted">
-          代码使用此 Task ID 调用 items:call，按 messageId 通过 results:load
+          代码使用此 Task ID 调用 items:call，按 messageId 通过 results:take
           核对结果。网页调试可生成完整请求与 cURL。
         </p>
         <el-button

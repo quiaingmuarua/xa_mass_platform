@@ -29,7 +29,7 @@ export type TaskCallDebugOutcome =
 export type TaskCallDebugResults = Record<string, TaskCallDebugOutcome>;
 export interface TaskCallDebugClient {
   callTask(request: TaskCallDebugClientRequest): Promise<TaskCallDebugResults>;
-  loadResults(
+  takeResults(
     caller: TaskCaller,
     taskId: string,
     messageIds: string[]

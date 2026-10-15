@@ -105,7 +105,8 @@
       "release_task_payloads",
       "scan_task_item_results",
       "store_task_item_failed_results",
-      "store_task_item_success_results"
+      "store_task_item_success_results",
+      "take_task_item_results"
     ],
     "TaskScoreBandCore": [
       "acquire_scheduling_tasks",

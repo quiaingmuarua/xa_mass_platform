@@ -674,7 +674,7 @@ per-Item queries remain independent.
 The adapter checks the full deduplicated response identity set. Each message
 independently shows succeeded, failed or not_observed with original Worker output.
 Uncertain HTTP outcomes and rejected requests are separate from Item execution
-failure; non-2xx does not prove no work occurred. Manual `results:load` reads use
+failure; non-2xx does not prove no work occurred. Manual `results:take` reads use
 original IDs and caller snapshots, including batches entered without browser
 history. Failed reads preserve the previous results and successful read time.
 The UI never automatically resends; same message IDs are not an exactly-once
@@ -784,3 +784,14 @@ business Mock sources. Their explicit maintenance helpers require the shared
 admin permission, freeze later observations, retain preview/export data, and
 remove task-local maps plus creation correlation on purge. Same-request creation
 then has a new Task ID. No timer, filesystem or Server data fallback is simulated.
+
+## Consuming RPC Results and SMS cache views
+
+RPC debug uses `results:take`: successful/failed receipts remain in session history,
+follow-up takes target unresolved IDs, and explicit known-ID takes can obtain later
+values. Empty results do not erase earlier receipts. Consumption can commit before
+an HTTP response is lost; no automatic execution retry or Mock fallback is added.
+SMS queries still refresh new content, retain higher business revisions, and label
+a previous browser observation when Server returns NOT_OBSERVED. Server SMS cache
+is bounded process-local retention, not history available after every restart or
+from another instance. Existing login/403/late-response isolation remains in force.

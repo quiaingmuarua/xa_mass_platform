@@ -52,7 +52,7 @@ class TaskRpcPreparationServiceTest {
         matching=mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
         when(matching.normalizeRefill(org.mockito.ArgumentMatchers.anyString(),anyList()))
                 .thenAnswer(call -> call.getArgument(1));
-        service = new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matching, new com.xa.mass.server.task.call.TaskRpcProperties(1000,1000,10,10,10,50,100,250,java.util.Map.of()), projects(), new OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class));
+        service = new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matching, new com.xa.mass.server.task.call.TaskRpcProperties(java.time.Duration.ofDays(7), 1000,1000,10,10,10,50,100,250,java.util.Map.of()), projects(), new OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class));
         when(workerCatalog.getWorkerGroupDescriptors(List.of("phone-tools")))
                 .thenReturn(Map.of(
                         "phone-tools",
@@ -91,7 +91,7 @@ class TaskRpcPreparationServiceTest {
     }
 
     @Test void explicitEmptyManagedOverrideCreatesNoSupply() {
-        var rpc=new TaskRpcProperties(1000,1000,10,10,10,50,100,250,Map.of("phone-tools",List.of()));
+        var rpc=new TaskRpcProperties(java.time.Duration.ofDays(7), 1000,1000,10,10,10,50,100,250,Map.of("phone-tools",List.of()));
         service=new TaskRpcPreparationService(workerCatalog,taskCatalog,taskRuntime,taskLifecycle,matching,rpc,projects(),new OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class));
         when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of());
         when(taskRuntime.createTask(any())).thenReturn(new TaskCreationResult(TaskCreationStatus.CREATED));
@@ -125,7 +125,7 @@ class TaskRpcPreparationServiceTest {
     @Test void explicitSupplyReplacesHostDefaultsIncludingEmptySupply() {
         var host = List.of(new com.xa.mass.kernel.assignment.RefillTarget("host", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 40));
         var explicit = List.of(new com.xa.mass.kernel.assignment.RefillTarget("chosen", new com.xa.mass.kernel.assignment.EligibilityQuery(Map.of()), 100));
-        var rpc = new TaskRpcProperties(1000,1000,10,10,10,50,100,250,Map.of("phone-tools",host));
+        var rpc = new TaskRpcProperties(java.time.Duration.ofDays(7), 1000,1000,10,10,10,50,100,250,Map.of("phone-tools",host));
         service = new TaskRpcPreparationService(workerCatalog,taskCatalog,taskRuntime,taskLifecycle,matching,rpc,projects(),new OperationGuard(),mock(com.xa.mass.server.task.directory.TaskDirectory.class),mock(com.xa.mass.kernel.score.TaskScoreBandCore.class));
         when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of());
         when(taskRuntime.createTask(any())).thenReturn(new TaskCreationResult(TaskCreationStatus.CREATED));
@@ -308,7 +308,7 @@ class TaskRpcPreparationServiceTest {
         });
         when(taskLifecycle.approveTask(any())).thenReturn(new TaskApprovalResult(TaskApprovalStatus.ALREADY_APPROVED));
         var initializer = new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle,
-                matching, new TaskRpcProperties(1000,1000,10,10,10,50,100,250,Map.of()), directory, new OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class));
+                matching, new TaskRpcProperties(java.time.Duration.ofDays(7), 1000,1000,10,10,10,50,100,250,Map.of()), directory, new OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class));
         for (int repeat = 0; repeat < 2; repeat++) {
             initializer.prepare(CALLER, "raw", "rpc-one", new TaskRpcPrepareRequest("one", "phone-tools", null, Map.of(), null));
             initializer.prepare(CALLER, "raw", "rpc-two", new TaskRpcPrepareRequest("two", "phone-tools", null, Map.of(), null));

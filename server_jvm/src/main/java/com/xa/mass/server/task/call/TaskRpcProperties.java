@@ -8,6 +8,7 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties("xa.mass.task-rpc")
 public record TaskRpcProperties(
+        @org.springframework.boot.context.properties.bind.DefaultValue("7d") java.time.Duration resultIdleTtl,
         @Min(1) @Max(60_000) long defaultWaitTimeoutMillis,
         @Min(1) @Max(60_000) long maxWaitTimeoutMillis,
         @Min(1) int maxWaiters,
@@ -19,6 +20,8 @@ public record TaskRpcProperties(
         java.util.Map<String, java.util.List<com.xa.mass.kernel.assignment.RefillTarget>> refillByWorkerGroup
 ) {
     public TaskRpcProperties {
+        if (resultIdleTtl == null || resultIdleTtl.isNegative() || resultIdleTtl.toMillis() < 1)
+            throw new IllegalArgumentException("RPC Result idle TTL must be positive");
         var captured = new java.util.LinkedHashMap<String,java.util.List<com.xa.mass.kernel.assignment.RefillTarget>>();
         if (refillByWorkerGroup != null) refillByWorkerGroup.forEach((group, targets) -> {
             if (group == null || group.isBlank() || targets == null || targets.size() > 100)

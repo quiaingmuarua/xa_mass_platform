@@ -379,7 +379,7 @@ class RuntimeApiControllerTest {
     }
 
     private static TaskRpcProperties rpcProperties() {
-        return new TaskRpcProperties(30_000, 60_000, 10_000, 100_000, 256, 50, 100, 250, java.util.Map.of());
+        return new TaskRpcProperties(java.time.Duration.ofDays(7), 30_000, 60_000, 10_000, 100_000, 256, 50, 100, 250, java.util.Map.of());
     }
 
     @Test
@@ -1053,8 +1053,11 @@ class RuntimeApiControllerTest {
     }
 
     @Test
-    void rpcCallReturnsAnExistingSuccessWithoutReadingItemState()
+    void rpcCallConsumesAnExistingSuccessWithoutReadingItemState()
             throws Exception {
+        when(taskRuntime.takeTaskItemResults(eq("project-rpc-dGVzdC1wcm9qZWN0.cGhvbmUtdG9vbHM"), anyList()))
+                .thenReturn(Map.of("message-1", TaskItemResult.succeeded("{\"valid\":true}")))
+                .thenReturn(Map.of());
         mockMvc.perform(post(
                                 "/api/v1/worker-groups/phone-tools/"
                                         + "task-call:register"
@@ -1111,18 +1114,15 @@ class RuntimeApiControllerTest {
         mockMvc.perform(post(
                                 "/api/v1/tasks/"
                                         + "project-rpc-dGVzdC1wcm9qZWN0.cGhvbmUtdG9vbHM/"
-                                        + "results:load"
+                                        + "results:take"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("[\"message-1\"]"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message-1.status")
-                        .value("succeeded"))
-                .andExpect(jsonPath(
-                        "$.message-1.opaqueResultPayload"
-                ).value("{\"valid\":true}"));
+                .andExpect(jsonPath("$.message-1.status").value("not_observed"))
+                .andExpect(jsonPath("$.message-1.opaqueResultPayload").doesNotExist());
 
-        verify(taskRuntime, times(2)).loadTaskItemResults(
+        verify(taskRuntime, times(2)).takeTaskItemResults(
                 "project-rpc-dGVzdC1wcm9qZWN0.cGhvbmUtdG9vbHM",
                 List.of("message-1")
         );

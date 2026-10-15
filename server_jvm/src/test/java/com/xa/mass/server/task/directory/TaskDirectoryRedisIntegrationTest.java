@@ -54,7 +54,7 @@ class TaskDirectoryRedisIntegrationTest {
         creations = new com.xa.mass.server.task.directory.TaskCreationRegistry(client, scope.keyspace());
         scores = new RedisTaskScoreBandCore(client, scope.keyspace());
         items = new RedisTaskItemScoreBandCore(client, scope.keyspace());
-        runtime = new RedisTaskRuntime(client, scores, items, scope.keyspace());
+        runtime = new RedisTaskRuntime(client, scores, items, scope.keyspace(), java.time.Duration.ofDays(7).toMillis());
         catalog = new RedisTaskResourceCatalog(client, scope.keyspace());
         projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(
                 new ProjectDefinition("p", List.of("g")), new ProjectDefinition("q", List.of("g")))), List.of());
@@ -175,7 +175,7 @@ class TaskDirectoryRedisIntegrationTest {
     @Test void rpcPreparationNeverRepairsMissingKernelResourcesOrApprovesBeforeDirectoryConfirmation() {
         var request = new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("p", "g", null, Map.of(), null);
         var lifecycle = new com.xa.mass.kernel.task.DefaultTaskLifecycleCommands(scores, catalog);
-        var rpc = new com.xa.mass.server.task.call.TaskRpcProperties(1000, 1000, 10, 10, 10, 50, 100, 250, Map.of());
+        var rpc = new com.xa.mass.server.task.call.TaskRpcProperties(java.time.Duration.ofDays(7), 1000, 1000, 10, 10, 10, 50, 100, 250, Map.of());
         var interruptedRuntime = mock(com.xa.mass.kernel.task.TaskRuntime.class);
         when(interruptedRuntime.createTask(any())).thenAnswer(call -> {
             var outcome = runtime.createTask(call.getArgument(0));

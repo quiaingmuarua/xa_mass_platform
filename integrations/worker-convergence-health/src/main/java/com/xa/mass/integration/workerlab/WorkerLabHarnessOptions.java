@@ -100,7 +100,8 @@ record WorkerLabHarnessOptions(
         return new RuntimeApiClient(new JsonHttpClient(
                 runtimeApiBaseUrl,
                 requestTimeout()
-        , java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin")));
+        , java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin")),
+                evidenceDirectory.resolve("rpc-results-" + java.net.URLEncoder.encode(proofId, java.nio.charset.StandardCharsets.UTF_8) + ".json"));
     }
 
     private static void requireHttp(URI value, String name) {

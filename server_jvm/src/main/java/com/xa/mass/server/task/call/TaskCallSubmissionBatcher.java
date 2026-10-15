@@ -32,7 +32,7 @@ final class TaskCallSubmissionBatcher {
 
     @FunctionalInterface
     interface BatchSubmission {
-        BatchOutcome submit(String taskId, List<TaskItem> items, boolean observe);
+        BatchOutcome submit(String taskId, List<TaskItem> items, List<String> resultMessageIds);
     }
 
     /** One batch's Kernel submission, its immediate observations and their read start. */
@@ -90,12 +90,12 @@ final class TaskCallSubmissionBatcher {
         });
         try {
             List<TaskItem> items = new ArrayList<>();
-            boolean observe = false;
+            List<String> resultMessageIds = new ArrayList<>();
             for (PendingCall call : batch) {
                 items.addAll(call.items);
-                observe |= call.observe;
+                if (call.observe) call.items.forEach(item -> resultMessageIds.add(item.messageId()));
             }
-            BatchOutcome outcome = submission.submit(taskId, List.copyOf(items), observe);
+            BatchOutcome outcome = submission.submit(taskId, List.copyOf(items), List.copyOf(resultMessageIds));
             batch.forEach(call -> call.outcome.complete(outcome));
         } catch (Throwable failure) {
             batch.forEach(call -> call.outcome.completeExceptionally(failure));

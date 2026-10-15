@@ -30,7 +30,7 @@ class TaskCallSubmissionBatcherTest {
     private final CountDownLatch firstEntered = new CountDownLatch(1);
     private final CountDownLatch releaseFirst = new CountDownLatch(1);
 
-    record Batch(String taskId, List<String> messageIds, boolean observe, Thread thread) {
+    record Batch(String taskId, List<String> messageIds, List<String> resultMessageIds, Thread thread) {
     }
 
     @AfterEach
@@ -46,7 +46,7 @@ class TaskCallSubmissionBatcherTest {
         BatchOutcome outcome = batcher.submit("task", items("a", "b"), true);
 
         assertThat(outcome.submission().status()).isEqualTo(TaskCallSubmissionStatus.SUBMITTED);
-        assertThat(batches).containsExactly(new Batch("task", List.of("a", "b"), true, Thread.currentThread()));
+        assertThat(batches).containsExactly(new Batch("task", List.of("a", "b"), List.of("a", "b"), Thread.currentThread()));
         assertThat(batcher.pendingCalls("task")).isZero();
     }
 
@@ -71,8 +71,8 @@ class TaskCallSubmissionBatcherTest {
 
         assertThat(batches).extracting(Batch::messageIds)
                 .containsExactly(List.of("a"), List.of("b", "c", "d", "e"));
-        // Any queued call reads observations for the whole batch.
-        assertThat(batches.get(1).observe()).isTrue();
+        // Only waiting calls may consume their Results; submit-only IDs remain stored.
+        assertThat(batches.get(1).resultMessageIds()).containsExactly("c", "d");
         // The first caller hands the lane on instead of submitting for later calls.
         assertThat(batches.get(1).thread()).isNotSameAs(batches.get(0).thread());
         assertThat(batcher.pendingCalls("task")).isZero();
@@ -154,7 +154,7 @@ class TaskCallSubmissionBatcherTest {
         first.get(5, TimeUnit.SECONDS);
     }
 
-    private BatchOutcome blockFirst(String taskId, List<TaskItem> items, boolean observe) {
+    private BatchOutcome blockFirst(String taskId, List<TaskItem> items, List<String> observe) {
         if (firstEntered.getCount() > 0) {
             firstEntered.countDown();
             try {
@@ -167,7 +167,7 @@ class TaskCallSubmissionBatcherTest {
         return record(taskId, items, observe);
     }
 
-    private BatchOutcome record(String taskId, List<TaskItem> items, boolean observe) {
+    private BatchOutcome record(String taskId, List<TaskItem> items, List<String> observe) {
         List<String> ids = items.stream().map(TaskItem::messageId).toList();
         batches.add(new Batch(taskId, ids, observe, Thread.currentThread()));
         var results = new java.util.LinkedHashMap<String, com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult>();

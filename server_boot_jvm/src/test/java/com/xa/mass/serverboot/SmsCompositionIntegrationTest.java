@@ -74,6 +74,7 @@ class SmsCompositionIntegrationTest {
             }
             assertThat(send(http, base, "/api/v1/tasks/blocked/items:call", Map.of()).statusCode()).isEqualTo(503);
             assertThat(send(http, base, "/api/v1/tasks/blocked/results:load", List.of("x")).statusCode()).isEqualTo(503);
+            assertThat(send(http, base, "/api/v1/tasks/blocked/results:take", List.of("x")).statusCode()).isEqualTo(503);
             assertThat(send(http, base, "/api/v1/catalog", null).statusCode()).isEqualTo(404);
             assertThat(send(http, base, "/api/simulation/metrics", null).statusCode()).isEqualTo(404);
             assertThat(send(http, base, "/api/v1/sms/missing", null).statusCode()).isEqualTo(404);
@@ -95,7 +96,7 @@ class SmsCompositionIntegrationTest {
                         Map<String, Object> snapshot = Map.of("messageId", request.get("messageId"),
                                 "applicationId", "A", "country", "CN", "phoneNumber", "+861700000001",
                                 "workerId", managerRef.get().snapshot("one").workerId(),
-                                "startedAt", now, "leaseUntil", now + 60_000, "status", "WAITING");
+                                "startedAt", now, "leaseUntil", now + 60_000, "status", "WAITING", "revision", 0);
                         baseline.set(snapshot);
                         reporter.set(outcome);
                         return Jsons.toJson(snapshot);
@@ -111,6 +112,7 @@ class SmsCompositionIntegrationTest {
                 awaitStatus(http, base, id, "WAITING");
                 var received = new LinkedHashMap<>(baseline.get());
                 received.put("status", "RECEIVED");
+                received.put("revision", 1);
                 received.put("sms", Map.of("smsId", "proof-sms", "text", "[A] 123456", "code", "123456",
                         "templateId", "A-code", "receivedAt", System.currentTimeMillis()));
                 assertThat(reporter.get().report(9, System.currentTimeMillis(), Jsons.toJson(received))).isTrue();
@@ -196,7 +198,7 @@ class SmsCompositionIntegrationTest {
             var registration = new FilterRegistrationBean<jakarta.servlet.Filter>();
             registration.setFilter((request, response, chain) -> {
                 String path = ((HttpServletRequest) request).getRequestURI();
-                if (path.startsWith("/api/v1/tasks/") && (path.endsWith("/items:call") || path.endsWith("/results:load"))) {
+                if (path.startsWith("/api/v1/tasks/") && (path.endsWith("/items:call") || path.endsWith("/results:load") || path.endsWith("/results:take"))) {
                     ((HttpServletResponse) response).setStatus(503);
                     response.getWriter().write("{}");
                 } else chain.doFilter(request, response);

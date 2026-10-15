@@ -32,7 +32,7 @@ class FrozenTaskResultReleaseRedisIntegrationTest {
         try (var connection = client.connect();
              var taskScores = new RedisTaskScoreBandCore(client, scope.keyspace(), clock::get);
              var itemScores = new RedisTaskItemScoreBandCore(client, scope.keyspace(), clock::get);
-             var runtime = new RedisTaskRuntime(client, taskScores, itemScores, scope.keyspace(), clock::get);
+             var runtime = new RedisTaskRuntime(client, taskScores, itemScores, scope.keyspace(), java.time.Duration.ofDays(7).toMillis(), clock::get);
              var workerScores = new RedisWorkerScoreCore(client, scope.keyspace(), clock::get)) {
             try {
                 var policy = new TaskResultBatchPolicy(new DefaultTaskItemResultEvents(runtime, itemScores, 6),

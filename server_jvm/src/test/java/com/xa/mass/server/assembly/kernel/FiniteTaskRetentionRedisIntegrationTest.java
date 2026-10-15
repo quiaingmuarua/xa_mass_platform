@@ -35,7 +35,7 @@ class FiniteTaskRetentionRedisIntegrationTest {
         connection = client.connect();
         scores = new RedisTaskScoreBandCore(client, scope.keyspace(), clock::get);
         items = new RedisTaskItemScoreBandCore(client, scope.keyspace(), clock::get);
-        runtime = new RedisTaskRuntime(client, scores, items, scope.keyspace(), clock::get);
+        runtime = new RedisTaskRuntime(client, scores, items, scope.keyspace(), java.time.Duration.ofDays(7).toMillis(), clock::get);
     }
 
     @AfterEach void stop() {

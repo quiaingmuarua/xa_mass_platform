@@ -58,7 +58,7 @@ class TaskRetentionServiceRedisIntegrationTest {
         client = RedisClient.create(REDIS_URL); connection = client.connect();
         scores = new RedisTaskScoreBandCore(client, scope.keyspace(), clock::get);
         items = new RedisTaskItemScoreBandCore(client, scope.keyspace(), clock::get);
-        runtime = new RedisTaskRuntime(client, scores, items, scope.keyspace(), clock::get);
+        runtime = new RedisTaskRuntime(client, scores, items, scope.keyspace(), java.time.Duration.ofDays(7).toMillis(), clock::get);
         catalog = new RedisTaskResourceCatalog(client, scope.keyspace());
         creations = new TaskCreationRegistry(client, scope.keyspace());
         var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("p", List.of("g")))), List.of());

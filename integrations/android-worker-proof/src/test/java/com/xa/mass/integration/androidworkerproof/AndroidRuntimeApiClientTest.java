@@ -200,11 +200,11 @@ final class AndroidRuntimeApiClientTest {
                 Map<String, Object> item = JsonValues.object(rawItem, "item");
                 results.put(
                         JsonValues.requiredString(item, "messageId"),
-                        Map.of("status", "succeeded")
+                        Map.of("status", "succeeded", "opaqueResultPayload", "opaque-result")
                 );
             }
             response = results;
-        } else if (path.endsWith("/results:load")) {
+        } else if (path.endsWith("/results:take")) {
             String messageId = (String) Jsons.parseArray(encodedRequest)
                     .get(0);
             String status = loadedResultStatus.getAndSet(

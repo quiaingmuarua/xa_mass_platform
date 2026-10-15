@@ -58,6 +58,24 @@ class TaskAccessTest {
                 new TaskItemScoreBandCore.TaskItemScoreState(1, TaskItemScoreBandCore.TaskItemScoreBand.ACTIVE, 1, 1000, 1)));
         assertThat(data.loadTaskItemStates(caller, "t", List.of("one")).get("one").tag()).isEqualTo(1);
     }
+    @Test void consumptionRequiresOwnershipRpcTypeAndTheBoundInputOwnerBeforeReadingContent() {
+        var other = task("t", "1002", "raw");
+        when(catalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("t", other));
+        assertThatThrownBy(() -> data.takeTaskItemResults(caller, "raw", "t", List.of("m")))
+                .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_ACCESS_DENIED));
+        for (String input : List.of("raw", "sms")) {
+            when(catalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("t", task("t", "1001", input)));
+            assertThatThrownBy(() -> data.takeTaskItemResults(caller, "raw", "t", List.of("m")))
+                    .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED));
+        }
+        verifyNoInteractions(runtime, items, matching);
+        var base = task("t", "1001", "raw");
+        var rpc = new TaskRuntime.TaskDescriptor("t", "g", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE, base.config(), List.of(), null, base.metadata());
+        when(catalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("t", rpc));
+        when(runtime.takeTaskItemResults("t", List.of("m"))).thenReturn(Map.of("m", TaskRuntime.TaskItemResult.succeeded("taken")));
+        assertThat(data.takeTaskItemResults(caller, "raw", "t", List.of("m", "m")).get("m").opaqueResultPayload()).isEqualTo("taken");
+        verify(runtime).takeTaskItemResults("t", List.of("m"));
+    }
     @Test void statisticsPreflightTheCompleteProjectAndOwnershipBatch() {
         var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("p", List.of("g")))), List.of());
         var queries = new ProjectTaskQueryService(projects, catalog, scores, mock(TaskDirectory.class), items, runtime, com.xa.mass.server.testsupport.TaskRetentionFixtures.properties());

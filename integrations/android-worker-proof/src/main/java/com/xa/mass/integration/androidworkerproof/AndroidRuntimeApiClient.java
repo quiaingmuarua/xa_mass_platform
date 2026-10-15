@@ -15,6 +15,7 @@ final class AndroidRuntimeApiClient {
     private static final long DIRECT_CALL_WAIT_MILLIS = 10_000L;
 
     private final JsonHttpClient http;
+    private final Map<String, CallStatus> received = new LinkedHashMap<>();
 
     AndroidRuntimeApiClient(JsonHttpClient http) {
         this.http = java.util.Objects.requireNonNull(http, "http");
@@ -170,27 +171,24 @@ final class AndroidRuntimeApiClient {
                     results.get(messageId),
                     "Task call result"
             );
-            resolved.add(new TaskCall(
-                    messageId,
-                    CallStatus.fromWire(JsonValues.requiredString(
-                            result,
-                            "status"
-                    ))
-            ));
+            CallStatus status = checkedResult(result);
+            if (status != CallStatus.NOT_OBSERVED) received.put(messageId, status);
+            resolved.add(new TaskCall(messageId, status));
         }
         return List.copyOf(resolved);
     }
 
     CallStatus resultStatus(String messageId) {
+        if (received.get(messageId) == CallStatus.SUCCEEDED) return CallStatus.SUCCEEDED;
         JsonHttpClient.Response response = http.send(
                 "POST",
                 "/api/v1/tasks/"
                         + segment(rpcTaskId())
-                        + "/results:load",
+                        + "/results:take",
                 List.of(messageId),
-                "androidWorker.results.load"
+                "androidWorker.results.take"
         );
-        requireStatus(response, 200, "Task results:load");
+        requireStatus(response, 200, "Task results:take");
         Map<String, Object> results = response.body();
         if (!results.keySet().equals(Set.of(messageId))) {
             throw identityFailure(
@@ -204,10 +202,17 @@ final class AndroidRuntimeApiClient {
                 results.get(messageId),
                 "Task loaded result"
         );
-        return CallStatus.fromWire(JsonValues.requiredString(
-                result,
-                "status"
-        ));
+        CallStatus status = checkedResult(result);
+        if (status != CallStatus.NOT_OBSERVED) received.put(messageId, status);
+        return received.getOrDefault(messageId, status);
+    }
+
+    private static CallStatus checkedResult(Map<String, Object> result) {
+        var status = CallStatus.fromWire(JsonValues.requiredString(result, "status"));
+        Set<String> fields = status == CallStatus.SUCCEEDED ? Set.of("status", "opaqueResultPayload") : Set.of("status");
+        if (!result.keySet().equals(fields) || status == CallStatus.SUCCEEDED && !(result.get("opaqueResultPayload") instanceof String))
+            throw new IllegalArgumentException("Task Result payload boundary changed");
+        return status;
     }
 
     void requirePropertiesRelation(

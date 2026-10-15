@@ -25,6 +25,8 @@ const SAFE_ERROR_MESSAGES: Record<number, string> = {
   12009: "Task Call 与当前 Task 状态冲突。",
   12010: "Task Result 尚未就绪。",
   12011: "Task 对应的 WorkerGroup 已不存在。",
+  12012: "调用方声明无效，请刷新页面或重新登录。",
+  12013: "无权访问该任务，请刷新页面或退出后重新登录。",
   19001: "Task Call 请求体无效。"
 };
 
@@ -82,15 +84,15 @@ export class HttpTaskCallDebugClient
       throw mapHttpError(error, requestId);
     }
   }
-  async loadResults(
+  async takeResults(
     caller: TaskCaller,
     taskId: string,
     messageIds: string[]
   ): Promise<TaskCallDebugResults> {
-    const requestId = createRequestId("task-result-load");
+    const requestId = createRequestId("task-result-take");
     try {
       const response = await this.client.post(
-        `/v1/tasks/${encodeURIComponent(taskId)}/results:load`,
+        `/v1/tasks/${encodeURIComponent(taskId)}/results:take`,
         [...new Set(messageIds)],
         {
           headers: { "X-Request-Id": requestId, ...callerHeaders(caller) },

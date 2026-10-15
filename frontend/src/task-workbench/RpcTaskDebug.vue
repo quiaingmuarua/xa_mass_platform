@@ -119,7 +119,12 @@ async function read(fromHistory = false) {
   try {
     const current = fromHistory ? record.value : undefined;
     const ids = current?.messageIds ?? parseResultIds(draft.resultIdsText);
-    const item = await calls.loadResults(props.taskId, ids, current?.localId);
+    const item = await calls.takeResults(
+      props.taskId,
+      ids,
+      current?.localId,
+      fromHistory
+    );
     if (!disposed) selected.value = item.localId;
   } catch (cause) {
     if (!disposed) error.value = cause instanceof Error ? cause.message : "读取失败";
@@ -140,7 +145,7 @@ function showCurl(load = false) {
       props.taskId,
       captureTaskCaller(),
       load ? parseResultIds(draft.resultIdsText) : parseRpcRequest(draft.requestText),
-      load ? "results:load" : "items:call"
+      load ? "results:take" : "items:call"
     );
     error.value = "";
   } catch (cause) {
@@ -251,7 +256,7 @@ const stateLabels = {
         </p>
         <p class="raw-muted">
           提交会产生真实工作。等待结束或离开页面不会撤回执行；重复 messageId
-          不代表防重复执行。
+          不代表防重复执行。结果领取后从服务端删除，响应丢失可能导致结果无法再次取得。
         </p>
       </section>
       <section>
@@ -282,7 +287,7 @@ const stateLabels = {
         /></el-select>
         <template v-if="record">
           <p class="raw-muted">
-            {{ stateLabels[record.state] }} · 最近成功读取 {{ time(record.readAt) }}
+            {{ stateLabels[record.state] }} · 最近领取 {{ time(record.readAt) }}
           </p>
           <el-alert
             v-if="record.safeError"
@@ -290,16 +295,16 @@ const stateLabels = {
             type="error"
             :closable="false"
             >{{ record.safeError.requestId }}。不能据此推断全部 Item
-            未执行；可按原身份读取。</el-alert
+            未执行；可按原身份领取当前结果。</el-alert
           >
           <el-alert
-            v-if="record.resultLoadError"
-            :title="'结果读取失败，保留原快照：' + record.resultLoadError.message"
+            v-if="record.resultTakeError"
+            :title="'结果领取未确认，保留原快照：' + record.resultTakeError.message"
             type="error"
             :closable="false"
           />
           <el-button size="small" :disabled="!readable || busy" @click="read(true)"
-            >读取本次结果</el-button
+            >补领未取得结果</el-button
           >
           <details>
             <summary>本次冻结请求与消息身份</summary>
@@ -339,17 +344,17 @@ const stateLabels = {
         </template>
         <p v-else class="raw-muted">记录仅保留当前登录会话，不是完整调用历史。</p>
         <details>
-          <summary>按已知 messageId 读取结果</summary>
+          <summary>按已知 messageId 领取结果</summary>
           <el-input
             v-model="draft.resultIdsText"
             type="textarea"
             :rows="4"
-            aria-label="读取 messageId"
+            aria-label="领取 messageId"
             placeholder="每行一个，最多 100 个"
           />
           <div class="rpc-tools">
-            <el-button :disabled="!readable || busy" @click="read()">读取结果</el-button
-            ><el-button @click="showCurl(true)">读取 cURL</el-button>
+            <el-button :disabled="!readable || busy" @click="read()">领取结果</el-button
+            ><el-button @click="showCurl(true)">领取 cURL</el-button>
           </div>
         </details>
       </section>

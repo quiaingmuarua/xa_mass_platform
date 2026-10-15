@@ -157,6 +157,27 @@ public final class TaskDataService {
         }
     }
 
+    /** Consumer access is bound to the application's immutable input ownership. */
+    public Map<String, TaskItemResultResponse> takeTaskItemResults(
+            TaskCaller caller, String inputOwner, String taskId, List<String> messageIds) {
+        if (taskId == null || taskId.isBlank() || messageIds == null || messageIds.isEmpty()
+                || messageIds.size() > 1000 || messageIds.stream().anyMatch(id -> id == null || id.isBlank()))
+            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST,
+                    "taskData.takeResults", "Expected taskId and 1..1000 non-blank messageIds", null);
+        try {
+            var task = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
+            if (task == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskData.takeResults", null, null);
+            caller.requireInput(task, inputOwner);
+            if (!isManagedCallTask(task))
+                throw new ServerException(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, "taskData.takeResults", "Only RPC Tasks support Result consumption", null);
+            var ids = List.copyOf(new LinkedHashSet<>(messageIds));
+            return TaskItemResultResponse.fromObservedResults(ids, taskRuntime.takeTaskItemResults(taskId, ids));
+        } catch (ServerException known) { throw known;
+        } catch (RuntimeException failure) {
+            throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.takeResults", "Result consumption is unconfirmed", failure);
+        }
+    }
+
     public Map<String, TaskItemResultResponse> loadTaskItemResults(
             TaskCaller caller, String taskId,
             List<String> messageIds

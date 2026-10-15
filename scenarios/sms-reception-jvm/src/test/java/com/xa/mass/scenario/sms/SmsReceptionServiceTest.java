@@ -22,11 +22,11 @@ class SmsReceptionServiceTest {
     final TaskRpcCallService calls = mock(TaskRpcCallService.class);
     final TaskDataService results = mock(TaskDataService.class);
     final TaskLeaseProjectionService projections = mock(TaskLeaseProjectionService.class);
-    final SmsReceptionService service = new SmsReceptionService(projects, calls, results, projections, "g", Clock.fixed(Instant.ofEpochMilli(1000), ZoneOffset.UTC), SERVICE);
+    final SmsReceptionService service = new SmsReceptionService(projects, calls, results, projections, "g", Clock.fixed(Instant.ofEpochMilli(1000), ZoneOffset.UTC), SERVICE, new SmsResultCacheProperties(10000, Duration.ofMinutes(10)));
     void start() { when(projects.prepare(SERVICE, "sms", SmsReceptionService.rpcTaskId("g"), new TaskRpcPrepareRequest("sms", "g", null, Map.of(), null))).thenReturn(new TaskCreateResponse("task")); service.start(); }
     Map<String, Object> snapshot(String id, boolean sms) {
         var value = new LinkedHashMap<String, Object>(Map.of("messageId", id, "applicationId", "A", "country", "CN",
-                "phoneNumber", "123", "workerId", "w", "leaseUntil", 2000, "status", sms ? "RECEIVED" : "WAITING"));
+                "phoneNumber", "123", "workerId", "w", "leaseUntil", 2000, "revision", sms ? 1 : 0, "status", sms ? "RECEIVED" : "WAITING"));
         if (sms) value.put("sms", Map.of("text", "[A] 123456", "receivedAt", 1500));
         return value;
     }
@@ -57,12 +57,14 @@ class SmsReceptionServiceTest {
         assertThat(response.get("phoneNumber")).isEqualTo("123");
         assertThat(response.get("messageId").toString()).startsWith("sms-");
         assertThat(response.get("leaseActive")).isEqualTo(true);
-        verifyNoInteractions(results, projections);
+        verifyNoInteractions(results);
+        verify(projections).acceptResults(eq(SERVICE), eq("task"), anyMap());
     }
     @Test void readsAreRepeatableAndNeverSubmitOrExtendLease() {
-        start(); when(results.loadTaskItemResults(SERVICE, "task", List.of("id"))).thenReturn(Map.of("id", result(snapshot("id", true))));
+        start(); when(results.takeTaskItemResults(SERVICE, "sms", "task", List.of("id"))).thenReturn(Map.of("id", result(snapshot("id", true))));
         assertThat(service.get(CALLER, "id")).isEqualTo(service.get(CALLER, "id")).containsEntry("status", "RECEIVED");
-        verifyNoInteractions(calls, projections);
+        verifyNoInteractions(calls);
+        verify(projections).acceptResults(eq(SERVICE), eq("task"), anyMap());
     }
     @Test void expiryRetainsLatestSmsAndUnobservedDoesNotInventFailure() {
         assertThat(SmsReceptionService.view("id", result(snapshot("id", true)), 3000)).containsEntry("leaseActive", false).containsEntry("status", "RECEIVED").containsKey("sms");

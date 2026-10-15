@@ -209,7 +209,7 @@ final class CallApi implements AutoCloseable {
 
     Map<String, String> results(String task, List<String> ids, ExpectedResult expected, Duration timeout) throws Exception {
         if (ids.isEmpty() || ids.size() > 1_000) throw new IllegalArgumentException("Result page must contain 1..1000 IDs");
-        var raw = json(runtime + "/api/v1/tasks/" + task + "/results:load", ids, timeout);
+        var raw = json(runtime + "/api/v1/tasks/" + task + "/results:take", ids, timeout);
         if (!raw.keySet().equals(Set.copyOf(ids))) throw new CallLoad.ProtocolFailure("Result identity set changed");
         var result = new LinkedHashMap<String, String>();
         ids.forEach(id -> result.put(id, checkedResult(raw.get(id), expected)));
