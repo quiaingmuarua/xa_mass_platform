@@ -196,6 +196,7 @@ function observed(band: "pre_review" | "terminal" = "pre_review") {
     taskId: "task-1",
     createdAtMillis: 1,
     scoreBand: band,
+    retention: null,
     stats: { total: 101, countsByTag: { "1": 101 } },
     task: {
       taskId: "task-1",

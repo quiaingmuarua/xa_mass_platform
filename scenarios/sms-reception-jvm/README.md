@@ -192,6 +192,10 @@ The runner uses exact pre-materialized SMS-only inventory with `app_count=0`, a
 unique `test_*` scope and the packaged launcher's lifecycle/cleanup. Server restart
 reuses that invocation's App Checks configuration database path, along with the
 same Redis scope and ports; it never inherits another environment's database.
+It also preserves the private Task archive root. This restart fixture explicitly
+allows 180 unstable reconnect attempts at 500 ms intervals, covering its 60-second
+Server startup budget while retaining the original Worker run and Reporter.
+Production and interactive Preview reconnect defaults are unchanged.
 Fresh ZIP functional must run with `--root <extracted Preview>` and no build or checkout
 fallback. Summaries contain bounded metadata and fingerprints; private logs are
 not public artifacts. `.github/workflows/sms-reception-preview.yml` selects the

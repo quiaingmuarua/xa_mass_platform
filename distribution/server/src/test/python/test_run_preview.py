@@ -183,6 +183,7 @@ class PreviewLifecycleTest(unittest.TestCase):
                     self.assertIn("--spring.profiles.active=preview", server.args[1])
                     self.assertEqual(str(run.sandbox_root.parent / "app-checks" / "configuration"),
                                      server.args[2]["XA_MASS_APP_CHECKS_DB_PATH"])
+                    self.assertEqual(str(run.output / "task-archives"), server.args[2]["XA_MASS_TASK_ARCHIVE_DIRECTORY"])
                     self.assertIn("--spring.config.additional-location=" + (root / ("config" if packaged else "build/preview/config")).as_uri() + "/", server.args[1])
                     self.assertIn(str(server_lib / "xa-mass-server-jvm-test.jar"), server.args[1])
                     self.assertIn("--server.tomcat.accesslog.pattern=%m %U %s", server.args[1])
@@ -283,6 +284,19 @@ class PreviewLifecycleTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Unexpected"):
             run.close()
         client.unlink.assert_not_called()
+
+    def test_cleanup_removes_only_this_runs_archives(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = Preview(root=root, output=root / "run")
+            run.task_archives.mkdir(parents=True)
+            (run.task_archives / "result.jsonl").write_text("fixture", encoding="utf-8")
+            retained = root / "data" / "keep.txt"
+            retained.parent.mkdir()
+            retained.write_text("configuration", encoding="utf-8")
+            run.close()
+            self.assertFalse(run.task_archives.exists())
+            self.assertEqual("configuration", retained.read_text(encoding="utf-8"))
 
     def test_live_child_failure_ends_run_instead_of_restarting(self):
         run = Preview()

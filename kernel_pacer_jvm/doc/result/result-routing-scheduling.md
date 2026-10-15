@@ -222,11 +222,15 @@ one Score operation. It independently keeps the maximum state target and the
 latest content-bearing observation for each Item. TRANSITIONED and NOOP permit
 one conditional Result operation; missing, invalid and corrupt Items do not
 produce content. Millisecond content updates may succeed within a NOOP 100ms
-Score slot. There are no existence/confirmation reads or cross-owner transactions.
+Score slot. There are no confirmation reads or combined Score/Result commits.
+Each mutation atomically checks the Task retention gate, independently of the other projection.
 
 TERMINAL ends Item scheduling, not business-state progression. The observation
 lane consumes evidence independently of Task scheduling visibility: Task
-completion or closure does not close the retained Item's observation window.
+completion or closure does not immediately close the retained Item's observation
+window. The Kernel finite-retention fence ends it after Server's grace policy.
+Frozen/deleted Task writes are no-ops; the normal execution path still releases
+the original Worker lease, while business observations never release it.
 Admission and monotonic comparison still apply, and missing Items are not created.
 Loss before consumption or failure between Score and Result may leave missing or older
 content. No replay, ACK, expiry extension, lease release or Task reopening is

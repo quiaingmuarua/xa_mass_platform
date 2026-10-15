@@ -47,13 +47,16 @@ public final class TaskDirectory implements AutoCloseable {
     private final TaskScoreBandCore scores;
     private final WorkerResourceCatalog groups;
     private final OperationGuard operations;
+    private final com.xa.mass.kernel.task.TaskRuntime runtime;
     private volatile StatefulRedisConnection<String, String> connection;
     private boolean closed;
 
     public TaskDirectory(RedisClient redis, RedisKeyspace keyspace, ProjectDirectory projects,
-            TaskResourceCatalog tasks, TaskScoreBandCore scores, WorkerResourceCatalog groups, OperationGuard operations) {
+            TaskResourceCatalog tasks, TaskScoreBandCore scores, WorkerResourceCatalog groups, OperationGuard operations,
+            com.xa.mass.kernel.task.TaskRuntime runtime) {
         this.redis = redis; this.keyspace = keyspace; this.projects = projects;
         this.tasks = tasks; this.scores = scores; this.groups = groups; this.operations = operations;
+        this.runtime = runtime;
     }
 
     public ActionOutcome ensure(TaskCaller caller, String taskId) {
@@ -63,6 +66,10 @@ public final class TaskDirectory implements AutoCloseable {
                 var task = tasks.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
                 if (task == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskDirectory.ensure", null, null);
                 caller.requireTask(task);
+                var data = runtime.loadTaskDataStates(List.of(taskId)).get(taskId);
+                if (data == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskDirectory.ensure", null, null);
+                if (data.phase() == com.xa.mass.kernel.task.TaskRuntime.TaskDataPhase.PURGING)
+                    throw new ServerException(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, "taskDirectory.ensure", null, null);
                 final TaskAttribution attribution;
                 try { attribution = TaskAttribution.require(task.metadata()); }
                 catch (IllegalArgumentException invalid) { throw invalid("Task has no valid Server attribution", invalid); }
@@ -109,6 +116,13 @@ public final class TaskDirectory implements AutoCloseable {
             TaskUserId.validateScore(score);
             return true;
         } catch (RuntimeException failure) { throw unavailable("contains", failure); }
+    }
+
+    public void remove(String projectId, String taskId) {
+        try {
+            Long removed = commands().zrem(key(projectId), taskId);
+            if (removed == null) throw new IllegalStateException("Directory removal is unconfirmed");
+        } catch (RuntimeException failure) { throw unavailable("remove", failure); }
     }
 
     private String key(String projectId) {

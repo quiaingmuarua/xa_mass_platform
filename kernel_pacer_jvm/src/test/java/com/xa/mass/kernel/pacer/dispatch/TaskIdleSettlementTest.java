@@ -57,8 +57,7 @@ class TaskIdleSettlementTest {
 
         verify(taskScores).closeObservedScore(
                 "task-1",
-                777_777_777L,
-                TaskScoreBandCore.TERMINAL_SCORE_MAX
+                777_777_777L
         );
     }
 

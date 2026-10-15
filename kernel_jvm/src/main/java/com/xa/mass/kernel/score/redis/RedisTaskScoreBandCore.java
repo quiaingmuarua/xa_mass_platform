@@ -19,6 +19,27 @@ import java.util.function.LongSupplier;
 public final class RedisTaskScoreBandCore
         implements TaskScoreBandCore, AutoCloseable {
 
+    // Binary-search the (score, member) insertion position. Unlike rank/offset
+    // cursors this still progresses after the preceding page is purged.
+    private static final String TERMINAL_PAGE_SCRIPT = """
+            local lo, hi = 0, redis.call('ZCARD', KEYS[1])
+            local score, member = tonumber(ARGV[1]), ARGV[2]
+            while lo < hi do
+              local mid = math.floor((lo + hi) / 2)
+              local row = redis.call('ZRANGE', KEYS[1], mid, mid, 'WITHSCORES')
+              local s = tonumber(row[2])
+              if s < score or (s == score and row[1] <= member) then lo = mid + 1 else hi = mid end
+            end
+            local rows = redis.call('ZRANGE', KEYS[1], lo, lo + tonumber(ARGV[3]) - 1, 'WITHSCORES')
+            local result = {}
+            for i = 1, #rows, 2 do
+              if tonumber(rows[i + 1]) >= 0 then break end
+              result[#result + 1] = rows[i]
+              result[#result + 1] = rows[i + 1]
+            end
+            return result
+            """;
+
     private static final String CAS_UPDATE_SCRIPT = """
             local key = KEYS[1]
             local task_id = ARGV[1]
@@ -680,14 +701,13 @@ public final class RedisTaskScoreBandCore
     }
 
     @Override
-    public TaskScoreTransitionResult closeScore(
-            String taskId,
-            long terminalScore
-    ) {
+    public TaskScoreTransitionResult closeScore(String taskId) {
         requireNonBlank(taskId, "taskId");
-        if (terminalScore > TERMINAL_SCORE_MAX) {
+        long endedAt = currentTimeMillis.getAsLong();
+        if (endedAt <= 1 || endedAt > MAX_TIME_MILLIS) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
+        long terminalScore = -endedAt;
         return scriptResult(commands().eval(
                 CLOSE_POSITIVE_SCRIPT,
                 ScriptOutputType.MULTI,
@@ -700,14 +720,15 @@ public final class RedisTaskScoreBandCore
     @Override
     public TaskScoreTransitionResult closeObservedScore(
             String taskId,
-            long observedScore,
-            long terminalScore
+            long observedScore
     ) {
         requireNonBlank(taskId, "taskId");
-        if (terminalScore > TERMINAL_SCORE_MAX
+        long endedAt = currentTimeMillis.getAsLong();
+        if (endedAt <= 1 || endedAt > MAX_TIME_MILLIS
                 || decodePositive(observedScore) == null) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
+        long terminalScore = -endedAt;
         return scriptResult(commands().eval(
                 CAS_UPDATE_SCRIPT,
                 ScriptOutputType.MULTI,
@@ -757,6 +778,8 @@ public final class RedisTaskScoreBandCore
 
     private TaskScoreState decodeState(String taskId, long storedScore) {
         if (storedScore < 0) {
+            if (storedScore == -1 || storedScore < -MAX_TIME_MILLIS)
+                throw new IllegalStateException("Task termination time is invalid");
             return new TaskScoreState(
                     taskId,
                     storedScore,
@@ -776,6 +799,39 @@ public final class RedisTaskScoreBandCore
                 decoded.timeSlot() * SLOT_MILLIS,
                 decoded.suffix()
         );
+    }
+
+    @Override
+    public TerminalTaskPage scanTerminalTasks(long terminatedBeforeMillis, String cursor, int limit) {
+        if (terminatedBeforeMillis < 0 || terminatedBeforeMillis > MAX_TIME_MILLIS
+                || cursor == null || limit < 1 || limit > 1000)
+            throw new IllegalArgumentException("Invalid terminal Task page");
+        if (terminatedBeforeMillis <= 1) return new TerminalTaskPage(List.of(), "0");
+        double afterScore = -terminatedBeforeMillis;
+        String afterMember = "";
+        if (!cursor.equals("0")) {
+            try {
+                String decoded = new String(java.util.Base64.getUrlDecoder().decode(cursor), java.nio.charset.StandardCharsets.UTF_8);
+                int split = decoded.indexOf('\n');
+                afterScore = Double.parseDouble(decoded.substring(0, split));
+                afterMember = decoded.substring(split + 1);
+                if (!Double.isFinite(afterScore) || afterScore < -terminatedBeforeMillis || afterScore >= 0 || afterMember.isBlank())
+                    throw new IllegalArgumentException("Cursor outside terminal window");
+            } catch (RuntimeException invalid) { throw new IllegalArgumentException("Invalid terminal cursor", invalid); }
+        }
+        List<?> rows = commands().eval(TERMINAL_PAGE_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{scoreKey()}, Double.toString(afterScore), afterMember, Integer.toString(limit));
+        var tasks = new ArrayList<TaskScoreState>();
+        for (int i = 0; i < rows.size(); i += 2) {
+            try { tasks.add(decodeState(String.valueOf(rows.get(i)), scoreToLong(rows.get(i + 1)))); }
+            catch (IllegalStateException corrupt) { /* Malformed rows consume budget without stalling later identities. */ }
+        }
+        String next = "0";
+        if (rows.size() == limit * 2) {
+            next = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                    (rows.getLast() + "\n" + rows.get(rows.size() - 2)).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+        return new TerminalTaskPage(tasks, next);
     }
 
     private static DecodedPositive decodePositive(long storedScore) {

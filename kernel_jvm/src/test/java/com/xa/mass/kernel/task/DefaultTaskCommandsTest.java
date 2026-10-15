@@ -137,8 +137,8 @@ class DefaultTaskCommandsTest {
                 lifecycle.closeTask("task-1").status()
         );
         assertEquals(
-                TaskScoreBandCore.TERMINAL_SCORE_MAX,
-                score.closeTarget
+                "task-1",
+                score.closedTask
         );
     }
 
@@ -299,7 +299,7 @@ class DefaultTaskCommandsTest {
         boolean terminal = band == TaskScoreBandCore.TaskScoreBand.TERMINAL;
         return new TaskScoreBandCore.TaskScoreState(
                 "task-1",
-                terminal ? TaskScoreBandCore.TERMINAL_SCORE_MAX : 1,
+                terminal ? -2_000_000_000_000L : 1,
                 band,
                 terminal ? null : 100L,
                 terminal ? null : 0
@@ -329,7 +329,7 @@ class DefaultTaskCommandsTest {
         private long startObservedScore;
         private int startPriority;
         private TaskScoreTransitionResult closeResult;
-        private long closeTarget;
+        private String closedTask;
 
         @Override
         public Map<String, TaskScoreState> getScoreStates(
@@ -408,11 +408,8 @@ class DefaultTaskCommandsTest {
         }
 
         @Override
-        public TaskScoreTransitionResult closeScore(
-                String taskId,
-                long terminalScore
-        ) {
-            closeTarget = terminalScore;
+        public TaskScoreTransitionResult closeScore(String taskId) {
+            closedTask = taskId;
             return closeResult;
         }
 
@@ -445,8 +442,7 @@ class DefaultTaskCommandsTest {
         @Override
         public TaskScoreTransitionResult closeObservedScore(
                 String taskId,
-                long observedScore,
-                long terminalScore
+                long observedScore
         ) {
             throw unsupported();
         }

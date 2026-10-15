@@ -40,7 +40,6 @@
       "RUNNING_VISIBLE_TAG": 1,
       "SLOT_MILLIS": 100,
       "SUFFIX_FACTOR": 100,
-      "TERMINAL_SCORE_MAX": -1,
       "TIME_SCALE": 10,
       "TIME_SLOT_FACTOR": 100000000000
     },
@@ -95,9 +94,15 @@
     ],
     "TaskRuntime": [
       "append_items",
+      "begin_task_purge",
       "create_task",
+      "finish_task_purge",
+      "freeze_task_data",
+      "load_task_data_states",
       "load_task_item_results",
       "load_task_items",
+      "purge_task_data",
+      "release_task_payloads",
       "scan_task_item_results",
       "store_task_item_failed_results",
       "store_task_item_success_results"
@@ -117,6 +122,7 @@
       "promote_observed_initial_tasks",
       "release_observed_score_hold",
       "rewrite_same_band_time_millis",
+      "scan_terminal_tasks",
       "start_observed_pre_review_task",
       "try_release_idle_park"
     ],
@@ -289,6 +295,14 @@
     "WorkerSchedulingObservation": [
       "read_at_millis",
       "states_by_worker_id"
+    ],
+    "TaskDataState": [
+      "phase",
+      "frozen_at_millis"
+    ],
+    "TerminalTaskPage": [
+      "tasks",
+      "next_cursor"
     ]
   },
   "enums": {
@@ -387,6 +401,12 @@
       "UNCHANGED",
       "MISSING",
       "CONFLICT"
+    ],
+    "TaskDataPhase": [
+      "OPEN",
+      "FROZEN",
+      "RELEASED",
+      "PURGING"
     ]
   }
 }

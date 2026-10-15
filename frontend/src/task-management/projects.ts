@@ -1,4 +1,5 @@
 import type { MockUserDirectorySource } from "@/user-directory-source";
+import { taskRetentionSchema } from "./retention";
 import {
   type TaskCaller,
   TaskApiError,
@@ -40,6 +41,7 @@ export const projectTaskSchema = z
     taskId: z.string().min(1),
     createdAtMillis: z.number().int().nonnegative().nullable(),
     task: taskViewSchema.nullable(),
+    retention: taskRetentionSchema.nullable(),
     scoreBand: z
       .enum(["pre_review", "running-initial", "running_visible", "terminal"])
       .nullable()
@@ -311,6 +313,7 @@ function mockProjectSource(
     }
   ];
   const tasks: ProjectTask[] = MOCK_TASK_PREVIEW.entries.map((row) => ({
+    retention: null,
     taskId: row.taskId,
     task: row.task,
     scoreBand: row.scoreBand,
@@ -322,6 +325,7 @@ function mockProjectSource(
     const taskId = rpcTaskId("default", "demo", group.workerGroupId);
     if (!tasks.some((row) => row.taskId === taskId))
       tasks.push({
+        retention: null,
         taskId,
         createdAtMillis: Date.parse(MOCK_TASK_PREVIEW.generatedAt),
         scoreBand: "running_visible",
@@ -348,6 +352,7 @@ function mockProjectSource(
       ? rpcTaskId("agentforge", "demo", groupId)
       : "mock-agentforge-finite";
     tasks.push({
+      retention: null,
       taskId,
       createdAtMillis: Date.parse(MOCK_TASK_PREVIEW.generatedAt),
       scoreBand: managed ? "running_visible" : "pre_review",

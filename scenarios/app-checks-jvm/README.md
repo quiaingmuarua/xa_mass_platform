@@ -103,7 +103,7 @@ Preview 使用新 scope 直接切换，不支持历史输入版本、旧 Any 供
 不承诺跨实例串行。写入中断保留已确认批次，503 附带 taskId、confirmedAddedCount 和
 existingCount；当前未确认批次不算拒绝，不自动重传、回滚或启动。用户可以显式重传、
 补充其他文件、取消，或核对 Owner 当前实际数量后启动部分输入。审批不要求原文件事务完成。
-关闭不会把未完成项计作成功，也不会阻止已有执行产生迟到结果。场景服务停机停止新准入并最多等待
+关闭不会把未完成项计作成功；已有执行在共同收尾窗口内仍可产生迟到结果。场景服务停机停止新准入并最多等待
 正在导入的请求 5 秒，每个新批次检查停止信号。
 
 导入成功回执给出 inputCount、emptyCount、duplicateCount、uniqueCount、addedCount 和
@@ -112,14 +112,17 @@ existingCount，均针对收到的号码文件。前端原始 CSV 的行数及�
 
 Project 绑定不预置长期 RPC Task，App Checks 只创建有限任务。列表仍保留目录中由其他显式调用产生的 RPC/无业务 metadata 行，由前端过滤；详情和写入验证
 Project、场景和有限 Task 类型。总量来自 Item Score 成员数，active 为 tag 1，failed 为
- tag 5，succeeded 为 tags 6..9。Result 预览只读一次 Owner HSCAN，最多 100 条，不补扫，
+ tag 5，succeeded 为 tags 6..9。Result 预览在 Redis 阶段只读一次 Owner HSCAN，归档后顺序读取文件；最多 100 条，不补扫 Redis，
 不保证文件顺序或最新顺序。失败行没有注册答案；内容或 Item/Group 关联异常保留执行状态并
 标记 contentError。统计、Task 状态和 Result 不是共同快照。
 
-CSV 复用通用终态成功结果导出，再按每批最多 100 个 Item 做业务关联校验及筛选，包含号码、
+CSV 复用 Server 共同顺序结果读取，使用每条结果携带的原 Item 做业务关联校验及筛选，包含号码、
 注册状态、应用、地区，保护文本单元格并正确转义。失败、异常内容和缺少注册答案的记录不导出。
-文件生成完成后才通过 `X-Export-Count` 返回准确行数，不额外扫描以预估数量。原始 JSONL 与
-CSV 临时文件都在失败或传输结束时清理。导出独立于预览筛选；迟到结果可使下一次导出内容变化。
+文件生成完成后才通过 `X-Export-Count` 返回准确行数，不额外扫描以预估数量。通用 JSONL 导出与
+CSV 各自的下载临时文件在失败或传输结束时清理；CSV 不再生成中间 JSONL。导出独立于预览筛选；收尾期迟到结果可使下一次导出内容变化。
+默认终态 1 小时后由 Server 冻结并归档，释放 Redis 输入和结果；业务预览与 CSV 使用相同的
+归档结果和原输入，保留当前协议解析与关联校验。Item Score 及统计保留至终态 7 天后最终清理。
+场景不另设归档表、Hash 索引、统计存储或清理定时器。
 
 ## 具名执行契约
 

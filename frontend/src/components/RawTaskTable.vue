@@ -2,9 +2,11 @@
 import { nextTick, ref } from "vue";
 import { ElLoading, type TableInstance } from "element-plus";
 import type { ProjectTask } from "@/task-management/projects";
+import { retentionLabel } from "@/task-management/retention";
 import "element-plus/es/components/loading/style/css";
-export type TaskRow = Omit<ProjectTask, "createdAtMillis"> & {
+export type TaskRow = Omit<ProjectTask, "createdAtMillis" | "retention"> & {
   createdAtMillis?: number | null;
+  retention?: ProjectTask["retention"];
 };
 defineProps<{ rows: TaskRow[]; loading?: boolean; error?: string; rpc?: boolean }>();
 const emit = defineEmits<{
@@ -65,7 +67,8 @@ function time(value?: string | number | null) {
     >
     <el-table-column label="Score band" min-width="140"
       ><template #default="{ row }"
-        ><el-tag effect="plain">{{ row.scoreBand ?? "状态不可用" }}</el-tag></template
+        ><el-tag effect="plain">{{ row.scoreBand ?? "状态不可用" }}</el-tag
+        ><small>{{ retentionLabel(row.retention) }}</small></template
       ></el-table-column
     >
     <el-table-column label="Pool 供给" min-width="130" show-overflow-tooltip

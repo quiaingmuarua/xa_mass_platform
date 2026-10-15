@@ -1,4 +1,5 @@
 import type { TaskCaller } from "@/task-caller";
+import type { TaskRetention } from "@/task-management/retention";
 import type { InjectionKey } from "vue";
 
 // Page data, not a proposed HTTP contract. Scheduling state is independent of Results.
@@ -21,6 +22,7 @@ export type MessageDemoAction =
   | "reply"
   | "fail-read";
 export interface MessageTask {
+  retention?: TaskRetention | null;
   userId?: string;
   taskId: string;
   name?: string;

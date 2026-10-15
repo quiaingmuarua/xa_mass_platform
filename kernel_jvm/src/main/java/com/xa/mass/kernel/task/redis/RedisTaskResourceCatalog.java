@@ -73,13 +73,14 @@ public final class RedisTaskResourceCatalog
                     "workerGroupId",
                     "idleDisposition",
                     "configJson",
-                    "refillJson"
-            )) || !Set.of("workerGroupId", "idleDisposition", "configJson", "refillJson", "name", "metadataJson")
+                    "refillJson", "dataPhase"
+            )) || !Set.of("workerGroupId", "idleDisposition", "configJson", "refillJson", "name", "metadataJson", "dataPhase", "frozenAtMillis")
                     .containsAll(fields.keySet())) {
                 throw new IllegalArgumentException(
                         "Task descriptor fields are invalid"
                 );
             }
+            com.xa.mass.kernel.task.TaskRuntime.TaskDataPhase.valueOf(required(fields, "dataPhase"));
             String workerGroupId = required(
                     fields,
                     "workerGroupId"

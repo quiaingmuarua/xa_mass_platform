@@ -46,7 +46,7 @@ class MessageTaskServiceTest {
         var metadata = new HashMap<>(MessageSpecification.parse(input).metadata());
         metadata.put("server.inputOwner", "messages");
         when(queries.get(CALLER, "messages", id)).thenReturn(new ProjectTaskQueryService.Entry(id, 1L,
-                new TaskView(id, "messages", "demo-sim", "CLOSE_WHEN_IDLE", List.of(), Map.of(), "campaign", metadata), state));
+                new TaskView(id, "messages", "demo-sim", "CLOSE_WHEN_IDLE", List.of(), Map.of(), "campaign", metadata), state, null));
     }
     static InputStream file(String value) { return new ByteArrayInputStream(value.getBytes(StandardCharsets.UTF_8)); }
     static String numbers(int count) { return IntStream.range(0, count).mapToObj(i -> "+86138" + String.format("%08d", i)).collect(java.util.stream.Collectors.joining("\n")); }
@@ -69,6 +69,16 @@ class MessageTaskServiceTest {
             assertThat(MessageSpecification.parse(request).fingerprint("demo-sim")).isEqualTo(omitted.fingerprint("demo-sim"));
             var old = input(); old.put("recipientIds", List.of("+86123"));
             assertThatThrownBy(() -> service.create(CALLER, old)).hasMessageContaining("Unknown message task fields");
+        }
+    }
+
+    @Test void cleanupRejectionIsNotTranslatedIntoAnUnknownCreation() {
+        try (var service = service()) {
+            var rejected = new com.xa.mass.server.error.ServerException(
+                    com.xa.mass.server.error.ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, "taskCreation.create", null, null);
+            when(creation.createForRequest(eq(CALLER), eq("messages"), any(), anyString())).thenThrow(rejected);
+            assertThatThrownBy(() -> service.create(CALLER, input())).isSameAs(rejected);
+            verifyNoInteractions(data);
         }
     }
 
@@ -189,7 +199,7 @@ class MessageTaskServiceTest {
         try (var service = service()) {
             var task = new com.xa.mass.server.api.v1.contract.runtimeview.TaskView("existing", "messages", "demo-sim",
                     "CLOSE_WHEN_IDLE", List.of(), Map.of(), "saved name", Map.of("server.inputOwner", "messages", "scenario", "messages", "recipientCountry", "CN", "body", "{}"));
-            var entry = new ProjectTaskQueryService.Entry("existing", 100L, task, "terminal");
+            var entry = new ProjectTaskQueryService.Entry("existing", 100L, task, "terminal", null);
             when(queries.get(CALLER, "messages", "existing")).thenReturn(entry);
             when(data.previewTaskResults(CALLER, "existing")).thenReturn(new TaskDataService.ResultPreview(List.of(
                     new TaskDataService.ResultEntry("bad-content", null, TaskItemResultResponse.succeeded("not-json")),

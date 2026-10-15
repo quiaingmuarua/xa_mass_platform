@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TaskRetentionNotice from "@/components/TaskRetentionNotice.vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -426,6 +427,7 @@ function returnSubmission() {
         </p>
         <p>{{ detail.task?.workerGroupId }} · {{ detail.scoreBand ?? "状态不可用" }}</p>
         <p>实际 Item 数量：{{ detail.stats?.total ?? "不可用" }}</p>
+        <TaskRetentionNotice :retention="detail.retention" />
         <FiniteTaskActions
           v-if="detail.task?.idleDisposition === 'CLOSE_WHEN_IDLE'"
           :row="detail"

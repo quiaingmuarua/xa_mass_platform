@@ -76,7 +76,16 @@ async function mount(
   [ElButton, ElInput, ElSelect, ElOption].forEach((component) => app!.use(component));
   app.mount(host);
   await settle();
-  return { host, router, session: context.sessionFor("1000") };
+  const session = context.sessionFor("1000");
+  if (router.currentRoute.value.query.view === "configuration") {
+    // Mock fingerprints use native Web Crypto; advancing fake timers does not
+    // guarantee that the initial configuration read has completed.
+    await vi.waitUntil(
+      () => !!session.configuration.snapshot || !!session.configuration.error
+    );
+    await nextTick();
+  }
+  return { host, router, session };
 }
 function button(text: string, scope: ParentNode = document) {
   const node = [...scope.querySelectorAll<HTMLButtonElement>("button")].find(

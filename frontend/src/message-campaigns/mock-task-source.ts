@@ -1,3 +1,4 @@
+import { MockTaskRetention } from "@/task-management/retention";
 import type { MockUserDirectorySource } from "@/user-directory-source";
 import {
   type TaskCaller,
@@ -172,19 +173,23 @@ export class MockMessageTaskSource implements MessageTaskSource {
   private replies = 0;
   private readonly requests = new Map<string, { input: string; taskId: string }>();
   private sequence = 0;
+  private readonly retention: MockTaskRetention;
   private readonly recipients = new Map<string, Set<string>>();
   private readonly mutations = new Set<string>();
   private activeImports = 0;
 
   constructor(
     private readonly directory: MockUserDirectorySource,
-    records: MessageTaskDetail[] = initialRecords()
+    records: MessageTaskDetail[] = initialRecords(),
+    now: () => number = Date.now
   ) {
+    this.retention = new MockTaskRetention(now);
     this.records = new Map(
       structuredClone(records).map((record) => [record.task.taskId, record])
     );
     for (const record of this.records.values()) {
       const task = record.task;
+      this.retention.observe(task);
       if (!task.managed && task.body && task.recipientCountry) {
         const prefix = { CN: "+86", US: "+1", GB: "+44" }[task.recipientCountry];
         const numbers = new Set(
@@ -345,7 +350,24 @@ export class MockMessageTaskSource implements MessageTaskSource {
   }
   async closeTask(caller: TaskCaller, taskId: string) {
     if (this.mutations.has(taskId)) throw new Error("任务有其他操作正在进行");
-    this.requireTask(caller, taskId, false).task.state = "terminal";
+    const task = this.requireTask(caller, taskId, false).task;
+    task.state = "terminal";
+    this.retention.observe(task);
+  }
+  async runRetention(caller: TaskCaller, taskId: string) {
+    caller = this.directory.resolveCaller(caller, "messages");
+    requireCallerPermission(caller, "tasks.retention.manage");
+    const record = this.requireTask(caller, taskId, false);
+    const outcome = this.retention.maintain(record.task);
+    if (outcome === "archived") this.recipients.delete(taskId);
+    if (outcome === "purged") {
+      this.records.delete(taskId);
+      this.recipients.delete(taskId);
+      this.failedReads.delete(taskId);
+      for (const [key, request] of this.requests)
+        if (request.taskId === taskId) this.requests.delete(key);
+    }
+    return outcome;
   }
   private counts(rows: MessageTaskResult[]) {
     const successful = rows.filter(
@@ -373,6 +395,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
       return;
     }
     const record = this.requireTask(caller, taskId, false);
+    this.retention.requireWritable(record.task);
     if (record.task.state === "pre_review") throw new Error("请先核对并启动任务");
     if (action === "advance" || action === "complete") {
       if (record.task.state === "terminal") throw new Error("调度已结束，不能继续发送");
@@ -411,6 +434,7 @@ export class MockMessageTaskSource implements MessageTaskSource {
         if (action === "reply") row.reply = `演示回复 ${this.replies}：消息已收到。`;
       }
     }
+    this.retention.observe(record.task);
     Object.assign(record.task, this.counts(record.results));
   }
 }

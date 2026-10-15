@@ -16,6 +16,7 @@ class AcceptanceOracleTest(unittest.TestCase):
             process = Mock(args=["java", "-jar", "preview.jar"])
             run = SimpleNamespace(processes={"server": process}, logs=[], output=root,
                                   scope="test_sms_restart", redis_url="redis://localhost/15", port=18400,
+                                  task_archives=root / "task-archives",
                                   app_checks_db=root / "inventory" / "app-checks" / "configuration",
                                   launch=Mock(), wait_for=Mock(), connected=Mock())
             (root / "server.log").write_text("first startup", encoding="utf-8")
@@ -27,6 +28,7 @@ class AcceptanceOracleTest(unittest.TestCase):
             self.assertEqual("server", name)
             self.assertEqual(process.args, arguments)
             self.assertEqual(str(run.app_checks_db), environment["XA_MASS_APP_CHECKS_DB_PATH"])
+            self.assertEqual(str(run.task_archives), environment["XA_MASS_TASK_ARCHIVE_DIRECTORY"])
             self.assertEqual(run.scope, environment["XA_MASS_REDIS_SCOPE"])
             self.assertEqual(run.redis_url, environment["XA_MASS_REDIS_URL"])
             self.assertEqual("18400", environment["PREVIEW_SERVER_PORT"])

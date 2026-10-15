@@ -59,6 +59,7 @@ function row(
     createdAtMillis: 123,
     stats: { total: 1, countsByTag: { "1": 1 } },
     scoreBand: managed ? "running_visible" : "pre_review",
+    retention: null,
     task: {
       taskId: id,
       workerGroupId: group,

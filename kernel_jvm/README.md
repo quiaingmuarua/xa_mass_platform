@@ -105,7 +105,7 @@ execution failure/success tags to the fixed Pacer assembly. Terminal updates
 use one Lua for the complete caller-bounded input; state reads use one
 `ZMSCORE` for at most 100 IDs.
 Result content remains a separate projection, conditionally replaced by higher
-tag and then later reported milliseconds within one bounded same-key Lua.
+tag and then later reported milliseconds within one bounded Result Lua guarded by the Task data phase.
 Observations promote Score before optional content and never release Worker
 leases; execution success retains Result-before-Score ordering. The
 [Result Owner](doc/runtime-redis/task-result-runtime-redis-shape.md) defines the
@@ -119,6 +119,16 @@ partial-failure boundaries. Events contain durations, bounded counts and optiona
 mechanical operation. The [performance proof](../integrations/worker-call-performance/README.md#jfr-diagnostics)
 owns offline joins and their incomplete/overlap limits. An observed Result write
 does not establish the later separate TaskItem Score promotion.
+
+## Finite Task Retention
+
+[Task resources](doc/resource-model/task-resource-model.md#finite-task-data-retention)
+own the persistent data fence and resource reclamation. The existing Score ZSET
+records first termination time and supplies bounded maintenance traversal. The
+cross-key retention fence is an explicit exception to ordinary independent commits:
+late Item/Score/Result writers atomically check OPEN, and final descriptor/Score
+removal preserves the cleanup entry until the end. Server owns timing, archive
+files and application associations; Kernel starts no maintenance thread.
 
 ## Boundaries
 

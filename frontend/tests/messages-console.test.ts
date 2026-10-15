@@ -67,6 +67,7 @@ function entry(row: Record<string, unknown>) {
     taskId: row.taskId,
     createdAtMillis: row.createdAtMillis,
     scoreBand: row.state,
+    retention: null,
     task: {
       taskId: row.taskId,
       projectId: "messages",

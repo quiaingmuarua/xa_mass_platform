@@ -70,6 +70,8 @@ public final class ApiExceptionHandler {
             case INVALID_USER_REQUEST, INVALID_TASK_CALLER, KERNEL_REJECTED_CONFLICT,
                     TASK_NOT_FOUND,
                     TASK_OPERATION_NOT_SUPPORTED,
+                    TASK_RESULTS_ARCHIVED,
+                    TASK_CLEANUP_IN_PROGRESS,
                     TASK_STATE_CONFLICT,
                     TASK_RESULTS_NOT_READY,
                     TASK_WORKER_GROUP_NOT_FOUND,

@@ -224,3 +224,13 @@ JSONL, followed by independent quantity approval. Raw result previews and termin
 successful JSONL exports preserve Worker output without Scenario interpretation.
 Project declarations never create Tasks. Existing caller and input-owner checks
 continue to apply.
+
+## Task result archives
+
+The launcher supplies `XA_MASS_TASK_ARCHIVE_DIRECTORY=<run-output>/task-archives`
+for its fresh scope. Server owns the 1h grace, sequential archive and 7d final
+retention lifecycle. Grace/retention overrides are explicit proof configuration,
+not alternate product defaults. Normal launcher shutdown stops owned processes,
+cleans only its generated Redis scope, and removes only this private archive root.
+Persistent Worker inventory and App Checks H2 configuration remain untouched.
+A hard-killed launcher still requires explicit cleanup of its own run resources.

@@ -42,8 +42,7 @@ final class TaskIdleSettlement {
         if (disposition == TaskIdleDisposition.CLOSE_WHEN_IDLE) {
             taskScores.closeObservedScore(
                     task.taskId(),
-                    task.observedTaskScore(),
-                    TaskScoreBandCore.TERMINAL_SCORE_MAX
+                    task.observedTaskScore()
             );
             return;
         }

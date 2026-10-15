@@ -65,6 +65,29 @@ inside the window.
 **Nonclaims:** HTTP/Adapter/Worker traversal, process recovery, cross-owner
 rollback or loss repair.
 
+### Finite Task retention proof
+
+FiniteTaskRetentionRedisIntegrationTest proves immutable first terminal time,
+keyset progress after previous-page deletion and corrupt rows, atomic write seals,
+retained Item counts, exact purge fences and RPC exclusion. TaskRetentionServiceRedisIntegrationTest
+proves file publication/reuse, archive corruption refusal, authorization before files,
+expiry without an archive, resumed cleanup and fresh execution identity after conditional
+creation-association removal. These tests use unique scopes and private file roots.
+Faults include partial JSONL writes and committed release, directory removal or
+final purge with a lost response. A multi-page sweep passes already archived and
+continuously failing entries before expiring the same complete set.
+FrozenTaskResultReleaseRedisIntegrationTest traverses the production result policy
+and real Redis Owners: ignored content after freeze, release and purge still
+releases the original Worker lease.
+Independent Score/Result commits are not repaired into a common snapshot.
+
+Frontend task-retention tests use a controlled clock and the shared Mock directory
+to prove grace updates, frozen results, retained CSV/counts, permission checks and
+new identities after expiry. The [explicit 10k/100k acceptance](../../integrations/scenario-coexistence/README.md#finite-storage-acceptance) records Redis key memory,
+file size, archive latency and process memory separately; RSS reduction is not required.
+No RPC reclamation, historical migration, permanent tombstones or distributed file
+replication is claimed.
+
 ## runtime_boundary
 
 **Primary Owner:** Server assembly over Kernel, Pacer, Matching and Transport ports.

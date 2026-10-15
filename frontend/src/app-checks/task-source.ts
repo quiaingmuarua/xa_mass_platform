@@ -299,6 +299,7 @@ function checkTaskView(entry: ProjectTask): CheckTask {
     workerGroupId: entry.task?.workerGroupId ?? null,
     managed: entry.task?.idleDisposition === "PARK_WHEN_IDLE",
     state: entry.scoreBand,
+    retention: entry.retention,
     ...(entry.task?.name ? { name: entry.task.name } : {}),
     ...(metadata.userId ? { userId: metadata.userId } : {})
   };

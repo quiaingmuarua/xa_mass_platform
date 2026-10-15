@@ -39,6 +39,7 @@ public final class TaskDataService {
     private final TaskItemOutcomeProperties outcomes;
     private final TaskScoreBandCore taskScores;
     private final OperationGuard operations;
+    private final com.xa.mass.server.task.result.TaskResultsExportService results;
 
     public TaskDataService(
             TaskRuntime taskRuntime,
@@ -48,7 +49,8 @@ public final class TaskDataService {
             TaskItemOutcomeProperties outcomes,
             com.xa.mass.workermatching.WorkerMatchingCatalog matchingCatalog,
             TaskScoreBandCore taskScores,
-            OperationGuard operations
+            OperationGuard operations,
+            com.xa.mass.server.task.result.TaskResultsExportService results
     ) {
         this.taskRuntime = taskRuntime;
         this.taskCatalog = taskCatalog;
@@ -58,6 +60,7 @@ public final class TaskDataService {
         this.matchingCatalog = matchingCatalog;
         this.taskScores = taskScores;
         this.operations = operations;
+        this.results = results;
     }
 
     public Map<String, ActionOutcome> appendFiniteTaskItems(
@@ -110,6 +113,10 @@ public final class TaskDataService {
                 );
             }
 
+            var taskState = taskScores.getScoreStates(List.of(taskId)).get(taskId);
+            if (taskState == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskData.appendItems", null, null);
+            if (taskState.band() == TaskScoreBandCore.TaskScoreBand.TERMINAL)
+                throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "taskData.appendItems", "Task is closed", null);
             var validItems = new ArrayList<TaskItem>();
             var results = new LinkedHashMap<
                     String,
@@ -164,11 +171,14 @@ public final class TaskDataService {
             List<String> uniqueIds = new ArrayList<>(
                     new LinkedHashSet<>(messageIds)
             );
-            requireQueryableTask(caller, taskId, "taskData.loadResults");
-            return TaskItemResultResponse.fromObservedResults(
+            var before = requireQueryableTask(caller, taskId, "taskData.loadResults");
+            requireRedisPayloads(before);
+            var loaded = TaskItemResultResponse.fromObservedResults(
                     uniqueIds,
                     taskRuntime.loadTaskItemResults(taskId, uniqueIds)
             );
+            requireUnchanged(taskId, before);
+            return loaded;
         } catch (ServerException error) {
             throw error;
         } catch (RuntimeException error) {
@@ -190,7 +200,7 @@ public final class TaskDataService {
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.loadStates", "Expected taskId and 1..100 IDs", null);
         try {
             List<String> uniqueIds = new ArrayList<>(new LinkedHashSet<>(messageIds));
-            requireQueryableTask(caller, taskId, "taskData.loadStates");
+            var before = requireQueryableTask(caller, taskId, "taskData.loadStates");
             var states = itemScores.getItemScoreStates(taskId, uniqueIds);
             var response = new LinkedHashMap<String, TaskItemStateResponse>();
             for (String messageId : uniqueIds) {
@@ -202,6 +212,7 @@ public final class TaskDataService {
                         outcomes.outcomeName(state.tag())
                 ));
             }
+            requireUnchanged(taskId, before);
             return Collections.unmodifiableMap(response);
         } catch (ServerException error) {
             throw error;
@@ -279,8 +290,11 @@ public final class TaskDataService {
                 || messageIds.stream().anyMatch(id -> id == null || id.isBlank()))
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.loadItems", "Expected 1..100 IDs", null);
         try {
-            requireQueryableTask(caller, taskId, "taskData.loadItems");
-            return taskRuntime.loadTaskItems(taskId, messageIds);
+            var before = requireQueryableTask(caller, taskId, "taskData.loadItems");
+            requireRedisPayloads(before);
+            var loaded = taskRuntime.loadTaskItems(taskId, messageIds);
+            requireUnchanged(taskId, before);
+            return loaded;
         } catch (ServerException known) { throw known;
         } catch (RuntimeException error) {
             throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.loadItems", null, error);
@@ -288,30 +302,23 @@ public final class TaskDataService {
     }
 
     public ResultPreview previewTaskResults(TaskCaller caller, String taskId) {
-        try {
-            requireQueryableTask(caller, taskId, "taskData.previewResults");
-            var page = taskRuntime.scanTaskItemResults(taskId, "0", 100);
-            var ids = page.results().keySet().stream().limit(100).toList();
-            var items = ids.isEmpty() ? Map.<String, TaskItem>of() : taskRuntime.loadTaskItems(taskId, ids);
-            var results = TaskItemResultResponse.fromObservedResults(ids, page.results());
-            return new ResultPreview(ids.stream().map(id -> new ResultEntry(id, items.get(id), results.get(id))).toList(),
-                    !"0".equals(page.nextCursor()) || page.results().size() > 100);
-        } catch (ServerException error) { throw error;
-        } catch (RuntimeException error) {
-            throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.previewResults", null, error);
-        }
+        return results.preview(caller, taskId);
     }
 
     public record ResultEntry(String messageId, @org.jspecify.annotations.Nullable TaskItem item, TaskItemResultResponse result) {}
     public record ResultPreview(List<ResultEntry> results, boolean truncated) {}
 
-    private void requireQueryableTask(TaskCaller caller, String taskId, String operation) {
+    private TaskRuntime.TaskDataState requireQueryableTask(TaskCaller caller, String taskId, String operation) {
         TaskDescriptor descriptor = taskCatalog
                 .loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
         if (descriptor == null) {
             throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, operation, null, null);
         }
         caller.requireTask(descriptor);
+        var dataState = taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId);
+        if (dataState == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, operation, null, null);
+        if (dataState.phase() == TaskRuntime.TaskDataPhase.PURGING)
+            throw new ServerException(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, operation, null, null);
         if (!isPublicFiniteTask(descriptor) && !isManagedCallTask(descriptor)) {
             throw new ServerException(
                     ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
@@ -320,6 +327,17 @@ public final class TaskDataService {
                     null
             );
         }
+        return dataState;
+    }
+
+    private static void requireRedisPayloads(TaskRuntime.TaskDataState state) {
+        if (state.phase() == TaskRuntime.TaskDataPhase.RELEASED)
+            throw new ServerException(ServerErrorCode.TASK_RESULTS_ARCHIVED, "taskData.pointRead",
+                    "Archived results support preview and sequential export, not point queries", null);
+    }
+    private void requireUnchanged(String taskId, TaskRuntime.TaskDataState before) {
+        if (!before.equals(taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId)))
+            throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "taskData.read", "Task storage changed; refresh the view", null);
     }
 
     private static boolean isPublicFiniteTask(TaskDescriptor descriptor) {

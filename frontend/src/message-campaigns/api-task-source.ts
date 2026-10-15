@@ -1,3 +1,4 @@
+import { taskRetentionSchema } from "@/task-management/retention";
 import { type TaskCaller, requireCaller } from "@/task-caller";
 import {
   createProjectSource,
@@ -17,6 +18,7 @@ import {
 const country = z.enum(["CN", "US", "GB"]);
 const count = z.number().int().nonnegative();
 const task = z.object({
+  retention: taskRetentionSchema.nullable().optional(),
   taskId: z.string().min(1),
   userId: z.string().optional(),
   name: z.string().optional(),
@@ -167,6 +169,7 @@ function messageTaskView(entry: ProjectTask) {
     workerGroupId: entry.task?.workerGroupId ?? null,
     managed: entry.task?.idleDisposition === "PARK_WHEN_IDLE",
     state: entry.scoreBand,
+    retention: entry.retention,
     ...(entry.task?.name ? { name: entry.task.name } : {}),
     ...(metadata.userId ? { userId: metadata.userId } : {})
   };

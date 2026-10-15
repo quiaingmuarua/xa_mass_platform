@@ -181,6 +181,7 @@ class RuntimeApiControllerTest {
         workerProperties = mock(WorkerProperties.class);
         taskRuntime = mock(TaskRuntime.class);
         taskCatalog = mock(TaskResourceCatalog.class);
+        com.xa.mass.server.testsupport.TaskRetentionFixtures.openData(taskRuntime);
         itemScores = mock(TaskItemScoreBandCore.class);
         taskScores = mock(com.xa.mass.kernel.score.TaskScoreBandCore.class);
         when(taskScores.getScoreStates(anyList())).thenAnswer(call -> ((List<String>) call.getArgument(0)).stream().collect(java.util.stream.Collectors.toMap(id -> id, id -> new com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreState(id, 1, com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand.PRE_REVIEW, 0L, 0))));
@@ -256,7 +257,7 @@ class RuntimeApiControllerTest {
                     List<String> ids = invocation.getArgument(0);
                     var descriptors =
                             new LinkedHashMap<String, TaskDescriptor>();
-                    ids.stream().filter(id -> !id.matches("task-[0-9a-f]{64}")).forEach(id -> descriptors.put(
+                    ids.stream().filter(id -> !id.matches("task-[0-9a-f]{32}")).forEach(id -> descriptors.put(
                             id,
                             descriptor(id)
                     ));
@@ -325,8 +326,8 @@ class RuntimeApiControllerTest {
                 taskItems,
                 itemScores,
                 new TaskItemOutcomeProperties(Map.of(7, "delivered", 8, "read", 9, "replied")),
-                matchingCatalog, mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), new com.xa.mass.server.operation.OperationGuard()
-        );
+                matchingCatalog, taskScores, new com.xa.mass.server.operation.OperationGuard()
+        , com.xa.mass.server.testsupport.TaskRetentionFixtures.results(taskRuntime, taskCatalog, mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), new com.xa.mass.server.operation.OperationGuard()));
         TaskRpcProperties rpcProperties = rpcProperties();
         taskRpcRegistry = new TaskRpcWaitRegistry(rpcProperties);
         TaskRpcCallService taskRpc = new TaskRpcCallService(
@@ -341,7 +342,7 @@ class RuntimeApiControllerTest {
                 matchingCatalog,
                 taskRuntime,
                 projects, taskCatalog, mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), new com.xa.mass.server.operation.OperationGuard()
-        , org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class));
+        , org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), com.xa.mass.server.testsupport.TaskRetentionFixtures.creations());
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
                                 new WorkerResourceCommandService(workerProperties, mock(WorkerSchedulingService.class))
@@ -359,7 +360,7 @@ class RuntimeApiControllerTest {
                                 new TaskLifecycleService(
                                         taskLifecycle,
                                         taskCatalog, new com.xa.mass.server.operation.OperationGuard()
-                                , itemScores, taskScores),
+                                , itemScores, taskScores, taskRuntime),
                                 new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matchingCatalog,
                                         rpcProperties, projects, new com.xa.mass.server.operation.OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class))
                         , org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class)),
@@ -591,13 +592,13 @@ class RuntimeApiControllerTest {
 
     @Test void createsExplicitSupplyAndEmptySupplyTasksWithoutCandidateCapacity() throws Exception {
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"requestId\":\"request\",\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":[{\"poolName\":\"country\",\"target\":{},\"count\":100}]}"))
+                .content("{\"requestId\":\"request-1\",\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":[{\"poolName\":\"country\",\"target\":{},\"count\":100}]}"))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"requestId\":\"request\",\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\"}"))
+                .content("{\"requestId\":\"request-2\",\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\"}"))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/v1/tasks").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"requestId\":\"request\",\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":[]}"))
+                .content("{\"requestId\":\"request-3\",\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":[]}"))
                 .andExpect(status().isOk());
         var descriptors = ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime, org.mockito.Mockito.times(3)).createTask(descriptors.capture());
@@ -619,7 +620,7 @@ class RuntimeApiControllerTest {
         assertThat(descriptor.getValue().name()).isEqualTo("message task");
         assertThat(descriptor.getValue().metadata()).containsAllEntriesOf(
                 Map.of("scenario", "messages", "body", "{}", "server.projectId", "test-project"))
-                .containsOnlyKeys("scenario", "body", "userId", "server.projectId", "server.createdAtMillis", "server.inputOwner", "server.creationRequest", "server.creationFingerprint");
+                .containsOnlyKeys("scenario", "body", "userId", "server.projectId", "server.createdAtMillis", "server.inputOwner", "server.creationRequest", "server.creationFingerprint", "server.creationKey");
         assertThat(descriptor.getValue().config()).containsOnlyKeys("priority", "maxRetryTimes");
     }
 
@@ -747,7 +748,7 @@ class RuntimeApiControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.taskId").value(matchesPattern(
-                        "task-[0-9a-f]{64}"
+                        "task-[0-9a-f]{32}"
                 )))
                 .andExpect(jsonPath("$.status").doesNotExist());
 
@@ -1438,7 +1439,8 @@ class RuntimeApiControllerTest {
         verify(itemScores).getItemScoreStates("task-1",
                 List.of("active", "generic", "failed", "success", "read", "missing"));
         verify(taskCatalog).loadTaskAllocationDescriptors(List.of("task-1"));
-        org.mockito.Mockito.verifyNoInteractions(taskRuntime);
+        verify(taskRuntime, org.mockito.Mockito.never()).loadTaskItemResults(anyString(), anyList());
+        verify(taskRuntime, org.mockito.Mockito.never()).loadTaskItems(anyString(), anyList());
     }
 
     @Test
@@ -1461,7 +1463,8 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content("[\"item\"]"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(12002));
-        org.mockito.Mockito.verifyNoInteractions(taskRuntime);
+        verify(taskRuntime, org.mockito.Mockito.never()).loadTaskItemResults(anyString(), anyList());
+        verify(taskRuntime, org.mockito.Mockito.never()).loadTaskItems(anyString(), anyList());
     }
 
     @Test

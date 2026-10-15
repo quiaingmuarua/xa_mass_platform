@@ -41,6 +41,7 @@ class TaskDirectoryRedisIntegrationTest {
     RedisTaskRuntime runtime;
     RedisTaskResourceCatalog catalog;
     TaskDirectory directory;
+    com.xa.mass.server.task.directory.TaskCreationRegistry creations;
     ProjectTaskQueryService queries;
     ProjectDirectory projects;
     WorkerResourceCatalog groups;
@@ -50,6 +51,7 @@ class TaskDirectoryRedisIntegrationTest {
     @BeforeEach void start() {
         scope = RedisTestScope.create("server_task_directory");
         client = RedisClient.create(REDIS_URL); connection = client.connect();
+        creations = new com.xa.mass.server.task.directory.TaskCreationRegistry(client, scope.keyspace());
         scores = new RedisTaskScoreBandCore(client, scope.keyspace());
         items = new RedisTaskItemScoreBandCore(client, scope.keyspace());
         runtime = new RedisTaskRuntime(client, scores, items, scope.keyspace());
@@ -61,10 +63,10 @@ class TaskDirectoryRedisIntegrationTest {
                 new WorkerResourceCatalog.WorkerGroupDescriptor("g", Map.of(), Set.of("event"))));
         matching = mock(WorkerMatchingCatalog.class);
         when(matching.normalizeRefill(anyString(), anyList())).thenAnswer(call -> call.getArgument(1));
-        directory = newDirectory(); queries = new ProjectTaskQueryService(projects, catalog, scores, directory, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class));
+        directory = newDirectory(); queries = new ProjectTaskQueryService(projects, catalog, scores, directory, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class), runtime, com.xa.mass.server.testsupport.TaskRetentionFixtures.properties());
     }
-    TaskDirectory newDirectory() { return new TaskDirectory(client, scope.keyspace(), projects, catalog, scores, groups, guard); }
-    TaskCreationService creator() { return new TaskCreationService(groups, matching, runtime, projects, catalog, scores, guard, directory); }
+    TaskDirectory newDirectory() { return new TaskDirectory(client, scope.keyspace(), projects, catalog, scores, groups, guard, runtime); }
+    TaskCreationService creator() { return new TaskCreationService(groups, matching, runtime, projects, catalog, scores, guard, directory, creations); }
     String key(String project) {
         return scope.keyspace().base() + ":server:task-directory:" + Base64.getUrlEncoder().withoutPadding().encodeToString(project.getBytes(StandardCharsets.UTF_8));
     }
@@ -77,7 +79,7 @@ class TaskDirectoryRedisIntegrationTest {
         return task;
     }
     @AfterEach void stop() {
-        directory.close(); runtime.close(); catalog.close(); items.close(); scores.close();
+        directory.close(); creations.close(); runtime.close(); catalog.close(); items.close(); scores.close();
         scope.cleanup(connection.sync()); connection.close(); client.shutdown();
     }
 
@@ -122,7 +124,7 @@ class TaskDirectoryRedisIntegrationTest {
             connection.sync().set(key("p"), "wrong-type");
             return outcome;
         });
-        var interrupted = new TaskCreationService(groups, matching, interruptedRuntime, projects, catalog, scores, guard, directory);
+        var interrupted = new TaskCreationService(groups, matching, interruptedRuntime, projects, catalog, scores, guard, directory, creations);
         var request = new TaskCreateRequest("request", "p", "g", 50, 3, List.of(), "first", Map.of());
         var failure = catchThrowableOfType(TaskCreationUnconfirmedException.class,
                 () -> interrupted.createForRequest(CALLER, "raw", request, "a".repeat(64)));
@@ -145,7 +147,7 @@ class TaskDirectoryRedisIntegrationTest {
         connection.sync().unlink(key("p"));
         assertThat(queries.get(CALLER, "p", "t").createdAtMillis()).isEqualTo(123L);
         assertThat(connection.sync().exists(key("p"))).isZero();
-        try (var other = new TaskDirectory(client, scope.keyspace(), projects, catalog, scores, groups, new OperationGuard());
+        try (var other = new TaskDirectory(client, scope.keyspace(), projects, catalog, scores, groups, new OperationGuard(), runtime);
              var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var a = executor.submit(() -> directory.ensure(CALLER, "t"));
             var b = executor.submit(() -> other.ensure(CALLER, "t"));

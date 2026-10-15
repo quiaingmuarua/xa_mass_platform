@@ -46,7 +46,8 @@ supplies their meaning. Ordinary execution uses the Server-supplied success tag
 6 and the Result Policy's observed time. Business observations retain their
 reported millisecond time and tag.
 
-One single-key Lua validates existing values and conditionally writes the batch:
+One bounded Lua first checks the Task descriptor dataPhase is OPEN, then validates
+existing values and conditionally writes its Result HASH batch:
 
 - a success may replace a failed Result;
 - a higher tag replaces a lower tag, even with an earlier time;
@@ -54,7 +55,7 @@ One single-key Lua validates existing values and conditionally writes the batch:
 - equal or smaller targets do not write;
 - corrupt or legacy success values fail as Owner data errors and are not overwritten.
 
-Terminal failure remains a bounded `HSETNX` operation and cannot replace any
+Terminal failure uses the same atomic Task data fence around bounded `HSETNX` and cannot replace any
 observed Result. Success is canonically encoded before storage. No companion
 classification key, version counter, reply history or separate content queue
 exists. `TaskItemResult(code, opaqueResultPayload)` remains the read projection;
@@ -111,11 +112,14 @@ derived from the other, and both owners commit independently:
   expiry/recovery; later business observations never release that lease again.
 
 Task scheduling lifecycle and Item outcome observation lifecycle are independent.
-As long as an Item is retained, valid monotonic observations can continue after
-its execution ends or its Task closes; neither event freezes business state or
-starts an observation deadline. No Task reopen or new execution lease is needed.
+While the Task data phase is OPEN, valid monotonic observations can continue after
+execution or Task closure. Finite Task retention freezes this window after the
+Server-configured grace period; closure itself does not immediately freeze it. No Task reopen or new execution lease is needed.
 Data retention remains separate, and observations cannot recreate a missing
 Item. State-only observations do not invent a successful Result payload.
+Frozen or removed Task data makes late writes normal no-ops, including ordinary
+execution success, so the existing exact Worker release still runs. The fence may
+land between independent Score and Result commits; no reconciliation is implied.
 No ACK, replay, Result-to-Score repair or cross-owner compensation is provided.
 
 ## Related Owners And Migration

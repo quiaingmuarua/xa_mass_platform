@@ -71,8 +71,7 @@ reload. API mode has no built-in user fallback or browser-owned user mutations.
 
 Task and Scenario methods take an explicit immutable caller snapshot. The existing
 client encodes its userId as UTF-8 Base64URL in `X-XA-Dev-User` and sends
-`X-XA-Dev-Role`; list query `userId` remains a target-owner filter. API payloads,
-responses are unchanged; Server validates directory membership, role consistency
+`X-XA-Dev-Role`; list query `userId` remains a target-owner filter. Caller encoding is unchanged; Server validates directory membership, role consistency
 and current Project grants before task access. Catalogs remain caller-free
 availability reads. Unauthenticated UI cannot issue protected operations; sources
 bound to a login never silently switch to a later global caller.
@@ -770,3 +769,18 @@ pnpm build:demo
 The frontend owns no Task, Worker identity, scheduling, result, or file-storage
 truth. It only composes public Runtime API calls and downloads the response
 stream selected by the user.
+
+## Finite Task retention views
+
+The common Project Task contract includes retention phase, first termination,
+freeze and expiry timestamps. Finite workbench, App Checks and Messages show the
+same facts. OPEN terminal tasks may receive late outcomes; FROZEN/RELEASED tasks
+cannot. Archived previews and exports use existing URLs. Item Score counts remain
+available and unfinished Items are not displayed as successful. Archived raw
+point queries are unsupported (`400/12014`); RPC point queries are unaffected.
+
+MockTaskRetention provides the single controllable 1h/7d policy used by both
+business Mock sources. Their explicit maintenance helpers require the shared
+admin permission, freeze later observations, retain preview/export data, and
+remove task-local maps plus creation correlation on purge. Same-request creation
+then has a new Task ID. No timer, filesystem or Server data fallback is simulated.

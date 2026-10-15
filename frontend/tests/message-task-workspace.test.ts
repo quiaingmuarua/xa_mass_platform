@@ -636,7 +636,7 @@ describe("Messages desktop workbench", () => {
     await settle();
     expect(drawer().textContent).toContain("演示回复 2");
     expect(count("已回复")).toBe("1");
-    expect(drawer().textContent).toContain("调度已结束，后续回执仍可更新");
+    expect(drawer().textContent).toContain("收尾窗口内");
   });
   it("preserves a failed refresh snapshot and its timestamp, then manually recovers", async () => {
     await mount("/messages/tasks/msg-uk-running");

@@ -186,6 +186,7 @@ def restart_server(run):
         (run.output / "server-before-restart.log").write_bytes(log.read_bytes())
     env = os.environ.copy()
     env.update(XA_MASS_REDIS_SCOPE=run.scope, XA_MASS_REDIS_URL=run.redis_url,
+               XA_MASS_TASK_ARCHIVE_DIRECTORY=str(run.task_archives),
                XA_MASS_APP_CHECKS_DB_PATH=str(run.app_checks_db),
                PREVIEW_SERVER_PORT=str(run.port), PREVIEW_ADAPTER_PORT=str(run.port + 3))
     run.launch("server", args, env)
@@ -452,7 +453,20 @@ def main():
     result = {"passed": False, "scenario": args.scenario}
     sandbox_root = output / "private" / ("inventory-" + uuid.uuid4().hex) / "data" / "scenario-workers"
     materialize_inventory(sandbox_root, product_worker_world(counts, messages=False))
-    run = preview.Preview(sum(counts), args.port, root=args.root, output=output / "private", app_count=0,
+    class SmsProofPreview(preview.Preview):
+        def launch(self, name, command, environment):
+            if name == "host":
+                # This fixture waits up to 60 seconds for a Server restart. Keep the
+                # original Worker run alive through that window; never restart its Reporter.
+                configuration = Path(command[-1])
+                document = json.loads(configuration.read_text(encoding="utf-8"))
+                for group in document["workerGroups"].values():
+                    group["reconnectPolicy"] = {"maxUnstableAttempts": 180,
+                        "reconnectIntervalMillis": 500, "stableConnectionDurationMillis": 10000}
+                configuration.write_text(json.dumps(document, indent=2), encoding="utf-8")
+            super().launch(name, command, environment)
+
+    run = SmsProofPreview(sum(counts), args.port, root=args.root, output=output / "private", app_count=0,
                           sandbox_root=sandbox_root)
     try:
         with run:

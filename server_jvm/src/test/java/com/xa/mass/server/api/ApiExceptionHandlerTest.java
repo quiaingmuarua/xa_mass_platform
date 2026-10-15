@@ -91,6 +91,8 @@ class ApiExceptionHandlerTest {
                     TASK_CALL_NOT_REGISTERED,
                     TASK_CALL_REGISTRATION_CONFLICT,
                     TASK_OPERATION_NOT_SUPPORTED,
+                    TASK_RESULTS_ARCHIVED,
+                    TASK_CLEANUP_IN_PROGRESS,
                     TASK_STATE_CONFLICT,
                     TASK_RESULTS_NOT_READY,
                     TASK_WORKER_GROUP_NOT_FOUND,
