@@ -256,7 +256,7 @@ checkouts retain their version-specific configuration inputs.
 ## RPC Result receipts
 
 Managed calls and their unresolved IDs consume Results through `results:take`.
-The proof client validates response shape/identity and retains actual receipts in
+The proof client validates response shape/identity and retains the received
 status and payload SHA-256 in its per-proof artifact file across JVM phases;
 the file does not contain opaque Result content. This is proof evidence, not a
 Server result cache; a later empty take cannot erase previously received evidence.

@@ -167,6 +167,33 @@ describe("HTTP batch adapter", () => {
   });
 });
 describe("session request evidence", () => {
+  it("keeps denied takes distinct from uncertain consumption without retrying execution", async () => {
+    const client = {
+      callTask: vi.fn().mockResolvedValue(success),
+      takeResults: vi
+        .fn()
+        .mockRejectedValue(
+          new TaskCallDebugError({
+            kind: "http",
+            status: 403,
+            message: "访问被拒绝，请刷新页面或重新登录。"
+          })
+        )
+    };
+    const store = createTaskCallDebugStore(client, "api");
+    const denied = await store.takeResults("task", ["message-1"]);
+    expect(denied.state).toBe("request_rejected");
+    expect(denied.resultTakeError?.rejected).toBe(true);
+    expect(denied.results).toBeUndefined();
+    expect(client.callTask).not.toHaveBeenCalled();
+    const original = await store.send("task", JSON.stringify(request()));
+    await store.takeResults("task", original.messageIds, original.localId);
+    expect(original.state).toBe("observed");
+    expect(original.results).toEqual(success);
+    expect(original.resultTakeError?.rejected).toBe(true);
+    expect(client.callTask).toHaveBeenCalledTimes(1);
+    expect(client.takeResults).toHaveBeenCalledTimes(2);
+  });
   it("takes only pending IDs for follow-up and never erases received content with an empty take", async () => {
     const client = {
       callTask: vi

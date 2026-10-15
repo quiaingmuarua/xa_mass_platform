@@ -299,7 +299,11 @@ const stateLabels = {
           >
           <el-alert
             v-if="record.resultTakeError"
-            :title="'结果领取未确认，保留原快照：' + record.resultTakeError.message"
+            :title="
+              (record.resultTakeError.rejected
+                ? '结果领取被拒绝，保留原快照：'
+                : '结果领取未确认，保留原快照：') + record.resultTakeError.message
+            "
             type="error"
             :closable="false"
           />

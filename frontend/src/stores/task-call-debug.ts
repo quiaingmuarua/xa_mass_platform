@@ -5,7 +5,7 @@ import { defineStore } from "pinia";
 import type { RuntimeDataSourceMode } from "@/runtime-viewer/types";
 import {
   presentTaskCallDebugError,
-  TaskCallDebugError,
+  isTaskCallDebugRejection,
   taskCallDebugConfigurationError,
   type TaskCallDebugErrorPresentation
 } from "@/task-call-debug/errors";
@@ -124,15 +124,9 @@ export function createTaskCallDebugStore(
         item.readAt = now().toISOString();
         item.state = "observed";
       } catch (cause) {
-        item.state =
-          cause instanceof TaskCallDebugError &&
-          cause.kind === "http" &&
-          cause.status !== undefined &&
-          cause.status >= 400 &&
-          cause.status < 500 &&
-          cause.status !== 408
-            ? "request_rejected"
-            : "unconfirmed";
+        item.state = isTaskCallDebugRejection(cause)
+          ? "request_rejected"
+          : "unconfirmed";
         item.safeError = presentTaskCallDebugError(cause);
       }
       return item;
@@ -178,7 +172,10 @@ export function createTaskCallDebugStore(
         item.state = "observed";
       } catch (cause) {
         item.resultTakeError = presentTaskCallDebugError(cause);
-        if (!existing) item.state = "unconfirmed";
+        if (!existing)
+          item.state = isTaskCallDebugRejection(cause)
+            ? "request_rejected"
+            : "unconfirmed";
       } finally {
         item.checkingResult = false;
       }
