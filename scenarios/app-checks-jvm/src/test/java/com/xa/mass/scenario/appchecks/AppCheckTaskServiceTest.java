@@ -51,7 +51,7 @@ class AppCheckTaskServiceTest {
     ProjectTaskQueryService.Entry entry(String id, String state) {
         var metadata = metadata();
         return new ProjectTaskQueryService.Entry(id, 1L, new TaskView(id, "app-checks", "app-a-sim", "CLOSE_WHEN_IDLE",
-                List.of(RefillTarget.of("assignment-window", new EligibilityQuery(Map.of()), 100)), Map.of(), "test", metadata), state);
+                List.of(RefillTarget.of("assignment-window", new EligibilityQuery(Map.of()), 100)), Map.of(), "test", metadata), state, null);
     }
     static Map<String, String> metadata() {
         var result = new HashMap<>(Map.of("server.inputOwner", "app-checks", "scenario", "app-checks",
@@ -184,7 +184,7 @@ class AppCheckTaskServiceTest {
         try (var service = service()) {
             var task = new TaskView("stored", "app-checks", "app-a-sim", "CLOSE_WHEN_IDLE", List.of(), Map.of(), "stored name",
                     metadata());
-            var entry = new ProjectTaskQueryService.Entry("stored", 123L, task, "terminal");
+            var entry = new ProjectTaskQueryService.Entry("stored", 123L, task, "terminal", null);
             when(queries.get(CALLER, "app-checks", "stored")).thenReturn(entry);
             var item = new TaskItem(numberId("+86123"), "extension.worker.app.registration.check", 1L, Map.of("number", "+86123"), 5, 600_000L, new WorkerQuery("worker.any", Map.of()));
             var valid = Jsons.toJson(Map.of("number", "+86123", "workerGroupId", "app-a-sim", "workerId", "actual", "registered", false, "simulatedDelayMillis", 12));
@@ -201,7 +201,7 @@ class AppCheckTaskServiceTest {
             verifyNoInteractions(creation);
         }
     }
-    @Test void exportsOnlyAssociatedBusinessAnswersAndDeletesTheIntermediateFile() throws Exception {
+    @Test void exportsOnlyAssociatedBusinessAnswersFromCommonRecords() throws Exception {
         try (var service = service()) {
             when(queries.get(CALLER, "app-checks", "task")).thenReturn(entry("task", "terminal"));
             var items = new LinkedHashMap<String, TaskItem>();
@@ -220,20 +220,25 @@ class AppCheckTaskServiceTest {
                 if (kind.equals("wrong-number")) content.put("number", "+86124");
                 records.add(Jsons.toJson(Map.of("messageId", id, "opaqueResultPayload", kind.equals("bad-json") ? "not-json" : Jsons.toJson(content))));
             }
-            when(data.loadTaskItems(org.mockito.ArgumentMatchers.eq(CALLER), eq("task"), anyList())).thenReturn(items);
+            doAnswer(call -> {
+                java.util.function.Consumer<com.xa.mass.server.task.result.TaskResultRecord> consumer = call.getArgument(2);
+                for (String line : records) {
+                    var record = Jsons.parseObject(line);
+                    String id = (String) record.get("messageId");
+                    consumer.accept(new com.xa.mass.server.task.result.TaskResultRecord(id,
+                            com.xa.mass.kernel.task.TaskRuntime.TaskItemResult.succeeded((String) record.get("opaqueResultPayload")), items.get(id)));
+                }
+                return null;
+            }).when(exports).forEachResult(eq(CALLER), eq("task"), any());
             for (String filter : List.of("all", "registered", "unregistered")) {
-                var source = Files.createTempFile("app-check-export-test-", ".jsonl");
-                Files.write(source, records, StandardCharsets.UTF_8);
-                when(exports.export(CALLER, "task")).thenReturn(new TaskResultsExportService.TaskResultsExport(source));
                 var csv = service.export(CALLER, "task", filter);
                 try {
-                    assertThat(source).doesNotExist();
                     assertThat(csv.count()).isEqualTo(filter.equals("all") ? 2L : 1L);
                     var lines = Files.readAllLines(csv.file(), StandardCharsets.UTF_8);
                     assertThat(lines).hasSize((int) csv.count() + 1);
                     assertThat(lines.get(1)).startsWith("\"'+86123");
                     if (!filter.equals("all")) assertThat(lines.get(1)).contains(filter.equals("registered") ? "已注册" : "未注册");
-                } finally { Files.deleteIfExists(source); Files.deleteIfExists(csv.file()); }
+                } finally { Files.deleteIfExists(csv.file()); }
             }
         }
     }

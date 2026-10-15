@@ -3,6 +3,12 @@ server:
   port: ${PREVIEW_SERVER_PORT:18500}
 xa:
   mass:
+    task-retention:
+      enabled: ${XA_MASS_TASK_RETENTION_ENABLED:${xa.mass.kernel-pacer.enabled}}
+      grace: 1h
+      retention: 7d
+      interval: 1h
+      directory: ${XA_MASS_TASK_ARCHIVE_DIRECTORY:./data/task-archives}
     project-assembly:
       projects:
         - project-id: default

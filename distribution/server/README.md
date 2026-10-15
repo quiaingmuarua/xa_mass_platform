@@ -155,3 +155,13 @@ Preview adds [external-profile and packaged-launch checks](PREVIEW.md#archive-de
 The Runtime proof loads the external platform fixture, verifies that its Project
 bindings create no Tasks, then explicitly prepares its named RPC Tasks and
 point-reads their approved descriptors from the extracted archive.
+
+## Finite Task archives
+
+The Runtime consumes Boot's finite Task retention configuration and Server-owned
+archive files. Production keeps the configured archive directory across restarts;
+API readers of one scope share that storage. The Preview launcher instead supplies
+one private root for each generated test scope and cleans it on normal shutdown.
+See [Preview archives](PREVIEW.md#task-result-archives) and
+[Server retention](../../server_jvm/README.md#finite-task-retention). Packaging adds
+no background cleanup implementation or historical data migration.

@@ -11,6 +11,7 @@ export const developmentRoles: readonly RoleDefinition[] = [
     permissions: [
       "console.view",
       "users.manage",
+      "tasks.retention.manage",
       "runtime.view",
       "workbench.use",
       "messages.use",

@@ -349,16 +349,21 @@ Items are unreadable. No query is inferred from supply declarations. See
 
 Both raw HTTP creation and Scenario creation use `TaskCreationService.createForRequest`.
 A required business `requestId` (1..128 characters) is distinct from diagnostic HTTP
-`X-Request-Id`. The Task ID is `task-` plus SHA-256 of length-prefixed UTF-8
-`["xa-mass/task-create/v2", projectId, caller.identityKey(), requestId]`.
+`X-Request-Id`. TaskCreationRegistry atomically reserves a generated unique Task ID
+under the SHA-256 of length-prefixed UTF-8 `[projectId, caller.identityKey(), requestId]`.
+The Server-owned key is `xa_mass:<scope>:server:task-creation:<digest>`; its HASH
+retains taskId, fingerprint and inputOwner. `server.creationKey` links the Task to it.
 External identity keys are `user:<normalized-id>`; role is excluded. Internal service
 keys are `service:<project>`. Different callers do not collide on requestId.
 Raw creation fingerprints normalized supply/configuration and metadata; the business
 module supplies its own normalized-input fingerprint, excluding first-created display
 defaults. Immutable metadata retains the request and fingerprint. Matching inputs
-return the same Task across restarts; different inputs conflict. Missing Kernel
-resources remain unconfirmed without repair. Only directory membership can be
-explicitly confirmed from saved truth. No request registry or scheduling owner is added.
+return the same retained Task across restarts; different inputs conflict. A reserved
+identity can resume incomplete Kernel PRE_REVIEW creation. Unknown outcomes retain
+that identity; established inconsistent resources remain unconfirmed. Final purge
+conditionally removes the association by old Task ID. A later same-request creation
+gets a new execution identity, and delayed old reports cannot reach it. No permanent
+tombstone or scheduling owner is added.
 
 Finite approval accepts `{expectedItemCount}` with a positive integer. Inside the
 same `OperationGuard.taskMutation` admission, PRE_REVIEW compares the actual Item
@@ -368,9 +373,9 @@ of subsequent count changes; terminal Tasks are never reopened. RPC preparation
 keeps its independent approval path and does not require a finite-input count.
 
 `OperationGuard.taskMutation` shares one instance-local Task admission among file
-import, ordinary finite append, approval and closure. Synchronous nested calls on
-the owning thread retain the outer admission; another thread conflicts. The
-existing general export guard remains non-reentrant. No distributed lock or
+import, ordinary finite append, approval, closure, result-file generation and
+retention. Synchronous nested calls on the owning thread retain the outer admission;
+another thread conflicts. No distributed lock or
 cross-Server guarantee is implied.
 
 `TaskDataService.importFiniteTaskItems` admits at most 100 Items to a PRE_REVIEW
@@ -380,14 +385,71 @@ conflicts. Explicit re-import uses the original stored Item to initialize a
 missing Score through the existing append operation. A Score without Item data
 is unavailable, not reconstructed. Ordinary append semantics remain unchanged.
 GET `/api/v1/tasks/{taskId}/results:preview` exposes the existing bounded
-TaskDataService preview after TaskCaller admission: at most 100 entries and a
+common result view after TaskCaller admission: at most 100 entries and a
 truncation flag, without continuation. Entries contain messageId, nullable Item,
 and the existing Result state with opaque successful output. It is neither a
 latest-result ordering nor Task progress. Terminal successful JSONL export remains
 independent and complete; neither path applies Scenario business interpretation.
 
-`loadTaskItems` supplies bounded 100-ID reads to business export without Redis
-access from scenarios. None of these operations scans for substitute identities.
+TaskResultsExportService supplies one sequential Result/Input view from Redis or
+archive to common export and Scenario CSV. Scenarios do not read Redis or archive
+paths. No observation scans for substitute identities.
+
+### Finite Task retention
+
+Boot configures `xa.mass.task-retention`: grace=1h, retention=7d, interval=1h and
+an archive directory separate from temporary downloads. Retention is enabled on
+the configured maintenance instance, runs once at startup, and then uses one
+fixed-delay executor. All thresholds derive from first termination time. Actual
+freeze/deletion occurs on an eligible pass; repeated close does not renew retention.
+RPC and SMS shared Tasks are excluded by disposition.
+
+TaskRetentionService first scans expired Tasks, then archive-eligible Tasks, using
+bounded keyset pages of the existing Score index. Per-Task failures do not block
+subsequent identities. It freezes through Kernel, publishes immutable UTF-8 JSONL
+and a manifest atomically, and only then releases Redis inputs and Results. The
+archive stores each observed success/failure with its original Item association,
+including content whose independent Score is still ACTIVE. There is no random
+access index, payload-wide heap load, execution restore or additional statistics
+store. Scan deduplication retains message IDs and is not constant-memory.
+
+Files live under the configured root, SHA-256(scope base), SHA-256(Task ID).
+Pending directories are restart-retryable; a valid published archive is reused.
+The manifest records format, descriptor, freeze time, count, size and checksum.
+Readers verify file integrity before returning archived content. Verification
+reads the file sequentially even for bounded previews; no verification cache is
+introduced. Missing/corrupt archives are unavailable, never an empty-success view.
+
+After release, list/detail, statistics and Item states remain available. Their
+common Task entry includes retention phase, terminatedAtMillis, frozenAtMillis
+and expiresAtMillis. Previews keep their 100-row/truncated contract; raw successful
+JSONL and App Checks CSV retain their formats. Point Result/Item reads after
+release return `400/12014`, directing callers to preview/export. All access checks
+precede file reads. Reads crossing a data-phase change are rejected rather than
+returning a partial view. These remain independent observations, not an atomic
+execution snapshot or execution history.
+
+At expiry, PURGING prevents new application reads or directory confirmation. The
+service deletes archive/pending files and Kernel payloads/Item Score, removes its
+Project membership, conditionally removes the creation association, then asks
+Kernel to atomically delete descriptor and final Score membership. The descriptor
+retains cleanup context until that last operation. Failure preserves retry state;
+unknown completion is reconciled idempotently. Expired Tasks can be purged without
+a successful archive, and a retried old purge cannot remove a newer association.
+Shared Worker, Pool, queue and other Task resources are untouched.
+
+`POST /api/v1/tasks/{taskId}/retention:run` requires `tasks.retention.manage`
+(default admin) and uses the same use case. It cannot bypass age thresholds; a
+completed purge returns phase PURGED, which is not a persisted Task phase. There
+is no global job API or forced-delete endpoint. One maintenance instance per
+scope is required; API instances must share the archive storage. Task admission
+continues to use the existing instance-local OperationGuard, without distributed
+transactions or leader election. Scheduler shutdown precedes Redis owner closure.
+
+Use a new scope for this cutover. No old -1 terminal decoding, missing-phase
+fallback, deterministic-ID alias, historical association backfill or migration
+is provided. Final purge removes the Task from ordinary discovery and known-ID
+reads return the existing not-found contract.
 
 ### Managed Task Call
 
@@ -442,8 +504,9 @@ is tag 1; `terminal` is tags 2..9 and means scheduling ended, not frozen busines
 state. Score time is band-local, not a business event timestamp.
 
 Task scheduling and Item observation lifecycles remain independent: retained Items
-accept valid later observations after Task completion/closure without reopening
-scheduling. This promises neither permanent retention nor recreation of deleted
+accept valid later observations during OPEN after Task completion/closure without
+reopening scheduling. The finite retention fence ends this observation window.
+This promises neither permanent retention nor recreation of deleted
 Items. Server's application contract defines business finality.
 
 Export reads [Result Owner pages](../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md#taskitem-result-projection),
@@ -456,9 +519,9 @@ when the response stream closes, including failure paths. Server owns no Lab
 input/output directory.
 
 Terminal-only export is a scheduling admission rule, not a claim that business
-outcomes are immutable. Later observations may still change a retained Item's
-Result. Export reads pages over time rather than an atomic snapshot; another
-export may therefore contain newer content.
+outcomes are immutable. During OPEN, later observations may change Result content
+and export reads pages over time. Once frozen, export preserves the independent
+Score/Result state at the fence, without repairing differences.
 
 ### Later Task Outcomes
 

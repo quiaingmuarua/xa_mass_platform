@@ -22,19 +22,22 @@ public final class TaskLifecycleService {
     private final OperationGuard operations;
     private final com.xa.mass.kernel.score.TaskItemScoreBandCore itemScores;
     private final com.xa.mass.kernel.score.TaskScoreBandCore taskScores;
+    private final com.xa.mass.kernel.task.TaskRuntime runtime;
 
     public TaskLifecycleService(
             TaskLifecycleCommands lifecycle,
             TaskResourceCatalog catalog,
             OperationGuard operations,
             com.xa.mass.kernel.score.TaskItemScoreBandCore itemScores,
-            com.xa.mass.kernel.score.TaskScoreBandCore taskScores
+            com.xa.mass.kernel.score.TaskScoreBandCore taskScores,
+            com.xa.mass.kernel.task.TaskRuntime runtime
     ) {
         this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.operations = Objects.requireNonNull(operations, "operations");
         this.itemScores = Objects.requireNonNull(itemScores, "itemScores");
         this.taskScores = Objects.requireNonNull(taskScores, "taskScores");
+        this.runtime = Objects.requireNonNull(runtime, "runtime");
     }
 
     public ActionOutcome approve(TaskCaller caller, String taskId, long expectedItemCount) {
@@ -135,6 +138,10 @@ public final class TaskLifecycleService {
             throw failure(ServerErrorCode.TASK_NOT_FOUND, operation);
         }
         caller.requireTask(descriptor);
+        var data = runtime.loadTaskDataStates(List.of(taskId)).get(taskId);
+        if (data == null) throw failure(ServerErrorCode.TASK_NOT_FOUND, operation);
+        if (data.phase() == com.xa.mass.kernel.task.TaskRuntime.TaskDataPhase.PURGING)
+            throw failure(ServerErrorCode.TASK_STATE_CONFLICT, operation);
         if (descriptor.idleDisposition()
                 != TaskIdleDisposition.CLOSE_WHEN_IDLE) {
             throw failure(

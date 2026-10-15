@@ -16,7 +16,9 @@ class TaskDataPreviewTest {
     final TaskResourceCatalog catalog = mock(TaskResourceCatalog.class);
     final TaskItemScoreBandCore scores = mock(TaskItemScoreBandCore.class);
     final TaskDataService service = new TaskDataService(runtime, catalog, new TaskItemMapper(), scores,
-            new TaskItemOutcomeProperties(Map.of()), mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class), mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), new com.xa.mass.server.operation.OperationGuard());
+            new TaskItemOutcomeProperties(Map.of()), mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class), mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), new com.xa.mass.server.operation.OperationGuard(), com.xa.mass.server.testsupport.TaskRetentionFixtures.results(runtime, catalog, mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), new com.xa.mass.server.operation.OperationGuard()));
+
+    TaskDataPreviewTest() { com.xa.mass.server.testsupport.TaskRetentionFixtures.openData(runtime); }
 
     @Test void oneScanAndOneItemReadClampAnOversizedHashPageAndKeepFailures() {
         when(catalog.loadTaskAllocationDescriptors(List.of("task"))).thenReturn(Map.of("task",
@@ -31,6 +33,7 @@ class TaskDataPreviewTest {
         assertThat(preview.results().getFirst().result().status().wireValue()).isEqualTo("failed");
         verify(runtime).scanTaskItemResults("task", "0", 100);
         verify(runtime).loadTaskItems(eq("task"), argThat(ids -> ids.size() == 100));
+        verify(runtime, times(2)).loadTaskDataStates(List.of("task"));
         verifyNoMoreInteractions(runtime); verifyNoInteractions(scores);
         when(runtime.scanTaskItemResults("task", "0", 100)).thenReturn(new TaskRuntime.TaskItemResultPage("42", Map.of()));
         var sparse = service.previewTaskResults(CALLER, "task");

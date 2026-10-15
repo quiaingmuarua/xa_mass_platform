@@ -174,46 +174,35 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         if (!Set.of("all", "registered", "unregistered").contains(filter)) throw new RequestFailure(400, "无效导出范围", taskId);
         var task = requireCheck(caller, taskId).task();
         var snapshot = AppCheckTaskSnapshot.read(task.workerGroupId(), task.metadata(), contracts);
-        return operations.execute("app-checks-csv-export", taskId, () -> {
-            Path source = exports.export(caller, taskId).file();
+        return operations.taskMutation(taskId, () -> {
             Path csv = null;
             boolean complete = false;
             try {
                 csv = Files.createTempFile("app-check-results-", ".csv");
-                long count = 0;
-                try (var reader = Files.newBufferedReader(source, StandardCharsets.UTF_8);
-                     var writer = Files.newBufferedWriter(csv, StandardCharsets.UTF_8)) {
+                long[] count = {0};
+                try (var writer = Files.newBufferedWriter(csv, StandardCharsets.UTF_8)) {
                     writer.write("\uFEFF号码,注册状态,应用,地区\r\n");
-                    var payloads = new LinkedHashMap<String, String>();
-                    boolean finished = false;
-                    while (!finished) {
+                    exports.forEachResult(caller, taskId, result -> {
                         requireRunning();
-                        payloads.clear();
-                        while (payloads.size() < 100) {
-                            String line = reader.readLine();
-                            if (line == null) { finished = true; break; }
-                            var record = Jsons.parseObject(line);
-                            payloads.put((String) record.get("messageId"), (String) record.get("opaqueResultPayload"));
-                        }
-                        if (payloads.isEmpty()) break;
-                        var items = data.loadTaskItems(caller, taskId, List.copyOf(payloads.keySet()));
-                        for (var result : payloads.entrySet()) {
-                            var view = resultView(snapshot, new TaskDataService.ResultEntry(result.getKey(), items.get(result.getKey()),
-                                    TaskItemResultResponse.succeeded(result.getValue())));
-                            if (view.containsKey("contentError") || !(view.get("registered") instanceof Boolean registered)) continue;
-                            if (filter.equals("registered") && !registered || filter.equals("unregistered") && registered) continue;
+                        if (!result.result().succeeded()) return;
+                        var view = resultView(snapshot, new TaskDataService.ResultEntry(result.messageId(), result.item(),
+                                TaskItemResultResponse.from(result.result())));
+                        if (view.containsKey("contentError") || !(view.get("registered") instanceof Boolean registered)) return;
+                        if (filter.equals("registered") && !registered || filter.equals("unregistered") && registered) return;
+                        try {
                             writer.write(String.join(",", csvCell((String) view.get("number")), csvCell(registered ? "已注册" : "未注册"),
                                     csvCell(task.metadata().get("appId")), csvCell(task.metadata().get("country"))) + "\r\n");
-                            count++;
-                        }
-                    }
+                            count[0]++;
+                        } catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
+                    });
                 }
                 complete = true;
-                return new CsvExport(csv, taskId + "-" + filter + ".csv", count);
+                return new CsvExport(csv, taskId + "-" + filter + ".csv", count[0]);
+            } catch (com.xa.mass.server.error.ServerException denied) {
+                throw denied;
             } catch (IOException | RuntimeException error) {
                 var failure = new RequestFailure(503, "结果导出失败，请重新发起", taskId); failure.initCause(error); throw failure;
             } finally {
-                deleteTemporary(source);
                 if (!complete) deleteTemporary(csv);
             }
         });

@@ -16,6 +16,7 @@ import com.xa.mass.server.api.v1.contract.task.TaskCreateResponse;
 import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.server.task.directory.TaskAttribution;
 import com.xa.mass.server.task.directory.TaskDirectory;
+import com.xa.mass.server.task.directory.TaskCreationRegistry;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
@@ -42,6 +43,7 @@ public final class TaskCreationService {
     private final TaskScoreBandCore scores;
     private final OperationGuard operations;
     private final TaskDirectory directory;
+    private final TaskCreationRegistry creations;
     private static final String REQUEST_KEY = "server.creationRequest";
     private static final String FINGERPRINT_KEY = "server.creationFingerprint";
 
@@ -53,7 +55,8 @@ public final class TaskCreationService {
             TaskResourceCatalog taskCatalog,
             TaskScoreBandCore scores,
             OperationGuard operations,
-            TaskDirectory directory
+            TaskDirectory directory,
+            TaskCreationRegistry creations
     ) {
         this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
@@ -69,6 +72,7 @@ public final class TaskCreationService {
         this.scores = Objects.requireNonNull(scores, "scores");
         this.operations = Objects.requireNonNull(operations, "operations");
         this.directory = Objects.requireNonNull(directory, "directory");
+        this.creations = Objects.requireNonNull(creations, "creations");
     }
 
     public TaskCreateResponse create(TaskCaller caller, TaskCreateRequest request) {
@@ -96,18 +100,35 @@ public final class TaskCreationService {
                 || fingerprint == null || !fingerprint.matches("[0-9a-f]{64}"))
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION, "Invalid creation identity", null);
         caller.requireProject(request.projectId());
-        String taskId = "task-" + digest("xa-mass/task-create/v2", request.projectId(), caller.identityKey(), request.requestId());
+        TaskCreationRegistry.Claim retained;
+        try { retained = creations.find(request.projectId(), caller.identityKey(), request.requestId(), inputOwner, fingerprint); }
+        catch (ServerException known) { throw known; }
+        catch (RuntimeException unavailable) { throw unavailable(unavailable); }
+        List<RefillTarget> normalizedTargets = null;
+        if (retained == null) {
+            normalizedTargets = validateNewCreation(caller, request, inputOwner, fingerprint);
+            retained = creations.reserve(request.projectId(), caller.identityKey(), request.requestId(), inputOwner, fingerprint);
+        }
+        var claim = retained;
+        var admittedTargets = normalizedTargets;
+        String taskId = claim.taskId();
         var admitted = request;
         return operations.taskMutation(taskId, () -> {
+            final boolean current;
+            try { current = creations.isCurrent(claim); }
+            catch (RuntimeException uncertain) { throw new TaskCreationUnconfirmedException(taskId, uncertain); }
+            if (!current)
+                throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, OPERATION, "Creation association changed; retry the same requestId", null);
             var existing = existingCreation(caller, inputOwner, taskId, admitted.projectId(), admitted.requestId(), fingerprint);
             if (existing != null) return existing;
             var metadata = new java.util.LinkedHashMap<>(admitted.metadata());
             metadata.put(REQUEST_KEY, admitted.requestId());
             metadata.put(FINGERPRINT_KEY, fingerprint);
             metadata.put(TaskCaller.INPUT_OWNER, inputOwner);
+            metadata.put(TaskCreationRegistry.METADATA_KEY, claim.key());
             try {
                 return create(caller, new TaskCreateRequest(admitted.requestId(), admitted.projectId(), admitted.workerGroupId(), admitted.priority(),
-                        admitted.maxRetryTimes(), admitted.refill(), admitted.name(), metadata), taskId);
+                        admitted.maxRetryTimes(), admitted.refill(), admitted.name(), metadata), taskId, admittedTargets);
             } catch (ServerException conflict) {
                 if (conflict.errorCode() != ServerErrorCode.TASK_STATE_CONFLICT) throw conflict;
                 existing = existingCreation(caller, inputOwner, taskId, admitted.projectId(), admitted.requestId(), fingerprint);
@@ -121,8 +142,17 @@ public final class TaskCreationService {
         try {
             var descriptor = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
             if (descriptor != null) caller.requireTask(descriptor);
+            if (descriptor != null) {
+                var dataState = taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId);
+                if (dataState == null) throw new TaskCreationUnconfirmedException(taskId, null);
+                if (dataState.phase() == TaskRuntime.TaskDataPhase.PURGING)
+                    throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, OPERATION, "Task cleanup is in progress", null);
+            }
             var state = scores.getScoreStates(List.of(taskId)).get(taskId);
             if (descriptor == null && state == null && !directory.contains(projectId, taskId)) return null;
+            // A reserved identity with only a PRE_REVIEW Score is an incomplete
+            // Kernel creation. Re-enter its existing create reconciliation.
+            if (descriptor == null && state != null && state.band() == TaskScoreBandCore.TaskScoreBand.PRE_REVIEW) return null;
             if (descriptor == null || state == null)
                 throw new TaskCreationUnconfirmedException(taskId, null);
             if (!inputOwner.equals(descriptor.metadata().get(TaskCaller.INPUT_OWNER))
@@ -149,15 +179,36 @@ public final class TaskCreationService {
         } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
 
-    private TaskCreateResponse create(TaskCaller caller, TaskCreateRequest request, String taskId) {
+    private List<RefillTarget> validateNewCreation(TaskCaller caller, TaskCreateRequest request, String inputOwner, String fingerprint) {
+        projects.requireWorkerGroup(request.projectId(), request.workerGroupId());
+        requireWorkerGroup(request.workerGroupId());
+        var targets = resolveTargets(request);
+        var metadata = new java.util.LinkedHashMap<>(request.metadata());
+        metadata.put(REQUEST_KEY, request.requestId()); metadata.put(FINGERPRINT_KEY, fingerprint);
+        metadata.put(TaskCaller.INPUT_OWNER, inputOwner); metadata.put(TaskCreationRegistry.METADATA_KEY, "0".repeat(64));
+        try {
+            // Validate the complete stored shape before reserving any durable intent.
+            new TaskDescriptor("validation", request.workerGroupId(), TaskIdleDisposition.CLOSE_WHEN_IDLE,
+                    Map.of("priority", request.priority().toString(), "maxRetryTimes", request.maxRetryTimes().toString()),
+                    targets, request.name(), new TaskAttribution(request.projectId(), System.currentTimeMillis(), caller.userId()).stamp(metadata));
+        } catch (IllegalArgumentException invalid) {
+            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION, invalid.getMessage(), invalid);
+        }
+        return targets;
+    }
+
+    private TaskCreateResponse create(TaskCaller caller, TaskCreateRequest request, String taskId, List<RefillTarget> admittedTargets) {
         if (request == null || request.workerGroupId() == null || request.workerGroupId().isBlank()
                 || request.priority() < 0 || request.priority() > 99
                 || request.maxRetryTimes() < 0 || request.maxRetryTimes() > 98) {
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION, "Invalid Task creation request", null);
         }
-        projects.requireWorkerGroup(request.projectId(), request.workerGroupId());
-        requireWorkerGroup(request.workerGroupId());
-        List<RefillTarget> targets = resolveTargets(request);
+        List<RefillTarget> targets = admittedTargets;
+        if (targets == null) {
+            projects.requireWorkerGroup(request.projectId(), request.workerGroupId());
+            requireWorkerGroup(request.workerGroupId());
+            targets = resolveTargets(request);
+        }
         var config = new java.util.LinkedHashMap<String, String>();
         config.put("priority", Integer.toString(request.priority()));
         config.put("maxRetryTimes", Integer.toString(request.maxRetryTimes()));

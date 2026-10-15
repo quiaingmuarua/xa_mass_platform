@@ -24,24 +24,23 @@ class ProjectTaskQueryServiceTest {
     private final TaskResourceCatalog tasks = mock(TaskResourceCatalog.class);
     private final TaskScoreBandCore scores = mock(TaskScoreBandCore.class);
     private final TaskDirectory directory = mock(TaskDirectory.class);
-    private final ProjectTaskQueryService service = new ProjectTaskQueryService(projects, tasks, scores, directory, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class));
+    private final com.xa.mass.kernel.task.TaskRuntime runtime = com.xa.mass.server.testsupport.TaskRetentionFixtures.openRuntime();
+    private final ProjectTaskQueryService service = new ProjectTaskQueryService(projects, tasks, scores, directory, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class), runtime, com.xa.mass.server.testsupport.TaskRetentionFixtures.properties());
 
     private TaskDescriptor task(String id, String project, long time, String user) {
         return new TaskDescriptor(id, "g", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"),
                 List.of(), null, new TaskAttribution(project, time, user).stamp(user == null ? Map.of() : Map.of("userId", user)));
     }
 
-    @Test void sortsOnlyTheSelectedBatchAndPreservesUnknownProjectionsWithoutFabricatedTime() {
+    @Test void sortsOnlyTheSelectedBatchAndSkipsRemovedTasksWithoutRefilling() {
         when(directory.list("p", null, 2)).thenReturn(new TaskDirectory.Batch(List.of(
                 new TaskDirectory.Member("a", 0), new TaskDirectory.Member("b", 0)), true));
         when(tasks.loadTaskAllocationDescriptors(List.of("a", "b"))).thenReturn(Map.of("b", task("b", "p", 20, null)));
         when(scores.getScoreStates(List.of("a", "b"))).thenReturn(Map.of("b", new TaskScoreState("b", -1, TaskScoreBand.TERMINAL, null, null)));
         var result = service.list(CALLER, "p", 2, null);
         assertThat(result.truncated()).isTrue();
-        assertThat(result.tasks()).extracting(ProjectTaskQueryService.Entry::taskId).containsExactly("b", "a");
+        assertThat(result.tasks()).extracting(ProjectTaskQueryService.Entry::taskId).containsExactly("b");
         assertThat(result.tasks().getFirst().createdAtMillis()).isEqualTo(20);
-        assertThat(result.tasks().getLast().createdAtMillis()).isNull();
-        assertThat(result.tasks().getLast().task()).isNull();
         verify(directory).list("p", null, 2);
         verifyNoMoreInteractions(directory);
     }

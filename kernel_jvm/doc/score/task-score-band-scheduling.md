@@ -32,7 +32,7 @@ Current tags and fixed coordinates are:
 ```text
 RUNNING_VISIBLE = 1
 PRE_REVIEW      = 2
-TERMINAL        = any negative score
+TERMINAL        = -terminatedAtMillis (first successful close, Owner clock)
 
 INITIAL_TIME_SLOT      = 100
 INITIAL_TIME_MILLIS    = 10_000
@@ -124,8 +124,8 @@ start_observed_pre_review_task(
     priority,
 )
 promote_observed_initial_tasks(observed_initial_scores_by_task_id)
-close_score(task_id, terminal_score)
-close_observed_score(task_id, observed_score, terminal_score)
+close_score(task_id)
+close_observed_score(task_id, observed_score)
 ```
 
 RUNNING pacing operations:
@@ -225,6 +225,22 @@ tryReleaseIdlePark
 INITIAL lies below the private park coordinate, so both release calls are
 owner no-ops for an INITIAL Task. Its new Item is discovered by Initialization.
 
+## Terminal Retention Observation
+
+`closeScore` and `closeObservedScore` construct the terminal value from the injected
+Owner clock. Repeated closure preserves the first value. `TaskScoreState.terminatedAtMillis()`
+exposes that fact without repurposing the positive band's scheduling time. The old
+constant -1 is not valid persisted terminal data; use a fresh scope.
+
+`scanTerminalTasks(cutoffMillis, cursor, limit)` is a separate maintenance read,
+with a 1..1000 row budget. It keyset-pages the existing Score ZSET by `(score, taskId)`;
+the opaque cursor remains usable after deletion of the previous page, including
+same-time Tasks. A bounded Lua locates the insertion rank and returns one page.
+Corrupt rows consume budget and are skipped without blocking later identities.
+This is not a new terminal queue, scheduling root or public list pagination.
+The caller checks finite disposition and applies retention policy. Task Score is
+kept until all Task resources, application associations and archive files are removed.
+
 ## Runtime Preview
 
 `preview_score_states(1..1000)` performs one descending ZSET read. It is a
@@ -241,8 +257,9 @@ as a timestamp. NORMAL RUNNING keeps the existing `running_visible` view.
 - Initialization observations may become stale before execution; exact CAS
   discards them without repair writes.
 - Terminal scores never reopen.
-- Score and Descriptor/Item owners remain independent; no cross-key Lua is
-  introduced.
+- Scheduling commits remain independent. Finite retention is the named exception:
+  its resource transaction exact-compares the observed terminal Score while
+  changing the Task data fence, and removes the descriptor with the final Score.
 - Existing ADMISSION data is not decoded or migrated. Deployment must clear
   old Task score data before enabling this contract.
 

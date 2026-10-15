@@ -1,3 +1,4 @@
+import { MockTaskRetention } from "@/task-management/retention";
 import type { MockUserDirectorySource } from "@/user-directory-source";
 import {
   TaskApiError,
@@ -313,10 +314,16 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
   private readonly imports = new Map<string, ImportSnapshot>();
   private readonly imported = new Map<string, string[]>();
   private sequence = 0;
+  private readonly retention: MockTaskRetention;
 
-  constructor(private readonly directory: MockUserDirectorySource) {
+  constructor(
+    private readonly directory: MockUserDirectorySource,
+    now: () => number = Date.now
+  ) {
+    this.retention = new MockTaskRetention(now);
     let ownerIndex = 0;
     for (const record of this.records.values()) {
+      this.retention.observe(record.task);
       if (record.task.appId && !record.task.managed)
         record.task.userId =
           developmentUsers[ownerIndex++ % developmentUsers.length]!.userId;
@@ -435,6 +442,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
   private require(id: string) {
     const record = this.records.get(id);
     if (!record) throw new Error("没有找到 Mock 任务，刷新应用会重置会话数据。");
+    this.retention.observe(record.task);
     return record;
   }
   previewState(caller: TaskCaller, id: string): PreviewState {
@@ -605,6 +613,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       throw new Error("已结束或状态不可用的任务不能再次关闭");
     const cancelled = record.task.state === "pre_review";
     record.task.state = "terminal";
+    this.retention.observe(record.task);
     this.states.set(id, { endReason: cancelled ? "cancelled" : "stopped" });
     this.recordActivity(
       id,
@@ -613,8 +622,9 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     );
   }
   private appendResults(id: string, count: number) {
-    const record = this.require(id),
-      total = record.task.totalCount ?? 0;
+    const record = this.require(id);
+    this.retention.requireWritable(record.task);
+    const total = record.task.totalCount ?? 0;
     const start = record.results.length,
       end = Math.min(total, start + count);
     if (end <= start) return;
@@ -683,6 +693,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     this.recordActivity(id, late ? "已有执行返回结果" : "推进一批演示结果");
     if (!record.task.activeCount && record.task.state !== "terminal") {
       record.task.state = "terminal";
+      this.retention.observe(record.task);
       this.states.set(id, { endReason: "completed" });
       this.recordActivity(id, "查询结束");
     }
@@ -693,8 +704,30 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     const record = this.running(id);
     this.appendResults(id, record.task.totalCount ?? 0);
     record.task.state = "terminal";
+    this.retention.observe(record.task);
     this.states.set(id, { endReason: "completed" });
     this.recordActivity(id, "查询结束", "剩余演示结果已生成");
+  }
+  async runRetention(caller: TaskCaller, id: string) {
+    caller = this.directory.resolveCaller(caller, "app-checks");
+    requireCallerPermission(caller, "tasks.retention.manage");
+    const record = this.owned(caller, id);
+    const outcome = this.retention.maintain(record.task);
+    if (outcome === "archived") this.imported.delete(id);
+    if (outcome === "purged") {
+      for (const map of [
+        this.records,
+        this.reads,
+        this.states,
+        this.activities,
+        this.imports,
+        this.imported
+      ])
+        map.delete(id);
+      for (const [key, request] of this.requests)
+        if (request.taskId === id) this.requests.delete(key);
+    }
+    return outcome;
   }
   async loadImport(caller: TaskCaller, id: string) {
     this.owned(caller, id);

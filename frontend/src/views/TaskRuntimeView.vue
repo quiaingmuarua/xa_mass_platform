@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TaskRetentionNotice from "@/components/TaskRetentionNotice.vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElInputNumber, ElMessage } from "element-plus";
@@ -331,6 +332,7 @@ function workbenchLink() {
         <p v-else class="raw-muted">
           任务归属未提供或 Project 不在当前目录中，无法进入任务工作台。
         </p>
+        <TaskRetentionNotice :retention="detail.retention" />
         <TaskResultExport :key="detail.taskId" :task="detail" :fresh="fresh" />
         <JsonBlock :value="detail" />
       </template>

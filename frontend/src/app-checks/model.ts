@@ -1,3 +1,4 @@
+import { taskRetentionSchema } from "@/task-management/retention";
 import { z } from "zod";
 import type { TaskPolicySnapshot } from "./configuration";
 
@@ -62,6 +63,7 @@ export const taskStateLabels = {
   terminal: "已结束"
 };
 export const taskSchema = z.object({
+  retention: taskRetentionSchema.nullable().optional(),
   taskId: z.string().min(1),
   userId: z.string().min(1).optional(),
   name: z.string().optional(),

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TaskRetentionNotice from "@/components/TaskRetentionNotice.vue";
 import { TaskApiError } from "@/task-caller";
 
 import {
@@ -254,6 +255,7 @@ defineExpose({ refresh, focusHeading });
         <el-button v-if="!busy" @click="refresh">重新读取</el-button>
       </div>
       <template v-else>
+        <TaskRetentionNotice :retention="detail.task.retention" />
         <header class="checks-preview-meta">
           <div>
             <div class="checks-title-line">
@@ -264,7 +266,8 @@ defineExpose({ refresh, focusHeading });
             </div>
             <p class="checks-hint">
               创建者 {{ identityLabel(detail.task.userId) }} · 号码总量
-              {{ quantity(detail.task.totalCount) }} · 未结束
+              {{ quantity(detail.task.totalCount) }} ·
+              {{ detail.task.state === "terminal" ? "未完成" : "未结束" }}
               {{ quantity(detail.task.activeCount) }}
             </p>
             <small class="checks-hint">最近读取 {{ timestamp(readAt) }}</small>

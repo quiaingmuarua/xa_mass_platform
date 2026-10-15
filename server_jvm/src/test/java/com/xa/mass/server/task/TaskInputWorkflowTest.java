@@ -1,4 +1,5 @@
 package com.xa.mass.server.task;
+import com.xa.mass.server.task.directory.TaskCreationRegistry;
 
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -26,14 +27,16 @@ class TaskInputWorkflowTest {
     final TaskScoreBandCore scores = mock(TaskScoreBandCore.class);
     final TaskItemScoreBandCore itemScores = mock(TaskItemScoreBandCore.class);
     final WorkerMatchingCatalog matching = mock(WorkerMatchingCatalog.class);
+    final TaskCreationRegistry creations = com.xa.mass.server.testsupport.TaskRetentionFixtures.creations();
     final OperationGuard guard = new OperationGuard();
     final TaskDataService data = new TaskDataService(runtime, catalog, new TaskItemMapper(Clock.fixed(Instant.ofEpochMilli(1000), ZoneOffset.UTC)),
-            itemScores, new TaskItemOutcomeProperties(Map.of()), matching, scores, guard);
+            itemScores, new TaskItemOutcomeProperties(Map.of()), matching, scores, guard, com.xa.mass.server.testsupport.TaskRetentionFixtures.results(runtime, catalog, scores, guard));
     final Map<String, TaskRuntime.TaskDescriptor> descriptors = new HashMap<>();
     final Map<String, TaskScoreBandCore.TaskScoreState> states = new HashMap<>();
     final com.xa.mass.server.task.directory.TaskDirectory directory = mock(com.xa.mass.server.task.directory.TaskDirectory.class);
 
     TaskInputWorkflowTest() {
+        com.xa.mass.server.testsupport.TaskRetentionFixtures.openData(runtime);
         when(catalog.loadTaskAllocationDescriptors(anyList())).thenAnswer(c -> descriptors);
         when(scores.getScoreStates(anyList())).thenAnswer(c -> states);
         when(matching.normalizeQuery(anyString(), any())).thenAnswer(c -> c.getArgument(1));
@@ -43,7 +46,7 @@ class TaskInputWorkflowTest {
     TaskCreationService creator() {
         var workers = mock(WorkerResourceCatalog.class);
         when(workers.getWorkerGroupDescriptors(anyList())).thenReturn(Collections.singletonMap("g", mock(com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor.class)));
-        return new TaskCreationService(workers, matching, runtime, mock(ProjectDirectory.class), catalog, scores, guard, directory);
+        return new TaskCreationService(workers, matching, runtime, mock(ProjectDirectory.class), catalog, scores, guard, directory, creations);
     }
     TaskRuntime.TaskDescriptor descriptor(String id) {
         return new TaskRuntime.TaskDescriptor(id, "g", TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE,
@@ -169,7 +172,7 @@ class TaskInputWorkflowTest {
     @Test void importAdmissionBlocksEveryOtherMutationButAllowsItsOwnBatches() throws Exception {
         pending("t");
         var commands = mock(TaskLifecycleCommands.class);
-        var lifecycle = new TaskLifecycleService(commands, catalog, guard, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class));
+        var lifecycle = new TaskLifecycleService(commands, catalog, guard, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), runtime);
         var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var operation = executor.submit(() -> guard.taskMutation("t", () -> {

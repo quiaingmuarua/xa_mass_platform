@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TaskRetentionNotice from "@/components/TaskRetentionNotice.vue";
 import { can } from "@/access-policy";
 import { captureTaskCaller } from "@/console-identity";
 
@@ -182,8 +183,9 @@ defineExpose({
     />
     <p v-if="!detail">{{ busy ? "正在读取任务…" : "没有可用快照，请重试读取。" }}</p>
     <template v-else>
+      <TaskRetentionNotice :retention="detail.task.retention" />
       <p v-if="detail.task.state === 'terminal'" class="message-hint">
-        调度已结束，后续回执仍可更新。已发送、已送达、已读与已回复是累计阶段，不能相加。
+        已发送、已送达、已读与已回复是累计阶段，不能相加。冻结后不再接收回执更新。
       </p>
       <dl v-if="detail.task.state !== 'pre_review'" class="message-counts">
         <div v-for="[label, count] in counts" :key="label">

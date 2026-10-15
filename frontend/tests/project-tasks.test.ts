@@ -50,7 +50,15 @@ it("first asynchronous loads notify computed list and Group consumers", async ()
     tasks: vi.fn().mockResolvedValue({
       projectId: "p",
       truncated: false,
-      tasks: [{ taskId: "one", createdAtMillis: 1, scoreBand: null, task: null }]
+      tasks: [
+        {
+          taskId: "one",
+          createdAtMillis: 1,
+          retention: null,
+          scoreBand: null,
+          task: null
+        }
+      ]
     }),
     groups: vi.fn().mockResolvedValue([
       {
@@ -96,9 +104,16 @@ it("reads startup Projects and complete backend-shaped TaskViews with null proje
               taskId: "t",
               createdAtMillis: 12,
               task: descriptor,
+              retention: null,
               scoreBand: "pre_review"
             },
-            { taskId: "missing", createdAtMillis: 10, task: null, scoreBand: null }
+            {
+              taskId: "missing",
+              createdAtMillis: 10,
+              task: null,
+              retention: null,
+              scoreBand: null
+            }
           ]
         })
       )
@@ -153,7 +168,13 @@ it("Mock has a consistent directory and no service requests", async () => {
 });
 it("late detail responses cannot overwrite another task; refresh failure retains snapshot and time", async () => {
   let resolveOld!: (value: unknown) => void;
-  const current = { taskId: "new", task: null, createdAtMillis: 2, scoreBand: null };
+  const current = {
+    taskId: "new",
+    task: null,
+    createdAtMillis: 2,
+    retention: null,
+    scoreBand: null
+  };
   const source = {
     task: vi
       .fn()
@@ -206,7 +227,13 @@ it("accepts the exact DTO fixture asserted by the Server serializer", () => {
 });
 
 it("a pre-mutation read cannot make an invalidated snapshot fresh again", async () => {
-  const current = { taskId: "rpc", task: null, createdAtMillis: 2, scoreBand: null };
+  const current = {
+    taskId: "rpc",
+    task: null,
+    createdAtMillis: 2,
+    retention: null,
+    scoreBand: null
+  };
   let release!: (value: unknown) => void;
   const source = {
     task: vi

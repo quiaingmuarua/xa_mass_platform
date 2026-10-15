@@ -218,7 +218,8 @@ A higher tag advances even with an earlier time. A lower tag cannot advance
 even with a later time. At the same terminal tag only a later slot advances;
 different milliseconds in the same slot are a no-op. Empty owner batches are
 empty no-ops. Missing and corrupt members are never initialized by promotion.
-There is no difference threshold, confirmation read, Redis `TIME`, cross-key
+There is no difference threshold, confirmation read, or Redis `TIME`. Apart from
+the parent retention fence there is no cross-key
 transaction or Result lookup in this operation.
 
 Concurrent promotions retain the maximum legal score. A terminal promotion
@@ -647,3 +648,15 @@ member scan, Result read, Redis TIME, persisted counter or repair. Counts within
 one Task share the operation; different Tasks and Result content do not share a
 snapshot. Range counting is not a per-member corruption audit. Server applications
 interpret the tag totals; this operation changes no scheduling state.
+
+## Retention Fence
+
+Initialization, exact claim/retry CAS and terminal promotion check the parent
+Task's dataPhase in the same Lua as their Item Score mutation. Missing, FROZEN,
+RELEASED or PURGING parents admit no writes and return NOT_FOUND for otherwise
+valid targets. The descriptor gate is a narrow cross-key retention dependency;
+Project, user, archive paths and retention durations remain outside this Owner.
+Reads and count aggregation retain their original single-ZSET semantics. Server
+checks phase around application observations to reject reads crossing reclamation.
+Released payloads do not remove Item Score or rewrite unfinished members. All
+members are removed only in final finite Task purge.

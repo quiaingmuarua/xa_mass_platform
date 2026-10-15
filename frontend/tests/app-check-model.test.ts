@@ -253,6 +253,7 @@ describe("App Checks data boundary", () => {
       taskId: "another",
       createdAtMillis: 1,
       scoreBand: "pre_review",
+      retention: null,
       task: null
     };
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(detail)));

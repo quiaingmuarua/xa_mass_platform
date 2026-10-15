@@ -51,6 +51,7 @@ class TaskResultsExportServiceTest {
         taskCatalog = mock(TaskResourceCatalog.class);
         taskScores = mock(TaskScoreBandCore.class);
         taskRuntime = mock(TaskRuntime.class);
+        com.xa.mass.server.testsupport.TaskRetentionFixtures.openData(taskRuntime);
         operations = new OperationGuard();
         service = new TaskResultsExportService(
                 taskCatalog,
@@ -59,7 +60,7 @@ class TaskResultsExportServiceTest {
                 JsonMapper.builder().build(),
                 temporaryDirectory,
                 operations
-        );
+        , org.mockito.Mockito.mock(com.xa.mass.server.task.retention.TaskResultArchive.class));
         when(taskCatalog.loadTaskAllocationDescriptors(anyList()))
                 .thenReturn(Map.of("task-1", finiteTask("task-1")));
         doReturn(Map.of(
@@ -205,7 +206,7 @@ class TaskResultsExportServiceTest {
                 JsonMapper.builder().build(),
                 notDirectory,
                 operations
-        );
+        , org.mockito.Mockito.mock(com.xa.mass.server.task.retention.TaskResultArchive.class));
         doReturn(Map.of(
                         "task-1",
                         score("task-1", TaskScoreBand.TERMINAL)
@@ -247,11 +248,10 @@ class TaskResultsExportServiceTest {
 
     @Test
     void concurrentExportForTheSameTaskIsRejectedAndLaterRetryIsAllowed() {
-        operations.execute(
-                TaskResultsExportService.OPERATION_NAMESPACE,
+        operations.taskMutation(
                 "task-1",
                 () -> {
-                    assertThatThrownBy(() -> service.export(CALLER, "task-1"))
+                    java.util.concurrent.CompletableFuture.runAsync(() -> assertThatThrownBy(() -> service.export(CALLER, "task-1"))
                             .isInstanceOfSatisfying(
                                     ServerException.class,
                                     error -> assertThat(error.errorCode())
@@ -259,7 +259,7 @@ class TaskResultsExportServiceTest {
                                                     ServerErrorCode
                                                             .TASK_STATE_CONFLICT
                                             )
-                            );
+                            )).join();
                     return null;
                 }
         );

@@ -427,3 +427,11 @@ the Result Application. These remain separate proof claims.
 - Do not decode opaque Score structure outside its owner.
 - Do not move candidate selection, Worker lease, Item claim, retry, recovery,
   or Task finality into Server.
+
+## Finite retention boundary
+
+Idle settlement still owns the natural-close decision. TaskScoreBandCore records
+the first terminal time; Pacer passes only the exact observation, never a terminal
+coordinate. Server separately runs data retention and file maintenance. Frozen
+Task data does not stop Result lane consumption or correlated Worker release,
+and creates no new Pacer root, result repair queue or execution retry policy.

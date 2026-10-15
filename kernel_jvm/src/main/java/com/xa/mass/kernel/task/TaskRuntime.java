@@ -55,6 +55,33 @@ public interface TaskRuntime {
             int countHint
     );
 
+    enum TaskDataPhase { OPEN, FROZEN, RELEASED, PURGING }
+
+    record TaskDataState(TaskDataPhase phase, @Nullable Long frozenAtMillis) {
+        public TaskDataState {
+            Objects.requireNonNull(phase, "phase");
+            if (frozenAtMillis != null && frozenAtMillis <= 1
+                    || (phase == TaskDataPhase.FROZEN || phase == TaskDataPhase.RELEASED) && frozenAtMillis == null
+                    || phase == TaskDataPhase.OPEN && frozenAtMillis != null)
+                throw new IllegalArgumentException("Task freeze time differs from data phase");
+        }
+    }
+
+    default Map<String, @Nullable TaskDataState> loadTaskDataStates(List<String> taskIds) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("TaskRuntime", "loadTaskDataStates");
+    }
+
+    /** Exact terminal Score fencing; these are finite Task resource operations, not timers. */
+    default boolean freezeTaskData(String taskId, long observedTerminalScore) { throw unsupportedRetention("freezeTaskData"); }
+    default boolean releaseTaskPayloads(String taskId, long observedTerminalScore) { throw unsupportedRetention("releaseTaskPayloads"); }
+    default boolean beginTaskPurge(String taskId, long observedTerminalScore) { throw unsupportedRetention("beginTaskPurge"); }
+    default boolean purgeTaskData(String taskId, long observedTerminalScore) { throw unsupportedRetention("purgeTaskData"); }
+    default boolean finishTaskPurge(String taskId, long observedTerminalScore) { throw unsupportedRetention("finishTaskPurge"); }
+
+    private static RuntimeException unsupportedRetention(String method) {
+        return new com.xa.mass.kernel.KernelOperationNotImplementedException("TaskRuntime", method);
+    }
+
     enum TaskIdleDisposition {
         CLOSE_WHEN_IDLE,
         PARK_WHEN_IDLE

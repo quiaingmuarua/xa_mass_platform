@@ -1,12 +1,12 @@
 package com.xa.mass.kernel.score.redis;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
+import com.xa.mass.kernel.redis.TaskRedisKeys;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisFuture;
 import io.lettuce.core.ScoredValue;
 import io.lettuce.core.ScriptOutputType;
-import io.lettuce.core.ZAddArgs;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -30,6 +30,7 @@ public final class RedisTaskItemScoreBandCore
             return counts
             """;
     private static final String CAS_UPDATE_SCRIPT = """
+            if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return {'not_found'} end
             local key = KEYS[1]
             local message_id = ARGV[1]
             local observed_score = tonumber(ARGV[2])
@@ -46,6 +47,7 @@ public final class RedisTaskItemScoreBandCore
             return {"transitioned", next_score}
             """;
     private static final String PROMOTE_OUTCOMES_SCRIPT = """
+            local writable = redis.call('HGET', KEYS[2], 'dataPhase') == 'OPEN'
             local key = KEYS[1]
             local tag_factor = tonumber(ARGV[1])
             local suffix_factor = tonumber(ARGV[2])
@@ -53,7 +55,7 @@ public final class RedisTaskItemScoreBandCore
             for i = 3, #ARGV, 2 do
               local target_score = tonumber(ARGV[i + 1])
               local stored = redis.call("ZSCORE", key, ARGV[i])
-              if not stored then
+              if not writable or not stored then
                 results[#results + 1] = {"not_found"}
               else
                 local current = tonumber(stored)
@@ -72,6 +74,10 @@ public final class RedisTaskItemScoreBandCore
               end
             end
             return results
+            """;
+    private static final String INITIALIZE_SCRIPT = """
+            if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return -1 end
+            return redis.call('ZADD', KEYS[1], 'NX', ARGV[1], ARGV[2])
             """;
 
     private final RedisClient redisClient;
@@ -187,10 +193,10 @@ public final class RedisTaskItemScoreBandCore
             List<RedisFuture<Long>> futures = new ArrayList<>(pending.size());
             String key = scoreKey(taskId);
             pending.forEach((messageId, initialScore) -> futures.add(
-                    async.zadd(
-                            key,
-                            ZAddArgs.Builder.nx(),
-                            initialScore.doubleValue(),
+                    async.eval(
+                            INITIALIZE_SCRIPT, ScriptOutputType.INTEGER,
+                            new String[]{key, TaskRedisKeys.descriptor(keyspace, taskId)},
+                            Long.toString(initialScore),
                             messageId
                     )
             ));
@@ -208,7 +214,7 @@ public final class RedisTaskItemScoreBandCore
                                         entry.getValue()
                                 )
                                 : transition(
-                                        TaskItemScoreTransitionStatus.NOOP
+                                        added != null && added == -1L ? TaskItemScoreTransitionStatus.NOT_FOUND : TaskItemScoreTransitionStatus.NOOP
                                 )
                 );
                 index++;
@@ -261,7 +267,7 @@ public final class RedisTaskItemScoreBandCore
         List<?> replies = commands().eval(
                 PROMOTE_OUTCOMES_SCRIPT,
                 ScriptOutputType.MULTI,
-                new String[]{scoreKey(taskId)},
+                new String[]{scoreKey(taskId), TaskRedisKeys.descriptor(keyspace, taskId)},
                 arguments.toArray(String[]::new)
         );
         if (replies == null || replies.size() != orderedMessageIds.size()) {
@@ -439,7 +445,7 @@ public final class RedisTaskItemScoreBandCore
             pending.forEach((messageId, update) -> futures.add(async.eval(
                     CAS_UPDATE_SCRIPT,
                     ScriptOutputType.MULTI,
-                    new String[]{key},
+                    new String[]{key, TaskRedisKeys.descriptor(keyspace, taskId)},
                     messageId,
                     Long.toString(update.observed()),
                     Long.toString(update.next())

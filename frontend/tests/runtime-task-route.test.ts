@@ -43,6 +43,7 @@ it("late drawer and submission continuations cannot replace the current context"
     taskId: "known",
     createdAtMillis: 1,
     scoreBand: "pre_review",
+    retention: null,
     task: {
       ...task("known", "g"),
       projectId: "default",

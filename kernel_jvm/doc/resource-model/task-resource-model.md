@@ -78,7 +78,9 @@ independently of Task closure. Stock invalidation never reopens scheduling.
 ## Redis Shape
 
 The descriptor HASH has exactly `workerGroupId`, `idleDisposition`,
-`configJson`, `refillJson`, `metadataJson`, plus optional `name`, written together by the create-only Lua. refillJson is an
+`configJson`, `refillJson`, `metadataJson`, `dataPhase`, plus optional `name` and
+`frozenAtMillis`. Creation writes dataPhase=OPEN; business descriptor fields remain
+create-only, while Kernel retention changes only dataPhase and frozenAtMillis. refillJson is an
 array of `{poolName,target,count}`, with an empty refill array allowed.
 metadataJson encodes only a string Map (absent means empty). Missing required scheduling fields, retired
 ruleId/refillTargetsJson, invalid targets/counts and corrupt JSON fail reading.
@@ -89,5 +91,28 @@ Root input is required and non-null; bounded immutable JSON and current encoding
 remain unchanged. Old direct selectors remain unreadable, never converted to ANY.
 
 Use a new scope to recreate Tasks. No dual reader, conversion, data migration or
-cleanup is added. Facts, indexes and Worker scores remain under their existing
+legacy-data cleanup is added. Fresh finite Tasks use the retention mechanism below.
+Facts, indexes and Worker scores remain under their existing
 Owners. Matching storage belongs to [its Owner](../../../worker_matching_jvm/README.md).
+
+## Finite Task Data Retention
+
+TaskRuntime owns `OPEN -> FROZEN -> RELEASED -> PURGING` in the existing descriptor
+HASH. It exposes bounded phase reads and exact-terminal-observation operations:
+freezeTaskData, releaseTaskPayloads, beginTaskPurge, purgeTaskData, finishTaskPurge.
+Score interpretation stays with TaskScoreBandCore; each resource script then
+exact-compares the admitted observation. Finite disposition is checked atomically.
+The named cross-key fence is necessary to prevent delayed writes recreating data.
+
+Every Item HASH write, Item Score initialization/CAS/promotion and Result commit
+checks OPEN in the same Redis operation. FROZEN seals both independent projections;
+RELEASED unlinks the Item and Result HASHes only after Server confirms its archive.
+Item Score remains readable, including unfinished members. PURGING blocks further
+application access and allows idempotent unlink of Item, Result and Item Score.
+The final operation requires those resources absent, deletes descriptor metadata,
+then removes only this Task's member from the global Score ZSET atomically.
+
+Kernel owns no archive path, retention duration, scan loop, Project index, or
+creation-request association. Server orchestrates those effects. RPC Tasks are
+excluded from the retention operations. Missing Task data rejects late mutations
+rather than creating a replacement resource. No Worker, Pool or shared queue is deleted.

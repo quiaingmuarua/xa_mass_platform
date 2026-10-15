@@ -94,16 +94,21 @@ public interface TaskScoreBandCore {
 
     TaskScoreTransitionResult tryReleaseIdlePark(String taskId);
 
-    TaskScoreTransitionResult closeScore(
-            String taskId,
-            long terminalScore
-    );
+    TaskScoreTransitionResult closeScore(String taskId);
 
     TaskScoreTransitionResult closeObservedScore(
             String taskId,
-            long observedScore,
-            long terminalScore
+            long observedScore
     );
+
+    /** Stable keyset traversal, including when the previous page has been deleted. */
+    default TerminalTaskPage scanTerminalTasks(long terminatedBeforeMillis, String cursor, int limit) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("TaskScoreBandCore", "scanTerminalTasks");
+    }
+
+    record TerminalTaskPage(List<TaskScoreState> tasks, String nextCursor) {
+        public TerminalTaskPage { tasks = List.copyOf(tasks); }
+    }
 
     TaskScoreTransitionResult releaseObservedScoreHold(
             String taskId,
@@ -153,6 +158,10 @@ public interface TaskScoreBandCore {
         public TaskScoreState {
             Objects.requireNonNull(taskId, "taskId");
             Objects.requireNonNull(band, "band");
+        }
+
+        public @Nullable Long terminatedAtMillis() {
+            return band == TaskScoreBand.TERMINAL ? Math.negateExact(score) : null;
         }
 
         public boolean isInitial() {

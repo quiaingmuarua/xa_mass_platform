@@ -24,7 +24,9 @@ class TaskAccessTest {
     final WorkerMatchingCatalog matching = mock(WorkerMatchingCatalog.class);
     final OperationGuard guard = new OperationGuard();
     final TaskDataService data = new TaskDataService(runtime, catalog, new TaskItemMapper(), items,
-            new TaskItemOutcomeProperties(Map.of()), matching, scores, guard);
+            new TaskItemOutcomeProperties(Map.of()), matching, scores, guard, com.xa.mass.server.testsupport.TaskRetentionFixtures.results(runtime, catalog, scores, guard));
+
+    TaskAccessTest() { com.xa.mass.server.testsupport.TaskRetentionFixtures.openData(runtime); }
 
     TaskRuntime.TaskDescriptor task(String id, String owner, String inputOwner) {
         return new TaskRuntime.TaskDescriptor(id, "g", TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE,
@@ -45,9 +47,20 @@ class TaskAccessTest {
                 .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED));
         verifyNoInteractions(runtime, items, matching);
     }
+
+    @Test void archivedPointResultsAreExplicitlyRejectedWhileItemStatesRemainReadable() {
+        when(catalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("t", task("t", "1001", "raw")));
+        when(runtime.loadTaskDataStates(anyList())).thenReturn(Map.of("t", new TaskRuntime.TaskDataState(TaskRuntime.TaskDataPhase.RELEASED, 1000L)));
+        assertThatThrownBy(() -> data.loadTaskItemResults(caller, "t", List.of("one")))
+                .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_RESULTS_ARCHIVED));
+        verify(runtime, never()).loadTaskItemResults(anyString(), anyList());
+        when(items.getItemScoreStates("t", List.of("one"))).thenReturn(Map.of("one",
+                new TaskItemScoreBandCore.TaskItemScoreState(1, TaskItemScoreBandCore.TaskItemScoreBand.ACTIVE, 1, 1000, 1)));
+        assertThat(data.loadTaskItemStates(caller, "t", List.of("one")).get("one").tag()).isEqualTo(1);
+    }
     @Test void statisticsPreflightTheCompleteProjectAndOwnershipBatch() {
         var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("p", List.of("g")))), List.of());
-        var queries = new ProjectTaskQueryService(projects, catalog, scores, mock(TaskDirectory.class), items);
+        var queries = new ProjectTaskQueryService(projects, catalog, scores, mock(TaskDirectory.class), items, runtime, com.xa.mass.server.testsupport.TaskRetentionFixtures.properties());
         when(catalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("mine", task("mine", "1001", "raw"), "other", task("other", "1002", "raw")));
         assertThatThrownBy(() -> queries.stats(caller, "p", List.of("mine", "other")))
                 .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_ACCESS_DENIED));
@@ -57,11 +70,12 @@ class TaskAccessTest {
         when(items.observeItemScoreCounts(List.of("mine"))).thenThrow(new IllegalStateException("unavailable"));
         assertThatThrownBy(() -> queries.stats(caller, "p", List.of("mine")))
                 .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_DATA_UNAVAILABLE));
-        verifyNoInteractions(runtime);
+        verify(runtime, never()).loadTaskItems(anyString(), anyList());
+        verify(runtime, never()).loadTaskItemResults(anyString(), anyList());
     }
     @Test void approvalChecksTheCurrentCountAndRetainsIdempotentApprovedBehavior() {
         var commands = mock(TaskLifecycleCommands.class);
-        var lifecycle = new TaskLifecycleService(commands, catalog, guard, items, scores);
+        var lifecycle = new TaskLifecycleService(commands, catalog, guard, items, scores, runtime);
         when(catalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("t", task("t", "1001", "raw")));
         when(scores.getScoreStates(List.of("t"))).thenReturn(Map.of("t", new TaskScoreBandCore.TaskScoreState("t", 1,
                 TaskScoreBandCore.TaskScoreBand.PRE_REVIEW, 0L, 0)));

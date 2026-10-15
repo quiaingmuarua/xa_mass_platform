@@ -120,6 +120,7 @@ class Preview:
         self.redis_url = redis_url or os.environ.get("XA_MASS_REDIS_URL", "redis://127.0.0.1:6379/15")
         self.scope = "test_products_" + uuid.uuid4().hex
         self.output = Path(output or self.root / "build" / "runs" / self.scope).resolve()
+        self.task_archives = self.output / "task-archives"
         self.processes = {}
         self.logs = []
         self.redis = None
@@ -172,6 +173,7 @@ class Preview:
         self.artifacts["frontendSha256"] = frontend_hash.hexdigest()
         env = os.environ.copy()
         env.update(XA_MASS_REDIS_SCOPE=self.scope, XA_MASS_REDIS_URL=self.redis_url,
+                   XA_MASS_TASK_ARCHIVE_DIRECTORY=str(self.task_archives),
                    XA_MASS_APP_CHECKS_DB_PATH=str(self.app_checks_db),
                    PREVIEW_SERVER_PORT=str(self.port),
                    PREVIEW_ADAPTER_PORT=str(self.port + 3))
@@ -299,6 +301,13 @@ class Preview:
                     self.redis.unlink(*batch)
             finally:
                 self.redis.close()
+        # This launcher owns one fresh scope and its private archive directory.
+        # Persistent Worker inventory and App Checks configuration are elsewhere.
+        archive_path = self.task_archives.resolve()
+        if archive_path.parent != self.output.resolve() or archive_path.name != "task-archives":
+            raise RuntimeError("Refusing unsafe Task archive cleanup")
+        if archive_path.exists():
+            shutil.rmtree(archive_path)
 
     def __enter__(self):
         try:

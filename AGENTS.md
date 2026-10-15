@@ -293,3 +293,12 @@ Before completion:
   externally applied results. Do not claim completion while a required external
   step remains pending; finish the independent authorized work and state the
   remaining dependency.
+
+## Finite Task Data Maintenance
+
+Server owns finite Task retention timing, sequential archive files and its creation
+associations; this does not grant execution scheduling authority. Kernel owns the
+persistent data fence and exact terminal/resource operations. Task Score records
+first termination time and remains the cleanup entry until final removal. Reads,
+Scenario CSV and Mock must follow the common retention semantics. Use new scopes;
+no historical -1 decoding, identity migration or permanent tombstones are added.

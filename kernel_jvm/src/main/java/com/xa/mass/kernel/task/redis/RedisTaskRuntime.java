@@ -3,6 +3,7 @@ package com.xa.mass.kernel.task.redis;
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.redis.RedisKeyspace;
+import com.xa.mass.kernel.redis.TaskRedisKeys;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionStatus;
@@ -64,12 +65,14 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
               "idleDisposition", ARGV[2],
               "configJson", ARGV[3],
               "refillJson", ARGV[4],
-              "metadataJson", ARGV[5]
+              "metadataJson", ARGV[5],
+              "dataPhase", "OPEN"
             )
             if ARGV[6] ~= '' then redis.call('HSET', key, 'name', ARGV[6]) end
             return 1
             """;
     private static final String STORE_SUCCESS_RESULTS_SCRIPT = """
+            if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return 0 end
             local updates = {}
             for i = 1, #ARGV, 2 do
               local target = cjson.decode(ARGV[i + 1])
@@ -116,6 +119,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             return #updates / 2
             """;
     private static final String STORE_FAILED_RESULTS_SCRIPT = """
+            if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return 0 end
             local results_key = KEYS[1]
             local failed_result = ARGV[1]
             local results_type = redis.call("TYPE", results_key).ok
@@ -132,6 +136,58 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
               )
             end
             return stored
+            """;
+
+    private static final String APPEND_ITEMS_SCRIPT = """
+            if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return 0 end
+            redis.call('HSET', KEYS[1], unpack(ARGV))
+            return 1
+            """;
+
+    // The only cross-resource transaction: seal against writers and retain the
+    // descriptor until the final discoverable Score can be removed atomically.
+    private static final String RETENTION_SCRIPT = """
+            local score = redis.call('ZSCORE', KEYS[2], ARGV[1])
+            local phase = redis.call('HGET', KEYS[1], 'dataPhase')
+            if not score and not phase and ARGV[3] == 'finish' then return 0 end
+            if not score or tonumber(score) ~= tonumber(ARGV[2]) then
+              return redis.error_reply('Task retention Score fence differs')
+            end
+            if redis.call('HGET', KEYS[1], 'idleDisposition') ~= 'CLOSE_WHEN_IDLE' then
+              return redis.error_reply('Task retention requires a finite Task')
+            end
+            if not phase then return redis.error_reply('Task data phase is missing') end
+            local op = ARGV[3]
+            if op == 'freeze' then
+              if phase == 'OPEN' then
+                redis.call('HSET', KEYS[1], 'dataPhase', 'FROZEN', 'frozenAtMillis', ARGV[4])
+                return 1
+              end
+              if phase == 'FROZEN' or phase == 'RELEASED' then return 0 end
+            elseif op == 'release' then
+              if phase == 'RELEASED' then return 0 end
+              if phase == 'FROZEN' then
+                redis.call('UNLINK', KEYS[3], KEYS[4])
+                redis.call('HSET', KEYS[1], 'dataPhase', 'RELEASED')
+                return 1
+              end
+            elseif op == 'begin' then
+              if phase == 'PURGING' then return 0 end
+              if phase == 'OPEN' or phase == 'FROZEN' or phase == 'RELEASED' then
+                redis.call('HSET', KEYS[1], 'dataPhase', 'PURGING')
+                return 1
+              end
+            elseif op == 'purge' and phase == 'PURGING' then
+              return redis.call('UNLINK', KEYS[3], KEYS[4], KEYS[5])
+            elseif op == 'finish' and phase == 'PURGING' then
+              if redis.call('EXISTS', KEYS[3], KEYS[4], KEYS[5]) ~= 0 then
+                return redis.error_reply('Task payload cleanup is incomplete')
+              end
+              redis.call('DEL', KEYS[1])
+              redis.call('ZREM', KEYS[2], ARGV[1])
+              return 1
+            end
+            return redis.error_reply('Task retention phase conflicts')
             """;
 
     private final RedisClient redisClient;
@@ -407,7 +463,11 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
 
         long storedAt = TaskStorageEvent.start();
         try {
-            commands().hset(itemsKey(taskId), records);
+            var arguments = new ArrayList<String>();
+            records.forEach((id, encoded) -> { arguments.add(id); arguments.add(encoded); });
+            Long accepted = commands().eval(APPEND_ITEMS_SCRIPT, ScriptOutputType.INTEGER,
+                    new String[]{itemsKey(taskId), taskDescriptorKey(taskId)}, arguments.toArray(String[]::new));
+            if (accepted == null || accepted != 1) return uniformResults(orderedItems.keySet(), TaskItemAppendStatus.NOT_FOUND);
             TaskStorageEvent.items(storedAt, "ITEM_STORED", taskId, records.keySet(), records.size(), false);
         } catch (RuntimeException error) {
             TaskStorageEvent.items(storedAt, "ITEM_STORED", taskId, records.keySet(), 0, true);
@@ -517,7 +577,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                     "tag", result.tag(), "observedAtMillis", result.observedAtMillis()))));
         });
         commands().eval(STORE_SUCCESS_RESULTS_SCRIPT, ScriptOutputType.INTEGER,
-                new String[]{resultsKey(taskId)}, arguments.toArray(String[]::new));
+                new String[]{resultsKey(taskId), taskDescriptorKey(taskId)}, arguments.toArray(String[]::new));
     }
 
     @Override
@@ -548,7 +608,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         commands().eval(
                 STORE_FAILED_RESULTS_SCRIPT,
                 ScriptOutputType.INTEGER,
-                new String[]{resultsKey(taskId)},
+                new String[]{resultsKey(taskId), taskDescriptorKey(taskId)},
                 arguments.toArray(String[]::new)
         );
     }
@@ -863,8 +923,48 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         }
     }
 
+    @Override
+    public Map<String, TaskDataState> loadTaskDataStates(List<String> taskIds) {
+        if (taskIds == null || taskIds.size() > 100 || taskIds.stream().anyMatch(RedisTaskRuntime::isBlank))
+            throw new IllegalArgumentException("Expected at most 100 Task IDs");
+        var pending = new LinkedHashMap<String, io.lettuce.core.RedisFuture<List<KeyValue<String, String>>>>();
+        taskIds.forEach(id -> pending.put(id, connection().async().hmget(taskDescriptorKey(id), "dataPhase", "frozenAtMillis", "idleDisposition")));
+        var result = new LinkedHashMap<String, TaskDataState>();
+        pending.forEach((id, future) -> {
+            var row = future.toCompletableFuture().join();
+            if (!row.get(0).hasValue()) {
+                if (row.get(2).hasValue()) throw new IllegalStateException("Task data phase is missing");
+                result.put(id, null);
+            } else result.put(id, new TaskDataState(TaskDataPhase.valueOf(row.get(0).getValue()),
+                    row.get(1).hasValue() ? Long.valueOf(row.get(1).getValue()) : null));
+        });
+        return result;
+    }
+
+    @Override public boolean freezeTaskData(String id, long score) { return retain(id, score, "freeze"); }
+    @Override public boolean releaseTaskPayloads(String id, long score) { return retain(id, score, "release"); }
+    @Override public boolean beginTaskPurge(String id, long score) { return retain(id, score, "begin"); }
+    @Override public boolean purgeTaskData(String id, long score) { return retain(id, score, "purge"); }
+    @Override public boolean finishTaskPurge(String id, long score) { return retain(id, score, "finish"); }
+
+    private boolean retain(String taskId, long observedScore, String operation) {
+        requireNonBlank(taskId, "taskId");
+        // Score interpretation remains with its Owner. The resource script only
+        // exact-compares this observation at the atomic phase transition.
+        var observed = scoreBand.getScoreStates(List.of(taskId)).get(taskId);
+        if (observed != null && (observed.band() != TaskScoreBand.TERMINAL || observed.score() != observedScore)
+                || observed == null && !operation.equals("finish"))
+            throw new IllegalStateException("Task retention Score fence differs");
+        Long changed = commands().eval(RETENTION_SCRIPT, ScriptOutputType.INTEGER,
+                new String[]{taskDescriptorKey(taskId), TaskRedisKeys.scores(keyspace), itemsKey(taskId),
+                        resultsKey(taskId), TaskRedisKeys.itemScores(keyspace, taskId)},
+                taskId, Long.toString(observedScore), operation, Long.toString(currentTimeMillis.getAsLong()));
+        if (changed == null) throw new IllegalStateException("Task retention outcome was not confirmed");
+        return changed > 0;
+    }
+
     private String taskDescriptorKey(String taskId) {
-        return keyspace.base() + ":task:" + taskId + ":descriptor";
+        return TaskRedisKeys.descriptor(keyspace, taskId);
     }
 
     private String itemsKey(String taskId) {

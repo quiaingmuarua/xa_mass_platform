@@ -141,6 +141,9 @@
             "format" : "int64",
             "type" : "integer"
           },
+          "retention" : {
+            "$ref" : "#/components/schemas/Info"
+          },
           "scoreBand" : {
             "type" : "string"
           },
@@ -160,6 +163,26 @@
           },
           "poolName" : {
             "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "Info" : {
+        "properties" : {
+          "expiresAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "frozenAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "phase" : {
+            "type" : "string"
+          },
+          "terminatedAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
           }
         },
         "type" : "object"
@@ -232,6 +255,17 @@
           }
         },
         "required" : [ "count", "poolName", "target" ],
+        "type" : "object"
+      },
+      "Result" : {
+        "properties" : {
+          "outcome" : {
+            "$ref" : "#/components/schemas/ActionOutcome"
+          },
+          "retention" : {
+            "$ref" : "#/components/schemas/Info"
+          }
+        },
         "type" : "object"
       },
       "ResultEntry" : {
@@ -2698,6 +2732,82 @@
           }
         },
         "summary" : "Preview at most 100 raw Task results without continuation",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/retention:run" : {
+      "post" : {
+        "description" : "Administrator maintenance permission required. Uses the configured grace and retention periods; cannot force early deletion.",
+        "operationId" : "run",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "taskId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Declared role must match the current Server user directory",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Result"
+                }
+              }
+            },
+            "description" : "Task retention advanced or unchanged"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task is missing, in conflict, or does not support retention"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Retention outcome is unconfirmed; retry uses saved progress"
+          }
+        },
+        "summary" : "Advance eligible finite Task retention",
         "tags" : [ "Tasks" ]
       }
     },

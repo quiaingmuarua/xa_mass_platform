@@ -16,6 +16,37 @@ support before launching Preview: country quotas, phone order and file coordinat
 remain fixed. Interactive Preview instead uses count/seed random initialization.
 The proof neither searches for a suitable seed nor repairs sampled quotas.
 
+## Finite storage acceptance
+
+`run_retention_proof.py` is an opt-in storage workload, separate from the small
+business traversal above. It runs 10,000 and 100,000 App Checks Items both to
+natural completion and with an early close, in one fresh Preview scope with
+2,000 Workers per App. Product mutations use HTTP; read-only Redis key sizes and
+existence checks are allowed here specifically to verify resource reclamation.
+It does not write scores or synthesize Worker results.
+
+The proof overrides grace to two seconds, keeps seven-day retention during
+archive comparisons, and triggers the ordinary administrator maintenance API.
+It checks preserved counts, identical JSONL/CSV content, bounded preview,
+archived point-query refusal and retained creation identity. It then restarts
+Server with one-millisecond retention to exercise startup expiry, verifies the
+old resources and files are gone, and recreates each request with a new Task ID.
+This policy override accelerates eligibility; it is not a production default or
+a force-delete API. Focused Owner tests separately prove exact default thresholds.
+
+The summary contains per-Task Redis key memory, file bytes, archive duration,
+sampled heap/RSS and Redis PING latency. JFR allocation samples and `jstat` heap
+samples remain private diagnostic artifacts. Result scan deduplication retains
+one ID per observed result; allocation sampling does not claim constant memory
+or an exact retained-heap measurement. Process RSS need not fall after `UNLINK`.
+The launcher cleans only its new scope and private archive root on exit.
+
+```sh
+python integrations/scenario-coexistence/run_retention_proof.py --port 18720
+```
+
+This opt-in workload is not added to the small Product Coexistence CI gate.
+
 ## Small functional, Pool selection and lifecycle worlds
 
 The `functional` and `lifecycle` worlds retain 12 Demo Workers (four per country)

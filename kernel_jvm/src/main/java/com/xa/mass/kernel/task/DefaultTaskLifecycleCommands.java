@@ -117,10 +117,7 @@ public final class DefaultTaskLifecycleCommands
                 );
             }
 
-            var transition = taskScore.closeScore(
-                    taskId,
-                    TaskScoreBandCore.TERMINAL_SCORE_MAX
-            );
+            var transition = taskScore.closeScore(taskId);
             return switch (transition.status()) {
                 case TRANSITIONED -> new TaskCloseResult(
                         TaskCloseStatus.CLOSED

@@ -233,3 +233,14 @@ with watermark 100, and uses `worker.sms.available`. Country remains enabled for
 explicit generic Task supply. The Scenario contributes its passive partitioned lease
 resource and stored-Result projection; host configuration owns enabling both Pool and
 function and admitting the `extension.worker.sms.number.lease` event.
+
+## Finite Task retention configuration
+
+All profiles explicitly provide `xa.mass.task-retention` defaults: 1h grace, 7d
+retention, 1h maintenance interval, and `./data/task-archives`. Enablement defaults
+to the resolved Pacer enablement and can be overridden with
+`XA_MASS_TASK_RETENTION_ENABLED`; `XA_MASS_TASK_ARCHIVE_DIRECTORY` selects storage.
+Only one instance per scope runs maintenance. The implementation belongs to Server,
+not Boot; Kernel continues to own Task finality and mutation fences. The directory
+must survive restarts for retained tasks and be shared with other API readers.
+Preview assigns a private archive root per generated scope. No old scope is migrated.
