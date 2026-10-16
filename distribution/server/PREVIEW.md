@@ -54,11 +54,12 @@ seed 0. Count accepts 1..10,000; seed is a signed 64-bit integer. Country choice
 have equal weight, not exact quotas or guaranteed small-sample coverage.
 The previous country-count argument is removed rather than reinterpreted.
 `--app-count` defaults to 20 per App Group (100 total Workers with other defaults).
-App A/B each declare and install both app.registration.check and phonenumber.original-carrier.
-Batch Checks offers registration and carrier execution configurations for both Groups;
-registration keeps its window Pool while carrier uses Any and does not enter that window observation.
-There is no extra carrier Preview Group or separate Worker count parameter. The independent
-number capability examples and platform proofs remain separate.
+App A/B retain simulated registration and Messages. Demo installs the original-carrier,
+uint32-prime and existing MD5 events and explicitly enables Any alongside its existing Pools.
+Batch Checks groups five capabilities by phone/text seeds: App A/B registration, one carrier
+check, uint32 primality and MD5-prefix demonstrations. Generic checks bind to demo-sim;
+only registration uses assignment-window observations. Counts and CLI parameters are unchanged.
+The independent number capability examples and platform proofs remain separate.
 The app-count parameter accepts 0..15000, the existing Host Group bound. Zero removes both App Groups
 from this run's Host configuration, even if those inventory directories already
 exist. It neither deletes inventory nor removes the profile's Groups or APIs.
@@ -95,8 +96,8 @@ saving does not affect the running process. Use a new H2 file and Redis scope wh
 switching from the old table/document shape; there is no migration or fallback. Creation sends only
 requestId, checkId and (for phone seeds only) country. Tasks retain their execution snapshot across later
 configuration saves/restarts; changing an existing window length requires a new scope.
-Preview exposes app-a-registration/app-a-carrier and app-b-registration/app-b-carrier.
-The text seed path is verified by a test-only MD5 check; it is not a production Preview option.
+Preview exposes app-a-registration, app-b-registration, original-carrier, uint32-prime and md5-prefix.
+The two text checks are local computation demonstrations, with no external city/DNS/stock data source.
 Existing H2 documents are not overwritten by seeds. This checks schema cutover uses a new
 database, Redis scope and inventory; the launcher does not migrate or replace a running environment.
 

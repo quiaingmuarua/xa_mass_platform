@@ -156,7 +156,7 @@ describe("App Checks JSON configuration workspace", () => {
       session.configuration.snapshot?.effective.fingerprint
     );
     expect(host.textContent).toContain("待手动重启生效");
-    expect((await source.catalog()).checks).toHaveLength(4);
+    expect((await source.catalog()).checks).toHaveLength(5);
     await expect(
       source.createTask(CALLER, {
         requestId: "pending",

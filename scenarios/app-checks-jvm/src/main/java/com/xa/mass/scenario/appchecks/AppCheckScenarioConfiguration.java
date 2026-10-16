@@ -26,6 +26,8 @@ public class AppCheckScenarioConfiguration {
     @Bean AppCheckContract registrationContract() { return AppCheckContracts.registration(); }
     @Bean AppCheckContract simulatedRegistrationContract() { return AppCheckContracts.simulatedRegistration(); }
     @Bean AppCheckContract originalCarrierContract() { return AppCheckContracts.originalCarrier(); }
+    @Bean AppCheckContract uint32PrimeContract() { return AppCheckContracts.uint32Prime(); }
+    @Bean AppCheckContract md5PrefixContract() { return AppCheckContracts.md5Prefix(); }
     @Bean AppCheckContracts appCheckContracts(List<AppCheckContract> definitions) { return new AppCheckContracts(definitions); }
 
     @Bean(destroyMethod = "close")

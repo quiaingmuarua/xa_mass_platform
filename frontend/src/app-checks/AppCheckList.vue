@@ -17,7 +17,7 @@ import "element-plus/es/components/table-column/style/css";
 import "element-plus/es/components/tabs/style/css";
 import "element-plus/es/components/tab-pane/style/css";
 import {
-  checkTypeLabel,
+  seedTypeLabel,
   checkLabel,
   countryLabel,
   type Catalog,
@@ -98,7 +98,7 @@ const filtered = computed(() =>
           ((task.name ?? "") + " " + task.taskId)
             .toLowerCase()
             .includes(filters.query.trim().toLowerCase())) &&
-        (filters.checkType === "all" || task.checkType === filters.checkType) &&
+        (filters.seedType === "all" || task.seedType === filters.seedType) &&
         (filters.check === "all" || task.checkId === filters.check) &&
         (filters.country === "all" || task.country === filters.country) &&
         (filters.state === "all" || taskStage(task) === filters.state) &&
@@ -156,7 +156,7 @@ function reset() {
   Object.assign(filters, {
     query: "",
     check: "all",
-    checkType: "all",
+    seedType: "all",
     country: "all",
     state: "all",
     from: "",
@@ -264,32 +264,37 @@ defineExpose({ revealTask, focusHeading });
             placeholder="任务名称或编号"
         /></label>
         <select
-          v-model="filters.checkType"
-          aria-label="筛选检查类型"
+          v-model="filters.seedType"
+          aria-label="筛选种子格式"
           @change="filters.check = 'all'"
         >
-          <option value="all">全部检查类型</option>
+          <option value="all">全部种子格式</option>
           <option
-            v-for="type in catalog.checkTypes.filter((type) =>
-              catalog.checks.some((check) => check.checkType === type.id)
-            )"
+            v-for="type in [
+              { id: 'phonenumber', label: '电话号码' },
+              { id: 'text', label: '文本' }
+            ]"
             :key="type.id"
             :value="type.id"
           >
             {{ type.label }}
           </option>
         </select>
-        <select v-model="filters.check" aria-label="筛选执行配置">
-          <option value="all">全部执行配置</option>
+        <select v-model="filters.check" aria-label="筛选检查能力">
+          <option value="all">全部检查能力</option>
           <option
             v-for="app in catalog.checks.filter(
               (check) =>
-                filters.checkType === 'all' || check.checkType === filters.checkType
+                filters.seedType === 'all' ||
+                catalog.checkTypes.some(
+                  (type) =>
+                    type.id === check.checkType && type.seedType === filters.seedType
+                )
             )"
             :key="app.checkId"
             :value="app.checkId"
           >
-            {{ app.label }} · {{ checkTypeLabel(app.checkType, catalog) }}
+            {{ app.label }}
           </option>
         </select>
         <select v-model="filters.country" aria-label="筛选地区">
@@ -359,11 +364,11 @@ defineExpose({ revealTask, focusHeading });
             <small class="checks-task-id">{{ row.taskId }}</small>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="检查 / 执行配置" width="170">
+        <ElTableColumn label="检查能力" width="190">
           <template #default="{ row }"
-            >{{ row.checkTypeLabel ?? checkTypeLabel(row.checkType, catalog)
+            >{{ row.checkLabel ?? checkLabel(row.checkId, catalog)
             }}<small
-              >{{ row.checkLabel ?? checkLabel(row.checkId, catalog)
+              >{{ seedTypeLabel(row.seedType)
               }}{{ row.country ? " · " + countryLabel(row.country) : "" }}</small
             ></template
           >
@@ -427,7 +432,7 @@ defineExpose({ revealTask, focusHeading });
                   ? "这里只展示本次载入窗口中的个人任务，不代表全部历史任务。"
                   : business.length
                     ? "调整筛选条件查看已载入任务。"
-                    : "选择检查类型和执行配置，导入种子创建第一批检查。"
+                    : "选择种子格式和检查能力，导入种子创建第一批检查。"
               }}
             </p>
           </div>

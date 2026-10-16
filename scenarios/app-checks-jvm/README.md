@@ -56,7 +56,7 @@ Task ID，并在现有不可变 descriptor 保存输入指纹。同身份同配�
 Task；不同配置冲突。已有 descriptor 或 Task Score 不完整时返回未确认，不另建或补造资源。
 Project 目录由 Server 登记；目录未确认保留已知 Task ID，同请求显式核对可以从原 descriptor 补齐目录。关联在原 Task 资源保留期间跨 Server 重启成立，清理 scope 后不承诺。
 没有原先累计 50 请求、50,000 号码的内存账本。自动名称、salt 和日期首次创建后固定。
-自动名称在 128 字符内保留时间；过长的类型/执行配置展示前缀安全缩短，完整名称仍保存在任务快照中。
+自动名称使用能力名称并在 128 字符内保留时间；过长的能力名称安全缩短，完整名称仍保存在任务快照中。
 
 任务和配置 HTTP 接口必须声明开发调用方：`X-XA-Dev-User` 为 userId 的 UTF-8
 Base64URL 编码，`X-XA-Dev-Role` 为 `admin` 或 `operator`。解码后的 userId 去首尾空白，
@@ -89,7 +89,7 @@ Server 在每次请求入口从用户目录解析 userId/role 和 Project 授权
 导入仅允许 `server.inputOwner=app-checks` 的待审核 Task。原始 Item 入口不能绕过固定业务配置。每个文件最多 10 MiB、100,000 个去重种子。
 `phonenumber` 保留 TXT、CSV 列选择和粘贴，校验 CN/US/GB 国家前缀，允许省略 `+`，规范化后去重。
 `text` 只接受 TXT 或粘贴，一行一个；移除开头 BOM、每行首尾空格和 Tab，忽略空行，保留大小写、Unicode 及内部内容。
-text 不解析 JSON、拆列或做领域规范化。前端统一上传逐行 UTF-8，后端独立全文件校验与去重。
+text 不解析 JSON、拆列或做领域规范化。前端统一上传逐行 UTF-8，后端独立全文件校验与去重。非空规范化种子在去重及任何 Item 写入前经过契约的纯 validateSeed 校验；整数末行非法同样拒绝完整文件。
 无效文件整批拒绝，返回错误数量和原始首个错误行，
 不会写入有效子集。请求局部原始与规范化临时文件在结束或失败后清理，不构成导入历史。
 
@@ -253,8 +253,8 @@ IP／账号配额。其他显式函数不受这一策略拦截。窗口长度改
 
 严格启动参数为 `xa.mass.scenarios.app-checks.storage.path`（嵌入式数据库文件前缀）和
 `storage.seed`（Spring 资源地址）。Preview 由启动器传入独立环境路径，种子为
-`classpath:app-checks/preview-configuration.json`，包含 App A/B 的四项检查：`app-a-registration`、`app-a-carrier`、`app-b-registration`、`app-b-carrier`。
-每组共享注册/运营商能力；注册使用原 60000 ms/10 次窗口和模拟参数，运营商使用 Any，不增加窗口投影或独立 Preview Group。
+`classpath:app-checks/preview-configuration.json`，包含五项能力：`app-a-registration`、`app-b-registration`、`original-carrier`、`uint32-prime`、`md5-prefix`。
+App A/B 注册使用原 60000 ms/10 次窗口和模拟参数；其余三项绑定 demo-sim，使用 Any，不增加窗口投影、Group 或 Worker 数量。
 数据库表没有配置行时才读取种子；存在记录时种子内容不会覆盖数据库。非法文档
 或读取失败阻止场景启动，不回退默认值。未装配本场景的上下文不开连接、不建文件。
 
@@ -314,7 +314,7 @@ FixedWindowPoolDefinition、各 Group 属性投影和创建映射。配置保存
 ## 页面与结果核对
 
 启动 [Preview](../../distribution/server/PREVIEW.md#source-launch)，打开 `/app-checks`，
-登录开发身份后，先选择检查类型，再选择执行配置（如 App A 或 B）。号码类型还选择国家；text 不显示国家或 CSV。前端依次创建空任务、上传种子文件，
+登录开发身份后，先选择种子格式（电话号码/文本），再选择检查能力；Group、事件、查询与内部契约在折叠详情中只读展示。号码类型还选择国家；text 不显示国家或 CSV。前端依次创建空任务、上传种子文件，
 用户核对实际数量后启动。operator 只处理当前载入范围内自己创建的任务，admin 可管理全部任务。
 列表菜单管理任务，抽屉预览结果；未确认创建或导入保留请求身份及已知 Task ID，不自动重试。
 
@@ -338,8 +338,8 @@ Server 测试保留多 Group/多事件投影隔离、重复选择拒绝、既有
 源码/新 ZIP runner 则运行真实号码 Handler，对固定运营商/无映射/无效号码向量以及超过 100 条输入，
 分别核对完整原始 Result、Item 状态、有限预览及三种 CSV；预期不从场景输出生成。
 
-text 由 Boot 测试专用 `text-md5-proof-v1` 装配证明，使用现有 `extension.worker.string.md5` Handler 和真实 HTTP/Redis/JavaWorker，映射 `{value}`，固定判断摘要是否以 0 开头。
-固定向量独立核对原始 Result、Item、业务答案及 CSV；不在生产 Preview 注册，不代表 DNS、行情或正式文本业务能力。前端使用明确标注的 Mock fixture 验证 text 页面。
+text 的 `uint32-prime-v1` 和 `md5-prefix-demo-v1` 是 Preview 的明确演示能力。前者输入 `{value}`，只接受 1～10 位 ASCII 十进制数字且不超过 4294967295；允许前导零但保持原文本身份。Worker 返回 input/valid/isPrime，Scenario 只核对关联与布尔结构，不重算答案。后者复用 UTF-8 MD5 Handler，核对 input/valid/md5，固定以摘要是否以 0 开头判定，不提供表达式或前缀配置。两个契约参数均为 `{}`，details 分别保留 isPrime/md5，CSV 追加“是否素数”/“MD5 摘要”。
+真实 HTTP/Redis/JavaWorker 用例使用独立筛法、边界向量及 Python hashlib，分别检查原始 Result、Item、业务答案、预览截断和完整 CSV。Boot 证明两个 text 契约归档前后答案和 CSV 保持一致。Mock 仅提供固定输入样例，不承担计算正确性证明；未接入城市、DNS 或行情服务。
 
 生产装配见 [Boot](../../server_boot_jvm/README.md#platform-and-preview)；
 Host 数量参数和库存复用见 [Preview](../../distribution/server/PREVIEW.md#inventory-and-process-lifecycle)。
@@ -375,7 +375,7 @@ Worker 关联复算窗口，不用 Item 数量或 Result 数量推算。该见�
 原 101 Item 等非窗口 Boot 回归显式把阈值设为 1000，仍走新函数。
 进程 runner 使用独立种子文件覆盖两个 Group 的阈值为 1000，
 保留并恢复调用环境，在摘要记录覆盖值。它验证原业务闭环，不声称验证默认窗口限额。
-Preview 的默认 60 秒／10 次保持。进程 runner 复用现有 Preview 启动/清理，四个 App Worker 加一个闲置 demo Worker，
+Preview 的默认 60 秒／10 次保持。进程 runner 复用现有 Preview 启动/清理，四个 App Worker 加一个执行通用检查的 demo Worker，
 先只读确认已知 App Worker 的 Properties 已上报，再在两份独立启动配置中创建八个 Task 共 60 Items，
 分别覆盖全注册/全失败与全未注册/混合；参数来自检查配置而非创建请求。每份配置另在两个 App Group 分别完成 104 条运营商检查。两份配置分别使用
 `--port` 和 `--port + 10` 为基准的独立端口组（各加 3 为 Adapter、加 4 为 Host），避免关闭 JVM

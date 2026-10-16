@@ -61,7 +61,7 @@ class AppCheckConfigurationStoreTest {
             var updated = store.save(initialFingerprint(), target.toMap());
             assertThat(updated).containsEntry("restartRequired", true).containsEntry("newScopeRequired", true);
             assertThat(fingerprint(updated)).isEqualTo(fingerprint(target));
-            assertThat(store.effective().configuration().requireCheck("app-a-registration").label()).isEqualTo("App A");
+            assertThat(store.effective().configuration().requireCheck("app-a-registration").label()).isEqualTo("App A 模拟注册");
             assertThat(fingerprint(store.save(fingerprint(target), target.toMap()))).isEqualTo(fingerprint(target));
             assertThatThrownBy(() -> store.save(initialFingerprint(), target.toMap())).isInstanceOfSatisfying(AppCheckConfigurationException.class,
                     failure -> assertThat(failure.status).isEqualTo(409));
@@ -123,7 +123,7 @@ class AppCheckConfigurationStoreTest {
             var groups = new HashMap<>(initial.poolGroups()); groups.put("app-c-sim", new WindowLimit(60000, 8));
             var update = store.save(initialFingerprint(), new AppCheckSettings(initial.typeDefaults(), apps, groups).toMap());
             assertThat(update).containsEntry("restartRequired", true).containsEntry("newScopeRequired", false);
-            assertThat(store.effective().configuration().checks()).hasSize(4);
+            assertThat(store.effective().configuration().checks()).hasSize(5);
         }
     }
 
@@ -144,7 +144,7 @@ class AppCheckConfigurationStoreTest {
         var duplicate = new HashMap<>(initial.checks());
         duplicate.put("same-group-check", initial.requireCheck("app-a-registration"));
         assertThat(new AppCheckSettings(initial.typeDefaults(), duplicate, initial.poolGroups()).workerGroupIds())
-                .containsExactly("app-a-sim", "app-b-sim");
+                .containsExactly("app-a-sim", "app-b-sim", "demo-sim");
 
     }
 
@@ -159,7 +159,7 @@ class AppCheckConfigurationStoreTest {
             var view = store.save(initialFingerprint(), Jsons.parseObject(json));
             assertThat(fingerprint(view)).matches("[0-9a-f]{64}").isEqualTo(initialFingerprint());
             assertThat(view).containsEntry("restartRequired", false);
-            assertThat(store.effective().configuration().checks().keySet()).containsExactly("app-a-carrier", "app-a-registration", "app-b-carrier", "app-b-registration");
+            assertThat(store.effective().configuration().checks().keySet()).containsExactly("app-a-registration", "app-b-registration", "md5-prefix", "original-carrier", "uint32-prime");
             var changed = store.save(initialFingerprint(), changed("Rename", 60000).toMap());
             // Content guard, not edit history: returning to identical content restores the same token.
             var reverted = store.save(fingerprint(changed), original.toMap());

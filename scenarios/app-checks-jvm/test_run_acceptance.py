@@ -14,6 +14,10 @@ from run_acceptance import caller_headers, hash_value, request, creation_input, 
 
 
 class AppCheckProofTest(unittest.TestCase):
+    def test_text_creation_does_not_invent_phone_options(self):
+        self.assertEqual({"requestId": "demo", "checkId": "uint32-prime"},
+                         creation_input({"userId": "1000", "requestId": "demo", "checkId": "uint32-prime", "numbers": ["17"]}))
+
     def read_seed(self):
         path = Path(url2pathname(urlparse(os.environ["XA_MASS_APP_CHECKS_SEED"]).path))
         return path, json.loads(path.read_text(encoding="utf-8"))

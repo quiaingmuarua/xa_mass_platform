@@ -13,6 +13,8 @@ public interface AppCheckContract {
     Map<String, Object> inputExample();
     Map<String, Object> resultExample();
     Map<String, Object> normalizeParameters(Object value);
+    /** Validates one normalized, nonempty seed before any import batch is written. */
+    default void validateSeed(String seed) {}
     Map<String, Object> payload(Context context, String seed);
     String inputSeed(Map<String, Object> payload);
     Result result(Context context, Map<String, Object> payload, Map<String, Object> content);

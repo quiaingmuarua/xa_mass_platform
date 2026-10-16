@@ -8,6 +8,8 @@ public final class AppCheckContracts {
     public static final String REGISTRATION = "registration-v1";
     public static final String SIMULATED = "simulated-registration-v1";
     public static final String ORIGINAL_CARRIER = "original-carrier-v1";
+    public static final String UINT32_PRIME = "uint32-prime-v1";
+    public static final String MD5_PREFIX = "md5-prefix-demo-v1";
     private final Map<String, AppCheckContract> contracts;
 
     public AppCheckContracts(List<AppCheckContract> definitions) {
@@ -33,6 +35,63 @@ public final class AppCheckContracts {
     public static AppCheckContract registration() { return new Registration(); }
     public static AppCheckContract simulatedRegistration() { return new SimulatedRegistration(); }
     public static AppCheckContract originalCarrier() { return new OriginalCarrier(); }
+    public static AppCheckContract uint32Prime() { return new Uint32Prime(); }
+    public static AppCheckContract md5Prefix() { return new Md5Prefix(); }
+
+    private abstract static class TextDemo implements AppCheckContract {
+        public SeedType seedType() { return SeedType.TEXT; }
+        public Map<String, Object> parameterExample() { return Map.of(); }
+        public Map<String, Object> normalizeParameters(Object value) {
+            AppCheckSettings.object(value, Set.of(), Set.of(), "parameters");
+            return Map.of();
+        }
+        public Map<String, Object> payload(Context context, String seed) { return Map.of("value", seed); }
+        public String inputSeed(Map<String, Object> payload) {
+            if (!(payload.get("value") instanceof String seed) || seed.isEmpty())
+                throw new IllegalArgumentException("Missing text seed");
+            validateSeed(seed);
+            return seed;
+        }
+        String associatedSeed(Map<String, Object> payload, Map<String, Object> content) {
+            String seed = inputSeed(payload);
+            if (!seed.equals(content.get("input")) || !Boolean.TRUE.equals(content.get("valid")) || content.containsKey("error"))
+                throw new IllegalArgumentException("Text result association or validity mismatch");
+            return seed;
+        }
+    }
+    private static final class Uint32Prime extends TextDemo {
+        public String id() { return UINT32_PRIME; }
+        public String label() { return "32 位整数素数判断（演示）"; }
+        public String description() { return "0～4,294,967,295 的无符号整数；是素数时满足，0、1 和合数不满足。"; }
+        public Map<String, Object> inputExample() { return Map.of("value", "17"); }
+        public Map<String, Object> resultExample() { return Map.of("input", "17", "valid", true, "isPrime", true); }
+        public void validateSeed(String seed) {
+            if (!seed.matches("[0-9]{1,10}") || Long.parseLong(seed) > 4_294_967_295L)
+                throw new IllegalArgumentException("需要 1～10 位十进制数字，范围 0～4,294,967,295");
+        }
+        public Result result(Context context, Map<String, Object> payload, Map<String, Object> content) {
+            String seed = associatedSeed(payload, content);
+            if (!(content.get("isPrime") instanceof Boolean prime)) throw new IllegalArgumentException("Missing prime answer");
+            return new Result(seed, prime, Map.of("isPrime", prime));
+        }
+        public List<String> exportHeaders() { return List.of("是否素数"); }
+        public List<String> exportValues(Result result) { return List.of(Boolean.TRUE.equals(result.details().get("isPrime")) ? "是" : "否"); }
+    }
+    private static final class Md5Prefix extends TextDemo {
+        public String id() { return MD5_PREFIX; }
+        public String label() { return "MD5 前缀命中（演示）"; }
+        public String description() { return "使用 UTF-8 计算 MD5；固定演示条件为摘要以 0 开头。"; }
+        public Map<String, Object> inputExample() { return Map.of("value", "a"); }
+        public Map<String, Object> resultExample() { return Map.of("input", "a", "valid", true, "md5", "0cc175b9c0f1b6a831c399e269772661"); }
+        public Result result(Context context, Map<String, Object> payload, Map<String, Object> content) {
+            String seed = associatedSeed(payload, content);
+            if (!(content.get("md5") instanceof String md5) || !md5.matches("[0-9a-f]{32}"))
+                throw new IllegalArgumentException("Invalid MD5 answer");
+            return new Result(seed, md5.startsWith("0"), Map.of("md5", md5));
+        }
+        public List<String> exportHeaders() { return List.of("MD5 摘要"); }
+        public List<String> exportValues(Result result) { return List.of((String) result.details().get("md5")); }
+    }
 
     private static class Registration implements AppCheckContract {
         public String id() { return REGISTRATION; }

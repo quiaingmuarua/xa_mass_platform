@@ -51,7 +51,7 @@ A/B and explicit 60000 ms/10 limits and is used only for an empty configuration 
 Generic Matching Group binding still holds only enablement. Boot opens no database;
 ordinary platform composition does not instantiate the scenario store.
 Batch Checks derives and unions event/refill/query dependencies per Group from the H2 document keyed by checkId.
-App A/B each expose registration and original-carrier checks in the same Group; carrier uses Any without entering the registration window observation. Other checks can also select Any without a window entry. Any remains available to
+App A/B retain their registration checks. Demo exposes one original-carrier check and the uint32-prime/MD5-prefix demonstrations through explicitly enabled Any; these events do not enter the registration window observation. Other checks can also select Any without a window entry. Any remains available to
 explicit callers, without a default Group-wide window gate. The old Group-level
 `assignment-window-pool` path and `max-assignments` field have no aliases. The
 scenario no longer reads window parameters from YAML. Saves require manual restart;

@@ -10,7 +10,8 @@ record AppCheckSeedFile(Path file, long inputCount, long emptyCount, long duplic
     static final int MAX_SEEDS = 100_000;
     static final int MAX_BYTES = 10 * 1024 * 1024;
 
-    static AppCheckSeedFile read(InputStream input, AppCheckContract.SeedType type, String country) throws IOException {
+    static AppCheckSeedFile read(InputStream input, AppCheckContract contract, String country) throws IOException {
+        var type = contract.seedType();
         type.requireCountry(country);
         Path raw = Files.createTempFile("app-check-input-", ".txt");
         Path normalized = null;
@@ -34,7 +35,10 @@ record AppCheckSeedFile(Path file, long inputCount, long emptyCount, long duplic
                     rows++;
                     if (rows == 1 && line.startsWith("\uFEFF")) line = line.substring(1);
                     final String number;
-                    try { number = type.normalize(line, country); }
+                    try {
+                        number = type.normalize(line, country);
+                        if (!number.isEmpty()) contract.validateSeed(number);
+                    }
                     catch (IllegalArgumentException failure) {
                         invalid++; if (firstInvalid == 0) firstInvalid = rows; continue;
                     }

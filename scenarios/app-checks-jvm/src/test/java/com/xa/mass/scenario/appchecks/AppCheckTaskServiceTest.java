@@ -142,7 +142,7 @@ class AppCheckTaskServiceTest {
             assertThatThrownBy(() -> service.importSeeds(CALLER, "task", new ByteArrayInputStream(new byte[]{(byte)0xc3, 0x28}))).hasMessageContaining("UTF-8");
             assertThatThrownBy(() -> service.importSeeds(CALLER, "task", file("1".repeat(AppCheckSeedFile.MAX_BYTES + 1)))).hasMessageContaining("10 MiB");
             verify(data, never()).importFiniteTaskItems(org.mockito.ArgumentMatchers.eq(CALLER), org.mockito.ArgumentMatchers.eq("app-checks"), anyString(), anyList());
-            var spool = AppCheckSeedFile.read(file("\uFEFF86123\r\n +86123 \r\n"), AppCheckContract.SeedType.PHONENUMBER, "CN");
+            var spool = AppCheckSeedFile.read(file("\uFEFF86123\r\n +86123 \r\n"), AppCheckContracts.registration(), "CN");
             assertThat(spool.duplicateCount()).isEqualTo(1);
             var path = spool.file(); spool.close(); assertThat(path).doesNotExist();
         }

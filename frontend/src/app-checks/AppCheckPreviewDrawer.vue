@@ -15,7 +15,7 @@ import { ElDrawer } from "element-plus";
 import { Refresh, Search } from "@element-plus/icons-vue";
 import "element-plus/es/components/drawer/style/css";
 import {
-  checkTypeLabel,
+  seedTypeLabel,
   checkLabel,
   countryLabel,
   type CheckDetail,
@@ -268,10 +268,8 @@ defineExpose({ refresh, focusHeading });
           <div>
             <div class="checks-title-line">
               <span
-                >{{
-                  detail.task.checkTypeLabel ?? checkTypeLabel(detail.task.checkType)
-                }}
-                · {{ detail.task.checkLabel ?? checkLabel(detail.task.checkId)
+                >{{ seedTypeLabel(detail.task.seedType) }} ·
+                {{ detail.task.checkLabel ?? checkLabel(detail.task.checkId)
                 }}{{
                   detail.task.country ? " · " + countryLabel(detail.task.country) : ""
                 }}</span
