@@ -202,6 +202,7 @@ describe("App Checks data boundary", () => {
             emptyCount: 0,
             duplicateCount: 0,
             uniqueCount: 1,
+            itemCount: 1,
             addedCount: 1,
             existingCount: 0
           })

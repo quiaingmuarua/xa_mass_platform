@@ -104,9 +104,12 @@ def create_import_approve(run, http, case, *, approve=True):
                                      headers={"Content-Type": "text/plain;charset=UTF-8", **headers}, method="POST")
     with urllib.request.urlopen(request, timeout=15) as response:
         receipt = json.load(response)
-    require(receipt["addedCount"] == len(case["numbers"]), "Import did not confirm every input")
+    size = 10 if case["checkId"] in ("original-carrier", "md5-prefix") else 1
+    item_count = (len(case["numbers"]) + size - 1) // size
+    require(receipt["uniqueCount"] == len(case["numbers"]) and receipt["itemCount"] == receipt["addedCount"] == item_count,
+            "Import did not confirm the expected seeds and execution Items")
     if approve:
-        api(run.url, f"/api/v1/tasks/{task_id}/approve", {"expectedItemCount": len(case["numbers"])})
+        api(run.url, f"/api/v1/tasks/{task_id}/approve", {"expectedItemCount": item_count})
     return task_id
 
 
@@ -201,6 +204,25 @@ def functional(run, http, cases):
             "nonclaims": ["exact distribution", "fixed executor", "single execution", "failure attempt count"]}
 
 
+def group_identities(seed_type, seeds, size):
+    """Independent length-prefixed identity oracle, including a grouped singleton tail."""
+    groups = {}
+    for offset in range(0, len(seeds), size):
+        group = seeds[offset:offset + size]
+        if size == 1:
+            fields = ["app-checks/v2/number" if seed_type == "phonenumber" else "app-checks/v1/text", *group]
+            prefix = "number-" if seed_type == "phonenumber" else "seed-"
+        else:
+            fields = ["app-checks/v1/seed-group", seed_type, *group]
+            prefix = "group-"
+        digest = hashlib.sha256()
+        for field in fields:
+            encoded = field.encode("utf-8")
+            digest.update(len(encoded).to_bytes(4, "big")); digest.update(encoded)
+        groups[prefix + digest.hexdigest()] = group
+    return groups
+
+
 def carrier_functional(run, http):
     """Real installed number Handler; goldens are fixed independently of the Scenario parser."""
     api = functools.partial(http, headers=caller_headers("1000", "admin"))
@@ -215,16 +237,19 @@ def carrier_functional(run, http):
     task_id = create_import_approve(run, http, case)
     task = api(run.url, "/api/v1/projects/app-checks/tasks/" + task_id)["task"]
     require(task["workerGroupId"] == "demo-sim"
-            and task["metadata"]["checkType"] == "original-carrier-v1"
-            and task["metadata"]["eventCode"] == "extension.worker.phonenumber.original-carrier", "Carrier Task binding differs")
+            and task["metadata"]["checkType"] == "original-carrier-batch-v1"
+            and task["metadata"]["seedsPerItem"] == "10"
+            and task["metadata"]["eventCode"] == "extension.worker.phonenumber.original-carrier.batch", "Carrier Task binding differs")
     require(task["refill"] == [{"poolName": "any", "target": {}, "count": 100}], "Carrier Task did not declare Any supply")
+
+    groups = group_identities("phonenumber", list(expected), 10)
 
     def settled():
         counts = api(run.url, "/api/v1/projects/app-checks/tasks:stats", [task_id])[task_id]
         entry = api(run.url, "/api/v1/projects/app-checks/tasks/" + task_id)
-        return entry["scoreBand"] == "terminal" and counts["total"] == len(expected) \
+        return entry["scoreBand"] == "terminal" and counts["total"] == len(groups) \
             and counts["countsByTag"]["1"] == counts["countsByTag"]["5"] == 0 \
-            and sum(counts["countsByTag"][str(tag)] for tag in range(6, 10)) == len(expected)
+            and sum(counts["countsByTag"][str(tag)] for tag in range(6, 10)) == len(groups)
 
     run.wait_for(settled, 45, "original-carrier finite task")
     preview = api(run.url, f"/api/v1/app-checks/tasks/{task_id}/results")
@@ -234,27 +259,22 @@ def carrier_functional(run, http):
         require(row["matched"] == matched and row["details"] == {"originalCarrier": carrier, "reason": reason}, "Carrier normalization differs from fixed golden")
         require("registered" not in row and "workerId" not in row["details"], "Carrier invented registration or execution identity")
 
-    def identity(number):
-        digest = hashlib.sha256()
-        for value in ("app-checks/v2/number", number):
-            encoded = value.encode("utf-8")
-            digest.update(len(encoded).to_bytes(4, "big"))
-            digest.update(encoded)
-        return "number-" + digest.hexdigest()
-
-    numbers = list(expected)
-    for start in range(0, len(numbers), 100):
-        batch = numbers[start:start + 100]
-        raw = api(run.url, f"/api/v1/tasks/{task_id}/results:load", [identity(number) for number in batch])
-        states = api(run.url, f"/api/v1/tasks/{task_id}/items:states", [identity(number) for number in batch])
-        for number in batch:
-            result = raw[identity(number)]
+    ids = list(groups)
+    for start in range(0, len(ids), 100):
+        batch = ids[start:start + 100]
+        raw = api(run.url, f"/api/v1/tasks/{task_id}/results:load", batch)
+        states = api(run.url, f"/api/v1/tasks/{task_id}/items:states", batch)
+        require(set(raw) == set(states) == set(batch), "Carrier group identities are missing")
+        for message_id in batch:
+            result = raw[message_id]
             require(result["status"] == "succeeded", "Number identification was not executed successfully")
-            content = json.loads(result["opaqueResultPayload"])
-            require(content["input"] == number, "Raw carrier input association mismatch")
-            require(content.get("originalCarrier", "") == expected[number][1], "Raw carrier name differs from fixed golden")
-            require(content["valid"] == (expected[number][2] != "INVALID_PHONE_NUMBER"), "Raw validity differs from fixed golden")
-            require(states[identity(number)]["band"] == "terminal", "Carrier Item did not terminate")
+            answers = json.loads(result["opaqueResultPayload"])["results"]
+            require([answer["input"] for answer in answers] == groups[message_id], "Raw carrier group association mismatch")
+            for content in answers:
+                number = content["input"]
+                require(content.get("originalCarrier", "") == expected[number][1], "Raw carrier name differs from fixed golden")
+                require(content["valid"] == (expected[number][2] != "INVALID_PHONE_NUMBER"), "Raw validity differs from fixed golden")
+            require(states[message_id]["band"] == "terminal", "Carrier Item did not terminate")
 
     counts = {}
     for selection in ("all", "matched", "unmatched"):
@@ -270,7 +290,7 @@ def carrier_functional(run, http):
                 values = selected[row[0].removeprefix("'")]
                 require(row[1:] == ["满足" if values[0] else "不满足", "原始运营商识别", "原始运营商识别", "CN", values[1], values[2]], "Carrier CSV interpretation mismatch")
             counts[selection] = len(selected)
-    return {"passed": True, "checkId": "original-carrier", "items": len(expected), "preview": len(preview["results"]), "exports": counts,
+    return {"passed": True, "checkId": "original-carrier", "items": len(groups), "seeds": len(expected), "preview": len(preview["results"]), "exports": counts,
             "rawResultsAndItemStatesChecked": True, "fixedCarrierGoldens": True}
 
 
@@ -307,9 +327,11 @@ def text_functional(run, http, check_id):
                 "Prime validation appended a valid subset")
     require(create_import_approve(run, http, case) == task_id, "Original creation identity was lost")
 
+    groups = group_identities("text", list(expected), 1 if prime else 10)
+
     def settled():
         observed = task_observations(run, api, task_id)
-        return observed["task"]["state"] == "terminal" and observed["task"]["succeededCount"] == len(expected) \
+        return observed["task"]["state"] == "terminal" and observed["task"]["succeededCount"] == len(groups) \
             and observed["task"]["failedCount"] == observed["task"]["activeCount"] == 0
     run.wait_for(settled, 45, check_id + " finite task")
     detail = task_observations(run, api, task_id)
@@ -320,26 +342,23 @@ def text_functional(run, http, check_id):
         matched, details = expected[row["seed"]]
         require(row["matched"] == matched and row["details"] == details, "Text answer differs from independent oracle")
 
-    def identity(seed):
-        digest = hashlib.sha256()
-        for value in ("app-checks/v1/text", seed):
-            encoded = value.encode("utf-8")
-            digest.update(len(encoded).to_bytes(4, "big")); digest.update(encoded)
-        return "seed-" + digest.hexdigest()
-    seeds = list(expected)
-    for offset in range(0, len(seeds), 100):
-        batch = seeds[offset:offset + 100]
-        ids = [identity(seed) for seed in batch]
-        raw = api(run.url, f"/api/v1/tasks/{task_id}/results:load", ids)
-        states = api(run.url, f"/api/v1/tasks/{task_id}/items:states", ids)
-        require(set(raw) == set(ids) == set(states), "Text identities are missing")
-        for seed in batch:
-            result = raw[identity(seed)]
+    ids = list(groups)
+    for offset in range(0, len(ids), 100):
+        batch = ids[offset:offset + 100]
+        raw = api(run.url, f"/api/v1/tasks/{task_id}/results:load", batch)
+        states = api(run.url, f"/api/v1/tasks/{task_id}/items:states", batch)
+        require(set(raw) == set(batch) == set(states), "Text identities are missing")
+        for message_id in batch:
+            result = raw[message_id]
             content = json.loads(result["opaqueResultPayload"])
-            require(result["status"] == "succeeded" and content.get("valid") is True and content["input"] == seed,
-                    "Raw text Result association differs")
-            require(all(content.get(key) == value for key, value in expected[seed][1].items()), "Worker computation differs")
-            require(states[identity(seed)]["band"] == "terminal", "Text Item did not terminate")
+            require(result["status"] == "succeeded", "Text execution failed")
+            answers = [content] if prime else content["results"]
+            require([answer["input"] for answer in answers] == groups[message_id], "Raw text group association differs")
+            for answer in answers:
+                seed = answer["input"]
+                require(answer.get("valid") is True, "Raw text Result validity differs")
+                require(all(answer.get(key) == value for key, value in expected[seed][1].items()), "Worker computation differs")
+            require(states[message_id]["band"] == "terminal", "Text Item did not terminate")
     for selection in ("all", "matched", "unmatched"):
         request = urllib.request.Request(run.url + route + "/results:export?filter=" + selection, headers=headers, method="POST")
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -348,7 +367,7 @@ def text_functional(run, http, check_id):
             require(rows[0] == ["种子", "判定", "检查类型", "执行配置", "是否素数" if prime else "MD5 摘要"], "Text CSV header differs")
             require(int(response.headers["X-Export-Count"]) == len(selected) == len(rows) - 1, "Text export count differs")
             require({row[0] for row in rows[1:]} == selected, "Text export lost inputs beyond preview")
-    return {"checkId": check_id, "group": "demo-sim", "items": len(expected), "passed": True,
+    return {"checkId": check_id, "group": "demo-sim", "items": len(groups), "seeds": len(expected), "passed": True,
             "rawResultsAndItemsChecked": True, "independentOracle": "sieve-and-fixed-boundaries" if prime else "hashlib"}
 
 

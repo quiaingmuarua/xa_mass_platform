@@ -8,6 +8,8 @@ public final class AppCheckContracts {
     public static final String REGISTRATION = "registration-v1";
     public static final String SIMULATED = "simulated-registration-v1";
     public static final String ORIGINAL_CARRIER = "original-carrier-v1";
+    public static final String ORIGINAL_CARRIER_BATCH = "original-carrier-batch-v1";
+    public static final String MD5_PREFIX_BATCH = "md5-prefix-demo-batch-v1";
     public static final String UINT32_PRIME = "uint32-prime-v1";
     public static final String MD5_PREFIX = "md5-prefix-demo-v1";
     private final Map<String, AppCheckContract> contracts;
@@ -30,13 +32,62 @@ public final class AppCheckContracts {
         return contracts.values().stream().sorted(Comparator.comparing(AppCheckContract::id))
                 .map(contract -> Map.<String, Object>of("id", contract.id(), "label", contract.label(), "seedType", contract.seedType().id(), "description", contract.description(),
                         "parameterExample", contract.parameterExample(), "inputExample", contract.inputExample(),
-                        "resultExample", contract.resultExample())).toList();
+                        "resultExample", contract.resultExample(), "maxSeedsPerItem", contract.maxSeedsPerItem())).toList();
     }
     public static AppCheckContract registration() { return new Registration(); }
     public static AppCheckContract simulatedRegistration() { return new SimulatedRegistration(); }
     public static AppCheckContract originalCarrier() { return new OriginalCarrier(); }
     public static AppCheckContract uint32Prime() { return new Uint32Prime(); }
     public static AppCheckContract md5Prefix() { return new Md5Prefix(); }
+
+    public static AppCheckContract originalCarrierBatch() { return new Batch(ORIGINAL_CARRIER_BATCH, "rawNumbers", originalCarrier()); }
+    public static AppCheckContract md5PrefixBatch() { return new Batch(MD5_PREFIX_BATCH, "values", md5Prefix()); }
+
+    private static String single(List<String> seeds) {
+        if (seeds.size() != 1) throw new IllegalArgumentException("Expected one seed");
+        return seeds.getFirst();
+    }
+
+    /** The two local array protocols share framing and reuse their single-seed business interpreters. */
+    private static final class Batch implements AppCheckContract {
+        private final String id, inputField;
+        private final AppCheckContract element;
+        private Batch(String id, String inputField, AppCheckContract element) {
+            this.id = id; this.inputField = inputField; this.element = element;
+        }
+        public String id() { return id; }
+        public String label() { return element.label(); }
+        public String description() { return element.description() + "；每个执行项支持 1～100 个种子。"; }
+        public SeedType seedType() { return element.seedType(); }
+        public int maxSeedsPerItem() { return 100; }
+        public void validateSeed(String seed) { element.validateSeed(seed); }
+        public Map<String, Object> parameterExample() { return element.parameterExample(); }
+        public Map<String, Object> normalizeParameters(Object value) { return element.normalizeParameters(value); }
+        public Map<String, Object> inputExample() { return Map.of(inputField, element.inputSeeds(element.inputExample())); }
+        public Map<String, Object> resultExample() { return Map.of("results", List.of(element.resultExample())); }
+        public Map<String, Object> payload(Context context, List<String> seeds) { return Map.of(inputField, List.copyOf(seeds)); }
+        public List<String> inputSeeds(Map<String, Object> payload) {
+            if (!(payload.get(inputField) instanceof List<?> values) || values.isEmpty() || values.size() > maxSeedsPerItem()
+                    || values.stream().anyMatch(value -> !(value instanceof String)))
+                throw new IllegalArgumentException("Invalid batch seeds");
+            return values.stream().map(String.class::cast).toList();
+        }
+        public List<Result> results(Context context, Map<String, Object> payload, Map<String, Object> content) {
+            var seeds = inputSeeds(payload);
+            if (!(content.get("results") instanceof List<?> rows) || rows.size() != seeds.size())
+                throw new IllegalArgumentException("Batch result cardinality mismatch");
+            var answers = new ArrayList<Result>();
+            for (Object row : rows) {
+                var value = AppCheckSettings.map(row, "results");
+                if (!(value.get("input") instanceof String seed) || !seeds.contains(seed))
+                    throw new IllegalArgumentException("Batch result association mismatch");
+                answers.addAll(element.results(context, element.payload(context, List.of(seed)), value));
+            }
+            return List.copyOf(answers);
+        }
+        public List<String> exportHeaders() { return element.exportHeaders(); }
+        public List<String> exportValues(Result result) { return element.exportValues(result); }
+    }
 
     private abstract static class TextDemo implements AppCheckContract {
         public SeedType seedType() { return SeedType.TEXT; }
@@ -45,15 +96,16 @@ public final class AppCheckContracts {
             AppCheckSettings.object(value, Set.of(), Set.of(), "parameters");
             return Map.of();
         }
-        public Map<String, Object> payload(Context context, String seed) { return Map.of("value", seed); }
-        public String inputSeed(Map<String, Object> payload) {
+        public Map<String, Object> payload(Context context, List<String> seeds) {
+            String seed = single(seeds); return Map.of("value", seed); }
+        public List<String> inputSeeds(Map<String, Object> payload) {
             if (!(payload.get("value") instanceof String seed) || seed.isEmpty())
                 throw new IllegalArgumentException("Missing text seed");
             validateSeed(seed);
-            return seed;
+            return List.of(seed);
         }
         String associatedSeed(Map<String, Object> payload, Map<String, Object> content) {
-            String seed = inputSeed(payload);
+            String seed = inputSeeds(payload).getFirst();
             if (!seed.equals(content.get("input")) || !Boolean.TRUE.equals(content.get("valid")) || content.containsKey("error"))
                 throw new IllegalArgumentException("Text result association or validity mismatch");
             return seed;
@@ -69,10 +121,10 @@ public final class AppCheckContracts {
             if (!seed.matches("[0-9]{1,10}") || Long.parseLong(seed) > 4_294_967_295L)
                 throw new IllegalArgumentException("需要 1～10 位十进制数字，范围 0～4,294,967,295");
         }
-        public Result result(Context context, Map<String, Object> payload, Map<String, Object> content) {
+        public List<Result> results(Context context, Map<String, Object> payload, Map<String, Object> content) {
             String seed = associatedSeed(payload, content);
             if (!(content.get("isPrime") instanceof Boolean prime)) throw new IllegalArgumentException("Missing prime answer");
-            return new Result(seed, prime, Map.of("isPrime", prime));
+            return List.of(new Result(seed, prime, Map.of("isPrime", prime)));
         }
         public List<String> exportHeaders() { return List.of("是否素数"); }
         public List<String> exportValues(Result result) { return List.of(Boolean.TRUE.equals(result.details().get("isPrime")) ? "是" : "否"); }
@@ -83,11 +135,11 @@ public final class AppCheckContracts {
         public String description() { return "使用 UTF-8 计算 MD5；固定演示条件为摘要以 0 开头。"; }
         public Map<String, Object> inputExample() { return Map.of("value", "a"); }
         public Map<String, Object> resultExample() { return Map.of("input", "a", "valid", true, "md5", "0cc175b9c0f1b6a831c399e269772661"); }
-        public Result result(Context context, Map<String, Object> payload, Map<String, Object> content) {
+        public List<Result> results(Context context, Map<String, Object> payload, Map<String, Object> content) {
             String seed = associatedSeed(payload, content);
             if (!(content.get("md5") instanceof String md5) || !md5.matches("[0-9a-f]{32}"))
                 throw new IllegalArgumentException("Invalid MD5 answer");
-            return new Result(seed, md5.startsWith("0"), Map.of("md5", md5));
+            return List.of(new Result(seed, md5.startsWith("0"), Map.of("md5", md5)));
         }
         public List<String> exportHeaders() { return List.of("MD5 摘要"); }
         public List<String> exportValues(Result result) { return List.of((String) result.details().get("md5")); }
@@ -110,19 +162,20 @@ public final class AppCheckContracts {
             AppCheckSettings.object(value, Set.of(), Set.of(), "parameters");
             return Map.of();
         }
-        public Map<String, Object> payload(Context context, String number) { return Map.of("number", number); }
-        public String inputSeed(Map<String, Object> payload) {
+        public Map<String, Object> payload(Context context, List<String> seeds) {
+            String number = single(seeds); return Map.of("number", number); }
+        public List<String> inputSeeds(Map<String, Object> payload) {
             String number = AppCheckSpecification.text(payload.get("number"), 16);
             if (!number.matches("\\+[1-9][0-9]{1,14}")) throw new IllegalArgumentException("Invalid input number");
-            return number;
+            return List.of(number);
         }
-        public Result result(Context context, Map<String, Object> payload, Map<String, Object> content) {
-            String number = inputSeed(payload);
+        public List<Result> results(Context context, Map<String, Object> payload, Map<String, Object> content) {
+            String number = inputSeeds(payload).getFirst();
             if (!number.equals(content.get("number")) || !context.workerGroupId().equals(content.get("workerGroupId"))
                     || !(content.get("registered") instanceof Boolean registered))
                 throw new IllegalArgumentException("Result association mismatch");
-            return new Result(number, registered, Map.of("registered", registered, "workerId", AppCheckSpecification.text(content.get("workerId"), 256),
-                    "workerGroupId", context.workerGroupId()));
+            return List.of(new Result(number, registered, Map.of("registered", registered, "workerId", AppCheckSpecification.text(content.get("workerId"), 256),
+                    "workerGroupId", context.workerGroupId())));
         }
     }
     private static final class SimulatedRegistration extends Registration {
@@ -174,18 +227,19 @@ public final class AppCheckContracts {
             return List.of(first, last);
         }
 
-        public Map<String, Object> payload(Context context, String number) {
+        public Map<String, Object> payload(Context context, List<String> seeds) {
+            String number = single(seeds);
             var payload = new LinkedHashMap<String, Object>(context.parameters());
             payload.put("number", number); payload.put("salt", context.salt());
             return Collections.unmodifiableMap(payload);
         }
-        public Result result(Context context, Map<String, Object> payload, Map<String, Object> content) {
-            var answer = super.result(context, payload, content);
+        public List<Result> results(Context context, Map<String, Object> payload, Map<String, Object> content) {
+            var answer = super.results(context, payload, content).getFirst();
             long delay = AppCheckSpecification.integer(content.get("simulatedDelayMillis"));
             if (delay < 0 || delay > 30_000) throw new IllegalArgumentException("Invalid simulated delay");
             var details = new LinkedHashMap<>(answer.details());
             details.put("simulatedDelayMillis", delay);
-            return new Result(answer.seed(), answer.matched(), details);
+            return List.of(new Result(answer.seed(), answer.matched(), details));
         }
     }
 
@@ -206,27 +260,28 @@ public final class AppCheckContracts {
             AppCheckSettings.object(value, Set.of(), Set.of(), "parameters");
             return Map.of();
         }
-        public Map<String, Object> payload(Context context, String number) { return Map.of("rawNumber", number); }
-        public String inputSeed(Map<String, Object> payload) {
+        public Map<String, Object> payload(Context context, List<String> seeds) {
+            String number = single(seeds); return Map.of("rawNumber", number); }
+        public List<String> inputSeeds(Map<String, Object> payload) {
             String number = AppCheckSpecification.text(payload.get("rawNumber"), 16);
             if (!number.matches("\\+[1-9][0-9]{1,14}")) throw new IllegalArgumentException("Invalid input number");
-            return number;
+            return List.of(number);
         }
-        public Result result(Context context, Map<String, Object> payload, Map<String, Object> content) {
-            String number = inputSeed(payload);
+        public List<Result> results(Context context, Map<String, Object> payload, Map<String, Object> content) {
+            String number = inputSeeds(payload).getFirst();
             if (!number.equals(content.get("input")) || !(content.get("possible") instanceof Boolean possible)
                     || !(content.get("valid") instanceof Boolean valid))
                 throw new IllegalArgumentException("Carrier result association or shape mismatch");
             if (valid) {
                 if (!possible || !(content.get("originalCarrier") instanceof String carrier) || content.containsKey("error"))
                     throw new IllegalArgumentException("Invalid carrier answer");
-                return new Result(number, !carrier.isBlank(), Map.of("originalCarrier", carrier,
-                        "reason", carrier.isBlank() ? "NO_CARRIER_MAPPING" : "IDENTIFIED"));
+                return List.of(new Result(number, !carrier.isBlank(), Map.of("originalCarrier", carrier,
+                        "reason", carrier.isBlank() ? "NO_CARRIER_MAPPING" : "IDENTIFIED")));
             }
             if (!(content.get("error") instanceof String reason) || !NUMBER_ERRORS.contains(reason)
                     || content.containsKey("originalCarrier"))
                 throw new IllegalArgumentException("Invalid negative carrier answer");
-            return new Result(number, false, Map.of("originalCarrier", "", "reason", reason));
+            return List.of(new Result(number, false, Map.of("originalCarrier", "", "reason", reason)));
         }
         public List<String> exportHeaders() { return List.of("原始运营商", "识别说明"); }
         public List<String> exportValues(Result result) {

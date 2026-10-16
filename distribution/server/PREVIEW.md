@@ -96,7 +96,7 @@ saving does not affect the running process. Use a new H2 file and Redis scope wh
 switching from the old table/document shape; there is no migration or fallback. Creation sends only
 requestId, checkId and (for phone seeds only) country. Tasks retain their execution snapshot across later
 configuration saves/restarts; changing an existing window length requires a new scope.
-Preview exposes app-a-registration, app-b-registration, original-carrier, uint32-prime and md5-prefix.
+Preview exposes app-a-registration, app-b-registration, original-carrier, uint32-prime and md5-prefix. Carrier and MD5 use explicit batch events with seedsPerItem=10; registration and prime remain at 1. Input and CSV remain one seed per row. Existing H2 documents are not reseeded; verify this configuration in a new database/scope/inventory.
 The two text checks are local computation demonstrations, with no external city/DNS/stock data source.
 Existing H2 documents are not overwritten by seeds. This checks schema cutover uses a new
 database, Redis scope and inventory; the launcher does not migrate or replace a running environment.

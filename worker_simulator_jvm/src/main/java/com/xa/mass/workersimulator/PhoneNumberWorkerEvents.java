@@ -22,6 +22,8 @@ final class PhoneNumberWorkerEvents {
             "extension.worker.phonenumber.country";
     static final String ORIGINAL_CARRIER_EVENT_CODE =
             "extension.worker.phonenumber.original-carrier";
+    static final String ORIGINAL_CARRIER_BATCH_EVENT_CODE =
+            "extension.worker.phonenumber.original-carrier.batch";
 
     private static final String E164_CAPABILITY = "phonenumber.e164";
     private static final String COUNTRY_CAPABILITY = "phonenumber.country";
@@ -46,7 +48,8 @@ final class PhoneNumberWorkerEvents {
                 definition(
                         ORIGINAL_CARRIER_CAPABILITY,
                         PhoneNumberWorkerEvents::originalCarrier
-                )
+                ),
+                definition("phonenumber.original-carrier.batch", PhoneNumberWorkerEvents::originalCarrierBatch)
         );
     }
 
@@ -91,6 +94,18 @@ final class PhoneNumberWorkerEvents {
     }
 
     private static String originalCarrier(Map<String, Object> payload) {
+        return Jsons.toJson(originalCarrierResult(payload));
+    }
+
+    private static String originalCarrierBatch(Map<String, Object> payload) {
+        if (!(payload.get("rawNumbers") instanceof List<?> numbers) || numbers.isEmpty() || numbers.size() > 100
+                || numbers.stream().anyMatch(number -> !(number instanceof String)))
+            throw new IllegalArgumentException("rawNumbers must contain 1..100 strings");
+        var results = numbers.stream().map(number -> originalCarrierResult(Map.of("rawNumber", number))).toList();
+        return Jsons.toJson(Map.of("results", results));
+    }
+
+    private static Map<String, Object> originalCarrierResult(Map<String, Object> payload) {
         Evaluation evaluation = evaluate(payload);
         if (evaluation.valid()) {
             evaluation.result().put(
@@ -101,7 +116,7 @@ final class PhoneNumberWorkerEvents {
                     )
             );
         }
-        return Jsons.toJson(evaluation.result());
+        return evaluation.result();
     }
 
     private static Evaluation evaluate(Map<String, Object> payload) {

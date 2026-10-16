@@ -93,14 +93,19 @@ onBeforeUnmount(() => {
           <thead>
             <tr>
               <th>Message ID</th>
+              <th>种子</th>
               <th>实际 Worker</th>
               <th v-if="simulated">模拟延迟</th>
               <th v-if="simulated">复算</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in detail.results" :key="row.messageId">
+            <tr
+              v-for="row in detail.results"
+              :key="JSON.stringify([row.messageId, row.seed])"
+            >
               <td>{{ row.messageId }}</td>
+              <td>{{ row.seed || "—" }}</td>
               <td>{{ row.details?.workerId || "—" }}</td>
               <td v-if="simulated">{{ row.details?.simulatedDelayMillis ?? "—" }}</td>
               <td v-if="simulated">

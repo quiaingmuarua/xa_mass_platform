@@ -20,7 +20,8 @@ class StringUtilityWorkerEventsTest {
                 .containsExactly(
                         StringUtilityWorkerEvents.MD5_EVENT_CODE,
                         StringUtilityWorkerEvents.SHA1_EVENT_CODE,
-                        StringUtilityWorkerEvents.BASE64_ENCODE_EVENT_CODE
+                        StringUtilityWorkerEvents.BASE64_ENCODE_EVENT_CODE,
+                        StringUtilityWorkerEvents.MD5_BATCH_EVENT_CODE
                 );
         assertThat(execute(
                 definitions,
@@ -63,7 +64,7 @@ class StringUtilityWorkerEventsTest {
                         "d41d8cd98f00b204e9800998ecf8427e"
                 );
 
-        for (WorkerEventDefinition<?> definition : definitions) {
+        for (WorkerEventDefinition<?> definition : definitions.stream().filter(event -> !event.eventName().equals(StringUtilityWorkerEvents.MD5_BATCH_EVENT_CODE)).toList()) {
             Map<String, Object> missing = Jsons.parseObject(
                     mapDefinition(definition).handler().execute(Map.of())
             );

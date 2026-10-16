@@ -41,6 +41,7 @@ export interface ImportReceipt {
   emptyCount: number;
   duplicateCount: number;
   uniqueCount: number;
+  itemCount: number;
   addedCount: number;
   existingCount: number;
 }

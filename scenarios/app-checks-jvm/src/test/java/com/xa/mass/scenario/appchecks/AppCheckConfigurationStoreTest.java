@@ -11,6 +11,28 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.assertj.core.api.Assertions.*;
 
 class AppCheckConfigurationStoreTest {
+    @Test @SuppressWarnings("unchecked")
+    void groupingIsNormalizedAndCheckedAgainstTheSelectedContractBeforeSaving() {
+        var input = Jsons.parseObject(AppCheckTestSettings.seed());
+        var checks = (Map<String, Map<String,Object>>) input.get("checks");
+        var execution = (Map<String,Object>) checks.get("md5-prefix").get("execution");
+        execution.remove("seedsPerItem");
+        assertThat(AppCheckSettings.parse(input, AppCheckTestSettings.contracts()).requireCheck("md5-prefix").execution().toMap())
+                .containsEntry("seedsPerItem", 1);
+        for (Object invalid : List.of(0, -1, 101, 1.5, "10", 4294967297L)) {
+            execution.put("seedsPerItem", invalid);
+            assertThatThrownBy(() -> AppCheckSettings.parse(input, AppCheckTestSettings.contracts())).isInstanceOf(IllegalArgumentException.class);
+        }
+        execution.put("seedsPerItem", 100);
+        assertThat(AppCheckSettings.parse(input, AppCheckTestSettings.contracts()).requireCheck("md5-prefix").execution().seedsPerItem()).isEqualTo(100);
+        var single = (Map<String,Object>) checks.get("uint32-prime").get("execution");
+        single.put("seedsPerItem", 2);
+        assertThatThrownBy(() -> AppCheckSettings.parse(input, AppCheckTestSettings.contracts())).hasMessageContaining("seedsPerItem");
+        try (var store = open()) {
+            assertThatThrownBy(() -> store.save(initialFingerprint(), input)).isInstanceOf(AppCheckConfigurationException.class);
+            assertThat(fingerprint(store.view())).isEqualTo(initialFingerprint());
+        }
+    }
     @TempDir Path directory;
     Path path() { return directory.resolve("configuration"); }
     AppCheckConfigurationStore open() { return new AppCheckConfigurationStore(path(), AppCheckTestSettings::seed, AppCheckTestSettings.contracts()); }

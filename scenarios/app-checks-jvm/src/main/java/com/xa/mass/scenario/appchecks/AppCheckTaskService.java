@@ -95,7 +95,8 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         var app = settings.requireCheck(specification.checkId());
         var parameters = contracts.require(app.checkType()).normalizeParameters(settings.parametersFor(app));
         var metadata = new LinkedHashMap<>(Map.ofEntries(
-                Map.entry("scenario", PROJECT), Map.entry("inputVersion", "4"),
+                Map.entry("scenario", PROJECT), Map.entry("inputVersion", "5"),
+                Map.entry("seedsPerItem", Integer.toString(app.execution().seedsPerItem())),
                 Map.entry("checkId", specification.checkId()), Map.entry("checkLabel", app.label()),
                 Map.entry("checkTypeLabel", contracts.require(app.checkType()).label()),
                 Map.entry("seedType", contracts.require(app.checkType()).seedType().id()),
@@ -138,17 +139,19 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                 catch (RuntimeException invalid) { throw new RequestFailure(400, "任务执行配置不可用：" + invalid.getMessage(), taskId); }
                 long added = 0, existing = 0;
                 try (var file = AppCheckSeedFile.read(input, snapshot.contract(), snapshot.context().country());
-                     var reader = Files.newBufferedReader(file.file(), StandardCharsets.UTF_8)) {
+                     var groups = file.prepareGroups(snapshot);
+                     var reader = Files.newBufferedReader(groups.file(), StandardCharsets.UTF_8)) {
                     var batch = new ArrayList<TaskItemRequest>(100);
                     boolean finished = false;
                     while (!finished) {
                         requireRunning();
                         batch.clear();
                         while (batch.size() < 100) {
-                            String number = reader.readLine();
-                            if (number == null) { finished = true; break; }
-                            var payload = snapshot.contract().payload(snapshot.context(), number);
-                            batch.add(new TaskItemRequest(snapshot.contract().seedType().messageId(number),
+                            String line = reader.readLine();
+                            if (line == null) { finished = true; break; }
+                            var group = Jsons.parseObject(line);
+                            var payload = AppCheckSettings.map(group.get("payload"), "group.payload");
+                            batch.add(new TaskItemRequest((String) group.get("messageId"),
                                     snapshot.eventCode(), payload, 5, null, snapshot.selector()));
                         }
                         if (batch.isEmpty()) break;
@@ -162,7 +165,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                         }
                         if (!confirmed) throw new IllegalStateException("Item import is unconfirmed");
                     }
-                    return new ImportReceipt(taskId, file.inputCount(), file.emptyCount(), file.duplicateCount(), file.uniqueCount(), added, existing);
+                    return new ImportReceipt(taskId, file.inputCount(), file.emptyCount(), file.duplicateCount(), file.uniqueCount(), groups.itemCount(), added, existing);
                 } catch (RequestFailure invalid) {
                     var failure = new RequestFailure(invalid.status, invalid.getMessage(), taskId);
                     failure.confirmedAdded = added; failure.existing = existing; throw failure;
@@ -192,21 +195,23 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                     exports.forEachResult(caller, taskId, result -> {
                         requireRunning();
                         if (!result.result().succeeded()) return;
-                        final AppCheckContract.Result answer;
+                        final List<AppCheckContract.Result> answers;
                         try {
-                            answer = interpret(snapshot, new TaskDataService.ResultEntry(result.messageId(), result.item(),
+                            answers = interpret(snapshot, new TaskDataService.ResultEntry(result.messageId(), result.item(),
                                     TaskItemResultResponse.from(result.result())));
                         } catch (RuntimeException invalid) { return; }
-                        if (filter.equals("matched") && !answer.matched() || filter.equals("unmatched") && answer.matched()) return;
-                        var values = new ArrayList<>(List.of(answer.seed(), answer.matched() ? "满足" : "不满足",
-                                snapshot.checkTypeLabel(), snapshot.checkLabel()));
-                        if (snapshot.contract().seedType() == AppCheckContract.SeedType.PHONENUMBER) values.add(snapshot.context().country());
-                        values.addAll(snapshot.contract().exportValues(answer));
-                        if (values.size() != headers.size()) throw new IllegalStateException("Contract export column mismatch");
-                        try {
-                            writer.write(String.join(",", values.stream().map(AppCheckTaskService::csvCell).toList()) + "\r\n");
-                            count[0]++;
-                        } catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
+                        for (var answer : answers) {
+                            if (filter.equals("matched") && !answer.matched() || filter.equals("unmatched") && answer.matched()) continue;
+                            var values = new ArrayList<>(List.of(answer.seed(), answer.matched() ? "满足" : "不满足",
+                                    snapshot.checkTypeLabel(), snapshot.checkLabel()));
+                            if (snapshot.contract().seedType() == AppCheckContract.SeedType.PHONENUMBER) values.add(snapshot.context().country());
+                            values.addAll(snapshot.contract().exportValues(answer));
+                            if (values.size() != headers.size()) throw new IllegalStateException("Contract export column mismatch");
+                            try {
+                                writer.write(String.join(",", values.stream().map(AppCheckTaskService::csvCell).toList()) + "\r\n");
+                                count[0]++;
+                            } catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
+                        }
                     });
                 }
                 complete = true;
@@ -230,14 +235,20 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     }
     public void transferExport(CsvExport file, OutputStream output) throws IOException { exports.transferAndDelete(file.file(), output); }
     public record CsvExport(Path file, String fileName, long count) { }
-    public record ImportReceipt(String taskId, long inputCount, long emptyCount, long duplicateCount, int uniqueCount, long addedCount, long existingCount) { }
+    public record ImportReceipt(String taskId, long inputCount, long emptyCount, long duplicateCount, int uniqueCount, int itemCount, long addedCount, long existingCount) { }
 
     public Map<String, Object> results(TaskCaller caller, String taskId) {
         var task = requireCheck(caller, taskId).task();
         var snapshot = AppCheckTaskSnapshot.read(task.workerGroupId(), task.metadata(), contracts);
         var preview = data.previewTaskResults(caller, taskId);
-        return Map.of("taskId", taskId, "results", preview.results().stream()
-                .map(row -> resultView(snapshot, row)).toList(), "truncated", preview.truncated());
+        var rows = new ArrayList<Map<String, Object>>();
+        for (var entry : preview.results()) {
+            for (var row : resultView(snapshot, entry)) {
+                if (rows.size() == 100) return Map.of("taskId", taskId, "results", rows, "truncated", true);
+                rows.add(row);
+            }
+        }
+        return Map.of("taskId", taskId, "results", rows, "truncated", preview.truncated());
     }
 
     private static boolean isCheckTask(ProjectTaskQueryService.Entry entry) {
@@ -246,33 +257,51 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                 && PROJECT.equals(entry.task().metadata().get(TaskCaller.INPUT_OWNER));
     }
 
-    private static Map<String, Object> resultView(AppCheckTaskSnapshot snapshot, TaskDataService.ResultEntry entry) {
+    private static List<Map<String, Object>> resultView(AppCheckTaskSnapshot snapshot, TaskDataService.ResultEntry entry) {
+        List<String> seeds = List.of();
+        if (entry.item() != null) {
+            try { seeds = snapshot.inputSeeds(entry.item().payload()); }
+            catch (RuntimeException ignored) { /* Damaged input retains an Item-level diagnostic. */ }
+        }
+        String error = null;
+        if (entry.result().status() != TaskItemResultStatus.FAILED) {
+            try {
+                var rows = new ArrayList<Map<String, Object>>();
+                for (var answer : interpret(snapshot, entry)) {
+                    var row = resultRow(entry, answer.seed(), null);
+                    row.put("matched", answer.matched()); row.put("details", answer.details()); rows.add(row);
+                }
+                return rows;
+            } catch (RuntimeException invalid) { error = "Application check result cannot be parsed or associated"; }
+        }
+        var rows = new ArrayList<Map<String, Object>>();
+        if (seeds.isEmpty()) rows.add(resultRow(entry, null, error));
+        else for (String seed : seeds) rows.add(resultRow(entry, seed, error));
+        return rows;
+    }
+
+    private static Map<String, Object> resultRow(TaskDataService.ResultEntry entry, String seed, String error) {
         var row = new LinkedHashMap<String, Object>();
         row.put("messageId", entry.messageId()); row.put("resultStatus", entry.result().status().wireValue());
-        var item = entry.item();
-        if (item != null) {
-            try { row.put("seed", snapshot.contract().inputSeed(item.payload())); }
-            catch (RuntimeException ignored) { /* Failed executions need no business answer. */ }
-        }
-        if (entry.result().status() == TaskItemResultStatus.FAILED) return row;
-        try {
-            var answer = interpret(snapshot, entry);
-            row.put("seed", answer.seed()); row.put("matched", answer.matched());
-            row.put("details", answer.details());
-        } catch (RuntimeException invalid) { row.put("contentError", "Application check result cannot be parsed or associated"); }
+        if (seed != null) row.put("seed", seed);
+        if (error != null) row.put("contentError", error);
         return row;
     }
 
-    private static AppCheckContract.Result interpret(AppCheckTaskSnapshot snapshot, TaskDataService.ResultEntry entry) {
+    private static List<AppCheckContract.Result> interpret(AppCheckTaskSnapshot snapshot, TaskDataService.ResultEntry entry) {
         var item = entry.item();
         if (item == null || !entry.messageId().equals(item.messageId()) || !snapshot.eventCode().equals(item.eventCode()))
             throw new IllegalArgumentException("Item association mismatch");
-        var answer = snapshot.contract().result(snapshot.context(), item.payload(), Jsons.parseObject(entry.result().opaqueResultPayload()));
-        if (!answer.seed().equals(snapshot.contract().inputSeed(item.payload()))
-                || !answer.seed().equals(snapshot.contract().seedType().normalize(answer.seed(), snapshot.context().country()))
-                || !entry.messageId().equals(snapshot.contract().seedType().messageId(answer.seed())))
-            throw new IllegalArgumentException("Result association mismatch");
-        return answer;
+        var seeds = snapshot.inputSeeds(item.payload());
+        if (!entry.messageId().equals(snapshot.messageId(seeds))) throw new IllegalArgumentException("Item identity mismatch");
+        var answers = snapshot.contract().results(snapshot.context(), item.payload(), Jsons.parseObject(entry.result().opaqueResultPayload()));
+        if (answers.size() != seeds.size()) throw new IllegalArgumentException("Result cardinality mismatch");
+        var bySeed = new LinkedHashMap<String, AppCheckContract.Result>();
+        for (var answer : answers) {
+            if (bySeed.putIfAbsent(answer.seed(), answer) != null) throw new IllegalArgumentException("Duplicate result seed");
+        }
+        if (!bySeed.keySet().equals(new java.util.HashSet<>(seeds))) throw new IllegalArgumentException("Result association mismatch");
+        return seeds.stream().map(bySeed::get).toList();
     }
 
     @Override public void stop() {

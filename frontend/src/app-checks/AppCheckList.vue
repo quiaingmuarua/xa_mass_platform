@@ -378,7 +378,7 @@ defineExpose({ revealTask, focusHeading });
             ><span :title="row.userId">{{ identityLabel(row.userId) }}</span></template
           >
         </ElTableColumn>
-        <ElTableColumn label="种子数量" width="110" align="right">
+        <ElTableColumn label="执行项数量" width="110" align="right">
           <template #default="{ row }"
             ><span class="checks-number">{{ quantity(row.totalCount) }}</span></template
           >

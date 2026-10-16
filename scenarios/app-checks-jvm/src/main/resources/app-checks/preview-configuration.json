@@ -24,7 +24,9 @@
       "registration-v1": {},
       "original-carrier-v1": {},
       "uint32-prime-v1": {},
-      "md5-prefix-demo-v1": {}
+      "md5-prefix-demo-v1": {},
+      "original-carrier-batch-v1": {},
+      "md5-prefix-demo-batch-v1": {}
     }
   },
   "checks": {
@@ -43,7 +45,8 @@
         "workerSelector": {
           "executorName": "worker.assignment.available",
           "input": {}
-        }
+        },
+        "seedsPerItem": 1
       },
       "checkType": "simulated-registration-v1"
     },
@@ -62,16 +65,17 @@
         "workerSelector": {
           "executorName": "worker.assignment.available",
           "input": {}
-        }
+        },
+        "seedsPerItem": 1
       },
       "checkType": "simulated-registration-v1"
     },
     "original-carrier": {
       "label": "原始运营商识别",
-      "checkType": "original-carrier-v1",
+      "checkType": "original-carrier-batch-v1",
       "workerGroupId": "demo-sim",
       "execution": {
-        "eventCode": "extension.worker.phonenumber.original-carrier",
+        "eventCode": "extension.worker.phonenumber.original-carrier.batch",
         "refill": [
           {
             "poolName": "any",
@@ -82,7 +86,8 @@
         "workerSelector": {
           "executorName": "worker.any",
           "input": {}
-        }
+        },
+        "seedsPerItem": 10
       }
     },
     "uint32-prime": {
@@ -101,15 +106,16 @@
         "workerSelector": {
           "executorName": "worker.any",
           "input": {}
-        }
+        },
+        "seedsPerItem": 1
       }
     },
     "md5-prefix": {
       "label": "MD5 前缀命中（演示）",
-      "checkType": "md5-prefix-demo-v1",
+      "checkType": "md5-prefix-demo-batch-v1",
       "workerGroupId": "demo-sim",
       "execution": {
-        "eventCode": "extension.worker.string.md5",
+        "eventCode": "extension.worker.string.md5.batch",
         "refill": [
           {
             "poolName": "any",
@@ -120,7 +126,8 @@
         "workerSelector": {
           "executorName": "worker.any",
           "input": {}
-        }
+        },
+        "seedsPerItem": 10
       }
     }
   },

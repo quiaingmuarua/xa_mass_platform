@@ -204,6 +204,8 @@ class PreviewLifecycleTest(unittest.TestCase):
                     self.assertIn("extension.worker.phonenumber.original-carrier", group["events"])
                     self.assertIn("extension.worker.integer.uint32-prime", group["events"])
                     self.assertIn("extension.worker.string.md5", group["events"])
+                    self.assertIn("extension.worker.string.md5.batch", group["events"])
+                    self.assertIn("extension.worker.phonenumber.original-carrier.batch", group["events"])
                     self.assertEqual("18413", host.args[2]["PREVIEW_ADAPTER_PORT"])
                     for group_id in ("app-a-sim", "app-b-sim"):
                         if app_count:

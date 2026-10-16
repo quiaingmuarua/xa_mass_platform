@@ -6,6 +6,12 @@ export const REGISTRATION_CONTRACT = "registration-v1";
 export const MD5_CONTRACT = "md5-prefix-demo-v1";
 export const PRIME_CONTRACT = "uint32-prime-v1";
 export const CARRIER_CONTRACT = "original-carrier-v1";
+export const CARRIER_BATCH_CONTRACT = "original-carrier-batch-v1";
+export const MD5_BATCH_CONTRACT = "md5-prefix-demo-batch-v1";
+export const isCarrierContract = (id?: string) =>
+  id === CARRIER_CONTRACT || id === CARRIER_BATCH_CONTRACT;
+export const isMd5Contract = (id?: string) =>
+  id === MD5_CONTRACT || id === MD5_BATCH_CONTRACT;
 const name = z
   .string()
   .min(1)
@@ -126,8 +132,8 @@ export function validateMockSettings(input: unknown): AppCheckSettings {
     if (id === SIMULATED_CONTRACT) return simulationSchema.parse(parameters);
     if (
       id === REGISTRATION_CONTRACT ||
-      id === CARRIER_CONTRACT ||
-      id === MD5_CONTRACT ||
+      isCarrierContract(id) ||
+      isMd5Contract(id) ||
       id === PRIME_CONTRACT
     )
       return z.strictObject({}).parse(parameters);
@@ -137,6 +143,11 @@ export function validateMockSettings(input: unknown): AppCheckSettings {
     settings.common.typeDefaults[id] = normalize(id, parameters);
   const groups = new Set<string>();
   for (const app of Object.values(settings.checks)) {
+    const maximum = [CARRIER_BATCH_CONTRACT, MD5_BATCH_CONTRACT].includes(app.checkType)
+      ? 100
+      : 1;
+    if (app.execution.seedsPerItem > maximum)
+      throw new Error(`execution.seedsPerItem：此契约最多支持 ${maximum} 个种子`);
     groups.add(app.workerGroupId);
     const parameters = normalize(
       app.checkType,

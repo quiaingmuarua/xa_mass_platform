@@ -41,6 +41,90 @@ import static org.mockito.Mockito.*;
 @Tag("scenario-composition")
 class AppChecksIntegrationTest {
     @Test @Timeout(150) @SuppressWarnings("unchecked")
+    void groupedMd5ExecutesTwentyThreeSeedsAsThreeOrTwentyThreeItemsAcrossConfigurationRestart() throws Exception {
+        try (var world = new World()) {
+            var seeds = IntStream.range(0, 23).mapToObj(i -> "batch-seed-" + i).toList();
+            String input = String.join("\n", seeds);
+            var request = Map.of("requestId", "grouped-md5", "checkId", "md5-prefix");
+            String old = (String) Jsons.parseObject(world.post("/api/v1/app-checks/tasks", Jsons.toJson(request), "application/json").body()).get("taskId");
+            String oldRoute = "/api/v1/app-checks/tasks/" + old + "/seeds:import";
+            assertThat(Jsons.parseObject(world.post(oldRoute, input, "text/plain").body()))
+                    .containsEntry("uniqueCount", 23L).containsEntry("itemCount", 3L).containsEntry("addedCount", 3L);
+            var saved = (Map<String,Object>) world.get("/api/v1/app-checks/configuration").get("saved");
+            var config = (Map<String,Object>) saved.get("configuration");
+            var execution = (Map<String,Object>) ((Map<String,Map<String,Object>>) config.get("checks")).get("md5-prefix").get("execution");
+            execution.put("seedsPerItem", 1);
+            assertThat(world.putConfiguration(Map.of("expectedFingerprint", saved.get("fingerprint"), "configuration", config)).statusCode()).isEqualTo(200);
+            assertThat(task(world.detail(old))).containsEntry("seedsPerItem", "10").containsEntry("inputVersion", "5");
+            world.restart();
+            assertThat(Jsons.parseObject(world.post("/api/v1/app-checks/tasks", Jsons.toJson(request), "application/json").body())).containsEntry("taskId", old);
+            assertThat(Jsons.parseObject(world.post(oldRoute, input, "text/plain").body())).containsEntry("existingCount", 3L).containsEntry("addedCount", 0L);
+            String fresh = (String) Jsons.parseObject(world.post("/api/v1/app-checks/tasks", Jsons.toJson(Map.of(
+                    "requestId", "single-md5", "checkId", "md5-prefix")), "application/json").body()).get("taskId");
+            assertThat(Jsons.parseObject(world.post("/api/v1/app-checks/tasks/" + fresh + "/seeds:import", input, "text/plain").body()))
+                    .containsEntry("uniqueCount", 23L).containsEntry("itemCount", 23L).containsEntry("addedCount", 23L);
+            var root = java.nio.file.Files.createTempDirectory(Path.of("build"), "batch-worker-");
+            var hostConfig = root.resolve("host.json");
+            java.nio.file.Files.writeString(hostConfig, Jsons.toJson(Map.of("runtimeApiBaseUrl", world.base.toString(),
+                    "sandboxRoot", root.resolve("data/scenario-workers").toString(), "controlPort", 0,
+                    "workerGroups", Map.of("demo-sim", Map.of("count", 2, "events", List.of("extension.worker.string.md5.batch"),
+                            "propertiesTemplate", Map.of("country", "CN"), "newEnvironment", false)))));
+            var failure = new AtomicReference<Throwable>();
+            var host = new Thread(() -> { try { com.xa.mass.workersimulator.WorkerSimulatorMain.main(new String[]{"--config", hostConfig.toString()}); }
+                catch (Throwable error) { failure.set(error); } }, "batch-md5-proof");
+            host.start();
+            try {
+                for (var test : Map.of(old, 10, fresh, 1).entrySet()) {
+                    String id = test.getKey(); int size = test.getValue(), count = (23 + size - 1) / size;
+                    assertThat(world.post("/api/v1/tasks/" + id + "/approve", Jsons.toJson(Map.of("expectedItemCount", count)), "application/json").statusCode()).isEqualTo(200);
+                    var detail = world.settled(id, count);
+                    assertThat(rows(detail)).hasSize(23);
+                    var expectedGroups = new LinkedHashMap<String,List<String>>();
+                    for (int offset = 0; offset < seeds.size(); offset += size) {
+                        var group = seeds.subList(offset, Math.min(seeds.size(), offset + size));
+                        expectedGroups.put(groupIdentity(group, size), group);
+                    }
+                    var ids = List.copyOf(expectedGroups.keySet());
+                    var items = world.context.getBean(com.xa.mass.server.task.TaskDataService.class).loadTaskItems(CALLER, id, ids);
+                    var raw = Jsons.parseObject(world.post("/api/v1/tasks/" + id + "/results:load", Jsons.toJson(ids), "application/json").body());
+                    var states = Jsons.parseObject(world.post("/api/v1/tasks/" + id + "/items:states", Jsons.toJson(ids), "application/json").body());
+                    assertThat(items.keySet()).containsExactlyInAnyOrderElementsOf(ids);
+                    for (String message : ids) {
+                        assertThat(items.get(message).payload()).containsEntry("values", expectedGroups.get(message));
+                        assertThat((Map<String,Object>) states.get(message)).containsEntry("band", "terminal");
+                        var stored = (Map<String,Object>) raw.get(message);
+                        assertThat(stored).containsEntry("status", "succeeded");
+                        var answers = (List<Map<String,Object>>) Jsons.parseObject((String) stored.get("opaqueResultPayload")).get("results");
+                        assertThat(answers.stream().map(row -> row.get("input")).toList()).isEqualTo(expectedGroups.get(message));
+                        for (var answer : answers) {
+                            String seed = (String) answer.get("input");
+                            String digest = HexFormat.of().formatHex(MessageDigest.getInstance("MD5").digest(seed.getBytes(StandardCharsets.UTF_8)));
+                            assertThat(answer).containsEntry("valid", true).containsEntry("md5", digest);
+                            assertThat(rows(detail)).filteredOn(row -> message.equals(row.get("messageId")) && seed.equals(row.get("seed")))
+                                    .singleElement().satisfies(row -> { assertThat(row).containsEntry("matched", digest.startsWith("0"));
+                                        assertThat((Map<String,Object>) row.get("details")).containsEntry("md5", digest); });
+                        }
+                    }
+                    var csv = world.post("/api/v1/app-checks/tasks/" + id + "/results:export", "", "application/json");
+                    assertThat(csv.statusCode()).isEqualTo(200); assertThat(csv.headers().firstValue("X-Export-Count")).contains("23");
+                    assertThat(csv.body().lines().count()).isEqualTo(24);
+                }
+                assertThat(failure.get()).isNull();
+            } finally { host.interrupt(); host.join(15_000); assertThat(host.isAlive()).isFalse(); }
+        }
+    }
+    static String groupIdentity(List<String> seeds, int size) throws Exception {
+        var parts = new ArrayList<String>();
+        if (size == 1) parts.add("app-checks/v1/text");
+        else { parts.add("app-checks/v1/seed-group"); parts.add("text"); }
+        parts.addAll(seeds);
+        var bytes = new ByteArrayOutputStream();
+        try (var tuple = new DataOutputStream(bytes)) {
+            for (String part : parts) { byte[] encoded = part.getBytes(StandardCharsets.UTF_8); tuple.writeInt(encoded.length); tuple.write(encoded); }
+        }
+        return (size == 1 ? "seed-" : "group-") + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
+    }
+    @Test @Timeout(150) @SuppressWarnings("unchecked")
     void textSeedsUseTheExistingMd5WorkerWithoutPhoneOptionsAndRetainTheirSnapshot() throws Exception {
         try (var world = new World()) {
             var view = world.get("/api/v1/app-checks/configuration");
@@ -600,27 +684,39 @@ class AppChecksIntegrationTest {
             // Protocol/error fixture. The source/ZIP runner separately executes the installed libphonenumber Handler.
             var builder = JavaWorkerManager.builder(world.base, "demo-sim", WorkerTransportType.WEBSOCKET);
             for (String replica : world.replicas) builder.replica(replica, Map::of, List.of(
-                    WorkerEventDefinition.extension("phonenumber.original-carrier", WorkerEventParameterResolvers.jsonMap(), input -> {
-                        String number = (String) input.get("rawNumber");
-                        int kind = Character.digit(number.charAt(number.length() - 1), 10);
-                        var result = new LinkedHashMap<String,Object>(Map.of("input", number, "possible", true, "valid", kind != 2));
-                        if (kind == 2) result.put("error", "INVALID_PHONE_NUMBER");
-                        else if (kind != 3) result.put("originalCarrier", kind == 0 ? "Fixture Carrier" : "");
-                        return Jsons.toJson(result);
+                    WorkerEventDefinition.extension("phonenumber.original-carrier.batch", WorkerEventParameterResolvers.jsonMap(), input -> {
+                        var answers = new ArrayList<Map<String,Object>>();
+                        for (Object value : (List<?>) input.get("rawNumbers")) {
+                            String number = (String) value;
+                            int kind = Character.digit(number.charAt(number.length() - 1), 10);
+                            var result = new LinkedHashMap<String,Object>(Map.of("input", number, "possible", true, "valid", kind != 2));
+                            if (kind == 2) result.put("error", "INVALID_PHONE_NUMBER");
+                            else if (kind != 3) result.put("originalCarrier", kind == 0 ? "Fixture Carrier" : "");
+                            answers.add(result);
+                        }
+                        return Jsons.toJson(Map.of("results", answers));
                     })));
             try (var workers = builder.build()) {
                 workers.start(); world.readyFacts(workers, "demo-sim");
-                id = world.create("carrier-retention", "original-carrier", 4);
+                id = (String) Jsons.parseObject(world.post("/api/v1/app-checks/tasks", Jsons.toJson(Map.of(
+                        "requestId", "carrier-retention", "checkId", "original-carrier", "country", "CN")), "application/json").body()).get("taskId");
+                for (int kind = 0; kind < 4; kind++) {
+                    var imported = world.post("/api/v1/app-checks/tasks/" + id + "/seeds:import",
+                            "+861380000000" + kind + "\n+861380000001" + kind, "text/plain");
+                    assertThat(imported.statusCode()).isEqualTo(200);
+                    assertThat(Jsons.parseObject(imported.body())).containsEntry("uniqueCount", 2L).containsEntry("itemCount", 1L);
+                }
+                assertThat(world.post("/api/v1/tasks/" + id + "/approve", "{\"expectedItemCount\":4}", "application/json").statusCode()).isEqualTo(200);
                 before = world.settled(id, 4);
                 assertThat(task(before)).containsEntry("succeededCount", 4L).containsEntry("failedCount", 0L);
-                assertThat(rows(before)).filteredOn(row -> Boolean.TRUE.equals(row.get("matched"))).hasSize(1);
-                assertThat(rows(before)).filteredOn(row -> Boolean.FALSE.equals(row.get("matched"))).hasSize(2);
-                assertThat(rows(before)).filteredOn(row -> row.containsKey("contentError")).singleElement()
-                        .satisfies(row -> assertThat(row).doesNotContainKey("matched"));
+                assertThat(rows(before)).filteredOn(row -> Boolean.TRUE.equals(row.get("matched"))).hasSize(2);
+                assertThat(rows(before)).filteredOn(row -> Boolean.FALSE.equals(row.get("matched"))).hasSize(4);
+                assertThat(rows(before)).filteredOn(row -> row.containsKey("contentError")).hasSize(2)
+                        .allSatisfy(row -> assertThat(row).doesNotContainKey("matched"));
                 assertThat(rows(before)).allSatisfy(row -> assertThat(row).doesNotContainKeys("registered", "workerId", "workerGroupId"));
                 var exported = world.post("/api/v1/app-checks/tasks/" + id + "/results:export", "", "application/json");
                 assertThat(exported.statusCode()).isEqualTo(200);
-                assertThat(exported.headers().firstValue("X-Export-Count")).contains("3");
+                assertThat(exported.headers().firstValue("X-Export-Count")).contains("6");
                 csv = exported.body();
                 assertThat(csv).contains("原始运营商", "Fixture Carrier", "INVALID_PHONE_NUMBER", "NO_CARRIER_MAPPING");
                 assertThat(world.post("/api/v1/app-checks/tasks/" + id + "/results:export?filter=registered", "", "application/json").statusCode()).isEqualTo(400);

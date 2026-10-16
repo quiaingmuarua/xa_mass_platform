@@ -17,6 +17,7 @@ import java.util.function.Function;
 final class StringUtilityWorkerEvents {
 
     static final String MD5_EVENT_CODE = "extension.worker.string.md5";
+    static final String MD5_BATCH_EVENT_CODE = "extension.worker.string.md5.batch";
     static final String SHA1_EVENT_CODE = "extension.worker.string.sha1";
     static final String BASE64_ENCODE_EVENT_CODE =
             "extension.worker.string.base64.encode";
@@ -47,7 +48,8 @@ final class StringUtilityWorkerEvents {
                         value -> Base64.getEncoder().encodeToString(
                                 value.getBytes(StandardCharsets.UTF_8)
                         )
-                )
+                ),
+                WorkerEventDefinition.extension("string.md5.batch", WorkerEventParameterResolvers.jsonMap(), StringUtilityWorkerEvents::md5Batch)
         );
     }
 
@@ -70,17 +72,29 @@ final class StringUtilityWorkerEvents {
             String outputField,
             Function<String, String> operation
     ) {
+        return Jsons.toJson(result(payload, outputField, operation));
+    }
+
+    private static String md5Batch(Map<String, Object> payload) {
+        if (!(payload.get("values") instanceof List<?> values) || values.isEmpty() || values.size() > 100
+                || values.stream().anyMatch(value -> !(value instanceof String)))
+            throw new IllegalArgumentException("values must contain 1..100 strings");
+        var results = values.stream().map(value -> result(Map.of("value", value), "md5", text -> digest("MD5", text))).toList();
+        return Jsons.toJson(Map.of("results", results));
+    }
+
+    private static Map<String, Object> result(Map<String, Object> payload, String outputField, Function<String, String> operation) {
         Object input = payload.get("value");
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("input", input);
         if (!(input instanceof String)) {
             result.put("valid", false);
             result.put("error", "VALUE_STRING_REQUIRED");
-            return Jsons.toJson(result);
+            return result;
         }
         result.put("valid", true);
         result.put(outputField, operation.apply((String) input));
-        return Jsons.toJson(result);
+        return result;
     }
 
     private static String digest(String algorithm, String value) {

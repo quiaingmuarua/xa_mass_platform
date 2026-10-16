@@ -198,7 +198,7 @@ it("groups phone capabilities without exposing a second carrier deployment choic
   });
   const { taskId } = await create.mock.results[0].value;
   expect((await source.loadTask(CALLER, taskId)).task).toMatchObject({
-    checkType: "original-carrier-v1",
+    checkType: "original-carrier-batch-v1",
     workerGroupId: "demo-sim"
   });
 });
@@ -269,6 +269,7 @@ it("uses an explicitly configured text demo without country or CSV fields", asyn
     checkType: "md5-prefix-demo-v1",
     parameters: {},
     execution: {
+      seedsPerItem: 1,
       eventCode: "extension.worker.string.md5",
       refill: [{ poolName: "any", target: {}, count: 100 }],
       workerSelector: { executorName: "worker.any", input: {} }
@@ -589,7 +590,7 @@ describe("App Checks product workspace", () => {
     expect(document.activeElement?.closest(".el-dialog")).not.toBeNull();
     expect(
       document.querySelector(".checks-dialog-task")?.parentElement?.textContent
-    ).toContain("48,000 个种子");
+    ).toContain("48,000 个执行项");
     button("确认中止任务").click();
     await settle();
     expect(document.body.textContent).toContain("stop unavailable");
@@ -1020,6 +1021,7 @@ describe("App Checks product workspace", () => {
       emptyCount: 0,
       duplicateCount: 0,
       uniqueCount: 1,
+      itemCount: 1,
       addedCount: 1,
       existingCount: 0
     });
@@ -1135,7 +1137,7 @@ describe("App Checks product workspace", () => {
         );
         expect(
           document.querySelector(".checks-recovery-observation")?.textContent
-        ).toContain("任务已记录 1 个种子");
+        ).toContain("任务已记录 1 个执行项");
         expect(document.body.textContent).toContain("本次提交仍待人工核对");
         expect(session.draft.uncertain).toBe(true);
         expect(

@@ -113,8 +113,7 @@ not from a runtime scenario or product mode.
 The checked-in [Lab](config/lab.json), [SMS](config/sms.json),
 [Messages](config/messages.json) and [combined products](config/products.json)
 files are standalone examples, not preset loaders. Lab is a minimal Group-only
-configuration and initializes two Groups of 50 Workers. The combined products example explicitly installs the original-carrier event
-on both App A and App B, alongside their registration and message capabilities. This uses the existing libphonenumber
+configuration and initializes two Groups of 50 Workers. The combined products example explicitly installs original-carrier on Demo; App A/B retain registration and message capabilities. This uses the existing libphonenumber
 implementation and returns input/possible/valid/originalCarrier without fabricated
 Worker identity. A valid negative answer remains normal Handler output.
 The product examples
@@ -193,6 +192,16 @@ validated against the entire effective inventory before committing generated
 Groups or creating Managers. A scheduled stop must refer to an initial Worker.
 The plan owns only initial local intent and startup stop timing, not Properties,
 Worker identity, Tasks, Adapter state or Kernel expectations.
+
+## Batch local calculation events
+
+Demo explicitly installs `extension.worker.phonenumber.original-carrier.batch` and
+`extension.worker.string.md5.batch`. Inputs are respectively `{rawNumbers:[...]}` and
+`{values:[...]}` with 1..100 strings; malformed lists reject the invocation. Each Handler
+uses the existing single-value calculation and returns `{results:[single-value results]}`
+in input order, including a one-element list. Single-value events remain independently
+available. There are no extra threads, caches, calls, timeouts or payload-limit changes.
+One group is one platform execution Item; retries concern the whole invocation.
 
 ## Integer computation demonstration
 

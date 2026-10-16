@@ -21,7 +21,9 @@
       "messageContentMode": "text",
       "events": [
         "extension.worker.string.md5",
+        "extension.worker.string.md5.batch",
         "extension.worker.phonenumber.original-carrier",
+        "extension.worker.phonenumber.original-carrier.batch",
         "extension.worker.integer.uint32-prime",
         "extension.worker.string.sha1",
         "extension.worker.string.base64.encode",

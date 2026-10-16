@@ -695,7 +695,7 @@ onBeforeUnmount(() => {
             没有可提交的种子，请重新导入。
           </p>
           <p v-else class="checks-hint">
-            校验通过。导入后核对实际种子数量，再启动查询。
+            校验通过。导入后核对实际执行项数量，再启动查询。
           </p>
         </template>
       </fieldset>

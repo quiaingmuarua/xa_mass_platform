@@ -4,6 +4,10 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import com.xa.mass.workerdelivery.json.Jsons;
 
 /** Request-local spool. No Item write happens until the complete input has passed validation. */
 record AppCheckSeedFile(Path file, long inputCount, long emptyCount, long duplicateCount, int uniqueCount) implements AutoCloseable {
@@ -34,19 +38,18 @@ record AppCheckSeedFile(Path file, long inputCount, long emptyCount, long duplic
                 for (String line; (line = reader.readLine()) != null;) {
                     rows++;
                     if (rows == 1 && line.startsWith("\uFEFF")) line = line.substring(1);
-                    final String number;
+                    final String seed;
                     try {
-                        number = type.normalize(line, country);
-                        if (!number.isEmpty()) contract.validateSeed(number);
-                    }
-                    catch (IllegalArgumentException failure) {
+                        seed = type.normalize(line, country);
+                        if (!seed.isEmpty()) contract.validateSeed(seed);
+                    } catch (IllegalArgumentException failure) {
                         invalid++; if (firstInvalid == 0) firstInvalid = rows; continue;
                     }
-                    if (number.isEmpty()) { empty++; continue; }
-                    if (!unique.add(number)) { duplicates++; continue; }
+                    if (seed.isEmpty()) { empty++; continue; }
+                    if (!unique.add(seed)) { duplicates++; continue; }
                     if (unique.size() > MAX_SEEDS)
                         throw new AppCheckTaskService.RequestFailure(400, "每次最多导入 100,000 个去重种子", null);
-                    writer.write(number); writer.newLine();
+                    writer.write(seed); writer.newLine();
                 }
             }
             if (invalid > 0) throw new AppCheckTaskService.RequestFailure(400,
@@ -62,5 +65,37 @@ record AppCheckSeedFile(Path file, long inputCount, long emptyCount, long duplic
         }
     }
 
+    /** Complete assembly is spooled before the first Owner write; retries reconstruct identical groups. */
+    PreparedGroups prepareGroups(AppCheckTaskSnapshot snapshot) throws IOException {
+        Path path = Files.createTempFile("app-check-groups-", ".jsonl");
+        boolean complete = false;
+        int count = 0;
+        try {
+            try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8);
+                 var writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
+                var seeds = new ArrayList<String>(snapshot.seedsPerItem());
+                for (String seed; (seed = reader.readLine()) != null;) {
+                    seeds.add(seed);
+                    if (seeds.size() == snapshot.seedsPerItem()) {
+                        writeGroup(writer, snapshot, seeds); count++; seeds.clear();
+                    }
+                }
+                if (!seeds.isEmpty()) { writeGroup(writer, snapshot, seeds); count++; }
+            }
+            complete = true;
+            return new PreparedGroups(path, count);
+        } catch (IllegalArgumentException invalid) {
+            throw new AppCheckTaskService.RequestFailure(400, "第 " + (count + 1) + " 个种子组无法组装：" + invalid.getMessage() + "；未写入任何执行项", null);
+        } finally {
+            if (!complete) Files.deleteIfExists(path);
+        }
+    }
+    private static void writeGroup(BufferedWriter writer, AppCheckTaskSnapshot snapshot, List<String> seeds) throws IOException {
+        writer.write(Jsons.toJson(Map.of("messageId", snapshot.messageId(seeds), "payload", snapshot.payload(seeds))));
+        writer.newLine();
+    }
+    record PreparedGroups(Path file, int itemCount) implements AutoCloseable {
+        @Override public void close() throws IOException { Files.deleteIfExists(file); }
+    }
     @Override public void close() throws IOException { Files.deleteIfExists(file); }
 }

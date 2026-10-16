@@ -15,9 +15,10 @@ public interface AppCheckContract {
     Map<String, Object> normalizeParameters(Object value);
     /** Validates one normalized, nonempty seed before any import batch is written. */
     default void validateSeed(String seed) {}
-    Map<String, Object> payload(Context context, String seed);
-    String inputSeed(Map<String, Object> payload);
-    Result result(Context context, Map<String, Object> payload, Map<String, Object> content);
+    default int maxSeedsPerItem() { return 1; }
+    Map<String, Object> payload(Context context, List<String> seeds);
+    List<String> inputSeeds(Map<String, Object> payload);
+    List<Result> results(Context context, Map<String, Object> payload, Map<String, Object> content);
     default List<String> exportHeaders() { return List.of(); }
     default List<String> exportValues(Result result) { return List.of(); }
 
