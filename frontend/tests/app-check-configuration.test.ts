@@ -142,6 +142,7 @@ describe("App Checks JSON configuration workspace", () => {
         workerGroupId: "app-c-sim",
         checkType: "registration-v1",
         execution: {
+          seedsPerItem: 1,
           eventCode: "extension.worker.custom.registration",
           refill: [{ poolName: "any", target: {}, count: 100 }],
           workerSelector: { executorName: "worker.any", input: {} }

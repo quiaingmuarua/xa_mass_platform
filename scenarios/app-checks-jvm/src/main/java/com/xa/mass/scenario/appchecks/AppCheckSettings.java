@@ -10,19 +10,21 @@ import java.util.*;
 /** Complete scenario configuration; resource ownership stays with the existing Owners. */
 public record AppCheckSettings(Map<String, Map<String, Object>> typeDefaults,
                                Map<String, Check> checks, Map<String, WindowLimit> poolGroups) {
-    public record Execution(String eventCode, List<RefillTarget> refill, WorkerQuery workerSelector) {
+    public record Execution(String eventCode, List<RefillTarget> refill, WorkerQuery workerSelector, int seedsPerItem) {
         public Execution {
             AppCheckSpecification.text(eventCode, 256);
             refill = List.copyOf(refill);
             if (refill.size() > 100) throw new IllegalArgumentException("execution.refill: at most 100 declarations");
             Objects.requireNonNull(workerSelector, "execution.workerSelector");
+            if (seedsPerItem < 1 || seedsPerItem > 100)
+                throw new IllegalArgumentException("execution.seedsPerItem: 必须是 1～100 的整数");
             if (Jsons.toJson(selectorMap(workerSelector)).length() > 4096)
                 throw new IllegalArgumentException("execution.workerSelector: exceeds Task metadata bound");
         }
         public Map<String, Object> toMap() {
             return Map.of("eventCode", eventCode, "refill", refill.stream().map(target -> Map.of(
                     "poolName", target.poolName(), "target", target.target().query(), "count", target.count())).toList(),
-                    "workerSelector", selectorMap(workerSelector));
+                    "workerSelector", selectorMap(workerSelector), "seedsPerItem", seedsPerItem);
         }
     }
     public record Check(String label, String workerGroupId, Execution execution,
@@ -101,11 +103,14 @@ public record AppCheckSettings(Map<String, Map<String, Object>> typeDefaults,
                 String checkId = AppCheckSpecification.text(entry.getKey(), 128);
                 var app = object(entry.getValue(), Set.of("label", "workerGroupId", "execution", "checkType"), Set.of("parameters"), path);
                 String id = AppCheckSpecification.text(app.get("checkType"), 128);
-                contracts.require(id);
+                var contract = contracts.require(id);
+                var execution = execution(app.get("execution"), path + ".execution");
+                if (execution.seedsPerItem() > contract.maxSeedsPerItem())
+                    throw new IllegalArgumentException("execution.seedsPerItem: 此契约最多支持 " + contract.maxSeedsPerItem() + " 个种子");
                 var selected = app.containsKey("parameters") ? normalize(contracts, id, app.get("parameters"), path + ".parameters") : null;
                 if (selected == null && !defaults.containsKey(id)) throw new IllegalArgumentException("parameters: 缺少参数及共同默认值");
                 apps.put(checkId, new Check(AppCheckSpecification.text(app.get("label"), 128),
-                        AppCheckSpecification.text(app.get("workerGroupId"), 128), execution(app.get("execution"), path + ".execution"), id, selected));
+                        AppCheckSpecification.text(app.get("workerGroupId"), 128), execution, id, selected));
             } catch (IllegalArgumentException invalid) { throw at(path, invalid); }
         }
         var limits = new LinkedHashMap<String, WindowLimit>();
@@ -123,7 +128,7 @@ public record AppCheckSettings(Map<String, Map<String, Object>> typeDefaults,
         catch (IllegalArgumentException invalid) { throw at(path, invalid); }
     }
     private static Execution execution(Object value, String path) {
-        var execution = object(value, Set.of("eventCode", "refill", "workerSelector"), Set.of(), path);
+        var execution = object(value, Set.of("eventCode", "refill", "workerSelector"), Set.of("seedsPerItem"), path);
         if (!(execution.get("refill") instanceof List<?> targets)) throw new IllegalArgumentException(path + ".refill: 必须是数组");
         var refill = new ArrayList<RefillTarget>();
         for (int i = 0; i < targets.size(); i++) {
@@ -139,7 +144,9 @@ public record AppCheckSettings(Map<String, Map<String, Object>> typeDefaults,
             refill.add(RefillTarget.of(AppCheckSpecification.text(target.get("poolName"), 128), new EligibilityQuery(query),
                     (int) count));
         }
-        return new Execution(AppCheckSpecification.text(execution.get("eventCode"), 256), refill, selector(execution.get("workerSelector")));
+        long count = execution.containsKey("seedsPerItem") ? AppCheckSpecification.integer(execution.get("seedsPerItem")) : 1;
+        if (count < 1 || count > 100) throw new IllegalArgumentException(path + ".seedsPerItem: 必须是 1～100 的整数");
+        return new Execution(AppCheckSpecification.text(execution.get("eventCode"), 256), refill, selector(execution.get("workerSelector")), (int) count);
     }
     static WorkerQuery selector(Object value) {
         var query = object(value, Set.of("executorName", "input"), Set.of(), "workerSelector");

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isCarrierContract, isMd5Contract } from "./settings";
 import { canUseConsole, canAccessTask, taskScope } from "@/access-policy";
 import { TaskApiError } from "@/task-caller";
 
@@ -257,7 +258,7 @@ function clearExportFile() {
 }
 async function imported(id: string) {
   importOpen.value = false;
-  notice.value = "号码已导入，请核对最新数量后启动。";
+  notice.value = "种子已导入，请核对最新数量后启动。";
   await refreshVisible(id);
 }
 function endImportDraft() {
@@ -276,7 +277,7 @@ function endImportDraft() {
   });
   importOpen.value = false;
   importSession.draft = freshDraft();
-  notice.value = "导入草稿已结束，原任务及已写入号码保留。";
+  notice.value = "导入草稿已结束，原任务及已写入执行项保留。";
 }
 async function openExport(task: CheckTask) {
   actionTask.value = task;
@@ -655,12 +656,12 @@ onBeforeUnmount(() => {
             · {{ countryLabel(actionTask.country) }}
           </template>
           ·
-          {{ quantity(actionTask.totalCount) }} 个种子
+          {{ quantity(actionTask.totalCount) }} 个执行项
         </p>
         <p class="checks-hint">
           {{
             displayConfirmation === "approve"
-              ? "请核对种子格式、检查能力和种子数量。确认启动后将开始检查。"
+              ? "请核对种子格式、检查能力和执行项数量。确认启动后将开始检查。"
               : actionTask.state === "pre_review"
                 ? "取消后不能启动，已导入的种子不会开始检查。"
                 : "停止后续检查，保留已有结果；已开始的执行仍可能返回结果。中止后不能重新启动。"
@@ -752,9 +753,9 @@ onBeforeUnmount(() => {
           >CSV · 种子 / 判定 / 检查类型 / 执行配置{{
             actionTask?.seedType === "phonenumber" ? " / 地区" : ""
           }}{{
-            actionTask?.checkType === "original-carrier-v1"
+            isCarrierContract(actionTask?.checkType)
               ? " / 原始运营商 / 识别说明"
-              : actionTask?.checkType === "md5-prefix-demo-v1"
+              : isMd5Contract(actionTask?.checkType)
                 ? " / MD5 摘要"
                 : actionTask?.checkType === "uint32-prime-v1"
                   ? " / 是否素数"

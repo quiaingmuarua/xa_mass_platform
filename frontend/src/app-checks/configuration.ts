@@ -92,6 +92,10 @@ export function savedTaskConfiguration(task: CheckTask, mode: "api" | "mock") {
         row("业务契约", task.checkType),
         row("执行事件", task.eventCode),
         row(
+          "每个执行项种子上限",
+          task.seedsPerItem === undefined ? undefined : String(task.seedsPerItem)
+        ),
+        row(
           "Worker 查询",
           task.workerSelector ? JSON.stringify(task.workerSelector) : undefined
         ),

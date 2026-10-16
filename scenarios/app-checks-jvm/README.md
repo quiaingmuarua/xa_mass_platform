@@ -4,7 +4,7 @@ Status: current one-shot application check scenario owner.
 
 `app-checks` 是通用有限任务的受约束业务入口。创建空的 `CLOSE_WHEN_IDLE`
 Task、导入种子、核对启动和关闭是独立操作，复用 Server 的 Task 应用能力。
-每个 Task 固定检查类型、Group、事件、供给、查询和参数，每个种子生成一个 Item。
+每个 Task 固定检查类型、Group、事件、供给、查询和参数，按保存的 seedsPerItem 将有序种子组装为 Item。
 检查配置来自模块内 H2 的启动快照；同一 Group 可以提供多种检查能力。
 具名契约由模块代码静态注册；可选窗口 Pool 的名称与属性字段由场景固定声明。[Boot](../../server_boot_jvm/README.md#platform-and-preview)
 提供数据库路径和种子资源，宿主继续准备对应 Group、Matching 启用关系和 Worker 能力。
@@ -76,8 +76,8 @@ operator 默认自己的范围；显式查询其他 userId 返回 403。admin �
 创建 JSON 不再接收 `userId` 或 `role`，只从调用方保存 `metadata.userId`，列表/详情返回该保存值。
 创建指纹 `app-checks/v5/create` 只覆盖规范化 userId、checkId 和有效种子选项（号码国家，text 为空）；相同 requestId 的不同调用方独立创建。role 不进入指纹或 descriptor。
 任务快照解析只接收已保存的 Group 和 metadata，不依赖版本化 HTTP TaskView。
-输入版本为 `4`，salt 和号码 Item 身份算法不变。首次创建保存 `checkId`、检查名称、`checkType`、类型名称、`seedType`、有效种子选项及 `contractParameters`、
-`eventCode`、`workerSelector` 以及 salt/date；Group 和 refill 保存在 descriptor 原字段中。
+输入版本为 `5`，salt 和号码 Item 身份算法不变。首次创建保存 `checkId`、检查名称、`checkType`、类型名称、`seedType`、有效种子选项及 `contractParameters`、
+`eventCode`、`workerSelector`、`seedsPerItem` 以及 salt/date；Group 和 refill 保存在 descriptor 原字段中。
 服务端配置不进入客户端重试指纹；相同请求跨配置保存/重启仍复用原 Task，不重新套用当前执行配置。
 不回填历史归属或提供旧请求兼容。H2 仍只保存配置。
 
@@ -93,9 +93,14 @@ text 不解析 JSON、拆列或做领域规范化。前端统一上传逐行 UTF
 无效文件整批拒绝，返回错误数量和原始首个错误行，
 不会写入有效子集。请求局部原始与规范化临时文件在结束或失败后清理，不构成导入历史。
 
-号码的稳定 Item ID 为 `number-` 加长度前缀元组 `["app-checks/v2/number", normalizedNumber]`
+seedsPerItem=1 时，号码的稳定 Item ID 为 `number-` 加长度前缀元组 `["app-checks/v2/number", normalizedNumber]`
 的 SHA-256，作用域为 Task。批次读取任务保存的事件、契约、参数、任务盐和 Matching 查询，TTL 留空以采用
 Runtime 默认有效期（当前 365 天），不从批准时重新计时。text 使用独立命名空间：`seed-` 加长度前缀 UTF-8 元组 `["app-checks/v1/text", normalizedSeed]` 的 SHA-256，同样在 Task 内去重。
+seedsPerItem>1 时，使用 `group-` 加长度前缀 UTF-8 元组
+`["app-checks/v1/seed-group", seedType, ...orderedNormalizedSeeds]` 的 SHA-256；尾组也使用组身份。
+每次导入按文件内首次出现顺序独立分组，不跨请求拼尾组。完整分组先确定，再核对已有 Item；
+相同文件同顺序重传复用原组，重排或重新分组不承诺去重。不同组可含相同种子，结果和 CSV 保留各组答案，
+没有 Task 全局种子索引。组装后的 payload 与身份也在首次写入前完整校验并暂存，结束后清理。
 已存在且内容一致的 Item 跳过，
 保留原时间、有效期、Score 和结果；不同内容拒绝覆盖。显式重传可用已存 Item 原值调用
 既有 append 补齐缺失的初始 Score；Score 存在而执行数据缺失等其他不一致按数据异常处理。
@@ -113,13 +118,12 @@ existingCount；当前未确认批次不算拒绝，不自动重传、回滚或�
 关闭不会把未完成项计作成功；已有执行在共同收尾窗口内仍可产生迟到结果。场景服务停机停止新准入并最多等待
 正在导入的请求 5 秒，每个新批次检查停止信号。
 
-导入成功回执给出 inputCount、emptyCount、duplicateCount、uniqueCount、addedCount 和
-existingCount，均针对收到的种子文件。前端原始 CSV 的行数及去重数属于客户端校验摘要。
+导入成功回执的 inputCount、emptyCount、duplicateCount、uniqueCount 按种子计数；itemCount 是本次组装的执行项数，addedCount、existingCount 以及失败回执 confirmedAddedCount 均按 Item 计数。批准和任务进度也按执行项，不能据此推算全 Task 种子数。前端原始 CSV 的行数及去重数属于客户端校验摘要。
 来源和回执仅在控制台会话保存；API 不根据 Task 数量重建来源或操作历史。
 
 Project 绑定不预置长期 RPC Task，App Checks 只创建有限任务。列表仍保留目录中由其他显式调用产生的 RPC/无业务 metadata 行，由前端过滤；详情和写入验证
 Project、场景和有限 Task 类型。总量来自 Item Score 成员数，active 为 tag 1，failed 为
- tag 5，succeeded 为 tags 6..9。Result 预览在 Redis 阶段只读一次 Owner HSCAN，归档后顺序读取文件；最多 100 条，不补扫 Redis，
+ tag 5，succeeded 为 tags 6..9。Result 预览在 Redis 阶段只读一次 Owner HSCAN，归档后顺序读取文件；逐 Item 校验并展开后最多 100 条业务行；底层截断或展开裁剪均标 truncated，不补扫 Redis，
 不保证文件顺序或最新顺序。失败行没有业务判定；内容或 Item/Group 关联异常保留执行状态并
 标记 contentError。统计、Task 状态和 Result 不是共同快照。
 
@@ -134,7 +138,7 @@ CSV 各自的下载临时文件在失败或传输结束时清理；CSV 不再生
 
 ## 具名执行契约
 
-模块内 `AppCheckContract` 同时声明类型 ID、名称、说明和 seedType，负责参数校验、种子到 Item payload 的转换、从输入恢复种子、成功内容解释和纯 CSV 附加列映射。
+模块内 `AppCheckContract` 同时声明类型 ID、名称、说明、seedType 和 maxSeedsPerItem；统一用 payload(context, seeds)、inputSeeds(payload)、results(context, payload, content) 承接一个 Item 与多个种子答案。单条契约使用长度为 1 的集合。参数校验和 CSV 附加列仍是纯业务映射。
 checkType 直接采用实现 ID，不增加另一套类型到协议的注册体系。
 静态 Bean 汇成不可变 ID 映射；同协议复用一个实现，不同协议增加一个实现及注册，
 不持有网络客户端、存储、线程或调度状态，不接收脚本、Java 类名或表达式。
@@ -161,6 +165,24 @@ originalCarrier 和 reason（IDENTIFIED、NO_CARRIER_MAPPING 或号码库错误�
 `ProjectWorkerRequirements` 按 Group 合并、去重所有检查项的事件、Pool 和查询依赖。保存校验内部结构，
 启动核对宿主资源；查询参数仍经过现有 Matching 准入，没有新增规则解释器。
 宿主资源声明不能证明 Worker 已安装 Handler。
+
+## 分组协议与逐种子结果
+
+`checks.<id>.execution.seedsPerItem` 省略时规范化为 1；单条契约上限 1，批量契约上限 100。
+非法大小或契约组合在配置保存和启动时拒绝，配置继续保存后重启生效。
+Preview 运营商使用 `original-carrier-batch-v1` / `extension.worker.phonenumber.original-carrier.batch`，
+输入 `{rawNumbers:[...]}`；MD5 使用 `md5-prefix-demo-batch-v1` / `extension.worker.string.md5.batch`，
+输入 `{values:[...]}`。两者默认 10，均返回 `{results:[原单条结果]}`。大小为 1 时仍使用列表协议。
+注册和素数保持单条事件与大小 1。组内最多 100 种子与 Owner 写入每批最多 100 Items 是独立边界。
+
+共用解释先校验保存事件、Item 身份与输入组，再校验全部答案的结构及成员集合。
+返回乱序按输入顺序恢复；缺失、重复、额外或损坏答案导致整组 contentError，不导出部分行。
+执行失败按原输入展开检查错误，不产生 matched；没有 Runtime Result 不补造业务行。
+合法负面答案继续 matched=false。解析不改变 Item 状态或触发重试；平台重试仍以整个 Item 为单位。
+
+CSV 每个种子一行，整组校验成功后才按 all/matched/unmatched 写入，计数是业务行。
+Redis 与归档使用同一解释；原始 JSONL 仍每 Item 一条。分配观察不按组内种子数放大，
+一次成功 Item 不证明物理 Handler 仅执行一次。
 
 ## Simulator 协议与可复算性
 
@@ -338,7 +360,7 @@ Server 测试保留多 Group/多事件投影隔离、重复选择拒绝、既有
 源码/新 ZIP runner 则运行真实号码 Handler，对固定运营商/无映射/无效号码向量以及超过 100 条输入，
 分别核对完整原始 Result、Item 状态、有限预览及三种 CSV；预期不从场景输出生成。
 
-text 的 `uint32-prime-v1` 和 `md5-prefix-demo-v1` 是 Preview 的明确演示能力。前者输入 `{value}`，只接受 1～10 位 ASCII 十进制数字且不超过 4294967295；允许前导零但保持原文本身份。Worker 返回 input/valid/isPrime，Scenario 只核对关联与布尔结构，不重算答案。后者复用 UTF-8 MD5 Handler，核对 input/valid/md5，固定以摘要是否以 0 开头判定，不提供表达式或前缀配置。两个契约参数均为 `{}`，details 分别保留 isPrime/md5，CSV 追加“是否素数”/“MD5 摘要”。
+text 的 `uint32-prime-v1` 和 `md5-prefix-demo-batch-v1` 是 Preview 的明确演示能力（原单条 MD5 契约保留）。前者输入 `{value}`，只接受 1～10 位 ASCII 十进制数字且不超过 4294967295；允许前导零但保持原文本身份。Worker 返回 input/valid/isPrime，Scenario 只核对关联与布尔结构，不重算答案。后者复用 UTF-8 MD5 Handler，核对 input/valid/md5，固定以摘要是否以 0 开头判定，不提供表达式或前缀配置。两个契约参数均为 `{}`，details 分别保留 isPrime/md5，CSV 追加“是否素数”/“MD5 摘要”。
 真实 HTTP/Redis/JavaWorker 用例使用独立筛法、边界向量及 Python hashlib，分别检查原始 Result、Item、业务答案、预览截断和完整 CSV。Boot 证明两个 text 契约归档前后答案和 CSV 保持一致。Mock 仅提供固定输入样例，不承担计算正确性证明；未接入城市、DNS 或行情服务。
 
 生产装配见 [Boot](../../server_boot_jvm/README.md#platform-and-preview)；

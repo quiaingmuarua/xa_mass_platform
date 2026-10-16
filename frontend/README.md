@@ -367,7 +367,7 @@ List and drawer share one action menu: pending review can start or cancel,
 processing can preview or stop, and ended Tasks can preview or export. Unknown
 state offers preview only. Clicking a Task name opens the same preview.
 Pending-review Tasks also allow additional seed imports using their saved type and options. Startup, cancellation and stopping require confirmation with check type, execution configuration, applicable country and
-seed count. In-flight actions reject duplicate submission; failures retain
+execution Item count. In-flight actions reject duplicate submission; failures retain
 the observed state. Unsupported API operations show their unavailable reason.
 
 Creation supplies the current identity through caller headers. The userId and role
@@ -412,9 +412,16 @@ creation reuses them without automatically importing or approving; configuration
 changes do not cause a different Task or reinterpret a saved Task.
 The UI creates once, retains the returned Task ID, then uploads a
 normalized UTF-8 seed file (`text/plain`) to seeds:import for server validation and bounded
-append. Catalog supplies the per-import 100,000-seed/10 MiB limits. A failed
+append. Catalog supplies the per-import 100,000-seed/10 MiB limits. Grouping is configured
+only in JSON configuration and saved in each Task (inputVersion 5); creation cannot
+override it. Import summaries distinguish unique seeds, assembled Items and added/existing
+Items. Lists, progress, approval and recovery quantities count execution Items. The UI
+never derives a whole-Task seed total from these counts. Results and CSV remain per seed;
+row identity is the unambiguous messageId/seed tuple, so several rows can share an Item.
+A malformed group has no partially valid export. Preview is capped at 100 expanded rows.
+Mock preserves complete ordered group identities, tail groups, overlaps and frozen grouping. A failed
 import never creates another Task. Pending-review menus allow additional imports;
-existing numbers are skipped and older input-version Tasks explain why import is
+existing whole ordered seed groups are skipped and older input-version Tasks explain why import is
 unavailable. Starting sends the quantity shown in the confirmation dialog; the
 server rejects a changed/empty quantity and active imports.
 

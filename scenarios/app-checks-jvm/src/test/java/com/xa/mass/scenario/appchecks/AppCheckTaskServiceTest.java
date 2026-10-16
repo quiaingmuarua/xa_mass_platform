@@ -56,7 +56,7 @@ class AppCheckTaskServiceTest {
     static Map<String, String> metadata() {
         var result = new HashMap<>(Map.of("server.inputOwner", "app-checks", "scenario", "app-checks",
                 "userId", "proof", "checkId", "app-a-registration", "country", "CN", "salt", "fixed"));
-        result.put("inputVersion", "4"); result.put("seedType", "phonenumber");
+        result.put("inputVersion", "5"); result.put("seedsPerItem", "1"); result.put("seedType", "phonenumber");
         result.put("checkLabel", "App A"); result.put("checkTypeLabel", "模拟注册"); result.put("checkType", AppCheckContracts.SIMULATED);
         result.put("contractParameters", Jsons.toJson(simulation())); result.put("eventCode", "extension.worker.app.registration.check");
         result.put("workerSelector", Jsons.toJson(Map.of("executorName", "worker.assignment.available", "input", Map.of())));
@@ -76,7 +76,7 @@ class AppCheckTaskServiceTest {
             var unknown = request(); unknown.put("checkId", "not-configured");
             assertThatThrownBy(() -> service.create(CALLER, unknown)).hasMessageContaining("Unsupported checkId");
             for (int i = 0; i < 51; i++) { var input = request(); input.put("requestId", "r" + i); service.create(CALLER, input); }
-            verify(creation, times(51)).createForRequest(org.mockito.ArgumentMatchers.eq(CALLER), org.mockito.ArgumentMatchers.eq("app-checks"), argThat(req -> req.metadata().get("inputVersion").equals("4")
+            verify(creation, times(51)).createForRequest(org.mockito.ArgumentMatchers.eq(CALLER), org.mockito.ArgumentMatchers.eq("app-checks"), argThat(req -> req.metadata().get("inputVersion").equals("5")
                     && !req.metadata().containsKey("numbers") && req.refill().getFirst().poolName().equals("assignment-window")), anyString());
             verifyNoInteractions(data);
             var invalid = request(); invalid.put("numbers", List.of("+86123"));

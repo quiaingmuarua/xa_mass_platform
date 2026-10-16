@@ -11,25 +11,25 @@ class AppCheckContractsTest {
     @Test void demosValidateAssociationsAndInterpretAnswersWithoutRecomputingThem() {
         var context = new AppCheckContract.Context("demo", null, "demo-sim", "unused", Map.of());
         var prime = contracts.require(AppCheckContracts.UINT32_PRIME);
-        var input = prime.payload(context, "017");
+        var input = prime.payload(context, List.of("017"));
         assertThat(input).containsEntry("value", "017");
-        var answer = prime.result(context, input, Map.of("input", "017", "valid", true, "isPrime", false));
+        var answer = prime.results(context, input, Map.of("input", "017", "valid", true, "isPrime", false)).getFirst();
         assertThat(answer.matched()).isFalse(); // The Worker owns the calculation, not this parser.
         assertThat(prime.exportValues(answer)).containsExactly("否");
         for (var invalid : List.<Map<String,Object>>of(Map.of("input", "17", "valid", true, "isPrime", true),
                 Map.of("input", "017", "valid", false, "isPrime", true),
                 Map.of("input", "017", "valid", true, "isPrime", "true")))
-            assertThatThrownBy(() -> prime.result(context, input, invalid)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> prime.results(context, input, invalid).getFirst()).isInstanceOf(IllegalArgumentException.class);
         var md5 = contracts.require(AppCheckContracts.MD5_PREFIX);
         var known = Map.of("a", "0cc175b9c0f1b6a831c399e269772661", "中文", "a7bac2239fcdcb3a067903d8077c4a07");
         known.forEach((seed, hash) -> {
-            var result = md5.result(context, md5.payload(context, seed), Map.of("input", seed, "valid", true, "md5", hash));
+            var result = md5.results(context, md5.payload(context, List.of(seed)), Map.of("input", seed, "valid", true, "md5", hash)).getFirst();
             assertThat(result.matched()).isEqualTo(seed.equals("a"));
             assertThat(md5.exportValues(result)).containsExactly(hash);
         });
-        assertThatThrownBy(() -> md5.result(context, Map.of("value", "a"), Map.of("input", "a", "valid", true, "md5", "invalid")))
+        assertThatThrownBy(() -> md5.results(context, Map.of("value", "a"), Map.of("input", "a", "valid", true, "md5", "invalid")).getFirst())
                 .hasMessageContaining("MD5");
-        assertThatThrownBy(() -> md5.result(context, Map.of("value", "a"), Map.of("input", "b", "valid", true, "md5", known.get("a"))))
+        assertThatThrownBy(() -> md5.results(context, Map.of("value", "a"), Map.of("input", "b", "valid", true, "md5", known.get("a"))).getFirst())
                 .hasMessageContaining("association");
     }
     @Test void generatedNamesKeepTimeAndRemainValidForLongUnicodeCheckLabels() {
@@ -53,12 +53,12 @@ class AppCheckContractsTest {
             public Map<String,Object> normalizeParameters(Object value) {
                 return AppCheckSettings.object(value, Set.of(), Set.of(), "parameters");
             }
-            public Map<String,Object> payload(Context context, String number) { return Map.of("recipient", number); }
-            public String inputSeed(Map<String,Object> input) { return (String) input.get("recipient"); }
-            public Result result(Context context, Map<String,Object> input, Map<String,Object> output) {
+            public Map<String,Object> payload(Context context, List<String> seeds) { return Map.of("recipient", seeds.getFirst()); }
+            public List<String> inputSeeds(Map<String,Object> input) { return List.of((String) input.get("recipient")); }
+            public List<Result> results(Context context, Map<String,Object> input, Map<String,Object> output) {
                 if (!Set.of("yes", "no").contains(output.getOrDefault("answer", "")))
                     throw new IllegalArgumentException("Missing vendor answer");
-                return new Result(inputSeed(input), "yes".equals(output.get("answer")), Map.of("vendorAnswer", output.get("answer")));
+                return List.of(new Result(inputSeeds(input).getFirst(), "yes".equals(output.get("answer")), Map.of("vendorAnswer", output.get("answer"))));
             }
         };
         var registry = new AppCheckContracts(List.of(alternative, AppCheckContracts.registration()));
@@ -77,55 +77,55 @@ class AppCheckContractsTest {
         var saved = AppCheckTaskSnapshot.read(app.workerGroupId(), metadata, registry);
         assertThat(saved.eventCode()).isEqualTo("extension.worker.vendor.lookup");
         assertThat(saved.selector().executorName()).isEqualTo("worker.any");
-        var input = saved.contract().payload(saved.context(), "+86123");
+        var input = saved.contract().payload(saved.context(), List.of("+86123"));
         assertThat(input).containsOnlyKeys("recipient");
-        assertThat(saved.contract().result(saved.context(), input, Map.of("answer", "yes")).matched()).isTrue();
-        assertThatThrownBy(() -> saved.contract().result(saved.context(), input, Map.of()))
+        assertThat(saved.contract().results(saved.context(), input, Map.of("answer", "yes")).getFirst().matched()).isTrue();
+        assertThatThrownBy(() -> saved.contract().results(saved.context(), input, Map.of()).getFirst())
                 .hasMessageContaining("Missing vendor answer");
         assertThat(config.poolGroups()).isEmpty();
     }
     @Test void standardResultNeedsItsAnswerAndAssociationsButNoSimulationFields() {
         var contract = contracts.require(AppCheckContracts.REGISTRATION);
         var context = new AppCheckContract.Context("a", "CN", "g", null, Map.of());
-        var input = contract.payload(context, "+86123");
+        var input = contract.payload(context, List.of("+86123"));
         assertThat(input).containsExactly(Map.entry("number", "+86123"));
         var output = new HashMap<String,Object>(Map.of("number", "+86123", "registered", false, "workerId", "w", "workerGroupId", "g"));
-        assertThat(contract.result(context, input, output).matched()).isFalse();
-        assertThat(contract.result(context, input, output).details()).containsEntry("registered", false).doesNotContainKey("simulatedDelayMillis");
+        assertThat(contract.results(context, input, output).getFirst().matched()).isFalse();
+        assertThat(contract.results(context, input, output).getFirst().details()).containsEntry("registered", false).doesNotContainKey("simulatedDelayMillis");
         assertThat(contract.exportHeaders()).containsExactly("注册状态");
-        assertThat(contract.exportValues(contract.result(context, input, output))).containsExactly("未注册");
+        assertThat(contract.exportValues(contract.results(context, input, output).getFirst())).containsExactly("未注册");
         for (String field : List.of("number", "registered", "workerId", "workerGroupId")) {
             var invalid = new HashMap<>(output); invalid.remove(field);
-            assertThatThrownBy(() -> contract.result(context, input, invalid)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> contract.results(context, input, invalid).getFirst()).isInstanceOf(IllegalArgumentException.class);
         }
         output.put("number", "+86124");
-        assertThatThrownBy(() -> contract.result(context, input, output)).hasMessageContaining("association");
+        assertThatThrownBy(() -> contract.results(context, input, output).getFirst()).hasMessageContaining("association");
     }
     @Test void carrierSeparatesValidNegativeAnswersFromBrokenProtocolWithoutInventingWorkerIdentity() {
         var contract = contracts.require(AppCheckContracts.ORIGINAL_CARRIER);
         var context = new AppCheckContract.Context("carrier", "CN", "phone", "unused", Map.of());
-        var input = contract.payload(context, "+8613800000000");
+        var input = contract.payload(context, List.of("+8613800000000"));
         assertThat(input).containsExactly(Map.entry("rawNumber", "+8613800000000"));
         var positive = Map.<String,Object>of("input", "+8613800000000", "possible", true, "valid", true, "originalCarrier", "China Mobile");
-        var answer = contract.result(context, input, positive);
+        var answer = contract.results(context, input, positive).getFirst();
         assertThat(answer.matched()).isTrue();
         assertThat(answer.details()).containsEntry("originalCarrier", "China Mobile").doesNotContainKeys("workerId", "workerGroupId");
         assertThat(contract.exportValues(answer)).containsExactly("China Mobile", "IDENTIFIED");
         var unmapped = new HashMap<>(positive); unmapped.put("originalCarrier", "");
-        assertThat(contract.result(context, input, unmapped).matched()).isFalse();
+        assertThat(contract.results(context, input, unmapped).getFirst().matched()).isFalse();
         var invalidNumber = Map.<String,Object>of("input", "+8613800000000", "possible", false, "valid", false, "error", "INVALID_PHONE_NUMBER");
-        assertThat(contract.result(context, input, invalidNumber).details()).containsEntry("reason", "INVALID_PHONE_NUMBER");
-        assertThat(contract.result(context, input, invalidNumber).matched()).isFalse();
+        assertThat(contract.results(context, input, invalidNumber).getFirst().details()).containsEntry("reason", "INVALID_PHONE_NUMBER");
+        assertThat(contract.results(context, input, invalidNumber).getFirst().matched()).isFalse();
         for (String field : List.of("input", "possible", "valid", "originalCarrier")) {
             var broken = new HashMap<>(positive); broken.remove(field);
-            assertThatThrownBy(() -> contract.result(context, input, broken)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> contract.results(context, input, broken).getFirst()).isInstanceOf(IllegalArgumentException.class);
             broken.put(field, 3);
-            assertThatThrownBy(() -> contract.result(context, input, broken)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> contract.results(context, input, broken).getFirst()).isInstanceOf(IllegalArgumentException.class);
         }
         var wrongInput = new HashMap<>(positive); wrongInput.put("input", "+8613800000001");
-        assertThatThrownBy(() -> contract.result(context, input, wrongInput)).hasMessageContaining("association");
+        assertThatThrownBy(() -> contract.results(context, input, wrongInput).getFirst()).hasMessageContaining("association");
         var brokenNegative = new HashMap<>(invalidNumber); brokenNegative.put("error", "RAW_NUMBER_REQUIRED");
-        assertThatThrownBy(() -> contract.result(context, input, brokenNegative)).hasMessageContaining("negative");
+        assertThatThrownBy(() -> contract.results(context, input, brokenNegative).getFirst()).hasMessageContaining("negative");
         assertThatThrownBy(() -> contract.normalizeParameters(Map.of("locale", "en"))).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void applicationParametersReplaceDefaultsAndSnapshotsDoNotConsultCurrentConfiguration() {

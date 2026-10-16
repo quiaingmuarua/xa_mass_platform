@@ -276,7 +276,7 @@ defineExpose({ refresh, focusHeading });
               ><TaskStatus :task="detail.task" :preview="preview" />
             </div>
             <p class="checks-hint">
-              创建者 {{ identityLabel(detail.task.userId) }} · 种子总量
+              创建者 {{ identityLabel(detail.task.userId) }} · 执行项总量
               {{ quantity(detail.task.totalCount) }} ·
               {{ detail.task.state === "terminal" ? "未完成" : "未结束" }}
               {{ quantity(detail.task.activeCount) }}
@@ -317,7 +317,7 @@ defineExpose({ refresh, focusHeading });
           </button>
         </div>
         <p v-if="stage === 'pre_review'" class="checks-hint">
-          等待核对并启动。请确认检查类型、执行配置和种子数量，再通过“操作”菜单启动。
+          等待核对并启动。请确认检查能力和执行项数量，再通过“操作”菜单启动。
         </p>
         <section
           v-if="stage !== 'pre_review' || resultPreview.length"
@@ -358,8 +358,11 @@ defineExpose({ refresh, focusHeading });
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in rows" :key="row.messageId">
-                  <td class="checks-phone">{{ row.seed || "号码不可用" }}</td>
+                <tr
+                  v-for="row in rows"
+                  :key="JSON.stringify([row.messageId, row.seed])"
+                >
+                  <td class="checks-phone">{{ row.seed || "种子不可用" }}</td>
                   <td>
                     <span class="checks-answer" :class="'answer-' + resultKind(row)">{{
                       resultLabels[resultKind(row)]
@@ -434,8 +437,10 @@ defineExpose({ refresh, focusHeading });
               :final-count="imported.summary.validCount"
             />
             <p v-if="imported.receipt" class="checks-hint">
-              本次导入已确认新增 {{ quantity(imported.receipt.addedCount) }} 个，已存在
-              {{ quantity(imported.receipt.existingCount) }}
+              本次导入 {{ quantity(imported.receipt.uniqueCount) }} 个去重种子，组装
+              {{ quantity(imported.receipt.itemCount) }} 个执行项；已确认新增
+              {{ quantity(imported.receipt.addedCount) }} 个执行项，已存在
+              {{ quantity(imported.receipt.existingCount) }} 个执行项
               个。来源与摘要仅保留于本次控制台会话。
             </p>
           </template>

@@ -88,6 +88,7 @@ export const taskSchema = z.object({
   configurationError: z.string().optional(),
   sourceFile: z.string().optional(),
   inputVersion: z.string().optional(),
+  seedsPerItem: z.number().int().min(1).max(100).optional(),
   reviewedAt: integer.optional(),
   totalCount: integer.optional(),
   activeCount: integer.optional(),
@@ -129,6 +130,7 @@ export const checkTypeSchema = z.object({
   label: z.string().min(1),
   seedType: z.enum(["phonenumber", "text"]),
   description: z.string(),
+  maxSeedsPerItem: z.number().int().min(1).max(100),
   parameterExample: z.record(z.string(), z.unknown()),
   inputExample: z.record(z.string(), z.unknown()),
   resultExample: z.record(z.string(), z.unknown())
@@ -136,6 +138,7 @@ export const checkTypeSchema = z.object({
 export type SeedType = "phonenumber" | "text";
 export const executionSchema = z.strictObject({
   eventCode: z.string().min(1),
+  seedsPerItem: z.number().int().min(1).max(100).default(1),
   refill: z.array(
     z.strictObject({
       poolName: z.string().min(1),
@@ -193,6 +196,8 @@ export const checkTypeLabel = (type?: string, catalog?: Catalog) =>
     "registration-v1": "注册检查",
     "original-carrier-v1": "原始运营商识别",
     "md5-prefix-demo-v1": "MD5 前缀命中（演示）",
+    "md5-prefix-demo-batch-v1": "MD5 前缀命中（演示）",
+    "original-carrier-batch-v1": "原始运营商识别",
     "uint32-prime-v1": "32 位整数素数判断（演示）"
   }[type ?? ""] ??
   type ??

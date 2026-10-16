@@ -80,7 +80,7 @@ onBeforeUnmount(() => {
     <h2>本次提交尚未确认</h2>
     <p role="alert">{{ draft.error }}</p>
     <p class="checks-hint">
-      草稿已冻结，不会自动重试创建。请核对种子数量与任务状态；查到任务不代表所有种子已写入或已启动。
+      草稿已冻结，不会自动重试创建。请核对实际执行项数量与任务状态；查到任务不代表所有种子已写入或已启动。
     </p>
     <dl class="checks-description">
       <div>
@@ -130,7 +130,7 @@ onBeforeUnmount(() => {
       {{ error }}。未确认提交是否完整，请保留关联信息后继续核对。
     </p>
     <div v-if="observed" class="checks-recovery-observation" role="status">
-      <strong>任务已记录 {{ quantity(observed.totalCount) }} 个种子</strong>
+      <strong>任务已记录 {{ quantity(observed.totalCount) }} 个执行项</strong>
       <TaskStatus
         :task="observed"
         :preview="source.previewState?.(identity, observed.taskId)"
@@ -142,7 +142,7 @@ onBeforeUnmount(() => {
     <ElDialog v-model="confirming" title="结束本次草稿？" width="520px">
       <p>这只会清空本地输入并打开空白草稿，不会重试创建、取消或补全服务端任务。</p>
       <p class="checks-hint">
-        原请求编号和已知任务编号会保留在当前会话的关联信息中。本次提交仍可能只写入了部分号码，需要单独核对处理。
+        原请求编号和已知任务编号会保留在当前会话的关联信息中。本次提交仍可能只写入了部分执行项，需要单独核对处理。
       </p>
       <label class="checks-recovery-ack"
         ><input

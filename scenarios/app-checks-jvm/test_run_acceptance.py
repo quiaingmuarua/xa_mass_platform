@@ -77,6 +77,11 @@ class AppCheckProofTest(unittest.TestCase):
             _, document = self.read_seed()
             self.assertEqual(document["checks"]["app-a-registration"]["parameters"], parameters)
             self.assertNotIn("parameters", document["checks"]["app-b-registration"])
+            for check in ("original-carrier", "md5-prefix"):
+                self.assertEqual(10, document["checks"][check]["execution"]["seedsPerItem"])
+                self.assertTrue(document["checks"][check]["execution"]["eventCode"].endswith(".batch"))
+            for check in ("app-a-registration", "app-b-registration", "uint32-prime"):
+                self.assertEqual(1, document["checks"][check]["execution"]["seedsPerItem"])
 
     def test_window_fixture_keeps_other_settings_and_restores_environment_on_failure(self):
         original = json.dumps({"some.setting": "retained"})

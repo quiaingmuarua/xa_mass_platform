@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 class PhoneNumberWorkerEventsTest {
 
     @Test
-    void definitionsExposeThreeWorkerIndependentEvents() throws Exception {
+    void definitionsExposeSingleAndBatchWorkerEvents() throws Exception {
         List<WorkerEventDefinition<?>> definitions =
                 PhoneNumberWorkerEvents.definitions();
 
@@ -20,7 +20,8 @@ class PhoneNumberWorkerEventsTest {
                 .containsExactly(
                         PhoneNumberWorkerEvents.E164_EVENT_CODE,
                         PhoneNumberWorkerEvents.COUNTRY_EVENT_CODE,
-                        PhoneNumberWorkerEvents.ORIGINAL_CARRIER_EVENT_CODE
+                        PhoneNumberWorkerEvents.ORIGINAL_CARRIER_EVENT_CODE,
+                        PhoneNumberWorkerEvents.ORIGINAL_CARRIER_BATCH_EVENT_CODE
                 );
 
         Map<String, Object> e164 = execute(
@@ -53,7 +54,7 @@ class PhoneNumberWorkerEventsTest {
     void invalidNumberRemainsSuccessfulDomainOutputForEveryEvent()
             throws Exception {
         for (WorkerEventDefinition<?> definition
-                : PhoneNumberWorkerEvents.definitions()) {
+                : PhoneNumberWorkerEvents.definitions().stream().filter(event -> !event.eventName().equals(PhoneNumberWorkerEvents.ORIGINAL_CARRIER_BATCH_EVENT_CODE)).toList()) {
             Map<String, Object> result = Jsons.parseObject(
                     mapDefinition(definition).handler().execute(
                             Map.of("rawNumber", "not-a-phone-number")

@@ -19,6 +19,10 @@ import {
   SIMULATED_CONTRACT,
   REGISTRATION_CONTRACT,
   CARRIER_CONTRACT,
+  CARRIER_BATCH_CONTRACT,
+  MD5_BATCH_CONTRACT,
+  isCarrierContract,
+  isMd5Contract,
   MD5_CONTRACT,
   PRIME_CONTRACT,
   settingsIdentity,
@@ -45,6 +49,7 @@ const mockCheckTypes: Catalog["checkTypes"] = [
     id: SIMULATED_CONTRACT,
     label: "模拟注册",
     seedType: "phonenumber",
+    maxSeedsPerItem: 1,
     description: "确定性模拟协议；按实际 Worker、salt、区间和延迟复算",
     parameterExample: mockSimulation,
     inputExample: { number: "+8613800000001", salt: "fixed-salt", ...mockSimulation },
@@ -60,6 +65,7 @@ const mockCheckTypes: Catalog["checkTypes"] = [
     id: REGISTRATION_CONTRACT,
     label: "注册检查",
     seedType: "phonenumber",
+    maxSeedsPerItem: 1,
     description: "号码查询协议；不要求模拟字段",
     parameterExample: {},
     inputExample: { number: "+8613800000001" },
@@ -74,6 +80,7 @@ const mockCheckTypes: Catalog["checkTypes"] = [
     id: CARRIER_CONTRACT,
     label: "原始运营商识别",
     seedType: "phonenumber",
+    maxSeedsPerItem: 1,
     description: "判断是否识别到原始运营商；号码库元数据不表示当前运营商或号码在用状态",
     parameterExample: {},
     inputExample: { rawNumber: "+8613800000000" },
@@ -88,6 +95,7 @@ const mockCheckTypes: Catalog["checkTypes"] = [
     id: MD5_CONTRACT,
     label: "MD5 前缀命中（演示）",
     seedType: "text",
+    maxSeedsPerItem: 1,
     description: "固定演示条件：文本 UTF-8 MD5 摘要以 0 开头。",
     parameterExample: {},
     inputExample: { value: "a" },
@@ -97,12 +105,26 @@ const mockCheckTypes: Catalog["checkTypes"] = [
     id: PRIME_CONTRACT,
     label: "32 位整数素数判断（演示）",
     seedType: "text",
+    maxSeedsPerItem: 1,
     description: "0～4,294,967,295 的无符号整数；是素数时满足。",
     parameterExample: {},
     inputExample: { value: "17" },
     resultExample: { input: "17", valid: true, isPrime: true }
   }
 ];
+for (const [id, original, inputField] of [
+  [CARRIER_BATCH_CONTRACT, CARRIER_CONTRACT, "rawNumbers"],
+  [MD5_BATCH_CONTRACT, MD5_CONTRACT, "values"]
+]) {
+  const single = mockCheckTypes.find((type) => type.id === original)!;
+  mockCheckTypes.push({
+    ...structuredClone(single),
+    id,
+    maxSeedsPerItem: 100,
+    inputExample: { [inputField]: [single.resultExample.input] },
+    resultExample: { results: [single.resultExample] }
+  });
+}
 export const mockCatalog: Catalog = {
   projectId: "app-checks",
   name: "批量检查",
@@ -116,6 +138,7 @@ export const mockCatalog: Catalog = {
       checkType: SIMULATED_CONTRACT,
       execution: {
         eventCode: "extension.worker.app.registration.check",
+        seedsPerItem: 1,
         refill: [{ poolName: "assignment-window", target: {}, count: 100 }],
         workerSelector: { executorName: "worker.assignment.available", input: {} }
       }
@@ -124,8 +147,8 @@ export const mockCatalog: Catalog = {
       [
         "original-carrier",
         "原始运营商识别",
-        CARRIER_CONTRACT,
-        "phonenumber.original-carrier"
+        CARRIER_BATCH_CONTRACT,
+        "phonenumber.original-carrier.batch"
       ],
       [
         "uint32-prime",
@@ -133,7 +156,7 @@ export const mockCatalog: Catalog = {
         PRIME_CONTRACT,
         "integer.uint32-prime"
       ],
-      ["md5-prefix", "MD5 前缀命中（演示）", MD5_CONTRACT, "string.md5"]
+      ["md5-prefix", "MD5 前缀命中（演示）", MD5_BATCH_CONTRACT, "string.md5.batch"]
     ].map(([checkId, label, checkType, event]) => ({
       checkId,
       label,
@@ -141,6 +164,7 @@ export const mockCatalog: Catalog = {
       workerGroupId: "demo-sim",
       execution: {
         eventCode: "extension.worker." + event,
+        seedsPerItem: checkType === PRIME_CONTRACT ? 1 : 10,
         refill: [{ poolName: "any", target: {}, count: 100 }],
         workerSelector: { executorName: "worker.any", input: {} }
       }
@@ -155,6 +179,8 @@ export const mockSettings: AppCheckSettings = {
       [SIMULATED_CONTRACT]: structuredClone(mockSimulation),
       [REGISTRATION_CONTRACT]: {},
       [CARRIER_CONTRACT]: {},
+      [CARRIER_BATCH_CONTRACT]: {},
+      [MD5_BATCH_CONTRACT]: {},
       [MD5_CONTRACT]: {},
       [PRIME_CONTRACT]: {}
     }
@@ -182,7 +208,8 @@ function task(taskId: string, changes: Partial<CheckTask> = {}): CheckTask {
     createdAtMillis: epoch,
     workerGroupId: "app-a-sim",
     managed: false,
-    inputVersion: "4",
+    inputVersion: "5",
+    seedsPerItem: 1,
     state: "terminal",
     checkId: "app-a-registration",
     country: "CN",
@@ -512,7 +539,10 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
   private readonly states = new Map<string, PreviewState>();
   private readonly activities = new Map<string, TaskActivity[]>();
   private readonly imports = new Map<string, ImportSnapshot>();
-  private readonly imported = new Map<string, string[]>();
+  private readonly imported = new Map<
+    string,
+    Map<string, { messageId: string; seeds: string[] }>
+  >();
   private sequence = 0;
   private readonly retention: MockTaskRetention;
 
@@ -727,6 +757,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
             this.effectiveConfiguration.configuration.common.typeDefaults[app.checkType]
         ),
         eventCode: app.execution.eventCode,
+        seedsPerItem: app.execution.seedsPerItem,
         workerSelector: structuredClone(app.execution.workerSelector),
         refill: structuredClone(app.execution.refill),
         mockPolicy: structuredClone(mockTaskPolicy),
@@ -740,7 +771,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       results: [],
       resultsTruncated: false
     });
-    this.imported.set(taskId, []);
+    this.imported.set(taskId, new Map());
     this.requests.set(caller.userId + "/" + input.requestId, {
       input: identity,
       taskId
@@ -793,38 +824,38 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
           `种子文件第 ${bad.line} 行不是 uint32，未写入任何种子`
         );
     }
-    const prior =
-      this.imported.get(id) ??
-      Array.from({ length: record.task.totalCount ?? 0 }, (_, i) =>
-        record.task.country === "US"
-          ? "+1202" + String(5500000 + i)
-          : "+86138" + String(i).padStart(8, "0")
-      );
-    const known = new Set(prior);
+    const prior = this.seedGroups(id);
     let added = 0,
       existing = 0;
-    for (const number of report.seeds) {
-      if (known.has(number)) existing++;
+    const size = record.task.seedsPerItem!;
+    const itemCount = Math.ceil(report.seeds.length / size);
+    for (let offset = 0; offset < report.seeds.length; offset += size) {
+      const seeds = report.seeds.slice(offset, offset + size),
+        key = JSON.stringify(seeds);
+      if (prior.has(key)) existing++;
       else {
-        known.add(number);
-        prior.push(number);
+        prior.set(key, { messageId: `sample-${prior.size}`, seeds });
         added++;
       }
     }
-    this.imported.set(id, prior);
-    record.task.totalCount = prior.length;
-    record.task.activeCount = prior.length;
+    record.task.totalCount = prior.size;
+    record.task.activeCount = prior.size;
     const receipt = {
       taskId: id,
       inputCount: report.inputCount,
       emptyCount: report.emptyCount,
       duplicateCount: report.duplicateCount,
       uniqueCount: report.seeds.length,
+      itemCount,
       addedCount: added,
       existingCount: existing
     };
     if (summary) this.imports.set(id, structuredClone({ ...summary, receipt }));
-    this.recordActivity(id, "导入种子", `新增 ${added} 个，已存在 ${existing} 个`);
+    this.recordActivity(
+      id,
+      "导入种子",
+      `${report.seeds.length} 个种子组装为 ${itemCount} 个执行项；新增 ${added} 个执行项，已存在 ${existing} 个执行项`
+    );
     return receipt;
   }
   async approveTask(caller: TaskCaller, id: string, expectedCount: number) {
@@ -835,7 +866,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       return;
     if (record.task.state !== "pre_review") throw new Error("当前任务不在待审核状态");
     if (!expectedCount || expectedCount !== record.task.totalCount)
-      throw new Error("种子数量已变化或为空，请重新核对");
+      throw new Error("执行项数量已变化或为空，请重新核对");
     record.task.state = "running_visible";
     record.task.reviewedAt = Date.now();
     this.recordActivity(id, "核对并启动", "开始演示查询");
@@ -865,39 +896,46 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       "保留已有结果和未完成数量"
     );
   }
-  private appendResults(id: string, count: number) {
-    const record = this.require(id);
-    this.retention.requireWritable(record.task);
-    const total = record.task.totalCount ?? 0;
-    const start = record.results.length,
-      end = Math.min(total, start + count);
-    if (end <= start) return;
-    const all = sampleRows(
-      end,
-      record.task.workerGroupId ?? "app-a-sim",
-      record.task.country ?? "CN",
-      this.imported.get(id)
-    );
-    if (record.task.checkType === MD5_CONTRACT) {
-      const fixtures: Record<string, string> = {
+  private seedGroups(id: string) {
+    let groups = this.imported.get(id);
+    if (!groups) {
+      groups = new Map();
+      const record = this.require(id);
+      for (let i = 0; i < (record.task.totalCount ?? 0); i++) {
+        const seed =
+          record.results[i]?.seed ??
+          (record.task.country === "US"
+            ? "+1202" + String(5500000 + i)
+            : "+86138" + String(i).padStart(8, "0"));
+        groups.set(JSON.stringify([seed]), {
+          messageId: record.results[i]?.messageId ?? `sample-${i}`,
+          seeds: [seed]
+        });
+      }
+      this.imported.set(id, groups);
+    }
+    return groups;
+  }
+  private sampleAnswer(
+    task: CheckTask,
+    seed: string,
+    index: number,
+    messageId: string
+  ): CheckResult {
+    const base = { messageId, seed, resultStatus: "succeeded" as const };
+    if (isMd5Contract(task.checkType)) {
+      const samples: Record<string, string> = {
         a: "0cc175b9c0f1b6a831c399e269772661",
         abc: "900150983cd24fb0d6963f7d28e17f72",
-        中文: "a7bac2239fcdcb3a067903d8077c4a07"
+        中文: "a7bac2239fcdcb3a067903d8077c4a07",
+        A: "7fc56270e7a70fa81a5935b72eacbe29"
       };
-      for (let i = start; i < all.length; i++) {
-        const seed = all[i].seed!,
-          md5 = fixtures[seed];
-        all[i] = md5
-          ? {
-              messageId: all[i].messageId,
-              seed,
-              resultStatus: "succeeded",
-              matched: md5.startsWith("0"),
-              details: { md5 }
-            }
-          : { messageId: all[i].messageId, seed, resultStatus: "failed" };
-      }
-    } else if (record.task.checkType === PRIME_CONTRACT) {
+      const md5 = samples[seed];
+      return md5
+        ? { ...base, matched: md5.startsWith("0"), details: { md5 } }
+        : { ...base, resultStatus: "failed" };
+    }
+    if (task.checkType === PRIME_CONTRACT) {
       const samples: Record<string, boolean> = {
         "0": false,
         "1": false,
@@ -908,78 +946,84 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         "4294967291": true,
         "4294967295": false
       };
-      for (let i = start; i < all.length; i++) {
-        const row = all[i],
-          seed = row.seed!;
-        all[i] = Object.hasOwn(samples, seed)
-          ? {
-              ...row,
-              resultStatus: "succeeded",
-              matched: samples[seed],
-              details: { isPrime: samples[seed] }
-            }
-          : { messageId: row.messageId, seed, resultStatus: "failed" };
-      }
-    } else if (record.task.checkType === REGISTRATION_CONTRACT) {
-      for (const row of all) if (row.details) delete row.details.simulatedDelayMillis;
-    } else if (record.task.checkType === CARRIER_CONTRACT) {
-      for (let i = start; i < all.length; i++) {
-        const row = all[i];
-        // Deliberate demonstration samples, not a browser copy of libphonenumber.
-        all[i] = {
-          messageId: row.messageId,
-          seed: row.seed,
-          resultStatus: "succeeded",
-          matched: i % 3 === 0,
-          details: {
-            originalCarrier: i % 3 === 0 ? "Mock Carrier" : "",
-            reason: ["IDENTIFIED", "NO_CARRIER_MAPPING", "INVALID_PHONE_NUMBER"][i % 3]
-          }
-        };
-      }
-    } else {
-      const parameters = simulationSchema.parse(record.task.contractParameters);
-      for (let i = start; i < all.length; i++) {
-        const row = all[i],
-          bucket = i % 1000;
-        const failed =
-          parameters.ranges.failed[0] <= bucket && bucket < parameters.ranges.failed[1];
-        if (failed)
-          all[i] = {
-            messageId: row.messageId,
-            seed: row.seed,
-            resultStatus: "failed"
-          };
-        else
-          all[i] = {
-            ...row,
-            resultStatus: "succeeded",
-            matched:
-              parameters.ranges.registered[0] <= bucket &&
-              bucket < parameters.ranges.registered[1],
-            details: {
-              workerId: row.details?.workerId ?? "demo-worker-1",
-              workerGroupId: record.task.workerGroupId!,
-              simulatedDelayMillis: parameters.delayMs[0]
-            }
-          };
-      }
+      return Object.hasOwn(samples, seed)
+        ? { ...base, matched: samples[seed], details: { isPrime: samples[seed] } }
+        : { ...base, resultStatus: "failed" };
     }
-    if (
-      [REGISTRATION_CONTRACT, SIMULATED_CONTRACT].includes(record.task.checkType ?? "")
-    )
-      for (const row of all)
-        if (row.details && typeof row.matched === "boolean")
-          row.details.registered = row.matched;
-    record.results.push(...all.slice(start, Math.min(end, start + 1000)));
-    // Avoid spreading large imports into a function's argument list.
-    for (let offset = start + 1000; offset < end; offset += 1000)
-      record.results.push(...all.slice(offset, Math.min(end, offset + 1000)));
-    record.task.failedCount = record.results.filter(
-      (row) => row.resultStatus === "failed"
-    ).length;
-    record.task.succeededCount = record.results.length - record.task.failedCount;
-    record.task.activeCount = total - record.results.length;
+    if (isCarrierContract(task.checkType)) {
+      return {
+        ...base,
+        matched: index % 3 === 0,
+        details: {
+          originalCarrier: index % 3 === 0 ? "Mock Carrier" : "",
+          reason: ["IDENTIFIED", "NO_CARRIER_MAPPING", "INVALID_PHONE_NUMBER"][
+            index % 3
+          ]
+        }
+      };
+    }
+    if (task.checkType === REGISTRATION_CONTRACT) {
+      const registered = index % 3 !== 0;
+      return {
+        ...base,
+        matched: registered,
+        details: {
+          registered,
+          workerId: `demo-worker-${(index % 20) + 1}`,
+          workerGroupId: task.workerGroupId!
+        }
+      };
+    }
+    const parameters = simulationSchema.parse(task.contractParameters),
+      bucket = index % 1000;
+    if (parameters.ranges.failed[0] <= bucket && bucket < parameters.ranges.failed[1])
+      return { ...base, resultStatus: "failed" };
+    const registered =
+      parameters.ranges.registered[0] <= bucket &&
+      bucket < parameters.ranges.registered[1];
+    return {
+      ...base,
+      matched: registered,
+      details: {
+        registered,
+        workerId: `demo-worker-${(index % 20) + 1}`,
+        workerGroupId: task.workerGroupId!,
+        simulatedDelayMillis: parameters.delayMs[0]
+      }
+    };
+  }
+  private appendResults(id: string, count: number) {
+    const record = this.require(id);
+    this.retention.requireWritable(record.task);
+    const completed = new Set(record.results.map((row) => row.messageId));
+    let remaining = count,
+      offset = 0;
+    for (const group of this.seedGroups(id).values()) {
+      if (!completed.has(group.messageId) && remaining > 0) {
+        const rows = group.seeds.map((seed, index) =>
+          this.sampleAnswer(record.task, seed, offset + index, group.messageId)
+        );
+        // One failed invocation has no successful per-seed Runtime answers.
+        const failed = rows.some((row) => row.resultStatus === "failed");
+        for (const row of rows)
+          record.results.push(
+            failed
+              ? { messageId: group.messageId, seed: row.seed, resultStatus: "failed" }
+              : row
+          );
+        remaining--;
+      }
+      offset += group.seeds.length;
+    }
+    const failedItems = new Set(
+      record.results
+        .filter((row) => row.resultStatus === "failed")
+        .map((row) => row.messageId)
+    );
+    const observedItems = new Set(record.results.map((row) => row.messageId));
+    record.task.failedCount = failedItems.size;
+    record.task.succeededCount = observedItems.size - failedItems.size;
+    record.task.activeCount = (record.task.totalCount ?? 0) - observedItems.size;
     record.resultsTruncated = record.results.length > 100;
     record.task.salt = undefined;
   }
@@ -994,7 +1038,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     } else {
       this.running(id);
     }
-    if (!(record.task.activeCount ?? 0)) throw new Error("没有未结束的号码");
+    if (!(record.task.activeCount ?? 0)) throw new Error("没有未结束的执行项");
     this.appendResults(
       id,
       late ? 1 : Math.max(1, Math.ceil((record.task.totalCount ?? 0) / 10))
@@ -1069,9 +1113,9 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     const record = this.owned(caller, id);
     if (record.task.state !== "terminal") throw new Error("任务结束后可以导出演示结果");
     const rows = this.exportRows(id, filter);
-    const carrier = record.task.checkType === CARRIER_CONTRACT,
+    const carrier = isCarrierContract(record.task.checkType),
       phone = record.task.seedType === "phonenumber";
-    const text = record.task.checkType === MD5_CONTRACT,
+    const text = isMd5Contract(record.task.checkType),
       prime = record.task.checkType === PRIME_CONTRACT;
     const lines = [
       [

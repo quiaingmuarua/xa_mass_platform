@@ -90,13 +90,23 @@ export class AppCheckConfigurationUnconfirmed extends Error {
 async function requireResponse(response: Response): Promise<Response> {
   if (!response.ok) {
     const value = z
-      .object({ message: z.string().optional(), taskId: z.string().optional() })
+      .object({
+        message: z.string().optional(),
+        taskId: z.string().optional(),
+        confirmedAddedCount: z.number().int().nonnegative().optional(),
+        existingCount: z.number().int().nonnegative().optional()
+      })
       .safeParse(await response.json().catch(() => null));
+    let message = value.success
+      ? (value.data.message ?? `请求失败 (${response.status})`)
+      : `请求失败 (${response.status})`;
+    if (value.success && value.data.confirmedAddedCount !== undefined)
+      message += `；本次已确认新增 ${value.data.confirmedAddedCount} 个执行项`;
+    if (value.success && value.data.existingCount !== undefined)
+      message += `，已存在 ${value.data.existingCount} 个执行项`;
     throw new TaskApiError(
       response.status,
-      value.success
-        ? (value.data.message ?? `请求失败 (${response.status})`)
-        : `请求失败 (${response.status})`,
+      message,
       value.success ? value.data.taskId : undefined
     );
   }
@@ -252,6 +262,7 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
           emptyCount: count,
           duplicateCount: count,
           uniqueCount: count,
+          itemCount: count,
           addedCount: count,
           existingCount: count
         })
@@ -323,6 +334,11 @@ function checkTaskView(entry: ProjectTask): CheckTask {
     ])
       if (metadata[key] !== undefined) row[key] = metadata[key];
     row.refill = entry.task?.refill;
+    if (metadata.seedsPerItem !== undefined) {
+      const size = Number(metadata.seedsPerItem);
+      if (Number.isInteger(size) && size >= 1 && size <= 100) row.seedsPerItem = size;
+      else row.configurationError = "任务分组配置无法解析";
+    }
     for (const key of ["contractParameters", "workerSelector"]) {
       if (metadata[key]) {
         try {
