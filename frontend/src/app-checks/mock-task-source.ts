@@ -19,7 +19,8 @@ import {
   SIMULATED_CONTRACT,
   REGISTRATION_CONTRACT,
   CARRIER_CONTRACT,
-  TEXT_PROOF_CONTRACT,
+  MD5_CONTRACT,
+  PRIME_CONTRACT,
   settingsIdentity,
   requireSettingsUpdate,
   type AppCheckConfigurationView,
@@ -84,13 +85,22 @@ const mockCheckTypes: Catalog["checkTypes"] = [
     }
   },
   {
-    id: TEXT_PROOF_CONTRACT,
-    label: "文本机制证明（测试）",
+    id: MD5_CONTRACT,
+    label: "MD5 前缀命中（演示）",
     seedType: "text",
-    description: "仅用于确定性接线证明，不是正式业务检查；摘要以 0 开头时满足。",
+    description: "固定演示条件：文本 UTF-8 MD5 摘要以 0 开头。",
     parameterExample: {},
     inputExample: { value: "a" },
     resultExample: { input: "a", valid: true, md5: "0cc175b9c0f1b6a831c399e269772661" }
+  },
+  {
+    id: PRIME_CONTRACT,
+    label: "32 位整数素数判断（演示）",
+    seedType: "text",
+    description: "0～4,294,967,295 的无符号整数；是素数时满足。",
+    parameterExample: {},
+    inputExample: { value: "17" },
+    resultExample: { input: "17", valid: true, isPrime: true }
   }
 ];
 export const mockCatalog: Catalog = {
@@ -98,10 +108,10 @@ export const mockCatalog: Catalog = {
   name: "批量检查",
   version: "0.3.0-preview",
   checkTypes: mockCheckTypes,
-  checks: ["app-a", "app-b"].flatMap((appId) => [
-    {
+  checks: [
+    ...["app-a", "app-b"].map((appId) => ({
       checkId: appId + "-registration",
-      label: appId === "app-a" ? "App A" : "App B",
+      label: (appId === "app-a" ? "App A" : "App B") + " 模拟注册",
       workerGroupId: appId + "-sim",
       checkType: SIMULATED_CONTRACT,
       execution: {
@@ -109,19 +119,33 @@ export const mockCatalog: Catalog = {
         refill: [{ poolName: "assignment-window", target: {}, count: 100 }],
         workerSelector: { executorName: "worker.assignment.available", input: {} }
       }
-    },
-    {
-      checkId: appId + "-carrier",
-      label: appId === "app-a" ? "App A" : "App B",
-      workerGroupId: appId + "-sim",
-      checkType: CARRIER_CONTRACT,
+    })),
+    ...[
+      [
+        "original-carrier",
+        "原始运营商识别",
+        CARRIER_CONTRACT,
+        "phonenumber.original-carrier"
+      ],
+      [
+        "uint32-prime",
+        "32 位整数素数判断（演示）",
+        PRIME_CONTRACT,
+        "integer.uint32-prime"
+      ],
+      ["md5-prefix", "MD5 前缀命中（演示）", MD5_CONTRACT, "string.md5"]
+    ].map(([checkId, label, checkType, event]) => ({
+      checkId,
+      label,
+      checkType,
+      workerGroupId: "demo-sim",
       execution: {
-        eventCode: "extension.worker.phonenumber.original-carrier",
+        eventCode: "extension.worker." + event,
         refill: [{ poolName: "any", target: {}, count: 100 }],
         workerSelector: { executorName: "worker.any", input: {} }
       }
-    }
-  ]),
+    }))
+  ],
   countries: ["CN", "US", "GB"],
   limits: { seedsPerImport: 100000, importFileBytes: 10 * 1024 * 1024 }
 };
@@ -130,7 +154,9 @@ export const mockSettings: AppCheckSettings = {
     typeDefaults: {
       [SIMULATED_CONTRACT]: structuredClone(mockSimulation),
       [REGISTRATION_CONTRACT]: {},
-      [CARRIER_CONTRACT]: {}
+      [CARRIER_CONTRACT]: {},
+      [MD5_CONTRACT]: {},
+      [PRIME_CONTRACT]: {}
     }
   },
   checks: Object.fromEntries(
@@ -327,14 +353,16 @@ function records(): CheckDetail[] {
     {
       task: task("check-carrier", {
         name: "原始运营商识别 · 演示样例",
-        checkId: "app-a-carrier",
-        workerGroupId: "app-a-sim",
+        checkId: "original-carrier",
+        workerGroupId: "demo-sim",
+        checkLabel: "原始运营商识别",
         checkType: CARRIER_CONTRACT,
         contractParameters: {},
         salt: undefined,
-        eventCode: mockSettings.checks["app-a-carrier"].execution.eventCode,
-        workerSelector: mockSettings.checks["app-a-carrier"].execution.workerSelector,
-        refill: mockSettings.checks["app-a-carrier"].execution.refill,
+        eventCode: mockSettings.checks["original-carrier"].execution.eventCode,
+        workerSelector:
+          mockSettings.checks["original-carrier"].execution.workerSelector,
+        refill: mockSettings.checks["original-carrier"].execution.refill,
         totalCount: 5,
         succeededCount: 4,
         failedCount: 1
@@ -375,6 +403,63 @@ function records(): CheckDetail[] {
       ],
       resultsTruncated: false
     },
+    ...(["uint32-prime", "md5-prefix"] as const).map((checkId) => {
+      const configured = mockSettings.checks[checkId];
+      const prime = checkId === "uint32-prime";
+      return {
+        task: task("check-" + checkId, {
+          name: configured.label + " · Mock 样例",
+          checkId,
+          checkLabel: configured.label,
+          checkType: configured.checkType,
+          workerGroupId: configured.workerGroupId,
+          seedType: "text",
+          country: undefined,
+          eventCode: configured.execution.eventCode,
+          workerSelector: configured.execution.workerSelector,
+          refill: configured.execution.refill,
+          contractParameters: {},
+          salt: undefined,
+          totalCount: 2,
+          succeededCount: 2,
+          failedCount: 0
+        }),
+        results: prime
+          ? [
+              {
+                messageId: "prime-yes",
+                seed: "17",
+                resultStatus: "succeeded" as const,
+                matched: true,
+                details: { isPrime: true }
+              },
+              {
+                messageId: "prime-no",
+                seed: "49",
+                resultStatus: "succeeded" as const,
+                matched: false,
+                details: { isPrime: false }
+              }
+            ]
+          : [
+              {
+                messageId: "md5-yes",
+                seed: "a",
+                resultStatus: "succeeded" as const,
+                matched: true,
+                details: { md5: "0cc175b9c0f1b6a831c399e269772661" }
+              },
+              {
+                messageId: "md5-no",
+                seed: "abc",
+                resultStatus: "succeeded" as const,
+                matched: false,
+                details: { md5: "900150983cd24fb0d6963f7d28e17f72" }
+              }
+            ],
+        resultsTruncated: false
+      };
+    }),
     {
       task: {
         taskId: "managed-app-a",
@@ -628,7 +713,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     this.records.set(taskId, {
       task: task(taskId, {
         userId: caller.userId,
-        name: `${type.label} · ${app.label}${input.country ? " · " + input.country : ""} · ${new Date().toISOString()}`,
+        name: `${app.label}${input.country ? " · " + input.country : ""} · ${new Date().toISOString()}`,
         checkLabel: app.label,
         checkTypeLabel: type.label,
         seedType: type.seedType,
@@ -696,6 +781,18 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     });
     if (report.blocked || report.overLimit || !report.seeds.length)
       throw new Error("种子文件校验失败，未写入任何种子");
+    if (record.task.checkType === PRIME_CONTRACT) {
+      const bad = report.rows.find(
+        (row) =>
+          row.kind !== "empty" &&
+          (!/^[0-9]{1,10}$/.test(row.seed) || Number(row.seed) > 4294967295)
+      );
+      if (bad)
+        throw new TaskApiError(
+          400,
+          `种子文件第 ${bad.line} 行不是 uint32，未写入任何种子`
+        );
+    }
     const prior =
       this.imported.get(id) ??
       Array.from({ length: record.task.totalCount ?? 0 }, (_, i) =>
@@ -781,7 +878,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       record.task.country ?? "CN",
       this.imported.get(id)
     );
-    if (record.task.checkType === TEXT_PROOF_CONTRACT) {
+    if (record.task.checkType === MD5_CONTRACT) {
       const fixtures: Record<string, string> = {
         a: "0cc175b9c0f1b6a831c399e269772661",
         abc: "900150983cd24fb0d6963f7d28e17f72",
@@ -799,6 +896,29 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
               details: { md5 }
             }
           : { messageId: all[i].messageId, seed, resultStatus: "failed" };
+      }
+    } else if (record.task.checkType === PRIME_CONTRACT) {
+      const samples: Record<string, boolean> = {
+        "0": false,
+        "1": false,
+        "2": true,
+        "17": true,
+        "017": true,
+        "49": false,
+        "4294967291": true,
+        "4294967295": false
+      };
+      for (let i = start; i < all.length; i++) {
+        const row = all[i],
+          seed = row.seed!;
+        all[i] = Object.hasOwn(samples, seed)
+          ? {
+              ...row,
+              resultStatus: "succeeded",
+              matched: samples[seed],
+              details: { isPrime: samples[seed] }
+            }
+          : { messageId: row.messageId, seed, resultStatus: "failed" };
       }
     } else if (record.task.checkType === REGISTRATION_CONTRACT) {
       for (const row of all) if (row.details) delete row.details.simulatedDelayMillis;
@@ -951,7 +1071,8 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     const rows = this.exportRows(id, filter);
     const carrier = record.task.checkType === CARRIER_CONTRACT,
       phone = record.task.seedType === "phonenumber";
-    const text = record.task.checkType === TEXT_PROOF_CONTRACT;
+    const text = record.task.checkType === MD5_CONTRACT,
+      prime = record.task.checkType === PRIME_CONTRACT;
     const lines = [
       [
         "种子",
@@ -959,7 +1080,13 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         "检查类型",
         "执行配置",
         ...(phone ? ["地区"] : []),
-        ...(carrier ? ["原始运营商", "识别说明"] : text ? ["摘要"] : ["注册状态"])
+        ...(carrier
+          ? ["原始运营商", "识别说明"]
+          : text
+            ? ["MD5 摘要"]
+            : prime
+              ? ["是否素数"]
+              : ["注册状态"])
       ]
         .map(csvCell)
         .join(","),
@@ -977,7 +1104,9 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
               ]
             : text
               ? [String(row.details?.md5 ?? "")]
-              : [row.details?.registered ? "已注册" : "未注册"])
+              : prime
+                ? [row.details?.isPrime ? "是" : "否"]
+                : [row.details?.registered ? "已注册" : "未注册"])
         ]
           .map(csvCell)
           .join(",")

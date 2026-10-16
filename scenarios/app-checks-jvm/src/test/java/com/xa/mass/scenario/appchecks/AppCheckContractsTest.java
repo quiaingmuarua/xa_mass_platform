@@ -8,13 +8,37 @@ import static org.assertj.core.api.Assertions.*;
 
 class AppCheckContractsTest {
     final AppCheckContracts contracts = AppCheckTestSettings.contracts();
+    @Test void demosValidateAssociationsAndInterpretAnswersWithoutRecomputingThem() {
+        var context = new AppCheckContract.Context("demo", null, "demo-sim", "unused", Map.of());
+        var prime = contracts.require(AppCheckContracts.UINT32_PRIME);
+        var input = prime.payload(context, "017");
+        assertThat(input).containsEntry("value", "017");
+        var answer = prime.result(context, input, Map.of("input", "017", "valid", true, "isPrime", false));
+        assertThat(answer.matched()).isFalse(); // The Worker owns the calculation, not this parser.
+        assertThat(prime.exportValues(answer)).containsExactly("否");
+        for (var invalid : List.<Map<String,Object>>of(Map.of("input", "17", "valid", true, "isPrime", true),
+                Map.of("input", "017", "valid", false, "isPrime", true),
+                Map.of("input", "017", "valid", true, "isPrime", "true")))
+            assertThatThrownBy(() -> prime.result(context, input, invalid)).isInstanceOf(IllegalArgumentException.class);
+        var md5 = contracts.require(AppCheckContracts.MD5_PREFIX);
+        var known = Map.of("a", "0cc175b9c0f1b6a831c399e269772661", "中文", "a7bac2239fcdcb3a067903d8077c4a07");
+        known.forEach((seed, hash) -> {
+            var result = md5.result(context, md5.payload(context, seed), Map.of("input", seed, "valid", true, "md5", hash));
+            assertThat(result.matched()).isEqualTo(seed.equals("a"));
+            assertThat(md5.exportValues(result)).containsExactly(hash);
+        });
+        assertThatThrownBy(() -> md5.result(context, Map.of("value", "a"), Map.of("input", "a", "valid", true, "md5", "invalid")))
+                .hasMessageContaining("MD5");
+        assertThatThrownBy(() -> md5.result(context, Map.of("value", "a"), Map.of("input", "b", "valid", true, "md5", known.get("a"))))
+                .hasMessageContaining("association");
+    }
     @Test void generatedNamesKeepTimeAndRemainValidForLongUnicodeCheckLabels() {
         var now = java.time.Instant.parse("2026-10-16T00:00:00Z");
-        assertThat(AppCheckSpecification.taskName("模拟注册", "App A", "CN", now))
-                .isEqualTo("模拟注册 · App A · CN · 2026-10-16T00:00:00Z");
-        String name = AppCheckSpecification.taskName("模拟注册", "😀".repeat(64), "CN", now);
+        assertThat(AppCheckSpecification.taskName("App A 模拟注册", "CN", now))
+                .isEqualTo("App A 模拟注册 · CN · 2026-10-16T00:00:00Z");
+        String name = AppCheckSpecification.taskName("😀".repeat(64), "CN", now);
         assertThat(name.length()).isLessThanOrEqualTo(128);
-        assertThat(name).startsWith("模拟注册 · ").endsWith("… · CN · 2026-10-16T00:00:00Z");
+        assertThat(name).startsWith("😀").endsWith("… · CN · 2026-10-16T00:00:00Z");
         assertThat(java.nio.charset.StandardCharsets.UTF_8.newEncoder().canEncode(name)).isTrue();
     }
     @Test void selectsAProtocolWithoutApplicationOrEventNameBranches() {

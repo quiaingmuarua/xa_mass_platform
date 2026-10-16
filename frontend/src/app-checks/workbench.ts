@@ -63,10 +63,10 @@ export function freshDraft(catalog?: Catalog): CheckDraft {
   return {
     createdAtMillis: Date.now(),
     checkId:
-      (
-        catalog?.checks.find(
-          (check) => check.checkType === "simulated-registration-v1"
-        ) ?? catalog?.checks[0]
+      catalog?.checks.find((check) =>
+        catalog.checkTypes.some(
+          (type) => type.id === check.checkType && type.seedType === "phonenumber"
+        )
       )?.checkId ?? "",
     seedType: "phonenumber",
     country: catalog?.countries[0] ?? "CN",
@@ -99,7 +99,7 @@ export function createWorkbenchSession(
     filters: {
       query: "",
       check: "all",
-      checkType: "all",
+      seedType: "all",
       country: "all",
       state: "all",
       from: "",
@@ -155,6 +155,10 @@ export const resultLabels: Record<ResultFilter, string> = {
   error: "检查错误"
 };
 export function checkCondition(checkType?: string) {
+  if (checkType === "uint32-prime-v1")
+    return "演示条件：整数是否为素数。输入 1～10 位十进制数字，范围 0～4,294,967,295；0、1 和合数不满足。";
+  if (checkType === "md5-prefix-demo-v1")
+    return "演示条件：文本 UTF-8 MD5 摘要以 0 开头。";
   return checkType === "original-carrier-v1"
     ? "检查条件：是否识别到原始运营商。基于号码库元数据，不表示当前运营商或号码实际在用。"
     : checkType === "registration-v1" || checkType === "simulated-registration-v1"
@@ -166,6 +170,9 @@ export function resultDescription(row: CheckResult) {
   if (row.contentError) return "内容异常 · " + row.contentError;
   if (typeof row.details?.registered === "boolean")
     return row.details.registered ? "已注册" : "未注册";
+  if (typeof row.details?.isPrime === "boolean")
+    return row.details.isPrime ? "是素数" : "不是素数";
+  if (typeof row.details?.md5 === "string") return "MD5：" + row.details.md5;
   const carrier = row.details?.originalCarrier;
   if (typeof carrier === "string") {
     if (row.matched) return "原始运营商：" + carrier;

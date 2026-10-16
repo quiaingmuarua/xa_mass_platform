@@ -46,9 +46,9 @@ record AppCheckSpecification(String requestId, String userId, String checkId, St
         return digest("app-checks/v5/create", userId, checkId, country == null ? "" : country);
     }
 
-    static String taskName(String typeLabel, String checkLabel, String country, java.time.Instant now) {
+    static String taskName(String checkLabel, String country, java.time.Instant now) {
         String suffix = (country == null ? "" : " · " + country) + " · " + now;
-        String prefix = typeLabel + " · " + checkLabel;
+        String prefix = checkLabel;
         int available = 128 - suffix.length();
         if (prefix.length() > available) {
             int end = available - 1;

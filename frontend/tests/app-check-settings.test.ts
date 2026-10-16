@@ -114,10 +114,11 @@ describe("Mock configuration content guard", () => {
         .fingerprint
     ).toBe(original.fingerprint);
     expect((await source.catalog()).checks.map((app) => app.checkId)).toEqual([
-      "app-a-carrier",
       "app-a-registration",
-      "app-b-carrier",
-      "app-b-registration"
+      "app-b-registration",
+      "md5-prefix",
+      "original-carrier",
+      "uint32-prime"
     ]);
     reordered.checks["app-a-registration"].label = "Renamed";
     const changed = await source.saveConfiguration(

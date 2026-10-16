@@ -7,9 +7,11 @@ import { consoleIdentity } from "@/console-identity";
 import {
   checkLabel,
   checkTypeLabel,
+  seedTypeLabel,
   countryLabel,
   type Catalog,
-  type CheckTask
+  type CheckTask,
+  type SeedType
 } from "./model";
 import type { ConfigurationReadState } from "./configuration";
 import {
@@ -46,31 +48,26 @@ const emit = defineEmits<{
   configuration: [];
 }>();
 const draft = computed(() => props.session.draft);
-const availableTypes = computed(() =>
-  props.catalog.checkTypes.filter((type) =>
-    props.catalog.checks.some((check) => check.checkType === type.id)
-  )
-);
 const selectedCheck = computed(() =>
   props.catalog.checks.find((check) => check.checkId === draft.value.checkId)
 );
 const selectedType = computed(
   () => props.targetTask?.checkType ?? selectedCheck.value?.checkType
 );
-const seedType = computed(
-  () =>
-    props.targetTask?.seedType ??
-    props.catalog.checkTypes.find((type) => type.id === selectedType.value)?.seedType
-);
+const seedType = computed(() => props.targetTask?.seedType ?? draft.value.seedType);
 const phoneSeeds = computed(() => seedType.value === "phonenumber");
 const availableChecks = computed(() =>
-  props.catalog.checks.filter((check) => check.checkType === selectedType.value)
+  props.catalog.checks.filter((check) =>
+    props.catalog.checkTypes.some(
+      (type) => type.id === check.checkType && type.seedType === seedType.value
+    )
+  )
 );
-const typeChoice = computed({
-  get: () => selectedType.value ?? "",
-  set: (value: string) => {
-    draft.value.checkId =
-      props.catalog.checks.find((check) => check.checkType === value)?.checkId ?? "";
+const seedChoice = computed({
+  get: () => seedType.value,
+  set: (value: SeedType) => {
+    draft.value.seedType = value;
+    draft.value.checkId = availableChecks.value[0]?.checkId ?? "";
     configurationChanged();
   }
 });
@@ -141,7 +138,7 @@ async function inspect(
   } catch (error) {
     if (!disposed && token === generation) {
       draft.value.report = undefined;
-      importError.value = error instanceof Error ? error.message : "号码解析失败";
+      importError.value = error instanceof Error ? error.message : "种子解析失败";
     }
   } finally {
     if (token === generation) reading.value = false;
@@ -227,7 +224,7 @@ async function submit() {
   current.frozenCaller ??= captureTaskCaller();
   let importConfirmed = false;
   try {
-    if (!props.source.importSeeds) throw new Error("当前数据源未接入号码导入");
+    if (!props.source.importSeeds) throw new Error("当前数据源未接入种子导入");
     if (!current.knownTaskId) {
       current.frozenCreate ??= markRaw({
         requestId: current.requestId,
@@ -343,11 +340,7 @@ watch(
       return;
     }
     if (!draft.value.checkId) {
-      draft.value.checkId = (
-        props.catalog.checks.find(
-          (check) => check.checkType === "simulated-registration-v1"
-        ) ?? props.catalog.checks[0]
-      ).checkId;
+      draft.value.checkId = availableChecks.value[0]?.checkId ?? "";
       draft.value.country = props.catalog.countries[0];
     }
     if (props.targetTask) {
@@ -390,9 +383,7 @@ onBeforeUnmount(() => {
         </h1>
         <p class="checks-hint">
           {{
-            targetTask
-              ? targetTask.name
-              : "选择检查类型和执行配置，导入种子后核对启动。"
+            targetTask ? targetTask.name : "选择种子格式和检查能力，导入后核对启动。"
           }}
         </p>
       </div>
@@ -423,6 +414,13 @@ onBeforeUnmount(() => {
     >
     <p class="checks-hint">
       {{ checkCondition(selectedType) }}
+    </p>
+    <p v-if="source.mode === 'mock' && seedType === 'text'" class="checks-hint">
+      Mock 仅演示固定样例，不作为计算结果验证。{{
+        selectedType === "uint32-prime-v1"
+          ? "样例：0、1、2、17、017、49、4294967291、4294967295"
+          : "样例：a、abc、中文、A"
+      }}；其他种子演示执行失败。
     </p>
     <details
       v-if="session.unconfirmedSubmissions.length"
@@ -471,12 +469,8 @@ onBeforeUnmount(() => {
     >
       <div class="checks-section-heading">
         <span
-          >{{ checkTypeLabel(selectedType, catalog) }} ·
-          {{ checkLabel(draft.checkId, catalog) }} ·
-          {{
-            catalog.checks.find((app) => app.checkId === draft.checkId)
-              ?.workerGroupId || "当前执行配置不可用"
-          }}</span
+          >{{ seedTypeLabel(seedType) }} ·
+          {{ checkLabel(draft.checkId, catalog) }}</span
         >
         <button
           v-if="canUseConsole(identity, 'app-checks.configuration')"
@@ -496,13 +490,14 @@ onBeforeUnmount(() => {
       <p v-if="configurationRead?.error" class="checks-error">
         检查目录读取失败，已保留上次快照。
       </p>
-      <p v-if="selectedCheck" class="checks-hint">
-        事件：{{ selectedCheck.execution.eventCode }} · Worker 查询：{{
-          selectedCheck.execution.workerSelector.executorName
-        }}
-      </p>
       <details v-if="selectedCheck">
         <summary>执行配置详情</summary>
+        <p>
+          Group：{{ selectedCheck.workerGroupId }} · 契约：{{
+            checkTypeLabel(selectedType, catalog)
+          }}
+          / {{ selectedType }}
+        </p>
         <pre>{{ JSON.stringify(selectedCheck.execution, null, 2) }}</pre>
       </details>
       <p class="checks-hint">
@@ -517,23 +512,22 @@ onBeforeUnmount(() => {
       <fieldset :disabled="blocked" class="checks-fieldset">
         <div class="checks-two-columns">
           <label class="checks-field"
-            >检查类型
+            >种子格式
             <select
-              v-model="typeChoice"
-              aria-label="检查类型"
+              v-model="seedChoice"
+              aria-label="种子格式"
               :disabled="!!draft.knownTaskId"
             >
-              <option v-for="type in availableTypes" :key="type.id" :value="type.id">
-                {{ type.label }}
-              </option>
+              <option value="phonenumber">电话号码</option>
+              <option value="text">文本</option>
             </select>
           </label>
           <label class="checks-field"
-            >执行配置
+            >检查能力
             <select
               v-if="!targetTask && availableChecks.length > 1"
               v-model="draft.checkId"
-              aria-label="执行配置"
+              aria-label="检查能力"
               :disabled="!!draft.knownTaskId"
               @change="configurationChanged"
             >
@@ -546,7 +540,9 @@ onBeforeUnmount(() => {
               </option>
             </select>
             <span v-else>{{
-              targetTask?.checkLabel ?? selectedCheck?.label ?? "配置不可用"
+              targetTask?.checkLabel ??
+              selectedCheck?.label ??
+              "当前种子格式没有可用检查能力"
             }}</span>
           </label>
           <label v-if="phoneSeeds" class="checks-field"

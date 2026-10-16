@@ -50,8 +50,8 @@ xa:
     worker-matching:
       groups:
         demo-sim:
-          pools: [country, sms-reception, messaging]
-          functions: [worker.country, worker.sms.available, worker.messaging.available, worker.phone]
+          pools: [country, any, sms-reception, messaging]
+          functions: [worker.country, worker.any, worker.sms.available, worker.messaging.available, worker.phone]
         app-a-sim:
           pools: [any, assignment-window, messaging]
           functions: [worker.any, worker.assignment.available, worker.messaging.available]
@@ -69,11 +69,11 @@ xa:
         {
           "app-a-sim": {
             "attributes": {},
-            "eventCodes": ["extension.worker.app.registration.check", "extension.worker.phonenumber.original-carrier", "extension.worker.message.send"]
+            "eventCodes": ["extension.worker.app.registration.check", "extension.worker.message.send"]
           },
           "app-b-sim": {
             "attributes": {},
-            "eventCodes": ["extension.worker.app.registration.check", "extension.worker.phonenumber.original-carrier", "extension.worker.message.send"]
+            "eventCodes": ["extension.worker.app.registration.check", "extension.worker.message.send"]
           },
           "demo-sim": {
             "attributes": {},
@@ -81,6 +81,8 @@ xa:
               "extension.worker.string.md5",
               "extension.worker.string.sha1",
               "extension.worker.string.base64.encode",
+              "extension.worker.phonenumber.original-carrier",
+              "extension.worker.integer.uint32-prime",
               "extension.worker.sms.number.lease",
               "extension.worker.message.send"
             ]

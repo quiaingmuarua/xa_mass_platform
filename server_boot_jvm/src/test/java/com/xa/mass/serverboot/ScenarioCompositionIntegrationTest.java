@@ -101,7 +101,7 @@ class ScenarioCompositionIntegrationTest {
                 var groups = context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("app-a-sim", "app-b-sim"));
                 assertThat(groups.values()).doesNotContainNull();
                 assertThat(context.getBean(com.xa.mass.server.project.ProjectDirectory.class).require("app-checks").workerGroupIds())
-                        .containsExactly("app-a-sim", "app-b-sim");
+                        .containsExactly("app-a-sim", "app-b-sim", "demo-sim");
                 assertThat(context.getBean(com.xa.mass.server.project.ProjectTaskQueryService.class).list(CALLER, "app-checks", 100, null).tasks()).isEmpty();
             }
             assertThat(context.getBean(com.xa.mass.server.delivery.adapter.ServerWorkerDeliveryAdapterProperties.class)

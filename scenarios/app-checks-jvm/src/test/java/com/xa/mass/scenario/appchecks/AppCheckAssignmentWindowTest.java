@@ -13,6 +13,8 @@ class AppCheckAssignmentWindowTest {
         var checks = new java.util.LinkedHashMap<>(original.checks());
         var first = original.requireCheck("app-a-registration");
         checks.put("same-event", first);
+        var carrier = original.requireCheck("original-carrier");
+        checks.put("shared-carrier", new AppCheckSettings.Check(carrier.label(), first.workerGroupId(), carrier.execution(), carrier.checkType(), carrier.parameters()));
         checks.put("second-window-event", new AppCheckSettings.Check("Other registration", first.workerGroupId(),
                 new AppCheckSettings.Execution("extension.worker.other.registration", first.execution().refill(), first.execution().workerSelector()),
                 first.checkType(), first.parameters()));

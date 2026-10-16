@@ -194,7 +194,7 @@ class PoolSelectionTest(unittest.TestCase):
                 return {"applications": applications}
             if path in ("/api/v1/projects/sms", "/api/v1/projects/messages", "/api/v1/projects/app-checks"):
                 project = path.rsplit("/", 1)[-1]
-                apps = applications[:1] if project == "sms" else applications[1:] if project == "app-checks" else applications
+                apps = applications[:1] if project == "sms" else applications
                 return {"workerGroupIds": [app["workerGroupId"] for app in apps]}
             if path in tuple(f"/api/v1/projects/{project}/tasks?limit=100" for project in ("sms", "messages", "app-checks")):
                 project = path.split("/")[4]

@@ -21,7 +21,7 @@ import AppCheckPreviewDrawer from "./AppCheckPreviewDrawer.vue";
 import AppCheckConfiguration from "./AppCheckConfiguration.vue";
 import type { ConfigurationReadState } from "./configuration";
 import {
-  checkTypeLabel,
+  seedTypeLabel,
   checkLabel,
   countryLabel,
   type Catalog,
@@ -649,20 +649,21 @@ onBeforeUnmount(() => {
           {{ actionTask.name || actionTask.taskId }}
         </p>
         <p>
-          {{
-            actionTask.checkTypeLabel ?? checkTypeLabel(actionTask.checkType, catalog)
-          }}
-          · {{ actionTask.checkLabel ?? checkLabel(actionTask.checkId, catalog) }} ·
-          {{ countryLabel(actionTask.country) }} ·
+          {{ seedTypeLabel(actionTask.seedType) }}
+          · {{ actionTask.checkLabel ?? checkLabel(actionTask.checkId, catalog) }}
+          <template v-if="actionTask.seedType === 'phonenumber'">
+            · {{ countryLabel(actionTask.country) }}
+          </template>
+          ·
           {{ quantity(actionTask.totalCount) }} 个种子
         </p>
         <p class="checks-hint">
           {{
             displayConfirmation === "approve"
-              ? "请核对检查类型、执行配置和种子数量。确认启动后将开始检查。"
+              ? "请核对种子格式、检查能力和种子数量。确认启动后将开始检查。"
               : actionTask.state === "pre_review"
-                ? "取消后不能启动，已导入的号码不会开始查询。"
-                : "停止后续演示查询，保留已有结果；已开始的执行仍可能返回结果。中止后不能重新启动。"
+                ? "取消后不能启动，已导入的种子不会开始检查。"
+                : "停止后续检查，保留已有结果；已开始的执行仍可能返回结果。中止后不能重新启动。"
           }}
         </p>
         <p v-if="actionError" role="alert" class="checks-error">{{ actionError }}</p>
@@ -753,9 +754,11 @@ onBeforeUnmount(() => {
           }}{{
             actionTask?.checkType === "original-carrier-v1"
               ? " / 原始运营商 / 识别说明"
-              : actionTask?.checkType === "text-md5-proof-v1"
-                ? " / 摘要"
-                : " / 注册状态"
+              : actionTask?.checkType === "md5-prefix-demo-v1"
+                ? " / MD5 摘要"
+                : actionTask?.checkType === "uint32-prime-v1"
+                  ? " / 是否素数"
+                  : " / 注册状态"
           }}</small
         >
       </div>

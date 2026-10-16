@@ -22,12 +22,14 @@
         ]
       },
       "registration-v1": {},
-      "original-carrier-v1": {}
+      "original-carrier-v1": {},
+      "uint32-prime-v1": {},
+      "md5-prefix-demo-v1": {}
     }
   },
   "checks": {
     "app-a-registration": {
-      "label": "App A",
+      "label": "App A 模拟注册",
       "workerGroupId": "app-a-sim",
       "execution": {
         "eventCode": "extension.worker.app.registration.check",
@@ -45,10 +47,29 @@
       },
       "checkType": "simulated-registration-v1"
     },
-    "app-a-carrier": {
-      "label": "App A",
+    "app-b-registration": {
+      "label": "App B 模拟注册",
+      "workerGroupId": "app-b-sim",
+      "execution": {
+        "eventCode": "extension.worker.app.registration.check",
+        "refill": [
+          {
+            "poolName": "assignment-window",
+            "target": {},
+            "count": 100
+          }
+        ],
+        "workerSelector": {
+          "executorName": "worker.assignment.available",
+          "input": {}
+        }
+      },
+      "checkType": "simulated-registration-v1"
+    },
+    "original-carrier": {
+      "label": "原始运营商识别",
       "checkType": "original-carrier-v1",
-      "workerGroupId": "app-a-sim",
+      "workerGroupId": "demo-sim",
       "execution": {
         "eventCode": "extension.worker.phonenumber.original-carrier",
         "refill": [
@@ -64,31 +85,31 @@
         }
       }
     },
-    "app-b-registration": {
-      "label": "App B",
-      "workerGroupId": "app-b-sim",
+    "uint32-prime": {
+      "label": "32 位整数素数判断（演示）",
+      "checkType": "uint32-prime-v1",
+      "workerGroupId": "demo-sim",
       "execution": {
-        "eventCode": "extension.worker.app.registration.check",
+        "eventCode": "extension.worker.integer.uint32-prime",
         "refill": [
           {
-            "poolName": "assignment-window",
+            "poolName": "any",
             "target": {},
             "count": 100
           }
         ],
         "workerSelector": {
-          "executorName": "worker.assignment.available",
+          "executorName": "worker.any",
           "input": {}
         }
-      },
-      "checkType": "simulated-registration-v1"
+      }
     },
-    "app-b-carrier": {
-      "label": "App B",
-      "checkType": "original-carrier-v1",
-      "workerGroupId": "app-b-sim",
+    "md5-prefix": {
+      "label": "MD5 前缀命中（演示）",
+      "checkType": "md5-prefix-demo-v1",
+      "workerGroupId": "demo-sim",
       "execution": {
-        "eventCode": "extension.worker.phonenumber.original-carrier",
+        "eventCode": "extension.worker.string.md5",
         "refill": [
           {
             "poolName": "any",

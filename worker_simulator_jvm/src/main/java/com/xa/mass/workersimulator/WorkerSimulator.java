@@ -840,6 +840,10 @@ public final class WorkerSimulator implements AutoCloseable {
         );
         addDefinitionExtensions(
                 definitions,
+                IntegerUtilityWorkerEvents.definitions()
+        );
+        addDefinitionExtensions(
+                definitions,
                 WorkerSimulatorLabEvents.backgroundFaults()
         );
         addDefinitionExtensions(

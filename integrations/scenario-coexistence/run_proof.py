@@ -403,7 +403,7 @@ def functional(run):
 
 def require_only_sms_rpc_initial(run):
     for project, expected in (("sms", {"demo-sim"}), ("messages", {"demo-sim", "app-a-sim", "app-b-sim"}),
-                              ("app-checks", {"app-a-sim", "app-b-sim"})):
+                              ("app-checks", {"demo-sim", "app-a-sim", "app-b-sim"})):
         directory = http(run.url, f"/api/v1/projects/{project}")
         require(set(directory["workerGroupIds"]) == expected, "Unexpected Project bindings in Pool fixture")
         page = http(run.url, f"/api/v1/projects/{project}/tasks?limit=100")

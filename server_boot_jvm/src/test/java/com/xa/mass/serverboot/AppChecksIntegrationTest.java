@@ -40,35 +40,6 @@ import static org.mockito.Mockito.*;
 /** Real HTTP/Redis/Worker proof. The attempt witness exists only in this test assembly. */
 @Tag("scenario-composition")
 class AppChecksIntegrationTest {
-    /** Installed only in this test context. The Worker Handler is the existing Simulator MD5 capability. */
-    static final class TextProofContract implements com.xa.mass.scenario.appchecks.AppCheckContract {
-        public String id() { return "text-md5-proof-v1"; }
-        public String label() { return "文本机制证明（测试）"; }
-        public SeedType seedType() { return SeedType.TEXT; }
-        public String description() { return "固定证明条件：MD5 摘要以 0 开头；不是正式业务能力"; }
-        public Map<String,Object> parameterExample() { return Map.of(); }
-        public Map<String,Object> inputExample() { return Map.of("value", "a"); }
-        public Map<String,Object> resultExample() { return Map.of("input", "a", "valid", true, "md5", "0cc175b9c0f1b6a831c399e269772661"); }
-        public Map<String,Object> normalizeParameters(Object value) {
-            if (!(value instanceof Map<?,?> map) || !map.isEmpty()) throw new IllegalArgumentException("Proof parameters must be empty");
-            return Map.of();
-        }
-        public Map<String,Object> payload(Context context, String seed) { return Map.of("value", seed); }
-        public String inputSeed(Map<String,Object> payload) {
-            if (!(payload.get("value") instanceof String seed) || seed.isEmpty()) throw new IllegalArgumentException("Missing text seed");
-            return seed;
-        }
-        public Result result(Context context, Map<String,Object> payload, Map<String,Object> content) {
-            String seed = inputSeed(payload);
-            if (!seed.equals(content.get("input")) || !Boolean.TRUE.equals(content.get("valid"))
-                    || !(content.get("md5") instanceof String md5) || !md5.matches("[0-9a-f]{32}"))
-                throw new IllegalArgumentException("Invalid text proof result");
-            return new Result(seed, md5.startsWith("0"), Map.of("md5", md5));
-        }
-        public List<String> exportHeaders() { return List.of("摘要"); }
-        public List<String> exportValues(Result result) { return List.of((String) result.details().get("md5")); }
-    }
-
     @Test @Timeout(150) @SuppressWarnings("unchecked")
     void textSeedsUseTheExistingMd5WorkerWithoutPhoneOptionsAndRetainTheirSnapshot() throws Exception {
         try (var world = new World()) {
@@ -76,10 +47,10 @@ class AppChecksIntegrationTest {
             var saved = (Map<String,Object>) view.get("saved");
             var config = (Map<String,Object>) saved.get("configuration");
             var checks = (Map<String,Object>) config.get("checks");
-            checks.put("text-proof", Map.of("label", "Text proof", "checkType", "text-md5-proof-v1", "workerGroupId", "demo-sim", "parameters", Map.of(),
+            checks.put("text-proof", Map.of("label", "Text proof", "checkType", "md5-prefix-demo-v1", "workerGroupId", "demo-sim", "parameters", Map.of(),
                     "execution", Map.of("eventCode", "extension.worker.string.md5",
-                            "refill", List.of(Map.of("poolName", "country", "target", Map.of("worker.country", List.of("CN")), "count", 100)),
-                            "workerSelector", Map.of("executorName", "worker.country", "input", List.of("CN")))));
+                            "refill", List.of(Map.of("poolName", "any", "target", Map.of(), "count", 100)),
+                            "workerSelector", Map.of("executorName", "worker.any", "input", Map.of()))));
             assertThat(world.putConfiguration(Map.of("expectedFingerprint", saved.get("fingerprint"), "configuration", config)).statusCode()).isEqualTo(200);
             assertThat(world.get("/api/v1/app-checks/catalog").get("checks").toString()).doesNotContain("text-proof");
             world.restart();
@@ -101,11 +72,27 @@ class AppChecksIntegrationTest {
             assertThat(Jsons.parseObject(world.post(route, text, "text/plain").body())).containsEntry("addedCount", 0L).containsEntry("existingCount", 4L);
             assertThat(task(world.detail(id))).containsEntry("seedType", "text").doesNotContainKey("country");
 
+            String primeId = (String) Jsons.parseObject(world.post("/api/v1/app-checks/tasks",
+                    Jsons.toJson(Map.of("requestId", "prime-seeds", "checkId", "uint32-prime")), "application/json").body()).get("taskId");
+            String primeRoute = "/api/v1/app-checks/tasks/" + primeId + "/seeds:import";
+            String invalid = IntStream.range(0, 201).mapToObj(Integer::toString).collect(java.util.stream.Collectors.joining("\n")) + "\n4294967296";
+            var rejected = world.post(primeRoute, invalid, "text/plain");
+            assertThat(rejected.statusCode()).isEqualTo(400);
+            assertThat(rejected.body()).contains("202");
+            assertThat(task(world.detail(primeId))).containsEntry("totalCount", 0L);
+            var primeSeeds = Map.of("0", false, "1", false, "2", true, "17", true, "017", true, "49", false,
+                    "4294967291", true, "4294967295", false);
+            String primeFile = "\uFEFF " + String.join("\n", primeSeeds.keySet()) + "\n\t17\t\n\n";
+            var primeReceipt = world.post(primeRoute, primeFile, "text/plain");
+            assertThat(primeReceipt.statusCode()).as(primeReceipt.body()).isEqualTo(200);
+            assertThat(Jsons.parseObject(primeReceipt.body())).containsEntry("addedCount", 8L).containsEntry("duplicateCount", 1L);
+            assertThat(Jsons.parseObject(world.post(primeRoute, primeFile, "text/plain").body())).containsEntry("addedCount", 0L).containsEntry("existingCount", 8L);
+            assertThat(world.post("/api/v1/tasks/" + primeId + "/approve", "{\"expectedItemCount\":8}", "application/json").statusCode()).isEqualTo(200);
             Path root = java.nio.file.Files.createTempDirectory(Path.of("build"), "text-worker-");
             Path hostConfig = root.resolve("host.json");
             java.nio.file.Files.writeString(hostConfig, Jsons.toJson(Map.of("runtimeApiBaseUrl", world.base.toString(),
                     "sandboxRoot", root.resolve("data/scenario-workers").toString(), "controlPort", 0,
-                    "workerGroups", Map.of("demo-sim", Map.of("count", 2, "events", List.of("extension.worker.string.md5"),
+                    "workerGroups", Map.of("demo-sim", Map.of("count", 2, "events", List.of("extension.worker.string.md5", "extension.worker.integer.uint32-prime"),
                             "propertiesTemplate", Map.of("country", "CN"), "newEnvironment", false)))));
             var hostFailure = new AtomicReference<Throwable>();
             var host = new Thread(() -> {
@@ -144,10 +131,45 @@ class AppChecksIntegrationTest {
                     assertThat(csv.headers().firstValue("X-Export-Count")).contains(filter.equals("all") ? "4" : filter.equals("matched") ? "1" : "3");
                     assertThat(csv.body()).contains("种子", "摘要").doesNotContain("地区");
                 }
+                var primeDetail = world.settled(primeId, 8);
+                assertThat(rows(primeDetail)).hasSize(8).allSatisfy(row -> {
+                    String seed = (String) row.get("seed");
+                    assertThat(row.get("matched")).isEqualTo(primeSeeds.get(seed));
+                    assertThat((Map<String,Object>) row.get("details")).containsEntry("isPrime", primeSeeds.get(seed));
+                });
+                var primeIds = rows(primeDetail).stream().map(row -> (String) row.get("messageId")).toList();
+                var primeRaw = Jsons.parseObject(world.post("/api/v1/tasks/" + primeId + "/results:load", Jsons.toJson(primeIds), "application/json").body());
+                var primeStates = Jsons.parseObject(world.post("/api/v1/tasks/" + primeId + "/items:states", Jsons.toJson(primeIds), "application/json").body());
+                for (var rawValue : primeRaw.values()) {
+                    var stored = (Map<String,Object>) rawValue;
+                    var content = Jsons.parseObject((String) stored.get("opaqueResultPayload"));
+                    assertThat(stored).containsEntry("status", "succeeded");
+                    assertThat(content).containsEntry("valid", true).containsEntry("isPrime", primeSeeds.get(content.get("input")));
+                }
+                assertThat(primeStates).hasSize(8).allSatisfy((message, value) -> assertThat((Map<String,Object>) value).containsEntry("band", "terminal"));
                 assertThat(hostFailure.get()).isNull();
                 world.restart();
                 assertThat(world.detail(id)).isEqualTo(detail);
                 assertThat(Jsons.parseObject(world.post("/api/v1/app-checks/tasks", Jsons.toJson(request), "application/json").body())).containsEntry("taskId", id);
+                var savedCsv = new HashMap<String,String>();
+                for (String taskId : List.of(id, primeId))
+                    savedCsv.put(taskId, world.post("/api/v1/app-checks/tasks/" + taskId + "/results:export", "", "application/json").body());
+                Path archives = root.resolve("archives");
+                world.restart("--xa.mass.task-retention.enabled=true", "--xa.mass.task-retention.grace=0ms",
+                        "--xa.mass.task-retention.directory=" + archives.toAbsolutePath());
+                for (String taskId : List.of(id, primeId)) {
+                    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+                    Object phase;
+                    do {
+                        phase = ((Map<?,?>) world.get("/api/v1/projects/app-checks/tasks/" + taskId).get("retention")).get("phase");
+                        if ("RELEASED".equals(phase)) break;
+                        Thread.sleep(20);
+                    } while (System.nanoTime() < deadline);
+                    assertThat(phase).isEqualTo("RELEASED");
+                    assertThat(rows(world.detail(taskId))).containsExactlyInAnyOrderElementsOf(rows(taskId.equals(id) ? detail : primeDetail));
+                    assertThat(world.post("/api/v1/app-checks/tasks/" + taskId + "/results:export", "", "application/json").body().lines().toList())
+                            .containsExactlyInAnyOrderElementsOf(savedCsv.get(taskId).lines().toList());
+                }
             } finally {
                 host.interrupt(); host.join(15_000);
                 assertThat(host.isAlive()).isFalse();
@@ -576,7 +598,7 @@ class AppChecksIntegrationTest {
             Map<String,Object> before;
             String csv;
             // Protocol/error fixture. The source/ZIP runner separately executes the installed libphonenumber Handler.
-            var builder = JavaWorkerManager.builder(world.base, "app-a-sim", WorkerTransportType.WEBSOCKET);
+            var builder = JavaWorkerManager.builder(world.base, "demo-sim", WorkerTransportType.WEBSOCKET);
             for (String replica : world.replicas) builder.replica(replica, Map::of, List.of(
                     WorkerEventDefinition.extension("phonenumber.original-carrier", WorkerEventParameterResolvers.jsonMap(), input -> {
                         String number = (String) input.get("rawNumber");
@@ -587,8 +609,8 @@ class AppChecksIntegrationTest {
                         return Jsons.toJson(result);
                     })));
             try (var workers = builder.build()) {
-                workers.start(); world.readyFacts(workers, "app-a-sim");
-                id = world.create("carrier-retention", "app-a-carrier", 4);
+                workers.start(); world.readyFacts(workers, "demo-sim");
+                id = world.create("carrier-retention", "original-carrier", 4);
                 before = world.settled(id, 4);
                 assertThat(task(before)).containsEntry("succeededCount", 4L).containsEntry("failedCount", 0L);
                 assertThat(rows(before)).filteredOn(row -> Boolean.TRUE.equals(row.get("matched"))).hasSize(1);
@@ -689,7 +711,6 @@ class AppChecksIntegrationTest {
             application.setRegisterShutdownHook(false);
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(observations));
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(selections));
-            application.addInitializers(ctx -> ctx.getBeanFactory().registerSingleton("textProofContract", new TextProofContract()));
             arguments = new String[] { "--spring.profiles.active=preview", "--server.port=" + port,
                     "--xa.mass.users.seed=classpath:users/proof-directory.json", "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,

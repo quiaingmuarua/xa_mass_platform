@@ -3,7 +3,8 @@ import { simulationSchema, checkTypeSchema, executionSchema } from "./model";
 
 export const SIMULATED_CONTRACT = "simulated-registration-v1";
 export const REGISTRATION_CONTRACT = "registration-v1";
-export const TEXT_PROOF_CONTRACT = "text-md5-proof-v1";
+export const MD5_CONTRACT = "md5-prefix-demo-v1";
+export const PRIME_CONTRACT = "uint32-prime-v1";
 export const CARRIER_CONTRACT = "original-carrier-v1";
 const name = z
   .string()
@@ -126,7 +127,8 @@ export function validateMockSettings(input: unknown): AppCheckSettings {
     if (
       id === REGISTRATION_CONTRACT ||
       id === CARRIER_CONTRACT ||
-      id === TEXT_PROOF_CONTRACT
+      id === MD5_CONTRACT ||
+      id === PRIME_CONTRACT
     )
       return z.strictObject({}).parse(parameters);
     throw new Error("未知契约：" + id);

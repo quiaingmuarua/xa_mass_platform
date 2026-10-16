@@ -192,10 +192,13 @@ export const checkTypeLabel = (type?: string, catalog?: Catalog) =>
     "simulated-registration-v1": "模拟注册",
     "registration-v1": "注册检查",
     "original-carrier-v1": "原始运营商识别",
-    "text-md5-proof-v1": "文本机制证明"
+    "md5-prefix-demo-v1": "MD5 前缀命中（演示）",
+    "uint32-prime-v1": "32 位整数素数判断（演示）"
   }[type ?? ""] ??
   type ??
   "—";
+export const seedTypeLabel = (type?: string) =>
+  ({ phonenumber: "电话号码", text: "文本" })[type ?? ""] ?? "—";
 export const countryLabel = (country?: string) =>
   ({ CN: "中国", US: "美国", GB: "英国" })[country ?? ""] ?? country ?? "—";
 export function taskProgress(task: CheckTask): number {

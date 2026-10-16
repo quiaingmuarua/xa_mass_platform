@@ -166,56 +166,107 @@ async function openCreate() {
   button("粘贴种子").click();
   await settle();
 }
-it("selects registration and carrier as distinct capabilities of the same Group", async () => {
+it("groups phone capabilities without exposing a second carrier deployment choice", async () => {
   const create = vi.spyOn(source, "createTask");
   await mount("/app-checks?view=create");
-  const type = document.querySelector<HTMLSelectElement>(
-    'select[aria-label="检查类型"]'
+  const seed = document.querySelector<HTMLSelectElement>(
+    'select[aria-label="种子格式"]'
   )!;
-  expect(type.value).toBe("simulated-registration-v1");
-  expect([...type.options].map((option) => option.textContent)).toContain(
+  expect(seed.value).toBe("phonenumber");
+  const capability = document.querySelector<HTMLSelectElement>(
+    'select[aria-label="检查能力"]'
+  )!;
+  expect([...capability.options].map((option) => option.textContent)).toEqual([
+    "App A 模拟注册",
+    "App B 模拟注册",
     "原始运营商识别"
-  );
-  const config = document.querySelector<HTMLSelectElement>(
-    'select[aria-label="执行配置"]'
-  )!;
-  expect(config.value).toBe("app-a-registration");
-  expect([...config.options].map((option) => option.textContent?.trim())).toEqual([
-    "App A",
-    "App B"
   ]);
   expect(document.body.textContent).toContain("号码是否已注册");
-  type.value = "original-carrier-v1";
-  type.dispatchEvent(new Event("change", { bubbles: true }));
+  capability.value = "original-carrier";
+  capability.dispatchEvent(new Event("change", { bubbles: true }));
   await settle();
-  expect(
-    document.querySelector<HTMLSelectElement>('select[aria-label="执行配置"]')!.value
-  ).toBe("app-a-carrier");
-  expect(document.body.textContent).toContain("app-a-sim");
   expect(document.body.textContent).toContain("是否识别到原始运营商");
+  expect(document.querySelector('select[aria-label="执行配置"]')).toBeNull();
   button("粘贴种子").click();
   await settle();
   input("种子列表", "8613800000000");
   await settle();
   await submit();
   expect(create.mock.calls[0][1]).toMatchObject({
-    checkId: "app-a-carrier",
+    checkId: "original-carrier",
     country: "CN"
   });
   const { taskId } = await create.mock.results[0].value;
   expect((await source.loadTask(CALLER, taskId)).task).toMatchObject({
     checkType: "original-carrier-v1",
-    workerGroupId: "app-a-sim"
+    workerGroupId: "demo-sim"
   });
 });
 
-it("uses an explicitly configured text proof fixture without country or CSV fields", async () => {
+it("creates the prime demonstration without country and rejects an invalid final seed before append", async () => {
+  const create = vi.spyOn(source, "createTask");
+  await mount("/app-checks?view=create");
+  const format = document.querySelector<HTMLSelectElement>(
+    'select[aria-label="种子格式"]'
+  )!;
+  format.value = "text";
+  format.dispatchEvent(new Event("change", { bubbles: true }));
+  await settle();
+  const capability = document.querySelector<HTMLSelectElement>(
+    'select[aria-label="检查能力"]'
+  )!;
+  expect([...capability.options].map((option) => option.value).sort()).toEqual([
+    "md5-prefix",
+    "uint32-prime"
+  ]);
+  capability.value = "uint32-prime";
+  capability.dispatchEvent(new Event("change", { bubbles: true }));
+  await settle();
+  expect(document.querySelector('[aria-label="号码国家"]')).toBeNull();
+  button("粘贴种子").click();
+  await settle();
+  input("种子列表", "17\n017\n49\n4294967296");
+  await settle();
+  await submit();
+  expect(create).toHaveBeenCalledTimes(1);
+  const { taskId } = await create.mock.results[0].value;
+  expect(create.mock.calls[0][1]).toMatchObject({ checkId: "uint32-prime" });
+  expect(create.mock.calls[0][1]).not.toHaveProperty("country");
+  expect((await source.loadTask(CALLER, taskId)).task.totalCount).toBe(0);
+  expect(document.body.textContent).toContain("未写入任何种子");
+  await source.importSeeds(CALLER, taskId, new Blob(["17\n017\n49\n17"]));
+  await source.approveTask(CALLER, taskId, 3);
+  await source.completeTask(CALLER, taskId);
+  const result = await source.loadTask(CALLER, taskId);
+  expect(result.results.map((row) => [row.seed, row.details?.isPrime])).toEqual([
+    ["17", true],
+    ["017", true],
+    ["49", false]
+  ]);
+  expect((await source.exportTask(CALLER, taskId, "all")).count).toBe(3);
+});
+
+it("keeps an empty phone category explicit instead of selecting a text capability automatically", async () => {
+  const catalog = structuredClone(mockCatalog);
+  catalog.checks = catalog.checks.filter((check) => check.checkId === "md5-prefix");
+  const session = createWorkbenchSession();
+  await mount("/app-checks?view=create", source, session, catalog);
+  expect(session.draft.checkId).toBe("");
+  expect(document.body.textContent).toContain("当前种子格式没有可用检查能力");
+  expect(
+    document.querySelector<HTMLSelectElement>('[aria-label="种子格式"]')!.value
+  ).toBe("phonenumber");
+  await submit();
+  expect(session.draft.knownTaskId).toBeUndefined();
+});
+
+it("uses an explicitly configured text demo without country or CSV fields", async () => {
   const saved = (await source.loadConfiguration(CALLER)).saved;
   const configuration = structuredClone(saved.configuration);
   configuration.checks["text-proof"] = {
     label: "Text proof fixture",
     workerGroupId: "app-a-sim",
-    checkType: "text-md5-proof-v1",
+    checkType: "md5-prefix-demo-v1",
     parameters: {},
     execution: {
       eventCode: "extension.worker.string.md5",
@@ -240,9 +291,9 @@ it("uses an explicitly configured text proof fixture without country or CSV fiel
   });
   await mount("/app-checks?view=create", source, session, await source.catalog());
   const type = document.querySelector<HTMLSelectElement>(
-    'select[aria-label="检查类型"]'
+    'select[aria-label="种子格式"]'
   )!;
-  type.value = "text-md5-proof-v1";
+  type.value = "text";
   type.dispatchEvent(new Event("change", { bubbles: true }));
   await settle();
   expect(document.querySelector('[aria-label="号码国家"]')).toBeNull();
@@ -255,15 +306,20 @@ it("uses an explicitly configured text proof fixture without country or CSV fiel
   });
   await submit();
   expect(create).not.toHaveBeenCalled();
-  type.value = "simulated-registration-v1";
+  type.value = "phonenumber";
   type.dispatchEvent(new Event("change", { bubbles: true }));
   await settle();
   expect(session.draft.report?.seeds).toEqual(["+8613800000001"]);
-  type.value = "text-md5-proof-v1";
+  type.value = "text";
   type.dispatchEvent(new Event("change", { bubbles: true }));
   await settle();
   button("粘贴种子").click();
   await settle();
+  const selected = document.querySelector<HTMLSelectElement>(
+    'select[aria-label="检查能力"]'
+  )!;
+  selected.value = "text-proof";
+  selected.dispatchEvent(new Event("change", { bubbles: true }));
   input("种子列表", "a\r\nabc\n\ta\t\n中文");
   await settle();
   await submit();
@@ -320,7 +376,7 @@ describe("App Checks product workspace", () => {
       uncertain: true
     });
     expect(
-      document.querySelector<HTMLSelectElement>('[aria-label="执行配置"]')!.disabled
+      document.querySelector<HTMLSelectElement>('[aria-label="检查能力"]')!.disabled
     ).toBe(true);
     expect(create).toHaveBeenCalledTimes(1);
     button("重新导入当前种子").click();
@@ -647,19 +703,19 @@ describe("App Checks product workspace", () => {
     input("搜索查询任务", (await source.loadTask(CALLER, outside)).task.name!);
     await settle();
     expect(document.querySelectorAll(".checks-task-table tbody tr")).toHaveLength(0);
-    input("搜索查询任务", "");
-    await settle();
+    // Keep the filter active: a manual refresh can expose a previously out-of-batch Task.
     tableViewport().dispatchEvent(new Event("scroll"));
     await settle();
     expect(read).toHaveBeenCalledTimes(1);
     read.mockResolvedValueOnce({
-      tasks: [(await source.loadTask(CALLER, createdIds[100])).task],
+      tasks: [(await source.loadTask(CALLER, outside)).task],
       truncated: false
     });
     button("刷新").click();
     await settle();
     expect(document.querySelectorAll(".checks-task-table tbody tr")).toHaveLength(1);
     expect(document.body.textContent).not.toContain("列表未完整加载");
+    expect(read).toHaveBeenCalledTimes(2);
   }, 15000);
   it("retains the last successful list read time on failure and updates it on recovery", async () => {
     const read = vi.spyOn(source, "listTasks");

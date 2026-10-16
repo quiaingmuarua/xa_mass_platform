@@ -84,7 +84,7 @@ class ScenarioLifecycleTest {
                 events.add("register");
                 if (registrationCount.incrementAndGet() == failedRegistration)
                     throw new IllegalStateException("registration unavailable");
-                if (project.equals("app-checks")) assertThat(id).isIn("app-a-sim", "app-b-sim");
+                if (project.equals("app-checks")) assertThat(id).isIn("app-a-sim", "app-b-sim", "demo-sim");
                 else assertThat(id).isEqualTo("demo-sim");
             };
             doAnswer(call -> { observe.accept(call.getArgument(0), call.getArgument(1)); return null; })
@@ -125,7 +125,7 @@ class ScenarioLifecycleTest {
         }
         assertThat(events.getFirst()).isEqualTo("platform-start");
         assertThat(events.getLast()).isEqualTo("platform-close");
-        assertThat(registrationCount).hasValue(failedRegistration == 0 ? 4 : failedRegistration);
+        assertThat(registrationCount).hasValue(failedRegistration == 0 ? 5 : failedRegistration);
         verify(adapters).close();
         verify(verifier).close();
     }

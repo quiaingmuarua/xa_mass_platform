@@ -201,13 +201,15 @@ class PreviewLifecycleTest(unittest.TestCase):
                     self.assertEqual({"$choice": ["CN", "US", "GB"]}, group["propertiesTemplate"]["country"])
                     self.assertEqual(True, "extension.worker.sms.number.lease" in group["events"])
                     self.assertEqual(True, "extension.worker.message.send" in group["events"])
+                    self.assertIn("extension.worker.phonenumber.original-carrier", group["events"])
+                    self.assertIn("extension.worker.integer.uint32-prime", group["events"])
+                    self.assertIn("extension.worker.string.md5", group["events"])
                     self.assertEqual("18413", host.args[2]["PREVIEW_ADAPTER_PORT"])
                     for group_id in ("app-a-sim", "app-b-sim"):
                         if app_count:
                             self.assertEqual(app_count, config["workerGroups"][group_id]["count"])
                             self.assertEqual([
                                 "extension.worker.app.registration.check",
-                                "extension.worker.phonenumber.original-carrier",
                                 "extension.worker.message.send",
                             ], config["workerGroups"][group_id]["events"])
                             properties = config["workerGroups"][group_id]["propertiesTemplate"]

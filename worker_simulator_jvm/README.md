@@ -98,7 +98,7 @@ or unknown names. Empty `events` uses a finite local Group binding:
 | --- | --- | --- |
 | `scenario-phone-number-workers` | E.164, country and original-carrier tools | `runtime=java`, `capability=libphonenumber`, `region=local`, sequential `labSlot` from 1, `convergenceSlot=A` |
 | `scenario-string-utils-workers` | String tools and command checkpoint | Same Lab fields, with `capability=string-utils` |
-| `demo-sim` | SMS, Messages and shared string tools | `runtime=java`, sequential `phone` from 861700000001, seeded equal-weight `country=CN/US/GB`, `operator=Preview SIM`, `simulated=true`, `messaging.enabled=true` |
+| `demo-sim` | SMS, Messages, shared string tools, original carrier and uint32 primality | `runtime=java`, sequential `phone` from 861700000001, seeded equal-weight `country=CN/US/GB`, `operator=Preview SIM`, `simulated=true`, `messaging.enabled=true` |
 
 Other Groups must specify extensions and a template explicitly (an empty template
 is legal if the selected capabilities require no Properties). Group defaults are
@@ -193,6 +193,19 @@ validated against the entire effective inventory before committing generated
 Groups or creating Managers. A scheduled stop must refer to an initial Worker.
 The plan owns only initial local intent and startup stop timing, not Properties,
 Worker identity, Tasks, Adapter state or Kernel expectations.
+
+## Integer computation demonstration
+
+`extension.worker.integer.uint32-prime` is a stateless local Handler. Input `value` is a
+string of 1..10 ASCII decimal digits in 0..4294967295. Leading zeroes are preserved in
+`input`. Valid output has `valid=true` and Boolean `isPrime`; 0, 1 and composites are
+normal negative answers. Invalid input returns `valid=false,error=INVALID_UINT32` with
+no isPrime. Deterministic long trial division bounds the divisor by value/divisor;
+there is no probable-prime result, network, cache or extra thread.
+
+Preview Demo installs this event and original-carrier alongside existing MD5, SMS and
+Messages. Its new Any enablement is explicit host configuration, not a Matching rule.
+App A/B retain registration and Messages. Worker count/seed/CLI behavior is unchanged.
 
 ## Messages and shared products
 

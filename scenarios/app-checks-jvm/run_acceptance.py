@@ -90,7 +90,7 @@ def caller_headers(user, role):
 
 
 def creation_input(case):
-    return {key: case[key] for key in ("requestId", "checkId", "country")}
+    return {key: case[key] for key in ("requestId", "checkId", "country") if key in case}
 
 
 def create_import_approve(run, http, case, *, approve=True):
@@ -130,7 +130,7 @@ def functional(run, http, cases):
     catalog = http(run.url, "/api/v1/app-checks/catalog")
     require(catalog["projectId"] == "app-checks", "Wrong project")
     groups = {row["checkId"]: row["workerGroupId"] for row in catalog["checks"]}
-    require(groups == {"app-a-registration": "app-a-sim", "app-b-registration": "app-b-sim", "app-a-carrier": "app-a-sim", "app-b-carrier": "app-b-sim"}, "Wrong application assembly")
+    require(groups == {"app-a-registration": "app-a-sim", "app-b-registration": "app-b-sim", "original-carrier": "demo-sim", "uint32-prime": "demo-sim", "md5-prefix": "demo-sim"}, "Wrong application assembly")
     workers = http(run.host, "/lab/v1/workers")["workers"]
     for app, group in groups.items():
         if not app.endswith("-registration"):
@@ -196,12 +196,12 @@ def functional(run, http, cases):
     require({task for _, task in tasks} <= {row["taskId"] for row in listing["tasks"]}, "Project list lost a Task")
     require(all(row["task"]["metadata"].get("userId") == "1000" for row in listing["tasks"]
                 if row["taskId"] in {task for _, task in tasks}), "Project list lost Task creators")
-    return {"passed": True, "appWorkers": 4, "carrier": [carrier_functional(run, http, app) for app in ("app-a", "app-b")], "tasks": summaries, "idempotentSubmission": True,
+    return {"passed": True, "appWorkers": 4, "carrier": [carrier_functional(run, http)], "textDemos": [text_functional(run, http, check) for check in ("uint32-prime", "md5-prefix")], "tasks": summaries, "idempotentSubmission": True,
             "groupIsolation": True, "hashAndDelayRecomputed": True, "creatorRetained": True,
             "nonclaims": ["exact distribution", "fixed executor", "single execution", "failure attempt count"]}
 
 
-def carrier_functional(run, http, app):
+def carrier_functional(run, http):
     """Real installed number Handler; goldens are fixed independently of the Scenario parser."""
     api = functools.partial(http, headers=caller_headers("1000", "admin"))
     expected = {
@@ -211,10 +211,10 @@ def carrier_functional(run, http, app):
         "+86123": (False, "", "INVALID_PHONE_NUMBER"),
         **{f"+86{i}": (False, "", "INVALID_PHONE_NUMBER") for i in range(200, 300)},
     }
-    case = {"userId": "1000", "requestId": app + "-carrier-goldens", "checkId": app + "-carrier", "country": "CN", "numbers": list(expected)}
+    case = {"userId": "1000", "requestId": "carrier-goldens", "checkId": "original-carrier", "country": "CN", "numbers": list(expected)}
     task_id = create_import_approve(run, http, case)
     task = api(run.url, "/api/v1/projects/app-checks/tasks/" + task_id)["task"]
-    require(task["workerGroupId"] == app + "-sim"
+    require(task["workerGroupId"] == "demo-sim"
             and task["metadata"]["checkType"] == "original-carrier-v1"
             and task["metadata"]["eventCode"] == "extension.worker.phonenumber.original-carrier", "Carrier Task binding differs")
     require(task["refill"] == [{"poolName": "any", "target": {}, "count": 100}], "Carrier Task did not declare Any supply")
@@ -268,10 +268,88 @@ def carrier_functional(run, http, app):
             require({row[0].removeprefix("'") for row in rows[1:]} == set(selected), "Carrier CSV lost inputs beyond preview")
             for row in rows[1:]:
                 values = selected[row[0].removeprefix("'")]
-                require(row[1:] == ["满足" if values[0] else "不满足", "原始运营商识别", "App A" if app == "app-a" else "App B", "CN", values[1], values[2]], "Carrier CSV interpretation mismatch")
+                require(row[1:] == ["满足" if values[0] else "不满足", "原始运营商识别", "原始运营商识别", "CN", values[1], values[2]], "Carrier CSV interpretation mismatch")
             counts[selection] = len(selected)
-    return {"passed": True, "checkId": app + "-carrier", "items": len(expected), "preview": len(preview["results"]), "exports": counts,
+    return {"passed": True, "checkId": "original-carrier", "items": len(expected), "preview": len(preview["results"]), "exports": counts,
             "rawResultsAndItemStatesChecked": True, "fixedCarrierGoldens": True}
+
+
+def text_functional(run, http, check_id):
+    """Real text Handlers, independent sieve/hashlib oracle, full raw Result/Item witnesses."""
+    headers = caller_headers("1000", "admin")
+    api = functools.partial(http, headers=headers)
+    prime = check_id == "uint32-prime"
+    if prime:
+        composite = {0, 1}
+        for value in range(2, 104):
+            if value not in composite:
+                composite.update(range(value * 2, 104, value))
+        expected = {str(value): (value not in composite, {"isPrime": value not in composite}) for value in range(104)}
+        expected.update({"017": (True, {"isPrime": True}), "4294967291": (True, {"isPrime": True}),
+                         "4294967295": (False, {"isPrime": False})})
+    else:
+        seeds = ["a", "abc", "中文", "A", *[f"text-seed-{i}" for i in range(101)]]
+        hashes = {seed: hashlib.md5(seed.encode("utf-8")).hexdigest() for seed in seeds}
+        expected = {seed: (digest.startswith("0"), {"md5": digest}) for seed, digest in hashes.items()}
+    case = {"userId": "1000", "requestId": check_id + "-vectors", "checkId": check_id, "numbers": list(expected)}
+    task_id = api(run.url, "/api/v1/app-checks/tasks", creation_input(case))["taskId"]
+    route = f"/api/v1/app-checks/tasks/{task_id}"
+    if prime:
+        invalid = urllib.request.Request(run.url + route + "/seeds:import",
+            data=("\n".join(expected) + "\n4294967296").encode("utf-8"),
+            headers={"Content-Type": "text/plain;charset=UTF-8", **headers}, method="POST")
+        try:
+            urllib.request.urlopen(invalid, timeout=15)
+            raise AssertionError("Invalid final prime seed was accepted")
+        except urllib.error.HTTPError as error:
+            require(error.code == 400, "Prime validation did not reject input")
+        require(api(run.url, "/api/v1/projects/app-checks/tasks:stats", [task_id])[task_id]["total"] == 0,
+                "Prime validation appended a valid subset")
+    require(create_import_approve(run, http, case) == task_id, "Original creation identity was lost")
+
+    def settled():
+        observed = task_observations(run, api, task_id)
+        return observed["task"]["state"] == "terminal" and observed["task"]["succeededCount"] == len(expected) \
+            and observed["task"]["failedCount"] == observed["task"]["activeCount"] == 0
+    run.wait_for(settled, 45, check_id + " finite task")
+    detail = task_observations(run, api, task_id)
+    require(detail["task"]["workerGroupId"] == "demo-sim" and detail["task"]["seedType"] == "text"
+            and "country" not in detail["task"], "Text Task binding or country differs")
+    require(detail["resultsTruncated"] and len(detail["results"]) <= 100, "Text preview escaped its bound")
+    for row in detail["results"]:
+        matched, details = expected[row["seed"]]
+        require(row["matched"] == matched and row["details"] == details, "Text answer differs from independent oracle")
+
+    def identity(seed):
+        digest = hashlib.sha256()
+        for value in ("app-checks/v1/text", seed):
+            encoded = value.encode("utf-8")
+            digest.update(len(encoded).to_bytes(4, "big")); digest.update(encoded)
+        return "seed-" + digest.hexdigest()
+    seeds = list(expected)
+    for offset in range(0, len(seeds), 100):
+        batch = seeds[offset:offset + 100]
+        ids = [identity(seed) for seed in batch]
+        raw = api(run.url, f"/api/v1/tasks/{task_id}/results:load", ids)
+        states = api(run.url, f"/api/v1/tasks/{task_id}/items:states", ids)
+        require(set(raw) == set(ids) == set(states), "Text identities are missing")
+        for seed in batch:
+            result = raw[identity(seed)]
+            content = json.loads(result["opaqueResultPayload"])
+            require(result["status"] == "succeeded" and content.get("valid") is True and content["input"] == seed,
+                    "Raw text Result association differs")
+            require(all(content.get(key) == value for key, value in expected[seed][1].items()), "Worker computation differs")
+            require(states[identity(seed)]["band"] == "terminal", "Text Item did not terminate")
+    for selection in ("all", "matched", "unmatched"):
+        request = urllib.request.Request(run.url + route + "/results:export?filter=" + selection, headers=headers, method="POST")
+        with urllib.request.urlopen(request, timeout=30) as response:
+            rows = list(csv.reader(io.StringIO(response.read().decode("utf-8-sig"))))
+            selected = {seed for seed, (matched, _) in expected.items() if selection == "all" or matched == (selection == "matched")}
+            require(rows[0] == ["种子", "判定", "检查类型", "执行配置", "是否素数" if prime else "MD5 摘要"], "Text CSV header differs")
+            require(int(response.headers["X-Export-Count"]) == len(selected) == len(rows) - 1, "Text export count differs")
+            require({row[0] for row in rows[1:]} == selected, "Text export lost inputs beyond preview")
+    return {"checkId": check_id, "group": "demo-sim", "items": len(expected), "passed": True,
+            "rawResultsAndItemsChecked": True, "independentOracle": "sieve-and-fixed-boundaries" if prime else "hashlib"}
 
 
 def main():

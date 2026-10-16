@@ -104,8 +104,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                 Map.entry("workerSelector", Jsons.toJson(AppCheckSettings.selectorMap(app.execution().workerSelector()))),
                 Map.entry("salt", specification.salt(date)), Map.entry("saltDate", date.toString())));
         if (specification.country() != null) metadata.put("country", specification.country());
-        String name = AppCheckSpecification.taskName(contracts.require(app.checkType()).label(),
-                app.label(), specification.country(), clock.instant());
+        String name = AppCheckSpecification.taskName(app.label(), specification.country(), clock.instant());
         try {
             return creation.createForRequest(caller, PROJECT, new TaskCreateRequest(specification.requestId(), PROJECT, app.workerGroupId(), 50, 3,
                     app.execution().refill(), name, metadata),
@@ -138,7 +137,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
                 try { snapshot = AppCheckTaskSnapshot.read(entry.task().workerGroupId(), entry.task().metadata(), contracts); }
                 catch (RuntimeException invalid) { throw new RequestFailure(400, "任务执行配置不可用：" + invalid.getMessage(), taskId); }
                 long added = 0, existing = 0;
-                try (var file = AppCheckSeedFile.read(input, snapshot.contract().seedType(), snapshot.context().country());
+                try (var file = AppCheckSeedFile.read(input, snapshot.contract(), snapshot.context().country());
                      var reader = Files.newBufferedReader(file.file(), StandardCharsets.UTF_8)) {
                     var batch = new ArrayList<TaskItemRequest>(100);
                     boolean finished = false;

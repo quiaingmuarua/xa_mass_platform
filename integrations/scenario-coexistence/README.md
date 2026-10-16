@@ -61,6 +61,9 @@ Every scenario starts an independent scope, inventory and App Checks configurati
 database (a sibling of that private inventory). The packaged seed is used only on
 first initialization; no shared Preview database or window YAML overlay is reused. App Checks retains its
 independent one-shot witness in the same CI lane.
+Its Project binds Demo plus App A/B: Demo hosts carrier and local text checks,
+while App A/B retain registration checks. The Pool fixture asserts those exact
+bindings without preparing RPC Tasks for the finite-only scenario.
 
 Functional first checks the Messages application's empty creation identity and
 conflict response, then closes that empty Task. SMS uses its partitioned lease Pool and returns number plus messageId. The
