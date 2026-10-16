@@ -44,9 +44,9 @@ public class KernelPacerConfiguration {
             var handler = new PlatformPropertiesHandler(projections, properties.getObject(), commands.getObject(),
                     running::get, failures::addAndGet);
             for (var projection : projections) {
-                for (String group : projection.projectionsByGroup().keySet())
+                projection.projectionsByGroup().forEach((group, selections) -> selections.forEach(selection ->
                     routes.computeIfAbsent(group, ignored -> new LinkedHashMap<>())
-                        .put(new EventKey(projection.projectionsByGroup().get(group).messageEventName(), projection.observationEventName()), List.of(handler));
+                        .put(new EventKey(selection.messageEventName(), projection.observationEventName()), List.of(handler))));
             }
         }
         return new WorkerObservationConsumer(routes, running, failures);

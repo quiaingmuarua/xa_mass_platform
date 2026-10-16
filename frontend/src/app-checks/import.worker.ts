@@ -12,7 +12,7 @@ self.onmessage = (
     self.postMessage({ text, report: inspectImport(text, event.data.options) });
   } catch (error) {
     self.postMessage({
-      error: error instanceof Error ? error.message : "号码解析失败"
+      error: error instanceof Error ? error.message : "种子解析失败"
     });
   }
 };

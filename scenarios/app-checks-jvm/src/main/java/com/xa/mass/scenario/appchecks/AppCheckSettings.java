@@ -8,8 +8,8 @@ import com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit;
 import java.util.*;
 
 /** Complete scenario configuration; resource ownership stays with the existing Owners. */
-public record AppCheckSettings(Map<String, Map<String, Object>> contractDefaults,
-                               Map<String, Application> applications, Map<String, WindowLimit> poolGroups) {
+public record AppCheckSettings(Map<String, Map<String, Object>> typeDefaults,
+                               Map<String, Check> checks, Map<String, WindowLimit> poolGroups) {
     public record Execution(String eventCode, List<RefillTarget> refill, WorkerQuery workerSelector) {
         public Execution {
             AppCheckSpecification.text(eventCode, 256);
@@ -25,85 +25,86 @@ public record AppCheckSettings(Map<String, Map<String, Object>> contractDefaults
                     "workerSelector", selectorMap(workerSelector));
         }
     }
-    public record Application(String label, String workerGroupId, Execution execution,
-                              String contractId, Map<String, Object> parameters) {
-        public Application {
+    public record Check(String label, String workerGroupId, Execution execution,
+                              String checkType, Map<String, Object> parameters) {
+        public Check {
             AppCheckSpecification.text(label, 128);
-            AppCheckSpecification.text(workerGroupId, 128); AppCheckSpecification.text(contractId, 128);
+            AppCheckSpecification.text(workerGroupId, 128); AppCheckSpecification.text(checkType, 128);
             Objects.requireNonNull(execution, "execution");
             if (parameters != null) parameters = AppCheckSettings.parameters(parameters, "parameters");
         }
         public Map<String, Object> toMap() {
             var value = new LinkedHashMap<String, Object>();
             value.put("label", label); value.put("workerGroupId", workerGroupId);
-            value.put("execution", execution.toMap()); value.put("contractId", contractId);
+            value.put("execution", execution.toMap()); value.put("checkType", checkType);
             if (parameters != null) value.put("parameters", parameters);
             return Collections.unmodifiableMap(value);
         }
     }
     public AppCheckSettings {
         var defaults = new LinkedHashMap<String, Map<String, Object>>();
-        contractDefaults.forEach((id, value) -> defaults.put(id, parameters(value, "common.contractDefaults." + id)));
-        contractDefaults = Collections.unmodifiableMap(defaults);
-        if (applications == null || applications.isEmpty()) throw new IllegalArgumentException("applications: 应用配置不能为空");
+        typeDefaults.forEach((id, value) -> defaults.put(id, parameters(value, "common.typeDefaults." + id)));
+        typeDefaults = Collections.unmodifiableMap(defaults);
+        if (checks == null || checks.isEmpty()) throw new IllegalArgumentException("checks: 检查项配置不能为空");
         var groups = new HashSet<String>();
-        applications.forEach((appId, app) -> {
-            AppCheckSpecification.text(appId, 128);
-            if (!groups.add(app.workerGroupId())) throw new IllegalArgumentException("applications: WorkerGroup 必须唯一");
+        checks.forEach((checkId, app) -> {
+            AppCheckSpecification.text(checkId, 128);
+            groups.add(app.workerGroupId());
         });
-        // Object key order is not configuration: Catalog uses stable appId order.
-        applications = Collections.unmodifiableMap(new TreeMap<>(applications));
+        // Object key order is not configuration: Catalog uses stable checkId order.
+        checks = Collections.unmodifiableMap(new TreeMap<>(checks));
         poolGroups = Map.copyOf(poolGroups);
         if (!groups.containsAll(poolGroups.keySet())) throw new IllegalArgumentException("poolGroups: 存在未绑定的 WorkerGroup");
-        for (var app : applications.values()) {
+        for (var app : checks.values()) {
             if ((app.execution().refill().stream().anyMatch(target -> target.poolName().equals(AppCheckWorkerSupply.POOL))
                     || app.execution().workerSelector().executorName().equals(AppCheckWorkerSupply.FUNCTION))
                     && !poolGroups.containsKey(app.workerGroupId()))
                 throw new IllegalArgumentException("poolGroups." + app.workerGroupId() + ": 缺少窗口参数");
         }
     }
-    public Application requireApplication(String appId) {
-        var app = applications.get(appId);
-        if (app == null) throw new IllegalArgumentException("Unsupported appId");
+    public Check requireCheck(String checkId) {
+        var app = checks.get(checkId);
+        if (app == null) throw new IllegalArgumentException("Unsupported checkId");
         return app;
     }
-    public List<String> workerGroupIds() { return applications.values().stream().map(Application::workerGroupId).toList(); }
-    public Map<String, Object> parametersFor(Application app) {
-        var selected = app.parameters() == null ? contractDefaults.get(app.contractId()) : app.parameters();
-        if (selected == null) throw new IllegalArgumentException("parameters: 缺少契约参数：" + app.contractId());
+    public List<String> workerGroupIds() { return checks.values().stream().map(Check::workerGroupId).distinct().toList(); }
+    public Map<String, Object> parametersFor(Check app) {
+        var selected = app.parameters() == null ? typeDefaults.get(app.checkType()) : app.parameters();
+        if (selected == null) throw new IllegalArgumentException("parameters: 缺少契约参数：" + app.checkType());
         return selected;
     }
     void requireUpdateOf(AppCheckSettings previous) {
-        for (var existing : previous.applications().entrySet()) {
-            var current = applications.get(existing.getKey());
-            if (current == null || !current.workerGroupId().equals(existing.getValue().workerGroupId()))
-                throw new IllegalArgumentException("applications: 已有应用不可删除或换绑 WorkerGroup：" + existing.getKey());
+        for (var existing : previous.checks().entrySet()) {
+            var current = checks.get(existing.getKey());
+            if (current == null || !current.workerGroupId().equals(existing.getValue().workerGroupId())
+                    || !current.checkType().equals(existing.getValue().checkType()))
+                throw new IllegalArgumentException("checks: 已有检查项不可删除、换类型或换绑 WorkerGroup：" + existing.getKey());
         }
     }
     public Map<String, Object> toMap() {
         var windows = new TreeMap<String, Object>();
         poolGroups.forEach((group, limit) -> windows.put(group, Map.of("windowMillis", limit.windowMillis(), "maxCount", limit.maxCount())));
         var apps = new TreeMap<String, Object>();
-        applications.forEach((id, app) -> apps.put(id, app.toMap()));
-        return Map.of("common", Map.of("contractDefaults", contractDefaults), "applications", apps, "poolGroups", windows);
+        checks.forEach((id, app) -> apps.put(id, app.toMap()));
+        return Map.of("common", Map.of("typeDefaults", typeDefaults), "checks", apps, "poolGroups", windows);
     }
     public static AppCheckSettings parse(Object input, AppCheckContracts contracts) {
-        var root = object(input, Set.of("common", "applications", "poolGroups"), Set.of(), "configuration");
-        var common = object(root.get("common"), Set.of("contractDefaults"), Set.of(), "common");
+        var root = object(input, Set.of("common", "checks", "poolGroups"), Set.of(), "configuration");
+        var common = object(root.get("common"), Set.of("typeDefaults"), Set.of(), "common");
         var defaults = new LinkedHashMap<String, Map<String, Object>>();
-        map(common.get("contractDefaults"), "common.contractDefaults").forEach((id, value) ->
-                defaults.put(id, normalize(contracts, id, value, "common.contractDefaults." + id)));
-        var apps = new LinkedHashMap<String, Application>();
-        for (var entry : map(root.get("applications"), "applications").entrySet()) {
-            String path = "applications." + entry.getKey();
+        map(common.get("typeDefaults"), "common.typeDefaults").forEach((id, value) ->
+                defaults.put(id, normalize(contracts, id, value, "common.typeDefaults." + id)));
+        var apps = new LinkedHashMap<String, Check>();
+        for (var entry : map(root.get("checks"), "checks").entrySet()) {
+            String path = "checks." + entry.getKey();
             try {
-                String appId = AppCheckSpecification.text(entry.getKey(), 128);
-                var app = object(entry.getValue(), Set.of("label", "workerGroupId", "execution", "contractId"), Set.of("parameters"), path);
-                String id = AppCheckSpecification.text(app.get("contractId"), 128);
+                String checkId = AppCheckSpecification.text(entry.getKey(), 128);
+                var app = object(entry.getValue(), Set.of("label", "workerGroupId", "execution", "checkType"), Set.of("parameters"), path);
+                String id = AppCheckSpecification.text(app.get("checkType"), 128);
                 contracts.require(id);
                 var selected = app.containsKey("parameters") ? normalize(contracts, id, app.get("parameters"), path + ".parameters") : null;
                 if (selected == null && !defaults.containsKey(id)) throw new IllegalArgumentException("parameters: 缺少参数及共同默认值");
-                apps.put(appId, new Application(AppCheckSpecification.text(app.get("label"), 128),
+                apps.put(checkId, new Check(AppCheckSpecification.text(app.get("label"), 128),
                         AppCheckSpecification.text(app.get("workerGroupId"), 128), execution(app.get("execution"), path + ".execution"), id, selected));
             } catch (IllegalArgumentException invalid) { throw at(path, invalid); }
         }

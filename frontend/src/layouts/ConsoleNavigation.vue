@@ -89,7 +89,7 @@ const messagesEnabled = computed(() =>
         :class="{ 'router-link-active': route.path.startsWith('/app-checks') }"
         :aria-current="route.path.startsWith('/app-checks') ? 'page' : undefined"
       >
-        <el-icon><Tickets /></el-icon><span>应用注册查询</span>
+        <el-icon><Tickets /></el-icon><span>批量检查</span>
       </router-link>
     </template>
     <template v-if="allowed('users.manage')">
@@ -147,9 +147,7 @@ const messagesEnabled = computed(() =>
     class="runtime-sidebar__note"
     role="status"
   >
-    <p>应用注册查询可用性未确认</p>
-    <el-button size="small" @click="appChecks.load(true)"
-      >重试应用注册查询可用性</el-button
-    >
+    <p>批量检查可用性未确认</p>
+    <el-button size="small" @click="appChecks.load(true)">重试批量检查可用性</el-button>
   </div>
 </template>

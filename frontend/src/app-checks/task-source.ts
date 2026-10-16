@@ -41,7 +41,7 @@ export interface AppCheckTaskSource {
   ): Promise<{ tasks: CheckTask[]; truncated: boolean }>;
   loadTask(caller: TaskCaller, taskId: string): Promise<CheckDetail>;
   createTask(caller: TaskCaller, input: CreateCheckTask): Promise<{ taskId: string }>;
-  importNumbers?(
+  importSeeds?(
     caller: TaskCaller,
     taskId: string,
     file: Blob,
@@ -66,7 +66,7 @@ export interface AppCheckTaskSource {
   exportTask?(
     caller: TaskCaller,
     taskId: string,
-    filter: "all" | "registered" | "unregistered"
+    filter: "all" | "matched" | "unmatched"
   ): Promise<{ blob: Blob; fileName: string; count: number }>;
 }
 export class AppCheckCreationUnconfirmed extends Error {
@@ -196,11 +196,16 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
   }
   async createTask(caller: TaskCaller, input: CreateCheckTask) {
     try {
-      if ("userId" in input || "role" in input || "simulation" in input)
+      if (
+        "userId" in input ||
+        "role" in input ||
+        "simulation" in input ||
+        "appId" in input
+      )
         throw new TaskApiError(400, "Unknown application check fields");
       const requestBody = {
         requestId: input.requestId,
-        appId: input.appId,
+        checkId: input.checkId,
         country: input.country
       };
       return z
@@ -219,7 +224,7 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
       );
     }
   }
-  async importNumbers(
+  async importSeeds(
     caller: TaskCaller,
     taskId: string,
     file: Blob,
@@ -228,7 +233,7 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
     try {
       const response = await requireResponse(
         await fetch(
-          `/api/v1/app-checks/tasks/${encodeURIComponent(taskId)}/numbers:import`,
+          `/api/v1/app-checks/tasks/${encodeURIComponent(taskId)}/seeds:import`,
           {
             method: "POST",
             headers: {
@@ -305,12 +310,15 @@ function checkTaskView(entry: ProjectTask): CheckTask {
   };
   if (metadata["server.inputOwner"] === "app-checks") {
     for (const key of [
-      "appId",
+      "checkId",
       "country",
       "salt",
       "saltDate",
       "inputVersion",
-      "contractId",
+      "checkType",
+      "checkLabel",
+      "checkTypeLabel",
+      "seedType",
       "eventCode"
     ])
       if (metadata[key] !== undefined) row[key] = metadata[key];

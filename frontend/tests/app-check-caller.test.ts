@@ -19,7 +19,7 @@ function directory() {
 }
 const input = {
   requestId: "caller-test",
-  appId: "app-a",
+  checkId: "app-a-registration",
   country: "CN" as const
 };
 beforeEach(() => vi.stubGlobal("crypto", webcrypto));
@@ -61,7 +61,7 @@ describe("App Checks declared callers", () => {
     const saved = await source.loadConfiguration(admin);
     for (const operation of [
       () => source.loadTask(b, taskId),
-      () => source.importNumbers(b, taskId, upload),
+      () => source.importSeeds(b, taskId, upload),
       () => source.approveTask(b, taskId, 1),
       () => source.closeTask(b, taskId),
       () => source.exportTask(b, taskId, "all"),
@@ -140,7 +140,7 @@ describe("App Checks declared callers", () => {
       );
     await expect(source.createTask(a, input)).rejects.toMatchObject({ status: 403 });
     await expect(
-      source.importNumbers(a, "known", new Blob(["86123"]))
+      source.importSeeds(a, "known", new Blob(["86123"]))
     ).rejects.toMatchObject({ status: 403 });
     await expect(source.exportTask(a, "known", "all")).rejects.toMatchObject({
       status: 403

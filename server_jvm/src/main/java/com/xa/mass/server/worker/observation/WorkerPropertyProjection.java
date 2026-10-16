@@ -18,7 +18,7 @@ import java.util.function.BiFunction;
  */
 public record WorkerPropertyProjection(
         String observationEventName,
-        Map<String, Projection> projectionsByGroup
+        Map<String, List<Projection>> projectionsByGroup
 ) {
     public record Projection(String messageEventName,
             BiFunction<Map<String, Object>, List<Long>, Map<String, Object>> project) {
@@ -29,10 +29,10 @@ public record WorkerPropertyProjection(
     }
     public WorkerPropertyProjection {
         Objects.requireNonNull(observationEventName, "observationEventName");
-        var copy = new LinkedHashMap<String, Projection>();
+        var copy = new LinkedHashMap<String, List<Projection>>();
         Objects.requireNonNull(projectionsByGroup, "projectionsByGroup").forEach((group, projection) -> {
             if (group == null || group.isBlank()) throw new IllegalArgumentException("Projection Group must be present");
-            copy.put(group, Objects.requireNonNull(projection, "projection"));
+            copy.put(group, List.copyOf(Objects.requireNonNull(projection, "projections")));
         });
         projectionsByGroup = Collections.unmodifiableMap(copy);
     }

@@ -14,8 +14,56 @@ import {
   AppCheckCreationUnconfirmed
 } from "../src/app-checks/task-source";
 import { createAppCheckContext } from "../src/app-checks/context";
+import { resultKind, filterResults } from "../src/app-checks/workbench";
+import { resultSchema } from "../src/app-checks/model";
 
 beforeEach(() => vi.stubGlobal("crypto", webcrypto));
+
+it("classifies carrier negatives as valid answers and keeps execution/protocol errors out of CSV", async () => {
+  const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
+  const fetcher = vi.fn();
+  vi.stubGlobal("fetch", fetcher);
+  const detail = await source.loadTask(CALLER, "check-carrier");
+  expect(detail.results.map(resultKind)).toEqual([
+    "matched",
+    "unmatched",
+    "unmatched",
+    "error",
+    "error"
+  ]);
+  expect(filterResults(detail.results, "", "unmatched")).toHaveLength(2);
+  expect((await source.exportTask(CALLER, "check-carrier", "all")).count).toBe(3);
+  expect((await source.exportTask(CALLER, "check-carrier", "unmatched")).count).toBe(2);
+  expect(detail.task.succeededCount).toBe(4);
+  expect(detail.results[0].details).not.toHaveProperty("workerId");
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it("rejects missing or contradictory business verdicts without a fourth result category", () => {
+  expect(
+    resultSchema.safeParse({ messageId: "m", resultStatus: "succeeded" }).success
+  ).toBe(false);
+  expect(
+    resultSchema.safeParse({ messageId: "m", resultStatus: "failed", matched: false })
+      .success
+  ).toBe(false);
+  expect(
+    resultSchema.safeParse({
+      messageId: "m",
+      resultStatus: "succeeded",
+      registered: true
+    }).success
+  ).toBe(false);
+  expect(
+    resultSchema.safeParse({
+      messageId: "m",
+      resultStatus: "succeeded",
+      matched: false,
+      seed: "+86123",
+      details: { reason: "INVALID_PHONE_NUMBER" }
+    }).success
+  ).toBe(true);
+});
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
@@ -25,9 +73,9 @@ const description = (ranges = rangeExamples.混合, delayMs = [2000, 5000]) =>
 const create = {
   requestId: "request",
   name: "display",
-  appId: "app-a",
+  checkId: "app-a-registration",
   country: "CN" as const,
-  numbers: ["+8613800000001"]
+  seeds: ["+8613800000001"]
 };
 
 describe("App Checks admission and independent recomputation", () => {
@@ -94,7 +142,7 @@ describe("App Checks admission and independent recomputation", () => {
     expect(results.get("invalid")?.status).toBe("unavailable");
     expect(results.get("failed")?.status).toBe("unavailable");
     expect(fetcher).not.toHaveBeenCalled();
-    expect(snapshot.results[1].registered).toBe(false);
+    expect(snapshot.results[1].matched).toBe(false);
   });
   it("detects a success in the failure bucket, delay and Group mismatches", async () => {
     const snapshot = await new MockAppCheckTaskSource(
@@ -103,9 +151,11 @@ describe("App Checks admission and independent recomputation", () => {
     snapshot.results = [
       {
         ...snapshot.results[0],
-        workerId: "worker-b",
-        workerGroupId: "other",
-        simulatedDelayMillis: 0
+        details: {
+          workerId: "worker-b",
+          workerGroupId: "other",
+          simulatedDelayMillis: 0
+        }
       }
     ];
     expect((await verifyPreview(snapshot)).get("r-1")?.reason).toBe(
@@ -159,7 +209,7 @@ describe("App Checks data boundary", () => {
       )
 
       .mockResolvedValueOnce(
-        new Response("号码,注册状态,应用,地区\n'86123,已注册,app-a,CN", {
+        new Response("号码,判定,检查项,地区\n'86123,满足,app-a,CN", {
           headers: { "X-Export-Count": "1" }
         })
       );
@@ -167,7 +217,7 @@ describe("App Checks data boundary", () => {
     const source = new ApiAppCheckTaskSource();
     await source.createTask(CALLER, create);
     const file = new Blob(["86123"]);
-    await source.importNumbers(CALLER, "t", file);
+    await source.importSeeds(CALLER, "t", file);
     const approve = vi
       .spyOn(HttpFiniteTaskClient.prototype, "approveTask")
       .mockResolvedValue();
@@ -176,14 +226,14 @@ describe("App Checks data boundary", () => {
       .mockResolvedValue();
     await source.approveTask(CALLER, "t", 1);
     await source.closeTask(CALLER, "t");
-    expect(await source.exportTask(CALLER, "t", "registered")).toMatchObject({
-      fileName: "t-registered.csv",
+    expect(await source.exportTask(CALLER, "t", "matched")).toMatchObject({
+      fileName: "t-matched.csv",
       count: 1
     });
     expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
       "/api/v1/app-checks/tasks",
-      "/api/v1/app-checks/tasks/t/numbers:import",
-      "/api/v1/app-checks/tasks/t/results:export?filter=registered"
+      "/api/v1/app-checks/tasks/t/seeds:import",
+      "/api/v1/app-checks/tasks/t/results:export?filter=matched"
     ]);
     expect(fetcher.mock.calls[1][1]).toMatchObject({
       method: "POST",
@@ -197,21 +247,21 @@ describe("App Checks data boundary", () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
-    const numbers = Array.from(
+    const seeds = Array.from(
       { length: 1001 },
       (_, i) => `+86138${String(i).padStart(8, "0")}`
     );
-    const { taskId } = await importedTask(source, { ...create, numbers });
+    const { taskId } = await importedTask(source, { ...create, seeds });
     expect((await source.loadTask(CALLER, taskId)).task.state).toBe("pre_review");
     await expect(source.exportTask(CALLER, taskId, "all")).rejects.toThrow();
-    await source.approveTask(CALLER, taskId, numbers.length);
+    await source.approveTask(CALLER, taskId, seeds.length);
     await source.completeTask(CALLER, taskId);
     expect((await source.loadTask(CALLER, taskId)).results).toHaveLength(100);
     const exported = await source.exportTask(CALLER, taskId, "all");
     expect(exported.count).toBe(901);
     expect(
-      (await source.exportTask(CALLER, taskId, "registered")).count +
-        (await source.exportTask(CALLER, taskId, "unregistered")).count
+      (await source.exportTask(CALLER, taskId, "matched")).count +
+        (await source.exportTask(CALLER, taskId, "unmatched")).count
     ).toBe(exported.count);
     expect(fetcher).not.toHaveBeenCalled();
     expect(new ApiAppCheckTaskSource()).toHaveProperty("approveTask");
@@ -223,7 +273,7 @@ describe("App Checks data boundary", () => {
     await new ApiAppCheckTaskSource().createTask(CALLER, create);
     expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({
       requestId: create.requestId,
-      appId: create.appId,
+      checkId: create.checkId,
       country: create.country
     });
   });

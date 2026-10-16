@@ -6,6 +6,8 @@ import functools
 import argparse
 from contextlib import contextmanager
 import hashlib
+import csv
+import io
 import importlib.util
 import json
 import os
@@ -20,7 +22,7 @@ PREVIEW = SCENARIO.parents[1] / "distribution/server"
 
 
 @contextmanager
-def regression_window_configuration(*, baseline=False, window_millis=None, parameters_by_app=None):
+def regression_window_configuration(*, baseline=False, window_millis=None, parameters_by_check=None):
     """Keep the content/closure workload finite; the Boot window proof owns low-threshold recovery."""
     if not baseline:
         previous_seed = os.environ.get("XA_MASS_APP_CHECKS_SEED")
@@ -30,9 +32,9 @@ def regression_window_configuration(*, baseline=False, window_millis=None, param
                 limit["maxCount"] = 1000
                 if window_millis is not None:
                     limit["windowMillis"] = window_millis
-            for app_id, app in configuration["applications"].items():
-                if parameters_by_app and app_id in parameters_by_app:
-                    app["parameters"] = parameters_by_app[app_id]
+            for app_id, app in configuration["checks"].items():
+                if parameters_by_check and app_id in parameters_by_check:
+                    app["parameters"] = parameters_by_check[app_id]
             seed = Path(directory) / "seed.json"
             seed.write_text(json.dumps(configuration), encoding="utf-8")
             os.environ["XA_MASS_APP_CHECKS_SEED"] = seed.resolve().as_uri()
@@ -77,7 +79,7 @@ def hash_value(domain, worker_id, salt, number):
 
 
 def request(label, app, offset, count, ranges, delay):
-    return {"userId": "1000", "requestId": label, "appId": app, "country": "CN",
+    return {"userId": "1000", "requestId": label, "checkId": app + "-registration", "country": "CN",
             "numbers": [f"+8613800{index:06d}" for index in range(offset, offset + count)],
             "simulation": {"ranges": dict(zip(("registered", "unregistered", "failed"), ranges)), "delayMs": delay}}
 
@@ -88,7 +90,7 @@ def caller_headers(user, role):
 
 
 def creation_input(case):
-    return {key: case[key] for key in ("requestId", "appId", "country")}
+    return {key: case[key] for key in ("requestId", "checkId", "country")}
 
 
 def create_import_approve(run, http, case, *, approve=True):
@@ -97,7 +99,7 @@ def create_import_approve(run, http, case, *, approve=True):
     task_id = api(run.url, "/api/v1/app-checks/tasks", creation_input(case))["taskId"]
     route = f"/api/v1/app-checks/tasks/{task_id}"
     require(api(run.url, "/api/v1/projects/app-checks/tasks:stats", [task_id])[task_id]["total"] == 0, "Creation imported work implicitly")
-    request = urllib.request.Request(run.url + route + "/numbers:import",
+    request = urllib.request.Request(run.url + route + "/seeds:import",
                                      data="\n".join(case["numbers"]).encode("utf-8"),
                                      headers={"Content-Type": "text/plain;charset=UTF-8", **headers}, method="POST")
     with urllib.request.urlopen(request, timeout=15) as response:
@@ -127,10 +129,12 @@ def functional(run, http, cases):
     api = functools.partial(http, headers=caller_headers("1000", "admin"))
     catalog = http(run.url, "/api/v1/app-checks/catalog")
     require(catalog["projectId"] == "app-checks", "Wrong project")
-    groups = {row["appId"]: row["workerGroupId"] for row in catalog["apps"]}
-    require(groups == {"app-a": "app-a-sim", "app-b": "app-b-sim"}, "Wrong application assembly")
+    groups = {row["checkId"]: row["workerGroupId"] for row in catalog["checks"]}
+    require(groups == {"app-a-registration": "app-a-sim", "app-b-registration": "app-b-sim", "app-a-carrier": "app-a-sim", "app-b-carrier": "app-b-sim"}, "Wrong application assembly")
     workers = http(run.host, "/lab/v1/workers")["workers"]
     for app, group in groups.items():
+        if not app.endswith("-registration"):
+            continue
         expected = {row["workerId"] for row in workers if row["workerGroupId"] == group and row.get("workerId")}
         require(len(expected) == 2,
                 "App fixture must contain two prepared Workers per Group")
@@ -138,7 +142,7 @@ def functional(run, http, cases):
         def facts_observed():
             sample = http(run.url, f"/api/v1/runtime-view/worker-groups/{group}/workers:preview", 100)
             return expected <= {row["workerId"] for row in sample["workers"]
-                                if row["workerProperties"].get("application") == app}
+                                if row["workerProperties"].get("application") == app.removesuffix("-registration")}
 
         run.wait_for(facts_observed, 15, "App Worker Properties publication")
     # Submit before observing closure: Tasks coexist within and across Groups.
@@ -161,9 +165,9 @@ def functional(run, http, cases):
         run.wait_for(observed, 45, "finite app-checks execution closure")
         task = detail["task"]
         require(task["userId"] == case["userId"], "Task creator changed")
-        require(task["appId"] == case["appId"] and task["simulation"] == case["simulation"], "Stored configuration changed")
+        require(task["checkId"] == case["checkId"] and task["simulation"] == case["simulation"], "Stored configuration changed")
         require(not detail["resultsTruncated"], "Small result preview is incomplete")
-        require({row["number"] for row in detail["results"]} == set(case["numbers"]), "Item association mismatch")
+        require({row["seed"] for row in detail["results"]} == set(case["numbers"]), "Item association mismatch")
         failure_range = case["simulation"]["ranges"]["failed"]
         if failure_range == [0, 1000]:
             require(task["failedCount"] == len(case["numbers"]), "Full-failure Task unexpectedly succeeded")
@@ -172,18 +176,19 @@ def functional(run, http, cases):
         recomputed = 0
         for row in detail["results"]:
             if row["resultStatus"] == "failed":
-                require("registered" not in row, "Execution failure fabricated a business answer")
+                require("matched" not in row, "Execution failure fabricated a business answer")
                 continue
             require(row["resultStatus"] == "succeeded" and "contentError" not in row, "Unusable success Result")
-            require(row["workerGroupId"] == groups[case["appId"]], "Executor Group mismatch")
-            require(any(worker["workerId"] == row["workerId"] and worker["workerGroupId"] == row["workerGroupId"]
+            require(row["details"]["workerGroupId"] == groups[case["checkId"]], "Executor Group mismatch")
+            require(any(worker["workerId"] == row["details"]["workerId"] and worker["workerGroupId"] == row["details"]["workerGroupId"]
                         for worker in workers), "Result identity is not an actual fixture Worker")
-            bucket = hash_value("outcome", row["workerId"], task["salt"], row["number"]) % 1000
+            bucket = hash_value("outcome", row["details"]["workerId"], task["salt"], row["seed"]) % 1000
             outcome = next(name for name, (low, high) in case["simulation"]["ranges"].items() if low <= bucket < high)
-            require(outcome != "failed" and row["registered"] == (outcome == "registered"), "Result hash mismatch")
+            require(outcome != "failed" and row["matched"] == (outcome == "registered"), "Result hash mismatch")
+            require(row["details"]["registered"] == (outcome == "registered"), "Registration answer was lost")
             low, high = case["simulation"]["delayMs"]
-            delay = low + hash_value("delay", row["workerId"], task["salt"], row["number"]) % (high - low + 1)
-            require(row["simulatedDelayMillis"] == delay, "Delay hash mismatch")
+            delay = low + hash_value("delay", row["details"]["workerId"], task["salt"], row["seed"]) % (high - low + 1)
+            require(row["details"]["simulatedDelayMillis"] == delay, "Delay hash mismatch")
             recomputed += 1
         summaries.append({"case": case["requestId"], "total": task["totalCount"], "succeeded": task["succeededCount"],
                           "failed": task["failedCount"], "recomputed": recomputed})
@@ -191,9 +196,82 @@ def functional(run, http, cases):
     require({task for _, task in tasks} <= {row["taskId"] for row in listing["tasks"]}, "Project list lost a Task")
     require(all(row["task"]["metadata"].get("userId") == "1000" for row in listing["tasks"]
                 if row["taskId"] in {task for _, task in tasks}), "Project list lost Task creators")
-    return {"passed": True, "appWorkers": 4, "tasks": summaries, "idempotentSubmission": True,
+    return {"passed": True, "appWorkers": 4, "carrier": [carrier_functional(run, http, app) for app in ("app-a", "app-b")], "tasks": summaries, "idempotentSubmission": True,
             "groupIsolation": True, "hashAndDelayRecomputed": True, "creatorRetained": True,
             "nonclaims": ["exact distribution", "fixed executor", "single execution", "failure attempt count"]}
+
+
+def carrier_functional(run, http, app):
+    """Real installed number Handler; goldens are fixed independently of the Scenario parser."""
+    api = functools.partial(http, headers=caller_headers("1000", "admin"))
+    expected = {
+        "+8613800000000": (True, "China Mobile", "IDENTIFIED"),
+        "+8618612345678": (True, "China Unicom", "IDENTIFIED"),
+        "+861065000000": (False, "", "NO_CARRIER_MAPPING"),
+        "+86123": (False, "", "INVALID_PHONE_NUMBER"),
+        **{f"+86{i}": (False, "", "INVALID_PHONE_NUMBER") for i in range(200, 300)},
+    }
+    case = {"userId": "1000", "requestId": app + "-carrier-goldens", "checkId": app + "-carrier", "country": "CN", "numbers": list(expected)}
+    task_id = create_import_approve(run, http, case)
+    task = api(run.url, "/api/v1/projects/app-checks/tasks/" + task_id)["task"]
+    require(task["workerGroupId"] == app + "-sim"
+            and task["metadata"]["checkType"] == "original-carrier-v1"
+            and task["metadata"]["eventCode"] == "extension.worker.phonenumber.original-carrier", "Carrier Task binding differs")
+    require(task["refill"] == [{"poolName": "any", "target": {}, "count": 100}], "Carrier Task did not declare Any supply")
+
+    def settled():
+        counts = api(run.url, "/api/v1/projects/app-checks/tasks:stats", [task_id])[task_id]
+        entry = api(run.url, "/api/v1/projects/app-checks/tasks/" + task_id)
+        return entry["scoreBand"] == "terminal" and counts["total"] == len(expected) \
+            and counts["countsByTag"]["1"] == counts["countsByTag"]["5"] == 0 \
+            and sum(counts["countsByTag"][str(tag)] for tag in range(6, 10)) == len(expected)
+
+    run.wait_for(settled, 45, "original-carrier finite task")
+    preview = api(run.url, f"/api/v1/app-checks/tasks/{task_id}/results")
+    require(preview["truncated"] and len(preview["results"]) <= 100, "Carrier preview lost its bounded scope")
+    for row in preview["results"]:
+        matched, carrier, reason = expected[row["seed"]]
+        require(row["matched"] == matched and row["details"] == {"originalCarrier": carrier, "reason": reason}, "Carrier normalization differs from fixed golden")
+        require("registered" not in row and "workerId" not in row["details"], "Carrier invented registration or execution identity")
+
+    def identity(number):
+        digest = hashlib.sha256()
+        for value in ("app-checks/v2/number", number):
+            encoded = value.encode("utf-8")
+            digest.update(len(encoded).to_bytes(4, "big"))
+            digest.update(encoded)
+        return "number-" + digest.hexdigest()
+
+    numbers = list(expected)
+    for start in range(0, len(numbers), 100):
+        batch = numbers[start:start + 100]
+        raw = api(run.url, f"/api/v1/tasks/{task_id}/results:load", [identity(number) for number in batch])
+        states = api(run.url, f"/api/v1/tasks/{task_id}/items:states", [identity(number) for number in batch])
+        for number in batch:
+            result = raw[identity(number)]
+            require(result["status"] == "succeeded", "Number identification was not executed successfully")
+            content = json.loads(result["opaqueResultPayload"])
+            require(content["input"] == number, "Raw carrier input association mismatch")
+            require(content.get("originalCarrier", "") == expected[number][1], "Raw carrier name differs from fixed golden")
+            require(content["valid"] == (expected[number][2] != "INVALID_PHONE_NUMBER"), "Raw validity differs from fixed golden")
+            require(states[identity(number)]["band"] == "terminal", "Carrier Item did not terminate")
+
+    counts = {}
+    for selection in ("all", "matched", "unmatched"):
+        request = urllib.request.Request(run.url + f"/api/v1/app-checks/tasks/{task_id}/results:export?filter={selection}",
+                                         headers=caller_headers("1000", "admin"), method="POST")
+        with urllib.request.urlopen(request, timeout=30) as response:
+            rows = list(csv.reader(io.StringIO(response.read().decode("utf-8-sig"))))
+            require(rows[0] == ["种子", "判定", "检查类型", "执行配置", "地区", "原始运营商", "识别说明"], "Carrier CSV columns differ")
+            selected = {number: values for number, values in expected.items() if selection == "all" or values[0] == (selection == "matched")}
+            require(int(response.headers["X-Export-Count"]) == len(selected) == len(rows) - 1, "Carrier export count mismatch")
+            require({row[0].removeprefix("'") for row in rows[1:]} == set(selected), "Carrier CSV lost inputs beyond preview")
+            for row in rows[1:]:
+                values = selected[row[0].removeprefix("'")]
+                require(row[1:] == ["满足" if values[0] else "不满足", "原始运营商识别", "App A" if app == "app-a" else "App B", "CN", values[1], values[2]], "Carrier CSV interpretation mismatch")
+            counts[selection] = len(selected)
+    return {"passed": True, "checkId": app + "-carrier", "items": len(expected), "preview": len(preview["results"]), "exports": counts,
+            "rawResultsAndItemStatesChecked": True, "fixedCarrierGoldens": True}
 
 
 def main():
@@ -249,7 +327,7 @@ def main():
             # separate ports; keep the launcher's strict occupancy check unchanged.
             fixture_port = args.port + index * 10
             run = preview.Preview(1, fixture_port, root=root, output=folder / "private", sandbox_root=inventory, app_count=2)
-            with regression_window_configuration(parameters_by_app={case["appId"]: case["simulation"] for case in cases}), run:
+            with regression_window_configuration(parameters_by_check={case["checkId"]: case["simulation"] for case in cases}), run:
                 evidence = functional(run, preview.http, cases)
                 evidence["windowThresholdOverride"] = 1000
                 evidence["basePort"] = fixture_port

@@ -145,7 +145,7 @@ final class AppCheckConfigurationStore implements AutoCloseable {
                         && saved.configuration().poolGroups().get(entry.getKey()).windowMillis() != entry.getValue().windowMillis());
         return Map.of("saved", saved.toMap(), "effective", effective.toMap(),
                 "restartRequired", !saved.fingerprint().equals(effective.fingerprint()),
-                "newScopeRequired", changedWindow, "contracts", contracts.descriptions());
+                "newScopeRequired", changedWindow, "checkTypes", contracts.descriptions());
     }
 
     private static AppCheckConfigurationException conflict() {

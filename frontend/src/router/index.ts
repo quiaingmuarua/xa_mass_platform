@@ -77,7 +77,7 @@ export const consoleRoutes: RouteRecordRaw[] = [
         component: appChecksPage,
         meta: {
           section: "Scenarios",
-          title: "应用注册查询",
+          title: "批量检查",
           permission: "app-checks.tasks" as const,
           viewPermissions: { configuration: "app-checks.configuration" as const }
         }

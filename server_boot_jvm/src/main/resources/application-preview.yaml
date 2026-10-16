@@ -69,11 +69,11 @@ xa:
         {
           "app-a-sim": {
             "attributes": {},
-            "eventCodes": ["extension.worker.app.registration.check", "extension.worker.message.send"]
+            "eventCodes": ["extension.worker.app.registration.check", "extension.worker.phonenumber.original-carrier", "extension.worker.message.send"]
           },
           "app-b-sim": {
             "attributes": {},
-            "eventCodes": ["extension.worker.app.registration.check", "extension.worker.message.send"]
+            "eventCodes": ["extension.worker.app.registration.check", "extension.worker.phonenumber.original-carrier", "extension.worker.message.send"]
           },
           "demo-sim": {
             "attributes": {},

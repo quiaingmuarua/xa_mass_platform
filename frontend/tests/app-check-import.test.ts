@@ -7,6 +7,7 @@ import {
 import { createImportReader } from "../src/app-checks/import-reader";
 
 const options: ImportOptions = {
+  seedType: "phonenumber" as const,
   format: "txt",
   country: "CN",
   limit: 100000,
@@ -15,6 +16,18 @@ const options: ImportOptions = {
 };
 afterEach(() => vi.unstubAllGlobals());
 describe("App Checks imports", () => {
+  it("accepts text seeds without phone checks or Unicode/case conversion", () => {
+    const result = inspectImport('\uFEFF a \r\n\tabc\t\n\nA\n中文\na\na b\n{"x":1}', {
+      ...options,
+      seedType: "text",
+      country: ""
+    });
+    expect(result.seeds).toEqual(["a", "abc", "A", "中文", "a b", '{"x":1}']);
+    expect(result).toMatchObject({ duplicateCount: 1, emptyCount: 1, invalidCount: 0 });
+    expect(() =>
+      inspectImport("value\na", { ...options, seedType: "text", format: "csv" })
+    ).toThrow("仅支持 TXT");
+  });
   it.each([
     ["CN", "8613800000001"],
     ["US", "12025550123"],
@@ -29,15 +42,16 @@ describe("App Checks imports", () => {
         overLimit: false,
         duplicateCount: 1
       });
-      expect(result.numbers).toEqual(["+" + digits]);
+      expect(result.seeds).toEqual(["+" + digits]);
       expect(result.rows[0].raw).toBe(" " + digits + " ");
       expect(
         inspectImport("号码\n" + digits + "\n+" + digits, {
           ...options,
+          seedType: "phonenumber" as const,
           format: "csv",
           country,
           limit: 1
-        }).numbers
+        }).seeds
       ).toEqual(["+" + digits]);
     }
   );
@@ -53,13 +67,18 @@ describe("App Checks imports", () => {
     (value) => {
       const result = inspectImport("8613800000001\n" + value, options);
       expect(result.blocked).toBe(true);
-      expect(result.numbers).toEqual([]);
+      expect(result.seeds).toEqual([]);
     }
   );
   it("retains physical lines through CSV headers, escaped quotes and quoted newlines", () => {
     const csv =
       '\uFEFF备注,号码\r\n"first,\r\n""quoted""",+8613800000001\r\nsecond,+8613800000001\r\ninvalid,bad\r\n,,\r\n';
-    const report = inspectImport(csv, { ...options, format: "csv", column: 1 });
+    const report = inspectImport(csv, {
+      ...options,
+      seedType: "phonenumber" as const,
+      format: "csv",
+      column: 1
+    });
     expect(report.columns).toEqual(["备注", "号码", "第 3 列"]);
     expect(report.rows.map((row) => [row.line, row.kind])).toEqual([
       [2, "valid"],
@@ -75,13 +94,14 @@ describe("App Checks imports", () => {
       emptyCount: 1,
       blocked: true
     });
-    expect(report.numbers).toEqual([]);
+    expect(report.seeds).toEqual([]);
     const cleaned = inspectImport(csv.replace("invalid,bad\r\n", ""), {
       ...options,
+      seedType: "phonenumber" as const,
       format: "csv",
       column: 1
     });
-    expect(cleaned.numbers).toEqual(["+8613800000001"]);
+    expect(cleaned.seeds).toEqual(["+8613800000001"]);
     expect(cleaned.rows[1]).toMatchObject({
       line: 4,
       excluded: true,
@@ -95,8 +115,19 @@ describe("App Checks imports", () => {
   });
   it("requires an explicit column choice and preserves input strings", () => {
     const csv = 'note,phone\nx,"+8613800000001"\ny,"+12025550123"';
-    expect(inspectImport(csv, { ...options, format: "csv" }).invalidCount).toBe(2);
-    const selected = inspectImport(csv, { ...options, format: "csv", column: 1 });
+    expect(
+      inspectImport(csv, {
+        ...options,
+        seedType: "phonenumber" as const,
+        format: "csv"
+      }).invalidCount
+    ).toBe(2);
+    const selected = inspectImport(csv, {
+      ...options,
+      seedType: "phonenumber" as const,
+      format: "csv",
+      column: 1
+    });
     expect(selected.rows[1].issue).toContain("国家");
     expect(
       inspectImport("+8613800000001\n+8613800000002", { ...options, limit: 1 })
@@ -111,6 +142,7 @@ describe("App Checks imports", () => {
     expect(
       inspectImport("+8613800000001\n+8613800000002", {
         ...options,
+        seedType: "phonenumber" as const,
         format: "csv",
         header: false
       }).validCount
@@ -133,7 +165,7 @@ describe("App Checks imports", () => {
       blocked: false,
       overLimit: false
     });
-    expect(report.numbers).toHaveLength(100000);
+    expect(report.seeds).toHaveLength(100000);
     expect(inspectImport(input + "\n+8613999999999", options).overLimit).toBe(true);
   });
   it("terminates replaced jobs and rejects their old responses", async () => {

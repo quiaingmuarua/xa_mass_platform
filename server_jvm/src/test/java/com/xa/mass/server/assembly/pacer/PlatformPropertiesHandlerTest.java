@@ -28,7 +28,7 @@ class PlatformPropertiesHandlerTest {
         var functions = new LinkedHashMap<String, java.util.function.BiFunction<Map<String, Object>, List<Long>, Map<String, Object>>>();
         functions.put("a", (current, times) -> Map.of("window", times.getFirst() / 10));
         functions.put("b", (current, times) -> Map.of("window", times.getFirst() / 20));
-        var declaration = new WorkerPropertyProjection("worker.assigned", functions.entrySet().stream().collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, entry -> new WorkerPropertyProjection.Projection("event-" + entry.getKey(), entry.getValue()))));
+        var declaration = new WorkerPropertyProjection("worker.assigned", functions.entrySet().stream().collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, entry -> List.of(new WorkerPropertyProjection.Projection("event-" + entry.getKey(), entry.getValue())))));
         functions.clear();
         for (String group : List.of("a", "b")) {
             when(properties.loadWorkerFacts(group, List.of("w")))
@@ -54,17 +54,18 @@ class PlatformPropertiesHandlerTest {
         when(properties.patchWorkerPlatformProperties(eq("g"), eq("w"), anyMap()))
                 .thenReturn(new WorkerProperties.MutationResult(WorkerProperties.MutationStatus.APPLIED));
         var calls = new ArrayList<String>();
-        var a = new WorkerPropertyProjection("worker.assigned", Map.of("g", new WorkerPropertyProjection.Projection("a", (current, times) -> {
+        var a = new WorkerPropertyProjection("worker.assigned", Map.of("g", List.of(new WorkerPropertyProjection.Projection("a", (current, times) -> {
             assertThat(current).containsEntry("keep", 7).containsEntry("remove", 1);
             calls.add("a:" + times);
             var patch = new LinkedHashMap<String, Object>(); patch.put("remove", null); patch.put("count", times.size());
             return patch;
-        })));
-        var b = new WorkerPropertyProjection("worker.assigned", Map.of("g", new WorkerPropertyProjection.Projection("b", (current, times) -> {
+        }))));
+        var b = new WorkerPropertyProjection("worker.assigned", Map.of("g", List.of(new WorkerPropertyProjection.Projection("b", (current, times) -> {
             assertThat(current).containsEntry("keep", 7).containsEntry("count", 2).doesNotContainKey("remove");
             calls.add("b:" + times); return Map.of("count", 3);
-        })));
-        handler(List.of(b, a)).handle(List.of(notice("a", 10), notice("b", 20), notice("a", 30)));
+        }))));
+        handler(List.of(new WorkerPropertyProjection("worker.assigned", Map.of("g", List.of(
+                b.projectionsByGroup().get("g").getFirst(), a.projectionsByGroup().get("g").getFirst()))))).handle(List.of(notice("a", 10), notice("b", 20), notice("a", 30)));
         var patch = new LinkedHashMap<String, Object>(); patch.put("remove", null); patch.put("count", 3);
         assertThat(calls).containsExactly("a:[10, 30]", "b:[20]");
         verify(properties).loadWorkerFacts("g", List.of("w"));
@@ -79,9 +80,9 @@ class PlatformPropertiesHandlerTest {
                 .thenReturn(Map.of("w", new WorkerFacts("w", "g", Map.of(), Map.of()),
                         "next", new WorkerFacts("next", "g", Map.of(), Map.of())));
         var computed = new AtomicLong();
-        var projection = new WorkerPropertyProjection("worker.assigned", Map.of("g", new WorkerPropertyProjection.Projection("a", (current, times) -> {
+        var projection = new WorkerPropertyProjection("worker.assigned", Map.of("g", List.of(new WorkerPropertyProjection.Projection("a", (current, times) -> {
             computed.incrementAndGet(); running.set(false); return Map.of("count", 1);
-        })));
+        }))));
         handler(List.of(projection)).handle(List.of(new WorkerObservation("g", List.of("w", "next"),
                 10, "a", "worker.assigned")));
         assertThat(computed.get()).isEqualTo(1);
@@ -95,11 +96,11 @@ class PlatformPropertiesHandlerTest {
                         "next", new WorkerFacts("next", "g", Map.of(), Map.of())));
         when(properties.patchWorkerPlatformProperties("g", "next", Map.of("a", 1, "b", 2)))
                 .thenReturn(new WorkerProperties.MutationResult(WorkerProperties.MutationStatus.UNCHANGED));
-        var a = new WorkerPropertyProjection("worker.assigned", Map.of("g", new WorkerPropertyProjection.Projection("a", (current, times) -> Map.of("a", 1))));
-        var b = new WorkerPropertyProjection("worker.assigned", Map.of("g", new WorkerPropertyProjection.Projection("b", (current, times) -> {
+        var a = new WorkerPropertyProjection("worker.assigned", Map.of("g", List.of(new WorkerPropertyProjection.Projection("a", (current, times) -> Map.of("a", 1)))));
+        var b = new WorkerPropertyProjection("worker.assigned", Map.of("g", List.of(new WorkerPropertyProjection.Projection("b", (current, times) -> {
             if (current.containsKey("invalid")) throw new IllegalStateException("invalid properties");
             return Map.of("b", 2);
-        })));
+        }))));
         handler(List.of(a, b)).handle(List.of(
                 new WorkerObservation("g", List.of("w", "next"), 10, "a", "worker.assigned"),
                 new WorkerObservation("g", List.of("w", "next"), 20, "b", "worker.assigned")));
@@ -111,7 +112,7 @@ class PlatformPropertiesHandlerTest {
 
     @Test void theHandlerOnlyReadsLifecycleAndHasNoIndependentRuntimeResources() {
         running.set(false);
-        var projection = new WorkerPropertyProjection("worker.assigned", Map.of("g", new WorkerPropertyProjection.Projection("a", (current, times) -> Map.of())));
+        var projection = new WorkerPropertyProjection("worker.assigned", Map.of("g", List.of(new WorkerPropertyProjection.Projection("a", (current, times) -> Map.of()))));
         handler(List.of(projection)).handle(List.of(notice("a", 10)));
         verifyNoInteractions(properties, scheduling);
         assertThat(running.get()).isFalse();

@@ -113,9 +113,12 @@ not from a runtime scenario or product mode.
 The checked-in [Lab](config/lab.json), [SMS](config/sms.json),
 [Messages](config/messages.json) and [combined products](config/products.json)
 files are standalone examples, not preset loaders. Lab is a minimal Group-only
-configuration and initializes two Groups of 50 Workers. The product examples
-retain explicit templates for Preview's seeded country distribution and
-select only `demo-sim`. Installation and Preview
+configuration and initializes two Groups of 50 Workers. The combined products example explicitly installs the original-carrier event
+on both App A and App B, alongside their registration and message capabilities. This uses the existing libphonenumber
+implementation and returns input/possible/valid/originalCarrier without fabricated
+Worker identity. A valid negative answer remains normal Handler output.
+The product examples
+retain explicit templates for Preview's seeded country distribution. Installation and Preview
 archives include these files under `config`.
 
 ### Deterministic initialization templates

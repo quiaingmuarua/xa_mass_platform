@@ -18,9 +18,9 @@ const state = context.state;
     @refresh-configuration="context.load(true)"
   />
   <section v-else class="checks-surface checks-unavailable" aria-live="polite">
-    <h1>应用注册查询</h1>
+    <h1>批量检查</h1>
     <p v-if="state.status === 'loading'">正在确认场景可用性…</p>
-    <p v-else-if="state.status === 'disabled'">当前实例未启用应用注册查询。</p>
+    <p v-else-if="state.status === 'disabled'">当前实例未启用批量检查。</p>
     <template v-else-if="state.status === 'unavailable'"
       ><p>{{ state.message }}</p>
       <el-button @click="context.load(true)">重新确认可用性</el-button></template

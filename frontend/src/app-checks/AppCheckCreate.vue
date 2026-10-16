@@ -4,7 +4,13 @@ import { ArrowLeft, UploadFilled } from "@element-plus/icons-vue";
 import { captureTaskCaller } from "@/console-identity";
 import { canUseConsole } from "@/access-policy";
 import { consoleIdentity } from "@/console-identity";
-import { appLabel, countryLabel, type Catalog, type CheckTask } from "./model";
+import {
+  checkLabel,
+  checkTypeLabel,
+  countryLabel,
+  type Catalog,
+  type CheckTask
+} from "./model";
 import type { ConfigurationReadState } from "./configuration";
 import {
   AppCheckCreationUnconfirmed,
@@ -17,6 +23,7 @@ import ImportSummary from "./ImportSummary.vue";
 import SubmissionRecovery from "./SubmissionRecovery.vue";
 import {
   downloadBlob,
+  checkCondition,
   quantity,
   requestIdentity,
   timestamp,
@@ -39,6 +46,34 @@ const emit = defineEmits<{
   configuration: [];
 }>();
 const draft = computed(() => props.session.draft);
+const availableTypes = computed(() =>
+  props.catalog.checkTypes.filter((type) =>
+    props.catalog.checks.some((check) => check.checkType === type.id)
+  )
+);
+const selectedCheck = computed(() =>
+  props.catalog.checks.find((check) => check.checkId === draft.value.checkId)
+);
+const selectedType = computed(
+  () => props.targetTask?.checkType ?? selectedCheck.value?.checkType
+);
+const seedType = computed(
+  () =>
+    props.targetTask?.seedType ??
+    props.catalog.checkTypes.find((type) => type.id === selectedType.value)?.seedType
+);
+const phoneSeeds = computed(() => seedType.value === "phonenumber");
+const availableChecks = computed(() =>
+  props.catalog.checks.filter((check) => check.checkType === selectedType.value)
+);
+const typeChoice = computed({
+  get: () => selectedType.value ?? "",
+  set: (value: string) => {
+    draft.value.checkId =
+      props.catalog.checks.find((check) => check.checkType === value)?.checkId ?? "";
+    configurationChanged();
+  }
+});
 const identity = consoleIdentity.requireCurrent();
 const activeIdentity = () => consoleIdentity.current.value === identity;
 const reading = ref(false),
@@ -59,7 +94,9 @@ const firstInvalid = computed(() =>
 );
 const valid = computed(
   () =>
-    !!report.value?.numbers.length &&
+    !!report.value?.seeds.length &&
+    !!seedType.value &&
+    (!!props.targetTask || !!selectedCheck.value) &&
     !report.value.blocked &&
     !report.value.overLimit &&
     !reading.value &&
@@ -68,9 +105,10 @@ const valid = computed(
 );
 function options(): ImportOptions {
   return {
+    seedType: seedType.value ?? "phonenumber",
     format: draft.value.format,
     country: draft.value.country,
-    limit: props.catalog.limits.numbersPerImport,
+    limit: props.catalog.limits.seedsPerImport,
     header: draft.value.header,
     column: draft.value.column
   };
@@ -125,14 +163,25 @@ function textChanged() {
   schedule();
 }
 function configurationChanged() {
+  draft.value.seedType = seedType.value ?? "phonenumber";
+  if (!draft.value.text && !draft.value.fileName) {
+    cancelRead();
+    draft.value.report = undefined;
+    importError.value = "";
+    return;
+  }
   schedule();
 }
 async function readFile(file: File) {
   if (blocked.value) return;
   cancelRead();
+  if (!phoneSeeds.value && !/\.txt$/i.test(file.name)) {
+    importError.value = "text 种子请选择 TXT 文件，原输入已保留。";
+    return;
+  }
   if (file.size > fileLimit.value) {
     importError.value =
-      "号码文件不能超过 " + fileLimit.value / 1024 / 1024 + " MiB，已保留原内容。";
+      "种子文件不能超过 " + fileLimit.value / 1024 / 1024 + " MiB，已保留原内容。";
     return;
   }
   if (!/\.(txt|csv)$/i.test(file.name)) {
@@ -168,22 +217,22 @@ function drop(event: DragEvent) {
 async function submit() {
   if (!valid.value || !report.value || !activeIdentity()) return;
   const current = draft.value;
-  const inputFile = new Blob([report.value.numbers.join("\n")], {
+  const inputFile = new Blob([report.value.seeds.join("\n")], {
     type: "text/plain;charset=UTF-8"
   });
-  const inputSummary = importSnapshot(report.value, current.fileName || "粘贴号码");
+  const inputSummary = importSnapshot(report.value, current.fileName || "粘贴种子");
   current.createdAtMillis = Date.now();
   current.busy = true;
   current.error = "";
   current.frozenCaller ??= captureTaskCaller();
   let importConfirmed = false;
   try {
-    if (!props.source.importNumbers) throw new Error("当前数据源未接入号码导入");
+    if (!props.source.importSeeds) throw new Error("当前数据源未接入号码导入");
     if (!current.knownTaskId) {
       current.frozenCreate ??= markRaw({
         requestId: current.requestId,
-        appId: current.appId,
-        country: current.country
+        checkId: current.checkId,
+        ...(phoneSeeds.value ? { country: current.country } : {})
       });
       const response = await props.source.createTask(
         current.frozenCaller,
@@ -193,7 +242,7 @@ async function submit() {
     }
     current.submissionPhase = "import";
     if (!disposed && props.active && activeIdentity()) {
-      await props.source.importNumbers(
+      await props.source.importSeeds(
         current.frozenCaller,
         current.knownTaskId,
         inputFile,
@@ -242,7 +291,7 @@ async function checkCreation() {
     );
     current.knownTaskId = response.taskId;
     current.submissionPhase = "import";
-    current.error = "创建已确认，尚未自动导入或启动。请核对任务，或显式导入当前号码。";
+    current.error = "创建已确认，尚未自动导入或启动。请核对任务，或显式导入当前种子。";
   } catch (error) {
     if (error instanceof AppCheckCreationUnconfirmed && error.taskId)
       current.knownTaskId = error.taskId;
@@ -293,16 +342,21 @@ watch(
       cancelRead();
       return;
     }
-    if (!draft.value.appId) {
-      draft.value.appId = props.catalog.apps[0].appId;
+    if (!draft.value.checkId) {
+      draft.value.checkId = (
+        props.catalog.checks.find(
+          (check) => check.checkType === "simulated-registration-v1"
+        ) ?? props.catalog.checks[0]
+      ).checkId;
       draft.value.country = props.catalog.countries[0];
     }
     if (props.targetTask) {
-      draft.value.appId = props.targetTask.appId!;
-      draft.value.country = props.targetTask.country!;
+      draft.value.checkId = props.targetTask.checkId!;
+      draft.value.country = props.targetTask.country ?? "CN";
       draft.value.knownTaskId = props.targetTask.taskId;
       draft.value.submissionPhase = "import";
     }
+    draft.value.seedType = seedType.value ?? "phonenumber";
     if (draft.value.text && !report.value && !blocked.value) void inspect();
     await nextTick();
     if (!disposed && props.active) focusHeading();
@@ -332,13 +386,13 @@ onBeforeUnmount(() => {
     <header class="checks-heading">
       <div>
         <h1 ref="heading" tabindex="-1">
-          {{ targetTask ? "导入号码" : "创建查询任务" }}
+          {{ targetTask ? "导入种子" : "创建检查任务" }}
         </h1>
         <p class="checks-hint">
           {{
             targetTask
               ? targetTask.name
-              : "选择应用和地区，创建并导入号码。任务名称自动生成，核对后启动。"
+              : "选择检查类型和执行配置，导入种子后核对启动。"
           }}
         </p>
       </div>
@@ -365,8 +419,11 @@ onBeforeUnmount(() => {
         draft.uncertain = false;
         submit();
       "
-      >重新导入当前号码</el-button
+      >重新导入当前种子</el-button
     >
+    <p class="checks-hint">
+      {{ checkCondition(selectedType) }}
+    </p>
     <details
       v-if="session.unconfirmedSubmissions.length"
       class="checks-surface checks-submission-receipts"
@@ -386,8 +443,9 @@ onBeforeUnmount(() => {
           :key="submission.requestId"
         >
           <strong
-            >{{ appLabel(submission.appId) }} · {{ countryLabel(submission.country) }} ·
-            {{ quantity(submission.expectedCount) }} 个号码</strong
+            >{{ checkLabel(submission.checkId) }} ·
+            {{ submission.country ? countryLabel(submission.country) : "text" }} ·
+            {{ quantity(submission.expectedCount) }} 个种子</strong
           >
           <span class="checks-hint"
             >提交于 {{ timestamp(submission.submittedAt) }} ·
@@ -413,10 +471,11 @@ onBeforeUnmount(() => {
     >
       <div class="checks-section-heading">
         <span
-          >{{ appLabel(draft.appId, catalog) }} ·
+          >{{ checkTypeLabel(selectedType, catalog) }} ·
+          {{ checkLabel(draft.checkId, catalog) }} ·
           {{
-            catalog.apps.find((app) => app.appId === draft.appId)?.workerGroupId ||
-            "当前应用不可用"
+            catalog.checks.find((app) => app.checkId === draft.checkId)
+              ?.workerGroupId || "当前执行配置不可用"
           }}</span
         >
         <button
@@ -425,21 +484,27 @@ onBeforeUnmount(() => {
           class="checks-link"
           @click="emit('configuration')"
         >
-          查看应用配置
+          查看检查配置
         </button>
       </div>
       <p class="checks-hint">
-        单次最多 {{ quantity(catalog.limits.numbersPerImport) }} 个号码 /
+        单次最多 {{ quantity(catalog.limits.seedsPerImport) }} 个种子 /
         {{ catalog.limits.importFileBytes / 1024 / 1024 }} MiB · 来源：{{
           source.mode === "mock" ? "Mock 演示数据" : "Catalog"
         }}
       </p>
       <p v-if="configurationRead?.error" class="checks-error">
-        应用目录读取失败，已保留上次快照。
+        检查目录读取失败，已保留上次快照。
       </p>
-      <p v-if="source.mode === 'api'" class="checks-hint">
-        任务优先级、最大重试、有效期和供给目标：当前接口未提供。
+      <p v-if="selectedCheck" class="checks-hint">
+        事件：{{ selectedCheck.execution.eventCode }} · Worker 查询：{{
+          selectedCheck.execution.workerSelector.executorName
+        }}
       </p>
+      <details v-if="selectedCheck">
+        <summary>执行配置详情</summary>
+        <pre>{{ JSON.stringify(selectedCheck.execution, null, 2) }}</pre>
+      </details>
       <p class="checks-hint">
         执行绑定及契约参数由服务端在首次创建时保存；后续导入和结果解释沿用任务保存值。
       </p>
@@ -452,18 +517,41 @@ onBeforeUnmount(() => {
       <fieldset :disabled="blocked" class="checks-fieldset">
         <div class="checks-two-columns">
           <label class="checks-field"
-            >查询应用<select
-              v-model="draft.appId"
-              aria-label="应用"
+            >检查类型
+            <select
+              v-model="typeChoice"
+              aria-label="检查类型"
               :disabled="!!draft.knownTaskId"
             >
-              <option v-for="app in catalog.apps" :key="app.appId" :value="app.appId">
-                {{ app.label }}
+              <option v-for="type in availableTypes" :key="type.id" :value="type.id">
+                {{ type.label }}
               </option>
-            </select></label
-          >
+            </select>
+          </label>
           <label class="checks-field"
-            >号码地区<select
+            >执行配置
+            <select
+              v-if="!targetTask && availableChecks.length > 1"
+              v-model="draft.checkId"
+              aria-label="执行配置"
+              :disabled="!!draft.knownTaskId"
+              @change="configurationChanged"
+            >
+              <option
+                v-for="check in availableChecks"
+                :key="check.checkId"
+                :value="check.checkId"
+              >
+                {{ check.label }}
+              </option>
+            </select>
+            <span v-else>{{
+              targetTask?.checkLabel ?? selectedCheck?.label ?? "配置不可用"
+            }}</span>
+          </label>
+          <label v-if="phoneSeeds" class="checks-field"
+            >号码地区
+            <select
               v-model="draft.country"
               aria-label="号码国家"
               :disabled="!!draft.knownTaskId"
@@ -476,22 +564,31 @@ onBeforeUnmount(() => {
               >
                 {{ countryLabel(country) }}
               </option>
-            </select></label
-          >
+            </select>
+          </label>
         </div>
         <div class="checks-section-heading">
           <div>
-            <h2>导入号码</h2>
+            <h2>导入种子</h2>
             <p class="checks-hint">
-              每次最多 {{ quantity(catalog.limits.numbersPerImport) }} 个号码 ·
-              保留国家码，开头的 + 可省略
+              每次最多 {{ quantity(catalog.limits.seedsPerImport) }} 个种子 ·
+              {{
+                phoneSeeds
+                  ? "保留国家码，开头的 + 可省略"
+                  : "每行一个文本种子，保留大小写和内部内容"
+              }}
             </p>
           </div>
-          <button type="button" class="checks-link" @click="downloadTemplate">
+          <button
+            v-if="phoneSeeds"
+            type="button"
+            class="checks-link"
+            @click="downloadTemplate"
+          >
             下载 CSV 模板
           </button>
         </div>
-        <div class="checks-segments" aria-label="号码输入方式">
+        <div class="checks-segments" aria-label="种子输入方式">
           <button
             type="button"
             :aria-pressed="draft.inputMode === 'file'"
@@ -504,7 +601,7 @@ onBeforeUnmount(() => {
             :aria-pressed="draft.inputMode === 'paste'"
             @click="draft.inputMode = 'paste'"
           >
-            粘贴号码
+            粘贴种子
           </button>
         </div>
         <div
@@ -517,35 +614,38 @@ onBeforeUnmount(() => {
         >
           <UploadFilled /><strong>{{
             reading
-              ? "正在校验号码…"
+              ? "正在校验种子…"
               : draft.fileName ||
                 (draft.text.trim()
                   ? "选择文件以替换当前粘贴内容"
-                  : "拖拽 TXT 或 CSV 文件到这里")
+                  : phoneSeeds
+                    ? "拖拽 TXT 或 CSV 文件到这里"
+                    : "拖拽 TXT 文件到这里")
           }}</strong>
           <button type="button" class="checks-link" @click="fileInput?.click()">
             {{ draft.fileName ? "更换文件" : "选择文件" }}
           </button>
-          <span>UTF-8 · 最大 {{ fileLimit / 1024 / 1024 }} MiB · TXT 每行一个号码</span>
+          <span>UTF-8 · 最大 {{ fileLimit / 1024 / 1024 }} MiB · TXT 每行一个种子</span>
           <input
             ref="fileInput"
             type="file"
-            accept=".txt,.csv,text/plain,text/csv"
-            aria-label="号码文件"
+            :accept="phoneSeeds ? '.txt,.csv,text/plain,text/csv' : '.txt,text/plain'"
+            aria-label="种子文件"
             class="checks-file-input"
             @change="choose"
           />
         </div>
-        <label v-else class="checks-field"
-          >每行一个带国家码的号码，+ 可省略<textarea
+        <label v-else class="checks-field">
+          {{ phoneSeeds ? "每行一个带国家码的号码，+ 可省略" : "每行一个文本种子"
+          }}<textarea
             v-model="draft.text"
-            aria-label="号码列表"
+            aria-label="种子列表"
             rows="5"
-            :placeholder="exampleNumber"
+            :placeholder="phoneSeeds ? exampleNumber : 'a\nabc'"
             @input="textChanged"
           ></textarea>
         </label>
-        <div v-if="draft.format === 'csv'" class="checks-csv-options">
+        <div v-if="phoneSeeds && draft.format === 'csv'" class="checks-csv-options">
           <label
             ><input
               v-model="draft.header"
@@ -574,18 +674,18 @@ onBeforeUnmount(() => {
           </button>
         </p>
         <div v-if="draft.text && !reading" class="checks-input-source" role="status">
-          <span>当前号码来源</span><strong>{{ draft.fileName || "粘贴号码" }}</strong>
+          <span>当前种子来源</span><strong>{{ draft.fileName || "粘贴种子" }}</strong>
           <small v-if="draft.inputMode === 'file' && !draft.fileName"
             >当前仍为已粘贴的内容，选择新文件前不会更换来源。</small
           >
         </div>
         <template v-if="report && !reading">
-          <ImportSummary :summary="report" :final-count="report.numbers.length" />
+          <ImportSummary :summary="report" :final-count="report.seeds.length" />
           <p v-if="report.blocked" role="alert" class="checks-error">
             整批校验未通过：{{
               quantity(report.invalidCount)
             }}
-            个号码格式或国家码不符。<template v-if="firstInvalid"
+            个种子格式或国家码不符。<template v-if="firstInvalid"
               >首个错误在第 {{ firstInvalid.line }} 行：{{
                 firstInvalid.issue
               }}。</template
@@ -593,13 +693,13 @@ onBeforeUnmount(() => {
           </p>
           <p v-else-if="report.overLimit" role="alert" class="checks-error">
             去重后超过
-            {{ quantity(catalog.limits.numbersPerImport) }} 个号码，请减少后重新导入。
+            {{ quantity(catalog.limits.seedsPerImport) }} 个种子，请减少后重新导入。
           </p>
-          <p v-else-if="!report.numbers.length" role="alert" class="checks-error">
-            没有可提交的号码，请重新导入。
+          <p v-else-if="!report.seeds.length" role="alert" class="checks-error">
+            没有可提交的种子，请重新导入。
           </p>
           <p v-else class="checks-hint">
-            校验通过。导入后核对实际号码数量，再启动查询。
+            校验通过。导入后核对实际种子数量，再启动查询。
           </p>
         </template>
       </fieldset>
@@ -616,7 +716,7 @@ onBeforeUnmount(() => {
             :loading="draft.busy"
             :disabled="!valid"
             >{{
-              targetTask || draft.knownTaskId ? "导入号码" : "创建待审核任务"
+              targetTask || draft.knownTaskId ? "导入种子" : "创建待审核任务"
             }}</el-button
           >
         </div>

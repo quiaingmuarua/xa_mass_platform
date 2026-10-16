@@ -6,7 +6,7 @@ defineProps<{ summary: ImportSnapshot["summary"]; finalCount: number }>();
 <template>
   <div class="checks-import-summary" aria-label="导入校验摘要">
     <div>
-      <span>读取号码</span
+      <span>读取种子</span
       ><strong>{{ quantity(summary.inputCount - summary.emptyCount) }}</strong>
     </div>
     <div>
@@ -19,5 +19,5 @@ defineProps<{ summary: ImportSnapshot["summary"]; finalCount: number }>();
       }}</strong>
     </div>
   </div>
-  <p class="checks-hint">空行与首尾空白已自动清理，重复号码仅保留一份。</p>
+  <p class="checks-hint">空行与首尾空白已自动清理，重复种子仅保留一份。</p>
 </template>

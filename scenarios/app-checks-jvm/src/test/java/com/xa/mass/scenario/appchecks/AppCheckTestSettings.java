@@ -10,10 +10,10 @@ final class AppCheckTestSettings {
         } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
     }
     static AppCheckContracts contracts() {
-        return new AppCheckContracts(java.util.List.of(AppCheckContracts.registration(), AppCheckContracts.simulatedRegistration()));
+        return new AppCheckContracts(java.util.List.of(AppCheckContracts.registration(), AppCheckContracts.simulatedRegistration(), AppCheckContracts.originalCarrier()));
     }
-    static AppCheckSettings.Application simulated(String label, String group) {
-        return new AppCheckSettings.Application(label, group, settings().requireApplication("app-a").execution(),
+    static AppCheckSettings.Check simulated(String label, String group) {
+        return new AppCheckSettings.Check(label, group, settings().requireCheck("app-a-registration").execution(),
                 AppCheckContracts.SIMULATED, null);
     }
     static AppCheckSettings settings() { return AppCheckSettings.parse(Jsons.parseObject(seed()), contracts()); }

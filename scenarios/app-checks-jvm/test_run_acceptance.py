@@ -69,10 +69,10 @@ class AppCheckProofTest(unittest.TestCase):
 
     def test_execution_variants_are_seed_parameters_not_create_overrides(self):
         parameters = {"ranges": {"registered": [0,1000], "unregistered": [1000,1000], "failed": [1000,1000]}, "delayMs": [0,0]}
-        with regression_window_configuration(parameters_by_app={"app-a": parameters}):
+        with regression_window_configuration(parameters_by_check={"app-a-registration": parameters}):
             _, document = self.read_seed()
-            self.assertEqual(document["applications"]["app-a"]["parameters"], parameters)
-            self.assertNotIn("parameters", document["applications"]["app-b"])
+            self.assertEqual(document["checks"]["app-a-registration"]["parameters"], parameters)
+            self.assertNotIn("parameters", document["checks"]["app-b-registration"])
 
     def test_window_fixture_keeps_other_settings_and_restores_environment_on_failure(self):
         original = json.dumps({"some.setting": "retained"})
@@ -123,7 +123,8 @@ class AppCheckProofTest(unittest.TestCase):
         self.assertEqual({"X-XA-Dev-User": "MTAwMA", "X-XA-Dev-Role": "admin"}, caller_headers(case["userId"], "admin"))
         self.assertNotIn("userId", creation_input(case))
         self.assertNotIn("numbers", creation_input(case))
-        self.assertEqual(set(creation_input(case)), {"requestId", "appId", "country"})
+        self.assertEqual(set(creation_input(case)), {"requestId", "checkId", "country"})
+        self.assertEqual("app-b-registration", creation_input(case)["checkId"])
 
 
 if __name__ == "__main__":

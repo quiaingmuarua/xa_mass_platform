@@ -24,7 +24,7 @@ const trigger = ref<ButtonInstance>();
 const stage = computed(() => taskStage(props.task));
 const actions = computed<TaskAction[]>(() => {
   const items: TaskAction[] =
-    props.task.managed || !props.task.appId
+    props.task.managed || !props.task.checkId
       ? ["preview"]
       : stage.value === "pre_review"
         ? ["import", "approve", "close"]
@@ -37,17 +37,17 @@ const actions = computed<TaskAction[]>(() => {
 });
 const labels: Record<TaskAction, string> = {
   preview: "预览结果",
-  import: "导入号码",
+  import: "导入种子",
   approve: "核对并启动",
   close: "中止任务",
   export: "导出结果"
 };
 function unavailable(action: TaskAction) {
   if (action === "preview") return "";
-  if (action === "approve" && !props.task.totalCount) return "请先导入号码";
+  if (action === "approve" && !props.task.totalCount) return "请先导入种子";
   const supported =
     action === "import"
-      ? !!props.source.importNumbers
+      ? !!props.source.importSeeds
       : action === "approve"
         ? !!props.source.approveTask
         : action === "close"

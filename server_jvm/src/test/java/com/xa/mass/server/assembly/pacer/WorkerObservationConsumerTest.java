@@ -39,8 +39,8 @@ class WorkerObservationConsumerTest {
     @Test void eachGroupRoutesOnlyItsOwnConfiguredMessageEvent() throws Exception {
         var patched = new CountDownLatch(2);
         var routes = new WorkerPropertyProjection("worker.assigned", Map.of(
-                "a", new WorkerPropertyProjection.Projection("event-a", (current,times) -> Map.of("count",times.size())),
-                "b", new WorkerPropertyProjection.Projection("event-b", (current,times) -> Map.of("count",times.size()))));
+                "a", List.of(new WorkerPropertyProjection.Projection("event-a", (current,times) -> Map.of("count",times.size()))),
+                "b", List.of(new WorkerPropertyProjection.Projection("event-b", (current,times) -> Map.of("count",times.size())))));
         for (String group : List.of("a","b")) {
             when(properties.loadWorkerFacts(group, List.of("w"))).thenReturn(Map.of("w", new WorkerFacts("w",group,Map.of(),Map.of())));
             when(properties.patchWorkerPlatformProperties(group,"w",Map.of("count",1))).thenAnswer(call -> {
@@ -276,7 +276,7 @@ class WorkerObservationConsumerTest {
     }
     static WorkerPropertyProjection projection(String group, String event,
             BiFunction<Map<String, Object>, List<Long>, Map<String, Object>> compute) {
-        return new WorkerPropertyProjection("worker.assigned", Map.of(group, new WorkerPropertyProjection.Projection(event, compute)));
+        return new WorkerPropertyProjection("worker.assigned", Map.of(group, List.of(new WorkerPropertyProjection.Projection(event, compute))));
     }
     static WorkerObservation observation(String worker, long time) {
         return new WorkerObservation("g", List.of(worker), time, "event", "worker.assigned");

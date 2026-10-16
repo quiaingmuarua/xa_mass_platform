@@ -273,7 +273,7 @@ immutable startup declarations and must not query the scenario database. Saved
 configuration becomes effective on restart, without runtime registration or resource
 mutation. App Checks execution contracts are statically registered pure scenario code;
 Tasks retain their first execution binding and normalized parameters. Per-Group
-resource requirements and message-event/projection selections remain immutable startup declarations.
+resource requirements and lists of message-event/projection selections remain immutable startup declarations.
 
 ## Verification
 

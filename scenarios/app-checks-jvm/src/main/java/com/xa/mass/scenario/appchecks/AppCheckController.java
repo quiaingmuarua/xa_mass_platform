@@ -45,8 +45,8 @@ public final class AppCheckController {
     @GetMapping("/tasks/{taskId}/results")
     public Object results(TaskCaller caller,
             @PathVariable String taskId) { return tasks.results(caller, taskId); }
-    @PostMapping(value = "/tasks/{taskId}/numbers:import", consumes = "text/plain")
-    public Object importNumbers(TaskCaller caller, @PathVariable String taskId, InputStream input) { return tasks.importNumbers(caller, taskId, input); }
+    @PostMapping(value = "/tasks/{taskId}/seeds:import", consumes = "text/plain")
+    public Object importSeeds(TaskCaller caller, @PathVariable String taskId, InputStream input) { return tasks.importSeeds(caller, taskId, input); }
     @PostMapping("/tasks/{taskId}/results:export")
     public ResponseEntity<StreamingResponseBody> export(TaskCaller caller, @PathVariable String taskId, @RequestParam(defaultValue = "all") String filter) {
         var file = tasks.export(caller, taskId, filter);

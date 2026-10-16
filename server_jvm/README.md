@@ -1097,8 +1097,8 @@ The receiver has no Properties dependency; handler-owned operations run outside
 its short admission/lifecycle gate.
 
 One `PlatformPropertiesHandler` serves all `WorkerPropertyProjection` definitions.
-Each definition selects one observation event and provides an immutable Group-to-projection
-map; each projection selects its own message event and pure function. Each function is `(current Platform Properties, observation times) ->
+Each definition selects one observation event and provides an immutable Group-to-projection-list
+map; each Group may select several message events, each with a pure projection function. Each function is `(current Platform Properties, observation times) ->
 local patch`. Server expands this map only at startup; duplicate expanded Group/event
 selections fail assembly. There is no runtime registration or configuration read. The
 handler groups selected times by Group/Worker, chunks reads at the existing

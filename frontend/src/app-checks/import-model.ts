@@ -1,7 +1,9 @@
 import { recipientIssue } from "@/files/phone-numbers";
+import type { SeedType } from "./model";
 import { splitTextLines } from "@/files/text";
 
 export interface ImportOptions {
+  seedType: SeedType;
   format: "txt" | "csv";
   country: string;
   limit: number;
@@ -11,7 +13,7 @@ export interface ImportOptions {
 export interface ImportRow {
   line: number;
   raw: string;
-  number: string;
+  seed: string;
   kind: "valid" | "duplicate" | "invalid" | "empty";
   issue: string;
   excluded: boolean;
@@ -19,7 +21,7 @@ export interface ImportRow {
 export interface ImportReport {
   columns: string[];
   rows: ImportRow[];
-  numbers: string[];
+  seeds: string[];
   inputCount: number;
   emptyCount: number;
   validCount: number;
@@ -30,7 +32,7 @@ export interface ImportReport {
 }
 export interface ImportSnapshot {
   sourceFile: string;
-  summary: Omit<ImportReport, "rows" | "numbers" | "columns">;
+  summary: Omit<ImportReport, "rows" | "seeds" | "columns">;
   receipt?: ImportReceipt;
 }
 export interface ImportReceipt {
@@ -98,6 +100,8 @@ export function parseCsv(text: string): { line: number; cells: string[] }[] {
 }
 
 export function inspectImport(text: string, options: ImportOptions): ImportReport {
+  if (options.seedType === "text" && options.format === "csv")
+    throw new Error("text 种子仅支持 TXT 或逐行粘贴");
   let parsed =
     options.format === "csv"
       ? parseCsv(text)
@@ -115,16 +119,24 @@ export function inspectImport(text: string, options: ImportOptions): ImportRepor
   if (options.column < 0 || options.column >= width)
     throw new Error("请选择有效的号码列");
   const seen = new Set<string>(),
-    numbers: string[] = [];
+    seeds: string[] = [];
   const rows: ImportRow[] = parsed.map((row) => {
     const raw = row.cells[options.format === "csv" ? options.column : 0] ?? "";
-    const trimmed = raw.trim();
+    const trimmed =
+      options.seedType === "text" ? raw.replace(/^[ \t]+|[ \t]+$/g, "") : raw.trim();
     // App Checks input may omit '+'. Keep the existing canonical API/Worker value.
-    const number = /^[0-9]+$/.test(trimmed) ? "+" + trimmed : trimmed;
-    const empty = row.cells.every((cell) => !cell.trim());
-    const error = empty
-      ? ""
-      : recipientIssue(number, options.country).replace("+国家码", "国家码");
+    const number =
+      options.seedType === "phonenumber" && /^[0-9]+$/.test(trimmed)
+        ? "+" + trimmed
+        : trimmed;
+    const empty =
+      options.seedType === "text"
+        ? number.length === 0
+        : row.cells.every((cell) => !cell.trim());
+    const error =
+      empty || options.seedType === "text"
+        ? ""
+        : recipientIssue(number, options.country).replace("+国家码", "国家码");
     const kind = empty
       ? "empty"
       : error
@@ -134,13 +146,13 @@ export function inspectImport(text: string, options: ImportOptions): ImportRepor
           : "valid";
     if (!error && !empty) seen.add(number);
     const excluded = kind === "empty" || kind === "duplicate";
-    if (kind === "valid") numbers.push(number);
+    if (kind === "valid") seeds.push(number);
     return {
       line: row.line,
       raw,
-      number,
+      seed: number,
       kind,
-      issue: error || (kind === "duplicate" ? "号码重复" : ""),
+      issue: error || (kind === "duplicate" ? "种子重复" : ""),
       excluded
     };
   });
@@ -151,21 +163,21 @@ export function inspectImport(text: string, options: ImportOptions): ImportRepor
   return {
     columns,
     rows,
-    numbers: invalidCount ? [] : numbers,
+    seeds: invalidCount ? [] : seeds,
     inputCount: rows.length,
     emptyCount: count("empty"),
     validCount: count("valid"),
     duplicateCount,
     invalidCount,
     blocked: invalidCount > 0,
-    overLimit: numbers.length > options.limit
+    overLimit: seeds.length > options.limit
   };
 }
 export function importSnapshot(
   report: ImportReport,
   sourceFile: string
 ): ImportSnapshot {
-  const { rows: _rows, numbers: _numbers, columns: _columns, ...summary } = report;
+  const { rows: _rows, seeds: _seeds, columns: _columns, ...summary } = report;
   return { sourceFile, summary };
 }
 export const csvCell = (value: string) =>

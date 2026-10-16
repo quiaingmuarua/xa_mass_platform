@@ -20,7 +20,13 @@ import AppCheckList from "./AppCheckList.vue";
 import AppCheckPreviewDrawer from "./AppCheckPreviewDrawer.vue";
 import AppCheckConfiguration from "./AppCheckConfiguration.vue";
 import type { ConfigurationReadState } from "./configuration";
-import { appLabel, countryLabel, type Catalog, type CheckTask } from "./model";
+import {
+  checkTypeLabel,
+  checkLabel,
+  countryLabel,
+  type Catalog,
+  type CheckTask
+} from "./model";
 import { type AppCheckTaskSource } from "./task-source";
 import {
   createWorkbenchSession,
@@ -235,10 +241,10 @@ function endUnconfirmedDraft() {
     userId: session.userId,
     requestId: draft.requestId,
     knownTaskId: draft.knownTaskId,
-    appId: draft.appId,
-    country: draft.country,
-    expectedCount: draft.report?.numbers.length ?? 0,
-    sourceFile: draft.fileName || "粘贴号码",
+    checkId: draft.checkId,
+    country: draft.seedType === "phonenumber" ? draft.country : undefined,
+    expectedCount: draft.report?.seeds.length ?? 0,
+    sourceFile: draft.fileName || "粘贴种子",
     submittedAt: draft.createdAtMillis,
     endedAt: Date.now()
   });
@@ -261,10 +267,10 @@ function endImportDraft() {
     userId: session.userId,
     requestId: draft.requestId,
     knownTaskId: draft.knownTaskId,
-    appId: draft.appId,
-    country: draft.country,
-    expectedCount: draft.report?.numbers.length ?? 0,
-    sourceFile: draft.fileName || "粘贴号码",
+    checkId: draft.checkId,
+    country: draft.seedType === "phonenumber" ? draft.country : undefined,
+    expectedCount: draft.report?.seeds.length ?? 0,
+    sourceFile: draft.fileName || "粘贴种子",
     submittedAt: draft.createdAtMillis,
     endedAt: Date.now()
   });
@@ -308,7 +314,7 @@ function requestAction(task: CheckTask, action: TaskAction, trigger?: HTMLElemen
   dialogOrigin = route.fullPath;
   dialogTrigger = trigger;
   if (action === "import") {
-    if (!props.source.importNumbers || task.state !== "pre_review") return;
+    if (!props.source.importSeeds || task.state !== "pre_review") return;
     if (
       importSession.draft.uncertain &&
       importSession.draft.knownTaskId !== task.taskId
@@ -513,11 +519,7 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div class="checks-workspace" data-testid="app-check-workspace">
-    <nav
-      v-if="canConfigure"
-      class="checks-workspace-tabs"
-      aria-label="应用注册查询工作区"
-    >
+    <nav v-if="canConfigure" class="checks-workspace-tabs" aria-label="批量检查工作区">
       <router-link
         to="/app-checks"
         :aria-current="!configuring ? 'page' : undefined"
@@ -535,7 +537,7 @@ onBeforeUnmount(() => {
         "
         :aria-current="configuring ? 'page' : undefined"
         @click.prevent="openConfiguration()"
-        >应用与运行策略</a
+        >检查配置</a
       >
     </nav>
     <p
@@ -647,14 +649,17 @@ onBeforeUnmount(() => {
           {{ actionTask.name || actionTask.taskId }}
         </p>
         <p>
-          {{ appLabel(actionTask.appId, catalog) }} ·
+          {{
+            actionTask.checkTypeLabel ?? checkTypeLabel(actionTask.checkType, catalog)
+          }}
+          · {{ actionTask.checkLabel ?? checkLabel(actionTask.checkId, catalog) }} ·
           {{ countryLabel(actionTask.country) }} ·
-          {{ quantity(actionTask.totalCount) }} 个号码
+          {{ quantity(actionTask.totalCount) }} 个种子
         </p>
         <p class="checks-hint">
           {{
             displayConfirmation === "approve"
-              ? "请核对应用、地区和号码数量。确认启动后将进入查询。"
+              ? "请核对检查类型、执行配置和种子数量。确认启动后将开始检查。"
               : actionTask.state === "pre_review"
                 ? "取消后不能启动，已导入的号码不会开始查询。"
                 : "停止后续演示查询，保留已有结果；已开始的执行仍可能返回结果。中止后不能重新启动。"
@@ -720,7 +725,7 @@ onBeforeUnmount(() => {
         {{ actionTask?.name }}
       </p>
       <p class="checks-hint">
-        仅包含有效成功结果，查询失败、内容异常和未完成号码不会导出。
+        包含满足和不满足的有效判定；执行失败、内容异常和未完成种子不会导出。
       </p>
       <label class="checks-field"
         >导出范围<select
@@ -729,8 +734,8 @@ onBeforeUnmount(() => {
           :disabled="exportLoading"
         >
           <option value="all">全部有效成功结果</option>
-          <option value="registered">已注册</option>
-          <option value="unregistered">未注册</option>
+          <option value="matched">满足</option>
+          <option value="unmatched">不满足</option>
         </select></label
       >
       <div class="checks-export-count">
@@ -742,7 +747,17 @@ onBeforeUnmount(() => {
               ? quantity(counts[exportFilter]) + " 条"
               : "生成文件后确认数量"
         }}</strong
-        ><small>CSV · 号码 / 注册状态 / 应用 / 地区</small>
+        ><small
+          >CSV · 种子 / 判定 / 检查类型 / 执行配置{{
+            actionTask?.seedType === "phonenumber" ? " / 地区" : ""
+          }}{{
+            actionTask?.checkType === "original-carrier-v1"
+              ? " / 原始运营商 / 识别说明"
+              : actionTask?.checkType === "text-md5-proof-v1"
+                ? " / 摘要"
+                : " / 注册状态"
+          }}</small
+        >
       </div>
       <p v-if="exportError" role="alert" class="checks-error">{{ exportError }}</p>
       <div v-if="exportFile" role="status" class="checks-download-ready">

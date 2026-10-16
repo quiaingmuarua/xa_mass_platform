@@ -2,7 +2,7 @@
 import { onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { ElDialog } from "element-plus";
 import "element-plus/es/components/dialog/style/css";
-import { appLabel, countryLabel, type CheckTask } from "./model";
+import { checkLabel, countryLabel, type CheckTask } from "./model";
 import type { AppCheckTaskSource } from "./task-source";
 import { quantity, timestamp, type CheckDraft } from "./workbench";
 import TaskStatus from "./TaskStatus.vue";
@@ -80,14 +80,15 @@ onBeforeUnmount(() => {
     <h2>本次提交尚未确认</h2>
     <p role="alert">{{ draft.error }}</p>
     <p class="checks-hint">
-      草稿已冻结，不会自动重试创建。请核对号码数量与任务状态；查到任务不代表所有号码已写入或已启动。
+      草稿已冻结，不会自动重试创建。请核对种子数量与任务状态；查到任务不代表所有种子已写入或已启动。
     </p>
     <dl class="checks-description">
       <div>
         <dt>本次提交</dt>
         <dd>
-          {{ appLabel(draft.appId) }} · {{ countryLabel(draft.country) }} ·
-          {{ quantity(draft.report?.numbers.length) }} 个号码
+          {{ checkLabel(draft.checkId) }} ·
+          {{ draft.seedType === "phonenumber" ? countryLabel(draft.country) : "text" }}
+          · {{ quantity(draft.report?.seeds.length) }} 个种子
         </dd>
       </div>
       <div>
@@ -129,7 +130,7 @@ onBeforeUnmount(() => {
       {{ error }}。未确认提交是否完整，请保留关联信息后继续核对。
     </p>
     <div v-if="observed" class="checks-recovery-observation" role="status">
-      <strong>任务已记录 {{ quantity(observed.totalCount) }} 个号码</strong>
+      <strong>任务已记录 {{ quantity(observed.totalCount) }} 个种子</strong>
       <TaskStatus
         :task="observed"
         :preview="source.previewState?.(identity, observed.taskId)"

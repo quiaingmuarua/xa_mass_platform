@@ -7,6 +7,7 @@ import com.xa.mass.workerdelivery.json.Jsons;
 public final class AppCheckContracts {
     public static final String REGISTRATION = "registration-v1";
     public static final String SIMULATED = "simulated-registration-v1";
+    public static final String ORIGINAL_CARRIER = "original-carrier-v1";
     private final Map<String, AppCheckContract> contracts;
 
     public AppCheckContracts(List<AppCheckContract> definitions) {
@@ -25,15 +26,18 @@ public final class AppCheckContracts {
     }
     public List<Map<String, Object>> descriptions() {
         return contracts.values().stream().sorted(Comparator.comparing(AppCheckContract::id))
-                .map(contract -> Map.<String, Object>of("id", contract.id(), "description", contract.description(),
+                .map(contract -> Map.<String, Object>of("id", contract.id(), "label", contract.label(), "seedType", contract.seedType().id(), "description", contract.description(),
                         "parameterExample", contract.parameterExample(), "inputExample", contract.inputExample(),
                         "resultExample", contract.resultExample())).toList();
     }
     public static AppCheckContract registration() { return new Registration(); }
     public static AppCheckContract simulatedRegistration() { return new SimulatedRegistration(); }
+    public static AppCheckContract originalCarrier() { return new OriginalCarrier(); }
 
     private static class Registration implements AppCheckContract {
         public String id() { return REGISTRATION; }
+        public String label() { return "注册检查"; }
+        public SeedType seedType() { return SeedType.PHONENUMBER; }
         public String description() { return "号码查询协议；Worker 返回注册状态，不要求模拟字段"; }
         public Map<String, Object> parameterExample() { return Map.of(); }
         public Map<String, Object> inputExample() { return Map.of("number", "+8613800000001"); }
@@ -41,27 +45,30 @@ public final class AppCheckContracts {
             return Map.of("number", "+8613800000001", "registered", true,
                     "workerId", "executing-worker", "workerGroupId", "configured-group");
         }
+        public List<String> exportHeaders() { return List.of("注册状态"); }
+        public List<String> exportValues(Result result) { return List.of(Boolean.TRUE.equals(result.details().get("registered")) ? "已注册" : "未注册"); }
         public Map<String, Object> normalizeParameters(Object value) {
             AppCheckSettings.object(value, Set.of(), Set.of(), "parameters");
             return Map.of();
         }
         public Map<String, Object> payload(Context context, String number) { return Map.of("number", number); }
-        public String inputNumber(Map<String, Object> payload) {
+        public String inputSeed(Map<String, Object> payload) {
             String number = AppCheckSpecification.text(payload.get("number"), 16);
             if (!number.matches("\\+[1-9][0-9]{1,14}")) throw new IllegalArgumentException("Invalid input number");
             return number;
         }
         public Result result(Context context, Map<String, Object> payload, Map<String, Object> content) {
-            String number = inputNumber(payload);
+            String number = inputSeed(payload);
             if (!number.equals(content.get("number")) || !context.workerGroupId().equals(content.get("workerGroupId"))
                     || !(content.get("registered") instanceof Boolean registered))
                 throw new IllegalArgumentException("Result association mismatch");
-            return new Result(number, registered, AppCheckSpecification.text(content.get("workerId"), 256),
-                    context.workerGroupId(), null);
+            return new Result(number, registered, Map.of("registered", registered, "workerId", AppCheckSpecification.text(content.get("workerId"), 256),
+                    "workerGroupId", context.workerGroupId()));
         }
     }
     private static final class SimulatedRegistration extends Registration {
         public String id() { return SIMULATED; }
+        public String label() { return "模拟注册"; }
         public String description() { return "确定性模拟协议；保留实际 Worker、salt、区间和延迟的独立复算"; }
         public Map<String, Object> parameterExample() {
             return Map.of("ranges", Map.of("registered", List.of(0, 500), "unregistered", List.of(500, 900),
@@ -115,8 +122,56 @@ public final class AppCheckContracts {
         }
         public Result result(Context context, Map<String, Object> payload, Map<String, Object> content) {
             var answer = super.result(context, payload, content);
-            return new Result(answer.number(), answer.registered(), answer.workerId(), answer.workerGroupId(),
-                    AppCheckSpecification.integer(content.get("simulatedDelayMillis")));
+            long delay = AppCheckSpecification.integer(content.get("simulatedDelayMillis"));
+            if (delay < 0 || delay > 30_000) throw new IllegalArgumentException("Invalid simulated delay");
+            var details = new LinkedHashMap<>(answer.details());
+            details.put("simulatedDelayMillis", delay);
+            return new Result(answer.seed(), answer.matched(), details);
+        }
+    }
+
+    private static final class OriginalCarrier implements AppCheckContract {
+        private static final Set<String> NUMBER_ERRORS = Set.of("INVALID_PHONE_NUMBER", "PARSE_INVALID_COUNTRY_CODE",
+                "PARSE_NOT_A_NUMBER", "PARSE_TOO_SHORT_AFTER_IDD", "PARSE_TOO_SHORT_NSN", "PARSE_TOO_LONG");
+
+        public String id() { return ORIGINAL_CARRIER; }
+        public String label() { return "原始运营商识别"; }
+        public SeedType seedType() { return SeedType.PHONENUMBER; }
+        public String description() { return "判断号码能否识别到原始运营商；基于号码库元数据，不表示当前运营商或号码在用状态"; }
+        public Map<String, Object> parameterExample() { return Map.of(); }
+        public Map<String, Object> inputExample() { return Map.of("rawNumber", "+8613800000000"); }
+        public Map<String, Object> resultExample() {
+            return Map.of("input", "+8613800000000", "possible", true, "valid", true, "originalCarrier", "China Mobile");
+        }
+        public Map<String, Object> normalizeParameters(Object value) {
+            AppCheckSettings.object(value, Set.of(), Set.of(), "parameters");
+            return Map.of();
+        }
+        public Map<String, Object> payload(Context context, String number) { return Map.of("rawNumber", number); }
+        public String inputSeed(Map<String, Object> payload) {
+            String number = AppCheckSpecification.text(payload.get("rawNumber"), 16);
+            if (!number.matches("\\+[1-9][0-9]{1,14}")) throw new IllegalArgumentException("Invalid input number");
+            return number;
+        }
+        public Result result(Context context, Map<String, Object> payload, Map<String, Object> content) {
+            String number = inputSeed(payload);
+            if (!number.equals(content.get("input")) || !(content.get("possible") instanceof Boolean possible)
+                    || !(content.get("valid") instanceof Boolean valid))
+                throw new IllegalArgumentException("Carrier result association or shape mismatch");
+            if (valid) {
+                if (!possible || !(content.get("originalCarrier") instanceof String carrier) || content.containsKey("error"))
+                    throw new IllegalArgumentException("Invalid carrier answer");
+                return new Result(number, !carrier.isBlank(), Map.of("originalCarrier", carrier,
+                        "reason", carrier.isBlank() ? "NO_CARRIER_MAPPING" : "IDENTIFIED"));
+            }
+            if (!(content.get("error") instanceof String reason) || !NUMBER_ERRORS.contains(reason)
+                    || content.containsKey("originalCarrier"))
+                throw new IllegalArgumentException("Invalid negative carrier answer");
+            return new Result(number, false, Map.of("originalCarrier", "", "reason", reason));
+        }
+        public List<String> exportHeaders() { return List.of("原始运营商", "识别说明"); }
+        public List<String> exportValues(Result result) {
+            return List.of((String) result.details().get("originalCarrier"), (String) result.details().get("reason"));
         }
     }
 }

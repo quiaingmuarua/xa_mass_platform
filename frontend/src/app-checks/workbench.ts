@@ -7,13 +7,14 @@ import type {
   CheckTask,
   CheckResult,
   Country,
+  SeedType,
   CreateCheckTask
 } from "./model";
 import type { ConfigurationSession } from "./settings";
 import type { ImportReport } from "./import-model";
 
-export type ExportFilter = "all" | "registered" | "unregistered";
-export type ResultFilter = ExportFilter | "failed" | "invalid" | "unknown";
+export type ExportFilter = "all" | "matched" | "unmatched";
+export type ResultFilter = ExportFilter | "error";
 export type TaskAction = "preview" | "import" | "approve" | "close" | "export";
 export interface PreviewState {
   endReason?: "completed" | "cancelled" | "stopped";
@@ -25,7 +26,8 @@ export interface TaskActivity {
 }
 export interface CheckDraft {
   createdAtMillis: number;
-  appId: string;
+  checkId: string;
+  seedType: SeedType;
   country: Country;
   inputMode: "file" | "paste";
   text: string;
@@ -47,8 +49,8 @@ export interface UnconfirmedSubmission {
   userId: string;
   requestId: string;
   knownTaskId?: string;
-  appId: string;
-  country: Country;
+  checkId: string;
+  country?: Country;
   expectedCount: number;
   sourceFile: string;
   submittedAt: number;
@@ -60,7 +62,13 @@ export const requestIdentity = () =>
 export function freshDraft(catalog?: Catalog): CheckDraft {
   return {
     createdAtMillis: Date.now(),
-    appId: catalog?.apps[0].appId ?? "",
+    checkId:
+      (
+        catalog?.checks.find(
+          (check) => check.checkType === "simulated-registration-v1"
+        ) ?? catalog?.checks[0]
+      )?.checkId ?? "",
+    seedType: "phonenumber",
     country: catalog?.countries[0] ?? "CN",
     inputMode: "file",
     text: "",
@@ -90,7 +98,8 @@ export function createWorkbenchSession(
     importTask: undefined as CheckTask | undefined,
     filters: {
       query: "",
-      app: "all",
+      check: "all",
+      checkType: "all",
       country: "all",
       state: "all",
       from: "",
@@ -131,22 +140,43 @@ export function taskLabel(task: CheckTask, preview?: PreviewState) {
   }[taskStage(task)];
 }
 export function resultKind(row: CheckResult): ResultFilter {
-  if (row.resultStatus === "failed") return "failed";
-  if (row.contentError) return "invalid";
-  return row.registered === true
-    ? "registered"
-    : row.registered === false
-      ? "unregistered"
-      : "unknown";
+  if (
+    row.resultStatus === "failed" ||
+    row.contentError ||
+    typeof row.matched !== "boolean"
+  )
+    return "error";
+  return row.matched ? "matched" : "unmatched";
 }
 export const resultLabels: Record<ResultFilter, string> = {
   all: "全部结果",
-  registered: "已注册",
-  unregistered: "未注册",
-  failed: "查询失败",
-  invalid: "内容异常",
-  unknown: "尚无注册答案"
+  matched: "满足",
+  unmatched: "不满足",
+  error: "检查错误"
 };
+export function checkCondition(checkType?: string) {
+  return checkType === "original-carrier-v1"
+    ? "检查条件：是否识别到原始运营商。基于号码库元数据，不表示当前运营商或号码实际在用。"
+    : checkType === "registration-v1" || checkType === "simulated-registration-v1"
+      ? "检查条件：号码是否已注册。"
+      : "检查条件由任务保存的业务契约定义。";
+}
+export function resultDescription(row: CheckResult) {
+  if (row.resultStatus === "failed") return "执行失败 · 无有效检查结论";
+  if (row.contentError) return "内容异常 · " + row.contentError;
+  if (typeof row.details?.registered === "boolean")
+    return row.details.registered ? "已注册" : "未注册";
+  const carrier = row.details?.originalCarrier;
+  if (typeof carrier === "string") {
+    if (row.matched) return "原始运营商：" + carrier;
+    return row.details?.reason === "NO_CARRIER_MAPPING"
+      ? "号码库没有运营商映射"
+      : "号码库无法识别该号码：" + String(row.details?.reason ?? "未提供原因");
+  }
+  return typeof row.matched === "boolean"
+    ? "执行成功 · 已取得有效判定"
+    : "内容异常 · 缺少有效判定";
+}
 export function filterResults(
   rows: CheckResult[],
   query: string,
@@ -154,7 +184,7 @@ export function filterResults(
 ) {
   return rows.filter(
     (row) =>
-      (!query.trim() || row.number?.includes(query.trim())) &&
+      (!query.trim() || row.seed?.includes(query.trim())) &&
       (filter === "all" || resultKind(row) === filter)
   );
 }
