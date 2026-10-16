@@ -316,15 +316,28 @@ describe("App Checks JSON configuration workspace", () => {
     expect(host.querySelectorAll("textarea")).toHaveLength(1);
     expect(host.querySelector('[aria-label="配置应用"]')).toBeNull();
     const before = session.configuration.readAt;
-    vi.spyOn(source, "loadConfiguration").mockRejectedValueOnce(new Error("offline"));
+    const snapshot = session.configuration.snapshot!;
+    const refresh = deferred<AppCheckConfigurationView>();
+    const load = vi
+      .spyOn(source, "loadConfiguration")
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockReturnValueOnce(refresh.promise);
     button("重新读取").click();
     await settle();
     expect(session.configuration.readAt).toBe(before);
+    expect(session.configuration.snapshot).toBe(snapshot);
     expect(host.textContent).toContain("已保留上次快照");
     expect(context.state.value.status).toBe("enabled");
     button("重新读取").click();
     await settle();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(session.configuration.readAt).toBe(before);
+    expect(session.configuration.stale).toBe(true);
+    refresh.resolve(snapshot);
+    await settle();
     expect(session.configuration.readAt).toBeGreaterThan(before);
+    expect(session.configuration.stale).toBe(false);
+    expect(session.configuration.error).toBe("");
   });
   it("keeps task-list filters/scroll and creation identity across navigation and Catalog changes", async () => {
     const list = vi.spyOn(source, "listTasks");
