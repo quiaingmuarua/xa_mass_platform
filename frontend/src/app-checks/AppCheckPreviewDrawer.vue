@@ -440,8 +440,8 @@ defineExpose({ refresh, focusHeading });
               本次导入 {{ quantity(imported.receipt.uniqueCount) }} 个去重种子，组装
               {{ quantity(imported.receipt.itemCount) }} 个执行项；已确认新增
               {{ quantity(imported.receipt.addedCount) }} 个执行项，已存在
-              {{ quantity(imported.receipt.existingCount) }} 个执行项
-              个。来源与摘要仅保留于本次控制台会话。
+              {{ quantity(imported.receipt.existingCount) }}
+              个执行项。来源与摘要仅保留于本次控制台会话。
             </p>
           </template>
           <p v-else-if="auxiliary.import.loaded" class="checks-hint">
