@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.async.DeferredResult;
 
@@ -31,6 +32,7 @@ public final class TaskRpcWaitRegistry {
     private volatile int activeWaiters;
     private int pendingObservationCount;
     private long nextGeneration;
+    private long nextWaiterId;
     private boolean closed;
 
     public TaskRpcWaitRegistry(TaskRpcProperties properties) {
@@ -100,7 +102,8 @@ public final class TaskRpcWaitRegistry {
                     pending,
                     deferred,
                     mapping,
-                    System.nanoTime()
+                    System.nanoTime(),
+                    ++nextWaiterId
             );
             for (ItemKey key : pending) {
                 ItemWaitGroup group = groups.computeIfAbsent(
@@ -138,6 +141,44 @@ public final class TaskRpcWaitRegistry {
             List<ProbeRequest> requests = activateDueItems(dueBatch);
             if (!requests.isEmpty()) {
                 return requests;
+            }
+        }
+    }
+
+    /**
+     * Reserve the receiving waiters before consuming. A due batch alone is not
+     * permission to take: its waiters may already have timed out. No registry
+     * monitor is held while acquiring the waiter gates or calling Redis.
+     */
+    ProbeBatch beginProbe(List<ProbeRequest> requests) {
+        var recipients = new LinkedHashMap<ProbeRequest, List<BatchWaiter<?>>>();
+        synchronized (this) {
+            if (!closed) {
+                for (ProbeRequest request : requests) {
+                    ItemWaitGroup group = groups.get(new ItemKey(request.taskId(), request.messageId()));
+                    if (group != null && group.inFlight) {
+                        recipients.put(request, List.copyOf(group.waiters));
+                    }
+                }
+            }
+        }
+        List<BatchWaiter<?>> waiters = recipients.values().stream()
+                .flatMap(List::stream).distinct()
+                .sorted(java.util.Comparator.comparingLong(waiter -> waiter.id))
+                .toList();
+        waiters.forEach(waiter -> waiter.completionGate.lock());
+        List<ProbeRequest> admitted = recipients.entrySet().stream()
+                .filter(entry -> entry.getValue().stream().anyMatch(waiter ->
+                        !waiter.completed && waiter.pending.contains(new ItemKey(
+                                entry.getKey().taskId(), entry.getKey().messageId()))))
+                .map(Map.Entry::getKey).toList();
+        return new ProbeBatch(admitted, waiters);
+    }
+
+    record ProbeBatch(List<ProbeRequest> requests, List<BatchWaiter<?>> waiters) implements AutoCloseable {
+        @Override public void close() {
+            for (int index = waiters.size() - 1; index >= 0; index--) {
+                waiters.get(index).completionGate.unlock();
             }
         }
     }
@@ -337,6 +378,9 @@ public final class TaskRpcWaitRegistry {
         private final DeferredResult<T> deferred;
         private final java.util.function.Function<Map<String, TaskItemResultResponse>, T> mapping;
         private final long registeredAtNanos;
+        private final long id;
+        // Fairness lets an already queued timeout win before a subsequent take.
+        private final ReentrantLock completionGate = new ReentrantLock(true);
         private boolean completed;
 
         private BatchWaiter(
@@ -346,7 +390,8 @@ public final class TaskRpcWaitRegistry {
                 Set<ItemKey> pending,
                 DeferredResult<T> deferred,
                 java.util.function.Function<Map<String, TaskItemResultResponse>, T> mapping,
-                long registeredAtNanos
+                long registeredAtNanos,
+                long id
         ) {
             this.registry = registry;
             this.orderedMessageIds = orderedMessageIds;
@@ -355,53 +400,69 @@ public final class TaskRpcWaitRegistry {
             this.deferred = deferred;
             this.mapping = mapping;
             this.registeredAtNanos = registeredAtNanos;
+            this.id = id;
         }
 
-        private synchronized boolean completeResult(
+        private boolean completeResult(
                 ItemKey key,
                 TaskItemResult result
         ) {
-            if (completed || !pending.remove(key)) {
-                return false;
+            completionGate.lock();
+            try {
+                if (completed || !pending.remove(key)) {
+                    return false;
+                }
+                observedResults.put(key.messageId, result);
+                TaskRpcStageEvent.items(TaskRpcStageEvent.start(), "OBSERVED", key.taskId, List.of(key.messageId), 1, false);
+                boolean finished = pending.isEmpty();
+                if (finished) {
+                    completed = true;
+                }
+                registry.remove(this, Set.of(key), finished);
+                if (!finished) {
+                    return true;
+                }
+                return publish();
+            } finally {
+                completionGate.unlock();
             }
-            observedResults.put(key.messageId, result);
-            TaskRpcStageEvent.items(TaskRpcStageEvent.start(), "OBSERVED", key.taskId, List.of(key.messageId), 1, false);
-            boolean finished = pending.isEmpty();
-            if (finished) {
+        }
+
+        private boolean completeNotObserved(String reason) {
+            completionGate.lock();
+            try {
+                if (completed) {
+                    return false;
+                }
                 completed = true;
+                Set<ItemKey> remaining = Set.copyOf(pending);
+                long observation = TaskRpcStageEvent.start();
+                if (observation != 0) for (ItemKey key : remaining)
+                    TaskRpcStageEvent.items(observation, reason, key.taskId, List.of(key.messageId), 0, false);
+                pending.clear();
+                registry.remove(this, remaining, true);
+                return publish();
+            } finally {
+                completionGate.unlock();
             }
-            registry.remove(this, Set.of(key), finished);
-            if (!finished) {
-                return true;
-            }
-            return publish();
         }
 
-        private synchronized boolean completeNotObserved(String reason) {
-            if (completed) {
-                return false;
+        private void cancel() {
+            completionGate.lock();
+            try {
+                if (completed) {
+                    return;
+                }
+                completed = true;
+                Set<ItemKey> remaining = Set.copyOf(pending);
+                long observation = TaskRpcStageEvent.start();
+                if (observation != 0) for (ItemKey key : remaining)
+                    TaskRpcStageEvent.items(observation, "WAIT_CANCELLED", key.taskId, List.of(key.messageId), 0, false);
+                pending.clear();
+                registry.remove(this, remaining, true);
+            } finally {
+                completionGate.unlock();
             }
-            completed = true;
-            Set<ItemKey> remaining = Set.copyOf(pending);
-            long observation = TaskRpcStageEvent.start();
-            if (observation != 0) for (ItemKey key : remaining)
-                TaskRpcStageEvent.items(observation, reason, key.taskId, List.of(key.messageId), 0, false);
-            pending.clear();
-            registry.remove(this, remaining, true);
-            return publish();
-        }
-
-        private synchronized void cancel() {
-            if (completed) {
-                return;
-            }
-            completed = true;
-            Set<ItemKey> remaining = Set.copyOf(pending);
-            long observation = TaskRpcStageEvent.start();
-            if (observation != 0) for (ItemKey key : remaining)
-                TaskRpcStageEvent.items(observation, "WAIT_CANCELLED", key.taskId, List.of(key.messageId), 0, false);
-            pending.clear();
-            registry.remove(this, remaining, true);
         }
 
         private boolean publish() {

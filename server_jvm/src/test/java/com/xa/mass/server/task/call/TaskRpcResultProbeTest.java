@@ -24,17 +24,20 @@ class TaskRpcResultProbeTest {
         results.put("hit", success);
         results.put("miss", null);
         when(runtime.takeTaskItemResults("task", List.of("hit", "miss"))).thenReturn(results);
+        var requests = List.of(new TaskRpcWaitRegistry.ProbeRequest("task", "hit"),
+                new TaskRpcWaitRegistry.ProbeRequest("task", "miss"));
+        when(registry.beginProbe(requests)).thenReturn(new TaskRpcWaitRegistry.ProbeBatch(requests, List.of()));
         var probe = new TaskRpcResultProbe(runtime, registry, new TaskRpcProperties(java.time.Duration.ofDays(7), 1000, 1000, 10, 10, 10, 50, 100, 250, java.util.Map.of()));
         Path path = temporary.resolve("probe.jfr");
         try (var recording = new Recording()) {
             recording.enable(TaskRpcStageEvent.class);
             recording.start();
-            probe.probe(List.of(new TaskRpcWaitRegistry.ProbeRequest("task", "hit"),
-                    new TaskRpcWaitRegistry.ProbeRequest("task", "miss")));
+            probe.probe(requests);
             recording.stop();
             recording.dump(path);
         }
         verify(registry).completeResult("task", "hit", success);
+        verify(registry).beginProbe(requests);
         verify(registry).finishProbe("task", "hit", 0);
         verify(registry).finishProbe("task", "miss", 0);
         verifyNoMoreInteractions(registry);

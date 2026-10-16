@@ -92,12 +92,12 @@ public final class TaskRpcResultProbe implements SmartLifecycle {
             List<TaskRpcWaitRegistry.ProbeRequest> requests
     ) {
         long started = TaskRpcStageEvent.start();
-        try {
-            List<String> messageIds = requests.stream()
+        try (var batch = registry.beginProbe(requests)) {
+            List<String> messageIds = batch.requests().stream()
                     .map(TaskRpcWaitRegistry.ProbeRequest::messageId)
                     .toList();
             Map<String, TaskItemResult> results =
-                    taskRuntime.takeTaskItemResults(
+                    messageIds.isEmpty() ? Map.of() : taskRuntime.takeTaskItemResults(
                             taskId,
                             messageIds
                     );
