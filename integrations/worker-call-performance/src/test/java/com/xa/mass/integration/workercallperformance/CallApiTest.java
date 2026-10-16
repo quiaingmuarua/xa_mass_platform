@@ -13,6 +13,31 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 class CallApiTest {
+    @Test void streamingExportsCarryTheExplicitTaskCaller() throws Exception {
+        var caller = Map.of("X-XA-Dev-User", "cGVyZi11c2Vy", "X-XA-Dev-Role", "operator");
+        var requests = new AtomicInteger();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/tasks/task/results:export", exchange -> {
+            requests.incrementAndGet();
+            boolean admitted = caller.entrySet().stream().allMatch(entry ->
+                    entry.getValue().equals(exchange.getRequestHeaders().getFirst(entry.getKey())));
+            admitted &= exchange.getRequestMethod().equals("POST") && exchange.getRequestBody().readAllBytes().length == 0;
+            String payload = Jsons.toJson(Map.of("input", CallApi.INPUT, "valid", true,
+                    "md5", "c1bb4f81d892b2d57947682aeb252456"));
+            String rows = Jsons.toJson(Map.of("messageId", "export-0", "opaqueResultPayload", payload)) + "\n\n";
+            byte[] body = (admitted ? rows : "{\"code\":12012}").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(admitted ? 200 : 400, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", caller)) {
+            assertThat(api.exportCount("task")).isEqualTo(1);
+            assertThat(api.exportVerified("task", "export-", 1)).isEqualTo(1);
+            assertThat(requests).hasValue(2);
+        } finally { server.stop(0); }
+    }
+
     @Test void actionErrorsKeepOnlyStatusAndIntegerCodeWithoutChangingUnavailableClassification() throws Exception {
         var requests = new AtomicInteger();
         var status = new AtomicInteger(503);

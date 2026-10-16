@@ -55,7 +55,7 @@ class TaskRpcWaitRegistryTest {
         var probe = new TaskRpcResultProbe(runtime, registry, properties(10, 10, 256));
         var batch = registry.takeDueBatch(10);
         probe.probe(batch);
-        probe.probe(batch);
+        probe.probe(registry.takeDueBatch(10));
         lifecycle(response).handleTimeout(null, response);
         assertThat(result(response).get("message").status().wireValue()).isEqualTo("not_observed");
         verify(runtime, org.mockito.Mockito.times(2)).takeTaskItemResults("task", List.of("message"));

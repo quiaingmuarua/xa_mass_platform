@@ -10,6 +10,10 @@ use `results:take` only for unresolved IDs; an empty take cannot erase a receive
 Result or trigger execution resubmission. Finite saturation witnesses retain
 their non-consuming export path.
 
+All protected Runtime requests, including streamed finite Result exports, carry
+the fixture's explicit development caller headers through the same request
+builder. Streaming preserves the export timeout and identity/payload validation.
+
 Primary claim: with configurable resources set so they do not bind, the
 performance of each call path at fixed offered rates, the capacity of the Task
 paths, and the difference between paths on one host. The lane does not measure

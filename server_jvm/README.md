@@ -477,6 +477,18 @@ failures are stored) makes matching in-process waiters due immediately, or probe
 an in-flight Item again right after its current read; with no waiters it returns
 without taking the registry lock. A lost notice, a Result stored by another
 instance, or a failed read keeps the existing 50/100/250ms probe intervals.
+Before each consuming probe, the Registry captures the current receiving waiters
+and acquires their completion gates in registration order, outside its registry
+monitor. It then drops IDs with no remaining receiver. The gates cover the
+bounded Redis take and delivery to those waiters: timeout first leaves the Result
+for a later consumer; take first delivers its obtained entries before timeout
+publishes the remainder as `not_observed`. An in-flight take can therefore delay
+that request's timeout callback until the Redis operation finishes or fails;
+unrelated admission, wakeups and timeouts do not wait for it. Fair waiter gates
+prevent a queued timeout from losing to another probe. No new take starts for an
+already expired waiter, and failed/empty takes release the gates without execution
+resubmission. This is a Server response handoff, not a change to Kernel Result
+atomicity, Item Scores or execution scheduling.
 Once submission is accepted it returns HTTP `200`;
 each observed entry is `succeeded` or `failed`, while timeout, saturated
 observation capacity, or Registry shutdown marks only the remainder
@@ -506,8 +518,9 @@ on actual RPC Result writes. Reads, takes, preparation and submission do not
 renew it. The whole HASH expires when idle; it is not a per-field age bound or
 an Item/Task cleanup mechanism. No maintenance thread or new index is added.
 
-A take may commit before its Redis or HTTP response is lost. Wait cancellation
-can race an admitted take. `not_observed` cannot distinguish pending, already
+A take may commit before its Redis or HTTP response is lost. Client disconnect,
+process loss or a failed response mapping can still lose already consumed content;
+the local timeout handoff does not guarantee client receipt. `not_observed` cannot distinguish pending, already
 consumed or expired content and does not establish execution absence. No ACK,
 compensation, response replay or automatic execution resubmission is provided.
 Existing local wait groups may share an obtained value, but concurrent consumers
@@ -1267,6 +1280,7 @@ The Server-specific test entrypoints are:
 | Explicit RPC preparation and Project directory reads | [TaskRpcPreparationServiceTest](src/test/java/com/xa/mass/server/task/call/TaskRpcPreparationServiceTest.java), [ProjectTaskQueryServiceTest](src/test/java/com/xa/mass/server/project/ProjectTaskQueryServiceTest.java) |
 | Independent Prepare stages | [WorkerPreparationServiceTest](src/test/java/com/xa/mass/server/worker/preparation/WorkerPreparationServiceTest.java) |
 | Call batching and finite export | [TaskCallSubmissionBatcherTest](src/test/java/com/xa/mass/server/task/call/TaskCallSubmissionBatcherTest.java), [TaskResultsExportServiceTest](src/test/java/com/xa/mass/server/task/result/TaskResultsExportServiceTest.java) |
+| RPC consumption and timeout handoff | [TaskRpcConsumptionHandoffTest](src/test/java/com/xa/mass/server/task/call/TaskRpcConsumptionHandoffTest.java) controls both race orders, partial/empty/failing takes and independent admission; [TaskRpcHttpTimeoutTest](src/test/java/com/xa/mass/server/task/call/TaskRpcHttpTimeoutTest.java) exercises actual servlet timeouts with platform and virtual threads |
 | Report admission and partial effects | [WorkerDeliveryServiceTest](src/test/java/com/xa/mass/server/delivery/application/WorkerDeliveryServiceTest.java) |
 | Observation queue, projections and stop | [WorkerObservationConsumerTest](src/test/java/com/xa/mass/server/assembly/pacer/WorkerObservationConsumerTest.java), [PlatformPropertiesHandlerTest](src/test/java/com/xa/mass/server/assembly/pacer/PlatformPropertiesHandlerTest.java) |
 | Actual protocol traversal and HTTP execution | [RuntimeBoundaryIntegrationTest](src/test/java/com/xa/mass/server/integration/RuntimeBoundaryIntegrationTest.java), [DirectCallHttpExecutionIntegrationTest](src/test/java/com/xa/mass/server/integration/DirectCallHttpExecutionIntegrationTest.java) |
