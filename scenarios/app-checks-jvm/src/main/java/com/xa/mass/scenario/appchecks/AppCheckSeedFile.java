@@ -33,17 +33,28 @@ record AppCheckSeedFile(Path file, long inputCount, long emptyCount, long duplic
             normalized = Files.createTempFile("app-check-seeds-", ".txt");
             var unique = new HashSet<String>();
             long rows = 0, empty = 0, duplicates = 0, invalid = 0, firstInvalid = 0;
-              try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8);
-                 var writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
-                var seeds = new ArrayList<String>(snapshot.seedsPerItem());
-                for (String seed; (seed = reader.readLine()) != null;) {
-                    seeds.add(seed);
-                    if (seeds.size() == snapshot.seedsPerItem()) {
-                        writeGroup(writer, snapshot, seeds); count++; seeds.clear();
+            try (var reader = Files.newBufferedReader(raw, StandardCharsets.UTF_8);
+                 var writer = Files.newBufferedWriter(normalized, StandardCharsets.UTF_8)) {
+                for (String line; (line = reader.readLine()) != null;) {
+                    rows++;
+                    if (rows == 1 && line.startsWith("\uFEFF")) line = line.substring(1);
+                    final String seed;
+                    try {
+                        seed = type.normalize(line, country);
+                        if (!seed.isEmpty()) contract.validateSeed(seed);
+                    } catch (IllegalArgumentException failure) {
+                        invalid++; if (firstInvalid == 0) firstInvalid = rows; continue;
                     }
+                    if (seed.isEmpty()) { empty++; continue; }
+                    if (!unique.add(seed)) { duplicates++; continue; }
+                    if (unique.size() > MAX_SEEDS)
+                        throw new AppCheckTaskService.RequestFailure(400, "每次最多导入 100,000 个去重种子", null);
+                    writer.write(seed); writer.newLine();
                 }
-                if (!seeds.isEmpty()) { writeGroup(writer, snapshot, seeds); count++; }
             }
+            if (invalid > 0) throw new AppCheckTaskService.RequestFailure(400,
+                    "种子文件有 " + invalid + " 个无效种子，首个错误在第 " + firstInvalid + " 行；未写入任何种子", null);
+            if (unique.isEmpty()) throw new AppCheckTaskService.RequestFailure(400, "种子文件不能为空", null);
             complete = true;
             return new AppCheckSeedFile(normalized, rows, empty, duplicates, unique.size());
         } catch (java.nio.charset.CharacterCodingException invalid) {
@@ -60,17 +71,17 @@ record AppCheckSeedFile(Path file, long inputCount, long emptyCount, long duplic
         boolean complete = false;
         int count = 0;
         try {
-          try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8);
-             var writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
-            var seeds = new ArrayList<String>(snapshot.seedsPerItem());
-            for (String seed; (seed = reader.readLine()) != null;) {
-                seeds.add(seed);
-                if (seeds.size() == snapshot.seedsPerItem()) {
-                    writeGroup(writer, snapshot, seeds); count++; seeds.clear();
+            try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8);
+                 var writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
+                var seeds = new ArrayList<String>(snapshot.seedsPerItem());
+                for (String seed; (seed = reader.readLine()) != null;) {
+                    seeds.add(seed);
+                    if (seeds.size() == snapshot.seedsPerItem()) {
+                        writeGroup(writer, snapshot, seeds); count++; seeds.clear();
+                    }
                 }
+                if (!seeds.isEmpty()) { writeGroup(writer, snapshot, seeds); count++; }
             }
-            if (!seeds.isEmpty()) { writeGroup(writer, snapshot, seeds); count++; }
-          }
             complete = true;
             return new PreparedGroups(path, count);
         } catch (IllegalArgumentException invalid) {
