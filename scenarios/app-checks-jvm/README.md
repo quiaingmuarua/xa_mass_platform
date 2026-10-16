@@ -399,7 +399,7 @@ Worker 关联复算窗口，不用 Item 数量或 Result 数量推算。该见�
 保留并恢复调用环境，在摘要记录覆盖值。它验证原业务闭环，不声称验证默认窗口限额。
 Preview 的默认 60 秒／10 次保持。进程 runner 复用现有 Preview 启动/清理，四个 App Worker 加一个执行通用检查的 demo Worker，
 先只读确认已知 App Worker 的 Properties 已上报，再在两份独立启动配置中创建八个 Task 共 60 Items，
-分别覆盖全注册/全失败与全未注册/混合；参数来自检查配置而非创建请求。每份配置另在两个 App Group 分别完成 104 条运营商检查。两份配置分别使用
+分别覆盖全注册/全失败与全未注册/混合；参数来自检查配置而非创建请求。每份配置另在 Demo 完成 104 个运营商种子（11 Items）、105 个 MD5 种子（11 Items）及 107 个素数种子（107 Items），独立核对原始 Result、Item 终态、固定答案和预览外 CSV。两份配置分别使用
 `--port` 和 `--port + 10` 为基准的独立端口组（各加 3 为 Adapter、加 4 为 Host），避免关闭 JVM
 后立即复用尚未释放的 TCP 端口；启动器仍严格拒绝已占用端口。功能验收基准端口范围为 1..65521。
 每份配置内每组两个 Task，保留同 Group 与跨 Group 并存覆盖，
@@ -408,6 +408,9 @@ Preview 的默认 60 秒／10 次保持。进程 runner 复用现有 Preview 启
 CI 使用现有 `product_coexistence` lane 执行源码及新解压 ZIP；原 SMS/Messages
 proof 显式 `app_count=0`，负载和断言保持原样。公开产物只包含阶段、数量和校验摘要，
 原始日志与业务内容留在 private；每次使用唯一 test scope 并仅 SCAN/UNLINK 该 scope。
+
+Boot 分组证明用同一份 23 个 text 种子验证配置 10/1 分别产生 3/23 Items，
+配置保存及重启不改变原 Task 与请求关联；归档证明保持逐种子答案、整组异常排除和 CSV 一致。
 
 ## 可选 Pool 基准
 
