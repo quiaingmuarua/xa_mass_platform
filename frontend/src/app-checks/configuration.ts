@@ -1,4 +1,4 @@
-import { appLabel, countryLabel, type Catalog, type CheckTask } from "./model";
+import { checkLabel, countryLabel, type Catalog, type CheckTask } from "./model";
 
 export interface TaskPolicySnapshot {
   priority: number;
@@ -15,7 +15,7 @@ export function scenarioConfiguration(
     rows: [
       row("Project", catalog.projectId),
       row("支持国家", catalog.countries.map(countryLabel).join("、")),
-      row("单次号码上限", `${number(catalog.limits.numbersPerImport)} 个`),
+      row("单次种子上限", `${number(catalog.limits.seedsPerImport)} 个`),
       row("单次文件上限", `${number(catalog.limits.importFileBytes / 1024 / 1024)} MiB`)
     ]
   };
@@ -29,7 +29,7 @@ export type ConfigurationSource =
   | "effective";
 export interface ConfigurationSection {
   source: ConfigurationSource;
-  scope: "应用" | "场景" | "任务" | "Pool / Group";
+  scope: "检查配置" | "场景" | "任务" | "Pool / Group";
   rows: { label: string; value: string }[];
   unavailable?: string;
 }
@@ -77,10 +77,19 @@ export function savedTaskConfiguration(task: CheckTask, mode: "api" | "mock") {
       source: mode === "mock" ? "mock" : "task",
       scope: "任务",
       rows: [
-        row("应用", task.appId ? `${appLabel(task.appId)} / ${task.appId}` : undefined),
+        row(
+          "检查项",
+          task.checkId
+            ? `${task.checkLabel ?? checkLabel(task.checkId)} / ${task.checkId}`
+            : undefined
+        ),
+        row("检查类型", task.checkTypeLabel),
+        row("种子格式", task.seedType),
         row("实际 WorkerGroup", task.workerGroupId),
-        row("号码地区", task.country ? countryLabel(task.country) : undefined),
-        row("业务契约", task.contractId),
+        ...(task.seedType === "phonenumber"
+          ? [row("号码地区", task.country ? countryLabel(task.country) : undefined)]
+          : []),
+        row("业务契约", task.checkType),
         row("执行事件", task.eventCode),
         row(
           "Worker 查询",

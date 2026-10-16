@@ -16,7 +16,13 @@ import "element-plus/es/components/table/style/css";
 import "element-plus/es/components/table-column/style/css";
 import "element-plus/es/components/tabs/style/css";
 import "element-plus/es/components/tab-pane/style/css";
-import { appLabel, countryLabel, type Catalog, type CheckTask } from "./model";
+import {
+  checkTypeLabel,
+  checkLabel,
+  countryLabel,
+  type Catalog,
+  type CheckTask
+} from "./model";
 import type { AppCheckTaskSource } from "./task-source";
 import {
   taskStage,
@@ -72,7 +78,7 @@ function openKnown(event: Event) {
   if (id) emit("openKnown", id, trigger instanceof HTMLElement ? trigger : undefined);
 }
 const business = computed(() =>
-  props.tasks.filter((task) => !task.managed && !!task.appId)
+  props.tasks.filter((task) => !task.managed && !!task.checkId)
 );
 const stages = [
   { key: "all", label: "全部" },
@@ -92,7 +98,8 @@ const filtered = computed(() =>
           ((task.name ?? "") + " " + task.taskId)
             .toLowerCase()
             .includes(filters.query.trim().toLowerCase())) &&
-        (filters.app === "all" || task.appId === filters.app) &&
+        (filters.checkType === "all" || task.checkType === filters.checkType) &&
+        (filters.check === "all" || task.checkId === filters.check) &&
         (filters.country === "all" || task.country === filters.country) &&
         (filters.state === "all" || taskStage(task) === filters.state) &&
         (!filters.from ||
@@ -127,7 +134,7 @@ function resetScroll() {
 watch(
   () => [
     filters.query,
-    filters.app,
+    filters.check,
     filters.country,
     filters.state,
     filters.from,
@@ -148,7 +155,8 @@ watch(
 function reset() {
   Object.assign(filters, {
     query: "",
-    app: "all",
+    check: "all",
+    checkType: "all",
     country: "all",
     state: "all",
     from: "",
@@ -175,7 +183,7 @@ defineExpose({ revealTask, focusHeading });
   <section class="checks-list-page">
     <header class="checks-heading">
       <h1 ref="heading" tabindex="-1">
-        {{ allTasks ? "应用注册查询" : "我的任务 · 当前批次" }}
+        {{ allTasks ? "批量检查" : "我的任务 · 当前批次" }}
       </h1>
       <div class="checks-list-controls">
         <div class="checks-actions">
@@ -255,10 +263,33 @@ defineExpose({ revealTask, focusHeading });
             aria-label="搜索查询任务"
             placeholder="任务名称或编号"
         /></label>
-        <select v-model="filters.app" aria-label="筛选应用">
-          <option value="all">全部应用</option>
-          <option v-for="app in catalog.apps" :key="app.appId" :value="app.appId">
-            {{ app.label }}
+        <select
+          v-model="filters.checkType"
+          aria-label="筛选检查类型"
+          @change="filters.check = 'all'"
+        >
+          <option value="all">全部检查类型</option>
+          <option
+            v-for="type in catalog.checkTypes.filter((type) =>
+              catalog.checks.some((check) => check.checkType === type.id)
+            )"
+            :key="type.id"
+            :value="type.id"
+          >
+            {{ type.label }}
+          </option>
+        </select>
+        <select v-model="filters.check" aria-label="筛选执行配置">
+          <option value="all">全部执行配置</option>
+          <option
+            v-for="app in catalog.checks.filter(
+              (check) =>
+                filters.checkType === 'all' || check.checkType === filters.checkType
+            )"
+            :key="app.checkId"
+            :value="app.checkId"
+          >
+            {{ app.label }} · {{ checkTypeLabel(app.checkType, catalog) }}
           </option>
         </select>
         <select v-model="filters.country" aria-label="筛选地区">
@@ -328,10 +359,13 @@ defineExpose({ revealTask, focusHeading });
             <small class="checks-task-id">{{ row.taskId }}</small>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="应用 / 地区" width="120">
+        <ElTableColumn label="检查 / 执行配置" width="170">
           <template #default="{ row }"
-            >{{ appLabel(row.appId, catalog)
-            }}<small>{{ countryLabel(row.country) }}</small></template
+            >{{ row.checkTypeLabel ?? checkTypeLabel(row.checkType, catalog)
+            }}<small
+              >{{ row.checkLabel ?? checkLabel(row.checkId, catalog)
+              }}{{ row.country ? " · " + countryLabel(row.country) : "" }}</small
+            ></template
           >
         </ElTableColumn>
         <ElTableColumn v-if="allTasks" label="创建者" width="100">
@@ -339,7 +373,7 @@ defineExpose({ revealTask, focusHeading });
             ><span :title="row.userId">{{ identityLabel(row.userId) }}</span></template
           >
         </ElTableColumn>
-        <ElTableColumn label="号码数量" width="110" align="right">
+        <ElTableColumn label="种子数量" width="110" align="right">
           <template #default="{ row }"
             ><span class="checks-number">{{ quantity(row.totalCount) }}</span></template
           >
@@ -393,7 +427,7 @@ defineExpose({ revealTask, focusHeading });
                   ? "这里只展示本次载入窗口中的个人任务，不代表全部历史任务。"
                   : business.length
                     ? "调整筛选条件查看已载入任务。"
-                    : "选择应用并导入号码，创建第一批查询。"
+                    : "选择检查类型和执行配置，导入种子创建第一批检查。"
               }}
             </p>
           </div>

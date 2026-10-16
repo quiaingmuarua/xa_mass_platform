@@ -11,7 +11,7 @@ public final class AppCheckConfigurationFixture {
         return properties(maxCount, Map.of());
     }
     @SuppressWarnings("unchecked")
-    static Map<String, Object> properties(long maxCount, Map<String, Object> parametersByApp) {
+    static Map<String, Object> properties(long maxCount, Map<String, Object> parametersByCheck) {
         try {
             Path root = Path.of("build", "app-check-config-fixtures", UUID.randomUUID().toString()).toAbsolutePath();
             Files.createDirectories(root);
@@ -21,8 +21,8 @@ public final class AppCheckConfigurationFixture {
             }
             seed.put("poolGroups", Map.of("app-a-sim", Map.of("windowMillis", 60000, "maxCount", maxCount),
                     "app-b-sim", Map.of("windowMillis", 60000, "maxCount", maxCount)));
-            ((Map<String, Map<String,Object>>) seed.get("applications")).forEach((appId, app) -> {
-                if (parametersByApp.containsKey(appId)) app.put("parameters", parametersByApp.get(appId));
+            ((Map<String, Map<String,Object>>) seed.get("checks")).forEach((checkId, app) -> {
+                if (parametersByCheck.containsKey(checkId)) app.put("parameters", parametersByCheck.get(checkId));
             });
             Path file = root.resolve("seed.json"); Files.writeString(file, Jsons.toJson(seed));
             return Map.of("xa.mass.scenarios.app-checks.storage.path", root.resolve("configuration").toString(),

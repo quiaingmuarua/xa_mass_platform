@@ -42,9 +42,10 @@ async function verifyResult(
   task: CheckDetail["task"],
   result: CheckResult
 ): Promise<Verification> {
-  if (task.contractId !== "simulated-registration-v1")
+  if (task.checkType !== "simulated-registration-v1")
     return { status: "unavailable", reason: "当前契约不使用模拟复算" };
   const simulation = simulationSchema.safeParse(task.contractParameters);
+  const { workerId, workerGroupId, simulatedDelayMillis } = result.details ?? {};
   if (result.resultStatus === "failed")
     return { status: "unavailable", reason: "失败记录没有原执行者，无法复算异常原因" };
   if (
@@ -53,32 +54,33 @@ async function verifyResult(
     !simulation.success ||
     !task.salt ||
     !task.workerGroupId ||
-    !result.number ||
-    !result.workerId ||
-    !result.workerGroupId ||
-    typeof result.registered !== "boolean" ||
-    result.simulatedDelayMillis === undefined
+    !result.seed ||
+    typeof workerId !== "string" ||
+    !workerId ||
+    typeof workerGroupId !== "string" ||
+    !workerGroupId ||
+    typeof result.matched !== "boolean" ||
+    typeof simulatedDelayMillis !== "number"
   )
     return { status: "unavailable", reason: "缺少有效配置、关联或业务结果" };
   const bucket = Number(
-    (await hashValue("outcome", result.workerId, task.salt, result.number)) % 1000n
+    (await hashValue("outcome", workerId, task.salt, result.seed)) % 1000n
   );
   const [min, max] = simulation.data.delayMs;
   const expectedDelay =
     min +
     Number(
-      (await hashValue("delay", result.workerId, task.salt, result.number)) %
+      (await hashValue("delay", workerId, task.salt, result.seed)) %
         BigInt(max - min + 1)
     );
   const outcome = Object.entries(simulation.data.ranges).find(
     ([, [a, b]]) => a <= bucket && bucket < b
   )?.[0];
   const problems = [];
-  if (result.workerGroupId !== task.workerGroupId) problems.push("执行 Group 不符");
+  if (workerGroupId !== task.workerGroupId) problems.push("执行 Group 不符");
   if (outcome === "failed") problems.push("成功内容命中失败区间");
-  else if (result.registered !== (outcome === "registered"))
-    problems.push("注册答案不符");
-  if (expectedDelay !== result.simulatedDelayMillis) problems.push("模拟延迟不符");
+  else if (result.matched !== (outcome === "registered")) problems.push("注册答案不符");
+  if (expectedDelay !== simulatedDelayMillis) problems.push("模拟延迟不符");
   return {
     status: problems.length ? "mismatch" : "matched",
     reason: problems.length ? problems.join("；") : "注册答案、Group 与模拟延迟一致",

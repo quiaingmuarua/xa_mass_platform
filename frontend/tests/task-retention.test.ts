@@ -54,12 +54,13 @@ it("freezes Messages receipts and changes execution identity only after purge", 
 it("keeps App Checks statistics and CSV after archive and removes the creation association at expiry", async () => {
   let now = 2000000000000;
   const source = new MockAppCheckTaskSource(new MockUserDirectorySource(), () => now);
-  const input = { requestId: "retention", appId: "app-a", country: "CN" as const };
+  const input = {
+    requestId: "retention",
+    checkId: "app-a-registration",
+    country: "CN" as const
+  };
   const first = await source.createTask(A, input);
-  await source.importNumbers(A, first.taskId, {
-    size: 13,
-    text: async () => "+8613800000001"
-  } as Blob);
+  await source.importSeeds(A, first.taskId, new Blob(["+8613800000001"]));
   await source.approveTask(A, first.taskId, 1);
   await source.completeTask(ADMIN, first.taskId);
   const before = await source.loadTask(A, first.taskId);

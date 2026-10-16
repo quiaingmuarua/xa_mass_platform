@@ -10,7 +10,7 @@ export function createImportReader() {
   function cancel() {
     active?.terminate();
     active = undefined;
-    rejectActive?.(new DOMException("已取消旧的号码解析", "AbortError"));
+    rejectActive?.(new DOMException("已取消旧的种子解析", "AbortError"));
     rejectActive = undefined;
   }
   return {
@@ -43,7 +43,7 @@ export function createImportReader() {
         worker.onerror = () => {
           if (active !== worker) return;
           finish();
-          reject(new Error("后台号码解析失败，请重新校验。"));
+          reject(new Error("后台种子解析失败，请重新校验。"));
         };
         worker.postMessage(
           { content, options },

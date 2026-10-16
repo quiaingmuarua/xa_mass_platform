@@ -9,21 +9,21 @@ import type { ImportSnapshot } from "../src/app-checks/import-model";
 export async function importedTask(
   source: MockAppCheckTaskSource,
   input: CreateCheckTask & {
-    numbers: string[];
+    seeds: string[];
     sourceFile?: string;
     importSnapshot?: ImportSnapshot;
   }
 ) {
-  const { requestId, appId, country } = input;
+  const { requestId, checkId, country } = input;
   const created = await source.createTask(CALLER, {
     requestId,
-    appId,
+    checkId,
     country
   });
-  await source.importNumbers(
+  await source.importSeeds(
     CALLER,
     created.taskId,
-    new NodeBlob([input.numbers.join("\n")]) as unknown as Blob,
+    new NodeBlob([input.seeds.join("\n")]) as unknown as Blob,
     input.importSnapshot
   );
   return created;

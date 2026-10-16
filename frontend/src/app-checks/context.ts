@@ -59,7 +59,7 @@ export function createAppCheckContext(source: AppCheckTaskSource) {
               ? { status: "disabled" }
               : {
                   status: "unavailable",
-                  message: "暂时无法确认应用注册查询可用性，请重试。"
+                  message: "暂时无法确认批量检查可用性，请重试。"
                 });
         }
       } finally {

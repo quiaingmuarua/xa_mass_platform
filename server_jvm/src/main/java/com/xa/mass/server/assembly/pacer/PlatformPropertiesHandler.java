@@ -31,13 +31,13 @@ final class PlatformPropertiesHandler implements FunctionHandler {
                               LongConsumer failures) {
         var selected = new LinkedHashMap<Selection, Projection>();
         for (var projection : projections) {
-            projection.projectionsByGroup().forEach((group, project) -> {
+            projection.projectionsByGroup().forEach((group, projects) -> projects.forEach(project -> {
                 var key = new Selection(group,
                         new EventKey(project.messageEventName(), projection.observationEventName()));
                 if (selected.putIfAbsent(key, new Projection(key, project.project())) != null) {
                     throw new IllegalArgumentException("operation=workerObservation.assemble duplicate projection selection");
                 }
-            });
+            }));
         }
         this.projections = Collections.unmodifiableMap(selected);
         this.properties = properties;

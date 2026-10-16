@@ -1,43 +1,31 @@
 import { z } from "zod";
-import { simulationSchema } from "./model";
+import { simulationSchema, checkTypeSchema, executionSchema } from "./model";
 
 export const SIMULATED_CONTRACT = "simulated-registration-v1";
 export const REGISTRATION_CONTRACT = "registration-v1";
+export const TEXT_PROOF_CONTRACT = "text-md5-proof-v1";
+export const CARRIER_CONTRACT = "original-carrier-v1";
 const name = z
   .string()
   .min(1)
   .max(128)
   .refine((value) => !!value.trim());
 const object = z.record(z.string(), z.unknown());
-export const executionSchema = z.strictObject({
-  eventCode: z.string().min(1),
-  refill: z.array(
-    z.strictObject({
-      poolName: z.string().min(1),
-      target: z.unknown(),
-      count: z.number().int().positive()
-    })
-  ),
-  workerSelector: z.strictObject({
-    executorName: z.string().min(1),
-    input: z.unknown()
-  })
-});
 // Response shape only. The JSON editor deliberately leaves semantic validation to the server.
 export const settingsSchema = z.strictObject({
-  common: z.strictObject({ contractDefaults: z.record(name, object) }),
-  applications: z
+  common: z.strictObject({ typeDefaults: z.record(name, object) }),
+  checks: z
     .record(
       name,
       z.strictObject({
         label: name,
         workerGroupId: name,
         execution: executionSchema,
-        contractId: name,
+        checkType: name,
         parameters: object.optional()
       })
     )
-    .refine((value) => Object.keys(value).length > 0, "应用配置不能为空"),
+    .refine((value) => Object.keys(value).length > 0, "检查配置不能为空"),
   poolGroups: z.record(
     name,
     z.strictObject({
@@ -55,15 +43,7 @@ export const configurationViewSchema = z.strictObject({
   effective: snapshotSchema,
   restartRequired: z.boolean(),
   newScopeRequired: z.boolean(),
-  contracts: z.array(
-    z.strictObject({
-      id: z.string(),
-      description: z.string(),
-      parameterExample: object,
-      inputExample: object,
-      resultExample: object
-    })
-  )
+  checkTypes: z.array(checkTypeSchema)
 });
 export type AppCheckSettings = z.infer<typeof settingsSchema>;
 export type AppCheckConfigurationView = z.infer<typeof configurationViewSchema>;
@@ -128,29 +108,37 @@ export function requireSettingsUpdate(
   previous: AppCheckSettings,
   next: AppCheckSettings
 ) {
-  for (const [appId, app] of Object.entries(previous.applications)) {
-    const updated = next.applications[appId];
-    if (!updated || updated.workerGroupId !== app.workerGroupId)
-      throw new Error("已有应用不可删除或换绑 WorkerGroup：" + appId);
+  for (const [checkId, app] of Object.entries(previous.checks)) {
+    const updated = next.checks[checkId];
+    if (
+      !updated ||
+      updated.workerGroupId !== app.workerGroupId ||
+      updated.checkType !== app.checkType
+    )
+      throw new Error("已有检查项不可删除、换类型或换绑 WorkerGroup：" + checkId);
   }
 }
-/** Mock owns the same two protocol validators; the API editor never uses this validator. */
+/** Mock owns the installed protocol validators; the API editor never uses this validator. */
 export function validateMockSettings(input: unknown): AppCheckSettings {
   const settings = settingsSchema.parse(input);
   const normalize = (id: string, parameters: unknown): Record<string, unknown> => {
     if (id === SIMULATED_CONTRACT) return simulationSchema.parse(parameters);
-    if (id === REGISTRATION_CONTRACT) return z.strictObject({}).parse(parameters);
+    if (
+      id === REGISTRATION_CONTRACT ||
+      id === CARRIER_CONTRACT ||
+      id === TEXT_PROOF_CONTRACT
+    )
+      return z.strictObject({}).parse(parameters);
     throw new Error("未知契约：" + id);
   };
-  for (const [id, parameters] of Object.entries(settings.common.contractDefaults))
-    settings.common.contractDefaults[id] = normalize(id, parameters);
+  for (const [id, parameters] of Object.entries(settings.common.typeDefaults))
+    settings.common.typeDefaults[id] = normalize(id, parameters);
   const groups = new Set<string>();
-  for (const app of Object.values(settings.applications)) {
-    if (groups.has(app.workerGroupId)) throw new Error("applications：Group 必须唯一");
+  for (const app of Object.values(settings.checks)) {
     groups.add(app.workerGroupId);
     const parameters = normalize(
-      app.contractId,
-      app.parameters ?? settings.common.contractDefaults[app.contractId]
+      app.checkType,
+      app.parameters ?? settings.common.typeDefaults[app.checkType]
     );
     if (app.parameters !== undefined) app.parameters = parameters;
     if (

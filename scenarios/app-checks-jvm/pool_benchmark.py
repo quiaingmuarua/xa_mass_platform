@@ -66,7 +66,7 @@ def benchmark(preview, root, output, port, baseline, configure, create_import_ap
             inventory = folder / "private" / ("inventory-" + uuid.uuid4().hex) / "data/scenario-workers"
             run = ObservedPreview(1, port, root=root, output=folder / "private", sandbox_root=inventory, app_count=20)
             with configure(baseline=baseline, window_millis=60000,
-                           parameters_by_app={"app-a": {"ranges": {"registered": [0,1000], "unregistered": [1000,1000], "failed": [1000,1000]}, "delayMs": [0,0]}}), run:
+                           parameters_by_check={"app-a-registration": {"ranges": {"registered": [0,1000], "unregistered": [1000,1000], "failed": [1000,1000]}, "delayMs": [0,0]}}), run:
                 workers = preview.http(run.host, "/lab/v1/workers")["workers"]
                 ids = {worker["workerId"] for worker in workers if worker["workerGroupId"] == "app-a-sim"}
                 require(len(ids) == 20, "Benchmark requires 20 prepared App A Workers")

@@ -360,7 +360,7 @@
 }
 
 .reason-completed,
-.answer-registered {
+.answer-matched {
   background: var(--el-color-success-light-9);
   color: var(--el-color-success-dark-2);
 }
@@ -368,14 +368,21 @@
   background: var(--el-color-warning-light-9);
   color: var(--el-color-warning-dark-2);
 }
-.answer-unregistered {
+.answer-unmatched {
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
 }
-.answer-failed,
-.answer-invalid {
+.answer-error {
   background: var(--el-color-danger-light-9);
   color: var(--el-color-danger);
+}
+.checks-result-details {
+  margin-top: 4px;
+  color: var(--rv-text-secondary);
+}
+.checks-result-details pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .checks-progress-mini {
   min-width: 130px;

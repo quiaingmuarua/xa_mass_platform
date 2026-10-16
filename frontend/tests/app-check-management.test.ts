@@ -8,19 +8,35 @@ import { ApiAppCheckTaskSource } from "../src/app-checks/task-source";
 
 const input = {
   requestId: "workflow",
-  appId: "app-a",
+  checkId: "app-a-registration",
   country: "CN" as const,
-  numbers: Array.from({ length: 1001 }, (_, i) => "+86138" + String(i).padStart(8, "0"))
+  seeds: Array.from({ length: 1001 }, (_, i) => "+86138" + String(i).padStart(8, "0"))
 };
 afterEach(() => vi.unstubAllGlobals());
 describe("App Checks management prototype", () => {
+  it("rejects malformed UTF-8 before adding any seed in Mock", async () => {
+    const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
+    const { taskId } = await source.createTask(CALLER, {
+      requestId: "invalid-utf8",
+      checkId: "app-a-registration",
+      country: "CN"
+    });
+    await expect(
+      source.importSeeds(
+        CALLER,
+        taskId,
+        new Blob([new Uint8Array([0x38, 0x36, 0x31, 0x33, 0x0a, 0xc3, 0x28])])
+      )
+    ).rejects.toThrow("UTF-8");
+    expect((await source.loadTask(CALLER, taskId)).task.totalCount).toBe(0);
+  });
   it("stops while retaining results and accepts only previously started work afterward", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
     const source = new MockAppCheckTaskSource(new MockUserDirectorySource()),
       { taskId } = await importedTask(source, input);
     await expect(source.advanceTask(CALLER, taskId)).rejects.toThrow();
-    await source.approveTask(CALLER, taskId, input.numbers.length);
+    await source.approveTask(CALLER, taskId, input.seeds.length);
     await source.approveTask(CALLER, taskId, 1); // Already-approved requests are unchanged, even with a stale positive count.
     await source.advanceTask(CALLER, taskId);
     const partial = await source.loadTask(CALLER, taskId);
@@ -38,7 +54,7 @@ describe("App Checks management prototype", () => {
     await expect(source.completeTask(CALLER, taskId)).rejects.toThrow();
     await expect(source.closeTask(CALLER, taskId)).resolves.toBeUndefined();
     await expect(
-      source.approveTask(CALLER, taskId, input.numbers.length)
+      source.approveTask(CALLER, taskId, input.seeds.length)
     ).rejects.toThrow();
     await source.advanceTask(CALLER, taskId, true);
     expect(source.previewState(CALLER, taskId).endReason).toBe("stopped");
@@ -66,7 +82,7 @@ describe("App Checks management prototype", () => {
     await expect(source.exportTask(CALLER, taskId, "all")).rejects.toThrow(
       "任务结束后"
     );
-    await source.approveTask(CALLER, taskId, input.numbers.length);
+    await source.approveTask(CALLER, taskId, input.seeds.length);
     await expect(source.exportTask(CALLER, taskId, "all")).rejects.toThrow(
       "任务结束后"
     );
@@ -74,9 +90,7 @@ describe("App Checks management prototype", () => {
     const snapshot = await source.loadTask(CALLER, taskId);
     expect(snapshot.results).toHaveLength(100);
     expect(snapshot.resultsTruncated).toBe(true);
-    expect(snapshot.results.some((row) => row.number === input.numbers[1000])).toBe(
-      false
-    );
+    expect(snapshot.results.some((row) => row.seed === input.seeds[1000])).toBe(false);
     expect(snapshot.task).toMatchObject({
       totalCount: 1001,
       succeededCount: 901,
@@ -84,9 +98,9 @@ describe("App Checks management prototype", () => {
     });
     const counts = await source.exportCounts(CALLER, taskId);
     expect(counts.all).toBe(901);
-    expect(counts.registered + counts.unregistered).toBe(counts.all);
+    expect(counts.matched + counts.unmatched).toBe(counts.all);
     expect((await source.loadActivity(CALLER, taskId)).map((row) => row.label)).toEqual(
-      ["创建任务", "导入号码", "核对并启动", "查询结束"]
+      ["创建任务", "导入种子", "核对并启动", "查询结束"]
     );
     const exported = await source.exportTask(CALLER, taskId, "all");
     const csv = await new Promise<string>((resolve, reject) => {
@@ -97,19 +111,20 @@ describe("App Checks management prototype", () => {
     });
     expect(exported.count).toBe(901);
     expect(csv.split("\r\n")).toHaveLength(902);
-    expect(csv).toContain(input.numbers[1000]);
-    expect(csv).not.toContain(input.numbers[900]);
+    expect(csv).toContain(input.seeds[1000]);
+    expect(csv).not.toContain(input.seeds[900]);
     expect((await source.exportTask(CALLER, "check-mixed", "all")).count).toBe(2);
-    expect((await source.exportTask(CALLER, taskId, "registered")).count).toBe(
-      counts.registered
+    expect((await source.exportTask(CALLER, taskId, "matched")).count).toBe(
+      counts.matched
     );
-    expect((await source.exportTask(CALLER, taskId, "unregistered")).count).toBe(
-      counts.unregistered
+    expect((await source.exportTask(CALLER, taskId, "unmatched")).count).toBe(
+      counts.unmatched
     );
   });
   it("retains only import summaries and keeps all prototype fields out of API requests", async () => {
     const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
     const report = inspectImport("8613800000001\n\n+8613800000001", {
+      seedType: "phonenumber" as const,
       format: "txt",
       country: "CN",
       limit: 100000,
@@ -118,7 +133,7 @@ describe("App Checks management prototype", () => {
     });
     const created = {
       ...input,
-      numbers: report.numbers,
+      seeds: report.seeds,
       sourceFile: "source.txt",
       importSnapshot: importSnapshot(report, "source.txt")
     };

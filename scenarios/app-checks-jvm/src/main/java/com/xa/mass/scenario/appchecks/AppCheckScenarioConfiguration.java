@@ -25,6 +25,7 @@ import static com.xa.mass.scenario.appchecks.AppCheckWorkerSupply.*;
 public class AppCheckScenarioConfiguration {
     @Bean AppCheckContract registrationContract() { return AppCheckContracts.registration(); }
     @Bean AppCheckContract simulatedRegistrationContract() { return AppCheckContracts.simulatedRegistration(); }
+    @Bean AppCheckContract originalCarrierContract() { return AppCheckContracts.originalCarrier(); }
     @Bean AppCheckContracts appCheckContracts(List<AppCheckContract> definitions) { return new AppCheckContracts(definitions); }
 
     @Bean(destroyMethod = "close")
@@ -49,11 +50,16 @@ public class AppCheckScenarioConfiguration {
     @Bean
     ProjectWorkerRequirements appCheckRequirements(AppCheckConfigurationStore.Snapshot config) {
         var groups = new LinkedHashMap<String, ProjectWorkerRequirements.Resources>();
-        for (var app : config.configuration().applications().values()) {
+        for (var app : config.configuration().checks().values()) {
             var pools = new LinkedHashSet<String>();
             app.execution().refill().forEach(target -> pools.add(target.poolName()));
-            groups.put(app.workerGroupId(), new ProjectWorkerRequirements.Resources(Set.of(app.execution().eventCode()),
-                    pools, Set.of(app.execution().workerSelector().executorName())));
+            var events = new LinkedHashSet<>(Set.of(app.execution().eventCode()));
+            var functions = new LinkedHashSet<>(Set.of(app.execution().workerSelector().executorName()));
+            var existing = groups.get(app.workerGroupId());
+            if (existing != null) {
+                events.addAll(existing.eventCodes()); pools.addAll(existing.pools()); functions.addAll(existing.functions());
+            }
+            groups.put(app.workerGroupId(), new ProjectWorkerRequirements.Resources(events, pools, functions));
         }
         return new ProjectWorkerRequirements("app-checks", groups);
     }
@@ -65,13 +71,15 @@ public class AppCheckScenarioConfiguration {
 
     @Bean
     WorkerPropertyProjection appCheckAssignmentProjections(AppCheckConfigurationStore.Snapshot config) {
-        var projections = new LinkedHashMap<String, WorkerPropertyProjection.Projection>();
-        config.configuration().applications().values().forEach(app -> {
-            var limit = config.configuration().poolGroups().get(app.workerGroupId());
-            if (limit != null) {
-                var window = new AppCheckAssignmentWindow(limit.windowMillis());
-                projections.put(app.workerGroupId(), new WorkerPropertyProjection.Projection(app.execution().eventCode(), window::project));
-            }
+        var events = new LinkedHashMap<String, Set<String>>();
+        config.configuration().checks().values().stream()
+                .filter(check -> FUNCTION.equals(check.execution().workerSelector().executorName()))
+                .forEach(check -> events.computeIfAbsent(check.workerGroupId(), ignored -> new LinkedHashSet<>())
+                        .add(check.execution().eventCode()));
+        var projections = new LinkedHashMap<String, List<WorkerPropertyProjection.Projection>>();
+        events.forEach((group, names) -> {
+            var window = new AppCheckAssignmentWindow(config.configuration().poolGroups().get(group).windowMillis());
+            projections.put(group, names.stream().map(event -> new WorkerPropertyProjection.Projection(event, window::project)).toList());
         });
         return new WorkerPropertyProjection("worker.assigned", projections);
     }

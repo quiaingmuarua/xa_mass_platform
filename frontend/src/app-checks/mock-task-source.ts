@@ -1,4 +1,5 @@
 import { MockTaskRetention } from "@/task-management/retention";
+import { decodeUtf8 } from "@/files/text";
 import type { MockUserDirectorySource } from "@/user-directory-source";
 import {
   TaskApiError,
@@ -17,6 +18,8 @@ import {
   mockConfigurationFingerprint,
   SIMULATED_CONTRACT,
   REGISTRATION_CONTRACT,
+  CARRIER_CONTRACT,
+  TEXT_PROOF_CONTRACT,
   settingsIdentity,
   requireSettingsUpdate,
   type AppCheckConfigurationView,
@@ -25,58 +28,22 @@ import {
 import { csvCell, inspectImport, type ImportSnapshot } from "./import-model";
 import { type PreviewState, type ExportFilter, type TaskActivity } from "./workbench";
 import {
+  checkTypeLabel,
   type Catalog,
   type CheckDetail,
   type CheckTask,
+  type CheckResult,
   type CreateCheckTask,
   rangeExamples,
   simulationSchema
 } from "./model";
 
 export const mockSimulation = { ranges: rangeExamples.混合, delayMs: [2000, 5000] };
-export const mockCatalog: Catalog = {
-  projectId: "app-checks",
-  name: "应用注册查询",
-  version: "0.3.0-preview",
-  apps: ["app-a", "app-b"].map((appId) => ({
-    appId,
-    label: appId === "app-a" ? "App A" : "App B",
-    workerGroupId: appId + "-sim",
-    contractId: SIMULATED_CONTRACT
-  })),
-  countries: ["CN", "US", "GB"],
-  limits: { numbersPerImport: 100000, importFileBytes: 10 * 1024 * 1024 }
-};
-export const mockSettings: AppCheckSettings = {
-  common: {
-    contractDefaults: {
-      [SIMULATED_CONTRACT]: structuredClone(mockSimulation),
-      [REGISTRATION_CONTRACT]: {}
-    }
-  },
-  applications: Object.fromEntries(
-    mockCatalog.apps.map(({ appId, ...app }) => [
-      appId,
-      {
-        ...app,
-        execution: {
-          eventCode: "extension.worker.app.registration.check",
-          refill: [{ poolName: "assignment-window", target: {}, count: 100 }],
-          workerSelector: { executorName: "worker.assignment.available", input: {} }
-        }
-      }
-    ])
-  ),
-  poolGroups: Object.fromEntries(
-    mockCatalog.apps.map((app) => [
-      app.workerGroupId,
-      { windowMillis: 60000, maxCount: 10 }
-    ])
-  )
-};
-const mockContracts = [
+const mockCheckTypes: Catalog["checkTypes"] = [
   {
     id: SIMULATED_CONTRACT,
+    label: "模拟注册",
+    seedType: "phonenumber",
     description: "确定性模拟协议；按实际 Worker、salt、区间和延迟复算",
     parameterExample: mockSimulation,
     inputExample: { number: "+8613800000001", salt: "fixed-salt", ...mockSimulation },
@@ -90,6 +57,8 @@ const mockContracts = [
   },
   {
     id: REGISTRATION_CONTRACT,
+    label: "注册检查",
+    seedType: "phonenumber",
     description: "号码查询协议；不要求模拟字段",
     parameterExample: {},
     inputExample: { number: "+8613800000001" },
@@ -99,8 +68,80 @@ const mockContracts = [
       workerId: "worker-c",
       workerGroupId: "app-c"
     }
+  },
+  {
+    id: CARRIER_CONTRACT,
+    label: "原始运营商识别",
+    seedType: "phonenumber",
+    description: "判断是否识别到原始运营商；号码库元数据不表示当前运营商或号码在用状态",
+    parameterExample: {},
+    inputExample: { rawNumber: "+8613800000000" },
+    resultExample: {
+      input: "+8613800000000",
+      possible: true,
+      valid: true,
+      originalCarrier: "China Mobile"
+    }
+  },
+  {
+    id: TEXT_PROOF_CONTRACT,
+    label: "文本机制证明（测试）",
+    seedType: "text",
+    description: "仅用于确定性接线证明，不是正式业务检查；摘要以 0 开头时满足。",
+    parameterExample: {},
+    inputExample: { value: "a" },
+    resultExample: { input: "a", valid: true, md5: "0cc175b9c0f1b6a831c399e269772661" }
   }
 ];
+export const mockCatalog: Catalog = {
+  projectId: "app-checks",
+  name: "批量检查",
+  version: "0.3.0-preview",
+  checkTypes: mockCheckTypes,
+  checks: ["app-a", "app-b"].flatMap((appId) => [
+    {
+      checkId: appId + "-registration",
+      label: appId === "app-a" ? "App A" : "App B",
+      workerGroupId: appId + "-sim",
+      checkType: SIMULATED_CONTRACT,
+      execution: {
+        eventCode: "extension.worker.app.registration.check",
+        refill: [{ poolName: "assignment-window", target: {}, count: 100 }],
+        workerSelector: { executorName: "worker.assignment.available", input: {} }
+      }
+    },
+    {
+      checkId: appId + "-carrier",
+      label: appId === "app-a" ? "App A" : "App B",
+      workerGroupId: appId + "-sim",
+      checkType: CARRIER_CONTRACT,
+      execution: {
+        eventCode: "extension.worker.phonenumber.original-carrier",
+        refill: [{ poolName: "any", target: {}, count: 100 }],
+        workerSelector: { executorName: "worker.any", input: {} }
+      }
+    }
+  ]),
+  countries: ["CN", "US", "GB"],
+  limits: { seedsPerImport: 100000, importFileBytes: 10 * 1024 * 1024 }
+};
+export const mockSettings: AppCheckSettings = {
+  common: {
+    typeDefaults: {
+      [SIMULATED_CONTRACT]: structuredClone(mockSimulation),
+      [REGISTRATION_CONTRACT]: {},
+      [CARRIER_CONTRACT]: {}
+    }
+  },
+  checks: Object.fromEntries(
+    mockCatalog.checks.map(({ checkId, ...app }) => [checkId, app])
+  ),
+  poolGroups: Object.fromEntries(
+    mockCatalog.checks
+      .filter((app) => app.checkType === SIMULATED_CONTRACT)
+      .map((app) => [app.workerGroupId, { windowMillis: 60000, maxCount: 10 }])
+  )
+};
 const mockTaskPolicy: TaskPolicySnapshot = {
   priority: 50,
   maxRetries: 3,
@@ -115,17 +156,20 @@ function task(taskId: string, changes: Partial<CheckTask> = {}): CheckTask {
     createdAtMillis: epoch,
     workerGroupId: "app-a-sim",
     managed: false,
-    inputVersion: "3",
+    inputVersion: "4",
     state: "terminal",
-    appId: "app-a",
+    checkId: "app-a-registration",
     country: "CN",
-    contractId: SIMULATED_CONTRACT,
+    checkType: SIMULATED_CONTRACT,
+    checkLabel: "App A",
+    checkTypeLabel: "模拟注册",
+    seedType: "phonenumber",
     contractParameters: structuredClone(mockSimulation),
-    eventCode: mockSettings.applications["app-a"].execution.eventCode,
+    eventCode: mockSettings.checks["app-a-registration"].execution.eventCode,
     workerSelector: structuredClone(
-      mockSettings.applications["app-a"].execution.workerSelector
+      mockSettings.checks["app-a-registration"].execution.workerSelector
     ),
-    refill: structuredClone(mockSettings.applications["app-a"].execution.refill),
+    refill: structuredClone(mockSettings.checks["app-a-registration"].execution.refill),
     salt: "fixed-salt",
     saltDate: "2026-09-18",
     totalCount: 1,
@@ -141,11 +185,13 @@ function records(): CheckDetail[] {
   const registered = {
     messageId: "r-1",
     resultStatus: "succeeded" as const,
-    number: "+8613800000001",
-    registered: true,
-    workerId: "worker-a",
-    workerGroupId: "app-a-sim",
-    simulatedDelayMillis: 4067
+    seed: "+8613800000001",
+    matched: true,
+    details: {
+      workerId: "worker-a",
+      workerGroupId: "app-a-sim",
+      simulatedDelayMillis: 4067
+    }
   };
   return [
     {
@@ -166,7 +212,7 @@ function records(): CheckDetail[] {
     {
       task: task("check-live", {
         name: "App B · 英国号码增量查询",
-        appId: "app-b",
+        checkId: "app-b-registration",
         workerGroupId: "app-b-sim",
         country: "GB",
         createdAtMillis: epoch + 1_000,
@@ -175,7 +221,7 @@ function records(): CheckDetail[] {
         activeCount: 16000,
         succeededCount: 31872,
         failedCount: 128,
-        sourceFile: "uk_new_numbers.txt",
+        sourceFile: "uk_new_seeds.txt",
         salt: undefined
       }),
       results: sampleRows(32000, "app-b-sim", "GB"),
@@ -187,7 +233,7 @@ function records(): CheckDetail[] {
         totalCount: 12800,
         succeededCount: 12749,
         failedCount: 51,
-        sourceFile: "october_existing_numbers.txt",
+        sourceFile: "october_existing_seeds.txt",
         salt: undefined
       }),
       results: sampleRows(12800, "app-a-sim", "CN"),
@@ -202,9 +248,14 @@ function records(): CheckDetail[] {
       }),
       results: [
         registered,
-        { ...registered, messageId: "tampered", registered: false },
-        { ...registered, messageId: "invalid", contentError: "Mock 业务内容无法解析" },
-        { messageId: "failed", resultStatus: "failed", number: "+8613800000002" }
+        { ...registered, messageId: "tampered", matched: false },
+        {
+          messageId: "invalid",
+          resultStatus: "succeeded",
+          seed: registered.seed,
+          contentError: "Mock 业务内容无法解析"
+        },
+        { messageId: "failed", resultStatus: "failed", seed: "+8613800000002" }
       ],
       resultsTruncated: false
     },
@@ -213,13 +264,19 @@ function records(): CheckDetail[] {
         name: "补充号码查询",
         contractParameters: { ranges: rangeExamples.全未注册, delayMs: [0, 0] }
       }),
-      results: [{ ...registered, registered: false, simulatedDelayMillis: 0 }],
+      results: [
+        {
+          ...registered,
+          matched: false,
+          details: { ...registered.details, simulatedDelayMillis: 0 }
+        }
+      ],
       resultsTruncated: false
     },
     {
       task: task("check-running", {
         name: "App B · 增量号码查询",
-        appId: "app-b",
+        checkId: "app-b-registration",
         workerGroupId: "app-b-sim",
         state: "running_visible",
         totalCount: 120,
@@ -243,7 +300,7 @@ function records(): CheckDetail[] {
     },
     {
       task: task("check-empty", {
-        name: "新导入号码查询",
+        name: "新导入种子查询",
         succeededCount: 0,
         activeCount: 1,
         state: "running-initial"
@@ -268,6 +325,57 @@ function records(): CheckDetail[] {
       resultsTruncated: false
     },
     {
+      task: task("check-carrier", {
+        name: "原始运营商识别 · 演示样例",
+        checkId: "app-a-carrier",
+        workerGroupId: "app-a-sim",
+        checkType: CARRIER_CONTRACT,
+        contractParameters: {},
+        salt: undefined,
+        eventCode: mockSettings.checks["app-a-carrier"].execution.eventCode,
+        workerSelector: mockSettings.checks["app-a-carrier"].execution.workerSelector,
+        refill: mockSettings.checks["app-a-carrier"].execution.refill,
+        totalCount: 5,
+        succeededCount: 4,
+        failedCount: 1
+      }),
+      results: [
+        {
+          messageId: "carrier-yes",
+          seed: "+8613800000000",
+          resultStatus: "succeeded",
+          matched: true,
+          details: { originalCarrier: "China Mobile", reason: "IDENTIFIED" }
+        },
+        {
+          messageId: "carrier-no",
+          seed: "+8610800000000",
+          resultStatus: "succeeded",
+          matched: false,
+          details: { originalCarrier: "", reason: "NO_CARRIER_MAPPING" }
+        },
+        {
+          messageId: "carrier-invalid-number",
+          seed: "+86123",
+          resultStatus: "succeeded",
+          matched: false,
+          details: { originalCarrier: "", reason: "INVALID_PHONE_NUMBER" }
+        },
+        {
+          messageId: "carrier-failed",
+          seed: "+8613800000001",
+          resultStatus: "failed"
+        },
+        {
+          messageId: "carrier-broken",
+          seed: "+8613800000002",
+          resultStatus: "succeeded",
+          contentError: "Mock 运营商响应缺少必要字段"
+        }
+      ],
+      resultsTruncated: false
+    },
+    {
       task: {
         taskId: "managed-app-a",
         createdAtMillis: epoch - 2000,
@@ -280,23 +388,30 @@ function records(): CheckDetail[] {
     }
   ];
 }
-function sampleRows(count: number, group: string, country: string, numbers?: string[]) {
+function sampleRows(
+  count: number,
+  group: string,
+  country: string,
+  seeds?: string[]
+): CheckResult[] {
   const prefix = country === "US" ? "+1202" : country === "GB" ? "+4477" : "+86138";
   return Array.from({ length: count }, (_, i) =>
     (i + 1) % 250 === 0
       ? {
           messageId: `sample-${i}`,
-          number: numbers?.[i] ?? `${prefix}${String(i + 10000000).padStart(8, "0")}`,
+          seed: seeds?.[i] ?? `${prefix}${String(i + 10000000).padStart(8, "0")}`,
           resultStatus: "failed" as const
         }
       : {
           messageId: `sample-${i}`,
-          number: numbers?.[i] ?? `${prefix}${String(i + 10000000).padStart(8, "0")}`,
+          seed: seeds?.[i] ?? `${prefix}${String(i + 10000000).padStart(8, "0")}`,
           resultStatus: "succeeded" as const,
-          registered: i % 3 !== 0,
-          workerId: `demo-worker-${(i % 20) + 1}`,
-          workerGroupId: group,
-          simulatedDelayMillis: 2400
+          matched: i % 3 !== 0,
+          details: {
+            workerId: `demo-worker-${(i % 20) + 1}`,
+            workerGroupId: group,
+            simulatedDelayMillis: 2400
+          }
         }
   );
 }
@@ -323,8 +438,22 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     this.retention = new MockTaskRetention(now);
     let ownerIndex = 0;
     for (const record of this.records.values()) {
+      if (record.task.checkId) {
+        record.task.checkLabel = mockCatalog.checks.find(
+          (check) => check.checkId === record.task.checkId
+        )?.label;
+        record.task.checkTypeLabel = checkTypeLabel(record.task.checkType, mockCatalog);
+      }
+      if (
+        [REGISTRATION_CONTRACT, SIMULATED_CONTRACT].includes(
+          record.task.checkType ?? ""
+        )
+      )
+        for (const row of record.results)
+          if (row.details && typeof row.matched === "boolean")
+            row.details.registered = row.matched;
       this.retention.observe(record.task);
-      if (record.task.appId && !record.task.managed)
+      if (record.task.checkId && !record.task.managed)
         record.task.userId =
           developmentUsers[ownerIndex++ % developmentUsers.length]!.userId;
       if (record.task.state === "terminal")
@@ -353,13 +482,14 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
   async catalog() {
     return structuredClone({
       ...mockCatalog,
-      apps: Object.entries(this.effectiveConfiguration.configuration.applications)
+      checks: Object.entries(this.effectiveConfiguration.configuration.checks)
         .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-        .map(([appId, { label, workerGroupId, contractId }]) => ({
-          appId,
+        .map(([checkId, { label, workerGroupId, checkType, execution }]) => ({
+          checkId,
           label,
           workerGroupId,
-          contractId
+          checkType,
+          execution
         }))
     });
   }
@@ -373,7 +503,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       mockConfigurationFingerprint(effective.configuration)
     ]);
     return structuredClone({
-      contracts: mockContracts,
+      checkTypes: mockCheckTypes,
       saved: { ...saved, fingerprint: savedFingerprint },
       effective: { ...effective, fingerprint: effectiveFingerprint },
       restartRequired: savedFingerprint !== effectiveFingerprint,
@@ -464,15 +594,29 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
   }
   async createTask(caller: TaskCaller, input: CreateCheckTask) {
     caller = this.directory.resolveCaller(caller, "app-checks");
-    if ("userId" in input || "role" in input || "simulation" in input)
+    if (
+      "userId" in input ||
+      "role" in input ||
+      "simulation" in input ||
+      "appId" in input
+    )
       throw new TaskApiError(400, "Unknown application check fields");
-    const apps = this.effectiveConfiguration.configuration.applications;
-    const app = Object.hasOwn(apps, input.appId) ? apps[input.appId] : undefined;
-    if (!app) throw new Error("当前生效配置不支持此应用");
+    const checks = this.effectiveConfiguration.configuration.checks;
+    const app = Object.hasOwn(checks, input.checkId)
+      ? checks[input.checkId]
+      : undefined;
+    if (!app) throw new Error("当前生效配置不支持此检查项");
+    const type = mockCheckTypes.find((type) => type.id === app.checkType)!;
+    if (
+      type.seedType === "phonenumber"
+        ? !mockCatalog.countries.includes(input.country!)
+        : input.country !== undefined
+    )
+      throw new TaskApiError(400, "检查类型与国家选项不符");
     const identity = JSON.stringify([
-      "app-checks/v4/create",
+      "app-checks/v5/create",
       caller.userId,
-      input.appId,
+      input.checkId,
       input.country
     ]);
     const prior = this.requests.get(caller.userId + "/" + input.requestId);
@@ -484,17 +628,18 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     this.records.set(taskId, {
       task: task(taskId, {
         userId: caller.userId,
-        name: `${input.appId} · ${input.country} · ${new Date().toISOString()}`,
-        appId: input.appId,
+        name: `${type.label} · ${app.label}${input.country ? " · " + input.country : ""} · ${new Date().toISOString()}`,
+        checkLabel: app.label,
+        checkTypeLabel: type.label,
+        seedType: type.seedType,
+        checkId: input.checkId,
         workerGroupId: app.workerGroupId,
         country: input.country,
         createdAtMillis: Date.now(),
-        contractId: app.contractId,
+        checkType: app.checkType,
         contractParameters: structuredClone(
           app.parameters ??
-            this.effectiveConfiguration.configuration.common.contractDefaults[
-              app.contractId
-            ]
+            this.effectiveConfiguration.configuration.common.typeDefaults[app.checkType]
         ),
         eventCode: app.execution.eventCode,
         workerSelector: structuredClone(app.execution.workerSelector),
@@ -515,10 +660,10 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       input: identity,
       taskId
     });
-    this.recordActivity(taskId, "创建任务", "空任务已创建，等待导入号码");
+    this.recordActivity(taskId, "创建任务", "空任务已创建，等待导入种子");
     return { taskId };
   }
-  async importNumbers(
+  async importSeeds(
     caller: TaskCaller,
     id: string,
     file: Blob,
@@ -528,27 +673,29 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     if (record.task.state !== "pre_review")
       throw new Error("只有新版本待审核任务支持导入");
     if (file.size > mockCatalog.limits.importFileBytes)
-      throw new Error("号码文件不能超过 10 MiB");
-    const text =
-      typeof file.text === "function"
-        ? await file.text()
-        : await new Promise<string>((resolve, reject) => {
+      throw new Error("种子文件不能超过 10 MiB");
+    const bytes =
+      typeof file.arrayBuffer === "function"
+        ? await file.arrayBuffer()
+        : await new Promise<ArrayBuffer>((resolve, reject) => {
             const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result));
+            reader.onload = () => resolve(reader.result as ArrayBuffer);
             reader.onerror = () => reject(reader.error);
-            reader.readAsText(file, "UTF-8");
+            reader.readAsArrayBuffer(file);
           });
+    const text = decodeUtf8(bytes);
     if (record.task.state !== "pre_review")
       throw new Error("任务状态已变化，请刷新后核对");
     const report = inspectImport(text, {
       format: "txt",
-      country: record.task.country!,
-      limit: mockCatalog.limits.numbersPerImport,
+      seedType: record.task.seedType!,
+      country: record.task.country ?? "",
+      limit: mockCatalog.limits.seedsPerImport,
       header: false,
       column: 0
     });
-    if (report.blocked || report.overLimit || !report.numbers.length)
-      throw new Error("号码文件校验失败，未写入任何号码");
+    if (report.blocked || report.overLimit || !report.seeds.length)
+      throw new Error("种子文件校验失败，未写入任何种子");
     const prior =
       this.imported.get(id) ??
       Array.from({ length: record.task.totalCount ?? 0 }, (_, i) =>
@@ -559,7 +706,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     const known = new Set(prior);
     let added = 0,
       existing = 0;
-    for (const number of report.numbers) {
+    for (const number of report.seeds) {
       if (known.has(number)) existing++;
       else {
         known.add(number);
@@ -575,12 +722,12 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       inputCount: report.inputCount,
       emptyCount: report.emptyCount,
       duplicateCount: report.duplicateCount,
-      uniqueCount: report.numbers.length,
+      uniqueCount: report.seeds.length,
       addedCount: added,
       existingCount: existing
     };
     if (summary) this.imports.set(id, structuredClone({ ...summary, receipt }));
-    this.recordActivity(id, "导入号码", `新增 ${added} 个，已存在 ${existing} 个`);
+    this.recordActivity(id, "导入种子", `新增 ${added} 个，已存在 ${existing} 个`);
     return receipt;
   }
   async approveTask(caller: TaskCaller, id: string, expectedCount: number) {
@@ -591,7 +738,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       return;
     if (record.task.state !== "pre_review") throw new Error("当前任务不在待审核状态");
     if (!expectedCount || expectedCount !== record.task.totalCount)
-      throw new Error("号码数量已变化或为空，请重新核对");
+      throw new Error("种子数量已变化或为空，请重新核对");
     record.task.state = "running_visible";
     record.task.reviewedAt = Date.now();
     this.recordActivity(id, "核对并启动", "开始演示查询");
@@ -634,8 +781,42 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       record.task.country ?? "CN",
       this.imported.get(id)
     );
-    if (record.task.contractId === REGISTRATION_CONTRACT) {
-      for (const row of all) delete row.simulatedDelayMillis;
+    if (record.task.checkType === TEXT_PROOF_CONTRACT) {
+      const fixtures: Record<string, string> = {
+        a: "0cc175b9c0f1b6a831c399e269772661",
+        abc: "900150983cd24fb0d6963f7d28e17f72",
+        中文: "a7bac2239fcdcb3a067903d8077c4a07"
+      };
+      for (let i = start; i < all.length; i++) {
+        const seed = all[i].seed!,
+          md5 = fixtures[seed];
+        all[i] = md5
+          ? {
+              messageId: all[i].messageId,
+              seed,
+              resultStatus: "succeeded",
+              matched: md5.startsWith("0"),
+              details: { md5 }
+            }
+          : { messageId: all[i].messageId, seed, resultStatus: "failed" };
+      }
+    } else if (record.task.checkType === REGISTRATION_CONTRACT) {
+      for (const row of all) if (row.details) delete row.details.simulatedDelayMillis;
+    } else if (record.task.checkType === CARRIER_CONTRACT) {
+      for (let i = start; i < all.length; i++) {
+        const row = all[i];
+        // Deliberate demonstration samples, not a browser copy of libphonenumber.
+        all[i] = {
+          messageId: row.messageId,
+          seed: row.seed,
+          resultStatus: "succeeded",
+          matched: i % 3 === 0,
+          details: {
+            originalCarrier: i % 3 === 0 ? "Mock Carrier" : "",
+            reason: ["IDENTIFIED", "NO_CARRIER_MAPPING", "INVALID_PHONE_NUMBER"][i % 3]
+          }
+        };
+      }
     } else {
       const parameters = simulationSchema.parse(record.task.contractParameters);
       for (let i = start; i < all.length; i++) {
@@ -646,22 +827,30 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         if (failed)
           all[i] = {
             messageId: row.messageId,
-            number: row.number,
+            seed: row.seed,
             resultStatus: "failed"
           };
         else
           all[i] = {
             ...row,
             resultStatus: "succeeded",
-            registered:
+            matched:
               parameters.ranges.registered[0] <= bucket &&
               bucket < parameters.ranges.registered[1],
-            workerId: row.workerId ?? "demo-worker-1",
-            workerGroupId: record.task.workerGroupId!,
-            simulatedDelayMillis: parameters.delayMs[0]
+            details: {
+              workerId: row.details?.workerId ?? "demo-worker-1",
+              workerGroupId: record.task.workerGroupId!,
+              simulatedDelayMillis: parameters.delayMs[0]
+            }
           };
       }
     }
+    if (
+      [REGISTRATION_CONTRACT, SIMULATED_CONTRACT].includes(record.task.checkType ?? "")
+    )
+      for (const row of all)
+        if (row.details && typeof row.matched === "boolean")
+          row.details.registered = row.matched;
     record.results.push(...all.slice(start, Math.min(end, start + 1000)));
     // Avoid spreading large imports into a function's argument list.
     for (let offset = start + 1000; offset < end; offset += 1000)
@@ -743,31 +932,52 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       (row) =>
         row.resultStatus === "succeeded" &&
         !row.contentError &&
-        typeof row.registered === "boolean" &&
-        row.number &&
-        (filter === "all" || row.registered === (filter === "registered"))
+        typeof row.matched === "boolean" &&
+        row.seed &&
+        (filter === "all" || row.matched === (filter === "matched"))
     );
   }
   async exportCounts(caller: TaskCaller, id: string) {
     this.owned(caller, id);
     return {
       all: this.exportRows(id, "all").length,
-      registered: this.exportRows(id, "registered").length,
-      unregistered: this.exportRows(id, "unregistered").length
+      matched: this.exportRows(id, "matched").length,
+      unmatched: this.exportRows(id, "unmatched").length
     };
   }
   async exportTask(caller: TaskCaller, id: string, filter: ExportFilter) {
     const record = this.owned(caller, id);
     if (record.task.state !== "terminal") throw new Error("任务结束后可以导出演示结果");
     const rows = this.exportRows(id, filter);
+    const carrier = record.task.checkType === CARRIER_CONTRACT,
+      phone = record.task.seedType === "phonenumber";
+    const text = record.task.checkType === TEXT_PROOF_CONTRACT;
     const lines = [
-      "号码,注册状态,应用,地区",
+      [
+        "种子",
+        "判定",
+        "检查类型",
+        "执行配置",
+        ...(phone ? ["地区"] : []),
+        ...(carrier ? ["原始运营商", "识别说明"] : text ? ["摘要"] : ["注册状态"])
+      ]
+        .map(csvCell)
+        .join(","),
       ...rows.map((row) =>
         [
-          row.number!,
-          row.registered ? "已注册" : "未注册",
-          record.task.appId ?? "",
-          record.task.country ?? ""
+          row.seed!,
+          row.matched ? "满足" : "不满足",
+          record.task.checkTypeLabel ?? "",
+          record.task.checkLabel ?? "",
+          ...(phone ? [record.task.country ?? ""] : []),
+          ...(carrier
+            ? [
+                String(row.details?.originalCarrier ?? ""),
+                String(row.details?.reason ?? "")
+              ]
+            : text
+              ? [String(row.details?.md5 ?? "")]
+              : [row.details?.registered ? "已注册" : "未注册"])
         ]
           .map(csvCell)
           .join(",")

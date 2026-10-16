@@ -1,6 +1,6 @@
 {
   "common": {
-    "contractDefaults": {
+    "typeDefaults": {
       "simulated-registration-v1": {
         "ranges": {
           "registered": [
@@ -21,14 +21,14 @@
           5000
         ]
       },
-      "registration-v1": {}
+      "registration-v1": {},
+      "original-carrier-v1": {}
     }
   },
-  "applications": {
-    "app-a": {
+  "checks": {
+    "app-a-registration": {
       "label": "App A",
       "workerGroupId": "app-a-sim",
-      "contractId": "simulated-registration-v1",
       "execution": {
         "eventCode": "extension.worker.app.registration.check",
         "refill": [
@@ -42,12 +42,31 @@
           "executorName": "worker.assignment.available",
           "input": {}
         }
+      },
+      "checkType": "simulated-registration-v1"
+    },
+    "app-a-carrier": {
+      "label": "App A",
+      "checkType": "original-carrier-v1",
+      "workerGroupId": "app-a-sim",
+      "execution": {
+        "eventCode": "extension.worker.phonenumber.original-carrier",
+        "refill": [
+          {
+            "poolName": "any",
+            "target": {},
+            "count": 100
+          }
+        ],
+        "workerSelector": {
+          "executorName": "worker.any",
+          "input": {}
+        }
       }
     },
-    "app-b": {
+    "app-b-registration": {
       "label": "App B",
       "workerGroupId": "app-b-sim",
-      "contractId": "simulated-registration-v1",
       "execution": {
         "eventCode": "extension.worker.app.registration.check",
         "refill": [
@@ -59,6 +78,26 @@
         ],
         "workerSelector": {
           "executorName": "worker.assignment.available",
+          "input": {}
+        }
+      },
+      "checkType": "simulated-registration-v1"
+    },
+    "app-b-carrier": {
+      "label": "App B",
+      "checkType": "original-carrier-v1",
+      "workerGroupId": "app-b-sim",
+      "execution": {
+        "eventCode": "extension.worker.phonenumber.original-carrier",
+        "refill": [
+          {
+            "poolName": "any",
+            "target": {},
+            "count": 100
+          }
+        ],
+        "workerSelector": {
+          "executorName": "worker.any",
           "input": {}
         }
       }

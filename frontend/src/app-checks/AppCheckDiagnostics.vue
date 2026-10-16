@@ -14,7 +14,7 @@ const expanded = ref(false),
 const checks = shallowRef(new Map<string, Verification>());
 const available = cryptoAvailable();
 const simulated = computed(
-  () => props.detail.task.contractId === "simulated-registration-v1"
+  () => props.detail.task.checkType === "simulated-registration-v1"
 );
 let generation = 0;
 watch(
@@ -101,8 +101,8 @@ onBeforeUnmount(() => {
           <tbody>
             <tr v-for="row in detail.results" :key="row.messageId">
               <td>{{ row.messageId }}</td>
-              <td>{{ row.workerId || "—" }}</td>
-              <td v-if="simulated">{{ row.simulatedDelayMillis ?? "—" }}</td>
+              <td>{{ row.details?.workerId || "—" }}</td>
+              <td v-if="simulated">{{ row.details?.simulatedDelayMillis ?? "—" }}</td>
               <td v-if="simulated">
                 {{
                   checks.get(row.messageId)

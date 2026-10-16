@@ -14,13 +14,21 @@ import {
 import { ElDrawer } from "element-plus";
 import { Refresh, Search } from "@element-plus/icons-vue";
 import "element-plus/es/components/drawer/style/css";
-import { appLabel, countryLabel, type CheckDetail, type CheckTask } from "./model";
+import {
+  checkTypeLabel,
+  checkLabel,
+  countryLabel,
+  type CheckDetail,
+  type CheckTask
+} from "./model";
 import { type AppCheckTaskSource } from "./task-source";
 import type { ImportSnapshot } from "./import-model";
 import {
   filterResults,
   resultKind,
   resultLabels,
+  resultDescription,
+  checkCondition,
   quantity,
   timestamp,
   taskStage,
@@ -260,12 +268,17 @@ defineExpose({ refresh, focusHeading });
           <div>
             <div class="checks-title-line">
               <span
-                >{{ appLabel(detail.task.appId) }} ·
-                {{ countryLabel(detail.task.country) }}</span
+                >{{
+                  detail.task.checkTypeLabel ?? checkTypeLabel(detail.task.checkType)
+                }}
+                · {{ detail.task.checkLabel ?? checkLabel(detail.task.checkId)
+                }}{{
+                  detail.task.country ? " · " + countryLabel(detail.task.country) : ""
+                }}</span
               ><TaskStatus :task="detail.task" :preview="preview" />
             </div>
             <p class="checks-hint">
-              创建者 {{ identityLabel(detail.task.userId) }} · 号码总量
+              创建者 {{ identityLabel(detail.task.userId) }} · 种子总量
               {{ quantity(detail.task.totalCount) }} ·
               {{ detail.task.state === "terminal" ? "未完成" : "未结束" }}
               {{ quantity(detail.task.activeCount) }}
@@ -306,18 +319,19 @@ defineExpose({ refresh, focusHeading });
           </button>
         </div>
         <p v-if="stage === 'pre_review'" class="checks-hint">
-          等待核对并启动。请确认应用、地区和号码数量，再通过“操作”菜单启动。
+          等待核对并启动。请确认检查类型、执行配置和种子数量，再通过“操作”菜单启动。
         </p>
         <section
           v-if="stage !== 'pre_review' || resultPreview.length"
           aria-label="结果预览"
         >
+          <p class="checks-hint">{{ checkCondition(detail.task.checkType) }}</p>
           <div class="checks-result-toolbar">
             <label class="checks-search"
               ><Search /><input
                 v-model="query"
-                aria-label="搜索查询号码"
-                placeholder="筛选当前预览号码"
+                aria-label="搜索种子"
+                placeholder="筛选当前预览种子"
             /></label>
             <select v-model="filter" aria-label="筛选查询结果">
               <option v-for="(label, key) in resultLabels" :key="key" :value="key">
@@ -330,7 +344,7 @@ defineExpose({ refresh, focusHeading });
             >
           </div>
           <p v-if="truncated" class="checks-table-note">
-            本次未完整展示，不能据此统计全部注册状态。
+            本次未完整展示，不能据此统计全部检查结论。
           </p>
           <div
             class="checks-table-scroll checks-preview-scroll"
@@ -340,28 +354,25 @@ defineExpose({ refresh, focusHeading });
             <table class="checks-table checks-results-table">
               <thead>
                 <tr>
-                  <th>号码</th>
+                  <th>种子</th>
                   <th>查询结果</th>
                   <th>说明</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="row in rows" :key="row.messageId">
-                  <td class="checks-phone">{{ row.number || "号码不可用" }}</td>
+                  <td class="checks-phone">{{ row.seed || "号码不可用" }}</td>
                   <td>
                     <span class="checks-answer" :class="'answer-' + resultKind(row)">{{
                       resultLabels[resultKind(row)]
                     }}</span>
                   </td>
                   <td>
-                    {{
-                      row.resultStatus === "failed"
-                        ? "执行失败 · 无注册答案"
-                        : row.contentError ||
-                          (typeof row.registered === "boolean"
-                            ? "执行成功"
-                            : "执行成功，尚无有效业务答案")
-                    }}
+                    {{ resultDescription(row) }}
+                    <details v-if="row.details" class="checks-result-details">
+                      <summary>结果详情</summary>
+                      <pre>{{ JSON.stringify(row.details, null, 2) }}</pre>
+                    </details>
                   </td>
                 </tr>
               </tbody>
@@ -375,7 +386,7 @@ defineExpose({ refresh, focusHeading });
                   : "当前暂无可预览结果"
               }}
             </h3>
-            <p>预览仅覆盖本次读取的数据，不能据此判断整个任务的注册情况。</p>
+            <p>预览仅覆盖本次读取的数据，不能据此判断整个任务的检查情况。</p>
           </div>
         </section>
         <details
@@ -387,7 +398,7 @@ defineExpose({ refresh, focusHeading });
           <p class="checks-hint">
             {{ source.mode === "mock" ? "Mock 任务保存值" : "任务保存值" }} · 读取于
             {{ timestamp(readAt)
-            }}{{ error ? " · 快照已过期" : "" }}。当前应用配置不会覆盖这些值。
+            }}{{ error ? " · 快照已过期" : "" }}。当前检查配置不会覆盖这些值。
           </p>
           <ConfigurationRows :section="configuration.binding" />
           <h3>执行策略</h3>
@@ -400,11 +411,11 @@ defineExpose({ refresh, focusHeading });
             {{ detail.task.configurationError }}
           </p>
           <button
-            v-if="canConfigure && detail.task.appId"
+            v-if="canConfigure && detail.task.checkId"
             class="checks-link"
             @click="emit('configuration')"
           >
-            查看当前应用配置
+            查看当前检查配置
           </button>
         </details>
         <details

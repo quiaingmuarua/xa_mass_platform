@@ -50,8 +50,8 @@ Boot passes `xa.mass.scenarios.app-checks.storage.path` through
 A/B and explicit 60000 ms/10 limits and is used only for an empty configuration table.
 Generic Matching Group binding still holds only enablement. Boot opens no database;
 ordinary platform composition does not instantiate the scenario store.
-App Checks derives event/refill/query dependencies per Group from the H2 configuration document keyed by appId.
-Other applications can select Any without a window entry. Any remains available to
+Batch Checks derives and unions event/refill/query dependencies per Group from the H2 document keyed by checkId.
+App A/B each expose registration and original-carrier checks in the same Group; carrier uses Any without entering the registration window observation. Other checks can also select Any without a window entry. Any remains available to
 explicit callers, without a default Group-wide window gate. The old Group-level
 `assignment-window-pool` path and `max-assignments` field have no aliases. The
 scenario no longer reads window parameters from YAML. Saves require manual restart;

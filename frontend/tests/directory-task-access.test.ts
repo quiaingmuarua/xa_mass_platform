@@ -31,7 +31,7 @@ function world(project: "messages" | "app-checks") {
     create: (caller: typeof A) =>
       source.createTask(caller, {
         requestId: "directory-access",
-        appId: "app-a",
+        checkId: "app-a-registration",
         country: "CN"
       })
   };
@@ -99,30 +99,30 @@ it("keeps an admitted import's snapshot and denies the next operation before rea
   const source = new MockAppCheckTaskSource(directory);
   const { taskId } = await source.createTask(A, {
     requestId: "import-snapshot",
-    appId: "app-a",
+    checkId: "app-a-registration",
     country: "CN"
   });
-  let release!: (text: string) => void;
-  const text = vi.fn(
+  let release!: (bytes: ArrayBuffer) => void;
+  const arrayBuffer = vi.fn(
     () =>
-      new Promise<string>((resolve) => {
+      new Promise<ArrayBuffer>((resolve) => {
         release = resolve;
       })
   );
-  const pending = source.importNumbers(A, taskId, {
+  const pending = source.importSeeds(A, taskId, {
     size: 13,
-    text
+    arrayBuffer
   } as unknown as Blob);
-  expect(text).toHaveBeenCalledOnce();
+  expect(arrayBuffer).toHaveBeenCalledOnce();
   await directory.save(ADMIN, { ...A, displayName: "A", projectIds: [] }, A.userId);
-  release("8613800000001");
+  release(new TextEncoder().encode("8613800000001").buffer);
   await expect(pending).resolves.toMatchObject({ addedCount: 1 });
   const forbiddenFile = {
     get size(): number {
       throw new Error("must not read file");
     }
   } as Blob;
-  await expect(source.importNumbers(A, taskId, forbiddenFile)).rejects.toMatchObject({
+  await expect(source.importSeeds(A, taskId, forbiddenFile)).rejects.toMatchObject({
     status: 403
   });
   await expect(source.exportTask(A, taskId, "all")).rejects.toMatchObject({

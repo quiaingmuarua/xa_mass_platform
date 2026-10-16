@@ -154,7 +154,7 @@ function button(text: string) {
 }
 function numberInput() {
   return document.querySelector<HTMLTextAreaElement>(
-    'textarea[aria-label="号码列表"]'
+    'textarea[aria-label="种子列表"]'
   )!;
 }
 function input(label: string, value: string) {
@@ -180,7 +180,7 @@ async function select(label: string, text: string) {
 async function draft(number = "8613800000001") {
   button("创建任务").click();
   await settle();
-  button("粘贴号码").click();
+  button("粘贴种子").click();
   await settle();
   numberInput().value = number;
   numberInput().dispatchEvent(new Event("input", { bubbles: true }));
@@ -451,7 +451,7 @@ describe("console login and shared task access", () => {
         await gate.promise;
         return original.call(this, caller, input);
       });
-    const imported = vi.spyOn(MockAppCheckTaskSource.prototype, "importNumbers");
+    const imported = vi.spyOn(MockAppCheckTaskSource.prototype, "importSeeds");
     await mount("1001");
     await draft();
     await submit();
@@ -482,7 +482,7 @@ describe("console login and shared task access", () => {
     await login("1001");
     button("创建任务").click();
     await settle();
-    button("粘贴号码").click();
+    button("粘贴种子").click();
     await settle();
     expect(numberInput().value).toBe("");
     expect(document.body.textContent).not.toContain("使用原请求核对创建");
@@ -532,7 +532,7 @@ describe("console login and shared task access", () => {
         workerGroupId: "app-a-sim",
         createdAtMillis: 1,
         state: "pre_review",
-        appId: "app-a"
+        checkId: "app-a-registration"
       },
       results: [],
       resultsTruncated: false

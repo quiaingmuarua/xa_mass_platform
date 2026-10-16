@@ -108,18 +108,18 @@ describe("Mock configuration content guard", () => {
     const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
     const original = (await source.loadConfiguration(CALLER)).saved;
     const reordered = JSON.parse(settingsIdentity(original.configuration));
-    reordered.applications = Object.fromEntries(
-      Object.entries(reordered.applications).reverse()
-    );
+    reordered.checks = Object.fromEntries(Object.entries(reordered.checks).reverse());
     expect(
       (await source.saveConfiguration(CALLER, original.fingerprint, reordered)).saved
         .fingerprint
     ).toBe(original.fingerprint);
-    expect((await source.catalog()).apps.map((app) => app.appId)).toEqual([
-      "app-a",
-      "app-b"
+    expect((await source.catalog()).checks.map((app) => app.checkId)).toEqual([
+      "app-a-carrier",
+      "app-a-registration",
+      "app-b-carrier",
+      "app-b-registration"
     ]);
-    reordered.applications["app-a"].label = "Renamed";
+    reordered.checks["app-a-registration"].label = "Renamed";
     const changed = await source.saveConfiguration(
       CALLER,
       original.fingerprint,
@@ -140,8 +140,8 @@ describe("Mock configuration content guard", () => {
     const original = (await source.loadConfiguration(CALLER)).saved;
     const a = structuredClone(original.configuration),
       b = structuredClone(original.configuration);
-    a.applications["app-a"].label = "First";
-    b.applications["app-b"].label = "Second";
+    a.checks["app-a-registration"].label = "First";
+    b.checks["app-b-registration"].label = "Second";
     const results = await Promise.allSettled([
       source.saveConfiguration(CALLER, original.fingerprint, a),
       source.saveConfiguration(CALLER, original.fingerprint, b)

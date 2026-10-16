@@ -193,10 +193,10 @@ onBeforeUnmount(() => {
 defineExpose({ focusHeading: () => heading.value?.focus({ preventScroll: true }) });
 </script>
 <template>
-  <section class="checks-configuration-page" aria-label="应用与运行策略">
+  <section class="checks-configuration-page" aria-label="检查配置">
     <header class="checks-heading">
       <div>
-        <h1 ref="heading" tabindex="-1">应用与运行策略</h1>
+        <h1 ref="heading" tabindex="-1">检查配置</h1>
         <small class="checks-hint"
           >{{
             source.mode === "mock" ? "Mock 演示数据 · 仅当前会话" : "App Checks 配置"
@@ -263,7 +263,7 @@ defineExpose({ focusHeading: () => heading.value?.focus({ preventScroll: true })
       编辑基于指纹
       {{
         state.baseFingerprint?.slice(0, 12)
-      }}。重新读取和离开返回保留原文本；新增应用直接加入 applications 对象，以 appId
+      }}。重新读取和离开返回保留原文本；新增检查项直接加入 checks 对象，以 checkId
       为键。
     </p>
     <p
@@ -287,7 +287,7 @@ defineExpose({ focusHeading: () => heading.value?.focus({ preventScroll: true })
       @input="state.draft = ($event.target as HTMLTextAreaElement).value"
     />
     <p class="checks-hint">
-      参数按应用整份覆盖或采用契约默认值；不递归合并。已有 App ID 和 Group
+      参数按检查项整份覆盖或采用类型默认值；不递归合并。已有 checkId、检查类型和 Group
       固定。保存校验配置，重启校验宿主资源。
     </p>
     <p v-if="state.snapshot?.newScopeRequired" class="checks-error">
@@ -303,7 +303,7 @@ defineExpose({ focusHeading: () => heading.value?.focus({ preventScroll: true })
       }}</pre>
     </details>
     <details class="checks-auxiliary">
-      <summary>契约与配置参考</summary>
+      <summary>检查类型与配置参考</summary>
       <p class="checks-hint">
         同协议可绑定不同事件和 Group。事件声明不代表 Handler
         已安装；业务结果关联校验也不替代独立真实性证明。
@@ -312,7 +312,7 @@ defineExpose({ focusHeading: () => heading.value?.focus({ preventScroll: true })
       <p v-if="read.error" class="checks-error">
         Catalog 读取失败，容量限制保留原快照。
       </p>
-      <section v-for="contract in state.snapshot?.contracts" :key="contract.id">
+      <section v-for="contract in state.snapshot?.checkTypes" :key="contract.id">
         <h3>{{ contract.id }}</h3>
         <p>{{ contract.description }}</p>
         <pre class="checks-json">{{

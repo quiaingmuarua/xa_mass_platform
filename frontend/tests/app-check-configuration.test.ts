@@ -127,20 +127,20 @@ describe("App Checks JSON configuration workspace", () => {
   it("saves a different contract/application only for the next startup and preserves task snapshots", async () => {
     const old = await source.createTask(CALLER, {
       requestId: "old",
-      appId: "app-a",
+      checkId: "app-a-registration",
       country: "CN"
     });
     const { session, host } = await mount();
     await editDocument((value) => {
-      value.applications["app-a"].label = "Alpha";
-      value.common.contractDefaults["simulated-registration-v1"] = {
+      value.checks["app-a-registration"].label = "Alpha";
+      value.common.typeDefaults["simulated-registration-v1"] = {
         ranges: { registered: [0, 0], unregistered: [0, 1000], failed: [1000, 1000] },
         delayMs: [0, 0]
       };
-      value.applications["app-c"] = {
+      value.checks["app-c"] = {
         label: "App C",
         workerGroupId: "app-c-sim",
-        contractId: "registration-v1",
+        checkType: "registration-v1",
         execution: {
           eventCode: "extension.worker.custom.registration",
           refill: [{ poolName: "any", target: {}, count: 100 }],
@@ -156,9 +156,13 @@ describe("App Checks JSON configuration workspace", () => {
       session.configuration.snapshot?.effective.fingerprint
     );
     expect(host.textContent).toContain("待手动重启生效");
-    expect((await source.catalog()).apps).toHaveLength(2);
+    expect((await source.catalog()).checks).toHaveLength(4);
     await expect(
-      source.createTask(CALLER, { requestId: "pending", appId: "app-c", country: "CN" })
+      source.createTask(CALLER, {
+        requestId: "pending",
+        checkId: "app-c",
+        country: "CN"
+      })
     ).rejects.toThrow();
     button("模拟重启生效").click();
     await vi.waitUntil(() => !session.configuration.snapshot?.restartRequired);
@@ -167,11 +171,11 @@ describe("App Checks JSON configuration workspace", () => {
     expect(host.textContent).toContain("已模拟重启");
     const created = await source.createTask(CALLER, {
       requestId: "new",
-      appId: "app-c",
+      checkId: "app-c",
       country: "CN"
     });
     expect((await source.loadTask(CALLER, created.taskId)).task).toMatchObject({
-      contractId: "registration-v1",
+      checkType: "registration-v1",
       contractParameters: {},
       workerGroupId: "app-c-sim",
       eventCode: "extension.worker.custom.registration"
@@ -182,19 +186,19 @@ describe("App Checks JSON configuration workspace", () => {
     expect(
       await source.createTask(CALLER, {
         requestId: "old",
-        appId: "app-a",
+        checkId: "app-a-registration",
         country: "CN"
       })
     ).toEqual(old);
-    await source.importNumbers(CALLER, created.taskId, new Blob(["8613800000001"]));
+    await source.importSeeds(CALLER, created.taskId, new Blob(["8613800000001"]));
     await source.approveTask(CALLER, created.taskId, 1);
     await source.completeTask(CALLER, created.taskId);
     const detail = await source.loadTask(CALLER, created.taskId);
     expect(detail.results[0]).toMatchObject({
       resultStatus: "succeeded",
-      registered: false
+      matched: false
     });
-    expect(detail.results[0]).not.toHaveProperty("simulatedDelayMillis");
+    expect(detail.results[0]).not.toHaveProperty("details.simulatedDelayMillis");
     expect((await source.exportTask(CALLER, created.taskId, "all")).count).toBe(1);
   });
   it("checks only JSON syntax/root locally and preserves semantic rejection text", async () => {
@@ -229,12 +233,12 @@ describe("App Checks JSON configuration workspace", () => {
   it("preserves raw unsaved text through reads/navigation and rejects concurrent overwrite", async () => {
     const { router, session, host } = await mount();
     await editDocument((value) => {
-      value.applications["app-a"].label = "Local draft";
+      value.checks["app-a-registration"].label = "Local draft";
     });
     const text = session.configuration.draft;
     const saved = (await source.loadConfiguration(CALLER)).saved;
     const concurrent = saved.configuration;
-    concurrent.applications["app-b"].label = "Concurrent";
+    concurrent.checks["app-b-registration"].label = "Concurrent";
     await source.saveConfiguration(CALLER, saved.fingerprint, concurrent);
     button("保存配置").click();
     await vi.waitUntil(() => !session.configuration.saving);
@@ -255,7 +259,8 @@ describe("App Checks JSON configuration workspace", () => {
     await settle();
     expect(session.configuration.draft).toBeUndefined();
     expect(
-      session.configuration.snapshot?.saved.configuration.applications["app-b"].label
+      session.configuration.snapshot?.saved.configuration.checks["app-b-registration"]
+        .label
     ).toBe("Concurrent");
   });
   it("reconciles an unconfirmed save by reading, without resending", async () => {
@@ -268,7 +273,7 @@ describe("App Checks JSON configuration workspace", () => {
       });
     const { session } = await mount();
     await editDocument((value) => {
-      value.applications["app-a"].label = "Accepted";
+      value.checks["app-a-registration"].label = "Accepted";
     });
     const text = session.configuration.draft;
     button("保存配置").click();
@@ -289,7 +294,7 @@ describe("App Checks JSON configuration workspace", () => {
     vi.spyOn(source, "saveConfiguration").mockReturnValueOnce(pending.promise);
     const { router, session } = await mount();
     await editDocument((value) => {
-      value.applications["app-a"].label = "Pending";
+      value.checks["app-a-registration"].label = "Pending";
     });
     const text = session.configuration.draft;
     button("保存配置").click();
@@ -311,21 +316,34 @@ describe("App Checks JSON configuration workspace", () => {
     expect(host.querySelectorAll("textarea")).toHaveLength(1);
     expect(host.querySelector('[aria-label="配置应用"]')).toBeNull();
     const before = session.configuration.readAt;
-    vi.spyOn(source, "loadConfiguration").mockRejectedValueOnce(new Error("offline"));
+    const snapshot = session.configuration.snapshot!;
+    const refresh = deferred<AppCheckConfigurationView>();
+    const load = vi
+      .spyOn(source, "loadConfiguration")
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockReturnValueOnce(refresh.promise);
     button("重新读取").click();
     await settle();
     expect(session.configuration.readAt).toBe(before);
+    expect(session.configuration.snapshot).toBe(snapshot);
     expect(host.textContent).toContain("已保留上次快照");
     expect(context.state.value.status).toBe("enabled");
     button("重新读取").click();
     await settle();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(session.configuration.readAt).toBe(before);
+    expect(session.configuration.stale).toBe(true);
+    refresh.resolve(snapshot);
+    await settle();
     expect(session.configuration.readAt).toBeGreaterThan(before);
+    expect(session.configuration.stale).toBe(false);
+    expect(session.configuration.error).toBe("");
   });
   it("keeps task-list filters/scroll and creation identity across navigation and Catalog changes", async () => {
     const list = vi.spyOn(source, "listTasks");
     const { router, host, session } = await mount("/app-checks");
     const table = host.querySelector(".checks-task-table");
-    session.filters.app = "app-b";
+    session.filters.check = "app-b-registration";
     await settle();
     const viewport = host.querySelector<HTMLElement>(".el-scrollbar__wrap")!;
     viewport.scrollTop = 125;
@@ -337,16 +355,17 @@ describe("App Checks JSON configuration workspace", () => {
     await settle();
     expect(host.querySelector(".checks-task-table")).toBe(table);
     expect(session.listTableScrollTop).toBe(125);
-    expect(session.filters.app).toBe("app-b");
+    expect(session.filters.check).toBe("app-b-registration");
     expect(list).toHaveBeenCalledTimes(1);
     const create = vi
       .spyOn(source, "createTask")
       .mockRejectedValueOnce(new AppCheckCreationUnconfirmed());
-    const imports = vi.spyOn(source, "importNumbers");
+    const imports = vi.spyOn(source, "importSeeds");
     await router.push("/app-checks?view=create");
     await settle();
     session.draft.text = "8613800000001";
     session.draft.report = inspectImport(session.draft.text, {
+      seedType: "phonenumber" as const,
       format: "txt",
       country: "CN",
       header: false,
@@ -359,7 +378,7 @@ describe("App Checks JSON configuration workspace", () => {
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await settle();
     const frozen = create.mock.calls[0][1];
-    expect(Object.keys(frozen).sort()).toEqual(["appId", "country", "requestId"]);
+    expect(Object.keys(frozen).sort()).toEqual(["checkId", "country", "requestId"]);
     await router.push("/app-checks?view=configuration");
     await settle();
     await context.load(true);
@@ -378,7 +397,7 @@ describe("App Checks JSON configuration workspace", () => {
     expect(section.open).toBe(false);
     expect(section.textContent).toContain("simulated-registration-v1");
     expect(section.textContent).toContain('"delayMs"');
-    button("查看当前应用配置").click();
+    button("查看当前检查配置").click();
     await settle();
     expect(document.activeElement).toBe(
       host.querySelector(".checks-configuration-page h1")

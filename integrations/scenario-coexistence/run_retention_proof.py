@@ -137,12 +137,12 @@ def main():
             monitor.start()
             for count, mode in ((10000, "natural"), (100000, "natural"), (10000, "closed"), (100000, "closed")):
                 stage = f"{mode}-{count}"
-                body = {"requestId": f"retention-{mode}-{count}", "appId": "app-a", "country": "CN"}
+                body = {"requestId": f"retention-{mode}-{count}", "checkId": "app-a-registration", "country": "CN"}
                 task = request(run.url, "/app-checks/tasks", body)["taskId"]
                 case = {"count": count, "mode": mode, "taskId": task, "creation": body}
                 report["cases"].append(case)
                 started = time.monotonic()
-                receipt = request(run.url, f"/app-checks/tasks/{task}/numbers:import",
+                receipt = request(run.url, f"/app-checks/tasks/{task}/seeds:import",
                     "\n".join("+" + str(8618100000000 + i) for i in range(count)), text=True)
                 require(receipt["addedCount"] == count, "Import did not confirm every Item")
                 case["importSeconds"] = time.monotonic() - started

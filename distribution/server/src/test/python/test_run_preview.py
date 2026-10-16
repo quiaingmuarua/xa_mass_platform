@@ -205,7 +205,11 @@ class PreviewLifecycleTest(unittest.TestCase):
                     for group_id in ("app-a-sim", "app-b-sim"):
                         if app_count:
                             self.assertEqual(app_count, config["workerGroups"][group_id]["count"])
-                            self.assertEqual(["extension.worker.app.registration.check", "extension.worker.message.send"], config["workerGroups"][group_id]["events"])
+                            self.assertEqual([
+                                "extension.worker.app.registration.check",
+                                "extension.worker.phonenumber.original-carrier",
+                                "extension.worker.message.send",
+                            ], config["workerGroups"][group_id]["events"])
                             properties = config["workerGroups"][group_id]["propertiesTemplate"]
                             self.assertEqual("true", properties["messaging.enabled"])
                             self.assertEqual({"$choice": ["CN", "US", "GB"]}, properties["country"])

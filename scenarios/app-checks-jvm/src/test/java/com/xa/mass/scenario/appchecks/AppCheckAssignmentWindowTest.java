@@ -8,18 +8,41 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
 class AppCheckAssignmentWindowTest {
+    @Test void sharedGroupUnionsResourcesAndProjectsEachWindowEventOnce() {
+        var original = AppCheckTestSettings.settings();
+        var checks = new java.util.LinkedHashMap<>(original.checks());
+        var first = original.requireCheck("app-a-registration");
+        checks.put("same-event", first);
+        checks.put("second-window-event", new AppCheckSettings.Check("Other registration", first.workerGroupId(),
+                new AppCheckSettings.Execution("extension.worker.other.registration", first.execution().refill(), first.execution().workerSelector()),
+                first.checkType(), first.parameters()));
+        var settings = new AppCheckSettings(original.typeDefaults(), checks, original.poolGroups());
+        var configuration = new AppCheckScenarioConfiguration();
+        var snapshot = new AppCheckConfigurationStore.Snapshot(settings);
+        var resources = configuration.appCheckRequirements(snapshot).requirementsByGroup().get("app-a-sim");
+        assertThat(resources.eventCodes()).containsExactlyInAnyOrder("extension.worker.app.registration.check",
+                "extension.worker.phonenumber.original-carrier", "extension.worker.other.registration");
+        assertThat(resources.pools()).containsExactlyInAnyOrder("any", "assignment-window");
+        assertThat(resources.functions()).containsExactlyInAnyOrder("worker.any", "worker.assignment.available");
+        var selections = configuration.appCheckAssignmentProjections(snapshot).projectionsByGroup().get("app-a-sim");
+        assertThat(selections).extracting(com.xa.mass.server.worker.observation.WorkerPropertyProjection.Projection::messageEventName)
+                .containsExactlyInAnyOrder("extension.worker.app.registration.check", "extension.worker.other.registration");
+        var current = new java.util.HashMap<String,Object>();
+        selections.forEach(selection -> current.putAll(selection.project().apply(current, List.of(100L))));
+        assertThat(current).containsEntry("windowAssignmentCount", 2L);
+    }
     @Test void groupsProjectUsingTheirOwnInjectedWindowLength() {
         var configuration = new AppCheckScenarioConfiguration();
         var seed = AppCheckTestSettings.settings();
-        var settings = new AppCheckSettings(seed.contractDefaults(), seed.applications(), Map.of(
+        var settings = new AppCheckSettings(seed.typeDefaults(), seed.checks(), Map.of(
                 "app-a-sim", new com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit(100, 10),
                 "app-b-sim", new com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit(200, 20)));
         var config = new AppCheckConfigurationStore.Snapshot(settings);
         var projections = configuration.appCheckAssignmentProjections(config).projectionsByGroup();
         assertThat(configuration.appCheckWindowPool(config).limitsByGroup()).isEqualTo(settings.poolGroups());
-        assertThat(projections.get("app-a-sim").project().apply(Map.of(), List.of(99L, 100L)))
+        assertThat(projections.get("app-a-sim").getFirst().project().apply(Map.of(), List.of(99L, 100L)))
                 .containsEntry("windowAssignmentCount", 1L);
-        assertThat(projections.get("app-b-sim").project().apply(Map.of(), List.of(99L, 100L)))
+        assertThat(projections.get("app-b-sim").getFirst().project().apply(Map.of(), List.of(99L, 100L)))
                 .containsEntry("windowAssignmentCount", 2L);
         assertThat(projections.keySet()).containsExactly("app-a-sim", "app-b-sim");
     }
