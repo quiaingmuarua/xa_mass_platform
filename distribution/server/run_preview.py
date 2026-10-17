@@ -103,7 +103,7 @@ class Preview:
         validate_parameters(count, seed, port, sandbox_root, app_count)
         self.root = Path(root).resolve()
         self.sandbox_root = Path(sandbox_root or self.root / "data" / "scenario-workers").resolve()
-        self.app_checks_db = self.sandbox_root.parent / "app-checks" / "configuration"
+        self.app_checks_config = self.sandbox_root.parent / "app-checks" / "configuration.json"
         self.count = count
         self.app_count = app_count
         self.seed = seed
@@ -174,7 +174,7 @@ class Preview:
         env = os.environ.copy()
         env.update(XA_MASS_REDIS_SCOPE=self.scope, XA_MASS_REDIS_URL=self.redis_url,
                    XA_MASS_TASK_ARCHIVE_DIRECTORY=str(self.task_archives),
-                   XA_MASS_APP_CHECKS_DB_PATH=str(self.app_checks_db),
+                   XA_MASS_APP_CHECKS_CONFIG_PATH=str(self.app_checks_config),
                    PREVIEW_SERVER_PORT=str(self.port),
                    PREVIEW_ADAPTER_PORT=str(self.port + 3))
         options = [java, "-XX:ActiveProcessorCount=8", "-XX:+ExitOnOutOfMemoryError"]
@@ -214,7 +214,7 @@ class Preview:
         self.wait_for(self.host_ready, 90, "Host identities")
         self.wait_for(self.connected, 60, "verified WebSocket routes")
         (self.output / "run.json").write_text(json.dumps({"scope": self.scope, "url": self.url, "host": self.host,
-                "count": self.count, "appCount": self.app_count, "seed": self.seed, "sandboxRoot": str(self.sandbox_root), "appChecksDatabase": str(self.app_checks_db), "scenarios": self.scenarios, "artifacts": self.artifacts,
+                "count": self.count, "appCount": self.app_count, "seed": self.seed, "sandboxRoot": str(self.sandbox_root), "appChecksConfiguration": str(self.app_checks_config), "scenarios": self.scenarios, "artifacts": self.artifacts,
                 "pids": {k: p.pid for k, p in self.processes.items()}}, indent=2), encoding="utf-8")
         return self
 

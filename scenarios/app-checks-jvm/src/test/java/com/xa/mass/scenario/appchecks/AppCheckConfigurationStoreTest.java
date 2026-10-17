@@ -3,7 +3,9 @@ package com.xa.mass.scenario.appchecks;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit;
 import java.nio.file.Path;
-import java.sql.DriverManager;
+import java.nio.file.Files;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.Test;
@@ -34,7 +36,7 @@ class AppCheckConfigurationStoreTest {
         }
     }
     @TempDir Path directory;
-    Path path() { return directory.resolve("configuration"); }
+    Path path() { return directory.resolve("configuration.json"); }
     AppCheckConfigurationStore open() { return new AppCheckConfigurationStore(path(), AppCheckTestSettings::seed, AppCheckTestSettings.contracts()); }
     AppCheckSettings changed(String label, long window) {
         var original = AppCheckTestSettings.settings();
@@ -47,24 +49,17 @@ class AppCheckConfigurationStoreTest {
     String fingerprint(AppCheckSettings settings) { return new AppCheckConfigurationStore.Snapshot(settings).fingerprint(); }
     String initialFingerprint() { return fingerprint(AppCheckTestSettings.settings()); }
 
-    @Test void lostCommitAcknowledgmentIsUnknownAndReadbackConfirmsTheWholeDocument() throws Exception {
-        try (var store = open()) {
-            var field = AppCheckConfigurationStore.class.getDeclaredField("connection");
-            field.setAccessible(true);
-            var actual = (java.sql.Connection) field.get(store);
-            var commits = new java.util.concurrent.atomic.AtomicInteger();
-            var witness = java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
-                    new Class<?>[]{java.sql.Connection.class}, (proxy, method, args) -> {
-                        try {
-                            var result = method.invoke(actual, args);
-                            if (method.getName().equals("commit")) {
-                                commits.incrementAndGet();
-                                throw new java.sql.SQLException("commit acknowledgement lost");
-                            }
-                            return result;
-                        } catch (java.lang.reflect.InvocationTargetException failure) { throw failure.getCause(); }
-                    });
-            field.set(store, witness);
+    @Test void lostPublicationAcknowledgmentIsUnknownAndReadbackConfirmsTheWholeDocument() throws Exception {
+        try (var initial = open()) { assertThat(initial.view()).containsEntry("restartRequired", false); }
+        var publications = new java.util.concurrent.atomic.AtomicInteger();
+        var files = new AppCheckConfigurationStore.FilePublication() {
+            @Override void replace(Path pending, Path target) throws IOException {
+                super.replace(pending, target);
+                publications.incrementAndGet();
+                throw new IOException("publication acknowledgement lost");
+            }
+        };
+        try (var store = new AppCheckConfigurationStore(path(), AppCheckTestSettings::seed, AppCheckTestSettings.contracts(), files)) {
             var target = changed("Committed", 60000);
             assertThatThrownBy(() -> store.save(initialFingerprint(), target.toMap())).isInstanceOfSatisfying(AppCheckConfigurationException.class,
                     failure -> assertThat(failure.status).isEqualTo(503));
@@ -72,7 +67,8 @@ class AppCheckConfigurationStoreTest {
             assertThat(fingerprint(view)).isEqualTo(fingerprint(target));
             assertThat(((Map<?, ?>) view.get("saved")).get("configuration")).isEqualTo(target.toMap());
             assertThat(store.effective().fingerprint()).isEqualTo(initialFingerprint());
-            assertThat(commits.get()).isEqualTo(1);
+            assertThat(publications.get()).isEqualTo(1);
+            assertNoPendingFiles();
         }
     }
 
@@ -91,35 +87,30 @@ class AppCheckConfigurationStoreTest {
         try (var restored = new AppCheckConfigurationStore(path(), () -> { throw new AssertionError("seed must not be read"); }, AppCheckTestSettings.contracts())) {
             assertThat(restored.effective().configuration()).isEqualTo(target);
             assertThat(restored.view()).containsEntry("restartRequired", false).containsEntry("newScopeRequired", false);
-            try (var connection = DriverManager.getConnection("jdbc:h2:file:" + path().toString().replace('\\', '/'), "sa", "");
-                 var statement = connection.createStatement();
-                 var rows = statement.executeQuery("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC'")) {
-                assertThat(rows.next()).isTrue();
-                assertThat(rows.getString(1)).isEqualTo("APP_CHECK_CONFIGURATION");
-                assertThat(rows.next()).isFalse();
-            }
+            assertThat(Files.readString(path())).contains("\n  ").doesNotContain("fingerprint", "revision");
+            assertThat(AppCheckSettings.parse(Jsons.parseObject(Files.readString(path())), AppCheckTestSettings.contracts())).isEqualTo(target);
+            assertNoPendingFiles();
         }
     }
 
     @Test void concurrentWholeConfigurationWritesHaveOneWinnerAndNoPartialMerge() throws Exception {
-        try (var first = open(); var second = open(); var executor = Executors.newFixedThreadPool(2)) {
+        try (var store = open(); var executor = Executors.newFixedThreadPool(2)) {
             var gate = new CountDownLatch(1);
             var targets = List.of(changed("first", 60000), changed("second", 60000));
-            var stores = List.of(first, second);
             var results = new ArrayList<Future<Integer>>();
             for (int i = 0; i < 2; i++) {
                 final int index = i;
                 results.add(executor.submit(() -> {
                     gate.await();
-                    try { stores.get(index).save(initialFingerprint(), targets.get(index).toMap()); return 200; }
+                    try { store.save(initialFingerprint(), targets.get(index).toMap()); return 200; }
                     catch (AppCheckConfigurationException failure) { return failure.status; }
                 }));
             }
             gate.countDown();
             assertThat(List.of(results.get(0).get(5, TimeUnit.SECONDS), results.get(1).get(5, TimeUnit.SECONDS)))
                     .containsExactlyInAnyOrder(200, 409);
-            assertThat(fingerprint(first.view())).isIn(fingerprint(targets.get(0)), fingerprint(targets.get(1)));
-            assertThat(first.view()).isEqualTo(second.view());
+            assertThat(fingerprint(store.view())).isIn(fingerprint(targets.get(0)), fingerprint(targets.get(1)));
+            assertNoPendingFiles();
         }
     }
 
@@ -151,9 +142,111 @@ class AppCheckConfigurationStoreTest {
 
     @Test void badStoredDocumentDoesNotFallBackToSeed() throws Exception {
         try (var store = open()) { assertThat(fingerprint(store.view())).isEqualTo(initialFingerprint()); }
-        try (var connection = DriverManager.getConnection("jdbc:h2:file:" + path().toString().replace('\\', '/'), "sa", "");
-             var statement = connection.createStatement()) { statement.executeUpdate("UPDATE app_check_configuration SET document = '{}' "); }
+        for (String bad : List.of("", "{", "{}", "[]")) {
+            Files.writeString(path(), bad);
+            assertThatThrownBy(() -> new AppCheckConfigurationStore(path(), () -> {
+                throw new AssertionError("existing files must never read seed");
+            }, AppCheckTestSettings.contracts())).isInstanceOf(AppCheckConfigurationException.class);
+            assertThat(Files.readString(path())).isEqualTo(bad);
+        }
+        Files.write(path(), new byte[]{(byte) 0xC3, 0x28});
         assertThatThrownBy(this::open).isInstanceOf(AppCheckConfigurationException.class);
+        Files.writeString(path(), AppCheckTestSettings.seed());
+        try (var reopened = open()) { assertThat(fingerprint(reopened.view())).isEqualTo(initialFingerprint()); }
+    }
+
+    @Test void sameContentDoesNotRewriteTheFile() throws Exception {
+        try (var store = open()) {
+            byte[] before = Files.readAllBytes(path());
+            var oldTime = java.nio.file.attribute.FileTime.fromMillis(1_500_000_000_000L);
+            Files.setLastModifiedTime(path(), oldTime);
+            store.save(initialFingerprint(), AppCheckTestSettings.settings().toMap());
+            assertThat(Files.readAllBytes(path())).isEqualTo(before);
+            assertThat(Files.getLastModifiedTime(path())).isEqualTo(oldTime);
+        }
+    }
+
+    @Test void anotherOwnerAndAnotherProcessCannotOpenTheFileUntilClose() throws Exception {
+        try (var store = open()) {
+            assertThatThrownBy(this::open).isInstanceOf(AppCheckConfigurationException.class);
+            assertThat(probe()).isEqualTo(2);
+            assertThat(fingerprint(store.view())).isEqualTo(initialFingerprint());
+        }
+        assertThat(probe()).isZero();
+        try (var reopened = open()) { assertThat(fingerprint(reopened.view())).isEqualTo(initialFingerprint()); }
+    }
+
+    @Test void failedInitializationReleasesItsLockWithoutLeavingAPartialDocument() throws Exception {
+        assertThatThrownBy(() -> new AppCheckConfigurationStore(path(), () -> "{}", AppCheckTestSettings.contracts()))
+                .isInstanceOf(AppCheckConfigurationException.class);
+        assertThat(path()).doesNotExist();
+        try (var store = open()) { assertThat(fingerprint(store.view())).isEqualTo(initialFingerprint()); }
+        assertNoPendingFiles();
+    }
+
+    @Test void partialWriteAndUnavailableAtomicReplacementPreserveTheOriginal() throws Exception {
+        try (var initial = open()) { assertThat(initial.effective().fingerprint()).isEqualTo(initialFingerprint()); }
+        byte[] before = Files.readAllBytes(path());
+        var failures = List.of(new AppCheckConfigurationStore.FilePublication() {
+            @Override void write(Path pending, byte[] document) throws IOException {
+                Files.writeString(pending, "{partial");
+                throw new IOException("write failed");
+            }
+        }, new AppCheckConfigurationStore.FilePublication() {
+            @Override void replace(Path pending, Path target) throws IOException {
+                throw new AtomicMoveNotSupportedException(pending.toString(), target.toString(), "unsupported");
+            }
+        });
+        for (var files : failures) {
+            try (var store = new AppCheckConfigurationStore(path(), AppCheckTestSettings::seed, AppCheckTestSettings.contracts(), files)) {
+                assertThatThrownBy(() -> store.save(initialFingerprint(), changed("Unconfirmed", 60000).toMap()))
+                        .isInstanceOfSatisfying(AppCheckConfigurationException.class, failure -> assertThat(failure.status).isEqualTo(503));
+                assertThat(Files.readAllBytes(path())).isEqualTo(before);
+                assertThat(fingerprint(store.view())).isEqualTo(initialFingerprint());
+                assertNoPendingFiles();
+            }
+        }
+    }
+
+    @Test void runtimeDeletionOrCorruptionNeverReseedsOrChangesTheEffectiveSnapshot() throws Exception {
+        try (var store = open()) {
+            Files.delete(path());
+            assertUnavailable(store);
+            assertThat(path()).doesNotExist();
+            Files.writeString(path(), "{");
+            assertUnavailable(store);
+            assertThat(Files.readString(path())).isEqualTo("{");
+            assertThat(store.effective().fingerprint()).isEqualTo(initialFingerprint());
+        }
+    }
+
+    private void assertUnavailable(AppCheckConfigurationStore store) {
+        assertThatThrownBy(store::view).isInstanceOfSatisfying(AppCheckConfigurationException.class,
+                failure -> assertThat(failure.status).isEqualTo(503));
+        assertThatThrownBy(() -> store.save(initialFingerprint(), changed("Not saved", 60000).toMap()))
+                .isInstanceOfSatisfying(AppCheckConfigurationException.class, failure -> assertThat(failure.status).isEqualTo(503));
+    }
+
+    private void assertNoPendingFiles() throws IOException {
+        try (var files = Files.list(directory)) {
+            assertThat(files.map(file -> file.getFileName().toString()).toList())
+                    .containsExactlyInAnyOrder("configuration.json", "configuration.json.lock");
+        }
+    }
+
+    private int probe() throws Exception {
+        Path arguments = directory.resolve("probe.args");
+        String classpath = System.getProperty("xa.mass.appchecks.test.classpath");
+        Files.writeString(arguments, "-cp\n\"" + classpath.replace("\\", "\\\\") + "\"\n"
+                + AppCheckConfigurationLockProbe.class.getName() + "\n\"" + path().toString().replace("\\", "\\\\") + "\"\n");
+        String executable = Path.of(System.getProperty("java.home"), "bin", System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java").toString();
+        var process = new ProcessBuilder(executable, "@" + arguments).redirectErrorStream(true).start();
+        try {
+            assertThat(process.waitFor(15, TimeUnit.SECONDS)).as("file owner probe completes").isTrue();
+            String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            assertThat(output).containsAnyOf("ACQUIRED", "BUSY");
+            return process.exitValue();
+        } finally { process.destroyForcibly(); Files.deleteIfExists(arguments); }
     }
 
     @Test void strictModelRejectsUnknownFieldsAndMissingLimitsButAllowsSharedGroups() {

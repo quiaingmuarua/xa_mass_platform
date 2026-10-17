@@ -9,8 +9,13 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ScenarioArchitectureTest {
-    @Test void configurationDatabaseBelongsOnlyToTheAppChecksModule() throws Exception {
-        assertThat(Files.readString(Path.of("../scenarios/app-checks-jvm/build.gradle"))).contains("runtimeOnly 'com.h2database:h2'");
+    @Test void configurationFileOwnerStaysInsideAppChecksWithoutADatabaseDependency() throws Exception {
+        Path appChecks = Path.of("../scenarios/app-checks-jvm");
+        assertThat(Files.readString(appChecks.resolve("build.gradle"))).doesNotContain("com.h2database", "spring-boot-starter-jdbc");
+        try (var paths = Files.walk(appChecks.resolve("src/main/java"))) {
+            for (Path path : paths.filter(p -> p.toString().endsWith(".java")).toList())
+                assertThat(Files.readString(path)).as(path.toString()).doesNotContain("java.sql.", "org.h2.");
+        }
         for (String module : Set.of("kernel_jvm", "kernel_pacer_jvm", "worker_matching_jvm", "server_jvm", "server_boot_jvm")) {
             Path directory = Path.of("..", module);
             assertThat(Files.readString(directory.resolve("build.gradle"))).doesNotContain("com.h2database", "spring-boot-starter-jdbc");

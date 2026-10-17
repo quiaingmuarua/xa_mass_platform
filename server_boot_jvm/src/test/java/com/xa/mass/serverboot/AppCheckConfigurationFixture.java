@@ -5,7 +5,7 @@ import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-/** Isolated test files, reused by a fixture's Server restarts; never a Preview database. */
+/** Isolated test files, reused by a fixture's Server restarts; never a Preview configuration. */
 public final class AppCheckConfigurationFixture {
     public static Map<String, Object> properties(long maxCount) {
         return properties(maxCount, Map.of());
@@ -25,8 +25,8 @@ public final class AppCheckConfigurationFixture {
                 if (parametersByCheck.containsKey(checkId)) app.put("parameters", parametersByCheck.get(checkId));
             });
             Path file = root.resolve("seed.json"); Files.writeString(file, Jsons.toJson(seed));
-            return Map.of("xa.mass.scenarios.app-checks.storage.path", root.resolve("configuration").toString(),
-                    "xa.mass.scenarios.app-checks.storage.seed", file.toUri().toString());
+            return Map.of("xa.mass.scenarios.app-checks.configuration.path", root.resolve("configuration.json").toString(),
+                    "xa.mass.scenarios.app-checks.configuration.seed", file.toUri().toString());
         } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
     }
     static String[] arguments(long maxCount, String... arguments) {

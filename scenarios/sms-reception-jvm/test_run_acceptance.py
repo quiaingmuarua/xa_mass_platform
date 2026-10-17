@@ -10,24 +10,24 @@ from run_acceptance import compare
 
 
 class AcceptanceOracleTest(unittest.TestCase):
-    def test_server_restart_reuses_the_previews_isolated_configuration_database(self):
+    def test_server_restart_reuses_the_previews_isolated_configuration_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             process = Mock(args=["java", "-jar", "preview.jar"])
             run = SimpleNamespace(processes={"server": process}, logs=[], output=root,
                                   scope="test_sms_restart", redis_url="redis://localhost/15", port=18400,
                                   task_archives=root / "task-archives",
-                                  app_checks_db=root / "inventory" / "app-checks" / "configuration",
+                                  app_checks_config=root / "inventory" / "app-checks" / "configuration.json",
                                   launch=Mock(), wait_for=Mock(), connected=Mock())
             (root / "server.log").write_text("first startup", encoding="utf-8")
-            with patch.dict("os.environ", {"XA_MASS_APP_CHECKS_DB_PATH": "unrelated-host-database"}):
+            with patch.dict("os.environ", {"XA_MASS_APP_CHECKS_CONFIG_PATH": "unrelated-host-configuration"}):
                 run_acceptance.restart_server(run)
             process.terminate.assert_called_once()
             process.wait.assert_called_once_with(timeout=10)
             name, arguments, environment = run.launch.call_args.args
             self.assertEqual("server", name)
             self.assertEqual(process.args, arguments)
-            self.assertEqual(str(run.app_checks_db), environment["XA_MASS_APP_CHECKS_DB_PATH"])
+            self.assertEqual(str(run.app_checks_config), environment["XA_MASS_APP_CHECKS_CONFIG_PATH"])
             self.assertEqual(str(run.task_archives), environment["XA_MASS_TASK_ARCHIVE_DIRECTORY"])
             self.assertEqual(run.scope, environment["XA_MASS_REDIS_SCOPE"])
             self.assertEqual(run.redis_url, environment["XA_MASS_REDIS_URL"])

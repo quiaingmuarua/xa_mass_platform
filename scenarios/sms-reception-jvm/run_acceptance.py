@@ -208,7 +208,7 @@ def restart_server(run):
     env = os.environ.copy()
     env.update(XA_MASS_REDIS_SCOPE=run.scope, XA_MASS_REDIS_URL=run.redis_url,
                XA_MASS_TASK_ARCHIVE_DIRECTORY=str(run.task_archives),
-               XA_MASS_APP_CHECKS_DB_PATH=str(run.app_checks_db),
+               XA_MASS_APP_CHECKS_CONFIG_PATH=str(run.app_checks_config),
                PREVIEW_SERVER_PORT=str(run.port), PREVIEW_ADAPTER_PORT=str(run.port + 3))
     run.launch("server", args, env)
     run.wait_for(lambda: http(run.url, "/actuator/health"), 60, "restarted Server")

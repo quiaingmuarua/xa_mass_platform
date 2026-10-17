@@ -499,7 +499,9 @@ preserve the exact text; rereading never silently replaces a dirty draft. Uncert
 saves retain the submitted text/base fingerprint for explicit comparison, without automatic
 retry. In-flight saves remain locked across remounts; late responses cannot steal focus.
 
-The scenario stores one H2 configuration document, without format/revision counters.
+The scenario stores one UTF-8 JSON configuration file, without format/revision counters.
+The Server is its single writer while running; manual file edits require stopping it.
+The editor retains its text after a write failure or uncertain save and supports readback without automatic retry.
 API fingerprints are opaque SHA-256 content tokens carried unchanged by the client.
 Object key order and formatting do not change the token; array order and string content do.
 Catalog checks use stable checkId order, independent of JSON key order. Saving requires manual restart;

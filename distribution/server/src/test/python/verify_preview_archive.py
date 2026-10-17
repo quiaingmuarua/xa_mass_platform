@@ -55,7 +55,8 @@ def verify(archive, frontend):
         if not any(name.startswith("worker-simulator/lib/xa-mass-worker-simulator-") for name in files):
             raise ValueError("Missing actual Worker Simulator")
         if any("node_modules" in PurePosixPath(name).parts or "private" in PurePosixPath(name).parts
-                or name.endswith((".jsonl", "package.json", "gradlew", "build.gradle", ".log", ".mv.db", ".trace.db")) for name in files):
+                or "data/app-checks/" in name
+                or name.endswith((".jsonl", "package.json", "gradlew", "build.gradle", ".log", ".mv.db", ".trace.db", ".lock", ".tmp")) for name in files):
             raise ValueError("Source toolchain or private run material in Preview")
         with zipfile.ZipFile(io.BytesIO(files[jars[0]])) as jar:
             _runtime.verify_server_configuration(jar)
@@ -68,8 +69,8 @@ def verify(archive, frontend):
                 raise ValueError("Messages backend absent")
             if not any("xa-mass-app-checks-" in name for name in entries):
                 raise ValueError("App checks backend absent")
-            if not any(name.startswith("BOOT-INF/lib/h2-") and name.endswith(".jar") for name in entries):
-                raise ValueError("App Checks H2 runtime dependency absent")
+            if any(name.startswith("BOOT-INF/lib/h2-") and name.endswith(".jar") for name in entries):
+                raise ValueError("Retired H2 runtime dependency in Preview")
             scenario = next(name for name in entries if "xa-mass-app-checks-" in name)
             with zipfile.ZipFile(io.BytesIO(jar.read(scenario))) as module:
                 if "app-checks/preview-configuration.json" not in module.namelist():

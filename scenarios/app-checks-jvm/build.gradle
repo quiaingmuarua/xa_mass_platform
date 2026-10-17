@@ -11,7 +11,7 @@ dependencies {
     implementation 'org.springframework:spring-webmvc'
     implementation 'org.springframework.boot:spring-boot'
     implementation 'com.fasterxml.jackson.core:jackson-annotations'
-    runtimeOnly 'com.h2database:h2'
+    implementation 'tools.jackson.core:jackson-databind'
     implementation project(':server_jvm')
     implementation project(':worker_matching_jvm')
     implementation project(':transport:worker-delivery-contract')
@@ -19,4 +19,7 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
-tasks.named('test') { useJUnitPlatform() }
+tasks.named('test') {
+    useJUnitPlatform()
+    systemProperty 'xa.mass.appchecks.test.classpath', sourceSets.test.runtimeClasspath.asPath
+}

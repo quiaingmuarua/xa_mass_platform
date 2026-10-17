@@ -41,16 +41,16 @@ The shared String Bean remains for SMS. New API creation requires an application
 only Messaging Pool selection is used. Simulator App Workers install both Messages
 and App Checks, with explicit nonoverlapping phone ranges and country Properties.
 
-The Preview seed binds each App Group to `assignment-window`. App Checks owns its H2 configuration
+The Preview seed binds each App Group to `assignment-window`. App Checks owns its JSON configuration file
 and reads one immutable startup snapshot. That snapshot contributes the Project,
 resource requirements, Pool definition, multi-Group projection and Catalog.
-Boot passes `xa.mass.scenarios.app-checks.storage.path` through
-`XA_MASS_APP_CHECKS_DB_PATH`, and `storage.seed` through `XA_MASS_APP_CHECKS_SEED`
+Boot passes `xa.mass.scenarios.app-checks.configuration.path` through
+`XA_MASS_APP_CHECKS_CONFIG_PATH`, and `configuration.seed` through `XA_MASS_APP_CHECKS_SEED`
 (default `classpath:app-checks/preview-configuration.json`). The seed contains App
-A/B and explicit 60000 ms/10 limits and is used only for an empty configuration table.
-Generic Matching Group binding still holds only enablement. Boot opens no database;
+A/B and explicit 60000 ms/10 limits and is used only for a missing configuration file.
+Generic Matching Group binding still holds only enablement. Boot does not read or write the scenario file;
 ordinary platform composition does not instantiate the scenario store.
-Batch Checks derives and unions event/refill/query dependencies per Group from the H2 document keyed by checkId.
+Batch Checks derives and unions event/refill/query dependencies per Group from the JSON document keyed by checkId.
 App A/B retain their registration checks. Demo exposes one original-carrier check and the uint32-prime/MD5-prefix demonstrations through explicitly enabled Any; these events do not enter the registration window observation. Other checks can also select Any without a window entry. Any remains available to
 explicit callers, without a default Group-wide window gate. The old Group-level
 `assignment-window-pool` path and `max-assignments` field have no aliases. The

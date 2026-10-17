@@ -78,30 +78,36 @@ The launcher selects a complete Simulator example, writes the final Runtime URL,
 absolute inventory path, port, events, count, seed and template into one
 `worker-simulator.json` in its run directory, and passes only `--config` to Main.
 The launcher never evaluates templates or corrects sampled country counts.
-App Checks configuration persists separately at `<inventory-parent>/app-checks/configuration`
-(H2 creates the `.mv.db` file), alongside `data/scenario-workers`. The launcher passes
-that prefix as `XA_MASS_APP_CHECKS_DB_PATH`; it never removes the database on shutdown.
+App Checks configuration persists separately at `<inventory-parent>/app-checks/configuration.json`,
+alongside `data/scenario-workers`. The launcher passes that file as
+`XA_MASS_APP_CHECKS_CONFIG_PATH`; it never removes the configuration on shutdown.
 `XA_MASS_APP_CHECKS_SEED` may point to an explicit seed resource for a fresh environment;
-otherwise the module's packaged Preview seed is used. Seeds initialize only an empty
-configuration table. Saved edits require a manual Server restart; changed window length
-requires a new Redis scope. Existing tasks and Redis state are not moved into H2.
-The ZIP contains code and the seed resource, never a database file. Acceptance runs
-use their private inventory sibling for a distinct database; source/ZIP starts do not
+otherwise the module's packaged Preview seed is used. Seeds initialize only a missing
+configuration file. Saved edits require a manual Server restart; changed window length
+requires a new Redis scope. Tasks and execution state remain in Redis.
+The scenario holds `configuration.json.lock` while running and publishes complete edits
+with same-directory atomic replacement. A second instance cannot own the same file.
+Stop Server before editing the file manually. Failed or uncertain saves retain editor
+text for readback; missing or damaged files are not reseeded while running.
+The ZIP contains code and the seed resource, never materialized configuration, lock or
+temporary files. Acceptance runs use their private inventory sibling for a distinct
+configuration file; source/ZIP starts do not
 touch an already running Preview's configuration.
 
 Batch Checks configuration uses a checkId-keyed checks object, named type
 defaults, per-check event/refill/query bindings and optional window Pool groups.
-H2 stores the whole document without format/revision counters; saves compare a content fingerprint. The admin page edits the whole JSON document;
-saving does not affect the running process. Use a new H2 file and Redis scope when
-switching from the old table/document shape; there is no migration or fallback. Creation sends only
+The JSON file stores the whole document without fingerprints or format/revision counters;
+saves compare a computed content fingerprint. The admin page edits the whole JSON document;
+saving does not affect the running process. Use a new JSON file and Redis scope when
+switching from H2; old databases are neither read, migrated nor deleted. Creation sends only
 requestId, checkId and (for phone seeds only) country. Tasks retain their execution snapshot across later
 configuration saves/restarts; changing an existing window length requires a new scope.
-Preview exposes app-a-registration, app-b-registration, original-carrier, uint32-prime and md5-prefix. Carrier and MD5 use explicit batch events with seedsPerItem=10; registration and prime remain at 1. Input and CSV remain one seed per row. Existing H2 documents are not reseeded; verify this configuration in a new database/scope/inventory.
+Preview exposes app-a-registration, app-b-registration, original-carrier, uint32-prime and md5-prefix. Carrier and MD5 use explicit batch events with seedsPerItem=10; registration and prime remain at 1. Input and CSV remain one seed per row. Existing configuration files are not reseeded; verify this configuration with a new file/scope/inventory.
 The two text checks are local computation demonstrations, with no external city/DNS/stock data source.
-Existing H2 documents are not overwritten by seeds. This checks schema cutover uses a new
-database, Redis scope and inventory; the launcher does not migrate or replace a running environment.
+This storage cutover preserves the configuration document shape. The launcher does not
+migrate or replace a running environment.
 
-`run.json` records count, appCount, seed, appChecksDatabase and fixed `scenarios: ["sms", "messages", "app-checks"]`, not a
+`run.json` records count, appCount, seed, appChecksConfiguration and fixed `scenarios: ["sms", "messages", "app-checks"]`, not a
 promised country distribution. The Host uses the existing combined capability
 configuration; no Simulator runtime mode selects business deployment.
 Acceptance fixtures materialize their exact inventory before launch instead of
@@ -242,5 +248,5 @@ for its fresh scope. Server owns the 1h grace, sequential archive and 7d final
 retention lifecycle. Grace/retention overrides are explicit proof configuration,
 not alternate product defaults. Normal launcher shutdown stops owned processes,
 cleans only its generated Redis scope, and removes only this private archive root.
-Persistent Worker inventory and App Checks H2 configuration remain untouched.
+Persistent Worker inventory and App Checks configuration file remain untouched.
 A hard-killed launcher still requires explicit cleanup of its own run resources.
