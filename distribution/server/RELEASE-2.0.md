@@ -96,11 +96,13 @@ normalized parameters. Malformed business content is reported as a content error
 without changing Kernel execution success or being converted to an unregistered
 answer.
 
-The complete configuration JSON remains in scenario-owned H2, with normalized
-content fingerprints for concurrent-save checks. Saves take effect on restart.
-Existing Tasks retain saved execution values. The changed table/JSON format
-requires a fresh H2 file; changing existing window lengths requires a new Redis
-scope. Server and Kernel never query that configuration database.
+Current source stores the complete configuration in a scenario-owned JSON file,
+with normalized content fingerprints, one process owner and atomic replacement.
+Saves take effect on restart. Existing Tasks retain saved execution values.
+The file-storage cutover uses `configuration.path`/`configuration.seed` and a fresh
+JSON file; it does not read, migrate or delete old H2 files. Changing existing
+window lengths requires a new Redis scope. Server and Kernel do not read the file.
+Published immutable artifacts retain their version's configuration contract.
 See the [App Checks Owner](../../scenarios/app-checks-jvm/README.md).
 
 ## Fresh-state upgrade and rollback

@@ -3,55 +3,73 @@ package com.xa.mass.scenario.appchecks;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.*;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import tools.jackson.databind.json.JsonMapper;
 
 /** One local configuration owner. No Runtime identities or execution records are stored here. */
 final class AppCheckConfigurationStore implements AutoCloseable {
+    // Opening and closing a competing channel can release this JVM's existing POSIX file lock.
+    // Reserve the canonical path before opening any channel, including during initialization.
+    private static final Set<Path> OWNED_FILES = ConcurrentHashMap.newKeySet();
     record Snapshot(String fingerprint, AppCheckSettings configuration) {
         Snapshot(AppCheckSettings configuration) { this(fingerprintOf(configuration), configuration); }
         Map<String, Object> toMap() { return Map.of("fingerprint", fingerprint, "configuration", configuration.toMap()); }
     }
-    private final Connection connection;
+    private final Path path;
+    private final FileChannel lockChannel;
+    private final FileLock lock;
+    private final FilePublication files;
     private final Snapshot effective;
     private final AppCheckContracts contracts;
     private boolean closed;
 
     AppCheckConfigurationStore(Path path, Supplier<String> seed, AppCheckContracts contracts) {
+        this(path, seed, contracts, new FilePublication());
+    }
+
+    AppCheckConfigurationStore(Path path, Supplier<String> seed, AppCheckContracts contracts, FilePublication files) {
         this.contracts = Objects.requireNonNull(contracts);
-        Connection opened = null;
+        this.files = Objects.requireNonNull(files);
+        FileChannel opened = null;
+        Path reserved = null;
         try {
             Path absolute = path.toAbsolutePath().normalize();
-            if (absolute.toString().contains(";")) throw new IllegalArgumentException("Invalid H2 file path");
             Files.createDirectories(absolute.getParent());
-            opened = DriverManager.getConnection("jdbc:h2:file:" + absolute.toString().replace('\\', '/')
-                    + ";DB_CLOSE_ON_EXIT=FALSE", "sa", "");
-            connection = opened;
-            try (var statement = connection.createStatement()) {
-                statement.execute("CREATE TABLE IF NOT EXISTS app_check_configuration ("
-                        + "id INTEGER PRIMARY KEY CHECK (id = 1), document CLOB NOT NULL)");
-            }
-            var existing = read(false);
-            if (existing == null) {
+            Path resolved = absolute.getParent().toRealPath().resolve(absolute.getFileName());
+            this.path = Files.exists(resolved, java.nio.file.LinkOption.NOFOLLOW_LINKS) ? resolved.toRealPath() : resolved;
+            if (!OWNED_FILES.add(this.path)) throw new IOException("Configuration file is already owned by this process");
+            reserved = this.path;
+            // The lock is never renamed or deleted with the document: every process locks the same file.
+            opened = FileChannel.open(this.path.resolveSibling(this.path.getFileName() + ".lock"),
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            lockChannel = opened;
+            lock = opened.tryLock();
+            if (lock == null) throw new IOException("Configuration file is already owned by another process");
+            Snapshot existing;
+            try { existing = read(); }
+            catch (NoSuchFileException missing) {
                 var initial = AppCheckSettings.parse(Jsons.parseObject(seed.get()), contracts);
-                connection.setAutoCommit(false);
-                try (var statement = connection.prepareStatement("INSERT INTO app_check_configuration (id, document) VALUES (1, ?)")) {
-                    statement.setString(1, Jsons.toJson(initial.toMap()));
-                    statement.executeUpdate();
-                }
-                connection.commit();
-                connection.setAutoCommit(true);
-                existing = read(false);
+                publish(initial);
+                existing = read();
             }
-            effective = Objects.requireNonNull(existing);
-        } catch (SQLException | IOException | RuntimeException failure) {
-            if (opened != null) try { opened.close(); } catch (SQLException close) { failure.addSuppressed(close); }
+            effective = existing;
+        } catch (IOException | RuntimeException | Error failure) {
+            if (opened != null) try { opened.close(); } catch (IOException close) { failure.addSuppressed(close); }
+            if (reserved != null) OWNED_FILES.remove(reserved);
+            if (failure instanceof Error error) throw error;
             throw AppCheckConfigurationException.unavailable("open", failure);
         }
     }
@@ -59,8 +77,8 @@ final class AppCheckConfigurationStore implements AutoCloseable {
     Snapshot effective() { return effective; }
 
     synchronized Map<String, Object> view() {
-        try { return view(Objects.requireNonNull(read(false), "Missing configuration")); }
-        catch (SQLException | RuntimeException failure) { throw AppCheckConfigurationException.unavailable("load", failure); }
+        try { return view(read()); }
+        catch (IOException | RuntimeException failure) { throw AppCheckConfigurationException.unavailable("load", failure); }
     }
 
     synchronized Map<String, Object> save(String expectedFingerprint, Object document) {
@@ -74,13 +92,9 @@ final class AppCheckConfigurationStore implements AutoCloseable {
             throw new AppCheckConfigurationException(400, AppCheckConfigurationException.Code.INVALID_CONFIGURATION,
                     "save", invalid.getMessage(), invalid);
         }
-        boolean committed = false;
         try {
-            if (closed) throw new SQLException("Store is closed");
-            connection.setAutoCommit(false);
-            // Lock the singleton row across comparison and update, including a same-content save.
-            // No revision counter or stored history is needed for content-based concurrency control.
-            var previous = Objects.requireNonNull(read(true), "Missing configuration");
+            // The process lock and this instance's gate cover comparison and complete publication.
+            var previous = read();
             if (!previous.fingerprint().equals(expectedFingerprint)) throw conflict();
             try { settings.requireUpdateOf(previous.configuration()); }
             catch (IllegalArgumentException invalid) {
@@ -88,36 +102,44 @@ final class AppCheckConfigurationStore implements AutoCloseable {
                         "save", invalid.getMessage(), invalid);
             }
             var next = new Snapshot(settings);
-            if (previous.fingerprint().equals(next.fingerprint())) {
-                connection.commit(); committed = true;
-                return view(previous);
-            }
-            try (var statement = connection.prepareStatement("UPDATE app_check_configuration SET document = ? WHERE id = 1")) {
-                statement.setString(1, Jsons.toJson(settings.toMap()));
-                if (statement.executeUpdate() != 1) throw conflict();
-            }
-            connection.commit(); committed = true;
+            if (previous.fingerprint().equals(next.fingerprint())) return view(previous);
+            publish(settings);
             return view(next);
         } catch (AppCheckConfigurationException known) { throw known;
-        } catch (SQLException | RuntimeException failure) {
+        } catch (IOException | RuntimeException failure) {
             throw AppCheckConfigurationException.unavailable("save", failure);
-        } finally {
-            try {
-                if (!committed) connection.rollback();
-                connection.setAutoCommit(true);
-            } catch (SQLException failure) {
-                try { close(); } catch (RuntimeException close) { failure.addSuppressed(close); }
-                throw AppCheckConfigurationException.unavailable("release", failure);
-            }
         }
     }
 
-    private Snapshot read(boolean forUpdate) throws SQLException {
-        if (closed) throw new SQLException("Store is closed");
-        try (var statement = connection.createStatement(); var rows = statement.executeQuery(
-                "SELECT document FROM app_check_configuration WHERE id = 1" + (forUpdate ? " FOR UPDATE" : ""))) {
-            if (!rows.next()) return null;
-            return new Snapshot(AppCheckSettings.parse(Jsons.parseObject(rows.getString(1)), contracts));
+    private Snapshot read() throws IOException {
+        if (closed) throw new IOException("Store is closed");
+        return new Snapshot(AppCheckSettings.parse(Jsons.parseObject(Files.readString(path, StandardCharsets.UTF_8)), contracts));
+    }
+
+    private void publish(AppCheckSettings settings) throws IOException {
+        byte[] document = (JsonMapper.builder().build().writerWithDefaultPrettyPrinter()
+                .writeValueAsString(canonical(settings.toMap())) + "\n").getBytes(StandardCharsets.UTF_8);
+        Path pending = Files.createTempFile(path.getParent(), path.getFileName() + ".", ".tmp");
+        try {
+            files.write(pending, document);
+            files.replace(pending, path);
+        } finally {
+            Files.deleteIfExists(pending);
+        }
+    }
+
+    /** Package-local file boundary for real-file publication fault proofs. No independent state or lifecycle. */
+    static class FilePublication {
+        void write(Path pending, byte[] document) throws IOException {
+            try (var output = FileChannel.open(pending, StandardOpenOption.WRITE)) {
+                var bytes = ByteBuffer.wrap(document);
+                while (bytes.hasRemaining()) output.write(bytes);
+                output.force(true);
+            }
+        }
+
+        void replace(Path pending, Path target) throws IOException {
+            Files.move(pending, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
@@ -156,7 +178,10 @@ final class AppCheckConfigurationStore implements AutoCloseable {
     @Override public synchronized void close() {
         if (closed) return;
         closed = true;
-        try { connection.close(); }
-        catch (SQLException failure) { throw AppCheckConfigurationException.unavailable("close", failure); }
+        try {
+            try { lock.release(); }
+            finally { lockChannel.close(); }
+        } catch (IOException failure) { throw AppCheckConfigurationException.unavailable("close", failure); }
+        finally { OWNED_FILES.remove(path); }
     }
 }

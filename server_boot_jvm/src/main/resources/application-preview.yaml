@@ -21,8 +21,8 @@ xa:
           worker-group-ids: [demo-sim]
     scenarios:
       app-checks:
-        storage:
-          path: ${XA_MASS_APP_CHECKS_DB_PATH:}
+        configuration:
+          path: ${XA_MASS_APP_CHECKS_CONFIG_PATH:}
           seed: ${XA_MASS_APP_CHECKS_SEED:classpath:app-checks/preview-configuration.json}
       messages:
         applications:

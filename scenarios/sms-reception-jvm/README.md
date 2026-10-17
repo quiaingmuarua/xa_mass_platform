@@ -224,8 +224,8 @@ proofs; its fixed workload measurements are not platform capacity guarantees.
 
 The runner uses exact pre-materialized SMS-only inventory with `app_count=0`, a
 unique `test_*` scope and the packaged launcher's lifecycle/cleanup. Server restart
-reuses that invocation's App Checks configuration database path, along with the
-same Redis scope and ports; it never inherits another environment's database.
+reuses that invocation's App Checks configuration JSON path, along with the
+same Redis scope and ports; it never inherits another environment's configuration file.
 It also preserves the private Task archive root. This restart fixture explicitly
 allows 180 unstable reconnect attempts at 500 ms intervals, covering its 60-second
 Server startup budget while retaining the original Worker run and Reporter.

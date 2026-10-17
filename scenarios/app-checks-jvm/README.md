@@ -5,9 +5,9 @@ Status: current one-shot application check scenario owner.
 `app-checks` 是通用有限任务的受约束业务入口。创建空的 `CLOSE_WHEN_IDLE`
 Task、导入种子、核对启动和关闭是独立操作，复用 Server 的 Task 应用能力。
 每个 Task 固定检查类型、Group、事件、供给、查询和参数，按保存的 seedsPerItem 将有序种子组装为 Item。
-检查配置来自模块内 H2 的启动快照；同一 Group 可以提供多种检查能力。
+检查配置来自模块内 JSON 配置文件的启动快照；同一 Group 可以提供多种检查能力。
 具名契约由模块代码静态注册；可选窗口 Pool 的名称与属性字段由场景固定声明。[Boot](../../server_boot_jvm/README.md#platform-and-preview)
-提供数据库路径和种子资源，宿主继续准备对应 Group、Matching 启用关系和 Worker 能力。
+提供配置文件路径和种子资源，宿主继续准备对应 Group、Matching 启用关系和 Worker 能力。
 国家只校验号码格式和前缀，不筛选 Worker 国家或证明号码归属地。
 
 有效结果由场景契约判定满足或不满足，两者均属于执行成功；执行失败和协议错误归为检查错误。
@@ -20,7 +20,7 @@ SDK 和 Worker 协议使用既有机制；Matching 基础规则由场景声明�
 | --- | --- |
 | `GET /api/v1/app-checks/catalog` | 当前生效的 Project、checkTypes、含执行绑定的 checks、国家及单次种子导入限制 |
 | `GET /api/v1/app-checks/configuration` | 已保存与当前进程生效配置及内容指纹、待重启/新 scope 提示及契约说明/示例 |
-| `PUT /api/v1/app-checks/configuration` | `{expectedFingerprint, configuration}` 整份校验与事务保存；不热更新 |
+| `PUT /api/v1/app-checks/configuration` | `{expectedFingerprint, configuration}` 整份校验与原子文件替换；不热更新 |
 | `POST /api/v1/app-checks/tasks` | 创建空待审核任务，201 返回 `{"taskId":"..."}` |
 | `POST /api/v1/app-checks/tasks/{taskId}/seeds:import` | `text/plain` UTF-8 种子文件；全文件校验后每批最多 100 个 Item |
 | `POST /api/v1/app-checks/tasks/{taskId}/results:export?filter=all` | 终态 CSV；filter 为 all、matched 或 unmatched |
@@ -66,7 +66,7 @@ Base64URL 编码，`X-XA-Dev-Role` 为 `admin` 或 `operator`。解码后的 use
 不可变调用方由 Server 统一解析并显式传入场景服务；不由 Scenario Controller 重复实现所有权检查。
 admin 可管理全部场景任务及配置；operator 只能读取和管理自己创建的任务，不能访问配置接口。
 共同服务先检查 Project 和创建者，再由场景检查业务归属和有限 Task 类型；拒绝发生在导入文件读取、Item 数量
-和 Result 读取、写入及导出扫描之前。配置接口在 H2 访问之前拒绝 operator。
+和 Result 读取、写入及导出扫描之前。配置接口在文件访问之前拒绝 operator。
 列表直接从 Server 的 Project 单 ZSET 按用户 score 范围取最多 100 条，再读取数量。
 operator 默认自己的范围；显式查询其他 userId 返回 403。admin 可用 `?userId=` 查询指定创建者，
 省略时读取 Project 批次。truncated 属于实际查询范围，其他用户再多也不会占用个人批次。
@@ -79,7 +79,7 @@ operator 默认自己的范围；显式查询其他 userId 返回 403。admin �
 输入版本为 `5`，salt 和号码 Item 身份算法不变。首次创建保存 `checkId`、检查名称、`checkType`、类型名称、`seedType`、有效种子选项及 `contractParameters`、
 `eventCode`、`workerSelector`、`seedsPerItem` 以及 salt/date；Group 和 refill 保存在 descriptor 原字段中。
 服务端配置不进入客户端重试指纹；相同请求跨配置保存/重启仍复用原 Task，不重新套用当前执行配置。
-不回填历史归属或提供旧请求兼容。H2 仍只保存配置。
+不回填历史归属或提供旧请求兼容。JSON 文件只保存配置。
 
 这是受信任开发环境的目录核对契约，客户端仍可选择目录中的现有身份；不构成身份认证或生产客户数据隔离。
 相同检查覆盖共同 Task API、Messages 和业务结果；全局 Runtime Task 预览及 SMS 操作要求 admin。
@@ -230,7 +230,7 @@ Pacer 在执行租约和 Item claim 均成功后、Command 编码和发布前发
 前者是最近观察到的分配时间（毫秒），后者是该时间所在固定窗口中的观察数量。
 窗口长度读取启动快照的 `poolGroups.<group>.windowMillis`，与 Pool 定义使用同一份不可变
 配置。一个 `WorkerPropertyProjection` 声明包含 Group 到多项消息事件选择/纯投影函数的不可变列表，Server 在启动时展开；
-投影不读取数据库。窗口编号为 `floor(observedAtMillis / windowMillis)`。
+投影不读取配置文件。窗口编号为 `floor(observedAtMillis / windowMillis)`。
 选择的事件共享 Group 内单 Worker 的原观察计数，不建立检查项私有配额。同窗口累加、时间取最大值；新窗口重新计数；
 更旧窗口不回退。两个字段均不存在时初始化；字段不完整、非整数、负数或溢出时
 整个 Worker 投影跳过并由 Server 计入处理失败诊断，不静默修复。其他属性不修改。
@@ -269,19 +269,24 @@ IP／账号配额。其他显式函数不受这一策略拦截。窗口长度改
 
 ## 模块内配置存储
 
-`AppCheckConfigurationStore` 独占 H2 JDBC 连接、单表建表和关闭，H2 版本随 Boot BOM。
-没有公共 DataSource、ORM、数据库进程或公共 Storage 模块。Kernel、Pacer、Matching、Server
-不查询 H2；Task、Item、Result、调度和请求幂等仍由 Redis 原 Owner 管理。
+`AppCheckConfigurationStore` 在模块内拥有一个 JSON 文件及同目录固定 `.lock` 文件的进程独占锁。
+第二个 Store 或进程不能同时占用该文件；关闭和启动失败释放锁，锁文件不随配置替换或删除。
+同 JVM 先按规范化真实路径占用本地名额，再打开唯一的锁文件 channel；重复持有在打开锁文件前拒绝。
+名额在 channel 关闭后释放。这样避免部分平台关闭竞争 channel 时连带释放原持有者的锁，
+遵循 [Java FileLock 的平台约束](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/nio/channels/FileLock.html)。
+没有数据库依赖、公共 Storage 模块或后台同步。Kernel、Pacer、Matching、Server 不读取该文件；
+Task、Item、Result、调度和请求幂等仍由 Redis 原 Owner 管理。
 
-严格启动参数为 `xa.mass.scenarios.app-checks.storage.path`（嵌入式数据库文件前缀）和
-`storage.seed`（Spring 资源地址）。Preview 由启动器传入独立环境路径，种子为
+严格启动参数为 `xa.mass.scenarios.app-checks.configuration.path`（实际 JSON 文件路径）和
+`configuration.seed`（Spring 资源地址）。Preview 由启动器传入独立环境路径，种子为
 `classpath:app-checks/preview-configuration.json`，包含五项能力：`app-a-registration`、`app-b-registration`、`original-carrier`、`uint32-prime`、`md5-prefix`。
 App A/B 注册使用原 60000 ms/10 次窗口和模拟参数；其余三项绑定 demo-sim，使用 Any，不增加窗口投影、Group 或 Worker 数量。
-数据库表没有配置行时才读取种子；存在记录时种子内容不会覆盖数据库。非法文档
-或读取失败阻止场景启动，不回退默认值。未装配本场景的上下文不开连接、不建文件。
+只有目标文件不存在时才读取种子并完整校验后生成文件。已有文件不读取种子；空文件、
+非法 UTF-8、损坏 JSON、非法配置或读取失败阻止场景启动，不回退默认值。
+未装配本场景的上下文不创建配置文件或锁文件。旧 `storage.*` 路径不再接受。
 
-唯一表 `app_check_configuration` 只保存一行：`id=1` 和完整 `document`。不保存格式版本、
-递增修订号或历史版本；内容指纹从规范化文档计算，不单独落库。文档结构为：
+文件以 UTF-8、缩进 JSON 保存规范化后的完整配置对象，不增加外层包装。
+不保存格式版本、递增修订号、指纹或历史版本；内容指纹从规范化文档计算。文档结构为：
 
 ```json
 {
@@ -311,15 +316,19 @@ checks 是非空对象，键为稳定 checkId，允许多个检查项绑定同�
 对象键顺序不具有业务含义，Catalog 按 checkId 字典序展示。检查项 `parameters` 存在时整份使用，
 否则取 `common.typeDefaults[checkType]`；不递归合并。所选实现规范化并校验参数，seedType 只由实现声明。
 窗口/阈值为正整数。允许改名称、执行绑定、参数、窗口参数和新增检查项；不允许删除、停用或改已有 checkId 的类型/Group 绑定。
-国家、导入容量和 Task 策略不进入配置表。不保存历史修订、任务身份、号码或操作记录。
+国家、导入容量和 Task 策略不进入配置文件。不保存历史修订、任务身份、号码或操作记录。
 
 GET 的 `saved` 与 `effective` 各包含 `fingerprint`、`configuration`。指纹是校验并规范化后
 完整文档的 SHA-256；递归排序对象键、统一数值表示，保留数组顺序及字符串原值，忽略 JSON 排版。
-客户端原样携带读取到的指纹，不自行计算 API 指纹。PUT 在事务内锁定唯一配置行，再比较
-`expectedFingerprint` 并整份替换；并发编辑返回 409，同内容保存不写入且指纹不变。
+客户端原样携带读取到的指纹，不自行计算 API 指纹。PUT 在进程独占锁及实例串行准入内重新读取文件、比较
+`expectedFingerprint`，再执行既有更新校验；并发编辑返回 409，同内容保存不重写文件。
+新文档完整写入同目录临时文件并刷新后原子替换，无法原子替换时不退回直接覆盖。
+本次临时文件在完成或失败后清理；崩溃残留临时文件不作为生效或恢复配置。
 指纹只核对内容，不记录编辑次数；A→B→A 后指纹仍为 A，没有审计或历史版本语义。
-非法配置/字段 400，数据库故障或提交未确认 503。未知保存不自动重试；GET 读取当前保存文档
-供人工核对。
+非法配置/字段 400，文件读写故障或保存未确认 503。未知保存不自动重试；GET 读取当前保存文档
+供人工核对。运行期间文件丢失或损坏只返回存储错误，不重新播种；替换前失败保留旧文件，
+替换后响应丢失可以通过 GET 核对新文档。手工编辑应在 Server 停止后进行，不提供跨编辑器
+或多实例协作写入，也不宣称抵御磁盘损坏。
 `checkTypes` 给出静态注册类型、种子类型、说明、参数/输入/结果示例。`restartRequired` 比较配置内容，`newScopeRequired` 标识既有 Group 窗口长度变化。
 
 模块启动只加载一次生效快照，以它生成 Catalog、ProjectDefinition、ProjectWorkerRequirements、
@@ -329,9 +338,9 @@ FixedWindowPoolDefinition、各 Group 属性投影和创建映射。配置保存
 新增检查项先保存配置，再准备宿主 Group/事件/Pool/函数和真实 Worker，最后手动重启。
 保存只验证配置本身；完整依赖在启动时校验，失败阻止后续启动，不补注册资源。
 修改既有 Group 窗口长度须使用新 Redis scope；系统不自动清理、切换或重启。
-数据库文件位于环境数据目录，不进入 Git 或 ZIP。源码/ZIP 验收使用独立数据库和种子，
-重启证明复用同一文件。本次表结构和 JSON 形状切换使用新 H2 文件与 Redis scope，不做旧数据迁移。
-没有热更新、后台同步或数据库执行路径。
+配置文件位于环境数据目录，不进入 Git 或 ZIP；锁文件和临时文件同样不打包。
+源码/ZIP 验收使用独立 JSON 文件和种子，重启证明复用同一文件。此次存储切换不改变文档结构，
+使用新文件和 Redis scope，不读取、迁移或删除旧 H2 数据。没有热更新、后台同步或执行期配置读取。
 
 ## 页面与结果核对
 
@@ -354,7 +363,7 @@ API/Mock 和浏览器核对的可用性及本地状态。
 配置单测覆盖文件重开、种子不覆盖、文档损坏、键顺序/排版不影响指纹、并发指纹冲突、
 同内容保存及内容恢复、提交确认丢失后的读取核对。
 Boot 真实 HTTP/Redis/Worker 证明保存 App C 后 Catalog 保持原值，缺失宿主 Group 启动失败，
-补齐后重启完成 C 的创建、导入、审核、查询及导出；App C 使用不同事件、Any Pool 和 registration-v1，不生成窗口投影或模拟字段；关闭 H2 后这些执行路径仍工作。
+补齐后重启完成 C 的创建、导入、审核、查询及导出；App C 使用不同事件、Any Pool 和 registration-v1，不生成窗口投影或模拟字段；删除配置文件后这些执行路径仍工作。
 Server 测试保留多 Group/多事件投影隔离、重复选择拒绝、既有批读预算和 best-effort 失败语义。场景测试证明同 Group 重复检查绑定只生成一次观察选择。
 运营商协议的 Boot 测试使用明确的正面、负面及损坏响应，核对归档前后预览/CSV 一致和清理后不可读取。
 源码/新 ZIP runner 则运行真实号码 Handler，对固定运营商/无映射/无效号码向量以及超过 100 条输入，

@@ -1124,7 +1124,7 @@ can read the projected fields during subsequent refill. App Checks supplies both
 the Pool definition and projection from the same Pool/Group configuration; Server
 collects definitions without interpreting their fields or window settings. The
 scenario may own persistent configuration and supply an immutable startup snapshot;
-Server has no H2 dependency, connection, schema, repository or configuration query.
+Server has no scenario configuration file handle or configuration read/write path.
 
 The consumer starts before Pacer and stops after it, before Matching destruction.
 Stop closes ingress, discards queued batches, interrupts and waits up to 5 seconds

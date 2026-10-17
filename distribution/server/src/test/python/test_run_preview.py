@@ -181,8 +181,8 @@ class PreviewLifecycleTest(unittest.TestCase):
                     self.assertEqual(["server", "host"], [item.args[0] for item in launch.call_args_list])
                     server, host = launch.call_args_list
                     self.assertIn("--spring.profiles.active=preview", server.args[1])
-                    self.assertEqual(str(run.sandbox_root.parent / "app-checks" / "configuration"),
-                                     server.args[2]["XA_MASS_APP_CHECKS_DB_PATH"])
+                    self.assertEqual(str(run.sandbox_root.parent / "app-checks" / "configuration.json"),
+                                     server.args[2]["XA_MASS_APP_CHECKS_CONFIG_PATH"])
                     self.assertEqual(str(run.output / "task-archives"), server.args[2]["XA_MASS_TASK_ARCHIVE_DIRECTORY"])
                     self.assertIn("--spring.config.additional-location=" + (root / ("config" if packaged else "build/preview/config")).as_uri() + "/", server.args[1])
                     self.assertIn(str(server_lib / "xa-mass-server-jvm-test.jar"), server.args[1])

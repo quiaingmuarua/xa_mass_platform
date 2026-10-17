@@ -302,8 +302,9 @@ class AppChecksIntegrationTest {
             assertThat(projection.projectionsByGroup()).doesNotContainKey("app-c-sim");
             assertThat(world.context.getBean(com.xa.mass.workermatching.FixedWindowPoolDefinition.class)
                     .limitsByGroup()).doesNotContainKey("app-c-sim");
-            // Deliberately make the storage owner unavailable before creating and executing the new app's task.
-            ((AutoCloseable) world.context.getBean("appCheckConfigurationStore")).close();
+            // A real file failure affects configuration reads, not the already captured execution configuration.
+            java.nio.file.Files.delete(Path.of(world.context.getEnvironment()
+                    .getRequiredProperty("xa.mass.scenarios.app-checks.configuration.path")));
             assertThat(world.http.send(world.request("/api/v1/app-checks/configuration", "proof", "admin").build(),
                     HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(503);
             try (var workers = world.registrationWorkers("app-c-sim")) {

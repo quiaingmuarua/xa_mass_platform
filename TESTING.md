@@ -51,8 +51,8 @@ scenario lane for composition, allocation projection, assignment-window and
 source/fresh-ZIP execution changes. Its Owner defines fixtures and observation
 bounds; [Product Coexistence](doc/testing/proof-registry.md#product_coexistence)
 registers the claims without promoting projections to reliable counters or quotas.
-Scenario-local H2 tests cover persistence, content-fingerprint conflicts and unknown-commit
-readback; the same composition lane covers App C configuration activation and real
+Scenario-local real-file tests cover persistence, process-exclusive ownership, content-fingerprint
+conflicts, atomic publication failures and unknown-save readback; the same composition lane covers App C configuration activation and real
 HTTP/Redis/Worker execution after restart. No new lane is introduced.
 
 [Scenario Coexistence](integrations/scenario-coexistence/README.md) runs functional,
@@ -305,7 +305,7 @@ execution of the Java Worker proof.
 Worker Correctness, Dynamic Matching, Convergence Health, Loaded Recovery and
 Android Worker Proof load `integrations/worker_proof_support/platform-runtime.yaml`
 through `spring.config.additional-location` and use its explicit `scenario-workers`
-Project. Lane overlays follow that fixture; no Preview profile or H2 is involved. Runners that
+Project. Lane overlays follow that fixture; no Preview profile or scenario configuration file is involved. Runners that
 replace Group manifests must also replace the complete Project list under
 [Boot's topology contract](server_boot_jvm/README.md#project-topology), preserving
 the lane's intended Project/Group bindings. Each lane owns its workload, fault,

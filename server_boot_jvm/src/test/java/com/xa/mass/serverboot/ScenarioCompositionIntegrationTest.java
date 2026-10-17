@@ -76,7 +76,8 @@ class ScenarioCompositionIntegrationTest {
             assertThat(context.getBeansOfType(AppCheckTaskService.class)).hasSize(preview ? 1 : 0);
             assertThat(context.getBeansOfType(WorkerPropertyProjection.class)).hasSize(preview ? 1 : 0);
             assertThat(context.getBeansOfType(javax.sql.DataSource.class)).isEmpty();
-            assertThat(java.nio.file.Files.exists(Path.of(storage.get("xa.mass.scenarios.app-checks.storage.path") + ".mv.db"))).isEqualTo(preview);
+            assertThat(java.nio.file.Files.exists(Path.of(storage.get("xa.mass.scenarios.app-checks.configuration.path").toString()))).isEqualTo(preview);
+            assertThat(java.nio.file.Files.exists(Path.of(storage.get("xa.mass.scenarios.app-checks.configuration.path") + ".lock"))).isEqualTo(preview);
             assertThat(context.getBeansOfType(com.xa.mass.workermatching.QualifiedCountryDefinition.class)).hasSize(preview ? 1 : 0);
             assertThat(context.getBeansOfType(com.xa.mass.server.project.ProjectDefinition.class)).hasSize(preview ? 2 : 0);
             assertThat(context.getBeansOfType(com.xa.mass.server.project.ProjectWorkerRequirements.class)).hasSize(preview ? 2 : 0);

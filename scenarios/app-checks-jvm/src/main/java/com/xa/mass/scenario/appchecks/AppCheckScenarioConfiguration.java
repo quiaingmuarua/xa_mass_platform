@@ -21,7 +21,7 @@ import static com.xa.mass.scenario.appchecks.AppCheckWorkerSupply.*;
 
 @Configuration(proxyBeanMethods = false)
 @Import(AppCheckController.class)
-@EnableConfigurationProperties(AppCheckStorageProperties.class)
+@EnableConfigurationProperties(AppCheckConfigurationProperties.class)
 public class AppCheckScenarioConfiguration {
     @Bean AppCheckContract registrationContract() { return AppCheckContracts.registration(); }
     @Bean AppCheckContract simulatedRegistrationContract() { return AppCheckContracts.simulatedRegistration(); }
@@ -33,9 +33,9 @@ public class AppCheckScenarioConfiguration {
     @Bean AppCheckContracts appCheckContracts(List<AppCheckContract> definitions) { return new AppCheckContracts(definitions); }
 
     @Bean(destroyMethod = "close")
-    AppCheckConfigurationStore appCheckConfigurationStore(AppCheckStorageProperties properties, ResourceLoader resources, AppCheckContracts contracts) {
-        return new AppCheckConfigurationStore(Path.of(properties.storage().path()), () -> {
-            try (var input = resources.getResource(properties.storage().seed()).getInputStream()) {
+    AppCheckConfigurationStore appCheckConfigurationStore(AppCheckConfigurationProperties properties, ResourceLoader resources, AppCheckContracts contracts) {
+        return new AppCheckConfigurationStore(Path.of(properties.configuration().path()), () -> {
+            try (var input = resources.getResource(properties.configuration().seed()).getInputStream()) {
                 return new String(input.readAllBytes(), StandardCharsets.UTF_8);
             } catch (java.io.IOException failure) { throw new UncheckedIOException(failure); }
         }, contracts);
