@@ -14,6 +14,7 @@ import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
 import com.xa.mass.server.task.TaskItemOutcomeProperties;
 import com.xa.mass.server.worker.observation.WorkerPropertyProjection;
+import com.xa.mass.server.worker.observation.WorkerGroupBindings;
 import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
 import com.xa.mass.workermatching.WorkerProperties;
 import com.xa.mass.workermatching.MatchingComposition;
@@ -35,8 +36,10 @@ import com.xa.mass.server.task.observation.TaskLeaseProjectionService;
 public class KernelPacerConfiguration {
 
     @Bean
-    WorkerObservationConsumer workerObservationConsumer(List<WorkerPropertyProjection> projections,
+    WorkerObservationConsumer workerObservationConsumer(List<WorkerPropertyProjection> declarations, WorkerGroupBindings bindings,
             ObjectProvider<WorkerProperties> properties, ObjectProvider<WorkerResourceCommandService> commands) {
+        var projections = new java.util.ArrayList<>(declarations);
+        projections.addAll(bindings.projections());
         var running = new AtomicBoolean();
         var failures = new AtomicLong();
         var routes = new LinkedHashMap<String, Map<EventKey, List<FunctionHandler>>>();

@@ -53,7 +53,7 @@ public class ServerWorkerAssemblyConfiguration {
     ProjectWorkerRequirementsValidator projectWorkerRequirementsValidator(
             com.xa.mass.server.project.ProjectDirectory projects,
             com.xa.mass.kernel.worker.WorkerResourceCatalog workers,
-            com.xa.mass.server.assembly.matching.MatchingProperties matching,
+            com.xa.mass.server.worker.observation.WorkerGroupBindings matching,
             java.util.List<com.xa.mass.server.project.ProjectWorkerRequirements> requirements) {
         return new ProjectWorkerRequirementsValidator(projects, workers, matching, requirements);
     }

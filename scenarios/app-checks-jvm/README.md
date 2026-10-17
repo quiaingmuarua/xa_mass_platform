@@ -6,13 +6,13 @@ Status: current one-shot application check scenario owner.
 Task、导入种子、核对启动和关闭是独立操作，复用 Server 的 Task 应用能力。
 每个 Task 固定检查类型、Group、事件、供给、查询和参数，按保存的 seedsPerItem 将有序种子组装为 Item。
 检查配置来自模块内 JSON 配置文件的启动快照；同一 Group 可以提供多种检查能力。
-具名契约由模块代码静态注册；可选窗口 Pool 的名称与属性字段由场景固定声明。[Boot](../../server_boot_jvm/README.md#platform-and-preview)
+具名契约由模块代码静态注册；可选窗口 Pool 与分配反馈由宿主按 Group 具名绑定。[Boot](../../server_boot_jvm/README.md#platform-and-preview)
 提供配置文件路径和种子资源，宿主继续准备对应 Group、Matching 启用关系和 Worker 能力。
 国家只校验号码格式和前缀，不筛选 Worker 国家或证明号码归属地。
 
 有效结果由场景契约判定满足或不满足，两者均属于执行成功；执行失败和协议错误归为检查错误。
 注册查询与原始运营商识别共享有限任务流程。模拟失败区间仍让真实 Handler 抛异常。Kernel、Pacer、
-SDK 和 Worker 协议使用既有机制；Matching 基础规则由场景声明装配，没有新增业务 Redis key 或导入后台任务。
+SDK 和 Worker 协议使用既有机制；Matching 基础规则由宿主启动装配，没有新增业务 Redis key 或导入后台任务。
 
 ## API 和 Task 数据
 
@@ -221,51 +221,24 @@ delay = min + value(domain="delay") mod (max - min + 1)
 
 ## 分配窗口投影
 
-模块仅收集使用窗口查询的检查项，共同观察 `worker.assigned`，
-按 Group、观察事件和消息事件去重选择 `execution.eventCode`。同一 Group 可选择多个事件，重复检查绑定不重复计数；运营商及其他未选择的业务事件不计入窗口。
-Pacer 在执行租约和 Item claim 均成功后、Command 编码和发布前发出通知。
-同组其他事件、选择候选但分配失败、仅取得租约都不计入。
+分配窗口反馈由宿主按 WorkerGroup 显式绑定，不再根据检查项使用的查询函数反推事件。
+Preview 的 App A/B 绑定 `registration-assigned`，只观察注册查询的 `worker.assigned`；
+运营商、MD5、素数及 Messages 事件不自动进入该计数。场景不声明投影 Bean，也不写窗口属性。
+完整的事件选择、纯投影算术、批处理、失败与生命周期见
+[Server 具名绑定](../../server_jvm/README.md#named-window-pool-and-feedback-bindings)。
 
-投影只写两个 Platform Properties：`lastAssignedAt` 和 `windowAssignmentCount`。
-前者是最近观察到的分配时间（毫秒），后者是该时间所在固定窗口中的观察数量。
-窗口长度读取启动快照的 `poolGroups.<group>.windowMillis`，与 Pool 定义使用同一份不可变
-配置。一个 `WorkerPropertyProjection` 声明包含 Group 到多项消息事件选择/纯投影函数的不可变列表，Server 在启动时展开；
-投影不读取配置文件。窗口编号为 `floor(observedAtMillis / windowMillis)`。
-选择的事件共享 Group 内单 Worker 的原观察计数，不建立检查项私有配额。同窗口累加、时间取最大值；新窗口重新计数；
-更旧窗口不回退。两个字段均不存在时初始化；字段不完整、非整数、负数或溢出时
-整个 Worker 投影跳过并由 Server 计入处理失败诊断，不静默修复。其他属性不修改。
-
-这里统计的是 best-effort **分配观察**，不是 Handler 实际执行次数或成功次数。
-后续发送、执行失败不会扣减；重试再次分配会再次通知。Server 队列丢弃、进程退出、
-Facts 缺失或属性写入失败均可能造成缺口，没有补发、最终一致性或精确额度保证。
-不定时清零，空闲时保留最近窗口；重启读取已写入值，不补齐未处理通知。
-窗口 Pool 的补给策略读取这两个字段，投影只提供选择和纯计算，由 Server 的同一个
-Properties Handler 合并读取与写入；场景不依赖 Pacer 或通用 FunctionHandler。
-固定路由、异步交接及既有 patch/候选失效的完整边界见
-[Server](../../server_jvm/README.md#worker-allocation-observations)。
+一个 Item 即使包含多个种子，也不会按种子数放大分配观察；重试仍可能再次分配。
+这是 best-effort 分配观察，不是实际执行次数、成功次数或严格配额。
 
 ## 分配窗口筛选
 
-选择窗口 Pool 的检查项使用 `worker.assignment.available({})`；窗口和阈值由下述模块配置的启动快照决定。
-场景以 `FixedWindowPoolDefinition` 注册独立 `assignment-window` Pool，关联
-`worker.assignment.available`、两个 Platform 属性键以及各 Group 的窗口参数。
-只有该纯数据契约及 `WindowLimit` 是场景允许引用的 Matching 类型；场景不持有库存、
-存储或补给策略实现。Server 收集定义，Matching 复用参数化基础规则在补给时资格判断，
-查询函数只取库存。完整失败与预算见
-[Matching Owner](../../worker_matching_jvm/README.md#fixed-window-pools)。
+检查项通过保存的 refill 与 workerSelector 引用已启用能力；Preview 注册检查继续使用
+`assignment-window` 和 `worker.assignment.available({})`。窗口参数、属性字段及反馈选择归宿主，
+不进入本场景配置文件。新增检查项不会启用或修改 Group 资源。
 
-跨窗口意味着重新符合条件，不承诺立即执行。观察异步、可丢失，不能把配置阈值当成严格
-执行上限；失败和迟到结果不会扣减统计。范围是 Group 内的单 Worker，没有跨设备
-IP／账号配额。其他显式函数不受这一策略拦截。窗口长度改变使用新 scope，不迁移旧值。
-
-资格以补给时的快照为准，入池之后消费不读取 Facts 或再次计算窗口；候选库存由该 Pool
-独立持有，`worker.any` 使用另一份 Any 库存。属性变化、失效提示、TTL 与 Kernel 精确
-执行准入仍各自独立，不能据此承诺取用时业务条件最新。
-
-配置归属为固定 Pool／Group，`poolGroups` 是检查绑定 Group 的可选子集。
-使用窗口供给或窗口查询的 Group 必须有参数；Any 组合不自动附加窗口资格。
-宿主 Group 的 `pools` 和 `functions` 只表达启用关系。没有独立窗口 YAML 读取路径；
-窗口 Pool/函数身份及 salt 算法不变；执行绑定不再由全局固定事件决定。
+资格仍以补给时的快照为准；消费不读取 Facts，Any 和窗口库存保持独立。
+完整规则与失败语义见 [Matching Owner](../../worker_matching_jvm/README.md#fixed-window-pools)。
+改变窗口长度须使用新 Redis scope；本场景不迁移属性、不补清零或保留历史策略。
 
 ## 模块内配置存储
 
@@ -307,16 +280,15 @@ App A/B 注册使用原 60000 ms/10 次窗口和模拟参数；其余三项绑�
       "refill": [{"poolName": "assignment-window", "target": {}, "count": 100}],
       "workerSelector": {"executorName": "worker.assignment.available", "input": {}}
     }
-  }},
-  "poolGroups": {"app-a-sim": {"windowMillis": 60000, "maxCount": 10}}
+  }}
 }
 ```
 
 checks 是非空对象，键为稳定 checkId，允许多个检查项绑定同一 Group。
 对象键顺序不具有业务含义，Catalog 按 checkId 字典序展示。检查项 `parameters` 存在时整份使用，
 否则取 `common.typeDefaults[checkType]`；不递归合并。所选实现规范化并校验参数，seedType 只由实现声明。
-窗口/阈值为正整数。允许改名称、执行绑定、参数、窗口参数和新增检查项；不允许删除、停用或改已有 checkId 的类型/Group 绑定。
-国家、导入容量和 Task 策略不进入配置文件。不保存历史修订、任务身份、号码或操作记录。
+允许改名称、执行绑定、参数和新增检查项；不允许删除、停用或改已有 checkId 的类型/Group 绑定。
+窗口 Pool 与反馈参数、国家、导入容量和 Task 策略不进入配置文件。不保存历史修订、任务身份、号码或操作记录。
 
 GET 的 `saved` 与 `effective` 各包含 `fingerprint`、`configuration`。指纹是校验并规范化后
 完整文档的 SHA-256；递归排序对象键、统一数值表示，保留数组顺序及字符串原值，忽略 JSON 排版。
@@ -329,10 +301,9 @@ GET 的 `saved` 与 `effective` 各包含 `fingerprint`、`configuration`。指�
 供人工核对。运行期间文件丢失或损坏只返回存储错误，不重新播种；替换前失败保留旧文件，
 替换后响应丢失可以通过 GET 核对新文档。手工编辑应在 Server 停止后进行，不提供跨编辑器
 或多实例协作写入，也不宣称抵御磁盘损坏。
-`checkTypes` 给出静态注册类型、种子类型、说明、参数/输入/结果示例。`restartRequired` 比较配置内容，`newScopeRequired` 标识既有 Group 窗口长度变化。
+`checkTypes` 给出静态注册类型、种子类型、说明、参数/输入/结果示例。`restartRequired` 比较配置内容。旧 `poolGroups` 字段拒绝，响应不再返回 `newScopeRequired`；窗口变更说明归 Group 生效绑定视图。
 
-模块启动只加载一次生效快照，以它生成 Catalog、ProjectDefinition、ProjectWorkerRequirements、
-FixedWindowPoolDefinition、各 Group 属性投影和创建映射。配置保存不会改变这些运行对象。
+模块启动只加载一次生效快照，以它生成 Catalog、ProjectDefinition、ProjectWorkerRequirements 和创建映射。配置保存不会改变这些运行对象。
 任务保存的 Group、事件、查询和契约参数也不随配置变化；运行时存储故障仅影响配置读写。
 
 新增检查项先保存配置，再准备宿主 Group/事件/Pool/函数和真实 Worker，最后手动重启。
@@ -340,7 +311,7 @@ FixedWindowPoolDefinition、各 Group 属性投影和创建映射。配置保存
 修改既有 Group 窗口长度须使用新 Redis scope；系统不自动清理、切换或重启。
 配置文件位于环境数据目录，不进入 Git 或 ZIP；锁文件和临时文件同样不打包。
 源码/ZIP 验收使用独立 JSON 文件和种子，重启证明复用同一文件。此次存储切换不改变文档结构，
-使用新文件和 Redis scope，不读取、迁移或删除旧 H2 数据。没有热更新、后台同步或执行期配置读取。
+使用新文件和 Redis scope，旧窗口配置字段不自动转换；不读取、迁移或删除旧 H2 数据。没有热更新、后台同步或执行期配置读取。
 
 ## 页面与结果核对
 
@@ -349,7 +320,7 @@ FixedWindowPoolDefinition、各 Group 属性投影和创建映射。配置保存
 用户核对实际数量后启动。operator 只处理当前载入范围内自己创建的任务，admin 可管理全部任务。
 列表菜单管理任务，抽屉预览结果；未确认创建或导入保留请求身份及已知 Task ID，不自动重试。
 
-配置页以整份 JSON 编辑 `common`、`checks` 和 `poolGroups`，不再提供分散表单。
+配置页以整份 JSON 编辑 `common` 和 `checks`，不再提供分散表单。
 前端只校验 JSON 语法与根对象，后端定位字段错误。刷新/导航保留编辑文本；指纹冲突不合并，
 保存未确认保留原文本与基准指纹供读取核对。当前生效文档与契约参考折叠展示。
 
@@ -404,7 +375,7 @@ Worker 关联复算窗口，不用 Item 数量或 Result 数量推算。该见�
 受控时钟单元测试证明。投影延迟允许继续选择，测试不把阈值当成严格配额。
 
 原 101 Item 等非窗口 Boot 回归显式把阈值设为 1000，仍走新函数。
-进程 runner 使用独立种子文件覆盖两个 Group 的阈值为 1000，
+进程 runner 使用宿主启动配置将窗口阈值设为 1000，独立种子文件只覆盖检查参数，
 保留并恢复调用环境，在摘要记录覆盖值。它验证原业务闭环，不声称验证默认窗口限额。
 Preview 的默认 60 秒／10 次保持。进程 runner 复用现有 Preview 启动/清理，四个 App Worker 加一个执行通用检查的 demo Worker，
 先只读确认已知 App Worker 的 Properties 已上报，再在两份独立启动配置中创建八个 Task 共 60 Items，

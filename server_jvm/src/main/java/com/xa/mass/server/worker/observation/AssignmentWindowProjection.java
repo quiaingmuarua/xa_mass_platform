@@ -1,41 +1,42 @@
-package com.xa.mass.scenario.appchecks;
+package com.xa.mass.server.worker.observation;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.List;
 import java.util.Map;
-import static com.xa.mass.scenario.appchecks.AppCheckWorkerSupply.*;
 
-/** Statistics of observed allocations; neither an execution counter nor a quota. */
-final class AppCheckAssignmentWindow {
+/** Pure observation arithmetic; neither an execution counter nor a reserved quota. */
+final class AssignmentWindowProjection {
     private final long windowMillis;
+    private final String timestampProperty;
+    private final String countProperty;
 
-    AppCheckAssignmentWindow(long windowMillis) {
-        if (windowMillis <= 0) throw new IllegalArgumentException("windowMillis must be positive");
+    AssignmentWindowProjection(long windowMillis, String timestampProperty, String countProperty) {
+        if (windowMillis <= 0 || timestampProperty == null || timestampProperty.isBlank()
+                || countProperty == null || countProperty.isBlank() || timestampProperty.equals(countProperty))
+            throw new IllegalArgumentException("Invalid assignment window parameters");
         this.windowMillis = windowMillis;
+        this.timestampProperty = timestampProperty;
+        this.countProperty = countProperty;
     }
 
     Map<String, Object> project(Map<String, Object> properties, List<Long> observations) {
-        boolean present = properties.containsKey(LAST);
-        if (present != properties.containsKey(COUNT)) throw new IllegalArgumentException("Incomplete assignment window");
-        long last = present ? integer(properties.get(LAST)) : 0;
-        long count = present ? integer(properties.get(COUNT)) : 0;
+        boolean present = properties.containsKey(timestampProperty);
+        if (present != properties.containsKey(countProperty)) throw new IllegalArgumentException("Incomplete assignment window");
+        long last = present ? integer(properties.get(timestampProperty)) : 0;
+        long count = present ? integer(properties.get(countProperty)) : 0;
         long window = present ? last / windowMillis : -1;
         boolean changed = false;
         for (long observedAt : observations) {
             if (observedAt < 0) throw new IllegalArgumentException("Negative observation time");
             long observedWindow = observedAt / windowMillis;
             if (observedWindow < window) continue;
-            if (observedWindow > window) {
-                window = observedWindow;
-                count = 0;
-                last = observedAt;
-            }
+            if (observedWindow > window) { window = observedWindow; count = 0; last = observedAt; }
             count = Math.addExact(count, 1);
             last = Math.max(last, observedAt);
             changed = true;
         }
-        return changed ? Map.of(LAST, last, COUNT, count) : Map.of();
+        return changed ? Map.of(timestampProperty, last, countProperty, count) : Map.of();
     }
 
     private static long integer(Object value) {

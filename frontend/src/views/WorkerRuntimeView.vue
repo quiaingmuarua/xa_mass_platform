@@ -15,6 +15,7 @@ import {
 import JsonBlock from "@/components/JsonBlock.vue";
 import MetricCard from "@/components/MetricCard.vue";
 import WorkerDirectDebug from "@/components/WorkerDirectDebug.vue";
+import WorkerGroupBindings from "@/components/WorkerGroupBindings.vue";
 import {
   useRuntimeViewerConfig,
   useRuntimeViewerStore,
@@ -443,6 +444,10 @@ function metricValue(value: number, observed: number): string {
         </div>
 
         <template v-else-if="store.activeGroup">
+          <WorkerGroupBindings
+            :worker-group-id="store.activeGroup.workerGroupId"
+            :config="runtimeConfig"
+          />
           <div class="worker-toolbar">
             <el-input
               v-model="searchText"

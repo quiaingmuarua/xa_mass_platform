@@ -1,7 +1,6 @@
 package com.xa.mass.scenario.appchecks;
 
 import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit;
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -38,12 +37,11 @@ class AppCheckConfigurationStoreTest {
     @TempDir Path directory;
     Path path() { return directory.resolve("configuration.json"); }
     AppCheckConfigurationStore open() { return new AppCheckConfigurationStore(path(), AppCheckTestSettings::seed, AppCheckTestSettings.contracts()); }
-    AppCheckSettings changed(String label, long window) {
+    AppCheckSettings changed(String label) {
         var original = AppCheckTestSettings.settings();
         var apps = new HashMap<>(original.checks());
         apps.put("app-a-registration", AppCheckTestSettings.simulated(label, "app-a-sim"));
-        return new AppCheckSettings(original.typeDefaults(), apps,
-                Map.of("app-a-sim", new WindowLimit(window, 15), "app-b-sim", original.poolGroups().get("app-b-sim")));
+        return new AppCheckSettings(original.typeDefaults(), apps);
     }
     String fingerprint(Map<String, Object> view) { return (String) ((Map<?, ?>) view.get("saved")).get("fingerprint"); }
     String fingerprint(AppCheckSettings settings) { return new AppCheckConfigurationStore.Snapshot(settings).fingerprint(); }
@@ -60,7 +58,7 @@ class AppCheckConfigurationStoreTest {
             }
         };
         try (var store = new AppCheckConfigurationStore(path(), AppCheckTestSettings::seed, AppCheckTestSettings.contracts(), files)) {
-            var target = changed("Committed", 60000);
+            var target = changed("Committed");
             assertThatThrownBy(() -> store.save(initialFingerprint(), target.toMap())).isInstanceOfSatisfying(AppCheckConfigurationException.class,
                     failure -> assertThat(failure.status).isEqualTo(503));
             var view = store.view();
@@ -73,11 +71,11 @@ class AppCheckConfigurationStoreTest {
     }
 
     @Test void filePersistsAndSeedIsNotReadAgainWhileEffectiveSnapshotStaysFrozen() throws Exception {
-        var target = changed("Renamed A", 120000);
+        var target = changed("Renamed A");
         try (var store = open()) {
             assertThat(fingerprint(store.save(initialFingerprint(), AppCheckTestSettings.settings().toMap()))).isEqualTo(initialFingerprint());
             var updated = store.save(initialFingerprint(), target.toMap());
-            assertThat(updated).containsEntry("restartRequired", true).containsEntry("newScopeRequired", true);
+            assertThat(updated).containsEntry("restartRequired", true);
             assertThat(fingerprint(updated)).isEqualTo(fingerprint(target));
             assertThat(store.effective().configuration().requireCheck("app-a-registration").label()).isEqualTo("App A 模拟注册");
             assertThat(fingerprint(store.save(fingerprint(target), target.toMap()))).isEqualTo(fingerprint(target));
@@ -86,7 +84,7 @@ class AppCheckConfigurationStoreTest {
         }
         try (var restored = new AppCheckConfigurationStore(path(), () -> { throw new AssertionError("seed must not be read"); }, AppCheckTestSettings.contracts())) {
             assertThat(restored.effective().configuration()).isEqualTo(target);
-            assertThat(restored.view()).containsEntry("restartRequired", false).containsEntry("newScopeRequired", false);
+            assertThat(restored.view()).containsEntry("restartRequired", false);
             assertThat(Files.readString(path())).contains("\n  ").doesNotContain("fingerprint", "revision");
             assertThat(AppCheckSettings.parse(Jsons.parseObject(Files.readString(path())), AppCheckTestSettings.contracts())).isEqualTo(target);
             assertNoPendingFiles();
@@ -96,7 +94,7 @@ class AppCheckConfigurationStoreTest {
     @Test void concurrentWholeConfigurationWritesHaveOneWinnerAndNoPartialMerge() throws Exception {
         try (var store = open(); var executor = Executors.newFixedThreadPool(2)) {
             var gate = new CountDownLatch(1);
-            var targets = List.of(changed("first", 60000), changed("second", 60000));
+            var targets = List.of(changed("first"), changed("second"));
             var results = new ArrayList<Future<Integer>>();
             for (int i = 0; i < 2; i++) {
                 final int index = i;
@@ -117,25 +115,22 @@ class AppCheckConfigurationStoreTest {
     @Test void additionIsAcceptedButRemovalAndRebindingAreRejectedWithoutWriting() {
         var initial = AppCheckTestSettings.settings();
         try (var store = open()) {
-            var removed = new AppCheckSettings(initial.typeDefaults(), Map.of("app-a-registration", initial.requireCheck("app-a-registration")),
-                    Map.of("app-a-sim", initial.poolGroups().get("app-a-sim")));
+            var removed = new AppCheckSettings(initial.typeDefaults(), Map.of("app-a-registration", initial.requireCheck("app-a-registration")));
             assertThatThrownBy(() -> store.save(initialFingerprint(), removed.toMap())).hasMessageContaining("不可删除、换类型或换绑");
             var rebound = new AppCheckSettings(initial.typeDefaults(), Map.of(
-                    "app-a-registration", AppCheckTestSettings.simulated("A", "changed"), "app-b-registration", initial.requireCheck("app-b-registration")),
-                    Map.of("changed", initial.poolGroups().get("app-a-sim"), "app-b-sim", initial.poolGroups().get("app-b-sim")));
+                    "app-a-registration", AppCheckTestSettings.simulated("A", "changed"), "app-b-registration", initial.requireCheck("app-b-registration")));
             assertThatThrownBy(() -> store.save(initialFingerprint(), rebound.toMap())).hasMessageContaining("不可删除、换类型或换绑");
             assertThat(fingerprint(store.view())).isEqualTo(initialFingerprint());
             var apps = new HashMap<>(initial.checks());
             var originalCheck = apps.get("app-a-registration");
             apps.put("app-a-registration", new AppCheckSettings.Check(originalCheck.label(), originalCheck.workerGroupId(),
                     originalCheck.execution(), AppCheckContracts.REGISTRATION, Map.of()));
-            assertThatThrownBy(() -> store.save(initialFingerprint(), new AppCheckSettings(initial.typeDefaults(), apps, initial.poolGroups()).toMap()))
+            assertThatThrownBy(() -> store.save(initialFingerprint(), new AppCheckSettings(initial.typeDefaults(), apps).toMap()))
                     .hasMessageContaining("换类型");
             apps.put("app-a-registration", originalCheck);
             apps.put("app-c", AppCheckTestSettings.simulated("App C", "app-c-sim"));
-            var groups = new HashMap<>(initial.poolGroups()); groups.put("app-c-sim", new WindowLimit(60000, 8));
-            var update = store.save(initialFingerprint(), new AppCheckSettings(initial.typeDefaults(), apps, groups).toMap());
-            assertThat(update).containsEntry("restartRequired", true).containsEntry("newScopeRequired", false);
+            var update = store.save(initialFingerprint(), new AppCheckSettings(initial.typeDefaults(), apps).toMap());
+            assertThat(update).containsEntry("restartRequired", true);
             assertThat(store.effective().configuration().checks()).hasSize(5);
         }
     }
@@ -174,12 +169,12 @@ class AppCheckConfigurationStoreTest {
                 assertThat(probe()).as("rejected local open must preserve the OS lock").isEqualTo(2);
             }
             assertThat(fingerprint(store.view())).isEqualTo(initialFingerprint());
-            store.save(initialFingerprint(), changed("Saved while locked", 60000).toMap());
+            store.save(initialFingerprint(), changed("Saved while locked").toMap());
             assertThat(probe()).as("atomic document replacement must preserve the lock").isEqualTo(2);
         }
         assertThat(probe()).isZero();
         try (var reopened = open()) {
-            assertThat(fingerprint(reopened.view())).isEqualTo(fingerprint(changed("Saved while locked", 60000)));
+            assertThat(fingerprint(reopened.view())).isEqualTo(fingerprint(changed("Saved while locked")));
         }
     }
 
@@ -233,7 +228,7 @@ class AppCheckConfigurationStoreTest {
         });
         for (var files : failures) {
             try (var store = new AppCheckConfigurationStore(path(), AppCheckTestSettings::seed, AppCheckTestSettings.contracts(), files)) {
-                assertThatThrownBy(() -> store.save(initialFingerprint(), changed("Unconfirmed", 60000).toMap()))
+                assertThatThrownBy(() -> store.save(initialFingerprint(), changed("Unconfirmed").toMap()))
                         .isInstanceOfSatisfying(AppCheckConfigurationException.class, failure -> assertThat(failure.status).isEqualTo(503));
                 assertThat(Files.readAllBytes(path())).isEqualTo(before);
                 assertThat(fingerprint(store.view())).isEqualTo(initialFingerprint());
@@ -257,7 +252,7 @@ class AppCheckConfigurationStoreTest {
     private void assertUnavailable(AppCheckConfigurationStore store) {
         assertThatThrownBy(store::view).isInstanceOfSatisfying(AppCheckConfigurationException.class,
                 failure -> assertThat(failure.status).isEqualTo(503));
-        assertThatThrownBy(() -> store.save(initialFingerprint(), changed("Not saved", 60000).toMap()))
+        assertThatThrownBy(() -> store.save(initialFingerprint(), changed("Not saved").toMap()))
                 .isInstanceOfSatisfying(AppCheckConfigurationException.class, failure -> assertThat(failure.status).isEqualTo(503));
     }
 
@@ -283,16 +278,16 @@ class AppCheckConfigurationStoreTest {
         } finally { process.destroyForcibly(); Files.deleteIfExists(arguments); }
     }
 
-    @Test void strictModelRejectsUnknownFieldsAndMissingLimitsButAllowsSharedGroups() {
+    @Test void strictModelRejectsOldResourceConfigurationAndAllowsSharedGroups() {
         var input = new HashMap<String, Object>(Jsons.parseObject(AppCheckTestSettings.seed()));
         input.put("priority", 99);
         assertThatThrownBy(() -> AppCheckSettings.parse(input, AppCheckTestSettings.contracts())).hasMessageContaining("未知字段");
         input.remove("priority"); input.put("poolGroups", Map.of());
-        assertThatThrownBy(() -> AppCheckSettings.parse(input, AppCheckTestSettings.contracts())).hasMessageContaining("缺少窗口参数");
+        assertThatThrownBy(() -> AppCheckSettings.parse(input, AppCheckTestSettings.contracts())).hasMessageContaining("未知字段");
         var initial = AppCheckTestSettings.settings();
         var duplicate = new HashMap<>(initial.checks());
         duplicate.put("same-group-check", initial.requireCheck("app-a-registration"));
-        assertThat(new AppCheckSettings(initial.typeDefaults(), duplicate, initial.poolGroups()).workerGroupIds())
+        assertThat(new AppCheckSettings(initial.typeDefaults(), duplicate).workerGroupIds())
                 .containsExactly("app-a-sim", "app-b-sim", "demo-sim");
 
     }
@@ -309,7 +304,7 @@ class AppCheckConfigurationStoreTest {
             assertThat(fingerprint(view)).matches("[0-9a-f]{64}").isEqualTo(initialFingerprint());
             assertThat(view).containsEntry("restartRequired", false);
             assertThat(store.effective().configuration().checks().keySet()).containsExactly("app-a-registration", "app-b-registration", "md5-prefix", "original-carrier", "uint32-prime");
-            var changed = store.save(initialFingerprint(), changed("Rename", 60000).toMap());
+            var changed = store.save(initialFingerprint(), changed("Rename").toMap());
             // Content guard, not edit history: returning to identical content restores the same token.
             var reverted = store.save(fingerprint(changed), original.toMap());
             assertThat(fingerprint(reverted)).isEqualTo(initialFingerprint());

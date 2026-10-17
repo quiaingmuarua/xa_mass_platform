@@ -4,12 +4,11 @@ import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.workermatching.FixedWindowPoolDefinition.WindowLimit;
 import java.util.*;
 
 /** Complete scenario configuration; resource ownership stays with the existing Owners. */
 public record AppCheckSettings(Map<String, Map<String, Object>> typeDefaults,
-                               Map<String, Check> checks, Map<String, WindowLimit> poolGroups) {
+                               Map<String, Check> checks) {
     public record Execution(String eventCode, List<RefillTarget> refill, WorkerQuery workerSelector, int seedsPerItem) {
         public Execution {
             AppCheckSpecification.text(eventCode, 256);
@@ -48,21 +47,11 @@ public record AppCheckSettings(Map<String, Map<String, Object>> typeDefaults,
         typeDefaults.forEach((id, value) -> defaults.put(id, parameters(value, "common.typeDefaults." + id)));
         typeDefaults = Collections.unmodifiableMap(defaults);
         if (checks == null || checks.isEmpty()) throw new IllegalArgumentException("checks: 检查项配置不能为空");
-        var groups = new HashSet<String>();
         checks.forEach((checkId, app) -> {
             AppCheckSpecification.text(checkId, 128);
-            groups.add(app.workerGroupId());
         });
         // Object key order is not configuration: Catalog uses stable checkId order.
         checks = Collections.unmodifiableMap(new TreeMap<>(checks));
-        poolGroups = Map.copyOf(poolGroups);
-        if (!groups.containsAll(poolGroups.keySet())) throw new IllegalArgumentException("poolGroups: 存在未绑定的 WorkerGroup");
-        for (var app : checks.values()) {
-            if ((app.execution().refill().stream().anyMatch(target -> target.poolName().equals(AppCheckWorkerSupply.POOL))
-                    || app.execution().workerSelector().executorName().equals(AppCheckWorkerSupply.FUNCTION))
-                    && !poolGroups.containsKey(app.workerGroupId()))
-                throw new IllegalArgumentException("poolGroups." + app.workerGroupId() + ": 缺少窗口参数");
-        }
     }
     public Check requireCheck(String checkId) {
         var app = checks.get(checkId);
@@ -84,14 +73,12 @@ public record AppCheckSettings(Map<String, Map<String, Object>> typeDefaults,
         }
     }
     public Map<String, Object> toMap() {
-        var windows = new TreeMap<String, Object>();
-        poolGroups.forEach((group, limit) -> windows.put(group, Map.of("windowMillis", limit.windowMillis(), "maxCount", limit.maxCount())));
         var apps = new TreeMap<String, Object>();
         checks.forEach((id, app) -> apps.put(id, app.toMap()));
-        return Map.of("common", Map.of("typeDefaults", typeDefaults), "checks", apps, "poolGroups", windows);
+        return Map.of("common", Map.of("typeDefaults", typeDefaults), "checks", apps);
     }
     public static AppCheckSettings parse(Object input, AppCheckContracts contracts) {
-        var root = object(input, Set.of("common", "checks", "poolGroups"), Set.of(), "configuration");
+        var root = object(input, Set.of("common", "checks"), Set.of(), "configuration");
         var common = object(root.get("common"), Set.of("typeDefaults"), Set.of(), "common");
         var defaults = new LinkedHashMap<String, Map<String, Object>>();
         map(common.get("typeDefaults"), "common.typeDefaults").forEach((id, value) ->
@@ -113,15 +100,7 @@ public record AppCheckSettings(Map<String, Map<String, Object>> typeDefaults,
                         AppCheckSpecification.text(app.get("workerGroupId"), 128), execution, id, selected));
             } catch (IllegalArgumentException invalid) { throw at(path, invalid); }
         }
-        var limits = new LinkedHashMap<String, WindowLimit>();
-        map(root.get("poolGroups"), "poolGroups").forEach((group, value) -> {
-            String path = "poolGroups." + group;
-            try {
-                var limit = object(value, Set.of("windowMillis", "maxCount"), Set.of(), path);
-                limits.put(group, new WindowLimit(AppCheckSpecification.integer(limit.get("windowMillis")), AppCheckSpecification.integer(limit.get("maxCount"))));
-            } catch (IllegalArgumentException invalid) { throw at(path, invalid); }
-        });
-        return new AppCheckSettings(defaults, apps, limits);
+        return new AppCheckSettings(defaults, apps);
     }
     private static Map<String, Object> normalize(AppCheckContracts contracts, String id, Object value, String path) {
         try { return parameters(contracts.require(id).normalizeParameters(value), path); }

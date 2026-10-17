@@ -272,8 +272,9 @@ is persisted there; Task/Item/Result and runtime identities remain with Redis Ow
 Server consumes immutable startup declarations and must not read the scenario file. Saved
 configuration becomes effective on restart, without runtime registration or resource
 mutation. App Checks execution contracts are statically registered pure scenario code;
-Tasks retain their first execution binding and normalized parameters. Per-Group
-resource requirements and lists of message-event/projection selections remain immutable startup declarations.
+Tasks retain their first execution binding and normalized parameters. Per-Group resource requirements remain immutable startup declarations. Host-owned named window Pool/feedback bindings
+produce Matching definitions and Server projections from one resolved snapshot. App Checks does not define these resources or import
+Matching types; it references their enabled names. Resource reads expose bindings without Facts or stock access.
 
 ## Verification
 

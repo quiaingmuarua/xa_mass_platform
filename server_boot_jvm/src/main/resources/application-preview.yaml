@@ -53,11 +53,11 @@ xa:
           pools: [country, any, sms-reception, messaging]
           functions: [worker.country, worker.any, worker.sms.available, worker.messaging.available, worker.phone]
         app-a-sim:
-          pools: [any, assignment-window, messaging]
-          functions: [worker.any, worker.assignment.available, worker.messaging.available]
+          pools: [any, messaging]
+          functions: [worker.any, worker.messaging.available]
         app-b-sim:
-          pools: [any, assignment-window, messaging]
-          functions: [worker.any, worker.assignment.available, worker.messaging.available]
+          pools: [any, messaging]
+          functions: [worker.any, worker.messaging.available]
     kernel-pacer:
       enabled: true
       preset: DEFAULT
@@ -65,6 +65,27 @@ xa:
       url: ${XA_MASS_REDIS_URL:redis://127.0.0.1:6379/15}
       scope: ${XA_MASS_REDIS_SCOPE}
     worker-assembly:
+      fixed-window:
+        pools:
+          assignment-window:
+            function-name: worker.assignment.available
+            timestamp-property: lastAssignedAt
+            count-property: windowAssignmentCount
+            window-millis: 60000
+            max-count: 10
+        feedbacks:
+          registration-assigned:
+            pool-name: assignment-window
+            message-events: [extension.worker.app.registration.check]
+        groups:
+          app-a-sim:
+            pools:
+              assignment-window: {}
+            feedbacks: [registration-assigned]
+          app-b-sim:
+            pools:
+              assignment-window: {}
+            feedbacks: [registration-assigned]
       group-config-json: |
         {
           "app-a-sim": {

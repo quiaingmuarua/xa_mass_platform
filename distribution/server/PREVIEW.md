@@ -83,8 +83,7 @@ alongside `data/scenario-workers`. The launcher passes that file as
 `XA_MASS_APP_CHECKS_CONFIG_PATH`; it never removes the configuration on shutdown.
 `XA_MASS_APP_CHECKS_SEED` may point to an explicit seed resource for a fresh environment;
 otherwise the module's packaged Preview seed is used. Seeds initialize only a missing
-configuration file. Saved edits require a manual Server restart; changed window length
-requires a new Redis scope. Tasks and execution state remain in Redis.
+configuration file. Saved edits require a manual Server restart. Host window length changes require a new Redis scope. Tasks and execution state remain in Redis.
 The scenario holds `configuration.json.lock` while running and publishes complete edits
 with same-directory atomic replacement. A second instance cannot own the same file.
 Stop Server before editing the file manually. Failed or uncertain saves retain editor
@@ -95,7 +94,8 @@ configuration file; source/ZIP starts do not
 touch an already running Preview's configuration.
 
 Batch Checks configuration uses a checkId-keyed checks object, named type
-defaults, per-check event/refill/query bindings and optional window Pool groups.
+defaults and per-check event/refill/query bindings. Host `xa.mass.worker-assembly.fixed-window` owns window definitions,
+Group bindings and registration-assigned feedback. App A/B retain 60000 ms/10 and their original fields; other resources are unchanged.
 The JSON file stores the whole document without fingerprints or format/revision counters;
 saves compare a computed content fingerprint. The admin page edits the whole JSON document;
 saving does not affect the running process. Use a new JSON file and Redis scope when
@@ -104,8 +104,8 @@ requestId, checkId and (for phone seeds only) country. Tasks retain their execut
 configuration saves/restarts; changing an existing window length requires a new scope.
 Preview exposes app-a-registration, app-b-registration, original-carrier, uint32-prime and md5-prefix. Carrier and MD5 use explicit batch events with seedsPerItem=10; registration and prime remain at 1. Input and CSV remain one seed per row. Existing configuration files are not reseeded; verify this configuration with a new file/scope/inventory.
 The two text checks are local computation demonstrations, with no external city/DNS/stock data source.
-This storage cutover preserves the configuration document shape. The launcher does not
-migrate or replace a running environment.
+The scenario document now contains common/checks only; old poolGroups input is rejected. Use a new configuration file/scope
+for this cutover. The launcher does not migrate or replace a running environment.
 
 `run.json` records count, appCount, seed, appChecksConfiguration and fixed `scenarios: ["sms", "messages", "app-checks"]`, not a
 promised country distribution. The Host uses the existing combined capability

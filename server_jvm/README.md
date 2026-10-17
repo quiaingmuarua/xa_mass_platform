@@ -1016,17 +1016,11 @@ before accepting business calls. Boot owns the
 Scenarios consume the immutable Project directory and approved application services;
 frontend availability does not enable business resources.
 
-App Checks may import only Matching
-`FixedWindowPoolDefinition` and its `WindowLimit` value for startup declarations.
-Messages may import only `QualifiedCountryDefinition` for its Worker qualification,
-Pool consumer and independently enabled Phone query. `WorkerMatchingConfiguration`
-collects both definition Bean lists separately and passes them to
-MatchingComposition; these Beans depend only on configuration or static bindings, never Task services
-or the running Matching instance. Scenario code cannot access Matching stock,
-storage, policy implementations or lifecycle. No Server DTO mirrors the definition.
-Group definitions and Matching enablement remain host-owned; Project declarations
-can come from configuration or module Beans, with one existing initialization path.
-Missing declarations for enabled functions fail startup without a business fallback.
+App Checks contributes Project/resource requirements and business services, without Matching imports or property projection declarations.
+Messages may import `QualifiedCountryDefinition` for its Worker qualification, Pool consumer and independently enabled Phone query;
+SMS retains its partitioned lease declarations. `WorkerMatchingConfiguration` resolves host window bindings together with
+other immutable declarations before creating MatchingComposition. All definitions depend on startup input, never Task services
+or a running Matching instance. Group registration and enablement remain host-owned; missing definitions and name conflicts fail startup.
 
 Modules may additionally expose `ProjectDefinition` and `ProjectWorkerRequirements`
 values. Requirements declare one Project and a nonempty immutable `requirementsByGroup`
@@ -1037,9 +1031,9 @@ These Beans depend only on configuration/static bindings, never Task services or
 initialized resources. No lifecycle hook or mutation capability is supplied by them.
 
 `ProjectWorkerRequirementsValidator` is the sole startup dependency reader in
-`assembly.runtime`. After host Group registration it checks Matching's immutable
-enablement and point-reads required Group descriptors through WorkerResourceCatalog,
-deduplicated in caller-owned batches of 100; no requirements cause no reads. It
+`assembly.runtime`. After host Group registration it checks the resolved Matching enablement and combines Project requirements with host window bindings,
+then point-reads required Group descriptors through WorkerResourceCatalog,
+deduplicated in caller-owned batches of 100; no Project requirements or host bindings cause no reads. It
 checks required events as a subset of the registered descriptor, accepting shared
 Groups with additional capabilities and externally registered Groups absent from
 the host manifest. It never scans, registers, edits or enables resources. A Group
@@ -1058,6 +1052,45 @@ never clears the Redis scope. Failed initialization fails
 startup and destroys already-created resources, including the Adapter host.
 [Boot](../server_boot_jvm/README.md#platform-and-preview) owns composition;
 [distribution](../distribution/server/README.md) owns packaging and launch.
+
+### Named Window Pool And Feedback Bindings
+
+`xa.mass.worker-assembly.fixed-window` is strict host startup configuration. Its optional `pools`, `feedbacks`
+and `groups` maps default to empty. No independent file owner, thread, queue or runtime registration is added.
+
+- `pools.<poolName>` declares `function-name`, `timestamp-property`, `count-property`, `window-millis` and `max-count`.
+  Positive limits and distinct nonblank top-level field keys are required. Names remain data, not business branches.
+- `feedbacks.<name>` references `pool-name` and an exact nonempty `message-events` list. The observation event is fixed
+  to `worker.assigned`; no wildcard, script or arbitrary callback is accepted through configuration.
+- `groups.<group>.pools.<poolName>: {}` enables that Pool and its consumer function using defaults. Only `window-millis`
+  and `max-count` may override the defaults for that Group. `groups.<group>.feedbacks` separately selects feedback names.
+  Pool-only enables no projection; feedback-only creates no stock and uses the referenced definition's defaults.
+  When both are bound, the projection uses the exact resolved Group window. Unreferenced definitions create no stock or projection.
+
+`WorkerGroupBindings` is the one immutable expansion used by Matching composition, startup validation and the read view.
+It retains resolved MatchingGroups, existing FixedWindowPoolDefinitions, existing WorkerPropertyProjections and their display values.
+Raw Matching configuration cannot also enable host-managed window Pool/function names. Matching retains global namespace collision checks.
+Unknown references, duplicate feedback names, duplicate Group/event selections and overlapping named feedback output fields fail startup.
+Use one feedback's event list to accumulate multiple events into a single window counter.
+
+The startup validator includes all binding Groups even without any Scenario. It validates required feedback events as subsets,
+accepts externally registered Groups, and reads the union with Project Groups once in chunks of at most 100 known IDs.
+Missing Group/event or Owner failure prevents Adapter/scenario admission; already registered Groups are not rolled back.
+Pacer's lifecycle phase and observation consumer ordering are unchanged.
+
+`AssignmentWindowProjection` owns the migrated pure arithmetic: window=floor(observedAt/windowMillis), increment within the current
+window, reset on a newer window, retain maximum timestamp and ignore older windows. Both fields absent initializes the observation;
+incomplete, noninteger, negative or overflowing values fail that Worker projection. It has no timer or independent lifecycle.
+Group/Worker observations are shared across selected events, not private per Task/check. One allocated Item containing ten seeds still
+produces one allocation observation. Failure and retries retain the original lossy observation semantics described below.
+Changing a window length requires a new Redis scope because stored fields do not encode the old window definition.
+
+`GET /api/v1/runtime-view/worker-groups/{workerGroupId}/bindings` returns `workerGroupId`, registered `workerGroup` (or null),
+existing `matching` capabilities, `fixedWindowPools`, `feedbacks` and `readAt`. Window rows contain Pool/function, property keys and
+resolved limits; feedback rows contain name, Pool, observation/message events, keys and resolved window. It reads one known Group
+and immutable configuration only: no Facts, inventory counts/takes or directory scan. Missing registration is explicit null;
+Owner failure is 503, invalid identity is 400. It retains the trusted WorkerGroup read boundary, without new authorization policy.
+Declarations do not prove online Workers, Handler installation or available stock. Runtime Workers displays these values read-only.
 
 ### Worker Allocation Observations
 
@@ -1120,11 +1153,9 @@ There is no counter Lua, CAS, persistent queue, flush or recovery scan. Existing
 APPLIED patch handling still performs separate best-effort candidate invalidation.
 The notification path does not make eligibility decisions. A declared
 [Matching fixed-window Pool](../worker_matching_jvm/README.md#fixed-window-pools)
-can read the projected fields during subsequent refill. App Checks supplies both
-the Pool definition and projection from the same Pool/Group configuration; Server
-collects definitions without interpreting their fields or window settings. The
-scenario may own persistent configuration and supply an immutable startup snapshot;
-Server has no scenario configuration file handle or configuration read/write path.
+can read the projected fields during subsequent refill. Host named bindings provide the Pool limits and
+projection parameters from one immutable resolved value. Scenario execution and the projection consumer
+never read the Batch Checks configuration file.
 
 The consumer starts before Pacer and stops after it, before Matching destruction.
 Stop closes ingress, discards queued batches, interrupts and waits up to 5 seconds
@@ -1140,9 +1171,9 @@ only, without business content or tracing identities. Fan-out does not multiply
 enqueue/drop counts; Properties failures retain their existing page/Worker counts
 through the receiver's shared failure counter.
 
-Scenario code receives only the Server's pure projection contract, without a
-Pacer or FunctionHandler dependency. Its first projection is the
-[App Checks assignment window](../scenarios/app-checks-jvm/README.md#分配窗口投影).
+The host's [named window bindings](#named-window-pool-and-feedback-bindings)
+expand into the existing pure projection contract, without a Pacer or
+FunctionHandler dependency. Batch Checks no longer contributes projection Beans.
 
 ### Pacer Lifecycle
 

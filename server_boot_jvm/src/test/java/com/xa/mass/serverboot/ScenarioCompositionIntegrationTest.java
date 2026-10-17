@@ -46,7 +46,9 @@ class ScenarioCompositionIntegrationTest {
                 "--spring.web.resources.static-locations=" + Path.of(System.getProperty("xa.mass.test.frontend")).toUri(),
                 "--logging.level.root=ERROR"));
         var storage = AppCheckConfigurationFixture.properties(10);
-        storage.forEach((key, value) -> arguments.add("--" + key + "=" + value));
+        storage.forEach((key, value) -> {
+            if (preview || key.startsWith("xa.mass.scenarios.app-checks.")) arguments.add("--" + key + "=" + value);
+        });
         if (preview) arguments.addAll(List.of(
                 "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                 "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,
@@ -74,7 +76,8 @@ class ScenarioCompositionIntegrationTest {
             assertThat(context.getBeansOfType(SmsReceptionService.class)).hasSize(sms ? 1 : 0);
             assertThat(context.getBeansOfType(MessageTaskService.class)).hasSize(messages ? 1 : 0);
             assertThat(context.getBeansOfType(AppCheckTaskService.class)).hasSize(preview ? 1 : 0);
-            assertThat(context.getBeansOfType(WorkerPropertyProjection.class)).hasSize(preview ? 1 : 0);
+            assertThat(context.getBeansOfType(WorkerPropertyProjection.class)).isEmpty();
+            assertThat(context.getBean(com.xa.mass.server.worker.observation.WorkerGroupBindings.class).projections()).hasSize(preview ? 1 : 0);
             assertThat(context.getBeansOfType(javax.sql.DataSource.class)).isEmpty();
             assertThat(java.nio.file.Files.exists(Path.of(storage.get("xa.mass.scenarios.app-checks.configuration.path").toString()))).isEqualTo(preview);
             assertThat(java.nio.file.Files.exists(Path.of(storage.get("xa.mass.scenarios.app-checks.configuration.path") + ".lock"))).isEqualTo(preview);
@@ -89,14 +92,14 @@ class ScenarioCompositionIntegrationTest {
                 var messageSupply = context.getBean(com.xa.mass.workermatching.QualifiedCountryDefinition.class);
                 assertThat(messageSupply).isEqualTo(new com.xa.mass.workermatching.QualifiedCountryDefinition(
                         "messaging", "worker.messaging.available", "worker.messaging.phone", "messaging.enabled", "true", "country"));
-                var matching = context.getBean(com.xa.mass.server.assembly.matching.MatchingProperties.class);
+                var matching = context.getBean(com.xa.mass.server.worker.observation.WorkerGroupBindings.class);
                 for (String group : List.of("app-a-sim", "app-b-sim")) {
-                    var definition = context.getBean(com.xa.mass.workermatching.FixedWindowPoolDefinition.class);
+                    var definition = matching.definitions().getFirst();
                     assertThat(definition.poolName()).isEqualTo("assignment-window");
                     assertThat(definition.limitsByGroup().get(group).windowMillis()).isEqualTo(60_000);
                     assertThat(definition.limitsByGroup().get(group).maxCount()).isEqualTo(10);
-                    assertThat(matching.groups().get(group).functions()).contains("worker.assignment.available", "worker.any");
-                    assertThat(matching.groups().get(group).pools()).contains("assignment-window", "any");
+                    assertThat(matching.matchingGroups().get(group).functions()).contains("worker.assignment.available", "worker.any");
+                    assertThat(matching.matchingGroups().get(group).pools()).contains("assignment-window", "any");
                 }
                 assertThat(context.getBean(AppCheckTaskService.class).isRunning()).isTrue();
                 var groups = context.getBean(WorkerResourceCatalog.class).getWorkerGroupDescriptors(List.of("app-a-sim", "app-b-sim"));

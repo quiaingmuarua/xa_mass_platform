@@ -106,7 +106,7 @@ For the affected mechanism, follow its Owner and the registered proof boundary:
 | Worker network evidence, candidate generations and execution fences | [Worker Score Owner](kernel_jvm/doc/score/worker-score-band-scheduling.md), [Redis Owner](doc/testing/proof-registry.md#redis_owner) |
 | Matching admission, Properties, indexes and Pool resources | [Matching Owner](worker_matching_jvm/README.md#cost-failure-and-proof), [JVM Contracts](doc/testing/proof-registry.md#jvm_contracts), [Redis Owner](doc/testing/proof-registry.md#redis_owner) |
 | Item outcomes and independent Result content | [Item Score](kernel_jvm/doc/score/task-item-score-band-scheduling.md), [Result Owner](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md), [Runtime Boundary](doc/testing/proof-registry.md#runtime_boundary) |
-| Allocation observations and assignment windows | [Observation selection](#allocation-observations-and-app-checks-projection) |
+| Allocation observations and assignment windows | [Observation selection](#allocation-observations-and-host-window-bindings) |
 
 Proof Registry preserves claims and nonclaims; these links are selection aids,
 not another definition of transitions, storage budgets or evidence guarantees.
@@ -321,11 +321,11 @@ lane owns its preparation and measurement windows.
 
 ## Shared Eligibility refill and dispatch
 
-### Allocation observations and App Checks projection
+### Allocation observations and host window bindings
 
 Changes to notification timing or dispatch isolation select focused Pacer tests.
 Routing, queue admission, projection grouping and receiver lifecycle select Server
-contracts; projection arithmetic selects App Checks tests. The
+contracts; projection arithmetic and named host bindings select Server tests. The
 [JVM Contracts registry](doc/testing/proof-registry.md#jvm_contracts) owns these
 claims, and the [Server Owner](server_jvm/README.md#worker-allocation-observations)
 owns the mechanism. Scenario composition and real assignment-window qualification

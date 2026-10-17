@@ -290,10 +290,7 @@ defineExpose({ focusHeading: () => heading.value?.focus({ preventScroll: true })
       参数按检查项整份覆盖或采用类型默认值；不递归合并。已有 checkId、检查类型和 Group
       固定。保存校验配置，重启校验宿主资源。
     </p>
-    <p v-if="state.snapshot?.newScopeRequired" class="checks-error">
-      既有 Group 的窗口长度已改变，需使用新的 Redis scope
-      后重启；不会自动迁移或清理运行数据。
-    </p>
+
     <details v-if="state.snapshot" class="checks-auxiliary">
       <summary>
         查看当前生效配置 · 指纹 {{ state.snapshot.effective.fingerprint.slice(0, 12) }}

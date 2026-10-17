@@ -32,14 +32,7 @@ export const settingsSchema = z.strictObject({
         parameters: object.optional()
       })
     )
-    .refine((value) => Object.keys(value).length > 0, "检查配置不能为空"),
-  poolGroups: z.record(
-    name,
-    z.strictObject({
-      windowMillis: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-      maxCount: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
-    })
-  )
+    .refine((value) => Object.keys(value).length > 0, "检查配置不能为空")
 });
 const snapshotSchema = z.strictObject({
   fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
@@ -49,7 +42,6 @@ export const configurationViewSchema = z.strictObject({
   saved: snapshotSchema,
   effective: snapshotSchema,
   restartRequired: z.boolean(),
-  newScopeRequired: z.boolean(),
   checkTypes: z.array(checkTypeSchema)
 });
 export type AppCheckSettings = z.infer<typeof settingsSchema>;
@@ -141,27 +133,17 @@ export function validateMockSettings(input: unknown): AppCheckSettings {
   };
   for (const [id, parameters] of Object.entries(settings.common.typeDefaults))
     settings.common.typeDefaults[id] = normalize(id, parameters);
-  const groups = new Set<string>();
   for (const app of Object.values(settings.checks)) {
     const maximum = [CARRIER_BATCH_CONTRACT, MD5_BATCH_CONTRACT].includes(app.checkType)
       ? 100
       : 1;
     if (app.execution.seedsPerItem > maximum)
       throw new Error(`execution.seedsPerItem：此契约最多支持 ${maximum} 个种子`);
-    groups.add(app.workerGroupId);
     const parameters = normalize(
       app.checkType,
       app.parameters ?? settings.common.typeDefaults[app.checkType]
     );
     if (app.parameters !== undefined) app.parameters = parameters;
-    if (
-      (app.execution.refill.some((target) => target.poolName === "assignment-window") ||
-        app.execution.workerSelector.executorName === "worker.assignment.available") &&
-      !settings.poolGroups[app.workerGroupId]
-    )
-      throw new Error("poolGroups." + app.workerGroupId + "：缺少窗口参数");
   }
-  for (const group of Object.keys(settings.poolGroups))
-    if (!groups.has(group)) throw new Error("poolGroups." + group + "：未绑定应用");
   return settings;
 }

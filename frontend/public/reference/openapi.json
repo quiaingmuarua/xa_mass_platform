@@ -156,6 +156,36 @@
         },
         "type" : "object"
       },
+      "Feedback" : {
+        "properties" : {
+          "countProperty" : {
+            "type" : "string"
+          },
+          "messageEvents" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "observationEventName" : {
+            "type" : "string"
+          },
+          "poolName" : {
+            "type" : "string"
+          },
+          "timestampProperty" : {
+            "type" : "string"
+          },
+          "windowMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
       "FunctionCapability" : {
         "properties" : {
           "name" : {
@@ -691,6 +721,31 @@
         "required" : [ "displayName", "projectIds", "role", "userId" ],
         "type" : "object"
       },
+      "WindowPool" : {
+        "properties" : {
+          "countProperty" : {
+            "type" : "string"
+          },
+          "functionName" : {
+            "type" : "string"
+          },
+          "maxCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "poolName" : {
+            "type" : "string"
+          },
+          "timestampProperty" : {
+            "type" : "string"
+          },
+          "windowMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
       "WorkerCommandResponse" : {
         "properties" : {
           "dst" : {
@@ -728,6 +783,36 @@
               "$ref" : "#/components/schemas/WorkerGroupView"
             },
             "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerGroupBindingsResponse" : {
+        "properties" : {
+          "feedbacks" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Feedback"
+            },
+            "type" : "array"
+          },
+          "fixedWindowPools" : {
+            "items" : {
+              "$ref" : "#/components/schemas/WindowPool"
+            },
+            "type" : "array"
+          },
+          "matching" : {
+            "$ref" : "#/components/schemas/Capabilities"
+          },
+          "readAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "workerGroup" : {
+            "$ref" : "#/components/schemas/WorkerGroupView"
+          },
+          "workerGroupId" : {
+            "type" : "string"
           }
         },
         "type" : "object"
@@ -1662,6 +1747,53 @@
           }
         },
         "summary" : "Preview a bounded Task Score window",
+        "tags" : [ "Runtime View" ]
+      }
+    },
+    "/api/v1/runtime-view/worker-groups/{workerGroupId}/bindings" : {
+      "get" : {
+        "operationId" : "load",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerGroupBindingsResponse"
+                }
+              }
+            },
+            "description" : "Registered Group and immutable startup bindings"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid Group identity"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Group Owner read unavailable"
+          }
+        },
+        "summary" : "Read effective WorkerGroup Pool and feedback bindings without reading Facts or stock",
         "tags" : [ "Runtime View" ]
       }
     },

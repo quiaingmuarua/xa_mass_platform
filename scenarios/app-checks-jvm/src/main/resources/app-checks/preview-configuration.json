@@ -130,15 +130,5 @@
         "seedsPerItem": 10
       }
     }
-  },
-  "poolGroups": {
-    "app-a-sim": {
-      "windowMillis": 60000,
-      "maxCount": 10
-    },
-    "app-b-sim": {
-      "windowMillis": 60000,
-      "maxCount": 10
-    }
   }
 }

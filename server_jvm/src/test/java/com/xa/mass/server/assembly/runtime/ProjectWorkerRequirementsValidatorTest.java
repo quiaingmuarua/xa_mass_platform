@@ -16,6 +16,32 @@ class ProjectWorkerRequirementsValidatorTest {
     private final WorkerResourceCatalog workers = mock(WorkerResourceCatalog.class);
     private static final ProjectWorkerRequirements REQUIRED = new ProjectWorkerRequirements("messages", Map.of("shared", new ProjectWorkerRequirements.Resources(Set.of("send"), Set.of("delivery"), Set.of("delivery.take", "delivery.phone"))));
 
+    @Test void hostBindingsWithoutAnyScenarioAreValidatedAndShareTheBoundedRead() {
+        var groups = new TreeMap<String, FixedWindowBindingsProperties.Group>();
+        IntStream.range(0, 205).forEach(i -> groups.put("g" + i,
+                new FixedWindowBindingsProperties.Group(Map.of("window", new FixedWindowBindingsProperties.Limits(null, null)), List.of("observe"))));
+        var host = new com.xa.mass.server.worker.observation.WorkerGroupBindings(Map.of(), new FixedWindowBindingsProperties(
+                Map.of("window", new FixedWindowBindingsProperties.Pool("window.take", "at", "count", 100, 2)),
+                Map.of("observe", new FixedWindowBindingsProperties.Feedback("window", List.of("check"))), groups), List.of());
+        var reads = new ArrayList<Integer>();
+        when(workers.getWorkerGroupDescriptors(anyList())).thenAnswer(call -> {
+            List<String> ids = call.getArgument(0); reads.add(ids.size());
+            var result = new HashMap<String, WorkerGroupDescriptor>();
+            ids.forEach(id -> result.put(id, new WorkerGroupDescriptor(id, Map.of(), Set.of("check", "extra"))));
+            return result;
+        });
+        var validator = new ProjectWorkerRequirementsValidator(directory(), workers, host, List.of());
+        validator.validate();
+        assertThat(reads).containsExactly(100, 100, 5);
+        when(workers.getWorkerGroupDescriptors(anyList())).thenReturn(Map.of());
+        assertThatThrownBy(validator::validate).hasMessageContaining("group=g0").hasMessageContaining("observe").hasMessageContaining("not registered");
+        when(workers.getWorkerGroupDescriptors(anyList())).thenReturn(Map.of("g0", new WorkerGroupDescriptor("g0", Map.of(), Set.of("other"))));
+        assertThatThrownBy(validator::validate).hasMessageContaining("missing feedback events: [check]");
+        var unavailable = new IllegalStateException("read unavailable");
+        when(workers.getWorkerGroupDescriptors(anyList())).thenThrow(unavailable);
+        assertThatThrownBy(validator::validate).hasCause(unavailable);
+    }
+
     @Test void groupRequirementsDoNotBecomeAUnionAcrossDifferentProtocols() {
         var requirements = new ProjectWorkerRequirements("checks", Map.of(
                 "window", new ProjectWorkerRequirements.Resources(Set.of("simulate"), Set.of("window"), Set.of("window.take")),
@@ -35,7 +61,7 @@ class ProjectWorkerRequirementsValidatorTest {
     }
 
     @Test void noRequirementsMakeNoOwnerCalls() {
-        new ProjectWorkerRequirementsValidator(directory(), workers, new MatchingProperties(Map.of()), List.of()).validate();
+        new ProjectWorkerRequirementsValidator(directory(), workers, bindings(new MatchingProperties(Map.of())), List.of()).validate();
         verifyNoInteractions(workers);
     }
 
@@ -44,7 +70,7 @@ class ProjectWorkerRequirementsValidatorTest {
         when(workers.getWorkerGroupDescriptors(List.of("shared"))).thenReturn(Map.of("shared",
                 new WorkerGroupDescriptor("shared", Map.of("host", "retained"), Set.of("send", "listen", "extra"))));
         var validator = new ProjectWorkerRequirementsValidator(directory(new ProjectDefinition("messages", List.of("shared")),
-                new ProjectDefinition("sms", List.of("shared"))), workers, available(), List.of(REQUIRED, other));
+                new ProjectDefinition("sms", List.of("shared"))), workers, bindings(available()), List.of(REQUIRED, other));
         verifyNoInteractions(workers);
         validator.validate();
         verify(workers).getWorkerGroupDescriptors(List.of("shared"));
@@ -62,7 +88,7 @@ class ProjectWorkerRequirementsValidatorTest {
             return result;
         });
         new ProjectWorkerRequirementsValidator(directory(new ProjectDefinition("p", groups)), workers,
-                new MatchingProperties(Map.of()), requirements).validate();
+                bindings(new MatchingProperties(Map.of())), requirements).validate();
         assertThat(pages).extracting(List::size).containsExactly(100, 100, 5);
         assertThat(pages.stream().flatMap(List::stream).toList()).containsExactlyInAnyOrderElementsOf(groups);
         verify(workers, times(3)).getWorkerGroupDescriptors(anyList());
@@ -129,7 +155,10 @@ class ProjectWorkerRequirementsValidatorTest {
 
     private ProjectWorkerRequirementsValidator validator(ProjectDirectory projects, MatchingProperties matching,
             List<ProjectWorkerRequirements> requirements) {
-        return new ProjectWorkerRequirementsValidator(projects, workers, matching, requirements);
+        return new ProjectWorkerRequirementsValidator(projects, workers, bindings(matching), requirements);
+    }
+    private static com.xa.mass.server.worker.observation.WorkerGroupBindings bindings(MatchingProperties matching) {
+        return new com.xa.mass.server.worker.observation.WorkerGroupBindings(matching.groups(), new FixedWindowBindingsProperties(null, null, null), List.of());
     }
     private static ProjectDirectory knownProject() { return directory(new ProjectDefinition("messages", List.of("shared"))); }
     private static ProjectDirectory directory(ProjectDefinition... projects) {
