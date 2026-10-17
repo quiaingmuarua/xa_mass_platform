@@ -35,7 +35,8 @@ final class PlatformPropertiesHandler implements FunctionHandler {
                 var key = new Selection(group,
                         new EventKey(project.messageEventName(), projection.observationEventName()));
                 if (selected.putIfAbsent(key, new Projection(key, project.project())) != null) {
-                    throw new IllegalArgumentException("operation=workerObservation.assemble duplicate projection selection");
+                    throw new IllegalArgumentException("operation=workerObservation.assemble duplicate projection selection group="
+                            + group + " observation=" + projection.observationEventName() + " message=" + project.messageEventName());
                 }
             }));
         }

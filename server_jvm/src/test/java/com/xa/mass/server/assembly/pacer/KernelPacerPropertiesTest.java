@@ -28,6 +28,9 @@ class KernelPacerPropertiesTest {
     private final ApplicationContextRunner baseContextRunner =
             new ApplicationContextRunner()
                     .withUserConfiguration(KernelPacerConfiguration.class)
+                    .withBean(com.xa.mass.server.worker.observation.WorkerGroupBindings.class,
+                            () -> new com.xa.mass.server.worker.observation.WorkerGroupBindings(java.util.Map.of(),
+                                    new com.xa.mass.server.assembly.runtime.FixedWindowBindingsProperties(null, null, null), java.util.List.of()))
                     .withBean(WorkerMatching.class,
                             () -> mock(WorkerMatching.class))
                     .withBean(MatchingComposition.class, () -> {

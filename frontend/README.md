@@ -486,7 +486,7 @@ presented as a fourth business category.
 
 One monospaced textarea edits the saved JSON document. Its structure is
 `common.typeDefaults`, `checks` (a checkId-keyed object containing label, checkType, Group,
-event, Task refill and Item selector) and optional `poolGroups`. Check parameters replace the named
+event, Task refill and Item selector). Check parameters replace the named
 default object as a whole; there is no recursive merge. A collapsed reference shows
 registered contracts and examples, read-only countries/import limits, and the current
 effective document. There is no second form or editor framework.
@@ -509,7 +509,7 @@ new pending checks do not enter the effective Catalog. Existing check IDs, types
 bindings cannot be changed/deleted. Labels, execution bindings, parameters and new
 checks are editable in JSON. Several checks may use the same Group. Host Group/events/Matching enablement and actual Handler
 installation are separate startup dependencies; saving does not provision them.
-Changing an existing window length also requires a new Redis scope.
+Window parameters are host-owned and shown in Runtime Workers; changing their window length requires a new Redis scope.
 
 Mock uses the same document and five effective capabilities (App A/B registration, carrier, uint32 prime and MD5 prefix), content-fingerprint comparison and explicit
 **模拟重启生效**. It has no service requests or runtime registration. Created Mock Tasks
@@ -813,3 +813,13 @@ SMS queries still refresh new content, retain higher business revisions, and lab
 a previous browser observation when Server returns NOT_OBSERVED. Server SMS cache
 is bounded process-local retention, not history available after every restart or
 from another instance. Existing login/403/late-response isolation remains in force.
+
+### WorkerGroup effective resource bindings
+
+Runtime Workers has a collapsed read-only binding panel, loaded independently of Worker samples through
+`GET /api/v1/runtime-view/worker-groups/{workerGroupId}/bindings`. It shows declared events, Matching Pool/function relations,
+resolved fixed-window fields/limits and exact assignment feedback selections. Select Group or use its manual refresh; no polling.
+Reads are keyed by Group and generation; failed refresh retains the prior snapshot/time and marks it stale.
+Mock provides labeled binding examples without service requests. No bindings imply neither unavailable Workers nor failed execution.
+The panel states that declarations do not prove online Workers, installed Handlers or current stock, and that observations are best-effort.
+Batch Checks config retains only common/checks; its response no longer exposes newScopeRequired and its editor rejects old poolGroups input.

@@ -277,7 +277,7 @@ class AppChecksIntegrationTest {
             assertThat(response.statusCode()).isEqualTo(200);
             String updatedFingerprint = (String) ((Map<?, ?>) Jsons.parseObject(response.body()).get("saved")).get("fingerprint");
             assertThat(updatedFingerprint).matches("[0-9a-f]{64}").isNotEqualTo(saved.get("fingerprint"));
-            assertThat(Jsons.parseObject(response.body())).containsEntry("restartRequired", true).containsEntry("newScopeRequired", false);
+            assertThat(Jsons.parseObject(response.body())).containsEntry("restartRequired", true);
             assertThat(world.get("/api/v1/app-checks/catalog").get("checks").toString()).doesNotContain("app-c");
             assertThat(world.putConfiguration(request).statusCode()).isEqualTo(409);
             assertThat(world.putConfiguration(Map.of("expectedFingerprint", updatedFingerprint, "configuration", config, "unexpected", true)).statusCode()).isEqualTo(400);
@@ -298,10 +298,10 @@ class AppChecksIntegrationTest {
             assertThat(active).containsEntry("restartRequired", false);
             assertThat(((Map<?, ?>) active.get("effective")).get("fingerprint")).isEqualTo(updatedFingerprint);
             assertThat(world.get("/api/v1/app-checks/catalog").get("checks").toString()).contains("app-c-sim", "App C");
-            var projection = world.context.getBean(com.xa.mass.server.worker.observation.WorkerPropertyProjection.class);
+            var bindings = world.context.getBean(com.xa.mass.server.worker.observation.WorkerGroupBindings.class);
+            var projection = bindings.projections().getFirst();
             assertThat(projection.projectionsByGroup()).doesNotContainKey("app-c-sim");
-            assertThat(world.context.getBean(com.xa.mass.workermatching.FixedWindowPoolDefinition.class)
-                    .limitsByGroup()).doesNotContainKey("app-c-sim");
+            assertThat(bindings.definitions().getFirst().limitsByGroup()).doesNotContainKey("app-c-sim");
             // A real file failure affects configuration reads, not the already captured execution configuration.
             java.nio.file.Files.delete(Path.of(world.context.getEnvironment()
                     .getRequiredProperty("xa.mass.scenarios.app-checks.configuration.path")));

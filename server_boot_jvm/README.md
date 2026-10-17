@@ -256,3 +256,12 @@ Only one instance per scope runs maintenance. The implementation belongs to Serv
 not Boot; Kernel continues to own Task finality and mutation fences. The directory
 must survive restarts for retained tasks and be shared with other API readers.
 Preview assigns a private archive root per generated scope. No old scope is migrated.
+
+### Named WorkerGroup window bindings
+
+Preview declares the assignment-window Pool, consumer and registration-assigned feedback through
+`xa.mass.worker-assembly.fixed-window`. App A/B reference the names; their raw Matching enablement retains only Any/Messaging.
+Server expands the strict host startup input; Boot owns values and packaging, not qualification or projection execution.
+Batch Checks JSON stores only common/checks and must not contain poolGroups. Default/AgentForge without bindings create none.
+See [Server bindings](../server_jvm/README.md#named-window-pool-and-feedback-bindings) for independent Pool/feedback selection,
+Group overrides, startup errors and the read-only Group interface. A registered Group alone installs no Worker Handler or Pool stock.

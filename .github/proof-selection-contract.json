@@ -1242,13 +1242,17 @@
       "reason": "The passive projection contract retains Server selection without adding a new proof lane."
     },
     {
-      "path": "scenarios/app-checks-jvm/src/main/java/com/xa/mass/scenario/appchecks/AppCheckAssignmentWindow.java",
+      "path": "server_jvm/src/main/java/com/xa/mass/server/worker/observation/AssignmentWindowProjection.java",
       "lanes": [
         "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
         "runtime_distribution",
         "product_coexistence"
       ],
-      "reason": "Scenario arithmetic stays in the existing JVM and coexistence lanes; no new capacity claim."
+      "reason": "Host-owned window arithmetic follows Server projection proof coverage while retaining the existing business witness."
     },
     {
       "path": "worker_matching_jvm/src/main/java/com/xa/mass/workermatching/functions/EmptyInputPoolQueryFunction.java",

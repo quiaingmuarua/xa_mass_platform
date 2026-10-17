@@ -26,21 +26,28 @@ def regression_window_configuration(*, baseline=False, window_millis=None, param
     """Keep the content/closure workload finite; the Boot window proof owns low-threshold recovery."""
     if not baseline:
         previous_seed = os.environ.get("XA_MASS_APP_CHECKS_SEED")
+        previous_host = os.environ.get("SPRING_APPLICATION_JSON")
+        host = json.loads(previous_host) if previous_host else {}
+        prefix = "xa.mass.worker-assembly.fixed-window.pools.assignment-window"
+        host[f"{prefix}.max-count"] = 1000
+        if window_millis is not None:
+            host[f"{prefix}.window-millis"] = window_millis
         with tempfile.TemporaryDirectory(prefix="app-checks-config-") as directory:
             configuration = json.loads((SCENARIO / "src/main/resources/app-checks/preview-configuration.json").read_text(encoding="utf-8"))
-            for limit in configuration["poolGroups"].values():
-                limit["maxCount"] = 1000
-                if window_millis is not None:
-                    limit["windowMillis"] = window_millis
             for app_id, app in configuration["checks"].items():
                 if parameters_by_check and app_id in parameters_by_check:
                     app["parameters"] = parameters_by_check[app_id]
             seed = Path(directory) / "seed.json"
             seed.write_text(json.dumps(configuration), encoding="utf-8")
             os.environ["XA_MASS_APP_CHECKS_SEED"] = seed.resolve().as_uri()
+            os.environ["SPRING_APPLICATION_JSON"] = json.dumps(host)
             try:
                 yield
             finally:
+                if previous_host is None:
+                    os.environ.pop("SPRING_APPLICATION_JSON", None)
+                else:
+                    os.environ["SPRING_APPLICATION_JSON"] = previous_host
                 if previous_seed is None:
                     os.environ.pop("XA_MASS_APP_CHECKS_SEED", None)
                 else:

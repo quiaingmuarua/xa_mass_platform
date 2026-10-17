@@ -66,8 +66,7 @@ class AppCheckContractsTest {
                 "checks", Map.of("arbitrary-app", Map.of("label", "Proof", "workerGroupId", "other-group",
                         "checkType", alternative.id(), "execution", Map.of("eventCode", "extension.worker.vendor.lookup",
                                 "refill", List.of(Map.of("poolName", "any", "target", Map.of(), "count", 100)),
-                                "workerSelector", Map.of("executorName", "worker.any", "input", Map.of())))),
-                "poolGroups", Map.of()), registry);
+                                "workerSelector", Map.of("executorName", "worker.any", "input", Map.of()))))), registry);
         var app = config.requireCheck("arbitrary-app");
         var metadata = new HashMap<>(AppCheckTaskServiceTest.metadata());
         metadata.put("checkId", "arbitrary-app"); metadata.put("checkType", app.checkType());
@@ -82,7 +81,7 @@ class AppCheckContractsTest {
         assertThat(saved.contract().results(saved.context(), input, Map.of("answer", "yes")).getFirst().matched()).isTrue();
         assertThatThrownBy(() -> saved.contract().results(saved.context(), input, Map.of()).getFirst())
                 .hasMessageContaining("Missing vendor answer");
-        assertThat(config.poolGroups()).isEmpty();
+        assertThat(config.toMap()).containsOnlyKeys("common", "checks");
     }
     @Test void standardResultNeedsItsAnswerAndAssociationsButNoSimulationFields() {
         var contract = contracts.require(AppCheckContracts.REGISTRATION);

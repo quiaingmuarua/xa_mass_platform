@@ -19,14 +19,13 @@ public final class AppCheckConfigurationFixture {
             try (var input = AppCheckConfigurationFixture.class.getResourceAsStream("/app-checks/preview-configuration.json")) {
                 seed = Jsons.parseObject(new String(input.readAllBytes(), StandardCharsets.UTF_8));
             }
-            seed.put("poolGroups", Map.of("app-a-sim", Map.of("windowMillis", 60000, "maxCount", maxCount),
-                    "app-b-sim", Map.of("windowMillis", 60000, "maxCount", maxCount)));
             ((Map<String, Map<String,Object>>) seed.get("checks")).forEach((checkId, app) -> {
                 if (parametersByCheck.containsKey(checkId)) app.put("parameters", parametersByCheck.get(checkId));
             });
             Path file = root.resolve("seed.json"); Files.writeString(file, Jsons.toJson(seed));
             return Map.of("xa.mass.scenarios.app-checks.configuration.path", root.resolve("configuration.json").toString(),
-                    "xa.mass.scenarios.app-checks.configuration.seed", file.toUri().toString());
+                    "xa.mass.scenarios.app-checks.configuration.seed", file.toUri().toString(),
+                    "xa.mass.worker-assembly.fixed-window.pools.assignment-window.max-count", maxCount);
         } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
     }
     static String[] arguments(long maxCount, String... arguments) {

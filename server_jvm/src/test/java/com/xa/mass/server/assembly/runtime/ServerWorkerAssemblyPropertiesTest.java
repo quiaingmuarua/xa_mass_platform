@@ -21,6 +21,9 @@ class ServerWorkerAssemblyPropertiesTest {
 
     private final ApplicationContextRunner contextRunner =
             new ApplicationContextRunner()
+                    .withBean(com.xa.mass.server.worker.observation.WorkerGroupBindings.class,
+                            () -> new com.xa.mass.server.worker.observation.WorkerGroupBindings(java.util.Map.of(),
+                                    new FixedWindowBindingsProperties(null, null, null), java.util.List.of()))
                     .withBean(com.xa.mass.server.project.ProjectDirectory.class, () -> mock(com.xa.mass.server.project.ProjectDirectory.class))
                     .withUserConfiguration(
                             ServerWorkerDeliveryAdapterConfiguration.class,

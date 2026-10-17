@@ -91,9 +91,8 @@ class AppCheckProofTest(unittest.TestCase):
                     actual = json.loads(os.environ["SPRING_APPLICATION_JSON"])
                     self.assertEqual("retained", actual["some.setting"])
                     path, configuration = self.read_seed()
-                    for group in ("app-a-sim", "app-b-sim"):
-                        self.assertEqual({"windowMillis": 60000, "maxCount": 1000}, configuration["poolGroups"][group])
-                    self.assertEqual({"some.setting": "retained"}, actual)
+                    self.assertNotIn("poolGroups", configuration)
+                    self.assertEqual(1000, actual["xa.mass.worker-assembly.fixed-window.pools.assignment-window.max-count"])
                     raise RuntimeError("scenario failed")
             self.assertEqual(original, os.environ["SPRING_APPLICATION_JSON"])
             self.assertFalse(path.exists())
@@ -121,7 +120,8 @@ class AppCheckProofTest(unittest.TestCase):
         with patch.dict(os.environ, {"XA_MASS_APP_CHECKS_SEED": "file:///original.json"}):
             with regression_window_configuration(window_millis=60000):
                 _, configuration = self.read_seed()
-                self.assertEqual(60000, configuration["poolGroups"]["app-a-sim"]["windowMillis"])
+                self.assertNotIn("poolGroups", configuration)
+                self.assertEqual(60000, json.loads(os.environ["SPRING_APPLICATION_JSON"])["xa.mass.worker-assembly.fixed-window.pools.assignment-window.window-millis"])
             self.assertEqual("file:///original.json", os.environ["XA_MASS_APP_CHECKS_SEED"])
 
     def test_task_fixture_uses_distinct_valid_numbers_and_no_worker_hint(self):

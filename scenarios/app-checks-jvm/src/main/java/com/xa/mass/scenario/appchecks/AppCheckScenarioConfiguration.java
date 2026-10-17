@@ -8,8 +8,6 @@ import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.operation.OperationGuard;
 import com.xa.mass.server.task.result.TaskResultsExportService;
-import com.xa.mass.server.worker.observation.WorkerPropertyProjection;
-import com.xa.mass.workermatching.FixedWindowPoolDefinition;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.*;
 import org.springframework.core.io.ResourceLoader;
@@ -17,7 +15,6 @@ import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.io.UncheckedIOException;
 import java.util.*;
-import static com.xa.mass.scenario.appchecks.AppCheckWorkerSupply.*;
 
 @Configuration(proxyBeanMethods = false)
 @Import(AppCheckController.class)
@@ -66,26 +63,6 @@ public class AppCheckScenarioConfiguration {
             groups.put(app.workerGroupId(), new ProjectWorkerRequirements.Resources(events, pools, functions));
         }
         return new ProjectWorkerRequirements("app-checks", groups);
-    }
-
-    @Bean
-    FixedWindowPoolDefinition appCheckWindowPool(AppCheckConfigurationStore.Snapshot config) {
-        return new FixedWindowPoolDefinition(POOL, FUNCTION, LAST, COUNT, config.configuration().poolGroups());
-    }
-
-    @Bean
-    WorkerPropertyProjection appCheckAssignmentProjections(AppCheckConfigurationStore.Snapshot config) {
-        var events = new LinkedHashMap<String, Set<String>>();
-        config.configuration().checks().values().stream()
-                .filter(check -> FUNCTION.equals(check.execution().workerSelector().executorName()))
-                .forEach(check -> events.computeIfAbsent(check.workerGroupId(), ignored -> new LinkedHashSet<>())
-                        .add(check.execution().eventCode()));
-        var projections = new LinkedHashMap<String, List<WorkerPropertyProjection.Projection>>();
-        events.forEach((group, names) -> {
-            var window = new AppCheckAssignmentWindow(config.configuration().poolGroups().get(group).windowMillis());
-            projections.put(group, names.stream().map(event -> new WorkerPropertyProjection.Projection(event, window::project)).toList());
-        });
-        return new WorkerPropertyProjection("worker.assigned", projections);
     }
 
     @Bean(destroyMethod = "close")

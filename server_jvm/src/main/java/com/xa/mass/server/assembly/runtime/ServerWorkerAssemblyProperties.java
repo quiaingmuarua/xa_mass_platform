@@ -8,11 +8,13 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
         ignoreUnknownFields = false
 )
 public record ServerWorkerAssemblyProperties(
-        @DefaultValue("{}") String groupConfigJson
+        @DefaultValue("{}") String groupConfigJson,
+        FixedWindowBindingsProperties fixedWindow
 ) {
 
     public ServerWorkerAssemblyProperties {
         requireJsonObjectText(groupConfigJson, "group-config-json");
+        fixedWindow = fixedWindow == null ? new FixedWindowBindingsProperties(null, null, null) : fixedWindow;
     }
 
     private static void requireJsonObjectText(

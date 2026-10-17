@@ -59,7 +59,8 @@ population in each of Demo, App A and App B, with nonoverlapping phone ranges.
 These receipt fixtures explicitly select lab-json; Preview itself defaults to text.
 Every scenario starts an independent scope, inventory and App Checks configuration
 JSON file (a sibling of that private inventory). The packaged seed is used only on
-first initialization; no shared Preview configuration file or window YAML overlay is reused. App Checks retains its
+first initialization; no shared Preview configuration file is reused. Window overrides belong to
+the isolated host startup configuration, not the Batch Checks document. App Checks retains its
 independent one-shot witness in the same CI lane.
 Its Project binds Demo plus App A/B: Demo hosts carrier and local text checks,
 while App A/B retain registration checks. The Pool fixture asserts those exact

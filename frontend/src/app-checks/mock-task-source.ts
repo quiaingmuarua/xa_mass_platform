@@ -187,11 +187,6 @@ export const mockSettings: AppCheckSettings = {
   },
   checks: Object.fromEntries(
     mockCatalog.checks.map(({ checkId, ...app }) => [checkId, app])
-  ),
-  poolGroups: Object.fromEntries(
-    mockCatalog.checks
-      .filter((app) => app.checkType === SIMULATED_CONTRACT)
-      .map((app) => [app.workerGroupId, { windowMillis: 60000, maxCount: 10 }])
   )
 };
 const mockTaskPolicy: TaskPolicySnapshot = {
@@ -621,12 +616,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       checkTypes: mockCheckTypes,
       saved: { ...saved, fingerprint: savedFingerprint },
       effective: { ...effective, fingerprint: effectiveFingerprint },
-      restartRequired: savedFingerprint !== effectiveFingerprint,
-      newScopeRequired: Object.entries(effective.configuration.poolGroups).some(
-        ([group, limit]) =>
-          saved.configuration.poolGroups[group] !== undefined &&
-          saved.configuration.poolGroups[group].windowMillis !== limit.windowMillis
-      )
+      restartRequired: savedFingerprint !== effectiveFingerprint
     });
   }
   async saveConfiguration(

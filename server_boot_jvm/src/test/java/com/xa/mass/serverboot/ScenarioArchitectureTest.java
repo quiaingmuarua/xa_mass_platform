@@ -41,7 +41,7 @@ class ScenarioArchitectureTest {
                         "task.TaskCreationService", "task.TaskCreationUnconfirmedException", "task.TaskDataService", "task.directory.TaskUserId",
                         "operation.OperationGuard", "operation.OperationAlreadyRunningException", "task.result.TaskResultsExportService", "api.v1.contract.ActionOutcome", "api.v1.contract.task.TaskItemResultResponse", "api.v1.contract.task.TaskCreateRequest",
                         "api.v1.contract.task.TaskCreateResponse", "api.v1.contract.task.TaskItemRequest",
-                        "api.v1.contract.task.TaskItemResultStatus", "worker.observation.WorkerPropertyProjection"),
+                        "api.v1.contract.task.TaskItemResultStatus"),
                 "sms-reception-jvm", Set.of("task.access.TaskCaller", "task.call.TaskRpcPreparationService", "api.v1.contract.task.TaskRpcPrepareRequest",
                         "task.call.TaskRpcCallService", "task.TaskDataService", "task.observation.TaskLeaseProjection",
                         "task.observation.TaskLeaseProjectionAccess", "api.v1.contract.task.TaskRpcCallRequest",
@@ -60,14 +60,17 @@ class ScenarioArchitectureTest {
                     .contains("id 'java-library'", "implementation project(':server_jvm')")
                     .doesNotContain("id 'org.springframework.boot'", "project(':server_boot_jvm')",
                             "project(':distribution:", "project(':scenarios:");
-            if (Set.of("app-checks-jvm", "message-campaigns-jvm", "sms-reception-jvm").contains(module.getKey()))
+            if (Set.of("message-campaigns-jvm", "sms-reception-jvm").contains(module.getKey()))
                 assertThat(Files.readString(directory.resolve("build.gradle")))
                         .contains("implementation project(':worker_matching_jvm')");
+            if (module.getKey().equals("app-checks-jvm"))
+                assertThat(Files.readString(directory.resolve("build.gradle")))
+                        .doesNotContain("project(':worker_matching_jvm')");
             try (var paths = Files.walk(directory.resolve("src/main/java"))) {
                 for (Path path : paths.filter(p -> p.toString().endsWith(".java")).toList()) {
                     String source = Files.readString(path);
                     String checked = switch (module.getKey()) {
-                        case "app-checks-jvm" -> source.replaceAll("com\\.xa\\.mass\\.workermatching\\.FixedWindowPoolDefinition(?:\\.WindowLimit)?\\b", "public-window-definition-contract");
+                        case "app-checks-jvm" -> source;
                         case "message-campaigns-jvm" -> source.replaceAll("com\\.xa\\.mass\\.workermatching\\.QualifiedCountryDefinition\\b", "public-qualified-country-contract");
                         case "sms-reception-jvm" -> source
                                 .replace("com.xa.mass.workermatching.PartitionedLeasePoolDefinition", "public-lease-definition-contract")

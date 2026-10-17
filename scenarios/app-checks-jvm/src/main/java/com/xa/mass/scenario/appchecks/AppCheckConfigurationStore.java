@@ -162,12 +162,9 @@ final class AppCheckConfigurationStore implements AutoCloseable {
     }
 
     private Map<String, Object> view(Snapshot saved) {
-        boolean changedWindow = effective.configuration().poolGroups().entrySet().stream().anyMatch(entry ->
-                saved.configuration().poolGroups().containsKey(entry.getKey())
-                        && saved.configuration().poolGroups().get(entry.getKey()).windowMillis() != entry.getValue().windowMillis());
         return Map.of("saved", saved.toMap(), "effective", effective.toMap(),
                 "restartRequired", !saved.fingerprint().equals(effective.fingerprint()),
-                "newScopeRequired", changedWindow, "checkTypes", contracts.descriptions());
+                "checkTypes", contracts.descriptions());
     }
 
     private static AppCheckConfigurationException conflict() {
