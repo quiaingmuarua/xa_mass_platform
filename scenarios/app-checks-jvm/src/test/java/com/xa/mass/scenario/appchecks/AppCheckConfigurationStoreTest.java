@@ -168,18 +168,52 @@ class AppCheckConfigurationStoreTest {
 
     @Test void anotherOwnerAndAnotherProcessCannotOpenTheFileUntilClose() throws Exception {
         try (var store = open()) {
-            assertThatThrownBy(this::open).isInstanceOf(AppCheckConfigurationException.class);
             assertThat(probe()).isEqualTo(2);
+            for (int attempt = 0; attempt < 2; attempt++) {
+                assertThatThrownBy(this::open).isInstanceOf(AppCheckConfigurationException.class);
+                assertThat(probe()).as("rejected local open must preserve the OS lock").isEqualTo(2);
+            }
             assertThat(fingerprint(store.view())).isEqualTo(initialFingerprint());
+            store.save(initialFingerprint(), changed("Saved while locked", 60000).toMap());
+            assertThat(probe()).as("atomic document replacement must preserve the lock").isEqualTo(2);
         }
         assertThat(probe()).isZero();
-        try (var reopened = open()) { assertThat(fingerprint(reopened.view())).isEqualTo(initialFingerprint()); }
+        try (var reopened = open()) {
+            assertThat(fingerprint(reopened.view())).isEqualTo(fingerprint(changed("Saved while locked", 60000)));
+        }
+    }
+
+    @Test void concurrentOpenHasOneOwnerAndKeepsTheCrossProcessLock() throws Exception {
+        var owners = new ConcurrentLinkedQueue<AppCheckConfigurationStore>();
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var gate = new CountDownLatch(1);
+            var attempts = new ArrayList<Future<Boolean>>();
+            for (int i = 0; i < 2; i++) {
+                attempts.add(executor.submit(() -> {
+                    gate.await();
+                    try { owners.add(open()); return true; }
+                    catch (AppCheckConfigurationException failure) {
+                        assertThat(failure.getCause()).isInstanceOf(IOException.class).hasMessageContaining("already owned");
+                        return false;
+                    }
+                }));
+            }
+            gate.countDown();
+            assertThat(List.of(attempts.get(0).get(5, TimeUnit.SECONDS), attempts.get(1).get(5, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(true, false);
+            assertThat(owners).hasSize(1);
+            assertThat(probe()).isEqualTo(2);
+        } finally { owners.forEach(AppCheckConfigurationStore::close); }
+        assertThat(probe()).isZero();
     }
 
     @Test void failedInitializationReleasesItsLockWithoutLeavingAPartialDocument() throws Exception {
         assertThatThrownBy(() -> new AppCheckConfigurationStore(path(), () -> "{}", AppCheckTestSettings.contracts()))
                 .isInstanceOf(AppCheckConfigurationException.class);
         assertThat(path()).doesNotExist();
+        assertThatThrownBy(() -> new AppCheckConfigurationStore(path(), () -> {
+            throw new AssertionError("seed initialization failed");
+        }, AppCheckTestSettings.contracts())).isInstanceOf(AssertionError.class);
         try (var store = open()) { assertThat(fingerprint(store.view())).isEqualTo(initialFingerprint()); }
         assertNoPendingFiles();
     }

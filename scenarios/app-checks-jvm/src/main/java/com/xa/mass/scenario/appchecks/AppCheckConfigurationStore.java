@@ -15,11 +15,15 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import tools.jackson.databind.json.JsonMapper;
 
 /** One local configuration owner. No Runtime identities or execution records are stored here. */
 final class AppCheckConfigurationStore implements AutoCloseable {
+    // Opening and closing a competing channel can release this JVM's existing POSIX file lock.
+    // Reserve the canonical path before opening any channel, including during initialization.
+    private static final Set<Path> OWNED_FILES = ConcurrentHashMap.newKeySet();
     record Snapshot(String fingerprint, AppCheckSettings configuration) {
         Snapshot(AppCheckSettings configuration) { this(fingerprintOf(configuration), configuration); }
         Map<String, Object> toMap() { return Map.of("fingerprint", fingerprint, "configuration", configuration.toMap()); }
@@ -40,11 +44,14 @@ final class AppCheckConfigurationStore implements AutoCloseable {
         this.contracts = Objects.requireNonNull(contracts);
         this.files = Objects.requireNonNull(files);
         FileChannel opened = null;
+        Path reserved = null;
         try {
             Path absolute = path.toAbsolutePath().normalize();
             Files.createDirectories(absolute.getParent());
             Path resolved = absolute.getParent().toRealPath().resolve(absolute.getFileName());
             this.path = Files.exists(resolved, java.nio.file.LinkOption.NOFOLLOW_LINKS) ? resolved.toRealPath() : resolved;
+            if (!OWNED_FILES.add(this.path)) throw new IOException("Configuration file is already owned by this process");
+            reserved = this.path;
             // The lock is never renamed or deleted with the document: every process locks the same file.
             opened = FileChannel.open(this.path.resolveSibling(this.path.getFileName() + ".lock"),
                     StandardOpenOption.CREATE, StandardOpenOption.WRITE);
@@ -59,8 +66,10 @@ final class AppCheckConfigurationStore implements AutoCloseable {
                 existing = read();
             }
             effective = existing;
-        } catch (IOException | RuntimeException failure) {
+        } catch (IOException | RuntimeException | Error failure) {
             if (opened != null) try { opened.close(); } catch (IOException close) { failure.addSuppressed(close); }
+            if (reserved != null) OWNED_FILES.remove(reserved);
+            if (failure instanceof Error error) throw error;
             throw AppCheckConfigurationException.unavailable("open", failure);
         }
     }
@@ -173,5 +182,6 @@ final class AppCheckConfigurationStore implements AutoCloseable {
             try { lock.release(); }
             finally { lockChannel.close(); }
         } catch (IOException failure) { throw AppCheckConfigurationException.unavailable("close", failure); }
+        finally { OWNED_FILES.remove(path); }
     }
 }

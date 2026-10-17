@@ -271,6 +271,9 @@ IP／账号配额。其他显式函数不受这一策略拦截。窗口长度改
 
 `AppCheckConfigurationStore` 在模块内拥有一个 JSON 文件及同目录固定 `.lock` 文件的进程独占锁。
 第二个 Store 或进程不能同时占用该文件；关闭和启动失败释放锁，锁文件不随配置替换或删除。
+同 JVM 先按规范化真实路径占用本地名额，再打开唯一的锁文件 channel；重复持有在打开锁文件前拒绝。
+名额在 channel 关闭后释放。这样避免部分平台关闭竞争 channel 时连带释放原持有者的锁，
+遵循 [Java FileLock 的平台约束](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/nio/channels/FileLock.html)。
 没有数据库依赖、公共 Storage 模块或后台同步。Kernel、Pacer、Matching、Server 不读取该文件；
 Task、Item、Result、调度和请求幂等仍由 Redis 原 Owner 管理。
 
