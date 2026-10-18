@@ -71,6 +71,10 @@ class ScenarioLifecycleTest {
                     () -> mock(com.xa.mass.server.task.observation.TaskLeaseProjectionService.class));
             context.registerBean(TaskCreationService.class, () -> creation);
             context.registerBean(TaskLifecycleService.class, () -> lifecycle);
+            context.registerBean(com.xa.mass.server.task.credit.TaskCreditService.class,
+                    () -> mock(com.xa.mass.server.task.credit.TaskCreditService.class));
+            context.registerBean(com.xa.mass.server.credits.CreditService.class,
+                    () -> mock(com.xa.mass.server.credits.CreditService.class));
             context.registerBean(com.xa.mass.server.operation.OperationGuard.class);
             context.registerBean(com.xa.mass.server.task.result.TaskResultsExportService.class,
                     () -> mock(com.xa.mass.server.task.result.TaskResultsExportService.class));

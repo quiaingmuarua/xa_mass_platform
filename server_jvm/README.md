@@ -1109,6 +1109,11 @@ Scenarios consume the immutable Project directory and approved application servi
 frontend availability does not enable business resources.
 
 App Checks contributes Project/resource requirements and business services, without Matching imports or property projection declarations.
+Its startup-bound `FiniteTaskApprovalAdmission` consumes the immutable Task descriptor
+and Server input/credit capabilities to validate and charge before approval. It receives
+no Kernel Runtime or mutation handle; common Server lifecycle operations retain the
+actual approval and close calls. Lifecycle-only assembly fixtures supply these Server
+capabilities explicitly, without creating or funding an account at startup.
 Messages may import `QualifiedCountryDefinition` for its Worker qualification, Pool consumer and independently enabled Phone query;
 SMS retains its partitioned lease declarations. `WorkerMatchingConfiguration` resolves host window bindings together with
 other immutable declarations before creating MatchingComposition. All definitions depend on startup input, never Task services
