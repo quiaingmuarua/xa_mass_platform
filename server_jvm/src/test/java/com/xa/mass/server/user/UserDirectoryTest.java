@@ -20,6 +20,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class UserDirectoryTest {
+    @Test void httpProofSeedAndFocusedFixturesProduceTheSameRoleSnapshot() throws Exception {
+        var proof = new UserDirectory(JsonMapper.builder().build(), new ClassPathResource("users/proof-directory.json"),
+                new ProjectDirectory(new ProjectAssemblyProperties(List.of()), List.of()));
+        assertThat(proof.roles()).isEqualTo(directory().roles());
+        // Fault-injection matchers compare the admitted value, including its immutable grants.
+        assertThat(proof.resolveCaller("proof", "admin"))
+                .isEqualTo(com.xa.mass.server.testing.TaskCallers.caller("proof", "admin"));
+    }
     private UserDirectory directory() throws Exception {
         return new UserDirectory(JsonMapper.builder().build(), new ClassPathResource("users/development-directory.json"),
                 new ProjectDirectory(new ProjectAssemblyProperties(List.of(
