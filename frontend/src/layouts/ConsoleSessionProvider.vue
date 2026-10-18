@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { consoleMockKey } from "@/console-mock";
+import { creditSourceKey, ApiCreditSource } from "@/credits/source";
 import ConsoleLayout from "./ConsoleLayout.vue";
 import { computed, provide, onBeforeUnmount, inject } from "vue";
 import { getActivePinia } from "pinia";
@@ -36,6 +37,11 @@ const needsRuntime = computed(() =>
   ["Runtime", "Workbench"].includes(String(route.meta.section))
 );
 if (configResult.ok) {
+  const credits =
+    configResult.value.mode === "mock"
+      ? mock?.credits
+      : new ApiCreditSource(configResult.value.apiBaseUrl);
+  if (credits) provide(creditSourceKey, credits);
   const dataSource = createRuntimeViewerDataSource(
     configResult.value,
     caller,

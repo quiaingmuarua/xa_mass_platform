@@ -6,6 +6,8 @@
       "permissions": [
         "console.view",
         "users.manage",
+        "credits.view",
+        "credits.manage",
         "tasks.retention.manage",
         "runtime.view",
         "workbench.use",
@@ -26,6 +28,7 @@
       "label": "普通用户",
       "permissions": [
         "console.view",
+        "credits.view",
         "app-checks.tasks",
         "messages.use"
       ],

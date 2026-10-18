@@ -29,6 +29,8 @@ export interface UserDirectorySource {
 const permission = z.enum([
   "console.view",
   "users.manage",
+  "credits.view",
+  "credits.manage",
   "tasks.retention.manage",
   "runtime.view",
   "workbench.use",
@@ -125,6 +127,9 @@ export class MockUserDirectorySource implements UserDirectorySource {
   private users: ConsoleUser[];
   private readonly roles: readonly RoleDefinition[];
   readonly initial: UserDirectory;
+  containsUser(userId: string) {
+    return this.users.some((user) => user.userId === userId);
+  }
   constructor(initialUsers = developmentUsers, roles = developmentRoles) {
     this.roles = roles.map((role) =>
       Object.freeze({ ...role, permissions: Object.freeze([...role.permissions]) })

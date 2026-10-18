@@ -52,8 +52,11 @@ public final class ApiExceptionHandler {
 
     private static HttpStatus statusFor(ServerErrorCode errorCode) {
         return switch (errorCode) {
+            case CREDIT_ACCOUNT_NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case CREDIT_BALANCE_INSUFFICIENT, CREDIT_ADJUSTMENT_CONFLICT, CREDIT_BALANCE_LIMIT -> HttpStatus.CONFLICT;
+            case INVALID_CREDIT_REQUEST -> HttpStatus.BAD_REQUEST;
             case TASK_ACCESS_DENIED -> HttpStatus.FORBIDDEN;
-            case TASK_DATA_UNAVAILABLE,
+            case CREDIT_UNAVAILABLE, TASK_DATA_UNAVAILABLE,
                     TASK_CALL_REGISTRATION_UNAVAILABLE,
                     WORKER_DELIVERY_UNAVAILABLE,
                     WORKER_IDENTITY_UNAVAILABLE,

@@ -17,7 +17,8 @@ POST `/users` and PUT `/users/{userId}` change the shared Server directory. Othe
 clients observe changes on refresh; browser reload and logout do not reset them.
 Only Server restart reloads the seed. No database or file write persists changes.
 User IDs cannot be changed after creation; the
-currently logged-in user is read-only to avoid changing an active caller.
+currently logged-in user's profile is read-only to avoid changing an active caller;
+its independent credit account can still be adjusted by an administrator.
 [Role policy](src/access-policy.ts) applies the Server-provided labels, permissions,
 Task scope, Project scope and home route for `admin` and `operator`. Pages do not interpret role strings or
 special-case user IDs.
@@ -85,6 +86,34 @@ refresh or logout/login; it never retries a write or changes the caller. Directo
 list refresh alone does not replace the current login snapshot. Frontend login and
 visibility do not authenticate the HTTP headers; replacing development identity
 with real session verification is separate backend work.
+
+## User credit accounts
+
+`/?view=credits` displays the current user's balance, last change time and descending
+transaction pages (50 rows). User management provides per-user credit drawers and an
+explicit userId lookup for retained accounts outside the current directory. `credits.view`
+and `credits.manage` drive routes, navigation and controls; Project grants do not gate accounts.
+The same account panel handles personal/admin views. The admin's own profile restriction
+does not disable credit adjustments. Only current directory users can receive adjustments.
+
+The adjustment form sends a new UUID for each explicit intent, a signed integer delta and a
+required reason. It disables duplicate clicks. Confirmed success refreshes the balance and
+first page; confirmed business refusals are explicit errors. Transport loss, invalid success
+responses and 503 retain the original request/content. The panel offers receipt lookup and
+explicit same-content retry, never automatically creates a replacement request. A missing
+receipt stays unknown. Once unknown, a later 403 does not disprove the earlier possible commit.
+403 prompts refresh/relogin without fallback or automatic retry. Pending drawers cannot be
+closed accidentally; logout still clears local state and cancels reads. Late responses cannot
+enter another login or launch follow-up reads. A new login consults Server history and never
+resubmits a previous login's request.
+
+`MockCreditSource` shares the explicit application-lifetime Mock directory and resolves each
+call's declared user/role before account access. Its synchronous commit models atomic balance,
+ledger and receipt publication. Account data survives logout but resets on browser refresh.
+Admin Mock controls can drop one post-commit response to exercise query/retry. API mode has
+no Mock fallback. `credits.test.ts` covers integer limits, parallel debits, idempotency,
+pagination, current directory admission, lost responses and login/disposal races. No pricing,
+Task/Scenario debit, preauthorization or refund UI is introduced.
 
 ## Requirements and local run
 

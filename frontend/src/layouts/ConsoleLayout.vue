@@ -81,7 +81,9 @@ const pageTitle = computed(() =>
   route.path === "/"
     ? route.query.view === "users"
       ? "用户管理"
-      : "控制台"
+      : route.query.view === "credits"
+        ? "我的积分"
+        : "控制台"
     : String(route.meta.title ?? "Runtime")
 );
 const pageSection = computed(() =>

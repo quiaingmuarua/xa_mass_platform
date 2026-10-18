@@ -92,18 +92,33 @@ const messagesEnabled = computed(() =>
         <el-icon><Tickets /></el-icon><span>批量检查</span>
       </router-link>
     </template>
-    <template v-if="allowed('users.manage')">
+    <template v-if="allowed('users.manage') || allowed('credits.view')">
       <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
         >CONSOLE</span
       >
       <router-link
+        v-if="allowed('users.manage')"
         class="runtime-navigation__link"
         :class="{
           'router-link-active': route.path === '/' && route.query.view === 'users'
         }"
         to="/?view=users"
+        active-class=""
+        exact-active-class=""
       >
         <el-icon><User /></el-icon><span>用户管理</span>
+      </router-link>
+      <router-link
+        v-if="allowed('credits.view')"
+        class="runtime-navigation__link"
+        :class="{
+          'router-link-active': route.path === '/' && route.query.view === 'credits'
+        }"
+        to="/?view=credits"
+        active-class=""
+        exact-active-class=""
+      >
+        <el-icon><Tickets /></el-icon><span>我的积分</span>
       </router-link>
     </template>
     <template v-if="allowed('reference.view')">

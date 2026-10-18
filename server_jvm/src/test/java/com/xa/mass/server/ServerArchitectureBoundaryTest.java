@@ -144,6 +144,7 @@ class ServerArchitectureBoundaryTest {
                     .containsExactlyInAnyOrder(
                             "api",
                             "assembly",
+                            "credits",
                             "delivery",
                             "error",
                             "frontend",
@@ -179,6 +180,7 @@ class ServerArchitectureBoundaryTest {
                     .map(path -> path.getFileName().toString())
                     .toList())
                     .containsExactlyInAnyOrder(
+                            "credits",
                             "delivery",
                             "runtimeview",
                             "task",
@@ -186,7 +188,7 @@ class ServerArchitectureBoundaryTest {
                     );
         }
 
-        assertThat(countJavaSources(CONTROLLERS)).isEqualTo(14L);
+        assertThat(countJavaSources(CONTROLLERS)).isEqualTo(15L);
         assertThat(CONTRACTS.resolve("ApiErrorResponse.java"))
                 .isRegularFile();
         assertThat(CONTRACTS.resolve("ActionOutcome.java"))
@@ -196,6 +198,7 @@ class ServerArchitectureBoundaryTest {
         String contractSources = readSources(CONTRACTS);
         assertThat(requestRecordNames(contractSources))
                 .containsExactlyInAnyOrder(
+                        "CreditAdjustmentRequest",
                         "DirectCallRequest",
                         "TaskCreateRequest",
                         "TaskApproveRequest",
@@ -287,6 +290,7 @@ class ServerArchitectureBoundaryTest {
                 MATCHING_ASSEMBLY,
                 DELIVERY_ASSEMBLY,
                 WORKER_IDENTITY,
+                SERVER_PACKAGE.resolve("credits"),
                 TASK.resolve("directory")
         ))
                 .doesNotContain("io.lettuce")
@@ -296,6 +300,8 @@ class ServerArchitectureBoundaryTest {
                 WORKER_IDENTITY
         )).doesNotContain("\"wi:");
         assertThat(readSources(WORKER_ENDPOINTS)).doesNotContain("io.lettuce").doesNotContain("RedisClient");
+        assertThat(readSources(SERVER_PACKAGE.resolve("credits")))
+                .doesNotContain("TaskRuntime", "TaskDataService", "TaskLifecycleService", "TaskCreationService", "Pacer", "ResultRuntime", "com.xa.mass.scenario.");
         assertThat(serverSources).doesNotContain("WorkerBindingRegistry").doesNotContain("WorkerBindingService");
         assertThat(readSources(SERVICEABILITY_REDIS))
                 .contains("io.lettuce")

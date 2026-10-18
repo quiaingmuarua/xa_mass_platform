@@ -364,8 +364,7 @@ class ServerApplicationContextTest {
                         .as("responses for %s %s", candidate.getKey(), path.getKey())
                         .containsExactlyInAnyOrderElementsOf(
                                 expectedResponseCodes(operationTag, path.getKey(), candidate.getKey())
-                        )
-                        .doesNotContain("404", "409", "422");
+                        );
                 var successCodes = responseCodes.stream()
                         .filter(code -> code.length() == 3
                                 && code.charAt(0) == '2')
@@ -411,7 +410,7 @@ class ServerApplicationContextTest {
                         }
                     }
                 }
-                for (String errorCode : Set.of("400", "429", "503")) {
+                for (String errorCode : Set.of("400", "403", "404", "409", "429", "503")) {
                     if (responses.has(errorCode)) {
                         assertThat(responses.path(errorCode)
                                 .path("content")
@@ -496,6 +495,10 @@ class ServerApplicationContextTest {
         assertPositiveOptionalBound(schemas, TaskItemRequest.class, "ttlMillis", null);
         assertPositiveOptionalBound(schemas, TaskRpcCallRequest.class, "waitTimeoutMillis", 60_000L);
         assertPositiveOptionalBound(schemas, DirectCallRequest.class, "waitTimeoutMillis", 10_000L);
+        var creditDelta = schemas.path("CreditAdjustmentRequest").path("properties").path("delta");
+        assertThat(creditDelta.path("type").asText()).isEqualTo("integer");
+        assertThat(creditDelta.path("minimum").asLong()).isEqualTo(-9_007_199_254_740_991L);
+        assertThat(creditDelta.path("maximum").asLong()).isEqualTo(9_007_199_254_740_991L);
 
         Path snapshot = Path.of(
                 System.getProperty("xa.mass.repository.root")
@@ -545,6 +548,8 @@ class ServerApplicationContextTest {
     }
 
     private static Set<String> expectedResponseCodes(String tag, String path, String method) {
+        if (path.startsWith("/api/v1/users/{userId}/credits")) return "post".equals(method)
+                ? Set.of("200", "400", "403", "404", "409", "503") : Set.of("200", "400", "403", "404", "503");
         if (ApiTags.USERS.equals(tag)) return "get".equals(method) ? Set.of("200", "400") : Set.of("200", "400", "403");
         if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) return Set.of("200", "400", "403", "503");
         if (!ApiTags.WORKER_DELIVERY.equals(tag)) {

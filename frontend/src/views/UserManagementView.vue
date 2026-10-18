@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { consoleMockKey } from "@/console-mock";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, inject } from "vue";
-import { ElDialog } from "element-plus";
+import { ElDialog, ElDrawer } from "element-plus";
+import "element-plus/es/components/drawer/style/css";
+import CreditAccountPanel from "@/credits/CreditAccountPanel.vue";
+import { can } from "@/access-policy";
+import { normalizeTaskUserId } from "@/task-user-id";
 import "element-plus/es/components/dialog/style/css";
 import { consoleIdentity } from "@/console-identity";
 import { projectEntrypoints, projectScope, roles, type RoleId } from "@/access-policy";
@@ -23,6 +27,18 @@ const projects = ref<Project[]>([]);
 const loading = ref(false);
 const directoryError = ref("");
 const notice = ref("");
+const creditTarget = ref("");
+const creditLookup = ref("");
+const creditOpen = ref(false);
+const creditUnsettled = ref(false);
+function openCredits(userId: string) {
+  try {
+    creditTarget.value = normalizeTaskUserId(userId);
+    creditOpen.value = true;
+  } catch {
+    notice.value = "请输入 4～9 位小写字母或数字的 userId";
+  }
+}
 const saving = ref(false);
 const mock = import.meta.env.VITE_RUNTIME_DATA_SOURCE === "mock";
 const opened = ref(false);
@@ -173,7 +189,7 @@ function projectLabel(projectId: string) {
           <span v-else>未分配</span>
         </template></el-table-column
       >
-      <el-table-column label="操作" width="150"
+      <el-table-column label="操作" width="230"
         ><template #default="{ row }">
           <span v-if="row.userId === consoleIdentity.current.value?.userId"
             >当前登录用户</span
@@ -181,9 +197,43 @@ function projectLabel(projectId: string) {
           <el-button v-else :aria-label="`编辑用户 ${row.userId}`" @click="open(row)"
             >编辑</el-button
           >
+          <el-button
+            v-if="can(consoleIdentity.current.value, 'credits.manage')"
+            :aria-label="`积分账户 ${row.userId}`"
+            @click="openCredits(row.userId)"
+            >积分</el-button
+          >
         </template></el-table-column
       >
     </el-table>
+    <form
+      v-if="can(consoleIdentity.current.value, 'credits.manage')"
+      class="credit-lookup"
+      @submit.prevent="openCredits(creditLookup)"
+    >
+      <el-input
+        v-model="creditLookup"
+        aria-label="查询积分 userId"
+        placeholder="按 userId 查询账户（包括目录外旧账户）"
+      />
+      <el-button native-type="submit">查询积分账户</el-button>
+    </form>
+    <el-drawer
+      v-model="creditOpen"
+      title="用户积分账户"
+      size="min(100vw, 1000px)"
+      destroy-on-close
+      :close-on-click-modal="!creditUnsettled"
+      :close-on-press-escape="!creditUnsettled"
+      :show-close="!creditUnsettled"
+    >
+      <CreditAccountPanel
+        v-if="creditOpen"
+        :key="creditTarget"
+        :user-id="creditTarget"
+        @unsettled="creditUnsettled = $event"
+      />
+    </el-drawer>
     <p class="user-management__note">
       管理员可使用全部 Project；普通用户仅能在获分配的业务入口管理本人任务。Project
       不会授予配置管理等管理员权限。
@@ -266,6 +316,11 @@ function projectLabel(projectId: string) {
 .user-management {
   display: grid;
   gap: 20px;
+}
+.credit-lookup {
+  display: flex;
+  gap: 12px;
+  max-width: 600px;
 }
 .user-management__heading {
   display: flex;
