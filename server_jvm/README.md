@@ -176,6 +176,56 @@ person while retaining their Tasks; Preview proof uses fresh isolated scopes and
 fixed user seeds for restart workloads, without historical migration.
 
 Project directory reads require a directory-admitted caller and remain discovery.
+
+### User credit accounts
+
+`CreditService` and `CreditAccountStore` own manual integer credit adjustments, independently
+of Tasks, Projects, Scenarios and execution. Stable `userId` identifies the account.
+`credits.view` permits self reads; `credits.manage` permits cross-user reads and adjustments
+(default admin, including self). Admission uses the current UserDirectory snapshot before
+account I/O. Public `/users` and `/roles` include no account data. A missing directory user
+with a retained account is admin-readable but cannot receive adjustments. Reusing a userId
+for another person would reuse its account and is not supported.
+
+Under `/api/v1/users/{userId}/credits`, GET returns balance, latestSequence,
+updatedAtMillis (null before the first successful change), and userPresent. GET
+`/transactions` returns immutable entries in descending account sequence, default limit 50,
+maximum 100, with an account-bound nextCursor. GET `/adjustments/{requestId}` returns
+`applied`, `rejected`, or `not_observed`; the last is not proof that an in-flight write failed.
+POST `/adjustments` accepts `{requestId, delta, reason}`. Its canonical UUID is independent
+of HTTP `X-Request-Id`; delta is a nonzero integer and reason is required (1..500 characters,
+stripped before fingerprinting). Numeric strings and decimals are rejected. Points, balances
+and sequence numbers stay within JavaScript's safe integer range; balances cannot be negative.
+
+One HASH, `xa_mass:<scope>:server:credits:account:<userId>`, stores `balance`, `sequence`,
+`updatedAtMillis`, `transaction:<sequence>` JSON, and `request:<UUID>` receipts. A missing
+account for a directory user reads as zero without creating a key. Each transaction records
+the target, actor ID, request ID, delta, before/after balance, reason and Server time. The
+receipt fingerprint covers actor ID, delta and normalized reason. Same content returns the
+original outcome; different content or actor conflicts. Insufficient balance and integer-limit
+rejections also have receipts, but no transaction or sequence increment. Later credits cannot
+make a rejected old request succeed. Parameters and authorization failures create no receipt.
+
+The single-key Lua operation validates metadata, the head transaction/receipt, the requested
+records, arithmetic and the next slot before one final HSET publishes all fields. It does not
+depend on Lua rollback or scan the full history. Corrupt touched records fail explicitly with
+503, never zero-fill or repair. Bounded sequence reads avoid HASH/global scans and do not
+repeat or omit older rows when new entries are added between pages; account and page reads
+are independent observations. Receipts and history have no TTL, deletion or editing API.
+Same-scope Server restart preserves them; directory reload does not remove orphan accounts.
+Redis durability and eviction configuration remain deployment responsibilities.
+
+Errors use 400 for invalid input, 403 for denied admission/access, 404 for a missing read
+target (neither directory user nor account) or missing directory adjustment target, 409 for
+insufficient balance/limits/idempotency conflict, and 503 for unavailable or corrupt storage.
+18002..18007 are the credit module codes. A write receiving 503 or losing its response may
+already have committed: reconcile by original requestId or explicitly retry the same content.
+There is no automatic retry with a new identity, direct balance setter, account cleanup,
+Project pricing, Task debit, business refund or billing strategy interface.
+
+Focused `CreditHttpTest` covers admission and response contracts; real Redis
+`CreditAccountRedisIntegrationTest` covers concurrent debits/replays, exact large integers,
+bounded pagination, corruption preflight, lost responses and reconnection/seed reload.
 Task access uses role `projectScope` and `taskScope`: default admin manages every
 Task; operator accesses assigned Projects and Tasks whose stored `userId` matches. Lists automatically select the
 operator's range and reject an explicit other owner. Global Runtime Task preview,

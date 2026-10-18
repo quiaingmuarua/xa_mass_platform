@@ -47,6 +47,8 @@ public final class UserDirectory {
 
     public List<Role> roles() { return List.copyOf(roles.values()); }
     public synchronized List<User> users() { return List.copyOf(users.values()); }
+    /** Point lookup only; account I/O must not hold the directory monitor. */
+    public synchronized boolean containsUser(String userId) { return users.containsKey(userId); }
 
     /** One request's immutable identity and grants, resolved under the same gate as updates. */
     public synchronized TaskCaller resolveCaller(String userId, String declaredRole) {

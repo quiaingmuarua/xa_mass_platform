@@ -13,7 +13,11 @@ export const consoleRoutes: RouteRecordRaw[] = [
     meta: {
       public: true,
       title: "控制台",
-      viewPermissions: { users: "users.manage", home: "console.view" }
+      viewPermissions: {
+        users: "users.manage",
+        credits: "credits.view",
+        home: "console.view"
+      }
     }
   },
   {

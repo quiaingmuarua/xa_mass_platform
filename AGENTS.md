@@ -304,6 +304,16 @@ first termination time and remains the cleanup entry until final removal. Reads,
 Scenario CSV and Mock must follow the common retention semantics. Use new scopes;
 no historical -1 decoding, identity migration or permanent tombstones are added.
 
+## User Credit Accounts
+
+Server owns manual credit balances, immutable transactions and adjustment receipts in
+its own per-user Redis HASH. UserDirectory and TaskCaller supply identity/access only;
+they carry no balance. Account identity is stable userId, independent of Project grants.
+Account mutation validates all touched state before a single atomic publication; unknown
+responses retain the original request identity for explicit reconciliation. This adds no
+Task/Scenario billing, Kernel user domain or scheduling authority. Frontend and Mock share
+the same access and confirmation semantics. See [Server accounts](server_jvm/README.md#user-credit-accounts).
+
 ## RPC Result Consumption
 
 Kernel owns atomic RPC Result take and write-refreshed HASH idle expiration;

@@ -3,7 +3,7 @@
     {
       "id": "admin",
       "label": "管理员",
-      "permissions": ["console.view", "users.manage", "tasks.retention.manage", "runtime.view", "workbench.use", "messages.use", "sms.use", "app-checks.tasks", "app-checks.configuration", "app-checks.diagnostics", "reference.view", "demo.control"],
+      "permissions": ["console.view", "users.manage", "credits.view", "credits.manage", "tasks.retention.manage", "runtime.view", "workbench.use", "messages.use", "sms.use", "app-checks.tasks", "app-checks.configuration", "app-checks.diagnostics", "reference.view", "demo.control"],
       "taskScope": "all",
       "projectScope": "all",
       "home": "/runtime/workers"
@@ -11,7 +11,7 @@
     {
       "id": "operator",
       "label": "普通用户",
-      "permissions": ["console.view", "app-checks.tasks", "messages.use"],
+      "permissions": ["console.view", "credits.view", "app-checks.tasks", "messages.use"],
       "taskScope": "own",
       "projectScope": "assigned",
       "home": "/app-checks"

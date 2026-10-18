@@ -3,6 +3,8 @@ import { shallowReactive } from "vue";
 export type Permission =
   | "console.view"
   | "users.manage"
+  | "credits.view"
+  | "credits.manage"
   | "tasks.retention.manage"
   | "runtime.view"
   | "workbench.use"

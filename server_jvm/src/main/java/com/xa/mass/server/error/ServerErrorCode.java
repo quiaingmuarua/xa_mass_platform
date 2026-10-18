@@ -2,6 +2,12 @@ package com.xa.mass.server.error;
 
 public enum ServerErrorCode {
     INVALID_USER_REQUEST(18001, "User directory request is invalid"),
+    INVALID_CREDIT_REQUEST(18002, "Credit request is invalid"),
+    CREDIT_ACCOUNT_NOT_FOUND(18003, "Credit user or account was not found"),
+    CREDIT_BALANCE_INSUFFICIENT(18004, "Credit balance is insufficient"),
+    CREDIT_ADJUSTMENT_CONFLICT(18005, "Credit requestId has different content or operator"),
+    CREDIT_BALANCE_LIMIT(18006, "Credit safe-integer limit would be exceeded"),
+    CREDIT_UNAVAILABLE(18007, "Credit storage is unavailable; reconcile the original requestId before retrying"),
     INVALID_TASK_CALLER(12012, "Task caller declaration is invalid"),
     TASK_ACCESS_DENIED(12013, "Task access is denied"),
     TASK_RESULTS_ARCHIVED(12014, "Task results are archived; use preview or export instead of point queries"),

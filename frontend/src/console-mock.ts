@@ -1,4 +1,5 @@
 import type { InjectionKey } from "vue";
+import { MockCreditSource } from "@/credits/mock-source";
 import { MockAppCheckTaskSource } from "@/app-checks/mock-task-source";
 import { MockMessageTaskSource } from "@/message-campaigns/mock-task-source";
 import type { MockUserDirectorySource } from "@/user-directory-source";
@@ -7,6 +8,7 @@ import type { MockUserDirectorySource } from "@/user-directory-source";
 export function createConsoleMock(directory: MockUserDirectorySource) {
   return {
     directory,
+    credits: new MockCreditSource(directory),
     appChecks: new MockAppCheckTaskSource(directory),
     messages: new MockMessageTaskSource(directory)
   };

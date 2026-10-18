@@ -53,6 +53,123 @@
         },
         "type" : "object"
       },
+      "CreditAccountResponse" : {
+        "properties" : {
+          "balance" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "latestSequence" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "updatedAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "userId" : {
+            "type" : "string"
+          },
+          "userPresent" : {
+            "type" : "boolean"
+          }
+        },
+        "type" : "object"
+      },
+      "CreditAdjustmentRequest" : {
+        "properties" : {
+          "delta" : {
+            "description" : "Nonzero integer change; decimals and numeric strings are rejected",
+            "maximum" : 9007199254740991,
+            "minimum" : -9007199254740991,
+            "type" : "string"
+          },
+          "reason" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "requestId" : {
+            "format" : "uuid",
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [ "delta", "reason", "requestId" ],
+        "type" : "object"
+      },
+      "CreditAdjustmentResponse" : {
+        "properties" : {
+          "balanceAtDecision" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "rejectionCode" : {
+            "type" : "string"
+          },
+          "requestId" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "transaction" : {
+            "$ref" : "#/components/schemas/CreditTransaction"
+          }
+        },
+        "type" : "object"
+      },
+      "CreditTransaction" : {
+        "properties" : {
+          "actorUserId" : {
+            "type" : "string"
+          },
+          "balanceAfter" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "balanceBefore" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "createdAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "delta" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "reason" : {
+            "type" : "string"
+          },
+          "requestId" : {
+            "type" : "string"
+          },
+          "sequence" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "userId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "CreditTransactionsResponse" : {
+        "properties" : {
+          "entries" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CreditTransaction"
+            },
+            "type" : "array"
+          },
+          "nextCursor" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "DirectCallRequest" : {
         "properties" : {
           "messageType" : {
@@ -3289,6 +3406,387 @@
           }
         },
         "summary" : "Replace a development user's name, role and Projects in Server memory",
+        "tags" : [ "Development Users" ]
+      }
+    },
+    "/api/v1/users/{userId}/credits" : {
+      "get" : {
+        "operationId" : "account",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Declared role must match the current Server user directory",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CreditAccountResponse"
+                }
+              }
+            },
+            "description" : "Current account"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid credit request"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "404" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Neither directory user nor retained account exists"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Credit storage unavailable; a write may have committed, reconcile the original requestId"
+          }
+        },
+        "summary" : "Read a user's credit account",
+        "tags" : [ "Development Users" ]
+      }
+    },
+    "/api/v1/users/{userId}/credits/adjustments" : {
+      "post" : {
+        "description" : "requestId is the business idempotency identity, independent of HTTP X-Request-Id. Replay returns the original outcome; conflicting content is rejected. No Task or Scenario operation occurs.",
+        "operationId" : "adjust",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Declared role must match the current Server user directory",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreditAdjustmentRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CreditAdjustmentResponse"
+                }
+              }
+            },
+            "description" : "Confirmed adjustment"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid credit request"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "404" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Neither directory user nor retained account exists"
+          },
+          "409" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Insufficient balance, safe-integer limit or idempotency conflict"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Credit storage unavailable; a write may have committed, reconcile the original requestId"
+          }
+        },
+        "summary" : "Adjust a directory user's credits, including the administrator's own account",
+        "tags" : [ "Development Users" ]
+      }
+    },
+    "/api/v1/users/{userId}/credits/adjustments/{requestId}" : {
+      "get" : {
+        "description" : "Returns applied, rejected, or not_observed. Absence does not prove that an in-flight request cannot commit.",
+        "operationId" : "adjustment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "requestId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Declared role must match the current Server user directory",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CreditAdjustmentResponse"
+                }
+              }
+            },
+            "description" : "Original adjustment observation"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid credit request"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "404" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Neither directory user nor retained account exists"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Credit storage unavailable; a write may have committed, reconcile the original requestId"
+          }
+        },
+        "summary" : "Reconcile an adjustment by its original business requestId",
+        "tags" : [ "Development Users" ]
+      }
+    },
+    "/api/v1/users/{userId}/credits/transactions" : {
+      "get" : {
+        "operationId" : "transactions",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "cursor",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "default" : 50,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
+          "in" : "header",
+          "name" : "X-XA-Dev-User",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Declared role must match the current Server user directory",
+          "in" : "header",
+          "name" : "X-XA-Dev-Role",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "admin", "operator" ],
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CreditTransactionsResponse"
+                }
+              }
+            },
+            "description" : "Bounded transaction page"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid credit request"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "404" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Neither directory user nor retained account exists"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Credit storage unavailable; a write may have committed, reconcile the original requestId"
+          }
+        },
+        "summary" : "Read immutable credit transactions in descending account sequence",
         "tags" : [ "Development Users" ]
       }
     },

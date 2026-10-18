@@ -11,6 +11,8 @@ export const developmentRoles: readonly RoleDefinition[] = [
     permissions: [
       "console.view",
       "users.manage",
+      "credits.view",
+      "credits.manage",
       "tasks.retention.manage",
       "runtime.view",
       "workbench.use",
@@ -29,7 +31,7 @@ export const developmentRoles: readonly RoleDefinition[] = [
   {
     id: "operator",
     label: "普通用户",
-    permissions: ["console.view", "app-checks.tasks", "messages.use"],
+    permissions: ["console.view", "credits.view", "app-checks.tasks", "messages.use"],
     taskScope: "own",
     projectScope: "assigned",
     home: "/app-checks"
