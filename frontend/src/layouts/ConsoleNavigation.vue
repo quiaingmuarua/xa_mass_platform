@@ -103,6 +103,8 @@ const messagesEnabled = computed(() =>
           'router-link-active': route.path === '/' && route.query.view === 'users'
         }"
         to="/?view=users"
+        active-class=""
+        exact-active-class=""
       >
         <el-icon><User /></el-icon><span>用户管理</span>
       </router-link>
@@ -113,6 +115,8 @@ const messagesEnabled = computed(() =>
           'router-link-active': route.path === '/' && route.query.view === 'credits'
         }"
         to="/?view=credits"
+        active-class=""
+        exact-active-class=""
       >
         <el-icon><Tickets /></el-icon><span>我的积分</span>
       </router-link>

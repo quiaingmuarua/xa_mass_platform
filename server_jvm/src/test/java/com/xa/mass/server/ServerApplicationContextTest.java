@@ -495,6 +495,10 @@ class ServerApplicationContextTest {
         assertPositiveOptionalBound(schemas, TaskItemRequest.class, "ttlMillis", null);
         assertPositiveOptionalBound(schemas, TaskRpcCallRequest.class, "waitTimeoutMillis", 60_000L);
         assertPositiveOptionalBound(schemas, DirectCallRequest.class, "waitTimeoutMillis", 10_000L);
+        var creditDelta = schemas.path("CreditAdjustmentRequest").path("properties").path("delta");
+        assertThat(creditDelta.path("type").asText()).isEqualTo("integer");
+        assertThat(creditDelta.path("minimum").asLong()).isEqualTo(-9_007_199_254_740_991L);
+        assertThat(creditDelta.path("maximum").asLong()).isEqualTo(9_007_199_254_740_991L);
 
         Path snapshot = Path.of(
                 System.getProperty("xa.mass.repository.root")

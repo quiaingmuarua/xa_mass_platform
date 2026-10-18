@@ -84,7 +84,8 @@ onBeforeUnmount(() => workspace.dispose());
     <header class="credits-panel__heading">
       <div>
         <h2>
-          {{ identityLabel(userId) }} <small>{{ userId }}</small>
+          {{ identityLabel(userId) }}
+          <small v-if="identityLabel(userId) !== userId">{{ userId }}</small>
         </h2>
         <p>查看余额和每笔积分变更。</p>
       </div>

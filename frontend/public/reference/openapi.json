@@ -80,13 +80,14 @@
         "properties" : {
           "delta" : {
             "description" : "Nonzero integer change; decimals and numeric strings are rejected",
+            "format" : "int64",
             "maximum" : 9007199254740991,
             "minimum" : -9007199254740991,
-            "type" : "string"
+            "type" : "integer"
           },
           "reason" : {
             "maxLength" : 500,
-            "minLength" : 0,
+            "minLength" : 1,
             "type" : "string"
           },
           "requestId" : {

@@ -11,8 +11,8 @@ import tools.jackson.databind.JsonNode;
 
 public record CreditAdjustmentRequest(
         @NotBlank @Schema(format = "uuid") String requestId,
-        @NotNull @Schema(type = "integer", minimum = "-9007199254740991", maximum = "9007199254740991", description = "Nonzero integer change; decimals and numeric strings are rejected") JsonNode delta,
-        @NotBlank @Size(max = 500) String reason) {
+        @NotNull @Schema(implementation = Long.class, type = "integer", format = "int64", minimum = "-9007199254740991", maximum = "9007199254740991", description = "Nonzero integer change; decimals and numeric strings are rejected") JsonNode delta,
+        @NotBlank @Size(min = 1, max = 500) String reason) {
     public CreditModels.Adjustment normalized() {
         if (delta == null || !delta.isIntegralNumber() || !delta.canConvertToLong())
             throw new ServerException(ServerErrorCode.INVALID_CREDIT_REQUEST, "credits.validate", "delta must be an integer", null);
