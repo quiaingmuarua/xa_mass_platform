@@ -5,6 +5,7 @@ import { ApiCreditSource } from "@/credits/source";
 import { createCreditWorkspace } from "@/credits/workspace";
 import {
   CreditSubmissionUnknown,
+  transactionSchema,
   MAX_CREDITS,
   normalizeAdjustment,
   type CreditAdjustment,
@@ -26,6 +27,22 @@ function setup() {
   return { directory, source: new MockCreditSource(directory, () => 1000) };
 }
 describe("credit account facts", () => {
+  it("reads canonical UUID identities accepted by Server without imposing a UUID version", () => {
+    const requestId = "11111111-2222-3333-4444-555555555555";
+    expect(
+      transactionSchema.parse({
+        sequence: 1,
+        requestId,
+        userId: "1001",
+        actorUserId: "1000",
+        delta: 1,
+        balanceBefore: 0,
+        balanceAfter: 1,
+        reason: "canonical UUID",
+        createdAtMillis: 1
+      }).requestId
+    ).toBe(requestId);
+  });
   it("starts at zero, applies exact integers and preserves rejected receipts", async () => {
     const { source } = setup();
     expect((await source.account(OPERATOR_A, "1001")).balance).toBe(0);

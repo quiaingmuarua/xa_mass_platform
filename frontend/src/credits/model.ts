@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TaskApiError } from "@/task-caller";
 
 export const MAX_CREDITS = Number.MAX_SAFE_INTEGER;
+const requestIdentity = z.string().regex(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/);
 const nonnegative = z.number().int().min(0).max(MAX_CREDITS);
 export const accountSchema = z.object({
   userId: z.string(),
@@ -12,7 +13,7 @@ export const accountSchema = z.object({
 });
 export const transactionSchema = z.object({
   sequence: nonnegative.positive(),
-  requestId: z.string().uuid(),
+  requestId: requestIdentity,
   userId: z.string(),
   actorUserId: z.string(),
   delta: z
@@ -32,21 +33,21 @@ export const pageSchema = z.object({
 });
 export const outcomeSchema = z.discriminatedUnion("status", [
   z.object({
-    requestId: z.string().uuid(),
+    requestId: requestIdentity,
     status: z.literal("applied"),
     transaction: transactionSchema,
     rejectionCode: z.null(),
     balanceAtDecision: nonnegative
   }),
   z.object({
-    requestId: z.string().uuid(),
+    requestId: requestIdentity,
     status: z.literal("rejected"),
     transaction: z.null(),
     rejectionCode: z.enum(["insufficient_balance", "balance_limit", "sequence_limit"]),
     balanceAtDecision: nonnegative
   }),
   z.object({
-    requestId: z.string().uuid(),
+    requestId: requestIdentity,
     status: z.literal("not_observed"),
     transaction: z.null(),
     rejectionCode: z.null(),
@@ -64,7 +65,7 @@ export interface CreditAdjustment {
 }
 export function normalizeAdjustment(input: CreditAdjustment): CreditAdjustment {
   if (
-    !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(input.requestId) ||
+    !requestIdentity.safeParse(input.requestId).success ||
     !Number.isSafeInteger(input.delta) ||
     input.delta === 0 ||
     !input.reason.trim() ||

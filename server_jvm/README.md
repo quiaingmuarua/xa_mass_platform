@@ -80,10 +80,12 @@ After a public route matches, application outcomes use:
 | `200` | Completed, including idempotent no-op and bounded partial observation |
 | `400 + ApiErrorResponse` | Input, business resource, precondition or state rejection |
 | `403 + ApiErrorResponse` | The declared Task caller has no access to this resource |
+| `404 + ApiErrorResponse` | Credit target does not exist; see account lookup rules below |
+| `409 + ApiErrorResponse` | Credit adjustment balance/limit rejection or idempotency conflict |
 | `429 + ApiErrorResponse` | Admission capacity exhausted; currently Direct Call only |
 | `503 + ApiErrorResponse` | An Owner or required dependency is temporarily unavailable |
 
-Business absence is `400` with a detailed numeric code. Successful values remain
+Task and Worker business absence is `400` with a detailed numeric code. Successful values remain
 use-case-specific: scalar, collection and Map bodies stay direct, while named DTOs
 represent combined contracts, structured resources or cross-field invariants.
 Do not add generic envelopes, `SimpleRequest` or one-field status wrappers.
@@ -94,7 +96,8 @@ failure uses non-2xx `ApiErrorResponse` with code, stable default message and
 requestId, never Owner reasons, Redis data or internal exception messages.
 
 Framework failures remain coarse HTTP concerns (`404/405/415/500`) without XA
-business codes. No platform operation declares business `404/409/422` responses.
+business codes. Credit accounts explicitly use business `404/409`; other platform
+operations retain their existing `400` rejection contract, without `422`.
 Worker Delivery is the success-status exception: point Command poll returns `200`
 or empty `204`, Report append returns `202`, and Adapter consume returns `200`;
 its rejection still uses `400/503`. Route verification is an asynchronous
