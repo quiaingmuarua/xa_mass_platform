@@ -18,7 +18,7 @@ import org.junit.jupiter.api.*;
 
 class SmsResultCacheTest {
     private static final TaskCaller ADMIN = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
-    private static final TaskCaller SERVICE = TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", List.of("g")));
+    private static final TaskCaller SERVICE = TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", List.of("g"), null));
     private final TaskRpcPreparationService preparation = mock(TaskRpcPreparationService.class);
     private final TaskRpcCallService calls = mock(TaskRpcCallService.class);
     private final TaskDataService data = mock(TaskDataService.class);

@@ -25,7 +25,16 @@ export const transactionSchema = z.object({
   balanceBefore: nonnegative,
   balanceAfter: nonnegative,
   reason: z.string(),
-  createdAtMillis: nonnegative
+  createdAtMillis: nonnegative,
+  business: z
+    .object({
+      source: z.string(),
+      taskId: z.string(),
+      checkId: z.string(),
+      unitPrice: nonnegative.positive(),
+      quantity: nonnegative.positive()
+    })
+    .nullish()
 });
 export const pageSchema = z.object({
   entries: z.array(transactionSchema),

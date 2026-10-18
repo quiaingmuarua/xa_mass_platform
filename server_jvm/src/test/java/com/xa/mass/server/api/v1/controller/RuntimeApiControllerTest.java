@@ -336,7 +336,7 @@ class RuntimeApiControllerTest {
         );
         var projects = new com.xa.mass.server.project.ProjectDirectory(
                 new com.xa.mass.server.project.ProjectAssemblyProperties(List.of(
-                        new com.xa.mass.server.project.ProjectDefinition("test-project", List.of("phone-tools", "missing-group", "missing")))), java.util.List.of());
+                        new com.xa.mass.server.project.ProjectDefinition("test-project", List.of("phone-tools", "missing-group", "missing"), null))), java.util.List.of());
         TaskCreationService taskCreation = new TaskCreationService(
                 workerCatalog,
                 matchingCatalog,
@@ -360,7 +360,7 @@ class RuntimeApiControllerTest {
                                 new TaskLifecycleService(
                                         taskLifecycle,
                                         taskCatalog, new com.xa.mass.server.operation.OperationGuard()
-                                , itemScores, taskScores, taskRuntime),
+                                , itemScores, taskScores, taskRuntime, java.util.List.of()),
                                 new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matchingCatalog,
                                         rpcProperties, projects, new com.xa.mass.server.operation.OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class))
                         , org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class)),

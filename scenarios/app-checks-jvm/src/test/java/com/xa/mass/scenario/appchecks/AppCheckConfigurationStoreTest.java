@@ -124,7 +124,7 @@ class AppCheckConfigurationStoreTest {
             var apps = new HashMap<>(initial.checks());
             var originalCheck = apps.get("app-a-registration");
             apps.put("app-a-registration", new AppCheckSettings.Check(originalCheck.label(), originalCheck.workerGroupId(),
-                    originalCheck.execution(), AppCheckContracts.REGISTRATION, Map.of()));
+                    originalCheck.execution(), AppCheckContracts.REGISTRATION, Map.of(), 1L));
             assertThatThrownBy(() -> store.save(initialFingerprint(), new AppCheckSettings(initial.typeDefaults(), apps).toMap()))
                     .hasMessageContaining("换类型");
             apps.put("app-a-registration", originalCheck);

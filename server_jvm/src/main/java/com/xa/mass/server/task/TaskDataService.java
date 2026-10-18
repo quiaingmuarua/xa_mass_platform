@@ -157,6 +157,58 @@ public final class TaskDataService {
         }
     }
 
+    public TaskDescriptor requireFiniteInputTask(TaskCaller caller, String inputOwner, String taskId) {
+        try {
+        var task = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
+        if (task == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskData.inputTask", null, null);
+        caller.requireInput(task, inputOwner);
+        if (!isPublicFiniteTask(task)) throw new ServerException(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, "taskData.inputTask", null, null);
+        var state = taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId);
+        if (state == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskData.inputTask", null, null);
+        if (state.phase() == TaskRuntime.TaskDataPhase.PURGING)
+            throw new ServerException(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, "taskData.inputTask", null, null);
+        return task;
+        } catch (ServerException known) { throw known;
+        } catch (RuntimeException failure) { throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.inputTask", null, failure); }
+    }
+
+    /** Scans a stable PRE_REVIEW input under the shared mutation gate, checking every Item has its Score. */
+    public long visitFiniteTaskInputs(TaskCaller caller, String inputOwner, String taskId, java.util.function.Consumer<TaskItem> visitor) {
+        return operations.taskMutation(taskId, () -> {
+            try {
+                var task = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
+                if (task == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskData.visitInputs", null, null);
+                caller.requireInput(task, inputOwner);
+                var state = taskScores.getScoreStates(List.of(taskId)).get(taskId);
+                if (!isPublicFiniteTask(task) || state == null || state.band() != TaskScoreBandCore.TaskScoreBand.PRE_REVIEW)
+                    throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "taskData.visitInputs", "Only PRE_REVIEW input can be quoted", null);
+                var phase = taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId);
+                if (phase == null || phase.phase() != TaskRuntime.TaskDataPhase.OPEN)
+                    throw new IllegalStateException("Task data is not open");
+                var seen = new java.util.HashSet<String>();
+                String cursor = "0";
+                do {
+                    var page = taskRuntime.scanTaskItems(taskId, cursor, 1000);
+                    var entries = page.items().entrySet().stream().filter(e -> seen.add(e.getKey())).toList();
+                    for (int from = 0; from < entries.size(); from += 100) {
+                        var batch = entries.subList(from, Math.min(from + 100, entries.size()));
+                        var scores = itemScores.getItemScoreStates(taskId, batch.stream().map(Map.Entry::getKey).toList());
+                        for (var entry : batch) {
+                            if (!entry.getKey().equals(entry.getValue().messageId()) || scores.get(entry.getKey()) == null)
+                                throw new IllegalStateException("Input and Item Score differ; reconcile the import before starting");
+                            visitor.accept(entry.getValue());
+                        }
+                    }
+                    cursor = page.nextCursor();
+                } while (!cursor.equals("0"));
+                var counts = itemScores.observeItemScoreCounts(List.of(taskId)).get(taskId);
+                if (counts == null || counts.total() != seen.size()) throw new IllegalStateException("Input and Item Score counts differ");
+                return (long) seen.size();
+            } catch (ServerException known) { throw known;
+            } catch (RuntimeException failed) { throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.visitInputs", "输入尚未完整确认，请核对或重传导入", failed); }
+        });
+    }
+
     /** Consumer access is bound to the application's immutable input ownership. */
     public Map<String, TaskItemResultResponse> takeTaskItemResults(
             TaskCaller caller, String inputOwner, String taskId, List<String> messageIds) {

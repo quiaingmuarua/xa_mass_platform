@@ -1,7 +1,8 @@
+import { FundedAppCheckSource, approveCheck } from "./app-check-credit-fixture";
 import { webcrypto } from "node:crypto";
 import { Blob as NodeBlob } from "node:buffer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
+
 import { MockUserDirectorySource } from "@/user-directory-source";
 import { CALLER } from "./app-check-fixture";
 import {
@@ -41,7 +42,7 @@ it("preserves confirmed partial-import Item counts without claiming that unconfi
 it("keeps ordered group replay separate from seed overlap and counts execution Items", async () => {
   const fetcher = vi.fn();
   vi.stubGlobal("fetch", fetcher);
-  const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
+  const source = new FundedAppCheckSource(new MockUserDirectorySource());
   const { taskId } = await source.createTask(CALLER, {
     requestId: "groups",
     checkId: "original-carrier",
@@ -68,8 +69,8 @@ it("keeps ordered group replay separate from seed overlap and counts execution I
   expect(
     await source.importSeeds(CALLER, taskId, file([seeds[0], seeds[22]]))
   ).toMatchObject({ itemCount: 1, addedCount: 1 });
-  await expect(source.approveTask(CALLER, taskId, 25)).rejects.toThrow("执行项数量");
-  await source.approveTask(CALLER, taskId, 4);
+  await expect(approveCheck(source, CALLER, taskId, 25)).rejects.toThrow("执行项数量");
+  await approveCheck(source, CALLER, taskId, 4);
   await source.completeTask(CALLER, taskId);
   const detail = await source.loadTask(CALLER, taskId);
   expect(detail.task).toMatchObject({
@@ -89,7 +90,7 @@ it("keeps ordered group replay separate from seed overlap and counts execution I
 });
 
 it("freezes grouping in existing Tasks and activates saved grouping only on explicit Mock restart", async () => {
-  const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
+  const source = new FundedAppCheckSource(new MockUserDirectorySource());
   const request = {
     requestId: "saved-grouping",
     checkId: "original-carrier",

@@ -45,7 +45,7 @@ public class AppCheckScenarioConfiguration {
 
     @Bean
     ProjectDefinition appCheckProject(AppCheckConfigurationStore.Snapshot config) {
-        return new ProjectDefinition("app-checks", config.configuration().workerGroupIds());
+        return new ProjectDefinition("app-checks", config.configuration().workerGroupIds(), "app-checks");
     }
 
     @Bean
@@ -65,11 +65,18 @@ public class AppCheckScenarioConfiguration {
         return new ProjectWorkerRequirements("app-checks", groups);
     }
 
+    @Bean
+    AppCheckCredits appCheckCredits(TaskDataService data, com.xa.mass.server.task.credit.TaskCreditService starts,
+            com.xa.mass.server.credits.CreditService accounts, ProjectTaskQueryService queries,
+            OperationGuard operations, AppCheckContracts contracts) {
+        return new AppCheckCredits(data, starts, accounts, queries, operations, contracts);
+    }
+
     @Bean(destroyMethod = "close")
     AppCheckTaskService appChecks(ProjectDirectory projects, ProjectTaskQueryService queries,
                                   TaskCreationService creation, TaskDataService data,
                                   OperationGuard operations, TaskResultsExportService exports,
-                                  AppCheckConfigurationStore.Snapshot config, AppCheckContracts contracts) {
-        return new AppCheckTaskService(projects, queries, creation, data, operations, exports, config.configuration(), contracts);
+                                  AppCheckConfigurationStore.Snapshot config, AppCheckContracts contracts, AppCheckCredits credits) {
+        return new AppCheckTaskService(projects, queries, creation, data, operations, exports, config.configuration(), contracts, credits);
     }
 }

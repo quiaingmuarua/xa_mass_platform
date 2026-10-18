@@ -100,6 +100,7 @@ public final class TaskCreationService {
                 || fingerprint == null || !fingerprint.matches("[0-9a-f]{64}"))
             throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, OPERATION, "Invalid creation identity", null);
         caller.requireProject(request.projectId());
+        projects.requireInputOwner(request.projectId(), inputOwner);
         TaskCreationRegistry.Claim retained;
         try { retained = creations.find(request.projectId(), caller.identityKey(), request.requestId(), inputOwner, fingerprint); }
         catch (ServerException known) { throw known; }

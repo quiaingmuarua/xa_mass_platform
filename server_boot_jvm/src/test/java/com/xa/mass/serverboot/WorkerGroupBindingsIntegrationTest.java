@@ -85,7 +85,7 @@ class WorkerGroupBindingsIntegrationTest {
                 document = Jsons.parseObject(new String(input.readAllBytes(), StandardCharsets.UTF_8));
             }
             var checks = (Map<String,Object>) document.get("checks");
-            checks.put("group-c-md5", Map.of("label", "Group C MD5", "checkType", "md5-prefix-demo-batch-v1", "workerGroupId", GROUP,
+            checks.put("group-c-md5", Map.of("unitPrice", 1, "label", "Group C MD5", "checkType", "md5-prefix-demo-batch-v1", "workerGroupId", GROUP,
                     "execution", Map.of("eventCode", EVENT, "refill", supply(), "seedsPerItem", 10,
                             "workerSelector", Map.of("executorName", FUNCTION, "input", Map.of()))));
             Files.writeString(configurationFile, Jsons.toJson(document));

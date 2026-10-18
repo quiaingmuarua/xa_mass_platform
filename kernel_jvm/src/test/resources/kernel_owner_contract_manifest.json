@@ -104,6 +104,7 @@
       "purge_task_data",
       "release_task_payloads",
       "scan_task_item_results",
+      "scan_task_items",
       "store_task_item_failed_results",
       "store_task_item_success_results",
       "take_task_item_results"

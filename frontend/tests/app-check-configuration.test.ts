@@ -1,3 +1,4 @@
+import { FundedAppCheckSource, approveCheck } from "./app-check-credit-fixture";
 import { MockUserDirectorySource } from "@/user-directory-source";
 import { consoleIdentity } from "@/console-identity";
 import { CALLER } from "./app-check-fixture";
@@ -13,11 +14,7 @@ import {
   scenarioConfiguration
 } from "../src/app-checks/configuration";
 import { detailSchema, type CheckDetail } from "../src/app-checks/model";
-import {
-  MockAppCheckTaskSource,
-  mockCatalog,
-  mockSimulation
-} from "../src/app-checks/mock-task-source";
+import { mockCatalog, mockSimulation } from "@/app-checks/mock-task-source";
 import {
   AppCheckCreationUnconfirmed,
   AppCheckConfigurationUnconfirmed
@@ -27,7 +24,7 @@ import { inspectImport } from "../src/app-checks/import-model";
 
 let app: App | undefined;
 let context: ReturnType<typeof createAppCheckContext>;
-let source: MockAppCheckTaskSource;
+let source: FundedAppCheckSource;
 const fetcher = vi.fn();
 beforeEach(() => {
   consoleIdentity.login("1000");
@@ -35,7 +32,7 @@ beforeEach(() => {
   vi.stubGlobal("crypto", webcrypto);
   vi.stubGlobal("fetch", fetcher.mockReset());
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
-  source = new MockAppCheckTaskSource(new MockUserDirectorySource());
+  source = new FundedAppCheckSource(new MockUserDirectorySource());
 });
 afterEach(() => {
   app?.unmount();
@@ -138,6 +135,7 @@ describe("App Checks JSON configuration workspace", () => {
         delayMs: [0, 0]
       };
       value.checks["app-c"] = {
+        unitPrice: 1,
         label: "App C",
         workerGroupId: "app-c-sim",
         checkType: "registration-v1",
@@ -192,7 +190,7 @@ describe("App Checks JSON configuration workspace", () => {
       })
     ).toEqual(old);
     await source.importSeeds(CALLER, created.taskId, new Blob(["8613800000001"]));
-    await source.approveTask(CALLER, created.taskId, 1);
+    await approveCheck(source, CALLER, created.taskId, 1);
     await source.completeTask(CALLER, created.taskId);
     const detail = await source.loadTask(CALLER, created.taskId);
     expect(detail.results[0]).toMatchObject({
@@ -414,7 +412,7 @@ describe("App Checks JSON configuration workspace", () => {
     await router.push("/app-checks?view=configuration");
     await settle();
     pending.resolve(
-      await new MockAppCheckTaskSource(new MockUserDirectorySource()).loadTask(
+      await new FundedAppCheckSource(new MockUserDirectorySource()).loadTask(
         CALLER,
         "check-live"
       )

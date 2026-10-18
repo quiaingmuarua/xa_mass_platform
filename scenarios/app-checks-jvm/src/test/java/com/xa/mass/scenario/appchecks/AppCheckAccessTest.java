@@ -12,7 +12,7 @@ class AppCheckAccessTest {
     @Test void refusesConfigurationBeforeStorageWhileCatalogRemainsDiscovery() {
         var tasks = mock(AppCheckTaskService.class);
         var store = mock(AppCheckConfigurationStore.class);
-        var controller = new AppCheckController(tasks, store);
+        var controller = new AppCheckController(tasks, store, org.mockito.Mockito.mock(AppCheckCredits.class));
         var operator = com.xa.mass.server.testing.TaskCallers.caller("outside1", "operator", "app-checks");
         assertThatThrownBy(() -> controller.configuration(operator)).isInstanceOfSatisfying(ServerException.class,
                 error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_ACCESS_DENIED));

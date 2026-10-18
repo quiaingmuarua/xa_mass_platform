@@ -26,7 +26,13 @@ const SAFE_ERROR_MESSAGES: Record<number, string> = {
   12009: "The Task lifecycle conflicts with its current state.",
   12010: "Task results are not ready.",
   12012: "开发调用方无效。",
-  12013: "当前调用方不能访问此任务。",
+  12013: "当前调用方不能访问此任务，请刷新页面或退出后重新登录。",
+  18002: "积分确认参数无效。",
+  18003: "任务所有者不在当前用户目录。",
+  18004: "积分余额不足，本次启动已拒绝；请充值后重新确认。",
+  18005: "启动请求或费用已变化，请核对原请求。",
+  18006: "积分金额超过安全整数范围。",
+  18007: "扣分结果未确认，请核对原启动请求。",
   12011: "The selected WorkerGroup no longer exists.",
   19001: "The Task request body is invalid."
 };
@@ -76,14 +82,18 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
   async approveTask(
     caller: TaskCaller,
     taskId: string,
-    expectedItemCount: number
+    expectedItemCount: number,
+    credits?: { requestId: string; expectedSeedCount: number; expectedAmount: number }
   ): Promise<void> {
     const requestId = createRequestId();
     try {
       const response = await this.client.post(
         `/v1/tasks/${encodeURIComponent(taskId)}/approve`,
-        { expectedItemCount },
-        { headers: requestHeaders(caller, requestId) }
+        { expectedItemCount, ...(credits ? { credits } : {}) },
+        {
+          headers: requestHeaders(caller, requestId),
+          ...(credits ? { timeout: 60_000 } : {})
+        }
       );
       if (response.status !== 200) throw schemaError(requestId);
       parseResponse(taskActionOutcomeSchema, response.data, requestId);

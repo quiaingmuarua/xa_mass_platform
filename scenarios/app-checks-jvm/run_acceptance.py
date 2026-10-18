@@ -100,7 +100,25 @@ def creation_input(case):
     return {key: case[key] for key in ("requestId", "checkId", "country") if key in case}
 
 
+def fund_fixture_user(run, http, user):
+    funded = getattr(run, "credit_fixture_users", set())
+    if user not in funded:
+        http(run.url, f"/api/v1/users/{user}/credits/adjustments", {
+            "requestId": str(uuid.uuid4()), "delta": 1_000_000, "reason": "App Checks acceptance fixture"
+        }, headers=caller_headers("1000", "admin"))
+        funded.add(user)
+        run.credit_fixture_users = funded
+
+
+def approval_input(run, http, task_id, item_count, user):
+    quote = http(run.url, f"/api/v1/app-checks/tasks/{task_id}/credits", headers=caller_headers(user, "admin"))
+    require(quote["itemCount"] == item_count and quote["amount"] == quote["seedCount"] * quote["unitPrice"], "Charge quote differs from persisted input")
+    return {"expectedItemCount": item_count, "credits": {"requestId": str(uuid.uuid4()),
+            "expectedSeedCount": quote["seedCount"], "expectedAmount": quote["amount"]}}
+
+
 def create_import_approve(run, http, case, *, approve=True):
+    fund_fixture_user(run, http, case["userId"])
     headers = caller_headers(case["userId"], "admin")
     api = functools.partial(http, headers=headers)
     task_id = api(run.url, "/api/v1/app-checks/tasks", creation_input(case))["taskId"]
@@ -116,7 +134,7 @@ def create_import_approve(run, http, case, *, approve=True):
     require(receipt["uniqueCount"] == len(case["numbers"]) and receipt["itemCount"] == receipt["addedCount"] == item_count,
             "Import did not confirm the expected seeds and execution Items")
     if approve:
-        api(run.url, f"/api/v1/tasks/{task_id}/approve", {"expectedItemCount": item_count})
+        api(run.url, f"/api/v1/tasks/{task_id}/approve", approval_input(run, http, task_id, item_count, case["userId"]))
     return task_id
 
 

@@ -74,6 +74,7 @@ export const taskSchema = z.object({
     .enum(["pre_review", "running-initial", "running_visible", "terminal"])
     .nullable(),
   checkId: z.string().optional(),
+  unitPrice: integer.positive().optional(),
   country: z.enum(["CN", "US", "GB"]).optional(),
   salt: z.string().optional(),
   saltDate: z.string().optional(),
@@ -160,6 +161,7 @@ export const catalogSchema = z.object({
     .array(
       z.object({
         checkId: z.string().min(1),
+        unitPrice: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
         label: z.string().min(1),
         workerGroupId: z.string().min(1),
         checkType: z.string().min(1),

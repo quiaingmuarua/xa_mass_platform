@@ -31,7 +31,7 @@ class MessageScenarioPropertiesTest {
             var assembly = new MessageCampaignsScenarioConfiguration();
             var definition = assembly.messageProject(config);
             var requirement = assembly.messageWorkerRequirements(config);
-            assertThat(definition).isEqualTo(new ProjectDefinition("messages", List.of("bound-group", "another-group")));
+            assertThat(definition).isEqualTo(new ProjectDefinition("messages", List.of("bound-group", "another-group"), null));
             assertThat(requirement.projectId()).isEqualTo(definition.projectId());
             assertThat(requirement.requirementsByGroup().keySet()).containsExactly("bound-group", "another-group");
             assertThat(requirement.requirementsByGroup().get("bound-group").eventCodes()).containsExactly("extension.worker.message.send");

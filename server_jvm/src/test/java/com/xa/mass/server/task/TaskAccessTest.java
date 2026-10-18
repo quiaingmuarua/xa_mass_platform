@@ -77,7 +77,7 @@ class TaskAccessTest {
         verify(runtime).takeTaskItemResults("t", List.of("m"));
     }
     @Test void statisticsPreflightTheCompleteProjectAndOwnershipBatch() {
-        var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("p", List.of("g")))), List.of());
+        var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("p", List.of("g"), null))), List.of());
         var queries = new ProjectTaskQueryService(projects, catalog, scores, mock(TaskDirectory.class), items, runtime, com.xa.mass.server.testsupport.TaskRetentionFixtures.properties());
         when(catalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("mine", task("mine", "1001", "raw"), "other", task("other", "1002", "raw")));
         assertThatThrownBy(() -> queries.stats(caller, "p", List.of("mine", "other")))
@@ -93,16 +93,16 @@ class TaskAccessTest {
     }
     @Test void approvalChecksTheCurrentCountAndRetainsIdempotentApprovedBehavior() {
         var commands = mock(TaskLifecycleCommands.class);
-        var lifecycle = new TaskLifecycleService(commands, catalog, guard, items, scores, runtime);
+        var lifecycle = new TaskLifecycleService(commands, catalog, guard, items, scores, runtime, java.util.List.of());
         when(catalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("t", task("t", "1001", "raw")));
         when(scores.getScoreStates(List.of("t"))).thenReturn(Map.of("t", new TaskScoreBandCore.TaskScoreState("t", 1,
                 TaskScoreBandCore.TaskScoreBand.PRE_REVIEW, 0L, 0)));
         when(items.observeItemScoreCounts(List.of("t"))).thenReturn(Map.of("t", new TaskItemScoreBandCore.TaskItemScoreCounts(3, Map.of(1, 3L))));
-        assertThatThrownBy(() -> lifecycle.approve(caller, "t", 0)).isInstanceOf(ServerException.class);
-        assertThatThrownBy(() -> lifecycle.approve(caller, "t", 2)).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> lifecycle.approve(caller, "t", 0, null)).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> lifecycle.approve(caller, "t", 2, null)).isInstanceOf(ServerException.class);
         verifyNoInteractions(commands);
         when(commands.approveTask("t")).thenReturn(new TaskLifecycleCommands.TaskApprovalResult(TaskLifecycleCommands.TaskApprovalStatus.APPROVED));
-        assertThat(lifecycle.approve(caller, "t", 3).status().name()).isEqualTo("APPLIED");
+        assertThat(lifecycle.approve(caller, "t", 3, null).status().name()).isEqualTo("APPLIED");
         var order = inOrder(items, commands);
         order.verify(items, times(2)).observeItemScoreCounts(List.of("t"));
         order.verify(commands).approveTask("t");
@@ -110,12 +110,12 @@ class TaskAccessTest {
         when(scores.getScoreStates(List.of("t"))).thenReturn(Map.of("t", new TaskScoreBandCore.TaskScoreState("t", 100,
                 TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE, 100L, 0)));
         when(commands.approveTask("t")).thenReturn(new TaskLifecycleCommands.TaskApprovalResult(TaskLifecycleCommands.TaskApprovalStatus.ALREADY_APPROVED));
-        assertThat(lifecycle.approve(caller, "t", 99).status().name()).isEqualTo("UNCHANGED");
+        assertThat(lifecycle.approve(caller, "t", 99, null).status().name()).isEqualTo("UNCHANGED");
         verifyNoInteractions(items);
         when(scores.getScoreStates(List.of("t"))).thenReturn(Map.of("t", new TaskScoreBandCore.TaskScoreState("t", -2_000_000_000_000L,
                 TaskScoreBandCore.TaskScoreBand.TERMINAL, null, null)));
         when(commands.approveTask("t")).thenReturn(new TaskLifecycleCommands.TaskApprovalResult(TaskLifecycleCommands.TaskApprovalStatus.CONFLICT));
-        assertThatThrownBy(() -> lifecycle.approve(caller, "t", 3)).isInstanceOfSatisfying(ServerException.class,
+        assertThatThrownBy(() -> lifecycle.approve(caller, "t", 3, null)).isInstanceOfSatisfying(ServerException.class,
                 error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_STATE_CONFLICT));
         verifyNoInteractions(items);
     }

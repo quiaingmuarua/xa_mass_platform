@@ -44,7 +44,7 @@ class AppCheckTaskServiceTest {
         });
         when(queries.get(org.mockito.ArgumentMatchers.eq(CALLER), eq("app-checks"), anyString())).thenAnswer(call -> entry(call.getArgument(2), "pre_review"));
         var service = new AppCheckTaskService(projects, queries, creation, data, operations, exports,
-                AppCheckTestSettings.settings(), AppCheckTestSettings.contracts(),
+                AppCheckTestSettings.settings(), AppCheckTestSettings.contracts(), mock(AppCheckCredits.class),
                 Clock.fixed(Instant.parse("2026-09-18T01:00:00Z"), ZoneOffset.UTC));
         service.start(); return service;
     }

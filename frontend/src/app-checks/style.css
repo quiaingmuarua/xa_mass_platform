@@ -1035,3 +1035,16 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.checks-credit-quote {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+}
+.checks-credit-quote dt {
+  color: var(--el-text-color-secondary);
+}
+.checks-credit-quote dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}

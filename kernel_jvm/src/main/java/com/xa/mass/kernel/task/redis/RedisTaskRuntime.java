@@ -734,6 +734,17 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         );
     }
 
+    @Override
+    public TaskItemPage scanTaskItems(String taskId, String cursor, int countHint) {
+        requireNonBlank(taskId, "taskId");
+        if (!isAsciiDecimal(cursor) || countHint < 1 || countHint > 1000)
+            throw new IllegalArgumentException("Expected decimal cursor and countHint in 1..1000");
+        var page = commands().hscan(itemsKey(taskId), ScanCursor.of(cursor), new ScanArgs().limit(countHint));
+        var items = new LinkedHashMap<String, TaskItem>();
+        page.getMap().forEach((id, encoded) -> items.put(id, decodeTaskItem(id, encoded)));
+        return new TaskItemPage(page.getCursor(), items);
+    }
+
     private String encodeTaskItemResult(TaskItemResult result) {
         try {
             return mapper.writeValueAsString(result);

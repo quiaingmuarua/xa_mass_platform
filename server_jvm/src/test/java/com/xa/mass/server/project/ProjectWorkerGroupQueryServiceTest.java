@@ -14,7 +14,7 @@ import static org.mockito.Mockito.*;
 
 class ProjectWorkerGroupQueryServiceTest {
     @Test void defaultTraversesEveryPageDeduplicatesAndRefreshesWithoutSampling() {
-        var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("default", List.of()))), List.of());
+        var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("default", List.of(), null))), List.of());
         var workers = mock(WorkerResourceCatalog.class);
         var matching = mock(WorkerMatchingCatalog.class);
         var rows = new java.util.LinkedHashMap<String, WorkerGroupDescriptor>();
@@ -37,7 +37,7 @@ class ProjectWorkerGroupQueryServiceTest {
     }
     @Test void knownBindingsAreBatchedAndMissingDescriptorsStayVisible() {
         var ids = IntStream.range(0, 201).mapToObj(i -> "g" + i).toList();
-        var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("p", ids))), List.of());
+        var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("p", ids, null))), List.of());
         var workers = mock(WorkerResourceCatalog.class);
         var matching = mock(WorkerMatchingCatalog.class);
         when(workers.getWorkerGroupDescriptors(anyList())).thenReturn(Map.of("g0",

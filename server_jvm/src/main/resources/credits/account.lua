@@ -30,7 +30,9 @@ local function uid(s)
   return type(s) == 'string' and #s >= 4 and #s <= 9 and s:match('^[1-9a-z][0-9a-z]*$') ~= nil
 end
 local function transaction(raw, sequence)
-  local t = object(raw, 9)
+  local ok, parsed = pcall(cjson.decode, raw)
+  if not ok or type(parsed) ~= 'table' then bad() end
+  local t = object(raw, parsed.business and 10 or 9)
   if t.sequence ~= sequence or not integer(t.sequence, 1, MAX) or t.userId ~= user
     or not uuid(t.requestId) or not uid(t.actorUserId)
     or not integer(t.delta, -MAX, MAX) or t.delta == 0
@@ -40,6 +42,18 @@ local function transaction(raw, sequence)
     or t.balanceBefore + t.delta ~= t.balanceAfter
     or type(t.reason) ~= 'string' or #t.reason == 0
     or not integer(t.createdAtMillis, 0, MAX) then bad() end
+  if t.business then
+    local b = t.business
+    if type(b) ~= 'table' then bad() end
+    local fields = 0
+    for _ in pairs(b) do fields = fields + 1 end
+    if fields ~= 5 or type(b.source) ~= 'string' or #b.source > 64 or not b.source:match('^[a-z][a-z0-9-]*$')
+      or type(b.taskId) ~= 'string' or #b.taskId == 0 or #b.taskId > 256
+      or type(b.checkId) ~= 'string' or #b.checkId == 0 or #b.checkId > 128
+      or not integer(b.unitPrice, 1, MAX) or not integer(b.quantity, 1, math.floor(MAX / b.unitPrice))
+      or t.delta ~= -(b.unitPrice * b.quantity) then bad() end
+    if redis.call('HGET', key, 'business:' .. b.source .. ':' .. b.taskId) ~= t.requestId then bad() end
+  end
   return t
 end
 local function receipt(raw, sequence)
@@ -95,22 +109,41 @@ if not uuid(request) then error('Invalid credit request identity') end
 local old = redis.call('HGET', key, 'request:' .. request)
 if old then
   local r = receipt(old, sequence)
-  if mode == 'adjust' and r.fingerprint ~= ARGV[4] then return {'conflict'} end
+  if (mode == 'adjust' or mode == 'debit') and r.fingerprint ~= ARGV[4] then return {'conflict'} end
   result[#result+1] = old
   if r.status == 'applied' then
     local raw = redis.call('HGET', key, 'transaction:' .. fmt(r.sequence))
     local t = transaction(raw, r.sequence)
     if t.requestId ~= request then bad() end
-    if mode == 'adjust' and (t.actorUserId ~= ARGV[5] or t.delta ~= tonumber(ARGV[6]) or t.reason ~= ARGV[7]) then bad() end
+    if (mode == 'adjust' or mode == 'debit') and (t.actorUserId ~= ARGV[5] or t.delta ~= tonumber(ARGV[6]) or t.reason ~= ARGV[7]) then bad() end
     result[#result+1] = raw
   end
   return result
 end
 if mode == 'receipt' then return result end
-if mode ~= 'adjust' then error('Invalid credit operation') end
+if mode ~= 'adjust' and mode ~= 'debit' then error('Invalid credit operation') end
 local fingerprint, actor, delta, reason, now = ARGV[4], ARGV[5], tonumber(ARGV[6]), ARGV[7], tonumber(ARGV[8])
 if #fingerprint ~= 64 or not fingerprint:match('^[0-9a-f]+$') or not uid(actor)
   or not integer(delta, -MAX, MAX) or delta == 0 or #reason == 0 or not integer(now, 0, MAX) then error('Invalid credit adjustment') end
+local businessKey, businessJson
+if mode == 'debit' then
+  local source, task, check, price, quantity = ARGV[9], ARGV[10], ARGV[11], tonumber(ARGV[12]), tonumber(ARGV[13])
+  if not source or not source:match('^[a-z][a-z0-9-]*$') or not task or #task == 0 or not check or #check == 0
+    or not integer(price, 1, MAX) or not integer(quantity, 1, math.floor(MAX / price))
+    or delta ~= -(price * quantity) then error('Invalid business debit') end
+  businessKey = 'business:' .. source .. ':' .. task
+  local linked = redis.call('HGET', key, businessKey)
+  if linked then
+    if not uuid(linked) then bad() end
+    local r = receipt(redis.call('HGET', key, 'request:' .. linked), sequence)
+    if r.status ~= 'applied' then bad() end
+    local t = transaction(redis.call('HGET', key, 'transaction:' .. fmt(r.sequence)), r.sequence)
+    if not t.business or t.business.source ~= source or t.business.taskId ~= task or t.requestId ~= linked then bad() end
+    return {'conflict'}
+  end
+  businessJson = '{"source":' .. cjson.encode(source) .. ',"taskId":' .. cjson.encode(task)
+    .. ',"checkId":' .. cjson.encode(check) .. ',"unitPrice":' .. fmt(price) .. ',"quantity":' .. fmt(quantity) .. '}'
+end
 local rejected
 if delta < 0 and balance < -delta then rejected = 'insufficient_balance'
 elseif delta > 0 and balance > MAX - delta then rejected = 'balance_limit'
@@ -130,7 +163,10 @@ if redis.call('HEXISTS', key, 'transaction:' .. fmt(next)) == 1 then bad() end
 local row = '{"sequence":' .. fmt(next) .. ',"requestId":' .. quote(request) .. ',"userId":' .. quote(user)
   .. ',"actorUserId":' .. quote(actor) .. ',"delta":' .. fmt(delta) .. ',"balanceBefore":' .. fmt(balance)
   .. ',"balanceAfter":' .. fmt(after) .. ',"reason":' .. quote(reason) .. ',"createdAtMillis":' .. fmt(now) .. '}'
+if businessJson then row = row:sub(1, -2) .. ',"business":' .. businessJson .. '}' end
 stored = '{"fingerprint":' .. quote(fingerprint) .. ',"status":"applied","sequence":' .. fmt(next) .. '}'
-redis.call('HSET', key, 'balance', fmt(after), 'sequence', fmt(next), 'updatedAtMillis', fmt(now),
-  'transaction:' .. fmt(next), row, 'request:' .. request, stored)
+local fields = {'balance', fmt(after), 'sequence', fmt(next), 'updatedAtMillis', fmt(now),
+  'transaction:' .. fmt(next), row, 'request:' .. request, stored}
+if businessKey then fields[#fields+1] = businessKey; fields[#fields+1] = request end
+redis.call('HSET', key, unpack(fields))
 return {'1', fmt(after), fmt(next), fmt(now), stored, row}

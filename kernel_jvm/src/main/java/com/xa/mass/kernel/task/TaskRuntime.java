@@ -34,6 +34,14 @@ public interface TaskRuntime {
             List<String> messageIds
     );
 
+    /** Read-only HASH traversal. Count is a hint; callers deduplicate identities across pages. */
+    default TaskItemPage scanTaskItems(String taskId, String cursor, int countHint) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("TaskRuntime", "scanTaskItems");
+    }
+    record TaskItemPage(String nextCursor, Map<String, TaskItem> items) {
+        public TaskItemPage { items = Collections.unmodifiableMap(new LinkedHashMap<>(items)); }
+    }
+
     void storeTaskItemSuccessResults(
             String taskId,
             Map<String, TaskItemSuccessResult> results

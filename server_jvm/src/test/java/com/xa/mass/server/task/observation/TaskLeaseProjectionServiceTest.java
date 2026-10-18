@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class TaskLeaseProjectionServiceTest {
-    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", List.of("g")));
+    private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", List.of("g"), null));
     final ProjectDirectory projects = mock(ProjectDirectory.class);
     final TaskDataService results = mock(TaskDataService.class);
     final MatchingComposition matching = mock(MatchingComposition.class);
@@ -76,7 +76,7 @@ class TaskLeaseProjectionServiceTest {
             var snapshot = Map.of("m", TaskItemResultResponse.succeeded("already taken"));
             var admin = com.xa.mass.server.testing.TaskCallers.caller("admin", "admin");
             assertThatThrownBy(() -> service.acceptResults(admin, "task", snapshot)).isInstanceOf(com.xa.mass.server.error.ServerException.class);
-            var wrong = com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("other", List.of("g")));
+            var wrong = com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("other", List.of("g"), null));
             assertThatThrownBy(() -> service.acceptResults(wrong, "task", snapshot)).isInstanceOf(com.xa.mass.server.error.ServerException.class);
             service.acceptResults(CALLER, "task", snapshot);
             assertThat(written.await(2, TimeUnit.SECONDS)).isTrue();

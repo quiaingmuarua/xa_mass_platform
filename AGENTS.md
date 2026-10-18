@@ -306,12 +306,16 @@ no historical -1 decoding, identity migration or permanent tombstones are added.
 
 ## User Credit Accounts
 
-Server owns manual credit balances, immutable transactions and adjustment receipts in
+Server owns credit balances, immutable transactions, manual adjustment receipts and business debit receipts in
 its own per-user Redis HASH. UserDirectory and TaskCaller supply identity/access only;
 they carry no balance. Account identity is stable userId, independent of Project grants.
 Account mutation validates all touched state before a single atomic publication; unknown
-responses retain the original request identity for explicit reconciliation. This adds no
-Task/Scenario billing, Kernel user domain or scheduling authority. Frontend and Mock share
+responses retain the original request identity for explicit reconciliation. App Checks alone
+supplies fixed per-seed pricing and actual persisted input quantity to a startup-bound
+finite approval admission. Server records its Task start intent before debiting, then calls
+the unchanged approval Owner only after confirmed payment. Retained intents fence imports;
+response loss is reconciled or explicitly continued without a new debit. This introduces
+no refund policy, credit scheduler, Kernel user domain or scheduling authority. Frontend and Mock share
 the same access and confirmation semantics. See [Server accounts](server_jvm/README.md#user-credit-accounts).
 
 ## RPC Result Consumption

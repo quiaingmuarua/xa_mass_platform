@@ -293,8 +293,8 @@ class TaskRpcPreparationServiceTest {
 
     @Test void twoProjectsSharingGroupExplicitlyPrepareIndependentTasksAndReuseBoth() {
         var directory = new ProjectDirectory(new ProjectAssemblyProperties(List.of(
-                new ProjectDefinition("one", List.of("phone-tools")),
-                new ProjectDefinition("two", List.of("phone-tools")))), java.util.List.of());
+                new ProjectDefinition("one", List.of("phone-tools"), null),
+                new ProjectDefinition("two", List.of("phone-tools"), null))), java.util.List.of());
         var saved = new java.util.LinkedHashMap<String, TaskDescriptor>();
         when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenAnswer(call -> {
             var result = new java.util.LinkedHashMap<String, TaskDescriptor>();
@@ -389,7 +389,7 @@ class TaskRpcPreparationServiceTest {
 
     private static ProjectDirectory projects() {
         return new ProjectDirectory(new ProjectAssemblyProperties(List.of(
-                new ProjectDefinition("test-project", List.of("phone-tools")))), java.util.List.of());
+                new ProjectDefinition("test-project", List.of("phone-tools"), null))), java.util.List.of());
     }
 
     private static TaskDescriptor expectedDescriptor() {

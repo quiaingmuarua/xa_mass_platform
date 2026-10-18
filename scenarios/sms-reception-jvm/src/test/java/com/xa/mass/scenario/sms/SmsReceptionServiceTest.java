@@ -17,7 +17,7 @@ import static org.mockito.Mockito.*;
 
 class SmsReceptionServiceTest {
     private static final com.xa.mass.server.task.access.TaskCaller CALLER = com.xa.mass.server.testing.TaskCallers.caller("proof", "admin");
-    private static final com.xa.mass.server.task.access.TaskCaller SERVICE = com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", List.of("g", "demo-sim")));
+    private static final com.xa.mass.server.task.access.TaskCaller SERVICE = com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", List.of("g", "demo-sim"), null));
     final TaskRpcPreparationService projects = mock(TaskRpcPreparationService.class);
     final TaskRpcCallService calls = mock(TaskRpcCallService.class);
     final TaskDataService results = mock(TaskDataService.class);

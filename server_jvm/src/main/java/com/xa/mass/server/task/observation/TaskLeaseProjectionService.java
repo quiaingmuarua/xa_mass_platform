@@ -106,7 +106,7 @@ public final class TaskLeaseProjectionService implements TaskLeaseProjectionAcce
             try {
                 var definition = routes.get(task).getFirst();
                 var caller = TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition(
-                        definition.projectId(), List.of(definition.workerGroupId())));
+                        definition.projectId(), List.of(definition.workerGroupId()), null));
                 var snapshots = results.loadTaskItemResults(caller, task, ids.subList(offset, Math.min(ids.size(), offset + 1000)));
                 for (var route : routes.get(task)) {
                     if (!running) return;

@@ -26,7 +26,7 @@ public final class TaskCallers {
             if (entries.stream().noneMatch(user -> user.role().equals("admin")))
                 entries.add(new UserDirectory.User("seedadmin", "Fixture administrator", "admin", List.of()));
             var projects = entries.stream().flatMap(user -> user.projectIds().stream()).distinct()
-                    .map(id -> new ProjectDefinition(id, List.of("g"))).toList();
+                    .map(id -> new ProjectDefinition(id, List.of("g"), null)).toList();
             return new UserDirectory(mapper, new ByteArrayResource(mapper.writeValueAsBytes(new UserDirectory.Seed(defaults.roles(), entries))),
                     new ProjectDirectory(new ProjectAssemblyProperties(projects), List.of()));
         } catch (java.io.IOException error) { throw new java.io.UncheckedIOException(error); }

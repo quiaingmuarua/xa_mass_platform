@@ -112,8 +112,23 @@ call's declared user/role before account access. Its synchronous commit models a
 ledger and receipt publication. Account data survives logout but resets on browser refresh.
 Admin Mock controls can drop one post-commit response to exercise query/retry. API mode has
 no Mock fallback. `credits.test.ts` covers integer limits, parallel debits, idempotency,
-pagination, current directory admission, lost responses and login/disposal races. No pricing,
-Task/Scenario debit, preauthorization or refund UI is introduced.
+pagination, current directory admission, lost responses and login/disposal races.
+
+App Checks alone adds startup precharge: configuration exposes per-seed `unitPrice`,
+creation fixes it, and the approval dialog reads authorized `/app-checks/tasks/{id}/credits`
+for actual persisted quantities, owner, amount and balance. The common approve request
+carries an explicit UUID and quantity/amount confirmation. Unknown responses retain that
+request for read-only reconciliation and explicit continuation; a rejected attempt requires
+an explicit new confirmation. Closing the dialog preserves its pending local identity;
+logout clears local state and never replays a write. Reopening can recover Server intent.
+The current phase does not automatically return points on closure or execution failure.
+Account rows retain App Checks attribution and Task ID after Task deletion.
+
+App Checks Mock receives the same `MockCreditSource` used by account pages, with no
+implicit funding. Its guarded input/start flow preserves grouped quantities, fixed prices,
+current directory admission and lost-response semantics. `app-check-credits.test.ts` proves
+owner charging, duplicate imports/starts, competing balance use, rejected receipts and
+explicit continuation. Existing business test fixtures explicitly top up their users.
 
 ## Requirements and local run
 

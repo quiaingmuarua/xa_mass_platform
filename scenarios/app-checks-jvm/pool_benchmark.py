@@ -1,6 +1,6 @@
 """Opt-in, isolated A/B workload; observation fixture never enters a production artifact."""
 from __future__ import annotations
-from run_acceptance import caller_headers, task_observations
+from run_acceptance import approval_input, caller_headers, task_observations
 import functools
 
 import hashlib
@@ -79,12 +79,12 @@ def benchmark(preview, root, output, port, baseline, configure, create_import_ap
                 task_id = create_import_approve(run, preview.http, case, approve=False)
                 preview.http(run.url, "/__benchmark/app-checks/start", {})
                 started = time.perf_counter()
-                preview.http(run.url, f"/api/v1/tasks/{task_id}/approve", {"expectedItemCount": 1360}, headers=caller_headers("proof", "admin"))
+                preview.http(run.url, f"/api/v1/tasks/{task_id}/approve", approval_input(run, preview.http, task_id, 1360, case["userId"]), headers=caller_headers(case["userId"], "admin"))
                 detail = {}
 
                 def completed():
                     nonlocal detail
-                    detail = task_observations(run, functools.partial(preview.http, headers=caller_headers("proof", "admin")), task_id)
+                    detail = task_observations(run, functools.partial(preview.http, headers=caller_headers("1000", "admin")), task_id)
                     task = detail["task"]
                     return task["state"] == "terminal" and task["activeCount"] == 0
                 run.wait_for(completed, 180, "benchmark completion")

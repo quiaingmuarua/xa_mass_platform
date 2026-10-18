@@ -63,7 +63,7 @@ class AppCheckContractsTest {
         };
         var registry = new AppCheckContracts(List.of(alternative, AppCheckContracts.registration()));
         var config = AppCheckSettings.parse(Map.of("common", Map.of("typeDefaults", Map.of(alternative.id(), Map.of())),
-                "checks", Map.of("arbitrary-app", Map.of("label", "Proof", "workerGroupId", "other-group",
+                "checks", Map.of("arbitrary-app", Map.of("unitPrice", 1, "label", "Proof", "workerGroupId", "other-group",
                         "checkType", alternative.id(), "execution", Map.of("eventCode", "extension.worker.vendor.lookup",
                                 "refill", List.of(Map.of("poolName", "any", "target", Map.of(), "count", 100)),
                                 "workerSelector", Map.of("executorName", "worker.any", "input", Map.of()))))), registry);

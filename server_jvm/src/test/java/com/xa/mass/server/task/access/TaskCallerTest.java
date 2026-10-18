@@ -42,7 +42,7 @@ class TaskCallerTest {
                 .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_ACCESS_DENIED));
         assertThatThrownBy(() -> own.selectUser("1002")).isInstanceOf(ServerException.class);
         com.xa.mass.server.testing.TaskCallers.caller("1000", "admin").requireTask(descriptor);
-        var service = TaskCaller.forProjectService(new ProjectDefinition("sms", List.of("g")));
+        var service = TaskCaller.forProjectService(new ProjectDefinition("sms", List.of("g"), null));
         service.requireInput(task("sms", null, "sms"), "sms");
         assertThatThrownBy(service::requireAdmin).isInstanceOf(ServerException.class);
         assertThatThrownBy(() -> service.requireTask(descriptor)).isInstanceOf(ServerException.class);

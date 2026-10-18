@@ -26,6 +26,7 @@ export const settingsSchema = z.strictObject({
       name,
       z.strictObject({
         label: name,
+        unitPrice: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
         workerGroupId: name,
         execution: executionSchema,
         checkType: name,

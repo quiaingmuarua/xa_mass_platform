@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 public final class TaskLifecycleService {
 
     private final TaskLifecycleCommands lifecycle;
+    private final java.util.Map<String, FiniteTaskApprovalAdmission> admissions;
     private final TaskResourceCatalog catalog;
     private final OperationGuard operations;
     private final com.xa.mass.kernel.score.TaskItemScoreBandCore itemScores;
@@ -30,9 +31,11 @@ public final class TaskLifecycleService {
             OperationGuard operations,
             com.xa.mass.kernel.score.TaskItemScoreBandCore itemScores,
             com.xa.mass.kernel.score.TaskScoreBandCore taskScores,
-            com.xa.mass.kernel.task.TaskRuntime runtime
+            com.xa.mass.kernel.task.TaskRuntime runtime,
+            List<FiniteTaskApprovalAdmission> admissions
     ) {
         this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
+        this.admissions = admissions.stream().collect(java.util.stream.Collectors.toUnmodifiableMap(FiniteTaskApprovalAdmission::inputOwner, a -> a));
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.operations = Objects.requireNonNull(operations, "operations");
         this.itemScores = Objects.requireNonNull(itemScores, "itemScores");
@@ -40,18 +43,21 @@ public final class TaskLifecycleService {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
     }
 
-    public ActionOutcome approve(TaskCaller caller, String taskId, long expectedItemCount) {
+    public ActionOutcome approve(TaskCaller caller, String taskId, long expectedItemCount, com.xa.mass.server.task.credit.TaskCreditConfirmation credits) {
         if (expectedItemCount <= 0) throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskLifecycle.approve");
-        return operations.taskMutation(taskId, () -> approveObserved(caller, taskId, expectedItemCount));
+        return operations.taskMutation(taskId, () -> approveObserved(caller, taskId, expectedItemCount, credits));
     }
 
-    private ActionOutcome approveObserved(TaskCaller caller, String taskId, long expectedItemCount) {
+    private ActionOutcome approveObserved(TaskCaller caller, String taskId, long expectedItemCount, com.xa.mass.server.task.credit.TaskCreditConfirmation credits) {
         String operation = "taskLifecycle.approve";
-        requireFiniteTask(caller, taskId, operation);
+        var task = requireFiniteTask(caller, taskId, operation);
         TaskLifecycleCommands.TaskApprovalResult result;
         try {
             var state = taskScores.getScoreStates(List.of(taskId)).get(taskId);
             if (state == null) throw unavailable(operation, null);
+            var admission = admissions.get(task.metadata().getOrDefault(TaskCaller.INPUT_OWNER, ""));
+            if (admission != null) admission.beforeApprove(caller, task, expectedItemCount, credits);
+            else if (credits != null) throw failure(ServerErrorCode.INVALID_CREDIT_REQUEST, operation);
             if (state.band() == com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand.PRE_REVIEW) {
                 var count = itemScores.observeItemScoreCounts(List.of(taskId)).get(taskId);
                 if (count == null) throw unavailable(operation, null);
@@ -90,7 +96,9 @@ public final class TaskLifecycleService {
 
     private ActionOutcome closeObserved(TaskCaller caller, String taskId) {
         String operation = "taskLifecycle.close";
-        requireFiniteTask(caller, taskId, operation);
+        var task = requireFiniteTask(caller, taskId, operation);
+        var admission = admissions.get(task.metadata().getOrDefault(TaskCaller.INPUT_OWNER, ""));
+        if (admission != null) admission.beforeClose(caller, task);
         TaskLifecycleCommands.TaskCloseResult result;
         try {
             result = lifecycle.closeTask(taskId);
@@ -120,7 +128,7 @@ public final class TaskLifecycleService {
         };
     }
 
-    private void requireFiniteTask(TaskCaller caller, String taskId, String operation) {
+    private TaskDescriptor requireFiniteTask(TaskCaller caller, String taskId, String operation) {
         TaskDescriptor descriptor;
         try {
             descriptor = catalog.loadTaskAllocationDescriptors(
@@ -149,6 +157,7 @@ public final class TaskLifecycleService {
                     operation
             );
         }
+        return descriptor;
     }
 
     private static ServerException failure(

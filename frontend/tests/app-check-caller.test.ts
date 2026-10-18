@@ -1,9 +1,9 @@
+import { FundedAppCheckSource, approveCheck } from "./app-check-credit-fixture";
 import { webcrypto } from "node:crypto";
 import { MockUserDirectorySource } from "@/user-directory-source";
 import { TaskApiError, callerHeaders, type TaskCaller } from "@/task-caller";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { ApiAppCheckTaskSource } from "../src/app-checks/task-source";
-import { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
 
 const a: TaskCaller = Object.freeze({ userId: "testa", role: "operator" });
 const b: TaskCaller = Object.freeze({ userId: "testb", role: "operator" });
@@ -27,7 +27,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("App Checks declared callers", () => {
   it("selects personal score ranges before limiting, including admin owner filters", async () => {
-    const source = new MockAppCheckTaskSource(directory());
+    const source = new FundedAppCheckSource(directory());
     for (let i = 0; i < 105; i++)
       await source.createTask(a, { ...input, requestId: `other-${i}` });
     const target = await source.createTask(b, {
@@ -51,7 +51,7 @@ describe("App Checks declared callers", () => {
   it("checks every direct Mock operation before inspecting inputs or results", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
-    const source = new MockAppCheckTaskSource(directory());
+    const source = new FundedAppCheckSource(directory());
     const { taskId } = await source.createTask(a, input);
     const upload = {
       get size(): number {
@@ -62,7 +62,7 @@ describe("App Checks declared callers", () => {
     for (const operation of [
       () => source.loadTask(b, taskId),
       () => source.importSeeds(b, taskId, upload),
-      () => source.approveTask(b, taskId, 1),
+      () => approveCheck(source, b, taskId, 1),
       () => source.closeTask(b, taskId),
       () => source.exportTask(b, taskId, "all"),
       () => source.exportCounts(b, taskId),
@@ -91,7 +91,7 @@ describe("App Checks declared callers", () => {
   });
   it("preserves creator identity independently of role and rejects a body creator", async () => {
     const users = directory();
-    const source = new MockAppCheckTaskSource(users);
+    const source = new FundedAppCheckSource(users);
     const original = await source.createTask(a, input);
     await users.save(
       admin,

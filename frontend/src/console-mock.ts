@@ -6,10 +6,11 @@ import type { MockUserDirectorySource } from "@/user-directory-source";
 
 // Business data lives for the application; login-specific views live in the console.
 export function createConsoleMock(directory: MockUserDirectorySource) {
+  const credits = new MockCreditSource(directory);
   return {
     directory,
-    credits: new MockCreditSource(directory),
-    appChecks: new MockAppCheckTaskSource(directory),
+    credits,
+    appChecks: new MockAppCheckTaskSource(directory, credits),
     messages: new MockMessageTaskSource(directory)
   };
 }

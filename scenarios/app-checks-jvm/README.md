@@ -19,6 +19,7 @@ SDK 和 Worker 协议使用既有机制；Matching 基础规则由宿主启动�
 | API | 内容 |
 | --- | --- |
 | `GET /api/v1/app-checks/catalog` | 当前生效的 Project、checkTypes、含执行绑定的 checks、国家及单次种子导入限制 |
+| `GET /api/v1/app-checks/tasks/{taskId}/credits` | 实际种子数量、固定单价、总额、所有者余额及原启动请求的扣分核对；可带 requestId |
 | `GET /api/v1/app-checks/configuration` | 已保存与当前进程生效配置及内容指纹、待重启/新 scope 提示及契约说明/示例 |
 | `PUT /api/v1/app-checks/configuration` | `{expectedFingerprint, configuration}` 整份校验与原子文件替换；不热更新 |
 | `POST /api/v1/app-checks/tasks` | 创建空待审核任务，201 返回 `{"taskId":"..."}` |
@@ -121,7 +122,7 @@ existingCount；当前未确认批次不算拒绝，不自动重传、回滚或�
 导入成功回执的 inputCount、emptyCount、duplicateCount、uniqueCount 按种子计数；itemCount 是本次组装的执行项数，addedCount、existingCount 以及失败回执 confirmedAddedCount 均按 Item 计数。批准和任务进度也按执行项，不能据此推算全 Task 种子数。前端原始 CSV 的行数及去重数属于客户端校验摘要。
 来源和回执仅在控制台会话保存；API 不根据 Task 数量重建来源或操作历史。
 
-Project 绑定不预置长期 RPC Task，App Checks 只创建有限任务。列表仍保留目录中由其他显式调用产生的 RPC/无业务 metadata 行，由前端过滤；详情和写入验证
+Project 绑定不预置长期 RPC Task，App Checks 只创建有限任务。Project 声明独占业务输入归属，通用原始创建和 RPC preparation 均被拒绝；详情和写入验证
 Project、场景和有限 Task 类型。总量来自 Item Score 成员数，active 为 tag 1，failed 为
  tag 5，succeeded 为 tags 6..9。Result 预览在 Redis 阶段只读一次 Owner HSCAN，归档后顺序读取文件；逐 Item 校验并展开后最多 100 条业务行；底层截断或展开裁剪均标 truncated，不补扫 Redis，
 不保证文件顺序或最新顺序。失败行没有业务判定；内容或 Item/Group 关联异常保留执行状态并
@@ -414,3 +415,37 @@ summary 保存 Server/Host/Frontend 和观察器指纹、Java/系统信息以及
 旧版本应只在 take 阶段读取 Facts，新版本应只在 refill 阶段读取；无法归属的读取或
 阶段失败使基准失败。阶段耗时包含观察器开销，不等同于整个 Dispatch 或无观测器的延迟。
 低阈值的窗口恢复由 Boot 专用用例单独证明；不以这个基准声称严格配额或生产吞吐改善。
+
+## 启动预扣积分
+
+每个 check 配置必填的正整数 `unitPrice`，内置检查初值为 1 积分／种子。
+单价随首次 Task 创建写入 metadata，配置保存后重启只影响新 Task；原创建请求
+仍返回原 Task 和原单价。创建、导入不扣分，不从前端传入价格或任务所有者。
+
+启动前通过共同 Server 服务按页读取实际 Item 输入，检查 Item/Score 完整性，再由
+当前 Task 的业务契约解释每组种子。按受理组内数量相加，尾组据实计数；相同 Item
+重传不重复收费，不同组中的同一种子按重复检查计数。不用预览、文件摘要或
+Item 数量乘分组上限推算费用。查询会保留去重 ID 集合，并非常量内存。
+
+仍调用共同 `/api/v1/tasks/{taskId}/approve`，请求示例：
+
+```json
+{"expectedItemCount":3,"credits":{"requestId":"c759709a-fc81-47b2-a24c-4b5ea7799939","expectedSeedCount":23,"expectedAmount":23}}
+```
+
+服务端重算金额，并将启动快照关联持久保存后，扣任务所有者的账户；管理员代为
+启动只改变记录的操作者。只有确认扣分成功才调用原批准 Owner。一个执行 Task
+最多扣一次，调度重试、重复启动都不追加收费。余额不足保留拒绝回执，充值后
+须显式重新确认新请求。金额和乘法均受 JavaScript 安全整数上限约束。
+
+`credits` 查询先做相同的目录、Project 和任务所有权检查。待审核且尚未受理时
+按需报价；已受理后读取固定快照。`requestStatus` 为 applied/rejected/not_observed，
+其中 not_observed 不能当作失败。`status` 的 ready/rejected/debit_unconfirmed/charged/
+started/closed 区分输入报价、扣分结论及独立 Task 状态；charged 表示已扣分而尚待批准。
+请求返回 503 或丢失响应时，先核对原 requestId 或显式继续原操作；不自动补交。
+未确认或已扣分的输入不能继续导入。关闭前先确认扣分结论，关闭后不会重开。
+
+本片不处理终止返还，也不按成功、不匹配或运行错误重新结算。没有冻结余额、
+逐条账务、退款接口、计费定时任务或 Kernel 计费机制。启动关联随 Task 最终清理，
+账户流水继续保留。源码及 ZIP 证明通过人工调账为具名 fixture 用户准备积分，
+产品与 Mock 的普通新账户仍从零余额开始。

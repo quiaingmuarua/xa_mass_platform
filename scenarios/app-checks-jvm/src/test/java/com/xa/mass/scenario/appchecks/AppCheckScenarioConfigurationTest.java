@@ -10,10 +10,10 @@ class AppCheckScenarioConfigurationTest {
         var first = original.requireCheck("app-a-registration");
         checks.put("same-event", first);
         var carrier = original.requireCheck("original-carrier");
-        checks.put("shared-carrier", new AppCheckSettings.Check(carrier.label(), first.workerGroupId(), carrier.execution(), carrier.checkType(), carrier.parameters()));
+        checks.put("shared-carrier", new AppCheckSettings.Check(carrier.label(), first.workerGroupId(), carrier.execution(), carrier.checkType(), carrier.parameters(), 1L));
         checks.put("second-window-event", new AppCheckSettings.Check("Other registration", first.workerGroupId(),
                 new AppCheckSettings.Execution("extension.worker.other.registration", first.execution().refill(), first.execution().workerSelector(), 1),
-                first.checkType(), first.parameters()));
+                first.checkType(), first.parameters(), 1L));
         var settings = new AppCheckSettings(original.typeDefaults(), checks);
         var configuration = new AppCheckScenarioConfiguration();
         var snapshot = new AppCheckConfigurationStore.Snapshot(settings);

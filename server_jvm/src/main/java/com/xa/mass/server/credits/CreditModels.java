@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
-/** Account facts only; no Task, Project pricing or business settlement policy. */
+/** Account facts only; business callers supply immutable charge attribution, never pricing policy. */
 public final class CreditModels {
     public static final long MAX_POINTS = 9_007_199_254_740_991L;
     private CreditModels() {}
@@ -19,7 +19,19 @@ public final class CreditModels {
                                         @Nullable Long updatedAtMillis, boolean userPresent) {}
     public record CreditTransaction(long sequence, String requestId, String userId, String actorUserId,
                                     long delta, long balanceBefore, long balanceAfter, String reason,
-                                    long createdAtMillis) {}
+                                    long createdAtMillis, @Nullable BusinessCharge business) {}
+    public record BusinessCharge(String source, String taskId, String checkId, long unitPrice, long quantity) {
+        public BusinessCharge {
+            if (source == null || !source.matches("[a-z][a-z0-9-]{0,63}") || taskId == null || taskId.isBlank()
+                    || taskId.length() > 256 || checkId == null || checkId.isBlank() || checkId.length() > 128
+                    || unitPrice < 1 || unitPrice > MAX_POINTS || quantity < 1 || quantity > MAX_POINTS / unitPrice)
+                throw invalid("Invalid business charge or amount exceeds safe-integer limit");
+        }
+        public long amount() { return unitPrice * quantity; }
+    }
+    public record Debit(String requestId, BusinessCharge business) {
+        public Debit { requestId = CreditModels.requestId(requestId); java.util.Objects.requireNonNull(business); }
+    }
     public record CreditTransactionsResponse(List<CreditTransaction> entries, @Nullable String nextCursor) {
         public CreditTransactionsResponse { entries = List.copyOf(entries); }
     }
@@ -50,9 +62,17 @@ public final class CreditModels {
         } catch (IllegalArgumentException invalid) { throw invalid("requestId must be a canonical UUID"); }
     }
     static String fingerprint(String actor, Adjustment adjustment) {
+        return digest(List.of(actor, Long.toString(adjustment.delta()), adjustment.reason()));
+    }
+    static String fingerprint(String actor, Debit debit) {
+        var b = debit.business();
+        return digest(List.of("business-debit", actor, b.source(), b.taskId(), b.checkId(),
+                Long.toString(b.unitPrice()), Long.toString(b.quantity())));
+    }
+    private static String digest(List<String> parts) {
         try {
             var digest = MessageDigest.getInstance("SHA-256");
-            for (String part : List.of(actor, Long.toString(adjustment.delta()), adjustment.reason())) {
+            for (String part : parts) {
                 byte[] bytes = part.getBytes(StandardCharsets.UTF_8);
                 digest.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array());
                 digest.update(bytes);
