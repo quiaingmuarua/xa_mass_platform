@@ -1,0 +1,380 @@
+{
+  "attempt": "1",
+  "calibration": {
+    "rate-1000": {
+      "availableProcessors": 4,
+      "cpuParallelOpsPerSecond": 14645632.0,
+      "cpuSingleOpsPerSecond": 4840704.0,
+      "parallelThreads": 4,
+      "redisPingMicros": 199.4402425999965,
+      "workload": "md5-64-bytes"
+    },
+    "rate-2000": {
+      "availableProcessors": 4,
+      "cpuParallelOpsPerSecond": 14380160.0,
+      "cpuSingleOpsPerSecond": 4851328.0,
+      "parallelThreads": 4,
+      "redisPingMicros": 197.48802499999982,
+      "workload": "md5-64-bytes"
+    },
+    "rate-500": {
+      "availableProcessors": 4,
+      "cpuParallelOpsPerSecond": 22482944.0,
+      "cpuSingleOpsPerSecond": 7031424.0,
+      "parallelThreads": 4,
+      "redisPingMicros": 76.68883740000041,
+      "workload": "md5-64-bytes"
+    },
+    "saturation": {
+      "availableProcessors": 4,
+      "cpuParallelOpsPerSecond": 14173696.0,
+      "cpuSingleOpsPerSecond": 4826496.0,
+      "parallelThreads": 4,
+      "redisPingMicros": 198.94004239999958,
+      "workload": "md5-64-bytes"
+    }
+  },
+  "cases": {
+    "direct-1000": {
+      "job": "rate-1000",
+      "metrics": {
+        "completedPerSecond": {
+          "max": 1000.0,
+          "median": 1000.0,
+          "min": 1000.0,
+          "n": 3
+        },
+        "p50LatencyMillis": {
+          "max": 4.559813,
+          "median": 4.295985,
+          "min": 4.193039,
+          "n": 3
+        },
+        "p99LatencyMillis": {
+          "max": 18.563209,
+          "median": 17.948977,
+          "min": 16.169151,
+          "n": 3
+        },
+        "successWithinWait": {
+          "max": 1.0,
+          "median": 1.0,
+          "min": 1.0,
+          "n": 3
+        }
+      },
+      "mode": "open",
+      "statuses": {
+        "passed": 3
+      }
+    },
+    "direct-2000": {
+      "job": "rate-2000",
+      "metrics": {
+        "completedPerSecond": {
+          "max": 2000.0,
+          "median": 2000.0,
+          "min": 1999.9666666666667,
+          "n": 3
+        },
+        "p50LatencyMillis": {
+          "max": 9.528782,
+          "median": 8.79731,
+          "min": 8.595564,
+          "n": 3
+        },
+        "p99LatencyMillis": {
+          "max": 124.015402,
+          "median": 79.104277,
+          "min": 74.978728,
+          "n": 3
+        },
+        "successWithinWait": {
+          "max": 1.0,
+          "median": 1.0,
+          "min": 0.9999833333333333,
+          "n": 3
+        }
+      },
+      "mode": "open",
+      "statuses": {
+        "passed": 3
+      }
+    },
+    "direct-500": {
+      "job": "rate-500",
+      "metrics": {
+        "completedPerSecond": {
+          "max": 500.0,
+          "median": 500.0,
+          "min": 500.0,
+          "n": 3
+        },
+        "p50LatencyMillis": {
+          "max": 7.095045,
+          "median": 7.060513,
+          "min": 7.016046,
+          "n": 3
+        },
+        "p99LatencyMillis": {
+          "max": 13.270936,
+          "median": 13.051505,
+          "min": 12.943064,
+          "n": 3
+        },
+        "successWithinWait": {
+          "max": 1.0,
+          "median": 1.0,
+          "min": 1.0,
+          "n": 3
+        }
+      },
+      "mode": "open",
+      "statuses": {
+        "passed": 3
+      }
+    },
+    "sat-task-any": {
+      "job": "saturation",
+      "metrics": {
+        "completedPerSecond": {
+          "max": 7923.733333333334,
+          "median": 7772.366666666667,
+          "min": 7600.0,
+          "n": 3
+        }
+      },
+      "mode": "saturation",
+      "statuses": {
+        "passed": 3
+      }
+    },
+    "sat-task-targeted": {
+      "job": "saturation",
+      "metrics": {
+        "completedPerSecond": {
+          "max": 8132.133333333333,
+          "median": 8059.666666666667,
+          "min": 8010.033333333334,
+          "n": 3
+        }
+      },
+      "mode": "saturation",
+      "statuses": {
+        "passed": 3
+      }
+    },
+    "task-any-1000": {
+      "job": "rate-1000",
+      "metrics": {
+        "completedPerSecond": {
+          "max": 1000.0,
+          "median": 1000.0,
+          "min": 1000.0,
+          "n": 3
+        },
+        "p50LatencyMillis": {
+          "max": 129.747751,
+          "median": 127.435669,
+          "min": 124.312037,
+          "n": 3
+        },
+        "p99LatencyMillis": {
+          "max": 230.602364,
+          "median": 222.875135,
+          "min": 216.724428,
+          "n": 3
+        },
+        "successWithinWait": {
+          "max": 1.0,
+          "median": 1.0,
+          "min": 1.0,
+          "n": 3
+        }
+      },
+      "mode": "open",
+      "statuses": {
+        "passed": 3
+      }
+    },
+    "task-any-2000": {
+      "job": "rate-2000",
+      "metrics": {
+        "completedPerSecond": {
+          "max": 2000.0,
+          "median": 2000.0,
+          "min": 2000.0,
+          "n": 3
+        },
+        "p50LatencyMillis": {
+          "max": 189.856792,
+          "median": 176.604003,
+          "min": 169.839245,
+          "n": 3
+        },
+        "p99LatencyMillis": {
+          "max": 1125.19378,
+          "median": 603.451705,
+          "min": 524.287945,
+          "n": 3
+        },
+        "successWithinWait": {
+          "max": 1.0,
+          "median": 1.0,
+          "min": 1.0,
+          "n": 3
+        }
+      },
+      "mode": "open",
+      "statuses": {
+        "passed": 3
+      }
+    },
+    "task-any-500": {
+      "job": "rate-500",
+      "metrics": {
+        "completedPerSecond": {
+          "max": 500.0,
+          "median": 500.0,
+          "min": 500.0,
+          "n": 3
+        },
+        "p50LatencyMillis": {
+          "max": 97.821205,
+          "median": 95.591526,
+          "min": 95.51416,
+          "n": 3
+        },
+        "p99LatencyMillis": {
+          "max": 182.041802,
+          "median": 180.033504,
+          "min": 178.704894,
+          "n": 3
+        },
+        "successWithinWait": {
+          "max": 1.0,
+          "median": 1.0,
+          "min": 1.0,
+          "n": 3
+        }
+      },
+      "mode": "open",
+      "statuses": {
+        "passed": 3
+      }
+    },
+    "task-targeted-1000": {
+      "job": "rate-1000",
+      "metrics": {
+        "completedPerSecond": {
+          "max": 1000.0,
+          "median": 1000.0,
+          "min": 1000.0,
+          "n": 3
+        },
+        "p50LatencyMillis": {
+          "max": 127.404872,
+          "median": 126.752383,
+          "min": 122.686766,
+          "n": 3
+        },
+        "p99LatencyMillis": {
+          "max": 228.845732,
+          "median": 224.199074,
+          "min": 217.10332,
+          "n": 3
+        },
+        "successWithinWait": {
+          "max": 1.0,
+          "median": 1.0,
+          "min": 1.0,
+          "n": 3
+        }
+      },
+      "mode": "open",
+      "statuses": {
+        "passed": 3
+      }
+    },
+    "task-targeted-2000": {
+      "job": "rate-2000",
+      "metrics": {
+        "completedPerSecond": {
+          "max": 2000.0,
+          "median": 2000.0,
+          "min": 2000.0,
+          "n": 3
+        },
+        "p50LatencyMillis": {
+          "max": 174.119345,
+          "median": 169.208148,
+          "min": 162.968028,
+          "n": 3
+        },
+        "p99LatencyMillis": {
+          "max": 490.886617,
+          "median": 410.63367,
+          "min": 402.935628,
+          "n": 3
+        },
+        "successWithinWait": {
+          "max": 1.0,
+          "median": 1.0,
+          "min": 1.0,
+          "n": 3
+        }
+      },
+      "mode": "open",
+      "statuses": {
+        "passed": 3
+      }
+    },
+    "task-targeted-500": {
+      "job": "rate-500",
+      "metrics": {
+        "completedPerSecond": {
+          "max": 500.0,
+          "median": 500.0,
+          "min": 500.0,
+          "n": 3
+        },
+        "p50LatencyMillis": {
+          "max": 98.373846,
+          "median": 95.969064,
+          "min": 93.26801,
+          "n": 3
+        },
+        "p99LatencyMillis": {
+          "max": 181.862545,
+          "median": 180.62224,
+          "min": 178.812937,
+          "n": 3
+        },
+        "successWithinWait": {
+          "max": 1.0,
+          "median": 1.0,
+          "min": 1.0,
+          "n": 3
+        }
+      },
+      "mode": "open",
+      "statuses": {
+        "passed": 3
+      }
+    }
+  },
+  "configurations": {
+    "rate-1000": null,
+    "rate-2000": null,
+    "rate-500": null,
+    "saturation": "8e4487590fdcf2e0998093d7f82f09d8ef4ce57b353d857131f0688bd80532fc"
+  },
+  "createdAt": "2026-10-18T19:28:43Z",
+  "event": "schedule",
+  "laneConfigVersion": 3,
+  "ref": "main",
+  "referenceHost": true,
+  "runId": "39157773806",
+  "sha": "9e24ced77d2499157b4d577e7f19da7d5bb968cd",
+  "status": "passed"
+}
