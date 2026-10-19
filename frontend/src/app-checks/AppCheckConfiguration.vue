@@ -289,8 +289,7 @@ defineExpose({ focusHeading: () => heading.value?.focus({ preventScroll: true })
       @input="state.draft = ($event.target as HTMLTextAreaElement).value"
     />
     <p class="checks-hint">
-      参数按检查项整份覆盖或采用类型默认值；不递归合并。已有 checkId、检查类型和 Group
-      固定。unitPrice
+      参数按检查项整份覆盖或采用类型默认值；不递归合并。unitPrice
       是每个种子的积分单价，必须为正整数；新任务保存当时单价，已有任务不随配置改价。保存校验配置，重启校验宿主资源。
     </p>
 
