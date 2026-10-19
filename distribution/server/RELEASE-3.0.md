@@ -1,6 +1,6 @@
 # XA Mass 3.0 release and upgrade contract
 
-Status: 3.0 candidate public contract; this document does not announce a release.
+Status: released public contract for [XA Mass 3.0.0](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v3.0.0).
 
 ## Public compatibility
 
@@ -44,8 +44,19 @@ One clean commit produces one Runtime/SDK ZIP pair. Runtime Distribution and the
 complete Android Proof consume those exact bytes. APK provenance records the
 actually resolved SDK hashes; phase evidence records identity and assertions,
 not opaque Worker payloads/results. Full manual Proof CI must succeed before
-promotion. Published release assets remain immutable; this slice creates no tag
-or Release and does not replace AgentForge's existing lock or installation.
+promotion. Published release assets remain immutable. The 3.0.0 tag and ZIPs
+identify commit `03d91da91496b79d70d9abb19457eb968feff512`, accepted by the
+[complete manual Proof](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/39193841252).
+The original reference-consumer slice did not publish a Release; subsequent
+promotion reused those exact ZIP bytes. A downstream upgrade remains explicit
+and does not follow from publication alone.
+
+RPC callers retain Results already returned by `items:call` and use
+`results:take` for unresolved message IDs. Both paths consume obtained content;
+`results:load` does not replay a consumed RPC response. A missing observation
+does not establish execution absence. Unconfirmed mutations are not automatically
+resubmitted, and consuming responses have no ACK or replay guarantee. See the
+[Server consumption contract](../../server_jvm/README.md#rpc-result-consumption-and-idle-reclamation).
 
 AgentForge must adapt profile/Adapter/environment validation before upgrading its
 lock, then perform its own business consumption proof. The XA reference proves
