@@ -553,11 +553,17 @@ The editor retains its text after a write failure or uncertain save and supports
 API fingerprints are opaque SHA-256 content tokens carried unchanged by the client.
 Object key order and formatting do not change the token; array order and string content do.
 Catalog checks use stable checkId order, independent of JSON key order. Saving requires manual restart;
-new pending checks do not enter the effective Catalog. Existing check IDs, types and Group
-bindings cannot be changed/deleted. Labels, execution bindings, parameters and new
-checks are editable in JSON. Several checks may use the same Group. Host Group/events/Matching enablement and actual Handler
+new pending checks do not enter the effective Catalog. The complete JSON may add, delete or rename checks,
+and change an existing checkId's type or Group. At least one valid check must remain; parameters and execution
+must fit the selected contract. No enabled flag, replacement mapping or automatic conversion is added.
+Deleting, renaming or rebinding uses a new Redis scope and request identities; no cross-change old-data migration is provided.
+Several checks may use the same Group. Host Group/events/Matching enablement and actual Handler
 installation are separate startup dependencies; saving does not provision them.
 Window parameters are host-owned and shown in Runtime Workers; changing their window length requires a new Redis scope.
+An unsubmitted creation draft remembers its selected contract. If a refreshed Catalog removes that check
+or changes its type, the input remains and submission is blocked until explicit reselection/revalidation.
+Changing seed format is explicit, even when the same checkId now accepts another format. Frozen requests
+and known Tasks retain their original caller, request and saved input context.
 
 Mock uses the same document and five effective capabilities (App A/B registration, carrier, uint32 prime and MD5 prefix), content-fingerprint comparison and explicit
 **模拟重启生效**. It has no service requests or runtime registration. Created Mock Tasks

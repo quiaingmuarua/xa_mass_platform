@@ -63,12 +63,26 @@ const availableChecks = computed(() =>
     )
   )
 );
+const selectionError = computed(() => {
+  if (props.targetTask || draft.value.frozenCreate || draft.value.knownTaskId)
+    return "";
+  const check = selectedCheck.value;
+  if (draft.value.checkId && !check)
+    return "原检查能力已不在当前目录中。输入已保留，请重新选择检查能力并校验。";
+  if (
+    check &&
+    (draft.value.selectedCheckType !== check.checkType ||
+      !availableChecks.value.some((entry) => entry.checkId === check.checkId))
+  )
+    return "检查类型已变化。输入已保留，请确认种子格式并重新选择、校验检查能力。";
+  return "";
+});
 const seedChoice = computed({
   get: () => seedType.value,
   set: (value: SeedType) => {
     draft.value.seedType = value;
     draft.value.checkId = availableChecks.value[0]?.checkId ?? "";
-    configurationChanged();
+    selectCheck();
   }
 });
 const identity = consoleIdentity.requireCurrent();
@@ -98,6 +112,7 @@ const valid = computed(
     !report.value.overLimit &&
     !reading.value &&
     !importError.value &&
+    !selectionError.value &&
     !blocked.value
 );
 function options(): ImportOptions {
@@ -121,7 +136,7 @@ async function inspect(
   opts = options(),
   sourceFile = draft.value.fileName
 ) {
-  if (blocked.value || !props.active) return;
+  if (blocked.value || !props.active || selectionError.value) return;
   clearTimeout(timer);
   const token = ++generation;
   reading.value = true;
@@ -148,7 +163,7 @@ function schedule() {
   cancelRead();
   draft.value.report = undefined;
   importError.value = "";
-  if (props.active && !blocked.value) {
+  if (props.active && !blocked.value && !selectionError.value) {
     reading.value = true;
     timer = setTimeout(() => void inspect(), 200);
   }
@@ -169,8 +184,12 @@ function configurationChanged() {
   }
   schedule();
 }
+function selectCheck() {
+  draft.value.selectedCheckType = selectedCheck.value?.checkType;
+  configurationChanged();
+}
 async function readFile(file: File) {
-  if (blocked.value) return;
+  if (blocked.value || selectionError.value) return;
   cancelRead();
   if (!phoneSeeds.value && !/\.txt$/i.test(file.name)) {
     importError.value = "text 种子请选择 TXT 文件，原输入已保留。";
@@ -341,6 +360,7 @@ watch(
     }
     if (!draft.value.checkId) {
       draft.value.checkId = availableChecks.value[0]?.checkId ?? "";
+      draft.value.selectedCheckType = selectedCheck.value?.checkType;
       draft.value.country = props.catalog.countries[0];
     }
     if (props.targetTask) {
@@ -353,6 +373,18 @@ watch(
     if (draft.value.text && !report.value && !blocked.value) void inspect();
     await nextTick();
     if (!disposed && props.active) focusHeading();
+  },
+  { immediate: true }
+);
+watch(
+  () => props.catalog,
+  () => {
+    if (props.targetTask || draft.value.frozenCreate || draft.value.knownTaskId) return;
+    draft.value.selectedCheckType ??= selectedCheck.value?.checkType;
+    if (selectionError.value) {
+      cancelRead();
+      draft.value.report = undefined;
+    }
   },
   { immediate: true }
 );
@@ -522,6 +554,20 @@ onBeforeUnmount(() => {
       @submit.prevent="submit"
     >
       <fieldset :disabled="blocked" class="checks-fieldset">
+        <p v-if="selectionError" class="checks-error" role="alert">
+          {{ selectionError }}
+          <button
+            v-if="
+              selectedCheck &&
+              availableChecks.some((check) => check.checkId === draft.checkId)
+            "
+            type="button"
+            class="checks-link"
+            @click="selectCheck"
+          >
+            使用当前能力重新校验
+          </button>
+        </p>
         <div class="checks-two-columns">
           <label class="checks-field"
             >种子格式
@@ -537,12 +583,19 @@ onBeforeUnmount(() => {
           <label class="checks-field"
             >检查能力
             <select
-              v-if="!targetTask && availableChecks.length > 1"
+              v-if="!targetTask && (availableChecks.length > 1 || selectionError)"
               v-model="draft.checkId"
               aria-label="检查能力"
               :disabled="!!draft.knownTaskId"
-              @change="configurationChanged"
+              @change="selectCheck"
             >
+              <option
+                v-if="!availableChecks.some((check) => check.checkId === draft.checkId)"
+                :value="draft.checkId"
+                disabled
+              >
+                请重新选择检查能力
+              </option>
               <option
                 v-for="check in availableChecks"
                 :key="check.checkId"

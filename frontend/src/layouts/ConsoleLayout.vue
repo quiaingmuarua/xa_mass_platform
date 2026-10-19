@@ -118,8 +118,8 @@ onMounted(() => theme.apply());
           Runtime API
         </span>
         <p>
-          Tasks 展示 Project 与全局原始观察。default 的 RPC
-          和有限任务操作请使用任务工作台。
+          Tasks 展示 Project 与全局原始观察。RPC
+          和有限任务操作请进入任务工作台，选择对应 Project。
         </p>
       </div>
     </aside>

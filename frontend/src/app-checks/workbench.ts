@@ -28,6 +28,7 @@ export interface TaskActivity {
 export interface CheckDraft {
   createdAtMillis: number;
   checkId: string;
+  selectedCheckType?: string;
   seedType: SeedType;
   country: Country;
   inputMode: "file" | "paste";
@@ -61,14 +62,15 @@ export const requestIdentity = () =>
   globalThis.crypto?.randomUUID?.() ??
   "app-check-" + Date.now() + "-" + Math.random().toString(16).slice(2);
 export function freshDraft(catalog?: Catalog): CheckDraft {
+  const check = catalog?.checks.find((candidate) =>
+    catalog.checkTypes.some(
+      (type) => type.id === candidate.checkType && type.seedType === "phonenumber"
+    )
+  );
   return {
     createdAtMillis: Date.now(),
-    checkId:
-      catalog?.checks.find((check) =>
-        catalog.checkTypes.some(
-          (type) => type.id === check.checkType && type.seedType === "phonenumber"
-        )
-      )?.checkId ?? "",
+    checkId: check?.checkId ?? "",
+    selectedCheckType: check?.checkType,
     seedType: "phonenumber",
     country: catalog?.countries[0] ?? "CN",
     inputMode: "file",

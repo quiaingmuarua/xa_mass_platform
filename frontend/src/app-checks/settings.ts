@@ -105,20 +105,6 @@ export async function mockConfigurationFingerprint(
     .map((value) => value.toString(16).padStart(2, "0"))
     .join("");
 }
-export function requireSettingsUpdate(
-  previous: AppCheckSettings,
-  next: AppCheckSettings
-) {
-  for (const [checkId, app] of Object.entries(previous.checks)) {
-    const updated = next.checks[checkId];
-    if (
-      !updated ||
-      updated.workerGroupId !== app.workerGroupId ||
-      updated.checkType !== app.checkType
-    )
-      throw new Error("已有检查项不可删除、换类型或换绑 WorkerGroup：" + checkId);
-  }
-}
 /** Mock owns the installed protocol validators; the API editor never uses this validator. */
 export function validateMockSettings(input: unknown): AppCheckSettings {
   const settings = settingsSchema.parse(input);

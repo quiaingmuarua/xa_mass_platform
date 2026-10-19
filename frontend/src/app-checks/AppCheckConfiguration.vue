@@ -261,10 +261,12 @@ defineExpose({ focusHeading: () => heading.value?.focus({ preventScroll: true })
     </div>
     <p v-if="editing" class="checks-hint" role="status">
       编辑基于指纹
-      {{
-        state.baseFingerprint?.slice(0, 12)
-      }}。重新读取和离开返回保留原文本；新增检查项直接加入 checks 对象，以 checkId
-      为键。
+      {{ state.baseFingerprint?.slice(0, 12) }}。重新读取和离开返回保留原文本。checks 以
+      checkId 为键，可增删检查项或修改类型、Group 及执行绑定，至少保留一项。
+    </p>
+    <p class="checks-hint">
+      保存后手动重启生效，不自动注册或启用资源。删除、重命名、换类型或换 Group
+      属于破坏性调整，建议使用新的 Redis scope；不提供旧环境迁移。
     </p>
     <p
       v-if="

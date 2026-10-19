@@ -32,7 +32,6 @@ import {
   MD5_CONTRACT,
   PRIME_CONTRACT,
   settingsIdentity,
-  requireSettingsUpdate,
   type AppCheckConfigurationView,
   type AppCheckSettings
 } from "./settings";
@@ -749,7 +748,6 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         settingsIdentity(this.savedConfiguration.configuration)
     )
       throw new TaskApiError(409, "配置内容已变化，请重新读取后核对");
-    requireSettingsUpdate(previous.configuration, validated);
     this.savedConfiguration = { configuration: validated };
     return this.loadConfiguration(caller);
   }

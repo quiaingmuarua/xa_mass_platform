@@ -5,6 +5,31 @@ import { Blob as NodeBlob } from "node:buffer";
 import type { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
 import type { CreateCheckTask } from "../src/app-checks/model";
 import type { ImportSnapshot } from "../src/app-checks/import-model";
+import { inspectImport, type ImportOptions } from "../src/app-checks/import-model";
+import { decodeUtf8 } from "../src/files/text";
+
+export class ImportWorkerMock {
+  onmessage?: (event: MessageEvent) => void;
+  onerror?: () => void;
+  terminated = false;
+  postMessage(input: { content: string | ArrayBuffer; options: ImportOptions }) {
+    queueMicrotask(() => {
+      if (this.terminated) return;
+      try {
+        const text =
+          typeof input.content === "string" ? input.content : decodeUtf8(input.content);
+        this.onmessage?.({
+          data: { text, report: inspectImport(text, input.options) }
+        } as MessageEvent);
+      } catch (error) {
+        this.onmessage?.({ data: { error: (error as Error).message } } as MessageEvent);
+      }
+    });
+  }
+  terminate() {
+    this.terminated = true;
+  }
+}
 
 export async function importedTask(
   source: MockAppCheckTaskSource,

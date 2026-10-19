@@ -1,7 +1,7 @@
 import { FundedAppCheckSource, approveCheck } from "./app-check-credit-fixture";
 import { MockUserDirectorySource } from "@/user-directory-source";
 import { consoleIdentity } from "@/console-identity";
-import { CALLER } from "./app-check-fixture";
+import { CALLER, ImportWorkerMock } from "./app-check-fixture";
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, h, nextTick, type App } from "vue";
@@ -31,6 +31,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("crypto", webcrypto);
   vi.stubGlobal("fetch", fetcher.mockReset());
+  vi.stubGlobal("Worker", ImportWorkerMock);
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   source = new FundedAppCheckSource(new MockUserDirectorySource());
 });
@@ -109,6 +110,86 @@ async function input(label: string, value: string) {
 }
 
 describe("App Checks JSON configuration workspace", () => {
+  async function restartWith(
+    change: (value: AppCheckConfigurationView["saved"]["configuration"]) => void
+  ) {
+    const saved = (await source.loadConfiguration(CALLER)).saved;
+    change(saved.configuration);
+    await source.saveConfiguration(CALLER, saved.fingerprint, saved.configuration);
+    await source.simulateConfigurationRestart(CALLER);
+    await context.load(true);
+    await settle();
+  }
+  async function select(label: string, value: string) {
+    const element = document.querySelector<HTMLSelectElement>(
+      `[aria-label="${label}"]`
+    )!;
+    expect(element).not.toBeNull();
+    element.value = value;
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+    await settle();
+  }
+  function submitForm() {
+    document
+      .querySelector("#app-check-create")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  }
+  it("keeps a removed selection and its input until the user explicitly picks the remaining capability", async () => {
+    const { session, host } = await mount("/app-checks?view=create");
+    const create = vi.spyOn(source, "createTask");
+    session.draft.text = "8613800000001";
+    const requestId = session.draft.requestId;
+    await restartWith((value) => {
+      value.checks = { "app-b-registration": value.checks["app-b-registration"] };
+    });
+    expect(session.draft.checkId).toBe("app-a-registration");
+    expect(session.draft.text).toBe("8613800000001");
+    expect(session.draft.requestId).toBe(requestId);
+    expect(host.textContent).toContain("原检查能力已不在当前目录中");
+    submitForm();
+    await settle();
+    expect(create).not.toHaveBeenCalled();
+    await select("检查能力", "app-b-registration");
+    expect(host.textContent).not.toContain("原检查能力已不在当前目录中");
+    expect(session.draft.report?.seeds).toEqual(["+8613800000001"]);
+  });
+  it("requires an explicit seed format change when the same check switches from phone to text", async () => {
+    const { session, host } = await mount("/app-checks?view=create");
+    const create = vi.spyOn(source, "createTask");
+    session.draft.text = "8613800000001";
+    await restartWith((value) => {
+      value.checks["app-a-registration"] = value.checks["md5-prefix"];
+    });
+    expect(session.draft.seedType).toBe("phonenumber");
+    expect(host.textContent).toContain("检查类型已变化");
+    submitForm();
+    await settle();
+    expect(create).not.toHaveBeenCalled();
+    await select("种子格式", "text");
+    expect(session.draft.text).toBe("8613800000001");
+    expect(session.draft.report?.seeds).toEqual(["8613800000001"]);
+    expect(host.textContent).not.toContain("检查类型已变化");
+  });
+  it("remembers the selected contract across navigation and requires revalidation even within the same seed type", async () => {
+    const { router, session, host } = await mount("/app-checks?view=create");
+    await select("种子格式", "text");
+    expect(session.draft.checkId).toBe("md5-prefix");
+    session.draft.text = "17";
+    await router.push("/app-checks?view=configuration");
+    await settle();
+    await restartWith((value) => {
+      value.checks["md5-prefix"] = value.checks["uint32-prime"];
+    });
+    await router.push("/app-checks?view=create");
+    await settle();
+    expect(session.draft.selectedCheckType).toBe("md5-prefix-demo-batch-v1");
+    expect(host.textContent).toContain("检查类型已变化");
+    expect(session.draft.report).toBeUndefined();
+    button("使用当前能力重新校验").click();
+    await settle();
+    expect(session.draft.selectedCheckType).toBe("uint32-prime-v1");
+    expect(session.draft.report?.seeds).toEqual(["17"]);
+  });
   async function editDocument(
     change: (value: AppCheckConfigurationView["saved"]["configuration"]) => void
   ) {
