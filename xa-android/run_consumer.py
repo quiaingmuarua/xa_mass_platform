@@ -87,14 +87,15 @@ def _inspect(archive: Path, expected_hash: str, version: str,
                 and manifest.get("frontendIncluded") is True, "Runtime manifest contract mismatch")
         jar = f"lib/xa-mass-server-jvm-{version}.jar"
         require(manifest.get("serverJar") == jar, "Runtime Server JAR coordinate mismatch")
-        required = {jar, "frontend/dist/index.html", "frontend/dist/reference/openapi.json",
+        required = {jar, "LICENSE.pure-admin-thin", "THIRD_PARTY_NOTICES.md",
+                    "frontend/dist/index.html", "frontend/dist/reference/openapi.json",
                     "frontend/dist/reference/platform-diagnostic-codes.json"}
     else:
         require(manifest.get("schemaVersion") == 1 and manifest.get("repository") == "repository"
                 and manifest.get("artifacts") == [
                     {"groupId": "com.xa.mass", "artifactId": name, "packaging": packaging}
                     for name, packaging in ARTIFACTS.items()], "Worker SDK manifest contract mismatch")
-        required = set()
+        required = {"LICENSE", "THIRD_PARTY_NOTICES.md"}
         for name, packaging in ARTIFACTS.items():
             base = f"repository/com/xa/mass/{name}/{version}/{name}-{version}"
             required.update({f"{base}.{packaging}", f"{base}.pom", f"{base}-sources.jar"})
@@ -166,7 +167,9 @@ def prepare_archives(runtime_archive: Path, sdk_archive: Path, version: str, com
                        for parent in PurePosixPath(name).parents if parent.as_posix() != "."}
         for path in work_dir.rglob("*"):
             relative = path.relative_to(work_dir).as_posix()
-            require(not path.is_symlink() and relative in (directories if path.is_dir() else allowed),
+            runtime_data = path.relative_to(work_dir).parts[0] == "data"
+            require(not path.is_symlink() and (runtime_data
+                    or relative in (directories if path.is_dir() else allowed)),
                     "Work directory contains unexpected consumer installation content")
     else:
         require(not work_dir.exists() or not any(work_dir.iterdir()),
@@ -196,6 +199,7 @@ def server_command(receipt: dict, redis_scope: str, server_port: int = 18182,
             f"--server.port={server_port}", "--server.address=127.0.0.1",
             "--xa.mass.redis.url=${XA_MASS_CONSUMER_REDIS_URL}",
             f"--xa.mass.redis.scope={redis_scope}", "--xa.mass.kernel-pacer.preset=DEFAULT",
+            "--xa.mass.task-retention.directory=" + str(jar.parents[2] / "data/task-archives"),
             "--xa.mass.project-assembly.projects[0].project-id=default",
             "--xa.mass.worker-assembly.group-config-json=" + json.dumps(group_document, separators=(",", ":")),
             f"--xa.mass.worker-delivery.adapter.instances.{ADAPTER_ID}.listen-port={adapter_port}",

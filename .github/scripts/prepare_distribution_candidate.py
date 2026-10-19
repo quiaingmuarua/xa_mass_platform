@@ -34,6 +34,9 @@ def main(arguments=None) -> None:
     options.runtime_sha256 = consumer.digest(options.runtime_archive)
     options.sdk_sha256 = consumer.digest(options.sdk_archive)
     receipt = consumer.prepare_options(options, options.output_dir / "installation")
+    receipt["buildUrl"] = (os.environ["GITHUB_SERVER_URL"] + "/" + os.environ["GITHUB_REPOSITORY"]
+                            + "/actions/runs/" + os.environ["GITHUB_RUN_ID"]
+                            if os.environ.get("GITHUB_RUN_ID") else None)
     (options.output_dir / "candidate.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:

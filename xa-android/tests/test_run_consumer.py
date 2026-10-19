@@ -34,10 +34,12 @@ class ConsumerArchiveTest(unittest.TestCase):
             manifest.update(schemaVersion=6, javaVersion=21, defaultSpringProfile="default",
                             springProfiles=["default", "consumer", "preview"], frontendIncluded=True,
                             serverJar=f"lib/xa-mass-server-jvm-{self.version}.jar")
-            files.update({manifest["serverJar"]: b"jar", "frontend/dist/index.html": b"index",
+            files.update({manifest["serverJar"]: b"jar", "LICENSE.pure-admin-thin": b"license",
+                          "THIRD_PARTY_NOTICES.md": b"notices", "frontend/dist/index.html": b"index",
                           "frontend/dist/reference/openapi.json": b"{}",
                           "frontend/dist/reference/platform-diagnostic-codes.json": b"{}"})
         else:
+            files.update({"LICENSE": b"license", "THIRD_PARTY_NOTICES.md": b"notices"})
             manifest.update(schemaVersion=1, repository="repository", artifacts=[
                 {"groupId": "com.xa.mass", "artifactId": name, "packaging": packaging}
                 for name, packaging in consumer.ARTIFACTS.items()])
@@ -137,6 +139,16 @@ class ConsumerArchiveTest(unittest.TestCase):
         Path(receipt["sdkRoot"], "consumer-origin.json").write_text('{}')
         with self.assertRaisesRegex(ValueError, "SDK origin"):
             self.prepare()
+
+    def test_runtime_owned_archives_do_not_prevent_verified_restart(self):
+        receipt = self.prepare()
+        state = self.root / "installation/data/task-archives/scope-hash/task/manifest.json"
+        state.parent.mkdir(parents=True)
+        state.write_text('{}')
+        self.assertEqual(receipt, self.prepare())
+        command = consumer.server_command(receipt, "profile_example")
+        self.assertIn("--xa.mass.task-retention.directory=" + str(self.root / "installation/data/task-archives"),
+                      command)
 
 
 if __name__ == "__main__":

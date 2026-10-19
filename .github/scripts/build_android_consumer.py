@@ -65,6 +65,11 @@ def main(arguments=None) -> int:
                           projectId="default", caller={"userId": "1000", "role": "admin"},
                           profile="consumer", pacerPreset="DEFAULT", endpointManagerId=consumer.ADAPTER_ID,
                           independentBuild=True, sdkConsumption=consumption, apkSha256=apk_hashes)
+        provenance["consumerSourceCommit"] = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+        provenance["buildUrl"] = (os.environ["GITHUB_SERVER_URL"] + "/" + os.environ["GITHUB_REPOSITORY"]
+                                  + "/actions/runs/" + os.environ["GITHUB_RUN_ID"]
+                                  if os.environ.get("GITHUB_RUN_ID") else None)
         # Temporary paths are diagnostic only. Hashes, not those paths, identify the accepted bytes.
         (output / "apk-provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
     print(f"External Android consumer passed; APKs and provenance: {output}")

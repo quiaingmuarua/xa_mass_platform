@@ -47,6 +47,9 @@ Normal startup selects `consumer`, explicitly declares Project `default`, loads
 and starts the extracted JAR with its extracted frontend. It uses DEFAULT Pacer.
 It neither provisions RPC Tasks nor controls Android/freezer/Redis cleanup.
 A different archive pair requires a new installation directory.
+Immutable ZIP contents are checked again on reuse. Runtime-owned finite Task
+archives use the installation's separate `data/task-archives` directory; they
+remain Server-owned state and do not change the accepted binary identity.
 
 Server and Adapter default to `18182` and `18183`. Build with
 `-PxaMassRuntimeApiBaseUrl=http://127.0.0.1:18082` when using the Proof's `18082/18083`
