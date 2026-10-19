@@ -65,9 +65,10 @@ onBeforeUnmount(bindings.dispose);
         Group 注册描述不可用；以下仅为当前进程配置。
       </p>
       <template v-if="compact">
-        <p v-if="!eventCode">
+        <p v-if="eventCode === undefined">
           完整 Item JSONL 的反馈按每项消息事件匹配；请在 Group 关系中核对事件列表。
         </p>
+        <p v-else-if="!eventCode">选择消息事件后可核对匹配反馈。</p>
         <p v-else-if="selectedFeedback.length === 0">当前事件没有匹配的窗口反馈。</p>
         <p v-for="pool in selectedFeedback" :key="pool.poolName">
           {{ pool.feedback.observationEventName }} · {{ eventCode }} →

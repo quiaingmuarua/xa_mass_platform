@@ -79,14 +79,15 @@ it("direct binding reads an out-of-directory Group without mounting Worker sampl
     host.querySelector<HTMLInputElement>('input[aria-label="已知 Group ID"]')!.value
   ).toBe("kept-draft");
 });
-it("directory refresh failure preserves its identities and original read time", async () => {
+it("directory refresh preserves selection and a failed read keeps the original snapshot", async () => {
   let fail = false;
+  let ids = ["android-demo-workers"];
   const get = vi.fn(async (path: string) => {
     if (path.endsWith("/worker-groups/bindings")) {
       if (fail) throw new Error("unavailable");
       return {
         data: {
-          workerGroupIds: ["android-demo-workers"],
+          workerGroupIds: ids,
           readAt: "2026-10-19T00:00:00Z"
         }
       };
@@ -98,10 +99,19 @@ it("directory refresh failure preserves its identities and original read time", 
   const readTime = host.querySelector(
     'section[aria-label="Group 资源绑定"] > p:nth-of-type(2)'
   )!.textContent;
-  fail = true;
   const refresh = [...host.querySelectorAll("button")].find((button) =>
     button.textContent?.includes("刷新绑定目录")
   )!;
+  ids = ["a-new-first-group", "android-demo-workers"];
+  refresh.click();
+  await nextTick();
+  await nextTick();
+  await nextTick();
+  expect(
+    get.mock.calls.some(([path]) => path.includes("/a-new-first-group/bindings"))
+  ).toBe(false);
+  expect(host.textContent).toContain("device-window");
+  fail = true;
   refresh.click();
   await nextTick();
   await nextTick();

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRuntimeViewerConfig } from "@/runtime-context";
 import {
   createWorkerGroupBindingsDirectoryLoader,
@@ -14,9 +14,14 @@ const directory = ref<WorkerGroupBindingsDirectory>(),
   loading = ref(false),
   error = ref("");
 const knownId = ref("");
-const group = computed(
-  () => props.requestedGroup || directory.value?.workerGroupIds[0] || ""
+const rememberedGroup = ref(props.requestedGroup ?? "");
+watch(
+  () => props.requestedGroup,
+  (value) => {
+    if (value) rememberedGroup.value = value;
+  }
 );
+const group = computed(() => props.requestedGroup || rememberedGroup.value);
 let request: AbortController | undefined;
 async function refresh() {
   request?.abort();
@@ -27,6 +32,7 @@ async function refresh() {
     const value = await load(current.signal);
     if (request === current) {
       directory.value = value;
+      if (!rememberedGroup.value) rememberedGroup.value = value.workerGroupIds[0] ?? "";
       error.value = "";
     }
   } catch {
