@@ -13,6 +13,14 @@ composition; `server_jvm` retains the complete platform implementation.
 
 ## Platform and preview
 
+Batch Checks is independently selected by the strict Boolean
+`xa.mass.scenarios.app-checks.enabled` (default false). Boot binds its properties
+but imports the Scenario only when enabled. It requires explicit
+`configuration.path` and `configuration.seed`. Preview enables it; consumer may
+opt in through external YAML without SMS, Messages or Simulator Groups. No profile
+is added. See the [Android Pool example](../xa-android/README.md#batch-checks-through-an-android-pool).
+
+
 Ordinary platform profiles load no business Scenario Controllers, registrations or
 jobs. The base platform and `consumer` remain independent of business modules. `preview` imports [SMS Reception](../scenarios/sms-reception-jvm/README.md),
 [Message Campaigns](../scenarios/message-campaigns-jvm/README.md) and
@@ -29,7 +37,7 @@ Preview's host configuration and enabled module declarations form this topology:
 | `app-checks` | `app-a → app-a-sim`, `app-b → app-b-sim` | `extension.worker.app.registration.check`; Any and assignment-window Pools, `worker.any` and `worker.assignment.available` |
 
 Explicit RPC preparation for `demo-sim` retains the host-configured Partitioned SMS supply;
-that Group does not enable Any Pool. A raw finite Task can explicitly supply Country.
+that Group also enables Any for Batch Checks. Raw finite Tasks may explicitly supply Country or Any.
 The explicitly declared `default` Project reads currently registered Groups; its reads never provision resources. Messages contributes the existing
 `QualifiedCountryDefinition`; Worker qualification remains `messaging.enabled="true"`
 and the two-letter `country` field. Its Phone function declaration is retained by
@@ -43,11 +51,11 @@ and App Checks, with explicit nonoverlapping phone ranges and country Properties
 
 The Preview seed binds each App Group to `assignment-window`. App Checks owns its JSON configuration file
 and reads one immutable startup snapshot. That snapshot contributes the Project,
-resource requirements, Pool definition, multi-Group projection and Catalog.
+resource requirements and Catalog. Host bindings separately own window definitions and projections.
 Boot passes `xa.mass.scenarios.app-checks.configuration.path` through
 `XA_MASS_APP_CHECKS_CONFIG_PATH`, and `configuration.seed` through `XA_MASS_APP_CHECKS_SEED`
 (default `classpath:app-checks/preview-configuration.json`). The seed contains App
-A/B and explicit 60000 ms/10 limits and is used only for a missing configuration file.
+A/B plus Demo checks and is used only for a missing configuration file. Host window bindings own the 60000 ms/10 limits.
 Generic Matching Group binding still holds only enablement. Boot does not read or write the scenario file;
 ordinary platform composition does not instantiate the scenario store.
 Batch Checks derives and unions event/refill/query dependencies per Group from the JSON document keyed by checkId.

@@ -272,6 +272,12 @@ boundaries even if their happy paths overlap.
 
 ## Shared Infrastructure
 
+Android Worker Proof includes a Batch Checks finite consumer phase using the same
+candidate pair. Affected Scenario contracts select this existing lane. Its
+independent configuration/scope exercises Any selection, complete known-identity
+Results and CSV plus credit admission; RPC consumption cannot replace this proof.
+
+
 High-level Integration Harnesses use public Runtime and local device/Host APIs,
 without production implementation imports or Report injection. Device/Host state
 establishes a local mutation only; Network and Scheduling remain independent

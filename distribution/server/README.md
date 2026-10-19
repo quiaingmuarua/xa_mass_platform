@@ -51,6 +51,12 @@ starts only the Server composition.
 
 ## External consumer workbench deployment
 
+The verified consumer may explicitly opt into Batch Checks using external host
+configuration and a separate writable Scenario document. See the
+[Android Pool example](../../xa-android/README.md#batch-checks-through-an-android-pool).
+Use new candidate bytes containing this addition; do not modify released archives.
+
+
 [XA Android](../../xa-android/README.md) supplies the portable dual-ZIP reference entry, explicit initialization and real RPC business example.
 
 The `consumer` profile supplies Server/Adapter coordinates and no Project or

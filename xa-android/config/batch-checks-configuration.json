@@ -1,0 +1,18 @@
+{
+  "common": {"typeDefaults": {}},
+  "checks": {
+    "android-md5-prefix": {
+      "label": "Android MD5 前缀命中（演示）",
+      "checkType": "string-digest-md5-prefix-v1",
+      "workerGroupId": "android-demo-workers",
+      "unitPrice": 1,
+      "parameters": {},
+      "execution": {
+        "eventCode": "extension.worker.android.string.digest",
+        "seedsPerItem": 1,
+        "refill": [{"poolName": "any", "target": {}, "count": 100}],
+        "workerSelector": {"executorName": "worker.any", "input": {}}
+      }
+    }
+  }
+}

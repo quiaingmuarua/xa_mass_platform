@@ -68,6 +68,37 @@ The Application owns one persistent client key. Observe its issued Worker ID in
 the App or through the public Runtime catalog; do not invent or persist a Server
 Worker ID as App identity. The normal example does not clear App data.
 
+## Batch Checks through an Android Pool
+
+The same verified consumer can explicitly enable Batch Checks without Preview,
+SMS, Messages or a Simulator. Use a new candidate containing the independent
+composition and `string-digest-md5-prefix-v1`; published 3.0.0 predates this feature.
+Never modify an extracted JAR to add it.
+
+From this directory, after preparing the absolute `$installation` path above:
+
+```powershell
+$env:XA_MASS_APP_CHECKS_CONFIG_PATH = Join-Path $installation 'data/app-checks/configuration.json'
+$env:XA_MASS_APP_CHECKS_SEED = ([System.Uri](Resolve-Path './config/batch-checks-configuration.json').Path).AbsoluteUri
+python .\run_consumer.py --runtime-archive $runtime --sdk-archive $sdk --version $candidate.version --commit $candidate.gitCommit --runtime-sha256 $candidate.archives.runtime.sha256 --sdk-sha256 $candidate.archives.sdk.sha256 --work-dir $installation --redis-url redis://127.0.0.1:6379/15 --redis-scope profile_android_checks --runtime-config ./config/batch-checks-runtime.yaml
+```
+
+`--runtime-config` resolves the host YAML to an absolute file URI. The two
+variables explicitly select the writable configuration and seed addresses.
+Omitting the option retains clean consumer startup. The launcher does not parse
+business configuration, fund accounts or infer Pool enablement.
+
+Group JSON declares events; host YAML enables `any` and `worker.any`; check JSON
+binds the existing Android digest protocol. Registration does not install a Handler
+or prove stock availability. The App and Handler still consume only the verified SDK.
+The supply target of 100 is not a concurrency or exclusive Worker allocation.
+
+Open `/app-checks`, select text and Android MD5 prefix matching, import seeds and
+confirm the quantity/fee. An administrator explicitly credits the Task owner first.
+The sample charges 1 point per persisted seed. Existing locks, fingerprints,
+manual restart activation and Task snapshots apply. Existing files are not reseeded.
+Other protocols require a pure Scenario contract, not a Group-specific branch.
+
 ## Explicit RPC consumption
 
 The reference uses declared development user `1000` / role `admin`, like the

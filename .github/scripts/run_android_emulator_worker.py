@@ -214,7 +214,9 @@ class ProofRunner:
     def write_consumption(self) -> None:
         if self.consumption is not None and self.evidence.exists():
             encoded = dict(self.consumption, apkProvenance=self.apk_provenance,
-                           scopes=sorted(self.scopes), phaseEvidence="*.json")
+                           scopes=sorted(self.scopes), phaseEvidence="*.json",
+                           batchChecksInputs={name: consumer.digest(ROOT / "xa-android/config" / name)
+                               for name in ("batch-checks-runtime.yaml", "batch-checks-configuration.json")})
             (self.evidence / "consumption.json").write_text(json.dumps(encoded, indent=2) + "\n", encoding="utf-8")
 
     def setup_device(self) -> None:
@@ -241,7 +243,7 @@ class ProofRunner:
             self.adb("shell", "pm", "clear", package)
             self.start_app(package)
 
-    def start_server(self, label: str, scope: str) -> None:
+    def start_server(self, label: str, scope: str, *, batch_checks: bool = False) -> None:
         print(f"Starting verified Runtime: {label}", flush=True)
         if self.server is not None:
             raise RuntimeError("Server process is already owned")
@@ -250,7 +252,14 @@ class ProofRunner:
         stream = (self.logs / f"server-{label}.log").open("w", encoding="utf-8")
         self.streams.append(stream)
         environment = dict(os.environ, XA_MASS_CONSUMER_REDIS_URL=self.options.redis_url)
-        self.server = spawn(consumer.server_command(self.consumption, scope, 18082, 18083),
+        configuration = None
+        if batch_checks:
+            configuration = ROOT / "xa-android/config/batch-checks-runtime.yaml"
+            environment.update(
+                XA_MASS_APP_CHECKS_CONFIG_PATH=str(self.proof_root / "data/app-checks/configuration.json"),
+                XA_MASS_APP_CHECKS_SEED=(ROOT / "xa-android/config/batch-checks-configuration.json").as_uri())
+        command = consumer.server_command(self.consumption, scope, 18082, 18083, runtime_config=configuration)
+        self.server = spawn(command,
                             cwd=self.proof_root, env=environment,
                             stdout=stream, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 90
@@ -350,6 +359,17 @@ class ProofRunner:
                 self.start_app(APPLICATIONS[2])
             self.phase("TriadConvergenceHealth", "android-worker-triad-convergence-health", phase,
                        f"triad-convergence-{phase}", baseline)
+
+        for package in APPLICATIONS[1:]:
+            self.stop_app(package)
+        self.stop_server()
+        self.start_server("batch-checks", scope + "_batch_checks", batch_checks=True)
+        self.reset_apps(APPLICATIONS[:1])
+        self.phase("BatchChecks", "android-batch-checks", "initial", "batch-checks-initial")
+        self.stop_app(APPLICATIONS[0])
+        self.stop_server()
+        self.start_server("batch-checks-restart", scope + "_batch_checks", batch_checks=True)
+        self.phase("BatchChecks", "android-batch-checks", "restart", "batch-checks-restart", "batch-checks-initial")
 
     def cleanup(self) -> None:
         errors = []

@@ -139,6 +139,17 @@ CSV 各自的下载临时文件在失败或传输结束时清理；CSV 不再生
 
 ## 具名执行契约
 
+`string-digest-md5-prefix-v1` 使用 text、空参数和一个种子／Item；构造
+`{algorithm:MD5,value:seed}`，解释 Android digest 的 `algorithm/input/digest`。
+算法、输入关联及 32 位小写十六进制摘要必须有效，以 `0` 开头时满足，摘要进入
+`details.md5` 和 CSV。不要求 Simulator 的 valid/md5 字段，不补造 Worker 身份，
+不重新计算摘要。协议异常排除有效 CSV。Preview 默认仍只配置原五项能力。
+
+Boot 通过严格绑定的 `xa.mass.scenarios.app-checks.enabled` 独立装配，缺省关闭，
+Preview 显式开启；consumer 可用外部配置开启，无需其他 Scenario。关闭时不打开
+配置文件或锁；开启必须明确提供 configuration.path/seed，不回退 Preview 种子。
+
+
 模块内 `AppCheckContract` 同时声明类型 ID、名称、说明、seedType 和 maxSeedsPerItem；统一用 payload(context, seeds)、inputSeeds(payload)、results(context, payload, content) 承接一个 Item 与多个种子答案。单条契约使用长度为 1 的集合。参数校验和 CSV 附加列仍是纯业务映射。
 checkType 直接采用实现 ID，不增加另一套类型到协议的注册体系。
 静态 Bean 汇成不可变 ID 映射；同协议复用一个实现，不同协议增加一个实现及注册，

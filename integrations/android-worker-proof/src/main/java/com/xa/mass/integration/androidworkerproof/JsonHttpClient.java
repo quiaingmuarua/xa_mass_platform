@@ -55,6 +55,15 @@ final class JsonHttpClient {
     }
 
     Response send(String method, String path, Object body, String operation) {
+        HttpResponse<String> response = sendText(method, path, body == null ? null : Jsons.toJson(body), "application/json", operation);
+        try {
+            return new Response(response.statusCode(), Jsons.parseObject(response.body()));
+        } catch (IllegalArgumentException error) {
+            throw new ProofFailure(operation + ".json", operation + " returned invalid JSON", error);
+        }
+    }
+
+    HttpResponse<String> sendText(String method, String path, String body, String contentType, String operation) {
         if (System.nanoTime() >= requestStartDeadlineNanos) {
             throw new ProofFailure(
                     "proof.phase-time-budget",
@@ -64,35 +73,25 @@ final class JsonHttpClient {
         HttpRequest.Builder request = HttpRequest.newBuilder()
                 .uri(endpoint(path))
                 .timeout(requestTimeout);
-        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) taskCallerHeaders.forEach(request::header);
+        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")
+                || path.startsWith("/api/v1/app-checks") || path.startsWith("/api/v1/users")) taskCallerHeaders.forEach(request::header);
         if (body == null) {
             request.method(method, HttpRequest.BodyPublishers.noBody());
         } else {
-            request.header("Content-Type", "application/json")
+            request.header("Content-Type", contentType)
                     .method(
                             method,
                             HttpRequest.BodyPublishers.ofString(
-                                    Jsons.toJson(body),
+                                    body,
                                     StandardCharsets.UTF_8
                             )
                     );
         }
         try {
-            HttpResponse<String> response = http.send(
+            return http.send(
                     request.build(),
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
             );
-            Map<String, Object> decoded;
-            try {
-                decoded = Jsons.parseObject(response.body());
-            } catch (IllegalArgumentException error) {
-                throw new ProofFailure(
-                        operation + ".json",
-                        operation + " returned invalid JSON",
-                        error
-                );
-            }
-            return new Response(response.statusCode(), decoded);
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             throw new ProofFailure(

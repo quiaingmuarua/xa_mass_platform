@@ -84,6 +84,20 @@ class ConsumerArchiveTest(unittest.TestCase):
             self.prepare(runtime_hash="0" * 64)
         self.assertFalse((self.root / "installation").exists())
 
+    def test_external_configuration_is_explicit_absolute_and_does_not_change_the_default(self):
+        receipt = self.prepare()
+        config = self.root / "external configuration.yaml"
+        config.write_text("xa.mass.scenarios.app-checks.enabled: true", encoding="utf-8")
+        default = consumer.server_command(receipt, "test_consumer")
+        selected = consumer.server_command(receipt, "test_consumer", runtime_config=config)
+        extra = "--spring.config.additional-location=" + config.resolve().as_uri()
+        self.assertNotIn(extra, default)
+        self.assertIn(extra, selected)
+        self.assertEqual(default, [argument for argument in selected if argument != extra])
+        self.assertFalse(any("preview" in argument for argument in selected))
+        with self.assertRaisesRegex(ValueError, "configuration file"):
+            consumer.server_command(receipt, "test_consumer", runtime_config=self.root / "missing.yaml")
+
     def test_missing_binaries_and_corrupt_zip_are_rejected(self):
         runtime = self.archive("server-runtime", missing=f"lib/xa-mass-server-jvm-{self.version}.jar")
         with self.assertRaisesRegex(ValueError, "missing required"):

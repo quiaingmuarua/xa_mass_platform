@@ -594,11 +594,12 @@
     {
       "path": "scenarios/app-checks-jvm/src/main/java/com/xa/mass/scenario/appchecks/AppCheckTaskService.java",
       "lanes": [
+        "android_emulator",
         "jvm_contracts",
         "product_coexistence",
         "runtime_distribution"
       ],
-      "reason": "One-shot Task composition needs finite real Worker execution and packaged scenario assembly."
+      "reason": "One-shot Task composition needs finite real Worker execution and packaged scenario assembly. The external Android finite consumer exercises the same scenario contract."
     },
     {
       "path": "scenarios/app-checks-jvm/run_acceptance.py",

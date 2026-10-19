@@ -13,10 +13,16 @@ class AppCheckConfigurationPropertiesTest {
     final ApplicationContextRunner runner = new ApplicationContextRunner().withUserConfiguration(Binding.class);
 
     @Test void pathAndSeedAreRequiredAndOldOrUnknownFieldsAreRejected() {
-        runner.run(context -> assertThat(context).hasFailed());
+        runner.run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(AppCheckConfigurationProperties.class).enabled()).isFalse();
+        });
+        runner.withPropertyValues("xa.mass.scenarios.app-checks.enabled=true").run(context -> assertThat(context).hasFailed());
+        runner.withPropertyValues("xa.mass.scenarios.app-checks.enabled=unknown").run(context -> assertThat(context).hasFailed());
+        runner.withPropertyValues("xa.mass.scenarios.app-checks.extra=true").run(context -> assertThat(context).hasFailed());
         runner.withPropertyValues("xa.mass.scenarios.app-checks.configuration.path=./data/configuration.json")
                 .run(context -> assertThat(context).hasFailed());
-        var configured = runner.withPropertyValues("xa.mass.scenarios.app-checks.configuration.path=./data/configuration.json",
+        var configured = runner.withPropertyValues("xa.mass.scenarios.app-checks.enabled=true", "xa.mass.scenarios.app-checks.configuration.path=./data/configuration.json",
                 "xa.mass.scenarios.app-checks.configuration.seed=classpath:app-checks/preview-configuration.json");
         configured.run(context -> {
             assertThat(context).hasNotFailed();
