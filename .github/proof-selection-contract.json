@@ -669,13 +669,6 @@
       "reason": "The executable owns the fixed preview profile; both archives consume its canonical configuration."
     },
     {
-      "path": "distribution/server/src/test/python/verify_preview_archive.py",
-      "lanes": [
-        "product_coexistence"
-      ],
-      "reason": "Shared archive fingerprints and source-to-ZIP delivery are checked by the product proof."
-    },
-    {
       "path": "integrations/scenario-coexistence/run_proof.py",
       "lanes": [
         "product_coexistence"
@@ -751,14 +744,6 @@
         "android_emulator"
       ],
       "reason": "The packaged consumer profile now supplies the real Android archive-consumption proof in addition to Runtime configuration contracts."
-    },
-    {
-      "path": "distribution/server/src/test/python/verify_runtime_archive.py",
-      "lanes": [
-        "runtime_distribution",
-        "product_coexistence"
-      ],
-      "reason": "Both archive verifiers reuse the Runtime configuration contract, so changes must verify both deliveries."
     },
     {
       "path": "distribution/server/requirements-preview.txt",
@@ -1332,6 +1317,39 @@
         "runtime_distribution"
       ],
       "reason": "One clean-commit archive pair supplies all downstream consumption proofs."
+    },
+    {
+      "path": "distribution/archive_tools.py",
+      "lanes": [
+        "product_coexistence",
+        "runtime_distribution"
+      ],
+      "reason": "Distribution owns one component verifier; candidate and Preview consumers retain their independent checks."
+    },
+    {
+      "path": ".github/scripts/test_archive_tools.py",
+      "lanes": [
+        "runtime_distribution"
+      ],
+      "reason": "Archive ABI regressions run with the distribution lane."
+    },
+    {
+      "path": "integrations/worker_proof_support/processes.py",
+      "lanes": [
+        "jvm_contracts",
+        "worker_convergence_health",
+        "worker_correctness"
+      ],
+      "reason": "Only Correctness and Convergence consume the shared process primitives."
+    },
+    {
+      "path": "integrations/worker_proof_support/test_processes.py",
+      "lanes": [
+        "jvm_contracts",
+        "worker_convergence_health",
+        "worker_correctness"
+      ],
+      "reason": "Process lifecycle contracts run with their actual consumers."
     }
   ]
 }

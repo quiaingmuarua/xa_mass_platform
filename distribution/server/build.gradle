@@ -210,10 +210,10 @@ tasks.register('verifyRuntimeArchive', Exec) {
     dependsOn tasks.named('distZip')
     workingDir repositoryRoot
     inputs.file(tasks.named('distZip', Zip).flatMap { it.archiveFile })
-    inputs.file('src/test/python/verify_runtime_archive.py')
+    inputs.file(rootProject.file('distribution/archive_tools.py'))
     commandLine(
             pythonExecutable.get(),
-            file('src/test/python/verify_runtime_archive.py').absolutePath,
+            '-m', 'distribution.archive_tools', 'runtime',
             '--archive',
             tasks.named('distZip', Zip).flatMap { it.archiveFile }.get().asFile.absolutePath,
             '--version', runtimeVersion
@@ -332,8 +332,8 @@ tasks.register('previewLauncherTest', Exec) {
     dependsOn tasks.named('sourceLauncherTest')
     workingDir repositoryRoot
     inputs.files('run_preview.py', 'src/test/python/test_run_preview.py',
-            'src/test/python/test_verify_preview_archive.py', 'src/test/python/verify_preview_archive.py',
-            'src/test/python/verify_runtime_archive.py')
+            'src/test/python/test_verify_preview_archive.py',
+            rootProject.file('distribution/archive_tools.py'))
     commandLine(pythonExecutable.get(), '-m', 'unittest', 'discover', '-s',
             file('src/test/python').absolutePath, '-p', 'test_*preview*.py', '-v')
 }
@@ -344,8 +344,8 @@ tasks.register('verifyPreviewArchive', Exec) {
     dependsOn tasks.named('previewZip')
     workingDir repositoryRoot
     inputs.file(tasks.named('previewZip', Zip).flatMap { it.archiveFile })
-    inputs.files('src/test/python/verify_preview_archive.py', 'src/test/python/verify_runtime_archive.py')
-    commandLine(pythonExecutable.get(), file('src/test/python/verify_preview_archive.py').absolutePath,
+    inputs.file(rootProject.file('distribution/archive_tools.py'))
+    commandLine(pythonExecutable.get(), '-m', 'distribution.archive_tools', 'preview',
             '--archive', tasks.named('previewZip', Zip).flatMap { it.archiveFile }.get().asFile.absolutePath,
             '--frontend', frontendDirectory.toPath().resolve('dist').toString(),
             '--output', previewDirectory.get().file('archive-verification.json').asFile.absolutePath)

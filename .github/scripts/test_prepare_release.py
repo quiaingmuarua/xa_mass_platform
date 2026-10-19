@@ -147,7 +147,8 @@ class ReleasePromotionTest(unittest.TestCase):
                     patch.object(release, "paged", return_value=[]) as listing, \
                     patch.object(release, "gh", side_effect=fake_gh), \
                     patch.object(release, "api", side_effect=fake_api), \
-                    patch.object(release.runpy, "run_path", return_value={"verify": Mock(), "_verify_archive": Mock()}):
+                    patch.object(release, "verify_runtime"), \
+                    patch.object(release, "verify_sdk"):
                 release.prepare(self.repository, tag, self.commit, root / "output")
             listing.assert_called_once()
             self.assertEqual(4, len(uploaded))

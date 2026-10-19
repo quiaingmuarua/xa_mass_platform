@@ -7,10 +7,12 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import runpy
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from distribution.archive_tools import verify_runtime, verify_sdk
 SPEC = importlib.util.spec_from_file_location("xa_android_consumer", ROOT / "xa-android/run_consumer.py")
 consumer = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(consumer)
@@ -27,9 +29,9 @@ def main(arguments=None) -> None:
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     dirty = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True)
     consumer.require(not dirty and head == options.commit, "Candidate must come from the expected clean commit")
-    runpy.run_path(str(ROOT / "distribution/server/src/test/python/verify_runtime_archive.py"))["verify"](
+    verify_runtime(
         options.runtime_archive, options.version)
-    runpy.run_path(str(ROOT / "distribution/worker-sdk/src/test/python/verify_worker_sdk_archive.py"))["_verify_archive"](
+    verify_sdk(
         options.sdk_archive, options.version)
     options.runtime_sha256 = consumer.digest(options.runtime_archive)
     options.sdk_sha256 = consumer.digest(options.sdk_archive)

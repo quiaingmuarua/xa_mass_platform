@@ -119,7 +119,8 @@ jobs:
       - name: Verify Worker inventory and loaded recovery runner contracts
         run: |
           python3 -m unittest \
-            integrations.worker_proof_support.test_scenario_inventory
+            integrations.worker_proof_support.test_scenario_inventory \
+            integrations.worker_proof_support.test_processes
           python3 -m unittest discover \
             -s integrations/worker-loaded-recovery \
             -p 'test_*.py'
@@ -755,6 +756,7 @@ jobs:
         run: |
           python3 -m pip install -r .github/scripts/requirements.txt
           python3 .github/scripts/test_prepare_release.py -v
+          python3 .github/scripts/test_archive_tools.py -v
           python3 .github/scripts/test_consumer_ci_gate.py -v
           python3 .github/scripts/test_run_local_runtime.py -v
           python3 .github/scripts/test_run_runtime_distribution_proof.py -v

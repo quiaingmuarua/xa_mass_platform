@@ -23,3 +23,8 @@ In CI, Candidate Distribution Archives produces the ZIP once and APK Assembly
 performs that consumption build, avoiding an additional empty Android project.
 The HTTP producer's root task path is `:android-capability-http`; its source
 location and published coordinate are independent of that Gradle mapping.
+
+Archive validation is owned by `python -m distribution.archive_tools sdk`.
+Without `--consumer-project` it checks only publication bytes and metadata.
+The Gradle distribution test supplies the standalone consumer explicitly; CI
+performs its real SDK compilation in Android APK Assembly without repeating it.

@@ -272,6 +272,12 @@ boundaries even if their happy paths overlap.
 
 ## Shared Infrastructure
 
+Correctness and Convergence share `integrations/worker_proof_support/processes.py`
+for child-process creation, readiness, bounded log tails and owned-process shutdown.
+It owns no phase registry, workload or scheduling behavior. Linux resource samplers
+and Android ADB/freezer orchestration retain their own contracts.
+
+
 Android Worker Proof includes a Batch Checks finite consumer phase using the same
 candidate pair. Affected Scenario contracts select this existing lane. Its
 independent configuration/scope exercises Any selection, complete known-identity
@@ -408,3 +414,19 @@ and Runtime Boundary for actual expiry/reconnect and filter-restart witnesses.
 The [Convergence Owner](integrations/worker-convergence-health/README.md) separately
 retains its established-fault observations and nonclaims. No lane implies strict
 cross-queue ordering, reliable replay or an atomic Facts/Score transaction.
+
+## Delivery tooling maintenance
+
+| Disposition | Entry or responsibility |
+| --- | --- |
+| Retained | Source Runtime launch, portable dual-ZIP consumer and packaged Preview launcher |
+| Consolidated | Runtime/SDK/Preview archive verification uses `python -m distribution.archive_tools` |
+| Consolidated | Correctness and Convergence share process primitives; each owns its workload and fault sequence |
+| Retained | Candidate production, external APK assembly, Runtime Distribution and Android Emulator are separate stages |
+| Review only | SMS refill diagnostics, JFR summarization and fixed A/B evaluation are historical experiment candidates; no current workflow/docs caller was found beyond their unit tests. They remain available pending a separate retirement decision |
+
+The archive checker rejects unsafe Runtime member paths, duplicate names and
+symlinks before inspecting payloads. Consumer identity/hash verification stays
+independent. This tooling change neither publishes a Release nor changes the
+AgentForge pin. Frida, Analysis and old device tools belong to their consuming
+repository; no platform scheduling mechanism moves into Python.

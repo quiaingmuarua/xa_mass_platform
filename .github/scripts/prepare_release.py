@@ -7,13 +7,15 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import runpy
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from distribution.archive_tools import verify_runtime, verify_sdk
 REQUIRED_JOBS = {
     "Select proof lanes", "Docs Contract", "JVM Contracts", "Redis Owner",
     "Runtime Boundary", "Worker Correctness", "Worker Dynamic Matching",
@@ -160,8 +162,8 @@ def prepare(repository: str, tag: str, commit: str, output: Path) -> None:
                 shutil.copyfile(source, destination)
             archives.append(destination)
     # Content belongs to Distribution's existing archive validators.
-    runpy.run_path(str(ROOT / "distribution/server/src/test/python/verify_runtime_archive.py"))["verify"](archives[0], version)
-    runpy.run_path(str(ROOT / "distribution/worker-sdk/src/test/python/verify_worker_sdk_archive.py"))["_verify_archive"](archives[1], version)
+    verify_runtime(archives[0], version)
+    verify_sdk(archives[1], version)
     assets = [*archives, *(checksum(path) for path in archives)]
 
     release = next((candidate for candidate in paged(f"repos/{repository}/releases", None)

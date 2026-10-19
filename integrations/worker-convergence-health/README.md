@@ -264,3 +264,8 @@ Finite property witnesses continue to use non-consuming `results:load`. Worker
 fault assertions distinguish retained receipts from persistent Item Score truth
 and do not require consumed Redis Result fields to remain present. No execution
 is resubmitted to retrieve a missing response.
+
+Process creation, bounded readiness and owned-tree shutdown use the shared
+[process primitives](../worker_proof_support/processes.py). This runner supplies
+its commands, working directory, environment and existing phase budgets; workload
+assertions and fault transitions remain local.

@@ -209,7 +209,7 @@ The [SMS acceptance](../../scenarios/sms-reception-jvm/README.md#检查与验收
 own their independent workloads, exact fixtures, source/ZIP commands and nonclaims.
 Launch lifecycle and archive checks belong here; run them with
 `.\gradlew.bat :distribution:server:previewLauncherTest`, which also runs the root
-launcher tests. The preview verifier is `src/test/python/verify_preview_archive.py`.
+launcher tests. The preview verifier is `python -m distribution.archive_tools preview`.
 Both the SMS Preview workflow and Scenario Coexistence lane run these checks before
 their separate business proofs.
 

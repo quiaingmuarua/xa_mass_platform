@@ -151,6 +151,12 @@ there are no compatibility aliases or reads.
 
 ## Archive verification
 
+Distribution owns the single component verifier: `python -m distribution.archive_tools`
+with `runtime`, `sdk` and `preview` subcommands. Candidate and release tools import
+its verification functions directly. SDK validation is pure unless the caller
+explicitly supplies `--consumer-project`; CI builds the real consumer in APK Assembly.
+
+
 The archive verifier requires the diagnostic JSON and checks its version and
 full Git commit against `manifest.json`, plus the exact Server, Adapter and
 Worker Core owner order. It also requires the OpenAPI 3.1 snapshot, rejects a

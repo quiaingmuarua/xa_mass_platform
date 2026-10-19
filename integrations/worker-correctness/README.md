@@ -158,3 +158,8 @@ before this lane's overlay/CLI flags. It preserves the test Project, Group and
 Adapter identities and existing budgets without activating a business profile.
 The fixture is not packaged in the production Server. Historical benchmark
 checkouts retain their version-specific configuration inputs.
+
+Process creation, bounded readiness and owned-tree shutdown use the shared
+[process primitives](../worker_proof_support/processes.py). This runner supplies
+its commands, working directory, environment and existing phase budgets; workload
+assertions and fault transitions remain local.

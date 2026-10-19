@@ -147,6 +147,8 @@ worker_correctness:
   - '.github/workflows/proof-ci.yml'
   - '!**/*.md'
 worker_dynamic_matching:
+  - '!integrations/worker_proof_support/processes.py'
+  - '!integrations/worker_proof_support/test_processes.py'
   - 'server_boot_jvm/src/main/resources/application-consumer.yaml'
   - 'integrations/worker_proof_support/platform-runtime.yaml'
   - 'server_boot_jvm/src/main/resources/application.yaml'
@@ -345,10 +347,11 @@ frontend:
   - '.github/workflows/proof-ci.yml'
   - '!**/*.md'
 runtime_distribution:
+  - '.github/scripts/test_archive_tools.py'
+  - 'distribution/archive_tools.py'
   - 'integrations/worker_proof_support/platform-runtime.yaml'
   - '!distribution/server/run_preview.py'
   - '!distribution/server/requirements-preview.txt'
-  - '!distribution/server/src/test/python/verify_preview_archive.py'
   - '!distribution/server/src/test/python/test_*preview*.py'
   - 'scenarios/message-campaigns-jvm/src/main/**'
   - 'scenarios/message-campaigns-jvm/build.gradle'
@@ -403,6 +406,7 @@ runtime_distribution:
   - '.github/scripts/test_prepare_release.py'
   - '!**/*.md'
 product_coexistence:
+  - 'distribution/archive_tools.py'
   - 'integrations/worker_proof_support/platform-runtime.yaml'
   - 'run_local_runtime.py'
   - 'scenarios/app-checks-jvm/**'
