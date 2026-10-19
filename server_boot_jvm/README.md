@@ -273,3 +273,8 @@ Server expands the strict host startup input; Boot owns values and packaging, no
 Batch Checks JSON stores only common/checks and must not contain poolGroups. Default/Consumer without bindings create none.
 See [Server bindings](../server_jvm/README.md#named-window-pool-and-feedback-bindings) for independent Pool/feedback selection,
 Group overrides, startup errors and the read-only Group interface. A registered Group alone installs no Worker Handler or Pool stock.
+
+`fixed-window.projects.<projectId>` expands the same references over that Project's declared Group set.
+This consumes the shared Project directory, including Scenario declarations; membership changes require restart.
+Equal bindings coalesce, conflicting limits fail, and `default` cannot be an expansion source because it uses registered scope.
+The Android consumer's `project-window-runtime.yaml` demonstrates this without a Scenario; its `default` workbench consumes the resolved Group Pool.

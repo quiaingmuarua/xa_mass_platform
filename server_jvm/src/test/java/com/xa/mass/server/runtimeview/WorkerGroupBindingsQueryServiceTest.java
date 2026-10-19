@@ -16,7 +16,8 @@ class WorkerGroupBindingsQueryServiceTest {
     private final WorkerGroupBindings bindings = new WorkerGroupBindings(Map.of(), new FixedWindowBindingsProperties(
             Map.of("window", new FixedWindowBindingsProperties.Pool("window.take", "at", "count", 100, 2)),
             Map.of("observe", new FixedWindowBindingsProperties.Feedback("window", List.of("check"))),
-            Map.of("g", new FixedWindowBindingsProperties.Group(Map.of("window", new FixedWindowBindingsProperties.Limits(null, null)), List.of("observe")))), List.of());
+            Map.of("g", new FixedWindowBindingsProperties.Group(Map.of("window", new FixedWindowBindingsProperties.Limits(null, null)), List.of("observe"))), Map.of()), List.of(),
+            new com.xa.mass.server.project.ProjectDirectory(new com.xa.mass.server.project.ProjectAssemblyProperties(List.of()), List.of()));
     private final WorkerGroupBindingsQueryService service = new WorkerGroupBindingsQueryService(workers, matching, bindings);
 
     @Test void pointReadUsesOnlyRegisteredDescriptorAndStartupCapabilities() {

@@ -20,9 +20,11 @@ class ProjectWorkerRequirementsValidatorTest {
         var groups = new TreeMap<String, FixedWindowBindingsProperties.Group>();
         IntStream.range(0, 205).forEach(i -> groups.put("g" + i,
                 new FixedWindowBindingsProperties.Group(Map.of("window", new FixedWindowBindingsProperties.Limits(null, null)), List.of("observe"))));
+        var project = directory(new ProjectDefinition("host-binding", List.copyOf(groups.keySet()), null));
         var host = new com.xa.mass.server.worker.observation.WorkerGroupBindings(Map.of(), new FixedWindowBindingsProperties(
                 Map.of("window", new FixedWindowBindingsProperties.Pool("window.take", "at", "count", 100, 2)),
-                Map.of("observe", new FixedWindowBindingsProperties.Feedback("window", List.of("check"))), groups), List.of());
+                Map.of("observe", new FixedWindowBindingsProperties.Feedback("window", List.of("check"))), Map.of(),
+                Map.of("host-binding", groups.get("g0"))), List.of(), project);
         var reads = new ArrayList<Integer>();
         when(workers.getWorkerGroupDescriptors(anyList())).thenAnswer(call -> {
             List<String> ids = call.getArgument(0); reads.add(ids.size());
@@ -30,7 +32,7 @@ class ProjectWorkerRequirementsValidatorTest {
             ids.forEach(id -> result.put(id, new WorkerGroupDescriptor(id, Map.of(), Set.of("check", "extra"))));
             return result;
         });
-        var validator = new ProjectWorkerRequirementsValidator(directory(), workers, host, List.of());
+        var validator = new ProjectWorkerRequirementsValidator(project, workers, host, List.of());
         validator.validate();
         assertThat(reads).containsExactly(100, 100, 5);
         when(workers.getWorkerGroupDescriptors(anyList())).thenReturn(Map.of());
@@ -158,7 +160,7 @@ class ProjectWorkerRequirementsValidatorTest {
         return new ProjectWorkerRequirementsValidator(projects, workers, bindings(matching), requirements);
     }
     private static com.xa.mass.server.worker.observation.WorkerGroupBindings bindings(MatchingProperties matching) {
-        return new com.xa.mass.server.worker.observation.WorkerGroupBindings(matching.groups(), new FixedWindowBindingsProperties(null, null, null), List.of());
+        return new com.xa.mass.server.worker.observation.WorkerGroupBindings(matching.groups(), new FixedWindowBindingsProperties(null, null, null, null), List.of(), directory());
     }
     private static ProjectDirectory knownProject() { return directory(new ProjectDefinition("messages", List.of("shared"), null)); }
     private static ProjectDirectory directory(ProjectDefinition... projects) {

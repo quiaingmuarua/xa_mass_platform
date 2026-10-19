@@ -195,10 +195,12 @@ def server_command(receipt: dict, redis_scope: str, server_port: int = 18182,
     group_document = json.loads((groups or ROOT / "config/worker-groups.json").read_text(encoding="utf-8"))
     require(isinstance(group_document, dict), "Consumer Group configuration must be an object")
     additional = []
+    projects = ["--xa.mass.project-assembly.projects[0].project-id=default"]
     if runtime_config is not None:
         runtime_config = runtime_config.resolve()
         require(runtime_config.is_file(), "Runtime configuration file does not exist")
         additional = ["--spring.config.additional-location=" + runtime_config.as_uri()]
+        projects = []
     return ["java", "-jar", str(jar), "--spring.profiles.active=consumer", *additional,
             "--spring.web.resources.static-locations="
             + (Path(receipt["runtimeRoot"]) / "frontend/dist").as_uri() + "/",
@@ -206,7 +208,7 @@ def server_command(receipt: dict, redis_scope: str, server_port: int = 18182,
             "--xa.mass.redis.url=${XA_MASS_CONSUMER_REDIS_URL}",
             f"--xa.mass.redis.scope={redis_scope}", "--xa.mass.kernel-pacer.preset=DEFAULT",
             "--xa.mass.task-retention.directory=" + str(jar.parents[2] / "data/task-archives"),
-            "--xa.mass.project-assembly.projects[0].project-id=default",
+            *projects,
             "--xa.mass.worker-assembly.group-config-json=" + json.dumps(group_document, separators=(",", ":")),
             f"--xa.mass.worker-delivery.adapter.instances.{ADAPTER_ID}.listen-port={adapter_port}",
             f"--xa.mass.worker-endpoints.endpoints.{ADAPTER_ID}.public-uri="

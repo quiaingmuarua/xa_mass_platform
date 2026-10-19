@@ -4,9 +4,10 @@ import java.util.*;
 
 /** Host startup input. No resource or observation lifecycle is held here. */
 public record FixedWindowBindingsProperties(Map<String, Pool> pools, Map<String, Feedback> feedbacks,
-                                           Map<String, Group> groups) {
+                                           Map<String, Group> groups, Map<String, Group> projects) {
     public FixedWindowBindingsProperties {
         pools = copy(pools, "pools"); feedbacks = copy(feedbacks, "feedbacks"); groups = copy(groups, "groups");
+        projects = copy(projects, "projects");
     }
     public record Pool(String functionName, String timestampProperty, String countProperty,
                        long windowMillis, long maxCount) {

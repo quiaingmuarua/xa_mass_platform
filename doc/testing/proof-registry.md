@@ -26,6 +26,7 @@ contracts and architecture guards.
 | Projection and receiver lifecycle | Worker ordering, duplicate/unsorted times, local patch visibility and overlapping-field precedence survive grouping into bounded reads and one patch per Worker per drain. Read/compute/write/handler failures are isolated without replay. Duplicate registration, stop checks before later handlers/writes, close timeout and restart only after old-thread exit are tested; pure handlers own no lifecycle. |
 | RPC consumption and timeout handoff | Controlled races prove timeout-first skips consumption and take-first includes obtained entries before completing timeout, including partial/empty/failing probes. Unrelated Registry admission and timeout remain independent of the blocked take. Real servlet callbacks cover platform and virtual threads; Redis atomicity and client receipt are separate claims. |
 | Host window bindings and projection | Strict named Pool/feedback references, independent enablement, Group overrides, duplicate selection/output rejection, and the union of known dependency reads. Window arithmetic, invalid values, older observations and restart continuation retain a lossy projection, not execution counting or an admission quota. |
+| Project-expanded bindings | Declared Project membership expands once into the same Group resources and routes, including module Projects. Equal resolved limits/references coalesce; conflicts and registered-scope sources fail. The two-start real Host proof changes only membership and verifies new-Group raw execution and selected feedback, without per-Project stock or quotas. |
 | App Checks configuration | Scenario-local JSON file persistence, process-exclusive ownership, checkId-keyed checks and serialized content-fingerprint comparison, seed-once initialization, failed atomic publication and unknown-save readback; named check types/seed types, parameter replacement and immutable Task snapshot interpretation. Shared Groups merge Scenario requirements; host declarations separately select feedback events. Configured seed grouping preserves ordered group replay identity, Item counts and per-seed answers/CSV; real batch carrier/MD5 witnesses, malformed-group exclusion and archive readback retain separate evidence. Runtime identities and execution state remain in Redis; this is not a historical Task store. |
 
 **Evidence:** [Matching proof](../../worker_matching_jvm/README.md#cost-failure-and-proof),
@@ -171,6 +172,10 @@ Android Group, Any Pool, 123 finite Items, independently checked digests, bounde
 previews, full CSV, one owner debit and same-scope restart reads. It consumes the
 same candidate ZIP/APK chain. Scenario tests own malformed protocol cases; this
 witness makes no claim about third-party Apps or throughput.
+
+The raw Project Pool phase separately uses the existing Android digest Handler through a Project-expanded window Pool,
+verifying actual Item queries, three fixed answers, JSONL and observed Platform Properties. It enables no Scenario.
+New-Group membership expansion belongs to Server/Boot's parameterized Host proof, not Android identity reconfiguration.
 
 
 - **Primary Owner:** [Android Worker Proof](../../integrations/android-worker-proof/README.md); Python owns external process choreography only.

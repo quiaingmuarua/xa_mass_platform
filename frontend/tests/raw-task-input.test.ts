@@ -11,6 +11,83 @@ import { createTaskManagementStore } from "@/stores/task-management";
 function createInput(props: Record<string, unknown>) {
   return createApp(RawTaskInput, props);
 }
+it("uses an arbitrary enabled window Pool in both supply and the submitted Item query", async () => {
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const client = {
+    createTask: vi.fn(async (_caller: unknown, _request: unknown) => ({
+      taskId: "window-task"
+    })),
+    appendItems: vi.fn(
+      async (_caller: unknown, _task: string, items: { messageId: string }[]) =>
+        Object.fromEntries(
+          items.map((item) => [item.messageId, { status: "applied" as const }])
+        )
+    ),
+    approveTask: vi.fn(),
+    closeTask: vi.fn(),
+    ensureDirectory: vi.fn(),
+    exportResults: vi.fn()
+  };
+  const store = createTaskManagementStore("api", client);
+  const host = document.createElement("div");
+  document.body.append(host);
+  const app = createInput({
+    projectId: "default",
+    disabled: false,
+    groups: [
+      {
+        workerGroupId: "configured-group",
+        workerGroup: {
+          workerGroupId: "configured-group",
+          attributes: {},
+          eventCodes: ["digest"]
+        },
+        matching: {
+          pools: ["device-window"],
+          functions: [{ name: "worker.device.available", poolName: "device-window" }]
+        }
+      }
+    ]
+  });
+  app.use(pinia);
+  [ElAlert, ElButton, ElInput, ElOption, ElSelect].forEach((c) => app.use(c));
+  app.provide(taskManagementStoreKey, store);
+  try {
+    app.mount(host);
+    await nextTick();
+    const draft = store.draft("default", "create");
+    Object.assign(draft, {
+      eventCode: "digest",
+      executorName: "worker.device.available",
+      queryInput: "{}",
+      pasteText: '{"value":"a"}'
+    });
+    await nextTick();
+    expect(host.textContent).toContain("消费 Pool · device-window");
+    [...host.querySelectorAll("button")]
+      .find((button) => button.textContent?.includes("应用所选查询的供给建议"))!
+      .click();
+    await nextTick();
+    host
+      .querySelector("form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await vi.waitFor(() =>
+      expect(store.project("default").submission?.complete).toBe(true)
+    );
+    expect(client.createTask.mock.calls[0]![1]).toMatchObject({
+      workerGroupId: "configured-group",
+      refill: [{ poolName: "device-window", target: {}, count: 100 }]
+    });
+    expect(client.appendItems.mock.calls[0]![2][0]).toMatchObject({
+      workerSelector: { executorName: "worker.device.available", input: {} }
+    });
+    expect(client.approveTask).not.toHaveBeenCalled();
+  } finally {
+    app.unmount();
+    host.remove();
+  }
+});
 it("registers lazy form, numeric and radio controls using only the console global components", async () => {
   const pinia = createPinia();
   setActivePinia(pinia);

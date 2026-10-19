@@ -1,5 +1,9 @@
 xa:
   mass:
+    project-assembly:
+      projects:
+        - project-id: default
+          worker-group-ids: []
     scenarios:
       app-checks:
         enabled: true

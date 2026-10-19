@@ -54,6 +54,16 @@ class BatchChecksConsumerIntegrationTest {
     void missingCapabilitiesNeverOpenTheConsumer(String missing) {
         assertThatThrownBy(() -> { try (var ignored = start(true, missing)) { } }).isInstanceOf(RuntimeException.class);
     }
+    @Test void moduleContributedProjectCanExpandHostBindingsWithoutAnotherGroupList() throws Exception {
+        try (var context = start(true, "project-window")) {
+            var bindings = context.getBean(com.xa.mass.server.worker.observation.WorkerGroupBindings.class);
+            assertThat(bindings.group(GROUP).fixedWindowPools()).singleElement().satisfies(pool ->
+                    assertThat(pool.poolName()).isEqualTo("module-window"));
+            assertThat(bindings.group(GROUP).feedbacks()).singleElement().satisfies(feedback ->
+                    assertThat(feedback.messageEvents()).containsExactly(EVENT));
+            assertThat(context.getBean(ProjectDirectory.class).require("app-checks").workerGroupIds()).containsExactly(GROUP);
+        }
+    }
     @SuppressWarnings("unchecked")
     private ConfigurableApplicationContext start(boolean enabled, String missing) throws Exception {
         var root = Path.of(System.getProperty("xa.mass.repository.root"));
@@ -79,6 +89,15 @@ class BatchChecksConsumerIntegrationTest {
                     Map.of("attributes", Map.of(), "eventCodes", List.of(missing.equals("event") ? "extension.worker.other" : EVENT))))));
         if (!missing.equals("pool")) args.add("--xa.mass.worker-matching.groups." + GROUP + ".pools[0]=any");
         if (!missing.equals("function")) args.add("--xa.mass.worker-matching.groups." + GROUP + ".functions[0]=worker.any");
+        if (missing.equals("project-window")) {
+            String prefix = "--xa.mass.worker-assembly.fixed-window.";
+            args.addAll(List.of(prefix + "pools.module-window.function-name=worker.module.available",
+                    prefix + "pools.module-window.timestamp-property=moduleAt", prefix + "pools.module-window.count-property=moduleCount",
+                    prefix + "pools.module-window.window-millis=60000", prefix + "pools.module-window.max-count=10",
+                    prefix + "feedbacks.module-assigned.pool-name=module-window", prefix + "feedbacks.module-assigned.message-events[0]=" + EVENT,
+                    prefix + "projects.app-checks.pools.module-window.window-millis=60000",
+                    prefix + "projects.app-checks.feedbacks[0]=module-assigned"));
+        }
         var app = new SpringApplication(ServerBootConfiguration.class);
         app.setWebApplicationType(WebApplicationType.NONE);
         app.setRegisterShutdownHook(false);

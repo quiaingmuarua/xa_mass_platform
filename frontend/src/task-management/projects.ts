@@ -13,6 +13,7 @@ import { taskCallDebugOutcomeSchema } from "@/task-call-debug/schemas";
 import { jsonValueSchema } from "@/runtime-viewer/schemas";
 import { taskViewSchema, workerGroupViewSchema } from "@/runtime-viewer/schemas";
 import { MOCK_TASK_PREVIEW, MOCK_WORKER_GROUPS } from "@/runtime-viewer/mock-data";
+import { mockWorkerGroupBindings } from "@/runtime-viewer/worker-group-bindings";
 import { rpcTaskId } from "@/task-workbench/rpc-task";
 import { compareTaskIds, taskUserScore } from "@/task-user-id";
 
@@ -262,13 +263,7 @@ function mockProjectSource(
   const groups: ProjectGroup[] = MOCK_WORKER_GROUPS.map((workerGroup) => ({
     workerGroupId: workerGroup.workerGroupId,
     workerGroup,
-    matching: {
-      pools: ["any"],
-      functions: [
-        { name: "worker.any", poolName: "any" },
-        { name: "workerId", poolName: null }
-      ]
-    }
+    matching: mockWorkerGroupBindings(workerGroup.workerGroupId).matching
   }));
   const agentGroups: ProjectGroup[] = [
     "detect-env",
@@ -295,6 +290,11 @@ function mockProjectSource(
       projectId: "default",
       workerGroupSource: "registered",
       workerGroupIds: []
+    },
+    {
+      projectId: "pool-validation",
+      workerGroupSource: "declared",
+      workerGroupIds: ["android-demo-workers"]
     },
     {
       projectId: "agentforge",

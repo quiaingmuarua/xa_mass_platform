@@ -138,6 +138,12 @@ owned by the single-Worker proof.
 
 ## Batch Checks finite consumer
 
+The suite first runs `AndroidWorkerProjectPoolMain` in its own scope with `project-window-runtime.yaml` and only the Debug App.
+The host Project expands `device-window` and digest feedback to the existing Android Group. Three fixed digest vectors traverse
+raw finite creation/import/approval, the actual window query, complete Results/Item states and raw JSONL export. Runtime projection
+observes positive window feedback for the single known Worker. This proves no strict quota, exact execution count, or dynamic
+Android Group identity; Server/Boot's two-start Project membership proof owns new-Group expansion and exact feedback deduplication.
+
 The complete suite also runs `AndroidWorkerBatchChecksMain` initial/restart phases
 in an independent test scope with only the Debug App. Host YAML enables Batch
 Checks and Any; one seed maps to one existing Android digest Item. No Simulator,
@@ -156,7 +162,7 @@ never complete seeds or result bodies.
 
 ## Entrypoints
 
-Use a disposable API 33 Emulator with no differently signed installations of
+Reuse an available API 33 development Emulator with no differently signed installations of
 the four Demo package IDs. A signature conflict is an installation failure;
 remove those test packages explicitly before a new acceptance run. App data is
 reset only during initial scenario setup. Fault/recovery phases preserve the

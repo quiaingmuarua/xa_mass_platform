@@ -42,7 +42,7 @@ The App's own version remains independent of the Runtime/SDK version.
 
 Use the same archive arguments without `--prepare-only`, adding
 `--redis-url redis://127.0.0.1:6379/15 --redis-scope profile_consumer_example`.
-Normal startup selects `consumer`, explicitly declares Project `default`, loads
+Normal startup selects `consumer`, defaults to Project `default` when no external Runtime YAML is supplied, loads
 `config/worker-groups.json` through Runtime's existing create-only initialization,
 and starts the extracted JAR with its extracted frontend. It uses DEFAULT Pacer.
 It neither provisions RPC Tasks nor controls Android/freezer/Redis cleanup.
@@ -87,6 +87,8 @@ python .\run_consumer.py --runtime-archive $runtime --sdk-archive $sdk --version
 variables explicitly select the writable configuration and seed addresses.
 Omitting the option retains clean consumer startup. The launcher does not parse
 business configuration, fund accounts or infer Pool enablement.
+With `--runtime-config`, the file owns the complete host Project list: the launcher adds no command-line Project override.
+The Batch Checks sample explicitly retains `default`; its business Project is contributed once by the Scenario.
 
 Group JSON declares events; host YAML enables `any` and `worker.any`; check JSON
 binds the existing Android digest protocol. Registration does not install a Handler
@@ -97,6 +99,27 @@ Open `/app-checks`, select text and Android MD5 prefix matching, import seeds an
 confirm the quantity/fee. An administrator explicitly credits the Task owner first.
 The sample charges 1 point per persisted seed. Existing locks, fingerprints,
 manual restart activation and Task snapshots apply. Existing files are not reseeded.
+
+## Project-expanded window Pool through the raw workbench
+
+Use the same verified candidate arguments with `--runtime-config ./config/project-window-runtime.yaml`
+and a new explicit Redis scope. This sample declares `default` and `pool-validation`, enables no Scenario,
+and binds `device-window` plus `digest-assigned` to the declared members of `pool-validation`.
+The existing Android Group obtains `worker.device.available` without another Group list in Matching or feedback.
+The window is 60 seconds with threshold 10; feedback writes `deviceAssignedAt` and `deviceAssignmentCount`.
+
+Open `/task-workbench?project=default&tab=finite&view=create`, select `android-demo-workers`,
+`extension.worker.android.string.digest`, and `worker.device.available({})`; apply its `device-window` supply suggestion.
+Use payload JSONL such as `{"algorithm":"MD5","value":"a"}`. Create/import, explicitly approve, then inspect raw Results
+and export successful JSONL. Runtime Workers shows the resolved binding and observed Platform Properties.
+Supply count 100 is a shared watermark. Feedback is a lossy assignment observation and window qualification occurs on refill;
+this does not promise an exact execution ceiling. Other events do not increment this feedback.
+
+Registering a new Group alone does not grant the window. Add it to the Project's member list and restart;
+it must declare the feedback event and run a Worker with its Handler. The Android demo's own Group identity remains fixed.
+Config-only new-Group expansion is independently proved with the parameterized Java Host, not by claiming Android runtime rebinding.
+Reuse the local development emulator; test APKs/data may be reset for acceptance. Stop owned Servers/Apps, restore prior ADB mappings,
+and clean only the exact test scopes after verification. A new emulator is not required.
 Other protocols require a pure Scenario contract, not a Group-specific branch.
 
 ## Explicit RPC consumption

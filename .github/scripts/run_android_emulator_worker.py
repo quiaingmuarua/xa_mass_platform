@@ -216,7 +216,8 @@ class ProofRunner:
             encoded = dict(self.consumption, apkProvenance=self.apk_provenance,
                            scopes=sorted(self.scopes), phaseEvidence="*.json",
                            batchChecksInputs={name: consumer.digest(ROOT / "xa-android/config" / name)
-                               for name in ("batch-checks-runtime.yaml", "batch-checks-configuration.json")})
+                               for name in ("batch-checks-runtime.yaml", "batch-checks-configuration.json")},
+                           projectWindowInputSha256=consumer.digest(ROOT / "xa-android/config/project-window-runtime.yaml"))
             (self.evidence / "consumption.json").write_text(json.dumps(encoded, indent=2) + "\n", encoding="utf-8")
 
     def setup_device(self) -> None:
@@ -243,7 +244,7 @@ class ProofRunner:
             self.adb("shell", "pm", "clear", package)
             self.start_app(package)
 
-    def start_server(self, label: str, scope: str, *, batch_checks: bool = False) -> None:
+    def start_server(self, label: str, scope: str, *, configuration: str | None = None) -> None:
         print(f"Starting verified Runtime: {label}", flush=True)
         if self.server is not None:
             raise RuntimeError("Server process is already owned")
@@ -252,13 +253,12 @@ class ProofRunner:
         stream = (self.logs / f"server-{label}.log").open("w", encoding="utf-8")
         self.streams.append(stream)
         environment = dict(os.environ, XA_MASS_CONSUMER_REDIS_URL=self.options.redis_url)
-        configuration = None
-        if batch_checks:
-            configuration = ROOT / "xa-android/config/batch-checks-runtime.yaml"
+        runtime_config = ROOT / "xa-android/config" / configuration if configuration else None
+        if configuration == "batch-checks-runtime.yaml":
             environment.update(
                 XA_MASS_APP_CHECKS_CONFIG_PATH=str(self.proof_root / "data/app-checks/configuration.json"),
                 XA_MASS_APP_CHECKS_SEED=(ROOT / "xa-android/config/batch-checks-configuration.json").as_uri())
-        command = consumer.server_command(self.consumption, scope, 18082, 18083, runtime_config=configuration)
+        command = consumer.server_command(self.consumption, scope, 18082, 18083, runtime_config=runtime_config)
         self.server = spawn(command,
                             cwd=self.proof_root, env=environment,
                             stdout=stream, stderr=subprocess.STDOUT)
@@ -363,12 +363,17 @@ class ProofRunner:
         for package in APPLICATIONS[1:]:
             self.stop_app(package)
         self.stop_server()
-        self.start_server("batch-checks", scope + "_batch_checks", batch_checks=True)
+        self.start_server("project-window", scope + "_project_window", configuration="project-window-runtime.yaml")
+        self.reset_apps(APPLICATIONS[:1])
+        self.phase("ProjectPool", "android-project-pool", "initial", "project-pool")
+        self.stop_app(APPLICATIONS[0])
+        self.stop_server()
+        self.start_server("batch-checks", scope + "_batch_checks", configuration="batch-checks-runtime.yaml")
         self.reset_apps(APPLICATIONS[:1])
         self.phase("BatchChecks", "android-batch-checks", "initial", "batch-checks-initial")
         self.stop_app(APPLICATIONS[0])
         self.stop_server()
-        self.start_server("batch-checks-restart", scope + "_batch_checks", batch_checks=True)
+        self.start_server("batch-checks-restart", scope + "_batch_checks", configuration="batch-checks-runtime.yaml")
         self.phase("BatchChecks", "android-batch-checks", "restart", "batch-checks-restart", "batch-checks-initial")
 
     def cleanup(self) -> None:

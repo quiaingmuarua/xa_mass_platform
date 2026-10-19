@@ -29,7 +29,7 @@ class PlatformProofFixtureContractTest {
             new ApplicationContextRunner()
                     .withBean(com.xa.mass.server.worker.observation.WorkerGroupBindings.class,
                             () -> new com.xa.mass.server.worker.observation.WorkerGroupBindings(Map.of(),
-                                    new FixedWindowBindingsProperties(null, null, null), List.of()))
+                                    new FixedWindowBindingsProperties(null, null, null, null), List.of(), mock(com.xa.mass.server.project.ProjectDirectory.class)))
                     .withBean(com.xa.mass.server.project.ProjectDirectory.class, () -> mock(com.xa.mass.server.project.ProjectDirectory.class))
                     .withUserConfiguration(
                             ServerWorkerDeliveryAdapterConfiguration.class,

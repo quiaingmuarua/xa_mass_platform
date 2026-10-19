@@ -42,56 +42,71 @@ export type WorkerGroupBindingsLoader = (
   signal?: AbortSignal
 ) => Promise<WorkerGroupBindings>;
 
+/** Resolved startup examples shared by the workbench and Runtime binding view. */
+export function mockWorkerGroupBindings(workerGroupId: string): WorkerGroupBindings {
+  const workerGroup =
+    MOCK_WORKER_GROUPS.find((group) => group.workerGroupId === workerGroupId) ?? null;
+  const window =
+    workerGroupId === "scenario-phone-number-workers"
+      ? {
+          poolName: "phone-window-demo",
+          functionName: "worker.phone-window-demo",
+          timestampProperty: "demoAssignedAt",
+          countProperty: "demoAssignmentCount",
+          windowMillis: 60000,
+          maxCount: 10
+        }
+      : workerGroupId === "android-demo-workers"
+        ? {
+            poolName: "device-window",
+            functionName: "worker.device.available",
+            timestampProperty: "deviceAssignedAt",
+            countProperty: "deviceAssignmentCount",
+            windowMillis: 60000,
+            maxCount: 10
+          }
+        : null;
+  return structuredClone({
+    workerGroupId,
+    workerGroup,
+    readAt: new Date().toISOString(),
+    matching: {
+      pools: [...(workerGroup ? ["any"] : []), ...(window ? [window.poolName] : [])],
+      functions: [
+        { name: "workerId", poolName: null },
+        ...(workerGroup ? [{ name: "worker.any", poolName: "any" }] : []),
+        ...(window ? [{ name: window.functionName, poolName: window.poolName }] : [])
+      ]
+    },
+    fixedWindowPools: window ? [window] : [],
+    feedbacks: window
+      ? [
+          {
+            name:
+              workerGroupId === "android-demo-workers"
+                ? "digest-assigned"
+                : "phone-observation-demo",
+            poolName: window.poolName,
+            observationEventName: "worker.assigned",
+            messageEvents: [
+              workerGroupId === "android-demo-workers"
+                ? "extension.worker.android.string.digest"
+                : "extension.worker.phonenumber.original-carrier"
+            ],
+            timestampProperty: window.timestampProperty,
+            countProperty: window.countProperty,
+            windowMillis: window.windowMillis
+          }
+        ]
+      : []
+  });
+}
+
 export function createWorkerGroupBindingsLoader(
   config: RuntimeViewerConfig
 ): WorkerGroupBindingsLoader {
   if (config.mode === "mock")
-    return async (workerGroupId) => {
-      const workerGroup =
-        MOCK_WORKER_GROUPS.find((group) => group.workerGroupId === workerGroupId) ??
-        null;
-      const window = workerGroupId === "scenario-phone-number-workers";
-      return structuredClone({
-        workerGroupId,
-        workerGroup,
-        readAt: new Date().toISOString(),
-        matching: {
-          pools: window ? ["any", "phone-window-demo"] : ["any"],
-          functions: [
-            { name: "workerId", poolName: null },
-            { name: "worker.any", poolName: "any" },
-            ...(window
-              ? [{ name: "worker.phone-window-demo", poolName: "phone-window-demo" }]
-              : [])
-          ]
-        },
-        fixedWindowPools: window
-          ? [
-              {
-                poolName: "phone-window-demo",
-                functionName: "worker.phone-window-demo",
-                timestampProperty: "demoAssignedAt",
-                countProperty: "demoAssignmentCount",
-                windowMillis: 60000,
-                maxCount: 10
-              }
-            ]
-          : [],
-        feedbacks: window
-          ? [
-              {
-                name: "phone-observation-demo",
-                poolName: "phone-window-demo",
-                observationEventName: "worker.assigned" as const,
-                messageEvents: ["extension.worker.phonenumber.original-carrier"],
-                timestampProperty: "demoAssignedAt",
-                countProperty: "demoAssignmentCount",
-                windowMillis: 60000
-              }
-            ]
-          : []
-      });
-    };
+    return async (workerGroupId) => mockWorkerGroupBindings(workerGroupId);
   const client = axios.create({ baseURL: config.apiBaseUrl, timeout: 5000 });
   return async (group, signal) => {
     const response = await client.get(
