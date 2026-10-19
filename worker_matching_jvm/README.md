@@ -351,8 +351,8 @@ per enabled Pool, sharing CandidateBudget while isolating Group inventory. A
 window definition is not an external strategy implementation or runtime registry.
 The host [named window bindings](../server_jvm/README.md#named-window-pool-and-feedback-bindings)
 produce these definitions and corresponding Server projections from a single startup expansion.
-Host bindings may obtain Group membership from a declared Project. Server expands and deduplicates those references before
-calling Matching; Matching still receives only Group limits and does not interpret Projects or maintain Project quotas.
+Host Groups explicitly enable a window Pool together with its paired feedback. Project membership does not enable resources;
+Matching receives only Group limits and does not interpret Projects or maintain Project quotas.
 Batch Checks only references enabled Pool/function names. Matching receives no configuration file handle,
 performs no configuration reads, and keeps its existing resource ownership, namespace checks and rotation.
 Startup window definition errors identify the Pool and missing or mismatched Group.

@@ -1152,49 +1152,38 @@ startup and destroys already-created resources, including the Adapter host.
 
 ### Named Window Pool And Feedback Bindings
 
-`xa.mass.worker-assembly.fixed-window` is strict host startup configuration. Its optional `pools`, `feedbacks`,
-`groups` and `projects` maps default to empty. No independent file owner, thread, queue or runtime registration is added.
+`xa.mass.worker-assembly.fixed-window` is strict host startup configuration. Optional `pools` and `groups` maps default to empty.
+A Group references a Pool once to enable its stock, consumer function and paired allocation feedback. Project membership only
+controls Task admission; adding a Project member never enables resources. The two Group sets may differ.
 
-- `pools.<poolName>` declares `function-name`, `timestamp-property`, `count-property`, `window-millis` and `max-count`.
-  Positive limits and distinct nonblank top-level field keys are required. Names remain data, not business branches.
-- `feedbacks.<name>` references `pool-name` and an exact nonempty `message-events` list. The observation event is fixed
-  to `worker.assigned`; no wildcard, script or arbitrary callback is accepted through configuration.
-- `groups.<group>.pools.<poolName>: {}` enables that Pool and its consumer function using defaults. Only `window-millis`
-  and `max-count` may override the defaults for that Group. `groups.<group>.feedbacks` separately selects feedback names.
-  Pool-only enables no projection; feedback-only creates no stock and uses the referenced definition's defaults.
-  When both are bound, the projection uses the exact resolved Group window. Unreferenced definitions create no stock or projection.
-- `projects.<projectId>` uses the same Pool/feedback references and overrides. `ProjectDirectory` supplies its complete declared
-  Group set, including module-contributed Projects. Adding a member and restarting expands all these bindings to the new Group;
-  no Pool/feedback Group list is copied. Unknown Projects and registered-scope `default` cannot be expansion sources.
-  `default` may still consume the resulting Group capabilities through the raw workbench.
-- Direct Group and Project bindings are merged before resource construction. Equal resolved Pool limits and equal feedback
-  references coalesce across sources; different limits have no override precedence and fail with the Group and source paths.
-  Different feedbacks with overlapping output fields or event routes still fail. Expansion creates no per-Project stock or quota.
+- `pools.<name>` declares `function-name`, `timestamp-property`, `count-property`, positive `window-millis`/`max-count`,
+  and required `feedback.message-events` (exact nonempty event names). The observation is always `worker.assigned`.
+- `groups.<group>.pools.<name>: {}` selects defaults; only window length and threshold can be overridden.
+  Qualification and feedback use the same resolved window and literal property keys. Unreferenced definitions create no stock or projection.
+- The retired `projects`, top-level `feedbacks`, and Group `feedbacks` fields are rejected. This host entry has no Pool-only or
+  feedback-only mode. Matching's pure definitions and Server's general projection declarations remain separate mechanisms.
+- Pool/function namespace collisions, duplicate raw Matching enablement, overlapping output fields and repeated Group/event routes
+  fail startup. Names are data; no Scenario branches or override precedence are introduced.
 
-`WorkerGroupBindings` is the one immutable expansion used by Matching composition, startup validation and the read view.
-It retains resolved MatchingGroups, existing FixedWindowPoolDefinitions, existing WorkerPropertyProjections and their display values.
-Raw Matching configuration cannot also enable host-managed window Pool/function names. Matching retains global namespace collision checks.
-Unknown references, duplicate names within one feedback list, conflicting Group/event selections and overlapping named feedback output fields fail startup.
-Use one feedback's event list to accumulate multiple events into a single window counter.
+`WorkerGroupBindings` produces one immutable Group expansion for Matching, dependency checks, projections and display.
+It has no ProjectDirectory dependency. The startup validator merges known Group dependencies, point-reads in batches of at most
+100 and checks required feedback events before Adapter/Scenario admission. Previously completed registration is not rolled back.
 
-The startup validator includes all binding Groups even without any Scenario. It validates required feedback events as subsets,
-accepts externally registered Groups, and reads the union with Project Groups once in chunks of at most 100 known IDs.
-Missing Group/event or Owner failure prevents Adapter/scenario admission; already registered Groups are not rolled back.
-Pacer's lifecycle phase and observation consumer ordering are unchanged.
+`AssignmentWindowProjection` keeps the existing arithmetic: increment in the observed window, reset on newer windows, retain maximum
+timestamp and ignore older windows. Invalid/incomplete property pairs fail the Worker projection. It has no timer or lifecycle.
+Feedback matches Group/message event, including executions selected through workerId or another Pool; it is not proof of consumption
+from the paired Pool, execution success or reserved quota. A ten-seed Item still produces one allocation observation. The lossy
+observation queue and failure behavior below are unchanged. Changing window length requires a new Redis scope.
 
-`AssignmentWindowProjection` owns the migrated pure arithmetic: window=floor(observedAt/windowMillis), increment within the current
-window, reset on a newer window, retain maximum timestamp and ignore older windows. Both fields absent initializes the observation;
-incomplete, noninteger, negative or overflowing values fail that Worker projection. It has no timer or independent lifecycle.
-Group/Worker observations are shared across selected events, not private per Task/check. One allocated Item containing ten seeds still
-produces one allocation observation. Failure and retries retain the original lossy observation semantics described below.
-Changing a window length requires a new Redis scope because stored fields do not encode the old window definition.
-
-`GET /api/v1/runtime-view/worker-groups/{workerGroupId}/bindings` returns `workerGroupId`, registered `workerGroup` (or null),
-existing `matching` capabilities, `fixedWindowPools`, `feedbacks` and `readAt`. Window rows contain Pool/function, property keys and
-resolved limits; feedback rows contain name, Pool, observation/message events, keys and resolved window. It reads one known Group
-and immutable configuration only: no Facts, inventory counts/takes or directory scan. Missing registration is explicit null;
-Owner failure is 503, invalid identity is 400. It retains the trusted WorkerGroup read boundary, without new authorization policy.
-Declarations do not prove online Workers, Handler installation or available stock. Runtime Workers displays these values read-only.
+`GET /api/v1/runtime-view/worker-groups/bindings` returns sorted `workerGroupIds` and `readAt` from the startup Matching/window
+Group set plus declared Project members. It performs no Redis read or scan and is not the complete registered directory.
+`GET /api/v1/runtime-view/worker-groups/{workerGroupId}/bindings` supports any known ID, point-reads its descriptor and returns
+`workerGroupId`, `workerGroup` (or null), `matching`, `fixedWindowPools`, `projects`, and `readAt`. Each window row embeds
+`feedback: {observationEventName,messageEvents}`; its property fields and resolved window apply to qualification and feedback together.
+Project rows contain `projectId` and `workerGroupSource`: declared membership is retained even when registration is missing;
+explicit default is included only for registered Groups. Scope display does not grant caller permissions.
+Both reads retain the trusted Runtime boundary. Missing registration is explicit null; Owner failure is 503. No Facts, stock count,
+stock take, Worker sampling or registration scan is involved. Other Pool algorithms expose only the existing capability metadata.
 
 ### Worker Allocation Observations
 

@@ -8,6 +8,7 @@ import { MockUserDirectorySource } from "../src/user-directory-source";
 import { ADMIN } from "./identity-fixture";
 import {
   createWorkerGroupBindingsLoader,
+  createWorkerGroupBindingsDirectoryLoader,
   createWorkerGroupBindingsState,
   type WorkerGroupBindings
 } from "../src/runtime-viewer/worker-group-bindings";
@@ -20,7 +21,7 @@ afterEach(() => {
 });
 
 describe("WorkerGroup effective bindings", () => {
-  it("Project and default show the same expanded Mock Pool and feedback without service calls", async () => {
+  it("Project scope and Group window enablement are independent with zero service calls", async () => {
     const create = vi.spyOn(axios, "create");
     const fetcher = vi.spyOn(globalThis, "fetch");
     const source = createProjectSource(
@@ -33,18 +34,26 @@ describe("WorkerGroup effective bindings", () => {
     expect(projects).toContainEqual({
       projectId: "pool-validation",
       workerGroupSource: "declared",
-      workerGroupIds: ["android-demo-workers"]
+      workerGroupIds: ["android-demo-workers", "scenario-string-utils-workers"]
     });
     const inherited = await source.groups("pool-validation");
     const defaults = await source.groups("default");
     const view = await example("android-demo-workers");
-    expect(inherited).toHaveLength(1);
+    expect(inherited).toHaveLength(2);
+    expect(inherited[1]!.matching.pools).not.toContain("device-window");
+    expect(
+      (await example("scenario-phone-number-workers")).projects.some(
+        (p) => p.projectId === "pool-validation"
+      )
+    ).toBe(false);
     expect(inherited[0]!.matching).toEqual(view.matching);
     expect(
       defaults.find((g) => g.workerGroupId === "android-demo-workers")?.matching
     ).toEqual(view.matching);
     expect(view.fixedWindowPools[0]?.poolName).toBe("device-window");
-    expect(view.feedbacks[0]?.name).toBe("digest-assigned");
+    expect(view.fixedWindowPools[0]?.feedback.messageEvents).toEqual([
+      "extension.worker.android.string.digest"
+    ]);
     expect(create).not.toHaveBeenCalled();
     expect(fetcher).not.toHaveBeenCalled();
   });
@@ -54,17 +63,30 @@ describe("WorkerGroup effective bindings", () => {
     const load = createWorkerGroupBindingsLoader(config);
     const value = await load("scenario-phone-number-workers");
     expect(value.fixedWindowPools[0]?.poolName).toBe("phone-window-demo");
-    expect(value.feedbacks[0]?.messageEvents).toEqual([
+    expect(value.fixedWindowPools[0]?.feedback.messageEvents).toEqual([
       "extension.worker.phonenumber.original-carrier"
     ]);
     expect(value.matching.functions).toContainEqual({
       name: "workerId",
       poolName: null
     });
-    expect((await load("scenario-string-utils-workers")).feedbacks).toEqual([]);
+    expect((await load("scenario-string-utils-workers")).fixedWindowPools).toEqual([]);
     expect((await load("missing")).workerGroup).toBeNull();
     expect(create).not.toHaveBeenCalled();
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("directory reads only startup identities through its own endpoint", async () => {
+    const directory = { workerGroupIds: ["a", "c"], readAt: "2026-10-19T00:00:00Z" };
+    const get = vi.fn().mockResolvedValue({ data: directory });
+    vi.spyOn(axios, "create").mockReturnValue({ get } as unknown as AxiosInstance);
+    await expect(
+      createWorkerGroupBindingsDirectoryLoader({ ...config, mode: "api" })()
+    ).resolves.toEqual(directory);
+    expect(get).toHaveBeenCalledWith(
+      "/v1/runtime-view/worker-groups/bindings",
+      expect.any(Object)
+    );
   });
 
   it("API reads one known Group and rejects mismatched response identity", async () => {
@@ -129,7 +151,7 @@ describe("WorkerGroup effective bindings", () => {
     expect(state.entry("g").snapshot?.readAt).toBe(value.readAt);
   });
 
-  it("the panel starts collapsed and labels its data and limits", async () => {
+  it("the full relation panel shows independent Project scope and paired feedback", async () => {
     const host = document.createElement("div");
     document.body.append(host);
     const app = createApp({
@@ -143,10 +165,12 @@ describe("WorkerGroup effective bindings", () => {
     try {
       await nextTick();
       await nextTick();
-      expect(host.querySelector("details")?.open).toBe(false);
+      expect(host.querySelector("details")?.open).toBe(true);
       expect(host.textContent).toContain("Mock 演示");
       expect(host.textContent).toContain("phone-window-demo");
       expect(host.textContent).toContain("demoAssignmentCount");
+      expect(host.textContent).toContain("Project 使用范围");
+      expect(host.textContent).toContain("反馈观察点");
       expect(host.textContent).toContain("不证明 Worker 在线");
     } finally {
       app.unmount();

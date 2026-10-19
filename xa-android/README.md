@@ -100,12 +100,12 @@ confirm the quantity/fee. An administrator explicitly credits the Task owner fir
 The sample charges 1 point per persisted seed. Existing locks, fingerprints,
 manual restart activation and Task snapshots apply. Existing files are not reseeded.
 
-## Project-expanded window Pool through the raw workbench
+## Group window Pool through the raw workbench
 
-Use the same verified candidate arguments with `--runtime-config ./config/project-window-runtime.yaml`
+Use the same verified candidate arguments with `--runtime-config ./config/window-pool-runtime.yaml`
 and a new explicit Redis scope. This sample declares `default` and `pool-validation`, enables no Scenario,
-and binds `device-window` plus `digest-assigned` to the declared members of `pool-validation`.
-The existing Android Group obtains `worker.device.available` without another Group list in Matching or feedback.
+and explicitly binds `device-window` to `android-demo-workers`, independently of Project membership.
+That one reference enables `worker.device.available` and the paired digest feedback; no second feedback binding is needed.
 The window is 60 seconds with threshold 10; feedback writes `deviceAssignedAt` and `deviceAssignmentCount`.
 
 Open `/task-workbench?project=default&tab=finite&view=create`, select `android-demo-workers`,
@@ -115,9 +115,10 @@ and export successful JSONL. Runtime Workers shows the resolved binding and obse
 Supply count 100 is a shared watermark. Feedback is a lossy assignment observation and window qualification occurs on refill;
 this does not promise an exact execution ceiling. Other events do not increment this feedback.
 
-Registering a new Group alone does not grant the window. Add it to the Project's member list and restart;
+Registering a new Group alone does not grant the window. Bind the named Pool under `fixed-window.groups` and restart;
+Project admission must independently allow the selected Group;
 it must declare the feedback event and run a Worker with its Handler. The Android demo's own Group identity remains fixed.
-Config-only new-Group expansion is independently proved with the parameterized Java Host, not by claiming Android runtime rebinding.
+Independent Project/Pool scopes and config-only Group activation are proved with the parameterized Java Host, not by claiming Android runtime rebinding.
 Reuse the local development emulator; test APKs/data may be reset for acceptance. Stop owned Servers/Apps, restore prior ADB mappings,
 and clean only the exact test scopes after verification. A new emulator is not required.
 Other protocols require a pure Scenario contract, not a Group-specific branch.

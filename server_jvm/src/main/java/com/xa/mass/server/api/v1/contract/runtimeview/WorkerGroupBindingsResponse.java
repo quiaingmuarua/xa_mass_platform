@@ -8,6 +8,7 @@ import org.jspecify.annotations.Nullable;
 
 public record WorkerGroupBindingsResponse(String workerGroupId, @Nullable WorkerGroupView workerGroup,
         WorkerMatchingCatalog.Capabilities matching, List<WorkerGroupBindings.WindowPool> fixedWindowPools,
-        List<WorkerGroupBindings.Feedback> feedbacks, Instant readAt) {
-    public WorkerGroupBindingsResponse { fixedWindowPools = List.copyOf(fixedWindowPools); feedbacks = List.copyOf(feedbacks); }
+        List<Project> projects, Instant readAt) {
+    public record Project(String projectId, String workerGroupSource) {}
+    public WorkerGroupBindingsResponse { fixedWindowPools = List.copyOf(fixedWindowPools); projects = List.copyOf(projects); }
 }

@@ -27,6 +27,29 @@ describe("runtime viewer store", () => {
     setActivePinia(createPinia());
   });
 
+  it("observes a point-checked known Group without random Group discovery", async () => {
+    const previewWorkers = vi.fn(async (group: string) => preview(group, []));
+    const dataSource = source(previewWorkers);
+    const store = createRuntimeViewerStore(config, dataSource);
+    const known = {
+      workerGroupId: "outside-sample",
+      attributes: {},
+      eventCodes: ["event"]
+    };
+    await store.selectKnownGroup(known);
+    expect(dataSource.previewWorkerGroups).not.toHaveBeenCalled();
+    expect(previewWorkers).toHaveBeenCalledWith(
+      "outside-sample",
+      100,
+      expect.any(AbortSignal)
+    );
+    expect(store.activeGroup).toEqual(known);
+    await store.refreshWorkerGroups();
+    expect(store.activeGroup).toEqual(known);
+    expect(store.activeWorkerGroupId).toBe("outside-sample");
+    store.dispose();
+  });
+
   it("defaults to 100 and refreshes Task and Worker previews with independent limits", async () => {
     const previewWorkers = vi.fn(
       async (workerGroupId: string, sampleLimit: number) => ({

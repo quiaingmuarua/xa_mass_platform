@@ -548,6 +548,7 @@ class ServerApplicationContextTest {
     }
 
     private static Set<String> expectedResponseCodes(String tag, String path, String method) {
+        if (path.equals("/api/v1/runtime-view/worker-groups/bindings")) return Set.of("200");
         if (path.startsWith("/api/v1/users/{userId}/credits")) return "post".equals(method)
                 ? Set.of("200", "400", "403", "404", "409", "503") : Set.of("200", "400", "403", "404", "503");
         if (ApiTags.USERS.equals(tag)) return "get".equals(method) ? Set.of("200", "400") : Set.of("200", "400", "403");

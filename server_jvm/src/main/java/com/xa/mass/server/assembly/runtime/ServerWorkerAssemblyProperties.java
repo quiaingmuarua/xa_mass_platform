@@ -14,7 +14,7 @@ public record ServerWorkerAssemblyProperties(
 
     public ServerWorkerAssemblyProperties {
         requireJsonObjectText(groupConfigJson, "group-config-json");
-        fixedWindow = fixedWindow == null ? new FixedWindowBindingsProperties(null, null, null, null) : fixedWindow;
+        fixedWindow = fixedWindow == null ? new FixedWindowBindingsProperties(null, null) : fixedWindow;
     }
 
     private static void requireJsonObjectText(

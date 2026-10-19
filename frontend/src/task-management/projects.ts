@@ -1,3 +1,4 @@
+import { MOCK_PROJECTS, MOCK_AGENT_GROUPS } from "@/runtime-viewer/mock-projects";
 import type { MockUserDirectorySource } from "@/user-directory-source";
 import { taskRetentionSchema } from "./retention";
 import {
@@ -265,53 +266,11 @@ function mockProjectSource(
     workerGroup,
     matching: mockWorkerGroupBindings(workerGroup.workerGroupId).matching
   }));
-  const agentGroups: ProjectGroup[] = [
-    "detect-env",
-    "instagram",
-    "rcs",
-    "telegram"
-  ].map((name) => {
-    const workerGroupId = `agentforge-${name}-workers`;
-    return {
-      workerGroupId,
-      workerGroup:
-        name === "detect-env"
-          ? {
-              workerGroupId,
-              attributes: { source: "mock" },
-              eventCodes: ["extension.worker.detect-env.scenario-catalog"]
-            }
-          : null,
-      matching: { pools: [], functions: [{ name: "workerId", poolName: null }] }
-    };
-  });
-  const projects: Project[] = [
-    {
-      projectId: "default",
-      workerGroupSource: "registered",
-      workerGroupIds: []
-    },
-    {
-      projectId: "pool-validation",
-      workerGroupSource: "declared",
-      workerGroupIds: ["android-demo-workers"]
-    },
-    {
-      projectId: "agentforge",
-      workerGroupSource: "declared",
-      workerGroupIds: agentGroups.map((g) => g.workerGroupId)
-    },
-    {
-      projectId: "app-checks",
-      workerGroupSource: "declared",
-      workerGroupIds: ["app-a-sim", "app-b-sim"]
-    },
-    {
-      projectId: "messages",
-      workerGroupSource: "declared",
-      workerGroupIds: ["demo-sim", "app-a-sim", "app-b-sim"]
-    }
-  ];
+  const agentGroups: ProjectGroup[] = MOCK_AGENT_GROUPS.map((group) => ({
+    ...group,
+    matching: mockWorkerGroupBindings(group.workerGroupId).matching
+  }));
+  const projects: Project[] = structuredClone(MOCK_PROJECTS);
   const tasks: ProjectTask[] = MOCK_TASK_PREVIEW.entries.map((row) => ({
     retention: null,
     taskId: row.taskId,

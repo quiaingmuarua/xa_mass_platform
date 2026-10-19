@@ -1,3 +1,4 @@
+import axios, { type AxiosInstance } from "axios";
 import { consoleIdentity } from "@/console-identity";
 import { beforeEach } from "vitest";
 beforeEach(() => consoleIdentity.login("1000"));
@@ -6,10 +7,13 @@ import { createPinia, setActivePinia } from "pinia";
 import { ElAlert, ElButton, ElInput, ElOption, ElSelect } from "element-plus";
 import { expect, it, vi } from "vitest";
 import RawTaskInput from "@/components/RawTaskInput.vue";
-import { taskManagementStoreKey } from "@/runtime-context";
+import { taskManagementStoreKey, runtimeViewerConfigKey } from "@/runtime-context";
 import { createTaskManagementStore } from "@/stores/task-management";
 function createInput(props: Record<string, unknown>) {
-  return createApp(RawTaskInput, props);
+  return createApp(RawTaskInput, props).provide(runtimeViewerConfigKey, {
+    mode: "mock",
+    apiBaseUrl: "/api"
+  });
 }
 it("uses an arbitrary enabled window Pool in both supply and the submitted Item query", async () => {
   const pinia = createPinia();
@@ -50,12 +54,22 @@ it("uses an arbitrary enabled window Pool in both supply and the submitted Item 
       }
     ]
   });
+  vi.spyOn(axios, "create").mockReturnValue({
+    get: vi.fn().mockRejectedValue(new Error("binding view unavailable"))
+  } as unknown as AxiosInstance);
+  app.provide(runtimeViewerConfigKey, { mode: "api", apiBaseUrl: "/api" });
   app.use(pinia);
   [ElAlert, ElButton, ElInput, ElOption, ElSelect].forEach((c) => app.use(c));
   app.provide(taskManagementStoreKey, store);
   try {
     app.mount(host);
     await nextTick();
+    const relation = host.querySelector<HTMLDetailsElement>(
+      '[data-testid="group-bindings"]'
+    )!;
+    relation.open = true;
+    relation.dispatchEvent(new Event("toggle"));
+    await vi.waitFor(() => expect(host.textContent).toContain("资源绑定读取失败"));
     const draft = store.draft("default", "create");
     Object.assign(draft, {
       eventCode: "digest",

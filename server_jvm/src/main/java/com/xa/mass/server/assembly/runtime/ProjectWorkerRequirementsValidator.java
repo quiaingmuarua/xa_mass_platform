@@ -86,6 +86,6 @@ final class ProjectWorkerRequirementsValidator {
         var binding = matching.group(group);
         return new IllegalStateException("operation=workerBindings.dependencies.validate group=" + group
                 + " pools=" + binding.fixedWindowPools().stream().map(WorkerGroupBindings.WindowPool::poolName).toList()
-                + " feedbacks=" + binding.feedbacks().stream().map(WorkerGroupBindings.Feedback::name).toList() + " " + detail, cause);
+                + " " + detail, cause);
     }
 }

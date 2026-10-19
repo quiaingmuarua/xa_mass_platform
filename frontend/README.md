@@ -691,7 +691,7 @@ Export state is independent of finite-task mutations; Mock never exports.
 
 ## Task workbench
 
-Project-expanded host bindings appear through the existing Group capability response. The finite form displays the selected
+Explicit host Group bindings appear through the existing Group capability response, independently of Project membership. The finite form displays the selected
 query's actual Pool and uses that relation for supply suggestions; enabling supply alone does not change an Item query.
 Mock includes `pool-validation` and its Android `device-window` binding. Project capabilities and Runtime binding details share
 the same resolved example; Mock still disables raw writes and does not simulate window scheduling.
@@ -865,10 +865,16 @@ from another instance. Existing login/403/late-response isolation remains in for
 
 ### WorkerGroup effective resource bindings
 
-Runtime Workers has a collapsed read-only binding panel, loaded independently of Worker samples through
-`GET /api/v1/runtime-view/worker-groups/{workerGroupId}/bindings`. It shows declared events, Matching Pool/function relations,
-resolved fixed-window fields/limits and exact assignment feedback selections. Select Group or use its manual refresh; no polling.
-Reads are keyed by Group and generation; failed refresh retains the prior snapshot/time and marks it stale.
-Mock provides labeled binding examples without service requests. No bindings imply neither unavailable Workers nor failed execution.
-The panel states that declarations do not prove online Workers, installed Handlers or current stock, and that observations are best-effort.
+Runtime Workers separates Worker observations from the read-only resource relation view at
+`/runtime/workers?view=bindings&group=...`. The default remains Worker observation. The binding directory endpoint lists startup
+Matching/window Groups plus declared Project members without Redis access; it is not a complete registration directory. Known-ID
+lookup remains available, including identities outside this list. Binding direct entry never starts random Worker sampling.
+The detail shows independent Project scope, declared events, Pool/query relations and windows with embedded paired feedback.
+Read and write property fields are explicit; feedback is event-selected allocation observation, not Pool consumption accounting.
+Missing registration, unavailable reads and stale snapshots stay visible. There is no claim of installed Handlers, online Workers or stock.
+An explicit observation link point-checks the selected Group and samples its Workers even outside the random Group sample.
+Directory, detail and sample state are separate; late responses do not change current selection. Refresh is manual.
+The raw finite form shows the query/Pool relation and supply separately and reads matching event feedback when its auxiliary summary is expanded;
+summary failure does not reset drafts or replace existing submission admission. Batch Checks links current bindings separately from
+saved Task values, only within existing Runtime UI permissions. Mock shares one scope fixture and independent Group capabilities.
 Batch Checks config retains only common/checks; its response no longer exposes newScopeRequired and its editor rejects old poolGroups input.

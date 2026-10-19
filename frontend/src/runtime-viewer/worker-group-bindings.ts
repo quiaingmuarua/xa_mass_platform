@@ -3,6 +3,7 @@ import { reactive } from "vue";
 import { z } from "zod";
 import { workerGroupViewSchema } from "./schemas";
 import { MOCK_WORKER_GROUPS } from "./mock-data";
+import { MOCK_PROJECTS, MOCK_AGENT_GROUPS } from "./mock-projects";
 import type { RuntimeViewerConfig } from "./types";
 
 const name = z.string().min(1);
@@ -20,32 +21,43 @@ export const workerGroupBindingsSchema = z.strictObject({
       timestampProperty: name,
       countProperty: name,
       windowMillis: z.number().int().positive(),
-      maxCount: z.number().int().positive()
+      maxCount: z.number().int().positive(),
+      feedback: z.strictObject({
+        observationEventName: z.literal("worker.assigned"),
+        messageEvents: z.array(name).min(1)
+      })
     })
   ),
-  feedbacks: z.array(
+  projects: z.array(
     z.strictObject({
-      name,
-      poolName: name,
-      observationEventName: z.literal("worker.assigned"),
-      messageEvents: z.array(name),
-      timestampProperty: name,
-      countProperty: name,
-      windowMillis: z.number().int().positive()
+      projectId: name,
+      workerGroupSource: z.enum(["registered", "declared"])
     })
   ),
   readAt: z.string().datetime({ offset: true })
 });
+export const workerGroupBindingsDirectorySchema = z.strictObject({
+  workerGroupIds: z.array(name),
+  readAt: z.string().datetime({ offset: true })
+});
 export type WorkerGroupBindings = z.infer<typeof workerGroupBindingsSchema>;
+export type WorkerGroupBindingsDirectory = z.infer<
+  typeof workerGroupBindingsDirectorySchema
+>;
 export type WorkerGroupBindingsLoader = (
   group: string,
   signal?: AbortSignal
 ) => Promise<WorkerGroupBindings>;
 
-/** Resolved startup examples shared by the workbench and Runtime binding view. */
 export function mockWorkerGroupBindings(workerGroupId: string): WorkerGroupBindings {
   const workerGroup =
-    MOCK_WORKER_GROUPS.find((group) => group.workerGroupId === workerGroupId) ?? null;
+    MOCK_WORKER_GROUPS.find((group) => group.workerGroupId === workerGroupId) ??
+    MOCK_AGENT_GROUPS.find((group) => group.workerGroupId === workerGroupId)
+      ?.workerGroup ??
+    null;
+  const anyEnabled = MOCK_WORKER_GROUPS.some(
+    (group) => group.workerGroupId === workerGroupId
+  );
   const window =
     workerGroupId === "scenario-phone-number-workers"
       ? {
@@ -54,7 +66,11 @@ export function mockWorkerGroupBindings(workerGroupId: string): WorkerGroupBindi
           timestampProperty: "demoAssignedAt",
           countProperty: "demoAssignmentCount",
           windowMillis: 60000,
-          maxCount: 10
+          maxCount: 10,
+          feedback: {
+            observationEventName: "worker.assigned" as const,
+            messageEvents: ["extension.worker.phonenumber.original-carrier"]
+          }
         }
       : workerGroupId === "android-demo-workers"
         ? {
@@ -63,58 +79,64 @@ export function mockWorkerGroupBindings(workerGroupId: string): WorkerGroupBindi
             timestampProperty: "deviceAssignedAt",
             countProperty: "deviceAssignmentCount",
             windowMillis: 60000,
-            maxCount: 10
+            maxCount: 10,
+            feedback: {
+              observationEventName: "worker.assigned" as const,
+              messageEvents: ["extension.worker.android.string.digest"]
+            }
           }
         : null;
   return structuredClone({
     workerGroupId,
     workerGroup,
     readAt: new Date().toISOString(),
+    projects: MOCK_PROJECTS.filter((p) =>
+      p.workerGroupSource === "registered"
+        ? workerGroup !== null
+        : p.workerGroupIds.includes(workerGroupId)
+    ).map(({ projectId, workerGroupSource }) => ({ projectId, workerGroupSource })),
     matching: {
-      pools: [...(workerGroup ? ["any"] : []), ...(window ? [window.poolName] : [])],
+      pools: [...(anyEnabled ? ["any"] : []), ...(window ? [window.poolName] : [])],
       functions: [
         { name: "workerId", poolName: null },
-        ...(workerGroup ? [{ name: "worker.any", poolName: "any" }] : []),
+        ...(anyEnabled ? [{ name: "worker.any", poolName: "any" }] : []),
         ...(window ? [{ name: window.functionName, poolName: window.poolName }] : [])
       ]
     },
-    fixedWindowPools: window ? [window] : [],
-    feedbacks: window
-      ? [
-          {
-            name:
-              workerGroupId === "android-demo-workers"
-                ? "digest-assigned"
-                : "phone-observation-demo",
-            poolName: window.poolName,
-            observationEventName: "worker.assigned",
-            messageEvents: [
-              workerGroupId === "android-demo-workers"
-                ? "extension.worker.android.string.digest"
-                : "extension.worker.phonenumber.original-carrier"
-            ],
-            timestampProperty: window.timestampProperty,
-            countProperty: window.countProperty,
-            windowMillis: window.windowMillis
-          }
-        ]
-      : []
+    fixedWindowPools: window ? [window] : []
   });
 }
-
+export function createWorkerGroupBindingsDirectoryLoader(config: RuntimeViewerConfig) {
+  if (config.mode === "mock")
+    return async (_signal?: AbortSignal): Promise<WorkerGroupBindingsDirectory> => ({
+      workerGroupIds: [
+        ...new Set([
+          ...MOCK_WORKER_GROUPS.map((g) => g.workerGroupId),
+          ...MOCK_PROJECTS.flatMap((p) => p.workerGroupIds)
+        ])
+      ].sort(),
+      readAt: new Date().toISOString()
+    });
+  const client = axios.create({ baseURL: config.apiBaseUrl, timeout: 5000 });
+  return async (signal?: AbortSignal) =>
+    workerGroupBindingsDirectorySchema.parse(
+      (
+        await client.get("/v1/runtime-view/worker-groups/bindings", {
+          signal,
+          headers: { "X-Request-Id": `group-directory-${crypto.randomUUID()}` }
+        })
+      ).data
+    );
+}
 export function createWorkerGroupBindingsLoader(
   config: RuntimeViewerConfig
 ): WorkerGroupBindingsLoader {
-  if (config.mode === "mock")
-    return async (workerGroupId) => mockWorkerGroupBindings(workerGroupId);
+  if (config.mode === "mock") return async (group) => mockWorkerGroupBindings(group);
   const client = axios.create({ baseURL: config.apiBaseUrl, timeout: 5000 });
   return async (group, signal) => {
     const response = await client.get(
       `/v1/runtime-view/worker-groups/${encodeURIComponent(group)}/bindings`,
-      {
-        signal,
-        headers: { "X-Request-Id": `group-bindings-${crypto.randomUUID()}` }
-      }
+      { signal, headers: { "X-Request-Id": `group-bindings-${crypto.randomUUID()}` } }
     );
     const value = workerGroupBindingsSchema.parse(response.data);
     if (

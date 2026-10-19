@@ -402,6 +402,14 @@ defineExpose({ refresh, focusHeading });
             }}{{ error ? " · 快照已过期" : "" }}。当前检查配置不会覆盖这些值。
           </p>
           <ConfigurationRows :section="configuration.binding" />
+          <router-link
+            v-if="canUseConsole(identity, 'runtime.view') && detail.task.workerGroupId"
+            :to="{
+              path: '/runtime/workers',
+              query: { view: 'bindings', group: detail.task.workerGroupId }
+            }"
+            >查看当前启动的 Group 资源绑定（与任务保存值分开）</router-link
+          >
           <h3>执行策略</h3>
           <ConfigurationRows :section="configuration.policy" />
           <h3>已保存契约参数</h3>

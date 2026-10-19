@@ -3,23 +3,21 @@ package com.xa.mass.server.assembly.runtime;
 import java.util.*;
 
 /** Host startup input. No resource or observation lifecycle is held here. */
-public record FixedWindowBindingsProperties(Map<String, Pool> pools, Map<String, Feedback> feedbacks,
-                                           Map<String, Group> groups, Map<String, Group> projects) {
+public record FixedWindowBindingsProperties(Map<String, Pool> pools, Map<String, Group> groups) {
     public FixedWindowBindingsProperties {
-        pools = copy(pools, "pools"); feedbacks = copy(feedbacks, "feedbacks"); groups = copy(groups, "groups");
-        projects = copy(projects, "projects");
+        pools = copy(pools, "pools"); groups = copy(groups, "groups");
     }
     public record Pool(String functionName, String timestampProperty, String countProperty,
-                       long windowMillis, long maxCount) {
+                       long windowMillis, long maxCount, Feedback feedback) {
         public Pool {
             name(functionName, "function-name"); name(timestampProperty, "timestamp-property"); name(countProperty, "count-property");
             if (timestampProperty.equals(countProperty)) throw invalid("pool property fields must differ");
             positive(windowMillis, "window-millis"); positive(maxCount, "max-count");
+            if (feedback == null) throw invalid("pool.feedback is required");
         }
     }
-    public record Feedback(String poolName, List<String> messageEvents) {
+    public record Feedback(List<String> messageEvents) {
         public Feedback {
-            name(poolName, "feedback.pool-name");
             messageEvents = names(messageEvents, "feedback.message-events");
             if (messageEvents.isEmpty()) throw invalid("feedback.message-events must not be empty");
         }
@@ -30,14 +28,13 @@ public record FixedWindowBindingsProperties(Map<String, Pool> pools, Map<String,
             if (maxCount != null) positive(maxCount, "max-count");
         }
     }
-    public record Group(Map<String, Limits> pools, List<String> feedbacks) {
+    public record Group(Map<String, Limits> pools) {
         public Group {
             var values = new TreeMap<String, Limits>();
             if (pools != null) pools.forEach((key, value) -> {
                 name(key, "group.pools"); values.put(key, value == null ? new Limits(null, null) : value);
             });
             pools = Collections.unmodifiableMap(values);
-            feedbacks = names(feedbacks, "group.feedbacks");
         }
     }
     private static <T> Map<String, T> copy(Map<String, T> input, String field) {

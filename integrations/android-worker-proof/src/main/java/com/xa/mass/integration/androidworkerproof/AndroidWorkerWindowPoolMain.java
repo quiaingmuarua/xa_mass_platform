@@ -4,21 +4,21 @@ import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.util.*;
 
-/** Raw finite Task witness for host Project-expanded window bindings, without any Scenario. */
-public final class AndroidWorkerProjectPoolMain {
+/** Raw finite Task witness for host Group window bindings, without any Scenario. */
+public final class AndroidWorkerWindowPoolMain {
     private static final String GROUP = AndroidWorkerProofConstants.WORKER_GROUP_ID;
     private static final String POOL = "device-window", FUNCTION = "worker.device.available";
     private final AndroidWorkerProofOptions options;
     private final ProofEvidence evidence;
     private final JsonHttpClient http;
 
-    private AndroidWorkerProjectPoolMain(AndroidWorkerProofOptions options) {
+    private AndroidWorkerWindowPoolMain(AndroidWorkerProofOptions options) {
         this.options = options;
-        evidence = new ProofEvidence(options, "project-pool", options.phase());
+        evidence = new ProofEvidence(options, "window-pool", options.phase());
         http = new JsonHttpClient(options.serverBaseUrl(), options, Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"));
     }
     public static void main(String[] args) throws IOException {
-        var proof = new AndroidWorkerProjectPoolMain(AndroidWorkerProofOptions.parse(args));
+        var proof = new AndroidWorkerWindowPoolMain(AndroidWorkerProofOptions.parse(args));
         try { proof.run(); }
         catch (ProofFailure failure) { proof.evidence.failure(failure); throw failure; }
         catch (RuntimeException | Error failure) { proof.evidence.unexpectedFailure(failure); throw failure; }
@@ -33,7 +33,7 @@ public final class AndroidWorkerProjectPoolMain {
         require(pools.size() == 1 && POOL.equals(pools.getFirst().get("poolName"))
                 && FUNCTION.equals(pools.getFirst().get("functionName"))
                 && number(pools.getFirst().get("windowMillis")) == 60000 && number(pools.getFirst().get("maxCount")) == 10, "window-binding");
-        require(rows(bindings.get("feedbacks")).size() == 1, "single-feedback");
+        require(object(pools.getFirst().get("feedback")).get("messageEvents").equals(List.of("extension.worker.android.string.digest")), "paired-feedback");
         var device = new AndroidDeviceHostClient(new JsonHttpClient(options.deviceBaseUrl(), options, Map.of()));
         var runtime = new AndroidRuntimeApiClient(http);
         AndroidWorkerProofAssertions.awaitDeviceHealth(device, options.maximumWait());
@@ -56,10 +56,10 @@ public final class AndroidWorkerProjectPoolMain {
         request("POST", task(task) + "/items", items);
         request("POST", task(task) + "/approve", Map.of("expectedItemCount", 3));
         ProofWait.until(options.maximumWait(), () -> request("GET", "/api/v1/projects/default/tasks/" + task, null).get("scoreBand"),
-                "terminal"::equals, "project-pool.terminal", "Finite Task did not finish", task);
+                "terminal"::equals, "window-pool.terminal", "Finite Task did not finish", task);
         var results = ProofWait.until(options.maximumWait(), () -> request("POST", task(task) + "/results:load", ids),
                 value -> value.keySet().equals(Set.copyOf(ids)) && value.values().stream().allMatch(row -> "succeeded".equals(object(row).get("status"))),
-                "project-pool.results", "Finite Result content did not converge", task);
+                "window-pool.results", "Finite Result content did not converge", task);
         var states = request("POST", task(task) + "/items:states", ids);
         for (int i = 0; i < ids.size(); i++) {
             var content = Jsons.parseObject((String) object(results.get(ids.get(i))).get("opaqueResultPayload"));
@@ -78,7 +78,7 @@ public final class AndroidWorkerProjectPoolMain {
             return object(workers.getFirst().get("platformProperties"));
         }, values -> values.get("deviceAssignmentCount") instanceof Number n && n.longValue() > 0
                 && values.get("deviceAssignedAt") instanceof Number t && t.longValue() > 0,
-                "project-pool.feedback", "Window feedback was not observed", worker);
+                "window-pool.feedback", "Window feedback was not observed", worker);
         var exported = http.sendText("POST", task(task) + "/results:export", null, "application/json", "raw-export");
         require(exported.statusCode() == 200 && exported.body().lines().count() == 3, "complete-raw-export");
         evidence.check("taskId", task);
@@ -89,7 +89,7 @@ public final class AndroidWorkerProjectPoolMain {
         evidence.check("observedWindowCount", number(properties.get("deviceAssignmentCount")));
     }
     private Map<String,Object> request(String method, String path, Object body) {
-        var response = http.send(method, path, body, "project-pool");
+        var response = http.send(method, path, body, "window-pool");
         require(response.statusCode() >= 200 && response.statusCode() < 300, "http-" + response.statusCode());
         return response.body();
     }
@@ -98,6 +98,6 @@ public final class AndroidWorkerProjectPoolMain {
     private static long number(Object value) { return ((Number) value).longValue(); }
     private static String task(String id) { return "/api/v1/tasks/" + id; }
     private static void require(boolean condition, String name) {
-        if (!condition) throw new ProofFailure("project-pool." + name, "Project Pool assertion failed: " + name);
+        if (!condition) throw new ProofFailure("window-pool." + name, "Group window assertion failed: " + name);
     }
 }

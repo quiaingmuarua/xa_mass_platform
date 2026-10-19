@@ -274,8 +274,9 @@ Server consumes immutable startup declarations and must not read the scenario fi
 configuration becomes effective on restart, without runtime registration or resource
 mutation. App Checks execution contracts are statically registered pure scenario code;
 Tasks retain their first execution binding and normalized parameters. Per-Group resource requirements remain immutable startup declarations. Host-owned named window Pool/feedback bindings
-produce Matching definitions and Server projections from one resolved snapshot. Declared Project membership may supply their Group
-scope; Server expands and coalesces it at startup, without introducing Project stock, quotas or interpretation in Matching.
+produce Matching definitions and Server projections from one resolved Group snapshot. Each host window Pool binds its paired
+allocation feedback; Project membership independently controls Task admission and never enables resources. The Group sets may differ,
+without introducing Project stock, quotas or interpretation in Matching.
 App Checks does not define these resources or import Matching types; it references their enabled names.
 Resource reads expose bindings without Facts or stock access.
 

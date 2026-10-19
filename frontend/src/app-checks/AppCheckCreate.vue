@@ -503,6 +503,14 @@ onBeforeUnmount(() => {
           / {{ selectedType }}
         </p>
         <pre>{{ JSON.stringify(selectedCheck.execution, null, 2) }}</pre>
+        <router-link
+          v-if="canUseConsole(identity, 'runtime.view')"
+          :to="{
+            path: '/runtime/workers',
+            query: { view: 'bindings', group: selectedCheck.workerGroupId }
+          }"
+          >查看当前 Group 资源绑定</router-link
+        >
       </details>
       <p class="checks-hint">
         执行绑定及契约参数由服务端在首次创建时保存；后续导入和结果解释沿用任务保存值。

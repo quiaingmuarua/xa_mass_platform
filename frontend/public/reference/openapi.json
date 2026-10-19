@@ -301,30 +301,14 @@
       },
       "Feedback" : {
         "properties" : {
-          "countProperty" : {
-            "type" : "string"
-          },
           "messageEvents" : {
             "items" : {
               "type" : "string"
             },
             "type" : "array"
           },
-          "name" : {
-            "type" : "string"
-          },
           "observationEventName" : {
             "type" : "string"
-          },
-          "poolName" : {
-            "type" : "string"
-          },
-          "timestampProperty" : {
-            "type" : "string"
-          },
-          "windowMillis" : {
-            "format" : "int64",
-            "type" : "integer"
           }
         },
         "type" : "object"
@@ -356,6 +340,17 @@
           "terminatedAtMillis" : {
             "format" : "int64",
             "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "Project" : {
+        "properties" : {
+          "projectId" : {
+            "type" : "string"
+          },
+          "workerGroupSource" : {
+            "type" : "string"
           }
         },
         "type" : "object"
@@ -894,6 +889,9 @@
           "countProperty" : {
             "type" : "string"
           },
+          "feedback" : {
+            "$ref" : "#/components/schemas/Feedback"
+          },
           "functionName" : {
             "type" : "string"
           },
@@ -955,14 +953,23 @@
         },
         "type" : "object"
       },
-      "WorkerGroupBindingsResponse" : {
+      "WorkerGroupBindingsDirectoryResponse" : {
         "properties" : {
-          "feedbacks" : {
+          "readAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "workerGroupIds" : {
             "items" : {
-              "$ref" : "#/components/schemas/Feedback"
+              "type" : "string"
             },
             "type" : "array"
-          },
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerGroupBindingsResponse" : {
+        "properties" : {
           "fixedWindowPools" : {
             "items" : {
               "$ref" : "#/components/schemas/WindowPool"
@@ -971,6 +978,12 @@
           },
           "matching" : {
             "$ref" : "#/components/schemas/Capabilities"
+          },
+          "projects" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Project"
+            },
+            "type" : "array"
           },
           "readAt" : {
             "format" : "date-time",
@@ -1915,6 +1928,25 @@
           }
         },
         "summary" : "Preview a bounded Task Score window",
+        "tags" : [ "Runtime View" ]
+      }
+    },
+    "/api/v1/runtime-view/worker-groups/bindings" : {
+      "get" : {
+        "operationId" : "directory",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerGroupBindingsDirectoryResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "List startup-associated Groups without Redis, Facts or inventory reads",
         "tags" : [ "Runtime View" ]
       }
     },

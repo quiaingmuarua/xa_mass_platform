@@ -11,6 +11,7 @@ import type {
   RuntimeViewerDataSource,
   TaskPreviewResponse,
   WorkerGroupPreviewResponse,
+  WorkerGroupView,
   WorkerPreviewResponse
 } from "@/runtime-viewer/types";
 
@@ -53,6 +54,7 @@ export function createRuntimeViewerStore(
       stale: false
     });
     const activeWorkerGroupId = ref<string>();
+    const knownGroup = ref<WorkerGroupView>();
     const samples = reactive<Record<string, WorkerGroupSampleState>>({});
 
     let taskPreviewController: AbortController | undefined;
@@ -64,9 +66,13 @@ export function createRuntimeViewerStore(
     const sampleControllers = new Map<string, AbortController>();
     const sampleVersions = new Map<string, number>();
 
-    const workerGroups = computed(
-      () => workerGroupPreviewState.preview?.workerGroups ?? []
-    );
+    const workerGroups = computed(() => {
+      const sampled = workerGroupPreviewState.preview?.workerGroups ?? [];
+      return knownGroup.value &&
+        !sampled.some((g) => g.workerGroupId === knownGroup.value!.workerGroupId)
+        ? [...sampled, knownGroup.value]
+        : sampled;
+    });
     const workerGroupIds = computed(() =>
       workerGroups.value.map((group) => group.workerGroupId)
     );
@@ -210,6 +216,7 @@ export function createRuntimeViewerStore(
             workerGroups: sortedGroups
           };
           const nextIds = new Set(sortedGroups.map((group) => group.workerGroupId));
+          if (knownGroup.value) nextIds.add(knownGroup.value.workerGroupId);
 
           Object.keys(samples).forEach((workerGroupId) => {
             if (!nextIds.has(workerGroupId)) {
@@ -256,6 +263,13 @@ export function createRuntimeViewerStore(
       })();
       workerGroupLoadPromise = request;
       return request;
+    }
+
+    async function selectKnownGroup(group: WorkerGroupView): Promise<void> {
+      knownGroup.value = group;
+      samples[group.workerGroupId] ??= { status: "idle", stale: false };
+      activeWorkerGroupId.value = group.workerGroupId;
+      await loadSample(group.workerGroupId, false);
     }
 
     async function selectGroup(workerGroupId: string): Promise<void> {
@@ -357,6 +371,7 @@ export function createRuntimeViewerStore(
       initializeWorkerView,
       refreshWorkerGroups,
       selectGroup,
+      selectKnownGroup,
       refreshActiveGroup,
       dispose
     };
