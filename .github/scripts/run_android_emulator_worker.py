@@ -217,7 +217,7 @@ class ProofRunner:
                            scopes=sorted(self.scopes), phaseEvidence="*.json",
                            batchChecksInputs={name: consumer.digest(ROOT / "xa-android/config" / name)
                                for name in ("batch-checks-runtime.yaml", "batch-checks-configuration.json")},
-                           projectWindowInputSha256=consumer.digest(ROOT / "xa-android/config/project-window-runtime.yaml"))
+                           windowPoolInputSha256=consumer.digest(ROOT / "xa-android/config/window-pool-runtime.yaml"))
             (self.evidence / "consumption.json").write_text(json.dumps(encoded, indent=2) + "\n", encoding="utf-8")
 
     def setup_device(self) -> None:
@@ -363,9 +363,9 @@ class ProofRunner:
         for package in APPLICATIONS[1:]:
             self.stop_app(package)
         self.stop_server()
-        self.start_server("project-window", scope + "_project_window", configuration="project-window-runtime.yaml")
+        self.start_server("window-pool", scope + "_window_pool", configuration="window-pool-runtime.yaml")
         self.reset_apps(APPLICATIONS[:1])
-        self.phase("ProjectPool", "android-project-pool", "initial", "project-pool")
+        self.phase("WindowPool", "android-window-pool", "initial", "window-pool")
         self.stop_app(APPLICATIONS[0])
         self.stop_server()
         self.start_server("batch-checks", scope + "_batch_checks", configuration="batch-checks-runtime.yaml")

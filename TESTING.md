@@ -346,11 +346,13 @@ owns the mechanism. Scenario composition and real assignment-window qualificatio
 also select the [existing finite scenario proof](doc/testing/proof-registry.md#product_coexistence);
 its execution witness does not establish reliable counting or strict quotas.
 
-`ProjectWorkerBindingsIntegrationTest` starts the same scope twice and changes only a declared Project's Group list.
-Both Groups are registered before expansion; the newly included Group gains the Pool/query/feedback and executes raw finite Items.
-Equal overlapping Project bindings produce one projection. It retains actual external configuration documents and safe hashes.
-The Android lane separately runs the raw `ProjectPool` phase on the verified ZIP/APK chain; exact qualification boundaries and
-consumption with zero Facts reads remain Matching Owner assertions. Reuse an existing development emulator and restore owned mappings.
+`GroupWindowBindingsIntegrationTest` uses registered A/B/C with Project and Pool Group sets that differ.
+Project-only membership changes leave resources unchanged; a later explicit Group Pool reference enables the paired query/feedback.
+Raw finite tasks verify allowed intersections, rejected combinations, B's independent Any capability and C through default.
+Selected events update properties even for directed workerId execution; unselected events do not. Actual external config hashes,
+Item queries, raw Results, terminal states and complete JSONL remain independent witnesses.
+The Android lane separately runs `WindowPool` on the verified ZIP/APK chain. Exact qualification boundaries and zero Facts reads on
+consumption stay Matching Owner assertions. Reuse the development emulator and restore owned mappings.
 
 ### Existing Matching proof ownership
 

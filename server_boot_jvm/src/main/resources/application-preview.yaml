@@ -74,19 +74,15 @@ xa:
             count-property: windowAssignmentCount
             window-millis: 60000
             max-count: 10
-        feedbacks:
-          registration-assigned:
-            pool-name: assignment-window
-            message-events: [extension.worker.app.registration.check]
+            feedback:
+              message-events: [extension.worker.app.registration.check]
         groups:
           app-a-sim:
             pools:
               assignment-window: {}
-            feedbacks: [registration-assigned]
           app-b-sim:
             pools:
               assignment-window: {}
-            feedbacks: [registration-assigned]
       group-config-json: |
         {
           "app-a-sim": {

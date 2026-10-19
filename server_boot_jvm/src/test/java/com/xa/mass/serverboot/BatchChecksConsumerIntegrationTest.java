@@ -54,12 +54,12 @@ class BatchChecksConsumerIntegrationTest {
     void missingCapabilitiesNeverOpenTheConsumer(String missing) {
         assertThatThrownBy(() -> { try (var ignored = start(true, missing)) { } }).isInstanceOf(RuntimeException.class);
     }
-    @Test void moduleContributedProjectCanExpandHostBindingsWithoutAnotherGroupList() throws Exception {
-        try (var context = start(true, "project-window")) {
+    @Test void moduleProjectAndExplicitHostBindingsRemainIndependent() throws Exception {
+        try (var context = start(true, "window-pool")) {
             var bindings = context.getBean(com.xa.mass.server.worker.observation.WorkerGroupBindings.class);
             assertThat(bindings.group(GROUP).fixedWindowPools()).singleElement().satisfies(pool ->
                     assertThat(pool.poolName()).isEqualTo("module-window"));
-            assertThat(bindings.group(GROUP).feedbacks()).singleElement().satisfies(feedback ->
+            assertThat(bindings.group(GROUP).fixedWindowPools().stream().map(pool -> pool.feedback()).toList()).singleElement().satisfies(feedback ->
                     assertThat(feedback.messageEvents()).containsExactly(EVENT));
             assertThat(context.getBean(ProjectDirectory.class).require("app-checks").workerGroupIds()).containsExactly(GROUP);
         }
@@ -89,14 +89,13 @@ class BatchChecksConsumerIntegrationTest {
                     Map.of("attributes", Map.of(), "eventCodes", List.of(missing.equals("event") ? "extension.worker.other" : EVENT))))));
         if (!missing.equals("pool")) args.add("--xa.mass.worker-matching.groups." + GROUP + ".pools[0]=any");
         if (!missing.equals("function")) args.add("--xa.mass.worker-matching.groups." + GROUP + ".functions[0]=worker.any");
-        if (missing.equals("project-window")) {
+        if (missing.equals("window-pool")) {
             String prefix = "--xa.mass.worker-assembly.fixed-window.";
             args.addAll(List.of(prefix + "pools.module-window.function-name=worker.module.available",
                     prefix + "pools.module-window.timestamp-property=moduleAt", prefix + "pools.module-window.count-property=moduleCount",
                     prefix + "pools.module-window.window-millis=60000", prefix + "pools.module-window.max-count=10",
-                    prefix + "feedbacks.module-assigned.pool-name=module-window", prefix + "feedbacks.module-assigned.message-events[0]=" + EVENT,
-                    prefix + "projects.app-checks.pools.module-window.window-millis=60000",
-                    prefix + "projects.app-checks.feedbacks[0]=module-assigned"));
+                    prefix + "pools.module-window.feedback.message-events[0]=" + EVENT,
+                    prefix + "groups." + GROUP + ".pools.module-window.window-millis=60000"));
         }
         var app = new SpringApplication(ServerBootConfiguration.class);
         app.setWebApplicationType(WebApplicationType.NONE);

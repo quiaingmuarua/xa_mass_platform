@@ -12,7 +12,8 @@ import "element-plus/es/components/form-item/style/css";
 import "element-plus/es/components/input-number/style/css";
 import "element-plus/es/components/radio-group/style/css";
 import "element-plus/es/components/radio-button/style/css";
-import { useTaskManagementStore } from "@/runtime-context";
+import { useTaskManagementStore, useRuntimeViewerConfig } from "@/runtime-context";
+import WorkerGroupBindings from "@/components/WorkerGroupBindings.vue";
 import TaskSupplyEditor from "@/components/TaskSupplyEditor.vue";
 import { readSupply } from "@/task-management/supply";
 import { refillSchema } from "@/runtime-viewer/schemas";
@@ -39,6 +40,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ submitted: [taskId: string]; inspect: [taskId: string] }>();
 const operations = useTaskManagementStore();
+const runtimeConfig = useRuntimeViewerConfig();
 const projectId = props.projectId;
 const state = operations.project(projectId);
 const draftKey = props.task?.taskId ?? "create";
@@ -400,6 +402,13 @@ function reset() {
         追加使用任务保存的 Group 和供给，任务配置保持不变。
       </p>
     </section>
+    <WorkerGroupBindings
+      v-if="groupId"
+      :worker-group-id="groupId"
+      :config="runtimeConfig"
+      compact
+      :event-code="format === 'jsonl' ? undefined : eventCode"
+    />
     <section class="raw-task-section">
       <h3>输入数据</h3>
       <el-radio-group v-model="format" :disabled="frozen" aria-label="输入格式">

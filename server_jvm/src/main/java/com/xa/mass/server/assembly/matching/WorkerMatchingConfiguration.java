@@ -10,7 +10,6 @@ import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import com.xa.mass.workermatching.WorkerProperties;
 import com.xa.mass.server.assembly.runtime.ServerWorkerAssemblyProperties;
 import com.xa.mass.server.worker.observation.WorkerGroupBindings;
-import com.xa.mass.server.project.ProjectDirectory;
 import io.lettuce.core.RedisClient;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -21,8 +20,8 @@ import org.springframework.context.annotation.Configuration;
 public class WorkerMatchingConfiguration {
     @Bean
     WorkerGroupBindings workerGroupBindings(MatchingProperties matching, ServerWorkerAssemblyProperties host,
-                                           List<FixedWindowPoolDefinition> definitions, ProjectDirectory projects) {
-        return new WorkerGroupBindings(matching.groups(), host.fixedWindow(), definitions, projects);
+                                           List<FixedWindowPoolDefinition> definitions) {
+        return new WorkerGroupBindings(matching.groups(), host.fixedWindow(), definitions);
     }
 
     @Bean(destroyMethod="close")

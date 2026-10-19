@@ -272,7 +272,7 @@ class WorkerObservationConsumerTest {
     WorkerObservationConsumer consumer(WorkerPropertyProjection... projections) {
         var beans = new StaticListableBeanFactory(Map.of("properties", properties, "commands", commands));
         return new KernelPacerConfiguration().workerObservationConsumer(List.of(projections),
-                new com.xa.mass.server.worker.observation.WorkerGroupBindings(Map.of(), new com.xa.mass.server.assembly.runtime.FixedWindowBindingsProperties(null, null, null, null), List.of(), mock(com.xa.mass.server.project.ProjectDirectory.class)),
+                new com.xa.mass.server.worker.observation.WorkerGroupBindings(Map.of(), new com.xa.mass.server.assembly.runtime.FixedWindowBindingsProperties(null, null), List.of()),
                 beans.getBeanProvider(WorkerProperties.class), beans.getBeanProvider(WorkerResourceCommandService.class));
     }
     static WorkerPropertyProjection projection(String group, String event,

@@ -72,10 +72,8 @@ class WorkerGroupBindingsIntegrationTest {
                 prefix + "pools." + POOL + ".timestamp-property=proofObservedAt",
                 prefix + "pools." + POOL + ".count-property=proofObservedCount",
                 prefix + "pools." + POOL + ".window-millis=60000", prefix + "pools." + POOL + ".max-count=1000",
-                prefix + "feedbacks.proof-feedback.pool-name=" + POOL,
-                prefix + "feedbacks.proof-feedback.message-events[0]=" + EVENT,
-                prefix + "groups." + GROUP + ".pools." + POOL + ".window-millis=120000",
-                prefix + "groups." + GROUP + ".feedbacks[0]=proof-feedback"));
+                prefix + "pools." + POOL + ".feedback.message-events[0]=" + EVENT,
+                prefix + "groups." + GROUP + ".pools." + POOL + ".window-millis=120000"));
         Path configurationFile = root.resolve("configuration.json");
         args.add("--xa.mass.scenarios.app-checks.configuration.path=" + configurationFile);
         args.add("--xa.mass.scenarios.app-checks.configuration.seed=classpath:app-checks/preview-configuration.json");
@@ -102,8 +100,8 @@ class WorkerGroupBindingsIntegrationTest {
             assertThat(binding.get("workerGroup")).isNotNull();
             assertThat((List<Map<String,Object>>) binding.get("fixedWindowPools")).singleElement().satisfies(row ->
                     assertThat(row).containsEntry("poolName", POOL).containsEntry("windowMillis", 120000L).containsEntry("maxCount", 1000L));
-            assertThat((List<Map<String,Object>>) binding.get("feedbacks")).singleElement().satisfies(row ->
-                    assertThat(row).containsEntry("messageEvents", List.of(EVENT)).containsEntry("windowMillis", 120000L));
+            assertThat((Map<String,Object>) ((List<Map<String,Object>>) binding.get("fixedWindowPools")).getFirst().get("feedback"))
+                    .containsEntry("messageEvents", List.of(EVENT)).containsEntry("observationEventName", "worker.assigned");
             var hostConfig = root.resolve("host.json");
             Files.writeString(hostConfig, Jsons.toJson(Map.of("runtimeApiBaseUrl", base.toString(), "controlPort", 0,
                     "sandboxRoot", root.resolve("data/scenario-workers").toString(), "workerGroups", Map.of(GROUP, Map.of(

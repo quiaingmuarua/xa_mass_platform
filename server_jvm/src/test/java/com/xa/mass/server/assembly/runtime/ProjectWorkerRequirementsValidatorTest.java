@@ -19,12 +19,10 @@ class ProjectWorkerRequirementsValidatorTest {
     @Test void hostBindingsWithoutAnyScenarioAreValidatedAndShareTheBoundedRead() {
         var groups = new TreeMap<String, FixedWindowBindingsProperties.Group>();
         IntStream.range(0, 205).forEach(i -> groups.put("g" + i,
-                new FixedWindowBindingsProperties.Group(Map.of("window", new FixedWindowBindingsProperties.Limits(null, null)), List.of("observe"))));
+                new FixedWindowBindingsProperties.Group(Map.of("window", new FixedWindowBindingsProperties.Limits(null, null)))));
         var project = directory(new ProjectDefinition("host-binding", List.copyOf(groups.keySet()), null));
         var host = new com.xa.mass.server.worker.observation.WorkerGroupBindings(Map.of(), new FixedWindowBindingsProperties(
-                Map.of("window", new FixedWindowBindingsProperties.Pool("window.take", "at", "count", 100, 2)),
-                Map.of("observe", new FixedWindowBindingsProperties.Feedback("window", List.of("check"))), Map.of(),
-                Map.of("host-binding", groups.get("g0"))), List.of(), project);
+                Map.of("window", new FixedWindowBindingsProperties.Pool("window.take", "at", "count", 100, 2, new FixedWindowBindingsProperties.Feedback(List.of("check")))), groups), List.of());
         var reads = new ArrayList<Integer>();
         when(workers.getWorkerGroupDescriptors(anyList())).thenAnswer(call -> {
             List<String> ids = call.getArgument(0); reads.add(ids.size());
@@ -36,7 +34,7 @@ class ProjectWorkerRequirementsValidatorTest {
         validator.validate();
         assertThat(reads).containsExactly(100, 100, 5);
         when(workers.getWorkerGroupDescriptors(anyList())).thenReturn(Map.of());
-        assertThatThrownBy(validator::validate).hasMessageContaining("group=g0").hasMessageContaining("observe").hasMessageContaining("not registered");
+        assertThatThrownBy(validator::validate).hasMessageContaining("group=g0").hasMessageContaining("window").hasMessageContaining("not registered");
         when(workers.getWorkerGroupDescriptors(anyList())).thenReturn(Map.of("g0", new WorkerGroupDescriptor("g0", Map.of(), Set.of("other"))));
         assertThatThrownBy(validator::validate).hasMessageContaining("missing feedback events: [check]");
         var unavailable = new IllegalStateException("read unavailable");
@@ -160,7 +158,7 @@ class ProjectWorkerRequirementsValidatorTest {
         return new ProjectWorkerRequirementsValidator(projects, workers, bindings(matching), requirements);
     }
     private static com.xa.mass.server.worker.observation.WorkerGroupBindings bindings(MatchingProperties matching) {
-        return new com.xa.mass.server.worker.observation.WorkerGroupBindings(matching.groups(), new FixedWindowBindingsProperties(null, null, null, null), List.of(), directory());
+        return new com.xa.mass.server.worker.observation.WorkerGroupBindings(matching.groups(), new FixedWindowBindingsProperties(null, null), List.of());
     }
     private static ProjectDirectory knownProject() { return directory(new ProjectDefinition("messages", List.of("shared"), null)); }
     private static ProjectDirectory directory(ProjectDefinition... projects) {
