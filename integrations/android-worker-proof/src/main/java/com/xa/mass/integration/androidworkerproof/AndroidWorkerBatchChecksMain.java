@@ -17,10 +17,14 @@ public final class AndroidWorkerBatchChecksMain {
     private final AndroidWorkerProofOptions options;
     private final ProofEvidence evidence;
     private final JsonHttpClient admin, user;
-    private final List<String> seeds = seeds();
+    private final List<String> seeds;
+    private final boolean window;
+    private String workerId;
 
     private AndroidWorkerBatchChecksMain(AndroidWorkerProofOptions options) {
         this.options = options;
+        window = options.phase().equals("window");
+        seeds = window ? List.of("a", "abc", "中文") : seeds();
         evidence = new ProofEvidence(options, SCENARIO, options.phase());
         admin = new JsonHttpClient(options.serverBaseUrl(), options, headers("1000", "admin"));
         user = new JsonHttpClient(options.serverBaseUrl(), options, headers("1001", "operator"));
@@ -41,7 +45,7 @@ public final class AndroidWorkerBatchChecksMain {
         var effective = object(request(admin, "GET", "/api/v1/app-checks/configuration", null, 200).get("effective"));
         evidence.check("configurationFingerprint", effective.get("fingerprint"));
         String taskId;
-        if (options.phase().equals("initial")) {
+        if (options.phase().equals("initial") || window) {
             options.baselineFile(false);
             var device = new AndroidDeviceHostClient(new JsonHttpClient(options.deviceBaseUrl(), options, headers("1000", "admin")));
             var runtime = new AndroidRuntimeApiClient(admin);
@@ -49,6 +53,7 @@ public final class AndroidWorkerBatchChecksMain {
             AndroidWorkerProofAssertions.requireDeviceEvents(device);
             var snapshot = AndroidWorkerProofAssertions.awaitRunning(device, options.maximumWait(), null);
             evidence.workerId(snapshot.workerId());
+            workerId = snapshot.workerId();
             AndroidWorkerProofAssertions.awaitConnected(runtime, options.endpointManagerId(), snapshot.workerId(), options.maximumWait());
             AndroidWorkerProofAssertions.awaitHot(runtime, snapshot.workerId(), options.maximumWait());
             runtime.requirePropertiesRelation(options.endpointManagerId(), snapshot.workerId());
@@ -58,14 +63,14 @@ public final class AndroidWorkerBatchChecksMain {
             taskId = (String) request(user, "POST", "/api/v1/app-checks/tasks", create, 201).get("taskId");
             require(taskId.equals(request(user, "POST", "/api/v1/app-checks/tasks", create, 201).get("taskId")), "creation-replay");
             var imported = importSeeds(taskId);
-            require(number(imported.get("addedCount")) == 123 && number(imported.get("itemCount")) == 123, "import-count");
+            require(number(imported.get("addedCount")) == seeds.size() && number(imported.get("itemCount")) == seeds.size(), "import-count");
             var repeated = importSeeds(taskId);
-            require(number(repeated.get("addedCount")) == 0 && number(repeated.get("existingCount")) == 123, "import-replay");
+            require(number(repeated.get("addedCount")) == 0 && number(repeated.get("existingCount")) == seeds.size(), "import-replay");
             var quote = request(user, "GET", business(taskId) + "/credits", null, 200);
-            require(number(quote.get("seedCount")) == 123 && number(quote.get("itemCount")) == 123
-                    && number(quote.get("amount")) == 123 && number(quote.get("unitPrice")) == 1, "actual-price");
-            var approval = Map.of("expectedItemCount", 123, "credits",
-                    Map.of("requestId", UUID.randomUUID().toString(), "expectedSeedCount", 123, "expectedAmount", 123));
+            require(number(quote.get("seedCount")) == seeds.size() && number(quote.get("itemCount")) == seeds.size()
+                    && number(quote.get("amount")) == seeds.size() && number(quote.get("unitPrice")) == 1, "actual-price");
+            var approval = Map.of("expectedItemCount", seeds.size(), "credits",
+                    Map.of("requestId", UUID.randomUUID().toString(), "expectedSeedCount", seeds.size(), "expectedAmount", seeds.size()));
             request(user, "POST", task(taskId) + "/approve", approval, 200);
             request(user, "POST", task(taskId) + "/approve", approval, 200);
             ProofWait.until(options.maximumWait(),
@@ -77,14 +82,15 @@ public final class AndroidWorkerBatchChecksMain {
             taskId = baseline.requiredCheck("taskId");
             require(effective.get("fingerprint").equals(baseline.requiredCheck("configurationFingerprint")), "configuration-restart");
             evidence.baselineIdentityMatched(true);
-        } else throw new IllegalArgumentException("Batch Checks phase must be initial or restart");
+        } else throw new IllegalArgumentException("Batch Checks phase must be initial, restart or window");
         verify(taskId);
+        if (window) verifyFeedback();
         evidence.check("taskId", taskId);
-        evidence.check("seedCount", 123);
-        evidence.check("itemCount", 123);
-        evidence.check("chargedAmount", 123);
-        evidence.check("poolQuery", "worker.any");
-        evidence.check("rawResultCount", 123);
+        evidence.check("seedCount", seeds.size());
+        evidence.check("itemCount", seeds.size());
+        evidence.check("chargedAmount", seeds.size());
+        evidence.check("poolQuery", query());
+        evidence.check("rawResultCount", seeds.size());
     }
     private void verify(String taskId) {
         var detail = request(user, "GET", project(taskId), null, 200);
@@ -95,7 +101,7 @@ public final class AndroidWorkerBatchChecksMain {
         require("1001".equals(metadata.get("userId")) && CHECK.equals(metadata.get("checkId")), "task-owner");
         require("CLOSE_WHEN_IDLE".equals(descriptor.get("idleDisposition")), "finite-kind");
         var targets = rows(descriptor.get("refill"));
-        require(targets.size() == 1 && "any".equals(targets.getFirst().get("poolName")), "pool-supply");
+        require(targets.size() == 1 && (window ? "device-window" : "any").equals(targets.getFirst().get("poolName")), "pool-supply");
         var expected = new LinkedHashMap<String,String>();
         for (var seed : seeds) expected.put(messageId(seed), seed);
         var ids = new ArrayList<>(expected.keySet());
@@ -118,18 +124,19 @@ public final class AndroidWorkerBatchChecksMain {
             }
         }
         var raw = request(user, "GET", task(taskId) + "/results:preview", null, 200);
-        require(Boolean.TRUE.equals(raw.get("truncated")) && rows(raw.get("results")).size() <= 100, "raw-preview-bound");
+        require(Boolean.valueOf(seeds.size() > 100).equals(raw.get("truncated"))
+                && rows(raw.get("results")).size() == Math.min(100, seeds.size()), "raw-preview-bound");
         for (var entry : rows(raw.get("results"))) {
             var item = object(entry.get("item"));
             String seed = expected.get(entry.get("messageId"));
             require(seed != null && EVENT.equals(item.get("eventCode")), "item-event");
             require(object(item.get("payload")).equals(Map.of("algorithm", "MD5", "value", seed)), "item-input");
-            require(object(item.get("workerSelector")).equals(Map.of("executorName", "worker.any", "input", Map.of())), "item-pool-query");
+            require(object(item.get("workerSelector")).equals(Map.of("executorName", query(), "input", Map.of())), "item-pool-query");
         }
         evidence.check("rawInputPreviewCount", rows(raw.get("results")).size());
         var preview = request(user, "GET", business(taskId) + "/results", null, 200);
-        require(Boolean.TRUE.equals(preview.get("truncated")) && !rows(preview.get("results")).isEmpty()
-                && rows(preview.get("results")).size() <= 100, "business-preview-bound");
+        require(Boolean.valueOf(seeds.size() > 100).equals(preview.get("truncated"))
+                && rows(preview.get("results")).size() == Math.min(100, seeds.size()), "business-preview-bound");
         for (var row : rows(preview.get("results"))) {
             String seed = expected.get(row.get("messageId"));
             require(seed != null && seed.equals(row.get("seed")) && !row.containsKey("contentError")
@@ -152,11 +159,27 @@ public final class AndroidWorkerBatchChecksMain {
             evidence.check("csv-" + filter, csv.size());
         }
         var account = request(user, "GET", "/api/v1/users/1001/credits", null, 200);
-        require(number(account.get("balance")) == 877 && number(account.get("latestSequence")) == 2, "one-debit");
+        require(number(account.get("balance")) == 1000 - seeds.size() && number(account.get("latestSequence")) == 2, "one-debit");
         var transactions = rows(request(user, "GET", "/api/v1/users/1001/credits/transactions", null, 200).get("entries"));
         var debits = transactions.stream().filter(row -> row.get("business") instanceof Map).toList();
-        require(debits.size() == 1 && number(debits.getFirst().get("delta")) == -123
+        require(debits.size() == 1 && number(debits.getFirst().get("delta")) == -seeds.size()
                 && taskId.equals(object(debits.getFirst().get("business")).get("taskId")), "debit-association");
+    }
+    private String query() { return window ? "worker.device.available" : "worker.any"; }
+    private void verifyFeedback() {
+        var binding = request(admin, "GET", "/api/v1/runtime-view/worker-groups/" + GROUP + "/bindings", null, 200);
+        var windows = rows(binding.get("fixedWindowPools"));
+        require(windows.size() == 1 && "device-window".equals(windows.getFirst().get("poolName"))
+                && number(windows.getFirst().get("windowMillis")) == 60000 && number(windows.getFirst().get("maxCount")) == 10
+                && object(windows.getFirst().get("feedback")).get("messageEvents").equals(List.of(EVENT)), "window-binding");
+        var properties = ProofWait.until(options.maximumWait(), () -> {
+            var workers = rows(request(admin, "POST", "/api/v1/runtime-view/worker-groups/" + GROUP + "/workers:preview", 100, 200).get("workers"));
+            require(workers.size() == 1 && workerId.equals(workers.getFirst().get("workerId")), "controlled-window-worker");
+            return object(workers.getFirst().get("platformProperties"));
+        }, value -> value.get("deviceAssignmentCount") instanceof Number n && n.longValue() > 0
+                && value.get("deviceAssignedAt") instanceof Number t && t.longValue() > 0,
+                "batch-checks.window-feedback", "Allocation feedback was not observed", workerId);
+        evidence.check("observedWindowCount", number(properties.get("deviceAssignmentCount")));
     }
     private Map<String,Object> importSeeds(String taskId) {
         var response = user.sendText("POST", business(taskId) + "/seeds:import", String.join("\n", seeds), "text/plain; charset=utf-8", "import-seeds");

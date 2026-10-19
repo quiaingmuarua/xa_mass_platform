@@ -45,6 +45,8 @@ class ArchiveToolsTest(unittest.TestCase):
             "BOOT-INF/lib/xa-mass-server-jvm-fixture.jar": library,
         })
         return {
+            **{"examples/batch-checks/" + name: ("{}" if name.endswith(".json") else "fixture")
+               for name in tools.BATCH_CHECK_EXAMPLES},
             f"lib/xa-mass-server-jvm-{self.version}.jar": jar,
             "frontend/dist/index.html": "fixture",
             "frontend/dist/reference/platform-diagnostic-codes.json": json.dumps({
@@ -118,6 +120,20 @@ class ArchiveToolsTest(unittest.TestCase):
                 tools.verify_runtime(self.archive("server-runtime", files), self.version)
         with self.assertRaises(ValueError):
             tools.verify_runtime(self.archive("server-runtime", {**original, "../escaped": "fixture"}), self.version)
+
+    def test_runtime_examples_are_explicit_and_contain_no_saved_state(self):
+        original = self.runtime_files()
+        for name in tools.BATCH_CHECK_EXAMPLES:
+            with self.subTest(missing=name):
+                files = dict(original)
+                del files["examples/batch-checks/" + name]
+                with self.assertRaisesRegex(ValueError, "examples"):
+                    tools.verify_runtime(self.archive("server-runtime", files), self.version)
+        for filename in ("configuration.json.lock", "configuration.json.tmp", "data/configuration.json"):
+            with self.subTest(runtime_state=filename), self.assertRaisesRegex(ValueError, "runtime data"):
+                tools.verify_runtime(self.archive("server-runtime", {**original, "examples/batch-checks/" + filename: "{}"}), self.version)
+        with self.assertRaisesRegex(ValueError, "application configuration"):
+            tools.verify_runtime(self.archive("server-runtime", {**original, "examples/batch-checks/application.yaml": "fixture"}), self.version)
 
     def test_sdk_rejects_invalid_identity_missing_sources_and_lost_transitive_dependency(self):
         original = self.sdk_files()

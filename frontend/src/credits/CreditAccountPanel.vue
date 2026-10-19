@@ -198,7 +198,7 @@ onBeforeUnmount(() => workspace.dispose());
       <el-table-column label="来源与原因" min-width="220"
         ><template #default="{ row }">
           <template v-if="row.business">
-            <div>App Checks · {{ row.business.checkId }}</div>
+            <div>批量检查 · {{ row.business.checkId }}</div>
             <div>{{ row.business.quantity }} × {{ row.business.unitPrice }} 积分</div>
             <div class="credits-task-id">Task：{{ row.business.taskId }}</div>
           </template>

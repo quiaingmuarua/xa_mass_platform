@@ -12,6 +12,39 @@ import run_android_emulator_worker as proof
 
 
 class EmulatorChoreographyTest(unittest.TestCase):
+    def test_batch_checks_uses_packaged_inputs_and_window_copy_keeps_originals(self):
+        for configuration in ("batch-checks-runtime.yaml", "batch-checks-window.yaml"):
+            with self.subTest(configuration=configuration), tempfile.TemporaryDirectory(prefix="external 配置 ") as directory:
+                root = Path(directory)
+                runner = self.runner(root)
+                runner.logs.mkdir(); runner.evidence.mkdir()
+                example = root / "runtime/examples/batch-checks"
+                example.mkdir(parents=True)
+                for name in ("batch-checks-runtime.yaml", "batch-checks-configuration.json", "worker-groups.json"):
+                    (example / name).write_bytes((proof.ROOT / "xa-android/config" / name).read_bytes())
+                before = {file.name: file.read_bytes() for file in example.iterdir()}
+                runner.consumption = {"runtimeRoot": str(root / "runtime")}
+                process = Mock(); process.poll.return_value = None
+                with patch.object(proof.consumer, "server_command", return_value=["java", "-jar", "verified.jar"]) as command, \
+                        patch.object(proof, "spawn", return_value=process) as spawn, patch.object(proof, "urlopen") as ready:
+                    ready.return_value.__enter__.return_value.status = 200
+                    runner.start_server("external", "test_external", configuration=configuration)
+                self.assertEqual(example / "worker-groups.json", command.call_args.kwargs["groups"])
+                runtime = command.call_args.kwargs["runtime_config"]
+                environment = spawn.call_args.kwargs["env"]
+                if configuration == "batch-checks-runtime.yaml":
+                    self.assertEqual(example / configuration, runtime)
+                    self.assertEqual((example / "batch-checks-configuration.json").as_uri(), environment["XA_MASS_APP_CHECKS_SEED"])
+                else:
+                    self.assertIn("window-inputs", runtime.parts)
+                    execution = json.loads((root / "window-inputs/checks.json").read_text(encoding="utf-8"))["checks"]["android-md5-prefix"]["execution"]
+                    self.assertEqual("device-window", execution["refill"][0]["poolName"])
+                    self.assertEqual("worker.device.available", execution["workerSelector"]["executorName"])
+                self.assertEqual(before, {file.name: file.read_bytes() for file in example.iterdir()})
+                self.assertIn("external", runner.consumption["runtimeInputs"])
+                for stream in runner.streams:
+                    stream.close()
+
     def runner(self, root: Path) -> proof.ProofRunner:
         return proof.ProofRunner(argparse.Namespace(
             android_serial="emulator-5554", proof_root=root,

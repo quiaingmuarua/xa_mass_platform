@@ -173,6 +173,14 @@ previews, full CSV, one owner debit and same-scope restart reads. It consumes th
 same candidate ZIP/APK chain. Scenario tests own malformed protocol cases; this
 witness makes no claim about third-party Apps or throughput.
 
+The consumer loads the three deployment examples from the candidate Runtime ZIP,
+with actual per-start input hashes. A separate three-seed Batch Checks window phase
+preserves the Any workload and proves paid finite execution, full raw/business
+answers, CSV and observed allocation properties under external host configuration.
+Boot's external deployment proof uses unchanged production classes across restarts
+to add a second configured Group and retain original Task snapshots; this does not
+claim Android runtime Group rebinding.
+
 The raw Window Pool phase separately uses the existing Android digest Handler through an explicitly Group-bound window Pool,
 verifying actual Item queries, three fixed answers, JSONL and observed Platform Properties. It enables no Scenario.
 New-Group membership expansion belongs to Server/Boot's parameterized Host proof, not Android identity reconfiguration.

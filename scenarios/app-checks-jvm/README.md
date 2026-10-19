@@ -1,6 +1,8 @@
 # 批量检查（Batch Checks / app-checks）
 
-Status: current one-shot application check scenario owner.
+Status: current finite Batch Checks scenario owner.
+
+产品名称为 Batch Checks／批量检查；模块、Project、API 和页面路径等技术标识继续使用 `app-checks`。
 
 `app-checks` 是通用有限任务的受约束业务入口。创建空的 `CLOSE_WHEN_IDLE`
 Task、导入种子、核对启动和关闭是独立操作，复用 Server 的 Task 应用能力。
@@ -20,7 +22,7 @@ SDK 和 Worker 协议使用既有机制；Matching 基础规则由宿主启动�
 | --- | --- |
 | `GET /api/v1/app-checks/catalog` | 当前生效的 Project、checkTypes、含执行绑定的 checks、国家及单次种子导入限制 |
 | `GET /api/v1/app-checks/tasks/{taskId}/credits` | 实际种子数量、固定单价、总额、所有者余额及原启动请求的扣分核对；可带 requestId |
-| `GET /api/v1/app-checks/configuration` | 已保存与当前进程生效配置及内容指纹、待重启/新 scope 提示及契约说明/示例 |
+| `GET /api/v1/app-checks/configuration` | 已保存与当前进程生效配置及内容指纹、待重启提示及契约说明/示例 |
 | `PUT /api/v1/app-checks/configuration` | `{expectedFingerprint, configuration}` 整份校验与原子文件替换；不热更新 |
 | `POST /api/v1/app-checks/tasks` | 创建空待审核任务，201 返回 `{"taskId":"..."}` |
 | `POST /api/v1/app-checks/tasks/{taskId}/seeds:import` | `text/plain` UTF-8 种子文件；全文件校验后每批最多 100 个 Item |
@@ -148,6 +150,11 @@ CSV 各自的下载临时文件在失败或传输结束时清理；CSV 不再生
 Boot 通过严格绑定的 `xa.mass.scenarios.app-checks.enabled` 独立装配，缺省关闭，
 Preview 显式开启；consumer 可用外部配置开启，无需其他 Scenario。关闭时不打开
 配置文件或锁；开启必须明确提供 configuration.path/seed，不回退 Preview 种子。
+
+独立部署使用[三份外部输入](../../distribution/server/README.md#external-consumer-workbench-deployment)：宿主 YAML、Group 注册 JSON 和本模块配置 JSON。
+检查配置中的 Group 去重生成本 Project，宿主无需重复填写 supported Groups。
+资源启用仍独立由宿主 YAML 决定；同协议新增 Group 不需要修改 profile 或重新打包。
+种子只负责首次初始化，新增检查须修改实际保存文档，随后补齐宿主资源并重启。
 
 
 模块内 `AppCheckContract` 同时声明类型 ID、名称、说明、seedType 和 maxSeedsPerItem；统一用 payload(context, seeds)、inputSeeds(payload)、results(context, payload, content) 承接一个 Item 与多个种子答案。单条契约使用长度为 1 的集合。参数校验和 CSV 附加列仍是纯业务映射。
@@ -342,6 +349,10 @@ GET 的 `saved` 与 `effective` 各包含 `fingerprint`、`configuration`。指�
 API/Mock 和浏览器核对的可用性及本地状态。
 
 ## 装配与证明
+
+`BatchChecksExternalDeploymentIntegrationTest` 使用实际外部 YAML／Group JSON／检查文档，
+通过同一生产装配的两次启动和参数化 JavaWorker 验证第二个 Group 接入、窗口查询、属性反馈、
+独立固定摘要、逐种子 CSV、真实扣费及原 Task 快照保留。它不宣称 Android Group 身份可动态改写。
 
 配置单测覆盖文件重开、种子不覆盖、文档损坏、键顺序/排版不影响指纹、并发指纹冲突、
 同内容保存及内容恢复、提交确认丢失后的读取核对。
