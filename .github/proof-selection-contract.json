@@ -3,12 +3,16 @@
   "cases": [
     {
       "path": ".github/scripts/run_android_emulator_worker.py",
-      "lanes": ["android_emulator"],
+      "lanes": [
+        "android_emulator"
+      ],
       "reason": "Cross-platform ADB/process choreography preserves Java-owned Emulator verdicts."
     },
     {
       "path": ".github/scripts/prepare_release.py",
-      "lanes": ["runtime_distribution"],
+      "lanes": [
+        "runtime_distribution"
+      ],
       "reason": "Release promotion checks full-Proof coordinates and the exact Distribution ZIPs."
     },
     {
@@ -263,7 +267,8 @@
       "path": "xa-android/worker-demo/src/lab2/res/values/lab.xml",
       "lanes": [
         "android_host",
-        "android_emulator"
+        "android_emulator",
+        "android_consumer"
       ],
       "reason": "Android Lab topology resources require deterministic assembly and the fixed three-App emulator proof."
     },
@@ -397,7 +402,8 @@
         "frontend",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "android_consumer"
       ],
       "reason": "Workflow changes re-prove the complete required gate."
     },
@@ -414,7 +420,8 @@
         "frontend",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "android_consumer"
       ],
       "reason": "Selection-contract changes re-prove the complete required gate."
     },
@@ -718,7 +725,6 @@
     {
       "path": "integrations/worker_proof_support/platform-runtime.yaml",
       "lanes": [
-        "android_emulator",
         "jvm_contracts",
         "product_coexistence",
         "redis_owner",
@@ -728,10 +734,10 @@
         "worker_correctness",
         "worker_dynamic_matching"
       ],
-      "reason": "Executable-owned deployment configuration retains every proof selected before its move out of the Server library."
+      "reason": "The shared JVM fixture retains its existing JVM claims; Android consumes the packaged consumer profile and its own Group declarations."
     },
     {
-      "path": "server_boot_jvm/src/main/resources/application-agentforge.yaml",
+      "path": "server_boot_jvm/src/main/resources/application-consumer.yaml",
       "lanes": [
         "jvm_contracts",
         "product_coexistence",
@@ -740,9 +746,10 @@
         "runtime_distribution",
         "worker_convergence_health",
         "worker_correctness",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "android_emulator"
       ],
-      "reason": "Executable-owned deployment configuration retains every proof selected before its move out of the Server library."
+      "reason": "The packaged consumer profile now supplies the real Android archive-consumption proof in addition to Runtime configuration contracts."
     },
     {
       "path": "distribution/server/src/test/python/verify_runtime_archive.py",
@@ -1282,6 +1289,48 @@
         "product_coexistence"
       ],
       "reason": "Assignment ceiling admission and demand-driven supply retain the existing scheduling, Matching and delivery proof selection."
+    },
+    {
+      "path": "xa-android/run_consumer.py",
+      "lanes": [
+        "android_host",
+        "android_consumer",
+        "android_emulator"
+      ],
+      "reason": "The portable archive verifier and normal Server command are shared by reference startup and the full Android proof."
+    },
+    {
+      "path": "xa-android/tests/test_run_consumer.py",
+      "lanes": [
+        "android_host"
+      ],
+      "reason": "Pure archive-input tests stay independent of candidate production and Emulator execution."
+    },
+    {
+      "path": "xa-android/settings.gradle",
+      "lanes": [
+        "android_host",
+        "android_consumer",
+        "android_emulator"
+      ],
+      "reason": "The standalone dependency boundary controls actual SDK consumption and the proof APKs."
+    },
+    {
+      "path": ".github/scripts/build_android_consumer.py",
+      "lanes": [
+        "android_consumer",
+        "android_emulator"
+      ],
+      "reason": "External consumer build and provenance are mandatory inputs to the Emulator proof."
+    },
+    {
+      "path": ".github/scripts/prepare_distribution_candidate.py",
+      "lanes": [
+        "android_consumer",
+        "android_emulator",
+        "runtime_distribution"
+      ],
+      "reason": "One clean-commit archive pair supplies all downstream consumption proofs."
     }
   ]
 }

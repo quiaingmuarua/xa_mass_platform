@@ -26,9 +26,7 @@ public class AndroidCapabilitiesArchitectureTest {
         String source = readTree(project.resolve("src/main/java"));
 
         assertTrue(build.contains("id 'com.android.library'"));
-        assertTrue(build.contains(
-                "api project(':transport:worker-core')"
-        ));
+        assertFalse("Platform dependencies must come from the SDK ZIP", build.contains("project("));
         for (String forbidden : new String[]{
                 "transport:android-worker",
                 "transport:java-worker",

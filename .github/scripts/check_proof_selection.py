@@ -22,6 +22,7 @@ EXPECTED_LANES = {
     "worker_dynamic_matching",
     "worker_convergence_health",
     "android_host",
+    "android_consumer",
     "android_emulator",
     "frontend",
     "runtime_distribution",

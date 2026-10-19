@@ -35,7 +35,7 @@ three business Scenarios and the explicit `default` raw-task Project.
 `--profile default` builds and starts only the plain Server; no Worker Host or
 business storage is opened. The retired platform Lab profile has no launch alias.
 
-`python run_local_runtime.py --profile agentforge` builds the same frontend and
+`python run_local_runtime.py --profile consumer` builds the same frontend and
 starts only Server with its configured Adapter; it does not build or start Host.
 Unknown profiles are rejected. For business Preview, the root command delegates
 in-process to the [sole Preview launcher](PREVIEW.md#source-launch):
@@ -49,9 +49,11 @@ The [Simulator entry](../../worker_simulator_jvm/README.md#one-configuration-one
 also supports standalone Host development; [Boot Run](../../server_boot_jvm/README.md#run)
 starts only the Server composition.
 
-## AgentForge workbench deployment
+## External consumer workbench deployment
 
-The `agentforge` profile supplies Server/Adapter coordinates and no Project or
+[XA Android](../../xa-android/README.md) supplies the portable dual-ZIP reference entry, explicit initialization and real RPC business example.
+
+The `consumer` profile supplies Server/Adapter coordinates and no Project or
 Group resources. The host supplies an explicit Project; `default` has no bound
 Group IDs and uses the registered catalog, while other Projects declare their
 bindings. The name need not equal the profile. The Console accepts any declared
@@ -75,7 +77,7 @@ against source and extracted Runtime, identified explicitly as a test capability
 
 For an already running consumer, building this repository does not replace its
 locked installation. A local candidate ZIP is acceptance output, not a published
-Release. Formal delivery separately follows the [release contract](RELEASE-2.0.md):
+Release. Formal delivery separately follows the [3.0 candidate contract](RELEASE-3.0.md):
 publish immutable artifacts, update the consumer's exact version/commit/checksums,
 resolve into a separate installation, and switch deliberately. The task-directory
 storage change after 1.0.0 requires a fresh Redis scope; do not reuse old descriptors
@@ -108,24 +110,24 @@ file is not committed and is not a compatibility contract.
 Build an explicit release version:
 
 ```powershell
-.\gradlew.bat :distribution:server:distZip "-PxaMassVersion=2.0.0"
+.\gradlew.bat :distribution:server:distZip "-PxaMassVersion=3.0.0"
 ```
 
 The archive is written under `distribution/server/build/distributions`. After
 extracting it on a machine with Java 21, run from the extracted Runtime root:
 
 ```powershell
-java -jar .\lib\xa-mass-server-jvm-2.0.0.jar `
+java -jar .\lib\xa-mass-server-jvm-3.0.0.jar `
   --spring.profiles.active=default `
   --spring.web.resources.static-locations=file:frontend/dist/ `
   --xa.mass.redis.url=redis://127.0.0.1:6379/15
 ```
 
-Select the built-in clean `agentforge` deployment preset explicitly:
+Select the built-in clean `consumer` deployment preset explicitly:
 
 ```powershell
-java -jar .\lib\xa-mass-server-jvm-2.0.0.jar `
-  --spring.profiles.active=agentforge `
+java -jar .\lib\xa-mass-server-jvm-3.0.0.jar `
+  --spring.profiles.active=consumer `
   --spring.web.resources.static-locations=file:frontend/dist/
 ```
 
@@ -148,7 +150,7 @@ full Git commit against `manifest.json`, plus the exact Server, Adapter and
 Worker Core owner order. It also requires the OpenAPI 3.1 snapshot, rejects a
 request-derived `servers` field or non-`/api/v1/**` paths, and checks the stable
 four-Tag navigation order.
-It requires the three canonical Boot resources (base, AgentForge and Preview),
+It requires the three canonical Boot resources (base, Consumer and Preview),
 excludes the external platform proof fixture, and rejects application configuration
 in nested platform/Scenario libraries and all test configuration.
 Preview adds [external-profile and packaged-launch checks](PREVIEW.md#archive-delivery).

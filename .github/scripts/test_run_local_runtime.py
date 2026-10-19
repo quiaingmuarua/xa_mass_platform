@@ -23,14 +23,16 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
     def test_profile_defaults_to_preview_and_rejects_retired_values(self) -> None:
         self.assertEqual(launcher.parse_arguments([]).profile, "preview")
         self.assertEqual(
-            launcher.parse_arguments(["--profile", "agentforge"]).profile,
-            "agentforge",
+            launcher.parse_arguments(["--profile", "consumer"]).profile,
+            "consumer",
         )
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             launcher.parse_arguments(["--profile", "unknown"])
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            launcher.parse_arguments(["--profile", "agentforge"])
 
     def test_preview_options_are_rejected_for_other_profiles(self) -> None:
-        for profile in ("default", "agentforge"):
+        for profile in ("default", "consumer"):
             for option in ("count", "app-count", "seed", "port", "sandbox-root"):
                 with self.subTest(profile=profile, option=option), redirect_stderr(io.StringIO()), \
                         self.assertRaises(SystemExit) as error, patch.object(launcher, "build_frontend") as build:
@@ -64,7 +66,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         self.assertIn("preview", result.stdout)
         with patch.object(launcher, "load_preview", side_effect=AssertionError("unexpected Preview import")):
             self.assertEqual("preview", launcher.parse_arguments([]).profile)
-            self.assertEqual("agentforge", launcher.parse_arguments(["--profile", "agentforge"]).profile)
+            self.assertEqual("consumer", launcher.parse_arguments(["--profile", "consumer"]).profile)
 
     def test_platform_profiles_build_no_worker_host(self) -> None:
         self.assertEqual(
@@ -75,7 +77,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            launcher.gradle_tasks("agentforge"),
+            launcher.gradle_tasks("consumer"),
             [
                 ":server_boot_jvm:bootJar",
                 ":distribution:server:installLocalPlatformDiagnosticCodes",
@@ -89,8 +91,8 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         )
         self.assertEqual(
             launcher.runtime_api_base_url(
-                "agentforge",
-                {"XA_MASS_AGENTFORGE_SERVER_PORT": "19182"},
+                "consumer",
+                {"SERVER_PORT": "19182"},
             ),
             "http://127.0.0.1:19182",
         )
@@ -103,8 +105,8 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(RuntimeError, "1..65535"):
             launcher.runtime_api_base_url(
-                "agentforge",
-                {"XA_MASS_AGENTFORGE_SERVER_PORT": "70000"},
+                "consumer",
+                {"SERVER_PORT": "70000"},
             )
 
     def test_server_command_owns_profile_and_absolute_frontend_path(self) -> None:
@@ -136,7 +138,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         self.assertEqual(popen.call_args.kwargs["env"], {"PATH": "test-path"})
 
     def test_platform_main_starts_only_server_and_always_cleans_up(self):
-        for profile in ("default", "agentforge"):
+        for profile in ("default", "consumer"):
             server = MagicMock()
             with patch.object(launcher, "build_frontend"), patch.object(
                     launcher, "build_runtime_processes", return_value=Path("server.jar")), patch.object(

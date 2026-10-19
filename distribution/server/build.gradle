@@ -124,7 +124,7 @@ tasks.register('generateRuntimeManifest') {
                         defaultSpringProfile: 'default',
                         springProfiles  : [
                                 'default',
-                                'agentforge',
+                                'consumer',
                                 'preview'
                         ],
                         frontendIncluded: true

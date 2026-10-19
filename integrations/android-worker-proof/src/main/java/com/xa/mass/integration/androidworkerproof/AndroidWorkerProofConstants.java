@@ -7,7 +7,7 @@ final class AndroidWorkerProofConstants {
     static final String APPLICATION_ID =
             "com.xa.mass.integration.androidworker";
     static final String WORKER_GROUP_ID = "android-demo-workers";
-    static final String DEFAULT_ENDPOINT_MANAGER_ID = "scenario-websocket";
+    static final String DEFAULT_ENDPOINT_MANAGER_ID = "runtime-websocket";
     static final long TASK_CALL_OBSERVATION_WAIT_MILLIS = 250L;
 
     static final String HOST_SNAPSHOT_EVENT =

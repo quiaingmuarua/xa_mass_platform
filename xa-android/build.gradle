@@ -1,0 +1,75 @@
+import groovy.json.JsonOutput
+import java.security.MessageDigest
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.type.ArtifactTypeDefinition
+
+plugins {
+    id 'com.android.application' version '8.9.3' apply false
+    id 'com.android.library' version '8.9.3' apply false
+}
+
+allprojects {
+    group = 'com.xa.mass.consumer'
+    version = gradle.ext.xaMassSdkVersion
+}
+
+def digest = { File file ->
+    MessageDigest hash = MessageDigest.getInstance('SHA-256')
+    file.withInputStream { input ->
+        byte[] buffer = new byte[65536]
+        int count
+        while ((count = input.read(buffer)) > 0) hash.update(buffer, 0, count)
+    }
+    hash.digest().encodeHex().toString()
+}
+
+tasks.register('verifySdkConsumption') {
+    group = 'verification'
+    description = 'Checks the actual four resolved SDK binaries against the verified ZIP bytes.'
+    outputs.upToDateWhen { false }
+    doLast {
+        def records = [:]
+        ['debug', 'lab1', 'lab2', 'lab3'].each { variant ->
+            def expected = gradle.ext.xaMassSdkOrigin.artifacts
+            def configuration = project(':worker-demo').configurations.getByName("${variant}RuntimeClasspath")
+            def sdkComponents = configuration.incoming.resolutionResult.allComponents
+                    .collect { it.id }.findAll { it instanceof ModuleComponentIdentifier && it.group == 'com.xa.mass' }
+            if (sdkComponents.collect { it.module }.toSet() != expected.keySet()) {
+                throw new GradleException("${variant} has missing or undeclared SDK components")
+            }
+            def actual = []
+            ['jar', 'aar'].each { packaging ->
+                actual.addAll(configuration.incoming.artifactView {
+                    attributes { attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, packaging) }
+                    componentFilter { id -> id instanceof ModuleComponentIdentifier && id.group == 'com.xa.mass'
+                            && expected[id.module]?.packaging == packaging }
+                }.artifacts.artifacts)
+            }
+            if (actual.collect { it.id.componentIdentifier.module }.toSet() != expected.keySet()) {
+                throw new GradleException("${variant} did not resolve exactly the four SDK components")
+            }
+            records[variant] = actual.collectEntries { artifact ->
+                def id = artifact.id.componentIdentifier
+                def declared = expected[id.module]
+                String hash = digest(artifact.file)
+                if (id.version != project.version || hash != declared.sha256) {
+                    throw new GradleException("${variant} resolved different bytes for ${id.module}")
+                }
+                [(id.module): [version: id.version, sha256: hash]]
+            }
+        }
+        File output = layout.buildDirectory.file('sdk-consumption.json').get().asFile
+        output.parentFile.mkdirs()
+        output.text = JsonOutput.prettyPrint(JsonOutput.toJson([
+                version: project.version, gitCommit: gradle.ext.xaMassSdkOrigin.gitCommit,
+                sdkArchiveSha256: gradle.ext.xaMassSdkOrigin.archiveSha256,
+                runtimeApiBaseUrl: providers.gradleProperty('xaMassRuntimeApiBaseUrl')
+                        .orElse('http://127.0.0.1:18182').get(), variants: records
+        ])) + '\n'
+    }
+}
+
+gradle.projectsEvaluated {
+    project(':worker-demo').tasks.matching { it.name in ['assembleDebug', 'assembleLab1', 'assembleLab2', 'assembleLab3'] }
+            .configureEach { dependsOn rootProject.tasks.named('verifySdkConsumption') }
+}

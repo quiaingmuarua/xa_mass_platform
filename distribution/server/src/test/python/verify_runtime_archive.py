@@ -17,7 +17,7 @@ def _require(condition: bool, message: str) -> None:
 
 
 HOST_CONFIGURATIONS = {"application.yaml",
-                       "application-agentforge.yaml", "application-preview.yaml"}
+                       "application-consumer.yaml", "application-preview.yaml"}
 
 
 def is_application_configuration(name: str) -> bool:
@@ -116,7 +116,7 @@ def verify(archive: Path, version: str) -> None:
         )
         _require(
             manifest.get("springProfiles")
-            == ["default", "agentforge", "preview"],
+            == ["default", "consumer", "preview"],
             "Spring Profiles mismatch",
         )
         _require(manifest.get("frontendIncluded") is True, "Frontend mismatch")

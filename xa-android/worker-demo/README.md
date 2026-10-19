@@ -1,6 +1,6 @@
 # Android Worker Demo
 
-`:xa-android:worker-demo` is the installable Android Host for the XA Mass
+`:worker-demo` is the installable Android Host for the XA Mass
 local Lab. It composes existing owners instead of copying their mechanisms:
 
 ```text
@@ -24,8 +24,8 @@ MainActivity
   -> observes capability Snapshot
 ```
 
-The App depends only on `transport:android-worker`,
-`:xa-android:capabilities`, and `:xa-android:capability-http`. It does not
+The independently built App depends on the published `xa-mass-android-worker`
+and `xa-mass-android-capability-http` artifacts plus its local `:capabilities` module. It does not
 depend on Server, Kernel, Adapter, Redis, Scenario Workers, or Task
 implementation code.
 
@@ -138,47 +138,19 @@ rule when finished:
 adb forward --remove tcp:18084
 ```
 
-## Real device run
+## Manual consumer run
 
-Redis must be available at `redis://localhost:6379/15`. Start the shared Lab
-profile; Java Server selects the checked `SCENARIO_LAB` preset and starts the
-sole public `KernelPacerRuntime`. Its fixed Result and Dispatch applications
-are described by the [Pacer assembly Owner](../../kernel_pacer_jvm/doc/application-assembly.md):
+Use the [dual ZIP consumer instructions](../README.md#normal-runtime-and-app-startup)
+for archive validation, the independent build, explicit Group initialization,
+RPC preparation and the real digest result. The default consumer uses Runtime
+ports `18182/18183` and the `DEFAULT` Pacer preset. Registering the Group does
+not create an RPC Task. Bind every ADB command to the selected device serial.
 
-```powershell
-.\gradlew.bat :server_boot_jvm:bootRun `
-  --args="--spring.profiles.active=scenario-workers"
-```
-
-The profile initializes the advisory `android-demo-workers` catalog and its
-registered Task Call, but does not construct the Android Worker. Route the
-Runtime API and WebSocket Adapter to the device:
-
-```powershell
-adb reverse tcp:18082 tcp:18082
-adb reverse tcp:18083 tcp:18083
-```
-
-Install and open the App:
-
-```powershell
-.\gradlew.bat :xa-android:worker-demo:installDebug
-adb shell am start -n `
-  com.xa.mass.integration.androidworker/com.xa.mass.android.workerdemo.MainActivity
-```
-
-Wait for `RUNNING`, then run the Java correctness phase. It sends ten sequential
-DELAY Items through the managed Task and also proves explicit stop/start:
-
-```powershell
-.\gradlew.bat :integrations:android-worker-proof:runAndroidWorkerCorrectness `
-  --args="--phase=initial --proof-id=manual-android-correctness --evidence-file=build/android-correctness.json --android-api-level=33"
-```
-
-The Java proof reads no business Result payload. It relates the App snapshot to
-public Adapter Network, Kernel Scheduling, Direct Call, Properties observation,
-`items:call`, and `results:load` APIs. The complete process-restart and Server
-failure choreography is owned by the hosted shell described below.
+The complete API 33 Emulator acceptance uses separate `18082/18083` ports and
+its own APK build parameter. Its [Integration Owner](../../integrations/android-worker-proof/README.md)
+defines all Java phases and the portable Python invocation. Java retains the
+RPC digest payload in memory to check its exact content; saved evidence retains
+only identity and assertion outcomes.
 
 ## Hosted Emulator proof
 
@@ -188,13 +160,13 @@ one API 33 x86_64 Emulator, and uses ADB only to
 install/start/force-stop the Apps and map shared Runtime ports plus the four
 distinct Host ports. All device-side Worker controls use the three
 local Host Events above. The Java 21 `:integrations:android-worker-proof`
-module owns workload, assertions, and evidence; the shell owns only Emulator,
+module owns workload, assertions, and evidence; the Python launcher owns only Emulator,
 ADB, Server, App, and Redis-scope lifecycles.
 
 Correctness proves:
 
 1. one Worker ID closes Prepare, route, Properties, Probe, and Scheduling;
-2. ten sequential DELAY Task Items return ten exact `SUCCEEDED` statuses;
+2. a separate RPC digest returns the expected content, and ten sequential DELAY Task Items return ten exact `SUCCEEDED` statuses;
 3. explicit stop/start retains identity and restores the route;
 4. App process restart retains identity and completes another DELAY Item.
 
@@ -235,7 +207,7 @@ defaults this includes up to nineteen 500 ms reconnect delays plus the actual
 connection-attempt durations; the connect timeout applies to each attempt, not
 once to the complete retry sequence. Changes to the Client retry policy must
 therefore be reviewed together with the workflow's
-`ANDROID_WORKER_MAXIMUM_WAIT_MILLIS` budget.
+`--maximum-wait-millis` budget.
 
 It asserts IDs, states, Event names, message IDs, counts, established mutations,
 and cross-stage relations. Evidence excludes full Properties, business
@@ -243,14 +215,21 @@ Payloads, opaque Results, screenshots, and video. The lane does not automate UI.
 
 ## Verification
 
+Run from the independent consumer build with the explicit verified SDK properties described in the [consumer entry](../README.md#pinned-inputs-and-preparation).
+
 ```powershell
-.\gradlew.bat :xa-android:worker-demo:testDebugUnitTest
-.\gradlew.bat :xa-android:worker-demo:assembleDebug
-.\gradlew.bat :xa-android:worker-demo:assembleLab1
-.\gradlew.bat :xa-android:worker-demo:assembleLab2
-.\gradlew.bat :xa-android:worker-demo:assembleLab3
-.\gradlew.bat :xa-android:capability-http:testDebugUnitTest
-.\gradlew.bat :xa-android:capability-http:assembleDebug
+.\gradlew.bat :worker-demo:testDebugUnitTest
+.\gradlew.bat :worker-demo:assembleDebug
+.\gradlew.bat :worker-demo:assembleLab1
+.\gradlew.bat :worker-demo:assembleLab2
+.\gradlew.bat :worker-demo:assembleLab3
+```
+
+Platform library and Java proof tests run from the platform root instead:
+
+```powershell
+.\gradlew.bat :android-capability-http:testDebugUnitTest
+.\gradlew.bat :transport:android-worker:testDebugUnitTest
 .\gradlew.bat :integrations:android-worker-proof:test
 ```
 

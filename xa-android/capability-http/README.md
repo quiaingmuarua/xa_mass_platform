@@ -1,6 +1,6 @@
 # Android Capability HTTP
 
-`:xa-android:capability-http` is a device-local Lab probe for immutable Android
+`:android-capability-http` is a device-local Lab probe for immutable Android
 extension Definitions. It exposes the Host-supplied finite collection through
 HTTP bound only to `127.0.0.1` on the selected port. The
 [Worker Demo](../worker-demo/README.md#device-local-capability-and-host-api)
@@ -40,6 +40,6 @@ exposes no dynamic registration surface or second HTTP control route.
 ## Verification
 
 ```powershell
-.\gradlew.bat :xa-android:capability-http:testDebugUnitTest
-.\gradlew.bat :xa-android:capability-http:assembleDebug
+.\gradlew.bat :android-capability-http:testDebugUnitTest
+.\gradlew.bat :android-capability-http:assembleDebug
 ```

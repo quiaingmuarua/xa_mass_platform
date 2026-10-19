@@ -35,7 +35,7 @@ def artifacts = [
                 packaging  : 'aar'
         ],
         [
-                projectPath: ':xa-android:capability-http',
+                projectPath: ':android-capability-http',
                 artifactId : 'xa-mass-android-capability-http',
                 packaging  : 'aar'
         ]
@@ -160,12 +160,7 @@ tasks.register('workerSdkDistributionTest', Exec) {
                 it.archiveFile
             }.get().asFile.absolutePath,
             '--version', sdkVersion,
-            '--gradle-wrapper', rootProject.file(
-                    System.getProperty('os.name').toLowerCase(Locale.ROOT)
-                            .contains('windows')
-                            ? 'gradlew.bat'
-                            : 'gradlew'
-            ).absolutePath
+            '--consumer-project', rootProject.file('xa-android').absolutePath
     )
 }
 

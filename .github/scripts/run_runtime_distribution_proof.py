@@ -460,7 +460,7 @@ def _prove_agentforge_bindings(base_url: str) -> None:
             raise RuntimeError("AgentForge workbench direct route unavailable")
 
 
-def _prove_agentforge_profile(
+def _prove_consumer_profile(
     runtime_root: Path,
     redis_url: str,
     scope: str,
@@ -475,8 +475,8 @@ def _prove_agentforge_profile(
     environment = os.environ.copy()
     environment["XA_MASS_REDIS_URL"] = redis_url
     environment["XA_MASS_REDIS_SCOPE"] = scope
-    environment["XA_MASS_AGENTFORGE_SERVER_PORT"] = str(server_port)
-    environment["XA_MASS_AGENTFORGE_ADAPTER_PORT"] = str(adapter_port)
+    environment["SERVER_PORT"] = str(server_port)
+    environment["XA_MASS_ADAPTER_PORT"] = str(adapter_port)
     flags: dict[str, Any] = {}
     if os.name == "nt":
         flags["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
@@ -484,7 +484,7 @@ def _prove_agentforge_profile(
         flags["start_new_session"] = True
     with log_path.open("wb") as log:
         process = subprocess.Popen(
-            _server_command(runtime_root, "agentforge", [
+            _server_command(runtime_root, "consumer", [
                 "--xa.mass.project-assembly.projects[0].project-id=agentforge",
                 *(f"--xa.mass.project-assembly.projects[0].worker-group-ids[{i}]={group}"
                   for i, group in enumerate(_AGENTFORGE_GROUPS))
@@ -499,7 +499,7 @@ def _prove_agentforge_profile(
             _wait_for_readiness(base_url, process)
             if _preview_tasks(base_url) != []:
                 raise RuntimeError(
-                    "AgentForge Profile must not seed Tasks"
+                    "Consumer Profile must not seed Tasks"
                 )
             preview = _preview_worker_groups(base_url)
             if (
@@ -507,7 +507,7 @@ def _prove_agentforge_profile(
                 or preview.get("workerGroups") != []
             ):
                 raise RuntimeError(
-                    "AgentForge Profile must start with an empty WorkerGroup catalog"
+                    "Consumer Profile must start with an empty WorkerGroup catalog"
                 )
             with socket.create_connection(
                 ("127.0.0.1", adapter_port), timeout=5
@@ -515,7 +515,7 @@ def _prove_agentforge_profile(
                 pass
             _prove_agentforge_bindings(base_url)
             print(
-                "AgentForge Runtime Profile proof succeeded: "
+                "Consumer Runtime Profile proof succeeded: "
                 f"scope={scope}, serverPort={server_port}, "
                 f"adapterPort={adapter_port}"
             )
@@ -546,7 +546,7 @@ def main() -> int:
                 scope,
                 proof_root,
             )
-            _prove_agentforge_profile(
+            _prove_consumer_profile(
                 runtime_root,
                 arguments.redis_url,
                 agentforge_scope,

@@ -16,6 +16,8 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = '0.1.0'
+        resValue 'string', 'runtime_api_base_url', providers.gradleProperty('xaMassRuntimeApiBaseUrl')
+                .orElse('http://127.0.0.1:18182').get()
     }
 
     buildTypes {
@@ -50,9 +52,9 @@ android {
 }
 
 dependencies {
-    implementation project(':transport:android-worker')
-    implementation project(':xa-android:capabilities')
-    implementation project(':xa-android:capability-http')
+    implementation "com.xa.mass:xa-mass-android-worker:${project.version}"
+    implementation project(':capabilities')
+    implementation "com.xa.mass:xa-mass-android-capability-http:${project.version}"
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 
     testImplementation 'junit:junit:4.13.2'

@@ -201,11 +201,12 @@ these correctness claims and add no heavy ordinary CI lane.
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
 | [Worker Call Performance](integrations/worker-call-performance/README.md) | Nightly: parallel `rate-500`, `rate-1000`, `rate-2000` and `saturation` jobs with three repetitions, merged, recorded on `perf-lane-data` and compared with the last seven records. Manual: the same with optional JFR diagnostics, or per-case A/B with `baseline_ref` and `lane_case` | Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21 |
-| Android Host | Android unit/library builds plus `:integrations:android-worker-proof:test` | Robolectric, MockWebServer, JDK HttpServer |
-| Android APK Assembly | Debug plus three fixed Lab APK variants in Proof CI | Android SDK |
+| Android Host | Platform Android library/proof-tool contracts; no consumer artifact prerequisite | Robolectric, MockWebServer, JDK HttpServer |
+| Candidate Distribution Archives | One clean-commit 3.0.0 Runtime/SDK pair, archive checks and hashes | Java, Android SDK, Node |
+| Android APK Assembly | Independent consumer unit tests and Debug plus three fixed Lab APKs from that SDK ZIP | Android SDK |
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |
 | Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
-| Runtime Distribution | Distribution integration tests with `-PxaMassVersion=1.0.0` | Redis, Java, Android SDK, Node |
+| Runtime Distribution | Real-Redis tests of the supplied candidate Runtime ZIP; SDK consumption belongs to APK Assembly | Redis, Java |
 | Scenario Coexistence | `python integrations/scenario-coexistence/run_proof.py --build --scenario functional`, then `--scenario pool-selection`, `--scenario lifecycle`; fresh ZIP functional and pool-selection; explicit `--scenario messages-send-100k` verifies 105000 sends across 51 Tasks without receipts | Redis 7, Java 21, Python, Node for build |
 | Docs Contract | `python .github/scripts/check_docs.py` | None |
 
@@ -293,17 +294,24 @@ mutation order, workload, private evidence and observation deadlines. A successf
 Harness does not replace a lane's independent runner audit. Loaded Recovery keeps
 its separate nightly/manual workflow outside the pull-request Proof Gate.
 
-Android Host owns deterministic tests and library assembly. Android APK Assembly
-is independently required when Host or Android Worker Proof is selected and may
-run in parallel with Host tests; its artifacts serve the Emulator lane.
+Android Host owns platform deterministic tests and library assembly. Candidate
+Distribution Archives produces one verified pair when Runtime Distribution,
+Android Consumer or Android Worker Proof is selected. APK Assembly runs consumer
+unit tests and builds the four variants outside the checkout from that SDK.
+Consumer-only tests select assembly without requiring Emulator execution. Pure
+platform/proof-client test edits do not select the archive chain. Host tests remain
+independent; the Emulator consumes the same ZIP pair and verified APK artifact.
 [Android Worker Proof](integrations/android-worker-proof/README.md) owns the
-Java Harness assertions and shell process choreography. It is not a second
+Java Harness assertions and Python process choreography. It is not a second
 execution of the Java Worker proof.
+
+Android uses the packaged `consumer` profile, DEFAULT Pacer, explicit `default`
+Project and [consumer Group JSON](xa-android/config/worker-groups.json), not the
+shared JVM fixture. Its full scenario remains owned by [Android Worker Proof](integrations/android-worker-proof/README.md).
 
 ### Worker Project Fixture
 
-Worker Correctness, Dynamic Matching, Convergence Health, Loaded Recovery and
-Android Worker Proof load `integrations/worker_proof_support/platform-runtime.yaml`
+Worker Correctness, Dynamic Matching, Convergence Health and Loaded Recovery load `integrations/worker_proof_support/platform-runtime.yaml`
 through `spring.config.additional-location` and use its explicit `scenario-workers`
 Project. Lane overlays follow that fixture; no Preview profile or scenario configuration file is involved. Runners that
 replace Group manifests must also replace the complete Project list under
@@ -312,7 +320,7 @@ the lane's intended Project/Group bindings. Each lane owns its workload, fault,
 deadline and outcome assertions.
 
 Finite Task creation includes `projectId` and a fixture-owned `requestId`; task HTTP clients explicitly declare development user/role headers. Approval supplies `{expectedItemCount}` from the fixture input set. Correctness, Convergence Health and
-Android clients explicitly prepare their stable fixture RPC Task IDs through
+Android clients explicitly prepare their stable caller-owned RPC Task IDs through
 `POST /api/v1/tasks/{taskId}/rpc:prepare` during setup. Project reads expose Group
 bindings only; Group registration never creates Tasks. Dynamic Matching and
 Loaded Recovery create finite Tasks without preparing RPC Tasks.
@@ -350,7 +358,7 @@ drain failure or a performance improvement.
 manual dispatch. `.github/proof-paths.yml` selects claim-driven lanes. Manual
 dispatch selects every required lane. The final Proof Gate requires each
 selected lane to succeed and each unselected lane to be skipped. It checks
-Android Host, Android APK Assembly and Android Worker Proof independently, and
+Candidate Distribution Archives, Android Host, Android APK Assembly and Android Worker Proof independently, and
 uses the aggregate result of both Worker Convergence matrix jobs.
 
 CI does not retry failed proofs. Evidence artifacts contain IDs, relation sets,

@@ -46,17 +46,8 @@ public class AndroidWorkerDemoArchitectureTest {
         ));
 
         assertTrue(build.contains("id 'com.android.application'"));
-        assertTrue(build.contains(
-                "implementation project(':transport:android-worker')"
-        ));
-        assertTrue(build.contains(
-                "implementation project(':xa-android:capabilities')"
-        ));
-        assertTrue(build.contains(
-                "implementation project(':xa-android:capability-http')"
-        ));
-        assertFalse(build.contains("project(':transport:worker-core')"));
-        assertFalse(build.contains("project(':transport:java-worker')"));
+        assertFalse("Platform source projects must not enter the consumer build",
+                build.contains("project(':transport:") || build.contains("project(':xa-android:"));
         for (int index = 1; index <= 3; index++) {
             assertTrue(build.contains("lab" + index + " {"));
             assertTrue(build.contains(

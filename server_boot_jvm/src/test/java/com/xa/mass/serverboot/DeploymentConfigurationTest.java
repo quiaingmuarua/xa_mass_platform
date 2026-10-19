@@ -53,7 +53,7 @@ class DeploymentConfigurationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"default", "platform-proof", "agentforge", "preview"})
+    @ValueSource(strings = {"default", "platform-proof", "consumer", "preview"})
     void productionProfilesAndExternalFixtureBindCompleteDeployments(String profile) {
         configuration(profile, profile.equals("preview") ? Map.of("XA_MASS_REDIS_SCOPE", "test_preview_config") : Map.of())
                 .run(context -> {
@@ -62,7 +62,7 @@ class DeploymentConfigurationTest {
                     var adapters = context.getBean(ServerWorkerDeliveryAdapterProperties.class).instances();
                     var groups = context.getBean(ServerWorkerAssemblyProperties.class).groupConfigJson();
                     assertThat(environment.getProperty("server.port", Integer.class)).isEqualTo(switch (profile) {
-                        case "agentforge" -> 18182;
+                        case "consumer" -> 18182;
                         case "preview" -> 18500;
                         default -> 18082;
                     });
@@ -71,7 +71,7 @@ class DeploymentConfigurationTest {
                     assertThat(context.getBean(KernelPacerProperties.class).enabled()).isTrue();
                     assertThat(context.getBean(XaMassRedisProperties.class).scope()).isEqualTo(switch (profile) {
                         case "platform-proof" -> "profile_scenario_workers";
-                        case "agentforge" -> "profile_agentforge";
+                        case "consumer" -> "profile_consumer";
                         case "preview" -> "test_preview_config";
                         default -> "profile_default";
                     });
@@ -84,7 +84,7 @@ class DeploymentConfigurationTest {
                     if (profile.equals("default")) assertThat(adapters).isEmpty();
                     else assertThat(adapters).containsOnlyKeys(switch (profile) {
                         case "platform-proof" -> "scenario-websocket";
-                        case "agentforge" -> "agentforge-websocket";
+                        case "consumer" -> "runtime-websocket";
                         default -> "products-websocket";
                     });
                     if (profile.equals("platform-proof")) {
@@ -107,8 +107,8 @@ class DeploymentConfigurationTest {
 
     @Test
     void environmentAndExplicitPropertiesRetainTheirOverrides() {
-        configuration("agentforge", Map.of("XA_MASS_AGENTFORGE_SERVER_PORT", "19182",
-                "XA_MASS_AGENTFORGE_ADAPTER_PORT", "19183", "XA_MASS_REDIS_SCOPE", "test_environment",
+        configuration("consumer", Map.of("SERVER_PORT", "19182",
+                "XA_MASS_ADAPTER_PORT", "19183", "XA_MASS_REDIS_SCOPE", "test_environment",
                 "XA_MASS_REDIS_URL", "redis://127.0.0.1:6391/15"))
                 .withPropertyValues("server.port=19282")
                 .run(context -> {
@@ -117,15 +117,15 @@ class DeploymentConfigurationTest {
                     assertThat(context.getBean(XaMassRedisProperties.class).scope()).isEqualTo("test_environment");
                     assertThat(context.getBean(XaMassRedisProperties.class).url().getPort()).isEqualTo(6391);
                     assertThat(context.getBean(ServerWorkerDeliveryAdapterProperties.class).instances()
-                            .get("agentforge-websocket").listenPort()).isEqualTo(19183);
-                    assertThat(context.getBean(WorkerEndpointDirectory.class).find("agentforge-websocket")
+                            .get("runtime-websocket").listenPort()).isEqualTo(19183);
+                    assertThat(context.getBean(WorkerEndpointDirectory.class).find("runtime-websocket")
                             .publicUri().getPort()).isEqualTo(19183);
                 });
     }
 
     @Test
     void externalProfileOverridesOnlySuppliedFields() throws Exception {
-        Files.writeString(temporary.resolve("application-agentforge.yaml"), """
+        Files.writeString(temporary.resolve("application-consumer.yaml"), """
                 server:
                   port: 19382
                 xa:
@@ -133,15 +133,15 @@ class DeploymentConfigurationTest {
                     worker-delivery:
                       adapter:
                         instances:
-                          agentforge-websocket:
+                          runtime-websocket:
                             report-queue-capacity: 2345
                 """);
-        configuration("agentforge", Map.of())
+        configuration("consumer", Map.of())
                 .withPropertyValues("spring.config.additional-location=" + temporary.toUri())
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context.getEnvironment().getProperty("server.port")).isEqualTo("19382");
-                    var adapter = context.getBean(ServerWorkerDeliveryAdapterProperties.class).instances().get("agentforge-websocket");
+                    var adapter = context.getBean(ServerWorkerDeliveryAdapterProperties.class).instances().get("runtime-websocket");
                     assertThat(adapter.reportQueueCapacity()).isEqualTo(2345);
                     assertThat(adapter.listenPort()).isEqualTo(18183);
                     assertThat(adapter.commandRetryCapacity()).isEqualTo(1000);
@@ -162,9 +162,9 @@ class DeploymentConfigurationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"xa.mass.kernel-pacer.preset=INVALID",
-            "xa.mass.worker-delivery.adapter.instances.agentforge-websocket.report-queue-capacity=0"})
+            "xa.mass.worker-delivery.adapter.instances.runtime-websocket.report-queue-capacity=0"})
     void invalidDeploymentInputStillFailsBinding(String override) {
-        configuration("agentforge", Map.of()).withPropertyValues(override)
+        configuration("consumer", Map.of()).withPropertyValues(override)
                 .run(context -> assertThat(context).hasFailed());
     }
 }

@@ -16,6 +16,7 @@ final class AndroidRuntimeApiClient {
 
     private final JsonHttpClient http;
     private final Map<String, CallStatus> received = new LinkedHashMap<>();
+    private final Map<String, String> receivedPayloads = new LinkedHashMap<>();
 
     AndroidRuntimeApiClient(JsonHttpClient http) {
         this.http = java.util.Objects.requireNonNull(http, "http");
@@ -172,7 +173,7 @@ final class AndroidRuntimeApiClient {
                     "Task call result"
             );
             CallStatus status = checkedResult(result);
-            if (status != CallStatus.NOT_OBSERVED) received.put(messageId, status);
+            remember(messageId, status, result);
             resolved.add(new TaskCall(messageId, status));
         }
         return List.copyOf(resolved);
@@ -203,8 +204,24 @@ final class AndroidRuntimeApiClient {
                 "Task loaded result"
         );
         CallStatus status = checkedResult(result);
-        if (status != CallStatus.NOT_OBSERVED) received.put(messageId, status);
+        remember(messageId, status, result);
         return received.getOrDefault(messageId, status);
+    }
+
+    private void remember(String messageId, CallStatus status, Map<String, Object> result) {
+        if (status != CallStatus.NOT_OBSERVED && received.get(messageId) != CallStatus.SUCCEEDED) {
+            received.put(messageId, status);
+            if (status == CallStatus.SUCCEEDED) {
+                receivedPayloads.put(messageId, (String) result.get("opaqueResultPayload"));
+            }
+        }
+    }
+
+    String successfulPayload(String messageId) {
+        if (received.get(messageId) != CallStatus.SUCCEEDED || !receivedPayloads.containsKey(messageId)) {
+            throw new ProofFailure("task-result.content", "Successful RPC content was not retained");
+        }
+        return receivedPayloads.get(messageId);
     }
 
     private static CallStatus checkedResult(Map<String, Object> result) {
@@ -406,13 +423,13 @@ final class AndroidRuntimeApiClient {
 
     void prepareRpcTask() {
         var response = http.send("POST", "/api/v1/tasks/" + rpcTaskId() + "/rpc:prepare",
-                Map.of("projectId", "scenario-workers", "workerGroupId", AndroidWorkerProofConstants.WORKER_GROUP_ID), "rpc.prepare");
+                Map.of("projectId", "default", "workerGroupId", AndroidWorkerProofConstants.WORKER_GROUP_ID), "rpc.prepare");
         requireStatus(response, 200, "prepare RPC Task");
         if (!rpcTaskId().equals(JsonValues.requiredString(response.body(), "taskId")))
             throw new ProofFailure("rpc.prepare.identity", "RPC Task preparation changed identity");
     }
 
-    private static String rpcTaskId() { return "android-proof-rpc"; }
+    private static String rpcTaskId() { return "xa-android-rpc-v1.android-demo-workers"; }
 
     private static String segment(String value) {
         if (value == null || value.isBlank()) {

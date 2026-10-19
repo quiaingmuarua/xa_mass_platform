@@ -14,13 +14,14 @@ import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.ClassPathResource;
 
-class AgentForgeProfileContractTest {
+class ConsumerProfileContractTest {
 
     @Test
-    void profileOwnsOneEmptyAgentForgeAdapterAssembly() throws IOException {
+    void profileOwnsOneEmptyConsumerAdapterAssembly() throws IOException {
+        assertThat(new ClassPathResource("application-agentforge.yaml").exists()).isFalse();
         List<PropertySource<?>> sources = new YamlPropertySourceLoader().load(
-                "agentforge",
-                new ClassPathResource("application-agentforge.yaml")
+                "consumer",
+                new ClassPathResource("application-consumer.yaml")
         );
         StandardEnvironment environment = new StandardEnvironment();
         sources.forEach(environment.getPropertySources()::addFirst);
@@ -28,33 +29,33 @@ class AgentForgeProfileContractTest {
         assertThat(environment.getProperty("server.port"))
                 .isEqualTo("18182");
         assertThat(environment.getProperty("xa.mass.redis.scope"))
-                .isEqualTo("profile_agentforge");
+                .isEqualTo("profile_consumer");
         assertThat(environment.getProperty("xa.mass.kernel-pacer.preset"))
                 .isEqualTo("DEFAULT");
         assertThat(environment.getProperty(
                 "xa.mass.worker-assembly.group-config-json"
         )).isEqualTo("{}");
         assertThat(environment.getProperty(
-                "xa.mass.worker-endpoints.endpoints.agentforge-websocket"
+                "xa.mass.worker-endpoints.endpoints.runtime-websocket"
                         + ".public-uri"
         )).isEqualTo(
                 "ws://127.0.0.1:18183"
                         + "/api/v1/worker-delivery/websocket"
         );
         assertThat(adapterIds(sources))
-                .containsExactly("agentforge-websocket");
+                .containsExactly("runtime-websocket");
         assertThat(allPropertyNames(sources))
                 .contains(
                         "xa.mass.worker-delivery.adapter.instances."
-                                + "agentforge-websocket.command-backoff-min",
+                                + "runtime-websocket.command-backoff-min",
                         "xa.mass.worker-delivery.adapter.instances."
-                                + "agentforge-websocket.command-backoff-step",
+                                + "runtime-websocket.command-backoff-step",
                         "xa.mass.worker-delivery.adapter.instances."
-                                + "agentforge-websocket.command-backoff-max",
+                                + "runtime-websocket.command-backoff-max",
                         "xa.mass.worker-delivery.adapter.instances."
-                                + "agentforge-websocket.report-queue-capacity",
+                                + "runtime-websocket.report-queue-capacity",
                         "xa.mass.worker-delivery.adapter.instances."
-                                + "agentforge-websocket.shutdown-timeout"
+                                + "runtime-websocket.shutdown-timeout"
                 )
                 .noneMatch(name -> name.contains("scenario-websocket"))
                 .noneMatch(name -> name.contains(".processes["));

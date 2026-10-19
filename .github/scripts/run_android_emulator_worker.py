@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import json
 import os
 from pathlib import Path
 import re
@@ -18,6 +20,9 @@ import uuid
 from cleanup_redis_test_scope import cleanup as cleanup_scope
 
 ROOT = Path(__file__).resolve().parents[2]
+SPEC = importlib.util.spec_from_file_location("xa_android_consumer", ROOT / "xa-android/run_consumer.py")
+consumer = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(consumer)
 APPLICATIONS = ["com.xa.mass.integration.androidworker"] + [
     f"com.xa.mass.integration.androidworker.lab{i}" for i in range(1, 4)
 ]
@@ -81,11 +86,16 @@ class ProofRunner:
         self.touched_apps: set[str] = set()
         self.scopes: set[str] = set()
         self.freezer_original: tuple[str, str] | None = None
+        self.consumption = None
+        self.apk_provenance = None
 
     def adb(self, *args: str, timeout: float = 30) -> str:
         result = subprocess.run(["adb", "-s", self.options.android_serial, *args],
-                                capture_output=True, text=True, check=True,
+                                capture_output=True, text=True, check=False,
                                 timeout=timeout, encoding="utf-8", errors="replace")
+        if result.returncode:
+            detail = (result.stderr.strip() or result.stdout.strip())[-2000:]
+            raise RuntimeError(f"Selected Emulator ADB {args[0]} failed: {detail}")
         return result.stdout.strip()
 
     def wait_boot(self) -> None:
@@ -96,6 +106,13 @@ class ProofRunner:
                 return
             time.sleep(1)
         raise TimeoutError("Selected Emulator did not finish booting")
+
+    def reboot(self) -> None:
+        self.adb("reboot")
+        # The old transport can still report boot_completed=1 immediately after
+        # reboot returns. Fence that transport before accepting the next boot.
+        self.adb("wait-for-disconnect", timeout=60)
+        self.wait_boot()
 
     def freezer_enabled(self) -> bool:
         settings = self.adb("shell", "dumpsys", "activity", "settings")
@@ -113,8 +130,7 @@ class ProofRunner:
         )
         self.adb("shell", "device_config", "put", "activity_manager_native_boot", "use_freezer", "false")
         self.adb("shell", "settings", "put", "global", "cached_apps_freezer", "disabled")
-        self.adb("reboot")
-        self.wait_boot()
+        self.reboot()
         if self.freezer_enabled():
             raise RuntimeError("Emulator cached-app freezer remained enabled")
 
@@ -131,21 +147,19 @@ class ProofRunner:
             if verb == "put":
                 command.append(value)
             self.adb(*command)
-        self.adb("reboot")
-        self.wait_boot()
+        self.reboot()
         self.freezer_original = None
 
     def preflight(self) -> None:
         import redis  # Host dependency; never taken from a Runtime venv.
+        self.validate_inputs()
         for command in ("adb", "java"):
             if shutil.which(command) is None:
                 raise RuntimeError(f"Required command is unavailable: {command}")
-        if self.adb("get-state") != "device" or self.adb("shell", "getprop", "ro.build.version.sdk") != "33":
+        if (self.adb("get-state") != "device"
+                or self.adb("shell", "getprop", "ro.build.version.sdk") != "33"
+                or self.adb("shell", "getprop", "ro.kernel.qemu") != "1"):
             raise RuntimeError("Selected device must be an online API 33 Emulator")
-        for path in [self.options.server_jar, *[
-                self.options.apk_root / name for name in APK_NAMES]]:
-            if not path.is_file():
-                raise RuntimeError(f"Proof input is missing: {path}")
         if not list(self.options.proof_runtime.glob("*.jar")):
             raise RuntimeError("Run :integrations:android-worker-proof:stageProofRuntime first")
         if self.evidence.exists() and list(self.evidence.glob("*.json")):
@@ -153,8 +167,11 @@ class ProofRunner:
         with redis.Redis.from_url(self.options.redis_url) as client:
             client.ping()
         for port in FORWARD_PORTS + REVERSE_PORTS:
-            with socket.socket() as candidate:
-                candidate.bind(("127.0.0.1", port))
+            try:
+                with socket.socket() as candidate:
+                    candidate.bind(("127.0.0.1", port))
+            except OSError as error:
+                raise RuntimeError(f"Required proof host port {port} is unavailable") from error
         for direction, ports in [("forward", FORWARD_PORTS), ("reverse", REVERSE_PORTS)]:
             mappings = self.adb(direction, "--list")
             for port in ports:
@@ -162,8 +179,46 @@ class ProofRunner:
                     raise RuntimeError(f"ADB mapping already exists: {direction} tcp:{port}")
         self.evidence.mkdir(parents=True, exist_ok=True)
         self.logs.mkdir(parents=True, exist_ok=True)
+        self.write_consumption()
+
+    def validate_inputs(self) -> None:
+        self.consumption = consumer.prepare_options(self.options, self.proof_root / "installation")
+        provenance = json.loads((self.options.apk_root / "apk-provenance.json").read_text(encoding="utf-8"))
+        for key in ("version", "gitCommit", "archives", "serverJarSha256", "sdkArtifacts"):
+            if provenance.get(key) != self.consumption[key]:
+                raise RuntimeError(f"APK provenance differs from the pinned ZIP pair: {key}")
+        required = {"runtimeApiBaseUrl": "http://127.0.0.1:18082", "projectId": "default",
+                    "caller": {"userId": "1000", "role": "admin"}, "profile": "consumer",
+                    "pacerPreset": "DEFAULT", "endpointManagerId": consumer.ADAPTER_ID,
+                    "independentBuild": True}
+        if any(provenance.get(key) != value for key, value in required.items()):
+            raise RuntimeError("APK provenance does not describe the independent consumer proof")
+        if set(provenance.get("apkSha256", {})) != set(APK_NAMES):
+            raise RuntimeError("APK provenance does not contain exactly the four variants")
+        for name in APK_NAMES:
+            apk = self.options.apk_root / name
+            if not apk.is_file() or consumer.digest(apk) != provenance["apkSha256"][name]:
+                raise RuntimeError(f"APK bytes differ from provenance: {name}")
+        resolved = provenance.get("sdkConsumption", {})
+        if (resolved.get("gitCommit") != self.options.commit or resolved.get("version") != self.options.version
+                or resolved.get("sdkArchiveSha256") != self.options.sdk_sha256
+                or resolved.get("runtimeApiBaseUrl") != required["runtimeApiBaseUrl"]
+                or set(resolved.get("variants", {})) != {"debug", "lab1", "lab2", "lab3"}):
+            raise RuntimeError("Actual SDK consumption evidence differs")
+        expected = {name: {"version": self.options.version, "sha256": info["sha256"]}
+                    for name, info in self.consumption["sdkArtifacts"].items()}
+        if any(value != expected for value in resolved["variants"].values()):
+            raise RuntimeError("Actual resolved SDK bytes differ from the verified SDK ZIP")
+        self.apk_provenance = provenance
+
+    def write_consumption(self) -> None:
+        if self.consumption is not None and self.evidence.exists():
+            encoded = dict(self.consumption, apkProvenance=self.apk_provenance,
+                           scopes=sorted(self.scopes), phaseEvidence="*.json")
+            (self.evidence / "consumption.json").write_text(json.dumps(encoded, indent=2) + "\n", encoding="utf-8")
 
     def setup_device(self) -> None:
+        print("Preparing selected Emulator and four verified APKs", flush=True)
         self.disable_freezer()
         for package, name in zip(APPLICATIONS, APK_NAMES):
             self.touched_apps.add(package)
@@ -187,17 +242,15 @@ class ProofRunner:
             self.start_app(package)
 
     def start_server(self, label: str, scope: str) -> None:
+        print(f"Starting verified Runtime: {label}", flush=True)
         if self.server is not None:
             raise RuntimeError("Server process is already owned")
         self.scopes.add(scope)
+        self.write_consumption()
         stream = (self.logs / f"server-{label}.log").open("w", encoding="utf-8")
         self.streams.append(stream)
-        environment = dict(os.environ, XA_MASS_REDIS_SCOPE=scope,
-                           XA_MASS_REDIS_URL=self.options.redis_url)
-        fixture = (ROOT / "integrations/worker_proof_support/platform-runtime.yaml").as_uri()
-        self.server = spawn(["java", "-jar", str(self.options.server_jar.resolve()),
-                             "--spring.profiles.active=default",
-                             f"--spring.config.additional-location={fixture}"],
+        environment = dict(os.environ, XA_MASS_CONSUMER_REDIS_URL=self.options.redis_url)
+        self.server = spawn(consumer.server_command(self.consumption, scope, 18082, 18083),
                             cwd=self.proof_root, env=environment,
                             stdout=stream, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 90
@@ -221,11 +274,12 @@ class ProofRunner:
     def phase(self, main: str, proof_id: str, phase: str, evidence: str,
               baseline: str | None = None, marker: str | None = None,
               mutation=None) -> None:
+        print(f"Running Java proof: {main}/{phase}", flush=True)
         output = self.proof_root / f"{evidence}.out"
         arguments = [
             "--server-base-url=http://127.0.0.1:18082",
             f"--proof-id={proof_id}", f"--phase={phase}",
-            "--endpoint-manager-id=scenario-websocket",
+            "--endpoint-manager-id=runtime-websocket",
             f"--evidence-file={self.evidence / (evidence + '.json')}",
             f"--maximum-wait-millis={self.options.maximum_wait_millis}",
             "--request-timeout-millis=5000", "--android-api-level=33",
@@ -331,7 +385,7 @@ class ProofRunner:
 def parse_options(arguments=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--android-serial", default=os.environ.get("ANDROID_SERIAL"), required=not os.environ.get("ANDROID_SERIAL"))
-    parser.add_argument("--server-jar", type=Path, required=True)
+    consumer.add_archive_arguments(parser)
     parser.add_argument("--apk-root", type=Path, required=True)
     parser.add_argument("--proof-runtime", type=Path, default=ROOT / "integrations/android-worker-proof/build/proof-runtime")
     parser.add_argument("--proof-root", type=Path, default=Path(os.environ.get("ANDROID_WORKER_PROOF_ROOT", ROOT / "build" / f"android-emulator-proof-{uuid.uuid4().hex}")))

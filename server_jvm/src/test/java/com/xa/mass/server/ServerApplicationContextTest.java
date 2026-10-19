@@ -96,7 +96,7 @@ class ServerApplicationContextTest {
     @Test
     void platformTestsHaveNoHostDeploymentResources() throws Exception {
         for (String name : List.of("application.yaml", "application-scenario-workers.yaml",
-                "application-agentforge.yaml", "application-preview.yaml")) {
+                "application-consumer.yaml", "application-preview.yaml")) {
             assertThat(java.util.Collections.list(getClass().getClassLoader().getResources(name)))
                     .as("Server test classpath excludes %s", name).isEmpty();
         }

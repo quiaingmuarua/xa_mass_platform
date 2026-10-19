@@ -157,12 +157,19 @@ or observation replay.
 - **Evidence:** the linked Owners' deterministic tests and assembly checks.
 - **Nonclaims:** real process, Doze, vendor policy or physical-device behavior.
 
+## android_consumer
+
+- **Primary Owner:** [XA Android](../../xa-android/README.md) and [SDK Distribution](../../distribution/worker-sdk/README.md).
+- **Boundary:** a standalone consumer copies outside the checkout, builds/tests actual Android code against the four verified SDK publications and emits four APKs plus binary provenance.
+- **Required witness:** actual resolved artifact hashes match the candidate SDK ZIP; exclusive Maven resolution has no platform source fallback. Candidate production is separate from supplied-archive verification.
+- **Nonclaims:** executing the APKs, downstream AgentForge business behavior or physical devices.
+
 ## android_emulator
 
-- **Primary Owner:** [Android Worker Proof](../../integrations/android-worker-proof/README.md); shell owns external process choreography only.
+- **Primary Owner:** [Android Worker Proof](../../integrations/android-worker-proof/README.md); Python owns external process choreography only.
 - **Boundary:** Debug App lifecycle, route recovery, Handler-time process loss, endpoint exhaustion and explicit identity-stable recovery; fixed App Triad adds same-Group identity isolation, explicit Worker ID targeting and partial outage.
 - **Required witness:** real process/route and targeted identity evidence, rather than Properties affinity inferred as scheduling identity.
-- **Evidence:** the Owner's Debug App and Triad scenarios.
+- **Evidence:** the Owner's complete Debug App and Triad scenarios using the same candidate ZIP pair and independently built APKs, plus an RPC Android digest-content witness. Consumer profile/DEFAULT and explicit default Project replace the legacy shared fixture.
 - **Nonclaims:** throughput, Handler concurrency, exact connection attempts/transient Scores, Item finality across process loss, UI, arbitrary replicas, dynamic Properties mutation end to end, multi-device compatibility, cached-process survival, Doze/OEM policy or physical-device background behavior.
 
 ## frontend

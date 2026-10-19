@@ -18,7 +18,7 @@ REQUIRED_JOBS = {
     "Select proof lanes", "Docs Contract", "JVM Contracts", "Redis Owner",
     "Runtime Boundary", "Worker Correctness", "Worker Dynamic Matching",
     "Android Host", "Android APK Assembly", "Android Worker Proof", "Frontend",
-    "Runtime And Worker SDK Distribution", "Product Coexistence", "Proof Gate",
+    "Runtime And Worker SDK Distribution", "Candidate Distribution Archives", "Product Coexistence", "Proof Gate",
 }
 COMPONENTS = ("server-runtime", "worker-sdk")
 

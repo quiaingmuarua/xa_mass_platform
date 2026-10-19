@@ -128,7 +128,7 @@ public APIs. Within one Redis scope, only one Server may enable Pacer; the
 [Pacer lifecycle contract](kernel_pacer_jvm/doc/application-assembly.md#lifecycle) defines this boundary.
 
 For local work, `python run_local_runtime.py` starts the business Preview;
-`--profile default` starts the plain platform and `--profile agentforge` selects
+`--profile default` starts the plain platform and `--profile consumer` selects
 the clean Server/Adapter preset. The linked delivery documents own the complete
 build, configuration and launch procedures.
 

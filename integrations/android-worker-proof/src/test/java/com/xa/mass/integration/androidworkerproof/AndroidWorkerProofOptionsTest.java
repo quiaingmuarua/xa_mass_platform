@@ -27,7 +27,7 @@ final class AndroidWorkerProofOptionsTest {
         assertEquals(4_000L, options.requestTimeout().toMillis());
         assertEquals(33, options.androidApiLevel());
         assertEquals(
-                "scenario-websocket",
+                "runtime-websocket",
                 options.endpointManagerId()
         );
         assertEquals(

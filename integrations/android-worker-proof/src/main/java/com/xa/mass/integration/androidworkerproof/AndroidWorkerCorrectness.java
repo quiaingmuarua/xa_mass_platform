@@ -101,6 +101,23 @@ final class AndroidWorkerCorrectness {
         );
         runtime.requirePropertiesRelation(options.endpointManagerId(), workerId);
 
+        AndroidRuntimeApiClient.TaskCall digestCall = runtime.callItem(
+                "extension.worker.android.string.digest",
+                Map.of("algorithm", "MD5", "value", "hello"),
+                Map.of("executorName", "workerId", "input", workerId),
+                AndroidWorkerProofConstants.TASK_CALL_OBSERVATION_WAIT_MILLIS
+        );
+        AndroidWorkerProofAssertions.awaitSucceededCall(runtime, digestCall, maximumWait);
+        Map<String, Object> digest = com.xa.mass.workerdelivery.json.Jsons.parseObject(
+                runtime.successfulPayload(digestCall.messageId())
+        );
+        if (!digest.equals(Map.of("algorithm", "MD5", "input", "hello",
+                "digest", "5d41402abc4b2a76b9719d911017c592"))) {
+            throw new ProofFailure("consumer.digest-content", "Android business digest content differs");
+        }
+        evidence.check("digestMessageId", digestCall.messageId());
+        evidence.check("digestContentMatched", true);
+
         Set<String> messageIds = new LinkedHashSet<>();
         int succeeded = 0;
         for (int index = 0; index < 10; index++) {

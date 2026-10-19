@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import importlib.util
 import os
 import re
 import stat
@@ -139,78 +140,23 @@ def _verify_archive(archive_path: Path, version: str) -> None:
 
 
 def _consume_outside_repository(
-    archive_path: Path, version: str, gradle_wrapper: Path
+    archive_path: Path, version: str, consumer_project: Path
 ) -> None:
+    spec = importlib.util.spec_from_file_location("xa_android_consumer", consumer_project / "run_consumer.py")
+    consumer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(consumer)
+    with zipfile.ZipFile(archive_path) as source:
+        commit = json.loads(source.read(f"xa-mass-worker-sdk-{version}/manifest.json"))["gitCommit"]
     with tempfile.TemporaryDirectory(prefix="xa-mass-worker-sdk-proof-") as temporary:
-        root = Path(temporary)
-        with zipfile.ZipFile(archive_path) as archive:
-            archive.extractall(root)
-        repository = (
-            root / f"xa-mass-worker-sdk-{version}" / "repository"
-        ).resolve()
+        root = Path(temporary).resolve()
+        sdk = consumer.prepare_sdk(archive_path, version, commit, consumer.digest(archive_path), root / "installation")
         project = root / "consumer"
-        (project / "consumer/src/main").mkdir(parents=True)
-        repository_uri = repository.as_uri()
-        (project / "settings.gradle").write_text(
-            """pluginManagement {
-    repositories { google(); gradlePluginPortal(); mavenCentral() }
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-        maven { url = uri('"""
-            + repository_uri
-            + """') }
-    }
-}
-rootProject.name = 'xa-mass-worker-sdk-consumer'
-include ':consumer'
-""",
-            encoding="utf-8",
-        )
-        (project / "build.gradle").write_text(
-            """plugins {
-    id 'com.android.library' version '8.9.3' apply false
-}
-""",
-            encoding="utf-8",
-        )
-        (project / "gradle.properties").write_text(
-            "android.useAndroidX=true\n", encoding="utf-8"
-        )
-        (project / "consumer/build.gradle").write_text(
-            """plugins { id 'com.android.library' }
-android {
-    namespace = 'com.xa.mass.sdk.consumer'
-    compileSdk = 36
-    defaultConfig { minSdk = 24 }
-    compileOptions {
-        coreLibraryDesugaringEnabled = true
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-}
-dependencies {
-"""
-            + "\n".join(
-                f"    implementation 'com.xa.mass:{artifact}:{version}'"
-                for artifact in ARTIFACTS
-            )
-            + """
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
-}
-""",
-            encoding="utf-8",
-        )
-        command = [
-            str(gradle_wrapper),
-            "--no-daemon",
-            "-p",
-            str(project),
-            ":consumer:assembleDebug",
-        ]
+        consumer.copy_consumer(project)
+        wrapper = project / ("gradlew.bat" if os.name == "nt" else "gradlew")
+        command = [str(wrapper), "--no-daemon", "-p", str(project),
+                   f"-PxaMassSdkRoot={sdk}", f"-PxaMassVersion={version}", f"-PxaMassCommit={commit}",
+                   ":worker-demo:assembleDebug", ":worker-demo:assembleLab1",
+                   ":worker-demo:assembleLab2", ":worker-demo:assembleLab3"]
         if os.name == "nt":
             command = ["cmd.exe", "/d", "/c", *command]
         subprocess.run(command, check=True)
@@ -220,12 +166,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--version", required=True)
-    parser.add_argument("--gradle-wrapper", type=Path, required=True)
+    parser.add_argument("--consumer-project", type=Path, required=True)
     arguments = parser.parse_args()
     archive = arguments.archive.resolve()
     _verify_archive(archive, arguments.version)
     _consume_outside_repository(
-        archive, arguments.version, arguments.gradle_wrapper.resolve()
+        archive, arguments.version, arguments.consumer_project.resolve()
     )
     print(f"Worker SDK distribution proof succeeded: {archive}")
     return 0

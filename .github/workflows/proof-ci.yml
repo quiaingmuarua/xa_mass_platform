@@ -18,7 +18,7 @@ concurrency:
 env:
   XA_MASS_PYTHON_EXECUTABLE: python3
   XA_MASS_REDIS_EPHEMERAL: "true"
-  XA_MASS_DISTRIBUTION_VERSION: "2.0.1"
+  XA_MASS_DISTRIBUTION_VERSION: "3.0.0"
 
 jobs:
   changes:
@@ -33,6 +33,7 @@ jobs:
       worker_dynamic_matching: ${{ steps.filter.outputs.worker_dynamic_matching }}
       worker_convergence_health: ${{ steps.filter.outputs.worker_convergence_health }}
       android_host: ${{ steps.filter.outputs.android_host }}
+      android_consumer: ${{ steps.filter.outputs.android_consumer }}
       android_emulator: ${{ steps.filter.outputs.android_emulator }}
       frontend: ${{ steps.filter.outputs.frontend }}
       runtime_distribution: ${{ steps.filter.outputs.runtime_distribution }}
@@ -49,6 +50,7 @@ jobs:
         run: |
           python3 .github/scripts/test_check_proof_selection.py
           python3 .github/scripts/check_proof_selection.py
+          python3 .github/scripts/test_consumer_ci_gate.py
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             proof_base="$PR_BASE_SHA"
           elif [[ "$EVENT_NAME" == "push" && \
@@ -419,12 +421,11 @@ jobs:
           ./gradlew --no-daemon --continue
           :transport:android-worker:testDebugUnitTest
           :transport:android-worker:assembleDebug
-          :xa-android:capabilities:testDebugUnitTest
-          :xa-android:capabilities:assembleDebug
-          :xa-android:capability-http:testDebugUnitTest
-          :xa-android:capability-http:assembleDebug
-          :xa-android:worker-demo:testDebugUnitTest
+          :android-capability-http:testDebugUnitTest
+          :android-capability-http:assembleDebug
           :integrations:android-worker-proof:test
+      - name: Verify consumer archive tooling
+        run: python3 xa-android/tests/test_run_consumer.py -v
       - name: Summarize Android proof
         if: always()
         run: >-
@@ -441,27 +442,90 @@ jobs:
           path: |
             transport/android-worker/build/test-results/testDebugUnitTest/**
             transport/android-worker/build/reports/tests/testDebugUnitTest/**
-            xa-android/capabilities/build/test-results/testDebugUnitTest/**
-            xa-android/capabilities/build/reports/tests/testDebugUnitTest/**
             xa-android/capability-http/build/test-results/testDebugUnitTest/**
             xa-android/capability-http/build/reports/tests/testDebugUnitTest/**
-            xa-android/worker-demo/build/test-results/testDebugUnitTest/**
-            xa-android/worker-demo/build/reports/tests/testDebugUnitTest/**
             integrations/android-worker-proof/build/test-results/test/**
             integrations/android-worker-proof/build/reports/tests/test/**
             build/reports/problems/**
           if-no-files-found: ignore
           retention-days: 7
 
-  android-apk:
-    name: Android APK Assembly
+  candidate-distributions:
+    name: Candidate Distribution Archives
     needs: changes
     if: >-
-      needs.changes.outputs.android_host == 'true' ||
+      needs.changes.outputs.android_consumer == 'true' ||
       needs.changes.outputs.android_emulator == 'true' ||
+      needs.changes.outputs.runtime_distribution == 'true' ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
+    outputs:
+      runtime_sha256: ${{ steps.candidate.outputs.runtime_sha256 }}
+      sdk_sha256: ${{ steps.candidate.outputs.sdk_sha256 }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - uses: pnpm/action-setup@v6.0.10
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Build the single candidate ZIP pair
+        run: >-
+          ./gradlew --no-daemon :distribution:server:distZip
+          :distribution:worker-sdk:distZip
+          -PxaMassVersion=${{ env.XA_MASS_DISTRIBUTION_VERSION }}
+      - name: Validate and identify candidate
+        id: candidate
+        run: >-
+          python3 .github/scripts/prepare_distribution_candidate.py
+          --runtime-archive distribution/server/build/distributions/xa-mass-server-runtime-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
+          --sdk-archive distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
+          --version ${{ env.XA_MASS_DISTRIBUTION_VERSION }} --commit ${{ github.sha }}
+          --output-dir build/distribution-candidate
+      - name: Upload Runtime archive
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: xa-mass-server-runtime-${{ github.run_attempt }}
+          path: distribution/server/build/distributions/xa-mass-server-runtime-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload Worker SDK archive
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: xa-mass-worker-sdk-${{ github.run_attempt }}
+          path: distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload candidate identity
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: distribution-candidate-${{ github.run_attempt }}
+          path: build/distribution-candidate/candidate.json
+          retention-days: 30
+
+  android-apk:
+    name: Android APK Assembly
+    needs: [changes, candidate-distributions]
+    if: >-
+      always() && needs.candidate-distributions.result == 'success' &&
+      (needs.changes.outputs.android_consumer == 'true' ||
+      needs.changes.outputs.android_emulator == 'true' ||
+      needs.changes.outputs.runtime_distribution == 'true' ||
+      github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-java@v5.7.0
@@ -469,44 +533,47 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      - name: Assemble Android Worker APKs
+      - name: Download candidate Runtime ZIP
+        uses: actions/download-artifact@v8.0.0
+        with:
+          name: xa-mass-server-runtime-${{ github.run_attempt }}
+          path: build/consumer-inputs
+      - name: Download candidate Worker SDK ZIP
+        uses: actions/download-artifact@v8.0.0
+        with:
+          name: xa-mass-worker-sdk-${{ github.run_attempt }}
+          path: build/consumer-inputs
+      - name: Test and assemble the external Android consumer
         run: >-
-          ./gradlew --no-daemon --continue
-          :xa-android:worker-demo:assembleDebug
-          :xa-android:worker-demo:assembleLab1
-          :xa-android:worker-demo:assembleLab2
-          :xa-android:worker-demo:assembleLab3
-      - name: Stage Android Worker APKs
-        run: |
-          mkdir -p build/android-worker-apks
-          cp xa-android/worker-demo/build/outputs/apk/debug/xa-mass-android-worker-demo-debug.apk \
-            build/android-worker-apks/
-          for variant in lab1 lab2 lab3; do
-            cp "xa-android/worker-demo/build/outputs/apk/$variant/xa-mass-android-worker-demo-$variant.apk" \
-              build/android-worker-apks/
-          done
-      - name: Upload Android Worker Demo APKs
-        if: >-
-          needs.changes.outputs.android_emulator == 'true' ||
-          github.event_name == 'workflow_dispatch'
+          python3 .github/scripts/build_android_consumer.py
+          --runtime-archive build/consumer-inputs/xa-mass-server-runtime-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
+          --sdk-archive build/consumer-inputs/xa-mass-worker-sdk-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
+          --version ${{ env.XA_MASS_DISTRIBUTION_VERSION }} --commit ${{ github.sha }}
+          --runtime-sha256 ${{ needs.candidate-distributions.outputs.runtime_sha256 }}
+          --sdk-sha256 ${{ needs.candidate-distributions.outputs.sdk_sha256 }}
+          --output-dir build/android-worker-apks
+      - name: Upload verified Android APKs and provenance
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: android-worker-demo-apk
-          path: build/android-worker-apks/*.apk
+          name: android-worker-demo-apk-${{ github.run_attempt }}
+          path: build/android-worker-apks/**
           if-no-files-found: error
-          retention-days: 1
-          overwrite: true
-      - name: Summarize Android APK assembly
-        if: always()
-        run: |
-          echo "- **Android APK Assembly:** ${{ job.status }}" \
-            >> "$GITHUB_STEP_SUMMARY"
+          retention-days: 30
+      - name: Upload failed consumer reports
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: android-consumer-failure-${{ github.run_attempt }}
+          path: build/android-worker-apks/**
+          if-no-files-found: ignore
+          retention-days: 30
 
   android-emulator-worker:
     name: Android Worker Proof
     needs:
       - changes
       - android-apk
+      - candidate-distributions
     if: >-
       always() &&
       (needs.changes.outputs.android_emulator == 'true' ||
@@ -543,16 +610,25 @@ jobs:
       - name: Download Android Worker Demo APK
         uses: actions/download-artifact@v8.0.0
         with:
-          name: android-worker-demo-apk
+          name: android-worker-demo-apk-${{ github.run_attempt }}
           path: build/android-emulator-proof/apk
+      - name: Download candidate Runtime ZIP
+        uses: actions/download-artifact@v8.0.0
+        with:
+          name: xa-mass-server-runtime-${{ github.run_attempt }}
+          path: build/consumer-inputs
+      - name: Download candidate Worker SDK ZIP
+        uses: actions/download-artifact@v8.0.0
+        with:
+          name: xa-mass-worker-sdk-${{ github.run_attempt }}
+          path: build/consumer-inputs
       - name: Verify Emulator choreography
         run: |
           python3 -m pip install -r .github/scripts/requirements.txt
           python3 .github/scripts/test_run_android_emulator_worker.py -v
-      - name: Build Server and Java proof runtime
+      - name: Stage Java proof runtime
         run: >-
           ./gradlew --no-daemon
-          :server_boot_jvm:bootJar
           :integrations:android-worker-proof:stageProofRuntime
           -PxaMassVersion=${{ env.XA_MASS_DISTRIBUTION_VERSION }}
       - name: Enable KVM access
@@ -574,7 +650,11 @@ jobs:
           script: >-
             python3 .github/scripts/run_android_emulator_worker.py
             --android-serial emulator-5554
-            --server-jar server_boot_jvm/build/libs/xa-mass-server-jvm-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.jar
+            --runtime-archive build/consumer-inputs/xa-mass-server-runtime-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
+            --sdk-archive build/consumer-inputs/xa-mass-worker-sdk-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
+            --version ${{ env.XA_MASS_DISTRIBUTION_VERSION }} --commit ${{ github.sha }}
+            --runtime-sha256 ${{ needs.candidate-distributions.outputs.runtime_sha256 }}
+            --sdk-sha256 ${{ needs.candidate-distributions.outputs.sdk_sha256 }}
             --apk-root build/android-emulator-proof/apk
       - name: Summarize Android Worker proof
         if: always()
@@ -593,10 +673,11 @@ jobs:
           name: android-worker-proof-${{ github.run_attempt }}
           path: |
             build/android-emulator-proof/evidence/*.json
+            build/android-emulator-proof/*.out
             build/android-emulator-proof/logs/server-*.log
             build/android-emulator-proof/logs/android-filtered.log
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 30
 
   frontend:
     name: Frontend
@@ -640,71 +721,48 @@ jobs:
 
   runtime-distribution:
     name: Runtime And Worker SDK Distribution
-    needs: changes
+    needs: [changes, candidate-distributions]
     if: >-
-      needs.changes.outputs.runtime_distribution == 'true' ||
-      github.event_name == 'workflow_dispatch'
+      always() && needs.candidate-distributions.result == 'success' &&
+      (needs.changes.outputs.runtime_distribution == 'true' ||
+      github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       redis:
         image: redis:7.4.10
-        ports:
-          - 6379:6379
+        ports: ["6379:6379"]
         options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      XA_MASS_REDIS_URL: redis://127.0.0.1:6379/15
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
       - uses: actions/setup-java@v5.7.0
         with:
           distribution: temurin
           java-version: "21"
-          cache: gradle
-      - uses: pnpm/action-setup@v6.0.10
-        with:
-          version: 11.9.0
-          run_install: false
-      - uses: actions/setup-node@v7.0.0
-        with:
-          node-version: 22.19.0
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-      - name: Verify release promotion contracts
-        run: python3 .github/scripts/test_prepare_release.py -v
-      - name: Build and prove Runtime and Worker SDK archives
-        run: >-
-          ./gradlew --no-daemon
-          :distribution:server:runtimeDistributionTest
-          :distribution:worker-sdk:workerSdkDistributionTest
-          -PxaMassVersion=${{ env.XA_MASS_DISTRIBUTION_VERSION }}
-      - name: Summarize Distribution proof
-        if: always()
-        run: |
-          echo "- **Runtime and Worker SDK Distribution:** ${{ job.status }}" \
-            >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload Runtime archive
-        if: always()
-        uses: actions/upload-artifact@v7.0.1
+      - name: Download candidate Runtime ZIP
+        uses: actions/download-artifact@v8.0.0
         with:
           name: xa-mass-server-runtime-${{ github.run_attempt }}
-          path: distribution/server/build/distributions/xa-mass-server-runtime-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
-          if-no-files-found: ignore
-          retention-days: 30
-      - name: Upload Worker SDK archive
-        if: always()
-        uses: actions/upload-artifact@v7.0.1
+          path: build/consumer-inputs
+      - name: Download candidate Worker SDK ZIP
+        uses: actions/download-artifact@v8.0.0
         with:
           name: xa-mass-worker-sdk-${{ github.run_attempt }}
-          path: distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
-          if-no-files-found: ignore
-          retention-days: 30
+          path: build/consumer-inputs
+      - name: Verify distribution and release helper contracts
+        run: |
+          python3 -m pip install -r .github/scripts/requirements.txt
+          python3 .github/scripts/test_prepare_release.py -v
+          python3 .github/scripts/test_consumer_ci_gate.py -v
+          python3 .github/scripts/test_run_local_runtime.py -v
+          python3 .github/scripts/test_run_runtime_distribution_proof.py -v
+      - name: Prove the supplied Runtime ZIP with real Redis
+        run: >-
+          python3 .github/scripts/run_runtime_distribution_proof.py
+          --archive build/consumer-inputs/xa-mass-server-runtime-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
+          --redis-url redis://127.0.0.1:6379/15
 
   product-coexistence:
     name: Product Coexistence
@@ -726,6 +784,7 @@ jobs:
       - worker-dynamic-matching
       - worker-convergence-health
       - android-host
+      - candidate-distributions
       - android-apk
       - android-emulator-worker
       - frontend
@@ -751,7 +810,9 @@ jobs:
       WORKER_CONVERGENCE_HEALTH_RESULT: ${{ needs.worker-convergence-health.result }}
       ANDROID_HOST_SELECTED: ${{ needs.changes.outputs.android_host }}
       ANDROID_HOST_RESULT: ${{ needs.android-host.result }}
-      ANDROID_APK_SELECTED: ${{ needs.changes.outputs.android_host == 'true' || needs.changes.outputs.android_emulator == 'true' }}
+      CANDIDATE_DISTRIBUTIONS_SELECTED: ${{ needs.changes.outputs.android_consumer == 'true' || needs.changes.outputs.android_emulator == 'true' || needs.changes.outputs.runtime_distribution == 'true' }}
+      CANDIDATE_DISTRIBUTIONS_RESULT: ${{ needs.candidate-distributions.result }}
+      ANDROID_APK_SELECTED: ${{ needs.changes.outputs.android_consumer == 'true' || needs.changes.outputs.android_emulator == 'true' || needs.changes.outputs.runtime_distribution == 'true' }}
       ANDROID_APK_RESULT: ${{ needs.android-apk.result }}
       ANDROID_EMULATOR_SELECTED: ${{ needs.changes.outputs.android_emulator }}
       ANDROID_EMULATOR_RESULT: ${{ needs.android-emulator-worker.result }}
@@ -806,6 +867,8 @@ jobs:
             "Worker Convergence Health" "$WORKER_CONVERGENCE_HEALTH_SELECTED" "$WORKER_CONVERGENCE_HEALTH_RESULT"
           check_lane \
             "Android Host" "$ANDROID_HOST_SELECTED" "$ANDROID_HOST_RESULT"
+          check_lane \
+            "Candidate Distribution Archives" "$CANDIDATE_DISTRIBUTIONS_SELECTED" "$CANDIDATE_DISTRIBUTIONS_RESULT"
           check_lane \
             "Android APK Assembly" "$ANDROID_APK_SELECTED" "$ANDROID_APK_RESULT"
           check_lane \

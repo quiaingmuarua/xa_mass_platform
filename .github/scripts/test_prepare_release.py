@@ -45,6 +45,12 @@ class ReleasePromotionTest(unittest.TestCase):
             with self.subTest(jobs=jobs), self.assertRaises(ValueError):
                 release.validate_run(self.run, jobs, self.commit, self.repository)
 
+    def test_archive_producer_and_real_consumer_are_release_requirements(self):
+        for name in ("Candidate Distribution Archives", "Android APK Assembly"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                release.validate_run(self.run, [job for job in self.jobs if job["name"] != name],
+                                     self.commit, self.repository)
+
     def test_artifacts_require_current_attempt_and_unexpired_pair(self):
         artifacts = [dict(name=f"xa-mass-{component}-2", expired=False) for component in release.COMPONENTS]
         self.assertEqual(2, len(release.validate_artifacts(artifacts, 2)))
@@ -96,6 +102,9 @@ class ReleasePromotionTest(unittest.TestCase):
 
     def test_major_two_uses_its_own_contract_and_exact_asset_versions(self):
         self._assert_draft_creation("2.0.0")
+
+    def test_major_three_uses_its_own_contract_and_exact_asset_versions(self):
+        self._assert_draft_creation("3.0.0")
 
     def _assert_draft_creation(self, version):
         tag = "v" + version

@@ -14,7 +14,7 @@ composition; `server_jvm` retains the complete platform implementation.
 ## Platform and preview
 
 Ordinary platform profiles load no business Scenario Controllers, registrations or
-jobs. The base platform and `agentforge` remain independent of business modules. `preview` imports [SMS Reception](../scenarios/sms-reception-jvm/README.md),
+jobs. The base platform and `consumer` remain independent of business modules. `preview` imports [SMS Reception](../scenarios/sms-reception-jvm/README.md),
 [Message Campaigns](../scenarios/message-campaigns-jvm/README.md) and
 [App Checks](../scenarios/app-checks-jvm/README.md). There is one
 fixed preview assembly, without per-business deployment profiles or selection.
@@ -30,7 +30,7 @@ Preview's host configuration and enabled module declarations form this topology:
 
 Explicit RPC preparation for `demo-sim` retains the host-configured Partitioned SMS supply;
 that Group does not enable Any Pool. A raw finite Task can explicitly supply Country.
-The `default` Project has no special Server semantics and does not auto-bind new Groups. Messages contributes the existing
+The explicitly declared `default` Project reads currently registered Groups; its reads never provision resources. Messages contributes the existing
 `QualifiedCountryDefinition`; Worker qualification remains `messaging.enabled="true"`
 and the two-letter `country` field. Its Phone function declaration is retained by
 that basic contract but `worker.messaging.phone` is not enabled in Preview.
@@ -102,15 +102,15 @@ standard environment, command-line and `spring.config.additional-location` input
 | Profile | Configuration | Default deployment |
 | --- | --- | --- |
 | Default | `application.yaml` | Server 18082, Redis `redis://localhost:6379/15`, scope `profile_default`, DEFAULT Pacer, no Adapter or Group seeds |
-| `agentforge` | `application-agentforge.yaml` over the base | Server 18182, `agentforge-websocket` Adapter 18183, scope `profile_agentforge`, DEFAULT and no Group seeds |
+| `consumer` | `application-consumer.yaml` over the base | Server 18182, `runtime-websocket` Adapter 18183, scope `profile_consumer`, DEFAULT and no Group seeds |
 | `preview` | `application-preview.yaml` over the base | Server 18500, `products-websocket` Adapter 18503, required `XA_MASS_REDIS_SCOPE`, DEFAULT and all three business Scenarios |
 
 The external [platform proof fixture](../integrations/worker_proof_support/platform-runtime.yaml)
 retains the `scenario-workers` test Project, three Groups, original Adapter and
 SCENARIO_LAB settings. Runners explicitly load that fixture before lane overlays;
 it is not a production profile or packaged application resource.
-AgentForge registers its own Groups through the public API; the profile does not
-embed AgentForge or Scenario capabilities. Groups without a task-rpc refill
+External consumers register their own Groups through the public API; the profile does not
+embed Consumer or Scenario capabilities. Groups without a task-rpc refill
 override save empty managed supply and may use Identity without a Pool.
 
 [Preview delivery](../distribution/server/PREVIEW.md#archive-delivery) copies the
@@ -131,7 +131,7 @@ Select another checked profile explicitly, for example:
 
 ```text
 ./gradlew :server_boot_jvm:bootRun \
-  --args="--spring.profiles.active=agentforge"
+  --args="--spring.profiles.active=consumer"
 ```
 
 This starts the selected Server composition, without a Worker Host. Server
@@ -155,7 +155,7 @@ startup/close ordering, application-service calls with Task HTTP blocked, uncert
 submission and late observations. [Scenario Coexistence](../integrations/scenario-coexistence/README.md)
 owns the real shared-Worker business witness. Scale is governed by [TESTING](../TESTING.md).
 
-Deployment tests use these classpath profiles directly. AgentForge, Lab Group
+Deployment tests use these classpath profiles directly. Consumer, Lab Group
 seeds and the Loaded Recovery overlay are executable configuration contracts;
 pure binding and invalid-input tests remain with Server. Platform/preview
 composition tests never load a source YAML through an additional file location.
@@ -171,7 +171,7 @@ finite vertical Worker proof.
 Preview explicitly declares `default` with `worker-group-ids: []`. Server resolves
 its available Groups from current registration when capabilities are requested;
 new HTTP registrations appear on refresh. Nonempty default bindings fail startup.
-Other Projects retain explicit lists. Plain platform and AgentForge do not receive
+Other Projects retain explicit lists. Plain platform and Consumer do not receive
 an implicit default Project. No Group, Pool or Worker is registered by this convention.
 
 
@@ -202,7 +202,7 @@ host-owned; module requirements only validate subsets and can use an already
 registered Group without a host creation entry. Explicit preparation with the same
 caller Task ID and complete descriptor reuses retained work. Changing Group
 is a new binding, not an implicit data migration.
-Default and AgentForge have empty Project lists; downstream deployments provide
+Default and Consumer have empty Project lists; downstream deployments provide
 Groups and Projects before explicitly preparing RPC Tasks. An external
 Group registration or Project declaration alone creates no Task. Projects have no mutation API.
 The Console workbench consumes this directory and works without a Project named
@@ -262,6 +262,6 @@ Preview assigns a private archive root per generated scope. No old scope is migr
 Preview declares the assignment-window Pool, consumer and registration-assigned feedback through
 `xa.mass.worker-assembly.fixed-window`. App A/B reference the names; their raw Matching enablement retains only Any/Messaging.
 Server expands the strict host startup input; Boot owns values and packaging, not qualification or projection execution.
-Batch Checks JSON stores only common/checks and must not contain poolGroups. Default/AgentForge without bindings create none.
+Batch Checks JSON stores only common/checks and must not contain poolGroups. Default/Consumer without bindings create none.
 See [Server bindings](../server_jvm/README.md#named-window-pool-and-feedback-bindings) for independent Pool/feedback selection,
 Group overrides, startup errors and the read-only Group interface. A registered Group alone installs no Worker Handler or Pool stock.

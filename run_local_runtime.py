@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent
 FRONTEND = ROOT / "frontend"
 FRONTEND_DIST = FRONTEND / "dist"
 DEFAULT_PROFILE = "preview"
-SUPPORTED_PROFILES = (DEFAULT_PROFILE, "default", "agentforge")
+SUPPORTED_PROFILES = (DEFAULT_PROFILE, "default", "consumer")
 SHUTDOWN_TIMEOUT_SECONDS = 15
 
 
@@ -140,12 +140,8 @@ def _environment_port(
 def runtime_api_base_url(profile: str, environ: Mapping[str, str]) -> str:
     if "SERVER_PORT" in environ:
         port = _environment_port(environ, "SERVER_PORT", 18_082)
-    elif profile == "agentforge":
-        port = _environment_port(
-            environ,
-            "XA_MASS_AGENTFORGE_SERVER_PORT",
-            18_182,
-        )
+    elif profile == "consumer":
+        port = 18_182
     else:
         port = 18_082
     return f"http://127.0.0.1:{port}"

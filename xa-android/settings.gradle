@@ -1,0 +1,38 @@
+import groovy.json.JsonSlurper
+
+pluginManagement {
+    repositories { google(); gradlePluginPortal(); mavenCentral() }
+}
+
+def required = { String name ->
+    String value = providers.gradleProperty(name).orNull
+    if (!value) throw new GradleException("Consumer build requires -P${name}=<value>")
+    value
+}
+def sdkRoot = file(required('xaMassSdkRoot'))
+def sdkVersion = required('xaMassVersion')
+def sdkCommit = required('xaMassCommit')
+def manifest = new JsonSlurper().parse(new File(sdkRoot, 'manifest.json'))
+def origin = new JsonSlurper().parse(new File(sdkRoot, 'consumer-origin.json'))
+if (manifest.schemaVersion != 1 || manifest.version != sdkVersion || manifest.gitCommit != sdkCommit
+        || origin.version != sdkVersion || origin.gitCommit != sdkCommit
+        || !(sdkCommit ==~ /[0-9a-f]{40}/) || !(sdkVersion ==~ /[0-9]+\.[0-9]+\.[0-9]+/)) {
+    throw new GradleException('Worker SDK identity differs from verified consumer inputs')
+}
+gradle.ext.xaMassSdkRoot = sdkRoot
+gradle.ext.xaMassSdkOrigin = origin
+gradle.ext.xaMassSdkVersion = sdkVersion
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        exclusiveContent {
+            forRepository { maven { name = 'verifiedXaMassSdk'; url = uri(new File(sdkRoot, 'repository')) } }
+            filter { includeGroup 'com.xa.mass' }
+        }
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = 'xa-mass-android-consumer'
+include ':capabilities', ':worker-demo'

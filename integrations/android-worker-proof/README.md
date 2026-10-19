@@ -45,8 +45,9 @@ Single-Worker Task Items explicitly use `workerSelector` with
 Triad's identity-targeted Items. The Group needs no Pool supply; an empty selector
 object is not a valid query and must not be sent as an implicit default.
 
-The ten Item identities and `SUCCEEDED` statuses are exact. Result payloads are
-opaque. This lane does not claim throughput, concurrent Handler execution, or
+The ten Item identities and `SUCCEEDED` statuses are exact. The ten DELAY Result payloads remain opaque. A separate RPC digest witness
+checks the existing Android capability content (MD5/hello) and records only the
+message ID and whether the content matched. This lane does not claim throughput, concurrent Handler execution, or
 device-matrix compatibility.
 
 Task submissions use a 250 millisecond `items:call` observation window so the
@@ -100,9 +101,10 @@ reads may be observed again until the phase deadline. Mutation requests are
 issued once and an ambiguous transport failure fails the phase. Invalid JSON,
 unexpected HTTP status, invalid state or identity drift fails immediately.
 Defaults are 180 seconds for the whole phase and 5 seconds for one request,
-with `requestTimeout <= maximumWait`. The launcher loads the external platform
-proof fixture, whose SCENARIO_LAB Pacer defers a due RECOVERY coordinate from the Score
-Owner's process clock before offering its Probe. Connected evidence restores HOT
+with `requestTimeout <= maximumWait`. The launcher uses the packaged `consumer`
+profile with DEFAULT Pacer, an explicitly declared `default` Project, the
+consumer-owned Group JSON and the existing independent Worker-ID query. A due
+RECOVERY recheck remains owned by the Pacer and Score Owner. Connected evidence restores HOT
 polarity while preserving a still-current/future coordinate; it does not bypass
 the due check. The [Serviceability retry contract](../../kernel_pacer_jvm/doc/dispatch/worker-serviceability-scheduling.md)
 owns the recheck delay and Score time rules. The phase budget covers those
@@ -136,6 +138,12 @@ owned by the single-Worker proof.
 
 ## Entrypoints
 
+Use a disposable API 33 Emulator with no differently signed installations of
+the four Demo package IDs. A signature conflict is an installation failure;
+remove those test packages explicitly before a new acceptance run. App data is
+reset only during initial scenario setup. Fault/recovery phases preserve the
+same installed App, client key, Worker, Task and Item identities.
+
 The Java tasks execute one phase because the launcher may need to change an
 external process between phases:
 
@@ -148,9 +156,11 @@ external process between phases:
 
 Stage the Java proof JARs with `:integrations:android-worker-proof:stageProofRuntime`.
 The Python launcher runs those existing Java mains directly so each phase is an
-owned process on both Windows and Linux. Pass `--android-serial`, `--server-jar`,
-`--apk-root` and a fresh `--proof-root`; release acceptance supplies the JAR
-from the verified Runtime ZIP. The Host Python requires the Redis dependency
+owned process on both Windows and Linux. Pass `--android-serial`, `--runtime-archive`, `--sdk-archive`, expected
+`--version`, full `--commit`, both `--runtime-sha256`/`--sdk-sha256`, `--apk-root`
+and a fresh `--proof-root`. The input APKs must include `apk-provenance.json`
+from the independent archive-consumption build. Preflight verifies all hashes
+before ADB changes; there is no source-JAR fallback. The Host Python requires the Redis dependency
 from `.github/scripts/requirements.txt`.
 
 The complete API 33 proof is owned by:
@@ -187,16 +197,14 @@ it must not add a test-only Properties control API to the Demo Host.
 
 ```text
 ./gradlew :integrations:android-worker-proof:test
-./gradlew :xa-android:worker-demo:assembleDebug
-./gradlew :xa-android:worker-demo:assembleLab1
-./gradlew :xa-android:worker-demo:assembleLab2
-./gradlew :xa-android:worker-demo:assembleLab3
+python .github/scripts/build_android_consumer.py --help
+python .github/scripts/run_android_emulator_worker.py --help
 ```
 
 The real proof runs as `Android Worker Proof` in Proof CI on one API 33 x86_64
 emulator. `Android APK Assembly` builds and uploads the Debug and three fixed
-Lab APKs independently of `Android Host`; the Emulator depends only on that
-artifact job. The launcher starts one bounded Java process per phase without a Gradle
+Lab APKs independently of `Android Host`; the Emulator consumes those APKs and the
+same candidate ZIP pair. The APK job also runs consumer unit tests outside the checkout. The launcher starts one bounded Java process per phase without a Gradle
 wrapper or shared daemon in its process tree. App, Server, Redis-scope and
 evidence lifecycles remain the same. Before installing the Apps, the harness disables Android's
 cached-app freezer and reboots the disposable Emulator so all three Lab
@@ -206,6 +214,17 @@ restores the original freezer settings and reboots after stopping its owned
 processes and removing only its own ADB mappings and exact test scopes. Physical-device
 vendor policy and background execution remain manual proofs.
 
-## Project fixture
+## Consumer inputs and provenance
 
-Use the shared [`scenario-workers` Project fixture](../../TESTING.md#worker-project-fixture).
+[XA Android](../../xa-android/README.md) owns the normal external-consumer entry.
+This lane imports only its archive preparation and Server command construction.
+It does not load `integrations/worker_proof_support/platform-runtime.yaml`.
+Server uses ports 18082/18083 and `runtime-websocket`; the APK build explicitly
+uses Runtime API 18082. User 1000/admin declares Task calls through public headers.
+The caller's stable RPC Task ID is `xa-android-rpc-v1.android-demo-workers`.
+
+`consumption.json` associates the expected commit, both ZIP hashes, actual Server
+JAR and four resolved SDK hashes, four APK hashes, independent build provenance,
+caller/Project/profile and exact suite scopes. Per-phase JSON and Java `.out`
+files are uploaded with Server/filtered device logs for 30 days. Provenance does
+not turn local Host state into Network or Scheduling truth.

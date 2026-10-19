@@ -51,14 +51,14 @@ final class AndroidRuntimeApiClientTest {
     void usesPublicRuntimeBoundariesWithoutInterpretingTaskPayload() {
         assertEquals(
                 "connected",
-                client.networkState("scenario-websocket", "worker-1")
+                client.networkState("runtime-websocket", "worker-1")
         );
         assertEquals(
                 "hot-score-overdue",
                 client.schedulingState("android-demo-workers", "worker-1")
         );
         client.callWorker(
-                "scenario-websocket",
+                "runtime-websocket",
                 "worker-1",
                 AndroidWorkerProofConstants.WORKER_PROBE_EVENT,
                 "null"
@@ -66,12 +66,12 @@ final class AndroidRuntimeApiClientTest {
         assertEquals(
                 "close-started",
                 client.closeCurrentConnection(
-                        "scenario-websocket",
+                        "runtime-websocket",
                         "worker-1"
                 )
         );
         client.requirePropertiesRelation(
-                "scenario-websocket",
+                "runtime-websocket",
                 "worker-1",
                 Map.of("packageName", "test.application")
         );
@@ -92,10 +92,12 @@ final class AndroidRuntimeApiClientTest {
                         .get("workerSelector")
         );
         assertEquals(AndroidRuntimeApiClient.CallStatus.SUCCEEDED, call.status());
+        assertEquals("opaque-result", client.successfulPayload(call.messageId()));
         assertEquals(
                 AndroidRuntimeApiClient.CallStatus.SUCCEEDED,
                 client.resultStatus(call.messageId())
         );
+        assertEquals("opaque-result", client.successfulPayload(call.messageId()));
     }
 
     @Test
@@ -170,8 +172,8 @@ final class AndroidRuntimeApiClientTest {
         );
         Map<String, Object> response;
         if (path.endsWith("/rpc:prepare")) {
-            assertEquals(Map.of("projectId", "scenario-workers", "workerGroupId", AndroidWorkerProofConstants.WORKER_GROUP_ID), Jsons.parseObject(encodedRequest));
-            response = Map.of("taskId", "android-proof-rpc");
+            assertEquals(Map.of("projectId", "default", "workerGroupId", AndroidWorkerProofConstants.WORKER_GROUP_ID), Jsons.parseObject(encodedRequest));
+            response = Map.of("taskId", "xa-android-rpc-v1.android-demo-workers");
         } else if (path.endsWith("workers:network-observe")) {
             assertEquals(
                     List.of("worker-1"),
@@ -248,7 +250,7 @@ final class AndroidRuntimeApiClientTest {
                 payload = "null";
             }
         } else {
-            target = "scenario-websocket";
+            target = "runtime-websocket";
             if (AndroidWorkerProofConstants.ADAPTER_CLOSE_CURRENT_EVENT.equals(
                     messageType
             )) {

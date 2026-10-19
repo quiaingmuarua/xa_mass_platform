@@ -1,6 +1,6 @@
 # Android Capabilities
 
-`:xa-android:capabilities` is an Android Library containing reusable
+`:capabilities` is an Android Library containing reusable
 business Definitions for Android Workers. It depends on Worker Core but not on
 the Android Worker assembly, Server, Kernel, Adapter, Redis, or a Host UI.
 
@@ -29,7 +29,9 @@ their own concrete composition entry when a real Host requires them.
 
 ## Verification
 
+Run from the independent consumer build with the explicit verified SDK properties described in the [consumer entry](../README.md#pinned-inputs-and-preparation).
+
 ```text
-./gradlew :xa-android:capabilities:testDebugUnitTest
-./gradlew :xa-android:capabilities:assembleDebug
+./gradlew :capabilities:testDebugUnitTest
+./gradlew :capabilities:assembleDebug
 ```

@@ -1,0 +1,12 @@
+{
+  "android-demo-workers": {
+    "attributes": {"capability": "android-demo-capabilities"},
+    "eventCodes": [
+      "extension.worker.android.state.read",
+      "extension.worker.android.battery.read",
+      "extension.worker.android.string.digest",
+      "extension.worker.lab.delay",
+      "extension.worker.lab.fail"
+    ]
+  }
+}
