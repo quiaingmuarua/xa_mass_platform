@@ -1,3 +1,4 @@
+import { FundedAppCheckSource } from "./app-check-credit-fixture";
 import { webcrypto } from "node:crypto";
 import {
   formatConfigurationDocument,
@@ -12,7 +13,6 @@ import {
   ApiAppCheckTaskSource,
   AppCheckConfigurationUnconfirmed
 } from "../src/app-checks/task-source";
-import { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
 
 beforeEach(() => vi.stubGlobal("crypto", webcrypto));
 afterEach(() => vi.unstubAllGlobals());
@@ -29,7 +29,7 @@ describe("App Checks configuration API boundary", () => {
     expect(JSON.parse(formatted)).toEqual(value);
   });
   it("uses configuration-only GET and fingerprint-checked PUT without changing Catalog", async () => {
-    const view = await new MockAppCheckTaskSource(
+    const view = await new FundedAppCheckSource(
       new MockUserDirectorySource()
     ).loadConfiguration(CALLER);
     const fetcher = vi
@@ -66,7 +66,7 @@ describe("App Checks configuration API boundary", () => {
   it.each([400, 403, 409, 503])(
     "preserves the %s save classification without retries",
     async (status) => {
-      const view = await new MockAppCheckTaskSource(
+      const view = await new FundedAppCheckSource(
         new MockUserDirectorySource()
       ).loadConfiguration(CALLER);
       const fetcher = vi
@@ -88,7 +88,7 @@ describe("App Checks configuration API boundary", () => {
     }
   );
   it("treats a malformed successful save response as unknown, and never fills missing reads from Mock", async () => {
-    const view = await new MockAppCheckTaskSource(
+    const view = await new FundedAppCheckSource(
       new MockUserDirectorySource()
     ).loadConfiguration(CALLER);
     vi.stubGlobal(
@@ -105,7 +105,7 @@ describe("App Checks configuration API boundary", () => {
 
 describe("Mock configuration content guard", () => {
   it("ignores object ordering, freezes effective content, and restores the same fingerprint when content returns", async () => {
-    const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
+    const source = new FundedAppCheckSource(new MockUserDirectorySource());
     const original = (await source.loadConfiguration(CALLER)).saved;
     const reordered = JSON.parse(settingsIdentity(original.configuration));
     reordered.checks = Object.fromEntries(Object.entries(reordered.checks).reverse());
@@ -137,7 +137,7 @@ describe("Mock configuration content guard", () => {
     expect(reverted.restartRequired).toBe(false);
   });
   it("rejects a concurrent editor rather than overwriting the first save during async hashing", async () => {
-    const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
+    const source = new FundedAppCheckSource(new MockUserDirectorySource());
     const original = (await source.loadConfiguration(CALLER)).saved;
     const a = structuredClone(original.configuration),
       b = structuredClone(original.configuration);

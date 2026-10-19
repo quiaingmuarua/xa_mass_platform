@@ -14,7 +14,7 @@ final class AppCheckTestSettings {
     }
     static AppCheckSettings.Check simulated(String label, String group) {
         return new AppCheckSettings.Check(label, group, settings().requireCheck("app-a-registration").execution(),
-                AppCheckContracts.SIMULATED, null);
+                AppCheckContracts.SIMULATED, null, 1L);
     }
     static AppCheckSettings settings() { return AppCheckSettings.parse(Jsons.parseObject(seed()), contracts()); }
 }

@@ -1,3 +1,9 @@
+import type { MockCreditSource } from "@/credits/mock-source";
+import {
+  CheckStartUnconfirmed,
+  type CheckCreditConfirmation,
+  type CheckCredits
+} from "./credits";
 import { MockTaskRetention } from "@/task-management/retention";
 import { decodeUtf8 } from "@/files/text";
 import type { MockUserDirectorySource } from "@/user-directory-source";
@@ -133,6 +139,7 @@ export const mockCatalog: Catalog = {
   checks: [
     ...["app-a", "app-b"].map((appId) => ({
       checkId: appId + "-registration",
+      unitPrice: 1,
       label: (appId === "app-a" ? "App A" : "App B") + " 模拟注册",
       workerGroupId: appId + "-sim",
       checkType: SIMULATED_CONTRACT,
@@ -159,6 +166,7 @@ export const mockCatalog: Catalog = {
       ["md5-prefix", "MD5 前缀命中（演示）", MD5_BATCH_CONTRACT, "string.md5.batch"]
     ].map(([checkId, label, checkType, event]) => ({
       checkId,
+      unitPrice: 1,
       label,
       checkType,
       workerGroupId: "demo-sim",
@@ -204,6 +212,7 @@ function task(taskId: string, changes: Partial<CheckTask> = {}): CheckTask {
     workerGroupId: "app-a-sim",
     managed: false,
     inputVersion: "5",
+    unitPrice: 1,
     seedsPerItem: 1,
     state: "terminal",
     checkId: "app-a-registration",
@@ -522,6 +531,12 @@ function sampleRows(
         }
   );
 }
+interface MockCheckStart {
+  confirmation: CheckCreditConfirmation;
+  ledgerRequestId: string;
+  actorUserId: string;
+  quote: CheckCredits;
+}
 export class MockAppCheckTaskSource implements AppCheckTaskSource {
   readonly mode = "mock";
   private savedConfiguration = {
@@ -539,10 +554,104 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     Map<string, { messageId: string; seeds: string[] }>
   >();
   private sequence = 0;
+  private readonly creditStarts = new Map<string, Map<string, MockCheckStart>>();
+  private readonly activeStarts = new Map<string, string>();
+  private readonly mutations = new Set<string>();
+  private async mutate<T>(id: string, operation: () => Promise<T>): Promise<T> {
+    if (this.mutations.has(id))
+      throw new TaskApiError(409, "任务操作正在进行，请稍后核对");
+    this.mutations.add(id);
+    try {
+      return await operation();
+    } finally {
+      this.mutations.delete(id);
+    }
+  }
+  simulateStartResponseLoss(caller: TaskCaller) {
+    this.credits.dropNextResponse(caller);
+  }
+  private async startObservation(caller: TaskCaller, id: string, requestId?: string) {
+    const task = this.owned(caller, id).task;
+    const start = this.creditStarts
+      .get(id)
+      ?.get(requestId ?? this.activeStarts.get(id) ?? "");
+    return start
+      ? {
+          start,
+          receipt: await this.credits.adjustment(
+            caller,
+            task.userId!,
+            start.ledgerRequestId
+          )
+        }
+      : undefined;
+  }
+  private async requireUncharged(caller: TaskCaller, id: string) {
+    const observation = await this.startObservation(caller, id);
+    if (observation && observation.receipt.status !== "rejected")
+      throw new TaskApiError(400, "启动扣分已受理，不能继续导入；请核对原启动操作");
+  }
+  async loadCredits(
+    caller: TaskCaller,
+    id: string,
+    requestId?: string
+  ): Promise<CheckCredits> {
+    const task = this.owned(caller, id).task;
+    const observed = await this.startObservation(caller, id, requestId);
+    const active = requestId ? await this.startObservation(caller, id) : observed;
+    const saved = observed ?? active;
+    const account = await this.credits.account(caller, task.userId!);
+    const quantity =
+      task.state === "pre_review"
+        ? [...this.seedGroups(id).values()].reduce((n, g) => n + g.seeds.length, 0)
+        : 0;
+    const useSaved =
+      !!saved &&
+      !(
+        requestId === undefined &&
+        saved.receipt.status === "rejected" &&
+        task.state === "pre_review"
+      );
+    const unitPrice = useSaved ? saved.start.quote.unitPrice : task.unitPrice!;
+    const seedCount = useSaved ? saved.start.quote.seedCount : quantity;
+    const amount = unitPrice * seedCount;
+    if (
+      !Number.isSafeInteger(unitPrice) ||
+      unitPrice <= 0 ||
+      !Number.isSafeInteger(amount)
+    )
+      throw new TaskApiError(400, "积分总额或固定单价无效");
+    const receipt = observed?.receipt;
+    return {
+      taskId: id,
+      userId: task.userId!,
+      unitPrice,
+      seedCount,
+      amount,
+      balance: account.balance,
+      itemCount: useSaved ? saved.start.quote.itemCount : (task.totalCount ?? 0),
+      requestId: observed?.start.confirmation.requestId ?? requestId ?? null,
+      requestStatus: receipt?.status ?? "not_observed",
+      rejectionCode: receipt?.status === "rejected" ? receipt.rejectionCode : null,
+      transaction: receipt?.transaction ?? null,
+      status: !receipt
+        ? "ready"
+        : receipt.status === "rejected"
+          ? "rejected"
+          : receipt.status === "not_observed"
+            ? "debit_unconfirmed"
+            : task.state === "pre_review"
+              ? "charged"
+              : task.state === "terminal"
+                ? "closed"
+                : "started"
+    };
+  }
   private readonly retention: MockTaskRetention;
 
   constructor(
     private readonly directory: MockUserDirectorySource,
+    private readonly credits: MockCreditSource,
     now: () => number = Date.now
   ) {
     this.retention = new MockTaskRetention(now);
@@ -594,13 +703,16 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
       ...mockCatalog,
       checks: Object.entries(this.effectiveConfiguration.configuration.checks)
         .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-        .map(([checkId, { label, workerGroupId, checkType, execution }]) => ({
-          checkId,
-          label,
-          workerGroupId,
-          checkType,
-          execution
-        }))
+        .map(
+          ([checkId, { label, workerGroupId, checkType, execution, unitPrice }]) => ({
+            checkId,
+            unitPrice,
+            label,
+            workerGroupId,
+            checkType,
+            execution
+          })
+        )
     });
   }
   async loadConfiguration(caller: TaskCaller): Promise<AppCheckConfigurationView> {
@@ -742,6 +854,7 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         country: input.country,
         createdAtMillis: Date.now(),
         checkType: app.checkType,
+        unitPrice: app.unitPrice,
         contractParameters: structuredClone(
           app.parameters ??
             this.effectiveConfiguration.configuration.common.typeDefaults[app.checkType]
@@ -775,91 +888,175 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     file: Blob,
     summary?: ImportSnapshot
   ) {
-    const record = this.owned(caller, id);
-    if (record.task.state !== "pre_review")
-      throw new Error("只有新版本待审核任务支持导入");
-    if (file.size > mockCatalog.limits.importFileBytes)
-      throw new Error("种子文件不能超过 10 MiB");
-    const bytes =
-      typeof file.arrayBuffer === "function"
-        ? await file.arrayBuffer()
-        : await new Promise<ArrayBuffer>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as ArrayBuffer);
-            reader.onerror = () => reject(reader.error);
-            reader.readAsArrayBuffer(file);
-          });
-    const text = decodeUtf8(bytes);
-    if (record.task.state !== "pre_review")
-      throw new Error("任务状态已变化，请刷新后核对");
-    const report = inspectImport(text, {
-      format: "txt",
-      seedType: record.task.seedType!,
-      country: record.task.country ?? "",
-      limit: mockCatalog.limits.seedsPerImport,
-      header: false,
-      column: 0
-    });
-    if (report.blocked || report.overLimit || !report.seeds.length)
-      throw new Error("种子文件校验失败，未写入任何种子");
-    if (record.task.checkType === PRIME_CONTRACT) {
-      const bad = report.rows.find(
-        (row) =>
-          row.kind !== "empty" &&
-          (!/^[0-9]{1,10}$/.test(row.seed) || Number(row.seed) > 4294967295)
-      );
-      if (bad)
-        throw new TaskApiError(
-          400,
-          `种子文件第 ${bad.line} 行不是 uint32，未写入任何种子`
+    this.owned(caller, id);
+    return this.mutate(id, async () => {
+      const record = this.owned(caller, id);
+      await this.requireUncharged(caller, id);
+      if (record.task.state !== "pre_review")
+        throw new Error("只有新版本待审核任务支持导入");
+      if (file.size > mockCatalog.limits.importFileBytes)
+        throw new Error("种子文件不能超过 10 MiB");
+      const bytes =
+        typeof file.arrayBuffer === "function"
+          ? await file.arrayBuffer()
+          : await new Promise<ArrayBuffer>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as ArrayBuffer);
+              reader.onerror = () => reject(reader.error);
+              reader.readAsArrayBuffer(file);
+            });
+      const text = decodeUtf8(bytes);
+      if (record.task.state !== "pre_review")
+        throw new Error("任务状态已变化，请刷新后核对");
+      const report = inspectImport(text, {
+        format: "txt",
+        seedType: record.task.seedType!,
+        country: record.task.country ?? "",
+        limit: mockCatalog.limits.seedsPerImport,
+        header: false,
+        column: 0
+      });
+      if (report.blocked || report.overLimit || !report.seeds.length)
+        throw new Error("种子文件校验失败，未写入任何种子");
+      if (record.task.checkType === PRIME_CONTRACT) {
+        const bad = report.rows.find(
+          (row) =>
+            row.kind !== "empty" &&
+            (!/^[0-9]{1,10}$/.test(row.seed) || Number(row.seed) > 4294967295)
         );
-    }
-    const prior = this.seedGroups(id);
-    let added = 0,
-      existing = 0;
-    const size = record.task.seedsPerItem!;
-    const itemCount = Math.ceil(report.seeds.length / size);
-    for (let offset = 0; offset < report.seeds.length; offset += size) {
-      const seeds = report.seeds.slice(offset, offset + size),
-        key = JSON.stringify(seeds);
-      if (prior.has(key)) existing++;
-      else {
-        prior.set(key, { messageId: `sample-${prior.size}`, seeds });
-        added++;
+        if (bad)
+          throw new TaskApiError(
+            400,
+            `种子文件第 ${bad.line} 行不是 uint32，未写入任何种子`
+          );
       }
-    }
-    record.task.totalCount = prior.size;
-    record.task.activeCount = prior.size;
-    const receipt = {
-      taskId: id,
-      inputCount: report.inputCount,
-      emptyCount: report.emptyCount,
-      duplicateCount: report.duplicateCount,
-      uniqueCount: report.seeds.length,
-      itemCount,
-      addedCount: added,
-      existingCount: existing
-    };
-    if (summary) this.imports.set(id, structuredClone({ ...summary, receipt }));
-    this.recordActivity(
-      id,
-      "导入种子",
-      `${report.seeds.length} 个种子组装为 ${itemCount} 个执行项；新增 ${added} 个执行项，已存在 ${existing} 个执行项`
-    );
-    return receipt;
+      const prior = this.seedGroups(id);
+      let added = 0,
+        existing = 0;
+      const size = record.task.seedsPerItem!;
+      const itemCount = Math.ceil(report.seeds.length / size);
+      for (let offset = 0; offset < report.seeds.length; offset += size) {
+        const seeds = report.seeds.slice(offset, offset + size),
+          key = JSON.stringify(seeds);
+        if (prior.has(key)) existing++;
+        else {
+          prior.set(key, { messageId: `sample-${prior.size}`, seeds });
+          added++;
+        }
+      }
+      record.task.totalCount = prior.size;
+      record.task.activeCount = prior.size;
+      const receipt = {
+        taskId: id,
+        inputCount: report.inputCount,
+        emptyCount: report.emptyCount,
+        duplicateCount: report.duplicateCount,
+        uniqueCount: report.seeds.length,
+        itemCount,
+        addedCount: added,
+        existingCount: existing
+      };
+      if (summary) this.imports.set(id, structuredClone({ ...summary, receipt }));
+      this.recordActivity(
+        id,
+        "导入种子",
+        `${report.seeds.length} 个种子组装为 ${itemCount} 个执行项；新增 ${added} 个执行项，已存在 ${existing} 个执行项`
+      );
+      return receipt;
+    });
   }
-  async approveTask(caller: TaskCaller, id: string, expectedCount: number) {
-    const record = this.owned(caller, id);
-    if (!Number.isInteger(expectedCount) || expectedCount <= 0)
-      throw new Error("数量必须为正整数");
-    if (["running_visible", "running-initial"].includes(record.task.state ?? ""))
-      return;
-    if (record.task.state !== "pre_review") throw new Error("当前任务不在待审核状态");
-    if (!expectedCount || expectedCount !== record.task.totalCount)
-      throw new Error("执行项数量已变化或为空，请重新核对");
-    record.task.state = "running_visible";
-    record.task.reviewedAt = Date.now();
-    this.recordActivity(id, "核对并启动", "开始演示查询");
+  async approveTask(
+    caller: TaskCaller,
+    id: string,
+    expectedCount: number,
+    confirmation: CheckCreditConfirmation
+  ) {
+    this.owned(caller, id);
+    return this.mutate(id, async () => {
+      const record = this.owned(caller, id);
+      if (
+        !confirmation ||
+        !Number.isSafeInteger(expectedCount) ||
+        expectedCount <= 0 ||
+        !Number.isSafeInteger(confirmation.expectedSeedCount) ||
+        confirmation.expectedSeedCount <= 0 ||
+        !Number.isSafeInteger(confirmation.expectedAmount) ||
+        confirmation.expectedAmount <= 0 ||
+        !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(confirmation.requestId)
+      )
+        throw new TaskApiError(400, "需要有效的启动费用确认");
+      let observation = await this.startObservation(caller, id, confirmation.requestId);
+      if (!observation) {
+        const active = await this.startObservation(caller, id);
+        if (active?.receipt.status === "not_observed")
+          throw new CheckStartUnconfirmed();
+        if (active?.receipt.status === "applied") observation = active;
+      }
+      if (
+        observation?.receipt.status !== "rejected" &&
+        record.task.state === "pre_review" &&
+        expectedCount !== record.task.totalCount
+      )
+        throw new TaskApiError(400, "执行项数量已变化，请重新核对");
+      let start = observation?.start;
+      if (start) {
+        if (
+          start.quote.itemCount !== expectedCount ||
+          start.quote.seedCount !== confirmation.expectedSeedCount ||
+          start.quote.amount !== confirmation.expectedAmount ||
+          (start.confirmation.requestId === confirmation.requestId &&
+            start.actorUserId !== caller.userId)
+        )
+          throw new TaskApiError(409, "启动请求或费用确认与原操作不一致");
+        if (observation!.receipt.status === "rejected")
+          throw new TaskApiError(409, "余额不足，本次启动请求已拒绝；请充值后重新确认");
+      } else {
+        if (record.task.state !== "pre_review")
+          throw new TaskApiError(400, "当前任务不在待审核状态");
+        const quote = await this.loadCredits(caller, id);
+        if (
+          quote.itemCount !== expectedCount ||
+          quote.seedCount !== confirmation.expectedSeedCount ||
+          quote.amount !== confirmation.expectedAmount
+        )
+          throw new TaskApiError(409, "输入数量或费用已变化，请重新确认");
+        start = {
+          confirmation: Object.freeze({ ...confirmation }),
+          ledgerRequestId: crypto.randomUUID(),
+          actorUserId: caller.userId,
+          quote
+        };
+        const attempts = this.creditStarts.get(id) ?? new Map<string, MockCheckStart>();
+        attempts.set(confirmation.requestId, start);
+        this.creditStarts.set(id, attempts);
+        this.activeStarts.set(id, confirmation.requestId);
+      }
+      try {
+        if (observation?.receipt.status !== "applied")
+          await this.credits.debit(caller, start.quote.userId, start.ledgerRequestId, {
+            source: "app-checks",
+            taskId: id,
+            checkId: record.task.checkId!,
+            unitPrice: start.quote.unitPrice,
+            quantity: start.quote.seedCount
+          });
+      } catch (error) {
+        if (error instanceof TaskApiError && error.status < 500 && error.status !== 408)
+          throw error;
+        throw new CheckStartUnconfirmed();
+      }
+      if (["running_visible", "running-initial"].includes(record.task.state ?? ""))
+        return;
+      if (record.task.state !== "pre_review")
+        throw new TaskApiError(400, "任务已经结束，不会重新启动或重复扣分");
+      record.task.state = "running_visible";
+      record.task.reviewedAt = Date.now();
+      this.recordActivity(
+        id,
+        "扣分并启动",
+        `${start.quote.seedCount} 个种子，扣除 ${start.quote.amount} 积分`
+      );
+    });
   }
   private running(id: string) {
     const record = this.require(id);
@@ -868,23 +1065,28 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     return record;
   }
   async closeTask(caller: TaskCaller, id: string) {
-    const record = this.owned(caller, id);
-    if (record.task.state === "terminal") return;
-    if (
-      !["pre_review", "running_visible", "running-initial"].includes(
-        record.task.state ?? ""
+    this.owned(caller, id);
+    return this.mutate(id, async () => {
+      const record = this.owned(caller, id);
+      const pending = await this.startObservation(caller, id);
+      if (pending?.receipt.status === "not_observed") throw new CheckStartUnconfirmed();
+      if (record.task.state === "terminal") return;
+      if (
+        !["pre_review", "running_visible", "running-initial"].includes(
+          record.task.state ?? ""
+        )
       )
-    )
-      throw new Error("已结束或状态不可用的任务不能再次关闭");
-    const cancelled = record.task.state === "pre_review";
-    record.task.state = "terminal";
-    this.retention.observe(record.task);
-    this.states.set(id, { endReason: cancelled ? "cancelled" : "stopped" });
-    this.recordActivity(
-      id,
-      cancelled ? "取消任务" : "中止任务",
-      "保留已有结果和未完成数量"
-    );
+        throw new Error("已结束或状态不可用的任务不能再次关闭");
+      const cancelled = record.task.state === "pre_review";
+      record.task.state = "terminal";
+      this.retention.observe(record.task);
+      this.states.set(id, { endReason: cancelled ? "cancelled" : "stopped" });
+      this.recordActivity(
+        id,
+        cancelled ? "取消任务" : "中止任务",
+        "保留已有结果和未完成数量"
+      );
+    });
   }
   private seedGroups(id: string) {
     let groups = this.imported.get(id);
@@ -1064,7 +1266,9 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
         this.states,
         this.activities,
         this.imports,
-        this.imported
+        this.imported,
+        this.creditStarts,
+        this.activeStarts
       ])
         map.delete(id);
       for (const [key, request] of this.requests)

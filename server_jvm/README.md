@@ -182,8 +182,9 @@ Project directory reads require a directory-admitted caller and remain discovery
 
 ### User credit accounts
 
-`CreditService` and `CreditAccountStore` own manual integer credit adjustments, independently
-of Tasks, Projects, Scenarios and execution. Stable `userId` identifies the account.
+`CreditService` and `CreditAccountStore` own integer account bookkeeping. Manual adjustments
+remain independent of Tasks; the internal business debit accepts immutable attribution and
+an amount but owns no Scenario pricing or execution policy. Stable `userId` identifies the account.
 `credits.view` permits self reads; `credits.manage` permits cross-user reads and adjustments
 (default admin, including self). Admission uses the current UserDirectory snapshot before
 account I/O. Public `/users` and `/roles` include no account data. A missing directory user
@@ -224,11 +225,48 @@ insufficient balance/limits/idempotency conflict, and 503 for unavailable or cor
 18002..18007 are the credit module codes. A write receiving 503 or losing its response may
 already have committed: reconcile by original requestId or explicitly retry the same content.
 There is no automatic retry with a new identity, direct balance setter, account cleanup,
-Project pricing, Task debit, business refund or billing strategy interface.
+generic Project pricing, business refund or billing strategy interface.
+
+Business debits add an optional `business` transaction object with source, taskId,
+checkId, unitPrice and quantity. The account HASH also records `business:<source>:<taskId>`
+pointing to the successful debit receipt. Its validation and publication join the same
+single final HSET as the balance, transaction and receipt. An unsuccessful attempt does
+not claim the business identity. A successful Task identity cannot be charged again under
+a different request. Receipt fingerprints include the business attribution and actor.
+No public arbitrary business-debit endpoint or refund primitive is added.
+
+`TaskCreditService` persists an immutable start snapshot in the separate Server key
+`xa_mass:<scope>:server:task-credit-start:<Task-ID digest>` before attempting the debit.
+It records the client request UUID, a generated account receipt UUID, owner, original
+actor, Item count and business charge. The mapping is stable across response loss and
+restart; HTTP X-Request-Id is unrelated. A Task's active attempt and previous attempt
+snapshots share one HASH. The account receipt is authoritative for its financial outcome;
+there is no duplicated mutable balance or accounting status.
+
+App Checks supplies `FiniteTaskApprovalAdmission` at startup, selected by immutable
+input ownership inside the common approve/close use cases. Its approve body extends
+`{expectedItemCount}` with `credits:{requestId,expectedSeedCount,expectedAmount}`.
+All inputs and amounts are checked under `OperationGuard.taskMutation`; payment must
+be confirmed before the existing Kernel approval is invoked. Missing confirmation
+cannot bypass billing. Other Tasks keep the existing contract. ProjectDefinition's
+optional `exclusiveInputOwner` fences both raw finite creation and RPC preparation;
+App Checks declares its own input owner. It is not a page permission or an event-wide tax.
+
+Unknown debit/approval responses retain their original intent. Reads do not replay it;
+explicit original-request continuation reconciles the debit then attempts approval.
+Paid or unconfirmed starts prevent further imports. A rejected receipt stays rejected
+following a top-up; the user explicitly confirms a new attempt. Closure requires a known
+debit outcome and never refunds; results and execution errors never mutate accounts.
+Final retention removes the Task start HASH, leaving account history and receipts intact.
+This slice requires one Server mutation entry per scope and adds no distributed lock,
+background billing worker, or automatic recovery write. Existing data needs no migration.
 
 Focused `CreditHttpTest` covers admission and response contracts; real Redis
 `CreditAccountRedisIntegrationTest` covers concurrent debits/replays, exact large integers,
 bounded pagination, corruption preflight, lost responses and reconnection/seed reload.
+`TaskCreditRedisIntegrationTest` proves persistent start binding, explicit recovery, owner
+attribution, rejected attempts and input fencing. Boot App Checks HTTP proof covers actual
+grouped pricing, debit/approval response loss, same-scope restart and retained ledger after purge.
 Task access uses role `projectScope` and `taskScope`: default admin manages every
 Task; operator accesses assigned Projects and Tasks whose stored `userId` matches. Lists automatically select the
 operator's range and reject an explicit other owner. Global Runtime Task preview,
@@ -419,7 +457,8 @@ conditionally removes the association by old Task ID. A later same-request creat
 gets a new execution identity, and delayed old reports cannot reach it. No permanent
 tombstone or scheduling owner is added.
 
-Finite approval accepts `{expectedItemCount}` with a positive integer. Inside the
+Finite approval accepts `{expectedItemCount}` with a positive integer; App Checks additionally
+requires the credit confirmation described in [credit accounts](#user-credit-accounts). Inside the
 same `OperationGuard.taskMutation` admission, PRE_REVIEW compares the actual Item
 count before calling the existing lifecycle Owner. A mismatched count returns
 `400/12009`; zero is invalid. Already-approved Tasks return `unchanged` regardless
@@ -1070,6 +1109,11 @@ Scenarios consume the immutable Project directory and approved application servi
 frontend availability does not enable business resources.
 
 App Checks contributes Project/resource requirements and business services, without Matching imports or property projection declarations.
+Its startup-bound `FiniteTaskApprovalAdmission` consumes the immutable Task descriptor
+and Server input/credit capabilities to validate and charge before approval. It receives
+no Kernel Runtime or mutation handle; common Server lifecycle operations retain the
+actual approval and close calls. Lifecycle-only assembly fixtures supply these Server
+capabilities explicitly, without creating or funding an account at startup.
 Messages may import `QualifiedCountryDefinition` for its Worker qualification, Pool consumer and independently enabled Phone query;
 SMS retains its partitioned lease declarations. `WorkerMatchingConfiguration` resolves host window bindings together with
 other immutable declarations before creating MatchingComposition. All definitions depend on startup input, never Task services

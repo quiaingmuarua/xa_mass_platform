@@ -31,6 +31,7 @@ public final class TaskRetentionService implements SmartLifecycle {
     private final TaskScoreBandCore scores;
     private final TaskDirectory directory;
     private final TaskCreationRegistry creations;
+    private final com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts;
     private final TaskResultArchive archive;
     private final OperationGuard operations;
     private final TaskRetentionProperties properties;
@@ -40,14 +41,14 @@ public final class TaskRetentionService implements SmartLifecycle {
     @Autowired
     public TaskRetentionService(TaskRuntime runtime, TaskResourceCatalog catalog, TaskScoreBandCore scores,
             TaskDirectory directory, TaskCreationRegistry creations, TaskResultArchive archive,
-            OperationGuard operations, TaskRetentionProperties properties) {
-        this(runtime, catalog, scores, directory, creations, archive, operations, properties, System::currentTimeMillis);
+            OperationGuard operations, TaskRetentionProperties properties, com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts) {
+        this(runtime, catalog, scores, directory, creations, archive, operations, properties, creditStarts, System::currentTimeMillis);
     }
     public TaskRetentionService(TaskRuntime runtime, TaskResourceCatalog catalog, TaskScoreBandCore scores,
             TaskDirectory directory, TaskCreationRegistry creations, TaskResultArchive archive,
-            OperationGuard operations, TaskRetentionProperties properties, LongSupplier clock) {
+            OperationGuard operations, TaskRetentionProperties properties, com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts, LongSupplier clock) {
         this.runtime = runtime; this.catalog = catalog; this.scores = scores; this.directory = directory;
-        this.creations = creations; this.archive = archive; this.operations = operations; this.properties = properties; this.clock = clock;
+        this.creations = creations; this.archive = archive; this.operations = operations; this.properties = properties; this.creditStarts = creditStarts; this.clock = clock;
     }
 
     public record Info(String phase, @Nullable Long terminatedAtMillis, @Nullable Long frozenAtMillis, @Nullable Long expiresAtMillis) { }
@@ -94,6 +95,7 @@ public final class TaskRetentionService implements SmartLifecycle {
                     runtime.purgeTaskData(taskId, score.score());
                     var attribution = TaskAttribution.read(task.metadata());
                     if (attribution != null) directory.remove(attribution.projectId(), taskId);
+                    creditStarts.remove(taskId);
                     String association = task.metadata().get(TaskCreationRegistry.METADATA_KEY);
                     if (association != null) creations.remove(association, taskId);
                     runtime.finishTaskPurge(taskId, score.score());

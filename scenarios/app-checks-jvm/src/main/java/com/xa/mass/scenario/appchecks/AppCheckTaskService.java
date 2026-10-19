@@ -41,23 +41,25 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     private final TaskResultsExportService exports;
     private final AppCheckSettings settings;
     private final AppCheckContracts contracts;
+    private final AppCheckCredits credits;
     private volatile boolean running;
     private boolean closed;
     private int active;
 
     public AppCheckTaskService(ProjectDirectory projects, ProjectTaskQueryService queries, TaskCreationService creation,
                                TaskDataService data, OperationGuard operations, TaskResultsExportService exports,
-                               AppCheckSettings settings, AppCheckContracts contracts) {
-        this(projects, queries, creation, data, operations, exports, settings, contracts, Clock.systemUTC());
+                               AppCheckSettings settings, AppCheckContracts contracts, AppCheckCredits credits) {
+        this(projects, queries, creation, data, operations, exports, settings, contracts, credits, Clock.systemUTC());
     }
 
     AppCheckTaskService(ProjectDirectory projects, ProjectTaskQueryService queries, TaskCreationService creation,
                         TaskDataService data, OperationGuard operations, TaskResultsExportService exports,
-                        AppCheckSettings settings, AppCheckContracts contracts, Clock clock) {
+                        AppCheckSettings settings, AppCheckContracts contracts, AppCheckCredits credits, Clock clock) {
         this.projects = projects; this.queries = queries; this.creation = creation;
         this.data = data;  this.clock = clock; this.operations = operations; this.exports = exports;
         this.settings = Objects.requireNonNull(settings);
         this.contracts = Objects.requireNonNull(contracts);
+        this.credits = Objects.requireNonNull(credits);
     }
 
     @Override public void start() {
@@ -76,7 +78,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
     public Map<String, Object> catalog() {
         requireRunning();
         return Map.of("projectId", PROJECT, "name", "批量检查", "version", "0.3.0-preview",
-                "checks", settings.checks().entrySet().stream().map(entry -> Map.of("checkId", entry.getKey(), "label", entry.getValue().label(), "workerGroupId", entry.getValue().workerGroupId(), "checkType", entry.getValue().checkType(), "execution", entry.getValue().execution().toMap())).toList(),
+                "checks", settings.checks().entrySet().stream().map(entry -> Map.of("checkId", entry.getKey(), "label", entry.getValue().label(), "workerGroupId", entry.getValue().workerGroupId(), "checkType", entry.getValue().checkType(), "unitPrice", entry.getValue().unitPrice(), "execution", entry.getValue().execution().toMap())).toList(),
                 "checkTypes", contracts.descriptions(), "countries", List.of("CN", "US", "GB"),
                 "limits", Map.of("seedsPerImport", AppCheckSeedFile.MAX_SEEDS, "importFileBytes", AppCheckSeedFile.MAX_BYTES));
     }
@@ -95,7 +97,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         var app = settings.requireCheck(specification.checkId());
         var parameters = contracts.require(app.checkType()).normalizeParameters(settings.parametersFor(app));
         var metadata = new LinkedHashMap<>(Map.ofEntries(
-                Map.entry("scenario", PROJECT), Map.entry("inputVersion", "5"),
+                Map.entry("unitPrice", Long.toString(app.unitPrice())), Map.entry("scenario", PROJECT), Map.entry("inputVersion", "5"),
                 Map.entry("seedsPerItem", Integer.toString(app.execution().seedsPerItem())),
                 Map.entry("checkId", specification.checkId()), Map.entry("checkLabel", app.label()),
                 Map.entry("checkTypeLabel", contracts.require(app.checkType()).label()),
@@ -132,6 +134,7 @@ public final class AppCheckTaskService implements SmartLifecycle, AutoCloseable 
         try {
             return operations.taskMutation(taskId, () -> {
                 var entry = requireCheck(caller, taskId);
+                credits.requireEditable(caller, taskId);
                 if (!"pre_review".equals(entry.scoreBand()))
                     throw new RequestFailure(409, "只有新版本待审核任务支持导入", taskId);
                 final AppCheckTaskSnapshot snapshot;

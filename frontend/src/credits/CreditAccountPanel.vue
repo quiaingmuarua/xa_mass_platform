@@ -195,7 +195,16 @@ onBeforeUnmount(() => workspace.dispose());
       <el-table-column prop="balanceBefore" label="变更前" min-width="85" />
       <el-table-column prop="balanceAfter" label="变更后" min-width="85" />
       <el-table-column prop="actorUserId" label="操作者" min-width="85" />
-      <el-table-column prop="reason" label="原因" min-width="160" />
+      <el-table-column label="来源与原因" min-width="220"
+        ><template #default="{ row }">
+          <template v-if="row.business">
+            <div>App Checks · {{ row.business.checkId }}</div>
+            <div>{{ row.business.quantity }} × {{ row.business.unitPrice }} 积分</div>
+            <div class="credits-task-id">Task：{{ row.business.taskId }}</div>
+          </template>
+          <template v-else>{{ row.reason }}</template>
+        </template></el-table-column
+      >
       <el-table-column label="时间" min-width="170"
         ><template #default="{ row }">{{
           time(row.createdAtMillis)

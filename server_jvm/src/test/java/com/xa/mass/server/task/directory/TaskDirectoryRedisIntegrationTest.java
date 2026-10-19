@@ -57,7 +57,7 @@ class TaskDirectoryRedisIntegrationTest {
         runtime = new RedisTaskRuntime(client, scores, items, scope.keyspace(), java.time.Duration.ofDays(7).toMillis());
         catalog = new RedisTaskResourceCatalog(client, scope.keyspace());
         projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(
-                new ProjectDefinition("p", List.of("g")), new ProjectDefinition("q", List.of("g")))), List.of());
+                new ProjectDefinition("p", List.of("g"), null), new ProjectDefinition("q", List.of("g"), null))), List.of());
         groups = mock(WorkerResourceCatalog.class);
         when(groups.getWorkerGroupDescriptors(anyList())).thenReturn(Map.of("g",
                 new WorkerResourceCatalog.WorkerGroupDescriptor("g", Map.of(), Set.of("event"))));

@@ -100,7 +100,7 @@ class MessageFailureIntegrationTest {
             assertThat(Jsons.parseObject(retried.body())).containsEntry("existingCount", 101L).containsEntry("confirmedAddedCount", 0L);
             var service = fixture.context.getBean(TaskDataService.class);
             verify(service, times(4)).importFiniteTaskItems(org.mockito.ArgumentMatchers.eq(CALLER), org.mockito.ArgumentMatchers.eq("messages"), eq((String) unknown.get("taskId")), anyList());
-            verify(fixture.context.getBean(TaskLifecycleService.class), never()).approve(org.mockito.ArgumentMatchers.eq(CALLER), anyString(), org.mockito.ArgumentMatchers.anyLong());
+            verify(fixture.context.getBean(TaskLifecycleService.class), never()).approve(org.mockito.ArgumentMatchers.eq(CALLER), anyString(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
             var detail = fixture.detail((String) first.get("taskId"));
             assertThat((List<?>) detail.get("results")).isEmpty();
             assertThat((Map<String,Object>) detail.get("task")).containsEntry("sendTotal", 101L)

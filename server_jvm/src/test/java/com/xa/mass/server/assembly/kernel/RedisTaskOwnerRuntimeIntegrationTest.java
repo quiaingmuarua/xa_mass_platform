@@ -137,7 +137,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         var matching = mock(com.xa.mass.workermatching.WorkerMatchingCatalog.class);
         when(matching.normalizeRefill(eq("phone-tools"), anyList())).thenAnswer(call -> call.getArgument(1));
         var projects = new com.xa.mass.server.project.ProjectDirectory(new com.xa.mass.server.project.ProjectAssemblyProperties(
-                List.of(new com.xa.mass.server.project.ProjectDefinition("test-project", List.of("phone-tools")))), List.of());
+                List.of(new com.xa.mass.server.project.ProjectDefinition("test-project", List.of("phone-tools"), null))), List.of());
         if (applicationDirectory != null) applicationDirectory.close();
         applicationDirectory = new com.xa.mass.server.task.directory.TaskDirectory(redisClient, keyspace, projects, catalog, scoreCore, workers,
                 new com.xa.mass.server.operation.OperationGuard(), runtime);
@@ -1460,7 +1460,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     void publicFiniteTaskControlUsesJavaOwnersWithoutPythonHttp() {
         TaskControlController controller = new TaskControlController(
                 mock(TaskCreationService.class),
-                new TaskLifecycleService(lifecycle, catalog, new com.xa.mass.server.operation.OperationGuard(), itemScoreCore, scoreCore, runtime),
+                new TaskLifecycleService(lifecycle, catalog, new com.xa.mass.server.operation.OperationGuard(), itemScoreCore, scoreCore, runtime, java.util.List.of()),
                 mock(com.xa.mass.server.task.call.TaskRpcPreparationService.class)
         , org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class));
         var created = runtime.createTask(new TaskDescriptor("public-task", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "2", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of()));
@@ -1468,7 +1468,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         runtime.appendItems("public-task", List.of(new TaskItem("item", "event", ownerClockMillis(), Map.of(), 5,
                 ownerClockMillis() + 60_000, new WorkerQuery("worker.any", Map.of()))));
         assertThat(created.status()).isEqualTo(TaskCreationStatus.CREATED);
-        assertThat(controller.approveTask(CALLER, "public-task", new com.xa.mass.server.api.v1.contract.task.TaskApproveRequest(1)).status()
+        assertThat(controller.approveTask(CALLER, "public-task", new com.xa.mass.server.api.v1.contract.task.TaskApproveRequest(1, null)).status()
                 .wireValue()).isEqualTo("applied");
         assertThat(controller.closeTask(CALLER, "public-task").status()
                 .wireValue()).isEqualTo("applied");

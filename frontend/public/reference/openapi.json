@@ -35,6 +35,28 @@
         },
         "type" : "object"
       },
+      "BusinessCharge" : {
+        "properties" : {
+          "checkId" : {
+            "type" : "string"
+          },
+          "quantity" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "source" : {
+            "type" : "string"
+          },
+          "taskId" : {
+            "type" : "string"
+          },
+          "unitPrice" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
       "Capabilities" : {
         "properties" : {
           "functions" : {
@@ -132,6 +154,9 @@
           "balanceBefore" : {
             "format" : "int64",
             "type" : "integer"
+          },
+          "business" : {
+            "$ref" : "#/components/schemas/BusinessCharge"
           },
           "createdAtMillis" : {
             "format" : "int64",
@@ -472,6 +497,9 @@
       },
       "TaskApproveRequest" : {
         "properties" : {
+          "credits" : {
+            "$ref" : "#/components/schemas/TaskCreditConfirmation"
+          },
           "expectedItemCount" : {
             "format" : "int64",
             "minimum" : 0,
@@ -538,6 +566,28 @@
             "type" : "string"
           }
         },
+        "type" : "object"
+      },
+      "TaskCreditConfirmation" : {
+        "properties" : {
+          "expectedAmount" : {
+            "format" : "int64",
+            "maximum" : 9007199254740991,
+            "minimum" : 1,
+            "type" : "integer"
+          },
+          "expectedSeedCount" : {
+            "format" : "int64",
+            "maximum" : 9007199254740991,
+            "minimum" : 1,
+            "type" : "integer"
+          },
+          "requestId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "required" : [ "expectedAmount", "expectedSeedCount", "requestId" ],
         "type" : "object"
       },
       "TaskItem" : {

@@ -29,7 +29,7 @@ class CreditHttpTest {
     static UserDirectory directory() throws Exception {
         return new UserDirectory(JsonMapper.builder().build(), new ClassPathResource("users/development-directory.json"),
                 new ProjectDirectory(new ProjectAssemblyProperties(List.of(
-                        new ProjectDefinition("messages", List.of("g")), new ProjectDefinition("app-checks", List.of("g")))), List.of()));
+                        new ProjectDefinition("messages", List.of("g"), null), new ProjectDefinition("app-checks", List.of("g"), null))), List.of()));
     }
     @BeforeEach void start() throws Exception {
         users = directory();
@@ -61,7 +61,7 @@ class CreditHttpTest {
     }
     @Test void adminSelfAdjustmentAndRetainedAccountReadAreIndependentOfProfileEditing() throws Exception {
         var input = new Adjustment(UUID.randomUUID().toString(), 9, "self");
-        var transaction = new CreditTransaction(1, input.requestId(), "1000", "1000", 9, 0, 9, "self", 1000);
+        var transaction = new CreditTransaction(1, input.requestId(), "1000", "1000", 9, 0, 9, "self", 1000, null);
         when(store.adjust("1000", "1000", input)).thenReturn(new CreditAdjustmentResponse(input.requestId(), "applied", transaction, null, 9L));
         var service = new CreditService(users, store);
         assertThat(service.adjust(users.resolveCaller("1000", "admin"), "1000", input).transaction()).isEqualTo(transaction);

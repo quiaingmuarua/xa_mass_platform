@@ -142,7 +142,7 @@ public class TaskControlController {
             @PathVariable @NotBlank String taskId,
             @Valid @RequestBody com.xa.mass.server.api.v1.contract.task.TaskApproveRequest request
     ) {
-        return taskLifecycle.approve(caller, taskId, request.expectedItemCount());
+        return taskLifecycle.approve(caller, taskId, request.expectedItemCount(), request.credits());
     }
 
     @Operation(summary = "Close a finite Task")

@@ -31,7 +31,7 @@ class UserDirectoryTest {
     private UserDirectory directory() throws Exception {
         return new UserDirectory(JsonMapper.builder().build(), new ClassPathResource("users/development-directory.json"),
                 new ProjectDirectory(new ProjectAssemblyProperties(List.of(
-                        new ProjectDefinition("messages", List.of("g")), new ProjectDefinition("app-checks", List.of("g")))), List.of()));
+                        new ProjectDefinition("messages", List.of("g"), null), new ProjectDefinition("app-checks", List.of("g"), null))), List.of()));
     }
     private MockMvc client(UserDirectory directory) {
         return MockMvcBuilders.standaloneSetup(new UserController(directory)).setControllerAdvice(new ApiExceptionHandler())

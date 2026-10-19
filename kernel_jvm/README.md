@@ -78,7 +78,7 @@ requires a new scope; no compatibility decoder or migration is added.
 The Java providers implement the operations currently called by the Runtime
 API and the fixed production Pacers, including:
 
-- Task create/lifecycle/Call submission, Item record access, Result storage and bounded atomic RPC Result consumption;
+- Task create/lifecycle/Call submission, Item record access and read-only Item HASH pages, Result storage and bounded atomic RPC Result consumption;
 - Task, TaskItem and Worker score range reads, exact CAS transitions, leases,
   idle park/close, final promotion and completed-HOT release;
 - Worker registration and minimal identity/Group/Endpoint descriptors, including caller-driven read-only Group HASH pages;
@@ -119,6 +119,16 @@ partial-failure boundaries. Events contain durations, bounded counts and optiona
 mechanical operation. The [performance proof](../integrations/worker-call-performance/README.md#jfr-diagnostics)
 owns offline joins and their incomplete/overlap limits. An observed Result write
 does not establish the later separate TaskItem Score promotion.
+
+### Read-only finite input traversal
+
+`TaskRuntime.scanTaskItems(taskId, cursor, countHint)` reads one Item HASH page with
+an opaque Redis cursor and count hint in 1..1000. Redis may return more than the hint
+or repeat identities; the caller owns deduplication and traversal memory. Empty data
+is not an execution count. App Checks consumes this through Server admission under
+its existing Task mutation guard, checks every Item against Item Scores and the
+complete total, then interprets grouped seeds. Kernel knows no price or account and
+gains no scheduling transition. Archived input is not reconstructed for this query.
 
 ## Finite Task Retention
 

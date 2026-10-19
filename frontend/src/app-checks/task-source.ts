@@ -1,4 +1,10 @@
 import {
+  checkCreditsSchema,
+  CheckStartUnconfirmed,
+  type CheckCreditConfirmation,
+  type CheckCredits
+} from "./credits";
+import {
   createProjectSource,
   countFrom,
   type ProjectTask
@@ -47,11 +53,18 @@ export interface AppCheckTaskSource {
     file: Blob,
     summary?: ImportSnapshot
   ): Promise<ImportReceipt>;
+  loadCredits(
+    caller: TaskCaller,
+    taskId: string,
+    requestId?: string
+  ): Promise<CheckCredits>;
+  simulateStartResponseLoss?(caller: TaskCaller): void;
   // Explicit Mock interactions for the design preview; the API capabilities remain unchanged.
   approveTask?(
     caller: TaskCaller,
     taskId: string,
-    expectedCount: number
+    expectedCount: number,
+    credits: CheckCreditConfirmation
   ): Promise<void>;
   closeTask?(caller: TaskCaller, taskId: string): Promise<void>;
   advanceTask?(caller: TaskCaller, taskId: string, late?: boolean): Promise<void>;
@@ -287,8 +300,37 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
     const saved = this.imports.get(caller.userId + "/" + taskId);
     return saved ? structuredClone(saved) : undefined;
   }
-  async approveTask(caller: TaskCaller, taskId: string, expectedCount: number) {
-    await this.taskClient.approveTask(requireCaller(caller), taskId, expectedCount);
+  async loadCredits(caller: TaskCaller, taskId: string, requestId?: string) {
+    return checkCreditsSchema.parse(
+      await request(
+        `/tasks/${encodeURIComponent(taskId)}/credits${requestId ? "?requestId=" + encodeURIComponent(requestId) : ""}`,
+        undefined,
+        undefined,
+        requireCaller(caller)
+      )
+    );
+  }
+  async approveTask(
+    caller: TaskCaller,
+    taskId: string,
+    expectedCount: number,
+    credits: CheckCreditConfirmation
+  ) {
+    try {
+      await this.taskClient.approveTask(
+        requireCaller(caller),
+        taskId,
+        expectedCount,
+        credits
+      );
+    } catch (error) {
+      const status =
+        typeof error === "object" && error && "status" in error
+          ? Number(error.status)
+          : undefined;
+      if (status && status >= 400 && status < 500 && status !== 408) throw error;
+      throw new CheckStartUnconfirmed();
+    }
   }
   async closeTask(caller: TaskCaller, taskId: string) {
     await this.taskClient.closeTask(requireCaller(caller), taskId);
@@ -334,6 +376,7 @@ function checkTaskView(entry: ProjectTask): CheckTask {
     ])
       if (metadata[key] !== undefined) row[key] = metadata[key];
     row.refill = entry.task?.refill;
+    if (metadata.unitPrice !== undefined) row.unitPrice = Number(metadata.unitPrice);
     if (metadata.seedsPerItem !== undefined) {
       const size = Number(metadata.seedsPerItem);
       if (Number.isInteger(size) && size >= 1 && size <= 100) row.seedsPerItem = size;

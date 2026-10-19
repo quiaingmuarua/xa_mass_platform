@@ -40,6 +40,68 @@ import static org.mockito.Mockito.*;
 /** Real HTTP/Redis/Worker proof. The attempt witness exists only in this test assembly. */
 @Tag("scenario-composition")
 class AppChecksIntegrationTest {
+    @Test @Timeout(180) @SuppressWarnings("unchecked")
+    void creditsUseActualGroupedSeedsAndSurviveUnknownCommitsRestartAndTaskCleanup() throws Exception {
+        try (var world = new World()) {
+            world.fund("1001", -999900);
+            assertThat((Map<String,Object>) world.get("/v3/api-docs").get("paths"))
+                    .containsKey("/api/v1/app-checks/tasks/{taskId}/credits");
+            String createdBody = Jsons.toJson(Map.of("requestId", "credit-task", "checkId", "md5-prefix"));
+            var created = world.postAs("/api/v1/app-checks/tasks", createdBody, "application/json", "1001", "operator");
+            assertThat(created.statusCode()).isEqualTo(201);
+            String id = (String) Jsons.parseObject(created.body()).get("taskId");
+            String seeds = IntStream.range(0, 23).mapToObj(i -> "seed-" + i).collect(java.util.stream.Collectors.joining("\n"));
+            assertThat(world.postAs("/api/v1/app-checks/tasks/" + id + "/seeds:import", seeds, "text/plain", "1001", "operator").statusCode()).isEqualTo(200);
+            assertThat(world.postAs("/api/v1/app-checks/tasks/" + id + "/seeds:import", seeds, "text/plain", "1001", "operator").statusCode()).isEqualTo(200);
+            var quote = world.get("/api/v1/app-checks/tasks/" + id + "/credits");
+            assertThat(quote).containsEntry("itemCount", 3L).containsEntry("seedCount", 23L).containsEntry("amount", 23L).containsEntry("userId", "1001");
+            assertThat(world.http.send(world.request("/api/v1/app-checks/tasks/" + id + "/credits", "1002", "operator").build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
+            assertThat(world.post("/api/v1/tasks", Jsons.toJson(Map.of("requestId", "raw-bypass", "projectId", "app-checks", "workerGroupId", "demo-sim", "refill", List.of())), "application/json").statusCode()).isEqualTo(403);
+            assertThat(world.post("/api/v1/tasks/" + id + "/approve", "{\"expectedItemCount\":3}", "application/json").statusCode()).isEqualTo(400);
+            var confirmation = world.confirmation(id, "proof", "admin");
+            var forged = new LinkedHashMap<>(confirmation); forged.put("expectedAmount", 22);
+            assertThat(world.post("/api/v1/tasks/" + id + "/approve", Jsons.toJson(Map.of("expectedItemCount", 3, "credits", forged)), "application/json").statusCode()).isEqualTo(409);
+            String body = Jsons.toJson(Map.of("expectedItemCount", 3, "credits", confirmation));
+            world.loseDebitResponse.set(true);
+            assertThat(world.post("/api/v1/tasks/" + id + "/approve", body, "application/json").statusCode()).isEqualTo(503);
+            assertThat(world.get("/api/v1/users/1001/credits")).containsEntry("balance", 77L);
+            assertThat(world.get("/api/v1/projects/app-checks/tasks/" + id)).containsEntry("scoreBand", "pre_review");
+            world.restart();
+            assertThat(world.get("/api/v1/app-checks/tasks/" + id + "/credits?requestId=" + confirmation.get("requestId"))).containsEntry("status", "charged");
+            assertThat(world.postAs("/api/v1/app-checks/tasks/" + id + "/seeds:import", "new-seed", "text/plain", "1001", "operator").statusCode()).isEqualTo(400);
+            world.loseApprovalResponse.set(true);
+            assertThat(world.post("/api/v1/tasks/" + id + "/approve", body, "application/json").statusCode()).isEqualTo(503);
+            assertThat(world.post("/api/v1/tasks/" + id + "/approve", body, "application/json").statusCode()).isEqualTo(200);
+            assertThat(world.approve(id, 3).statusCode()).isEqualTo(200);
+            assertThat(world.get("/api/v1/users/1001/credits")).containsEntry("balance", 77L);
+            assertThat(world.post("/api/v1/tasks/" + id + "/close", "", "application/json").statusCode()).isEqualTo(200);
+            assertThat(world.get("/api/v1/users/1001/credits")).containsEntry("balance", 77L);
+            var configuration = world.get("/api/v1/app-checks/configuration");
+            var saved = (Map<String,Object>) configuration.get("saved");
+            var config = (Map<String,Object>) saved.get("configuration");
+            ((Map<String,Object>) ((Map<String,Object>) config.get("checks")).get("md5-prefix")).put("unitPrice", 2);
+            assertThat(world.putConfiguration(Map.of("expectedFingerprint", saved.get("fingerprint"), "configuration", config)).statusCode()).isEqualTo(200);
+            world.restart();
+            assertThat(world.get("/api/v1/app-checks/tasks/" + id + "/credits")).containsEntry("unitPrice", 1L).containsEntry("amount", 23L);
+            var fresh = world.postAs("/api/v1/app-checks/tasks", createdBody.replace("credit-task", "second-credit-task"), "application/json", "1001", "operator");
+            String second = (String) Jsons.parseObject(fresh.body()).get("taskId");
+            String many = IntStream.range(0, 40).mapToObj(i -> "seed-" + i).collect(java.util.stream.Collectors.joining("\n"));
+            assertThat(world.postAs("/api/v1/app-checks/tasks/" + second + "/seeds:import", many, "text/plain", "1001", "operator").statusCode()).isEqualTo(200);
+            var next = world.confirmation(second, "1001", "operator");
+            String nextBody = Jsons.toJson(Map.of("expectedItemCount", 4, "credits", next));
+            assertThat(world.postAs("/api/v1/tasks/" + second + "/approve", nextBody, "application/json", "1001", "operator").statusCode()).isEqualTo(409);
+            world.fund("1001", 10);
+            assertThat(world.postAs("/api/v1/tasks/" + second + "/approve", nextBody, "application/json", "1001", "operator").statusCode()).isEqualTo(409);
+            assertThat(world.approveAs(second, 4, "1001", "operator").statusCode()).isEqualTo(200);
+            assertThat(world.get("/api/v1/users/1001/credits")).containsEntry("balance", 7L);
+            world.context.getBean(com.xa.mass.server.task.retention.TaskRetentionService.class).maintain(id, System.currentTimeMillis() + Duration.ofDays(8).toMillis());
+            assertThat(world.get("/api/v1/users/1001/credits")).containsEntry("balance", 7L);
+            var entries = (List<Map<String,Object>>) world.get("/api/v1/users/1001/credits/transactions").get("entries");
+            assertThat(entries).filteredOn(e -> e.get("business") instanceof Map<?,?> b && id.equals(b.get("taskId"))).singleElement()
+                    .satisfies(e -> assertThat(e).containsEntry("actorUserId", "proof").containsEntry("delta", -23L));
+        }
+    }
+
     @Test @Timeout(150) @SuppressWarnings("unchecked")
     void groupedMd5ExecutesTwentyThreeSeedsAsThreeOrTwentyThreeItemsAcrossConfigurationRestart() throws Exception {
         try (var world = new World()) {
@@ -76,7 +138,7 @@ class AppChecksIntegrationTest {
             try {
                 for (var test : Map.of(old, 10, fresh, 1).entrySet()) {
                     String id = test.getKey(); int size = test.getValue(), count = (23 + size - 1) / size;
-                    assertThat(world.post("/api/v1/tasks/" + id + "/approve", Jsons.toJson(Map.of("expectedItemCount", count)), "application/json").statusCode()).isEqualTo(200);
+                    assertThat(world.approve(id, count).statusCode()).isEqualTo(200);
                     var detail = world.settled(id, count);
                     assertThat(rows(detail)).hasSize(23);
                     var expectedGroups = new LinkedHashMap<String,List<String>>();
@@ -131,7 +193,7 @@ class AppChecksIntegrationTest {
             var saved = (Map<String,Object>) view.get("saved");
             var config = (Map<String,Object>) saved.get("configuration");
             var checks = (Map<String,Object>) config.get("checks");
-            checks.put("text-proof", Map.of("label", "Text proof", "checkType", "md5-prefix-demo-v1", "workerGroupId", "demo-sim", "parameters", Map.of(),
+            checks.put("text-proof", Map.of("unitPrice", 1, "label", "Text proof", "checkType", "md5-prefix-demo-v1", "workerGroupId", "demo-sim", "parameters", Map.of(),
                     "execution", Map.of("eventCode", "extension.worker.string.md5",
                             "refill", List.of(Map.of("poolName", "any", "target", Map.of(), "count", 100)),
                             "workerSelector", Map.of("executorName", "worker.any", "input", Map.of()))));
@@ -171,7 +233,7 @@ class AppChecksIntegrationTest {
             assertThat(primeReceipt.statusCode()).as(primeReceipt.body()).isEqualTo(200);
             assertThat(Jsons.parseObject(primeReceipt.body())).containsEntry("addedCount", 8L).containsEntry("duplicateCount", 1L);
             assertThat(Jsons.parseObject(world.post(primeRoute, primeFile, "text/plain").body())).containsEntry("addedCount", 0L).containsEntry("existingCount", 8L);
-            assertThat(world.post("/api/v1/tasks/" + primeId + "/approve", "{\"expectedItemCount\":8}", "application/json").statusCode()).isEqualTo(200);
+            assertThat(world.approve(primeId, 8).statusCode()).isEqualTo(200);
             Path root = java.nio.file.Files.createTempDirectory(Path.of("build"), "text-worker-");
             Path hostConfig = root.resolve("host.json");
             java.nio.file.Files.writeString(hostConfig, Jsons.toJson(Map.of("runtimeApiBaseUrl", world.base.toString(),
@@ -185,7 +247,7 @@ class AppChecksIntegrationTest {
             }, "text-proof-host");
             host.start();
             try {
-                assertThat(world.post("/api/v1/tasks/" + id + "/approve", "{\"expectedItemCount\":4}", "application/json").statusCode()).isEqualTo(200);
+                assertThat(world.approve(id, 4).statusCode()).isEqualTo(200);
                 var detail = world.settled(id, 4);
                 // Fixed independent vectors, not expected values generated from the Scenario verdict.
                 var expected = Map.of("a", "0cc175b9c0f1b6a831c399e269772661", "abc", "900150983cd24fb0d6963f7d28e17f72",
@@ -268,7 +330,7 @@ class AppChecksIntegrationTest {
             var initial = world.get("/api/v1/app-checks/configuration");
             var saved = (Map<String, Object>) initial.get("saved");
             var config = (Map<String, Object>) saved.get("configuration");
-            ((Map<String, Object>) config.get("checks")).put("app-c", Map.of("label", "App C", "workerGroupId", "app-c-sim",
+            ((Map<String, Object>) config.get("checks")).put("app-c", Map.of("unitPrice", 1, "label", "App C", "workerGroupId", "app-c-sim",
                     "checkType", "registration-v1", "execution", Map.of("eventCode", "extension.worker.catalog.lookup",
                             "refill", List.of(Map.of("poolName", "any", "target", Map.of(), "count", 100)),
                             "workerSelector", Map.of("executorName", "worker.any", "input", Map.of()))));
@@ -583,7 +645,7 @@ class AppChecksIntegrationTest {
             world.restart();
             assertThat(task(world.detail(first))).containsEntry("userId", a);
             assertThat(world.postAs(route + "/" + first + "/seeds:import", "8613800000001", "text/plain", a, "operator").statusCode()).isEqualTo(200);
-            assertThat(world.postAs("/api/v1/tasks/" + first + "/approve", "{\"expectedItemCount\":1}", "application/json", a, "operator").statusCode()).isEqualTo(200);
+            assertThat(world.approveAs(first, 1, a, "operator").statusCode()).isEqualTo(200);
             assertThat(world.postAs("/api/v1/tasks/" + first + "/close", "", "application/json", a, "operator").statusCode()).isEqualTo(200);
             assertThat(world.postAs(route + "/" + first + "/results:export", "", "application/json", a, "operator").statusCode()).isEqualTo(200);
             assertThat(world.post("/api/v1/tasks/" + second + "/close", "", "application/json").statusCode()).isEqualTo(200);
@@ -669,10 +731,10 @@ class AppChecksIntegrationTest {
                     .map(value -> (Map<?, ?>) value).filter(row -> id.equals(row.get("taskId"))).toList())
                     .singleElement().satisfies(row -> assertThat(((Map<?, ?>) ((Map<?, ?>) row.get("task")).get("metadata")).get("userId")).isEqualTo("proof"));
             assertThat(world.post("/api/v1/tasks/" + id + "/approve", "{\"expectedItemCount\":100000}", "application/json").statusCode()).isEqualTo(400);
-            assertThat(world.post("/api/v1/tasks/" + id + "/approve", "{\"expectedItemCount\":100001}", "application/json").statusCode()).isEqualTo(200);
+            assertThat(world.approve(id, 100001).statusCode()).isEqualTo(200);
             assertThat(world.post("/api/v1/tasks/" + id + "/close", "", "application/json").statusCode()).isEqualTo(200);
             assertThat(task(world.detail(id))).containsEntry("activeCount", 100001L).containsEntry("state", "terminal");
-            assertThat(world.post("/api/v1/tasks/" + id + "/approve", "{\"expectedItemCount\":100001}", "application/json").statusCode()).isEqualTo(400);
+            assertThat(world.approve(id, 100001).statusCode()).isEqualTo(400);
         }
     }
 
@@ -707,7 +769,7 @@ class AppChecksIntegrationTest {
                     assertThat(imported.statusCode()).isEqualTo(200);
                     assertThat(Jsons.parseObject(imported.body())).containsEntry("uniqueCount", 2L).containsEntry("itemCount", 1L);
                 }
-                assertThat(world.post("/api/v1/tasks/" + id + "/approve", "{\"expectedItemCount\":4}", "application/json").statusCode()).isEqualTo(200);
+                assertThat(world.approve(id, 4).statusCode()).isEqualTo(200);
                 before = world.settled(id, 4);
                 assertThat(task(before)).containsEntry("succeededCount", 4L).containsEntry("failedCount", 0L);
                 assertThat(rows(before)).filteredOn(row -> Boolean.TRUE.equals(row.get("matched"))).hasSize(2);
@@ -789,6 +851,8 @@ class AppChecksIntegrationTest {
         String[] arguments;
         ConfigurableApplicationContext context;
         int sequence;
+        final java.util.concurrent.atomic.AtomicBoolean loseDebitResponse = new java.util.concurrent.atomic.AtomicBoolean();
+        final java.util.concurrent.atomic.AtomicBoolean loseApprovalResponse = new java.util.concurrent.atomic.AtomicBoolean();
         void updateUser(String id, String role, List<String> projects) throws Exception {
             var response = http.send(request("/api/v1/users/" + id, "proof", "admin")
                     .header("Content-Type", "application/json")
@@ -806,6 +870,25 @@ class AppChecksIntegrationTest {
             replicas = IntStream.range(0, workerCount).mapToObj(i -> "replica-" + i).toList();
             int port = port(), adapter = port(); base = URI.create("http://127.0.0.1:" + port);
             application.setRegisterShutdownHook(false);
+            application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(new BeanPostProcessor() {
+                @Override public Object postProcessAfterInitialization(Object bean, String name) {
+                    if (bean instanceof com.xa.mass.server.credits.CreditAccountStore store) {
+                        var observed = spy(store);
+                        doAnswer(call -> { var result = call.callRealMethod();
+                            if (loseDebitResponse.getAndSet(false)) throw new com.xa.mass.server.error.ServerException(com.xa.mass.server.error.ServerErrorCode.CREDIT_UNAVAILABLE, "proof.lostDebit", null, null);
+                            return result; }).when(observed).debit(anyString(), anyString(), any());
+                        return observed;
+                    }
+                    if (bean instanceof com.xa.mass.kernel.task.TaskLifecycleCommands commands) {
+                        var observed = spy(commands);
+                        doAnswer(call -> { var result = call.callRealMethod();
+                            if (loseApprovalResponse.getAndSet(false)) throw new IllegalStateException("proof lost approval response");
+                            return result; }).when(observed).approveTask(anyString());
+                        return observed;
+                    }
+                    return bean;
+                }
+            }));
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(observations));
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(selections));
             arguments = new String[] { "--spring.profiles.active=preview", "--server.port=" + port,
@@ -818,6 +901,22 @@ class AppChecksIntegrationTest {
             AppCheckConfigurationFixture.properties(maxAssignments, parameters).forEach((key,value) -> argumentsWithStorage.add("--" + key + "=" + value));
             arguments = argumentsWithStorage.toArray(String[]::new);
             context = application.run(arguments);
+            var users = context.getBean(com.xa.mass.server.user.UserDirectory.class);
+            for (var user : users.users()) fund(user.userId(), 1_000_000);
+        }
+        void fund(String userId, long amount) throws Exception {
+            assertThat(post("/api/v1/users/" + userId + "/credits/adjustments", Jsons.toJson(Map.of("requestId", UUID.randomUUID().toString(),
+                    "delta", amount, "reason", "App Checks proof fixture")), "application/json").statusCode()).isEqualTo(200);
+        }
+        Map<String, Object> confirmation(String id, String user, String role) throws Exception {
+            var response = http.send(request("/api/v1/app-checks/tasks/" + id + "/credits", user, role).build(), HttpResponse.BodyHandlers.ofString());
+            assertThat(response.statusCode()).isEqualTo(200);
+            var quote = Jsons.parseObject(response.body());
+            return Map.of("requestId", UUID.randomUUID().toString(), "expectedSeedCount", quote.get("seedCount"), "expectedAmount", quote.get("amount"));
+        }
+        HttpResponse<String> approve(String id, int count) throws Exception { return approveAs(id, count, "proof", "admin"); }
+        HttpResponse<String> approveAs(String id, int count, String user, String role) throws Exception {
+            return postAs("/api/v1/tasks/" + id + "/approve", Jsons.toJson(Map.of("expectedItemCount", count, "credits", confirmation(id, user, role))), "application/json", user, role);
         }
         @SuppressWarnings("unchecked")
         void configure(Map<String,Object> parameters) throws Exception {
@@ -914,7 +1013,7 @@ class AppChecksIntegrationTest {
             assertThat(response.statusCode()).isEqualTo(201);
             String id = (String) Jsons.parseObject(response.body()).get("taskId");
             assertThat(post("/api/v1/app-checks/tasks/" + id + "/seeds:import", String.join("\n", numbers), "text/plain").statusCode()).isEqualTo(200);
-            assertThat(post("/api/v1/tasks/" + id + "/approve", Jsons.toJson(Map.of("expectedItemCount", count)), "application/json").statusCode()).isEqualTo(200);
+            assertThat(approve(id, count).statusCode()).isEqualTo(200);
             return id;
         }
         HttpResponse<String> post(String path, String body, String contentType) throws Exception {

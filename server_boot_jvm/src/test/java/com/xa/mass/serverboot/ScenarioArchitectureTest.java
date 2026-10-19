@@ -39,6 +39,10 @@ class ScenarioArchitectureTest {
         var allowed = Map.of(
                 "app-checks-jvm", Set.of("task.access.TaskCaller", "project.ProjectDirectory", "project.ProjectTaskQueryService", "project.ProjectDefinition", "project.ProjectWorkerRequirements",
                         "task.TaskCreationService", "task.TaskCreationUnconfirmedException", "task.TaskDataService", "task.directory.TaskUserId",
+                        "credits.CreditModels", "credits.CreditModels.BusinessCharge", "credits.CreditModels.CreditTransaction",
+                        "credits.CreditService", "error.ServerErrorCode", "error.ServerException",
+                        "task.FiniteTaskApprovalAdmission", "task.credit.TaskCreditConfirmation",
+                        "task.credit.TaskCreditService", "task.directory.TaskAttribution",
                         "operation.OperationGuard", "operation.OperationAlreadyRunningException", "task.result.TaskResultsExportService", "api.v1.contract.ActionOutcome", "api.v1.contract.task.TaskItemResultResponse", "api.v1.contract.task.TaskCreateRequest",
                         "api.v1.contract.task.TaskCreateResponse", "api.v1.contract.task.TaskItemRequest",
                         "api.v1.contract.task.TaskItemResultStatus"),
@@ -70,7 +74,7 @@ class ScenarioArchitectureTest {
                 for (Path path : paths.filter(p -> p.toString().endsWith(".java")).toList()) {
                     String source = Files.readString(path);
                     String checked = switch (module.getKey()) {
-                        case "app-checks-jvm" -> source;
+                        case "app-checks-jvm" -> source.replace("com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor", "public-readonly-task-descriptor");
                         case "message-campaigns-jvm" -> source.replaceAll("com\\.xa\\.mass\\.workermatching\\.QualifiedCountryDefinition\\b", "public-qualified-country-contract");
                         case "sms-reception-jvm" -> source
                                 .replace("com.xa.mass.workermatching.PartitionedLeasePoolDefinition", "public-lease-definition-contract")

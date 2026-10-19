@@ -482,6 +482,10 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <p class="checks-hint">
+        固定单价：{{ selectedCheck?.unitPrice ?? "—" }}
+        积分／种子；创建和导入不扣分，启动时按实际数量扣分。
+      </p>
+      <p class="checks-hint">
         单次最多 {{ quantity(catalog.limits.seedsPerImport) }} 个种子 /
         {{ catalog.limits.importFileBytes / 1024 / 1024 }} MiB · 来源：{{
           source.mode === "mock" ? "Mock 演示数据" : "Catalog"

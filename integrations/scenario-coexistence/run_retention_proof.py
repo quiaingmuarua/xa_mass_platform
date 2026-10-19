@@ -147,7 +147,10 @@ def main():
                 require(receipt["addedCount"] == count, "Import did not confirm every Item")
                 case["importSeconds"] = time.monotonic() - started
                 case["imported"] = snapshot(client, prefix, task)
-                request(run.url, f"/tasks/{task}/approve", {"expectedItemCount": count})
+                quote = request(run.url, f"/app-checks/tasks/{task}/credits")
+                request(run.url, "/users/1000/credits/adjustments", {"requestId": str(uuid.uuid4()), "delta": quote["amount"], "reason": "Finite retention workload"})
+                request(run.url, f"/tasks/{task}/approve", {"expectedItemCount": count, "credits": {
+                    "requestId": str(uuid.uuid4()), "expectedSeedCount": quote["seedCount"], "expectedAmount": quote["amount"]}})
                 began = time.monotonic()
                 if mode == "closed":
                     run.wait_for(lambda: client.hlen(prefix + f":task:{task}:results") > 0, 60, "first actual result")

@@ -52,7 +52,7 @@ class ProjectWorkerRequirementsValidatorTest {
         var matching = new MatchingProperties(Map.of(
                 "window", new MatchingGroup(Set.of("window"), Set.of("window.take")),
                 "plain", new MatchingGroup(Set.of("any"), Set.of("worker.any"))));
-        var validator = validator(directory(new ProjectDefinition("checks", List.of("window","plain"))), matching, List.of(requirements));
+        var validator = validator(directory(new ProjectDefinition("checks", List.of("window","plain"), null)), matching, List.of(requirements));
         validator.validate();
         when(workers.getWorkerGroupDescriptors(anyList())).thenReturn(Map.of(
                 "window", new WorkerGroupDescriptor("window", Map.of(), Set.of("simulate")),
@@ -69,8 +69,8 @@ class ProjectWorkerRequirementsValidatorTest {
         var other = new ProjectWorkerRequirements("sms", Map.of("shared", new ProjectWorkerRequirements.Resources(Set.of("listen"), Set.of(), Set.of())));
         when(workers.getWorkerGroupDescriptors(List.of("shared"))).thenReturn(Map.of("shared",
                 new WorkerGroupDescriptor("shared", Map.of("host", "retained"), Set.of("send", "listen", "extra"))));
-        var validator = new ProjectWorkerRequirementsValidator(directory(new ProjectDefinition("messages", List.of("shared")),
-                new ProjectDefinition("sms", List.of("shared"))), workers, bindings(available()), List.of(REQUIRED, other));
+        var validator = new ProjectWorkerRequirementsValidator(directory(new ProjectDefinition("messages", List.of("shared"), null),
+                new ProjectDefinition("sms", List.of("shared"), null)), workers, bindings(available()), List.of(REQUIRED, other));
         verifyNoInteractions(workers);
         validator.validate();
         verify(workers).getWorkerGroupDescriptors(List.of("shared"));
@@ -87,7 +87,7 @@ class ProjectWorkerRequirementsValidatorTest {
             ids.forEach(id -> result.put(id, new WorkerGroupDescriptor(id, Map.of(), Set.of("send"))));
             return result;
         });
-        new ProjectWorkerRequirementsValidator(directory(new ProjectDefinition("p", groups)), workers,
+        new ProjectWorkerRequirementsValidator(directory(new ProjectDefinition("p", groups, null)), workers,
                 bindings(new MatchingProperties(Map.of())), requirements).validate();
         assertThat(pages).extracting(List::size).containsExactly(100, 100, 5);
         assertThat(pages.stream().flatMap(List::stream).toList()).containsExactlyInAnyOrderElementsOf(groups);
@@ -98,12 +98,12 @@ class ProjectWorkerRequirementsValidatorTest {
     @Test void unknownProjectBindingAndDuplicatePairFailAtConstructionWithoutReading() {
         assertThatThrownBy(() -> validator(directory(), available(), List.of(REQUIRED)))
                 .hasMessageContaining("Project is not declared").hasMessageContaining("project=messages");
-        assertThatThrownBy(() -> validator(directory(new ProjectDefinition("messages", List.of("other"))), available(), List.of(REQUIRED)))
+        assertThatThrownBy(() -> validator(directory(new ProjectDefinition("messages", List.of("other"), null)), available(), List.of(REQUIRED)))
                 .hasMessageContaining("Group is not declared").hasMessageContaining("group=shared");
         assertThatThrownBy(() -> validator(knownProject(), available(), List.of(REQUIRED, REQUIRED)))
                 .hasMessageContaining("duplicate Project/Group");
         var overlap = new ProjectWorkerRequirements("messages", List.of("other", "shared").stream().collect(java.util.stream.Collectors.toMap(group -> group, group -> new ProjectWorkerRequirements.Resources(Set.of(), Set.of(), Set.of()), (left, right) -> { throw new IllegalArgumentException("Duplicate Group"); }, java.util.LinkedHashMap::new)));
-        assertThatThrownBy(() -> validator(directory(new ProjectDefinition("messages", List.of("shared", "other"))),
+        assertThatThrownBy(() -> validator(directory(new ProjectDefinition("messages", List.of("shared", "other"), null)),
                 available(), List.of(REQUIRED, overlap))).hasMessageContaining("duplicate Project/Group").hasMessageContaining("group=shared");
         verifyNoInteractions(workers);
     }
@@ -160,7 +160,7 @@ class ProjectWorkerRequirementsValidatorTest {
     private static com.xa.mass.server.worker.observation.WorkerGroupBindings bindings(MatchingProperties matching) {
         return new com.xa.mass.server.worker.observation.WorkerGroupBindings(matching.groups(), new FixedWindowBindingsProperties(null, null, null), List.of());
     }
-    private static ProjectDirectory knownProject() { return directory(new ProjectDefinition("messages", List.of("shared"))); }
+    private static ProjectDirectory knownProject() { return directory(new ProjectDefinition("messages", List.of("shared"), null)); }
     private static ProjectDirectory directory(ProjectDefinition... projects) {
         return new ProjectDirectory(new ProjectAssemblyProperties(List.of()), List.of(projects));
     }

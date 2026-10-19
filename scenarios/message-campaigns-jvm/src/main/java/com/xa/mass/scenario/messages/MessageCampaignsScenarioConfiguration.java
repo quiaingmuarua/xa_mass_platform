@@ -18,7 +18,7 @@ import org.springframework.context.annotation.*;
 public class MessageCampaignsScenarioConfiguration {
     @Bean
     ProjectDefinition messageProject(MessageScenarioProperties config) {
-        return new ProjectDefinition(PROJECT, config.workerGroupIds());
+        return new ProjectDefinition(PROJECT, config.workerGroupIds(), null);
     }
 
     @Bean

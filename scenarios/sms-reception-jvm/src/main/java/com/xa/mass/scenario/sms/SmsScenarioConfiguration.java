@@ -21,7 +21,7 @@ public class SmsScenarioConfiguration {
             TaskRpcCallService calls, TaskDataService results, TaskLeaseProjectionAccess projections, SmsResultCacheProperties cache,
             @Qualifier("scenarioWorkerGroup") String workerGroupId) {
         return new SmsReceptionService(preparations, calls, results, projections, workerGroupId, Clock.systemUTC(),
-                TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", java.util.List.of(workerGroupId))), cache);
+                TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", java.util.List.of(workerGroupId), null)), cache);
     }
     @Bean PartitionedLeasePoolDefinition smsPoolDefinition() {
         return new PartitionedLeasePoolDefinition(SmsReceptionService.POOL, SmsReceptionService.FUNCTION,

@@ -2,6 +2,11 @@
 import { isCarrierContract, isMd5Contract } from "./settings";
 import { canUseConsole, canAccessTask, taskScope } from "@/access-policy";
 import { TaskApiError } from "@/task-caller";
+import {
+  CheckStartUnconfirmed,
+  type CheckCredits,
+  type CheckCreditConfirmation
+} from "./credits";
 
 import {
   computed,
@@ -89,6 +94,83 @@ const actionTask = shallowRef<CheckTask>(),
 const displayConfirmation = ref<"approve" | "close">("approve");
 const actionBusy = ref(false),
   actionError = ref("");
+const creditQuote = shallowRef<CheckCredits>();
+const quoteBusy = ref(false),
+  startUncertain = ref(false),
+  startRejected = ref(false);
+const startRequests = new Map<
+  string,
+  { itemCount: number; credits: CheckCreditConfirmation; uncertain: boolean }
+>();
+let quoteGeneration = 0;
+async function loadCreditQuote(reconcile = false) {
+  const target = actionTask.value;
+  if (!target || disposed) return;
+  const token = ++quoteGeneration;
+  quoteBusy.value = true;
+  actionError.value = "";
+  const pending = startRequests.get(target.taskId);
+  try {
+    const value = await props.source.loadCredits(
+      identity,
+      target.taskId,
+      reconcile ? pending?.credits.requestId : undefined
+    );
+    if (
+      disposed ||
+      token !== quoteGeneration ||
+      actionTask.value?.taskId !== target.taskId ||
+      confirmation.value !== "approve"
+    )
+      return;
+    creditQuote.value = value;
+    if (
+      !pending &&
+      value.requestId &&
+      ["charged", "debit_unconfirmed"].includes(value.status)
+    )
+      startRequests.set(target.taskId, {
+        itemCount: value.itemCount,
+        credits: Object.freeze({
+          requestId: value.requestId,
+          expectedSeedCount: value.seedCount,
+          expectedAmount: value.amount
+        }),
+        uncertain: true
+      });
+    startUncertain.value =
+      value.status === "debit_unconfirmed" ||
+      (!!pending?.uncertain && value.requestStatus === "not_observed");
+    startRejected.value = value.requestStatus === "rejected";
+    if (value.status === "started" || value.status === "closed") {
+      startRequests.delete(target.taskId);
+      startUncertain.value = false;
+      actionError.value =
+        value.status === "started"
+          ? "已核对：扣分及启动已完成，不会重复扣分。"
+          : "已核对：任务已结束，扣分记录仍保留。";
+      await refreshVisible(target.taskId);
+    }
+  } catch (error) {
+    if (!disposed && token === quoteGeneration)
+      actionError.value = error instanceof Error ? error.message : "费用读取失败";
+  } finally {
+    if (!disposed && token === quoteGeneration) quoteBusy.value = false;
+  }
+}
+function reconfirmCredits() {
+  if (!actionTask.value || startUncertain.value || actionBusy.value) return;
+  startRequests.delete(actionTask.value.taskId);
+  startRejected.value = false;
+  const id = actionTask.value.taskId;
+  void loadCreditQuote().then(() => {
+    if (!disposed && actionTask.value?.taskId === id) startRejected.value = false;
+  });
+}
+async function simulateStartLoss() {
+  props.source.simulateStartResponseLoss?.(identity);
+  await perform("approve");
+}
 const confirmationFocus = ref<HTMLElement>(),
   exportFocus = ref<HTMLElement>();
 const exportOpen = ref(false),
@@ -312,6 +394,10 @@ function requestAction(task: CheckTask, action: TaskAction, trigger?: HTMLElemen
     return;
   actionTask.value = task;
   actionError.value = "";
+  creditQuote.value = undefined;
+  startUncertain.value = startRequests.get(task.taskId)?.uncertain ?? false;
+  startRejected.value = false;
+  quoteGeneration++;
   dialogOrigin = route.fullPath;
   dialogTrigger = trigger;
   if (action === "import") {
@@ -333,9 +419,10 @@ function requestAction(task: CheckTask, action: TaskAction, trigger?: HTMLElemen
   }
   if (action === "export") {
     if (props.source.exportTask && task.state === "terminal") void openExport(task);
-  } else if (action === "approve" && props.source.approveTask)
+  } else if (action === "approve" && props.source.approveTask) {
     confirmation.value = action;
-  else if (action === "close" && props.source.closeTask) confirmation.value = action;
+    void loadCreditQuote();
+  } else if (action === "close" && props.source.closeTask) confirmation.value = action;
 }
 async function refreshVisible(targetId: string) {
   const reads: Promise<unknown>[] = [];
@@ -357,7 +444,37 @@ async function perform(action: "approve" | "close") {
   actionError.value = "";
   dismissNotice();
   try {
-    await method.call(props.source, identity, target.taskId, target.totalCount ?? 0);
+    if (action === "approve") {
+      const quote = creditQuote.value;
+      if (
+        !quote ||
+        !quote.seedCount ||
+        quoteBusy.value ||
+        startRejected.value ||
+        ["started", "closed"].includes(quote.status)
+      )
+        return;
+      let pending = startRequests.get(target.taskId);
+      if (!pending) {
+        pending = {
+          itemCount: quote.itemCount,
+          credits: Object.freeze({
+            requestId: crypto.randomUUID(),
+            expectedSeedCount: quote.seedCount,
+            expectedAmount: quote.amount
+          }),
+          uncertain: false
+        };
+        startRequests.set(target.taskId, pending);
+      }
+      await props.source.approveTask!(
+        identity,
+        target.taskId,
+        pending.itemCount,
+        pending.credits
+      );
+      if (!disposed) startRequests.delete(target.taskId);
+    } else await props.source.closeTask!(identity, target.taskId);
     if (disposed) return;
     confirmation.value = undefined;
     if (route.fullPath === origin)
@@ -371,9 +488,17 @@ async function perform(action: "approve" | "close") {
               : "任务已中止，已有结果已保留。";
     await refreshVisible(target.taskId);
   } catch (error) {
-    if (!disposed && route.fullPath === origin)
+    if (!disposed && route.fullPath === origin) {
+      if (action === "approve") {
+        if (error instanceof CheckStartUnconfirmed) {
+          startUncertain.value = true;
+          const pending = startRequests.get(target.taskId);
+          if (pending) pending.uncertain = true;
+        } else if (!startUncertain.value) startRejected.value = true;
+      }
       actionError.value =
         error instanceof Error ? error.message : "操作失败，请刷新后核对。";
+    }
   } finally {
     actionBusy.value = false;
   }
@@ -515,6 +640,8 @@ onBeforeUnmount(() => {
   disposed = true;
   listGeneration++;
   exportGeneration++;
+  quoteGeneration++;
+  startRequests.clear();
   clearExportFile();
 });
 </script>
@@ -667,6 +794,31 @@ onBeforeUnmount(() => {
                 : "停止后续检查，保留已有结果；已开始的执行仍可能返回结果。中止后不能重新启动。"
           }}
         </p>
+        <template v-if="displayConfirmation === 'approve'">
+          <p v-if="quoteBusy" role="status">正在核对费用…</p>
+          <dl v-if="creditQuote" class="checks-credit-quote">
+            <dt>扣分账户</dt>
+            <dd>{{ creditQuote.userId }}</dd>
+            <dt>实际种子数</dt>
+            <dd>{{ quantity(creditQuote.seedCount) }}</dd>
+            <dt>固定单价</dt>
+            <dd>{{ creditQuote.unitPrice }} 积分／种子</dd>
+            <dt>本次总额</dt>
+            <dd>{{ quantity(creditQuote.amount) }} 积分</dd>
+            <dt>当前余额</dt>
+            <dd>{{ quantity(creditQuote.balance) }} 积分</dd>
+          </dl>
+          <p v-if="creditQuote?.status === 'charged'" role="status">
+            扣分已确认，继续原操作只会尝试启动，不会再次扣分。
+          </p>
+          <p v-if="startUncertain" role="status">
+            原操作未确认，请核对结果或使用原请求继续。
+          </p>
+          <p v-if="startRequests.get(actionTask.taskId)" class="checks-hint">
+            启动请求：{{ startRequests.get(actionTask.taskId)?.credits.requestId }}
+          </p>
+        </template>
+        <p v-else class="checks-hint">当前阶段中止不会自动返还积分。</p>
         <p v-if="actionError" role="alert" class="checks-error">{{ actionError }}</p>
       </template>
       <template #footer>
@@ -674,13 +826,44 @@ onBeforeUnmount(() => {
           >返回</el-button
         >
         <el-button
+          v-if="displayConfirmation === 'approve'"
+          :disabled="actionBusy || quoteBusy"
+          @click="loadCreditQuote(true)"
+          >核对结果</el-button
+        >
+        <el-button
+          v-if="displayConfirmation === 'approve' && startRejected && !startUncertain"
+          :disabled="actionBusy || quoteBusy"
+          @click="reconfirmCredits"
+          >重新确认费用</el-button
+        >
+        <el-button
+          v-if="
+            displayConfirmation === 'approve' &&
+            canDemonstrate &&
+            source.simulateStartResponseLoss
+          "
+          :disabled="actionBusy || quoteBusy || !creditQuote || startRejected"
+          @click="simulateStartLoss"
+          >模拟扣分后响应丢失</el-button
+        >
+        <el-button
+          :disabled="
+            displayConfirmation === 'approve' &&
+            (quoteBusy ||
+              !creditQuote?.seedCount ||
+              startRejected ||
+              ['started', 'closed'].includes(creditQuote?.status ?? ''))
+          "
           :type="displayConfirmation === 'close' ? 'danger' : 'primary'"
           :loading="actionBusy"
           @click="confirmation && perform(confirmation)"
         >
           {{
             displayConfirmation === "approve"
-              ? "确认启动"
+              ? startUncertain || creditQuote?.status === "charged"
+                ? "继续原操作"
+                : "确认扣分并启动"
               : actionTask?.state === "pre_review"
                 ? "确认取消任务"
                 : "确认中止任务"

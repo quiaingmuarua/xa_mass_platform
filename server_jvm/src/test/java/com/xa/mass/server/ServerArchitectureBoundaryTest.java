@@ -291,7 +291,8 @@ class ServerArchitectureBoundaryTest {
                 DELIVERY_ASSEMBLY,
                 WORKER_IDENTITY,
                 SERVER_PACKAGE.resolve("credits"),
-                TASK.resolve("directory")
+                TASK.resolve("directory"),
+                TASK.resolve("credit/TaskCreditStartStore.java")
         ))
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis");
@@ -303,6 +304,9 @@ class ServerArchitectureBoundaryTest {
         assertThat(readSources(SERVER_PACKAGE.resolve("credits")))
                 .doesNotContain("TaskRuntime", "TaskDataService", "TaskLifecycleService", "TaskCreationService", "Pacer", "ResultRuntime", "com.xa.mass.scenario.");
         assertThat(serverSources).doesNotContain("WorkerBindingRegistry").doesNotContain("WorkerBindingService");
+        assertThat(Files.readString(TASK.resolve("credit/TaskCreditStartStore.java")))
+                .contains(":server:task-credit-start:")
+                .doesNotContain("TaskRuntime", "TaskScoreBandCore", "Pacer", "resultsKey", "itemsKey");
         assertThat(readSources(SERVICEABILITY_REDIS))
                 .contains("io.lettuce")
                 .doesNotContain("WorkerScoreCore")
@@ -445,7 +449,7 @@ class ServerArchitectureBoundaryTest {
     @Test
     void taskResultExportUsesOnlyTaskOwnerContracts()
             throws IOException {
-        String task = readSourcesExcluding(TASK, TASK.resolve("directory"));
+        String task = readSourcesExcluding(TASK, TASK.resolve("directory"), TASK.resolve("credit/TaskCreditStartStore.java"));
         assertThat(task)
                 .contains("scanTaskItemResults")
                 .contains("getScoreStates")

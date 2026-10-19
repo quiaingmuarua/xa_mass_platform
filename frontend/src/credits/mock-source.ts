@@ -1,5 +1,5 @@
 import { can } from "@/access-policy";
-import { type TaskCaller } from "@/task-caller";
+import { selectTaskUser, type TaskCaller } from "@/task-caller";
 import { normalizeTaskUserId } from "@/task-user-id";
 import type { MockUserDirectorySource } from "@/user-directory-source";
 import {
@@ -19,6 +19,7 @@ interface Account {
   balance: number;
   entries: CreditTransaction[];
   receipts: Map<string, { fingerprint: string; outcome: CreditOutcome }>;
+  businesses: Map<string, string>;
 }
 /** App-lifetime account facts; admission always uses the shared current directory. */
 export class MockCreditSource implements CreditSource {
@@ -114,15 +115,58 @@ export class MockCreditSource implements CreditSource {
   ): Promise<CreditOutcome> {
     const { caller, target } = this.admit(declared, userId, true);
     const value = normalizeAdjustment(input);
-    const fingerprint = JSON.stringify([caller.userId, value.delta, value.reason]);
+    return this.publish(caller.userId, target, value);
+  }
+  async debit(
+    declared: TaskCaller,
+    userId: string,
+    requestId: string,
+    business: NonNullable<CreditTransaction["business"]>
+  ): Promise<CreditOutcome> {
+    const caller = this.directory.resolveCaller(declared, business.source);
+    const target = normalizeTaskUserId(userId);
+    selectTaskUser(caller, target);
+    if (!this.directory.containsUser(target))
+      throw new CreditApiError(404, "任务所有者不在当前用户目录");
+    if (
+      !Number.isSafeInteger(business.unitPrice) ||
+      business.unitPrice < 1 ||
+      !Number.isSafeInteger(business.quantity) ||
+      business.quantity < 1 ||
+      business.quantity > Math.floor(MAX_CREDITS / business.unitPrice)
+    )
+      throw new CreditApiError(400, "积分数量或总额超出安全整数范围");
+    const value = normalizeAdjustment({
+      requestId,
+      delta: -business.unitPrice * business.quantity,
+      reason: `${business.source} task start`
+    });
+    return this.publish(caller.userId, target, value, business);
+  }
+  private publish(
+    actor: string,
+    target: string,
+    value: CreditAdjustment,
+    business?: NonNullable<CreditTransaction["business"]>
+  ): CreditOutcome {
+    const fingerprint = JSON.stringify([
+      actor,
+      value.delta,
+      value.reason,
+      business ?? null
+    ]);
     const account: Account = this.accounts.get(target) ?? {
       balance: 0,
       entries: [],
-      receipts: new Map()
+      receipts: new Map(),
+      businesses: new Map()
     };
     const prior = account.receipts.get(value.requestId);
     if (prior && prior.fingerprint !== fingerprint)
       throw new CreditApiError(409, "请求标识已被不同内容或操作者使用", 18005);
+    const businessKey = business ? `${business.source}/${business.taskId}` : undefined;
+    if (!prior && businessKey && account.businesses.has(businessKey))
+      throw new CreditApiError(409, "此 Task 已经扣分", 18005);
     let outcome = prior?.outcome;
     if (!outcome) {
       const rejected =
@@ -144,13 +188,15 @@ export class MockCreditSource implements CreditSource {
           sequence: account.entries.length + 1,
           requestId: value.requestId,
           userId: target,
-          actorUserId: caller.userId,
+          actorUserId: actor,
           delta: value.delta,
           balanceBefore: account.balance,
           balanceAfter: account.balance + value.delta,
           reason: value.reason,
-          createdAtMillis: this.now()
+          createdAtMillis: this.now(),
+          business: business ? structuredClone(business) : null
         };
+        if (businessKey) account.businesses.set(businessKey, value.requestId);
         account.entries.push(row);
         account.balance = row.balanceAfter;
         outcome = {
@@ -165,7 +211,7 @@ export class MockCreditSource implements CreditSource {
       this.accounts.set(target, account);
     }
     // All admission, preflight and publication above are synchronous, with no await in the commit boundary.
-    if (this.lostResponses.delete(caller.userId)) throw new CreditSubmissionUnknown();
+    if (this.lostResponses.delete(actor)) throw new CreditSubmissionUnknown();
     if (outcome.status === "rejected")
       throw new CreditApiError(
         409,

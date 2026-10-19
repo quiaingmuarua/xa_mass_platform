@@ -46,6 +46,7 @@ class TaskRetentionServiceRedisIntegrationTest {
     private RedisTaskResourceCatalog catalog;
     private TaskDirectory directory;
     private TaskCreationRegistry creations;
+    private com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts;
     private TaskCreationService creator;
     private TaskResultArchive archive;
     private TaskRetentionProperties properties;
@@ -61,7 +62,8 @@ class TaskRetentionServiceRedisIntegrationTest {
         runtime = new RedisTaskRuntime(client, scores, items, scope.keyspace(), java.time.Duration.ofDays(7).toMillis(), clock::get);
         catalog = new RedisTaskResourceCatalog(client, scope.keyspace());
         creations = new TaskCreationRegistry(client, scope.keyspace());
-        var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("p", List.of("g")))), List.of());
+        creditStarts = new com.xa.mass.server.task.credit.TaskCreditStartStore(client, scope.keyspace());
+        var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("p", List.of("g"), null))), List.of());
         var groups = mock(WorkerResourceCatalog.class);
         when(groups.getWorkerGroupDescriptors(anyList())).thenReturn(Map.of("g", new WorkerResourceCatalog.WorkerGroupDescriptor("g", Map.of(), Set.of("event"))));
         var matching = mock(WorkerMatchingCatalog.class);
@@ -76,6 +78,7 @@ class TaskRetentionServiceRedisIntegrationTest {
         if (connection != null) scope.cleanup(connection.sync());
         if (directory != null) directory.close();
         if (creations != null) creations.close();
+        if (creditStarts != null) creditStarts.close();
         if (runtime != null) runtime.close();
         if (catalog != null) catalog.close();
         if (items != null) items.close();
@@ -84,7 +87,7 @@ class TaskRetentionServiceRedisIntegrationTest {
         if (client != null) client.shutdown();
     }
     private TaskRetentionService maintenance(TaskResultArchive archive, TaskCreationRegistry registry) {
-        return new TaskRetentionService(runtime, catalog, scores, directory, registry, archive, guard, properties, clock::get);
+        return new TaskRetentionService(runtime, catalog, scores, directory, registry, archive, guard, properties, creditStarts, clock::get);
     }
     private String create() {
         return creator.create(CALLER, new TaskCreateRequest("same-request", "p", "g", 1, 1, List.of(), "test", Map.of())).taskId();
@@ -199,7 +202,7 @@ class TaskRetentionServiceRedisIntegrationTest {
         var interruptedRuntime = spy(runtime);
         var interruptedDirectory = spy(directory);
         var interrupted = new TaskRetentionService(interruptedRuntime, catalog, scores, interruptedDirectory,
-                creations, archive, guard, properties, clock::get);
+                creations, archive, guard, properties, creditStarts, clock::get);
         clock.addAndGet(step.equals("release") ? Duration.ofHours(1).toMillis() : Duration.ofDays(8).toMillis());
         if (step.equals("release")) doAnswer(call -> {
             call.callRealMethod(); throw new IllegalStateException("release response lost");
@@ -281,7 +284,7 @@ class TaskRetentionServiceRedisIntegrationTest {
         }).when(observedScores).scanTerminalTasks(anyLong(), anyString(), anyInt());
         var files = spy(archive);
         var service = new TaskRetentionService(runtime, catalog, observedScores, directory, creations,
-                files, guard, properties, clock::get);
+                files, guard, properties, creditStarts, clock::get);
         service.runOnce();
         verify(files, never()).publish(any(), any());
         assertThat(scores.getScoreStates(List.of(id)).get(id)).isNull();

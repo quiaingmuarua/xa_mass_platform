@@ -18,8 +18,9 @@ import com.xa.mass.server.operation.OperationAlreadyRunningException;
 public final class AppCheckController {
     private final AppCheckTaskService tasks;
     private final AppCheckConfigurationStore configurations;
-    public AppCheckController(AppCheckTaskService tasks, AppCheckConfigurationStore configurations) {
-        this.tasks = tasks; this.configurations = configurations;
+    private final AppCheckCredits credits;
+    public AppCheckController(AppCheckTaskService tasks, AppCheckConfigurationStore configurations, AppCheckCredits credits) {
+        this.tasks = tasks; this.configurations = configurations; this.credits = credits;
     }
     @GetMapping("/configuration") public Object configuration(TaskCaller caller) { caller.requirePermission("app-checks.configuration"); caller.requireProject("app-checks"); return configurations.view(); }
     @PutMapping("/configuration") public Object saveConfiguration(TaskCaller caller, @RequestBody Map<String, Object> input) {
@@ -41,6 +42,10 @@ public final class AppCheckController {
     @GetMapping("/catalog") public Object catalog() { return tasks.catalog(); }
     @PostMapping("/tasks") public ResponseEntity<?> create(TaskCaller caller, @RequestBody Map<String, Object> input) {
         return ResponseEntity.status(201).body(tasks.create(caller, input));
+    }
+    @GetMapping("/tasks/{taskId}/credits")
+    public AppCheckCredits.View credits(TaskCaller caller, @PathVariable String taskId, @RequestParam(required = false) String requestId) {
+        return credits.view(caller, taskId, requestId);
     }
     @GetMapping("/tasks/{taskId}/results")
     public Object results(TaskCaller caller,

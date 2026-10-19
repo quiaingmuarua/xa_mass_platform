@@ -1,6 +1,7 @@
+import { FundedAppCheckSource } from "./app-check-credit-fixture";
 import { describe, expect, it, vi } from "vitest";
 import { MockUserDirectorySource } from "@/user-directory-source";
-import { MockAppCheckTaskSource } from "@/app-checks/mock-task-source";
+
 import { MockMessageTaskSource } from "@/message-campaigns/mock-task-source";
 import { MockRuntimeViewerDataSource } from "@/runtime-viewer/mock-data-source";
 import { createConsoleIdentity } from "@/console-identity";
@@ -24,7 +25,7 @@ function world(project: "messages" | "app-checks") {
         })
     };
   }
-  const source = new MockAppCheckTaskSource(directory);
+  const source = new FundedAppCheckSource(directory);
   return {
     directory,
     source,
@@ -60,7 +61,12 @@ describe.each(["messages", "app-checks"] as const)(
         () => create(A),
         () => source.listTasks(A),
         () => source.loadTask(A, first.taskId),
-        () => source.approveTask(A, first.taskId, 1),
+        () =>
+          source.approveTask(A, first.taskId, 1, {
+            requestId: crypto.randomUUID(),
+            expectedSeedCount: 1,
+            expectedAmount: 1
+          }),
         () => source.closeTask(A, first.taskId)
       ])
         await expect(operation()).rejects.toMatchObject({ status: 403 });
@@ -96,7 +102,7 @@ describe.each(["messages", "app-checks"] as const)(
 
 it("keeps an admitted import's snapshot and denies the next operation before reading its file", async () => {
   const directory = new MockUserDirectorySource();
-  const source = new MockAppCheckTaskSource(directory);
+  const source = new FundedAppCheckSource(directory);
   const { taskId } = await source.createTask(A, {
     requestId: "import-snapshot",
     checkId: "app-a-registration",
@@ -113,7 +119,7 @@ it("keeps an admitted import's snapshot and denies the next operation before rea
     size: 13,
     arrayBuffer
   } as unknown as Blob);
-  expect(arrayBuffer).toHaveBeenCalledOnce();
+  await vi.waitFor(() => expect(arrayBuffer).toHaveBeenCalledOnce());
   await directory.save(ADMIN, { ...A, displayName: "A", projectIds: [] }, A.userId);
   release(new TextEncoder().encode("8613800000001").buffer);
   await expect(pending).resolves.toMatchObject({ addedCount: 1 });

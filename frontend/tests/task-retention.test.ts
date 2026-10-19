@@ -1,6 +1,7 @@
+import { FundedAppCheckSource, approveCheck } from "./app-check-credit-fixture";
 import { expect, it } from "vitest";
 import { MockUserDirectorySource } from "@/user-directory-source";
-import { MockAppCheckTaskSource } from "@/app-checks/mock-task-source";
+
 import { MockMessageTaskSource } from "@/message-campaigns/mock-task-source";
 import { taskRetentionSchema, retentionLabel } from "@/task-management/retention";
 import { ADMIN, OPERATOR_A as A } from "./identity-fixture";
@@ -53,7 +54,7 @@ it("freezes Messages receipts and changes execution identity only after purge", 
 
 it("keeps App Checks statistics and CSV after archive and removes the creation association at expiry", async () => {
   let now = 2000000000000;
-  const source = new MockAppCheckTaskSource(new MockUserDirectorySource(), () => now);
+  const source = new FundedAppCheckSource(new MockUserDirectorySource(), () => now);
   const input = {
     requestId: "retention",
     checkId: "app-a-registration",
@@ -61,7 +62,7 @@ it("keeps App Checks statistics and CSV after archive and removes the creation a
   };
   const first = await source.createTask(A, input);
   await source.importSeeds(A, first.taskId, new Blob(["+8613800000001"]));
-  await source.approveTask(A, first.taskId, 1);
+  await approveCheck(source, A, first.taskId, 1);
   await source.completeTask(ADMIN, first.taskId);
   const before = await source.loadTask(A, first.taskId);
   now += 3600000;

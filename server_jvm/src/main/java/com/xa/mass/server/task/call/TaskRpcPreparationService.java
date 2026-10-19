@@ -82,6 +82,7 @@ public final class TaskRpcPreparationService {
                 || request.workerGroupId() == null || request.workerGroupId().isBlank())
             throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, REGISTER_OPERATION, "Invalid RPC Task preparation", null);
         caller.requireProject(request.projectId());
+        projects.requireInputOwner(request.projectId(), inputOwner);
         final TaskRpcPrepareRequest admitted;
         try { admitted = new TaskRpcPrepareRequest(request.projectId(), request.workerGroupId(), request.name(), TaskAttribution.input(request.metadata()), request.refill()); }
         catch (IllegalArgumentException invalid) { throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, REGISTER_OPERATION, invalid.getMessage(), invalid); }

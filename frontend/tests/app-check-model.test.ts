@@ -1,4 +1,5 @@
-import { mockSimulation } from "../src/app-checks/mock-task-source";
+import { FundedAppCheckSource, approveCheck } from "./app-check-credit-fixture";
+import { mockSimulation } from "@/app-checks/mock-task-source";
 import { MockUserDirectorySource } from "@/user-directory-source";
 import { HttpFiniteTaskClient } from "@/task-management/http-client";
 import { TaskApiError } from "@/task-caller";
@@ -8,7 +9,7 @@ import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseSimulation, rangeExamples } from "../src/app-checks/model";
 import { hashValue, verifyPreview } from "../src/app-checks/verify";
-import { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
+
 import {
   ApiAppCheckTaskSource,
   AppCheckCreationUnconfirmed
@@ -20,7 +21,7 @@ import { resultSchema } from "../src/app-checks/model";
 beforeEach(() => vi.stubGlobal("crypto", webcrypto));
 
 it("classifies carrier negatives as valid answers and keeps execution/protocol errors out of CSV", async () => {
-  const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
+  const source = new FundedAppCheckSource(new MockUserDirectorySource());
   const fetcher = vi.fn();
   vi.stubGlobal("fetch", fetcher);
   const detail = await source.loadTask(CALLER, "check-carrier");
@@ -127,7 +128,7 @@ describe("App Checks admission and independent recomputation", () => {
     );
   });
   it("checks content independently, preserving failures and missing evidence", async () => {
-    const snapshot = await new MockAppCheckTaskSource(
+    const snapshot = await new FundedAppCheckSource(
       new MockUserDirectorySource()
     ).loadTask(CALLER, "check-mixed");
     const fetcher = vi.fn();
@@ -145,7 +146,7 @@ describe("App Checks admission and independent recomputation", () => {
     expect(snapshot.results[1].matched).toBe(false);
   });
   it("detects a success in the failure bucket, delay and Group mismatches", async () => {
-    const snapshot = await new MockAppCheckTaskSource(
+    const snapshot = await new FundedAppCheckSource(
       new MockUserDirectorySource()
     ).loadTask(CALLER, "check-mixed");
     snapshot.results = [
@@ -168,7 +169,7 @@ describe("App Checks admission and independent recomputation", () => {
     expect(
       (
         await verifyPreview(
-          await new MockAppCheckTaskSource(new MockUserDirectorySource()).loadTask(
+          await new FundedAppCheckSource(new MockUserDirectorySource()).loadTask(
             CALLER,
             "check-unregistered"
           )
@@ -180,7 +181,7 @@ describe("App Checks admission and independent recomputation", () => {
     vi.stubGlobal("crypto", { randomUUID: webcrypto.randomUUID });
     await expect(
       verifyPreview(
-        await new MockAppCheckTaskSource(new MockUserDirectorySource()).loadTask(
+        await new FundedAppCheckSource(new MockUserDirectorySource()).loadTask(
           CALLER,
           "check-mixed"
         )
@@ -225,7 +226,12 @@ describe("App Checks data boundary", () => {
     const close = vi
       .spyOn(HttpFiniteTaskClient.prototype, "closeTask")
       .mockResolvedValue();
-    await source.approveTask(CALLER, "t", 1);
+    const confirmation = {
+      requestId: crypto.randomUUID(),
+      expectedSeedCount: 1,
+      expectedAmount: 1
+    };
+    await source.approveTask(CALLER, "t", 1, confirmation);
     await source.closeTask(CALLER, "t");
     expect(await source.exportTask(CALLER, "t", "matched")).toMatchObject({
       fileName: "t-matched.csv",
@@ -241,13 +247,13 @@ describe("App Checks data boundary", () => {
       body: file,
       headers: { "Content-Type": "text/plain;charset=UTF-8" }
     });
-    expect(approve).toHaveBeenCalledWith(CALLER, "t", 1);
+    expect(approve).toHaveBeenCalledWith(CALLER, "t", 1, confirmation);
     expect(close).toHaveBeenCalledWith(CALLER, "t");
   });
   it("keeps prototype review and complete CSV export inside Mock", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
-    const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
+    const source = new FundedAppCheckSource(new MockUserDirectorySource());
     const seeds = Array.from(
       { length: 1001 },
       (_, i) => `+86138${String(i).padStart(8, "0")}`
@@ -255,7 +261,7 @@ describe("App Checks data boundary", () => {
     const { taskId } = await importedTask(source, { ...create, seeds });
     expect((await source.loadTask(CALLER, taskId)).task.state).toBe("pre_review");
     await expect(source.exportTask(CALLER, taskId, "all")).rejects.toThrow();
-    await source.approveTask(CALLER, taskId, seeds.length);
+    await approveCheck(source, CALLER, taskId, seeds.length);
     await source.completeTask(CALLER, taskId);
     expect((await source.loadTask(CALLER, taskId)).results).toHaveLength(100);
     const exported = await source.exportTask(CALLER, taskId, "all");
@@ -281,7 +287,7 @@ describe("App Checks data boundary", () => {
   it("Mock catalog, creation, list and refresh are network-free, bounded and session-local", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
-    const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
+    const source = new FundedAppCheckSource(new MockUserDirectorySource());
     expect((await source.catalog()).projectId).toBe("app-checks");
     const { taskId } = await source.createTask(CALLER, create);
     expect(await source.createTask(CALLER, create)).toEqual({ taskId });
@@ -295,7 +301,7 @@ describe("App Checks data boundary", () => {
       true
     );
     await expect(
-      new MockAppCheckTaskSource(new MockUserDirectorySource()).loadTask(CALLER, taskId)
+      new FundedAppCheckSource(new MockUserDirectorySource()).loadTask(CALLER, taskId)
     ).rejects.toThrow();
     expect(fetcher).not.toHaveBeenCalled();
   });
@@ -351,7 +357,7 @@ describe("App Checks data boundary", () => {
     ).rejects.toBeInstanceOf(AppCheckCreationUnconfirmed);
   });
   it("catalog 404 disables only this scene; transient failure allows explicit retry", async () => {
-    const source = new MockAppCheckTaskSource(new MockUserDirectorySource());
+    const source = new FundedAppCheckSource(new MockUserDirectorySource());
     const read = vi
       .spyOn(source, "catalog")
       .mockRejectedValueOnce(new TaskApiError(404, "absent"));

@@ -102,6 +102,44 @@ class CreditAccountRedisIntegrationTest {
         assertCode(() -> store.transactions("1001", "invalid", 50), ServerErrorCode.INVALID_CREDIT_REQUEST);
         assertCode(() -> store.transactions("1001", null, 101), ServerErrorCode.INVALID_CREDIT_REQUEST);
     }
+    @Test void businessDebitHasOneTaskAssociationAndExactAttribution() throws Exception {
+        adjust(100);
+        var business = new BusinessCharge("app-checks", "task-a", "batch", 3, 7);
+        var debit = new Debit(UUID.randomUUID().toString(), business);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var requests = executor.invokeAll(IntStream.range(0, 12).mapToObj(i ->
+                    (Callable<CreditAdjustmentResponse>) () -> store.debit("1001", "1000", debit)).toList());
+            for (var result : requests) {
+                assertThat(result.get().transaction().sequence()).isEqualTo(2);
+                assertThat(result.get().transaction().business()).isEqualTo(business);
+            }
+        }
+        assertThat(store.account("1001").balance()).isEqualTo(79);
+        assertCode(() -> store.debit("1001", "1000", new Debit(UUID.randomUUID().toString(), business)), ServerErrorCode.CREDIT_ADJUSTMENT_CONFLICT);
+        assertCode(() -> store.debit("1001", "1002", debit), ServerErrorCode.CREDIT_ADJUSTMENT_CONFLICT);
+        store.close(); store = new CreditAccountStore(redis, scope.keyspace(), clock);
+        assertThat(store.debitReceipt("1001", debit.requestId()).transaction().business()).isEqualTo(business);
+        assertThat(store.debit("1001", "1000", debit).transaction().balanceAfter()).isEqualTo(79);
+        assertThat(store.transactions("1001", null, 50).response().entries()).hasSize(2);
+    }
+    @Test void rejectedBusinessAttemptNeedsANewIdentityAndAmountsStayExact() {
+        var business = new BusinessCharge("app-checks", "task-a", "check", MAX_POINTS, 1);
+        var debit = new Debit(UUID.randomUUID().toString(), business);
+        assertThat(store.debit("1001", "1000", debit).status()).isEqualTo("rejected");
+        adjust(MAX_POINTS);
+        assertThat(store.debit("1001", "1000", debit).status()).isEqualTo("rejected");
+        var applied = store.debit("1001", "1000", new Debit(UUID.randomUUID().toString(), business));
+        assertThat(applied.transaction().business().unitPrice()).isEqualTo(MAX_POINTS);
+        assertThat(applied.transaction().delta()).isEqualTo(-MAX_POINTS);
+        assertThat(store.account("1001").balance()).isZero();
+        assertThatThrownBy(() -> new BusinessCharge("app-checks", "task", "check", MAX_POINTS, 2)).isInstanceOf(ServerException.class);
+        var before = connection.sync().hgetall(store.key("1001"));
+        connection.sync().hset(store.key("1001"), "business:app-checks:task-a", "broken");
+        var broken = connection.sync().hgetall(store.key("1001"));
+        assertCode(() -> adjust(1), ServerErrorCode.CREDIT_UNAVAILABLE);
+        assertThat(connection.sync().hgetall(store.key("1001"))).isEqualTo(broken);
+        connection.sync().hset(store.key("1001"), before);
+    }
     @Test void committedButLostResponseSurvivesReconnectionAndDirectoryReload() throws Exception {
         var request = input(100);
         // Redis commits, but the caller loses the returned value before receiving an HTTP response.

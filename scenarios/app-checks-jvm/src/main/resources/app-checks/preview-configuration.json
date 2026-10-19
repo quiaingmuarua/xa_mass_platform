@@ -48,7 +48,8 @@
         },
         "seedsPerItem": 1
       },
-      "checkType": "simulated-registration-v1"
+      "checkType": "simulated-registration-v1",
+      "unitPrice": 1
     },
     "app-b-registration": {
       "label": "App B 模拟注册",
@@ -68,7 +69,8 @@
         },
         "seedsPerItem": 1
       },
-      "checkType": "simulated-registration-v1"
+      "checkType": "simulated-registration-v1",
+      "unitPrice": 1
     },
     "original-carrier": {
       "label": "原始运营商识别",
@@ -88,7 +90,8 @@
           "input": {}
         },
         "seedsPerItem": 10
-      }
+      },
+      "unitPrice": 1
     },
     "uint32-prime": {
       "label": "32 位整数素数判断（演示）",
@@ -108,7 +111,8 @@
           "input": {}
         },
         "seedsPerItem": 1
-      }
+      },
+      "unitPrice": 1
     },
     "md5-prefix": {
       "label": "MD5 前缀命中（演示）",
@@ -128,7 +132,8 @@
           "input": {}
         },
         "seedsPerItem": 10
-      }
+      },
+      "unitPrice": 1
     }
   }
 }

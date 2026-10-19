@@ -12,13 +12,13 @@ import static org.assertj.core.api.Assertions.*;
 class ProjectDirectoryTest {
     @Test void defaultDeclaresRegisteredScopeWithoutDiscoveringOrProvisioningResources() {
         var directory = new ProjectDirectory(new ProjectAssemblyProperties(List.of(
-                new ProjectDefinition("default", List.of()), new ProjectDefinition("business", List.of("bound")))), List.of());
+                new ProjectDefinition("default", List.of(), null), new ProjectDefinition("business", List.of("bound"), null))), List.of());
         assertThat(directory.require("default").workerGroupSource()).isEqualTo("registered");
         assertThat(directory.require("default").workerGroupIds()).isEmpty();
         directory.requireWorkerGroup("default", "registered-after-startup");
         assertThat(directory.require("business").workerGroupSource()).isEqualTo("declared");
         assertThatThrownBy(() -> directory.requireWorkerGroup("business", "registered-after-startup")).isInstanceOf(com.xa.mass.server.error.ServerException.class);
-        assertThatThrownBy(() -> new ProjectDefinition("default", List.of("bound"))).hasMessageContaining("do not declare bindings");
+        assertThatThrownBy(() -> new ProjectDefinition("default", List.of("bound"), null)).hasMessageContaining("do not declare bindings");
     }
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(ProjectAssemblyProperties.class)
@@ -27,7 +27,7 @@ class ProjectDirectoryTest {
 
     @Test void configurationListOverrideRetainsModuleProjectsAndCrossSourceDuplicatesFailStartup() {
         var runner = new ApplicationContextRunner().withUserConfiguration(Binding.class)
-                .withBean(ProjectDefinition.class, () -> new ProjectDefinition("messages", List.of("demo-sim")))
+                .withBean(ProjectDefinition.class, () -> new ProjectDefinition("messages", List.of("demo-sim"), null))
                 .withInitializer(context -> context.getEnvironment().getPropertySources().addLast(new MapPropertySource("host", java.util.Map.of(
                         "xa.mass.project-assembly.projects[0].project-id", "sms",
                         "xa.mass.project-assembly.projects[0].worker-group-ids[0]", "demo-sim"))));
@@ -46,27 +46,27 @@ class ProjectDirectoryTest {
     }
 
     @Test void moduleAndConfiguredProjectsUseTheSameStableCoordinatesAndRejectAllDuplicates() {
-        var messages = new ProjectDefinition("messages", List.of("demo-sim"));
+        var messages = new ProjectDefinition("messages", List.of("demo-sim"), null);
         var yaml = new ProjectDirectory(new ProjectAssemblyProperties(List.of(messages)), List.of());
         var module = new ProjectDirectory(new ProjectAssemblyProperties(List.of()), List.of(messages));
         assertThat(module.projects()).isEqualTo(yaml.projects());
         assertThat(module.require("messages").workerGroupIds()).containsExactly("demo-sim");
         var combined = new ProjectDirectory(new ProjectAssemblyProperties(List.of(
-                new ProjectDefinition("sms", List.of("demo-sim")))), List.of(messages));
+                new ProjectDefinition("sms", List.of("demo-sim"), null))), List.of(messages));
         assertThat(combined.projects()).containsOnlyKeys("sms", "messages");
         assertThatThrownBy(() -> new ProjectDirectory(new ProjectAssemblyProperties(List.of(messages)), List.of(messages)))
                 .hasMessageContaining("Duplicate Project ID").hasMessageContaining("messages");
         assertThatThrownBy(() -> new ProjectDirectory(new ProjectAssemblyProperties(List.of()), List.of(messages, messages)))
                 .hasMessageContaining("Duplicate Project ID");
         assertThatThrownBy(() -> new ProjectDirectory(new ProjectAssemblyProperties(List.of(messages)),
-                List.of(new ProjectDefinition("messages", List.of("other")))))
+                List.of(new ProjectDefinition("messages", List.of("other"), null))))
                 .hasMessageContaining("Duplicate Project ID");
     }
 
     @Test void declarationsAreImmutableAndBindingChecksHaveNoRuntimeSideEffects() {
         var properties = new ProjectAssemblyProperties(List.of(
-                new ProjectDefinition("a", List.of("b-c", "shared")),
-                new ProjectDefinition("a-b", List.of("c", "shared"))));
+                new ProjectDefinition("a", List.of("b-c", "shared"), null),
+                new ProjectDefinition("a-b", List.of("c", "shared"), null)));
         var directory = new ProjectDirectory(properties, java.util.List.of());
         var restart = new ProjectDirectory(properties, java.util.List.of());
         assertThat(directory.projects()).isEqualTo(restart.projects());
@@ -81,13 +81,13 @@ class ProjectDirectoryTest {
 
     @Test void invalidConfigurationFailsWithoutInventingDefaults() {
         assertThat(new ProjectAssemblyProperties(null).projects()).isEmpty();
-        assertThatThrownBy(() -> new ProjectDefinition(" ", List.of("g")))
+        assertThatThrownBy(() -> new ProjectDefinition(" ", List.of("g"), null))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ProjectDefinition("p", List.of()))
+        assertThatThrownBy(() -> new ProjectDefinition("p", List.of(), null))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ProjectDefinition("p", List.of("g", "g")))
+        assertThatThrownBy(() -> new ProjectDefinition("p", List.of("g", "g"), null))
                 .isInstanceOf(IllegalArgumentException.class);
-        var project = new ProjectDefinition("p", List.of("g"));
+        var project = new ProjectDefinition("p", List.of("g"), null);
         assertThatThrownBy(() -> new ProjectAssemblyProperties(List.of(project, project)))
                 .isInstanceOf(IllegalArgumentException.class);
     }

@@ -1,3 +1,4 @@
+import { FundedAppCheckSource, approveCheck } from "./app-check-credit-fixture";
 import { MockUserDirectorySource } from "@/user-directory-source";
 import { consoleIdentity } from "@/console-identity";
 import { CALLER } from "./app-check-fixture";
@@ -8,10 +9,7 @@ import { createApp, h, nextTick, type App } from "vue";
 import { createRouter, createMemoryHistory, RouterView } from "vue-router";
 import { ElButton, ElDrawer, ElInput, ElSelect, ElOption } from "element-plus";
 import Workspace from "../src/app-checks/AppCheckWorkspace.vue";
-import {
-  MockAppCheckTaskSource,
-  mockCatalog
-} from "../src/app-checks/mock-task-source";
+import { mockCatalog } from "@/app-checks/mock-task-source";
 import {
   AppCheckCreationUnconfirmed,
   AppCheckImportUnconfirmed,
@@ -46,7 +44,7 @@ class ImportWorkerMock {
 }
 
 let app: App | undefined;
-let source: MockAppCheckTaskSource;
+let source: FundedAppCheckSource;
 const fetcher = vi.fn();
 beforeEach(() => {
   consoleIdentity.login("1000");
@@ -55,7 +53,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetcher.mockReset());
   vi.stubGlobal("Worker", ImportWorkerMock);
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
-  source = new MockAppCheckTaskSource(new MockUserDirectorySource());
+  source = new FundedAppCheckSource(new MockUserDirectorySource());
 });
 afterEach(() => {
   app?.unmount();
@@ -235,7 +233,7 @@ it("creates the prime demonstration without country and rejects an invalid final
   expect((await source.loadTask(CALLER, taskId)).task.totalCount).toBe(0);
   expect(document.body.textContent).toContain("未写入任何种子");
   await source.importSeeds(CALLER, taskId, new Blob(["17\n017\n49\n17"]));
-  await source.approveTask(CALLER, taskId, 3);
+  await approveCheck(source, CALLER, taskId, 3);
   await source.completeTask(CALLER, taskId);
   const result = await source.loadTask(CALLER, taskId);
   expect(result.results.map((row) => [row.seed, row.details?.isPrime])).toEqual([
@@ -264,6 +262,7 @@ it("uses an explicitly configured text demo without country or CSV fields", asyn
   const saved = (await source.loadConfiguration(CALLER)).saved;
   const configuration = structuredClone(saved.configuration);
   configuration.checks["text-proof"] = {
+    unitPrice: 1,
     label: "Text proof fixture",
     workerGroupId: "app-a-sim",
     checkType: "md5-prefix-demo-v1",
@@ -327,7 +326,7 @@ it("uses an explicitly configured text demo without country or CSV fields", asyn
   expect(create.mock.calls[0][1]).toMatchObject({ checkId: "text-proof" });
   expect(create.mock.calls[0][1]).not.toHaveProperty("country");
   const { taskId } = await create.mock.results[0].value;
-  await source.approveTask(CALLER, taskId, 3);
+  await approveCheck(source, CALLER, taskId, 3);
   await source.completeTask(CALLER, taskId);
   const detail = await source.loadTask(CALLER, taskId);
   expect(detail.task).toMatchObject({ seedType: "text", totalCount: 3 });
@@ -850,7 +849,8 @@ describe("App Checks product workspace", () => {
       saveConfiguration: source.saveConfiguration.bind(source),
       listTasks: source.listTasks.bind(source),
       loadTask: source.loadTask.bind(source),
-      createTask: source.createTask.bind(source)
+      createTask: source.createTask.bind(source),
+      loadCredits: source.loadCredits.bind(source)
     };
     await mount("/app-checks/tasks/check-preview", selected);
     expect(document.querySelectorAll(".checks-results-table tbody tr")).toHaveLength(
@@ -907,7 +907,7 @@ describe("App Checks product workspace", () => {
       country: "CN",
       seeds
     });
-    await source.approveTask(CALLER, taskId, seeds.length);
+    await approveCheck(source, CALLER, taskId, seeds.length);
     await source.completeTask(CALLER, taskId);
     const read = vi.spyOn(source, "loadTask");
     const exported = vi.spyOn(source, "exportTask");
@@ -1226,12 +1226,17 @@ describe("App Checks product workspace", () => {
     expect(field("搜索种子")).toBeNull();
     await command("核对并启动");
     expect(approve).not.toHaveBeenCalled();
-    button("确认启动").click();
+    button("确认扣分并启动").click();
     await settle();
     expect(approve).toHaveBeenCalledWith(
       expect.objectContaining({ userId: "1000", role: "admin" }),
       "check-review",
-      24000
+      24000,
+      expect.objectContaining({
+        expectedSeedCount: 24000,
+        expectedAmount: 24000,
+        requestId: expect.any(String)
+      })
     );
     expect((await source.loadTask(CALLER, "check-review")).task.state).toBe(
       "running_visible"
@@ -1247,7 +1252,8 @@ describe("App Checks product workspace", () => {
       saveConfiguration: source.saveConfiguration.bind(source),
       listTasks: source.listTasks.bind(source),
       loadTask: source.loadTask.bind(source),
-      createTask: source.createTask.bind(source)
+      createTask: source.createTask.bind(source),
+      loadCredits: source.loadCredits.bind(source)
     };
     const { router } = await mount("/app-checks/tasks/check-review", selected);
     await openMenu();
@@ -1269,7 +1275,7 @@ describe("App Checks product workspace", () => {
     search.focus();
     input("搜索种子", "138");
     delayed.resolve(
-      await new MockAppCheckTaskSource(new MockUserDirectorySource()).loadTask(
+      await new FundedAppCheckSource(new MockUserDirectorySource()).loadTask(
         CALLER,
         "check-mixed"
       )

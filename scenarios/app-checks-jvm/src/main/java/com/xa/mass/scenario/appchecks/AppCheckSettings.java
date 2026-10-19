@@ -27,16 +27,18 @@ public record AppCheckSettings(Map<String, Map<String, Object>> typeDefaults,
         }
     }
     public record Check(String label, String workerGroupId, Execution execution,
-                              String checkType, Map<String, Object> parameters) {
+                              String checkType, Map<String, Object> parameters, long unitPrice) {
         public Check {
             AppCheckSpecification.text(label, 128);
+            if (unitPrice < 1 || unitPrice > com.xa.mass.server.credits.CreditModels.MAX_POINTS)
+                throw new IllegalArgumentException("unitPrice: 必须是正的安全整数");
             AppCheckSpecification.text(workerGroupId, 128); AppCheckSpecification.text(checkType, 128);
             Objects.requireNonNull(execution, "execution");
             if (parameters != null) parameters = AppCheckSettings.parameters(parameters, "parameters");
         }
         public Map<String, Object> toMap() {
             var value = new LinkedHashMap<String, Object>();
-            value.put("label", label); value.put("workerGroupId", workerGroupId);
+            value.put("unitPrice", unitPrice); value.put("label", label); value.put("workerGroupId", workerGroupId);
             value.put("execution", execution.toMap()); value.put("checkType", checkType);
             if (parameters != null) value.put("parameters", parameters);
             return Collections.unmodifiableMap(value);
@@ -88,7 +90,7 @@ public record AppCheckSettings(Map<String, Map<String, Object>> typeDefaults,
             String path = "checks." + entry.getKey();
             try {
                 String checkId = AppCheckSpecification.text(entry.getKey(), 128);
-                var app = object(entry.getValue(), Set.of("label", "workerGroupId", "execution", "checkType"), Set.of("parameters"), path);
+                var app = object(entry.getValue(), Set.of("label", "workerGroupId", "execution", "checkType", "unitPrice"), Set.of("parameters"), path);
                 String id = AppCheckSpecification.text(app.get("checkType"), 128);
                 var contract = contracts.require(id);
                 var execution = execution(app.get("execution"), path + ".execution");
@@ -97,7 +99,7 @@ public record AppCheckSettings(Map<String, Map<String, Object>> typeDefaults,
                 var selected = app.containsKey("parameters") ? normalize(contracts, id, app.get("parameters"), path + ".parameters") : null;
                 if (selected == null && !defaults.containsKey(id)) throw new IllegalArgumentException("parameters: 缺少参数及共同默认值");
                 apps.put(checkId, new Check(AppCheckSpecification.text(app.get("label"), 128),
-                        AppCheckSpecification.text(app.get("workerGroupId"), 128), execution, id, selected));
+                        AppCheckSpecification.text(app.get("workerGroupId"), 128), execution, id, selected, AppCheckSpecification.integer(app.get("unitPrice"))));
             } catch (IllegalArgumentException invalid) { throw at(path, invalid); }
         }
         return new AppCheckSettings(defaults, apps);

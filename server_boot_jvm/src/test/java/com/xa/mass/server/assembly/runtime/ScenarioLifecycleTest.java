@@ -71,6 +71,10 @@ class ScenarioLifecycleTest {
                     () -> mock(com.xa.mass.server.task.observation.TaskLeaseProjectionService.class));
             context.registerBean(TaskCreationService.class, () -> creation);
             context.registerBean(TaskLifecycleService.class, () -> lifecycle);
+            context.registerBean(com.xa.mass.server.task.credit.TaskCreditService.class,
+                    () -> mock(com.xa.mass.server.task.credit.TaskCreditService.class));
+            context.registerBean(com.xa.mass.server.credits.CreditService.class,
+                    () -> mock(com.xa.mass.server.credits.CreditService.class));
             context.registerBean(com.xa.mass.server.operation.OperationGuard.class);
             context.registerBean(com.xa.mass.server.task.result.TaskResultsExportService.class,
                     () -> mock(com.xa.mass.server.task.result.TaskResultsExportService.class));
@@ -89,7 +93,7 @@ class ScenarioLifecycleTest {
             };
             doAnswer(call -> { observe.accept(call.getArgument(0), call.getArgument(1)); return null; })
                     .when(registrations).requireWorkerGroup(anyString(), anyString());
-            when(preparations.prepare(org.mockito.ArgumentMatchers.eq(com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", java.util.List.of("demo-sim")))), org.mockito.ArgumentMatchers.eq("sms"), anyString(), any())).thenAnswer(call -> {
+            when(preparations.prepare(org.mockito.ArgumentMatchers.eq(com.xa.mass.server.task.access.TaskCaller.forProjectService(new com.xa.mass.server.project.ProjectDefinition("sms", java.util.List.of("demo-sim"), null))), org.mockito.ArgumentMatchers.eq("sms"), anyString(), any())).thenAnswer(call -> {
                 var request = call.<com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest>getArgument(3);
                 observe.accept(request.projectId(), request.workerGroupId());
                 return new com.xa.mass.server.api.v1.contract.task.TaskCreateResponse(call.getArgument(2));

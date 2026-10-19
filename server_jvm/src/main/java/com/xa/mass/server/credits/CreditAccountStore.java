@@ -58,6 +58,17 @@ public final class CreditAccountStore implements AutoCloseable {
                 CreditModels.fingerprint(actor, input), actor, Long.toString(input.delta()), input.reason(),
                 Long.toString(clock.millis())));
     }
+    /** Internal bookkeeping primitive. The application must authorize and durably bind its intent first. */
+    public CreditAdjustmentResponse debit(String userId, String actor, Debit input) {
+        var b = input.business();
+        return response(input.requestId(), evaluate(userId, "debit", input.requestId(),
+                CreditModels.fingerprint(actor, input), CreditModels.userId(actor), Long.toString(-b.amount()),
+                b.source() + " task start", Long.toString(clock.millis()), b.source(), b.taskId(), b.checkId(),
+                Long.toString(b.unitPrice()), Long.toString(b.quantity())));
+    }
+    public CreditAdjustmentResponse debitReceipt(String userId, String requestId) {
+        return adjustment(userId, CreditModels.requestId(requestId)).response();
+    }
     private List<String> evaluate(String userId, String mode, String... input) {
         var args = new ArrayList<String>(List.of(CreditModels.userId(userId), mode));
         args.addAll(List.of(input));

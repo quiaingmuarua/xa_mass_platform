@@ -172,7 +172,7 @@ class TaskInputWorkflowTest {
     @Test void importAdmissionBlocksEveryOtherMutationButAllowsItsOwnBatches() throws Exception {
         pending("t");
         var commands = mock(TaskLifecycleCommands.class);
-        var lifecycle = new TaskLifecycleService(commands, catalog, guard, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), runtime);
+        var lifecycle = new TaskLifecycleService(commands, catalog, guard, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), runtime, java.util.List.of());
         var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var operation = executor.submit(() -> guard.taskMutation("t", () -> {
@@ -182,7 +182,7 @@ class TaskInputWorkflowTest {
             }));
             assertThat(entered.await(2, TimeUnit.SECONDS)).isTrue();
             try {
-                assertThatThrownBy(() -> lifecycle.approve(CALLER, "t", 1L)).hasMessageContaining("in progress");
+                assertThatThrownBy(() -> lifecycle.approve(CALLER, "t", 1L, null)).hasMessageContaining("in progress");
                 assertThatThrownBy(() -> lifecycle.close(CALLER, "t")).hasMessageContaining("in progress");
                 assertThatThrownBy(() -> data.appendFiniteTaskItems(CALLER, "t", List.of(input("new")))).hasMessageContaining("in progress");
                 verifyNoInteractions(commands);

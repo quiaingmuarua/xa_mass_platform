@@ -85,7 +85,7 @@ class WorkerGroupBindingsIntegrationTest {
                 document = Jsons.parseObject(new String(input.readAllBytes(), StandardCharsets.UTF_8));
             }
             var checks = (Map<String,Object>) document.get("checks");
-            checks.put("group-c-md5", Map.of("label", "Group C MD5", "checkType", "md5-prefix-demo-batch-v1", "workerGroupId", GROUP,
+            checks.put("group-c-md5", Map.of("unitPrice", 1, "label", "Group C MD5", "checkType", "md5-prefix-demo-batch-v1", "workerGroupId", GROUP,
                     "execution", Map.of("eventCode", EVENT, "refill", supply(), "seedsPerItem", 10,
                             "workerSelector", Map.of("executorName", FUNCTION, "input", Map.of()))));
             Files.writeString(configurationFile, Jsons.toJson(document));
@@ -159,10 +159,16 @@ class WorkerGroupBindingsIntegrationTest {
                 });
                 if (scenario) {
                     assertThat(call(http, base, "GET", "/api/v1/app-checks/configuration", null).toString()).doesNotContain("poolGroups", "newScopeRequired");
+                    call(http, base, "POST", "/api/v1/users/proof/credits/adjustments", Map.of(
+                            "requestId", UUID.randomUUID().toString(), "delta", 100, "reason", "Group binding proof fixture"));
                     String business = (String) call(http, base, "POST", "/api/v1/app-checks/tasks", Map.of("requestId", "business-group-c", "checkId", "group-c-md5")).get("taskId");
                     var imported = send(http, base, "POST", "/api/v1/app-checks/tasks/" + business + "/seeds:import", String.join("\n", seeds), "text/plain");
                     assertThat(Jsons.parseObject(imported.body())).containsEntry("itemCount", 3L).containsEntry("uniqueCount", 23L);
-                    call(http, base, "POST", "/api/v1/tasks/" + business + "/approve", Map.of("expectedItemCount", 3));
+                    var quote = call(http, base, "GET", "/api/v1/app-checks/tasks/" + business + "/credits", null);
+                    assertThat(quote).containsEntry("seedCount", 23L).containsEntry("amount", 23L);
+                    call(http, base, "POST", "/api/v1/tasks/" + business + "/approve", Map.of("expectedItemCount", 3,
+                            "credits", Map.of("requestId", UUID.randomUUID().toString(),
+                                    "expectedSeedCount", quote.get("seedCount"), "expectedAmount", quote.get("amount"))));
                     await(() -> "terminal".equals(call(http, base, "GET", "/api/v1/projects/app-checks/tasks/" + business, null).get("scoreBand")));
                     var rows = (List<Map<String,Object>>) call(http, base, "GET", "/api/v1/app-checks/tasks/" + business + "/results", null).get("results");
                     assertThat(rows).hasSize(23).allSatisfy(row -> assertThat(row).containsKey("matched").doesNotContainKey("contentError"));
