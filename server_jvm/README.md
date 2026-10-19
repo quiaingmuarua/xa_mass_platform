@@ -1152,8 +1152,8 @@ startup and destroys already-created resources, including the Adapter host.
 
 ### Named Window Pool And Feedback Bindings
 
-`xa.mass.worker-assembly.fixed-window` is strict host startup configuration. Its optional `pools`, `feedbacks`
-and `groups` maps default to empty. No independent file owner, thread, queue or runtime registration is added.
+`xa.mass.worker-assembly.fixed-window` is strict host startup configuration. Its optional `pools`, `feedbacks`,
+`groups` and `projects` maps default to empty. No independent file owner, thread, queue or runtime registration is added.
 
 - `pools.<poolName>` declares `function-name`, `timestamp-property`, `count-property`, `window-millis` and `max-count`.
   Positive limits and distinct nonblank top-level field keys are required. Names remain data, not business branches.
@@ -1163,11 +1163,18 @@ and `groups` maps default to empty. No independent file owner, thread, queue or 
   and `max-count` may override the defaults for that Group. `groups.<group>.feedbacks` separately selects feedback names.
   Pool-only enables no projection; feedback-only creates no stock and uses the referenced definition's defaults.
   When both are bound, the projection uses the exact resolved Group window. Unreferenced definitions create no stock or projection.
+- `projects.<projectId>` uses the same Pool/feedback references and overrides. `ProjectDirectory` supplies its complete declared
+  Group set, including module-contributed Projects. Adding a member and restarting expands all these bindings to the new Group;
+  no Pool/feedback Group list is copied. Unknown Projects and registered-scope `default` cannot be expansion sources.
+  `default` may still consume the resulting Group capabilities through the raw workbench.
+- Direct Group and Project bindings are merged before resource construction. Equal resolved Pool limits and equal feedback
+  references coalesce across sources; different limits have no override precedence and fail with the Group and source paths.
+  Different feedbacks with overlapping output fields or event routes still fail. Expansion creates no per-Project stock or quota.
 
 `WorkerGroupBindings` is the one immutable expansion used by Matching composition, startup validation and the read view.
 It retains resolved MatchingGroups, existing FixedWindowPoolDefinitions, existing WorkerPropertyProjections and their display values.
 Raw Matching configuration cannot also enable host-managed window Pool/function names. Matching retains global namespace collision checks.
-Unknown references, duplicate feedback names, duplicate Group/event selections and overlapping named feedback output fields fail startup.
+Unknown references, duplicate names within one feedback list, conflicting Group/event selections and overlapping named feedback output fields fail startup.
 Use one feedback's event list to accumulate multiple events into a single window counter.
 
 The startup validator includes all binding Groups even without any Scenario. It validates required feedback events as subsets,

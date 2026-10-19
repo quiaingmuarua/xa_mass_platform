@@ -3,6 +3,9 @@ import { createApp, h, nextTick } from "vue";
 import { ElButton } from "element-plus";
 import axios, { type AxiosInstance } from "axios";
 import WorkerGroupBindingsPanel from "../src/components/WorkerGroupBindings.vue";
+import { createProjectSource } from "../src/task-management/projects";
+import { MockUserDirectorySource } from "../src/user-directory-source";
+import { ADMIN } from "./identity-fixture";
 import {
   createWorkerGroupBindingsLoader,
   createWorkerGroupBindingsState,
@@ -17,6 +20,34 @@ afterEach(() => {
 });
 
 describe("WorkerGroup effective bindings", () => {
+  it("Project and default show the same expanded Mock Pool and feedback without service calls", async () => {
+    const create = vi.spyOn(axios, "create");
+    const fetcher = vi.spyOn(globalThis, "fetch");
+    const source = createProjectSource(
+      config.apiBaseUrl,
+      config.mode,
+      ADMIN,
+      new MockUserDirectorySource()
+    );
+    const projects = await source.list();
+    expect(projects).toContainEqual({
+      projectId: "pool-validation",
+      workerGroupSource: "declared",
+      workerGroupIds: ["android-demo-workers"]
+    });
+    const inherited = await source.groups("pool-validation");
+    const defaults = await source.groups("default");
+    const view = await example("android-demo-workers");
+    expect(inherited).toHaveLength(1);
+    expect(inherited[0]!.matching).toEqual(view.matching);
+    expect(
+      defaults.find((g) => g.workerGroupId === "android-demo-workers")?.matching
+    ).toEqual(view.matching);
+    expect(view.fixedWindowPools[0]?.poolName).toBe("device-window");
+    expect(view.feedbacks[0]?.name).toBe("digest-assigned");
+    expect(create).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it("Mock displays declarations and independent identity functions without service requests", async () => {
     const create = vi.spyOn(axios, "create");
     const fetcher = vi.spyOn(globalThis, "fetch");

@@ -691,6 +691,11 @@ Export state is independent of finite-task mutations; Mock never exports.
 
 ## Task workbench
 
+Project-expanded host bindings appear through the existing Group capability response. The finite form displays the selected
+query's actual Pool and uses that relation for supply suggestions; enabling supply alone does not change an Item query.
+Mock includes `pool-validation` and its Android `device-window` binding. Project capabilities and Runtime binding details share
+the same resolved example; Mock still disables raw writes and does not simulate window scheduling.
+
 `/task-workbench` is admin-only and has RPC and finite-task tabs, defaulting to
 `tab=rpc`. It reads every Project in the immutable startup directory, including Scenario
 Projects. A single Project is a read-only label; multiple Projects use a selector.

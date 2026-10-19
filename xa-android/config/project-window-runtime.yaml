@@ -1,0 +1,26 @@
+xa:
+  mass:
+    project-assembly:
+      projects:
+        - project-id: default
+          worker-group-ids: []
+        - project-id: pool-validation
+          worker-group-ids: [android-demo-workers]
+    worker-assembly:
+      fixed-window:
+        pools:
+          device-window:
+            function-name: worker.device.available
+            timestamp-property: deviceAssignedAt
+            count-property: deviceAssignmentCount
+            window-millis: 60000
+            max-count: 10
+        feedbacks:
+          digest-assigned:
+            pool-name: device-window
+            message-events: [extension.worker.android.string.digest]
+        projects:
+          pool-validation:
+            pools:
+              device-window: {}
+            feedbacks: [digest-assigned]

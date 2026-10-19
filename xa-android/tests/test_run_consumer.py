@@ -93,7 +93,10 @@ class ConsumerArchiveTest(unittest.TestCase):
         extra = "--spring.config.additional-location=" + config.resolve().as_uri()
         self.assertNotIn(extra, default)
         self.assertIn(extra, selected)
-        self.assertEqual(default, [argument for argument in selected if argument != extra])
+        project = "--xa.mass.project-assembly.projects[0].project-id=default"
+        self.assertNotIn(project, selected)
+        self.assertEqual([argument for argument in default if argument != project],
+                         [argument for argument in selected if argument != extra])
         self.assertFalse(any("preview" in argument for argument in selected))
         with self.assertRaisesRegex(ValueError, "configuration file"):
             consumer.server_command(receipt, "test_consumer", runtime_config=self.root / "missing.yaml")
