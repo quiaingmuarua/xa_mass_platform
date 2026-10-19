@@ -215,8 +215,6 @@ class ProofRunner:
         if self.consumption is not None and self.evidence.exists():
             encoded = dict(self.consumption, apkProvenance=self.apk_provenance,
                            scopes=sorted(self.scopes), phaseEvidence="*.json",
-                           batchChecksInputs={name: consumer.digest(ROOT / "xa-android/config" / name)
-                               for name in ("batch-checks-runtime.yaml", "batch-checks-configuration.json")},
                            windowPoolInputSha256=consumer.digest(ROOT / "xa-android/config/window-pool-runtime.yaml"))
             (self.evidence / "consumption.json").write_text(json.dumps(encoded, indent=2) + "\n", encoding="utf-8")
 
@@ -249,16 +247,42 @@ class ProofRunner:
         if self.server is not None:
             raise RuntimeError("Server process is already owned")
         self.scopes.add(scope)
-        self.write_consumption()
         stream = (self.logs / f"server-{label}.log").open("w", encoding="utf-8")
         self.streams.append(stream)
         environment = dict(os.environ, XA_MASS_CONSUMER_REDIS_URL=self.options.redis_url)
         runtime_config = ROOT / "xa-android/config" / configuration if configuration else None
-        if configuration == "batch-checks-runtime.yaml":
+        groups = ROOT / "xa-android/config/worker-groups.json"
+        example = Path(self.consumption["runtimeRoot"]) / "examples/batch-checks"
+        if configuration in {"batch-checks-runtime.yaml", "batch-checks-window.yaml"}:
+            runtime_config = example / "batch-checks-runtime.yaml"
+            groups = example / "worker-groups.json"
+            seed = example / "batch-checks-configuration.json"
+            state_name = "app-checks"
+            if configuration == "batch-checks-window.yaml":
+                inputs = self.proof_root / "window-inputs"
+                inputs.mkdir(exist_ok=True)
+                seed_document = json.loads(seed.read_text(encoding="utf-8"))
+                execution = seed_document["checks"]["android-md5-prefix"]["execution"]
+                execution["refill"] = [{"poolName": "device-window", "target": {}, "count": 100}]
+                execution["workerSelector"] = {"executorName": "worker.device.available", "input": {}}
+                seed = inputs / "checks.json"
+                seed.write_text(json.dumps(seed_document, ensure_ascii=False), encoding="utf-8")
+                runtime_config = inputs / "runtime.yaml"
+                runtime_config.write_text((ROOT / "xa-android/config/window-pool-runtime.yaml").read_text(encoding="utf-8")
+                        + '\n"xa.mass.scenarios.app-checks.enabled": true\n'
+                        + '"xa.mass.scenarios.app-checks.configuration.path": ${XA_MASS_APP_CHECKS_CONFIG_PATH}\n'
+                        + '"xa.mass.scenarios.app-checks.configuration.seed": ${XA_MASS_APP_CHECKS_SEED}\n', encoding="utf-8")
+                state_name = "app-checks-window"
             environment.update(
-                XA_MASS_APP_CHECKS_CONFIG_PATH=str(self.proof_root / "data/app-checks/configuration.json"),
-                XA_MASS_APP_CHECKS_SEED=(ROOT / "xa-android/config/batch-checks-configuration.json").as_uri())
-        command = consumer.server_command(self.consumption, scope, 18082, 18083, runtime_config=runtime_config)
+                XA_MASS_APP_CHECKS_CONFIG_PATH=str(self.proof_root / "data" / state_name / "configuration.json"),
+                XA_MASS_APP_CHECKS_SEED=seed.as_uri())
+        self.consumption.setdefault("runtimeInputs", {})[label] = {
+            "groupsSha256": consumer.digest(groups),
+            "runtimeSha256": consumer.digest(runtime_config) if runtime_config else None,
+            "seedSha256": consumer.digest(seed) if configuration in {"batch-checks-runtime.yaml", "batch-checks-window.yaml"} else None,
+        }
+        self.write_consumption()
+        command = consumer.server_command(self.consumption, scope, 18082, 18083, groups=groups, runtime_config=runtime_config)
         self.server = spawn(command,
                             cwd=self.proof_root, env=environment,
                             stdout=stream, stderr=subprocess.STDOUT)
@@ -375,6 +399,10 @@ class ProofRunner:
         self.stop_server()
         self.start_server("batch-checks-restart", scope + "_batch_checks", configuration="batch-checks-runtime.yaml")
         self.phase("BatchChecks", "android-batch-checks", "restart", "batch-checks-restart", "batch-checks-initial")
+        self.stop_server()
+        self.start_server("batch-checks-window", scope + "_batch_checks_window", configuration="batch-checks-window.yaml")
+        self.reset_apps(APPLICATIONS[:1])
+        self.phase("BatchChecks", "android-batch-checks-window", "window", "batch-checks-window")
 
     def cleanup(self) -> None:
         errors = []

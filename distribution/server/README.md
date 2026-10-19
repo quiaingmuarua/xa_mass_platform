@@ -37,6 +37,12 @@ business storage is opened. The retired platform Lab profile has no launch alias
 
 `python run_local_runtime.py --profile consumer` builds the same frontend and
 starts only Server with its configured Adapter; it does not build or start Host.
+Consumer alone also accepts `--runtime-config <Runtime YAML>`, `--groups <Group JSON>`
+and `--server-port <port>`. Files resolve against the invoking working directory
+before the build; only Group JSON syntax/root-object checks happen in the launcher.
+Server validates resources. HTTP port precedence is the explicit argument, then
+`SERVER_PORT`, then 18182; command and readiness use that same value, overriding
+`server.port` in the external YAML. No Project or resource defaults are inferred.
 Unknown profiles are rejected. For business Preview, the root command delegates
 in-process to the [sole Preview launcher](PREVIEW.md#source-launch):
 
@@ -55,6 +61,15 @@ The verified consumer may explicitly opt into Batch Checks using external host
 configuration and a separate writable Scenario document. See the
 [Android Pool example](../../xa-android/README.md#batch-checks-through-an-android-pool).
 Use new candidate bytes containing this addition; do not modify released archives.
+
+The [three-file deployment guide](src/main/dist/examples/batch-checks/README.md)
+provides source and extracted-ZIP commands. Runtime ZIPs ship that guide and the
+three canonical Android configuration inputs under `examples/batch-checks`.
+They are opt-in examples, never automatically loaded profiles or writable state.
+Copy them to a deployment directory; retain actual Scenario configuration and Task
+archives outside the immutable installation. The Scenario's check configuration
+derives its `app-checks` Project membership; host Pool bindings remain independent.
+The unchanged Preview entry is the built-in multi-Scenario demonstration.
 
 
 [XA Android](../../xa-android/README.md) supplies the portable dual-ZIP reference entry, explicit initialization and real RPC business example.
@@ -165,6 +180,8 @@ four-Tag navigation order.
 It requires the three canonical Boot resources (base, Consumer and Preview),
 excludes the external platform proof fixture, and rejects application configuration
 in nested platform/Scenario libraries and all test configuration.
+It also requires exactly the deployment README and three Batch Checks example files;
+saved configuration, lock files and temporary state are rejected in the sample directory.
 Preview adds [external-profile and packaged-launch checks](PREVIEW.md#archive-delivery).
 The Runtime proof loads the external platform fixture, verifies that its Project
 bindings create no Tasks, then explicitly prepares its named RPC Tasks and

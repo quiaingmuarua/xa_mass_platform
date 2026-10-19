@@ -347,6 +347,9 @@ frontend:
   - '.github/workflows/proof-ci.yml'
   - '!**/*.md'
 runtime_distribution:
+  - 'xa-android/config/batch-checks-runtime.yaml'
+  - 'xa-android/config/batch-checks-configuration.json'
+  - 'xa-android/config/worker-groups.json'
   - '.github/scripts/test_archive_tools.py'
   - 'distribution/archive_tools.py'
   - 'integrations/worker_proof_support/platform-runtime.yaml'

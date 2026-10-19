@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -37,11 +38,20 @@ def parse_arguments(arguments: Sequence[str] | None = None) -> argparse.Namespac
     )
     for option in ("count", "app-count", "seed", "port", "sandbox-root"):
         parser.add_argument("--" + option, help="Preview only; uses the Preview default when omitted")
+    parser.add_argument("--runtime-config", type=Path, help="Consumer only: external Runtime YAML")
+    parser.add_argument("--groups", type=Path, help="Consumer only: Group registration JSON")
+    parser.add_argument("--server-port", type=int, help="Consumer only: HTTP and readiness port (SERVER_PORT or 18182)")
     args = parser.parse_args(arguments)
     if args.profile != "preview" and any(
         getattr(args, name) is not None for name in ("count", "app_count", "seed", "port", "sandbox_root")
     ):
         parser.error("--count, --app-count, --seed, --port and --sandbox-root require --profile preview")
+    if args.profile != "consumer" and any(
+        getattr(args, name) is not None for name in ("runtime_config", "groups", "server_port")
+    ):
+        parser.error("--runtime-config, --groups and --server-port require --profile consumer")
+    if args.server_port is not None and not 1 <= args.server_port <= 65_535:
+        parser.error("--server-port must be in 1..65535")
     return args
 
 
@@ -151,6 +161,7 @@ def start_server(
     server_jar: Path,
     profile: str,
     environ: Mapping[str, str],
+    extra_arguments: Sequence[str],
 ) -> subprocess.Popen[bytes]:
     command = [
         java_executable(environ),
@@ -159,8 +170,29 @@ def start_server(
         f"--spring.profiles.active={profile}",
         "--spring.web.resources.static-locations="
         f"{FRONTEND_DIST.resolve().as_uri()}/",
+        *extra_arguments,
     ]
     return subprocess.Popen(command, cwd=ROOT, env=dict(environ))
+
+
+def consumer_arguments(args: argparse.Namespace, environ: Mapping[str, str]) -> tuple[list[str], int]:
+    """Freeze file inputs before building; Server owns their resource semantics."""
+    port = args.server_port if args.server_port is not None else _environment_port(environ, "SERVER_PORT", 18_182)
+    command = [f"--server.port={port}"]
+    if args.runtime_config is not None:
+        configuration = args.runtime_config.resolve()
+        if not configuration.is_file():
+            raise ValueError(f"Runtime configuration file does not exist: {configuration}")
+        command.append("--spring.config.additional-location=" + configuration.as_uri())
+    if args.groups is not None:
+        path = args.groups.resolve()
+        if not path.is_file():
+            raise ValueError(f"Group registration file does not exist: {path}")
+        groups = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(groups, dict):
+            raise ValueError("Group registration JSON must be an object")
+        command.append("--xa.mass.worker-assembly.group-config-json=" + json.dumps(groups, separators=(",", ":")))
+    return command, port
 
 
 def wait_for_server(
@@ -226,19 +258,27 @@ def main(
     values = os.environ if environ is None else environ
     server: subprocess.Popen[bytes] | None = None
     try:
+        extra_arguments: list[str] = []
+        if profile == "consumer":
+            extra_arguments, port = consumer_arguments(args, values)
+            runtime_api_url = f"http://127.0.0.1:{port}"
+        else:
+            runtime_api_url = runtime_api_base_url(profile, values)
         print("[1/3] Building frontend", flush=True)
         build_frontend()
         print(f"[2/3] Building local Runtime for {profile}", flush=True)
         server_jar = build_runtime_processes(profile)
         print(f"[3/3] Starting local Runtime for {profile}", flush=True)
-        runtime_api_url = runtime_api_base_url(profile, values)
-        server = start_server(server_jar, profile, values)
+        server = start_server(server_jar, profile, values, extra_arguments)
         wait_for_server(server, runtime_api_url)
         print(f"Open {runtime_api_url}/runtime/workers")
         print(f"Tasks {runtime_api_url}/runtime/tasks")
         return supervise(server)
     except KeyboardInterrupt:
         return 0
+    except (OSError, ValueError, RuntimeError) as error:
+        print(f"Runtime startup failed: {error}", file=sys.stderr)
+        return 1
     finally:
         stop_process(server, "XA Mass Server")
 

@@ -80,7 +80,7 @@ From this directory, after preparing the absolute `$installation` path above:
 ```powershell
 $env:XA_MASS_APP_CHECKS_CONFIG_PATH = Join-Path $installation 'data/app-checks/configuration.json'
 $env:XA_MASS_APP_CHECKS_SEED = ([System.Uri](Resolve-Path './config/batch-checks-configuration.json').Path).AbsoluteUri
-python .\run_consumer.py --runtime-archive $runtime --sdk-archive $sdk --version $candidate.version --commit $candidate.gitCommit --runtime-sha256 $candidate.archives.runtime.sha256 --sdk-sha256 $candidate.archives.sdk.sha256 --work-dir $installation --redis-url redis://127.0.0.1:6379/15 --redis-scope profile_android_checks --runtime-config ./config/batch-checks-runtime.yaml
+python .\run_consumer.py --runtime-archive $runtime --sdk-archive $sdk --version $candidate.version --commit $candidate.gitCommit --runtime-sha256 $candidate.archives.runtime.sha256 --sdk-sha256 $candidate.archives.sdk.sha256 --work-dir $installation --redis-url redis://127.0.0.1:6379/15 --redis-scope profile_android_checks --runtime-config ./config/batch-checks-runtime.yaml --groups ./config/worker-groups.json
 ```
 
 `--runtime-config` resolves the host YAML to an absolute file URI. The two
@@ -100,9 +100,16 @@ confirm the quantity/fee. An administrator explicitly credits the Task owner fir
 The sample charges 1 point per persisted seed. Existing locks, fingerprints,
 manual restart activation and Task snapshots apply. Existing files are not reseeded.
 
+These three files are the canonical sample sources also packaged in Runtime ZIP
+`examples/batch-checks`; there is no second maintained definition. The
+[deployment guide](../distribution/server/src/main/dist/examples/batch-checks/README.md)
+also supports source consumer and direct `java -jar` startup with the same inputs.
+The Android proof reads packaged examples, records actual input hashes, and retains
+the 123-seed Any/restart proof plus a separate three-seed window feedback phase.
+
 ## Group window Pool through the raw workbench
 
-Use the same verified candidate arguments with `--runtime-config ./config/window-pool-runtime.yaml`
+Use the same verified candidate arguments with `--runtime-config ./config/window-pool-runtime.yaml --groups ./config/worker-groups.json`
 and a new explicit Redis scope. This sample declares `default` and `pool-validation`, enables no Scenario,
 and explicitly binds `device-window` to `android-demo-workers`, independently of Project membership.
 That one reference enables `worker.device.available` and the paired digest feedback; no second feedback binding is needed.

@@ -1,5 +1,9 @@
 # XA Mass Console
 
+The Scenario product name is Batch Checks／批量检查. Its `app-checks` routes,
+API identifiers and source directory remain technical names; current Group bindings
+are deployment-owned configuration and do not replace saved Task execution values.
+
 Vue 3 console for Worker and Task runtime observation, a Project-scoped task
 workbench (RPC calls and finite Tasks), Scenario pages and public Demo. It is derived from Pure Admin Thin 6.2.0.
 Development login reads Server-managed users without a password or real

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -19,6 +21,82 @@ SPEC.loader.exec_module(launcher)
 
 
 class LocalRuntimeLauncherTest(unittest.TestCase):
+
+    def test_consumer_options_reject_other_profiles_before_build(self):
+        for profile in ("default", "preview"):
+            for option, value in (("runtime-config", "runtime.yaml"), ("groups", "groups.json"), ("server-port", "19182")):
+                with self.subTest(profile=profile, option=option), redirect_stderr(io.StringIO()), \
+                        self.assertRaises(SystemExit), patch.object(launcher, "build_frontend") as build:
+                    launcher.main(["--profile", profile, "--" + option, value])
+                build.assert_not_called()
+        for port in ("0", "65536", "invalid"):
+            with self.subTest(port=port), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                launcher.parse_arguments(["--profile", "consumer", "--server-port", port])
+
+    def test_external_files_are_validated_before_build_or_process_creation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            groups = Path(directory) / "groups.json"
+            for document in ("[{}]", "{broken", ""):
+                groups.write_text(document, encoding="utf-8")
+                with self.subTest(document=document), redirect_stderr(io.StringIO()), \
+                        patch.object(launcher, "build_frontend") as build, patch.object(launcher, "start_server") as start:
+                    self.assertEqual(1, launcher.main(["--profile", "consumer", "--groups", str(groups)], environ={}))
+                build.assert_not_called(); start.assert_not_called()
+            for option in ("groups", "runtime-config"):
+                with self.subTest(option=option), redirect_stderr(io.StringIO()), patch.object(launcher, "build_frontend") as build:
+                    self.assertEqual(1, launcher.main(["--profile", "consumer", "--" + option, str(Path(directory) / "missing")], environ={}))
+                build.assert_not_called()
+
+    def test_external_startup_freezes_groups_and_uses_one_http_port(self):
+        with tempfile.TemporaryDirectory(prefix="配置 ") as directory:
+            root = Path(directory)
+            config = root / "Runtime 配置.yaml"
+            config.write_text("server.port: 19999\n", encoding="utf-8")
+            groups = root / "Group 声明.json"
+            document = {"external-only": {"eventCodes": ["extension.test"], "attributes": {"label": "样例"}}}
+            groups.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+            server = MagicMock()
+            with patch.object(launcher, "build_frontend"), patch.object(launcher, "build_runtime_processes", return_value=Path("server.jar")), \
+                    patch.object(launcher, "start_server", return_value=server) as start, \
+                    patch.object(launcher, "wait_for_server") as ready, patch.object(launcher, "supervise", return_value=0), \
+                    patch.object(launcher, "stop_process") as stop:
+                self.assertEqual(0, launcher.main(["--profile", "consumer", "--runtime-config", str(config),
+                        "--groups", str(groups), "--server-port", "19182"], environ={"SERVER_PORT": "invalid-overridden-value"}))
+            command = start.call_args.args[3]
+            self.assertIn("--server.port=19182", command)
+            self.assertIn("--spring.config.additional-location=" + config.resolve().as_uri(), command)
+            group_arg = next(value.split("=", 1)[1] for value in command if value.startswith("--xa.mass.worker-assembly.group-config-json="))
+            self.assertEqual(document, json.loads(group_arg))
+            self.assertFalse(any("project-assembly" in value or "worker-matching" in value for value in command))
+            ready.assert_called_once_with(server, "http://127.0.0.1:19182")
+            stop.assert_called_once_with(server, "XA Mass Server")
+            self.assertEqual("server.port: 19999\n", config.read_text(encoding="utf-8"))
+
+    def test_consumer_defaults_do_not_infer_resource_files_and_readiness_failure_closes_process(self):
+        args = launcher.parse_arguments(["--profile", "consumer"])
+        self.assertEqual((["--server.port=18182"], 18182), launcher.consumer_arguments(args, {}))
+        self.assertEqual((["--server.port=19182"], 19182), launcher.consumer_arguments(args, {"SERVER_PORT": "19182"}))
+        server = MagicMock()
+        with patch.object(launcher, "build_frontend"), patch.object(launcher, "build_runtime_processes", return_value=Path("server.jar")), \
+                patch.object(launcher, "start_server", return_value=server), patch.object(launcher, "wait_for_server", side_effect=RuntimeError("not ready")), \
+                patch.object(launcher, "stop_process") as stop, redirect_stderr(io.StringIO()):
+            self.assertEqual(1, launcher.main(["--profile", "consumer"], environ={}))
+        stop.assert_called_once_with(server, "XA Mass Server")
+
+    def test_relative_inputs_resolve_from_calling_directory_not_checkout(self):
+        previous = Path.cwd()
+        with tempfile.TemporaryDirectory(prefix="外部 working ") as directory:
+            root = Path(directory)
+            (root / "runtime.yaml").write_text("xa.mass.project-assembly.projects: []", encoding="utf-8")
+            (root / "groups.json").write_text('{"external":{}}', encoding="utf-8")
+            try:
+                os.chdir(root)
+                args = launcher.parse_arguments(["--profile", "consumer", "--runtime-config", "runtime.yaml", "--groups", "groups.json"])
+                command, _ = launcher.consumer_arguments(args, {})
+            finally:
+                os.chdir(previous)
+            self.assertIn("--spring.config.additional-location=" + (root / "runtime.yaml").as_uri(), command)
+            self.assertIn('--xa.mass.worker-assembly.group-config-json={"external":{}}', command)
 
     def test_profile_defaults_to_preview_and_rejects_retired_values(self) -> None:
         self.assertEqual(launcher.parse_arguments([]).profile, "preview")
@@ -121,6 +199,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
                     Path(directory) / "server.jar",
                     "default",
                     {"PATH": "test-path"},
+                    [],
                 ),
                 process,
             )

@@ -282,6 +282,10 @@ Android Worker Proof includes a Batch Checks finite consumer phase using the sam
 candidate pair. Affected Scenario contracts select this existing lane. Its
 independent configuration/scope exercises Any selection, complete known-identity
 Results and CSV plus credit admission; RPC consumption cannot replace this proof.
+It loads the candidate ZIP's explicit deployment examples and also runs a separate
+three-seed window/feedback check. Boot's external deployment test starts the same
+production assembly twice with actual external files to add another Group, retain
+saved Task snapshots and prove real paid execution without rebuilding production code.
 
 
 High-level Integration Harnesses use public Runtime and local device/Host APIs,

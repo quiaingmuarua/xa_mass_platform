@@ -97,10 +97,26 @@ class BatchChecksConsumerIntegrationTest {
                     prefix + "pools.module-window.feedback.message-events[0]=" + EVENT,
                     prefix + "groups." + GROUP + ".pools.module-window.window-millis=60000"));
         }
+        // Exercise the same three external inputs as source/ZIP launchers.
+        var host = new LinkedHashMap<String,Object>();
+        var command = new ArrayList<String>();
+        for (String arg : args) {
+            int equals = arg.indexOf('=');
+            String name = arg.substring(2, equals), value = arg.substring(equals + 1);
+            if (name.equals("spring.profiles.active")) command.add(arg);
+            else if (name.equals("xa.mass.worker-assembly.group-config-json")) {
+                Path groupsFile = directory.resolve("Group 注册.json");
+                Files.writeString(groupsFile, value);
+                command.add("--" + name + "=" + Files.readString(groupsFile));
+            } else host.put(name, value);
+        }
+        Path runtimeFile = directory.resolve("Runtime 配置.yaml");
+        Files.writeString(runtimeFile, Jsons.toJson(host));
+        command.add("--spring.config.additional-location=" + runtimeFile.toUri());
         var app = new SpringApplication(ServerBootConfiguration.class);
         app.setWebApplicationType(WebApplicationType.NONE);
         app.setRegisterShutdownHook(false);
-        return app.run(args.toArray(String[]::new));
+        return app.run(command.toArray(String[]::new));
     }
     @AfterEach void cleanup() {
         var client = RedisClient.create(redis);

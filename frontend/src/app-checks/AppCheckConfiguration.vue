@@ -199,7 +199,7 @@ defineExpose({ focusHeading: () => heading.value?.focus({ preventScroll: true })
         <h1 ref="heading" tabindex="-1">检查配置</h1>
         <small class="checks-hint"
           >{{
-            source.mode === "mock" ? "Mock 演示数据 · 仅当前会话" : "App Checks 配置"
+            source.mode === "mock" ? "Mock 演示数据 · 仅当前会话" : "批量检查配置"
           }}
           · 保存后手动重启生效</small
         >

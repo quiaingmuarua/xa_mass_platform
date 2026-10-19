@@ -1,5 +1,15 @@
 # Android Worker Proof
 
+Batch Checks consumes the three example files shipped in the candidate Runtime ZIP.
+The existing 123-seed Any and restart phases retain their full result, preview,
+CSV and credit assertions. An additional `window` phase uses three fixed digest
+seeds, a separate scope/configuration and the existing 60-second/10-observation
+window definition. It verifies actual window queries, paid finite execution,
+raw Results/Item states, business CSV and paired Platform Properties feedback.
+`consumption.json.runtimeInputs` records the actual input hashes for each startup;
+generated window overrides never modify the extracted example files. Group-name
+expansion belongs to the parameterized JVM deployment proof, not Android runtime rebinding.
+
 RPC Tasks are explicitly prepared with stable fixture IDs via
 `POST /api/v1/tasks/{taskId}/rpc:prepare` during setup, before readiness/load
 measurement. Project directory reads only expose bound Groups. Preparation does

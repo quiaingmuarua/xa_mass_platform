@@ -20,6 +20,13 @@ but imports the Scenario only when enabled. It requires explicit
 opt in through external YAML without SMS, Messages or Simulator Groups. No profile
 is added. See the [Android Pool example](../xa-android/README.md#batch-checks-through-an-android-pool).
 
+For deployment, use external Runtime YAML, Group registration JSON and the Scenario
+configuration document. Source and ZIP instructions are owned by
+[Distribution](../distribution/server/README.md#external-consumer-workbench-deployment).
+Neither the launcher nor this profile adds Group/Pool bindings from check names.
+Batch Checks contributes its Project from the effective check configuration; do not
+repeat that Project in host YAML. Preview's built-in Groups remain demonstration data.
+
 
 Ordinary platform profiles load no business Scenario Controllers, registrations or
 jobs. The base platform and `consumer` remain independent of business modules. `preview` imports [SMS Reception](../scenarios/sms-reception-jvm/README.md),

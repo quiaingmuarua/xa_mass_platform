@@ -387,7 +387,12 @@
         "frontend",
         "product_coexistence"
       ],
-      "reason": "The local launcher retains Lab/AgentForge and delegates Preview to its shared source/ZIP lifecycle."
+      "reason": "The local launcher delegates Preview and exposes explicit external consumer inputs without enabling resources."
+    },
+    {
+      "path": "xa-android/config/batch-checks-runtime.yaml",
+      "lanes": ["android_consumer", "android_emulator", "android_host", "runtime_distribution"],
+      "reason": "The canonical external deployment examples ship in Runtime ZIP and are consumed by the existing Android proof."
     },
     {
       "path": ".github/workflows/proof-ci.yml",
