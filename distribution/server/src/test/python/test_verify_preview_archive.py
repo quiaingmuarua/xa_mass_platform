@@ -8,7 +8,9 @@ import tempfile
 import unittest
 import zipfile
 
-from verify_preview_archive import verify
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[5]))
+from distribution.archive_tools import verify_preview as verify
 
 
 CONFIGURATIONS = {name: (name + "\n").encode() for name in (

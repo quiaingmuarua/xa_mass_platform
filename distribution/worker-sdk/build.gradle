@@ -150,11 +150,11 @@ tasks.register('workerSdkDistributionTest', Exec) {
     dependsOn tasks.named('distZip')
     workingDir repositoryRoot
     inputs.file(tasks.named('distZip', Zip).flatMap { it.archiveFile })
-    inputs.file('src/test/python/verify_worker_sdk_archive.py')
+    inputs.file(rootProject.file('distribution/archive_tools.py'))
     outputs.upToDateWhen { false }
     commandLine(
             pythonExecutable.get(),
-            file('src/test/python/verify_worker_sdk_archive.py').absolutePath,
+            '-m', 'distribution.archive_tools', 'sdk',
             '--archive',
             tasks.named('distZip', Zip).flatMap {
                 it.archiveFile

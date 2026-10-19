@@ -9,18 +9,19 @@ import json
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 import uuid
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+
+from integrations.worker_proof_support.processes import (
+    start_process, stop_process, wait_http, tail,
+)
 
 from integrations.worker_proof_support.scenario_inventory import (  # noqa: E402
     canonical_100_worker_world,
@@ -75,14 +76,14 @@ def main() -> int:
     host: subprocess.Popen[str] | None = None
     try:
         server = _start_server(output, environment)
-        _wait_http(
+        wait_http(
             f"{RUNTIME_API}/actuator/health/readiness",
             server,
             options.maximum_wait_millis,
             output / "runtime-server.log",
         )
         host = _start_host(output, sandbox, environment, "scenario-host-initial.log")
-        _wait_http(
+        wait_http(
             f"{LAB_API}/lab/v1/workers",
             host,
             options.maximum_wait_millis,
@@ -94,9 +95,9 @@ def main() -> int:
 
         _run_live_properties(proof_id, sandbox, initial, output, host, server, options, environment)
 
-        _stop_process(host, force=False)
+        stop_process(host, force=False)
         host = _start_host(output, sandbox, environment, "scenario-host-restart.log")
-        _wait_http(
+        wait_http(
             f"{LAB_API}/lab/v1/workers",
             host,
             options.maximum_wait_millis,
@@ -113,9 +114,9 @@ def main() -> int:
         )
     finally:
         if host is not None:
-            _stop_process(host, force=False)
+            stop_process(host, force=False)
         if server is not None:
-            _stop_process(server, force=False)
+            stop_process(server, force=False)
         try:
             _run([
                 sys.executable,
@@ -157,16 +158,16 @@ def _run_phase(
         arguments.append(f"--baseline-file={baseline}")
     classpath = ROOT / "integrations/worker-correctness/build/install/xa-mass-worker-correctness/lib/*"
     log_path = evidence.parent.parent / "private" / f"phase-{phase}.log"
-    process = _start_process([
+    process = start_process([
         "java", "-cp", str(classpath),
         "com.xa.mass.integration.workercorrectness.WorkerCorrectnessMain", *arguments,
-    ], log_path, environment)
+    ], log_path, environment, cwd=ROOT)
     try:
         timeout = 120 if phase == "live-properties" else 120 + options.maximum_wait_millis / 1000
         if process.wait(timeout=timeout) != 0:
             raise RuntimeError(f"Worker Correctness {phase} failed; inspect {evidence.name}")
     finally:
-        _stop_process(process, force=True)
+        stop_process(process, force=True)
 
 
 def _start_server(
@@ -181,7 +182,7 @@ def _start_server(
     if not jars:
         raise RuntimeError("Runtime Server Boot JAR was not built")
     jar = max(jars, key=lambda path: path.stat().st_mtime_ns)
-    return _start_process([
+    return start_process([
         "java",
         "-jar",
         str(jar),
@@ -194,7 +195,7 @@ def _start_server(
         "--server.tomcat.accesslog.prefix=runtime-http",
         "--server.tomcat.accesslog.suffix=.log",
         "--server.tomcat.accesslog.pattern=%m %U %s",
-    ], output / "runtime-server.log", environment)
+    ], output / "runtime-server.log", environment, cwd=ROOT)
 
 
 def _start_host(
@@ -208,108 +209,17 @@ def _start_host(
     config.update(runtimeApiBaseUrl=RUNTIME_API, sandboxRoot=str(sandbox.resolve()), controlPort=18086)
     config_path = output / "private/worker-simulator.json"
     config_path.write_text(json.dumps(config) + "\n", encoding="utf-8")
-    return _start_process([
+    return start_process([
         "java",
         "-cp",
         str(classpath),
         "com.xa.mass.workersimulator.WorkerSimulatorMain",
         "--config", str(config_path),
-    ], output / log_name, environment)
-
-
-def _start_process(
-    command: list[str],
-    log_path: Path,
-    environment: dict[str, str],
-) -> subprocess.Popen[str]:
-    log = log_path.open("w", encoding="utf-8", newline="\n")
-    try:
-        process = subprocess.Popen(
-            command,
-            cwd=ROOT,
-            env=environment,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            text=True,
-            creationflags=(
-                subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
-            ),
-            start_new_session=os.name != "nt",
-        )
-    except BaseException:
-        log.close()
-        raise
-    log.close()
-    return process
-
-
-def _stop_process(process: subprocess.Popen[str], *, force: bool) -> None:
-    if process.poll() is not None:
-        return
-    if os.name == "nt":
-        command = ["taskkill", "/PID", str(process.pid), "/T"]
-        if force:
-            command.append("/F")
-        subprocess.run(
-            command,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-    elif force:
-        os.killpg(process.pid, signal.SIGKILL)
-    else:
-        os.killpg(process.pid, signal.SIGTERM)
-    try:
-        process.wait(timeout=15)
-    except subprocess.TimeoutExpired:
-        if os.name == "nt":
-            subprocess.run(
-                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
-        else:
-            os.killpg(process.pid, signal.SIGKILL)
-        process.wait(timeout=15)
-
-
-def _wait_http(
-    url: str,
-    process: subprocess.Popen[str],
-    maximum_wait_millis: int,
-    log_path: Path,
-) -> None:
-    deadline = time.monotonic() + maximum_wait_millis / 1000
-    latest: BaseException | None = None
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            raise RuntimeError(
-                f"Process exited with {process.returncode}; log:\n{_tail(log_path)}"
-            )
-        try:
-            with urllib.request.urlopen(url, timeout=2) as response:
-                if 200 <= response.status < 300:
-                    return
-        except (OSError, urllib.error.URLError) as error:
-            latest = error
-        time.sleep(0.2)
-    raise RuntimeError(f"Timed out waiting for {url}: {latest}; log:\n{_tail(log_path)}")
+    ], output / log_name, environment, cwd=ROOT)
 
 
 def _run(command: list[str], environment: dict[str, str]) -> None:
     subprocess.run(command, cwd=ROOT, env=environment, check=True)
-
-
-def _tail(path: Path, maximum_lines: int = 80) -> str:
-    if not path.exists():
-        return "<missing>"
-    return "\n".join(
-        path.read_text(encoding="utf-8", errors="replace").splitlines()[
-            -maximum_lines:
-        ]
-    )
 
 
 def _gradle() -> Path:
