@@ -8,6 +8,38 @@ import static org.assertj.core.api.Assertions.*;
 
 class AppCheckContractsTest {
     final AppCheckContracts contracts = AppCheckTestSettings.contracts();
+    @Test void stringDigestUsesTheExistingProtocolAndRejectsCorruptAnswers() {
+        var contract = AppCheckContracts.stringDigestMd5Prefix();
+        var context = new AppCheckContract.Context("unrelated-check", null, "external-group", null, Map.of());
+        assertThat(contract.maxSeedsPerItem()).isEqualTo(1);
+        assertThat(contract.seedType()).isEqualTo(AppCheckContract.SeedType.TEXT);
+        var vectors = Map.of("a", "0cc175b9c0f1b6a831c399e269772661", "abc", "900150983cd24fb0d6963f7d28e17f72", "中文", "a7bac2239fcdcb3a067903d8077c4a07");
+        vectors.forEach((seed, digest) -> {
+            var input = contract.payload(context, List.of(seed));
+            assertThat(input).containsExactlyInAnyOrderEntriesOf(Map.of("algorithm", "MD5", "value", seed));
+            var answer = contract.results(context, input, Map.of("algorithm", "MD5", "input", seed, "digest", digest)).getFirst();
+            assertThat(answer.matched()).isEqualTo(seed.equals("a"));
+            assertThat(answer.details()).containsOnlyKeys("md5");
+            assertThat(contract.exportValues(answer)).containsExactly(digest);
+        });
+        var input = contract.payload(context, List.of("a"));
+        var output = Map.<String,Object>of("algorithm", "MD5", "input", "a", "digest", vectors.get("a"));
+        for (var field : output.keySet()) {
+            var broken = new HashMap<>(output); broken.remove(field);
+            assertThatThrownBy(() -> contract.results(context, input, broken)).isInstanceOf(IllegalArgumentException.class);
+            broken.put(field, 17);
+            assertThatThrownBy(() -> contract.results(context, input, broken)).isInstanceOf(IllegalArgumentException.class);
+        }
+        for (var change : List.of(Map.entry("algorithm", "SHA-256"), Map.entry("input", "other"), Map.entry("digest", "A".repeat(32)), Map.entry("digest", "0".repeat(31)))) {
+            var broken = new HashMap<>(output); broken.put(change.getKey(), change.getValue());
+            assertThatThrownBy(() -> contract.results(context, input, broken)).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThatThrownBy(() -> contract.inputSeeds(Map.of("algorithm", "SHA-256", "value", "a"))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> contract.payload(context, List.of("a", "b"))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> contract.normalizeParameters(Map.of("algorithm", "SHA-256"))).isInstanceOf(IllegalArgumentException.class);
+        // Interpretation validates the protocol; the receiving Worker owns digest calculation.
+        assertThat(contract.results(context, input, Map.of("algorithm", "MD5", "input", "a", "digest", "f".repeat(32))).getFirst().matched()).isFalse();
+    }
     @Test void demosValidateAssociationsAndInterpretAnswersWithoutRecomputingThem() {
         var context = new AppCheckContract.Context("demo", null, "demo-sim", "unused", Map.of());
         var prime = contracts.require(AppCheckContracts.UINT32_PRIME);

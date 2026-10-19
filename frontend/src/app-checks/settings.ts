@@ -8,10 +8,11 @@ export const PRIME_CONTRACT = "uint32-prime-v1";
 export const CARRIER_CONTRACT = "original-carrier-v1";
 export const CARRIER_BATCH_CONTRACT = "original-carrier-batch-v1";
 export const MD5_BATCH_CONTRACT = "md5-prefix-demo-batch-v1";
+export const STRING_DIGEST_MD5_CONTRACT = "string-digest-md5-prefix-v1";
 export const isCarrierContract = (id?: string) =>
   id === CARRIER_CONTRACT || id === CARRIER_BATCH_CONTRACT;
 export const isMd5Contract = (id?: string) =>
-  id === MD5_CONTRACT || id === MD5_BATCH_CONTRACT;
+  id === MD5_CONTRACT || id === MD5_BATCH_CONTRACT || id === STRING_DIGEST_MD5_CONTRACT;
 const name = z
   .string()
   .min(1)

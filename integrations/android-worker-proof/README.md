@@ -136,6 +136,24 @@ restarts `lab2` and requires its original worker ID to return. The Triad does
 not repeat endpoint exhaustion, Server restart, or in-flight route-loss claims
 owned by the single-Worker proof.
 
+## Batch Checks finite consumer
+
+The complete suite also runs `AndroidWorkerBatchChecksMain` initial/restart phases
+in an independent test scope with only the Debug App. Host YAML enables Batch
+Checks and Any; one seed maps to one existing Android digest Item. No Simulator,
+RPC submission or directed Worker query stands in for the finite Pool path.
+
+Java verifies 123 text seeds, duplicate import, one 123-point owner debit, repeated
+approval, terminal finite state, all 123 raw Results/Item states, bounded raw input
+and business previews, and complete all/matched/unmatched CSV. Three fixed vectors
+include Unicode; additional expected digests are computed independently. Raw input
+preview remains bounded and is recorded as such. Complete counts come from known
+identities and full CSV. Restart reads the retained Task, results, configuration
+fingerprint and ledger without replaying mutations. Python owns process/ADB and
+external configuration paths. Original correctness/convergence/triad assertions
+and deadlines remain. Evidence contains IDs, counts, fingerprints and verdicts,
+never complete seeds or result bodies.
+
 ## Entrypoints
 
 Use a disposable API 33 Emulator with no differently signed installations of

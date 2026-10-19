@@ -12,6 +12,7 @@ public final class AppCheckContracts {
     public static final String MD5_PREFIX_BATCH = "md5-prefix-demo-batch-v1";
     public static final String UINT32_PRIME = "uint32-prime-v1";
     public static final String MD5_PREFIX = "md5-prefix-demo-v1";
+    public static final String STRING_DIGEST_MD5_PREFIX = "string-digest-md5-prefix-v1";
     private final Map<String, AppCheckContract> contracts;
 
     public AppCheckContracts(List<AppCheckContract> definitions) {
@@ -39,6 +40,7 @@ public final class AppCheckContracts {
     public static AppCheckContract originalCarrier() { return new OriginalCarrier(); }
     public static AppCheckContract uint32Prime() { return new Uint32Prime(); }
     public static AppCheckContract md5Prefix() { return new Md5Prefix(); }
+    public static AppCheckContract stringDigestMd5Prefix() { return new StringDigestMd5Prefix(); }
 
     public static AppCheckContract originalCarrierBatch() { return new Batch(ORIGINAL_CARRIER_BATCH, "rawNumbers", originalCarrier()); }
     public static AppCheckContract md5PrefixBatch() { return new Batch(MD5_PREFIX_BATCH, "values", md5Prefix()); }
@@ -140,6 +142,31 @@ public final class AppCheckContracts {
             if (!(content.get("md5") instanceof String md5) || !md5.matches("[0-9a-f]{32}"))
                 throw new IllegalArgumentException("Invalid MD5 answer");
             return List.of(new Result(seed, md5.startsWith("0"), Map.of("md5", md5)));
+        }
+        public List<String> exportHeaders() { return List.of("MD5 摘要"); }
+        public List<String> exportValues(Result result) { return List.of((String) result.details().get("md5")); }
+    }
+
+    private static final class StringDigestMd5Prefix extends TextDemo {
+        public String id() { return STRING_DIGEST_MD5_PREFIX; }
+        public String label() { return "字符串摘要前缀命中（演示）"; }
+        public String description() { return "执行 MD5 字符串摘要协议；固定演示条件为 UTF-8 摘要以 0 开头。"; }
+        public Map<String, Object> inputExample() { return Map.of("algorithm", "MD5", "value", "a"); }
+        public Map<String, Object> resultExample() { return Map.of("algorithm", "MD5", "input", "a", "digest", "0cc175b9c0f1b6a831c399e269772661"); }
+        public Map<String, Object> payload(Context context, List<String> seeds) {
+            return Map.of("algorithm", "MD5", "value", single(seeds));
+        }
+        public List<String> inputSeeds(Map<String, Object> payload) {
+            if (!"MD5".equals(payload.get("algorithm"))) throw new IllegalArgumentException("Invalid digest input algorithm");
+            return super.inputSeeds(payload);
+        }
+        public List<Result> results(Context context, Map<String, Object> payload, Map<String, Object> content) {
+            String seed = inputSeeds(payload).getFirst();
+            if (!seed.equals(content.get("input")) || !"MD5".equals(content.get("algorithm")))
+                throw new IllegalArgumentException("Digest result association or algorithm mismatch");
+            if (!(content.get("digest") instanceof String digest) || !digest.matches("[0-9a-f]{32}"))
+                throw new IllegalArgumentException("Invalid MD5 digest");
+            return List.of(new Result(seed, digest.startsWith("0"), Map.of("md5", digest)));
         }
         public List<String> exportHeaders() { return List.of("MD5 摘要"); }
         public List<String> exportValues(Result result) { return List.of((String) result.details().get("md5")); }

@@ -80,7 +80,9 @@ class ScenarioLifecycleTest {
                     () -> mock(com.xa.mass.server.task.result.TaskResultsExportService.class));
             context.registerBean(ServerConfiguredRuntimeLifecycleHost.class, () -> platform,
                     definition -> definition.setDestroyMethodName("stop"));
-            context.register(PreviewConfiguration.class);
+            context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource(
+                    "batch-checks-enabled", java.util.Map.of("xa.mass.scenarios.app-checks.enabled", true)));
+            context.register(PreviewConfiguration.class, com.xa.mass.serverboot.BatchChecksConfiguration.class);
             doAnswer(call -> { events.add("platform-start"); return null; }).when(adapters).start();
             when(results.loadTaskItemResults(org.mockito.ArgumentMatchers.eq(CALLER), anyString(), anyList())).thenReturn(java.util.Map.of());
             java.util.function.BiConsumer<String, String> observe = (project, id) -> {

@@ -166,6 +166,13 @@ or observation replay.
 
 ## android_emulator
 
+The existing lane also verifies an external Batch Checks consumer: one actual
+Android Group, Any Pool, 123 finite Items, independently checked digests, bounded
+previews, full CSV, one owner debit and same-scope restart reads. It consumes the
+same candidate ZIP/APK chain. Scenario tests own malformed protocol cases; this
+witness makes no claim about third-party Apps or throughput.
+
+
 - **Primary Owner:** [Android Worker Proof](../../integrations/android-worker-proof/README.md); Python owns external process choreography only.
 - **Boundary:** Debug App lifecycle, route recovery, Handler-time process loss, endpoint exhaustion and explicit identity-stable recovery; fixed App Triad adds same-Group identity isolation, explicit Worker ID targeting and partial outage.
 - **Required witness:** real process/route and targeted identity evidence, rather than Properties affinity inferred as scheduling identity.

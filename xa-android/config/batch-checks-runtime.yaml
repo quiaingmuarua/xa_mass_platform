@@ -1,0 +1,13 @@
+xa:
+  mass:
+    scenarios:
+      app-checks:
+        enabled: true
+        configuration:
+          path: ${XA_MASS_APP_CHECKS_CONFIG_PATH}
+          seed: ${XA_MASS_APP_CHECKS_SEED}
+    worker-matching:
+      groups:
+        android-demo-workers:
+          pools: [any]
+          functions: [worker.any]

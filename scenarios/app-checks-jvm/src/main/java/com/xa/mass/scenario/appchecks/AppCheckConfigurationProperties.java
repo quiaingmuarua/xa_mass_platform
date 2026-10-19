@@ -3,9 +3,9 @@ package com.xa.mass.scenario.appchecks;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "xa.mass.scenarios.app-checks", ignoreUnknownFields = false)
-public record AppCheckConfigurationProperties(Configuration configuration) {
+public record AppCheckConfigurationProperties(boolean enabled, Configuration configuration) {
     public AppCheckConfigurationProperties {
-        if (configuration == null) throw new IllegalArgumentException("App Checks configuration must be configured");
+        if (enabled && configuration == null) throw new IllegalArgumentException("Enabled App Checks configuration must be configured");
     }
     public record Configuration(String path, String seed) {
         public Configuration {

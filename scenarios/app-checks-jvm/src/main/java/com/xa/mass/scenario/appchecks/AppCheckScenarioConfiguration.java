@@ -25,6 +25,7 @@ public class AppCheckScenarioConfiguration {
     @Bean AppCheckContract originalCarrierContract() { return AppCheckContracts.originalCarrier(); }
     @Bean AppCheckContract uint32PrimeContract() { return AppCheckContracts.uint32Prime(); }
     @Bean AppCheckContract md5PrefixContract() { return AppCheckContracts.md5Prefix(); }
+    @Bean AppCheckContract stringDigestMd5PrefixContract() { return AppCheckContracts.stringDigestMd5Prefix(); }
     @Bean AppCheckContract originalCarrierBatchContract() { return AppCheckContracts.originalCarrierBatch(); }
     @Bean AppCheckContract md5PrefixBatchContract() { return AppCheckContracts.md5PrefixBatch(); }
     @Bean AppCheckContracts appCheckContracts(List<AppCheckContract> definitions) { return new AppCheckContracts(definitions); }

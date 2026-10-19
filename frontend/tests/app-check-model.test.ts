@@ -16,6 +16,12 @@ import {
 } from "../src/app-checks/task-source";
 import { createAppCheckContext } from "../src/app-checks/context";
 import { resultKind, filterResults } from "../src/app-checks/workbench";
+import { checkCondition, resultDescription } from "../src/app-checks/workbench";
+import {
+  checkTypeSchema,
+  catalogSchema,
+  checkTypeLabel
+} from "../src/app-checks/model";
 import { resultSchema } from "../src/app-checks/model";
 
 beforeEach(() => vi.stubGlobal("crypto", webcrypto));
@@ -371,4 +377,49 @@ describe("App Checks data boundary", () => {
     expect(context.state.value.status).toBe("enabled");
     context.dispose();
   });
+});
+
+it("accepts the external digest contract through Catalog and existing result presentation", async () => {
+  const source = new FundedAppCheckSource(new MockUserDirectorySource());
+  const catalog = await source.catalog();
+  const type = checkTypeSchema.parse({
+    id: "string-digest-md5-prefix-v1",
+    label: "外部摘要协议",
+    seedType: "text",
+    description: "MD5 前缀命中",
+    maxSeedsPerItem: 1,
+    parameterExample: {},
+    inputExample: { algorithm: "MD5", value: "a" },
+    resultExample: {
+      algorithm: "MD5",
+      input: "a",
+      digest: "0cc175b9c0f1b6a831c399e269772661"
+    }
+  });
+  const loaded = catalogSchema.parse({
+    ...catalog,
+    checkTypes: [...catalog.checkTypes, type],
+    checks: [
+      {
+        ...catalog.checks[0],
+        checkId: "external-digest",
+        label: "外部执行",
+        checkType: type.id,
+        workerGroupId: "external-workers"
+      }
+    ]
+  });
+  expect(checkTypeLabel(type.id, loaded)).toBe("外部摘要协议");
+  expect(checkCondition(type.id)).toContain("MD5");
+  expect(
+    resultDescription(
+      resultSchema.parse({
+        messageId: "seed-a",
+        seed: "a",
+        resultStatus: "succeeded",
+        matched: true,
+        details: { md5: "0cc175b9c0f1b6a831c399e269772661" }
+      })
+    )
+  ).toContain("0cc175b9c0f1b6a831c399e269772661");
 });

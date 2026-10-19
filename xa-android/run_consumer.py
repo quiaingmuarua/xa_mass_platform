@@ -185,7 +185,8 @@ def prepare_archives(runtime_archive: Path, sdk_archive: Path, version: str, com
 
 
 def server_command(receipt: dict, redis_scope: str, server_port: int = 18182,
-                   adapter_port: int = 18183, groups: Path | None = None) -> list[str]:
+                   adapter_port: int = 18183, groups: Path | None = None,
+                   runtime_config: Path | None = None) -> list[str]:
     require(bool(redis_scope.strip()), "Explicit Redis scope is required")
     require(1 <= server_port <= 65535 and 1 <= adapter_port <= 65535 and server_port != adapter_port,
             "Server and Adapter ports must be distinct valid ports")
@@ -193,7 +194,12 @@ def server_command(receipt: dict, redis_scope: str, server_port: int = 18182,
     require(jar.is_file() and digest(jar) == receipt["serverJarSha256"], "Verified Server JAR bytes changed")
     group_document = json.loads((groups or ROOT / "config/worker-groups.json").read_text(encoding="utf-8"))
     require(isinstance(group_document, dict), "Consumer Group configuration must be an object")
-    return ["java", "-jar", str(jar), "--spring.profiles.active=consumer",
+    additional = []
+    if runtime_config is not None:
+        runtime_config = runtime_config.resolve()
+        require(runtime_config.is_file(), "Runtime configuration file does not exist")
+        additional = ["--spring.config.additional-location=" + runtime_config.as_uri()]
+    return ["java", "-jar", str(jar), "--spring.profiles.active=consumer", *additional,
             "--spring.web.resources.static-locations="
             + (Path(receipt["runtimeRoot"]) / "frontend/dist").as_uri() + "/",
             f"--server.port={server_port}", "--server.address=127.0.0.1",
@@ -231,6 +237,8 @@ def main(arguments=None) -> int:
     parser.add_argument("--server-port", type=int, default=18182)
     parser.add_argument("--adapter-port", type=int, default=18183)
     parser.add_argument("--groups", type=Path, default=ROOT / "config/worker-groups.json")
+    parser.add_argument("--runtime-config", type=Path,
+                        help="Explicit external Spring configuration; no resource or business defaults are inferred")
     options = parser.parse_args(arguments)
     if not options.prepare_only and (not options.redis_url or not options.redis_scope):
         parser.error("Normal startup requires --redis-url and --redis-scope")
@@ -241,7 +249,7 @@ def main(arguments=None) -> int:
         if options.prepare_only:
             return 0
         command = server_command(receipt, options.redis_scope, options.server_port,
-                                 options.adapter_port, options.groups)
+                                 options.adapter_port, options.groups, options.runtime_config)
         environment = dict(os.environ, XA_MASS_CONSUMER_REDIS_URL=options.redis_url)
         process = subprocess.Popen(command, cwd=options.work_dir.resolve(), env=environment)
         try:

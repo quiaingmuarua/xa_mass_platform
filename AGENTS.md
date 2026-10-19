@@ -269,6 +269,7 @@ resources. Configuration and module Project identities cannot shadow each other.
 App Checks owns its JSON configuration file, process-exclusive file lock, atomic
 publication and configuration API inside its scenario module. Only configuration
 is persisted there; Task/Item/Result and runtime identities remain with Redis Owners.
+Boot may explicitly enable Batch Checks independently of Preview; consumers supply their own host and check configuration. Protocol adaptation stays in pure Scenario contracts.
 Server consumes immutable startup declarations and must not read the scenario file. Saved
 configuration becomes effective on restart, without runtime registration or resource
 mutation. App Checks execution contracts are statically registered pure scenario code;
