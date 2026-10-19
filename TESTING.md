@@ -54,6 +54,9 @@ registers the claims without promoting projections to reliable counters or quota
 Scenario-local real-file tests cover persistence, process-exclusive ownership, content-fingerprint
 conflicts, atomic publication failures and unknown-save readback; the same composition lane covers App C configuration activation and real
 HTTP/Redis/Worker execution after restart. No new lane is introduced.
+The external deployment fixture also verifies complete check replacement: removal,
+Group rebinding and protocol changes take effect only after restart. Destructive
+changes use new scopes; raw execution and CSV are checked without claiming old-data migration.
 
 [Scenario Coexistence](integrations/scenario-coexistence/README.md) runs functional,
 Pool-selection and lifecycle scenarios against source artifacts; fresh ZIP repeats

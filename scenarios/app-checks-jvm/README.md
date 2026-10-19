@@ -81,7 +81,8 @@ operator 默认自己的范围；显式查询其他 userId 返回 403。admin �
 任务快照解析只接收已保存的 Group 和 metadata，不依赖版本化 HTTP TaskView。
 输入版本为 `5`，salt 和号码 Item 身份算法不变。首次创建保存 `checkId`、检查名称、`checkType`、类型名称、`seedType`、有效种子选项及 `contractParameters`、
 `eventCode`、`workerSelector`、`seedsPerItem` 以及 salt/date；Group 和 refill 保存在 descriptor 原字段中。
-服务端配置不进入客户端重试指纹；相同请求跨配置保存/重启仍复用原 Task，不重新套用当前执行配置。
+服务端配置不进入客户端重试指纹；普通参数更新后，相同请求跨保存/重启仍复用原 Task，不重新套用当前执行配置。
+删除、重命名、换类型或换 Group 的破坏性调整使用新 scope、新请求身份，不提供跨这类变更的旧请求回退或迁移。
 不回填历史归属或提供旧请求兼容。JSON 文件只保存配置。
 
 这是受信任开发环境的目录核对契约，客户端仍可选择目录中的现有身份；不构成身份认证或生产客户数据隔离。
@@ -241,7 +242,7 @@ delay = min + value(domain="delay") mod (max - min + 1)
 ## 分配窗口投影
 
 分配窗口反馈由宿主按 WorkerGroup 显式绑定，不再根据检查项使用的查询函数反推事件。
-Preview 的 App A/B 绑定 `registration-assigned`，只观察注册查询的 `worker.assigned`；
+Preview 的 App A/B 引用 `assignment-window` Pool，同时启用其配套反馈，只观察注册查询的 `worker.assigned`；
 运营商、MD5、素数及 Messages 事件不自动进入该计数。场景不声明投影 Bean，也不写窗口属性。
 完整的事件选择、纯投影算术、批处理、失败与生命周期见
 [Server 具名绑定](../../server_jvm/README.md#named-window-pool-and-feedback-bindings)。
@@ -306,13 +307,15 @@ App A/B 注册使用原 60000 ms/10 次窗口和模拟参数；其余三项绑�
 checks 是非空对象，键为稳定 checkId，允许多个检查项绑定同一 Group。
 对象键顺序不具有业务含义，Catalog 按 checkId 字典序展示。检查项 `parameters` 存在时整份使用，
 否则取 `common.typeDefaults[checkType]`；不递归合并。所选实现规范化并校验参数，seedType 只由实现声明。
-允许改名称、执行绑定、参数和新增检查项；不允许删除、停用或改已有 checkId 的类型/Group 绑定。
+允许增删检查项、重命名键，以及修改已有 checkId 的类型、Group、名称、执行绑定、参数、分组大小和单价。
+每次保存校验完整的新文档，不要求保留旧检查项的身份或绑定；换类型时应同时提供适用的参数和执行配置，不自动转换。
+checks 必须至少保留一项；未使用的合法 typeDefaults 可保留。没有 enabled、停用状态或配置历史。
 窗口 Pool 与反馈参数、国家、导入容量和 Task 策略不进入配置文件。不保存历史修订、任务身份、号码或操作记录。
 
 GET 的 `saved` 与 `effective` 各包含 `fingerprint`、`configuration`。指纹是校验并规范化后
 完整文档的 SHA-256；递归排序对象键、统一数值表示，保留数组顺序及字符串原值，忽略 JSON 排版。
 客户端原样携带读取到的指纹，不自行计算 API 指纹。PUT 在进程独占锁及实例串行准入内重新读取文件、比较
-`expectedFingerprint`，再执行既有更新校验；并发编辑返回 409，同内容保存不重写文件。
+`expectedFingerprint`；并发编辑返回 409，同内容保存不重写文件。新文档须通过完整的配置校验。
 新文档完整写入同目录临时文件并刷新后原子替换，无法原子替换时不退回直接覆盖。
 本次临时文件在完成或失败后清理；崩溃残留临时文件不作为生效或恢复配置。
 指纹只核对内容，不记录编辑次数；A→B→A 后指纹仍为 A，没有审计或历史版本语义。
@@ -324,6 +327,8 @@ GET 的 `saved` 与 `effective` 各包含 `fingerprint`、`configuration`。指�
 
 模块启动只加载一次生效快照，以它生成 Catalog、ProjectDefinition、ProjectWorkerRequirements 和创建映射。配置保存不会改变这些运行对象。
 任务保存的 Group、事件、查询和契约参数也不随配置变化；运行时存储故障仅影响配置读写。
+删除检查项不会删除注册资源、Task、Item、Result 或扣费记录。破坏性配置切换在新 scope 验证，
+不提供旧环境兼容、资源退役或历史任务迁移；系统不自动切换 scope 或清理旧数据。
 
 新增检查项先保存配置，再准备宿主 Group/事件/Pool/函数和真实 Worker，最后手动重启。
 保存只验证配置本身；完整依赖在启动时校验，失败阻止后续启动，不补注册资源。
@@ -342,6 +347,8 @@ GET 的 `saved` 与 `effective` 各包含 `fingerprint`、`configuration`。指�
 配置页以整份 JSON 编辑 `common` 和 `checks`，不再提供分散表单。
 前端只校验 JSON 语法与根对象，后端定位字段错误。刷新/导航保留编辑文本；指纹冲突不合并，
 保存未确认保留原文本与基准指纹供读取核对。当前生效文档与契约参考折叠展示。
+Catalog 更新后，未提交草稿的检查项已删除或类型已变化时保留输入，要求显式重新选择并校验；
+不静默采用另一能力。已冻结创建请求、已知任务和追加导入继续保留原上下文。
 
 仅模拟契约的 admin 技术区显示“核对当前预览”，按上面的 SHA-256 协议，用存量 salt、实际 Worker、号码和模拟描述复算；
 它只核对已展示内容，不证明执行次数或失败原因，模拟延迟也不是端到端耗时。
@@ -353,6 +360,9 @@ API/Mock 和浏览器核对的可用性及本地状态。
 `BatchChecksExternalDeploymentIntegrationTest` 使用实际外部 YAML／Group JSON／检查文档，
 通过同一生产装配的两次启动和参数化 JavaWorker 验证第二个 Group 接入、窗口查询、属性反馈、
 独立固定摘要、逐种子 CSV、真实扣费及原 Task 快照保留。它不宣称 Android Group 身份可动态改写。
+同一用例类还通过新 scope 的三次启动证明删除检查项、同 checkId 换 Group 和换结果协议；
+分别核对 Catalog/Project、原始 Item/Result、业务答案和完整 CSV。保存不影响当前运行快照或既有 Task，
+该证明不包含跨破坏性变更的数据迁移。
 
 配置单测覆盖文件重开、种子不覆盖、文档损坏、键顺序/排版不影响指纹、并发指纹冲突、
 同内容保存及内容恢复、提交确认丢失后的读取核对。

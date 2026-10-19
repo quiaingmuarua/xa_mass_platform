@@ -104,6 +104,51 @@ describe("App Checks configuration API boundary", () => {
 });
 
 describe("Mock configuration content guard", () => {
+  it("allows deleting, renaming, rebinding and replacing a contract without changing the running Catalog", async () => {
+    const source = new FundedAppCheckSource(new MockUserDirectorySource());
+    const original = (await source.loadConfiguration(CALLER)).saved;
+    const catalog = await source.catalog();
+    const configuration = structuredClone(original.configuration);
+    delete configuration.checks["app-b-registration"];
+    configuration.checks["renamed-carrier"] = configuration.checks["original-carrier"];
+    delete configuration.checks["original-carrier"];
+    configuration.checks["app-a-registration"] = {
+      ...configuration.checks["md5-prefix"],
+      workerGroupId: "external-group"
+    };
+    const updated = await source.saveConfiguration(
+      CALLER,
+      original.fingerprint,
+      configuration
+    );
+    expect(updated.saved.configuration).toEqual(configuration);
+    expect(updated.effective).toEqual(original);
+    expect(updated.restartRequired).toBe(true);
+    expect(await source.catalog()).toEqual(catalog);
+    await source.simulateConfigurationRestart(CALLER);
+    expect((await source.catalog()).checks.map((check) => check.checkId)).toEqual([
+      "app-a-registration",
+      "md5-prefix",
+      "renamed-carrier",
+      "uint32-prime"
+    ]);
+    const created = await source.createTask(CALLER, {
+      requestId: "new-binding",
+      checkId: "app-a-registration"
+    });
+    expect((await source.loadTask(CALLER, created.taskId)).task).toMatchObject({
+      workerGroupId: "external-group",
+      seedType: "text",
+      checkType: "md5-prefix-demo-batch-v1"
+    });
+    await expect(
+      source.saveConfiguration(CALLER, updated.saved.fingerprint, {
+        ...configuration,
+        checks: {}
+      })
+    ).rejects.toThrow();
+    expect((await source.loadConfiguration(CALLER)).saved).toEqual(updated.saved);
+  });
   it("ignores object ordering, freezes effective content, and restores the same fingerprint when content returns", async () => {
     const source = new FundedAppCheckSource(new MockUserDirectorySource());
     const original = (await source.loadConfiguration(CALLER)).saved;

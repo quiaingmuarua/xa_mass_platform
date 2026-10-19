@@ -66,14 +66,6 @@ public record AppCheckSettings(Map<String, Map<String, Object>> typeDefaults,
         if (selected == null) throw new IllegalArgumentException("parameters: 缺少契约参数：" + app.checkType());
         return selected;
     }
-    void requireUpdateOf(AppCheckSettings previous) {
-        for (var existing : previous.checks().entrySet()) {
-            var current = checks.get(existing.getKey());
-            if (current == null || !current.workerGroupId().equals(existing.getValue().workerGroupId())
-                    || !current.checkType().equals(existing.getValue().checkType()))
-                throw new IllegalArgumentException("checks: 已有检查项不可删除、换类型或换绑 WorkerGroup：" + existing.getKey());
-        }
-    }
     public Map<String, Object> toMap() {
         var apps = new TreeMap<String, Object>();
         checks.forEach((id, app) -> apps.put(id, app.toMap()));

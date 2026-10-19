@@ -261,10 +261,12 @@ defineExpose({ focusHeading: () => heading.value?.focus({ preventScroll: true })
     </div>
     <p v-if="editing" class="checks-hint" role="status">
       编辑基于指纹
-      {{
-        state.baseFingerprint?.slice(0, 12)
-      }}。重新读取和离开返回保留原文本；新增检查项直接加入 checks 对象，以 checkId
-      为键。
+      {{ state.baseFingerprint?.slice(0, 12) }}。重新读取和离开返回保留原文本。checks 以
+      checkId 为键，可增删检查项或修改类型、Group 及执行绑定，至少保留一项。
+    </p>
+    <p class="checks-hint">
+      保存后手动重启生效，不自动注册或启用资源。删除、重命名、换类型或换 Group
+      属于破坏性调整，建议使用新的 Redis scope；不提供旧环境迁移。
     </p>
     <p
       v-if="
@@ -287,8 +289,7 @@ defineExpose({ focusHeading: () => heading.value?.focus({ preventScroll: true })
       @input="state.draft = ($event.target as HTMLTextAreaElement).value"
     />
     <p class="checks-hint">
-      参数按检查项整份覆盖或采用类型默认值；不递归合并。已有 checkId、检查类型和 Group
-      固定。unitPrice
+      参数按检查项整份覆盖或采用类型默认值；不递归合并。unitPrice
       是每个种子的积分单价，必须为正整数；新任务保存当时单价，已有任务不随配置改价。保存校验配置，重启校验宿主资源。
     </p>
 

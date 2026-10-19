@@ -112,26 +112,49 @@ class AppCheckConfigurationStoreTest {
         }
     }
 
-    @Test void additionIsAcceptedButRemovalAndRebindingAreRejectedWithoutWriting() {
+    @Test void completeReplacementAllowsRemovalRenameRebindingAndTypeChangesOnlyForNextStartup() {
         var initial = AppCheckTestSettings.settings();
+        var checks = new HashMap<>(initial.checks());
+        checks.remove("app-b-registration");
+        checks.put("renamed-md5", checks.remove("md5-prefix"));
+        var original = checks.get("app-a-registration");
+        checks.put("app-a-registration", new AppCheckSettings.Check("New registration", "external-group",
+                original.execution(), AppCheckContracts.REGISTRATION, Map.of(), 1L));
+        var replacement = new AppCheckSettings(initial.typeDefaults(), checks);
         try (var store = open()) {
-            var removed = new AppCheckSettings(initial.typeDefaults(), Map.of("app-a-registration", initial.requireCheck("app-a-registration")));
-            assertThatThrownBy(() -> store.save(initialFingerprint(), removed.toMap())).hasMessageContaining("不可删除、换类型或换绑");
-            var rebound = new AppCheckSettings(initial.typeDefaults(), Map.of(
-                    "app-a-registration", AppCheckTestSettings.simulated("A", "changed"), "app-b-registration", initial.requireCheck("app-b-registration")));
-            assertThatThrownBy(() -> store.save(initialFingerprint(), rebound.toMap())).hasMessageContaining("不可删除、换类型或换绑");
-            assertThat(fingerprint(store.view())).isEqualTo(initialFingerprint());
-            var apps = new HashMap<>(initial.checks());
-            var originalCheck = apps.get("app-a-registration");
-            apps.put("app-a-registration", new AppCheckSettings.Check(originalCheck.label(), originalCheck.workerGroupId(),
-                    originalCheck.execution(), AppCheckContracts.REGISTRATION, Map.of(), 1L));
-            assertThatThrownBy(() -> store.save(initialFingerprint(), new AppCheckSettings(initial.typeDefaults(), apps).toMap()))
-                    .hasMessageContaining("换类型");
-            apps.put("app-a-registration", originalCheck);
-            apps.put("app-c", AppCheckTestSettings.simulated("App C", "app-c-sim"));
-            var update = store.save(initialFingerprint(), new AppCheckSettings(initial.typeDefaults(), apps).toMap());
+            var update = store.save(initialFingerprint(), replacement.toMap());
             assertThat(update).containsEntry("restartRequired", true);
-            assertThat(store.effective().configuration().checks()).hasSize(5);
+            assertThat(store.effective().configuration()).isEqualTo(initial);
+            assertThat(((Map<?, ?>) update.get("saved")).get("configuration")).isEqualTo(replacement.toMap());
+        }
+        try (var restored = open()) {
+            assertThat(restored.effective().configuration()).isEqualTo(replacement);
+            assertThat(restored.view()).containsEntry("restartRequired", false);
+            assertThat(restored.effective().configuration().checks()).doesNotContainKeys("app-b-registration", "md5-prefix");
+        }
+    }
+
+    @Test @SuppressWarnings("unchecked")
+    void invalidReplacementNeverChangesTheSavedFile() throws Exception {
+        try (var store = open()) {
+            byte[] original = Files.readAllBytes(path());
+            for (String kind : List.of("empty", "unknown", "parameters", "grouping")) {
+                var document = Jsons.parseObject(AppCheckTestSettings.seed());
+                var checks = (Map<String, Map<String,Object>>) document.get("checks");
+                var check = checks.get("app-a-registration");
+                switch (kind) {
+                    case "empty" -> checks.clear();
+                    case "unknown" -> check.put("checkType", "missing-contract");
+                    case "parameters" -> { check.put("checkType", AppCheckContracts.REGISTRATION); check.put("parameters", Map.of("ranges", Map.of())); }
+                    case "grouping" -> ((Map<String,Object>) check.get("execution")).put("seedsPerItem", 10);
+                    default -> throw new AssertionError(kind);
+                }
+                assertThatThrownBy(() -> store.save(initialFingerprint(), document))
+                        .isInstanceOfSatisfying(AppCheckConfigurationException.class, failure -> assertThat(failure.status).isEqualTo(400));
+                assertThat(Files.readAllBytes(path())).isEqualTo(original);
+                assertThat(fingerprint(store.view())).isEqualTo(initialFingerprint());
+                assertNoPendingFiles();
+            }
         }
     }
 

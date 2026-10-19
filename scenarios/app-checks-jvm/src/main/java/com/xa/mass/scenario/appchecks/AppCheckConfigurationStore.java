@@ -96,11 +96,6 @@ final class AppCheckConfigurationStore implements AutoCloseable {
             // The process lock and this instance's gate cover comparison and complete publication.
             var previous = read();
             if (!previous.fingerprint().equals(expectedFingerprint)) throw conflict();
-            try { settings.requireUpdateOf(previous.configuration()); }
-            catch (IllegalArgumentException invalid) {
-                throw new AppCheckConfigurationException(400, AppCheckConfigurationException.Code.INVALID_CONFIGURATION,
-                        "save", invalid.getMessage(), invalid);
-            }
             var next = new Snapshot(settings);
             if (previous.fingerprint().equals(next.fingerprint())) return view(previous);
             publish(settings);

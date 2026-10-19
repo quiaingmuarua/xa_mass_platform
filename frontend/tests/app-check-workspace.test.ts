@@ -1,7 +1,7 @@
 import { FundedAppCheckSource, approveCheck } from "./app-check-credit-fixture";
 import { MockUserDirectorySource } from "@/user-directory-source";
 import { consoleIdentity } from "@/console-identity";
-import { CALLER } from "./app-check-fixture";
+import { CALLER, ImportWorkerMock } from "./app-check-fixture";
 import { importedTask } from "./app-check-fixture";
 import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,30 +18,6 @@ import {
 import type { CheckDetail } from "../src/app-checks/model";
 import * as verification from "../src/app-checks/verify";
 import { createWorkbenchSession } from "../src/app-checks/workbench";
-import { inspectImport, type ImportOptions } from "../src/app-checks/import-model";
-import { decodeUtf8 } from "../src/files/text";
-class ImportWorkerMock {
-  onmessage?: (event: MessageEvent) => void;
-  onerror?: () => void;
-  terminated = false;
-  postMessage(input: { content: string | ArrayBuffer; options: ImportOptions }) {
-    queueMicrotask(() => {
-      if (this.terminated) return;
-      try {
-        const text =
-          typeof input.content === "string" ? input.content : decodeUtf8(input.content);
-        this.onmessage?.({
-          data: { text, report: inspectImport(text, input.options) }
-        } as MessageEvent);
-      } catch (error) {
-        this.onmessage?.({ data: { error: (error as Error).message } } as MessageEvent);
-      }
-    });
-  }
-  terminate() {
-    this.terminated = true;
-  }
-}
 
 let app: App | undefined;
 let source: FundedAppCheckSource;

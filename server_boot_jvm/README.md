@@ -41,7 +41,7 @@ Preview's host configuration and enabled module declarations form this topology:
 | `default` | All currently registered Groups, read on demand | Explicit raw Task workspace; existing Group capabilities are reused |
 | `sms` | `demo-sim` | String/SMS/Messages events; Partitioned SMS, Country and Messaging Pools; independent `worker.phone` query |
 | `messages` | `demo-sim`, `app-a-sim`, `app-b-sim` | `extension.worker.message.send`; Group-isolated Messaging Pool and `worker.messaging.available` |
-| `app-checks` | `app-a → app-a-sim`, `app-b → app-b-sim` | `extension.worker.app.registration.check`; Any and assignment-window Pools, `worker.any` and `worker.assignment.available` |
+| `app-checks` | `app-a-sim`, `app-b-sim`, `demo-sim`, derived from checks | App A/B registration uses assignment-window; Demo carrier batch, uint32-prime and MD5 batch use Any. Queries are `worker.assignment.available` and `worker.any` |
 
 Explicit RPC preparation for `demo-sim` retains the host-configured Partitioned SMS supply;
 that Group also enables Any for Batch Checks. Raw finite Tasks may explicitly supply Country or Any.
@@ -274,11 +274,11 @@ Preview assigns a private archive root per generated scope. No old scope is migr
 
 ### Named WorkerGroup window bindings
 
-Preview declares the assignment-window Pool, consumer and registration-assigned feedback through
-`xa.mass.worker-assembly.fixed-window`. App A/B reference the names; their raw Matching enablement retains only Any/Messaging.
+Preview declares the assignment-window Pool, query and nested registration-event feedback through
+`xa.mass.worker-assembly.fixed-window`. App A/B each reference the Pool once; their raw Matching enablement retains only Any/Messaging.
 Server expands the strict host startup input; Boot owns values and packaging, not qualification or projection execution.
 Batch Checks JSON stores only common/checks and must not contain poolGroups. Default/Consumer without bindings create none.
-See [Server bindings](../server_jvm/README.md#named-window-pool-and-feedback-bindings) for independent Pool/feedback selection,
+See [Server bindings](../server_jvm/README.md#named-window-pool-and-feedback-bindings) for paired Pool/query/feedback binding,
 Group overrides, startup errors and the read-only Group interface. A registered Group alone installs no Worker Handler or Pool stock.
 
 `fixed-window.groups.<group>.pools.<pool>` enables the named window, query and required `pools.<pool>.feedback` together.
