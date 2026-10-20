@@ -107,6 +107,10 @@ to the shared Console, including trailing slashes, in platform and preview
 instances. Server's generic page controller also forwards `/task-workbench` and its trailing
 slash to the same Console. This route enables no Project or API capabilities.
 The root `/` serves development login and `/?view=users` serves admin user management.
+The documentation site at `/docs/` is a static frontend artifact packaged by
+[Distribution](../distribution/server/README.md), with source content in the
+[repository documentation](../doc/README.md). It does not require a Scenario
+profile or add application Controllers; Frontend owns its rendering and navigation.
 Server loads its development user/role JSON into process memory; an installation may
 set `xa.mass.users.seed` to another resource. Browser refresh retains user edits;
 Server restart reloads that seed. This introduces no account database or session.

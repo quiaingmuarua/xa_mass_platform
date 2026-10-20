@@ -21,6 +21,8 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from distribution.docs_http_proof import verify as verify_docs_delivery
 
 _SCOPE = re.compile(r"test_[a-z0-9_]+")
 
@@ -376,6 +378,7 @@ def _prove_runtime(
             manifest = json.loads(
                 (runtime_root / "manifest.json").read_text(encoding="utf-8")
             )
+            verify_docs_delivery(base_url, runtime_root / "frontend/dist", manifest["gitCommit"])
             if (
                 dictionary.get("schemaVersion") != 1
                 or dictionary.get("version") != manifest.get("version")
@@ -497,6 +500,8 @@ def _prove_consumer_profile(
         )
         try:
             _wait_for_readiness(base_url, process)
+            manifest = json.loads((runtime_root / "manifest.json").read_text(encoding="utf-8"))
+            verify_docs_delivery(base_url, runtime_root / "frontend/dist", manifest["gitCommit"])
             if _preview_tasks(base_url) != []:
                 raise RuntimeError(
                     "Consumer Profile must not seed Tasks"

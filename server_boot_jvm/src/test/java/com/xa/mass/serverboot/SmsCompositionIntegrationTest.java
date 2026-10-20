@@ -78,6 +78,7 @@ class SmsCompositionIntegrationTest {
             assertThat(send(http, base, "/api/v1/catalog", null).statusCode()).isEqualTo(404);
             assertThat(send(http, base, "/api/simulation/metrics", null).statusCode()).isEqualTo(404);
             assertThat(send(http, base, "/api/v1/sms/missing", null).statusCode()).isEqualTo(404);
+            DocumentationDelivery.verify(http, base);
             for (String path : List.of("/sms", "/sms/", "/sms/metrics", "/sms/metrics/")) {
                 var page = send(http, base, path, null);
                 assertThat(page.statusCode()).isEqualTo(200);
@@ -139,6 +140,7 @@ class SmsCompositionIntegrationTest {
                 "--logging.level.root=WARN");
              var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()) {
             assertThat(context.getBeansOfType(SmsReceptionService.class)).isEmpty();
+            DocumentationDelivery.verify(http, base);
             assertThat(context.getBean(WorkerResourceCatalog.class)
                     .getWorkerGroupDescriptors(List.of("demo-sim")).values())
                     .allMatch(value -> value == null);

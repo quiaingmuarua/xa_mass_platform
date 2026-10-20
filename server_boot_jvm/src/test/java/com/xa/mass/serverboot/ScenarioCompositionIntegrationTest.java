@@ -143,6 +143,7 @@ class ScenarioCompositionIntegrationTest {
             assertThat(openapi.contains("/api/v1/app-checks/catalog")).isEqualTo(preview);
             String index = get(client, base, "/").body();
             assertThat(index).contains("/static/js/");
+            DocumentationDelivery.verify(client, base);
             for (String page : List.of("/sms", "/sms/", "/sms/metrics", "/messages", "/messages/",
                     "/messages/tasks/example", "/messages/tasks/example/", "/app-checks", "/app-checks/",
                     "/app-checks/tasks/example", "/app-checks/tasks/example/")) {

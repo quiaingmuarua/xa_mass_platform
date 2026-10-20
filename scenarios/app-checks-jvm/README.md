@@ -30,8 +30,10 @@ SDK 和 Worker 协议使用既有机制；Matching 基础规则由宿主启动�
 | `GET /api/v1/app-checks/tasks/{taskId}/results` | `{taskId, results, truncated}`，最多 100 条业务结果 |
 
 任务列表、基础详情、统计、批准、关闭、目录确认及原始结果/导出使用
-[共同 Server Task API](../../server_jvm/README.md#shared-development-caller)。批准请求统一为
-`{expectedItemCount}`；待审核核对正数，已批准重复请求 unchanged，终态不重开。
+[共同 Server Task API](../../server_jvm/README.md#shared-development-caller)。App Checks 批准请求包含
+`expectedItemCount` 和 `credits:{requestId,expectedSeedCount,expectedAmount}`，先核对实际输入及
+[启动预扣积分](#启动预扣积分)，确认扣分后才进入共同批准操作。待审核核对正数，
+已批准的同次启动不重复扣分，终态不重开。
 前端组合共同详情、共同统计和业务结果，注册答案仍是内容解释，不从预览推算全量统计。
 
 例如，以开发调用方 `1001` 创建任务时显式携带以下请求头；`MTAwMQ` 是 `1001`
@@ -294,7 +296,7 @@ App A/B 注册使用原 60000 ms/10 次窗口和模拟参数；其余三项绑�
   },
   "checks": {"app-a-registration": {
     "label": "App A", "workerGroupId": "app-a-sim",
-    "checkType": "simulated-registration-v1",
+    "checkType": "simulated-registration-v1", "unitPrice": 1,
     "execution": {
       "eventCode": "extension.worker.app.registration.check",
       "refill": [{"poolName": "assignment-window", "target": {}, "count": 100}],

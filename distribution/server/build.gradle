@@ -90,9 +90,18 @@ tasks.register('buildFrontend', Exec) {
     dependsOn tasks.named('installFrontend')
     workingDir frontendDirectory
     inputs.files(fileTree(frontendDirectory) {
-        include 'src/**', 'public/**', 'index.html', '*.json', '*.ts', '*.js'
+        include 'src/**', 'public/**', 'docs/**', 'index.html', '*.json', '*.ts', '*.js'
         exclude 'node_modules/**', 'dist/**', 'coverage/**'
     })
+    inputs.files(fileTree(repositoryRoot) {
+        include '**/*.md', 'doc/guide/assets/**'
+        exclude '.git/**', '**/node_modules/**', '**/build/**', '**/.gradle/**',
+                '**/target/**', 'frontend/dist/**', 'products/**/dist/**', '**/dist-demo/**', '**/coverage/**', '**/.*/**',
+                '**/archive/**', 'doc/skills/**', '**/baselines/**', '**/RELEASE*.md',
+                '**/THIRD_PARTY_NOTICES.md', 'archive_readonly/**',
+                'frontend/.vitepress-dist/**', 'frontend/.vitepress-cache/**', 'frontend/.vitepress-temp/**'
+    })
+    inputs.property('documentationCommit', gitCommit)
     outputs.dir(layout.buildDirectory.dir('frontend-api'))
     doFirst {
         environment 'VITE_RUNTIME_DATA_SOURCE', 'api'

@@ -51,6 +51,13 @@ class ArchiveToolsTest(unittest.TestCase):
                for name in tools.MESSAGES_EXAMPLES},
             f"lib/xa-mass-server-jvm-{self.version}.jar": jar,
             "frontend/dist/index.html": "fixture",
+            **{"frontend/dist/" + page:
+               f'<meta name="xa-mass-docs-commit" content="{self.commit}">'
+               '<link rel="stylesheet" href="/docs/assets/style-one.css">'
+               '<script type="module" src="/docs/assets/app-one.js"></script>'
+               for page in ("docs/index.html", "docs/doc/guide/first-task.html")},
+            "frontend/dist/docs/assets/style-one.css": "body{}",
+            "frontend/dist/docs/assets/app-one.js": "export {};",
             "frontend/dist/reference/platform-diagnostic-codes.json": json.dumps({
                 "schemaVersion": 1, "version": self.version, "gitCommit": self.commit,
                 "owners": [{"owner": name} for name in (
@@ -137,6 +144,33 @@ class ArchiveToolsTest(unittest.TestCase):
                 tools.verify_runtime(self.archive("server-runtime", {**original, "examples/batch-checks/" + filename: "{}"}), self.version)
         with self.assertRaisesRegex(ValueError, "application configuration"):
             tools.verify_runtime(self.archive("server-runtime", {**original, "examples/batch-checks/application.yaml": "fixture"}), self.version)
+
+    def test_runtime_requires_documentation_pages_and_their_actual_assets(self):
+        original = self.runtime_files()
+        for filename in ("docs/index.html", "docs/doc/guide/first-task.html",
+                         "docs/assets/style-one.css", "docs/assets/app-one.js"):
+            with self.subTest(missing=filename):
+                files = dict(original)
+                del files["frontend/dist/" + filename]
+                with self.assertRaisesRegex(ValueError, "Missing documentation"):
+                    tools.verify_runtime(self.archive("server-runtime", files), self.version)
+
+    def test_runtime_rejects_stale_docs_and_wrong_asset_base(self):
+        original = self.runtime_files()
+        page = "frontend/dist/docs/doc/guide/first-task.html"
+        for old, replacement, message in (
+                (self.commit, "b" * 40, "Documentation build identity mismatch"),
+                ("/docs/assets/app-one.js", "/assets/app-one.js", "escapes /docs/")):
+            with self.subTest(replacement=replacement):
+                files = dict(original)
+                files[page] = files[page].replace(old, replacement)
+                with self.assertRaisesRegex(ValueError, message):
+                    tools.verify_runtime(self.archive("server-runtime", files), self.version)
+
+    def test_runtime_accepts_generated_empty_optional_stylesheet(self):
+        files = self.runtime_files()
+        files["frontend/dist/docs/assets/style-one.css"] = b""
+        tools.verify_runtime(self.archive("server-runtime", files), self.version)
 
     def test_sdk_rejects_invalid_identity_missing_sources_and_lost_transitive_dependency(self):
         original = self.sdk_files()

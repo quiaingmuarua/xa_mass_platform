@@ -216,10 +216,10 @@ physical effects. State and permission edge cases remain Android Host tests.
 
 ## docs_contract
 
-- **Primary Owner:** [Docs checker](../../.github/scripts/check_docs.py).
-- **Boundary:** current entrypoints, local files/anchors, Overview navigation and selected retired vocabulary.
-- **Required evidence:** checker plus [checker unit tests](../../.github/scripts/test_check_docs.py); semantic agreement still needs Owner/caller review.
-- **Nonclaims:** implementation behavior.
+- **Primary Owner:** [Docs checker](../../.github/scripts/check_docs.py) for repository contracts and [Frontend](../../frontend/README.md#documentation-site) for the static site.
+- **Boundary:** current entrypoints, local files/anchors, documentation navigation, selected retired vocabulary and generated pages/assets at `/docs/`.
+- **Required evidence:** checker plus [checker unit tests](../../.github/scripts/test_check_docs.py), VitePress production build and documentation output checks. Current Owner Markdown supplies the site; build identity, internal references and excluded historical/tool content are checked. Semantic agreement still needs Owner/caller and assertion review.
+- **Nonclaims:** implementation behavior, Runtime state, successful Worker execution or a fresh passing result from any behavioral proof.
 
 ## product_coexistence
 
@@ -229,6 +229,7 @@ finite scenario within this lane.
 
 | Proven boundary | Conditions that distinguish the claim |
 | --- | --- |
+| Documentation delivery | Existing source/fresh-ZIP runners GET the documentation entry, first-task page and referenced assets from the supplied frontend, compare bytes and build identity, and require 404 for missing documentation resources. This static delivery witness does not validate business execution or browser interaction. |
 | Shared business execution | SMS and Messages capability share actual Workers through explicit generic Task/workerId controls with empty supply. Product Messages creates application-bound Tasks using Messaging Pool only; three-Group US/ANY execution proves actual application/Group/country relationships while only the explicitly prepared shared SMS RPC Task remains INITIAL and Messages/App Checks have no preprovisioned RPC Tasks. Text Workers confirm sends without automatic receipts; explicitly configured lab-json fixtures retain strict JSON rejection. No competing-supply fairness claim is made. |
 | Later observations and uncertainty | Receipts remain correlated after Task completion/closure; duplicate/reordered receipts and Worker restart preserve latest content and run isolation. Partial real append leaves submission uncertain without approval/recreation. A delayed execution Result cannot erase a newer recipient reply. |
 | Bounded optional observations | Reporter/observation/held/callback capacity does not gate confirmed sending. Short-window HTTP/Worker fixtures prove expiration and continued work; this does not extend Item retention or create reliable receipts. |

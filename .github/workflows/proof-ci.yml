@@ -68,13 +68,28 @@ jobs:
   docs-contract:
     name: Docs Contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.0.10
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Verify current documentation contract
         run: |
           python3 .github/scripts/test_check_docs.py
           python3 .github/scripts/check_docs.py
+      - name: Build and check the published documentation
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm docs:build
+          pnpm docs:check
 
   jvm-contracts:
     name: JVM Contracts

@@ -375,8 +375,9 @@ the Pool, and no immediate execution at a window boundary is promised.
 
 Any and declared window consumers share `EmptyInputPoolQueryFunction`, accepting
 only `{}` and polling their injected resource. Supply targets also accept only `{}`.
-Consumption reads no Facts, clock or window configuration and has no fallback. Any
-stock stays independent and unconditional. Catalog retains call-local Worker
+Consumption does not reread Facts or recompute window qualification, and has no
+fallback. The Pool still reads its local clock to enforce candidate admission TTL
+and per-bucket availability times. Any stock stays independent and unconditional. Catalog retains call-local Worker
 uniqueness; each candidate generation enters at most one Pool per refill batch.
 
 Qualification means **the admission-time snapshot**. Existing observation semantics,

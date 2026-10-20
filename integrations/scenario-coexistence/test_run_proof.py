@@ -300,11 +300,12 @@ class ScenarioSummaryTest(unittest.TestCase):
             return False
 
     def execute(self, scenario, action):
-        run = self.Run(host="host", artifacts={}, peaks={})
+        run = self.Run(host="host", url="runtime", frontend=Path("frontend"), artifacts={}, peaks={})
         with TemporaryDirectory() as directory:
             output = Path(directory)
             (output / "private").mkdir()
-            with patch.object(proof, "all_pages", return_value=[]), patch.object(proof, scenario, side_effect=action):
+            with patch.object(proof, "all_pages", return_value=[]), patch.object(proof, scenario, side_effect=action), \
+                    patch.object(proof, "verify_docs_delivery", return_value={"pages": 4}):
                 result = proof.execute_scenario(run, scenario, output)
             private_failure = output / "private" / "failure.txt"
             return result, private_failure.read_text(encoding="utf-8") if private_failure.exists() else None

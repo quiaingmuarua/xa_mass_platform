@@ -5,12 +5,25 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "dist-demo/**", "coverage/**", "node_modules/**"]
+    ignores: [
+      "dist/**",
+      "dist-demo/**",
+      "coverage/**",
+      "node_modules/**",
+      ".vitepress-dist/**",
+      ".vitepress-dist.*.incoming/**",
+      ".vitepress-cache/**",
+      ".vitepress-temp/**"
+    ]
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...pluginVue.configs["flat/recommended"],
   eslintConfigPrettier,
+  {
+    files: ["docs/**/*.mjs"],
+    rules: { "no-undef": "off" }
+  },
   {
     files: ["**/*.{ts,vue}"],
     languageOptions: {

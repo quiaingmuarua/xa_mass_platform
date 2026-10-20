@@ -157,6 +157,12 @@ For live business pages, start [Scenario Preview](../distribution/server/PREVIEW
 and set `VITE_RUNTIME_PROXY_TARGET=http://127.0.0.1:18500` before starting Vite.
 The same `/api` proxy carries Runtime and business requests.
 
+The documentation site has a separate development process. Run
+`pnpm docs:dev --host 127.0.0.1` in a second frontend terminal alongside
+`pnpm dev` (or `pnpm dev:mock`). VitePress listens on port `5174`; the Console
+development server proxies `/docs` to it. Both processes are needed when
+following the Console's documentation link during development.
+
 The Code Dictionary is a current-build projection, so generate it before a
 local Vite session. The OpenAPI Reference is a committed build-time projection;
 regenerate it whenever the public Server API changes:
@@ -201,28 +207,61 @@ Routes:
 ```
 
 The same navigation is available in a drawer on narrow screens.
-The sidebar also links to the current origin's `/scalar` and `/overview.htm`.
+The sidebar also links to the current origin's `/scalar` and `/docs/`.
 On Vercel, the SPA maps `/scalar` to the same static API Reference; on the Java
 Server, its MVC Scalar route takes precedence and stays live. The OpenAPI
 snapshot is committed at `frontend/public/reference/openapi.json`. The
 dictionary JSON is available at
-`/reference/platform-diagnostic-codes.json`. The overview source is
-`frontend/public/overview.htm`; generated `dist` and dictionary content are not
-committed.
-Changes to the [human overview](public/overview.htm) preserve its existing
-information architecture and navigation. Complete mechanism, API, capacity and
-fixture contracts remain in their Owner and proof documents.
+`/reference/platform-diagnostic-codes.json`. The
+[architecture guide](../doc/guide/architecture.md) introduces the project through
+the same repository Owner documents used by Agents. Generated frontend,
+documentation-site output and dictionary content are not committed.
 
 ## Build ownership
 
 `pnpm build` writes the unified console to `dist`; `pnpm build:demo` writes
-`dist-demo` for public hosting. There is one dependency graph and theme. The
-console owns navigation and page layout. Runtime and the task workbench share
+`dist-demo` for public hosting. Both also place the documentation site under
+their output's `docs/` directory. `pnpm build --outDir <path>` does the same
+for a custom output directory, including Distribution staging. There is one
+frontend dependency graph. The console owns navigation and page layout. Runtime and the task workbench share
 a console-session provider for their directory, call history and drafts, while
 each surface owns independent read snapshots and request generations. Invalid
 Runtime configuration blocks only Runtime/workbench pages; SMS and Reference
 remain independent of that configuration. No background reads are started by
 the session provider.
+
+## Documentation site
+
+Frontend owns the VitePress presentation, local search, Mermaid rendering and
+build integration at `/docs/`. It uses VitePress `1.6.4` and Mermaid `12.2.0`
+from this module's existing `pnpm-lock.yaml`; there is no second package or lock.
+[Documentation entrypoints](../doc/README.md) own reading routes, while mechanism,
+configuration, API and proof content remains in its existing Owner Markdown.
+The site renders those sources without maintaining copied mechanism narratives.
+
+```text
+pnpm docs:dev --host 127.0.0.1
+pnpm docs:build
+pnpm docs:check
+```
+
+`docs:build` builds the static site into `.vitepress-dist` and validates its
+output. Run `docs:check` afterwards for documentation tests and another check of
+that output and its links. Console builds include the site for API, Mock and custom-output
+artifacts. [Distribution](../distribution/server/README.md) packages those assets
+alongside the Console; the running Server serves them as static content.
+The site neither calls Runtime APIs nor interprets a current deployment's state.
+Documentation checks remain separate from the behavioral lanes in
+[TESTING](../TESTING.md).
+
+For the Vercel project with Root Directory `frontend`, keep **Include source
+files outside of the Root Directory in the Build Step** enabled and automatic
+unaffected-project skipping disabled. The repository's `ignoreCommand` owns
+the skip decision: current Markdown anywhere in the repository, guide assets
+and frontend inputs trigger a build; an absent or unavailable previous commit
+also builds. These project settings allow the repository-level documentation
+inputs to reach that decision. See the
+[Vercel monorepo guidance](https://vercel.com/docs/monorepos/monorepo-faq).
 
 ## SMS business pages
 

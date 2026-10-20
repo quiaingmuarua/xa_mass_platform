@@ -115,6 +115,23 @@ class MarkdownLinksTest(unittest.TestCase):
         }))
         self.assertIn("missing link anchor", self.check('[page](overview.htm#absent)')[0])
 
+    def test_guide_navigation_requires_real_guide_links_without_legacy_overview(self):
+        self.write("README.md", "\n".join(f"[entry]({path})" for path in check_docs.REQUIRED_ROOT_LINKS))
+        self.write("doc/guide/index.md", "\n".join(f"[guide]({path})" for path in check_docs.REQUIRED_GUIDE_LINKS))
+        errors = []
+        check_docs.validate_root_entrypoints(errors)
+        self.assertEqual([], errors)
+        self.write("doc/guide/index.md", "[start](quick-start.md)")
+        check_docs.validate_root_entrypoints(errors)
+        self.assertTrue(any("first-task.md" in error for error in errors))
+        self.assertFalse(any("overview.htm" in error for error in errors))
+
+    def test_generated_vitepress_markdown_is_not_current_source(self):
+        paths = ["README.md", "doc/guide/index.md", "doc/archive/old.md",
+                 *(prefix + "generated.md" for prefix in check_docs.GENERATED_PREFIXES)]
+        with patch.object(check_docs, "repository_files", return_value=paths):
+            self.assertEqual(["README.md", "doc/guide/index.md"], check_docs.current_markdown_files())
+
 
 if __name__ == "__main__":
     unittest.main()

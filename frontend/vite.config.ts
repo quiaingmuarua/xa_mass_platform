@@ -3,6 +3,8 @@ import { fileURLToPath, URL } from "node:url";
 
 import vue from "@vitejs/plugin-vue";
 import { defineConfig, loadEnv, type Connect, type Plugin } from "vite";
+import { docsDeliveryPlugin } from "./docs/delivery";
+import { developmentWatchExcludes } from "./docs/site.mjs";
 
 const diagnosticCodesPath = "/reference/platform-diagnostic-codes.json";
 const diagnosticCodesFile = fileURLToPath(
@@ -63,8 +65,17 @@ function platformDiagnosticCodesPlugin(): Plugin {
   };
 }
 
-function proxyFor(target: string) {
+function proxyFor(target: string, docs = false) {
   return {
+    ...(docs
+      ? {
+          "/docs": {
+            target: "http://127.0.0.1:5174",
+            changeOrigin: false,
+            ws: true
+          }
+        }
+      : {}),
     "^/api(?:/|$)": {
       target,
       changeOrigin: false
@@ -77,7 +88,7 @@ export default defineConfig(({ mode }) => {
   const proxyTarget = env.VITE_RUNTIME_PROXY_TARGET || "http://127.0.0.1:18082";
 
   return {
-    plugins: [vue(), platformDiagnosticCodesPlugin()],
+    plugins: [vue(), platformDiagnosticCodesPlugin(), docsDeliveryPlugin()],
     resolve: {
       alias: {
         "@": fileURLToPath(new URL("./src", import.meta.url))
@@ -87,7 +98,8 @@ export default defineConfig(({ mode }) => {
       host: "127.0.0.1",
       port: 5173,
       strictPort: true,
-      proxy: proxyFor(proxyTarget)
+      watch: { ignored: developmentWatchExcludes() },
+      proxy: proxyFor(proxyTarget, true)
     },
     preview: {
       host: "127.0.0.1",

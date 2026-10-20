@@ -40,6 +40,10 @@ frontend/dist/
 frontend/dist-demo/
 frontend/coverage/
 frontend/.vite/
+frontend/.vitepress-dist/
+frontend/.vitepress-dist.*.incoming/
+frontend/.vitepress-cache/
+frontend/.vitepress-temp/
 frontend/.eslintcache
 frontend/*.tsbuildinfo
 products/**/node_modules/

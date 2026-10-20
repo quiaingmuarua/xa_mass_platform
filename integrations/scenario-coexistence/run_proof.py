@@ -21,6 +21,9 @@ import urllib.request
 import uuid
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO))
+from distribution.docs_http_proof import verify as verify_docs_delivery
+
 sys.path.insert(0, str(REPO / "integrations"))
 from worker_proof_support.scenario_inventory import materialize_inventory, product_worker_world
 PREVIEW = REPO / "distribution" / "server"
@@ -925,12 +928,14 @@ def execute_scenario(run, scenario, output):
     try:
         with run:
             print("Shared Server and Host ready; beginning " + scenario, flush=True)
+            documentation = verify_docs_delivery(run.url, run.frontend)
             if small:
                 begin_stage(run, "inventory")
             run.input_workers_by_id = {worker["workerId"]: worker
                                        for worker in all_pages(run.host, "/lab/v1/messages/inventory")}
             result = {"functional": functional, "pool-selection": pool_selection,
                       "lifecycle": lifecycle, "load-1k": load_1k, "messages-send-100k": messages_send_100k}[scenario](run)
+            result["documentation"] = documentation
             if small:
                 begin_stage(run, "shutdown")
         if small:

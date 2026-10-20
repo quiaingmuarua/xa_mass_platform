@@ -352,6 +352,9 @@ frontend:
   - '.github/workflows/proof-ci.yml'
   - '!**/*.md'
 runtime_distribution:
+  - 'distribution/docs_http_proof.py'
+  - 'frontend/docs/**'
+  - '.github/scripts/test_run_runtime_distribution_proof.py'
   - 'xa-android/config/batch-checks-runtime.yaml'
   - 'xa-android/config/batch-checks-configuration.json'
   - 'xa-android/config/worker-groups.json'
@@ -413,6 +416,7 @@ runtime_distribution:
   - '.github/scripts/test_prepare_release.py'
   - '!**/*.md'
 product_coexistence:
+  - 'distribution/docs_http_proof.py'
   - 'distribution/archive_tools.py'
   - 'integrations/worker_proof_support/platform-runtime.yaml'
   - 'run_local_runtime.py'

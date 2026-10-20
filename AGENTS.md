@@ -236,9 +236,18 @@ ownership entrypoints.
 execution rules. Before changing a proof, read its Registry entry and the linked
 Integration Owner's affected workload, fault, evidence and assertion clauses.
 [Frontend](frontend/README.md) owns public-API observation, Mock and UI boundaries;
-its [human overview](frontend/public/overview.htm) is an architecture projection.
+the [human architecture guide](doc/guide/architecture.md) is an architecture projection.
 [Distribution](distribution/server/README.md) and [Preview delivery](distribution/server/PREVIEW.md)
 own executable/SDK packaging and source/ZIP launch contracts.
+
+The [shared guide](doc/guide/index.md) owns user procedures and task-oriented
+navigation. Keep exact mechanism contracts in their existing Owners and proof
+claims/commands in the Registry and TESTING. VitePress renders source Markdown in
+place; do not maintain a parallel HTML overview, copied Owner tree or second
+contract registry. Update affected guide steps, Owner descriptions and navigation
+together. Dated capability numbers retain the measured commit, configuration,
+status and immutable evidence; a site build is not runtime proof. Historical
+material stays outside current site navigation and search.
 
 ## Business Scenario Composition
 

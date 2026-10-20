@@ -15,6 +15,9 @@ from urllib.parse import unquote
 ROOT = Path(__file__).resolve().parents[2]
 ARCHIVE_PREFIX = "doc/archive/"
 IGNORED_NAMES = {"THIRD_PARTY_NOTICES.md"}
+GENERATED_PREFIXES = (
+    "frontend/.vitepress-dist/", "frontend/.vitepress-cache/", "frontend/.vitepress-temp/",
+)
 REQUIRED_DOCS = {
     "README.md": "Status: current",
     "doc/README.md": "Status: current",
@@ -30,21 +33,22 @@ REQUIRED_DOCS = {
     "scenarios/message-campaigns-jvm/README.md": "Status: current",
     "scenarios/app-checks-jvm/README.md": "Status: current",
     "transport/README.md": "Status: repository-local",
+    "doc/guide/index.md": "Status: current",
+    "doc/guide/first-task.md": "Status: current",
+    "doc/guide/architecture.md": "Status: current",
 }
 REQUIRED_ROOT_LINKS = {
     "doc/README.md",
     "doc/kernel/README.md",
     "TESTING.md",
     "AGENTS.md",
-    "frontend/public/overview.htm",
+    "doc/guide/index.md",
 }
-REQUIRED_OVERVIEW_IDS = {
-    "authority",
-    "task-mainline",
-    "direct-call",
-    "transport",
-    "runtime-topology",
-    "proof-and-stability",
+REQUIRED_GUIDE_LINKS = {
+    "quick-start.md", "first-task.md", "architecture.md", "verification.md", "capabilities.md",
+    "usage/batch-checks.md", "usage/messages.md", "usage/sms.md", "usage/workbench.md",
+    "operations/deploy.md", "operations/configuration.md", "operations/troubleshooting.md",
+    "development/index.md", "development/walkthrough.md",
 }
 FORBIDDEN_CURRENT_TERMS = {
     "/control-commands:consume",
@@ -92,7 +96,6 @@ FORBIDDEN_CURRENT_TERMS = {
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 MARKDOWN_REFERENCE = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(.+)$")
 HTML_ID = re.compile(r"\bid=[\"']([^\"']+)[\"']")
-HTML_LOCAL_HREF = re.compile(r"\bhref=[\"']#([^\"']+)[\"']")
 
 
 def repository_files(patterns: list[str]) -> list[str]:
@@ -125,6 +128,7 @@ def current_markdown_files() -> list[str]:
         path
         for path in repository_files(["*.md", "**/*.md"])
         if not path.replace("\\", "/").startswith(ARCHIVE_PREFIX)
+        and not path.replace("\\", "/").startswith(GENERATED_PREFIXES)
         and Path(path).name not in IGNORED_NAMES
     ]
 
@@ -257,30 +261,23 @@ def validate_markdown_links(files: list[str], errors: list[str]) -> None:
                     )
 
 
-def validate_root_entrypoints(errors: list[str]) -> None:
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
+def validate_entrypoint_links(relative: str, required: set[str], errors: list[str]) -> None:
+    path = ROOT / relative
+    if not path.is_file():
+        errors.append("missing documentation entrypoint: " + relative)
+        return
+    text = path.read_text(encoding="utf-8")
     destinations = {
         link_destination(match.group(1)).split("#", 1)[0]
         for match in MARKDOWN_LINK.finditer(text)
     }
-    for required in sorted(REQUIRED_ROOT_LINKS - destinations):
-        errors.append(f"README.md: missing required entrypoint link {required!r}")
+    for target in sorted(required - destinations):
+        errors.append(f"{relative}: missing required entrypoint link {target!r}")
 
 
-def validate_overview(errors: list[str]) -> None:
-    overview = ROOT / "frontend/public/overview.htm"
-    if not overview.is_file():
-        errors.append("missing frontend/public/overview.htm")
-        return
-    text = overview.read_text(encoding="utf-8")
-    ids = set(HTML_ID.findall(text))
-    for required in sorted(REQUIRED_OVERVIEW_IDS - ids):
-        errors.append(f"frontend/public/overview.htm: missing section id {required!r}")
-    for target in sorted(set(HTML_LOCAL_HREF.findall(text)) - ids):
-        errors.append(
-            "frontend/public/overview.htm: local anchor "
-            f"#{target} has no matching id"
-        )
+def validate_root_entrypoints(errors: list[str]) -> None:
+    validate_entrypoint_links("README.md", REQUIRED_ROOT_LINKS, errors)
+    validate_entrypoint_links("doc/guide/index.md", REQUIRED_GUIDE_LINKS, errors)
 
 
 def validate_stale_terms(files: list[str], errors: list[str]) -> None:
@@ -291,19 +288,18 @@ def validate_stale_terms(files: list[str], errors: list[str]) -> None:
                 errors.append(f"{relative}: contains retired current-contract term {term!r}")
 
 
-def validate_generated_overview(errors: list[str]) -> None:
+def validate_generated_documentation(errors: list[str]) -> None:
     tracked = subprocess.run(
-        ["git", "ls-files", "--error-unmatch", "frontend/dist/overview.htm"],
+        ["git", "ls-files", "--", *GENERATED_PREFIXES],
         cwd=ROOT,
         check=False,
         capture_output=True,
         text=True,
         encoding="utf-8",
     )
-    if tracked.returncode == 0:
+    if tracked.stdout.strip():
         errors.append(
-            "frontend/dist/overview.htm must not be tracked; "
-            "frontend/public/overview.htm is the source"
+            "generated VitePress output/cache/temp files must not be tracked"
         )
 
 
@@ -313,12 +309,8 @@ def main() -> int:
     validate_required_docs(errors)
     validate_markdown_links(markdown_files, errors)
     validate_root_entrypoints(errors)
-    validate_overview(errors)
-    validate_stale_terms(
-        [*markdown_files, "frontend/public/overview.htm"],
-        errors,
-    )
-    validate_generated_overview(errors)
+    validate_stale_terms(markdown_files, errors)
+    validate_generated_documentation(errors)
 
     if errors:
         print("Documentation contract failed:", file=sys.stderr)
@@ -329,7 +321,7 @@ def main() -> int:
     print(
         "Documentation contract passed: "
         f"{len(markdown_files)} current Markdown files, "
-        f"{len(REQUIRED_OVERVIEW_IDS)} overview sections."
+        f"{len(REQUIRED_GUIDE_LINKS)} guide entrypoint links."
     )
     return 0
 
