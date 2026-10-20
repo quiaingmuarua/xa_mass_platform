@@ -18,6 +18,19 @@ import run_local_runtime
 
 
 class PreviewLifecycleTest(unittest.TestCase):
+    def test_packaged_entry_loads_its_adjacent_runtime_even_after_source_import(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            for name in ("run_preview.py", "local_runtime.py"):
+                shutil.copy2(Path(run_preview.__file__).parent / name, directory / name)
+            spec = importlib.util.spec_from_file_location("packaged_preview_fixture", directory / "run_preview.py")
+            packaged = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(packaged)
+            self.assertIsNot(packaged.local_runtime, run_preview.local_runtime)
+            self.assertEqual((directory / "local_runtime.py").resolve(),
+                             Path(packaged.local_runtime.__file__).resolve())
+
     def test_preview_and_root_share_parameter_contract(self):
         for arguments in (["--count", "3"], ["--example", "android-messages"], ["--port", "19000"]):
             with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
@@ -204,15 +217,15 @@ class PreviewLifecycleTest(unittest.TestCase):
 
     def test_readiness_uses_discovered_inventory_not_initialization_counts(self):
         run = Preview(count=1000, sandbox_root=Path("test/data/scenario-workers"))
-        with patch("local_runtime.http", return_value={"workers": [
+        with patch("run_preview.local_runtime.http", return_value={"workers": [
             {"workerGroupId": group, "workerId": group + "-id", "runtimeState": "RUNNING"}
             for group in ("demo-sim", "app-a-sim", "app-b-sim")
         ]}) as get:
             self.assertTrue(run.host_ready())
             get.assert_called_once_with(run.host, "/lab/v1/workers")
-        with patch("local_runtime.http", return_value={"workers": []}):
+        with patch("run_preview.local_runtime.http", return_value={"workers": []}):
             self.assertTrue(run.host_ready())
-        with patch("local_runtime.http", return_value={"workers": [{"workerGroupId": "app-a-sim", "workerId": None, "runtimeState": "STOPPED"}]}):
+        with patch("run_preview.local_runtime.http", return_value={"workers": [{"workerGroupId": "app-a-sim", "workerId": None, "runtimeState": "STOPPED"}]}):
             self.assertFalse(run.host_ready())
 
     def test_app_count_has_its_own_host_group_bound(self):

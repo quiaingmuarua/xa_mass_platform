@@ -18,6 +18,7 @@ class LocalAndroidTest(unittest.TestCase):
         return owner
 
     def fake_device(self, owner, fail_start=False):
+        self.enterContext(patch("local_workers.socket.socket"))
         mappings = {"reverse": {"tcp:19482": "tcp:old"}, "forward": {}}
         calls = []
         def adb(*args, **kwargs):
@@ -63,8 +64,8 @@ class LocalAndroidTest(unittest.TestCase):
 
     def test_install_failure_does_not_uninstall_or_touch_mappings(self):
         owner = self.owner()
-        owner.adb = Mock(side_effect=lambda *args, **kwargs: "" if args[0] == "shell" else (_ for _ in ()).throw(RuntimeError("signature")))
-        with patch.object(owner, "installed_digest", return_value="different"), self.assertRaisesRegex(RuntimeError, "signature"):
+        owner.adb = Mock(side_effect=lambda *args, **kwargs: "" if args[0] != "install" else (_ for _ in ()).throw(RuntimeError("signature")))
+        with patch("local_workers.socket.socket"), patch.object(owner, "installed_digest", return_value="different"), self.assertRaisesRegex(RuntimeError, "signature"):
             owner.start()
         self.assertEqual([], owner.started)
         self.assertEqual([], owner.mappings)
@@ -93,6 +94,22 @@ class LocalAndroidTest(unittest.TestCase):
                 return_value=Mock(stdout="List of devices attached\nfirst\tdevice\nsecond\tdevice\n")):
             with self.assertRaisesRegex(ValueError, "Select --android-device"):
                 owner.preflight()
+
+    def test_host_forward_owned_by_another_device_is_never_replaced(self):
+        owner = self.owner()
+        owner.adb = Mock(return_value="another-device tcp:18184 tcp:18184")
+        with self.assertRaisesRegex(RuntimeError, "another device"):
+            owner.check_forward_ports()
+        owner.adb.assert_called_once_with("forward", "--list")
+
+    def test_occupied_host_port_fails_before_installation(self):
+        owner = self.owner()
+        owner.adb = Mock(return_value="")
+        with patch("local_workers.socket.socket") as socket:
+            socket.return_value.__enter__.return_value.bind.side_effect = OSError("occupied")
+            with self.assertRaisesRegex(RuntimeError, "occupied"):
+                owner.check_forward_ports()
+        self.assertFalse(any(call.args[0] == "install" for call in owner.adb.call_args_list))
 
 
 if __name__ == "__main__":

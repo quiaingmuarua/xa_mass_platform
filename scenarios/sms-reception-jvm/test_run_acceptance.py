@@ -13,12 +13,12 @@ class AcceptanceOracleTest(unittest.TestCase):
     def test_server_restart_reuses_the_previews_isolated_configuration_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            process = Mock(args=["java", "-jar", "preview.jar"])
-            run = SimpleNamespace(processes={"server": process}, logs=[], output=root,
-                                  scope="test_sms_restart", redis_url="redis://localhost/15", port=18400,
-                                  task_archives=root / "task-archives",
-                                  app_checks_config=root / "inventory" / "app-checks" / "configuration.json",
-                                  launch=Mock(), wait_for=Mock(), connected=Mock())
+            run = run_acceptance.preview.Preview(1, 18400, root=root, output=root,
+                    sandbox_root=root / "data/scenario-workers", app_count=0)
+            run.server_jar, run.frontend = root / "preview.jar", root / "frontend"
+            process = Mock(args=run.server_arguments())
+            run.processes = {"server": process}
+            run.launch, run.wait_for, run.connected = Mock(), Mock(), Mock()
             (root / "server.log").write_text("first startup", encoding="utf-8")
             with patch.dict("os.environ", {"XA_MASS_APP_CHECKS_CONFIG_PATH": "unrelated-host-configuration"}):
                 run_acceptance.restart_server(run)
@@ -27,12 +27,12 @@ class AcceptanceOracleTest(unittest.TestCase):
             name, arguments, environment = run.launch.call_args.args
             self.assertEqual("server", name)
             self.assertEqual(process.args, arguments)
-            self.assertEqual(str(run.app_checks_config), environment["XA_MASS_APP_CHECKS_CONFIG_PATH"])
-            self.assertEqual(str(run.task_archives), environment["XA_MASS_TASK_ARCHIVE_DIRECTORY"])
-            self.assertEqual(run.scope, environment["XA_MASS_REDIS_SCOPE"])
-            self.assertEqual(run.redis_url, environment["XA_MASS_REDIS_URL"])
-            self.assertEqual("18400", environment["PREVIEW_SERVER_PORT"])
-            self.assertEqual("18403", environment["PREVIEW_ADAPTER_PORT"])
+            self.assertIn("--xa.mass.scenarios.app-checks.configuration.path=" + str(run.app_checks_config), arguments)
+            self.assertIn("--xa.mass.task-retention.directory=" + str(run.task_archives), arguments)
+            self.assertIn("--xa.mass.redis.scope=" + run.scope, arguments)
+            self.assertIn("--server.port=18400", arguments)
+            self.assertEqual(run.redis_url, environment["XA_MASS_LOCAL_REDIS_URL"])
+            self.assertNotIn("XA_MASS_APP_CHECKS_CONFIG_PATH", environment)
             self.assertEqual("first startup", (root / "server-before-restart.log").read_text(encoding="utf-8"))
 
     def test_complete_initial_responses_include_tail_and_all_countries(self):

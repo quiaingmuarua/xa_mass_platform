@@ -321,6 +321,7 @@ class Processes:
 class LocalRun(Processes):
     def __init__(self, settings, *, output=None):
         self.settings = settings
+        self.environment = child_environment()
         self.root = settings["product"]
         self.scope, self.redis_url = settings["scope"], settings["redis_url"]
         self.port, self.adapter = settings["port"], settings["adapter"]
@@ -359,6 +360,11 @@ class LocalRun(Processes):
             from local_workers import AndroidApps
             self.android = AndroidApps(s["android_count"], s["android_device"], self.url,
                                        s["adapter_port"], self.output, child_environment())
+            occupied = {self.port, s["adapter_port"]}
+            if s["java_config"]:
+                occupied.add(s["java_config"]["controlPort"])
+            if any(host_port in occupied for _, _, host_port in self.android.apps):
+                raise ValueError("Android Host ports must differ from Server, Adapter and Java Host ports")
             self.android.preflight()
 
     def stage(self):
@@ -426,17 +432,14 @@ class LocalRun(Processes):
         if int(self.redis.info("server")["redis_version"].split(".")[0]) < 7:
             raise RuntimeError("Redis 7 or later is required")
         self.stage()
-        env = child_environment()
-        # Explicit parent-to-child secret transport, never read from the invoking shell.
-        env["XA_MASS_LOCAL_REDIS_URL"] = self.redis_url
-        self.launch("server", self.server_arguments(), env)
+        self.launch("server", self.server_arguments(), self.server_process_environment())
         self.wait_for(lambda: http(self.url, "/actuator/health/readiness").get("status") == "UP", 90, "Server readiness")
         if s["java_config"]:
             self.worker_config_path = self.output / "worker-simulator.json"
             self.worker_config_path.write_text(json.dumps(s["java_config"], indent=2) + "\n", encoding="utf-8")
             self.launch("host", [shutil.which("java"), "-XX:ActiveProcessorCount=8", "-XX:+ExitOnOutOfMemoryError", "-Xmx1g",
                                 "-cp", str(self.host_lib / "*"), "com.xa.mass.workersimulator.WorkerSimulatorMain",
-                                "--config", str(self.worker_config_path)], child_environment())
+                                "--config", str(self.worker_config_path)], dict(self.environment))
             self.wait_for(self.host_ready, 90, "Java Worker identities")
             self.wait_for(self.connected, 60, "Java Worker connections")
         if self.android:
@@ -444,6 +447,12 @@ class LocalRun(Processes):
             self.wait_for(lambda: self.network_connected(self.android.worker_ids()), 90, "Android Worker connections")
         self.write_record()
         return self
+
+    def server_process_environment(self):
+        env = dict(self.environment)
+        # Explicit parent-to-child secret transport, never read from the invoking shell.
+        env["XA_MASS_LOCAL_REDIS_URL"] = self.redis_url
+        return env
 
     def host_ready(self):
         workers = http(self.host, "/lab/v1/workers")["workers"]

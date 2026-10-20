@@ -19,10 +19,16 @@ import urllib.error
 import urllib.request
 import urllib.parse
 import uuid
-import sys
+import importlib.util
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from local_runtime import LocalRun, REDIS_DEFAULT, child_environment, parse_arguments as parse_local_arguments, resolve
+_local_path = Path(__file__).resolve().with_name("local_runtime.py")
+_local_spec = importlib.util.spec_from_file_location(
+    "preview_runtime_" + hashlib.sha256(str(_local_path).encode()).hexdigest()[:12], _local_path)
+local_runtime = importlib.util.module_from_spec(_local_spec)
+_local_spec.loader.exec_module(local_runtime)
+LocalRun, REDIS_DEFAULT = local_runtime.LocalRun, local_runtime.REDIS_DEFAULT
+child_environment = local_runtime.child_environment
+parse_local_arguments, resolve = local_runtime.parse_arguments, local_runtime.resolve
 
 import psutil
 import redis
@@ -104,7 +110,8 @@ def validate_parameters(count, seed, port, sandbox_root=None, app_count=20):
 class Preview(LocalRun):
     """Scenario-proof composition; shares the local process implementation with both CLIs."""
     def __init__(self, count=60, port=18500, redis_url=None, root=PRODUCT, output=None,
-                 sandbox_root=None, seed=0, app_count=20, message_content_mode=None, message_settings=None):
+                 sandbox_root=None, seed=0, app_count=20, message_content_mode=None, message_settings=None,
+                 server_overrides=None):
         validate_parameters(count, seed, port, sandbox_root, app_count)
         root = Path(root).resolve()
         inventory = Path(sandbox_root or root / "data/scenario-workers").resolve()
@@ -112,6 +119,7 @@ class Preview(LocalRun):
             raise ValueError("Unsupported message content mode")
         self.count, self.app_count, self.seed = count, app_count, seed
         self.message_content_mode, self.message_settings = message_content_mode, message_settings
+        self.server_overrides = dict(server_overrides or {})
         self.scenarios, self.lab = ("sms", "messages", "app-checks"), "/lab/v1/sms"
         source = (root / "build.gradle").is_file()
         configuration = root / ("build/preview/config" if source else "config") / "application-preview.yaml"
@@ -122,6 +130,12 @@ class Preview(LocalRun):
                         groups=None, groups_file=None, android_count=0, android_device=None,
                         java_file=None, java_config={"sandboxRoot": str(inventory), "controlPort": port + 4})
         super().__init__(settings, output=output or root / "build/runs" / settings["scope"])
+
+    def server_arguments(self):
+        return super().server_arguments() + [
+            f"--{key}={str(value).lower() if isinstance(value, bool) else value}"
+            for key, value in self.server_overrides.items()
+        ]
 
     def start(self):
         self.preflight()

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -54,6 +55,27 @@ class AndroidApps:
         for package, _, _ in self.apps:
             if self.adb("shell", "pidof", package, check=False):
                 raise RuntimeError(f"Android App already running: {package}; it was not stopped")
+        self.check_forward_ports()
+
+    def check_forward_ports(self):
+        forwarded = {}
+        for row in self.adb("forward", "--list").splitlines():
+            fields = row.split()
+            if len(fields) == 3:
+                forwarded[fields[1]] = fields
+        for _, _, number in self.apps:
+            entry = forwarded.get(f"tcp:{number}")
+            if entry is not None:
+                if entry[0] != self.serial:
+                    raise RuntimeError(f"Android Host port {number} belongs to another device")
+                continue
+            with socket.socket() as probe:
+                if os.name == "nt":
+                    probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+                try:
+                    probe.bind(("127.0.0.1", number))
+                except OSError as error:
+                    raise RuntimeError(f"Android Host port {number} is occupied") from error
 
     def prepare(self, repository, version):
         runtime = repository / f"distribution/server/build/distributions/xa-mass-server-runtime-{version}.zip"
@@ -68,9 +90,12 @@ class AndroidApps:
         source = repository / "xa-android"
         for path in sorted(source.rglob("*")):
             relative = path.relative_to(source)
-            if path.is_file() and not set(relative.parts) & {"build", ".gradle", "__pycache__", ".runtime"}:
+            build_input = relative.parts[0] in {"worker-demo", "capabilities", "gradle"} or relative.as_posix() in {
+                "build.gradle", "settings.gradle", "gradle.properties", "gradlew", "gradlew.bat", "run_consumer.py"}
+            if build_input and path.is_file() and not set(relative.parts) & {"build", ".gradle", "__pycache__", ".runtime"}:
                 fingerprint.update(relative.as_posix().encode() + b"\0")
                 fingerprint.update(bytes.fromhex(consumer.digest(path)))
+        fingerprint.update(bytes.fromhex(consumer.digest(repository / ".github/scripts/build_android_consumer.py")))
         self.apk_root = self.output.parent.parent / "android-cache" / fingerprint.hexdigest()
         provenance_path = self.apk_root / "apk-provenance.json"
         if provenance_path.is_file():
@@ -126,6 +151,7 @@ class AndroidApps:
         for package, _, _ in self.apps:
             if self.adb("shell", "pidof", package, check=False):
                 raise RuntimeError(f"Android App became active during build: {package}")
+        self.check_forward_ports()
         for package, name, _ in self.apps:
             if self.installed_digest(package) != self.provenance["apkSha256"][name]:
                 self.adb("install", "-r", str(self.apk_root / name), timeout=150)
