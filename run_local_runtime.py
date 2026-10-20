@@ -73,7 +73,7 @@ def build(settings):
             tasks += [":distribution:server:distZip", ":distribution:worker-sdk:distZip"]
         else:
             print("Reusing checked Runtime/SDK candidate ZIPs for unchanged source", flush=True)
-    subprocess.run([str(gradle), f"-PxaMassVersion={version}", *tasks, "--console=plain"],
+    subprocess.run([str(gradle), "--no-daemon", f"-PxaMassVersion={version}", *tasks, "--console=plain"],
                    cwd=ROOT, env=child_environment(), check=True)
     if settings["android_count"] and rebuild_candidate:
         remember_candidate(signature, version)

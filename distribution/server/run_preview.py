@@ -89,7 +89,7 @@ def build():
         raise RuntimeError("An extracted Preview does not support --build; use its packaged artifacts")
     repo = PRODUCT.parents[1]
     gradle = repo / ("gradlew.bat" if os.name == "nt" else "gradlew")
-    subprocess.run([str(gradle), ":distribution:server:stagePreviewServer", ":distribution:server:stagePreviewFrontend",
+    subprocess.run([str(gradle), "--no-daemon", ":distribution:server:stagePreviewServer", ":distribution:server:stagePreviewFrontend",
                     ":distribution:server:stagePreviewHost",
                     "--console=plain"], cwd=repo, env=child_environment(), check=True)
 

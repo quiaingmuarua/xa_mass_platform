@@ -43,6 +43,7 @@ Lab1/2/3 APKs on one connected device; select `--android-device <serial>` if mor
 than one device is available. The source entry builds the checked Runtime/SDK ZIP
 pair and independent consumer. An unchanged source tree/commit and matching ZIP
 bytes reuse the candidate pair, avoiding timestamp-only Maven republication.
+Launcher builds use Gradle's single-use mode so they leave no new build daemon.
 Android runs use the verified Runtime ZIP itself; the existing consumer remains
 the sole archive-format validator. It verifies cached APKs by build inputs and bytes, installs
 only selected changed APKs and starts them. It creates no emulator, clears no App

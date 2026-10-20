@@ -131,6 +131,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
     def test_build_selection_has_no_business_branch(self):
         with patch.object(launcher.subprocess, "run") as build:
             launcher.build(self.resolve("--profile", "consumer"))
+            self.assertIn("--no-daemon", build.call_args.args[0])
             self.assertNotIn(":distribution:server:stagePreviewHost", build.call_args.args[0])
         with patch.object(launcher.subprocess, "run") as build, patch.object(launcher, "source_signature", return_value="source"), \
                 patch.object(launcher, "candidate_current", return_value=False), patch.object(launcher, "remember_candidate"):
