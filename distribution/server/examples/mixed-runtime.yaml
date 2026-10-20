@@ -2,6 +2,8 @@ server:
   port: 19182
 xa:
   mass:
+    redis:
+      scope: profile_local_mixed
     project-assembly:
       projects:
         - project-id: default

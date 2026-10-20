@@ -78,9 +78,17 @@ def at(document, *keys, default=None):
     for key in keys:
         if not isinstance(document, dict):
             raise ValueError(f"Expected configuration object before {key}")
-        if key not in document:
+        prefix = key + "."
+        dotted = {name[len(prefix):]: value for name, value in document.items()
+                  if isinstance(name, str) and name.startswith(prefix)}
+        if key in document:
+            if dotted:
+                raise ValueError(f"Do not mix dotted and nested configuration under {key}")
+            document = document[key]
+        elif dotted:
+            document = dotted
+        else:
             return default
-        document = document[key]
     return document
 
 
@@ -126,7 +134,7 @@ def resolve(args, *, product=PRODUCT):
     product = Path(product).resolve()
     source = (product / "build.gradle").is_file()
     runtime = file_object(args.runtime_config, "YAML") if args.runtime_config else {}
-    if at(runtime, "spring", "config", "import") is not None or at(runtime, "spring", "profiles") is not None:
+    if at(runtime, "spring", "config") is not None or at(runtime, "spring", "profiles") is not None:
         raise ValueError("Local Runtime YAML must not import hidden coordinates or select another profile")
     http_default, adapter_default, adapter_id, scope_default = PROFILES[args.profile]
     mass = at(runtime, "xa", "mass", default={})
@@ -371,6 +379,10 @@ class LocalRun(Processes):
         s = self.settings
         source_root = self.root / "build/preview" if s["source"] else self.root
         server_lib = source_root / "server" if s["source"] else source_root / "lib"
+        frontend = source_root / "frontend/dist"
+        if self.android:
+            server_lib = self.android.runtime_root / "lib"
+            frontend = self.android.runtime_root / "frontend/dist"
         jars = [p for p in server_lib.glob("xa-mass-server-jvm-*.jar") if not p.name.endswith("-plain.jar")]
         if len(jars) != 1:
             raise RuntimeError("Exactly one staged Server JAR is required")
@@ -379,7 +391,7 @@ class LocalRun(Processes):
         self.server_jar = stage / jars[0].name
         shutil.copy2(jars[0], self.server_jar)
         self.frontend = stage / "frontend"
-        shutil.copytree(source_root / "frontend/dist", self.frontend)
+        shutil.copytree(frontend, self.frontend)
         if s["java_config"]:
             host = source_root / ("host/lib" if s["source"] else "worker-simulator/lib")
             self.host_lib = stage / "host"

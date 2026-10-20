@@ -41,7 +41,10 @@ Java and Android are independent options on the same environment. Counts mean
 Worker instances, not JVM threads or emulator counts. Android uses the existing
 Lab1/2/3 APKs on one connected device; select `--android-device <serial>` if more
 than one device is available. The source entry builds the checked Runtime/SDK ZIP
-pair and independent consumer, verifies cached APKs by inputs and bytes, installs
+pair and independent consumer. An unchanged source tree/commit and matching ZIP
+bytes reuse the candidate pair, avoiding timestamp-only Maven republication.
+Android runs use the verified Runtime ZIP itself; the existing consumer remains
+the sole archive-format validator. It verifies cached APKs by build inputs and bytes, installs
 only selected changed APKs and starts them. It creates no emulator, clears no App
 data, changes no freezer setting and takes over no already running App.
 

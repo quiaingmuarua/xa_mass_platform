@@ -83,8 +83,9 @@ class AndroidApps:
         commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repository, text=True).strip()
         runtime_hash, sdk_hash = consumer.digest(runtime), consumer.digest(sdk)
         # The existing consumer remains the single ZIP validator and materializer.
-        consumer.prepare_archives(runtime, sdk, version, commit, runtime_hash, sdk_hash,
-                                  self.output / "android-installation")
+        receipt = consumer.prepare_archives(runtime, sdk, version, commit, runtime_hash, sdk_hash,
+                                            self.output / "android-installation")
+        self.runtime_root = Path(receipt["runtimeRoot"])
         fingerprint = hashlib.sha256()
         fingerprint.update(json.dumps([runtime_hash, sdk_hash, self.runtime_url]).encode())
         source = repository / "xa-android"
@@ -107,6 +108,7 @@ class AndroidApps:
                      and all(name in provenance.get("apkSha256", {}) for _, name, _ in self.apps))
             if not valid:
                 raise RuntimeError(f"Cached Android artifacts failed verification: {self.apk_root}")
+            print(f"Reusing checked Android APKs: {self.apk_root}", flush=True)
         else:
             command = [sys.executable, str(repository / ".github/scripts/build_android_consumer.py"),
                        "--runtime-archive", str(runtime), "--sdk-archive", str(sdk),

@@ -69,6 +69,14 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         with patch.dict(os.environ, values):
             self.assertEqual(18182, self.resolve("--profile", "consumer")["port"])
 
+    def test_literal_dotted_yaml_coordinates_are_not_silently_overridden(self):
+        path = self.document("dotted.yaml", {"server.port": 19382, "xa.mass.redis.scope": "explicit"})
+        settings = self.resolve("--profile", "consumer", "--runtime-config", path)
+        self.assertEqual((19382, "explicit"), (settings["port"], settings["scope"]))
+        path = self.document("conditional.yaml", {"spring.config.activate.on-profile": "other"})
+        with self.assertRaisesRegex(ValueError, "profile"):
+            self.resolve("--profile", "consumer", "--runtime-config", path)
+
     def test_java_counts_and_all_zero_never_reopen_inventory(self):
         args = ["--java-count", "demo-sim=2", "--java-count", "app-a-sim=0", "--java-count", "app-b-sim=0"]
         settings = self.resolve(*args, "--work-dir", str(self.directory), "--server-port", "19400")
@@ -116,9 +124,30 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         with patch.object(launcher.subprocess, "run") as build:
             launcher.build(self.resolve("--profile", "consumer"))
             self.assertNotIn(":distribution:server:stagePreviewHost", build.call_args.args[0])
-        with patch.object(launcher.subprocess, "run") as build:
+        with patch.object(launcher.subprocess, "run") as build, patch.object(launcher, "source_signature", return_value="source"), \
+                patch.object(launcher, "candidate_current", return_value=False), patch.object(launcher, "remember_candidate"):
             launcher.build(self.resolve("--profile", "consumer", "--android-count", "1"))
             self.assertIn(":distribution:worker-sdk:distZip", build.call_args.args[0])
+
+    def test_unchanged_source_reuses_checked_zip_bytes_and_corruption_invalidates_cache(self):
+        archives = {name: self.directory / (name + ".zip") for name in ("runtime", "sdk")}
+        for path in archives.values():
+            path.write_bytes(b"checked-fixture")
+        with patch.object(launcher, "CANDIDATE_CACHE", self.directory / "candidate.json"), \
+                patch.object(launcher, "candidate_archives", return_value=archives):
+            launcher.remember_candidate("same-source", "1.2.3")
+            self.assertTrue(launcher.candidate_current("same-source", "1.2.3"))
+            self.assertFalse(launcher.candidate_current("changed-source", "1.2.3"))
+            archives["sdk"].write_bytes(b"changed-sdk")
+            self.assertFalse(launcher.candidate_current("same-source", "1.2.3"))
+
+    def test_repeated_android_launch_does_not_republish_identical_candidates(self):
+        with patch.object(launcher.subprocess, "run") as build, patch.object(launcher, "source_signature", return_value="source"), \
+                patch.object(launcher, "candidate_current", return_value=True), patch.object(launcher, "remember_candidate") as remember:
+            launcher.build(self.resolve("--profile", "consumer", "--android-count", "3"))
+            self.assertNotIn(":distribution:worker-sdk:distZip", build.call_args.args[0])
+            self.assertNotIn(":distribution:server:distZip", build.call_args.args[0])
+            remember.assert_not_called()
 
     def test_main_always_closes_after_partial_start_or_keyboard_interrupt(self):
         for failure in (RuntimeError("partial"), KeyboardInterrupt()):
