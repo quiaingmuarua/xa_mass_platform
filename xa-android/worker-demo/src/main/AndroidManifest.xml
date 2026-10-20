@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".AndroidWorkerDemoApplication"
@@ -9,6 +10,8 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.XaMassAndroidWorker">
+        <activity android:name=".MessagesActivity" android:exported="false" />
+        <receiver android:name=".MessageReplyReceiver" android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true">

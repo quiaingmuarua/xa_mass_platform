@@ -47,6 +47,12 @@ Worker message.send → 发送通道确认受理 → SENT 执行结果 → Item 
 
 ## Worker 供给与装配
 
+Boot 用 `xa.mass.scenarios.messages.enabled` 显式启用本模块，默认关闭，Preview
+显式开启。consumer 可以只装配 Messages，使用外部 Runtime YAML 的 applications／
+Matching 启用及独立 Group JSON；不依赖 Preview、SMS、Batch Checks 或 Simulator。
+关闭时没有业务服务、Project、资源需求或资格声明。
+源码和 ZIP 入口见 [Android 本地消息部署](../../distribution/server/src/main/dist/examples/messages/README.md)。
+
 `MessageWorkerSupply` 集中 Project、发送事件、Pool、查询名称和 Worker 资格字段。
 严格配置 `xa.mass.scenarios.messages.applications` 是非空有序列表，每项包含 `id`、
 `label`、`worker-group-id`；应用 ID 与 Group ID 分别唯一，无隐式默认或旧单 Group 路径。
@@ -162,6 +168,11 @@ COUNT 是提示：原页超出 100 或游标未结束均标 truncated，不补�
 Task 结束后仍可 read/reply，Result 查询不删除最新内容；上层不据预览行数计算完成率。
 
 ## 模拟收件端与交付
+
+设备端另有独立的 [Android 本地消息演示](../../xa-android/worker-demo/README.md#local-message-interaction)：
+Android 自身受理原五字段发送事件，通过系统通知、打开消息和回复使用原 Reporter；
+不调用 Simulator。SENT 表示本地模拟通道受理，不证明真实短信或远端交付。
+Android 的容量、10 分钟进程内窗口及回调清理由该 Host 拥有，与下述 JVM Lab 分开。
 
 [Worker Simulator](../../worker_simulator_jvm/README.md#messages-and-shared-products) 拥有模拟发送端
 受理、窗口去重、可选观察和原 run Reporter 关联。发送与回调经过实际 HTTP，但不证明第三方交付。

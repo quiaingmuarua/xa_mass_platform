@@ -2,7 +2,6 @@ package com.xa.mass.serverboot;
 
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.scenario.messages.MessageCampaignsScenarioConfiguration;
 import com.xa.mass.server.project.ProjectDirectory;
 import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
 import com.xa.mass.transport.client.WorkerTransportType;
@@ -200,13 +199,13 @@ class MessagesAssemblyIntegrationTest {
 
         Fixture() throws Exception { }
         void start(boolean messages, Map<String, String> overrides) {
-            var application = messages ? new SpringApplication(ServerBootConfiguration.class, MessageCampaignsScenarioConfiguration.class)
-                    : new SpringApplication(ServerBootConfiguration.class);
+            var application = new SpringApplication(ServerBootConfiguration.class);
             application.setRegisterShutdownHook(false);
             var settings = new LinkedHashMap<String, String>();
             settings.put("spring.profiles.active", "default"); settings.put("server.port", Integer.toString(port));
             settings.put("xa.mass.users.seed", "classpath:users/proof-directory.json"); settings.put("xa.mass.redis.url", redisUrl); settings.put("xa.mass.redis.scope", scope);
             settings.put("xa.mass.kernel-pacer.enabled", "false"); settings.put("logging.level.root", "ERROR");
+            settings.put("xa.mass.scenarios.messages.enabled", Boolean.toString(messages));
             if (messages) {
                 settings.put("xa.mass.scenarios.messages.applications[0].id", "demo");
                 settings.put("xa.mass.scenarios.messages.applications[0].label", "Demo");

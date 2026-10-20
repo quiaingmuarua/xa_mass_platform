@@ -13,6 +13,13 @@ composition; `server_jvm` retains the complete platform implementation.
 
 ## Platform and preview
 
+Messages is independently selected by `xa.mass.scenarios.messages.enabled`
+(default false). Preview explicitly enables it; consumer supplies applications
+and Matching enablement through external YAML and registers Groups separately.
+Disabled composition contributes no Messages service, Project or qualified-country
+definition. The strict properties object also validates the enable switch.
+See [Messages deployment](../distribution/server/src/main/dist/examples/messages/README.md).
+
 Batch Checks is independently selected by the strict Boolean
 `xa.mass.scenarios.app-checks.enabled` (default false). Boot binds its properties
 but imports the Scenario only when enabled. It requires explicit
@@ -32,7 +39,8 @@ Ordinary platform profiles load no business Scenario Controllers, registrations 
 jobs. The base platform and `consumer` remain independent of business modules. `preview` imports [SMS Reception](../scenarios/sms-reception-jvm/README.md),
 [Message Campaigns](../scenarios/message-campaigns-jvm/README.md) and
 [App Checks](../scenarios/app-checks-jvm/README.md). There is one
-fixed preview assembly, without per-business deployment profiles or selection.
+fixed preview assembly. Messages and Batch Checks also have explicit independent
+enable switches, without adding per-business deployment profiles.
 
 Preview's host configuration and enabled module declarations form this topology:
 

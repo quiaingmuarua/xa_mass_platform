@@ -1,0 +1,14 @@
+xa:
+  mass:
+    scenarios:
+      messages:
+        enabled: true
+        applications:
+          - id: android-local
+            label: Android 本地消息演示
+            worker-group-id: android-demo-workers
+    worker-matching:
+      groups:
+        android-demo-workers:
+          pools: [messaging]
+          functions: [worker.messaging.available]

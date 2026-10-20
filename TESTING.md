@@ -290,6 +290,13 @@ three-seed window/feedback check. Boot's external deployment test starts the sam
 production assembly twice with actual external files to add another Group, retain
 saved Task snapshots and prove real paid execution without rebuilding production code.
 
+The same Android lane includes an independent Messages consumer stage, reading
+packaged YAML/Group JSON and using Messaging Pool rather than a directed query.
+It checks SENT before interaction, native inbox/notification READ and REPLIED,
+123 complete finite results/JSONL, stop/start Reporter isolation and Server/App
+restart. Android Host tests own bounded acceptance, fixed expiry and notification
+permission failures. The local channel is not real SMS or cross-device deduplication.
+
 
 High-level Integration Harnesses use public Runtime and local device/Host APIs,
 without production implementation imports or Report injection. Device/Host state

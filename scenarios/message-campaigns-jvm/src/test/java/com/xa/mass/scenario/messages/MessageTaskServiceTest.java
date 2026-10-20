@@ -36,7 +36,7 @@ class MessageTaskServiceTest {
         service.start(); return service;
     }
     MessageScenarioProperties config() {
-        return new MessageScenarioProperties(List.of(
+        return new MessageScenarioProperties(true, List.of(
                 new MessageScenarioProperties.Application("demo", "Demo", "demo-sim"),
                 new MessageScenarioProperties.Application("app-a", "App A", "app-a-sim"),
                 new MessageScenarioProperties.Application("app-b", "App B", "app-b-sim")));

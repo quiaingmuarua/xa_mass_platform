@@ -253,6 +253,9 @@ for profile composition. [Coexistence](integrations/scenario-coexistence/README.
 is the business proof entrypoint.
 
 Messages contributes immutable multi-Group Project and resource-requirement declarations.
+Boot may explicitly enable Messages in consumer deployments. Its Android local
+message demo owns bounded process-local acceptance and original-run Reporter
+associations; it does not consume the JVM Simulator or provide real SMS delivery.
 Its applications are startup bindings; only new Task creation resolves an application
 to a Group. Stored Tasks retain their original Group. Template content is opaque to
 the business API; the receiving event owns its format interpretation.
