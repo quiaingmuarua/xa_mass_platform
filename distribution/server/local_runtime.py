@@ -412,6 +412,7 @@ class LocalRun(Processes):
         command = [shutil.which("java"), "-XX:ActiveProcessorCount=8", "-XX:+ExitOnOutOfMemoryError", "-Xmx2g",
                    "-jar", str(self.server_jar), f"--spring.profiles.active={s['profile']}",
                    "--spring.config.location=classpath:/", "--server.address=127.0.0.1", f"--server.port={self.port}",
+                   "--xa.mass.worker-delivery.adapter.remote-base-url=" + self.url,
                    "--spring.web.resources.static-locations=" + self.frontend.as_uri() + "/",
                    "--xa.mass.redis.url=${XA_MASS_LOCAL_REDIS_URL}", f"--xa.mass.redis.scope={self.scope}",
                    "--server.tomcat.accesslog.enabled=true", "--server.tomcat.accesslog.buffered=false",

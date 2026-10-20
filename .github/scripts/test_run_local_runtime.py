@@ -57,9 +57,17 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         run.server_jar, run.frontend = self.directory / "server.jar", self.directory / "frontend"
         command = run.server_arguments()
         self.assertIn("--server.port=19382", command)
+        self.assertIn("--xa.mass.worker-delivery.adapter.remote-base-url=http://127.0.0.1:19382", command)
         self.assertIn("--xa.mass.worker-endpoints.endpoints.runtime-websocket.public-uri=ws://127.0.0.1:19383/api/v1/worker-delivery/websocket", command)
         self.assertEqual(settings["groups"], json.loads(next(x.split("=", 1)[1] for x in command if "group-config-json=" in x)))
         self.assertFalse(any("project-id" in x for x in command))
+
+    def test_preview_adapter_callbacks_follow_the_selected_http_port(self):
+        settings = self.resolve("--server-port", "19400", "--adapter-port", "19403")
+        run = local.LocalRun(settings, output=self.directory / "run")
+        run.server_jar, run.frontend = self.directory / "server.jar", self.directory / "frontend"
+        self.assertIn("--xa.mass.worker-delivery.adapter.remote-base-url=http://127.0.0.1:19400",
+                      run.server_arguments())
 
     def test_environment_cannot_override_runtime_or_frontend(self):
         values = {"PATH": "tools", "JAVA_HOME": "jdk", "ANDROID_HOME": "sdk", "SERVER_PORT": "1",
