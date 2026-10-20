@@ -18,6 +18,23 @@ import run_local_runtime
 
 
 class PreviewLifecycleTest(unittest.TestCase):
+    def test_readiness_and_proof_share_restarted_host_connection(self):
+        import http.client
+        self.assertIs(run_preview.http, run_preview.local_runtime.http)
+        response = Mock(status=200)
+        response.read.return_value = b'{"workers":[{"workerId":"w","runtimeState":"RUNNING"}]}'
+        stale, fresh = Mock(), Mock()
+        stale.getresponse.return_value = fresh.getresponse.return_value = response
+        stale.request.side_effect = [None, http.client.RemoteDisconnected("old Host stopped")]
+        with patch.object(run_preview.local_runtime._connections, "items", {}, create=True), \
+                patch("run_preview.local_runtime.http_client.HTTPConnection", side_effect=[stale, fresh]):
+            run = Preview()
+            run_preview.http(run.host, "/lab/v1/workers")
+            run.wait_for(run.host_ready, 2, "restarted Host")
+            run_preview.http(run.host, "/lab/v1/workers")
+            stale.close.assert_called_once()
+            self.assertEqual(2, fresh.request.call_count)
+
     def test_packaged_entry_loads_its_adjacent_runtime_even_after_source_import(self):
         import importlib.util
         with tempfile.TemporaryDirectory() as folder:
@@ -107,8 +124,8 @@ class PreviewLifecycleTest(unittest.TestCase):
             response = connection.getresponse.return_value
             response.status = 200
             response.read.return_value = b'{}'
-        with patch.object(run_preview._connections, "items", {}, create=True), \
-             patch("run_preview.http_client.HTTPConnection", side_effect=[recent, fresh]) as connect, \
+        with patch.object(run_preview.local_runtime._connections, "items", {}, create=True), \
+             patch("run_preview.local_runtime.http_client.HTTPConnection", side_effect=[recent, fresh]) as connect, \
              patch("run_preview.time.monotonic", side_effect=[0, 1, 1, 7, 7]):
             run_preview.http("http://127.0.0.1:18504", "/lab/health", headers={"X-XA-Dev-User": "MTAwMQ", "X-XA-Dev-Role": "operator"})
             run_preview.http("http://127.0.0.1:18504", "/lab/health")
@@ -125,11 +142,11 @@ class PreviewLifecycleTest(unittest.TestCase):
     def test_uncertain_mutation_is_never_replayed(self):
         connection = Mock()
         connection.getresponse.side_effect = ConnectionResetError("response lost")
-        with patch.object(run_preview._connections, "items", {}, create=True), \
-             patch("run_preview.http_client.HTTPConnection", return_value=connection) as connect:
+        with patch.object(run_preview.local_runtime._connections, "items", {}, create=True), \
+             patch("run_preview.local_runtime.http_client.HTTPConnection", return_value=connection) as connect:
             with self.assertRaises(ConnectionResetError):
                 run_preview.http("http://127.0.0.1:18504", "/lab/action", {})
-            self.assertEqual({}, run_preview._connections.items)
+            self.assertEqual({}, run_preview.local_runtime._connections.items)
         connect.assert_called_once()
         connection.request.assert_called_once()
         connection.close.assert_called_once()

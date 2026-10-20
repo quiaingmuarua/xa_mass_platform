@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import http.client as http_client
+import io
 import json
 import os
 from pathlib import Path
@@ -13,7 +15,9 @@ import signal
 import socket
 import subprocess
 import time
+import threading
 import urllib.request
+import urllib.error
 import urllib.parse
 import uuid
 
@@ -249,11 +253,43 @@ def check_ports(ports):
                 raise RuntimeError(f"Local port {number} is occupied; no existing process was stopped") from error
 
 
-def http(base, path, body=None):
-    request = urllib.request.Request(base + path, data=None if body is None else json.dumps(body).encode(),
-                                     headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=4) as response:
-        return json.load(response)
+_connections = threading.local()
+
+
+def http(base, path, body=None, timeout=6, method=None, headers=None):
+    # One connection per calling thread and local endpoint. Never retry mutations.
+    if not hasattr(_connections, "items"):
+        _connections.items = {}
+    address = urllib.parse.urlsplit(base)
+    cached = _connections.items.get(base)
+    # A lifecycle proof may leave the Lab idle beyond its server keep-alive window.
+    # Retire idle connections before the next request, without replaying any request.
+    if cached is not None and time.monotonic() - cached[1] >= 5:
+        cached[0].close()
+        _connections.items.pop(base)
+        cached = None
+    connection = cached[0] if cached is not None else None
+    if connection is None:
+        connection = http_client.HTTPConnection(address.hostname, address.port, timeout=timeout)
+    connection.timeout = timeout
+    if connection.sock:
+        connection.sock.settimeout(timeout)
+    try:
+        connection.request(method or ("GET" if body is None else "POST"), path,
+                           body=None if body is None else json.dumps(body).encode(),
+                           headers={"Content-Type": "application/json", **(headers or {})})
+        response = connection.getresponse()
+        raw = response.read()
+        if response.status >= 400:
+            raise urllib.error.HTTPError(base + path, response.status, response.reason, response.headers, io.BytesIO(raw))
+        _connections.items[base] = (connection, time.monotonic())
+        return json.loads(raw)
+    except Exception:
+        connection.close()
+        _connections.items.pop(base, None)
+        raise
+
+
 
 
 def digest(path):
