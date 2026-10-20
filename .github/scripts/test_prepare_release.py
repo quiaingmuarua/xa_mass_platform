@@ -106,6 +106,22 @@ class ReleasePromotionTest(unittest.TestCase):
     def test_major_three_uses_its_own_contract_and_exact_asset_versions(self):
         self._assert_draft_creation("3.0.0")
 
+    def test_minor_three_one_and_its_patch_use_their_own_contract(self):
+        for version in ("3.1.0", "3.1.1"):
+            with self.subTest(version=version):
+                self._assert_draft_creation(version)
+
+    def test_missing_minor_contract_fails_before_github_without_major_fallback(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            documents = root / "distribution/server"
+            documents.mkdir(parents=True)
+            (documents / "RELEASE-3.0.md").write_text("historical contract", encoding="utf-8")
+            with patch.object(release, "ROOT", root), patch.object(release, "gh") as github:
+                with self.assertRaisesRegex(ValueError, "RELEASE-3.1.md"):
+                    release.prepare(self.repository, "v3.1.0", self.commit, root / "output")
+                github.assert_not_called()
+
     def _assert_draft_creation(self, version):
         tag = "v" + version
         with tempfile.TemporaryDirectory() as temporary:
@@ -132,7 +148,8 @@ class ReleasePromotionTest(unittest.TestCase):
                     document = json.loads(Path(arguments[-1]).read_text())
                     self.assertTrue(document["draft"])
                     self.assertEqual(tag, document["tag_name"])
-                    self.assertIn(f"# XA Mass {version.split('.')[0]}.0 release", document["body"])
+                    major, minor, _ = version.split(".")
+                    self.assertIn(f"# XA Mass {major}.{minor} release", document["body"])
                     return json.dumps(created)
                 if arguments[:2] == ("release", "upload"):
                     uploaded.append(Path(arguments[3]).name)

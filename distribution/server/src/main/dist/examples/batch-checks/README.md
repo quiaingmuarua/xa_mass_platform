@@ -32,7 +32,7 @@ Use absolute paths for the installation, configuration and data. Replace the
 example locations and Redis scope deliberately. Java 21 and Redis are required.
 
 ```powershell
-$runtimeRoot = (Resolve-Path 'D:\deploy\xa-mass-server-runtime-3.0.0').Path
+$runtimeRoot = (Resolve-Path 'D:\deploy\xa-mass-server-runtime-3.1.0').Path
 $inputs = (Resolve-Path 'D:\deploy\checks-inputs').Path
 $dataRoot = [IO.Path]::GetFullPath('D:\deploy\checks-data')
 $manifest = Get-Content -LiteralPath (Join-Path $runtimeRoot 'manifest.json') -Raw | ConvertFrom-Json

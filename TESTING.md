@@ -205,7 +205,7 @@ these correctness claims and add no heavy ordinary CI lane.
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
 | [Worker Call Performance](integrations/worker-call-performance/README.md) | Nightly: parallel `rate-500`, `rate-1000`, `rate-2000` and `saturation` jobs with three repetitions, merged, recorded on `perf-lane-data` and compared with the last seven records. Manual: the same with optional JFR diagnostics, or per-case A/B with `baseline_ref` and `lane_case` | Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21 |
 | Android Host | Platform Android library/proof-tool contracts; no consumer artifact prerequisite | Robolectric, MockWebServer, JDK HttpServer |
-| Candidate Distribution Archives | One clean-commit 3.0.0 Runtime/SDK pair, archive checks and hashes | Java, Android SDK, Node |
+| Candidate Distribution Archives | One clean-commit 3.1.0 Runtime/SDK pair, archive checks and hashes | Java, Android SDK, Node |
 | Android APK Assembly | Independent consumer unit tests and Debug plus three fixed Lab APKs from that SDK ZIP | Android SDK |
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |
 | Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
