@@ -79,6 +79,13 @@ def digest(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def release_contract(version: str) -> str:
+    major, minor, _ = version.split(".")
+    path = ROOT / "distribution/server" / f"RELEASE-{major}.{minor}.md"
+    require(path.is_file(), f"Release contract unavailable: {path.name}")
+    return path.read_text(encoding="utf-8")
+
+
 def checksum(path: Path) -> Path:
     sidecar = path.with_name(path.name + ".sha256")
     content = f"{digest(path)}  {path.name}\n"
@@ -140,6 +147,7 @@ def prepare(repository: str, tag: str, commit: str, output: Path) -> None:
     require(bool(re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag)), "Release tag must be v<major>.<minor>.<patch>")
     require(bool(re.fullmatch(r"[0-9a-f]{40}", commit)), "Release commit must be a full SHA")
     version = tag[1:]
+    contract = release_contract(version)
     verify_tag(repository, tag, commit)
     run, artifact_names = find_run(repository, commit)
     output.mkdir(parents=True, exist_ok=True)
@@ -170,8 +178,6 @@ def prepare(repository: str, tag: str, commit: str, output: Path) -> None:
                     if candidate.get("tag_name") == tag), None)
     if release is None:
         notes = output / "release-notes.md"
-        contract_path = ROOT / "distribution/server" / f"RELEASE-{version.split('.')[0]}.0.md"
-        contract = contract_path.read_text(encoding="utf-8")
         notes.write_text(contract + f"\nVerified full Proof: {run['html_url']}\n\nCommit: `{commit}`\n", encoding="utf-8")
         request = output / "draft-request.json"
         request.write_text(json.dumps({"tag_name": tag, "name": "XA Mass " + tag,
