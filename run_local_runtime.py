@@ -34,14 +34,23 @@ def parse_arguments(arguments: Sequence[str] | None = None) -> argparse.Namespac
     parser.add_argument(
         "--profile",
         choices=SUPPORTED_PROFILES,
-        default=DEFAULT_PROFILE,
+        help="Default: preview, or consumer when --example is selected",
     )
+    parser.add_argument("--example", choices=("android-messages",),
+                        help="Local example defaults; uses the existing consumer profile")
     for option in ("count", "app-count", "seed", "port", "sandbox-root"):
         parser.add_argument("--" + option, help="Preview only; uses the Preview default when omitted")
     parser.add_argument("--runtime-config", type=Path, help="Consumer only: external Runtime YAML")
     parser.add_argument("--groups", type=Path, help="Consumer only: Group registration JSON")
-    parser.add_argument("--server-port", type=int, help="Consumer only: HTTP and readiness port (SERVER_PORT or 18182)")
+    parser.add_argument("--server-port", type=int,
+                        help="Consumer HTTP/readiness port: SERVER_PORT, then 18082 for the example or 18182 otherwise")
     args = parser.parse_args(arguments)
+    args.profile = args.profile or ("consumer" if args.example else DEFAULT_PROFILE)
+    if args.example and args.profile != "consumer":
+        parser.error("--example requires the consumer profile")
+    if args.example == "android-messages":
+        args.runtime_config = args.runtime_config or ROOT / "xa-android/config/messages-runtime.yaml"
+        args.groups = args.groups or ROOT / "xa-android/config/worker-groups.json"
     if args.profile != "preview" and any(
         getattr(args, name) is not None for name in ("count", "app_count", "seed", "port", "sandbox_root")
     ):
@@ -177,7 +186,10 @@ def start_server(
 
 def consumer_arguments(args: argparse.Namespace, environ: Mapping[str, str]) -> tuple[list[str], int]:
     """Freeze file inputs before building; Server owns their resource semantics."""
-    port = args.server_port if args.server_port is not None else _environment_port(environ, "SERVER_PORT", 18_182)
+    default_port = 18_082 if args.example else 18_182
+    port = args.server_port if args.server_port is not None else _environment_port(environ, "SERVER_PORT", default_port)
+    if args.example and port == _environment_port(environ, "XA_MASS_ADAPTER_PORT", 18_083):
+        raise ValueError("Server and Adapter ports must be different")
     command = [f"--server.port={port}"]
     if args.runtime_config is not None:
         configuration = args.runtime_config.resolve()
@@ -255,7 +267,11 @@ def main(
             if value is not None:
                 forwarded.extend(["--" + name.replace("_", "-"), value])
         return load_preview().main(forwarded)
-    values = os.environ if environ is None else environ
+    values = dict(os.environ if environ is None else environ)
+    if args.example == "android-messages":
+        values.setdefault("XA_MASS_ADAPTER_PORT", "18083")
+        values.setdefault("XA_MASS_REDIS_SCOPE", "profile_android_messages_local")
+        values.setdefault("XA_MASS_TASK_ARCHIVE_DIRECTORY", str(ROOT / "data/android-messages/task-archives"))
     server: subprocess.Popen[bytes] | None = None
     try:
         extra_arguments: list[str] = []
@@ -273,6 +289,9 @@ def main(
         wait_for_server(server, runtime_api_url)
         print(f"Open {runtime_api_url}/runtime/workers")
         print(f"Tasks {runtime_api_url}/runtime/tasks")
+        if args.example == "android-messages":
+            print(f"Messages {runtime_api_url}/messages")
+            print("Start the installed Android Demo separately; its Runtime address and ADB mappings must match.")
         return supervise(server)
     except KeyboardInterrupt:
         return 0

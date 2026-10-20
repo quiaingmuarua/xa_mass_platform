@@ -387,7 +387,7 @@
         "frontend",
         "product_coexistence"
       ],
-      "reason": "The local launcher delegates Preview and exposes explicit external consumer inputs without enabling resources."
+      "reason": "The local launcher delegates Preview, accepts external consumer inputs and offers an explicit Android Messages example using the same host files."
     },
     {
       "path": "xa-android/config/batch-checks-runtime.yaml",
