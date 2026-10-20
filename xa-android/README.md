@@ -109,20 +109,21 @@ the 123-seed Any/restart proof plus a separate three-seed window feedback phase.
 
 ## Messages through the Android local channel
 
-For local source development, start Runtime from the checkout root with:
+For local source development, the unified entry builds, installs and starts the
+selected Lab APKs against its own Server/Adapter:
 
 ```powershell
-python run_local_runtime.py --example android-messages
+python run_local_runtime.py --profile consumer --runtime-config xa-android/config/messages-runtime.yaml --groups xa-android/config/worker-groups.json --android-count 1
 ```
 
-This uses the two existing Messages/Group files, HTTP 18082, Adapter 18083,
-scope `profile_android_messages_local` and `data/android-messages/task-archives`.
-No environment variables or file arguments are required for these defaults.
-Existing arguments/environment variables can override them; see the
-[local launcher](../distribution/server/README.md#source-launch). It starts only
-Runtime. Use the installed Android Demo built with
-`-PxaMassRuntimeApiBaseUrl=http://127.0.0.1:18082`, map device ports 18082/18083,
-and open the App. Redis and the emulator are not created or reset by this command.
+The normal Consumer ports are 18182/18183; CLI and Runtime YAML can override them.
+The APK URL and ADB reverse mappings follow the same resolved values. Counts 1..3
+select distinct Lab packages on the existing device, not emulator instances.
+Use `--android-device` when multiple devices are connected. Existing active target
+Apps are not taken over. Exit stops owned Apps and restores previous mappings;
+application data and installed APKs remain. There is no implicit freezer change,
+AVD creation, scenario selection or Pool provisioning. Java Workers may be added
+with `--java-config`; see the [mixed example](../distribution/server/README.md#source-launch).
 
 For Messages, use the same verified consumer arguments with
 `--runtime-config ./config/messages-runtime.yaml --groups ./config/worker-groups.json`

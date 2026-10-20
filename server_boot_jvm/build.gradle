@@ -36,7 +36,7 @@ tasks.register('scenarioCompositionIntegrationTest', Test) {
     group = 'verification'
     description = 'Proves platform and preview composition share one platform and explicit page delivery.'
     dependsOn ':distribution:server:buildFrontend'
-    systemProperty 'xa.mass.test.frontend', rootProject.file('frontend/dist').absolutePath
+    systemProperty 'xa.mass.test.frontend', project(':distribution:server').layout.buildDirectory.dir('frontend-api').get().asFile.absolutePath
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform { includeTags 'scenario-composition' }
@@ -51,7 +51,7 @@ tasks.register('smsCompositionIntegrationTest', Test) {
     group = 'verification'
     description = 'Proves one Server context, profile isolation and the real SMS Worker path.'
     dependsOn ':distribution:server:buildFrontend'
-    systemProperty 'xa.mass.test.frontend', rootProject.file('frontend/dist').absolutePath
+    systemProperty 'xa.mass.test.frontend', project(':distribution:server').layout.buildDirectory.dir('frontend-api').get().asFile.absolutePath
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform { includeTags 'sms-composition' }

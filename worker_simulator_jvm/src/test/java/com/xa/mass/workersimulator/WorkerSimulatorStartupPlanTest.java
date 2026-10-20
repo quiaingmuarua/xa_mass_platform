@@ -10,6 +10,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class WorkerSimulatorStartupPlanTest {
+    @Test
+    void countsAreExplicitAndCannotMixWithCoordinates() {
+        var plan = WorkerSimulatorStartupPlan.parse("{\"workerCounts\":{\"group\":5,\"stopped\":0}}");
+        assertThat(plan.workerCounts()).containsEntry("group", 5).containsEntry("stopped", 0);
+        assertThat(plan.startAll()).isFalse();
+        for (String json : java.util.List.of(
+                "{\"workerCounts\":{}}", "{\"workerCounts\":{\"g\":15001}}",
+                "{\"workerCounts\":{\"g\":-1}}", "{\"workerCounts\":{\"g\":1.5}}",
+                "{\"workerCounts\":{\"g\":1},\"initialWorkers\":[],\"scheduledStops\":[]}")) {
+            assertThatThrownBy(() -> WorkerSimulatorStartupPlan.parse(json)).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
 
     @TempDir
     Path temporaryDirectory;

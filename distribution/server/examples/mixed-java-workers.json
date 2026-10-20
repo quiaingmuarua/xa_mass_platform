@@ -1,0 +1,19 @@
+{
+  "controlPort": 19186,
+  "sandboxRoot": "./data/scenario-workers",
+  "workerGroups": {
+    "local-java-workers": {
+      "count": 2,
+      "events": ["extension.worker.string.md5", "extension.worker.message.send"],
+      "propertiesTemplate": {
+        "runtime": "java",
+        "simulated": "true",
+        "country": "CN",
+        "phone": {"$index": [861790000001, 1]},
+        "messaging.enabled": "true"
+      },
+      "messageContentMode": "text",
+      "newEnvironment": false
+    }
+  }
+}

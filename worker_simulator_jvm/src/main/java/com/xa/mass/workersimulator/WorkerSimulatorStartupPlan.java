@@ -3,6 +3,7 @@ package com.xa.mass.workersimulator;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -29,15 +30,22 @@ final class WorkerSimulatorStartupPlan {
     private final boolean startAll;
     private final List<WorkerSimulatorCoordinate> initialWorkers;
     private final List<ScheduledStop> scheduledStops;
+    private final Map<String, Integer> workerCounts;
 
     private WorkerSimulatorStartupPlan(
             boolean startAll,
             List<WorkerSimulatorCoordinate> initialWorkers,
             List<ScheduledStop> scheduledStops
     ) {
+        this(startAll, initialWorkers, scheduledStops, Map.of());
+    }
+
+    private WorkerSimulatorStartupPlan(boolean startAll, List<WorkerSimulatorCoordinate> initialWorkers,
+            List<ScheduledStop> scheduledStops, Map<String, Integer> workerCounts) {
         this.startAll = startAll;
         this.initialWorkers = List.copyOf(initialWorkers);
         this.scheduledStops = List.copyOf(scheduledStops);
+        this.workerCounts = Map.copyOf(workerCounts);
     }
 
     static WorkerSimulatorStartupPlan defaults() {
@@ -49,6 +57,20 @@ final class WorkerSimulatorStartupPlan {
     }
 
     static WorkerSimulatorStartupPlan parse(Map<String, Object> root) {
+        if (root.containsKey("workerCounts")) {
+            requireFields(root, Set.of("workerCounts"), "quantity startup plan");
+            Map<String, Object> values = requiredObject(root.get("workerCounts"), "workerCounts");
+            if (values.isEmpty()) throw new IllegalArgumentException("workerCounts must not be empty");
+            Map<String, Integer> counts = new LinkedHashMap<>();
+            values.forEach((group, value) -> {
+                if (group.isBlank() || !(value instanceof Long count)
+                        || count < 0 || count > WorkerSimulatorLab.MAX_WORKERS_PER_GROUP) {
+                    throw new IllegalArgumentException("workerCounts requires Group names and integers in 0..15000");
+                }
+                counts.put(group, ((Long) value).intValue());
+            });
+            return new WorkerSimulatorStartupPlan(false, List.of(), List.of(), counts);
+        }
         requireFields(root, ROOT_FIELDS, "startup plan");
 
         List<WorkerSimulatorCoordinate> initial = parseWorkers(
@@ -64,6 +86,10 @@ final class WorkerSimulatorStartupPlan {
 
     boolean startAll() {
         return startAll;
+    }
+
+    Map<String, Integer> workerCounts() {
+        return workerCounts;
     }
 
     List<WorkerSimulatorCoordinate> initialWorkers() {

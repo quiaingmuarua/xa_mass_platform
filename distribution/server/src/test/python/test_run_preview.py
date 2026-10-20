@@ -18,39 +18,45 @@ import run_local_runtime
 
 
 class PreviewLifecycleTest(unittest.TestCase):
-    def test_both_entrypoints_reject_invalid_parameters_before_build_or_processes(self):
-        for arguments in (["--count", "0"], ["--seed", "9223372036854775808"],
-                          ["--app-count", "-1"], ["--app-count", "15001"],
-                          ["--port", "0"], ["--port", "65532"], ["--count", "bad"],
-                          ["--sandbox-root", "data/unrelated"]):
-            for root_entry in (False, True):
-                with self.subTest(arguments=arguments, root=root_entry), redirect_stderr(io.StringIO()), \
-                     patch.object(run_preview, "build") as build_mock, \
-                     patch.object(run_preview, "Preview") as process_mock, \
-                     patch.object(run_local_runtime, "load_preview", return_value=run_preview):
-                    with self.assertRaises(SystemExit) as error:
-                        if root_entry:
-                            run_local_runtime.main(["--profile", "preview", *arguments])
-                        else:
-                            run_preview.main(["--build", *arguments])
-                    self.assertEqual(2, error.exception.code)
-                    build_mock.assert_not_called()
-                    process_mock.assert_not_called()
+    def test_readiness_and_proof_share_restarted_host_connection(self):
+        import http.client
+        self.assertIs(run_preview.http, run_preview.local_runtime.http)
+        response = Mock(status=200)
+        response.read.return_value = b'{"workers":[{"workerId":"w","runtimeState":"RUNNING"}]}'
+        stale, fresh = Mock(), Mock()
+        stale.getresponse.return_value = fresh.getresponse.return_value = response
+        stale.request.side_effect = [None, http.client.RemoteDisconnected("old Host stopped")]
+        with patch.object(run_preview.local_runtime._connections, "items", {}, create=True), \
+                patch("run_preview.local_runtime.http_client.HTTPConnection", side_effect=[stale, fresh]):
+            run = Preview()
+            run_preview.http(run.host, "/lab/v1/workers")
+            run.wait_for(run.host_ready, 2, "restarted Host")
+            run_preview.http(run.host, "/lab/v1/workers")
+            stale.close.assert_called_once()
+            self.assertEqual(2, fresh.request.call_count)
 
-    def test_direct_preview_skips_build_by_default_and_root_builds_once(self):
-        for root_entry in (False, True):
-            with self.subTest(root=root_entry), patch.object(run_preview, "build") as build_mock, \
-                 patch.object(run_preview, "Preview") as factory, patch.object(run_preview.signal, "signal"), \
-                 patch.object(run_local_runtime, "load_preview", return_value=run_preview):
-                factory.return_value.__enter__.return_value.check.side_effect = KeyboardInterrupt
-                if root_entry:
-                    self.assertEqual(0, run_local_runtime.main(["--profile", "preview"]))
-                    build_mock.assert_called_once_with()
-                else:
-                    self.assertEqual(0, run_preview.main([]))
-                    build_mock.assert_not_called()
-                factory.assert_called_once_with(60, 18500, sandbox_root=None, seed=0, app_count=20)
-                factory.return_value.__exit__.assert_called_once()
+    def test_packaged_entry_loads_its_adjacent_runtime_even_after_source_import(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            for name in ("run_preview.py", "local_runtime.py"):
+                shutil.copy2(Path(run_preview.__file__).parent / name, directory / name)
+            spec = importlib.util.spec_from_file_location("packaged_preview_fixture", directory / "run_preview.py")
+            packaged = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(packaged)
+            self.assertIsNot(packaged.local_runtime, run_preview.local_runtime)
+            self.assertEqual((directory / "local_runtime.py").resolve(),
+                             Path(packaged.local_runtime.__file__).resolve())
+
+    def test_preview_and_root_share_parameter_contract(self):
+        for arguments in (["--count", "3"], ["--example", "android-messages"], ["--port", "19000"]):
+            with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                run_preview.parse_local_arguments(arguments, preview=True)
+        with tempfile.TemporaryDirectory() as directory:
+            args = ["--no-java-workers", "--server-port", "19400", "--adapter-port", "19403", "--work-dir", directory]
+            settings = run_preview.resolve(run_preview.parse_local_arguments(args, preview=True))
+            self.assertEqual((19400, 19403), (settings["port"], settings["adapter_port"]))
+            self.assertIsNone(settings["java_config"])
 
     def test_partial_start_failure_stops_owned_process_before_scope_cleanup(self):
         run = Preview()
@@ -118,8 +124,8 @@ class PreviewLifecycleTest(unittest.TestCase):
             response = connection.getresponse.return_value
             response.status = 200
             response.read.return_value = b'{}'
-        with patch.object(run_preview._connections, "items", {}, create=True), \
-             patch("run_preview.http_client.HTTPConnection", side_effect=[recent, fresh]) as connect, \
+        with patch.object(run_preview.local_runtime._connections, "items", {}, create=True), \
+             patch("run_preview.local_runtime.http_client.HTTPConnection", side_effect=[recent, fresh]) as connect, \
              patch("run_preview.time.monotonic", side_effect=[0, 1, 1, 7, 7]):
             run_preview.http("http://127.0.0.1:18504", "/lab/health", headers={"X-XA-Dev-User": "MTAwMQ", "X-XA-Dev-Role": "operator"})
             run_preview.http("http://127.0.0.1:18504", "/lab/health")
@@ -136,11 +142,11 @@ class PreviewLifecycleTest(unittest.TestCase):
     def test_uncertain_mutation_is_never_replayed(self):
         connection = Mock()
         connection.getresponse.side_effect = ConnectionResetError("response lost")
-        with patch.object(run_preview._connections, "items", {}, create=True), \
-             patch("run_preview.http_client.HTTPConnection", return_value=connection) as connect:
+        with patch.object(run_preview.local_runtime._connections, "items", {}, create=True), \
+             patch("run_preview.local_runtime.http_client.HTTPConnection", return_value=connection) as connect:
             with self.assertRaises(ConnectionResetError):
                 run_preview.http("http://127.0.0.1:18504", "/lab/action", {})
-            self.assertEqual({}, run_preview._connections.items)
+            self.assertEqual({}, run_preview.local_runtime._connections.items)
         connect.assert_called_once()
         connection.request.assert_called_once()
         connection.close.assert_called_once()
@@ -182,13 +188,13 @@ class PreviewLifecycleTest(unittest.TestCase):
                     server, host = launch.call_args_list
                     self.assertIn("--spring.profiles.active=preview", server.args[1])
                     self.assertEqual(str(run.sandbox_root.parent / "app-checks" / "configuration.json"),
-                                     server.args[2]["XA_MASS_APP_CHECKS_CONFIG_PATH"])
-                    self.assertEqual(str(run.output / "task-archives"), server.args[2]["XA_MASS_TASK_ARCHIVE_DIRECTORY"])
-                    self.assertIn("--spring.config.additional-location=" + (root / ("config" if packaged else "build/preview/config")).as_uri() + "/", server.args[1])
-                    self.assertIn(str(server_lib / "xa-mass-server-jvm-test.jar"), server.args[1])
+                                     next(x.split("=", 1)[1] for x in server.args[1] if x.startswith("--xa.mass.scenarios.app-checks.configuration.path=")))
+                    self.assertEqual(str(run.output / "task-archives"), next(x.split("=", 1)[1] for x in server.args[1] if x.startswith("--xa.mass.task-retention.directory=")))
+                    self.assertIn("--spring.config.additional-location=" + (root / ("config" if packaged else "build/preview/config") / "application-preview.yaml").as_uri(), server.args[1])
+                    self.assertIn(str(run.output / "artifacts/xa-mass-server-jvm-test.jar"), server.args[1])
                     self.assertIn("--server.tomcat.accesslog.pattern=%m %U %s", server.args[1])
                     self.assertIn("--server.tomcat.accesslog.buffered=false", server.args[1])
-                    self.assertIn(str(host_lib / "*"), host.args[1])
+                    self.assertIn(str(run.output / "artifacts/host/*"), host.args[1])
                     self.assertEqual(["--config", str(run.worker_config_path)], host.args[1][-2:])
                     config = json.loads(run.worker_config_path.read_text(encoding="utf-8"))
                     self.assertEqual("http://127.0.0.1:18410", config["runtimeApiBaseUrl"])
@@ -206,7 +212,7 @@ class PreviewLifecycleTest(unittest.TestCase):
                     self.assertIn("extension.worker.string.md5", group["events"])
                     self.assertIn("extension.worker.string.md5.batch", group["events"])
                     self.assertIn("extension.worker.phonenumber.original-carrier.batch", group["events"])
-                    self.assertEqual("18413", host.args[2]["PREVIEW_ADAPTER_PORT"])
+                    self.assertNotIn("PREVIEW_ADAPTER_PORT", host.args[2])
                     for group_id in ("app-a-sim", "app-b-sim"):
                         if app_count:
                             self.assertEqual(app_count, config["workerGroups"][group_id]["count"])
@@ -221,22 +227,22 @@ class PreviewLifecycleTest(unittest.TestCase):
                         else:
                             self.assertNotIn(group_id, config["workerGroups"])
                     record = json.loads((run.output / "run.json").read_text())
-                    self.assertEqual((60, 712), (record["count"], record["seed"]))
+                    self.assertEqual((60, 712), (record["javaCounts"]["demo-sim"], record["seed"]))
                     self.assertNotIn("counts", record)
                     self.assertEqual({"server", "hostClasspath", "frontendSha256"}, run.artifacts.keys())
                     run.close()
 
     def test_readiness_uses_discovered_inventory_not_initialization_counts(self):
         run = Preview(count=1000, sandbox_root=Path("test/data/scenario-workers"))
-        with patch("run_preview.http", return_value={"workers": [
+        with patch("run_preview.local_runtime.http", return_value={"workers": [
             {"workerGroupId": group, "workerId": group + "-id", "runtimeState": "RUNNING"}
             for group in ("demo-sim", "app-a-sim", "app-b-sim")
         ]}) as get:
             self.assertTrue(run.host_ready())
             get.assert_called_once_with(run.host, "/lab/v1/workers")
-        with patch("run_preview.http", return_value={"workers": []}):
+        with patch("run_preview.local_runtime.http", return_value={"workers": []}):
             self.assertTrue(run.host_ready())
-        with patch("run_preview.http", return_value={"workers": [{"workerGroupId": "app-a-sim", "workerId": None, "runtimeState": "STOPPED"}]}):
+        with patch("run_preview.local_runtime.http", return_value={"workers": [{"workerGroupId": "app-a-sim", "workerId": None, "runtimeState": "STOPPED"}]}):
             self.assertFalse(run.host_ready())
 
     def test_app_count_has_its_own_host_group_bound(self):
@@ -267,7 +273,7 @@ class PreviewLifecycleTest(unittest.TestCase):
             client.scan_iter.return_value = []
             with patch("run_preview.redis.Redis.from_url", return_value=client), \
                  patch("run_preview.subprocess.Popen") as launch:
-                with self.assertRaises(OSError):
+                with self.assertRaisesRegex(RuntimeError, "occupied"):
                     with run:
                         self.fail("Occupied port must reject startup")
                 launch.assert_not_called()
@@ -280,7 +286,7 @@ class PreviewLifecycleTest(unittest.TestCase):
         own = f"xa_mass:{run.scope}:worker:one".encode()
         client.scan_iter.return_value = [own]
         run.close()
-        client.scan_iter.assert_called_once_with(match=f"xa_mass:{run.scope}:*", count=1000)
+        client.scan_iter.assert_called_once_with(match=f"xa_mass:{run.scope}:*".encode(), count=1000)
         client.unlink.assert_called_once_with(own)
         run.close()
         client.unlink.assert_called_once()
@@ -289,7 +295,7 @@ class PreviewLifecycleTest(unittest.TestCase):
         run = Preview()
         client = run.redis = Mock()
         client.scan_iter.return_value = [b"xa_mass:another_scope:worker:one"]
-        with self.assertRaisesRegex(RuntimeError, "Unexpected"):
+        with self.assertRaisesRegex(RuntimeError, "Cleanup incomplete"):
             run.close()
         client.unlink.assert_not_called()
 

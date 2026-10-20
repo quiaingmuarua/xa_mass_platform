@@ -66,41 +66,44 @@ def benchmark(preview, root, output, port, baseline, configure, create_import_ap
             inventory = folder / "private" / ("inventory-" + uuid.uuid4().hex) / "data/scenario-workers"
             run = ObservedPreview(1, port, root=root, output=folder / "private", sandbox_root=inventory, app_count=20)
             with configure(baseline=baseline, window_millis=60000,
-                           parameters_by_check={"app-a-registration": {"ranges": {"registered": [0,1000], "unregistered": [1000,1000], "failed": [1000,1000]}, "delayMs": [0,0]}}), run:
-                workers = preview.http(run.host, "/lab/v1/workers")["workers"]
-                ids = {worker["workerId"] for worker in workers if worker["workerGroupId"] == "app-a-sim"}
-                require(len(ids) == 20, "Benchmark requires 20 prepared App A Workers")
+                           parameters_by_check={"app-a-registration": {"ranges": {"registered": [0,1000], "unregistered": [1000,1000], "failed": [1000,1000]}, "delayMs": [0,0]}}) as overrides:
+                if not baseline:
+                    run.server_overrides = overrides
+                with run:
+                    workers = preview.http(run.host, "/lab/v1/workers")["workers"]
+                    ids = {worker["workerId"] for worker in workers if worker["workerGroupId"] == "app-a-sim"}
+                    require(len(ids) == 20, "Benchmark requires 20 prepared App A Workers")
 
-                def ready():
-                    sample = preview.http(run.url, "/api/v1/runtime-view/worker-groups/app-a-sim/workers:preview", 100)
-                    return ids <= {row["workerId"] for row in sample["workers"] if row["workerProperties"].get("application") == "app-a"}
-                run.wait_for(ready, 15, "benchmark Facts publication")
-                case = request("benchmark", "app-a", 0, 1360, ([0, 1000], [1000, 1000], [1000, 1000]), [0, 0])
-                task_id = create_import_approve(run, preview.http, case, approve=False)
-                preview.http(run.url, "/__benchmark/app-checks/start", {})
-                started = time.perf_counter()
-                preview.http(run.url, f"/api/v1/tasks/{task_id}/approve", approval_input(run, preview.http, task_id, 1360, case["userId"]), headers=caller_headers(case["userId"], "admin"))
-                detail = {}
+                    def ready():
+                        sample = preview.http(run.url, "/api/v1/runtime-view/worker-groups/app-a-sim/workers:preview", 100)
+                        return ids <= {row["workerId"] for row in sample["workers"] if row["workerProperties"].get("application") == "app-a"}
+                    run.wait_for(ready, 15, "benchmark Facts publication")
+                    case = request("benchmark", "app-a", 0, 1360, ([0, 1000], [1000, 1000], [1000, 1000]), [0, 0])
+                    task_id = create_import_approve(run, preview.http, case, approve=False)
+                    preview.http(run.url, "/__benchmark/app-checks/start", {})
+                    started = time.perf_counter()
+                    preview.http(run.url, f"/api/v1/tasks/{task_id}/approve", approval_input(run, preview.http, task_id, 1360, case["userId"]), headers=caller_headers(case["userId"], "admin"))
+                    detail = {}
 
-                def completed():
-                    nonlocal detail
-                    detail = task_observations(run, functools.partial(preview.http, headers=caller_headers("1000", "admin")), task_id)
+                    def completed():
+                        nonlocal detail
+                        detail = task_observations(run, functools.partial(preview.http, headers=caller_headers("1000", "admin")), task_id)
+                        task = detail["task"]
+                        return task["state"] == "terminal" and task["activeCount"] == 0
+                    run.wait_for(completed, 180, "benchmark completion")
+                    elapsed = time.perf_counter() - started
+                    measurements = preview.http(run.url, "/__benchmark/app-checks/stop", {})
                     task = detail["task"]
-                    return task["state"] == "terminal" and task["activeCount"] == 0
-                run.wait_for(completed, 180, "benchmark completion")
-                elapsed = time.perf_counter() - started
-                measurements = preview.http(run.url, "/__benchmark/app-checks/stop", {})
-                task = detail["task"]
-                require(task["succeededCount"] == 1360 and task["failedCount"] == 0, "Benchmark outcomes differ")
-                require(measurements["outside"]["factsReads"] == 0, "Unattributed Facts reads")
-                expected = "take" if baseline else "refill"
-                other = "refill" if baseline else "take"
-                require(measurements[expected]["factsReads"] > 0 and measurements[other]["factsReads"] == 0,
-                        "Facts reads did not occur exclusively in the expected phase")
-                require(all(value["failures"] == 0 for value in measurements.values()), "Matching call failed")
-                cases.append({"repetition": repetition, "completionSeconds": elapsed,
-                              "itemsPerSecond": 1360 / elapsed, "stages": measurements, "artifacts": run.artifacts})
-                print(f"Benchmark {result['path']} {repetition}/3: {elapsed:.3f}s, Facts reads={measurements[expected]['factsReads']}", flush=True)
+                    require(task["succeededCount"] == 1360 and task["failedCount"] == 0, "Benchmark outcomes differ")
+                    require(measurements["outside"]["factsReads"] == 0, "Unattributed Facts reads")
+                    expected = "take" if baseline else "refill"
+                    other = "refill" if baseline else "take"
+                    require(measurements[expected]["factsReads"] > 0 and measurements[other]["factsReads"] == 0,
+                            "Facts reads did not occur exclusively in the expected phase")
+                    require(all(value["failures"] == 0 for value in measurements.values()), "Matching call failed")
+                    cases.append({"repetition": repetition, "completionSeconds": elapsed,
+                                  "itemsPerSecond": 1360 / elapsed, "stages": measurements, "artifacts": run.artifacts})
+                    print(f"Benchmark {result['path']} {repetition}/3: {elapsed:.3f}s, Facts reads={measurements[expected]['factsReads']}", flush=True)
         result["passed"] = True
         result["medianCompletionSeconds"] = statistics.median(case["completionSeconds"] for case in cases)
         result["nonclaims"] = ["strict window quota", "production throughput", "uninstrumented latency", "immediate window recovery"]

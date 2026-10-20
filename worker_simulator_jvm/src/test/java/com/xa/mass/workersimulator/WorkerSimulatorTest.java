@@ -29,6 +29,19 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.InOrder;
 
 class WorkerSimulatorTest {
+    @Test
+    void quantityModeStartsOnlyTheSelectedRetainedReplica() throws Exception {
+        createLabRoot();
+        writeWorker(GROUP, "client-1", Map.of("slot", "1"));
+        writeWorker(GROUP, "client-2", Map.of("slot", "2"));
+        JavaWorkerManager manager = mock(JavaWorkerManager.class);
+        WorkerSimulator workers = workers(config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
+                (runtimeApiBaseUrl, preparedGroup) -> manager);
+        workers.start(WorkerSimulatorStartupPlan.parse("{\"workerCounts\":{\"scenario-group\":1}}"));
+        verify(manager).prepareAndStart(List.of("client-1.jsonl:1"));
+        verify(manager, never()).prepareAndStart(List.of("client-2.jsonl:1"));
+        workers.close();
+    }
 
     private static final URI RUNTIME_API =
             URI.create("http://127.0.0.1:18082");

@@ -1,0 +1,20 @@
+{
+  "android-demo-workers": {
+    "attributes": {"capability": "android-demo-capabilities"},
+    "eventCodes": [
+      "extension.worker.android.state.read",
+      "extension.worker.android.battery.read",
+      "extension.worker.android.string.digest",
+      "extension.worker.message.send",
+      "extension.worker.lab.delay",
+      "extension.worker.lab.fail"
+    ]
+  },
+  "local-java-workers": {
+    "attributes": {"capability": "local-java-example"},
+    "eventCodes": [
+      "extension.worker.string.md5",
+      "extension.worker.message.send"
+    ]
+  }
+}

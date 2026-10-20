@@ -205,11 +205,7 @@ def restart_server(run):
     log = run.output / "server.log"
     if log.exists():
         (run.output / "server-before-restart.log").write_bytes(log.read_bytes())
-    env = os.environ.copy()
-    env.update(XA_MASS_REDIS_SCOPE=run.scope, XA_MASS_REDIS_URL=run.redis_url,
-               XA_MASS_TASK_ARCHIVE_DIRECTORY=str(run.task_archives),
-               XA_MASS_APP_CHECKS_CONFIG_PATH=str(run.app_checks_config),
-               PREVIEW_SERVER_PORT=str(run.port), PREVIEW_ADAPTER_PORT=str(run.port + 3))
+    env = run.server_process_environment()
     run.launch("server", args, env)
     run.wait_for(lambda: http(run.url, "/actuator/health"), 60, "restarted Server")
     run.wait_for(run.connected, 60, "Worker reconnect after Server restart")
@@ -353,7 +349,7 @@ def dynamic_properties(run, inventory, old):
     args = list(process.args)
     process.terminate()
     process.wait(timeout=10)
-    run.launch("host", args, os.environ.copy())
+    run.launch("host", args, dict(run.environment))
     run.wait_for(run.host_ready, 60, "Host inventory restart")
     run.wait_for(run.connected, 30, "restarted Host routes")
     require({worker["replicaKey"]: worker["workerId"] for worker in all_pages(run.host, "/lab/v1/sms/inventory")} == before,

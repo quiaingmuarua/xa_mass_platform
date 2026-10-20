@@ -18,8 +18,8 @@ class AppCheckProofTest(unittest.TestCase):
         self.assertEqual({"requestId": "demo", "checkId": "uint32-prime"},
                          creation_input({"userId": "1000", "requestId": "demo", "checkId": "uint32-prime", "numbers": ["17"]}))
 
-    def read_seed(self):
-        path = Path(url2pathname(urlparse(os.environ["XA_MASS_APP_CHECKS_SEED"]).path))
+    def read_seed(self, overrides):
+        path = Path(url2pathname(urlparse(overrides["xa.mass.scenarios.app-checks.configuration.seed"]).path))
         return path, json.loads(path.read_text(encoding="utf-8"))
 
     def test_sequential_configuration_fixtures_do_not_rebind_ports_from_a_closed_run(self):
@@ -73,8 +73,8 @@ class AppCheckProofTest(unittest.TestCase):
 
     def test_execution_variants_are_seed_parameters_not_create_overrides(self):
         parameters = {"ranges": {"registered": [0,1000], "unregistered": [1000,1000], "failed": [1000,1000]}, "delayMs": [0,0]}
-        with regression_window_configuration(parameters_by_check={"app-a-registration": parameters}):
-            _, document = self.read_seed()
+        with regression_window_configuration(parameters_by_check={"app-a-registration": parameters}) as overrides:
+            _, document = self.read_seed(overrides)
             self.assertEqual(document["checks"]["app-a-registration"]["parameters"], parameters)
             self.assertNotIn("parameters", document["checks"]["app-b-registration"])
             for check in ("original-carrier", "md5-prefix"):
@@ -87,10 +87,10 @@ class AppCheckProofTest(unittest.TestCase):
         original = json.dumps({"some.setting": "retained"})
         with patch.dict(os.environ, {"SPRING_APPLICATION_JSON": original}):
             with self.assertRaises(RuntimeError):
-                with regression_window_configuration():
-                    actual = json.loads(os.environ["SPRING_APPLICATION_JSON"])
-                    self.assertEqual("retained", actual["some.setting"])
-                    path, configuration = self.read_seed()
+                with regression_window_configuration() as overrides:
+                    actual = overrides
+                    self.assertNotIn("some.setting", actual)
+                    path, configuration = self.read_seed(overrides)
                     self.assertNotIn("poolGroups", configuration)
                     self.assertEqual(1000, actual["xa.mass.worker-assembly.fixed-window.pools.assignment-window.max-count"])
                     raise RuntimeError("scenario failed")
@@ -98,8 +98,8 @@ class AppCheckProofTest(unittest.TestCase):
             self.assertFalse(path.exists())
         with patch.dict(os.environ):
             os.environ.pop("SPRING_APPLICATION_JSON", None)
-            with regression_window_configuration():
-                self.assertIn("XA_MASS_APP_CHECKS_SEED", os.environ)
+            with regression_window_configuration() as overrides:
+                self.assertIn("xa.mass.scenarios.app-checks.configuration.seed", overrides)
             self.assertNotIn("SPRING_APPLICATION_JSON", os.environ)
 
     def test_wire_hash_vectors_match_owner_examples(self):
@@ -118,10 +118,10 @@ class AppCheckProofTest(unittest.TestCase):
 
     def test_benchmark_pins_its_window_without_changing_functional_fixture_defaults(self):
         with patch.dict(os.environ, {"XA_MASS_APP_CHECKS_SEED": "file:///original.json"}):
-            with regression_window_configuration(window_millis=60000):
-                _, configuration = self.read_seed()
+            with regression_window_configuration(window_millis=60000) as overrides:
+                _, configuration = self.read_seed(overrides)
                 self.assertNotIn("poolGroups", configuration)
-                self.assertEqual(60000, json.loads(os.environ["SPRING_APPLICATION_JSON"])["xa.mass.worker-assembly.fixed-window.pools.assignment-window.window-millis"])
+                self.assertEqual(60000, overrides["xa.mass.worker-assembly.fixed-window.pools.assignment-window.window-millis"])
             self.assertEqual("file:///original.json", os.environ["XA_MASS_APP_CHECKS_SEED"])
 
     def test_task_fixture_uses_distinct_valid_numbers_and_no_worker_hint(self):

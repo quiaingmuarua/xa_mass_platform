@@ -70,7 +70,7 @@ class PreviewArchiveTest(unittest.TestCase):
         path = self.directory / "preview.zip"
         root = "xa-mass-scenario-preview-0.1.0-preview/"
         files = {name: b"launcher" for name in (
-            "run_preview.py", "requirements.txt", "README.md", "config/application-preview.yaml")}
+            "run_preview.py", "local_runtime.py", "requirements.txt", "README.md", "config/application-preview.yaml")}
         files["config/application-preview.yaml"] = (b"different" if different_external_configuration
                 else CONFIGURATIONS["application-preview.yaml"])
         files["worker-simulator/lib/xa-mass-worker-simulator-test.jar"] = b"host"

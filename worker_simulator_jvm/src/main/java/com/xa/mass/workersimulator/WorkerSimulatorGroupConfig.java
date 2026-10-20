@@ -60,7 +60,9 @@ record WorkerSimulatorGroupConfig(
     }
 
     Map<String, String> generateProperties(long seed, int ordinal) {
-        if (ordinal < 1 || ordinal > count) throw new IllegalArgumentException("ordinal outside Group count");
+        if (ordinal < 1 || ordinal > WorkerSimulatorLab.MAX_WORKERS_PER_GROUP) {
+            throw new IllegalArgumentException("ordinal outside Group capacity");
+        }
         Map<String, String> properties = new LinkedHashMap<>();
         propertiesTemplate.forEach((key, value) -> properties.put(key, evaluate(seed, key, value, ordinal)));
         return Collections.unmodifiableMap(properties);

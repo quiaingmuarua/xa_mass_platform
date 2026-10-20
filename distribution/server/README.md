@@ -24,54 +24,71 @@ another maintained YAML default.
 
 ## Source launch
 
-From the checkout root, build and start the complete business Preview:
+`run_local_runtime.py` owns one local Server/Adapter and its optional Java and
+Android Workers. Install `distribution/server/requirements-preview.txt` once.
+The default `preview` keeps the five Batch Checks capabilities, SMS and Messages,
+60 Demo Workers and 20 Workers in each App Group. `consumer` starts the clean
+Server/Adapter; `default` starts the plain platform. Neither implicitly selects
+business resources or starts Workers.
 
-```text
-python run_local_runtime.py
-```
-
-The default is `preview` and delegates to the sole Preview launcher. It supplies
-three business Scenarios and the explicit `default` raw-task Project.
-`--profile default` builds and starts only the plain Server; no Worker Host or
-business storage is opened. The retired platform Lab profile has no launch alias.
-
-`python run_local_runtime.py --profile consumer` builds the same frontend and
-starts only Server with its configured Adapter; it does not build or start Host.
-Consumer alone also accepts `--runtime-config <Runtime YAML>`, `--groups <Group JSON>`
-and `--server-port <port>`. Files resolve against the invoking working directory
-before the build; only Group JSON syntax/root-object checks happen in the launcher.
-Server validates resources. HTTP port precedence is the explicit argument, then
-`SERVER_PORT`, then 18182; command and readiness use that same value, overriding
-`server.port` in the external YAML. No Project or resource defaults are inferred.
-Unknown profiles are rejected. For business Preview, the root command delegates
-in-process to the [sole Preview launcher](PREVIEW.md#source-launch):
-
-```text
-python -m pip install -r distribution/server/requirements-preview.txt
+```powershell
 python run_local_runtime.py --profile preview
+python run_local_runtime.py --profile consumer --runtime-config xa-android/config/messages-runtime.yaml --groups xa-android/config/worker-groups.json --android-count 1
+python run_local_runtime.py --profile consumer --runtime-config distribution/server/examples/mixed-runtime.yaml --groups distribution/server/examples/mixed-groups.json --java-config distribution/server/examples/mixed-java-workers.json --java-count local-java-workers=5 --android-count 3 --work-dir .runtime/mixed
 ```
 
-For the local Android Messages demo, use:
+Java and Android are independent options on the same environment. Counts mean
+Worker instances, not JVM threads or emulator counts. Android uses the existing
+Lab1/2/3 APKs on one connected device; select `--android-device <serial>` if more
+than one device is available. The source entry builds the checked Runtime/SDK ZIP
+pair and independent consumer. An unchanged source tree/commit and matching ZIP
+bytes reuse the candidate pair, avoiding timestamp-only Maven republication.
+Launcher builds use Gradle's single-use mode so they leave no new build daemon.
+Android runs use the verified Runtime ZIP itself; the existing consumer remains
+the sole archive-format validator. It verifies cached APKs by build inputs and bytes, installs
+only selected changed APKs and starts them. It creates no emulator, clears no App
+data, changes no freezer setting and takes over no already running App.
 
-```text
-python run_local_runtime.py --example android-messages
-```
+Common parameters are `--server-port`, `--adapter-port`, `--redis-url`,
+`--redis-scope`, `--work-dir`, `--runtime-config`, `--groups`, `--java-config`,
+repeatable `--java-count GROUP=N`, `--no-java-workers`, `--android-count` and
+`--android-device`. Default HTTP/Adapter pairs remain Preview 18500/18503 and
+Consumer 18182/18183; the plain platform uses HTTP 18082 without a default Adapter.
+Java Host details, properties/templates, events and seed stay in its JSON.
+There are no business example selectors or additional profiles.
 
-This selects the existing `consumer` profile and the canonical
-`xa-android/config/messages-runtime.yaml` / `worker-groups.json` files, resolved
-from the checkout rather than the working directory. Defaults are HTTP 18082,
-Adapter 18083, Redis scope `profile_android_messages_local`, and archives in
-`<checkout>/data/android-messages/task-archives`. Redis retains its normal
-`XA_MASS_REDIS_URL` setting/default. Explicit file/HTTP arguments override example
-defaults; `SERVER_PORT`, `XA_MASS_ADAPTER_PORT`, `XA_MASS_REDIS_SCOPE` and
-`XA_MASS_TASK_ARCHIVE_DIRECTORY` remain usable. The launcher does not create a new
-Spring profile, copy resource configuration, start an emulator or install an APK.
-Start the Android App separately with the matching Runtime address and ADB mappings.
-Plain `--profile consumer` continues to infer no business configuration.
+Precedence is explicit CLI, then the selected file, then profile defaults.
+Unset CLI options do not overwrite file values. Local coordinates must be
+literal values; the local YAML must not hide them behind imports or profile
+switches. Runtime YAML still belongs to Spring for resource and Scenario
+validation; the launcher reads only process coordinates. Files are captured
+before launch, CLI paths become absolute, Java relative paths resolve against
+the Java file, and external business storage paths/seed file URIs are absolute.
+An explicit work directory supplies `data/scenario-workers`, default scenario
+configuration and archives; explicitly configured business file paths remain
+owned by that configuration. `--groups` supplies a complete registration object,
+not a merge with demonstration resources.
 
-The [Simulator entry](../../worker_simulator_jvm/README.md#one-configuration-one-entry)
-also supports standalone Host development; [Boot Run](../../server_boot_jvm/README.md#run)
-starts only the Server composition.
+The Server command, readiness, Java Runtime URL, APK Runtime URL and ADB mappings
+use one resolved coordinate set. Resource initialization and dependency validation
+remain inside Server before Adapter startup. Choosing a Worker never enables a
+Pool or registers a capability. The startup gate proves Worker identity and
+connection, not qualification, installed business Handlers or successful execution.
+
+The local entry ignores inherited business variables, including `SERVER_PORT`,
+`PREVIEW_*`, `XA_MASS_*`, Spring environment overrides and JVM injection options.
+OS/toolchain discovery such as PATH, JAVA_HOME and Android SDK locations remains.
+`XA_MASS_LOCAL_REDIS_URL` is an explicit parent-to-child secret transport set by
+the launcher, never an input read from the shell. Frontend builds explicitly use
+API mode and do not write `.env.local`; distribution output is staged separately
+from developer `frontend/dist` and each running instance gets private artifacts.
+
+Exit stops owned Workers before Server and restores touched ADB mappings. APKs,
+configuration and inventory remain. Explicit scopes remain; only Preview's own
+fresh `test_products_*` scope and private archives are removed. Cleanup failure
+identifies remaining resources. There is no automatic restart or task submission.
+The [Preview delivery](PREVIEW.md) and portable [Android consumer](../../xa-android/README.md)
+retain their artifact-specific entrypoints and use these existing owner boundaries.
 
 ## External consumer workbench deployment
 

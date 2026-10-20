@@ -23,11 +23,11 @@ the versions declared in `frontend/package.json`; neither tool present fails
 before dependency installation. An install/build failure is reported without
 retrying through another package manager.
 Run requires external Java 21, Python 3.11+ and Redis 7. It does not start or stop Redis.
-`XA_MASS_REDIS_URL` defaults to `redis://127.0.0.1:6379/15`.
-
-The root command builds once through the Preview task graph and calls this same
-launcher in-process. Its `--count`, `--app-count`, `--seed`, `--port` and `--sandbox-root` options
-are Preview-only; the default Lab and AgentForge launch behavior is unchanged.
+Redis defaults to `redis://127.0.0.1:6379/15`; override it with `--redis-url`.
+The root and packaged entries share local argument resolution and process lifecycle.
+Use `--java-count GROUP=N`, `--server-port`, `--adapter-port`, `--work-dir`, or
+`--java-config` for an explicit environment. No business environment variables
+or retired population CLI aliases are read. See [source launch](README.md#source-launch).
 
 Open the Console at `http://127.0.0.1:18500` and the device Host at
 `http://127.0.0.1:18504/lab`. Boot owns the
@@ -48,31 +48,27 @@ caller-free. These identities do not authenticate users.
 
 ## Inventory and process lifecycle
 
-`--count 100 --seed 712` initializes a reproducible random demo-sim population:
-defaults are 60 demo Workers and
-seed 0. Count accepts 1..10,000; seed is a signed 64-bit integer. Country choices
-have equal weight, not exact quotas or guaranteed small-sample coverage.
-The previous country-count argument is removed rather than reinterpreted.
-`--app-count` defaults to 20 per App Group (100 total Workers with other defaults).
-App A/B retain simulated registration and Messages. Demo installs the original-carrier,
-uint32-prime and existing MD5 events and explicitly enables Any alongside its existing Pools.
-Batch Checks groups five capabilities by phone/text seeds: App A/B registration, one carrier
-check, uint32 primality and MD5-prefix demonstrations. Generic checks bind to demo-sim;
-only registration uses assignment-window observations. Counts and CLI parameters are unchanged.
-The independent number capability examples and platform proofs remain separate.
-The app-count parameter accepts 0..15000, the existing Host Group bound. Zero removes both App Groups
-from this run's Host configuration, even if those inventory directories already
-exist. It neither deletes inventory nor removes the profile's Groups or APIs.
-`--count` continues to control only demo-sim. Readiness observes all configured inventory
-through the generic Lab Worker endpoint and verifies their actual Adapter routes.
-This gate waits for Host RUNNING and connected routes, not Properties publication,
-Matching eligibility or successful business execution.
-Inventory persists at `<preview-root>/data/scenario-workers` (the source default
-is `distribution/server/data/scenario-workers`); `--sandbox-root`
-selects another root with that suffix. Existing Group directories, including empty
-ones, are never reseeded or adjusted to count/seed. Readiness uses actual inventory.
-To change the generated population, choose a fresh inventory root or explicitly
-rebuild the Group through Simulator configuration; changing seed alone preserves edits.
+The default Java configuration starts 60 Demo Workers and 20 in each App Group.
+App A/B retain simulated registration and Messages. Demo installs original-carrier,
+uint32-prime and MD5 events alongside its other capabilities. Only registration
+uses assignment-window observation. No Worker selection implicitly enables resources.
+
+The public local/ZIP entry turns configured counts into an explicit quantity
+startup plan. It preserves existing inventory and asks the Simulator Owner to
+add validated records only when needed; lowering a count starts a subset without
+deleting data. A zero count starts none. Coordinates and retained Properties do
+not change. Java controls still belong to one Host process.
+
+The Python `Preview` composition used by Scenario proofs retains their explicit
+seeded inventory and coordinate-based fixture behavior; it shares `LocalRun` for
+staging, Server/Host launch, readiness and cleanup. Proof workload counts and
+fault timing are not reinterpreted as an inventory migration.
+
+Default inventory remains `<preview-root>/data/scenario-workers`. An explicit
+`--work-dir` supplies `<work-dir>/data/scenario-workers`; detailed Java configuration
+may supply its own file-relative inventory when no work directory is selected.
+Readiness checks selected RUNNING identities and actual Adapter routes, not
+Properties publication, Matching eligibility or business success.
 Each acceptance run uses an isolated inventory root and reuses it for Host restarts.
 The launcher selects a complete Simulator example, writes the final Runtime URL,
 absolute inventory path, port, events, count, seed and template into one
@@ -80,8 +76,8 @@ absolute inventory path, port, events, count, seed and template into one
 The launcher never evaluates templates or corrects sampled country counts.
 App Checks configuration persists separately at `<inventory-parent>/app-checks/configuration.json`,
 alongside `data/scenario-workers`. The launcher passes that file as
-`XA_MASS_APP_CHECKS_CONFIG_PATH`; it never removes the configuration on shutdown.
-`XA_MASS_APP_CHECKS_SEED` may point to an explicit seed resource for a fresh environment;
+the explicit Scenario configuration-path argument; it never removes the configuration on shutdown.
+An external Runtime YAML may specify an absolute seed file URI for a fresh environment;
 otherwise the module's packaged Preview seed is used. Seeds initialize only a missing
 configuration file. Saved edits require a manual Server restart. Host window length changes require a new Redis scope. Tasks and execution state remain in Redis.
 The scenario holds `configuration.json.lock` while running and publishes complete edits
@@ -147,7 +143,7 @@ an independent test_products scope. For source and ZIP alike, choose an unused
 port and a new sandbox root, for example from the Preview directory:
 
 ```powershell
-python run_preview.py --port 18640 --sandbox-root ./environments/messages-v3/data/scenario-workers
+python run_preview.py --server-port 18640 --adapter-port 18643 --work-dir ./environments/messages-v3
 ```
 
 Use a new inventory path ending in `data/scenario-workers`. The three Catalog

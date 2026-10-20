@@ -426,7 +426,7 @@ jobs:
           :android-capability-http:assembleDebug
           :integrations:android-worker-proof:test
       - name: Verify consumer archive tooling
-        run: python3 xa-android/tests/test_run_consumer.py -v
+        run: python3 -m unittest discover -s xa-android/tests -p 'test_*.py' -v
       - name: Summarize Android proof
         if: always()
         run: >-
