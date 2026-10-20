@@ -123,6 +123,7 @@ class ProofRunner:
         self.freezer_original: tuple[str, str] | None = None
         self.consumption = None
         self.apk_provenance = None
+        self.ui_touched = False
 
     def adb(self, *args: str, timeout: float = 30) -> str:
         result = subprocess.run(["adb", "-s", self.options.android_serial, *args],
@@ -340,6 +341,7 @@ class ProofRunner:
 
     def tap_ui(self, *, timeout: float = 25, **selector) -> None:
         deadline = time.monotonic() + timeout
+        xml = None
         while time.monotonic() < deadline:
             path = "/sdcard/xa-messages-proof-ui.xml"
             try:
@@ -352,9 +354,16 @@ class ProofRunner:
                 self.adb("shell", "input", "tap", str(target[0]), str(target[1]))
                 return
             time.sleep(0.25)
+        if xml is not None:
+            controls = [{key: node.get(key) for key in ("resource-id", "class", "enabled", "bounds")}
+                        for node in ElementTree.fromstring(xml).iter("node") if node.get("resource-id")]
+            # Keep actionable diagnostics without recording message body, reply text or the hierarchy.
+            (self.logs / "android-ui-controls.json").write_text(json.dumps(controls[:200], indent=2), encoding="utf-8")
         raise TimeoutError("Android Messages control was not available: " + str(selector))
 
     def open_message(self, message_id: str) -> None:
+        self.ui_touched = True
+        self.adb("shell", "cmd", "statusbar", "collapse")
         self.start_app(APPLICATIONS[0])
         self.tap_ui(resource=":id/messagesButton")
         self.tap_ui(description="message:" + message_id)
@@ -366,13 +375,14 @@ class ProofRunner:
         self.tap_ui(resource=":id/messageReplyButton")
 
     def reply_in_notification(self) -> None:
+        self.ui_touched = True
         self.adb("shell", "cmd", "statusbar", "expand-notifications")
         try:
             self.tap_ui(text="回复", notification=True, timeout=3)
         except TimeoutError:
             self.tap_ui(resource=":id/expand_button", notification=True)
             self.tap_ui(text="回复", notification=True)
-        self.tap_ui(resource=":id/remote_input")
+        self.tap_ui(resource=":id/remote_input_text")
         self.adb("shell", "input", "text", "notification-reply")
         self.tap_ui(resource=":id/remote_input_send")
         self.adb("shell", "cmd", "statusbar", "collapse")
@@ -511,6 +521,8 @@ class ProofRunner:
         actions.append(self.stop_server)
         for package in sorted(self.touched_apps):
             actions.append(lambda package=package: self.stop_app(package))
+        if self.ui_touched:
+            actions.append(lambda: self.adb("shell", "cmd", "statusbar", "collapse"))
         for direction, port in reversed(self.mappings):
             actions.append(lambda direction=direction, port=port: self.adb(direction, "--remove", f"tcp:{port}"))
         for scope in sorted(self.scopes):

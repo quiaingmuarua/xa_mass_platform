@@ -74,7 +74,8 @@ final class JsonHttpClient {
                 .uri(endpoint(path))
                 .timeout(requestTimeout);
         if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")
-                || path.startsWith("/api/v1/app-checks") || path.startsWith("/api/v1/users")) taskCallerHeaders.forEach(request::header);
+                || path.startsWith("/api/v1/app-checks") || path.startsWith("/api/v1/messages")
+                || path.startsWith("/api/v1/users")) taskCallerHeaders.forEach(request::header);
         if (body == null) {
             request.method(method, HttpRequest.BodyPublishers.noBody());
         } else {

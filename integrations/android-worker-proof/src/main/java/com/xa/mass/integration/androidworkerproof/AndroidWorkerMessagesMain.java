@@ -149,9 +149,9 @@ public final class AndroidWorkerMessagesMain {
         require(id.equals(request("POST", "/api/v1/messages/tasks", input).get("taskId")), "create-reuse");
         String content = String.join("\n", recipients(count));
         var first = http.sendText("POST", "/api/v1/messages/tasks/" + id + "/recipients:import", content, "text/plain", "import");
-        require(first.statusCode() == 200 && number(Jsons.parseObject(first.body()).get("addedCount")) == count, "import-count");
+        require(first.statusCode() == 200 && number(Jsons.parseObject(first.body()).get("confirmedAddedCount")) == count, "import-count");
         var repeated = http.sendText("POST", "/api/v1/messages/tasks/" + id + "/recipients:import", content, "text/plain", "reimport");
-        require(repeated.statusCode() == 200 && number(Jsons.parseObject(repeated.body()).get("addedCount")) == 0
+        require(repeated.statusCode() == 200 && number(Jsons.parseObject(repeated.body()).get("confirmedAddedCount")) == 0
                 && number(Jsons.parseObject(repeated.body()).get("existingCount")) == count, "duplicate-import");
         var descriptor = object(taskView(id).get("task"));
         require(GROUP.equals(descriptor.get("workerGroupId")) && "CLOSE_WHEN_IDLE".equals(descriptor.get("idleDisposition")), "finite-group");
@@ -268,7 +268,10 @@ public final class AndroidWorkerMessagesMain {
     @SuppressWarnings("unchecked") private static Map<String, Object> object(Object value) { return (Map<String, Object>) value; }
     @SuppressWarnings("unchecked") private static List<Map<String, Object>> rows(Object value) { return (List<Map<String, Object>>) value; }
     @SuppressWarnings("unchecked") private static List<String> strings(Object value) { return (List<String>) value; }
-    private static long number(Object value) { return ((Number) value).longValue(); }
+    private static long number(Object value) {
+        require(value instanceof Number, "numeric-response-contract");
+        return ((Number) value).longValue();
+    }
     private static String task(String id) { return "/api/v1/tasks/" + id; }
     private static void require(boolean condition, String name) {
         if (!condition) throw new ProofFailure("messages." + name, "Android Messages assertion failed: " + name);
