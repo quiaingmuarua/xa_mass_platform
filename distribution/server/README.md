@@ -51,6 +51,24 @@ python -m pip install -r distribution/server/requirements-preview.txt
 python run_local_runtime.py --profile preview
 ```
 
+For the local Android Messages demo, use:
+
+```text
+python run_local_runtime.py --example android-messages
+```
+
+This selects the existing `consumer` profile and the canonical
+`xa-android/config/messages-runtime.yaml` / `worker-groups.json` files, resolved
+from the checkout rather than the working directory. Defaults are HTTP 18082,
+Adapter 18083, Redis scope `profile_android_messages_local`, and archives in
+`<checkout>/data/android-messages/task-archives`. Redis retains its normal
+`XA_MASS_REDIS_URL` setting/default. Explicit file/HTTP arguments override example
+defaults; `SERVER_PORT`, `XA_MASS_ADAPTER_PORT`, `XA_MASS_REDIS_SCOPE` and
+`XA_MASS_TASK_ARCHIVE_DIRECTORY` remain usable. The launcher does not create a new
+Spring profile, copy resource configuration, start an emulator or install an APK.
+Start the Android App separately with the matching Runtime address and ADB mappings.
+Plain `--profile consumer` continues to infer no business configuration.
+
 The [Simulator entry](../../worker_simulator_jvm/README.md#one-configuration-one-entry)
 also supports standalone Host development; [Boot Run](../../server_boot_jvm/README.md#run)
 starts only the Server composition.

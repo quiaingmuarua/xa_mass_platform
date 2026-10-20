@@ -109,6 +109,21 @@ the 123-seed Any/restart proof plus a separate three-seed window feedback phase.
 
 ## Messages through the Android local channel
 
+For local source development, start Runtime from the checkout root with:
+
+```powershell
+python run_local_runtime.py --example android-messages
+```
+
+This uses the two existing Messages/Group files, HTTP 18082, Adapter 18083,
+scope `profile_android_messages_local` and `data/android-messages/task-archives`.
+No environment variables or file arguments are required for these defaults.
+Existing arguments/environment variables can override them; see the
+[local launcher](../distribution/server/README.md#source-launch). It starts only
+Runtime. Use the installed Android Demo built with
+`-PxaMassRuntimeApiBaseUrl=http://127.0.0.1:18082`, map device ports 18082/18083,
+and open the App. Redis and the emulator are not created or reset by this command.
+
 For Messages, use the same verified consumer arguments with
 `--runtime-config ./config/messages-runtime.yaml --groups ./config/worker-groups.json`
 and a fresh scope. The [Messages deployment guide](../distribution/server/src/main/dist/examples/messages/README.md)

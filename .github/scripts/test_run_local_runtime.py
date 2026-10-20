@@ -22,6 +22,71 @@ SPEC.loader.exec_module(launcher)
 
 class LocalRuntimeLauncherTest(unittest.TestCase):
 
+    def test_android_messages_example_selects_existing_inputs_from_any_working_directory(self):
+        previous = Path.cwd()
+        with tempfile.TemporaryDirectory(prefix="Android 本地 ") as directory:
+            try:
+                os.chdir(directory)
+                args = launcher.parse_arguments(["--example", "android-messages"])
+                command, port = launcher.consumer_arguments(args, {})
+            finally:
+                os.chdir(previous)
+        self.assertEqual("consumer", args.profile)
+        self.assertEqual(18082, port)
+        self.assertIn("--spring.config.additional-location="
+                      + (launcher.ROOT / "xa-android/config/messages-runtime.yaml").as_uri(), command)
+        group_arg = next(value.split("=", 1)[1] for value in command
+                         if value.startswith("--xa.mass.worker-assembly.group-config-json="))
+        expected = json.loads((launcher.ROOT / "xa-android/config/worker-groups.json").read_text(encoding="utf-8"))
+        self.assertEqual(expected, json.loads(group_arg))
+        self.assertFalse(any("project-assembly" in value or "worker-matching" in value for value in command))
+
+    def test_example_defaults_are_local_and_explicit_environment_values_win(self):
+        for environment in ({}, {"XA_MASS_ADAPTER_PORT": "19183", "XA_MASS_REDIS_SCOPE": "custom_scope",
+                                 "XA_MASS_TASK_ARCHIVE_DIRECTORY": "custom/archive", "SERVER_PORT": "19182"}):
+            original = dict(environment)
+            server = MagicMock()
+            with self.subTest(environment=environment), patch.object(launcher, "build_frontend"), \
+                    patch.object(launcher, "build_runtime_processes", return_value=Path("server.jar")) as build, \
+                    patch.object(launcher, "start_server", return_value=server) as start, \
+                    patch.object(launcher, "wait_for_server") as ready, \
+                    patch.object(launcher, "supervise", return_value=0), patch.object(launcher, "stop_process") as stop:
+                self.assertEqual(0, launcher.main(["--example", "android-messages"], environ=environment))
+            self.assertEqual(original, environment)
+            build.assert_called_once_with("consumer")
+            values = start.call_args.args[2]
+            self.assertEqual(environment.get("XA_MASS_ADAPTER_PORT", "18083"), values["XA_MASS_ADAPTER_PORT"])
+            self.assertEqual(environment.get("XA_MASS_REDIS_SCOPE", "profile_android_messages_local"), values["XA_MASS_REDIS_SCOPE"])
+            self.assertEqual(environment.get("XA_MASS_TASK_ARCHIVE_DIRECTORY",
+                             str(launcher.ROOT / "data/android-messages/task-archives")), values["XA_MASS_TASK_ARCHIVE_DIRECTORY"])
+            ready.assert_called_once_with(server, "http://127.0.0.1:" + environment.get("SERVER_PORT", "18082"))
+            stop.assert_called_once_with(server, "XA Mass Server")
+
+    def test_example_explicit_files_and_port_override_defaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "custom.yaml"; config.write_text("server.port: 19999")
+            groups = root / "custom.json"; groups.write_text('{"custom-group":{}}')
+            args = launcher.parse_arguments(["--example", "android-messages", "--runtime-config", str(config),
+                                            "--groups", str(groups), "--server-port", "19182"])
+            command, port = launcher.consumer_arguments(args, {"SERVER_PORT": "invalid"})
+            self.assertEqual(19182, port)
+            self.assertIn("--spring.config.additional-location=" + config.as_uri(), command)
+            self.assertIn('--xa.mass.worker-assembly.group-config-json={"custom-group":{}}', command)
+            config.unlink()
+            with self.assertRaisesRegex(ValueError, "does not exist"):
+                launcher.consumer_arguments(args, {})
+
+    def test_example_rejects_incompatible_profile_and_ports_before_build(self):
+        for profile in ("preview", "default"):
+            with self.subTest(profile=profile), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                launcher.parse_arguments(["--profile", profile, "--example", "android-messages"])
+        for environment in ({"XA_MASS_ADAPTER_PORT": "invalid"}, {"XA_MASS_ADAPTER_PORT": "18082"}):
+            with self.subTest(environment=environment), redirect_stderr(io.StringIO()), \
+                    patch.object(launcher, "build_frontend") as build:
+                self.assertEqual(1, launcher.main(["--example", "android-messages"], environ=environment))
+            build.assert_not_called()
+
     def test_consumer_options_reject_other_profiles_before_build(self):
         for profile in ("default", "preview"):
             for option, value in (("runtime-config", "runtime.yaml"), ("groups", "groups.json"), ("server-port", "19182")):
