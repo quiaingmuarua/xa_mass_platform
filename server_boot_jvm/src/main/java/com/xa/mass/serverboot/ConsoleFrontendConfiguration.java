@@ -9,6 +9,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class ConsoleFrontendConfiguration implements WebMvcConfigurer {
     @Override
     public void addViewControllers(ViewControllerRegistry registry) {
+        for (String path : new String[]{"/docs", "/docs/"}) {
+            registry.addViewController(path).setViewName("forward:/docs/index.html");
+        }
         for (String path : new String[]{"/sms", "/sms/",
                 "/sms/metrics", "/sms/metrics/", "/messages", "/messages/",
                 "/messages/tasks/{taskId}", "/messages/tasks/{taskId}/",

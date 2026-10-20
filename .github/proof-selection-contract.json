@@ -2,6 +2,26 @@
   "schemaVersion": 1,
   "cases": [
     {
+      "path": "doc/guide/index.md",
+      "lanes": [],
+      "reason": "Guide prose is built and link-checked by the always-running Docs Contract."
+    },
+    {
+      "path": "frontend/docs/site.mjs",
+      "lanes": ["frontend", "runtime_distribution", "product_coexistence"],
+      "reason": "The published page mapping feeds frontend, Runtime and Preview documentation delivery."
+    },
+    {
+      "path": "distribution/docs_http_proof.py",
+      "lanes": ["runtime_distribution", "product_coexistence"],
+      "reason": "A finite HTTP witness checks the supplied docs pages and assets in Runtime and Preview delivery."
+    },
+    {
+      "path": ".github/scripts/test_run_runtime_distribution_proof.py",
+      "lanes": ["runtime_distribution"],
+      "reason": "Runtime and documentation HTTP proof regression tests belong to Distribution."
+    },
+    {
       "path": ".github/scripts/run_android_emulator_worker.py",
       "lanes": [
         "android_emulator"

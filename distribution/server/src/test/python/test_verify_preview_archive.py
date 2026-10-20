@@ -38,6 +38,15 @@ class PreviewArchiveTest(unittest.TestCase):
         (self.frontend / "reference").mkdir()
         (self.frontend / "reference/platform-diagnostic-codes.json").write_text(
             json.dumps({"gitCommit": "a" * 40}), encoding="utf-8")
+        for page in ("docs/index.html", "docs/doc/guide/first-task.html"):
+            target = self.frontend / page
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text('<meta name="xa-mass-docs-commit" content="' + "a" * 40 + '">'
+                              '<link rel="stylesheet" href="/docs/assets/site.css">'
+                              '<script type="module" src="/docs/assets/site.js"></script>', encoding="utf-8")
+        (self.frontend / "docs/assets").mkdir()
+        (self.frontend / "docs/assets/site.css").write_text("body{}", encoding="utf-8")
+        (self.frontend / "docs/assets/site.js").write_text("export {};", encoding="utf-8")
 
     def archive(self, *, embedded=False, extra=None, missing_configuration=None,
                 dependency_configuration=None, scenario_configuration=None,
@@ -148,6 +157,23 @@ class PreviewArchiveTest(unittest.TestCase):
         (self.frontend / "static/js/SmsPage-one.js").write_text("changed", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "current unified frontend"):
             verify(archive, self.frontend)
+
+    def test_rejects_docs_missing_from_both_source_and_archive(self):
+        for page in ("docs/index.html", "docs/doc/guide/first-task.html", "docs/assets/site.js"):
+            target = self.frontend / page
+            original = target.read_bytes()
+            try:
+                target.unlink()
+                with self.subTest(missing=page), self.assertRaisesRegex(ValueError, "Missing documentation"):
+                    verify(self.archive(), self.frontend)
+            finally:
+                target.write_bytes(original)
+
+    def test_rejects_docs_with_a_different_build_identity(self):
+        page = self.frontend / "docs/doc/guide/first-task.html"
+        page.write_text(page.read_text(encoding="utf-8").replace("a" * 40, "b" * 40), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Documentation build identity mismatch"):
+            verify(self.archive(), self.frontend)
 
     def test_rejects_embedded_independent_frontend(self):
         with self.assertRaisesRegex(ValueError, "separate frontend"):

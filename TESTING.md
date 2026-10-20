@@ -19,12 +19,13 @@ span existing owners and proof lanes.
 For a mechanism walkthrough, use the
 [mainline code/proof pointers](doc/kernel/scheduling-overview.md#production-and-proof-pointers)
 before selecting a lane. The pointers identify representative assertions, not
-fresh run evidence. Docs Contract checks entrypoints, links and selected retired
-terms; semantic agreement still requires comparing prose with its Owner/caller
-and assertions.
+fresh run evidence. Docs Contract checks entrypoints, links, selected retired
+terms and the documentation-site build; semantic agreement still requires
+comparing prose with its Owner/caller and assertions. Site navigation and rendering
+do not replace any Owner, Redis or runtime proof.
 
 Deployment configuration proof lives in `server_boot_jvm`: the default,
-AgentForge and preview classpath configurations plus the external platform proof fixture, explicit overrides and deployment
+consumer and preview classpath configurations plus the external platform proof fixture, explicit overrides and deployment
 overlays. `server_jvm` tests and OpenAPI export use independent test resources;
 only named real-infrastructure tests enable Redis and Pacers. Archive verification
 checks the three host configurations, absence of application configuration in
@@ -211,7 +212,7 @@ these correctness claims and add no heavy ordinary CI lane.
 | Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
 | Runtime Distribution | Real-Redis tests of the supplied candidate Runtime ZIP; SDK consumption belongs to APK Assembly | Redis, Java |
 | Scenario Coexistence | `python integrations/scenario-coexistence/run_proof.py --build --scenario functional`, then `--scenario pool-selection`, `--scenario lifecycle`; fresh ZIP functional and pool-selection; explicit `--scenario messages-send-100k` verifies 105000 sends across 51 Tasks without receipts | Redis 7, Java 21, Python, Node for build |
-| Docs Contract | `python .github/scripts/check_docs.py` | None |
+| Docs Contract | `python .github/scripts/check_docs.py`, then `pnpm --dir frontend docs:build` and `pnpm --dir frontend docs:check` | Python, Node, pnpm |
 
 The exact JVM module build list and Android assembly commands are maintained in
 [Proof CI](.github/workflows/proof-ci.yml), alongside their environment setup.
@@ -221,14 +222,24 @@ This invokes its actual installed entry with one configuration from a different
 working directory and verifies generation and inventory reuse without a Server.
 It does not replace the independently observed Worker Correctness or product proofs.
 
-For documentation checks, run both the checker tests and the repository scan:
+For documentation checks, run the checker tests, repository scan and static-site
+verification. The site uses the existing frontend dependency lock:
 
 ```powershell
 python .github/scripts/test_check_docs.py
 python .github/scripts/check_docs.py
 python .github/scripts/test_check_proof_selection.py
 python .github/scripts/check_proof_selection.py
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend docs:build
+pnpm --dir frontend docs:check
 ```
+
+`docs:build` compiles and validates the VitePress production output;
+`docs:check` runs documentation tests and checks that existing output. Together
+they verify the documentation artifact, not Runtime startup, Worker execution or the truth of a prose claim.
+Read the affected implementation and proof assertions when changing mechanism
+descriptions; use their existing lanes when behavior also changes.
 
 Building the unified console or either UI archive requires Node 22 and Corepack.
 The Server JAR no longer builds or embeds SMS frontend assets. Composition proof

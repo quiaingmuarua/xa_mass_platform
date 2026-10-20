@@ -2,10 +2,18 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pnpm run build:demo",
   "outputDirectory": "dist-demo",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./",
+  "ignoreCommand": "node docs/ignored-build.mjs",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/docs",
+      "destination": "/docs/index.html"
+    },
+    {
+      "source": "/docs/",
+      "destination": "/docs/index.html"
+    },
+    {
+      "source": "/((?!docs(?:/|$)).*)",
       "destination": "/index.html"
     }
   ]

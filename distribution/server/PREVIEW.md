@@ -2,7 +2,7 @@
 
 Status: current shared scenario launch and archive owner.
 
-This finite preview starts one Server and one independent Worker Simulator.
+By default this finite preview starts one Server and one independent Worker Simulator.
 [Boot](../../server_boot_jvm/README.md#platform-and-preview) owns the fixed scenario
 topology and profile; this document owns source/ZIP launch and delivery. The
 [production Runtime ZIP](README.md#runtime-archive) excludes Host.
@@ -33,6 +33,8 @@ Open the Console at `http://127.0.0.1:18500` and the device Host at
 `http://127.0.0.1:18504/lab`. Boot owns the
 [page mappings](../../server_boot_jvm/README.md#pages-and-configuration);
 the [Frontend Owner](../../frontend/README.md) describes page operations.
+The documentation site is served by the same Server at
+`http://127.0.0.1:18500/docs/`.
 
 The Console starts at development login, with one built-in admin and two operators
 for Messages and App Checks workflow verification. Server owns a JSON-initialized,
@@ -74,9 +76,12 @@ The launcher selects a complete Simulator example, writes the final Runtime URL,
 absolute inventory path, port, events, count, seed and template into one
 `worker-simulator.json` in its run directory, and passes only `--config` to Main.
 The launcher never evaluates templates or corrects sampled country counts.
-App Checks configuration persists separately at `<inventory-parent>/app-checks/configuration.json`,
-alongside `data/scenario-workers`. The launcher passes that file as
-the explicit Scenario configuration-path argument; it never removes the configuration on shutdown.
+App Checks configuration defaults to `<work-dir>/data/app-checks/configuration.json`;
+without `--work-dir`, the Preview directory is the work directory. An explicit
+Java configuration can place inventory elsewhere without moving this Scenario file.
+The launcher passes the default file as the Scenario configuration-path argument
+unless external Runtime YAML supplies its own absolute path; it never removes
+the configuration on shutdown.
 An external Runtime YAML may specify an absolute seed file URI for a fresh environment;
 otherwise the module's packaged Preview seed is used. Seeds initialize only a missing
 configuration file. Saved edits require a manual Server restart. Host window length changes require a new Redis scope. Tasks and execution state remain in Redis.
@@ -103,21 +108,34 @@ The two text checks are local computation demonstrations, with no external city/
 The scenario document now contains common/checks only; old poolGroups input is rejected. Use a new configuration file/scope
 for this cutover. The launcher does not migrate or replace a running environment.
 
-`run.json` records count, appCount, seed, appChecksConfiguration and fixed `scenarios: ["sms", "messages", "app-checks"]`, not a
-promised country distribution. The Host uses the existing combined capability
+`<run-output>/run.json` records `profile`, `scope`, `temporaryScope`, Server `url`,
+Host `host`, `adapter`, `adapterPort`, `javaCounts`, `androidCount`, `seed`, process
+`pids`, `workDir`, `sandboxRoot`, `runtimeConfig`, `groupsFile` and artifact fingerprints.
+`appChecksConfiguration` records the launcher's default Scenario file path; an
+explicit `configuration.path` in the supplied Runtime YAML takes precedence.
+The record does not promise a country distribution. The Host uses the existing combined capability
 configuration; no Simulator runtime mode selects business deployment.
 Acceptance fixtures materialize their exact inventory before launch instead of
 searching seeds or repairing quotas; each [business proof](#verification) owns
 its population and capability selection. Existing inventories and historical run
 evidence are never migrated or deleted by this launcher.
-`--port` accepts 1..65531 and sets Server base, Adapter +3 and Host +4. Occupied ports fail without
-stopping the existing service. Ctrl+C stops only owned processes and cleans the
-exact generated `test_products_<UUID>` scope through SCAN/UNLINK. Either child
-process exiting ends the run; there is no automatic recovery. A hard-killed
-launcher may leave processes and data, so normal shutdown is required for cleanup.
+The public CLI uses independent `--server-port` and `--adapter-port` values in
+1..65535. Changing only the Server port does not change the Adapter port. Without
+an explicit Java configuration, the Host control port defaults to Server +4 and
+must also be valid and distinct. Occupied ports fail without stopping an existing
+service. Scenario proof runners separately retain their internal `Preview(port=...)`
+fixture and its Adapter +3 / Host +4 offsets; that is not a public launcher option.
+Ctrl+C stops only owned processes. When the launcher generated a temporary
+`test_products_<UUID>` scope, successful process cleanup permits SCAN/UNLINK of
+that exact scope; an explicit scope is retained. A child process exiting ends the
+run, with no automatic recovery. A hard-killed launcher may leave processes and
+data, so normal shutdown is required for cleanup.
 
-Server health and all catalogs must initialize before the Host starts, then
-readiness verifies actual Adapter routes. Source and ZIP use this same launcher.
+The launcher waits for `/actuator/health/readiness` to report `UP` before starting
+the Host, then checks selected RUNNING identities and actual Adapter routes.
+It does not separately poll every Scenario catalog or prove Matching eligibility,
+installed capability names or successful business execution. Source and ZIP use
+this same launcher.
 The shared HTTP client reuses a connection per thread and endpoint while requests
 remain less than five seconds apart. It closes an idle connection before the next
 request; a failed or uncertain mutation is surfaced without automatic replay.
@@ -139,8 +157,9 @@ and observation windows; they do not change Runtime Item retention.
 This configuration expands the immutable App Group event definitions. Use a fresh
 Redis scope and fresh inventory; do not apply it over existing create-only Groups
 or edit retained inventory to resemble a migration. The launcher already selects
-an independent test_products scope. For source and ZIP alike, choose an unused
-port and a new sandbox root, for example from the Preview directory:
+an independent test_products scope unless an explicit scope is supplied. For
+source and ZIP alike, choose unused ports and a new work directory, for example
+from the Preview directory:
 
 ```powershell
 python run_preview.py --server-port 18640 --adapter-port 18643 --work-dir ./environments/messages-v3
@@ -161,7 +180,7 @@ occurs. Opening a new console session avoids carrying old environment drafts.
 
 The ZIP contains the current Server JAR, Host classpath in `worker-simulator/lib`,
 the four standalone Simulator examples in `worker-simulator/config` (including the
-minimal Lab configuration using built-in defaults), unified frontend, config,
+minimal Lab configuration using built-in defaults), unified frontend with `/docs/`, config,
 Python entry and requirements. The output is
 `distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip`.
 After extraction, run from its root:
@@ -177,13 +196,14 @@ Preview version `0.1.0-preview` is independent of the platform project version.
 Its tasks do not require a release version or stage the Runtime ZIP.
 Source staging uses `build/preview/server`, `build/preview/host`,
 `build/preview/config` and `build/preview/frontend` in this distribution;
-the frontend includes the current build's generated diagnostic dictionary. It does not reuse
+the frontend includes the current build's documentation site and generated diagnostic dictionary. It does not reuse
 a possibly running installation in another preview. All staging inputs come from
 the same Gradle graph as the ZIP.
 
 [The canonical preview YAML](../../server_boot_jvm/src/main/resources/application-preview.yaml)
 is packaged in the Boot JAR and copied to source `build/preview/config` and archive
-`config`. Archive verification checks all four Boot profiles, compares that external
+`config`. Archive verification checks the three Boot configuration files
+(`application.yaml`, `application-consumer.yaml`, `application-preview.yaml`), compares that external
 copy with the JAR resource, and rejects application configuration in nested
 platform/Scenario libraries and all test configuration. It also compares frontend
 bytes and manifest fingerprints; the generated diagnostic dictionary is delivered
@@ -239,10 +259,13 @@ continue to apply.
 
 ## Task result archives
 
-The launcher supplies `XA_MASS_TASK_ARCHIVE_DIRECTORY=<run-output>/task-archives`
-for its fresh scope. Server owns the 1h grace, sequential archive and 7d final
-retention lifecycle. Grace/retention overrides are explicit proof configuration,
+For a generated temporary scope, the launcher supplies
+`--xa.mass.task-retention.directory=<run-output>/task-archives`. An explicit scope
+defaults to `<work-dir>/data/task-archives`; an external Runtime YAML may supply
+its own absolute archive path. Server owns the 1h grace, sequential archive and 7d
+final retention lifecycle. Grace/retention overrides are explicit proof configuration,
 not alternate product defaults. Normal launcher shutdown stops owned processes,
-cleans only its generated Redis scope, and removes only this private archive root.
+then cleans only its generated Redis scope and private archive root when cleanup
+has succeeded. Explicit scopes and externally configured archive paths are retained.
 Persistent Worker inventory and App Checks configuration file remain untouched.
 A hard-killed launcher still requires explicit cleanup of its own run resources.

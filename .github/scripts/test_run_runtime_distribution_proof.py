@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import call, patch
@@ -15,6 +16,7 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC is not None and SPEC.loader is not None
 proof = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(proof)
+from distribution import docs_http_proof as docs
 
 
 class RuntimeDistributionProofApiContractTest(unittest.TestCase):
@@ -107,6 +109,61 @@ class RuntimeDistributionProofApiContractTest(unittest.TestCase):
                 ),
             ],
         )
+
+
+class DocumentationHttpProofTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.frontend = Path(self.temporary.name)
+        self.commit = "a" * 40
+        self.responses = {}
+        page = (f'<meta name="xa-mass-docs-commit" content="{self.commit}">'
+                '<link rel="stylesheet" href="/docs/assets/main-one.css">'
+                '<script src="/docs/assets/main-one.js"></script>').encode()
+        for name, content in {
+                "docs/index.html": page,
+                "docs/doc/guide/first-task.html": page + b"<h1>First task</h1>",
+                "docs/assets/main-one.js": b"export {};",
+                "docs/assets/main-one.css": b"body{}"}.items():
+            path = self.frontend / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+            content_type = "text/html" if name.endswith(".html") else "text/css" if name.endswith(".css") else "text/javascript"
+            self.responses["/" + name] = (200, content, content_type)
+        self.responses["/docs"] = self.responses["/docs/"] = self.responses["/docs/index.html"]
+
+    def request(self, base, path):
+        self.assertEqual("http://runtime", base)
+        return self.responses.get(path, (404, b"", "text/plain"))
+
+    def test_observes_supplied_pages_actual_assets_and_missing_resource_status(self):
+        with patch.object(docs, "_request", side_effect=self.request) as request:
+            self.assertEqual({"pages": 4, "assets": 2, "gitCommit": self.commit},
+                             docs.verify("http://runtime", self.frontend, self.commit))
+        self.assertIn(call("http://runtime", "/docs/doc/guide/first-task.html"), request.call_args_list)
+        self.assertIn(call("http://runtime", "/docs/assets/missing.js"), request.call_args_list)
+
+    def test_rejects_console_fallback_for_deep_page_asset_and_unknown_route(self):
+        for path in ("/docs/doc/guide/first-task.html", "/docs/assets/main-one.js", "/docs/missing-page.html"):
+            original = self.responses.get(path)
+            self.responses[path] = (200, b'<div id="app"></div>', "text/html")
+            try:
+                with self.subTest(path=path), patch.object(docs, "_request", side_effect=self.request), \
+                        self.assertRaises(AssertionError):
+                    docs.verify("http://runtime", self.frontend, self.commit)
+            finally:
+                if original is None:
+                    self.responses.pop(path)
+                else:
+                    self.responses[path] = original
+
+    def test_accepts_an_empty_generated_stylesheet_served_exactly(self):
+        path = "docs/assets/main-one.css"
+        (self.frontend / path).write_bytes(b"")
+        self.responses["/" + path] = (200, b"", "text/css")
+        with patch.object(docs, "_request", side_effect=self.request):
+            self.assertEqual(2, docs.verify("http://runtime", self.frontend, self.commit)["assets"])
 
 
 if __name__ == "__main__":

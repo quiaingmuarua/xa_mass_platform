@@ -129,9 +129,9 @@ const messagesEnabled = computed(() =>
         <el-icon><Link /></el-icon>
         <span>API Docs</span>
       </a>
-      <a class="runtime-navigation__link" href="/overview.htm">
+      <a class="runtime-navigation__link" href="/docs/">
         <el-icon><Document /></el-icon>
-        <span>Architecture</span>
+        <span>项目文档</span>
       </a>
       <router-link class="runtime-navigation__link" to="/reference/error-codes">
         <el-icon><Collection /></el-icon>

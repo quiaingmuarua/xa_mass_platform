@@ -19,6 +19,23 @@ Three behavioral domains connect these two state lines:
 The supported load shape is a small bounded active Task set, many Items per
 Task, and many Workers inside finite Groups.
 
+## Start Here
+
+- **使用项目：** [中文指南](doc/guide/index.md) → [快速启动](doc/guide/quick-start.md) →
+  [完成第一个真实任务](doc/guide/first-task.md)。
+- **部署与排障：** [部署](doc/guide/operations/deploy.md)、
+  [配置归属](doc/guide/operations/configuration.md)和
+  [按现象排障](doc/guide/operations/troubleshooting.md)。
+- **开发与 Agent：** [按任务定位 Owner](doc/guide/development/index.md)，
+  再使用下面的 Reading Path 和 [AGENTS](AGENTS.md)。
+- **验证与能力：** [证明如何选](doc/guide/verification.md)、
+  [带版本和口径的实测记录](doc/guide/capabilities.md)。
+
+The Console and packaged Runtime/Preview serve this documentation at `/docs/`.
+Guides explain user steps and navigation; the existing Owner Markdown remains
+the source of mechanism contracts. Current documentation describes its source
+version, not an API stability promise or a compatibility layer for older deployments.
+
 ## Reading Path
 
 Check HEAD, the worktree and requested scope first. Choose the route below;
@@ -136,5 +153,5 @@ The [public UI demo](https://frontend-kylerrun-s-projects.vercel.app) uses Mock
 data. Real Runtime observation requires a running Server; its live API
 reference is `/scalar`, while the demo's static reference cannot send requests.
 
-The [human architecture overview](frontend/public/overview.htm) is a visual
-projection of the same behavior model and Owner boundaries.
+The [human architecture guide](doc/guide/architecture.md) projects the same
+behavior model and Owner boundaries into the shared documentation site.

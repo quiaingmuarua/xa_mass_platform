@@ -13,6 +13,8 @@ import stat
 import subprocess
 import tempfile
 import zipfile
+from html.parser import HTMLParser
+from urllib.parse import unquote, urljoin, urlsplit
 from xml.etree import ElementTree
 
 
@@ -25,6 +27,59 @@ HOST_CONFIGURATIONS = {"application.yaml",
                        "application-consumer.yaml", "application-preview.yaml"}
 BATCH_CHECK_EXAMPLES = {"README.md", "batch-checks-runtime.yaml", "worker-groups.json", "batch-checks-configuration.json"}
 MESSAGES_EXAMPLES = {"README.md", "messages-runtime.yaml", "worker-groups.json"}
+DOCUMENTATION_PAGES = ("docs/index.html", "docs/doc/guide/first-task.html")
+
+
+class DocumentationPage(HTMLParser):
+    """Read the generated page identity and its local browser asset dependencies."""
+
+    def __init__(self):
+        super().__init__()
+        self.commit = None
+        self.assets = []
+
+    def handle_starttag(self, tag, attributes):
+        values = dict(attributes)
+        if tag == "meta" and values.get("name") == "xa-mass-docs-commit":
+            self.commit = values.get("content")
+        if tag in {"script", "img", "source"} and values.get("src"):
+            self.assets.append(values["src"])
+        if tag == "link" and set(values.get("rel", "").split()) & {
+                "stylesheet", "modulepreload", "preload", "icon"} and values.get("href"):
+            self.assets.append(values["href"])
+
+
+def documentation_page(content: bytes, path: str) -> tuple[str | None, set[str]]:
+    page = DocumentationPage()
+    page.feed(content.decode("utf-8"))
+    assets = set()
+    for reference in page.assets:
+        address = urlsplit(reference)
+        if address.scheme or address.netloc:
+            continue
+        target = unquote(urlsplit(urljoin("/" + path, reference)).path).lstrip("/")
+        _runtime_require(target.startswith("docs/") and ".." not in PurePosixPath(target).parts,
+                         f"Documentation asset escapes /docs/: {path}: {reference}")
+        assets.add(target)
+    return page.commit, assets
+
+
+def verify_documentation(files: dict[str, bytes], commit: str) -> None:
+    """Check the docs copied into one frontend, without adding another manifest."""
+    for name in DOCUMENTATION_PAGES:
+        _runtime_require(name in files, "Missing documentation page: " + name)
+    for name, content in files.items():
+        if not name.startswith("docs/") or not name.endswith(".html"):
+            continue
+        identity, assets = documentation_page(content, name)
+        _runtime_require(identity == commit, "Documentation build identity mismatch: " + name)
+        if name in DOCUMENTATION_PAGES:
+            _runtime_require(any(asset.endswith(".js") for asset in assets)
+                             and any(asset.endswith(".css") for asset in assets),
+                             "Documentation page has no script or stylesheet: " + name)
+        for asset in assets:
+            # VitePress may emit an intentionally empty optional icon stylesheet.
+            _runtime_require(asset in files, "Missing documentation asset: " + asset)
 
 
 def is_application_configuration(name: str) -> bool:
@@ -144,6 +199,11 @@ def verify_runtime(archive: Path, version: str) -> None:
             "Spring Profiles mismatch",
         )
         _runtime_require(manifest.get("frontendIncluded") is True, "Frontend mismatch")
+        frontend_prefix = f"{root}/frontend/dist/"
+        verify_documentation({
+            name.removeprefix(frontend_prefix): runtime.read(name)
+            for name in names if name.startswith(frontend_prefix) and not name.endswith("/")
+        }, manifest["gitCommit"])
         _runtime_require(
             "workerSimulatorHost" not in manifest,
             "manifest retains the repository-local Worker Simulator",
@@ -436,6 +496,7 @@ def verify_preview(archive, frontend):
         prefix = "frontend/dist/"
         expected = {path.relative_to(frontend).as_posix(): path.read_bytes() for path in frontend.rglob("*") if path.is_file()}
         actual = {name[len(prefix):]: data for name, data in files.items() if name.startswith(prefix)}
+        verify_documentation(actual, manifest["gitCommit"])
         dictionary = "reference/platform-diagnostic-codes.json"
         if dictionary not in actual or json.loads(actual[dictionary])["gitCommit"] != manifest["gitCommit"]:
             raise ValueError("Missing current-build diagnostic dictionary")

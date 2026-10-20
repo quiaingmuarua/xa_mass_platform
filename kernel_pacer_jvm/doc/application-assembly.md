@@ -26,19 +26,23 @@ Java Server
 
 ## Production Configuration
 
-Spring owns only the finite lifecycle envelope:
+Spring binds the finite lifecycle envelope and one instance assignment ceiling:
 
 ```yaml
 xa.mass.kernel-pacer:
   enabled: true
   preset: DEFAULT
   shutdown-timeout: 5s
+  assignment-batch-limit: 100
 ```
 
 `kernel_pacer_jvm` owns the checked presets and interprets all policy values.
-Server passes the selected preset to `KernelPacerRuntime.assemble(...)`; it
-does not inspect lane policy. There is no production Pacer JSON, dynamic lane
-registry, or per-field Server override.
+Server passes the selected preset and assignment ceiling to
+`KernelPacerRuntime.assemble(...)`; Pacer validates the ceiling in `1..1000`
+and interprets it as described under [Dispatch Convergence](#dispatch-convergence).
+Server does not inspect lane policy. Internal lane intervals and capacities
+remain preset-owned, with no production Pacer JSON, dynamic lane registry or
+per-field Server override for those policies.
 
 Every preset consumes Network Evidence. Runtime samples one immutable millisecond
 activation floor and supplies it to the event Mechanism for bounded CONNECTED
@@ -319,9 +323,11 @@ back every started runtime in reverse order. A required scheduler or worker-loop
 death observed by runtime health moves `KernelPacerRuntime` to `FAILED`.
 
 Spring readiness requires the Runtime and Kernel Redis to be UP. Liveness
-remains a JVM-process signal. Health exposes only:
+remains a JVM-process signal. Kernel health exposes:
 
 ```text
+mode
+state
 javaResultConvergenceState
 javaDispatchConvergenceState
 ```

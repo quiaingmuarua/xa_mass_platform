@@ -4,14 +4,20 @@ Status: current repository document index.
 
 ## Start Here
 
+The [Chinese usage and development guide](guide/index.md) is the shared
+human/Agent entrypoint: first task, business use, deployment, troubleshooting,
+development navigation and explicitly dated capability evidence. The Console
+and Runtime/Preview packages publish the same source documents at `/docs/`.
+
 The [Repository reading path](../README.md#reading-path) defines task-specific
 routes and stopping conditions. This index locates document roles and Owners;
 follow the relevant branch without treating the whole list as required reading.
-Use the [Human Architecture Overview](../frontend/public/overview.htm) as a
+Use the [Human Architecture Guide](guide/architecture.md) as a
 visual projection of the same boundaries.
 
 | Document | Information it owns |
 | --- | --- |
+| [Usage and Development Guide](guide/index.md) | User procedures, problem-oriented navigation and readable architecture; links to exact Owners and evidence |
 | [Repository Entry](../README.md) | Short system summary, reading path, authority, module and deployment map |
 | [Scheduling Mainline](kernel/scheduling-overview.md) | Complete Matching / Execution / Convergence model, work/resource feedback, Owner mapping and code/proof navigation |
 | [Delivery Boundary](kernel/worker-delivery-dispatch.md) | Command and observation handoffs, local Owner links and cross-boundary failure windows |
@@ -26,6 +32,24 @@ that definition and explain the handoff instead of repeating local parameters.
 When an entrypoint or contract changes, update its callers, Owner description
 and navigation together. A source pointer is a reading aid; only an executed
 proof provides a current validation result.
+
+## Publishing And Maintenance
+
+Guides and module documents are authored in place as Markdown. The documentation
+site supplies navigation, search and rendering; generated pages are not a second
+editable contract. Keep repository-relative source links usable on GitHub.
+The site resolves published document links and source/evidence links at build time.
+
+Update user steps when a flow changes and update the affected Owner alongside
+behavior. Do not copy complete DTOs, storage definitions, threshold tables or
+proof assertions into guides. API reference generation and runtime evidence keep
+their existing owners. Performance figures always identify their measured commit,
+environment, status, metric definition and immutable record.
+
+Current navigation and search exclude historical records. Historical links below
+remain explicitly version-scoped evidence, not instructions for current behavior.
+No parallel overview HTML, hand-maintained document mirror or old URL compatibility
+layer is maintained.
 
 ## Owner Documents
 

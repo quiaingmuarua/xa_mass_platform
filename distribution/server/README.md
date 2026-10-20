@@ -1,7 +1,8 @@
 # XA Mass Server Runtime distribution
 
-This module owns Runtime and Scenario Preview ZIP delivery, frontend builds,
-diagnostic dictionaries, Preview process assembly and archive verification.
+This module owns Runtime and Scenario Preview ZIP delivery, frontend and
+documentation-site builds, diagnostic dictionaries, Preview process assembly
+and archive verification.
 
 The [3.1 release and upgrade contract](RELEASE-3.1.md) owns public compatibility,
 fresh-state cutover and exact-artifact release acceptance.
@@ -9,13 +10,21 @@ It consumes the sole Boot JAR produced by
 [Server Boot composition](../../server_boot_jvm/README.md). It has no Java
 entrypoint, Spring composition, application services or platform Owner operations.
 
-The Runtime archive packages the Boot JAR, unified Console and current-build
-diagnostic dictionary. It excludes the independent Worker Simulator, Python
+The Runtime archive packages the Boot JAR, unified Console, documentation site at
+`/docs/` and current-build diagnostic dictionary. It excludes the independent Worker Simulator, Python
 runtime, wheels and virtual environments. Redis remains external; the JAR
 embeds no separate business frontend.
 The compiled frontend also carries the committed, Server-verified OpenAPI
 snapshot at `frontend/dist/reference/openapi.json`; unlike the diagnostic
 dictionary, that snapshot is generated explicitly and tracked in source.
+
+The [Frontend Owner](../../frontend/README.md#documentation-site) owns VitePress
+and Mermaid integration using its existing pnpm lock. `pnpm build`,
+`pnpm build:demo` and `pnpm build --outDir <path>` all include `docs/` inside
+their selected output directory. Distribution uses that custom-output build
+and packages the resulting tree; it does not copy or rewrite Owner Markdown
+into a second documentation source. `pnpm --dir frontend docs:build` and
+`pnpm --dir frontend docs:check` build and verify the site independently.
 
 Boot owns [profiles and Project/Group/Scenario composition](../../server_boot_jvm/README.md#platform-and-preview)
 and [page forwards and production configuration](../../server_boot_jvm/README.md#pages-and-configuration).

@@ -158,6 +158,20 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
             self.assertNotIn(":distribution:server:distZip", build.call_args.args[0])
             remember.assert_not_called()
 
+    def test_documentation_source_change_invalidates_candidate_source_identity(self):
+        guide = self.directory / "doc/guide/index.md"
+        guide.parent.mkdir(parents=True)
+        guide.write_text("# First guide\n", encoding="utf-8")
+
+        def git_output(command, **_):
+            return b"a" * 40 if command[1] == "rev-parse" else b"doc/guide/index.md\0"
+
+        with patch.object(launcher, "ROOT", self.directory), \
+                patch.object(launcher.subprocess, "check_output", side_effect=git_output):
+            initial = launcher.source_signature()
+            guide.write_text("# Revised guide\n", encoding="utf-8")
+            self.assertNotEqual(initial, launcher.source_signature())
+
     def test_main_always_closes_after_partial_start_or_keyboard_interrupt(self):
         for failure in (RuntimeError("partial"), KeyboardInterrupt()):
             run = Mock(url="http://127.0.0.1:18182", scope="profile_consumer", android=None, environment={})

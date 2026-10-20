@@ -242,6 +242,14 @@ Ordinary `product_coexistence` Proof CI runs source functional, Pool selection a
 lifecycle, plus fresh ZIP functional and Pool selection. Each proof has its own
 step, output directory, port and scope. App Checks also runs in independent source
 and ZIP steps, with explicit development caller headers and saved-creator checks.
+The existing Coexistence runner additionally performs a GET-only documentation
+delivery check against that run's supplied frontend: `/docs`, `/docs/`, the
+documentation index and first-task page must match the artifact bytes and commit;
+their local scripts/styles must be delivered, and missing documentation pages/assets
+must return 404. Source and fresh-ZIP runs use the same check and record its
+page/asset counts and commit in `summary.documentation`. This is static HTTP
+delivery evidence; it does not replace the business oracles below or assert
+browser interaction, search results or rendered diagrams.
 App Checks uses two startup seed fixtures for success/failure and negative/mixed
 answers; the lightweight create request carries no execution parameters;
 its [Owner](../../scenarios/app-checks-jvm/README.md#装配与证明) defines the separate

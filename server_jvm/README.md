@@ -61,7 +61,7 @@ admission, partial commits or loss semantics.
 | --- | --- |
 | Live Scalar / OpenAPI | `/scalar`, `/v3/api-docs` |
 | Read-only committed snapshot UI / JSON | `/api-reference`, `/reference/openapi.json` |
-| Human architecture projection | `/overview.htm` |
+| Documentation and architecture guide | `/docs/` |
 | Diagnostic dictionary UI / JSON | `/reference/error-codes`, `/reference/platform-diagnostic-codes.json` |
 
 Only `/api/v1/**` enters OpenAPI. Scalar telemetry, Agent Scalar and external fonts
