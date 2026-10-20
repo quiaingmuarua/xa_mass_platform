@@ -93,9 +93,11 @@ tasks.register('buildFrontend', Exec) {
         include 'src/**', 'public/**', 'index.html', '*.json', '*.ts', '*.js'
         exclude 'node_modules/**', 'dist/**', 'coverage/**'
     })
-    outputs.dir(rootProject.file('frontend/dist'))
+    outputs.dir(layout.buildDirectory.dir('frontend-api'))
     doFirst {
-        commandLine(pnpmCommand(['build']))
+        environment 'VITE_RUNTIME_DATA_SOURCE', 'api'
+        environment 'VITE_RUNTIME_API_BASE_URL', '/api'
+        commandLine(pnpmCommand(['build', '--outDir', layout.buildDirectory.dir('frontend-api').get().asFile.absolutePath]))
     }
 }
 
@@ -148,7 +150,7 @@ tasks.register('stageRuntime', Sync) {
     from(serverBootJar.flatMap { it.archiveFile }) {
         into 'lib'
     }
-    from(rootProject.file('frontend/dist')) {
+    from(layout.buildDirectory.dir('frontend-api')) {
         into 'frontend/dist'
         exclude 'reference/platform-diagnostic-codes.json'
     }
@@ -274,7 +276,7 @@ tasks.register('stagePreviewServer', Sync) {
 tasks.register('stagePreviewFrontend', Sync) {
     dependsOn tasks.named('buildFrontend'), tasks.named('generatePlatformDiagnosticCodes')
     into previewDirectory.map { it.dir('frontend/dist') }
-    from(rootProject.file('frontend/dist')) { exclude 'reference/platform-diagnostic-codes.json' }
+    from(layout.buildDirectory.dir('frontend-api')) { exclude 'reference/platform-diagnostic-codes.json' }
     from(platformDiagnosticCodesFile) { into 'reference' }
 }
 
@@ -303,6 +305,7 @@ tasks.register('previewManifest') {
         def frontend = previewDirectory.get().dir('frontend/dist').asFile
         fileTree(frontend).files.each { files['frontend/dist/' + frontend.toPath().relativize(it.toPath()).toString().replace('\\', '/')] = hash(it) }
         files['run_preview.py'] = hash(file('run_preview.py'))
+        files['local_runtime.py'] = hash(file('local_runtime.py'))
         files['requirements.txt'] = hash(file('requirements-preview.txt'))
         fileTree(previewDirectory.get().dir('config').asFile).files.each { files['config/' + it.name] = hash(it) }
         def manifest = [version: previewVersion, platformVersion: runtimeVersion,
@@ -322,6 +325,7 @@ tasks.register('previewZip', Zip) {
     reproducibleFileOrder = true
     into("xa-mass-scenario-preview-${previewVersion}") {
         from('run_preview.py')
+        from('local_runtime.py')
         from('requirements-preview.txt') { rename { 'requirements.txt' } }
         from('PREVIEW.md') { rename { 'README.md' } }
         from(previewDirectory.map { it.dir('config') }) { into 'config' }
@@ -355,6 +359,6 @@ tasks.register('verifyPreviewArchive', Exec) {
     inputs.file(rootProject.file('distribution/archive_tools.py'))
     commandLine(pythonExecutable.get(), '-m', 'distribution.archive_tools', 'preview',
             '--archive', tasks.named('previewZip', Zip).flatMap { it.archiveFile }.get().asFile.absolutePath,
-            '--frontend', frontendDirectory.toPath().resolve('dist').toString(),
+            '--frontend', layout.buildDirectory.dir('frontend-api').get().asFile.absolutePath,
             '--output', previewDirectory.get().file('archive-verification.json').asFile.absolutePath)
 }

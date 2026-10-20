@@ -293,3 +293,12 @@ Group overrides, startup errors and the read-only Group interface. A registered 
 Project Group membership is independent Task admission and cannot enable a resource. Retired Project expansion and independent feedback
 binding fields fail strict configuration binding. The Android consumer's `window-pool-runtime.yaml` demonstrates this without a Scenario;
 its default workbench consumes the enabled Group Pool.
+
+## Local launch composition
+
+The source launcher composes one Server/Adapter and optional Java/Android Workers.
+It passes explicit process coordinates and resource files; Boot retains the same
+resource initialization and validation order. No business profile, Boot startup
+receipt or Worker process owner is added. The local launcher isolates inherited
+business environment overrides; direct production `java -jar` still uses normal
+Spring configuration. See [local launch](../distribution/server/README.md#source-launch).

@@ -26,9 +26,9 @@ java -jar (Join-Path $runtime 'lib/xa-mass-server-jvm-<version>.jar') `
 ```
 
 The source consumer accepts the same two files with
-`run_local_runtime.py --profile consumer --runtime-config <absolute-yaml> --groups <absolute-json> --server-port 19182`.
-Set `XA_MASS_ADAPTER_PORT=19183` for that source launch. The independently built
-Android App must use the matching Runtime URL and ADB reverse mappings.
+`run_local_runtime.py --profile consumer --runtime-config <absolute-yaml> --groups <absolute-json> --server-port 19182 --adapter-port 19183 --android-count 1`.
+It builds and starts the selected Android Lab App against the same coordinates,
+then restores touched ADB mappings on exit. It reads no inherited business environment settings.
 
 Build the Android Demo from the **same verified Runtime/SDK ZIP candidate**. No
 Simulator server is used. The App publishes `messaging.enabled="true"`, `country=CN`

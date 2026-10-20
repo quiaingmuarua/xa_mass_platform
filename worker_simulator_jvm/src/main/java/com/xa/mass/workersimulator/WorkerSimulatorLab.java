@@ -57,8 +57,21 @@ final class WorkerSimulatorLab {
             long seed,
             Consumer<List<DiscoveredGroup>> validateWorld
     ) {
+        return prepare(groups, seed, Map.of(), validateWorld);
+    }
+
+    List<DiscoveredGroup> prepare(List<WorkerSimulatorGroupConfig> groups, long seed,
+            Map<String, Integer> workerCounts, Consumer<List<DiscoveredGroup>> validateWorld) {
         Objects.requireNonNull(groups, "groups");
         Objects.requireNonNull(validateWorld, "validateWorld");
+        Set<String> configured = new HashSet<>();
+        groups.forEach(group -> configured.add(group.workerGroupId()));
+        if (!configured.containsAll(workerCounts.keySet())) {
+            throw new IllegalArgumentException("workerCounts references an unconfigured Group");
+        }
+        if (groups.stream().anyMatch(group -> group.newEnvironment() && workerCounts.containsKey(group.workerGroupId()))) {
+            throw new IllegalArgumentException("Quantity selection cannot be combined with an inventory rebuild");
+        }
         validateOwnedRoot(groups);
         if (groups.isEmpty()) {
             validateWorld.accept(List.of());
@@ -76,7 +89,25 @@ final class WorkerSimulatorLab {
                 if (!exists || group.newEnvironment()) {
                     source = Files.createTempDirectory(root, ".initializing-");
                     staged.put(group, source);
-                    generateGroup(group, seed, source);
+                    generateRecords(group, seed, source, 0,
+                            workerCounts.getOrDefault(group.workerGroupId(), group.count()), 0);
+                } else if (workerCounts.containsKey(group.workerGroupId())) {
+                    int retained = discoverGroup(group, target).workers().size();
+                    int wanted = workerCounts.get(group.workerGroupId());
+                    if (retained < wanted) {
+                        source = Files.createTempDirectory(root, ".initializing-");
+                        staged.put(group, source);
+                        copyRetainedGroup(target, source);
+                        int fileIndex = 0;
+                        try (Stream<Path> files = Files.list(source)) {
+                            for (Path file : files.toList()) {
+                                var match = java.util.regex.Pattern.compile("workers-(\\d+)\\.jsonl")
+                                        .matcher(file.getFileName().toString());
+                                if (match.matches()) fileIndex = Math.max(fileIndex, Integer.parseInt(match.group(1)) + 1);
+                            }
+                        }
+                        generateRecords(group, seed, source, retained, wanted, fileIndex);
+                    }
                 }
                 world.add(discoverGroup(group, source));
             }
@@ -106,12 +137,27 @@ final class WorkerSimulatorLab {
 
     Path root() { return root; }
 
-    private void generateGroup(WorkerSimulatorGroupConfig group, long seed, Path directory) throws IOException {
-        for (int first = 1; first <= group.count(); first += WorkerSimulatorStateFile.MAX_RECORDS_PER_FILE) {
+    private static void copyRetainedGroup(Path source, Path target) throws IOException {
+        Files.walkFileTree(source, new SimpleFileVisitor<>() {
+            @Override public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException {
+                Files.createDirectories(target.resolve(source.relativize(directory)));
+                return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+                if (!attributes.isRegularFile()) throw new IOException("Inventory contains a non-regular file: " + file);
+                Files.copy(file, target.resolve(source.relativize(file)), StandardCopyOption.COPY_ATTRIBUTES);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    private void generateRecords(WorkerSimulatorGroupConfig group, long seed, Path directory,
+            int retained, int wanted, int fileIndex) throws IOException {
+        for (int first = retained + 1; first <= wanted; first += WorkerSimulatorStateFile.MAX_RECORDS_PER_FILE) {
             String name = String.format(Locale.ROOT, "workers-%03d.jsonl",
-                    (first - 1) / WorkerSimulatorStateFile.MAX_RECORDS_PER_FILE);
+                    fileIndex++);
             List<String> lines = new ArrayList<>();
-            int end = Math.min(group.count(), first + WorkerSimulatorStateFile.MAX_RECORDS_PER_FILE - 1);
+            int end = Math.min(wanted, first + WorkerSimulatorStateFile.MAX_RECORDS_PER_FILE - 1);
             for (int ordinal = first; ordinal <= end; ordinal++) {
                 Map<String, String> properties = new LinkedHashMap<>(group.generateProperties(seed, ordinal));
                 properties.put("labInventoryKey", name);

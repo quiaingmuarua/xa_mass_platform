@@ -421,7 +421,7 @@ def verify_preview(archive, frontend):
         files = {name[len(root) + 1:]: bundle.read(name) for name in names if not name.endswith("/")}
         if any(is_application_configuration(name) and name != "config/application-preview.yaml" for name in files):
             raise ValueError("Preview contains unexpected external application configuration")
-        required = {"run_preview.py", "requirements.txt", "README.md", "preview-manifest.json", "config/application-preview.yaml"}
+        required = {"run_preview.py", "local_runtime.py", "requirements.txt", "README.md", "preview-manifest.json", "config/application-preview.yaml"}
         required.update("worker-simulator/config/" + name + ".json" for name in ("lab", "sms", "messages", "products"))
         if not required <= files.keys():
             raise ValueError("Incomplete Preview entrypoints")

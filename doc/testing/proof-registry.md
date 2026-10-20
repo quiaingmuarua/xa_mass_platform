@@ -304,3 +304,13 @@ fields/bytes, HTTP batch latency and Redis PING latency, then verifies short-tes
 idle expiry and subsequent writes on the same Task. SMS functional evidence also
 records Result HASH memory, cache size and query latency. These are fixed-workload
 observations, not platform capacity or RSS-release guarantees.
+
+## Local runtime composition witness
+
+Distribution owns the unified source and packaged Preview launch lifecycle.
+The Runtime Distribution lane runs coordinate/precedence/environment and cleanup
+contracts; Product Coexistence retains the packaged Preview witness. Android Host
+runs local App lifecycle tests and the existing Android proof closes actual device
+execution. Simulator quantity-mode tests own retained inventory growth and subset
+selection. These checks do not establish throughput, permanent Android background
+liveness or Pool eligibility merely from successful startup.

@@ -1,0 +1,31 @@
+server:
+  port: 19182
+xa:
+  mass:
+    project-assembly:
+      projects:
+        - project-id: default
+          worker-group-ids: []
+    scenarios:
+      messages:
+        enabled: true
+        applications:
+          - id: android-local
+            label: Android 本地消息演示
+            worker-group-id: android-demo-workers
+          - id: java-local
+            label: Java 本地消息演示
+            worker-group-id: local-java-workers
+    worker-matching:
+      groups:
+        android-demo-workers:
+          pools: [any, messaging]
+          functions: [worker.any, worker.messaging.available]
+        local-java-workers:
+          pools: [any, messaging]
+          functions: [worker.any, worker.messaging.available]
+    worker-delivery:
+      adapter:
+        instances:
+          runtime-websocket:
+            listen-port: 19183

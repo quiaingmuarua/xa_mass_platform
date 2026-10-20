@@ -18,6 +18,28 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class WorkerSimulatorLabTest {
+    @Test
+    void quantityPreparationGrowsWithoutRewritingRetainedCoordinatesAndNeverShrinks() throws Exception {
+        Path root = labRoot();
+        var lab = new WorkerSimulatorLab(root.toString());
+        var configs = List.of(group(STRING_GROUP));
+        var first = lab.prepare(configs, 0, Map.of(STRING_GROUP, 2), world -> {});
+        assertThat(first.getFirst().workers()).hasSize(2);
+        Path original = root.resolve(STRING_GROUP).resolve("workers-000.jsonl");
+        byte[] retained = Files.readAllBytes(original);
+        var grown = lab.prepare(configs, 1, Map.of(STRING_GROUP, 5), world -> {});
+        assertThat(grown.getFirst().workers()).hasSize(5);
+        assertThat(Files.readAllBytes(original)).isEqualTo(retained);
+        assertThat(grown.getFirst().workers()).extracting(WorkerSimulatorStateFile::labWorkerKey)
+                .containsExactly("workers-000.jsonl:1", "workers-000.jsonl:2",
+                        "workers-001.jsonl:1", "workers-001.jsonl:2", "workers-001.jsonl:3");
+        assertThat(lab.prepare(configs, 99, Map.of(STRING_GROUP, 1), world -> {}).getFirst().workers()).hasSize(5);
+        assertThatThrownBy(() -> lab.prepare(configs, 0, Map.of(STRING_GROUP, 7),
+                world -> { throw new IllegalArgumentException("invalid new world"); }))
+                .hasMessageContaining("invalid new world");
+        assertThat(lab.prepare(configs, 0, world -> {}).getFirst().workers()).hasSize(5);
+        assertThat(Files.readAllBytes(original)).isEqualTo(retained);
+    }
 
     private static final String PHONE_GROUP =
             "scenario-phone-number-workers";

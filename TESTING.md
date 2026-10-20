@@ -444,3 +444,16 @@ symlinks before inspecting payloads. Consumer identity/hash verification stays
 independent. This tooling change neither publishes a Release nor changes the
 AgentForge pin. Frida, Analysis and old device tools belong to their consuming
 repository; no platform scheduling mechanism moves into Python.
+
+## Unified local launch verification
+
+The root local entry and packaged Preview share process coordinates and cleanup.
+Run `python -m unittest discover -s .github/scripts -p test_run_local_runtime.py`,
+Preview launcher/archive tests, and `python -m unittest discover -s xa-android/tests`.
+Quantity startup additionally selects Simulator inventory/manager tests and existing
+Worker Correctness/Dynamic Matching. Use one retained inventory for 2/5/1 starts;
+check selected connected identities independently of registered inventory size.
+The existing Android lane retains its native, Triad, recovery and Scenario phases.
+Local launcher acceptance additionally uses 1/3 Lab APKs and a mixed Java/Android
+consumer, with exact ADB mapping restoration and no new emulator. The ordinary
+launcher must not inherit the proof harness's reset/freezer mutations.

@@ -94,3 +94,10 @@ Different input/result protocols require an existing or new pure Scenario contra
 
 The product name is Batch Checks / 批量检查. Current technical names (`app-checks`,
 its Project and HTTP/page prefixes) intentionally remain unchanged.
+
+For the unified source launcher, copy the Runtime YAML and replace the two
+Scenario configuration environment placeholders with an explicit absolute path
+and absolute `file:` seed URI before using `--runtime-config`. Select Redis and
+ports through the local CLI or literal YAML values. The portable direct-Java
+examples above use explicitly supplied deployment values; they are not inherited
+inputs to `run_local_runtime.py`.

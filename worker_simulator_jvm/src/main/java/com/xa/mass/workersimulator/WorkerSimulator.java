@@ -536,7 +536,7 @@ public final class WorkerSimulator implements AutoCloseable {
                 .map(GroupAssembly::config)
                 .toList();
         List<WorkerSimulatorLab.DiscoveredGroup> discovered =
-                lab.prepare(configs, seed, world -> validateWorld(world, startupPlan));
+                lab.prepare(configs, seed, startupPlan.workerCounts(), world -> validateWorld(world, startupPlan));
         if (discovered.size() != groups.size()) {
             throw new IllegalStateException(
                     "Worker Simulator returned incomplete groups"
@@ -615,6 +615,17 @@ public final class WorkerSimulator implements AutoCloseable {
     private List<WorkerSimulatorCoordinate> resolveInitialWorkers(
             WorkerSimulatorStartupPlan startupPlan
     ) {
+        if (!startupPlan.workerCounts().isEmpty()) {
+            List<WorkerSimulatorCoordinate> coordinates = new ArrayList<>();
+            for (ManagedGroup group : managedGroups) {
+                int wanted = startupPlan.workerCounts().getOrDefault(
+                        group.preparedGroup().group().config().workerGroupId(), 0);
+                for (PreparedReplica replica : group.preparedGroup().replicas().stream().limit(wanted).toList()) {
+                    coordinates.add(coordinate(group, replica));
+                }
+            }
+            return List.copyOf(coordinates);
+        }
         if (startupPlan.startAll()) {
             List<WorkerSimulatorCoordinate> coordinates = new ArrayList<>();
             for (ManagedGroup group : managedGroups) {

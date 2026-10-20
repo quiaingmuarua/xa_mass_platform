@@ -77,7 +77,7 @@ jobs:
       - name: Verify and run the extracted unified Preview
         run: |
           ./gradlew :distribution:server:previewZip --console=plain
-          python -m distribution.archive_tools preview --archive distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip --frontend frontend/dist --output scenarios/sms-reception-jvm/build/ci-archive.json
+          python -m distribution.archive_tools preview --archive distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip --frontend distribution/server/build/frontend-api --output scenarios/sms-reception-jvm/build/ci-archive.json
           python -m zipfile -e distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip distribution/server/build/preview/ci-unpacked
           python scenarios/sms-reception-jvm/run_acceptance.py --scenario functional --port 18440 --root distribution/server/build/preview/ci-unpacked/xa-mass-scenario-preview-0.1.0-preview --output scenarios/sms-reception-jvm/build/ci-zip-proof
       - name: Documentation and proof selection

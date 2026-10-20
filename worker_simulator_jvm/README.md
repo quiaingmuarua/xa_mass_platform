@@ -458,6 +458,17 @@ stages all Groups requiring generation. It validates schema, capacity, number
 requirements, cross-Group phone uniqueness and startup coordinates against this
 effective world before changing any target directory.
 
+An explicit quantity startup plan has shape `{"workerCounts":{"group-id":5}}`.
+It cannot be mixed with `initialWorkers`/`scheduledStops`. Selected Groups start
+that many records in stable filename/line order; unselected Groups stay stopped.
+The inventory Owner stages additional records when a selected Group is too small,
+using new files and preserving every retained coordinate and byte. All staged
+Groups undergo the existing full-world validation before publication. Lower
+counts never delete records. Values are 0..15000; this is startup preparation,
+not a runtime resize API. The unified local launcher uses this mode.
+
+Without quantity selection, the standalone and proof behavior remains:
+
 - With `newEnvironment=false`, a missing Group is generated from seed/count/template;
   an existing directory is reused exactly, even when empty. It is never topped up,
   truncated, repaired or overwritten.

@@ -382,16 +382,22 @@
     {
       "path": "run_local_runtime.py",
       "lanes": [
-        "jvm_contracts",
-        "runtime_boundary",
+        "android_emulator",
         "frontend",
-        "product_coexistence"
+        "jvm_contracts",
+        "product_coexistence",
+        "runtime_boundary"
       ],
-      "reason": "The local launcher delegates Preview, accepts external consumer inputs and offers an explicit Android Messages example using the same host files."
+      "reason": "Unified local composition selects source, Android and existing scenario delivery witnesses."
     },
     {
       "path": "xa-android/config/batch-checks-runtime.yaml",
-      "lanes": ["android_consumer", "android_emulator", "android_host", "runtime_distribution"],
+      "lanes": [
+        "android_consumer",
+        "android_emulator",
+        "android_host",
+        "runtime_distribution"
+      ],
       "reason": "The canonical external deployment examples ship in Runtime ZIP and are consumed by the existing Android proof."
     },
     {
@@ -754,9 +760,10 @@
     {
       "path": "distribution/server/requirements-preview.txt",
       "lanes": [
-        "product_coexistence"
+        "product_coexistence",
+        "runtime_distribution"
       ],
-      "reason": "Preview-only prerequisites and acceptance retain their scenario proof ownership after distribution consolidation."
+      "reason": "Shared local launcher dependencies are used by Preview and Runtime distribution checks."
     },
     {
       "path": "distribution/server/src/test/python/test_run_preview.py",
@@ -1356,6 +1363,24 @@
         "worker_correctness"
       ],
       "reason": "Process lifecycle contracts run with their actual consumers."
+    },
+    {
+      "path": "distribution/server/local_runtime.py",
+      "lanes": [
+        "android_emulator",
+        "product_coexistence",
+        "runtime_distribution"
+      ],
+      "reason": "Shared coordinates, lifecycle and quantity configuration serve source and packaged Preview launch."
+    },
+    {
+      "path": "xa-android/local_workers.py",
+      "lanes": [
+        "android_consumer",
+        "android_emulator",
+        "android_host"
+      ],
+      "reason": "Checked APK preparation and owned ADB lifecycle serve local Android instances."
     }
   ]
 }

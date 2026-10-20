@@ -336,3 +336,14 @@ Matching writer or consumer lifecycle handle. The existing bounded projection
 queue retains best-effort semantics. No acknowledgment, replay, persistence or
 cross-instance cache guarantee is introduced. These rules do not replace finite
 Task archival or grant Server execution scheduling authority.
+
+## Local Development Composition
+
+Distribution's local launcher owns one Server/Adapter process and optional Java
+and Android Worker processes. Profiles and external resource files retain their
+owners; Worker selection never provisions Pool/Project resources. Process
+coordinates are resolved once without inherited business environment overrides.
+Simulator alone prepares quantity-selected inventory and preserves retained
+coordinates; Android uses existing independent Lab APKs on a selected device.
+Cleanup is limited to owned processes, touched ADB mappings and explicitly owned
+temporary test scopes. It adds no runtime scheduling or resource authority.

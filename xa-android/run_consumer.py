@@ -40,7 +40,7 @@ def copy_consumer(destination: Path) -> None:
     """Copy only the standalone consumer, never the SDK producer or build outputs."""
     destination.mkdir(parents=True)
     for name in ("README.md", "build.gradle", "settings.gradle", "gradle.properties", "gradlew", "gradlew.bat",
-                 "gradle", "capabilities", "worker-demo", "run_consumer.py", "config", "tests"):
+                 "gradle", "capabilities", "worker-demo", "run_consumer.py", "local_workers.py", "config", "tests"):
         source = ROOT / name
         if source.is_dir():
             shutil.copytree(source, destination / name,
