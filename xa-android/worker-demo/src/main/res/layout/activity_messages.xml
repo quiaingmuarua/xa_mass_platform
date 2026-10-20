@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:fillViewport="true" android:background="#F4F6F5">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="20dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="本地消息演示" android:textSize="24sp" android:textStyle="bold" />
+        <TextView android:id="@+id/messageNotice" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:layout_marginTop="12dp" />
+        <Button android:id="@+id/messagePermission" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:text="通知权限与设置" />
+        <LinearLayout android:id="@+id/messageList" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="vertical">
+            <Button android:id="@+id/messageRefresh" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="刷新本地记录" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="最近最多 100 条；窗口 10 分钟。平台结果请在网页刷新查看。" />
+            <LinearLayout android:id="@+id/messageRows" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="vertical" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/messageDetail" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+            <Button android:id="@+id/messageBack" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="返回最近消息" />
+            <TextView android:id="@+id/messageIdentity" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:fontFamily="monospace" android:textIsSelectable="true" />
+            <TextView android:id="@+id/messageBody" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="16dp"
+                android:textSize="18sp" android:textIsSelectable="true" />
+            <TextView android:id="@+id/messageFeedback" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="16dp" />
+            <EditText android:id="@+id/messageReply" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:hint="输入演示回复"
+                android:inputType="textMultiLine" android:maxLength="4096" android:minLines="2" />
+            <Button android:id="@+id/messageReplyButton" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="提交回复" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

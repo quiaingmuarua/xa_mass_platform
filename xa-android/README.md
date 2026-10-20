@@ -107,6 +107,18 @@ also supports source consumer and direct `java -jar` startup with the same input
 The Android proof reads packaged examples, records actual input hashes, and retains
 the 123-seed Any/restart proof plus a separate three-seed window feedback phase.
 
+## Messages through the Android local channel
+
+For Messages, use the same verified consumer arguments with
+`--runtime-config ./config/messages-runtime.yaml --groups ./config/worker-groups.json`
+and a fresh scope. The [Messages deployment guide](../distribution/server/src/main/dist/examples/messages/README.md)
+also covers source startup and direct ZIP execution. It enables only Messages
+and the Messaging Pool; no Simulator, Batch Checks or SMS module is required.
+The [Android inbox and notification](worker-demo/README.md#local-message-interaction)
+provide local acceptance, READ and REPLIED through the original run. These are
+simulated messages, not physical SMS delivery. The same sample files are packaged
+in Runtime ZIP `examples/messages`.
+
 ## Group window Pool through the raw workbench
 
 Use the same verified candidate arguments with `--runtime-config ./config/window-pool-runtime.yaml --groups ./config/worker-groups.json`

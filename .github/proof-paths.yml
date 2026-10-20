@@ -261,6 +261,7 @@ android_consumer:
   - '!**/*.md'
 android_emulator:
   - 'scenarios/app-checks-jvm/src/main/**'
+  - 'scenarios/message-campaigns-jvm/src/main/**'
   - 'server_jvm/src/main/java/com/xa/mass/server/credits/**'
   - 'kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/RefillTarget.java'
   - 'kernel_jvm/src/main/java/com/xa/mass/kernel/assignment/WorkerQuery.java'

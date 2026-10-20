@@ -26,6 +26,7 @@ xa:
           path: ${XA_MASS_APP_CHECKS_CONFIG_PATH:}
           seed: ${XA_MASS_APP_CHECKS_SEED:classpath:app-checks/preview-configuration.json}
       messages:
+        enabled: true
         applications:
           - id: demo
             label: Demo

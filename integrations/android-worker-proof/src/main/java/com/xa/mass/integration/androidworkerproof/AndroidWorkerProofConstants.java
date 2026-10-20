@@ -35,6 +35,7 @@ final class AndroidWorkerProofConstants {
             HOST_SNAPSHOT_EVENT,
             HOST_START_EVENT,
             HOST_STOP_EVENT,
+            "extension.worker.android-demo.host.messages.read",
             DELAY_EVENT,
             FAIL_EVENT,
             "extension.worker.android.state.read",

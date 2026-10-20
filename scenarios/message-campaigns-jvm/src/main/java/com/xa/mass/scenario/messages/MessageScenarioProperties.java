@@ -6,9 +6,10 @@ import java.util.HashSet;
 
 /** Explicit environment binding; no shared String bean or default Group. */
 @ConfigurationProperties(prefix = "xa.mass.scenarios.messages", ignoreUnknownFields = false)
-public record MessageScenarioProperties(List<Application> applications) {
+public record MessageScenarioProperties(boolean enabled, List<Application> applications) {
     public MessageScenarioProperties {
-        if (applications == null || applications.isEmpty())
+        applications = applications == null ? List.of() : applications;
+        if (enabled && applications.isEmpty())
             throw new IllegalArgumentException("Messages applications must be explicitly configured");
         var ids = new HashSet<String>();
         var groups = new HashSet<String>();

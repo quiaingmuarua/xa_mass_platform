@@ -16,6 +16,7 @@ import time
 from urllib.error import URLError
 from urllib.request import urlopen
 import uuid
+from xml.etree import ElementTree
 
 from cleanup_redis_test_scope import cleanup as cleanup_scope
 
@@ -71,6 +72,40 @@ def await_marker(process: subprocess.Popen, output: Path, marker: str,
             raise RuntimeError(f"Proof exited before checkpoint {marker}; see {output}")
         time.sleep(0.1)
     raise TimeoutError(f"Proof checkpoint {marker} timed out; see {output}")
+
+
+def ui_target(xml: str, *, resource: str | None = None, description: str | None = None,
+              text: str | None = None, notification: bool = False) -> tuple[int, int] | None:
+    """Resolve a real control without retaining the hierarchy's opaque message text."""
+    root = ElementTree.fromstring(xml)
+    candidates = list(root.iter("node"))
+    if notification:
+        parents = {child: parent for parent in root.iter() for child in parent}
+        title = next((node for node in candidates if node.get("text", "").startswith("本地演示 · ")), None)
+        if title is None:
+            return None
+        region = title
+        while region is not None:
+            nested = list(region.iter("node"))
+            if any((resource and node.get("resource-id", "").endswith(resource))
+                   or (text and node.get("text") == text) for node in nested):
+                candidates = nested
+                break
+            region = parents.get(region)
+        else:
+            return None
+    matched = [node for node in candidates
+               if (resource is None or node.get("resource-id", "").endswith(resource))
+               and (description is None or node.get("content-desc") == description)
+               and (text is None or node.get("text") == text)
+               and node.get("enabled", "true") == "true"]
+    if len(matched) != 1:
+        return None
+    bounds = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", matched[0].get("bounds", ""))
+    if bounds is None:
+        return None
+    left, top, right, bottom = map(int, bounds.groups())
+    return ((left + right) // 2, (top + bottom) // 2) if right > left and bottom > top else None
 
 
 class ProofRunner:
@@ -253,6 +288,10 @@ class ProofRunner:
         runtime_config = ROOT / "xa-android/config" / configuration if configuration else None
         groups = ROOT / "xa-android/config/worker-groups.json"
         example = Path(self.consumption["runtimeRoot"]) / "examples/batch-checks"
+        if configuration == "messages-runtime.yaml":
+            example = Path(self.consumption["runtimeRoot"]) / "examples/messages"
+            runtime_config = example / configuration
+            groups = example / "worker-groups.json"
         if configuration in {"batch-checks-runtime.yaml", "batch-checks-window.yaml"}:
             runtime_config = example / "batch-checks-runtime.yaml"
             groups = example / "worker-groups.json"
@@ -298,6 +337,45 @@ class ProofRunner:
                 pass
             time.sleep(1)
         raise TimeoutError(f"Server readiness timed out; see {stream.name}")
+
+    def tap_ui(self, *, timeout: float = 25, **selector) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            path = "/sdcard/xa-messages-proof-ui.xml"
+            try:
+                self.adb("shell", "uiautomator", "dump", "--compressed", path, timeout=15)
+                xml = self.adb("exec-out", "cat", path)
+                target = ui_target(xml, **selector)
+            finally:
+                self.adb("shell", "rm", "-f", path)
+            if target:
+                self.adb("shell", "input", "tap", str(target[0]), str(target[1]))
+                return
+            time.sleep(0.25)
+        raise TimeoutError("Android Messages control was not available: " + str(selector))
+
+    def open_message(self, message_id: str) -> None:
+        self.start_app(APPLICATIONS[0])
+        self.tap_ui(resource=":id/messagesButton")
+        self.tap_ui(description="message:" + message_id)
+
+    def reply_in_app(self) -> None:
+        self.tap_ui(resource=":id/messageReply")
+        self.adb("shell", "input", "text", "app-reply")
+        self.adb("shell", "input", "keyevent", "BACK")
+        self.tap_ui(resource=":id/messageReplyButton")
+
+    def reply_in_notification(self) -> None:
+        self.adb("shell", "cmd", "statusbar", "expand-notifications")
+        try:
+            self.tap_ui(text="回复", notification=True, timeout=3)
+        except TimeoutError:
+            self.tap_ui(resource=":id/expand_button", notification=True)
+            self.tap_ui(text="回复", notification=True)
+        self.tap_ui(resource=":id/remote_input")
+        self.adb("shell", "input", "text", "notification-reply")
+        self.tap_ui(resource=":id/remote_input_send")
+        self.adb("shell", "cmd", "statusbar", "collapse")
 
     def stop_server(self) -> None:
         if self.server is not None:
@@ -403,6 +481,27 @@ class ProofRunner:
         self.start_server("batch-checks-window", scope + "_batch_checks_window", configuration="batch-checks-window.yaml")
         self.reset_apps(APPLICATIONS[:1])
         self.phase("BatchChecks", "android-batch-checks-window", "window", "batch-checks-window")
+        self.stop_app(APPLICATIONS[0])
+        self.stop_server()
+        self.start_server("messages", scope + "_messages", configuration="messages-runtime.yaml")
+        self.reset_apps(APPLICATIONS[:1])
+        self.adb("shell", "pm", "grant", APPLICATIONS[0], "android.permission.POST_NOTIFICATIONS")
+        self.phase("Messages", "android-messages", "initial", "messages-initial")
+        initial = json.loads((self.evidence / "messages-initial.json").read_text(encoding="utf-8"))
+        message = initial["checks"]["messageIds"][0]
+        self.phase("Messages", "android-messages", "open", "messages-open", "messages-initial",
+                   "ANDROID_MESSAGES_OPEN_READY", lambda: self.open_message(message))
+        self.phase("Messages", "android-messages", "reply", "messages-reply", "messages-initial",
+                   "ANDROID_MESSAGES_REPLY_READY", self.reply_in_app)
+        self.phase("Messages", "android-messages", "notification", "messages-notification", "messages-initial",
+                   "ANDROID_MESSAGES_NOTIFICATION_READY", self.reply_in_notification)
+        self.phase("Messages", "android-messages", "stop-start", "messages-stop-start", "messages-initial")
+        self.phase("Messages", "android-messages", "bulk", "messages-bulk", "messages-initial")
+        self.stop_app(APPLICATIONS[0])
+        self.stop_server()
+        self.start_server("messages-restart", scope + "_messages", configuration="messages-runtime.yaml")
+        self.start_app(APPLICATIONS[0])
+        self.phase("Messages", "android-messages", "restart", "messages-restart", "messages-bulk")
 
     def cleanup(self) -> None:
         errors = []

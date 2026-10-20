@@ -34,11 +34,20 @@ final class AndroidDeviceProperties implements AndroidWorkerProperties {
         properties.put("sdkInt", Integer.toString(Build.VERSION.SDK_INT));
         properties.put("manufacturer", Build.MANUFACTURER);
         properties.put("model", Build.MODEL);
+        properties.put("messaging.enabled", "true");
+        properties.put("country", "CN");
+        properties.put("phone", demoPhone());
         return Collections.unmodifiableMap(properties);
     }
 
     String packageName() {
         return applicationContext.getPackageName();
+    }
+
+    String demoPhone() {
+        String id = packageName();
+        String suffix = id.endsWith(".lab1") ? "1" : id.endsWith(".lab2") ? "2" : id.endsWith(".lab3") ? "3" : "0";
+        return "+861700000000" + suffix;
     }
 
     String versionName() {

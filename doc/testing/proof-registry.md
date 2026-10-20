@@ -185,12 +185,20 @@ The raw Window Pool phase separately uses the existing Android digest Handler th
 verifying actual Item queries, three fixed answers, JSONL and observed Platform Properties. It enables no Scenario.
 New-Group membership expansion belongs to Server/Boot's parameterized Host proof, not Android identity reconfiguration.
 
+The Messages supplement consumes packaged external YAML/Group JSON without a
+Simulator. It proves Messaging Pool execution, three completed SENT messages
+before interaction, actual Android page/notification READ and REPLIED callbacks,
+original-run isolation, 123 complete known-identity Results/Item states and JSONL,
+bounded business preview, and same-scope restart reads with lost local acceptance.
+It does not prove real SMS delivery, cross-device deduplication or exactly-once
+physical effects. State and permission edge cases remain Android Host tests.
+
 
 - **Primary Owner:** [Android Worker Proof](../../integrations/android-worker-proof/README.md); Python owns external process choreography only.
 - **Boundary:** Debug App lifecycle, route recovery, Handler-time process loss, endpoint exhaustion and explicit identity-stable recovery; fixed App Triad adds same-Group identity isolation, explicit Worker ID targeting and partial outage.
 - **Required witness:** real process/route and targeted identity evidence, rather than Properties affinity inferred as scheduling identity.
 - **Evidence:** the Owner's complete Debug App and Triad scenarios using the same candidate ZIP pair and independently built APKs, plus an RPC Android digest-content witness. Consumer profile/DEFAULT and explicit default Project replace the legacy shared fixture.
-- **Nonclaims:** throughput, Handler concurrency, exact connection attempts/transient Scores, Item finality across process loss, UI, arbitrary replicas, dynamic Properties mutation end to end, multi-device compatibility, cached-process survival, Doze/OEM policy or physical-device background behavior.
+- **Nonclaims:** throughput, Handler concurrency, exact connection attempts/transient Scores, Item finality across process loss, general UI coverage beyond the Messages interactions, arbitrary replicas, dynamic Properties mutation end to end, multi-device compatibility, cached-process survival, Doze/OEM policy or physical-device background behavior.
 
 ## frontend
 

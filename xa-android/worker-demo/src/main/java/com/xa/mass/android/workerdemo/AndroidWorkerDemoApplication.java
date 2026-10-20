@@ -6,6 +6,7 @@ import com.xa.mass.android.capabilityhttp.AndroidCapabilityHttpServer;
 import com.xa.mass.android.capabilities.AndroidDemoCapabilities;
 import com.xa.mass.worker.android.AndroidWorker;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.runtime.WorkerLifecycle;
 
 import java.io.IOException;
 import java.net.URI;
@@ -20,6 +21,8 @@ public final class AndroidWorkerDemoApplication extends Application {
     private AndroidWorker worker;
     private AndroidDemoCapabilities demoCapabilities;
     private AndroidWorkerLabEvents labEvents;
+    private AndroidMessageDemo messages;
+    private AndroidMessageNotifications messageNotifications;
     private AndroidCapabilityHttpServer capabilityHttpServer;
     private String capabilityHttpDiagnostic;
 
@@ -36,6 +39,11 @@ public final class AndroidWorkerDemoApplication extends Application {
         List<WorkerEventDefinition<?>> workerDefinitions = new ArrayList<>();
         workerDefinitions.addAll(demoCapabilities.definitions());
         workerDefinitions.addAll(labEvents.definitions());
+        // Sending is a Worker capability only. HTTP retains the existing definitions and read-only message evidence.
+        List<WorkerEventDefinition<?>> hostDefinitions = new ArrayList<>(workerDefinitions);
+        messages = new AndroidMessageDemo(() -> worker == null ? null : worker.snapshot(), deviceProperties.demoPhone());
+        workerDefinitions.add(messages.sendingDefinition());
+        hostDefinitions.add(messages.observationDefinition());
         workerDefinitions = Collections.unmodifiableList(workerDefinitions);
         worker = AndroidWorker.create(
                 this,
@@ -44,10 +52,16 @@ public final class AndroidWorkerDemoApplication extends Application {
                 deviceProperties,
                 workerDefinitions
         );
+        messageNotifications = new AndroidMessageNotifications(this, messages);
+        messages.addListener(messageNotifications::requestRefresh);
+        worker.addListener(snapshot -> {
+            if (snapshot.state() == WorkerLifecycle.State.STOPPED
+                    && worker.snapshot().state() == WorkerLifecycle.State.STOPPED) messages.revokeReporters();
+        });
         capabilityHttpServer = AndroidCapabilityHttpServer.create(
                 getResources().getInteger(R.integer.capability_http_port),
                 AndroidWorkerHostEvents.assemble(
-                        workerDefinitions,
+                        hostDefinitions,
                         worker,
                         demoCapabilities,
                         labEvents
@@ -79,6 +93,9 @@ public final class AndroidWorkerDemoApplication extends Application {
         }
         return demoCapabilities;
     }
+
+    AndroidMessageDemo messages() { return messages; }
+    AndroidMessageNotifications messageNotifications() { return messageNotifications; }
 
     boolean capabilityHttpRunning() {
         return capabilityHttpServer != null

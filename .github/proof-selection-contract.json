@@ -617,6 +617,7 @@
     {
       "path": "scenarios/message-campaigns-jvm/src/main/java/com/xa/mass/scenario/messages/MessageTaskService.java",
       "lanes": [
+        "android_emulator",
         "jvm_contracts",
         "product_coexistence",
         "runtime_distribution"

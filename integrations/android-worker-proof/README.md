@@ -170,6 +170,38 @@ external configuration paths. Original correctness/convergence/triad assertions
 and deadlines remain. Evidence contains IDs, counts, fingerprints and verdicts,
 never complete seeds or result bodies.
 
+## Messages finite consumer
+
+The same suite runs `AndroidWorkerMessagesMain` with the candidate ZIP's two
+`examples/messages` inputs, a separate scope, and the existing Debug App. It
+enables only Messages and Messaging Pool/query. No JVM Simulator, RPC submission
+or directed Worker selection substitutes for this path.
+
+The initial phase creates three ordinary-text messages, repeats import without
+new work, independently derives message identities, and proves terminal Items
+and a completed Task containing SENT before any interaction. It checks actual
+Pool queries, sender Properties, raw Results and the Android read-only acceptance
+fingerprints. Open, in-app reply and notification reply phases emit fixed
+checkpoints; Python drives actual App/System UI controls by their identities,
+without saving the XML hierarchy or passing result bodies to evidence. Java
+requires READ/REPLIED for the original message, unchanged unrelated messages, and
+continued Task termination. A separate one-message Task makes notification
+selection deterministic without assuming the order in which three Items execute.
+
+Stop/start preserves acceptance but drops old Reporter associations. The bulk
+phase sends 123 recipients with ANY selection, independently reads every known
+Result and Item state, and checks a truncated 100-row business preview plus all
+123 raw JSONL identities. Same-scope Server/App restart preserves Server results
+and creation time while local acceptance is empty. Proof receipts contain only
+identities, counts, hashes and verdicts. These observations prove neither real
+SMS delivery, cross-device deduplication nor physical exactly-once execution.
+
+Messages maintains the existing 180-second per-phase / five-second request
+budgets. Original Correctness, Convergence, Triad, Window Pool and Batch Checks
+phases keep their workloads and deadlines. Local owner/Robolectric tests separately
+cover capacity, fixed expiration, concurrent duplicate sends, reporter rejection,
+notification permission and stale PendingIntent identities.
+
 ## Entrypoints
 
 Reuse an available API 33 development Emulator with no differently signed installations of

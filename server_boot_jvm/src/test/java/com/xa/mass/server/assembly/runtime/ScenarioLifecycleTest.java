@@ -47,6 +47,7 @@ class ScenarioLifecycleTest {
             context.getEnvironment().setActiveProfiles("preview");
             context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource(
                     "window-fixture", java.util.Map.of(
+                    "xa.mass.scenarios.messages.enabled", "true",
                     "xa.mass.scenarios.messages.applications[0].id", "demo",
                     "xa.mass.scenarios.messages.applications[0].label", "Demo",
                     "xa.mass.scenarios.messages.applications[0].worker-group-id", "demo-sim")));
@@ -82,7 +83,8 @@ class ScenarioLifecycleTest {
                     definition -> definition.setDestroyMethodName("stop"));
             context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource(
                     "batch-checks-enabled", java.util.Map.of("xa.mass.scenarios.app-checks.enabled", true)));
-            context.register(PreviewConfiguration.class, com.xa.mass.serverboot.BatchChecksConfiguration.class);
+            context.register(PreviewConfiguration.class, com.xa.mass.serverboot.BatchChecksConfiguration.class,
+                    com.xa.mass.serverboot.MessagesConfiguration.class);
             doAnswer(call -> { events.add("platform-start"); return null; }).when(adapters).start();
             when(results.loadTaskItemResults(org.mockito.ArgumentMatchers.eq(CALLER), anyString(), anyList())).thenReturn(java.util.Map.of());
             java.util.function.BiConsumer<String, String> observe = (project, id) -> {

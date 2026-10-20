@@ -5,7 +5,9 @@ extension Definitions. It exposes the Host-supplied finite collection through
 HTTP bound only to `127.0.0.1` on the selected port. The
 [Worker Demo](../worker-demo/README.md#device-local-capability-and-host-api)
 supplies its build-variant port, the same business and Lab Definitions used by
-its Android Worker, and three additional local-only Host lifecycle Definitions.
+its Android Worker, three local-only Host lifecycle Definitions and bounded
+message-acceptance evidence. The Demo's message sending Definition is Worker-only;
+it is not part of this HTTP collection.
 
 The probe proves that a Definition's parameter resolver, handler, and result
 run inside the installed App process. A Host may use the same dispatcher for

@@ -47,6 +47,8 @@ class ArchiveToolsTest(unittest.TestCase):
         return {
             **{"examples/batch-checks/" + name: ("{}" if name.endswith(".json") else "fixture")
                for name in tools.BATCH_CHECK_EXAMPLES},
+            **{"examples/messages/" + name: ("{}" if name.endswith(".json") else "fixture")
+               for name in tools.MESSAGES_EXAMPLES},
             f"lib/xa-mass-server-jvm-{self.version}.jar": jar,
             "frontend/dist/index.html": "fixture",
             "frontend/dist/reference/platform-diagnostic-codes.json": json.dumps({
@@ -123,12 +125,13 @@ class ArchiveToolsTest(unittest.TestCase):
 
     def test_runtime_examples_are_explicit_and_contain_no_saved_state(self):
         original = self.runtime_files()
-        for name in tools.BATCH_CHECK_EXAMPLES:
-            with self.subTest(missing=name):
-                files = dict(original)
-                del files["examples/batch-checks/" + name]
-                with self.assertRaisesRegex(ValueError, "examples"):
-                    tools.verify_runtime(self.archive("server-runtime", files), self.version)
+        for directory, examples in (("batch-checks", tools.BATCH_CHECK_EXAMPLES), ("messages", tools.MESSAGES_EXAMPLES)):
+            for name in examples:
+                with self.subTest(missing=directory + "/" + name):
+                    files = dict(original)
+                    del files["examples/" + directory + "/" + name]
+                    with self.assertRaisesRegex(ValueError, "examples"):
+                        tools.verify_runtime(self.archive("server-runtime", files), self.version)
         for filename in ("configuration.json.lock", "configuration.json.tmp", "data/configuration.json"):
             with self.subTest(runtime_state=filename), self.assertRaisesRegex(ValueError, "runtime data"):
                 tools.verify_runtime(self.archive("server-runtime", {**original, "examples/batch-checks/" + filename: "{}"}), self.version)

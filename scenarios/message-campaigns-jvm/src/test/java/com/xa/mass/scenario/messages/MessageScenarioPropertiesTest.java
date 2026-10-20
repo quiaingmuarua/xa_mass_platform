@@ -17,7 +17,8 @@ class MessageScenarioPropertiesTest {
     static class Binding { }
     private final ApplicationContextRunner runner = new ApplicationContextRunner().withUserConfiguration(Binding.class);
     private static String[] settings() {
-        return new String[]{"xa.mass.scenarios.messages.applications[0].id=custom",
+        return new String[]{"xa.mass.scenarios.messages.enabled=true",
+                "xa.mass.scenarios.messages.applications[0].id=custom",
                 "xa.mass.scenarios.messages.applications[0].label=Custom",
                 "xa.mass.scenarios.messages.applications[0].worker-group-id=bound-group",
                 "xa.mass.scenarios.messages.applications[1].id=other",
@@ -28,6 +29,7 @@ class MessageScenarioPropertiesTest {
         runner.withPropertyValues(settings()).run(context -> {
             assertThat(context).hasNotFailed();
             var config = context.getBean(MessageScenarioProperties.class);
+            assertThat(config.enabled()).isTrue();
             var assembly = new MessageCampaignsScenarioConfiguration();
             var definition = assembly.messageProject(config);
             var requirement = assembly.messageWorkerRequirements(config);
@@ -47,18 +49,29 @@ class MessageScenarioPropertiesTest {
         });
     }
     @Test void invalidAndOldSettingsFailWithoutImplicitApplications() {
-        runner.withBean("scenarioWorkerGroup", String.class, () -> "demo-sim").run(context -> assertThat(context).hasFailed());
+        runner.withPropertyValues("xa.mass.scenarios.messages.enabled=true")
+                .withBean("scenarioWorkerGroup", String.class, () -> "demo-sim").run(context -> assertThat(context).hasFailed());
         for (String invalid : List.of("worker-group-id=demo-sim", "extra=true", "applications[0].extra=true",
                 "applications[0].label= ", "applications[1].id=custom", "applications[1].worker-group-id=bound-group"))
             runner.withPropertyValues(settings()).withPropertyValues("xa.mass.scenarios.messages." + invalid)
                     .run(context -> assertThat(context).hasFailed());
     }
+    @Test void disabledByDefaultButUnknownFieldsAndInvalidSwitchStillFail() {
+        runner.run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(MessageScenarioProperties.class).enabled()).isFalse();
+            assertThat(context.getBean(MessageScenarioProperties.class).applications()).isEmpty();
+        });
+        for (String invalid : List.of("enabled=maybe", "unknown=true"))
+            runner.withPropertyValues("xa.mass.scenarios.messages." + invalid)
+                    .run(context -> assertThat(context).hasFailed());
+    }
     @Test void immutableApplicationsRetainOrderAndDisplayLabelsDoNotChangeIdentities() {
         var apps = new ArrayList<>(List.of(new MessageScenarioProperties.Application("a", "Before", "g")));
-        var config = new MessageScenarioProperties(apps); apps.clear();
+        var config = new MessageScenarioProperties(true, apps); apps.clear();
         assertThat(config.workerGroupIds()).containsExactly("g");
         assertThatThrownBy(() -> config.applications().clear()).isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> new MessageScenarioProperties(List.of())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new MessageScenarioProperties(true, List.of())).isInstanceOf(IllegalArgumentException.class);
         assertThat(config.findApplication("missing")).isEmpty();
     }
 }

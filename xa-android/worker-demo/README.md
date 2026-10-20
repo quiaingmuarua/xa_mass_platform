@@ -14,10 +14,15 @@ AndroidWorkerDemoApplication
   -> AndroidWorkerLabEvents
      -> extension.worker.lab.delay
      -> extension.worker.lab.fail
+  -> AndroidMessageDemo (Worker sending only)
+     -> extension.worker.message.send
+     -> bounded local acceptance and original Reporter associations
+  -> AndroidMessageNotifications / MessagesActivity / MessageReplyReceiver
+     -> local notification, opened message, native quick reply
   -> AndroidCapabilityHttpServer
      -> build-variant loopback port
      -> the same business Definitions
-     -> local-only host.snapshot / host.start / host.stop Definitions
+     -> local-only host.snapshot / host.start / host.stop / host.messages.read Definitions
 
 MainActivity
   -> observes WorkerLifecycle
@@ -43,7 +48,9 @@ URI and does not interpret network connection state as Worker online truth.
 The Application separately owns `AndroidDemoCapabilities` and
 `AndroidWorkerLabEvents`. It passes the three Android capability Definitions and
 the two fixed Lab Definitions into both `AndroidWorker.create(...)` and the
-local Capability HTTP server. It appends three fixed Host lifecycle Definitions
+local Capability HTTP server. Message sending is added only to the Worker;
+HTTP additionally receives the bounded read-only message evidence Definition.
+It appends three fixed Host lifecycle Definitions
 only for HTTP assembly; those Definitions are never passed to `AndroidWorker`,
 never appear in `platform.worker.events.snapshot`, and never become WorkerGroup
 capability truth. HTTP startup failure is diagnostic-only and does not prevent
@@ -51,6 +58,56 @@ the Worker from starting. The Activity only observes Worker lifecycle,
 capability state, and the fixed probe endpoint while visible.
 Leaving the Activity stops neither owner; Android may still kill the process
 because this demo installs no Service or WorkManager.
+
+## Local message interaction
+
+The independent Messages deployment uses the existing `android-demo-workers`
+identity and `extension.worker.message.send` five-field protocol. Device Properties
+include `messaging.enabled="true"`, `country=CN`, and a simulated sender phone
+distinct for Debug/Lab variants. Host configuration separately enables the
+Messaging Pool/query; neither these Properties nor Group registration creates stock.
+This App does not reference or call `worker_simulator_jvm`, its Lab HTTP, or Lab JSON.
+
+`AndroidMessageDemo` owns one short state gate, 1,000 acceptance records, at most
+256 original `WorkerOutcomeReporter` references, and a 100-entry recent view.
+Acceptance and association windows are ten minutes from first acceptance using
+elapsed time; repeats and interactions never renew them. Each operation expires
+at most 100 oldest records and validates any directly addressed record's deadline.
+Known identical sends return their immutable first SENT snapshot; conflicting
+inputs and full acceptance storage fail before mutation. Full Reporter capacity
+still permits accepted sends. No maintenance thread, database or automatic retry
+is added. Worker stop/start preserves live dedup entries but revokes associations;
+process replacement loses both. This is not cross-device or durable exactly-once.
+
+The channel commits acceptance before returning SENT. UI notification/observer
+failures cannot undo it. The receipt callback captures the original Reporter under
+the gate and calls it outside; stop may revoke the run while an admitted callback
+finishes. The SDK run fence is authoritative; lifecycle observations only clean
+local references. No replacement run receives an old association.
+
+**本地消息演示** opens the recent inbox. Opening an actual detail reports READ;
+in-app reply and Android `RemoteInput` quick reply report REPLIED. Each action uses
+an opaque process-local token in an explicit Intent data URI, not only extras or
+a lossy numeric message hash. A reply has one generated request ID and is never
+automatically resent. Reporting success means local acceptance only; the webpage
+must refresh its Server result. Stopped, missing and expired associations cannot
+create messages or recover Reporters.
+
+One low-importance notification represents the latest unhandled message. UI
+refreshes are coalesced. Android 13+ notification permission is requested by the
+visible App; denied/disabled notifications do not block acceptance or in-app
+interaction. No notification publication reports DELIVERED. No SMS permission,
+SIM card, Service or WorkManager is used. New process presentation cancels this
+feature's old notification; `Application.onTerminate()` is not a cleanup guarantee.
+
+The local-only `extension.worker.android-demo.host.messages.read` accepts
+`{"messageIds":[...]}` with 1..100 known IDs. It returns `accepted` evidence
+(campaign/message/Worker/phone, first `observedAtMillis`, request fingerprint and
+receipt availability) plus `missing`. It never returns body/recipient content
+or mutates Task stages. The fingerprint is lowercase SHA-256 over four-byte
+big-endian length-prefixed UTF-8 values in order: campaignId, messageId, country,
+recipientId, body. Missing means not retained here, not proof of non-execution.
+Messages sending is absent from `/events`; the normal Task path is required.
 
 The State command returns package/device data plus a persistent local counter.
 The Battery command reads `BatteryManager` once per command and returns
@@ -211,7 +268,9 @@ therefore be reviewed together with the workflow's
 
 It asserts IDs, states, Event names, message IDs, counts, established mutations,
 and cross-stage relations. Evidence excludes full Properties, business
-Payloads, opaque Results, screenshots, and video. The lane does not automate UI.
+Payloads, opaque Results, screenshots, and video. The original lifecycle phases
+do not automate UI. The Messages supplement drives the actual message page and
+notification reply controls without saving UI hierarchies or business content.
 
 ## Verification
 

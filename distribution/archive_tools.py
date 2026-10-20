@@ -24,6 +24,7 @@ def _runtime_require(condition: bool, message: str) -> None:
 HOST_CONFIGURATIONS = {"application.yaml",
                        "application-consumer.yaml", "application-preview.yaml"}
 BATCH_CHECK_EXAMPLES = {"README.md", "batch-checks-runtime.yaml", "worker-groups.json", "batch-checks-configuration.json"}
+MESSAGES_EXAMPLES = {"README.md", "messages-runtime.yaml", "worker-groups.json"}
 
 
 def is_application_configuration(name: str) -> bool:
@@ -92,16 +93,17 @@ def verify_runtime(archive: Path, version: str) -> None:
         }
         missing = required - set(names)
         _runtime_require(not missing, f"runtime archive is missing: {sorted(missing)}")
-        example_prefix = f"{root}/examples/batch-checks/"
-        examples = {name.removeprefix(example_prefix) for name in names
-                    if name.startswith(example_prefix) and not name.endswith("/")}
-        _runtime_require(examples == BATCH_CHECK_EXAMPLES,
-                         "Runtime Batch Checks examples are missing or contain runtime data")
-        for name in BATCH_CHECK_EXAMPLES:
-            content = runtime.read(example_prefix + name).decode("utf-8")
-            _runtime_require(bool(content.strip()), "Empty Batch Checks example: " + name)
-            if name.endswith(".json"):
-                _runtime_require(isinstance(json.loads(content), dict), "Batch Checks example must be a JSON object: " + name)
+        for directory, expected in (("batch-checks", BATCH_CHECK_EXAMPLES), ("messages", MESSAGES_EXAMPLES)):
+            example_prefix = f"{root}/examples/{directory}/"
+            examples = {name.removeprefix(example_prefix) for name in names
+                        if name.startswith(example_prefix) and not name.endswith("/")}
+            _runtime_require(examples == expected,
+                             f"Runtime {directory} examples are missing or contain runtime data")
+            for name in expected:
+                content = runtime.read(example_prefix + name).decode("utf-8")
+                _runtime_require(bool(content.strip()), f"Empty {directory} example: " + name)
+                if name.endswith(".json"):
+                    _runtime_require(isinstance(json.loads(content), dict), f"{directory} example must be a JSON object: " + name)
         _runtime_require(
             not any(
                 name.startswith(f"{root}/scenario-workers/")

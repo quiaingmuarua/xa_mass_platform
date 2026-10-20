@@ -12,6 +12,40 @@ import run_android_emulator_worker as proof
 
 
 class EmulatorChoreographyTest(unittest.TestCase):
+    def test_messages_uses_packaged_runtime_and_group_without_scenario_store(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner = self.runner(root)
+            runner.logs.mkdir(); runner.evidence.mkdir()
+            example = root / "runtime/examples/messages"
+            example.mkdir(parents=True)
+            for name in ("messages-runtime.yaml", "worker-groups.json"):
+                (example / name).write_bytes((proof.ROOT / "xa-android/config" / name).read_bytes())
+            runner.consumption = {"runtimeRoot": str(root / "runtime")}
+            process = Mock(); process.poll.return_value = None
+            with patch.object(proof.consumer, "server_command", return_value=["java"]) as command, \
+                    patch.object(proof, "spawn", return_value=process) as spawn, patch.object(proof, "urlopen") as ready:
+                ready.return_value.__enter__.return_value.status = 200
+                runner.start_server("messages", "test_messages", configuration="messages-runtime.yaml")
+            self.assertEqual(example / "messages-runtime.yaml", command.call_args.kwargs["runtime_config"])
+            self.assertEqual(example / "worker-groups.json", command.call_args.kwargs["groups"])
+            self.assertNotIn("XA_MASS_APP_CHECKS_CONFIG_PATH", spawn.call_args.kwargs["env"])
+            self.assertIsNone(runner.consumption["runtimeInputs"]["messages"]["seedSha256"])
+            for stream in runner.streams:
+                stream.close()
+
+    def test_ui_selection_is_by_identity_and_scopes_notification_actions(self):
+        xml = """<hierarchy><node><node text="Other"><node text="回复" bounds="[0,0][20,20]"/></node>
+          <node><node text="本地演示 · recipient"/><node text="回复" bounds="[20,40][40,60]"/></node>
+          <node content-desc="message:known" enabled="true" bounds="[0,100][100,140]"/>
+          <node resource-id="app:id/messageReply" enabled="false" bounds="[0,100][100,140]"/>
+          </node></hierarchy>"""
+        self.assertEqual((30, 50), proof.ui_target(xml, text="回复", notification=True))
+        self.assertIsNone(proof.ui_target(xml, text="回复"))
+        self.assertEqual((50, 120), proof.ui_target(xml, description="message:known"))
+        self.assertIsNone(proof.ui_target(xml, description="message:missing"))
+        self.assertIsNone(proof.ui_target(xml, resource=":id/messageReply"))
+
     def test_batch_checks_uses_packaged_inputs_and_window_copy_keeps_originals(self):
         for configuration in ("batch-checks-runtime.yaml", "batch-checks-window.yaml"):
             with self.subTest(configuration=configuration), tempfile.TemporaryDirectory(prefix="external 配置 ") as directory:

@@ -57,6 +57,12 @@ starts only the Server composition.
 
 ## External consumer workbench deployment
 
+Messages can independently opt in with external Runtime YAML and Group JSON.
+The [Messages guide](src/main/dist/examples/messages/README.md) is packaged with
+the canonical Android sample files under `examples/messages`. It uses the existing
+consumer launch parameters and requires neither a Scenario store nor Simulator.
+The archive verifier checks this example set without loading it as default config.
+
 The verified consumer may explicitly opt into Batch Checks using external host
 configuration and a separate writable Scenario document. See the
 [Android Pool example](../../xa-android/README.md#batch-checks-through-an-android-pool).

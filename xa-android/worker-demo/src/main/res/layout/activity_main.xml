@@ -19,6 +19,9 @@
             android:textSize="24sp"
             android:textStyle="bold" />
 
+        <Button android:id="@+id/messagesButton" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:text="本地消息演示" />
+
         <TextView
             android:id="@+id/statusValue"
             android:layout_width="match_parent"

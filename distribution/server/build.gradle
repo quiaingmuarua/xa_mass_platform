@@ -162,6 +162,10 @@ tasks.register('stageRuntime', Sync) {
         include 'batch-checks-runtime.yaml', 'worker-groups.json', 'batch-checks-configuration.json'
         into 'examples/batch-checks'
     }
+    from(rootProject.file('xa-android/config')) {
+        include 'messages-runtime.yaml', 'worker-groups.json'
+        into 'examples/messages'
+    }
     from(rootProject.file('frontend/LICENSE.pure-admin-thin'))
     from(rootProject.file('frontend/THIRD_PARTY_NOTICES.md')) {
         rename { 'THIRD_PARTY_NOTICES.frontend.md' }
