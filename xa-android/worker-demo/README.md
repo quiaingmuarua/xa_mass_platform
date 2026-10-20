@@ -72,7 +72,9 @@ This App does not reference or call `worker_simulator_jvm`, its Lab HTTP, or Lab
 256 original `WorkerOutcomeReporter` references, and a 100-entry recent view.
 Acceptance and association windows are ten minutes from first acceptance using
 elapsed time; repeats and interactions never renew them. Each operation expires
-at most 100 oldest records and validates any directly addressed record's deadline.
+at most 100 oldest acceptance records and validates directly addressed or displayed
+records' deadlines. The separate recent view retains up to 100 messages for
+read-only viewing after expiry; it does not keep dedup or Reporter associations alive.
 Known identical sends return their immutable first SENT snapshot; conflicting
 inputs and full acceptance storage fail before mutation. Full Reporter capacity
 still permits accepted sends. No maintenance thread, database or automatic retry

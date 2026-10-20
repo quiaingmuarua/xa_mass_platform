@@ -57,7 +57,8 @@ public class AndroidMessageDemoTest {
         assertEquals("one", reports.get(1).get("messageId"));
         assertEquals(sent.get("workerId"), reports.get(1).get("workerId"));
         clock.set(600_000);
-        assertNull(channel.message(token));
+        assertFalse(channel.message(token).receiptAvailable);
+        assertEquals(input("one").get("body"), channel.message(token).body);
         assertTrue(channel.reply(token, "late", "late").contains("过期"));
         assertEquals(2, reports.size());
     }
@@ -155,6 +156,50 @@ public class AndroidMessageDemoTest {
             finish.countDown();
             callback.get(2, TimeUnit.SECONDS);
             assertTrue(channel.message(token).feedback.contains("停止"));
+        } finally { finish.countDown(); executor.shutdownNow(); }
+    }
+
+    @Test public void expiredRecentMessagesRemainReadOnlyWithoutHidingNewAcceptance() {
+        AndroidMessageDemo channel = channel(2, 2, 2);
+        channel.send(input("one"), (tag, time, content) -> { fail("Expired reporter"); return true; });
+        String old = token(channel);
+        clock.set(600_000);
+        assertEquals(1, channel.recentMessages().size());
+        assertFalse(channel.message(old).receiptAvailable);
+        assertTrue(channel.message(old).feedback.contains("过期"));
+        assertEquals(Collections.singletonList("one"),
+                channel.inspect(Collections.singletonMap("messageIds", Collections.singletonList("one"))).get("missing"));
+        // The dedup window has ended; the old UI token cannot remove or report through this new record.
+        channel.send(input("one"), (tag, time, content) -> true);
+        String fresh = token(channel);
+        assertNotEquals(old, fresh);
+        assertFalse(channel.message(old).receiptAvailable);
+        assertTrue(channel.message(fresh).receiptAvailable);
+        assertTrue(channel.reply(old, "late", "late").contains("过期"));
+        channel.send(input("two"), WorkerOutcomeReporter.UNAVAILABLE);
+        assertEquals(2, channel.recentMessages().size());
+        assertNull(channel.message(old));
+    }
+
+    @Test public void sendAdmittedBeforeStopCannotRetainReporterAfterLocalRevocation() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1), finish = new CountDownLatch(1);
+        AndroidMessageDemo channel = new AndroidMessageDemo(() -> {
+            WorkerLifecycle.Snapshot snapshot = worker.get();
+            entered.countDown();
+            try { assertTrue(finish.await(2, TimeUnit.SECONDS)); }
+            catch (InterruptedException interrupted) { throw new AssertionError(interrupted); }
+            return snapshot;
+        }, "+8617000000000", clock::get, () -> 1000L, 2, 2, 2, 600_000);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<Map<String, Object>> sending = executor.submit(() ->
+                    channel.send(input("one"), (tag, time, content) -> { fail("Revoked run"); return true; }));
+            assertTrue(entered.await(2, TimeUnit.SECONDS));
+            channel.revokeReporters();
+            finish.countDown();
+            assertEquals("SENT", sending.get(2, TimeUnit.SECONDS).get("status"));
+            assertFalse(channel.message(token(channel)).receiptAvailable);
+            assertTrue(channel.opened(token(channel)).contains("停止"));
         } finally { finish.countDown(); executor.shutdownNow(); }
     }
 

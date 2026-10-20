@@ -25,7 +25,7 @@ final class AndroidMessageDemo {
     private final Object gate = new Object();
     private final LinkedHashMap<String, Accepted> accepted = new LinkedHashMap<>();
     private final Map<String, Accepted> tokens = new HashMap<>();
-    private final Deque<String> recent = new ArrayDeque<>();
+    private final Deque<Accepted> recent = new ArrayDeque<>();
     private final Set<Runnable> listeners = new CopyOnWriteArraySet<>();
     private final Supplier<WorkerLifecycle.Snapshot> worker;
     private final String phone;
@@ -33,6 +33,7 @@ final class AndroidMessageDemo {
     private final int maximumAccepted, maximumReporters, maximumRecent;
     private final long windowMillis;
     private int reporters;
+    private long reporterGeneration;
 
     AndroidMessageDemo(Supplier<WorkerLifecycle.Snapshot> worker, String phone) {
         this(worker, phone, android.os.SystemClock::elapsedRealtime, System::currentTimeMillis,
@@ -67,6 +68,8 @@ final class AndroidMessageDemo {
     Map<String, Object> send(Map<String, Object> input, WorkerOutcomeReporter reporter) {
         Map<String, Object> message = validate(input);
         Objects.requireNonNull(reporter);
+        long generation;
+        synchronized (gate) { generation = reporterGeneration; }
         WorkerLifecycle.Snapshot sender = worker.get();
         if (sender == null || sender.state() != WorkerLifecycle.State.RUNNING
                 || sender.workerId() == null || sender.workerId().trim().isEmpty())
@@ -90,14 +93,19 @@ final class AndroidMessageDemo {
             snapshot.put("phone", phone);
             snapshot.put("observedAtMillis", observed);
             sent = Collections.unmodifiableMap(snapshot);
-            WorkerOutcomeReporter original = reporters < maximumReporters && reporter != WorkerOutcomeReporter.UNAVAILABLE
+            WorkerOutcomeReporter original = generation == reporterGeneration
+                    && reporters < maximumReporters && reporter != WorkerOutcomeReporter.UNAVAILABLE
                     ? reporter : null;
             Accepted record = new Accepted(message, sent, now, original);
+            if (generation != reporterGeneration) record.feedback = "原 Worker 已停止，无法上报";
             accepted.put(id, record);
             tokens.put(record.token, record);
             if (original != null) reporters++;
-            recent.addLast(id);
-            while (recent.size() > maximumRecent) recent.removeFirst();
+            recent.addLast(record);
+            while (recent.size() > maximumRecent) {
+                Accepted evicted = recent.removeFirst();
+                if (accepted.get(evicted.input.get("messageId")) != evicted) tokens.remove(evicted.token);
+            }
         }
         publish();
         return sent;
@@ -125,10 +133,11 @@ final class AndroidMessageDemo {
             long now = elapsedMillis.getAsLong();
             expire(now);
             List<Message> messages = new ArrayList<>();
-            Iterator<String> ids = recent.descendingIterator();
-            while (ids.hasNext()) {
-                Accepted record = accepted.get(ids.next());
-                if (record != null && !expired(record, now)) messages.add(view(record));
+            Iterator<Accepted> records = recent.descendingIterator();
+            while (records.hasNext()) {
+                Accepted record = records.next();
+                if (expired(record, now)) remove(record);
+                messages.add(view(record));
             }
             return Collections.unmodifiableList(messages);
         }
@@ -140,7 +149,7 @@ final class AndroidMessageDemo {
             if (record == null) return null;
             if (expired(record, elapsedMillis.getAsLong())) {
                 remove(record);
-                return null;
+                if (!recent.contains(record)) return null;
             }
             return view(record);
         }
@@ -159,8 +168,10 @@ final class AndroidMessageDemo {
         String status = reply == null ? "READ" : "REPLIED";
         synchronized (gate) {
             record = tokens.get(token);
-            if (record == null || expired(record, elapsedMillis.getAsLong()))
+            if (record == null || expired(record, elapsedMillis.getAsLong())) {
+                if (record != null) remove(record);
                 return "关联已过期，无法上报";
+            }
             if (record.reporter == null) return record.feedback;
             if (record.reporting) return "正在提交回执";
             if (reply == null && record.opened) return record.feedback;
@@ -196,6 +207,8 @@ final class AndroidMessageDemo {
 
     void revokeReporters() {
         synchronized (gate) {
+            // Fence local references from an already admitted send; SDK run revocation remains authoritative.
+            reporterGeneration++;
             for (Accepted record : accepted.values()) {
                 record.reporter = null;
                 record.feedback = "原 Worker 已停止，无法上报";
@@ -249,11 +262,11 @@ final class AndroidMessageDemo {
     }
     private void remove(Accepted record) {
         String id = (String) record.input.get("messageId");
-        accepted.remove(id);
-        tokens.remove(record.token);
-        recent.remove(id);
+        if (!accepted.remove(id, record)) return;
+        if (!recent.contains(record)) tokens.remove(record.token);
         if (record.reporter != null) reporters--;
         record.reporter = null;
+        record.feedback = "回执窗口已过期，仅可查看本地消息";
     }
     void addListener(Runnable listener) { listeners.add(Objects.requireNonNull(listener)); }
     void removeListener(Runnable listener) { listeners.remove(listener); }
