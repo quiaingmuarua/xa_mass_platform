@@ -7,6 +7,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -96,6 +97,12 @@ def main(arguments=None):
             "javaCounts": settings["java_config"].get("startupPlan", {}).get("workerCounts") if settings["java_config"] else {},
             "androidDevice": run.android.serial if run.android else None,
             "androidPackages": [package for package, _, _ in run.android.apps] if run.android else [],
+            "toolchain": {
+                "python": sys.executable, "java": shutil.which("java"),
+                "javaHome": run.environment.get("JAVA_HOME"),
+                "androidSdk": run.environment.get("ANDROID_HOME") or run.environment.get("ANDROID_SDK_ROOT"),
+                "adb": run.android.adb_path if run.android else None,
+            },
         }, ensure_ascii=False, indent=2), flush=True)
         version = build(settings)
         if run.android:

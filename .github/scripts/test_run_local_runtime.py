@@ -151,7 +151,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
 
     def test_main_always_closes_after_partial_start_or_keyboard_interrupt(self):
         for failure in (RuntimeError("partial"), KeyboardInterrupt()):
-            run = Mock(url="http://127.0.0.1:18182", scope="profile_consumer", android=None)
+            run = Mock(url="http://127.0.0.1:18182", scope="profile_consumer", android=None, environment={})
             run.start.side_effect = failure
             with patch.object(launcher, "LocalRun", return_value=run), patch.object(launcher, "build"), redirect_stderr(io.StringIO()):
                 result = launcher.main(["--profile", "consumer"])
