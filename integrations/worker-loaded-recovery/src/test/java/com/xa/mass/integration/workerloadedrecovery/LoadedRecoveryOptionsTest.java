@@ -22,8 +22,8 @@ class LoadedRecoveryOptionsTest {
                 .isEqualTo(LoadedRecoveryOptions.Stage.INITIAL_CONTRACTION);
         assertThat(options.preparedWorkers()).isEqualTo(15_000);
         assertThat(options.retainedWorkers()).isEqualTo(10_000);
-        assertThat(options.minimumInitialConverged()).isEqualTo(14_800);
-        assertThat(options.minimumRetainedConverged()).isEqualTo(9_900);
+        assertThat(options.minimumInitialConnected()).isEqualTo(14_800);
+        assertThat(options.minimumRetainedConnected()).isEqualTo(9_900);
         assertThat(options.workloadItemsPerTask()).isEqualTo(5_000);
         assertThat(options.stableHold().toMillis()).isEqualTo(60_000);
         assertThat(options.topologyFile()).isAbsolute();

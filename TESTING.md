@@ -203,7 +203,7 @@ these correctness claims and add no heavy ordinary CI lane.
 | Worker Correctness | `python integrations/worker-correctness/run_worker_correctness.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Dynamic Matching | `python integrations/worker-dynamic-matching/run_worker_dynamic_matching.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
-| Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-converged 14800 --minimum-retained-converged 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
+| Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-connected 14800 --minimum-retained-connected 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
 | [Worker Call Performance](integrations/worker-call-performance/README.md) | Nightly: parallel `rate-500`, `rate-1000`, `rate-2000` and `saturation` jobs with three repetitions, merged, recorded on `perf-lane-data` and compared with the last seven records. Manual: the same with optional JFR diagnostics, or per-case A/B with `baseline_ref` and `lane_case` | Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21 |
 | Android Host | Platform Android library/proof-tool contracts; no consumer artifact prerequisite | Robolectric, MockWebServer, JDK HttpServer |
 | Candidate Distribution Archives | One clean-commit 3.1.0 Runtime/SDK pair, archive checks and hashes | Java, Android SDK, Node |
@@ -330,6 +330,9 @@ and Convergence Health own independent Server/Host processes. Use their linked
 mutation order, workload, private evidence and observation deadlines. A successful
 Harness does not replace a lane's independent runner audit. Loaded Recovery keeps
 its separate nightly/manual workflow outside the pull-request Proof Gate.
+Its idle checkpoints gate connections and retained scheduling identities, with
+HOT/RECOVERY counts retained as diagnostics. Actual recovery is proved by the
+unchanged four finite workloads and exact terminal exports, without idle RPC roots.
 
 Android Host owns platform deterministic tests and library assembly. Candidate
 Distribution Archives produces one verified pair when Runtime Distribution,

@@ -62,4 +62,32 @@ class LoadedRecoveryEvidenceTest {
         assertThat(WorkerLoadedRecoveryMain.notHotStateKey("cold", "disconnected"))
                 .isEqualTo("cold|disconnected");
     }
+
+    @Test
+    void idleConnectionGateAcceptsTheFailedNightlyRecoverySnapshot() {
+        var observed = new WorkerLoadedRecoveryMain.Scan(
+                10_000, 9_720, 9_720, 0, 0, 0, 0, 0,
+                Map.of("recovery|connected", 280));
+        assertThat(observed.connectionsStable(9_900)).isTrue();
+        assertThat(observed.activeNotHotStates()).containsEntry("recovery|connected", 280);
+
+        // Neither active nor stopped scheduling polarity is an idle liveness promise.
+        var idle = new WorkerLoadedRecoveryMain.Scan(
+                10_000, 0, 0, 0, 0, 0, 2, 0,
+                Map.of("recovery|connected", 10_000));
+        assertThat(idle.connectionsStable(9_900)).isTrue();
+        assertThat(idle.stoppedHot()).isEqualTo(2);
+    }
+
+    @Test
+    void idleConnectionGateStillRejectsLostConnectionsAndMissingIdentities() {
+        for (var observed : List.of(
+                new WorkerLoadedRecoveryMain.Scan(9_899, 9_899, 9_899, 0, 0, 0, 0, 0, Map.of()),
+                new WorkerLoadedRecoveryMain.Scan(10_000, 9_720, 9_720, 0, 1, 0, 0, 0, Map.of()),
+                new WorkerLoadedRecoveryMain.Scan(10_000, 9_720, 9_720, 0, 0, 1, 0, 0, Map.of()),
+                new WorkerLoadedRecoveryMain.Scan(10_000, 9_720, 9_720, 0, 0, 0, 0, 1, Map.of())
+        )) {
+            assertThat(observed.connectionsStable(9_900)).isFalse();
+        }
+    }
 }

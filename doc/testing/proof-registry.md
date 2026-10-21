@@ -138,9 +138,10 @@ or observation replay.
 
 - **Primary Owner:** [Worker Loaded Recovery](../../integrations/worker-loaded-recovery/README.md), with a separate workflow.
 - **Boundary:** sustained work after deterministic Worker contraction, repeated graceful/hard Server recovery, exact terminal exports and bounded process resource drift.
+- **Connection versus execution:** idle checkpoints require stable connections and retained scheduling identities; HOT/RECOVERY polarity is diagnostic without RUNNING Task roots. Recovery of execution is established by the real finite workloads, progress deadlines and exact exports, without auxiliary RPC roots or extra device starts.
 - **Required witness:** periodic resource sampling remains healthy through finalization. Sampler failure or a coverage gap fails the lane even if work/recovery passes; sparse checkpoints and partial maxima cannot prove stability. Confirmed process-exit read races must not mask errors on a live process.
 - **Evidence:** the Owner's workload, recovery sequence and resource oracle.
-- **Nonclaims:** every prepared/retained Worker online, fairness, fixed execution ratio/order, throughput/latency, Handler concurrency, topology breadth or soak.
+- **Nonclaims:** every prepared/retained Worker online or HOT, idle fleet HOT convergence without RUNNING Task roots, fairness, fixed execution ratio/order, throughput/latency, Handler concurrency, topology breadth or soak.
 
 ## worker_call_performance
 

@@ -62,8 +62,8 @@ jobs:
           python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py \
             --prepared-workers 15000 \
             --retained-workers 10000 \
-            --minimum-initial-converged 14800 \
-            --minimum-retained-converged 9900 \
+            --minimum-initial-connected 14800 \
+            --minimum-retained-connected 9900 \
             --workload-items-per-task 5000 \
             --redis-url redis://127.0.0.1:6379/15 \
             --output-root build/worker-loaded-recovery-proof

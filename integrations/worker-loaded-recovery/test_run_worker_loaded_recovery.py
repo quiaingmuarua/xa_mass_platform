@@ -187,6 +187,49 @@ class WorkerLoadedRecoveryRunnerTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             RUNNER._validate_stage_summary(hard, options, "hard-restart-1")
 
+    def test_idle_hot_counts_are_diagnostic_after_complete_real_work(self):
+        for stage in RUNNER.STAGES:
+            with self.subTest(stage=stage):
+                summary = _summary(stage)
+                summary.update({
+                    "initialHeadroomConnectedAndHot": 0,
+                    "preWorkConnectedAndHot": 0,
+                    "postWorkConnectedAndHot": 9_720,
+                    "postWorkActiveNotHotStates": {"recovery|connected": 280},
+                    "postWorkStoppedHot": 2,
+                    "postRecoveryProgress": True,
+                    "batchStopRequestCount": 50 if stage == "initial-contraction" else 0,
+                })
+                RUNNER._validate_stage_summary(summary, _options(), stage)
+
+    def test_connection_and_identity_evidence_cannot_be_replaced_by_hot_counts(self):
+        for field, value in (
+            ("postWorkConnected", 9_899),
+            ("postWorkQualifyingScans", 2),
+            ("postWorkActiveMissing", 1),
+            ("postWorkStoppedConnected", 1),
+            ("postWorkStoppedMissing", 1),
+            ("minimumConnectedDuringWork", 9_899),
+            ("initialHeadroomConnected", 14_799),
+            ("initialHeadroomQualifyingScans", 2),
+            ("initialHeadroomStableMillis", 59_999),
+        ):
+            with self.subTest(field=field):
+                summary = _summary("initial-contraction")
+                summary[field] = value
+                with self.assertRaises(RuntimeError):
+                    RUNNER._validate_stage_summary(summary, _options(), "initial-contraction")
+        summary = _summary("initial-contraction")
+        del summary["postWorkConnected"]
+        with self.assertRaises(RuntimeError):
+            RUNNER._validate_stage_summary(summary, _options(), "initial-contraction")
+        for field, value in (("preWorkConnected", 9_899), ("preWorkQualifyingScans", 2)):
+            summary = _summary("graceful-restart")
+            summary["batchStopRequestCount"] = 0
+            summary[field] = value
+            with self.assertRaises(RuntimeError):
+                RUNNER._validate_stage_summary(summary, _options(), "graceful-restart")
+
     def test_identity_digests_must_remain_stable_across_all_four_stages(self):
         summaries = {
             stage: {
@@ -396,8 +439,8 @@ def _options():
     return SimpleNamespace(
         prepared_workers=15_000,
         retained_workers=10_000,
-        minimum_initial_converged=14_800,
-        minimum_retained_converged=9_900,
+        minimum_initial_connected=14_800,
+        minimum_retained_connected=9_900,
         workload_items_per_task=5_000,
         stable_hold_millis=60_000,
         scan_interval_millis=10_000,
@@ -489,6 +532,9 @@ def _summary(stage: str) -> dict[str, object]:
             for _ in range(10)
         ],
         "minimumConnectedDuringWork": 9_900,
+        "postWorkConnected": 9_900,
+        "postWorkQualifyingScans": 3,
+        "postWorkActiveMissing": 0,
         "postWorkConnectedAndHot": 9_900,
         "postWorkStoppedConnected": 0,
         "postWorkStoppedHot": 0,
@@ -502,10 +548,13 @@ def _summary(stage: str) -> dict[str, object]:
     }
     if stage == "initial-contraction":
         value.update({
+            "initialHeadroomConnected": 14_800,
             "initialHeadroomConnectedAndHot": 14_800,
             "initialHeadroomQualifyingScans": 7,
             "initialHeadroomStableMillis": 60_000,
         })
+    else:
+        value.update({"preWorkConnected": 9_900, "preWorkQualifyingScans": 3})
     return value
 
 

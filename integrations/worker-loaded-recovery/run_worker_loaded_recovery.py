@@ -70,8 +70,8 @@ def main() -> int:
     )
     parser.add_argument("--prepared-workers", type=int, default=15_000)
     parser.add_argument("--retained-workers", type=int, default=10_000)
-    parser.add_argument("--minimum-initial-converged", type=int, default=14_800)
-    parser.add_argument("--minimum-retained-converged", type=int, default=9_900)
+    parser.add_argument("--minimum-initial-connected", type=int, default=14_800)
+    parser.add_argument("--minimum-retained-connected", type=int, default=9_900)
     parser.add_argument("--redis-url", required=True)
     parser.add_argument(
         "--output-root",
@@ -328,11 +328,11 @@ def main() -> int:
                 "stoppedWorkers": (
                     options.prepared_workers - options.retained_workers
                 ),
-                "minimumInitialConnectedAndHot": (
-                    options.minimum_initial_converged
+                "minimumInitialConnected": (
+                    options.minimum_initial_connected
                 ),
-                "minimumRetainedConnectedAndHot": (
-                    options.minimum_retained_converged
+                "minimumRetainedConnected": (
+                    options.minimum_retained_connected
                 ),
                 "allWorkerIdSetSha256": first_summary["allWorkerIdSetSha256"],
                 "retainedWorkerIdSetSha256": (
@@ -441,13 +441,13 @@ def _validate_options(parser: argparse.ArgumentParser, options: argparse.Namespa
         parser.error(
             "--retained-workers must be in 1..prepared-workers-1"
         )
-    if not 1 <= options.minimum_initial_converged <= options.prepared_workers:
+    if not 1 <= options.minimum_initial_connected <= options.prepared_workers:
         parser.error(
-            "--minimum-initial-converged must be in 1..prepared-workers"
+            "--minimum-initial-connected must be in 1..prepared-workers"
         )
-    if not 1 <= options.minimum_retained_converged <= options.retained_workers:
+    if not 1 <= options.minimum_retained_connected <= options.retained_workers:
         parser.error(
-            "--minimum-retained-converged must be in 1..retained-workers"
+            "--minimum-retained-connected must be in 1..retained-workers"
         )
     if options.maximum_convergence_wait_millis < 10_000:
         parser.error("--maximum-convergence-wait-millis must be at least 10000")
@@ -637,10 +637,10 @@ def _start_stage(
         f"--endpoint-manager-id={ENDPOINT_MANAGER}",
         f"--prepared-workers={options.prepared_workers}",
         f"--retained-workers={options.retained_workers}",
-        "--minimum-initial-converged="
-        + str(options.minimum_initial_converged),
-        "--minimum-retained-converged="
-        + str(options.minimum_retained_converged),
+        "--minimum-initial-connected="
+        + str(options.minimum_initial_connected),
+        "--minimum-retained-connected="
+        + str(options.minimum_retained_connected),
         "--workload-items-per-task=" + str(options.workload_items_per_task),
         "--stable-hold-millis="
         + str(
@@ -718,7 +718,7 @@ def _validate_gate(
     }
     if checkpoint == "initial-headroom":
         expected_fields.update({
-            "connectedAndHotWorkers",
+            "connectedWorkers",
             "qualifyingScans",
             "stableMillis",
         })
@@ -1323,8 +1323,8 @@ def _validate_stage_summary(
         "totalOfferedItems": total_items,
         "appendBatchCount": expected_batches,
         "succeededItemCount": total_items,
+        "postWorkActiveMissing": 0,
         "postWorkStoppedConnected": 0,
-        "postWorkStoppedHot": 0,
         "postWorkStoppedMissing": 0,
         "mutationCheckpointTaskCount": TASKS_PER_STAGE,
     }
@@ -1346,14 +1346,21 @@ def _validate_stage_summary(
             raise RuntimeError("loaded recovery stage Task export is incomplete")
     if (
         summary.get("minimumConnectedDuringWork", 0)
-        < options.minimum_retained_converged
+        < options.minimum_retained_connected
     ):
         raise RuntimeError("loaded recovery stage lost the minimum workload connections")
     if (
-        summary.get("postWorkConnectedAndHot", 0)
-        < options.minimum_retained_converged
+        summary.get("postWorkConnected", 0)
+        < options.minimum_retained_connected
     ):
-        raise RuntimeError("loaded recovery stage did not reconverge after workload drain")
+        raise RuntimeError("loaded recovery stage lost connections after workload drain")
+    if summary.get("postWorkQualifyingScans", 0) < 3:
+        raise RuntimeError("post-work connections did not contain three scans")
+    if stage != "initial-contraction":
+        if summary.get("preWorkConnected", 0) < options.minimum_retained_connected:
+            raise RuntimeError("loaded recovery stage did not establish pre-work connections")
+        if summary.get("preWorkQualifyingScans", 0) < 3:
+            raise RuntimeError("pre-work connections did not contain three scans")
 
     checkpoint_succeeded = summary.get("mutationCheckpointSucceededItems")
     checkpoint_unresolved = summary.get("mutationCheckpointUnresolvedItems")
@@ -1370,8 +1377,8 @@ def _validate_stage_summary(
 
     if (
         stage == "initial-contraction"
-        and summary.get("initialHeadroomConnectedAndHot", 0)
-        < options.minimum_initial_converged
+        and summary.get("initialHeadroomConnected", 0)
+        < options.minimum_initial_connected
     ):
         raise RuntimeError("loaded recovery stage did not establish initial headroom")
     if stage == "initial-contraction":
@@ -1529,11 +1536,11 @@ def _write_failure_summary(
             "resourceSampling": sampler.diagnostics(),
             "preparedWorkers": options.prepared_workers,
             "retainedWorkers": options.retained_workers,
-            "minimumInitialConnectedAndHot": (
-                options.minimum_initial_converged
+            "minimumInitialConnected": (
+                options.minimum_initial_connected
             ),
-            "minimumRetainedConnectedAndHot": (
-                options.minimum_retained_converged
+            "minimumRetainedConnected": (
+                options.minimum_retained_connected
             ),
             "workloadStages": 4,
             "taskCount": 4 * TASKS_PER_STAGE,

@@ -16,8 +16,8 @@ record LoadedRecoveryOptions(
         String endpointManagerId,
         int preparedWorkers,
         int retainedWorkers,
-        int minimumInitialConverged,
-        int minimumRetainedConverged,
+        int minimumInitialConnected,
+        int minimumRetainedConnected,
         int workloadItemsPerTask,
         Duration maximumConvergenceWait,
         Duration stableHold,
@@ -40,8 +40,8 @@ record LoadedRecoveryOptions(
             "endpoint-manager-id",
             "prepared-workers",
             "retained-workers",
-            "minimum-initial-converged",
-            "minimum-retained-converged",
+            "minimum-initial-connected",
+            "minimum-retained-connected",
             "workload-items-per-task",
             "maximum-convergence-wait-millis",
             "stable-hold-millis",
@@ -105,16 +105,16 @@ record LoadedRecoveryOptions(
                     "retainedWorkers must be in 1..preparedWorkers-1"
             );
         }
-        if (minimumInitialConverged < 1
-                || minimumInitialConverged > preparedWorkers) {
+        if (minimumInitialConnected < 1
+                || minimumInitialConnected > preparedWorkers) {
             throw new IllegalArgumentException(
-                    "minimumInitialConverged must be in 1..preparedWorkers"
+                    "minimumInitialConnected must be in 1..preparedWorkers"
             );
         }
-        if (minimumRetainedConverged < 1
-                || minimumRetainedConverged > retainedWorkers) {
+        if (minimumRetainedConnected < 1
+                || minimumRetainedConnected > retainedWorkers) {
             throw new IllegalArgumentException(
-                    "minimumRetainedConverged must be in 1..retainedWorkers"
+                    "minimumRetainedConnected must be in 1..retainedWorkers"
             );
         }
         if (workloadItemsPerTask < 1 || workloadItemsPerTask > 5_000) {
@@ -181,8 +181,8 @@ record LoadedRecoveryOptions(
                 text(values, "endpoint-manager-id", "scenario-websocket"),
                 integer(values, "prepared-workers", 15_000),
                 integer(values, "retained-workers", 10_000),
-                integer(values, "minimum-initial-converged", 14_800),
-                integer(values, "minimum-retained-converged", 9_900),
+                integer(values, "minimum-initial-connected", 14_800),
+                integer(values, "minimum-retained-connected", 9_900),
                 integer(values, "workload-items-per-task", 5_000),
                 millis(values, "maximum-convergence-wait-millis", 900_000),
                 millis(

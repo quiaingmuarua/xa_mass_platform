@@ -80,7 +80,7 @@ final class LoadedRecoveryWorkload {
     }
 
     private static void requireNetworkThreshold(LoadedRecoveryOptions options, int connected) {
-        if (connected < options.minimumRetainedConverged()) {
+        if (connected < options.minimumRetainedConnected()) {
             throw new IllegalStateException(
                     "Active Worker connections fell below the loaded operation threshold");
         }
@@ -274,7 +274,7 @@ final class LoadedRecoveryWorkload {
                 latestConnected = scanNetwork(api);
                 observeResults(api, true);
                 appendProgress("server-restart-connection-recovery");
-                if (latestConnected >= options.minimumRetainedConverged()) {
+                if (latestConnected >= options.minimumRetainedConnected()) {
                     minimumConnected = Math.min(
                             minimumConnected,
                             latestConnected
