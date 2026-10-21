@@ -127,6 +127,7 @@ class Preview(LocalRun):
 def main(arguments=None):
     args = parse_local_arguments(arguments, preview=True)
     settings = resolve(args, product=PRODUCT)
+    local_runtime.print_scope_warning(settings)
     run = LocalRun(settings)
     try:
         run.preflight()

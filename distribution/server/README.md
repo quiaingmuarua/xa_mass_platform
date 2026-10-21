@@ -40,6 +40,13 @@ The default `preview` keeps the five Batch Checks capabilities, SMS and Messages
 Server/Adapter; `default` starts the plain platform. Neither implicitly selects
 business resources or starts Workers.
 
+> **Data retention warning:** the default Preview command below uses a temporary
+> Redis scope. Normal shutdown deletes its Tasks, Results, credit balances and
+> transactions, other scoped Redis state, and this run's private Task archives.
+> Configuration files and Worker inventory remain; they do not preserve that runtime data.
+> For retained development data, supply `--redis-scope <stable-name>` and reuse
+> the same `--work-dir` from the first launch. A work directory alone does not disable cleanup.
+
 ```powershell
 python run_local_runtime.py --profile preview
 python run_local_runtime.py --profile consumer --runtime-config xa-android/config/messages-runtime.yaml --groups xa-android/config/worker-groups.json --android-count 1
@@ -96,6 +103,9 @@ Exit stops owned Workers before Server and restores touched ADB mappings. APKs,
 configuration and inventory remain. Explicit scopes remain; only Preview's own
 fresh `test_products_*` scope and private archives are removed. Cleanup failure
 identifies remaining resources. There is no automatic restart or task submission.
+Both source and packaged Preview entries print the temporary-scope data warning
+before building or starting processes; `--help` explains how to retain the scope.
+Task retention still applies when the launcher preserves the scope.
 The [Preview delivery](PREVIEW.md) and portable [Android consumer](../../xa-android/README.md)
 retain their artifact-specific entrypoints and use these existing owner boundaries.
 

@@ -11,6 +11,14 @@ topology and profile; this document owns source/ZIP launch and delivery. The
 
 From the checkout root, install Python prerequisites and launch:
 
+> **Data retention warning:** this default launch uses a temporary Redis scope.
+> Normal shutdown deletes its Tasks, Results, credit balances and transactions,
+> other scoped Redis state, and this run's private Task archives. Configuration
+> files and Worker inventory remain. To retain runtime data across restarts, add
+> `--redis-scope <stable-name>` and reuse the same `--work-dir` from the first launch;
+> `--work-dir` alone does not disable scope cleanup. See the
+> [retained launch example](../../doc/guide/operations/deploy.md#从源码启动).
+
 ```powershell
 python -m pip install -r distribution/server/requirements-preview.txt
 python run_local_runtime.py --profile preview
@@ -130,6 +138,8 @@ Ctrl+C stops only owned processes. When the launcher generated a temporary
 that exact scope; an explicit scope is retained. A child process exiting ends the
 run, with no automatic recovery. A hard-killed launcher may leave processes and
 data, so normal shutdown is required for cleanup.
+Both public entries warn about the temporary scope before building or starting
+processes, and `--help` states the data-loss consequence and retention option.
 
 The launcher waits for `/actuator/health/readiness` to report `UP` before starting
 the Host, then checks selected RUNNING identities and actual Adapter routes.
@@ -184,6 +194,10 @@ minimal Lab configuration using built-in defaults), unified frontend with `/docs
 Python entry and requirements. The output is
 `distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip`.
 After extraction, run from its root:
+
+> **The packaged default also deletes runtime data on normal exit.** Add
+> `--redis-scope <stable-name>` and reuse the same `--work-dir` to retain Tasks,
+> Results and credit data across restarts. Existing Task retention rules still apply.
 
 ```text
 python -m pip install -r requirements.txt

@@ -12,6 +12,10 @@ Status: current source and packaged entry guide.
 启动器不会安装、启动或停止 Redis。完整要求由
 [Preview delivery](../../distribution/server/PREVIEW.md#source-launch)维护。
 
+> **数据保留提醒：下面的默认 Preview 命令启动临时环境。正常退出会删除该 scope 的任务、结果、积分等 Redis 数据，以及本次私有任务归档。**
+> 配置文件和 Worker inventory 会保留，它们不包含上述运行数据。
+> 需要跨重启保留数据，请在启动前使用[部署指南中的固定 scope 命令](operations/deploy.md#从源码启动)，并持续复用同一工作目录。
+
 ```powershell
 python -m pip install -r distribution/server/requirements-preview.txt
 python run_local_runtime.py --profile preview
