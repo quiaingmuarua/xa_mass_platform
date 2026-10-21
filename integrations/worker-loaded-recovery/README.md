@@ -7,11 +7,11 @@ WebSocket Adapter Endpoint.
 
 ```text
 15,000 prepared Worker identities
--> at least 14,800 connected-and-HOT
+-> at least 14,800 connected with scheduling identities present
 -> begin ten fully seeded Tasks x 5,000 Items
 -> deterministically stop 5,000 runs while work is active
 -> retain the exact 15,000 identities and exact 10,000 active target set
--> finish the original 50,000 Items and reconverge
+-> finish and export the original 50,000 Items; retain connections and identities
 -> repeat a 50,000-Item operation across graceful Server restart
 -> repeat across hard Server restart
 -> repeat across a second hard Server restart
@@ -57,29 +57,39 @@ invoked; existing Clients reconnect to the same Endpoint URI.
 ## Acceptance
 
 The initial 15,000-Worker world uses one continuous stable window: at least
-three complete scans at or above 14,800 connected-and-HOT and at least 60
+three complete scans at or above 14,800 connected and at least 60
 seconds without a violating scan. A violation restarts the window. After
-contraction and after each Server recovery, the active set requires three
-scans at or above 9,900 connected-and-HOT. Every convergence scan also rejects
-HOT-but-disconnected active Workers and any connected, HOT or missing stopped
-Worker. The latter check keeps all 5,000 stopped baseline identities present in
-Kernel scheduling truth even though the Lab snapshot no longer exposes a
-stopped run's `workerId`.
+contraction, before subsequent work and after each workload drain, the active set
+requires three scans at or above 9,900 connected. Every scan also rejects missing
+active/stopped scheduling identities and any connected stopped Worker. All 5,000
+stopped baseline identities must remain present in Kernel scheduling truth even
+though the Lab snapshot no longer exposes a stopped run's `workerId`.
+
+These checkpoints have no RUNNING Task. Scheduling polarity, including active
+RECOVERY or disconnected HOT, is diagnostic there. Serviceability derives its
+Group roots from RUNNING Tasks; without a root it does not probe the Group.
+Connection readiness does not establish execution recovery: each subsequent
+real ten-Task workload must still make progress, reach terminal state and export
+its exact submitted identities. No idle RPC/anchor Task, direct Score mutation,
+or extra device start/Prepare is added to manufacture HOT evidence. The initial
+60-second hold, three-scan gates, connection thresholds and all workload/resource
+deadlines remain unchanged.
 
 Each projection scan also records `activeNotHotStates`: counts of active
 Workers outside HOT, keyed by `scheduling|network` projection (for example
 `recovery|connected`), without Worker identities. The stage summary repeats the
-final post-work value as `postWorkActiveNotHotStates`, and a convergence timeout
-message includes it. These counts are diagnostic only; they do not change any
-threshold. Earlier nightlies show a small post-work set of connected but non-HOT
-Workers after graceful restart (15 to 60 of 10,000), and the 2026-09-23 run
-failed with 592. That baseline attributed the remaining states to the absence of
-NORMAL Task roots after the drain. Current Main supplies Serviceability from a
-separate bounded RUNNING page, including INITIAL and idle-parked Tasks; the
-[Pacer assembly](../../kernel_pacer_jvm/doc/application-assembly.md) owns this
-root contract. The historical measurements remain unchanged, and this source
-comparison does not establish that the recorded failure passes on the current
-implementation. The diagnostic counts do not become new acceptance gates.
+final post-work value as `postWorkActiveNotHotStates`. Connected-and-HOT, stopped
+HOT and HOT-without-connection counts remain in the timeline for diagnosis; they
+are not idle acceptance gates. `initialHeadroomConnected`, `preWorkConnected`
+and `postWorkConnected` are the connection witnesses, with qualifying scan/hold
+evidence. The Python runner independently validates these fields and exact workload
+exports; it does not accept a historical connected-and-HOT field as a substitute.
+The [Pacer assembly](../../kernel_pacer_jvm/doc/application-assembly.md) owns the
+RUNNING-root contract. Historical reports retain their original conclusions;
+the [2026-10-21 nightly](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/39473549333)
+at `23376faf5` completed two 50,000-Item workloads but failed
+the former idle HOT gate with 280 connected RECOVERY Workers. This correction
+changes the proof claim, not Pacer behavior or that recorded run's failed status.
 
 Each loaded workload creates ten Tasks and appends 5,000 valid Items to each
 in 50 requests. A complete active-network scan establishes the required
@@ -98,7 +108,8 @@ post-restart Result observation and later new progress. Result payload remains
 opaque. Outside the planned Server-down/reconnect interval, only the 9,900
 active connection threshold applies during work; the Harness first observes
 connection recovery instead of treating readiness as immediate Fleet recovery.
-HOT is re-established after drain.
+After drain, connection/identity stability is checked; fleet-wide HOT without
+RUNNING Task roots is not claimed.
 
 The Worker Host and each Runtime Server process must remain below 512 native
 Linux threads throughout. The Host remains below 32,768 open file descriptors
@@ -156,8 +167,8 @@ sudo sysctl -w net.ipv4.ip_local_port_range="10000 65535"
 python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py \
   --prepared-workers 15000 \
   --retained-workers 10000 \
-  --minimum-initial-converged 14800 \
-  --minimum-retained-converged 9900 \
+  --minimum-initial-connected 14800 \
+  --minimum-retained-connected 9900 \
   --workload-items-per-task 5000 \
   --redis-url redis://127.0.0.1:6379/15 \
   --output-root build/worker-loaded-recovery-proof

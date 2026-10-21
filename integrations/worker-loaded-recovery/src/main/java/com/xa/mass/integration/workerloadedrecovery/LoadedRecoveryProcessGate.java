@@ -19,7 +19,7 @@ final class LoadedRecoveryProcessGate {
     }
 
     GateResume awaitInitialHeadroom(
-            int connectedAndHotWorkers,
+            int connectedWorkers,
             int qualifyingScans,
             long stableMillis
     ) {
@@ -33,7 +33,7 @@ final class LoadedRecoveryProcessGate {
                 options.gateDirectory().resolve("headroom-ready.json"),
                 options.gateDirectory().resolve("headroom-resume.json"),
                 Map.of(
-                        "connectedAndHotWorkers", connectedAndHotWorkers,
+                        "connectedWorkers", connectedWorkers,
                         "qualifyingScans", qualifyingScans,
                         "stableMillis", stableMillis
                 )

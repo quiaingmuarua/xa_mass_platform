@@ -14,6 +14,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import time
 import threading
 import urllib.request
@@ -109,14 +110,18 @@ def port(value, name):
 
 
 def parse_arguments(arguments=None, *, preview=False):
-    parser = argparse.ArgumentParser(description="Start one local Server/Adapter with optional Java and Android Workers.")
+    parser = argparse.ArgumentParser(
+        description="Start one local Server/Adapter with optional Java and Android Workers.",
+        epilog="注意：默认 Preview 使用临时 scope，正常退出会删除本次任务、结果、积分等 Redis 数据及本次私有任务归档。"
+               "需要保留数据，请在启动时指定 --redis-scope，并复用同一 --work-dir。",
+    )
     parser.add_argument("--profile", choices=tuple(PROFILES), default="preview")
     for name in ("runtime-config", "groups", "work-dir", "java-config"):
         parser.add_argument("--" + name, type=Path)
     for name in ("server-port", "adapter-port"):
         parser.add_argument("--" + name, type=int)
     parser.add_argument("--redis-url")
-    parser.add_argument("--redis-scope")
+    parser.add_argument("--redis-scope", help="保留运行数据的固定 scope；Preview 未指定且配置文件未设置时使用退出即清理的临时 scope")
     parser.add_argument("--java-count", action="append", default=[], metavar="GROUP=COUNT")
     parser.add_argument("--no-java-workers", action="store_true")
     parser.add_argument("--android-count", type=int, default=0, choices=range(4))
@@ -131,6 +136,17 @@ def parse_arguments(arguments=None, *, preview=False):
     if args.android_device and not args.android_count:
         parser.error("--android-device requires --android-count")
     return args
+
+
+def print_scope_warning(settings):
+    if settings["temporary_scope"]:
+        print(
+            f"警告：当前为临时环境（scope={settings['scope']}）。\n"
+            "正常退出会删除此 scope 的任务、结果、积分等 Redis 数据及本次私有任务归档；"
+            "配置文件和 Worker inventory 保留。\n"
+            "需要跨重启保留运行数据，请在启动时显式指定 --redis-scope <固定名称>，并复用同一 --work-dir。",
+            file=sys.stderr, flush=True,
+        )
 
 
 def resolve(args, *, product=PRODUCT):

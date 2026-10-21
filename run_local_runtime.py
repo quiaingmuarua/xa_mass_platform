@@ -15,7 +15,7 @@ import time
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "distribution/server"))
-from local_runtime import LocalRun, child_environment, digest, parse_arguments, resolve
+from local_runtime import LocalRun, child_environment, digest, parse_arguments, print_scope_warning, resolve
 
 CANDIDATE_CACHE = ROOT / "build/local-runtime-candidate.json"
 
@@ -85,6 +85,7 @@ def main(arguments=None):
     try:
         args = parse_arguments(arguments)
         settings = resolve(args)
+        print_scope_warning(settings)
         run = LocalRun(settings)
         run.preflight()
         print(json.dumps({

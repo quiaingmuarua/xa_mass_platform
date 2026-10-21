@@ -67,21 +67,21 @@ public final class WorkerLoadedRecoveryMain {
                         options,
                         api,
                         List.copyOf(identityByLabKey.values()),
-                        options.minimumInitialConverged()
+                        options.minimumInitialConnected()
                 );
                 gateResume = new LoadedRecoveryProcessGate(options).awaitInitialHeadroom(
-                        initialHeadroom.scan().activeConnectedAndHot(),
+                        initialHeadroom.scan().activeConnected(),
                         initialHeadroom.qualifyingScans(),
                         initialHeadroom.stableMillis()
                 );
             } else {
-                activeConvergence = awaitConvergence(
+                activeConvergence = awaitConnections(
                         options,
                         api,
                         activeWorkerIds,
                         stoppedWorkerIds,
-                        options.minimumRetainedConverged(),
-                        "pre-work-convergence"
+                        options.minimumRetainedConnected(),
+                        "pre-work-connections"
                 );
             }
 
@@ -147,13 +147,13 @@ public final class WorkerLoadedRecoveryMain {
             List<String> observedAndRetainedBaselineWorkerIds =
                     new ArrayList<>(observedActiveWorkerIds);
             observedAndRetainedBaselineWorkerIds.addAll(stoppedWorkerIds);
-            Convergence postWorkConvergence = awaitConvergence(
+            Convergence postWorkConvergence = awaitConnections(
                     options,
                     api,
                     activeWorkerIds,
                     stoppedWorkerIds,
-                    options.minimumRetainedConverged(),
-                    "post-work-convergence"
+                    options.minimumRetainedConnected(),
+                    "post-work-connections"
             );
 
             summary.put("status", "passed");
@@ -180,6 +180,7 @@ public final class WorkerLoadedRecoveryMain {
             );
             summary.put("batchStopRequestCount", stopBatchCount);
             if (initialHeadroom != null) {
+                summary.put("initialHeadroomConnected", initialHeadroom.scan().activeConnected());
                 summary.put(
                         "initialHeadroomConnectedAndHot",
                         initialHeadroom.scan().activeConnectedAndHot()
@@ -194,6 +195,8 @@ public final class WorkerLoadedRecoveryMain {
                 );
             }
             if (activeConvergence != null) {
+                summary.put("preWorkConnected", activeConvergence.scan().activeConnected());
+                summary.put("preWorkQualifyingScans", activeConvergence.consecutive());
                 summary.put(
                         "preWorkConnectedAndHot",
                         activeConvergence.scan().activeConnectedAndHot()
@@ -259,6 +262,9 @@ public final class WorkerLoadedRecoveryMain {
                     "postWorkConnectedAndHot",
                     postWorkConvergence.scan().activeConnectedAndHot()
             );
+            summary.put("postWorkConnected", postWorkConvergence.scan().activeConnected());
+            summary.put("postWorkQualifyingScans", postWorkConvergence.consecutive());
+            summary.put("postWorkActiveMissing", postWorkConvergence.scan().activeMissing());
             summary.put(
                     "postWorkStoppedConnected",
                     postWorkConvergence.scan().stoppedConnected()
@@ -582,12 +588,12 @@ public final class WorkerLoadedRecoveryMain {
         return List.copyOf(result);
     }
 
-    private static Convergence awaitConvergence(
+    private static Convergence awaitConnections(
             LoadedRecoveryOptions options,
             LoadedRecoveryApiClient api,
             List<String> activeWorkerIds,
             List<String> stoppedWorkerIds,
-            int minimumConverged,
+            int minimumConnected,
             String stage
     ) {
         long deadline = deadline(options.maximumConvergenceWait());
@@ -603,12 +609,7 @@ public final class WorkerLoadedRecoveryMain {
                         stoppedWorkerIds,
                         stage
                 );
-                boolean converged = latest.activeConnectedAndHot()
-                        >= minimumConverged
-                        && latest.activeHotWithoutConnection() == 0
-                        && latest.stoppedConnected() == 0
-                        && latest.stoppedHot() == 0
-                        && latest.stoppedMissing() == 0;
+                boolean converged = latest.connectionsStable(minimumConnected);
                 consecutive = converged ? consecutive + 1 : 0;
                 if (consecutive >= REQUIRED_CONSECUTIVE_SCANS) {
                     return new Convergence(latest, consecutive);
@@ -621,7 +622,7 @@ public final class WorkerLoadedRecoveryMain {
             sleep(options.scanInterval());
         } while (System.nanoTime() < deadline);
         IllegalStateException timeout = new IllegalStateException(
-                "Worker projections did not converge for " + stage
+                "Worker connections or identity projections did not stabilize for " + stage
                         + " (latest=" + latest + ")"
         );
         if (latestFailure != null) {
@@ -634,7 +635,7 @@ public final class WorkerLoadedRecoveryMain {
             LoadedRecoveryOptions options,
             LoadedRecoveryApiClient api,
             List<String> activeWorkerIds,
-            int minimumConverged
+            int minimumConnected
     ) {
         long deadline = deadline(options.maximumConvergenceWait());
         long holdNanos = options.stableHold().toNanos();
@@ -651,9 +652,7 @@ public final class WorkerLoadedRecoveryMain {
                         List.of(),
                         "initial-headroom-window"
                 );
-                boolean qualifies = latest.activeConnectedAndHot()
-                        >= minimumConverged
-                        && latest.activeHotWithoutConnection() == 0;
+                boolean qualifies = latest.connectionsStable(minimumConnected);
                 long now = System.nanoTime();
                 if (qualifies) {
                     if (stableSince < 0) {
@@ -707,6 +706,7 @@ public final class WorkerLoadedRecoveryMain {
                 active.hot(),
                 active.connectedAndHot(),
                 active.hotWithoutConnection(),
+                active.missing(),
                 stopped.connected(),
                 stopped.hot(),
                 stopped.missing(),
@@ -721,6 +721,7 @@ public final class WorkerLoadedRecoveryMain {
         evidence.put("activeConnected", active.connected());
         evidence.put("activeHot", active.hot());
         evidence.put("activeConnectedAndHot", active.connectedAndHot());
+        evidence.put("activeMissing", active.missing());
         evidence.put(
                 "activeHotWithoutConnection",
                 active.hotWithoutConnection()
@@ -764,7 +765,7 @@ public final class WorkerLoadedRecoveryMain {
                 boolean isConnected = "connected".equals(network.get(workerId));
                 String schedulingState = scheduling.get(workerId);
                 boolean isHot = isHot(schedulingState);
-                if ("missing".equals(schedulingState)) {
+                if (schedulingState == null || "missing".equals(schedulingState)) {
                     missing++;
                 }
                 if (isConnected) {
@@ -824,12 +825,12 @@ public final class WorkerLoadedRecoveryMain {
         result.put("preparedWorkers", options.preparedWorkers());
         result.put("retainedWorkers", options.retainedWorkers());
         result.put(
-                "minimumInitialConnectedAndHot",
-                options.minimumInitialConverged()
+                "minimumInitialConnected",
+                options.minimumInitialConnected()
         );
         result.put(
-                "minimumRetainedConnectedAndHot",
-                options.minimumRetainedConverged()
+                "minimumRetainedConnected",
+                options.minimumRetainedConnected()
         );
         result.put("startedAtEpochMillis", startedAt);
         return result;
@@ -909,16 +910,24 @@ public final class WorkerLoadedRecoveryMain {
     ) {
     }
 
-    private record Scan(
+    record Scan(
             int activeConnected,
             int activeHot,
             int activeConnectedAndHot,
             int activeHotWithoutConnection,
+            int activeMissing,
             int stoppedConnected,
             int stoppedHot,
             int stoppedMissing,
             Map<String, Integer> activeNotHotStates
     ) {
+        /** Idle scheduling polarity is diagnostic; future work must prove execution recovery. */
+        boolean connectionsStable(int minimumConnected) {
+            return activeConnected >= minimumConnected
+                    && activeMissing == 0
+                    && stoppedConnected == 0
+                    && stoppedMissing == 0;
+        }
     }
 
     private record Convergence(Scan scan, int consecutive) {
