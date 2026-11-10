@@ -52,6 +52,28 @@ Runtime ZIP 包含 Server、Adapter 和前端，排除 Simulator；Preview ZIP �
 新构建的候选 ZIP 不会自动替换已经运行的安装。更新时先核对版本、commit 和实际文件，
 在独立目录验证，再明确切换。不要修改运行中的包或用旧文档推定数据兼容。
 
+## 长期 Staging 公网接入
+
+使用 Runtime ZIP 的 [staging ingress 示例](../../../distribution/server/src/main/dist/examples/staging-ingress/README.md)
+准备两个 HTTPS 入口：管理入口保护控制台和业务 API，Worker 入口只允许指定 Group 的
+Prepare 与 WebSocket。两类 Basic 凭据不能串用；内部 Adapter API 和 Redis 不公开。
+这是一套可信测试环境的门禁，管理凭据持有者仍可选择开发身份，Worker 凭据不提供
+Worker ID 之间的隔离。它不承担客户 SLA。
+
+先准备证书、Nginx 凭据文件和宿主 Group/Pool 配置，再从包内一次性渲染网关配置。
+Server/Adapter 继续监听本机，公开 WSS 地址使用 Worker 域名。网页通过浏览器标准
+Basic 认证进入；程序调用提供管理凭据及原有开发调用方头。
+
+外部 Java Host 使用独立 Simulator `--config`，设置 HTTPS `runtimeApiBaseUrl` 和私有
+`gatewayCredentialFile`。该路径相对主配置文件解析，读取失败不会回退匿名连接。
+更换密钥需明确重启 Host。不要运行统一的本地环境启动器去连接已有远端 Server。
+Android SDK 支持同样的传递，但本片没有为 Android Demo 增加凭据配置页面。
+
+GCP 只下载固定 Release；构建和完整证明留在开发环境/CI。升级前保存恢复点，保持同一
+scope 只有一个 Pacer。发布后仅做小规模任务、结果和导出验收。删除凭据会拒绝新请求，
+立即撤销还需实际关闭已有网关连接，不能把 reload 当成已断连。进程与证书续期由
+systemd/ACME 工具管理，不依赖 Agent 持续运行。
+
 ## Java 与 Android Worker
 
 Java Host 通过一个 JSON 选择能力、属性、身份 inventory 和数量。Android 使用既有

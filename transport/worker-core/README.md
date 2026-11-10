@@ -372,6 +372,30 @@ timeout with the default reconnect policy. Java and Android direct factories
 accept this immutable value only when a Host needs non-default connection
 settings.
 
+`options.withGatewayCredential(WorkerGatewayCredential.of(keyId, secret))`
+returns a new immutable option value for a trusted-environment HTTPS/WSS gateway.
+The default has no credential. The credential validates bounded input and has a
+redacted `toString`; its `authorizationHeader()` is sensitive request material,
+never Worker Properties, payload, identity or log content. Secret generation,
+private storage and rotation belong to the Host/deployment. A Host can call
+`validateRuntimeUri` before preparing inventory.
+
+With this option Java and Android require an HTTPS Runtime URI without userinfo,
+query or fragment and WEBSOCKET transport. A returned Endpoint must be WSS with
+the same case-insensitive host and effective port (default 443), also without
+userinfo, query or fragment. The platform request clients send Basic credentials
+on Prepare and every WebSocket handshake, including reconnects; authenticated
+requests do not follow redirects. Credentials are never sent to an unapproved
+Endpoint. Unauthenticated local defaults retain their existing behavior.
+
+This is an environment access gate, not Worker authentication or Group isolation.
+Every admitted credential holder shares the existing Worker trust domain and may
+claim a known Worker ID. It adds no identity owner, wire fields, refresh, automatic
+Prepare or new run/connection state. Revocation must close existing gateway
+connections as well as reject subsequent requests; changing a password file does
+not itself end an upgraded WebSocket. A changed immutable Host credential takes
+effect through explicit Host replacement/restart.
+
 `PollingWorkerTransport` remains a separate request-response mechanism and
 accepts an already assembled `WorkerCommandExecutor`; it does not compose
 Definition collections.

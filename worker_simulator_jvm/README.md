@@ -71,6 +71,7 @@ There are no implicit additional Groups. Root defaults are:
 | Setting | Default |
 | --- | --- |
 | `runtimeApiBaseUrl` | `http://127.0.0.1:18082` |
+| `gatewayCredentialFile` | Omitted; no gateway credentials |
 | `sandboxRoot` | `./data/scenario-workers` |
 | `controlPort` | `18086` |
 | `seed` | `0` (signed 64-bit initialization seed) |
@@ -80,6 +81,46 @@ There are no implicit additional Groups. Root defaults are:
 Relative `sandboxRoot` paths resolve against the configuration file's directory,
 including the default path, not the process working directory. The Runtime API URL must be absolute HTTP(S).
 The control listener is loopback-only; port `0` selects an ephemeral test port.
+
+### Protected remote Runtime
+
+The standalone Host can connect to an existing HTTPS/WSS Runtime through the
+deployment's Basic-authenticated Worker entrance. It starts only Workers, not a
+Server. Add an explicit private file reference to the same JSON:
+
+```json
+{
+  "runtimeApiBaseUrl": "https://workers-staging.xamass.net",
+  "gatewayCredentialFile": "./private/worker-access.json",
+  "workerGroups": {
+    "staging-java-workers": {
+      "count": 2,
+      "events": ["extension.worker.string.md5"],
+      "propertiesTemplate": {}
+    }
+  }
+}
+```
+
+The credential file is a UTF-8 object containing exactly `keyId` and `secret`
+strings, at most 64 KiB. Its path resolves against the main configuration file's
+directory. It is read once during configuration capture, before inventory writes
+or networking. Missing, malformed, duplicate-key or invalid explicit files fail
+startup; they never select anonymous access. Omission preserves local operation.
+Changing the file requires explicitly restarting the Host; there is no background
+reload or implicit environment override.
+
+SDK credentials apply to single/batch Prepare and every WSS handshake/reconnect.
+They require HTTPS and a returned WSS endpoint on the same host and effective
+port; redirects or a different/insecure endpoint cannot receive the credential.
+The credential stays outside inventory, Worker Properties and diagnostic snapshots;
+its value and encoded Authorization are not logged. Protect the private file with
+local filesystem permissions and exclude it from repositories, ZIPs and evidence.
+The Host only reports whether access succeeded through its ordinary lifecycle;
+gateway access is not per-Worker identity isolation. Group registration, installed
+Handlers and enabled Matching resources remain separate deployment prerequisites.
+
+### Group capability selection
 
 An empty configuration object is sufficient for any of the three built-in Groups.
 `count` is optional (0..15,000): `demo-sim` defaults to 60, all other Groups to 50.

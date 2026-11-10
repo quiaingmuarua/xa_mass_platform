@@ -4,6 +4,7 @@ import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
+import com.xa.mass.worker.runtime.WorkerGatewayCredential;
 
 import java.net.URI;
 import java.time.Duration;
@@ -171,22 +172,32 @@ final class JavaWorkerPlatform implements AutoCloseable {
     WorkerControlClient controlClient(
             URI runtimeApiBaseUrl
     ) {
-        return workerControlClient(runtimeApiBaseUrl);
+        return controlClient(runtimeApiBaseUrl, null);
+    }
+
+    WorkerControlClient controlClient(URI runtimeApiBaseUrl, WorkerGatewayCredential credential) {
+        return workerControlClient(runtimeApiBaseUrl, credential);
     }
 
     JavaOkHttpWorkerControlClient batchControlClient(
             URI runtimeApiBaseUrl
     ) {
-        return workerControlClient(runtimeApiBaseUrl);
+        return batchControlClient(runtimeApiBaseUrl, null);
+    }
+
+    JavaOkHttpWorkerControlClient batchControlClient(URI runtimeApiBaseUrl, WorkerGatewayCredential credential) {
+        return workerControlClient(runtimeApiBaseUrl, credential);
     }
 
     private JavaOkHttpWorkerControlClient workerControlClient(
-            URI runtimeApiBaseUrl
+            URI runtimeApiBaseUrl,
+            WorkerGatewayCredential credential
     ) {
         requireOpen();
         return new JavaOkHttpWorkerControlClient(
                 httpClient,
-                runtimeApiBaseUrl
+                runtimeApiBaseUrl,
+                credential
         );
     }
 
@@ -196,11 +207,20 @@ final class JavaWorkerPlatform implements AutoCloseable {
             Duration requestTimeout,
             TextMessageReconnectPolicy reconnectPolicy
     ) {
+        return textClient(transportType, endpointUri, requestTimeout, reconnectPolicy, null, null);
+    }
+
+    TextMessageClient textClient(WorkerTransportType transportType, URI endpointUri,
+                                 Duration requestTimeout, TextMessageReconnectPolicy reconnectPolicy,
+                                 URI runtimeApiBaseUrl, WorkerGatewayCredential credential) {
         requireOpen();
         Objects.requireNonNull(transportType, "transportType");
         Objects.requireNonNull(endpointUri, "endpointUri");
         requirePositive(requestTimeout, "requestTimeout");
         Objects.requireNonNull(reconnectPolicy, "reconnectPolicy");
+        if (credential != null && transportType != WorkerTransportType.WEBSOCKET) {
+            throw new IllegalArgumentException("Gateway credentials require WEBSOCKET transport");
+        }
         if (transportType == WorkerTransportType.POLLING) {
             throw new IllegalArgumentException(
                     "transportType must be WEBSOCKET or SOCKET"
@@ -221,7 +241,9 @@ final class JavaWorkerPlatform implements AutoCloseable {
                     socketHttp,
                     networkScheduler,
                     endpointUri,
-                    reconnectPolicy
+                    reconnectPolicy,
+                    runtimeApiBaseUrl,
+                    credential
             );
         }
         if (transportType == WorkerTransportType.SOCKET) {

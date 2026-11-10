@@ -5,6 +5,7 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.runtime.PreparedWorker;
+import com.xa.mass.worker.runtime.WorkerGatewayCredential;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.net.URI;
@@ -31,6 +32,7 @@ final class AndroidOkHttpWorkerControlClient
 
     private final OkHttpClient http;
     private final HttpUrl runtimeApiBaseUrl;
+    private final WorkerGatewayCredential gatewayCredential;
     private final Set<Call> activeCalls = ConcurrentHashMap.newKeySet();
     private volatile boolean closed;
 
@@ -38,8 +40,17 @@ final class AndroidOkHttpWorkerControlClient
             OkHttpClient http,
             URI runtimeApiBaseUrl
     ) {
-        this.http = java.util.Objects.requireNonNull(http, "http");
+        this(http, runtimeApiBaseUrl, null);
+    }
+
+    AndroidOkHttpWorkerControlClient(OkHttpClient http, URI runtimeApiBaseUrl,
+                                   WorkerGatewayCredential gatewayCredential) {
+        if (gatewayCredential != null) gatewayCredential.validateRuntimeUri(runtimeApiBaseUrl);
+        java.util.Objects.requireNonNull(http, "http");
+        this.http = gatewayCredential == null ? http : http.newBuilder()
+                .followRedirects(false).followSslRedirects(false).build();
         this.runtimeApiBaseUrl = requireHttpUrl(runtimeApiBaseUrl);
+        this.gatewayCredential = gatewayCredential;
     }
 
     @Override
@@ -50,6 +61,9 @@ final class AndroidOkHttpWorkerControlClient
             Duration timeout
     ) throws IOException {
         requireOpen();
+        if (gatewayCredential != null && transportType != WorkerTransportType.WEBSOCKET) {
+            throw new IllegalArgumentException("Gateway credentials require WEBSOCKET transport");
+        }
         String group = requireNonBlank(workerGroupId, "workerGroupId");
         if (transportType == null) {
             throw new IllegalArgumentException(
@@ -115,10 +129,11 @@ final class AndroidOkHttpWorkerControlClient
             Duration timeout,
             String operation
     ) throws IOException {
-        Request request = new Request.Builder()
+        Request.Builder builder = new Request.Builder()
                 .url(url)
-                .post(RequestBody.create(Jsons.toJson(body), JSON))
-                .build();
+                .post(RequestBody.create(Jsons.toJson(body), JSON));
+        if (gatewayCredential != null) builder.header("Authorization", gatewayCredential.authorizationHeader());
+        Request request = builder.build();
         Call call = http.newCall(request);
         activeCalls.add(call);
         if (closed) {
@@ -189,7 +204,7 @@ final class AndroidOkHttpWorkerControlClient
         }
     }
 
-    private static URI requireEndpointUri(
+    private URI requireEndpointUri(
             String encoded,
             WorkerTransportType transportType
     ) {
@@ -223,6 +238,14 @@ final class AndroidOkHttpWorkerControlClient
                             + "incompatible with " + transportType,
                     null
             );
+        }
+        if (gatewayCredential != null) {
+            try {
+                gatewayCredential.validateEndpointUri(runtimeApiBaseUrl.uri(), uri);
+            } catch (IllegalArgumentException error) {
+                throw failure(WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
+                        "workerControl.prepare", "Worker gateway endpoint is invalid", error);
+            }
         }
         return uri;
     }

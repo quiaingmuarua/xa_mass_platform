@@ -352,6 +352,7 @@ frontend:
   - '.github/workflows/proof-ci.yml'
   - '!**/*.md'
 runtime_distribution:
+  - '.github/scripts/test_staging_runtime_proof.py'
   - 'distribution/docs_http_proof.py'
   - 'frontend/docs/**'
   - '.github/scripts/test_run_runtime_distribution_proof.py'

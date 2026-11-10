@@ -241,7 +241,7 @@ class WorkerSimulatorLabTest {
                 Map.of("phone", "861700000001", "country", "CN"), true,
                 Duration.ofSeconds(1), TextMessageReconnectPolicy.defaults(), com.xa.mass.workersimulator.messaging.MessageContentMode.TEXT);
         var config = new WorkerSimulatorConfig(java.net.URI.create("http://127.0.0.1:1"),
-                labRoot(), 0, 0, List.of(invalid), WorkerSimulatorStartupPlan.defaults(), com.xa.mass.workersimulator.messaging.MessageSettings.defaults());
+                labRoot(), 0, 0, List.of(invalid), WorkerSimulatorStartupPlan.defaults(), com.xa.mass.workersimulator.messaging.MessageSettings.defaults(), null);
         try (var host = WorkerSimulator.create(config)) {
             assertThatThrownBy(host::start)
                     .hasRootCauseMessage("Duplicate inventory phone");

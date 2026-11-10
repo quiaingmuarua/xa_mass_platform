@@ -100,6 +100,12 @@ public final class JavaWorker implements WorkerLifecycle {
                 options,
                 "options"
         );
+        if (resolvedOptions.gatewayCredential() != null) {
+            resolvedOptions.gatewayCredential().validateRuntimeUri(resolvedRuntimeApiBaseUrl);
+            if (resolvedTransportType != WorkerTransportType.WEBSOCKET) {
+                throw new IllegalArgumentException("Gateway credentials require WEBSOCKET transport");
+            }
+        }
 
         JavaWorkerPlatform platform =
                 JavaWorkerPlatform.standalone(resolvedWorkerGroupId);

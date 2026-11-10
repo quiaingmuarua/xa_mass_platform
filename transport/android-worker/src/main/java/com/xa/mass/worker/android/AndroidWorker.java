@@ -114,6 +114,9 @@ public final class AndroidWorker implements WorkerLifecycle {
                 options,
                 "options"
         );
+        if (resolvedOptions.gatewayCredential() != null) {
+            resolvedOptions.gatewayCredential().validateRuntimeUri(resolvedRuntimeApiBaseUrl);
+        }
         AndroidClientWorkerKeyStore clientKeyStore =
                 new AndroidClientWorkerKeyStore(
                         resolvedContext,
@@ -159,7 +162,8 @@ public final class AndroidWorker implements WorkerLifecycle {
                             WorkerTransportType.WEBSOCKET,
                             completeProperties,
                             platform.controlClient(
-                                    resolvedRuntimeApiBaseUrl
+                                    resolvedRuntimeApiBaseUrl,
+                                    resolvedOptions.gatewayCredential()
                             ),
                             resolvedOptions.requestTimeout()
                     ),
@@ -167,7 +171,9 @@ public final class AndroidWorker implements WorkerLifecycle {
                             endpointUri -> platform.textClient(
                                     endpointUri,
                                     resolvedOptions.requestTimeout(),
-                                    resolvedOptions.reconnectPolicy()
+                                    resolvedOptions.reconnectPolicy(),
+                                    resolvedRuntimeApiBaseUrl,
+                                    resolvedOptions.gatewayCredential()
                             ),
                             dispatcher,
                             liveProperties

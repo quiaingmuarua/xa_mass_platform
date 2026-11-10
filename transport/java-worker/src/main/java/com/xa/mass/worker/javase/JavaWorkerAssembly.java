@@ -83,7 +83,7 @@ final class JavaWorkerAssembly {
                         workerGroupId,
                         transportType,
                         completeProperties,
-                        platform.controlClient(runtimeApiBaseUrl),
+                        platform.controlClient(runtimeApiBaseUrl, options.gatewayCredential()),
                         options.requestTimeout()
                 ),
                 new TextMessageWorkerTransportFactory(
@@ -91,7 +91,9 @@ final class JavaWorkerAssembly {
                                 transportType,
                                 endpointUri,
                                 options.requestTimeout(),
-                                options.reconnectPolicy()
+                                options.reconnectPolicy(),
+                                runtimeApiBaseUrl,
+                                options.gatewayCredential()
                         ),
                         dispatcher,
                         liveProperties

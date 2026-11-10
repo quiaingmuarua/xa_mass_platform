@@ -71,6 +71,18 @@ revocation; the [event catalog](../EVENTS.md#worker-produced-property-observatio
 owns payload semantics. Android borrows its existing Client and adds no
 Properties HandlerThread, publication scheduler or stored snapshot.
 
+The optional [gateway credential](../worker-core/README.md#client-boundary)
+is supplied through `WorkerConnectionOptions.withGatewayCredential(...)`.
+Android validates the Runtime HTTPS origin before creating local resources,
+attaches Basic credentials to Prepare and every WSS handshake/reconnect, and
+rejects returned Endpoints outside the Runtime host/effective port or with an
+insecure scheme/userinfo/query/fragment. Authenticated requests do not follow
+redirects. This changes no callback, stop, key persistence or run semantics.
+The Host owns private credential loading; the SDK adds no Android App onboarding
+screen, secret resource or credential persistence. This is a trusted-environment
+gateway, not per-Worker or Group authorization. Runtime identity and Properties
+remain free of the credential.
+
 ## Platform Resources
 
 Each `AndroidWorker` internally owns:

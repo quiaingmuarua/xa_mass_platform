@@ -16,10 +16,12 @@ public final class WorkerConnectionOptions {
 
     private final Duration requestTimeout;
     private final TextMessageReconnectPolicy reconnectPolicy;
+    private final WorkerGatewayCredential gatewayCredential;
 
     private WorkerConnectionOptions(
             Duration requestTimeout,
-            TextMessageReconnectPolicy reconnectPolicy
+            TextMessageReconnectPolicy reconnectPolicy,
+            WorkerGatewayCredential gatewayCredential
     ) {
         this.requestTimeout = requirePositive(
                 requestTimeout,
@@ -29,6 +31,7 @@ public final class WorkerConnectionOptions {
                 reconnectPolicy,
                 "reconnectPolicy"
         );
+        this.gatewayCredential = gatewayCredential;
     }
 
     public static WorkerConnectionOptions defaults() {
@@ -41,9 +44,18 @@ public final class WorkerConnectionOptions {
     ) {
         return new WorkerConnectionOptions(
                 requestTimeout,
-                reconnectPolicy
+                reconnectPolicy,
+                null
         );
     }
+
+    public WorkerConnectionOptions withGatewayCredential(WorkerGatewayCredential value) {
+        return new WorkerConnectionOptions(requestTimeout, reconnectPolicy,
+                Objects.requireNonNull(value, "gatewayCredential"));
+    }
+
+    /** Null means the existing unauthenticated transport behavior. */
+    public WorkerGatewayCredential gatewayCredential() { return gatewayCredential; }
 
     public Duration requestTimeout() {
         return requestTimeout;

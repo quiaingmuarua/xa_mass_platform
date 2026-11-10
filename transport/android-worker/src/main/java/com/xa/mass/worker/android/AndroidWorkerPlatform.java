@@ -5,6 +5,7 @@ import android.os.HandlerThread;
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.WorkerControlClient;
+import com.xa.mass.worker.runtime.WorkerGatewayCredential;
 
 import java.net.URI;
 import java.time.Duration;
@@ -77,10 +78,15 @@ final class AndroidWorkerPlatform implements AutoCloseable {
     synchronized WorkerControlClient controlClient(
             URI runtimeApiBaseUrl
     ) {
+        return controlClient(runtimeApiBaseUrl, null);
+    }
+
+    synchronized WorkerControlClient controlClient(URI runtimeApiBaseUrl, WorkerGatewayCredential credential) {
         requireOpen();
         return new AndroidOkHttpWorkerControlClient(
                 httpClient,
-                runtimeApiBaseUrl
+                runtimeApiBaseUrl,
+                credential
         );
     }
 
@@ -89,6 +95,12 @@ final class AndroidWorkerPlatform implements AutoCloseable {
             Duration requestTimeout,
             TextMessageReconnectPolicy reconnectPolicy
     ) {
+        return textClient(endpointUri, requestTimeout, reconnectPolicy, null, null);
+    }
+
+    synchronized TextMessageClient textClient(URI endpointUri, Duration requestTimeout,
+                                             TextMessageReconnectPolicy reconnectPolicy,
+                                             URI runtimeApiBaseUrl, WorkerGatewayCredential credential) {
         requireOpen();
         long timeoutMillis = requirePositive(
                 requestTimeout,
@@ -104,7 +116,9 @@ final class AndroidWorkerPlatform implements AutoCloseable {
                 socketHttp,
                 networkThread.getLooper(),
                 endpointUri,
-                reconnectPolicy
+                reconnectPolicy,
+                runtimeApiBaseUrl,
+                credential
         );
     }
 
