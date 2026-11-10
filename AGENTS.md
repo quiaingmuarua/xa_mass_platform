@@ -348,6 +348,15 @@ Task archival or grant Server execution scheduling authority.
 
 ## Local Development Composition
 
+Distribution's optional staging ingress owns TLS, environment-level Basic gates,
+route allowlists and connection limits. Administrative gateway credentials do not
+replace the development TaskCaller; Worker gateway credentials do not authenticate
+individual Worker identities. Java/Android SDK connection options carry credentials
+only to the approved HTTPS/WSS authority, including batch Prepare and reconnects.
+Simulator owns private credential-file input; secrets never enter Properties,
+inventory, logs or shipped artifacts. This adds no Server user authentication,
+Kernel identity or scheduling authority. See the [staging deployment](distribution/server/src/main/dist/examples/staging-ingress/README.md).
+
 Distribution's local launcher owns one Server/Adapter process and optional Java
 and Android Worker processes. Profiles and external resource files retain their
 owners; Worker selection never provisions Pool/Project resources. Process

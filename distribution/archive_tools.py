@@ -27,6 +27,9 @@ HOST_CONFIGURATIONS = {"application.yaml",
                        "application-consumer.yaml", "application-preview.yaml"}
 BATCH_CHECK_EXAMPLES = {"README.md", "batch-checks-runtime.yaml", "worker-groups.json", "batch-checks-configuration.json"}
 MESSAGES_EXAMPLES = {"README.md", "messages-runtime.yaml", "worker-groups.json"}
+STAGING_INGRESS_EXAMPLES = {"README.md", "deployment.example.json",
+                          "staging_ingress/__init__.py", "staging_ingress/__main__.py",
+                          "staging_ingress/renderer.py"}
 DOCUMENTATION_PAGES = ("docs/index.html", "docs/doc/guide/first-task.html")
 
 
@@ -129,7 +132,10 @@ def verify_runtime(archive: Path, version: str) -> None:
         )
         _runtime_require(
             not any(
-                name.endswith(".py")
+                (name.endswith(".py") and name not in {
+                    f"{root}/examples/staging-ingress/{entry}"
+                    for entry in STAGING_INGRESS_EXAMPLES if entry.endswith(".py")
+                })
                 or "wheelhouse" in PurePosixPath(name).parts
                 or "python-venv" in PurePosixPath(name).parts
                 for name in names
@@ -148,7 +154,8 @@ def verify_runtime(archive: Path, version: str) -> None:
         }
         missing = required - set(names)
         _runtime_require(not missing, f"runtime archive is missing: {sorted(missing)}")
-        for directory, expected in (("batch-checks", BATCH_CHECK_EXAMPLES), ("messages", MESSAGES_EXAMPLES)):
+        for directory, expected in (("batch-checks", BATCH_CHECK_EXAMPLES), ("messages", MESSAGES_EXAMPLES),
+                                    ("staging-ingress", STAGING_INGRESS_EXAMPLES)):
             example_prefix = f"{root}/examples/{directory}/"
             examples = {name.removeprefix(example_prefix) for name in names
                         if name.startswith(example_prefix) and not name.endswith("/")}

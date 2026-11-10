@@ -1,5 +1,7 @@
 package com.xa.mass.worker.javase;
 
+import com.xa.mass.worker.runtime.WorkerGatewayCredential;
+
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 
@@ -60,20 +62,32 @@ final class JavaOkHttpTextWebSocketClient
             URI socketUri,
             TextMessageReconnectPolicy reconnectPolicy
     ) {
+        this(httpClient, networkScheduler, socketUri, reconnectPolicy, null, null);
+    }
+
+    JavaOkHttpTextWebSocketClient(OkHttpClient httpClient,
+                                 ScheduledExecutorService networkScheduler,
+                                 URI socketUri, TextMessageReconnectPolicy reconnectPolicy,
+                                 URI runtimeApiBaseUrl, WorkerGatewayCredential credential) {
         this(
-                (uri, listener) -> Objects.requireNonNull(
-                        httpClient,
-                        "httpClient"
-                ).newWebSocket(
-                        new Request.Builder()
-                                .url(uri.toString())
-                                .build(),
-                        listener
-                ),
+                connector(httpClient, runtimeApiBaseUrl, socketUri, credential),
                 networkScheduler,
                 socketUri,
                 reconnectPolicy
         );
+    }
+
+    private static WebSocketConnector connector(OkHttpClient httpClient, URI runtimeApiBaseUrl,
+                                                URI socketUri, WorkerGatewayCredential credential) {
+        Objects.requireNonNull(httpClient, "httpClient");
+        if (credential != null) credential.validateEndpointUri(runtimeApiBaseUrl, socketUri);
+        OkHttpClient client = credential == null ? httpClient : httpClient.newBuilder()
+                .followRedirects(false).followSslRedirects(false).build();
+        return (uri, listener) -> {
+            Request.Builder request = new Request.Builder().url(uri.toString());
+            if (credential != null) request.header("Authorization", credential.authorizationHeader());
+            return client.newWebSocket(request.build(), listener);
+        };
     }
 
     JavaOkHttpTextWebSocketClient(

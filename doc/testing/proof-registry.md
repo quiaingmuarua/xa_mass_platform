@@ -212,7 +212,8 @@ physical effects. State and permission edge cases remain Android Host tests.
 
 - **Primary Owner:** [Server Distribution](../../distribution/server/README.md) and [Worker SDK Distribution](../../distribution/worker-sdk/README.md).
 - **Boundary:** publishable archives work outside the checkout and contain only declared runtime/publication boundaries.
-- **Required evidence:** Owner archive/launch checks from extracted artifacts, without checkout fallback.
+- **Required evidence:** Owner archive/launch checks from extracted artifacts, without checkout fallback. The existing Linux lane also runs real Nginx/TLS refusal, credential separation, request/connection limits and restart-revocation checks, then runs the supplied Runtime with an external same-commit Java Host through the gateway. Test CA trust and hostname verification remain enabled; original internal delivery endpoints stay private.
+- **Staging nonclaims:** gateway credentials admit a trusted environment, not individual users or Workers. Android SDK tests cover credential transport; this slice does not provide Android App credential onboarding. GCP deployment acceptance is a small separate witness, not execution of the CI workloads on the long-lived instance.
 - **Nonclaims:** OCI deployment or Redis lifecycle.
 
 ## docs_contract

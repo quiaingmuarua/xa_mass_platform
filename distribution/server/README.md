@@ -158,7 +158,7 @@ against source and extracted Runtime, identified explicitly as a test capability
 
 For an already running consumer, building this repository does not replace its
 locked installation. A local candidate ZIP is acceptance output, not a published
-Release. Formal delivery separately follows the [3.1 release contract](RELEASE-3.1.md):
+Release. Formal delivery separately follows the [3.2 release contract](RELEASE-3.2.md):
 publish immutable artifacts, update the consumer's exact version/commit/checksums,
 resolve into a separate installation, and switch deliberately. The task-directory
 storage change after 1.0.0 requires a fresh Redis scope; do not reuse old descriptors
@@ -191,14 +191,14 @@ file is not committed and is not a compatibility contract.
 Build an explicit release version:
 
 ```powershell
-.\gradlew.bat :distribution:server:distZip "-PxaMassVersion=3.1.0"
+.\gradlew.bat :distribution:server:distZip "-PxaMassVersion=3.2.0"
 ```
 
 The archive is written under `distribution/server/build/distributions`. After
 extracting it on a machine with Java 21, run from the extracted Runtime root:
 
 ```powershell
-java -jar .\lib\xa-mass-server-jvm-3.1.0.jar `
+java -jar .\lib\xa-mass-server-jvm-3.2.0.jar `
   --spring.profiles.active=default `
   --spring.web.resources.static-locations=file:frontend/dist/ `
   --xa.mass.redis.url=redis://127.0.0.1:6379/15
@@ -207,7 +207,7 @@ java -jar .\lib\xa-mass-server-jvm-3.1.0.jar `
 Select the built-in clean `consumer` deployment preset explicitly:
 
 ```powershell
-java -jar .\lib\xa-mass-server-jvm-3.1.0.jar `
+java -jar .\lib\xa-mass-server-jvm-3.2.0.jar `
   --spring.profiles.active=consumer `
   --spring.web.resources.static-locations=file:frontend/dist/
 ```
@@ -246,6 +246,31 @@ Preview adds [external-profile and packaged-launch checks](PREVIEW.md#archive-de
 The Runtime proof loads the external platform fixture, verifies that its Project
 bindings create no Tasks, then explicitly prepares its named RPC Tasks and
 point-reads their approved descriptors from the extracted archive.
+
+## Trusted staging ingress
+
+The opt-in [staging examples](src/main/dist/examples/staging-ingress/README.md)
+provide two HTTPS/WSS Nginx entrypoints, environment-administrator and Worker
+Basic gates, positive route/method lists and bounded connection admission.
+They are delivered with the Runtime ZIP but are never auto-loaded. The renderer
+is available from the checkout as `python -m distribution.server.staging_ingress`
+and from the extracted example directory as `python -m staging_ingress`.
+The archive admits only the three named configuration-renderer Python files in
+that example; it still rejects Python runtime launchers, environments and proofs.
+Rendering is an explicit preparation step, not a Runtime dependency or service.
+
+Gateway credentials do not replace TaskCaller or establish Worker ownership.
+Backend/Redis listeners and internal Adapter APIs remain private. The current
+slice supports an external Java Host; Android SDK credential transport is tested,
+but Android App provisioning is a separate slice. Secrets remain outside archives.
+
+The existing Runtime Distribution Linux lane runs the actual Nginx/TLS contract
+proof and a packaged Runtime with a same-commit standalone Java Simulator. Use
+`--staging-ingress --simulator-home <installDist>` on the existing proof runner;
+Nginx, OpenSSL and htpasswd must be installed. The normal Windows Runtime proof
+still checks its original boundaries; it does not pretend to prove Linux ingress.
+The [3.2 release contract](RELEASE-3.2.md) separates CI artifact verification from
+small acceptance on the long-lived GCP deployment.
 
 ## Finite Task archives
 

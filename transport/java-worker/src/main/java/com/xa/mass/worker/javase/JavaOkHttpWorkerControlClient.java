@@ -5,6 +5,7 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.runtime.PreparedWorker;
+import com.xa.mass.worker.runtime.WorkerGatewayCredential;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.net.URI;
@@ -32,6 +33,7 @@ final class JavaOkHttpWorkerControlClient
 
     private final OkHttpClient http;
     private final HttpUrl runtimeApiBaseUrl;
+    private final WorkerGatewayCredential gatewayCredential;
     private final Set<Call> activeCalls = ConcurrentHashMap.newKeySet();
     private volatile boolean closed;
 
@@ -39,8 +41,17 @@ final class JavaOkHttpWorkerControlClient
             OkHttpClient http,
             URI runtimeApiBaseUrl
     ) {
+        this(http, runtimeApiBaseUrl, null);
+    }
+
+    JavaOkHttpWorkerControlClient(OkHttpClient http, URI runtimeApiBaseUrl,
+                                WorkerGatewayCredential gatewayCredential) {
+        if (gatewayCredential != null) gatewayCredential.validateRuntimeUri(runtimeApiBaseUrl);
         this.runtimeApiBaseUrl = requireHttpUrl(runtimeApiBaseUrl);
-        this.http = java.util.Objects.requireNonNull(http, "http");
+        java.util.Objects.requireNonNull(http, "http");
+        this.http = gatewayCredential == null ? http : http.newBuilder()
+                .followRedirects(false).followSslRedirects(false).build();
+        this.gatewayCredential = gatewayCredential;
     }
 
     public PreparedWorker prepare(
@@ -50,6 +61,7 @@ final class JavaOkHttpWorkerControlClient
             Duration requestTimeout
     ) throws IOException {
         requireOpen();
+        requireGatewayTransport(transportType);
         String group = requireNonBlank(workerGroupId, "workerGroupId");
         if (transportType == null) {
             throw new IllegalArgumentException(
@@ -86,6 +98,7 @@ final class JavaOkHttpWorkerControlClient
             Duration requestTimeout
     ) throws IOException {
         requireOpen();
+        requireGatewayTransport(transportType);
         String kind = requireNonBlank(workerKind, "workerKind");
         String group = requireNonBlank(workerGroupId, "workerGroupId");
         if (transportType == null) {
@@ -203,10 +216,11 @@ final class JavaOkHttpWorkerControlClient
             Duration requestTimeout,
             String operation
     ) throws IOException {
-        Request request = new Request.Builder()
+        Request.Builder builder = new Request.Builder()
                 .url(url)
-                .post(RequestBody.create(Jsons.toJson(body), JSON))
-                .build();
+                .post(RequestBody.create(Jsons.toJson(body), JSON));
+        if (gatewayCredential != null) builder.header("Authorization", gatewayCredential.authorizationHeader());
+        Request request = builder.build();
         Call call = http.newCall(request);
         activeCalls.add(call);
         if (closed) {
@@ -280,7 +294,7 @@ final class JavaOkHttpWorkerControlClient
         }
     }
 
-    private static URI requireEndpointUri(
+    private URI requireEndpointUri(
             String encoded,
             WorkerTransportType transportType,
             String operation
@@ -316,10 +330,17 @@ final class JavaOkHttpWorkerControlClient
                     null
             );
         }
+        if (gatewayCredential != null) {
+            try {
+                gatewayCredential.validateEndpointUri(runtimeApiBaseUrl.uri(), uri);
+            } catch (IllegalArgumentException error) {
+                throw invalidResponse(operation, error);
+            }
+        }
         return uri;
     }
 
-    private static PreparedWorker parsePreparedWorker(
+    private PreparedWorker parsePreparedWorker(
             Map<String, Object> response,
             WorkerTransportType transportType,
             String operation,
@@ -359,6 +380,12 @@ final class JavaOkHttpWorkerControlClient
             result.put((String) entry.getKey(), entry.getValue());
         }
         return result;
+    }
+
+    private void requireGatewayTransport(WorkerTransportType transportType) {
+        if (gatewayCredential != null && transportType != WorkerTransportType.WEBSOCKET) {
+            throw new IllegalArgumentException("Gateway credentials require WEBSOCKET transport");
+        }
     }
 
     private static WorkerException invalidBatchResponse() {

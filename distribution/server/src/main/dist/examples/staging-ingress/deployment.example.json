@@ -1,0 +1,16 @@
+{
+  "admin_host": "staging.xamass.net",
+  "worker_host": "workers-staging.xamass.net",
+  "listen_host": "0.0.0.0",
+  "http_port": 80,
+  "https_port": 443,
+  "runtime_port": 18182,
+  "adapter_port": 18183,
+  "certificate": "/etc/letsencrypt/live/xamass-staging/fullchain.pem",
+  "certificate_key": "/etc/letsencrypt/live/xamass-staging/privkey.pem",
+  "admin_password_file": "/etc/xa-mass/ingress/admin.htpasswd",
+  "worker_password_file": "/etc/xa-mass/ingress/workers.htpasswd",
+  "acme_root": "/var/lib/xa-mass/acme",
+  "state_directory": "/var/lib/xa-mass/ingress",
+  "worker_groups": ["staging-java-workers"]
+}

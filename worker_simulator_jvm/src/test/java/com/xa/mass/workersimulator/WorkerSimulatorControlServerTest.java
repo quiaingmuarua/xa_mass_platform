@@ -105,7 +105,7 @@ class WorkerSimulatorControlServerTest {
                 (runtimeApiBaseUrl, preparedGroup) -> manager,
                 checkpoints,
                 new WorkerSimulatorExecutionWitnesses()
-        , com.xa.mass.workersimulator.messaging.MessageSettings.defaults());
+        , com.xa.mass.workersimulator.messaging.MessageSettings.defaults(), null);
         workers.start(WorkerSimulatorStartupPlan.parse("""
                 {
                   "initialWorkers":[],

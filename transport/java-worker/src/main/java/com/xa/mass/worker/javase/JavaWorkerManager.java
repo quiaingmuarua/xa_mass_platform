@@ -602,6 +602,12 @@ public final class JavaWorkerManager implements AutoCloseable {
         }
 
         public JavaWorkerManager build() {
+            if (options.gatewayCredential() != null) {
+                options.gatewayCredential().validateRuntimeUri(runtimeApiBaseUrl);
+                if (transportType != WorkerTransportType.WEBSOCKET) {
+                    throw new IllegalArgumentException("Gateway credentials require WEBSOCKET transport");
+                }
+            }
             if (replicas.isEmpty()) {
                 throw new IllegalStateException(
                         "at least one Worker replica must be configured"
@@ -618,7 +624,8 @@ public final class JavaWorkerManager implements AutoCloseable {
             try {
                 if (batchWorkerKind != null) {
                     batchControlClient = platform.batchControlClient(
-                            runtimeApiBaseUrl
+                            runtimeApiBaseUrl,
+                            options.gatewayCredential()
                     );
                 }
                 for (ReplicaSpec replica : replicas.values()) {

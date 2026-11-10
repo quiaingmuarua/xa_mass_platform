@@ -4,6 +4,7 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
+import com.xa.mass.worker.runtime.WorkerGatewayCredential;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workersimulator.sms.SmsScenario;
 import com.xa.mass.workersimulator.sms.SmsReceptionRegistry;
@@ -33,6 +34,7 @@ public final class WorkerSimulator implements AutoCloseable {
             "extension.worker.";
 
     private final URI runtimeApiBaseUrl;
+    private final WorkerGatewayCredential gatewayCredential;
     private final long seed;
     private final List<GroupAssembly> groups;
     private final WorkerSimulatorLab lab;
@@ -61,12 +63,15 @@ public final class WorkerSimulator implements AutoCloseable {
             GroupManagerFactory groupManagerFactory,
             WorkerSimulatorCommandCheckpoints commandCheckpoints,
             WorkerSimulatorExecutionWitnesses executionWitnesses,
-            MessageSettings messageSettings
+            MessageSettings messageSettings,
+            WorkerGatewayCredential gatewayCredential
     ) {
         this.runtimeApiBaseUrl = Objects.requireNonNull(
                 runtimeApiBaseUrl,
                 "runtimeApiBaseUrl"
         );
+        this.gatewayCredential = gatewayCredential;
+        if (gatewayCredential != null) gatewayCredential.validateRuntimeUri(runtimeApiBaseUrl);
         this.seed = seed;
         groups = resolveGroups(
                 configs,
@@ -91,7 +96,7 @@ public final class WorkerSimulator implements AutoCloseable {
             WorkerSimulatorCommandCheckpoints checkpoints = new WorkerSimulatorCommandCheckpoints();
             return new WorkerSimulator(config.runtimeApiBaseUrl(), config.sandboxRoot().toString(), config.seed(),
                     config.workerGroups(), availableDefinitionExtensions(checkpoints), null,
-                    checkpoints, new WorkerSimulatorExecutionWitnesses(), config.messages());
+                    checkpoints, new WorkerSimulatorExecutionWitnesses(), config.messages(), config.gatewayCredential());
         } catch (IllegalArgumentException error) {
             throw new WorkerSimulatorAssemblyException(14012, "workerSimulator.create",
                     "Worker Simulator configuration is invalid: " + error.getMessage(), error);
@@ -779,16 +784,15 @@ public final class WorkerSimulator implements AutoCloseable {
     ) {
         GroupAssembly group = preparedGroup.group();
         WorkerSimulatorGroupConfig config = group.config();
+        WorkerConnectionOptions options = WorkerConnectionOptions.of(config.requestTimeout(), config.reconnectPolicy());
+        if (gatewayCredential != null) options = options.withGatewayCredential(gatewayCredential);
         JavaWorkerManager.Builder builder = JavaWorkerManager.builder(
                         runtimeApiBaseUrl,
                         config.workerGroupId(),
                         WorkerTransportType.WEBSOCKET
                 )
                 .extendEventDefinitions(group.definitionExtensions())
-                .options(WorkerConnectionOptions.of(
-                        config.requestTimeout(),
-                        config.reconnectPolicy()
-                ));
+                .options(options);
         builder.batchWorkerKind("SCENARIO_LAB");
         AtomicReference<JavaWorkerManager> managerReference = new AtomicReference<>();
         for (PreparedReplica replica : preparedGroup.replicas()) {

@@ -1,5 +1,7 @@
 package com.xa.mass.worker.android;
 
+import com.xa.mass.worker.runtime.WorkerGatewayCredential;
+
 import android.os.Handler;
 import android.os.Looper;
 
@@ -47,20 +49,31 @@ final class AndroidOkHttpTextWebSocketClient
             URI socketUri,
             TextMessageReconnectPolicy reconnectPolicy
     ) {
+        this(httpClient, networkLooper, socketUri, reconnectPolicy, null, null);
+    }
+
+    AndroidOkHttpTextWebSocketClient(OkHttpClient httpClient, Looper networkLooper,
+                                    URI socketUri, TextMessageReconnectPolicy reconnectPolicy,
+                                    URI runtimeApiBaseUrl, WorkerGatewayCredential credential) {
         this(
-                (uri, listener) -> Objects.requireNonNull(
-                        httpClient,
-                        "httpClient"
-                ).newWebSocket(
-                        new Request.Builder()
-                                .url(uri.toString())
-                                .build(),
-                        listener
-                ),
+                connector(httpClient, runtimeApiBaseUrl, socketUri, credential),
                 networkLooper,
                 socketUri,
                 reconnectPolicy
         );
+    }
+
+    private static WebSocketConnector connector(OkHttpClient httpClient, URI runtimeApiBaseUrl,
+                                                URI socketUri, WorkerGatewayCredential credential) {
+        Objects.requireNonNull(httpClient, "httpClient");
+        if (credential != null) credential.validateEndpointUri(runtimeApiBaseUrl, socketUri);
+        OkHttpClient client = credential == null ? httpClient : httpClient.newBuilder()
+                .followRedirects(false).followSslRedirects(false).build();
+        return (uri, listener) -> {
+            Request.Builder request = new Request.Builder().url(uri.toString());
+            if (credential != null) request.header("Authorization", credential.authorizationHeader());
+            return client.newWebSocket(request.build(), listener);
+        };
     }
 
     AndroidOkHttpTextWebSocketClient(

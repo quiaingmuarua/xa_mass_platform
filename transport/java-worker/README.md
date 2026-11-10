@@ -92,6 +92,19 @@ with default connection options.
 `create()` assembles local resources but performs no Prepare or
 connection I/O until `start()`.
 
+The optional [gateway credential](../worker-core/README.md#client-boundary)
+is supplied through `WorkerConnectionOptions.withGatewayCredential(...)` to the
+direct factory or Manager Builder. Java validates HTTPS and WEBSOCKET before
+creating its platform resources. Both individual Prepare and Manager batch
+Prepare attach the credential per request; every physical WSS connection and
+reconnect does the same. The returned Endpoint must match the Runtime's HTTPS
+host/effective port, using WSS. Authenticated clients disable HTTP and scheme
+redirects without adding a shared interceptor or changing thread ownership.
+No credential enters replica Properties, identity Reports or business content.
+The option is an environment gate shared by trusted Workers, not per-Worker or
+Group authorization. Hosts keep secrets outside public configuration/evidence
+and explicitly replace the immutable credential on restart.
+
 `start()` submits one Preparation to the Worker's internal Control executor
 and returns immediately:
 

@@ -18,7 +18,7 @@ concurrency:
 env:
   XA_MASS_PYTHON_EXECUTABLE: python3
   XA_MASS_REDIS_EPHEMERAL: "true"
-  XA_MASS_DISTRIBUTION_VERSION: "3.1.0"
+  XA_MASS_DISTRIBUTION_VERSION: "3.2.0"
 
 jobs:
   changes:
@@ -769,17 +769,25 @@ jobs:
           path: build/consumer-inputs
       - name: Verify distribution and release helper contracts
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y nginx apache2-utils openssl
           python3 -m pip install -r .github/scripts/requirements.txt
           python3 .github/scripts/test_prepare_release.py -v
           python3 .github/scripts/test_archive_tools.py -v
           python3 .github/scripts/test_consumer_ci_gate.py -v
           python3 .github/scripts/test_run_local_runtime.py -v
           python3 .github/scripts/test_run_runtime_distribution_proof.py -v
+          python3 .github/scripts/test_staging_runtime_proof.py -v
+          python3 -m unittest discover -s distribution/server/src/test/python -p 'test_staging*.py' -v
+      - name: Build the external Java Host at the candidate commit
+        run: ./gradlew --no-daemon :worker_simulator_jvm:installDist -PxaMassVersion=${{ env.XA_MASS_DISTRIBUTION_VERSION }}
       - name: Prove the supplied Runtime ZIP with real Redis
         run: >-
           python3 .github/scripts/run_runtime_distribution_proof.py
           --archive build/consumer-inputs/xa-mass-server-runtime-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
           --redis-url redis://127.0.0.1:6379/15
+          --staging-ingress
+          --simulator-home worker_simulator_jvm/build/install/xa-mass-worker-simulator
 
   product-coexistence:
     name: Product Coexistence

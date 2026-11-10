@@ -533,11 +533,18 @@ def main() -> int:
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--redis-url", required=True)
     parser.add_argument("--scope")
+    parser.add_argument("--staging-ingress", action="store_true",
+                        help="Also prove the supplied Runtime through real Nginx/TLS on Linux")
+    parser.add_argument("--simulator-home", type=Path,
+                        help="Same-commit Simulator installDist for the external Host witness")
     arguments = parser.parse_args()
+    if arguments.staging_ingress and (os.name == "nt" or arguments.simulator_home is None):
+        parser.error("--staging-ingress requires Linux, Nginx and --simulator-home")
     scope = arguments.scope or f"test_distribution_{uuid.uuid4().hex}"
     if _SCOPE.fullmatch(scope) is None:
         parser.error("--scope must be an exact lowercase test_* scope")
     agentforge_scope = f"{scope}_agentforge"
+    ingress_scope = f"{scope}_ingress"
 
     repository_root = Path(__file__).resolve().parents[2]
     with tempfile.TemporaryDirectory(prefix="xa-mass-runtime-proof-") as temporary:
@@ -557,6 +564,20 @@ def main() -> int:
                 agentforge_scope,
                 proof_root,
             )
+            if arguments.staging_ingress:
+                subprocess.run([
+                    sys.executable, "-m", "distribution.server.staging_ingress.proof",
+                    "--output", str(proof_root / "gateway-contract"),
+                ], cwd=repository_root, check=True)
+                from distribution.server.staging_runtime_proof import verify
+                evidence = verify(
+                    runtime_root=runtime_root,
+                    simulator_home=arguments.simulator_home.resolve(),
+                    redis_url=arguments.redis_url,
+                    scope=ingress_scope,
+                    proof_root=proof_root / "staging-runtime",
+                )
+                print("Packaged staging ingress: " + json.dumps(evidence, sort_keys=True))
         except Exception:
             for label, log_path in (
                 ("Runtime Server", proof_root / "runtime-server.log"),
@@ -587,6 +608,8 @@ def main() -> int:
                 arguments.redis_url,
                 agentforge_scope,
             )
+            if arguments.staging_ingress:
+                _clean_scope(repository_root, arguments.redis_url, ingress_scope)
             if os.name == "nt":
                 time.sleep(1)
     return 0

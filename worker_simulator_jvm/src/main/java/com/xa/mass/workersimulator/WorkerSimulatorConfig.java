@@ -1,6 +1,7 @@
 package com.xa.mass.workersimulator;
 
 import com.xa.mass.workersimulator.messaging.MessageSettings;
+import com.xa.mass.worker.runtime.WorkerGatewayCredential;
 
 import java.io.IOException;
 import java.net.URI;
@@ -17,7 +18,8 @@ record WorkerSimulatorConfig(
         long seed,
         List<WorkerSimulatorGroupConfig> workerGroups,
         WorkerSimulatorStartupPlan startupPlan,
-        MessageSettings messages
+        MessageSettings messages,
+        WorkerGatewayCredential gatewayCredential
 ) {
     WorkerSimulatorConfig {
         if (runtimeApiBaseUrl == null || !runtimeApiBaseUrl.isAbsolute()
@@ -34,6 +36,7 @@ record WorkerSimulatorConfig(
         workerGroups = List.copyOf(workerGroups);
         Objects.requireNonNull(startupPlan, "startupPlan");
         Objects.requireNonNull(messages, "messages");
+        if (gatewayCredential != null) gatewayCredential.validateRuntimeUri(runtimeApiBaseUrl);
     }
 
     static WorkerSimulatorConfig load(Path path) throws IOException {

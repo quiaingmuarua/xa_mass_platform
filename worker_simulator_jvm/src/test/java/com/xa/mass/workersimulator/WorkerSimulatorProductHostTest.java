@@ -60,7 +60,7 @@ class WorkerSimulatorProductHostTest {
                 return null;
             }).when(manager).prepareAndStart(anyCollection());
             return manager;
-        }, new WorkerSimulatorCommandCheckpoints(), new WorkerSimulatorExecutionWitnesses(), com.xa.mass.workersimulator.messaging.MessageSettings.defaults());
+        }, new WorkerSimulatorCommandCheckpoints(), new WorkerSimulatorExecutionWitnesses(), com.xa.mass.workersimulator.messaging.MessageSettings.defaults(), null);
              var stops = new WorkerSimulatorScheduledStops(workers);
              var server = WorkerSimulatorControlServer.open(0, workers, stops)) {
             owner.set(workers);
@@ -112,7 +112,7 @@ class WorkerSimulatorProductHostTest {
                         .when(manager).prepareAndStart(anyCollection());
                 doAnswer(call -> { states.get(call.<String>getArgument(0)).set(false); return null; }).when(manager).stop(anyString());
                 return manager;
-            }, new WorkerSimulatorCommandCheckpoints(), new WorkerSimulatorExecutionWitnesses(), com.xa.mass.workersimulator.messaging.MessageSettings.defaults());
+            }, new WorkerSimulatorCommandCheckpoints(), new WorkerSimulatorExecutionWitnesses(), com.xa.mass.workersimulator.messaging.MessageSettings.defaults(), null);
             owner.set(workers);
             workers.start();
         }
@@ -180,7 +180,7 @@ class WorkerSimulatorProductHostTest {
         doThrow(new IllegalStateException("start failed")).when(first).prepareAndStart(anyCollection());
         var workers = new WorkerSimulator(URI.create("http://127.0.0.1:1"), temp.resolve("other/data/scenario-workers").toString(),
                 0, SimulatorTestConfig.products(3), Map.of(),
-                (uri, group) -> first, new WorkerSimulatorCommandCheckpoints(), new WorkerSimulatorExecutionWitnesses(), com.xa.mass.workersimulator.messaging.MessageSettings.defaults());
+                (uri, group) -> first, new WorkerSimulatorCommandCheckpoints(), new WorkerSimulatorExecutionWitnesses(), com.xa.mass.workersimulator.messaging.MessageSettings.defaults(), null);
         assertThatThrownBy(workers::start).isInstanceOf(WorkerSimulatorAssemblyException.class);
         workers.close(); workers.close();
         verify(first, times(1)).close();

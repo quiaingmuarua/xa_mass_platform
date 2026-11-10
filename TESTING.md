@@ -264,6 +264,14 @@ summary; the matrix aggregate remains the one selected Proof Gate result.
 
 ## Proof Quality
 
+The Runtime Distribution Linux job includes the optional staging ingress proof:
+real Nginx with a trusted test CA, two credential realms, denied internal routes,
+credential/connection limits and actual restart revocation. It then runs the
+supplied Runtime ZIP with a same-commit standalone Java Host through that gateway.
+TLS and hostname validation must remain enabled. This proves environment-level
+access, not user/Worker identity isolation; it adds no performance workload.
+GCP only consumes published artifacts and runs small deployment acceptance.
+
 A mechanism proof must reject at least one locally plausible but systemically
 invalid implementation:
 

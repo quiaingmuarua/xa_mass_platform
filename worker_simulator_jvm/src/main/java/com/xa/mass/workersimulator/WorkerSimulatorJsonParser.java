@@ -4,12 +4,16 @@ import com.google.gson.Strictness;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
+import com.xa.mass.worker.runtime.WorkerGatewayCredential;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workersimulator.messaging.MessageContentMode;
 import com.xa.mass.workersimulator.messaging.MessageSettings;
 import java.io.IOException;
 import java.io.StringReader;
 import java.net.URI;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -21,7 +25,9 @@ import java.util.Set;
 
 final class WorkerSimulatorJsonParser {
     private static final Set<String> ROOT_FIELDS = Set.of(
-            "runtimeApiBaseUrl", "sandboxRoot", "controlPort", "seed", "workerGroups", "startupPlan", "messages");
+            "runtimeApiBaseUrl", "sandboxRoot", "controlPort", "seed", "workerGroups", "startupPlan", "messages",
+            "gatewayCredentialFile");
+    private static final int MAX_CREDENTIAL_BYTES = 64 * 1024;
     private static final Set<String> GROUP_FIELDS = Set.of(
             "events", "count", "propertiesTemplate", "newEnvironment", "requestTimeoutMillis", "reconnectPolicy", "messageContentMode");
     private static final Set<String> RECONNECT_FIELDS = Set.of(
@@ -42,7 +48,33 @@ final class WorkerSimulatorJsonParser {
                 parseGroups(object(root.get("workerGroups"), "workerGroups")),
                 root.containsKey("startupPlan")
                         ? WorkerSimulatorStartupPlan.parse(object(root.get("startupPlan"), "startupPlan"))
-                        : WorkerSimulatorStartupPlan.defaults(), messages(root));
+                        : WorkerSimulatorStartupPlan.defaults(), messages(root),
+                gatewayCredential(root, configurationDirectory));
+    }
+
+    private static WorkerGatewayCredential gatewayCredential(Map<String, Object> root, Path configurationDirectory) {
+        if (!root.containsKey("gatewayCredentialFile")) return null;
+        String configuredPath = string(root.get("gatewayCredentialFile"), "gatewayCredentialFile");
+        try {
+            Path path = configurationDirectory.resolve(configuredPath).toAbsolutePath().normalize();
+            if (!Files.isRegularFile(path)) throw new IllegalArgumentException("credential path must be a regular file");
+            byte[] bytes;
+            try (var input = Files.newInputStream(path)) {
+                bytes = input.readNBytes(MAX_CREDENTIAL_BYTES + 1);
+            }
+            if (bytes.length > MAX_CREDENTIAL_BYTES)
+                throw new IllegalArgumentException("credential file exceeds its size limit");
+            String encoded = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();
+            rejectDuplicateKeys(encoded);
+            Map<String, Object> fields = Jsons.parseObject(encoded);
+            if (!fields.keySet().equals(Set.of("keyId", "secret")))
+                throw new IllegalArgumentException("credential file requires exactly keyId and secret");
+            return WorkerGatewayCredential.of(string(fields.get("keyId"), "keyId"), string(fields.get("secret"), "secret"));
+        } catch (IOException | RuntimeException invalid) {
+            // Parser and filesystem causes may contain raw input. Never retain them for secret files.
+            throw new IllegalArgumentException(
+                    "gatewayCredentialFile must be a readable UTF-8 JSON object of at most 65536 bytes containing only valid keyId and secret strings");
+        }
     }
 
     static List<WorkerSimulatorGroupConfig> parseGroups(Map<String, Object> groups) {
