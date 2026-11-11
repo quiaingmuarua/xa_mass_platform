@@ -3,6 +3,10 @@ server:
 
 xa:
   mass:
+    users:
+      # External hosts must name their own users file; the built-in seed's access keys are public.
+      seed: ${XA_MASS_USERS_SEED:}
+      require-configured-seed: true
     task-retention:
       enabled: ${XA_MASS_TASK_RETENTION_ENABLED:${xa.mass.kernel-pacer.enabled}}
       grace: 1h

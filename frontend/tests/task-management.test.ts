@@ -1,6 +1,6 @@
 import { consoleIdentity } from "@/console-identity";
 import { type TaskCaller } from "@/task-caller";
-import { ADMIN as CALLER } from "./identity-fixture";
+import { ADMIN as CALLER, devKey } from "./identity-fixture";
 import type { AxiosInstance } from "axios";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -277,8 +277,8 @@ describe("raw JSONL", () => {
   });
 });
 describe("server-observed finite Task management", () => {
-  beforeEach(() => {
-    consoleIdentity.login("1000");
+  beforeEach(async () => {
+    await consoleIdentity.login(devKey("1000"));
     setActivePinia(createPinia());
   });
   it("chunks without approval and manages rediscovered Tasks without a submission ledger", async () => {

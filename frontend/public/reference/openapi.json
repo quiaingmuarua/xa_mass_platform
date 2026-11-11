@@ -196,6 +196,26 @@
         },
         "type" : "object"
       },
+      "CurrentUser" : {
+        "properties" : {
+          "displayName" : {
+            "type" : "string"
+          },
+          "projectIds" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "role" : {
+            "$ref" : "#/components/schemas/Role"
+          },
+          "userId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "DirectCallRequest" : {
         "properties" : {
           "messageType" : {
@@ -340,6 +360,17 @@
           "terminatedAtMillis" : {
             "format" : "int64",
             "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "IssuedAccessKey" : {
+        "properties" : {
+          "accessKey" : {
+            "type" : "string"
+          },
+          "userId" : {
+            "type" : "string"
           }
         },
         "type" : "object"
@@ -884,6 +915,29 @@
         "required" : [ "displayName", "projectIds", "role", "userId" ],
         "type" : "object"
       },
+      "UserView" : {
+        "properties" : {
+          "displayName" : {
+            "type" : "string"
+          },
+          "hasAccessKey" : {
+            "type" : "boolean"
+          },
+          "projectIds" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "role" : {
+            "type" : "string"
+          },
+          "userId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "WindowPool" : {
         "properties" : {
           "countProperty" : {
@@ -1261,36 +1315,77 @@
         },
         "type" : "object"
       }
+    },
+    "securitySchemes" : {
+      "accessKey" : {
+        "description" : "Per-user access key issued by an administrator. Worker and internal Adapter machine routes are exempt; the gateway Worker realm and loopback binding own their exposure.",
+        "scheme" : "bearer",
+        "type" : "http"
+      }
     }
   },
   "info" : {
-    "description" : "Kernel decides scheduling; Server exposes, validates and correlates Runtime APIs; Transport delivers and executes assigned work. HTTP status expresses a coarse request-processing class while ApiErrorResponse.code identifies the business reason. Matched Runtime use cases return 200 when completed, 400 for business rejection, 429 for explicit admission capacity and 503 for a temporarily unavailable Owner. Worker Delivery machine routes also use 202 for accepted Reports and 204 for an empty or bodyless successful protocol result.\n\nDiagnostic lookup: [Code Dictionary](/reference/error-codes) for people and [current-build JSON](/reference/platform-diagnostic-codes.json) for Agents. `ApiErrorResponse.code` belongs to the `server_jvm` namespace. Adapter and Worker codes use their producer-local namespaces. The dictionary is a current-build lookup; it does not bind API operations to diagnostic codes or promise cross-version compatibility.",
+    "description" : "Kernel decides scheduling; Server exposes, validates and correlates Runtime APIs; Transport delivers and executes assigned work. HTTP status expresses a coarse request-processing class while ApiErrorResponse.code identifies the business reason. Matched Runtime use cases return 200 when completed, 401 for a missing or invalid access key, 400 for business rejection, 429 for explicit admission capacity and 503 for a temporarily unavailable Owner. Worker Delivery machine routes also use 202 for accepted Reports and 204 for an empty or bodyless successful protocol result.\n\nDiagnostic lookup: [Code Dictionary](/reference/error-codes) for people and [current-build JSON](/reference/platform-diagnostic-codes.json) for Agents. `ApiErrorResponse.code` belongs to the `server_jvm` namespace. Adapter and Worker codes use their producer-local namespaces. The dictionary is a current-build lookup; it does not bind API operations to diagnostic codes or promise cross-version compatibility.",
     "title" : "XA Mass Runtime API",
     "version" : "v1"
   },
   "openapi" : "3.1.0",
   "paths" : {
+    "/api/v1/me" : {
+      "get" : {
+        "operationId" : "me",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CurrentUser"
+                }
+              }
+            },
+            "description" : "Current directory value"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid user, role, Project or update"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Read the authenticated user's directory record and role grants",
+        "tags" : [ "Development Users" ]
+      }
+    },
     "/api/v1/projects" : {
       "get" : {
         "operationId" : "list",
-        "parameters" : [ {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
-            "type" : "string"
-          }
-        } ],
         "responses" : {
           "200" : {
             "content" : {
@@ -1315,6 +1410,16 @@
             },
             "description" : "Project or limit is invalid"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -1336,6 +1441,9 @@
             "description" : "Task Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Read the immutable startup Project directory without Runtime reads",
         "tags" : [ "Tasks" ]
       }
@@ -1348,23 +1456,6 @@
           "name" : "projectId",
           "required" : true,
           "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -1389,6 +1480,16 @@
             },
             "description" : "Project or limit is invalid"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -1410,6 +1511,9 @@
             "description" : "Task Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Read a configured Project and its bound WorkerGroups",
         "tags" : [ "Tasks" ]
       }
@@ -1440,23 +1544,6 @@
           "schema" : {
             "type" : "string"
           }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
-            "type" : "string"
-          }
         } ],
         "responses" : {
           "200" : {
@@ -1479,6 +1566,16 @@
             },
             "description" : "Project or limit is invalid"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -1500,6 +1597,9 @@
             "description" : "Task Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Read a bounded Project or user Task batch, without pagination or Result reads",
         "tags" : [ "Tasks" ]
       }
@@ -1519,23 +1619,6 @@
           "name" : "taskId",
           "required" : true,
           "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -1560,6 +1643,16 @@
             },
             "description" : "Project or limit is invalid"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -1581,6 +1674,9 @@
             "description" : "Task Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Point-read a known Task in a configured Project",
         "tags" : [ "Tasks" ]
       }
@@ -1593,23 +1689,6 @@
           "name" : "projectId",
           "required" : true,
           "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -1653,6 +1732,16 @@
             },
             "description" : "Project or limit is invalid"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -1674,6 +1763,9 @@
             "description" : "Task Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Read bounded Task Item counts after validating every Project and caller identity",
         "tags" : [ "Tasks" ]
       }
@@ -1686,23 +1778,6 @@
           "name" : "projectId",
           "required" : true,
           "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -1730,6 +1805,16 @@
             },
             "description" : "Project or limit is invalid"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -1751,6 +1836,9 @@
             "description" : "Task Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Read bound Group descriptors and Matching enablement, without Worker discovery",
         "tags" : [ "Tasks" ]
       }
@@ -1781,9 +1869,22 @@
               }
             },
             "description" : "Invalid user, role, Project or update"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
           }
         },
-        "summary" : "Read immutable development role definitions loaded at Server startup",
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Read role definitions from the user directory file",
         "tags" : [ "Development Users" ]
       }
     },
@@ -1836,6 +1937,16 @@
             },
             "description" : "Runtime View request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -1847,6 +1958,9 @@
             "description" : "Runtime View Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Observe bounded Worker network projections",
         "tags" : [ "Runtime View" ]
       }
@@ -1854,24 +1968,6 @@
     "/api/v1/runtime-view/tasks:preview" : {
       "post" : {
         "operationId" : "previewTasks",
-        "parameters" : [ {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
-            "type" : "string"
-          }
-        } ],
         "requestBody" : {
           "content" : {
             "application/json" : {
@@ -1906,6 +2002,16 @@
             },
             "description" : "Runtime View request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -1927,6 +2033,9 @@
             "description" : "Runtime View Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Preview a bounded Task Score window",
         "tags" : [ "Runtime View" ]
       }
@@ -1944,8 +2053,21 @@
               }
             },
             "description" : "OK"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "List startup-associated Groups without Redis, Facts or inventory reads",
         "tags" : [ "Runtime View" ]
       }
@@ -1982,6 +2104,16 @@
             },
             "description" : "Invalid Group identity"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -1993,6 +2125,9 @@
             "description" : "Group Owner read unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Read effective WorkerGroup Pool and feedback bindings without reading Facts or stock",
         "tags" : [ "Runtime View" ]
       }
@@ -2043,6 +2178,16 @@
             },
             "description" : "Runtime View request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -2054,6 +2199,9 @@
             "description" : "Runtime View Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Preview a bounded Worker sample",
         "tags" : [ "Runtime View" ]
       }
@@ -2107,6 +2255,16 @@
             },
             "description" : "Runtime View request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -2118,6 +2276,9 @@
             "description" : "Runtime View Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Observe bounded Worker scheduling projections",
         "tags" : [ "Runtime View" ]
       }
@@ -2162,6 +2323,16 @@
             },
             "description" : "Runtime View request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -2173,6 +2344,9 @@
             "description" : "Runtime View Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Load known WorkerGroups by ID",
         "tags" : [ "Runtime View" ]
       }
@@ -2214,6 +2388,16 @@
             },
             "description" : "Runtime View request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -2225,6 +2409,9 @@
             "description" : "Runtime View Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Preview a bounded WorkerGroup sample",
         "tags" : [ "Runtime View" ]
       }
@@ -2232,24 +2419,6 @@
     "/api/v1/tasks" : {
       "post" : {
         "operationId" : "createTask",
-        "parameters" : [ {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
-            "type" : "string"
-          }
-        } ],
         "requestBody" : {
           "content" : {
             "application/json" : {
@@ -2281,6 +2450,16 @@
             },
             "description" : "Task business request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -2302,6 +2481,9 @@
             "description" : "Task Owner is temporarily unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Create a finite Task",
         "tags" : [ "Tasks" ]
       }
@@ -2315,23 +2497,6 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -2366,6 +2531,16 @@
             },
             "description" : "Task business request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -2387,6 +2562,9 @@
             "description" : "Task Owner is temporarily unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Approve a finite Task",
         "tags" : [ "Tasks" ]
       }
@@ -2400,23 +2578,6 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -2441,6 +2602,16 @@
             },
             "description" : "Task business request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -2462,6 +2633,9 @@
             "description" : "Task Owner is temporarily unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Close a finite Task",
         "tags" : [ "Tasks" ]
       }
@@ -2476,23 +2650,6 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -2517,6 +2674,16 @@
             },
             "description" : "Task is missing or has no valid Server attribution"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -2538,6 +2705,9 @@
             "description" : "Task read or directory write not confirmed"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Confirm a known Task's directory entry from its immutable Server metadata",
         "tags" : [ "Tasks" ]
       }
@@ -2551,23 +2721,6 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -2610,6 +2763,16 @@
             },
             "description" : "Task business request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -2631,6 +2794,9 @@
             "description" : "Task Owner is temporarily unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Append Items to a finite Task",
         "tags" : [ "Tasks" ]
       }
@@ -2645,23 +2811,6 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -2699,6 +2848,16 @@
             },
             "description" : "Task business request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -2720,6 +2879,9 @@
             "description" : "Task Owner is temporarily unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Call a managed Task",
         "tags" : [ "Tasks" ]
       }
@@ -2734,23 +2896,6 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -2794,6 +2939,16 @@
             },
             "description" : "Task query was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -2815,6 +2970,9 @@
             "description" : "Task Owner is temporarily unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Load TaskItem score states",
         "tags" : [ "Tasks" ]
       }
@@ -2829,23 +2987,6 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -2871,6 +3012,16 @@
             },
             "description" : "Task business request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -2892,6 +3043,9 @@
             "description" : "Task Owner is temporarily unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Export successful finite Task results",
         "tags" : [ "Tasks" ]
       }
@@ -2906,23 +3060,6 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -2966,6 +3103,16 @@
             },
             "description" : "Task business request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -2987,6 +3134,9 @@
             "description" : "Task Owner is temporarily unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Load TaskItem result states",
         "tags" : [ "Tasks" ]
       }
@@ -3001,23 +3151,6 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -3042,6 +3175,16 @@
             },
             "description" : "Task identity or type is invalid"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -3063,6 +3206,9 @@
             "description" : "Task data is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Preview at most 100 raw Task results without continuation",
         "tags" : [ "Tasks" ]
       }
@@ -3077,23 +3223,6 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -3134,6 +3263,16 @@
             },
             "description" : "Invalid request or Task does not support consumption"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -3155,6 +3294,9 @@
             "description" : "Result consumption is unavailable or unconfirmed"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Take current RPC Results",
         "tags" : [ "Tasks" ]
       }
@@ -3169,23 +3311,6 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -3210,6 +3335,16 @@
             },
             "description" : "Task is missing, in conflict, or does not support retention"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -3231,6 +3366,9 @@
             "description" : "Retention outcome is unconfirmed; retry uses saved progress"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Advance eligible finite Task retention",
         "tags" : [ "Tasks" ]
       }
@@ -3245,23 +3383,6 @@
           "required" : true,
           "schema" : {
             "minLength" : 1,
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -3296,6 +3417,16 @@
             },
             "description" : "Invalid request or conflicting Task"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -3317,6 +3448,9 @@
             "description" : "Preparation or approval not confirmed"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Create or reuse and enable an RPC Task",
         "tags" : [ "Tasks" ]
       }
@@ -3330,7 +3464,7 @@
               "*/*" : {
                 "schema" : {
                   "items" : {
-                    "$ref" : "#/components/schemas/User"
+                    "$ref" : "#/components/schemas/UserView"
                   },
                   "type" : "array"
                 }
@@ -3347,31 +3481,26 @@
               }
             },
             "description" : "Invalid user, role, Project or update"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
           }
         },
-        "summary" : "Read development users for the login chooser and administration",
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Read directory users; access-key presence only, never key material",
         "tags" : [ "Development Users" ]
       },
       "post" : {
         "operationId" : "create",
-        "parameters" : [ {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
-            "type" : "string"
-          }
-        } ],
         "requestBody" : {
           "content" : {
             "application/json" : {
@@ -3387,7 +3516,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/User"
+                  "$ref" : "#/components/schemas/UserView"
                 }
               }
             },
@@ -3403,6 +3532,16 @@
             },
             "description" : "Invalid user, role, Project or update"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -3412,9 +3551,22 @@
               }
             },
             "description" : "Task caller cannot access this resource or operation"
+          },
+          "409" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Directory is read-only or changed outside this Server"
           }
         },
-        "summary" : "Add a development user to this Server process without persisting it",
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Add a user to the persisted directory without an access key",
         "tags" : [ "Development Users" ]
       }
     },
@@ -3426,23 +3578,6 @@
           "name" : "userId",
           "required" : true,
           "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -3461,7 +3596,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/User"
+                  "$ref" : "#/components/schemas/UserView"
                 }
               }
             },
@@ -3477,6 +3612,16 @@
             },
             "description" : "Invalid user, role, Project or update"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "403" : {
             "content" : {
               "application/json" : {
@@ -3486,9 +3631,160 @@
               }
             },
             "description" : "Task caller cannot access this resource or operation"
+          },
+          "409" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Directory is read-only or changed outside this Server"
           }
         },
-        "summary" : "Replace a development user's name, role and Projects in Server memory",
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Replace another user's name, role and Projects in the persisted directory",
+        "tags" : [ "Development Users" ]
+      }
+    },
+    "/api/v1/users/{userId}/access-key" : {
+      "delete" : {
+        "operationId" : "clearAccessKey",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserView"
+                }
+              }
+            },
+            "description" : "Current directory value"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid user, role, Project or update"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "409" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Directory is read-only or changed outside this Server"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Clear another user's access key; later requests with it are rejected",
+        "tags" : [ "Development Users" ]
+      },
+      "post" : {
+        "operationId" : "issueAccessKey",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/IssuedAccessKey"
+                }
+              }
+            },
+            "description" : "Current directory value"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid user, role, Project or update"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "409" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Directory is read-only or changed outside this Server"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Issue another user's access key, replacing any previous key; the key is returned only once",
         "tags" : [ "Development Users" ]
       }
     },
@@ -3500,23 +3796,6 @@
           "name" : "userId",
           "required" : true,
           "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -3540,6 +3819,16 @@
               }
             },
             "description" : "Invalid credit request"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
           },
           "403" : {
             "content" : {
@@ -3572,6 +3861,9 @@
             "description" : "Credit storage unavailable; a write may have committed, reconcile the original requestId"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Read a user's credit account",
         "tags" : [ "Development Users" ]
       }
@@ -3585,23 +3877,6 @@
           "name" : "userId",
           "required" : true,
           "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -3635,6 +3910,16 @@
               }
             },
             "description" : "Invalid credit request"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
           },
           "403" : {
             "content" : {
@@ -3677,6 +3962,9 @@
             "description" : "Credit storage unavailable; a write may have committed, reconcile the original requestId"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Adjust a directory user's credits, including the administrator's own account",
         "tags" : [ "Development Users" ]
       }
@@ -3697,23 +3985,6 @@
           "name" : "requestId",
           "required" : true,
           "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
             "type" : "string"
           }
         } ],
@@ -3737,6 +4008,16 @@
               }
             },
             "description" : "Invalid credit request"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
           },
           "403" : {
             "content" : {
@@ -3769,6 +4050,9 @@
             "description" : "Credit storage unavailable; a write may have committed, reconcile the original requestId"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Reconcile an adjustment by its original business requestId",
         "tags" : [ "Development Users" ]
       }
@@ -3799,23 +4083,6 @@
             "format" : "int32",
             "type" : "integer"
           }
-        }, {
-          "description" : "UTF-8 Base64URL user ID resolved against the Server development directory; not authentication",
-          "in" : "header",
-          "name" : "X-XA-Dev-User",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "description" : "Declared role must match the current Server user directory",
-          "in" : "header",
-          "name" : "X-XA-Dev-Role",
-          "required" : true,
-          "schema" : {
-            "enum" : [ "admin", "operator" ],
-            "type" : "string"
-          }
         } ],
         "responses" : {
           "200" : {
@@ -3837,6 +4104,16 @@
               }
             },
             "description" : "Invalid credit request"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
           },
           "403" : {
             "content" : {
@@ -3869,6 +4146,9 @@
             "description" : "Credit storage unavailable; a write may have committed, reconcile the original requestId"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Read immutable credit transactions in descending account sequence",
         "tags" : [ "Development Users" ]
       }
@@ -3980,6 +4260,16 @@
             },
             "description" : "Direct Call request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "429" : {
             "content" : {
               "*/*" : {
@@ -4001,6 +4291,9 @@
             "description" : "Direct Call Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Call an Adapter or caller-selected Workers directly",
         "tags" : [ "Worker Delivery" ]
       }
@@ -4238,6 +4531,16 @@
             },
             "description" : "Worker resource request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -4249,6 +4552,9 @@
             "description" : "Worker Resource Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Patch Worker platform properties",
         "tags" : [ "Worker Resources" ]
       }
@@ -4294,6 +4600,16 @@
             },
             "description" : "Worker resource request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -4305,6 +4621,9 @@
             "description" : "Worker scheduling Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Pause Worker scheduling",
         "tags" : [ "Worker Resources" ]
       }
@@ -4350,6 +4669,16 @@
             },
             "description" : "Worker resource request was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -4361,6 +4690,9 @@
             "description" : "Worker scheduling Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Resume Worker scheduling",
         "tags" : [ "Worker Resources" ]
       }
@@ -4531,6 +4863,16 @@
             },
             "description" : "WorkerGroup declaration was rejected"
           },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
           "503" : {
             "content" : {
               "*/*" : {
@@ -4542,13 +4884,16 @@
             "description" : "WorkerGroup Owner is unavailable"
           }
         },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
         "summary" : "Register a WorkerGroup",
         "tags" : [ "Worker Resources" ]
       }
     }
   },
   "tags" : [ {
-    "description" : "Server-memory development users and roles, without session authentication",
+    "description" : "File-persisted users, roles and per-user access keys; no sessions or passwords",
     "name" : "Development Users"
   }, {
     "description" : "Declare WorkerGroups and prepare or control Worker resources.",

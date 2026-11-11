@@ -70,7 +70,7 @@ new request admission; accepted work keeps its snapshot. Restart reloads the
 seed and discards directory edits. This is a trusted-development identity
 contract, without password/session authentication, persistence or replication.
 Internal Project service callers remain assembly-only and cannot be declared
-through HTTP. See the [Server caller contract](../../server_jvm/README.md#shared-development-caller).
+through HTTP. See the [Server caller contract](../../server_jvm/README.md#access-key-front-door).
 
 ## Default Project and Group initialization
 

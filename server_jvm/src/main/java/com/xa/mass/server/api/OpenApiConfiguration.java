@@ -22,7 +22,7 @@ import org.springframework.context.annotation.Configuration;
                         + "expresses a coarse request-processing class while "
                         + "ApiErrorResponse.code identifies the business "
                         + "reason. Matched Runtime use cases return 200 when "
-                        + "completed, "
+                        + "completed, 401 for a missing or invalid access key, "
                         + "400 for business rejection, 429 for explicit "
                         + "admission capacity and 503 for a temporarily "
                         + "unavailable Owner. Worker Delivery machine routes "
@@ -40,7 +40,7 @@ import org.springframework.context.annotation.Configuration;
                         + "cross-version compatibility."
         ),
         tags = {
-                @Tag(name = ApiTags.USERS, description = "Server-memory development users and roles, without session authentication"),
+                @Tag(name = ApiTags.USERS, description = "File-persisted users, roles and per-user access keys; no sessions or passwords"),
                 @Tag(
                         name = ApiTags.WORKER_RESOURCES,
                         description = "Declare WorkerGroups and prepare or "

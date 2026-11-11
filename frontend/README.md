@@ -6,21 +6,20 @@ are deployment-owned configuration and do not replace saved Task execution value
 
 Vue 3 console for Worker and Task runtime observation, a Project-scoped task
 workbench (RPC calls and finite Tasks), Scenario pages and public Demo. It is derived from Pure Admin Thin 6.2.0.
-Development login reads Server-managed users without a password or real
-session authentication. Server resolves the declared caller against its user directory and checks Project
-grants and Task ownership across task entrypoints with the existing HTTP contract.
+Login uses one per-user access key issued by an administrator, without passwords or
+sessions. Server authenticates every API request from that key against its user directory
+and checks Project grants and Task ownership across task entrypoints.
 
-## Development login and access
+## Access-key login and access
 
-`/` lists current development users and enters the console only after an explicit selection.
-[Directory source](src/user-directory-source.ts) reads `/api/v1/users` and
-`/api/v1/roles`. Server owns the initial JSON and process-memory mutations; its
-default seed includes `1000` (管理员), `1001` (用户 A) and `1002` (用户 B).
-Admin manages users at `/?view=users`: userId, name, role and supported Projects.
-POST `/users` and PUT `/users/{userId}` change the shared Server directory. Other
-clients observe changes on refresh; browser reload and logout do not reset them.
-Only Server restart reloads the seed. No database or file write persists changes.
-User IDs cannot be changed after creation; the
+`/` asks for an access key and enters the console only after Server accepts it.
+[Directory source](src/user-directory-source.ts) reads `/api/v1/me`, `/api/v1/users`
+and `/api/v1/roles` with that key. Server owns the users file; its built-in development
+directory includes `1000` (管理员), `1001` (用户 A) and `1002` (用户 B) with public keys
+`xak_dev_<userId>` for local runs only. Admin manages users at `/?view=users`: userId,
+name, role, supported Projects and access keys. POST `/users`, PUT `/users/{userId}`
+and the `access-key` operations persist through the Server users file; a built-in
+classpath directory is read-only and reports that. User IDs cannot be changed after creation; the
 currently logged-in user's profile is read-only to avoid changing an active caller;
 its independent credit account can still be adjusted by an administrator.
 [Role policy](src/access-policy.ts) applies the Server-provided labels, permissions,
@@ -39,24 +38,24 @@ operation controls consume the same permission policy; Catalog availability is a
 separate prerequisite. The App Checks configuration view declares its permission
 alongside the route, without a path-regex allowlist.
 
-[Login state](src/console-identity.ts) starts anonymous. Only a selected user ID is
-stored in the current tab's `sessionStorage` under `xa-mass.console-user`; its role
-and label are resolved from user data on reload. Missing, invalid or removed users
-return to login. The old `xa-mass.development-user` selector value is not migrated
-and never grants a login. Storage failure still permits an in-memory login.
+[Login state](src/console-identity.ts) starts anonymous. Login takes one access key
+(`xak_…`), resolves it through `GET /api/v1/me` and then reads the role and user
+directory with the same key. Only the key is stored, in the current tab's
+`sessionStorage` under `xa-mass.console-access-key`; userId, role and label are never
+trusted from storage and are re-resolved on reload. A rejected (`401`) or cleared key
+returns to login and removes the stored key; other failures show an explicit retry and
+never substitute Mock users. The old `xa-mass.console-user` value grants nothing.
+Storage failure still permits an in-memory login.
 Anonymous deep links lead to login and return to the permitted internal target;
 otherwise admin lands on `/runtime/workers`. Operator prefers `/app-checks`, then
 `/messages` according to its Projects; without an admitted business entry it sees
 the empty console at `/?view=home` with logout available.
 The existing Server root mapping serves login on direct visits and reloads; no
 new backend page mapping or `/login` compatibility route is added.
-User management also uses that root mapping, so direct visits and reloads work
-without adding a page mapping. Login restoration waits for the API directory,
-including newly added users. Directory failures show an explicit retry and never
-substitute Mock users. Project grants control console navigation and routing and are also enforced by
-Server task admission. Unknown users and stale role declarations are rejected with 403. This remains a trusted-development identity contract without session authentication.
+User management also uses that root mapping. Project grants control console
+navigation and routing and are also enforced by Server task admission.
 
-The top bar displays the current user, role and logout. Logout removes the login
+The top bar displays the current user, role and logout. Logout forgets the key
 and unmounts the entire user console, releasing observations, Pinia state, filters
 and local input. New login instances are distinct even for the same user ID.
 Issued writes retain their original caller and may finish on the server; late
@@ -64,32 +63,37 @@ responses cannot update another login or initiate chained import/write requests.
 Logout does not retry uncertain submissions. Reload and logout discard local
 input; persisted Tasks are found through the shared Task API.
 
+User management keeps create and edit, now persisted by the Server users file, and
+issues or clears another user's key. An issued key appears once in a dialog with a
+copy button and is not retained by any store; the current user's row has no key or
+edit actions. Directory refresh does not replace the current login snapshot; the
+next login uses the edited role and Projects with the same key.
+
 Mock business sources live for the application, independently from the console's
 login lifetime. Logout keeps created Mock Tasks available to the next authorized
 user, while clearing page state. Mock operations resolve the explicit caller through the same application-lifetime
 Mock directory used by login and user management, capturing its current role and
 Project grants before business work. A changed directory governs the next operation; API and Mock return their admitted Task window. Pages apply
 business display filters without another role-based ownership filter.
-The explicit Mock directory uses [frontend-only fixtures](src/development-users.ts)
-and simulates Server writes across console logins. Only Mock resets on browser
-reload. API mode has no built-in user fallback or browser-owned user mutations.
+The explicit Mock directory uses [frontend-only fixtures](src/development-users.ts):
+built-in users log in with the public keys `xak_dev_<userId>`, and issued Mock keys
+are random. Only Mock resets on browser reload. API mode has no built-in user fallback.
 
-Task and Scenario methods take an explicit immutable caller snapshot. The existing
-client encodes its userId as UTF-8 Base64URL in `X-XA-Dev-User` and sends
-`X-XA-Dev-Role`; list query `userId` remains a target-owner filter. Caller encoding is unchanged; Server validates directory membership, role consistency
-and current Project grants before task access. Catalogs remain caller-free
-availability reads. Unauthenticated UI cannot issue protected operations; sources
-bound to a login never silently switch to a later global caller.
+Task and Scenario methods take an explicit immutable caller snapshot captured at
+login. The snapshot carries that login's key as a non-enumerable property, so
+[callerHeaders](src/task-caller.ts) sends `Authorization: Bearer <key>` for the
+captured login even after another login, while copies and serialization never contain
+it. Read-only views and Direct Call without a captured caller use the current session
+key. List query `userId` remains a target-owner filter. The RPC cURL example shows a
+`Bearer <access key>` placeholder and never the real key. Unauthenticated UI cannot
+issue protected operations.
 
 Server supplies `metadata.userId` from the caller. Operator lists select the
 caller's range before limiting and reject an explicit other owner; admin may
 filter by user. Known Task reads, counts, input, results, approval, closure and
 export continue using the shared Server policy. A 403 is a definite rejection,
 never an unconfirmed mutation or a reason to substitute Mock. It prompts browser
-refresh or logout/login; it never retries a write or changes the caller. Directory
-list refresh alone does not replace the current login snapshot. Frontend login and
-visibility do not authenticate the HTTP headers; replacing development identity
-with real session verification is separate backend work.
+refresh or logout/login; it never retries a write or changes the caller.
 
 ## User credit accounts
 
@@ -799,7 +803,7 @@ promise. The default example waits 3000ms; omission follows the Server default.
 A Task keeps 20 browser-session request records and its JSON draft. Project list
 filters, scroll and creation drafts remain separate. Late responses update only
 their original Task/session. Request and POSIX cURL examples use current API paths
-and declared caller headers; no SDK or persistent invocation journal is added.
+and a `Bearer <access key>` placeholder; no SDK or persistent invocation journal is added.
 Mock includes static mixed batch observations and disables preparation/calls/reads;
 API never falls back to Mock.
 

@@ -31,13 +31,15 @@ python run_local_runtime.py --profile preview
 设备模拟控制台是 [http://127.0.0.1:18504/lab](http://127.0.0.1:18504/lab)。
 修改端口时以启动输出为准。
 
-1. 在 Console 选择开发身份。默认目录包含管理员 `1000`、用户 A `1001` 和用户 B `1002`。
+1. 在 Console 输入访问密钥登录。本地内置目录的公开开发密钥是管理员 `xak_dev_1000`、
+   用户 A `xak_dev_1001` 和用户 B `xak_dev_1002`，启动输出也会打印管理员密钥。
 2. 管理员可以观察 Runtime、管理用户和积分；普通用户按 Project 授权管理自己的业务任务。
 3. 打开“批量检查”，确认可以读取检查能力，然后按[第一个任务](first-task.md)执行。
 
-这里的开发身份没有密码或真实 session 认证。部署访问控制属于实际接入环境，
-当前角色和 Project 检查不能代替用户认证。说明见
-[Frontend 登录与访问](../../frontend/README.md#development-login-and-access)。
+这些公开开发密钥只用于本地；内置目录只读，不能在页面新增用户或签发密钥。外部部署必须用
+自己的用户文件和管理员签发的密钥，见
+[Frontend 登录与访问](../../frontend/README.md#access-key-login-and-access)和
+[Server 用户目录](../../server_jvm/README.md#user-directory-and-access-keys)。
 
 ## 首次启动和再次启动
 

@@ -52,7 +52,7 @@ final class LoadedRecoveryHttpClient {
                 .timeout(timeout)
                 .header("Content-Type", "application/json")
                 .method(method, publisher);
-        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) taskCallerHeaders.forEach(requestBuilder::header);
+        if (path.startsWith("/api/")) taskCallerHeaders.forEach(requestBuilder::header);
         HttpRequest request = requestBuilder.build();
         try {
             HttpResponse<byte[]> response = client.send(

@@ -222,10 +222,11 @@ Other protocols require a pure Scenario contract, not a Group-specific branch.
 
 ## Explicit RPC consumption
 
-The reference uses declared development user `1000` / role `admin`, like the
-existing Proof. It grants no internal API privilege and is not authentication.
-Every Task request below supplies `X-XA-Dev-User: MTAwMA` and
-`X-XA-Dev-Role: admin`. Consumer Project/User declarations obey normal admission.
+The reference uses administrator `1000` of the local built-in users directory, like the
+existing Proof. It grants no internal API privilege. Every Task request below supplies
+`Authorization: Bearer xak_dev_1000`, that user's public development key; the local
+consumer launcher selects the built-in directory unless its Runtime configuration names
+a users file. Consumer Project/User declarations obey normal admission.
 
 1. After Runtime readiness and Group registration, send one
    `POST /api/v1/tasks/xa-android-rpc-v1.android-demo-workers/rpc:prepare` with

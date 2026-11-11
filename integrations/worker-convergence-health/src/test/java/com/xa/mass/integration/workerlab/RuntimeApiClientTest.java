@@ -30,7 +30,7 @@ class RuntimeApiClientTest {
         server.start();
         try {
             var path = directory.resolve("receipts.json");
-            var http = new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"));
+            var http = new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), Map.of("Authorization", "Bearer xak_dev_1000"));
             var first = new RuntimeApiClient(http, path);
             assertThat(first.takeResultStatuses("rpc", List.of("id")).get("id")).isEqualTo(RuntimeApiClient.CallStatus.SUCCEEDED);
             var resumed = new RuntimeApiClient(http, path);
@@ -49,7 +49,7 @@ class RuntimeApiClientTest {
                         "workerGroupId", "group-1", "workerId", "worker-1", "workerProperties", properties.get())))));
         server.start();
         try {
-            RuntimeApiClient client = new RuntimeApiClient(new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin")));
+            RuntimeApiClient client = new RuntimeApiClient(new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("Authorization", "Bearer xak_dev_1000")));
             assertThat(client.previewWorkers("group-1")).isEmpty();
             properties.set(Map.of("labInventoryKey", "workers.jsonl", "labInventoryLine", "1"));
             assertThat(client.previewWorkers("group-1").get("workers.jsonl:1").workerId()).isEqualTo("worker-1");
@@ -147,7 +147,7 @@ class RuntimeApiClientTest {
         server.start();
         try {
             RuntimeApiClient client = new RuntimeApiClient(
-                    new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))
+                    new JsonHttpClient(baseUri(server), Duration.ofSeconds(2), java.util.Map.of("Authorization", "Bearer xak_dev_1000"))
             );
 
             assertThat(client.previewWorkers("group-1")
@@ -284,7 +284,7 @@ class RuntimeApiClientTest {
                 new JsonHttpClient(
                         URI.create("http://127.0.0.1:1"),
                         Duration.ofSeconds(1)
-                , java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))
+                , java.util.Map.of("Authorization", "Bearer xak_dev_1000"))
         );
 
         assertThatThrownBy(() -> client.observeNetwork(

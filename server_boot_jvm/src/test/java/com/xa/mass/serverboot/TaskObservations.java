@@ -15,9 +15,7 @@ final class TaskObservations {
 
     static HttpRequest.Builder request(URI base, String path, TaskCaller caller) {
         return HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(10))
-                .header("X-XA-Dev-User", Base64.getUrlEncoder().withoutPadding()
-                        .encodeToString(caller.userId().getBytes(StandardCharsets.UTF_8)))
-                .header("X-XA-Dev-Role", caller.role());
+                .header("Authorization", "Bearer " + com.xa.mass.server.testing.TaskCallers.devKey(caller.userId()));
     }
 
     @SuppressWarnings("unchecked")

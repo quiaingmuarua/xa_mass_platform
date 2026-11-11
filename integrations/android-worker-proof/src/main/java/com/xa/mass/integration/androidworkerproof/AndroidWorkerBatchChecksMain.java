@@ -26,8 +26,8 @@ public final class AndroidWorkerBatchChecksMain {
         window = options.phase().equals("window");
         seeds = window ? List.of("a", "abc", "中文") : seeds();
         evidence = new ProofEvidence(options, SCENARIO, options.phase());
-        admin = new JsonHttpClient(options.serverBaseUrl(), options, headers("1000", "admin"));
-        user = new JsonHttpClient(options.serverBaseUrl(), options, headers("1001", "operator"));
+        admin = new JsonHttpClient(options.serverBaseUrl(), options, headers("1000"));
+        user = new JsonHttpClient(options.serverBaseUrl(), options, headers("1001"));
     }
     public static void main(String[] args) throws IOException {
         var proof = new AndroidWorkerBatchChecksMain(AndroidWorkerProofOptions.parse(args));
@@ -47,7 +47,7 @@ public final class AndroidWorkerBatchChecksMain {
         String taskId;
         if (options.phase().equals("initial") || window) {
             options.baselineFile(false);
-            var device = new AndroidDeviceHostClient(new JsonHttpClient(options.deviceBaseUrl(), options, headers("1000", "admin")));
+            var device = new AndroidDeviceHostClient(new JsonHttpClient(options.deviceBaseUrl(), options, headers("1000")));
             var runtime = new AndroidRuntimeApiClient(admin);
             AndroidWorkerProofAssertions.awaitDeviceHealth(device, options.maximumWait());
             AndroidWorkerProofAssertions.requireDeviceEvents(device);
@@ -228,7 +228,8 @@ public final class AndroidWorkerBatchChecksMain {
         require(!quoted && cell.isEmpty() && row.isEmpty(), "csv-framing");
         return rows;
     }
-    private static Map<String,String> headers(String user, String role) { return Map.of("X-XA-Dev-User", Base64.getUrlEncoder().withoutPadding().encodeToString(user.getBytes(StandardCharsets.UTF_8)), "X-XA-Dev-Role", role); }
+    /** The user's public development key; the Server directory decides the role. */
+    private static Map<String,String> headers(String user) { return Map.of("Authorization", "Bearer xak_dev_" + user); }
     @SuppressWarnings("unchecked") private static Map<String,Object> object(Object value) { return (Map<String,Object>) value; }
     @SuppressWarnings("unchecked") private static List<Map<String,Object>> rows(Object value) { return (List<Map<String,Object>>) value; }
     private static long number(Object value) { return ((Number) value).longValue(); }

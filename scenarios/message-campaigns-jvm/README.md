@@ -143,11 +143,11 @@ Server 默认终态 1 小时后冻结并归档结果，7 天后清理任务与�
 当前为 Preview 直接切换；不保留旧路由、历史输入兼容、数据迁移或回填。
 验证使用新 scope，旧环境数据不删除。
 
-除 Catalog 外，HTTP 使用 Server 统一解析的开发调用方。operator 只能创建和管理自己
+除 Catalog 外，HTTP 使用 Server 访问密钥统一入口认证的调用方。operator 只能创建和管理自己
 的 Task，admin 可管理全部；拒绝发生在文件读取或业务结果读取前。创建者由 Server 保存，
 固定 `server.inputOwner=messages`；原始 Item 入口不能绕过已保存的发送配置。
 任务列表、详情、统计、批准、关闭、目录确认和原始结果/导出统一使用
-[Server Task API](../../server_jvm/README.md#shared-development-caller)，不另设场景管理路由。
+[Server Task API](../../server_jvm/README.md#access-key-front-door)，不另设场景管理路由。
 Server 从用户目录解析每次请求的角色和 Project 范围；Messages 创建、导入和结果视图与共同 Task API 一样检查 `messages` 授权及任务所有者。撤销授权影响下一请求，恢复授权不改写已有归属。
 
 ## 数量与结果读取

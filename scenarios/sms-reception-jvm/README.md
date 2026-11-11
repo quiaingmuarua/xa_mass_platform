@@ -49,11 +49,11 @@ arrive before the initial execution Result without losing its number or deadline
 | `GET /api/v1/sms/catalog` | Immutable application/template/country directory and limits |
 | `GET /api/v1/sms/metrics` | Bounded acquisition/query latency samples, errors and lease projection/inventory counters |
 
-Except for read-only Catalog discovery, SMS HTTP operations require the shared Server
-directory-admitted development caller with `sms.use` and SMS Project access
-(admin in the default seed). Missing/invalid declarations return 400 and
+All SMS HTTP operations pass the Server [access-key front door](../../server_jvm/README.md#access-key-front-door).
+Except for read-only Catalog discovery, they also require `sms.use` and SMS Project access
+(admin in the default seed). A missing or invalid key returns 401, and
 operator access returns the common 403 before business/resource effects. HTTP cannot
-declare the internal service identity. No authentication or per-user RPC Task is added.
+declare the internal service identity. No per-user RPC Task is added.
 
 Each acquisition creates a new Item. Default duration is 60 seconds, bounded to
 1–300 seconds. The Worker sets the absolute deadline when it establishes the

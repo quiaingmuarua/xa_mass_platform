@@ -319,11 +319,11 @@ public final class WorkerLoadedRecoveryMain {
                 new LoadedRecoveryHttpClient(
                         options.labBaseUri(),
                         options.requestTimeout()
-                , java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin")),
+                , java.util.Map.of("Authorization", "Bearer xak_dev_1000")),
                 new LoadedRecoveryHttpClient(
                         options.serverBaseUri(),
                         options.requestTimeout()
-                , java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))
+                , java.util.Map.of("Authorization", "Bearer xak_dev_1000"))
         );
     }
 

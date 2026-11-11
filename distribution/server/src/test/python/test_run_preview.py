@@ -127,13 +127,13 @@ class PreviewLifecycleTest(unittest.TestCase):
         with patch.object(run_preview.local_runtime._connections, "items", {}, create=True), \
              patch("run_preview.local_runtime.http_client.HTTPConnection", side_effect=[recent, fresh]) as connect, \
              patch("run_preview.time.monotonic", side_effect=[0, 1, 1, 7, 7]):
-            run_preview.http("http://127.0.0.1:18504", "/lab/health", headers={"X-XA-Dev-User": "MTAwMQ", "X-XA-Dev-Role": "operator"})
+            run_preview.http("http://127.0.0.1:18504", "/lab/health", headers={"Authorization": "Bearer xak_dev_1001"})
             run_preview.http("http://127.0.0.1:18504", "/lab/health")
             recent.close.assert_not_called()
             run_preview.http("http://127.0.0.1:18504", "/lab/action", {})
         self.assertEqual(2, connect.call_count)
         self.assertEqual(2, recent.request.call_count)
-        self.assertEqual("operator", recent.request.call_args_list[0].kwargs["headers"]["X-XA-Dev-Role"])
+        self.assertEqual("Bearer xak_dev_1001", recent.request.call_args_list[0].kwargs["headers"]["Authorization"])
         self.assertEqual({"Content-Type": "application/json"}, recent.request.call_args_list[1].kwargs["headers"])
         recent.close.assert_called_once()
         fresh.request.assert_called_once_with("POST", "/lab/action", body=b'{}',

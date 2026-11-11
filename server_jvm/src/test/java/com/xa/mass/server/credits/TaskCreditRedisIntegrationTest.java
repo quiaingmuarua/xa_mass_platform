@@ -15,6 +15,7 @@ import static org.mockito.Mockito.*;
 
 @Tag("redis-owner")
 class TaskCreditRedisIntegrationTest {
+    @org.junit.jupiter.api.io.TempDir java.nio.file.Path temp;
     RedisTestScope scope;
     RedisClient redis;
     CreditAccountStore accounts;
@@ -24,7 +25,7 @@ class TaskCreditRedisIntegrationTest {
     TaskDescriptor task;
     @BeforeEach void setup() throws Exception {
         scope = RedisTestScope.create("task_credit"); redis = RedisClient.create(REDIS_URL);
-        users = CreditHttpTest.directory();
+        users = CreditHttpTest.directory(temp);
         accounts = spy(new CreditAccountStore(redis, scope.keyspace()));
         starts = new TaskCreditStartStore(redis, scope.keyspace());
         service = new TaskCreditService(starts, accounts, users);
@@ -32,18 +33,18 @@ class TaskCreditRedisIntegrationTest {
                 Map.of("priority", "50", "maxRetryTimes", "3"), List.of(), "test",
                 Map.of("server.projectId", "app-checks", "server.createdAtMillis", "1", "userId", "1001", "server.inputOwner", "app-checks"));
     }
-    @AfterEach void cleanup() {
-        starts.close(); accounts.close();
+    @AfterEach void cleanup() throws Exception {
+        starts.close(); accounts.close(); users.close();
         try (var connection = redis.connect()) { scope.cleanup(connection.sync()); }
         redis.shutdown();
     }
     TaskCreditConfirmation confirmation(long seeds, long amount) { return new TaskCreditConfirmation(UUID.randomUUID().toString(), seeds, amount); }
     BusinessCharge business(long seeds) { return new BusinessCharge("app-checks", task.taskId(), "check", 2, seeds); }
-    void fund(long amount) { new CreditService(users, accounts).adjust(users.resolveCaller("1000", "admin"), "1001", new Adjustment(UUID.randomUUID().toString(), amount, "proof")); }
+    void fund(long amount) { new CreditService(users, accounts).adjust(users.authenticate("xak_dev_1000"), "1001", new Adjustment(UUID.randomUUID().toString(), amount, "proof")); }
 
     @Test void lostDebitResponseReconcilesAcrossRestartWithoutAnotherCharge() {
         fund(100);
-        var caller = users.resolveCaller("1000", "admin");
+        var caller = users.authenticate("xak_dev_1000");
         var confirmation = confirmation(7, 14);
         doAnswer(call -> { call.callRealMethod(); throw new ServerException(ServerErrorCode.CREDIT_UNAVAILABLE, "proof.lostResponse", null, null); })
                 .when(accounts).debit(anyString(), anyString(), any());
@@ -65,7 +66,7 @@ class TaskCreditRedisIntegrationTest {
         assertThat(accounts.debitReceipt("1001", recovered.ledgerRequestId()).status()).isEqualTo("applied");
     }
     @Test void insufficientAttemptRemainsRejectedAndNewExplicitAttemptCanStart() {
-        var caller = users.resolveCaller("1001", "operator");
+        var caller = users.authenticate("xak_dev_1001");
         var first = confirmation(7, 14);
         assertThatThrownBy(() -> service.start(caller, task, 2, first, business(7))).isInstanceOf(ServerException.class);
         service.requireEditable(caller, task);
@@ -78,7 +79,7 @@ class TaskCreditRedisIntegrationTest {
     }
     @Test void pendingIntentBlocksImportDifferentAttemptAndClosureAndUnauthorizedCallerReadsNothing() {
         fund(100);
-        var caller = users.resolveCaller("1001", "operator");
+        var caller = users.authenticate("xak_dev_1001");
         var request = confirmation(7, 14);
         doThrow(new ServerException(ServerErrorCode.CREDIT_UNAVAILABLE, "proof.beforeDebit", null, null)).when(accounts).debit(anyString(), anyString(), any());
         assertThatThrownBy(() -> service.start(caller, task, 2, request, business(7))).isInstanceOf(ServerException.class);
@@ -86,7 +87,7 @@ class TaskCreditRedisIntegrationTest {
         assertThatThrownBy(() -> service.requireEditable(caller, task)).isInstanceOf(ServerException.class);
         assertThatThrownBy(() -> service.start(caller, task, 2, confirmation(7, 14), business(7))).isInstanceOf(ServerException.class);
         clearInvocations(accounts);
-        assertThatThrownBy(() -> service.observe(users.resolveCaller("1002", "operator"), task, request.requestId())).isInstanceOf(ServerException.class);
+        assertThatThrownBy(() -> service.observe(users.authenticate("xak_dev_1002"), task, request.requestId())).isInstanceOf(ServerException.class);
         verifyNoInteractions(accounts);
     }
 }

@@ -8,7 +8,7 @@ Status: current real-Worker Batch Checks walkthrough.
 
 ## 确认环境和余额
 
-先完成[快速启动](quick-start.md)，在真实 Console 登录管理员 `1000`。
+先完成[快速启动](quick-start.md)，在真实 Console 用管理员 `1000` 的访问密钥登录（本地为 `xak_dev_1000`）。
 保持本教程的创建和启动都使用这个身份，便于核对同一账户。
 
 打开“批量检查”→“创建任务”，选择种子格式“文本”，检查能力

@@ -20,7 +20,7 @@ import psutil
 import redis
 
 REPO = Path(__file__).resolve().parents[2]
-HEADERS = {"X-XA-Dev-User": "MTAwMA", "X-XA-Dev-Role": "admin"}
+HEADERS = {"Authorization": "Bearer xak_dev_1000"}
 
 
 def require(condition, message):

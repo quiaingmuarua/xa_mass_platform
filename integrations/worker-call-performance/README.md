@@ -11,7 +11,7 @@ Result or trigger execution resubmission. Finite saturation witnesses retain
 their non-consuming export path.
 
 All protected Runtime requests, including streamed finite Result exports, carry
-the fixture's explicit development caller headers through the same request
+the fixture's public development access key through the same request
 builder. Streaming preserves the export timeout and identity/payload validation.
 
 Primary claim: with configurable resources set so they do not bind, the

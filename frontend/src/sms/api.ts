@@ -1,3 +1,4 @@
+import { sessionAuthHeaders } from "@/access-session";
 import { type TaskCaller, callerHeaders } from "@/task-caller";
 import { z } from "zod";
 
@@ -72,7 +73,9 @@ export class SmsApiError extends Error {
 }
 export async function loadCatalog(signal?: AbortSignal): Promise<Catalog> {
   return catalogSchema.parse(
-    await readResponse(await fetch("/api/v1/sms/catalog", { signal }))
+    await readResponse(
+      await fetch("/api/v1/sms/catalog", { signal, headers: sessionAuthHeaders() })
+    )
   );
 }
 export const statusLabels: Record<Reception["status"], string> = {

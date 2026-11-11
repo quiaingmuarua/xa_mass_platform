@@ -16,7 +16,7 @@ Status: current configuration ownership guide.
 | Android Worker 能力与应用生命周期 | [Android Host](../../../xa-android/README.md) | 由独立应用及 SDK 装配 |
 | Batch Checks 的检查项、参数、单价、执行绑定 | [场景配置文件/页面](../../../scenarios/app-checks-jvm/README.md#模块内配置存储) | 文件保存；重启生效；旧 Task 保留首次执行快照 |
 | Messages 应用到 Group 的选择 | [Messages applications](../../../scenarios/message-campaigns-jvm/README.md#worker-供给与装配) | 新建 Task 解析；旧 Task 不随映射改写 |
-| 开发用户、角色与 Project 授权 | [Server 用户目录](../../../frontend/README.md#development-login-and-access) | 初始 JSON + 进程内管理；重启重新加载 seed |
+| 用户、角色、Project 授权与访问密钥 | [Server 用户目录](../../../server_jvm/README.md#user-directory-and-access-keys) | `xa.mass.users.seed` 指向的文件；运行中只由 Server 写入，手工修改需先停止 Server；consumer 必须显式配置 |
 | 用户积分 | [Server 账户](../../../server_jvm/README.md#user-credit-accounts) | Server 自有 Redis 账本；与用户目录分开 |
 | Task 归档路径和保留时间 | [Server retention](../../../server_jvm/README.md#finite-task-retention) | 配置由 Boot 提供，归档与清理由 Server/Kernel 分工完成 |
 

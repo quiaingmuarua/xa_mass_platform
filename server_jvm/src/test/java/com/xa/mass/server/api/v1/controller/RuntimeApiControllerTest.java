@@ -371,10 +371,12 @@ class RuntimeApiControllerTest {
                         )
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
-                .setCustomArgumentResolvers(com.xa.mass.server.api.TaskCallerHttpConfiguration.resolver(com.xa.mass.server.testing.TaskCallers.directory(new com.xa.mass.server.user.UserDirectory.User("proof", "Proof", "admin", java.util.List.of()))))
-                .defaultRequest(post("/").header("X-XA-Dev-User", "cHJvb2Y").header("X-XA-Dev-Role", "admin"))
+                .setCustomArgumentResolvers(com.xa.mass.server.api.TaskCallerHttpConfiguration.resolver())
+                .defaultRequest(post("/").header("Authorization", "Bearer " + com.xa.mass.server.testing.TaskCallers.devKey("proof")))
                 .setValidator(validator)
-                .addFilters(new RequestIdFilter())
+                .addFilters(new RequestIdFilter(), new com.xa.mass.server.api.AccessKeyFilter(
+                        com.xa.mass.server.testing.TaskCallers.directory(new com.xa.mass.server.user.UserDirectory.User("proof", "Proof", "admin", java.util.List.of())),
+                        tools.jackson.databind.json.JsonMapper.builder().build()))
                 .build();
     }
 

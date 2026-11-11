@@ -158,7 +158,7 @@ public final class MessageTaskService implements SmartLifecycle, AutoCloseable {
         if (error instanceof ServerException server) {
             if (server.errorCode() == com.xa.mass.server.error.ServerErrorCode.TASK_ACCESS_DENIED
                     || server.errorCode() == com.xa.mass.server.error.ServerErrorCode.TASK_CLEANUP_IN_PROGRESS
-                    || server.errorCode() == com.xa.mass.server.error.ServerErrorCode.INVALID_TASK_CALLER) throw server;
+                    || server.errorCode() == com.xa.mass.server.error.ServerErrorCode.UNAUTHENTICATED) throw server;
             return switch (server.errorCode()) {
                 case TASK_STATE_CONFLICT, KERNEL_REJECTED_CONFLICT -> failure(409, "任务或请求内容冲突，或有其他操作正在进行，请核对后重试", taskId, error);
                 case TASK_NOT_FOUND, TASK_WORKER_GROUP_NOT_FOUND -> failure(404, "任务或 WorkerGroup 不存在", taskId, error);

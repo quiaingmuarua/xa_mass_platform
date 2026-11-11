@@ -1,3 +1,4 @@
+import { sessionAuthHeaders } from "@/access-session";
 import {
   checkCreditsSchema,
   CheckStartUnconfirmed,
@@ -135,7 +136,7 @@ async function request(
     method: body === undefined ? "GET" : "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(caller ? callerHeaders(caller) : {})
+      ...(caller ? callerHeaders(caller) : sessionAuthHeaders())
     },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal
@@ -165,7 +166,7 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            ...(caller ? callerHeaders(caller) : {})
+            ...(caller ? callerHeaders(caller) : sessionAuthHeaders())
           },
           body: JSON.stringify({ expectedFingerprint, configuration })
         })

@@ -8,7 +8,6 @@
   "adapter_port": 18183,
   "certificate": "/etc/letsencrypt/live/xamass-staging/fullchain.pem",
   "certificate_key": "/etc/letsencrypt/live/xamass-staging/privkey.pem",
-  "admin_password_file": "/etc/xa-mass/ingress/admin.htpasswd",
   "worker_password_file": "/etc/xa-mass/ingress/workers.htpasswd",
   "acme_root": "/var/lib/xa-mass/acme",
   "state_directory": "/var/lib/xa-mass/ingress",

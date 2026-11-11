@@ -13,7 +13,7 @@ import urllib.parse
 import uuid
 
 REPO = Path(__file__).resolve().parents[2]
-CALLER = {"X-XA-Dev-User": "MTAwMA", "X-XA-Dev-Role": "admin"}
+CALLER = {"Authorization": "Bearer xak_dev_1000"}
 
 
 def require(value, message):

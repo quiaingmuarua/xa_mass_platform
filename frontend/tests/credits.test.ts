@@ -258,8 +258,7 @@ describe("credit requests and confirmation", () => {
         CreditSubmissionUnknown
       );
     expect(fetcher.mock.calls[0]?.[1].headers).toMatchObject({
-      "X-XA-Dev-User": "MTAwMA",
-      "X-XA-Dev-Role": "admin"
+      Authorization: "Bearer xak_dev_1000"
     });
     expect(fetcher).toHaveBeenCalledTimes(5);
   });

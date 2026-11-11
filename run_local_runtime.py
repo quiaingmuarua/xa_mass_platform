@@ -15,7 +15,7 @@ import time
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "distribution/server"))
-from local_runtime import LocalRun, child_environment, digest, parse_arguments, print_scope_warning, resolve
+from local_runtime import DEVELOPMENT_ADMIN_KEY, LocalRun, child_environment, digest, parse_arguments, print_scope_warning, resolve
 
 CANDIDATE_CACHE = ROOT / "build/local-runtime-candidate.json"
 
@@ -111,6 +111,7 @@ def main(arguments=None):
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
         run.start()
         print(f"Ready: {run.url} ; logs: {run.output}", flush=True)
+        print(f"Console 开发登录：管理员访问密钥 {DEVELOPMENT_ADMIN_KEY}（内置公开密钥，仅限本地）", flush=True)
         while True:
             run.check()
             time.sleep(1)

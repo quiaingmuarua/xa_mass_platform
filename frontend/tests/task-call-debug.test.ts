@@ -1,6 +1,6 @@
 import { consoleIdentity } from "@/console-identity";
 import { callerHeaders } from "@/task-caller";
-import { ADMIN as CALLER } from "./identity-fixture";
+import { ADMIN as CALLER, devKey } from "./identity-fixture";
 import { type AxiosInstance } from "axios";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,8 +27,8 @@ const request = (): RpcCallRequest => ({ items: [item()], waitTimeoutMillis: 300
 const success: TaskCallDebugResults = {
   "message-1": { status: "succeeded", opaqueResultPayload: "original output" }
 };
-beforeEach(() => {
-  consoleIdentity.login("1000");
+beforeEach(async () => {
+  await consoleIdentity.login(devKey("1000"));
   setActivePinia(createPinia());
 });
 
@@ -97,7 +97,8 @@ describe("batch RPC request", () => {
     const curl = rpcCurl("http://localhost/api", "task/a", CALLER, body);
     expect(curl).toContain("/api/v1/tasks/task%2Fa/items:call");
     expect(curl).toContain("'\\''");
-    expect(curl).toContain("X-XA-Dev-User");
+    expect(curl).toContain("Authorization: Bearer <access key>");
+    expect(curl).not.toContain("xak_");
   });
 });
 describe("HTTP batch adapter", () => {
@@ -237,7 +238,7 @@ describe("session request evidence", () => {
       "进行中"
     );
     expect(store.clear("task")).toBe(false);
-    consoleIdentity.login("1001");
+    await consoleIdentity.login(devKey("1001"));
     release(success);
     const record = await pending;
     expect(record.caller).toEqual(CALLER);

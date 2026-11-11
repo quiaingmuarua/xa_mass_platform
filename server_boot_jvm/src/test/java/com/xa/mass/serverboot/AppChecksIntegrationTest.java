@@ -606,9 +606,9 @@ class AppChecksIntegrationTest {
             String route = "/api/v1/app-checks/tasks";
             String directory = "/api/v1/projects/app-checks/tasks";
             assertThat(world.http.send(HttpRequest.newBuilder(world.base.resolve(directory)).build(), HttpResponse.BodyHandlers.ofString())
-                    .statusCode()).isEqualTo(400);
-            assertThat(world.http.send(HttpRequest.newBuilder(world.base.resolve(directory)).header("X-XA-Dev-User", "_w")
-                    .header("X-XA-Dev-Role", "operator").build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(400);
+                    .statusCode()).isEqualTo(401);
+            assertThat(world.http.send(HttpRequest.newBuilder(world.base.resolve(directory)).header("Authorization", "Bearer xak_dev_unknown")
+                    .build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(401);
 
             var body = new LinkedHashMap<String, Object>(Map.of("requestId", "callerb", "checkId", "app-a-registration", "country", "CN"));
             String a = "testa", b = "testb";
@@ -678,13 +678,12 @@ class AppChecksIntegrationTest {
                     assertThat(world.postAs("/api/v1/tasks/" + id + action, "[\"m\"]", "application/json", "1001", "operator").statusCode()).isEqualTo(403);
                 assertThat(world.postAs(directory + ":stats", Jsons.toJson(List.of(id)), "application/json", "1001", "operator").statusCode()).isEqualTo(403);
                 world.updateUser("1001", "admin", List.of());
-                assertThat(world.postAs(route, body, "application/json", "1001", "operator").statusCode()).isEqualTo(403);
+                // The same key now resolves the promoted directory role; there is no declared role to spoof.
                 assertThat(Jsons.parseObject(world.postAs(route, body, "application/json", "1001", "admin").body())).containsEntry("taskId", id);
                 world.updateUser("1001", "operator", List.of("messages", "app-checks"));
-                assertThat(world.postAs(route, body, "application/json", "1001", "admin").statusCode()).isEqualTo(403);
                 assertThat(Jsons.parseObject(world.postAs(route, body, "application/json", "1001", "operator").body())).containsEntry("taskId", id);
                 assertThat(world.context.getBean(com.xa.mass.kernel.task.TaskResourceCatalog.class).loadTaskAllocationDescriptors(List.of(id)).get(id)).isEqualTo(original);
-                assertThat(world.http.send(world.request(directory, "missing", "admin").build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
+                assertThat(world.http.send(world.request(directory, "missing", "admin").build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(401);
             }
         }
     }
@@ -703,7 +702,8 @@ class AppChecksIntegrationTest {
             assertThat(world.postAs(path, json, "application/json", "another1", "admin").statusCode()).isEqualTo(201);
             var bodyCreator = new LinkedHashMap<>(body); bodyCreator.put("userId", "proof");
             assertThat(world.post(path, Jsons.toJson(bodyCreator), "application/json").statusCode()).isEqualTo(400);
-            assertThat(Jsons.parseObject(world.postAs(path, json, "application/json", "  proof  ", "admin").body()))
+            // The same key repeating the request is the same creator; whitespace userIds no longer exist on the wire.
+            assertThat(Jsons.parseObject(world.postAs(path, json, "application/json", "proof", "admin").body()))
                     .containsEntry("taskId", id);
             assertThat(task(world.detail(id))).containsEntry("state", "pre_review").containsEntry("totalCount", 0L);
             assertThat(world.post("/api/v1/tasks/" + id + "/approve", "{\"expectedItemCount\":0}", "application/json").statusCode()).isEqualTo(400);
@@ -848,6 +848,7 @@ class AppChecksIntegrationTest {
         final List<String> replicas;
         final URI base;
         final SpringApplication application = new SpringApplication(ServerBootConfiguration.class);
+        final java.nio.file.Path users;
         String[] arguments;
         ConfigurableApplicationContext context;
         int sequence;
@@ -891,8 +892,13 @@ class AppChecksIntegrationTest {
             }));
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(observations));
             application.addInitializers(ctx -> ctx.getBeanFactory().addBeanPostProcessor(selections));
+            // A persisted copy, so directory edits use the same file publication as an external host.
+            users = java.nio.file.Files.createTempDirectory("xa-mass-app-checks-users-");
+            try (var seed = new org.springframework.core.io.ClassPathResource("users/proof-directory.json").getInputStream()) {
+                java.nio.file.Files.write(users.resolve("users.json"), seed.readAllBytes());
+            }
             arguments = new String[] { "--spring.profiles.active=preview", "--server.port=" + port,
-                    "--xa.mass.users.seed=classpath:users/proof-directory.json", "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
+                    "--xa.mass.users.seed=" + users.resolve("users.json").toUri(), "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                     "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,
                     "--xa.mass.worker-endpoints.endpoints.products-websocket.public-uri=ws://127.0.0.1:" + adapter + "/api/v1/worker-delivery/websocket",
@@ -1020,9 +1026,9 @@ class AppChecksIntegrationTest {
             return postAs(path, body, contentType, "proof", "admin");
         }
         HttpRequest.Builder request(String path, String user, String role) {
-            return HttpRequest.newBuilder(base.resolve(path)).header("X-XA-Dev-User",
-                    java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(user.getBytes(StandardCharsets.UTF_8)))
-                    .header("X-XA-Dev-Role", role);
+            // The directory decides the role; callers only present that user's public development key.
+            return HttpRequest.newBuilder(base.resolve(path))
+                    .header("Authorization", "Bearer " + com.xa.mass.server.testing.TaskCallers.devKey(user));
         }
         HttpResponse<String> postAs(String path, String body, String contentType, String user, String role) throws Exception {
             return http.send(request(path, user, role).timeout(Duration.ofSeconds(90))
@@ -1061,6 +1067,10 @@ class AppChecksIntegrationTest {
         }
         public void close() {
             context.close(); http.close();
+            try (var files = java.nio.file.Files.list(users)) {
+                for (var file : files.toList()) java.nio.file.Files.deleteIfExists(file);
+                java.nio.file.Files.deleteIfExists(users);
+            } catch (java.io.IOException ignored) { /* Best-effort removal of this proof's private temporary directory. */ }
             var client = RedisClient.create(redisUrl);
             try (var connection = client.connect()) {
                 ScanCursor cursor = ScanCursor.INITIAL;

@@ -1,19 +1,23 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { consoleIdentity } from "@/console-identity";
-import { roles } from "@/access-policy";
 import { loginDestination } from "@/router/access";
 const router = useRouter(),
   route = useRoute();
-const selected = ref("");
+const accessKey = ref("");
 const error = ref("");
-onMounted(() => consoleIdentity.load(true));
+const mock = import.meta.env.VITE_RUNTIME_DATA_SOURCE === "mock";
+/** Retries restoring the stored key after a transient directory failure. */
+async function retry() {
+  if ((await consoleIdentity.load(true)) && consoleIdentity.current.value)
+    await router.replace(loginDestination(router, route.query.redirect));
+}
 async function login() {
   error.value = "";
   try {
-    if (!(await consoleIdentity.load(true))) return;
-    consoleIdentity.login(selected.value);
+    await consoleIdentity.login(accessKey.value);
+    accessKey.value = "";
     await router.replace(loginDestination(router, route.query.redirect));
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : "无法进入控制台";
@@ -26,23 +30,21 @@ async function login() {
       <img :src="'/logo.svg'" width="42" height="42" alt="" />
       <p class="console-login__brand">XA MASS · CONSOLE</p>
       <h1>登录控制台</h1>
-      <p>选择用户，以对应角色和 Project 范围进入开发环境。</p>
+      <p>输入管理员为你签发的访问密钥。角色和 Project 范围由用户目录决定。</p>
       <label class="console-login__field"
-        >当前用户
-        <el-select
-          v-model="selected"
-          aria-label="选择用户"
-          placeholder="请选择用户"
-          :loading="consoleIdentity.loading.value"
-        >
-          <el-option
-            v-for="user in consoleIdentity.users"
-            :key="user.userId"
-            :value="user.userId"
-            :label="`${user.displayName} · ${user.userId} · ${roles[user.role].label}`"
-          />
-        </el-select>
+        >访问密钥
+        <el-input
+          v-model="accessKey"
+          type="password"
+          show-password
+          autocomplete="off"
+          aria-label="访问密钥"
+          placeholder="xak_…"
+        />
       </label>
+      <p v-if="mock" class="console-login__hint">
+        Mock 演示可使用公开开发密钥，例如 <code>xak_dev_1000</code>（管理员）。
+      </p>
       <el-alert
         v-if="consoleIdentity.error.value"
         :title="consoleIdentity.error.value"
@@ -50,8 +52,8 @@ async function login() {
         :closable="false"
         role="alert"
       />
-      <el-button v-if="consoleIdentity.error.value" @click="consoleIdentity.load(true)"
-        >重试用户目录</el-button
+      <el-button v-if="consoleIdentity.error.value" @click="retry"
+        >重试恢复登录</el-button
       >
       <el-alert
         v-if="error"
@@ -63,9 +65,8 @@ async function login() {
       <el-button
         type="primary"
         native-type="submit"
-        :disabled="
-          !selected || consoleIdentity.loading.value || !!consoleIdentity.error.value
-        "
+        :loading="consoleIdentity.loading.value"
+        :disabled="!accessKey.trim()"
         >进入控制台</el-button
       >
     </form>
@@ -100,5 +101,9 @@ async function login() {
 .console-login__field {
   display: grid;
   gap: 10px;
+}
+.console-login__hint {
+  color: var(--rv-muted);
+  font-size: 13px;
 }
 </style>

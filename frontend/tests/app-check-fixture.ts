@@ -1,6 +1,8 @@
 import { type TaskCaller } from "@/task-caller";
 
-export const CALLER: TaskCaller = Object.freeze({ userId: "1000", role: "admin" });
+import { ADMIN } from "./identity-fixture";
+
+export const CALLER: TaskCaller = ADMIN;
 import { Blob as NodeBlob } from "node:buffer";
 import type { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
 import type { CreateCheckTask } from "../src/app-checks/model";

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { callerHeaders, type TaskCaller } from "@/task-caller";
+import { requireCaller, type TaskCaller } from "@/task-caller";
 import { jsonValueSchema } from "@/runtime-viewer/schemas";
 import type { JsonValue } from "@/runtime-viewer/types";
 import { taskCallDebugConfigurationError } from "./errors";
@@ -95,7 +95,12 @@ export function rpcCurl(
     encodeURIComponent(taskId) +
     "/" +
     operation;
-  const headers = { "Content-Type": "application/json", ...callerHeaders(caller) };
+  // The example names the caller but never embeds its access key; users paste their own key.
+  requireCaller(caller);
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: "Bearer <access key>"
+  };
   return (
     "curl -X POST " +
     quote(url) +

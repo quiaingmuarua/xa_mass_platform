@@ -71,9 +71,11 @@ class ApiExceptionHandlerTest {
     private static HttpStatus expectedStatus(ServerErrorCode errorCode) {
         return switch (errorCode) {
             case CREDIT_ACCOUNT_NOT_FOUND -> HttpStatus.NOT_FOUND;
-            case CREDIT_BALANCE_INSUFFICIENT, CREDIT_ADJUSTMENT_CONFLICT, CREDIT_BALANCE_LIMIT -> HttpStatus.CONFLICT;
+            case CREDIT_BALANCE_INSUFFICIENT, CREDIT_ADJUSTMENT_CONFLICT, CREDIT_BALANCE_LIMIT,
+                    USER_DIRECTORY_CONFLICT -> HttpStatus.CONFLICT;
             case INVALID_CREDIT_REQUEST -> HttpStatus.BAD_REQUEST;
-            case CREDIT_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+            case UNAUTHENTICATED -> HttpStatus.UNAUTHORIZED;
+            case CREDIT_UNAVAILABLE, USER_DIRECTORY_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
             case TASK_ACCESS_DENIED -> HttpStatus.FORBIDDEN;
             case TASK_DATA_UNAVAILABLE,
                     TASK_CALL_REGISTRATION_UNAVAILABLE,
@@ -89,7 +91,7 @@ class ApiExceptionHandlerTest {
                     HttpStatus.SERVICE_UNAVAILABLE;
             case DIRECT_CALL_CAPACITY_EXCEEDED ->
                     HttpStatus.TOO_MANY_REQUESTS;
-            case INVALID_USER_REQUEST, INVALID_TASK_CALLER, KERNEL_REJECTED_CONFLICT,
+            case INVALID_USER_REQUEST, KERNEL_REJECTED_CONFLICT,
                     INVALID_TASK_DATA_REQUEST,
                     TASK_NOT_FOUND,
                     TASK_CALL_NOT_REGISTERED,

@@ -5,7 +5,7 @@ Status: current shared business integration proof owner.
 This proof witnesses [SMS](../../scenarios/sms-reception-jvm/README.md) and
 [Messages](../../scenarios/message-campaigns-jvm/README.md) on the same real Server,
 Redis scope, Adapter and Workers. Python owns two independent JVMs and a unique
-`test_products_*` scope. Its fixture explicitly declares the default seed administrator `1000` as its explicit development caller. It calls product APIs,
+`test_products_*` scope. Its fixture authenticates as the built-in administrator `1000` with its public development key `xak_dev_1000`. It calls product APIs,
 common Project Task/count APIs, public Runtime APIs and Host business inputs. Only real `message.send` execution creates a simulated recipient record.
 It never constructs Reports, calls Worker methods or reads Redis owner storage.
 Single SMS and message receipts use the stable Worker coordinate `:inputs` API.
@@ -241,7 +241,7 @@ python integrations/scenario-coexistence/run_proof.py --scenario pool-selection 
 Ordinary `product_coexistence` Proof CI runs source functional, Pool selection and
 lifecycle, plus fresh ZIP functional and Pool selection. Each proof has its own
 step, output directory, port and scope. App Checks also runs in independent source
-and ZIP steps, with explicit development caller headers and saved-creator checks.
+and ZIP steps, with the public development access key and saved-creator checks.
 The existing Coexistence runner additionally performs a GET-only documentation
 delivery check against that run's supplied frontend: `/docs`, `/docs/`, the
 documentation index and first-task page must match the artifact bytes and commit;

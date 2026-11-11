@@ -13,6 +13,7 @@ Status: current bounded-observation troubleshooting guide.
 | 启动失败或没有 Ready | 启动终端、实际日志目录、依赖工具、端口、Redis 和配置文件错误 | 修复明确错误再重启本次环境；见[部署](deploy.md) |
 | 页面打不开或打开了错误环境 | Ready 地址、静态资源目录、普通/API 与 Mock 模式 | 对照最终坐标；Mock 页面不能证明 Server 已启动 |
 | 业务页显示不可用 | 该环境的 Catalog、Scenario enabled 与启动依赖错误 | 检查宿主装配，不先改浏览器缓存或伪造 Catalog |
+| 401 | 访问密钥缺失、格式错误或已被清除 | 用有效密钥重新登录；脚本补 `Authorization: Bearer <access key>` |
 | 403，或列表缺少别人的任务 | 当前用户、角色、Project 授权、任务所有者 | 刷新/重新登录；授权范围不等于系统故障 |
 | 新配置保存后没生效 | 保存文档、当前生效文档、是否重启、是否旧 Task | 按[配置](configuration.md)核对，不重复覆盖 seed |
 | Worker 已连接，但任务不执行 | Task 是否已审核、Group/event、查询和 Pool 供给、实际属性 | 逐项区分准入与资格；查看下面的执行链 |

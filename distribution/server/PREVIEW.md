@@ -44,15 +44,16 @@ the [Frontend Owner](../../frontend/README.md) describes page operations.
 The documentation site is served by the same Server at
 `http://127.0.0.1:18500/docs/`.
 
-The Console starts at development login, with one built-in admin and two operators
-for Messages and App Checks workflow verification. Server owns a JSON-initialized,
-process-memory user directory shared by all clients; only Server restart resets
-user edits. Its top bar displays the current user and
-logout; see [development login](../../frontend/README.md#development-login-and-access).
-Direct App Checks task/configuration requests declare their caller through the
-[scenario headers](../../scenarios/app-checks-jvm/README.md#api-和-task-数据).
-Task requests resolve those declarations against the Server directory on each
-request; role and Project changes affect the next admission. Single-user proof
+The Console starts at access-key login. The built-in development directory has one
+admin and two operators for Messages and App Checks workflow verification, with the
+public keys `xak_dev_1000`, `xak_dev_1001` and `xak_dev_1002`; the launcher prints the
+admin key. This classpath directory is read-only, so Console user edits and key
+issuance report a read-only directory. Its top bar displays the current user and
+logout; see [access-key login](../../frontend/README.md#access-key-login-and-access).
+Direct App Checks task/configuration requests send the same
+[Bearer key](../../scenarios/app-checks-jvm/README.md#api-和-task-数据).
+Each request resolves its key against the Server directory; role and Project changes
+affect the next admission. Single-user proof
 clients explicitly use seed administrator `1000`. Catalog readiness remains
 caller-free. These identities do not authenticate users.
 

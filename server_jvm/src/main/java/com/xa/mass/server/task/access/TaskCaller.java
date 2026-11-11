@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
-/** Explicit trusted-development caller; only assembly can supply an in-process Project identity. */
+/** Access-key authenticated directory caller; only assembly can supply an in-process Project identity. */
 @io.swagger.v3.oas.annotations.media.Schema(hidden = true)
 public final class TaskCaller {
     public static final String RAW_INPUT = "raw";
@@ -90,7 +90,7 @@ public final class TaskCaller {
         if (serviceProject != null && !serviceProject.equals(inputOwner)) throw forbidden();
     }
     private static ServerException invalidCaller(@Nullable Throwable cause) {
-        return new ServerException(ServerErrorCode.INVALID_TASK_CALLER, "taskCaller.parse", null, cause);
+        return new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskCaller.selectUser", null, cause);
     }
     @Override public boolean equals(Object other) {
         return other instanceof TaskCaller caller && Objects.equals(userId, caller.userId)

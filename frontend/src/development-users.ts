@@ -2,6 +2,13 @@ import type { ProjectAccessSubject, RoleDefinition } from "./access-policy";
 
 export interface ConsoleUser extends ProjectAccessSubject {
   readonly displayName: string;
+  /** Directory reads report only whether a key exists, never key material. */
+  readonly hasAccessKey?: boolean;
+}
+
+/** The documented public development key of a built-in user; Mock and local runs only. */
+export function developmentAccessKey(userId: string) {
+  return `xak_dev_${userId}`;
 }
 /** Explicit Mock fixtures. Real API mode never uses these defaults. */
 export const developmentRoles: readonly RoleDefinition[] = [

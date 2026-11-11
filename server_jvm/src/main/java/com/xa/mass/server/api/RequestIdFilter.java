@@ -6,10 +6,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+/** Runs before the access-key front door so rejected requests still carry a request ID. */
 @Component
+@Order(Ordered.HIGHEST_PRECEDENCE + 5)
 public final class RequestIdFilter extends OncePerRequestFilter {
 
     public static final String HEADER_NAME = "X-Request-Id";

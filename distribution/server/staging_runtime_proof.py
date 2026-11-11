@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import secrets
 import subprocess
 import sys
 import time
@@ -25,12 +26,15 @@ from urllib.parse import urlsplit
 
 from distribution.server.local_runtime import child_environment
 from distribution.server.staging_ingress.proof import (
-    ADMIN, OTHER_WORKER, WORKER, Gateway, basic, free_port,
+    OTHER_WORKER, WORKER, Gateway, basic, free_port,
 )
 from integrations.worker_proof_support.processes import start_process, stop_process
 
 
-CALLER = {"X-XA-Dev-User": "MTAwMA", "X-XA-Dev-Role": "admin"}
+# Administrator 1000 receives a fresh private key in this proof's users file; the public
+# development key of the same user must be rejected through the gateway.
+ADMIN_KEY = "xak_" + secrets.token_urlsafe(32)
+PUBLIC_DEVELOPMENT_KEY = "xak_dev_1000"
 GROUP_A = "ingress-java-a"
 GROUP_B = "ingress-java-b"
 EVENT = "extension.worker.string.md5"
@@ -48,8 +52,8 @@ def _require(condition, message: str) -> None:
 
 
 def _json(gate: Gateway, method: str, path: str, body=None):
-    headers = {**CALLER, **({"Content-Type": "application/json"} if body is not None else {})}
-    status, payload, _ = gate.request("localhost", method, path, ADMIN, headers=headers,
+    headers = {"Content-Type": "application/json"} if body is not None else {}
+    status, payload, _ = gate.request("localhost", method, path, ADMIN_KEY, headers=headers,
                                       body=None if body is None else json.dumps(body).encode("utf-8"))
     _require(status == 200, f"Packaged gateway request failed: {method} {path}, HTTP {status}")
     return json.loads(payload)
@@ -69,7 +73,7 @@ class _ConsoleEntrypoints(HTMLParser):
 
 
 def _console(gate: Gateway, runtime_root: Path) -> dict:
-    status, index, headers = gate.request("localhost", "GET", "/", ADMIN)
+    status, index, headers = gate.request("localhost", "GET", "/")
     content_type = {name.lower(): value for name, value in headers.items()}.get("content-type", "")
     _require(status == 200 and content_type.startswith("text/html"), "Protected Console index was not served as HTML")
     frontend = (runtime_root / "frontend/dist").resolve()
@@ -83,7 +87,7 @@ def _console(gate: Gateway, runtime_root: Path) -> dict:
         _require(not parsed.scheme and not parsed.netloc and parsed.path.startswith("/"), "Console asset must be same-origin")
         source = (frontend / parsed.path.lstrip("/")).resolve()
         _require(source.is_relative_to(frontend) and source.is_file(), "Console asset must belong to the packaged frontend")
-        status, content, headers = gate.request("localhost", "GET", reference, ADMIN)
+        status, content, headers = gate.request("localhost", "GET", reference)
         content_type = {name.lower(): value for name, value in headers.items()}.get("content-type", "").split(";", 1)[0]
         expected_types = ("application/javascript", "text/javascript") if kind == "script" else ("text/css",)
         _require(status == 200 and content_type in expected_types and content == source.read_bytes(),
@@ -115,6 +119,19 @@ def _ready(runtime_port: int) -> bool:
         connection.close()
 
 
+def _users_file(directory: Path) -> Path:
+    """The built-in roles and users, with administrator 1000's public key replaced by a private one."""
+    source = Path(__file__).resolve().parents[2] / "server_jvm/src/main/resources/users/development-directory.json"
+    document = json.loads(source.read_text(encoding="utf-8"))
+    for user in document["users"]:
+        user.pop("accessKeySha256", None)
+        if user["userId"] == "1000":
+            user["accessKeySha256"] = hashlib.sha256(ADMIN_KEY.encode("utf-8")).hexdigest()
+    path = directory / "users.json"
+    path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def _runtime_command(runtime_root: Path, data_root: Path, manifest: dict, java: str,
                      runtime_port: int, adapter_port: int, websocket_url: str,
                      redis_url: str, scope: str) -> list[str]:
@@ -126,6 +143,7 @@ def _runtime_command(runtime_root: Path, data_root: Path, manifest: dict, java: 
             "--spring.profiles.active=consumer", "--server.address=127.0.0.1", f"--server.port={runtime_port}",
             "--spring.web.resources.static-locations=" + (runtime_root / "frontend/dist").as_uri() + "/",
             f"--xa.mass.redis.url={redis_url}", f"--xa.mass.redis.scope={scope}",
+            "--xa.mass.users.seed=" + _users_file(data_root).resolve().as_uri(),
             "--xa.mass.project-assembly.projects[0].project-id=default",
             "--xa.mass.project-assembly.projects[0].worker-group-ids=",
             "--xa.mass.worker-assembly.group-config-json=" + json.dumps(groups, separators=(",", ":")),
@@ -271,8 +289,8 @@ def _finite(gate: Gateway, group: str, label: str, processes) -> dict:
     _require(set(states) == set(expected) and all(isinstance(value, dict) and value.get("band") == "terminal"
                                                  for value in states.values()), "Item Scores are not all terminal")
     _assert_preview(_json(gate, "GET", f"/api/v1/tasks/{task_id}/results:preview"), expected)
-    status, exported, _ = gate.request("localhost", "POST", f"/api/v1/tasks/{task_id}/results:export", ADMIN,
-                                      headers=CALLER, body=b"")
+    status, exported, _ = gate.request("localhost", "POST", f"/api/v1/tasks/{task_id}/results:export", ADMIN_KEY,
+                                      body=b"")
     _require(status == 200, "Terminal raw JSONL export failed")
     lines = [json.loads(line) for line in exported.decode("utf-8").splitlines() if line]
     _require(len(lines) == len(expected) and all(set(row) == {"messageId", "opaqueResultPayload"} for row in lines),
@@ -336,9 +354,12 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
         _wait(lambda: _ready(runtime_port), [server], 120, "packaged Runtime readiness")
         evidence["phase"] = "gateway-and-console"
         stack.enter_context(gate)
-        _require(gate.request("localhost", "GET", "/")[0] == 401, "Unauthenticated Console request was accepted")
+        _require(gate.request("localhost", "GET", "/")[0] == 200, "Console page must load before access-key login")
         _require(gate.request("localhost", "GET", "/api/v1/projects")[0] == 401, "Unauthenticated admin request was accepted")
         _require(gate.request("localhost", "GET", "/api/v1/projects", WORKER)[0] == 401, "Worker key reached management")
+        _require(gate.request("localhost", "GET", "/api/v1/projects", PUBLIC_DEVELOPMENT_KEY)[0] == 401,
+                 "Public development key was accepted by an external users file")
+        _require(_json(gate, "GET", "/api/v1/me")["userId"] == "1000", "Private administrator key did not authenticate")
         console = _console(gate, runtime_root)
         for group in (GROUP_A, GROUP_B):
             _require(_json(gate, "POST", f"/api/v1/runtime-view/worker-groups/{group}/workers:preview", 100)["workers"] == [],
@@ -387,7 +408,8 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
     evidence["phase"] = "safe-evidence"
     for log in proof_root.rglob("*.log"):
         contents = log.read_text(encoding="utf-8", errors="replace")
-        _require(all(secret not in contents and basic((key, secret)) not in contents for key, secret in (ADMIN, WORKER, OTHER_WORKER)),
+        _require(ADMIN_KEY not in contents and all(secret not in contents and basic((key, secret)) not in contents
+                                                   for key, secret in (WORKER, OTHER_WORKER)),
                  "Credential material appeared in a private process log")
     summary = {"status": "passed", "runtimeVersion": manifest["version"], "runtimeCommit": manifest["gitCommit"],
                "console": console,

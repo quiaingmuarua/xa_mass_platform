@@ -25,11 +25,11 @@ final class AndroidWorkerConvergenceHealth {
         device = new AndroidDeviceHostClient(new JsonHttpClient(
                 options.deviceBaseUrl(),
                 options
-        , java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin")));
+        , java.util.Map.of("Authorization", "Bearer xak_dev_1000")));
         runtime = new AndroidRuntimeApiClient(new JsonHttpClient(
                 options.serverBaseUrl(),
                 options
-        , java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin")));
+        , java.util.Map.of("Authorization", "Bearer xak_dev_1000")));
         evidence = new ProofEvidence(options, SCENARIO, options.phase());
     }
 
