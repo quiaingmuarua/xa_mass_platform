@@ -34,6 +34,8 @@ public final class MainActivity extends Activity {
     private TextView errorValue;
     private Button connectButton;
     private Button disconnectButton;
+    private View copyWorkerIdButton;
+    private TextView connectionConfigurationValue;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,11 +44,13 @@ public final class MainActivity extends Activity {
         bindViews();
         application =
                 (AndroidWorkerDemoApplication) getApplication();
-        worker = application.worker();
+        worker = application.hasWorker() ? application.worker() : null;
         demoCapabilities = application.demoCapabilities();
 
-        connectButton.setOnClickListener(view -> worker.start());
-        disconnectButton.setOnClickListener(view -> worker.stop());
+        connectButton.setOnClickListener(view -> { if (worker != null) worker.start(); });
+        disconnectButton.setOnClickListener(view -> { if (worker != null) worker.stop(); });
+        findViewById(R.id.connectionSettingsButton).setOnClickListener(
+                view -> startActivity(new Intent(this, ConnectionSettingsActivity.class)));
         findViewById(R.id.messagesButton).setOnClickListener(
                 view -> startActivity(new Intent(this, MessagesActivity.class)));
         findViewById(R.id.incrementButton).setOnClickListener(
@@ -64,14 +68,15 @@ public final class MainActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
-        worker.addListener(workerListener);
+        if (worker != null) worker.addListener(workerListener);
         demoCapabilities.addListener(capabilityListener);
+        render();
     }
 
     @Override
     protected void onStop() {
         demoCapabilities.removeListener(capabilityListener);
-        worker.removeListener(workerListener);
+        if (worker != null) worker.removeListener(workerListener);
         super.onStop();
     }
 
@@ -86,6 +91,8 @@ public final class MainActivity extends Activity {
         errorValue = findViewById(R.id.errorValue);
         connectButton = findViewById(R.id.connectButton);
         disconnectButton = findViewById(R.id.disconnectButton);
+        copyWorkerIdButton = findViewById(R.id.copyWorkerIdButton);
+        connectionConfigurationValue = findViewById(R.id.connectionConfigurationValue);
     }
 
     private void requestRender() {
@@ -96,15 +103,21 @@ public final class MainActivity extends Activity {
         if (isFinishing() || isDestroyed()) {
             return;
         }
-        WorkerLifecycle.Snapshot workerSnapshot = worker.snapshot();
+        AndroidConnectionSettings active = application.activeConnectionSettings();
+        connectionConfigurationValue.setText(active == null
+                ? "连接配置不可用 · 请修复并完整重启 App"
+                : "当前 Runtime: " + active.runtimeApiBaseUrl()
+                    + (application.savedConnectionError() != null ? "\n保存状态未确认，当前连接未改变"
+                    : application.connectionRestartRequired() ? "\n已保存配置，完整重启 App 后生效" : ""));
+        WorkerLifecycle.Snapshot workerSnapshot = worker == null ? null : worker.snapshot();
         AndroidDemoCapabilities.Snapshot demoSnapshot =
                 demoCapabilities.snapshot();
-        statusValue.setText(workerSnapshot.state().name());
+        statusValue.setText(workerSnapshot == null ? "CONFIGURATION UNAVAILABLE" : workerSnapshot.state().name());
         workerIdValue.setText(orFallback(
-                workerSnapshot.workerId(),
+                workerSnapshot == null ? null : workerSnapshot.workerId(),
                 "Not registered"
         ));
-        endpointValue.setText(workerSnapshot.endpointUri() == null
+        endpointValue.setText(workerSnapshot == null || workerSnapshot.endpointUri() == null
                 ? "Not bound"
                 : workerSnapshot.endpointUri().toString());
         capabilityHttpValue.setText(capabilityHttpStatus());
@@ -116,19 +129,15 @@ public final class MainActivity extends Activity {
                 demoSnapshot.lastEvent(),
                 "None"
         ));
-        errorValue.setText(orFallback(
-                workerSnapshot.diagnosticMessage(),
-                ""
-        ));
-        errorValue.setVisibility(
-                workerSnapshot.diagnosticMessage() == null
-                ? View.GONE
-                : View.VISIBLE
-        );
-        boolean restartable = workerSnapshot.state()
+        String diagnostic = workerSnapshot == null
+                ? application.connectionStartupError() : workerSnapshot.diagnosticMessage();
+        errorValue.setText(orFallback(diagnostic, ""));
+        errorValue.setVisibility(diagnostic == null ? View.GONE : View.VISIBLE);
+        boolean restartable = workerSnapshot != null && workerSnapshot.state()
                 == WorkerLifecycle.State.STOPPED;
         connectButton.setEnabled(restartable);
-        disconnectButton.setEnabled(!restartable);
+        disconnectButton.setEnabled(workerSnapshot != null && !restartable);
+        copyWorkerIdButton.setEnabled(workerSnapshot != null && workerSnapshot.workerId() != null);
     }
 
     private String capabilityHttpStatus() {
@@ -142,7 +151,7 @@ public final class MainActivity extends Activity {
     }
 
     private void copyWorkerId() {
-        String workerId = worker.snapshot().workerId();
+        String workerId = worker == null ? null : worker.snapshot().workerId();
         if (workerId == null) {
             Toast.makeText(
                     this,

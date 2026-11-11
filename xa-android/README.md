@@ -53,7 +53,9 @@ remain Server-owned state and do not change the accepted binary identity.
 
 Server and Adapter default to `18182` and `18183`. Build with
 `-PxaMassRuntimeApiBaseUrl=http://127.0.0.1:18082` when using the Proof's `18082/18083`
-ports. Runtime endpoints, APK address and device port mappings must agree.
+ports. This is the App's build default, used when no private connection override
+is saved. Runtime endpoints, the effective App address and device port mappings
+must agree for the local path.
 
 For a normal API 33 Emulator example, bind every ADB command to its serial:
 
@@ -67,6 +69,42 @@ adb -s emulator-5554 shell am start -W -n com.xa.mass.integration.androidworker/
 The Application owns one persistent client key. Observe its issued Worker ID in
 the App or through the public Runtime catalog; do not invent or persist a Server
 Worker ID as App identity. The normal example does not clear App data.
+
+## Public Runtime connection
+
+The same APK can use the existing 3.2.0 SDK's HTTPS/WSS gateway support. In
+**连接配置**, enter the Worker Runtime address, `keyId` and a complete `secret`,
+then save. The Group remains `android-demo-workers`. Stored secrets are never
+filled back into the form; a blank secret does not mean reuse the previous one.
+
+Saving changes only the next process's selection. The page shows the effective
+and saved addresses and whether a complete App restart is required. Use
+**打开应用信息**, force-stop the App, then reopen it; leaving the Activity or
+pressing Connect/Disconnect does not apply the new configuration. **恢复构建默认**
+restores the local build address for the next process without deleting identity
+or business data. Storage, failed-start recovery and the private credential
+boundary belong to the [App Owner](worker-demo/README.md#connection-configuration).
+
+For [GCP Release Preview](../doc/guide/operations/deploy.md#release-preview), the
+Worker address is `https://workers-staging.xamass.net`; use a Worker credential,
+not an administrator credential. This data path needs no SSH tunnel or ADB
+reverse. The host must separately register the Group and digest event, enable
+`any` / `worker.any`, and allow that Group's Prepare routes at the gateway.
+The App neither provisions these resources nor creates a Task. Device-local
+Host HTTP remains loopback-only and adds no configuration or secret endpoint.
+
+An App-only change can consume the published 3.2.0 SDK while GCP retains its
+published Runtime. Record the App source commit separately from the SDK version,
+commit, ZIP hash, actual resolved binaries and APK hash; do not describe them as
+one source commit. The existing CI candidate ZIP/APK chain is unchanged. Any GCP
+resource adjustment is an explicit configuration deployment, not an automatic
+effect of merging the App PR, and does not require republishing an unchanged Runtime.
+
+Public acceptance is a separate small [device/API witness](../integrations/android-worker-proof/README.md#public-runtime-deployment-acceptance).
+It uses native configuration UI and authenticated finite Task APIs, not the old
+browser workbench acceptance. Keep the reusable Android Group, Any binding and
+daily credential after that acceptance; stop the test App, revoke temporary
+credentials and restore only the ADB mappings touched by the run.
 
 ## Batch Checks through an Android Pool
 

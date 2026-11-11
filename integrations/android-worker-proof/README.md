@@ -259,6 +259,42 @@ Doze/OEM background policy, a device matrix, Handler throughput or arbitrary
 application counts. A future Properties proof must use a real owning surface;
 it must not add a test-only Properties control API to the Demo Host.
 
+## Public Runtime deployment acceptance
+
+The [App connection configuration](../../xa-android/worker-demo/README.md#connection-configuration)
+has a separate small Release Preview witness. The existing CI correctness,
+convergence, Triad and scenario phases retain their workloads, assertions and
+deadlines; their local port mappings do not prove public connectivity.
+
+Use one existing development emulator and one Lab APK. Record the App source
+commit independently from the published SDK 3.2.0 commit/ZIP, actual resolved
+dependencies and APK hash. GCP continues to consume its published Runtime;
+Group/event registration, Any binding and gateway allowlisting are a deliberate
+external configuration adjustment. Do not copy the CI suite or a Worker Host to GCP.
+
+Through actual native UI, save the Worker HTTPS address and private credential,
+confirm that the current run is unchanged, then force-stop/reopen the App. The
+public data path uses normal certificate/hostname validation and no SSH tunnel
+or ADB reverse. ADB may install/control the selected device and inspect its
+loopback Host evidence, but does not carry Runtime/Adapter traffic.
+
+Create a raw finite Task through the authenticated administrative API with Any
+refill and `worker.any`. Three fixed ASCII/Unicode digest inputs must close across
+the actual Android Worker, saved Item queries, independently calculated digests,
+terminal Item/Task states and complete JSONL. Verify same-environment identity and
+saved settings across process restart. Invalid credentials must not fall back
+anonymously. Revocation requires removing the temporary credential and closing
+old gateway connections; reload alone is not an immediate-revocation witness.
+A daily credential can then be saved and explicitly restarted for another execution.
+
+Record IDs, quantities, hashes, configuration changes, assertion outcomes and
+uncovered boundaries, not secrets, full seeds or result bodies. Retain the reusable
+Android Group/Any/gateway binding and daily private credential; stop the test App,
+revoke temporary credentials and restore touched mappings. Do not clear the
+long-lived GCP scope. These are acceptance requirements, not an assertion that a
+particular deployment has passed. Native App UI plus API execution does not
+complete a still-pending browser workbench creation/download acceptance.
+
 ## Verification
 
 ```text

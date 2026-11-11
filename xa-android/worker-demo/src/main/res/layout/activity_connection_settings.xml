@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F4F6F5"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:id="@+id/connectionSettingsContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/connection_settings_title"
+            android:textColor="#102A22"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/connectionGroupValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:fontFamily="monospace"
+            android:textColor="#52645E" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="@string/connection_effective_label"
+            android:textColor="#102A22"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/connectionEffectiveValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="monospace"
+            android:textColor="#102A22" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/connection_saved_label"
+            android:textColor="#102A22"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/connectionSavedValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="monospace"
+            android:textColor="#102A22" />
+
+        <TextView
+            android:id="@+id/connectionPendingValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:accessibilityLiveRegion="polite"
+            android:textColor="#006C4C"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/connectionStartupError"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="#B3261E"
+            android:visibility="gone" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:labelFor="@id/connectionRuntimeInput"
+            android:text="@string/connection_runtime_label"
+            android:textColor="#52645E" />
+
+        <EditText
+            android:id="@+id/connectionRuntimeInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/connection_runtime_label"
+            android:hint="https://workers-staging.xamass.net"
+            android:inputType="textUri"
+            android:imeOptions="actionNext"
+            android:minHeight="48dp"
+            android:saveEnabled="false"
+            android:singleLine="true"
+            android:textColor="#102A22" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:labelFor="@id/connectionKeyIdInput"
+            android:text="@string/connection_key_id_label"
+            android:textColor="#52645E" />
+
+        <EditText
+            android:id="@+id/connectionKeyIdInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/connection_key_id_label"
+            android:inputType="textVisiblePassword|textNoSuggestions"
+            android:imeOptions="actionNext"
+            android:minHeight="48dp"
+            android:saveEnabled="false"
+            android:singleLine="true"
+            android:textColor="#102A22" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:labelFor="@id/connectionSecretInput"
+            android:text="@string/connection_secret_label"
+            android:textColor="#52645E" />
+
+        <EditText
+            android:id="@+id/connectionSecretInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/connection_secret_label"
+            android:hint="@string/connection_secret_hint"
+            android:inputType="textPassword|textNoSuggestions"
+            android:imeOptions="actionDone"
+            android:minHeight="48dp"
+            android:saveEnabled="false"
+            android:singleLine="true"
+            android:textColor="#102A22" />
+
+        <TextView
+            android:id="@+id/connectionFeedback"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:accessibilityLiveRegion="polite"
+            android:textColor="#B3261E" />
+
+        <Button
+            android:id="@+id/saveConnectionSettingsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:minHeight="48dp"
+            android:text="@string/connection_save_button" />
+
+        <Button
+            android:id="@+id/restoreConnectionDefaultsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="@string/connection_restore_button" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/connection_restart_instructions"
+            android:textColor="#52645E" />
+
+        <Button
+            android:id="@+id/openApplicationInfoButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="@string/connection_application_info_button" />
+    </LinearLayout>
+</ScrollView>

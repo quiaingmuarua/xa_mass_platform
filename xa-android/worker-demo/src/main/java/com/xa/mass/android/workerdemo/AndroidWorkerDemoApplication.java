@@ -14,9 +14,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public final class AndroidWorkerDemoApplication extends Application {
+public class AndroidWorkerDemoApplication extends Application {
 
-    private static final String WORKER_GROUP_ID = "android-demo-workers";
+    static final String WORKER_GROUP_ID = "android-demo-workers";
 
     private AndroidWorker worker;
     private AndroidDemoCapabilities demoCapabilities;
@@ -25,13 +25,16 @@ public final class AndroidWorkerDemoApplication extends Application {
     private AndroidMessageNotifications messageNotifications;
     private AndroidCapabilityHttpServer capabilityHttpServer;
     private String capabilityHttpDiagnostic;
+    private AndroidConnectionSettingsStore connectionSettingsStore;
+    private AndroidConnectionSettings activeConnectionSettings;
+    private AndroidConnectionSettings savedConnectionSettings;
+    private AndroidConnectionSettings defaultConnectionSettings;
+    private String connectionStartupError;
+    private String savedConnectionError;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        URI runtimeApiBaseUrl = URI.create(
-                getString(R.string.runtime_api_base_url)
-        );
         AndroidDeviceProperties deviceProperties =
                 new AndroidDeviceProperties(this);
         demoCapabilities = new AndroidDemoCapabilities(this);
@@ -45,15 +48,41 @@ public final class AndroidWorkerDemoApplication extends Application {
         workerDefinitions.add(messages.sendingDefinition());
         hostDefinitions.add(messages.observationDefinition());
         workerDefinitions = Collections.unmodifiableList(workerDefinitions);
-        worker = AndroidWorker.create(
-                this,
-                runtimeApiBaseUrl,
-                WORKER_GROUP_ID,
-                deviceProperties,
-                workerDefinitions
-        );
+        // Pure presentation owners also exist when a saved connection cannot be loaded.
+        // A previous process's notification can never recover its Reporter.
         messageNotifications = new AndroidMessageNotifications(this, messages);
         messages.addListener(messageNotifications::requestRefresh);
+        connectionSettingsStore = createConnectionSettingsStore();
+        defaultConnectionSettings = AndroidConnectionSettings.defaults(
+                URI.create(getString(R.string.runtime_api_base_url)));
+        try {
+            savedConnectionSettings = connectionSettingsStore.load();
+            activeConnectionSettings = savedConnectionSettings == null
+                    ? defaultConnectionSettings : savedConnectionSettings;
+        } catch (RuntimeException error) {
+            connectionStartupError = "连接配置不可用，请重新保存配置或恢复构建默认，然后完整重启 App。";
+            savedConnectionError = connectionStartupError;
+            capabilityHttpDiagnostic = "Connection configuration is unavailable";
+            return;
+        }
+        try {
+            worker = AndroidWorker.create(
+                    this,
+                    activeConnectionSettings.runtimeApiBaseUrl(),
+                    WORKER_GROUP_ID,
+                    deviceProperties,
+                    workerDefinitions,
+                    activeConnectionSettings.connectionOptions()
+            );
+        } catch (RuntimeException unavailable) {
+            // The concrete client can reject a URI that passed the shared credential checks.
+            // Worker.create owns cleanup of partially constructed SDK resources.
+            activeConnectionSettings = null;
+            connectionStartupError = "无法初始化连接，请修复配置并完整重启 App。";
+            savedConnectionError = connectionStartupError;
+            capabilityHttpDiagnostic = "Connection initialization is unavailable";
+            return;
+        }
         worker.addListener(snapshot -> {
             if (snapshot.state() == WorkerLifecycle.State.STOPPED
                     && worker.snapshot().state() == WorkerLifecycle.State.STOPPED) messages.revokeReporters();
@@ -74,6 +103,45 @@ public final class AndroidWorkerDemoApplication extends Application {
             capabilityHttpServer.close();
         }
         worker.start();
+    }
+
+    AndroidConnectionSettingsStore createConnectionSettingsStore() {
+        return new AndroidConnectionSettingsStore(this);
+    }
+
+    AndroidConnectionSettings activeConnectionSettings() { return activeConnectionSettings; }
+    AndroidConnectionSettings savedConnectionSettings() { return savedConnectionSettings; }
+    AndroidConnectionSettings defaultConnectionSettings() { return defaultConnectionSettings; }
+    String connectionStartupError() { return connectionStartupError; }
+    String savedConnectionError() { return savedConnectionError; }
+    boolean hasWorker() { return worker != null; }
+
+    void saveConnectionSettings(AndroidConnectionSettings settings) {
+        try {
+            connectionSettingsStore.save(settings);
+        } catch (RuntimeException unavailable) {
+            savedConnectionError = "保存结果未确认。当前连接未改变，请显式重新保存或完整重启后核对。";
+            throw unavailable;
+        }
+        savedConnectionSettings = settings;
+        savedConnectionError = null;
+    }
+
+    void restoreDefaultConnectionSettings() {
+        try {
+            connectionSettingsStore.clear();
+        } catch (RuntimeException unavailable) {
+            savedConnectionError = "恢复默认的结果未确认。当前连接未改变，请完整重启后核对。";
+            throw unavailable;
+        }
+        savedConnectionSettings = null;
+        savedConnectionError = null;
+    }
+
+    boolean connectionRestartRequired() {
+        AndroidConnectionSettings next = savedConnectionSettings == null
+                ? defaultConnectionSettings : savedConnectionSettings;
+        return activeConnectionSettings == null || !activeConnectionSettings.sameConnection(next);
     }
 
     AndroidWorker worker() {

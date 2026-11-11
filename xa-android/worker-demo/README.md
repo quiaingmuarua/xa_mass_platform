@@ -36,8 +36,8 @@ implementation code.
 
 ## Runtime behavior
 
-The Application creates and starts one `AndroidWorker` for
-`android-demo-workers`. Android Worker owns the long-lived `clientWorkerKey`
+With a valid startup connection selection, the Application creates and starts
+one `AndroidWorker` for `android-demo-workers`. Android Worker owns the long-lived `clientWorkerKey`
 and WorkerGroup coordinate and performs one Prepare per explicit start. Its
 [Android Client](../../transport/android-worker/README.md#platform-resources)
 owns transparent reconnect within that run. The platform-issued
@@ -58,6 +58,59 @@ the Worker from starting. The Activity only observes Worker lifecycle,
 capability state, and the fixed probe endpoint while visible.
 Leaving the Activity stops neither owner; Android may still kill the process
 because this demo installs no Service or WorkManager.
+
+## Connection configuration
+
+The App owns one optional private connection override: Runtime HTTPS address,
+Worker gateway `keyId` and `secret`. The non-exported **连接配置** Activity validates
+a complete replacement through the existing SDK credential/address rules. Group
+identity and installed Definitions remain fixed. No override means the existing
+build address and anonymous local connection options; no new environment list,
+SDK mechanism or public configuration API is introduced.
+
+`AndroidConnectionSettingsStore` uses an App-scoped Android Keystore key and
+AES-GCM to encrypt the complete settings object. The bounded file is
+`runtime-connection.enc` under `Context.getNoBackupFilesDir()` and is published
+with `AtomicFile`; the file, including backup/recovery siblings, stays outside
+cloud backup and device transfer. Failure before publication preserves the
+previous saved selection. If publication cannot be confirmed, the UI marks the
+saved state unavailable instead of presenting its old cache as authoritative;
+the current connection stays unchanged and no write is automatically retried.
+Restore-default atomically publishes a fixed nonsecret
+default marker, so it can recover even when the old ciphertext/key is unreadable.
+It does not delete the Worker client key or business state. Each package has its
+own sandbox and Keystore access; the Lab packages do not share a credential store.
+
+The Application captures effective settings once at process startup. Saving or
+restoring defaults changes only the saved selection and the pending-restart
+display. It never replaces the current Worker, prepares another identity or
+changes the current run's credentials. Connect/Disconnect continue to use that
+startup snapshot. A complete process restart is required; **打开应用信息** opens
+the system App-details page for explicit force-stop/reopen. Activity recreation,
+leaving the page and `finishAffinity()` are not represented as process restart.
+
+The secret is masked while entering, never reloaded into the form, and cleared
+from the editor after saving or leaving it. Input drafts are excluded from view/
+Activity state; autofill is disabled and no personalized keyboard learning is
+requested where the Android API supports those controls. Secrets do not enter resources,
+build arguments, Intents, Properties, identity, Host snapshots, logs or exported
+files. Diagnostics use fixed safe messages rather than parser/decryption causes.
+The store makes no guarantee against a rooted/debug-controlled device or process
+memory inspection and adds no account or credential-issuing service.
+
+Unreadable, invalid or undecryptable saved settings leave the configuration UI
+usable but create no Worker and start no Host HTTP listener. MainActivity handles
+the unavailable state through creation, rendering and listener registration;
+Worker-dependent controls are disabled. Saving a repair still requires restart,
+and failure never falls back to the anonymous build address. Empty local message
+presentation owners remain initialized, and startup cancels the previous process's
+notification. Stale notification opens/replies cannot recover a Reporter or make
+the failed connection usable.
+
+Address/credential changes do not reset `clientWorkerKey`. Restart against the
+same Runtime identity registry and scope resolves the existing Worker identity;
+different Runtime/scope registries can issue different Worker IDs. The gateway
+credential controls admission to a shared trust domain, not ownership of that ID.
 
 ## Local message interaction
 
@@ -148,8 +201,9 @@ The API 33 proof also builds three fixed Debug-derived Lab variants:
 | `lab2` | `com.xa.mass.integration.androidworker.lab2` | 18185 |
 | `lab3` | `com.xa.mass.integration.androidworker.lab3` | 18186 |
 
-They keep the same WorkerGroup and Runtime endpoints. Separate application
-sandboxes provide separate persistent client keys. The proof targets each
+They keep the same WorkerGroup and build-default Runtime endpoints. Each package
+may independently save a connection override. Separate application sandboxes
+provide separate persistent client keys. The proof targets each
 observed Worker ID directly and independently checks its `packageName` Property
 against the application ID. This is a fixed proof topology, not a general
 replica facility.
@@ -210,6 +264,12 @@ its own APK build parameter. Its [Integration Owner](../../integrations/android-
 defines all Java phases and the portable Python invocation. Java retains the
 RPC digest payload in memory to check its exact content; saved evidence retains
 only identity and assertion outcomes.
+
+For an existing public Runtime, use the [private App configuration](../README.md#public-runtime-connection)
+instead of changing that build parameter or adding an ADB reverse. The small
+public deployment witness uses one existing Lab package, real native configuration
+UI and authenticated finite Task APIs. Its evidence records actual execution and
+exports independently of the older web workbench interaction acceptance.
 
 ## Hosted Emulator proof
 
@@ -298,3 +358,10 @@ Platform library and Java proof tests run from the platform root instead:
 Host contract lane and the path-selected API 33 Worker Proof lane. The
 documented real-device flow remains the manual proof for vendor behavior,
 physical Battery readings, and background execution limits.
+
+Connection tests cover complete-input validation, encrypted round trips and
+corruption, failed writes retaining old settings, restore-default, unavailable
+startup UI and saved/effective isolation. Actual device acceptance separately
+checks Keystore persistence across process restart, public HTTPS/WSS execution,
+wrong credentials and controlled gateway revocation; unit or APK build success
+does not establish those deployment facts.
