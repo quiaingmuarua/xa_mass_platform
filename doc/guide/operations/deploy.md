@@ -137,7 +137,9 @@ Basic 认证进入；程序调用提供管理凭据及原有开发调用方头�
 外部 Java Host 使用独立 Simulator `--config`，设置 HTTPS `runtimeApiBaseUrl` 和私有
 `gatewayCredentialFile`。该路径相对主配置文件解析，读取失败不会回退匿名连接。
 更换密钥需明确重启 Host。不要运行统一的本地环境启动器去连接已有远端 Server。
-3.2 SDK 支持同样的传递，但该版本没有为 Android Demo 增加凭据配置页面。
+Android SDK 3.2 支持同样的凭据传递；当前 App 使用
+[静态构建、安装和私有凭据注入](../../../xa-android/README.md#public-runtime-connection)，
+不通过配置页面更改连接。公网数据链路不依赖 SSH 隧道或 ADB reverse。
 
 删除凭据会拒绝新请求，立即撤销还需实际关闭已有网关连接，不能把 reload 当成已断连。
 精确的认证、路由、限额及撤销规则以链接的网关示例为准。

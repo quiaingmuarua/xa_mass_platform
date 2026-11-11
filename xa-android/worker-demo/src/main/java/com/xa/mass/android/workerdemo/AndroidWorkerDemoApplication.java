@@ -6,6 +6,7 @@ import com.xa.mass.android.capabilityhttp.AndroidCapabilityHttpServer;
 import com.xa.mass.android.capabilities.AndroidDemoCapabilities;
 import com.xa.mass.worker.android.AndroidWorker;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 
 import java.io.IOException;
@@ -14,9 +15,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public final class AndroidWorkerDemoApplication extends Application {
+public class AndroidWorkerDemoApplication extends Application {
 
-    private static final String WORKER_GROUP_ID = "android-demo-workers";
+    static final String WORKER_GROUP_ID = "android-demo-workers";
 
     private AndroidWorker worker;
     private AndroidDemoCapabilities demoCapabilities;
@@ -25,13 +26,11 @@ public final class AndroidWorkerDemoApplication extends Application {
     private AndroidMessageNotifications messageNotifications;
     private AndroidCapabilityHttpServer capabilityHttpServer;
     private String capabilityHttpDiagnostic;
+    private String connectionStartupError;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        URI runtimeApiBaseUrl = URI.create(
-                getString(R.string.runtime_api_base_url)
-        );
         AndroidDeviceProperties deviceProperties =
                 new AndroidDeviceProperties(this);
         demoCapabilities = new AndroidDemoCapabilities(this);
@@ -45,15 +44,36 @@ public final class AndroidWorkerDemoApplication extends Application {
         workerDefinitions.add(messages.sendingDefinition());
         hostDefinitions.add(messages.observationDefinition());
         workerDefinitions = Collections.unmodifiableList(workerDefinitions);
-        worker = AndroidWorker.create(
-                this,
-                runtimeApiBaseUrl,
-                WORKER_GROUP_ID,
-                deviceProperties,
-                workerDefinitions
-        );
+        // Pure presentation owners also exist when required access material cannot be loaded.
+        // A previous process's notification can never recover its Reporter.
         messageNotifications = new AndroidMessageNotifications(this, messages);
         messages.addListener(messageNotifications::requestRefresh);
+        URI runtimeApiBaseUrl;
+        WorkerConnectionOptions connectionOptions;
+        try {
+            runtimeApiBaseUrl = URI.create(getString(R.string.runtime_api_base_url));
+            connectionOptions = loadWorkerConnectionOptions(runtimeApiBaseUrl);
+        } catch (RuntimeException error) {
+            connectionStartupError = "Worker 接入不可用，请检查构建地址和私有 worker-access.json，然后完整重启 App。";
+            capabilityHttpDiagnostic = "Worker access is unavailable";
+            return;
+        }
+        try {
+            worker = AndroidWorker.create(
+                    this,
+                    runtimeApiBaseUrl,
+                    WORKER_GROUP_ID,
+                    deviceProperties,
+                    workerDefinitions,
+                    connectionOptions
+            );
+        } catch (RuntimeException unavailable) {
+            // The concrete client can reject a URI that passed the shared credential checks.
+            // Worker.create owns cleanup of partially constructed SDK resources.
+            connectionStartupError = "无法初始化 Worker 连接，请检查构建地址并完整重启 App。";
+            capabilityHttpDiagnostic = "Connection initialization is unavailable";
+            return;
+        }
         worker.addListener(snapshot -> {
             if (snapshot.state() == WorkerLifecycle.State.STOPPED
                     && worker.snapshot().state() == WorkerLifecycle.State.STOPPED) messages.revokeReporters();
@@ -75,6 +95,14 @@ public final class AndroidWorkerDemoApplication extends Application {
         }
         worker.start();
     }
+
+    WorkerConnectionOptions loadWorkerConnectionOptions(URI runtimeApiBaseUrl) {
+        return AndroidWorkerAccessFile.load(this, runtimeApiBaseUrl,
+                getResources().getBoolean(R.bool.gateway_credential_required));
+    }
+
+    String connectionStartupError() { return connectionStartupError; }
+    boolean hasWorker() { return worker != null; }
 
     AndroidWorker worker() {
         if (worker == null) {

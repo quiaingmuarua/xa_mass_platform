@@ -272,6 +272,19 @@ TLS and hostname validation must remain enabled. This proves environment-level
 access, not user/Worker identity isolation; it adds no performance workload.
 GCP only consumes published artifacts and runs small deployment acceptance.
 
+Android App static access retains the existing Android Host/consumer/
+Emulator lane selection; no new CI phase or workload is implied by a public
+deployment check. Focused App tests own required/anonymous mode, private-file and
+origin validation, captured startup credentials and safe unavailable startup;
+provisioning tests own the stopped debuggable target and stdin transfer. The separate
+[public Runtime acceptance](integrations/android-worker-proof/README.md#public-runtime-deployment-acceptance)
+uses the existing static build/install/provision/start sequence and authenticated
+finite Task APIs against the published Runtime, with normal TLS and no SSH/ADB
+reverse for Runtime traffic. It does not require Computer Use. Record App and
+published SDK provenance separately. Preserve
+the existing CI assertions, and do not mark the pending browser workbench flow
+complete from device/API evidence.
+
 A mechanism proof must reject at least one locally plausible but systemically
 invalid implementation:
 

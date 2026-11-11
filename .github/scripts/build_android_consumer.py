@@ -22,6 +22,8 @@ def main(arguments=None) -> int:
     consumer.add_archive_arguments(parser)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--runtime-api-base-url", default="http://127.0.0.1:18082")
+    parser.add_argument("--gateway-credential-required", action="store_true",
+                        help="Build an APK that requires its private gateway credential file")
     options = parser.parse_args(arguments)
     output = options.output_dir.resolve()
     if (output / "apk-provenance.json").exists():
@@ -41,6 +43,7 @@ def main(arguments=None) -> int:
         command = [str(wrapper), "--no-daemon", "-p", str(project),
                    f"-PxaMassSdkRoot={receipt['sdkRoot']}", f"-PxaMassVersion={options.version}",
                    f"-PxaMassCommit={options.commit}", f"-PxaMassRuntimeApiBaseUrl={options.runtime_api_base_url}",
+                   f"-PxaMassGatewayCredentialRequired={str(options.gateway_credential_required).lower()}",
                    ":capabilities:testDebugUnitTest", ":worker-demo:testDebugUnitTest",
                    ":worker-demo:assembleDebug", ":worker-demo:assembleLab1",
                    ":worker-demo:assembleLab2", ":worker-demo:assembleLab3"]
@@ -62,6 +65,7 @@ def main(arguments=None) -> int:
             shutil.copy2(apk, destination)
             apk_hashes[apk.name] = consumer.digest(destination)
         provenance = dict(receipt, runtimeApiBaseUrl=options.runtime_api_base_url,
+                          gatewayCredentialRequired=options.gateway_credential_required,
                           projectId="default", caller={"userId": "1000", "role": "admin"},
                           profile="consumer", pacerPreset="DEFAULT", endpointManagerId=consumer.ADAPTER_ID,
                           independentBuild=True, sdkConsumption=consumption, apkSha256=apk_hashes)

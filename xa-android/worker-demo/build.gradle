@@ -6,6 +6,12 @@ base {
     archivesName.set('xa-mass-android-worker-demo')
 }
 
+def gatewayCredentialRequired = providers.gradleProperty('xaMassGatewayCredentialRequired')
+        .orElse('false').get()
+if (!(gatewayCredentialRequired in ['true', 'false'])) {
+    throw new GradleException('xaMassGatewayCredentialRequired must be exactly true or false')
+}
+
 android {
     namespace = 'com.xa.mass.android.workerdemo'
     compileSdk = 36
@@ -18,6 +24,7 @@ android {
         versionName = '0.1.0'
         resValue 'string', 'runtime_api_base_url', providers.gradleProperty('xaMassRuntimeApiBaseUrl')
                 .orElse('http://127.0.0.1:18182').get()
+        resValue 'bool', 'gateway_credential_required', gatewayCredentialRequired
     }
 
     buildTypes {

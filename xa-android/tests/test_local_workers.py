@@ -111,6 +111,51 @@ class LocalAndroidTest(unittest.TestCase):
                 owner.check_forward_ports()
         self.assertFalse(any(call.args[0] == "install" for call in owner.adb.call_args_list))
 
+    def test_anonymous_cache_requires_an_explicit_false_credential_flag(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = root / "repository"
+            for relative in ("distribution/server/build/distributions/xa-mass-server-runtime-3.2.0.zip",
+                             "distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-3.2.0.zip",
+                             "xa-android/worker-demo/build.gradle", ".github/scripts/build_android_consumer.py"):
+                path = repository / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(relative, encoding="utf-8")
+            owner = self.owner()
+            owner.output = root / "runs/one"
+            builds = []
+            def build(command, **kwargs):
+                builds.append(command)
+                destination = Path(command[command.index("--output-dir") + 1])
+                destination.mkdir(parents=True)
+                hashes = {}
+                import run_consumer as consumer
+                for _, name, _ in owner.apps:
+                    apk = destination / name
+                    apk.write_bytes(b"fixture-apk")
+                    hashes[name] = consumer.digest(apk)
+                (destination / "apk-provenance.json").write_text(json.dumps({
+                    "runtimeApiBaseUrl": owner.runtime_url, "gatewayCredentialRequired": False,
+                    "apkSha256": hashes}), encoding="utf-8")
+                return Mock(returncode=0)
+            with patch("local_workers.consumer.prepare_archives", return_value={"runtimeRoot": str(root / "runtime")}), \
+                    patch("local_workers.subprocess.check_output", return_value="a" * 40), \
+                    patch("local_workers.subprocess.run", side_effect=build):
+                owner.prepare(repository, "3.2.0")
+                owner.prepare(repository, "3.2.0")
+                self.assertEqual(1, len(builds))
+                self.assertIs(owner.provenance["gatewayCredentialRequired"], False)
+                self.assertIs(json.loads((owner.output / "android.json").read_text())["gatewayCredentialRequired"], False)
+                self.assertNotIn("--gateway-credential-required", builds[0])
+                path = owner.apk_root / "apk-provenance.json"
+                original = json.loads(path.read_text())
+                for value in (True, "false", None):
+                    with self.subTest(value=value):
+                        path.write_text(json.dumps(dict(original, gatewayCredentialRequired=value)))
+                        with self.assertRaisesRegex(RuntimeError, "Cached Android artifacts failed"):
+                            owner.prepare(repository, "3.2.0")
+                self.assertEqual(1, len(builds), "Invalid cache must not silently rebuild or reuse an authenticated APK")
+
 
 if __name__ == "__main__":
     unittest.main()

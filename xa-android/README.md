@@ -53,7 +53,10 @@ remain Server-owned state and do not change the accepted binary identity.
 
 Server and Adapter default to `18182` and `18183`. Build with
 `-PxaMassRuntimeApiBaseUrl=http://127.0.0.1:18082` when using the Proof's `18082/18083`
-ports. Runtime endpoints, APK address and device port mappings must agree.
+ports. This fixes the Runtime address in the APK; there is no private address
+override. Runtime endpoints, the compiled App address and device port mappings
+must agree for the local path. `-PxaMassGatewayCredentialRequired` defaults to
+`false`; this local build ignores any private gateway credential file.
 
 For a normal API 33 Emulator example, bind every ADB command to its serial:
 
@@ -67,6 +70,65 @@ adb -s emulator-5554 shell am start -W -n com.xa.mass.integration.androidworker/
 The Application owns one persistent client key. Observe its issued Worker ID in
 the App or through the public Runtime catalog; do not invent or persist a Server
 Worker ID as App identity. The normal example does not clear App data.
+
+## Public Runtime connection
+
+Connection selection is static: the existing `-PxaMassRuntimeApiBaseUrl` fixes
+the address in the APK, and `-PxaMassGatewayCredentialRequired=true` requires a
+private Worker credential at process startup. The Group remains
+`android-demo-workers`. The archive-consumer build helper exposes the same choice
+as `--gateway-credential-required`; neither build option accepts a secret. There
+is no App settings page, runtime address override or GCP-specific product/profile.
+
+Use the existing verified SDK preparation above, then build, install, provision
+and start one selected Lab package. Run from this directory; `$sdkRoot` and
+`$candidate` retain the verified SDK inputs, not an App source identity:
+
+```powershell
+$device = 'emulator-5554'
+$package = 'com.xa.mass.integration.androidworker.lab1'
+$workerOrigin = 'https://workers-staging.xamass.net'
+$credential = (Resolve-Path '<private worker-access.json>').Path
+.\gradlew.bat --no-daemon "-PxaMassSdkRoot=$sdkRoot" "-PxaMassVersion=$($candidate.version)" "-PxaMassCommit=$($candidate.gitCommit)" "-PxaMassRuntimeApiBaseUrl=$workerOrigin" -PxaMassGatewayCredentialRequired=true :worker-demo:assembleLab1
+adb -s $device install -r worker-demo/build/outputs/apk/lab1/xa-mass-android-worker-demo-lab1.apk
+adb -s $device shell am force-stop $package
+python .\provision_worker_access.py --device $device --package $package --credential-file $credential
+adb -s $device shell am start -W -n "$package/com.xa.mass.android.workerdemo.MainActivity"
+```
+
+Prepare a private UTF-8 JSON file excluded from source control and artifact inputs,
+containing only `allowedOrigin`, `keyId` and `secret`. `allowedOrigin` is the HTTPS origin of
+the compiled Runtime address, with no userinfo, query, fragment or non-root path.
+Use a Worker credential, not an administrator credential. The helper requires a
+stopped, installed debuggable App on the explicitly selected device. It transfers
+the JSON through ADB stdin and `run-as` into the App's private no-backup directory;
+it does not put the secret in command arguments, a shared device directory, APKs,
+logs or build receipts. It does not install or start the App. Provision another
+credential only while stopped, then explicitly start a new process. The
+[App Owner](worker-demo/README.md#static-connection-and-private-access) defines
+startup validation, safe errors and the file's trust boundary.
+
+The public data path uses the existing 3.2.0 SDK's HTTPS/WSS support and needs no
+SSH tunnel or ADB reverse. For [GCP Release Preview](../doc/guide/operations/deploy.md#release-preview),
+the example Worker origin above must separately have the Group and digest event
+registered, `any` / `worker.any` enabled, and that Group's Prepare routes allowed
+at the gateway. The App and provisioning helper do not create these resources
+or submit Tasks. Device-local Host HTTP remains loopback-only and adds no
+credential read/write endpoint.
+
+An App-only change can consume the published 3.2.0 SDK while GCP retains its
+published Runtime. Record the App source commit separately from the SDK version,
+commit, ZIP hash, actual resolved binaries and APK hash; do not describe them as
+one source commit. The existing CI candidate ZIP/APK chain is unchanged. Any GCP
+resource adjustment is an explicit configuration deployment, not an automatic
+effect of merging the App PR, and does not require republishing an unchanged Runtime.
+
+Public acceptance is a separate small [device/API witness](../integrations/android-worker-proof/README.md#public-runtime-deployment-acceptance).
+It uses static builds, private provisioning and authenticated finite Task APIs;
+it requires no Computer Use or browser configuration flow. Keep the reusable
+Android Group, Any binding and
+daily credential after that acceptance; stop the test App, revoke temporary
+credentials and restore only the ADB mappings touched by the run.
 
 ## Batch Checks through an Android Pool
 
