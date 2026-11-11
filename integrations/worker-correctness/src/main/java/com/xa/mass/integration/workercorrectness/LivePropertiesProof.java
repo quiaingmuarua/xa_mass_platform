@@ -26,6 +26,7 @@ final class LivePropertiesProof {
     static final long PHASE_MILLIS = 120_000;
     private static final String STRING_GROUP = "scenario-string-utils-workers";
     private static final String PHONE_GROUP = "scenario-phone-number-workers";
+    private static final String DEVELOPMENT_ADMIN_AUTHORIZATION = "Bearer xak_dev_1000";
     private final CorrectnessOptions options;
     private final CorrectnessSpec spec;
     private final LivePropertiesEvidence evidence = new LivePropertiesEvidence();
@@ -274,9 +275,12 @@ final class LivePropertiesProof {
                                         long deadline, boolean observation) throws Exception {
         long remaining = Math.min(deadline, phaseDeadline) - System.nanoTime();
         require(remaining > 0, "request-deadline");
-        HttpRequest request = HttpRequest.newBuilder(base.resolve(path))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(base.resolve(path))
                 .timeout(Duration.ofNanos(Math.min(TimeUnit.SECONDS.toNanos(2), remaining)))
-                .header("Content-Type", "application/json")
+                .header("Content-Type", "application/json");
+        // Runtime observation routes need the public development key; Lab and exempt routes ignore it.
+        if (path.startsWith("/api/")) builder.header("Authorization", DEVELOPMENT_ADMIN_AUTHORIZATION);
+        HttpRequest request = builder
                 .method(method, body == null ? HttpRequest.BodyPublishers.noBody()
                         : HttpRequest.BodyPublishers.ofString(Jsons.toJson(body), StandardCharsets.UTF_8)).build();
         HttpResponse<String> response;
