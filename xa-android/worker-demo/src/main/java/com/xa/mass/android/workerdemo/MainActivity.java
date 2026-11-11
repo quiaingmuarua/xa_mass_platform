@@ -35,7 +35,6 @@ public final class MainActivity extends Activity {
     private Button connectButton;
     private Button disconnectButton;
     private View copyWorkerIdButton;
-    private TextView connectionConfigurationValue;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,8 +48,6 @@ public final class MainActivity extends Activity {
 
         connectButton.setOnClickListener(view -> { if (worker != null) worker.start(); });
         disconnectButton.setOnClickListener(view -> { if (worker != null) worker.stop(); });
-        findViewById(R.id.connectionSettingsButton).setOnClickListener(
-                view -> startActivity(new Intent(this, ConnectionSettingsActivity.class)));
         findViewById(R.id.messagesButton).setOnClickListener(
                 view -> startActivity(new Intent(this, MessagesActivity.class)));
         findViewById(R.id.incrementButton).setOnClickListener(
@@ -92,7 +89,6 @@ public final class MainActivity extends Activity {
         connectButton = findViewById(R.id.connectButton);
         disconnectButton = findViewById(R.id.disconnectButton);
         copyWorkerIdButton = findViewById(R.id.copyWorkerIdButton);
-        connectionConfigurationValue = findViewById(R.id.connectionConfigurationValue);
     }
 
     private void requestRender() {
@@ -103,16 +99,10 @@ public final class MainActivity extends Activity {
         if (isFinishing() || isDestroyed()) {
             return;
         }
-        AndroidConnectionSettings active = application.activeConnectionSettings();
-        connectionConfigurationValue.setText(active == null
-                ? "连接配置不可用 · 请修复并完整重启 App"
-                : "当前 Runtime: " + active.runtimeApiBaseUrl()
-                    + (application.savedConnectionError() != null ? "\n保存状态未确认，当前连接未改变"
-                    : application.connectionRestartRequired() ? "\n已保存配置，完整重启 App 后生效" : ""));
         WorkerLifecycle.Snapshot workerSnapshot = worker == null ? null : worker.snapshot();
         AndroidDemoCapabilities.Snapshot demoSnapshot =
                 demoCapabilities.snapshot();
-        statusValue.setText(workerSnapshot == null ? "CONFIGURATION UNAVAILABLE" : workerSnapshot.state().name());
+        statusValue.setText(workerSnapshot == null ? "STARTUP UNAVAILABLE" : workerSnapshot.state().name());
         workerIdValue.setText(orFallback(
                 workerSnapshot == null ? null : workerSnapshot.workerId(),
                 "Not registered"

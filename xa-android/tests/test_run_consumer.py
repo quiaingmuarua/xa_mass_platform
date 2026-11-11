@@ -26,6 +26,13 @@ class ConsumerArchiveTest(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
+    def test_standalone_copy_includes_the_private_provisioning_tool(self):
+        destination = self.root / "copied-consumer"
+        consumer.copy_consumer(destination)
+        source = consumer.ROOT / "provision_worker_access.py"
+        self.assertEqual(source.read_bytes(), (destination / source.name).read_bytes())
+        self.assertFalse((destination / "worker-demo/build").exists())
+
     def archive(self, component, *, commit=None, version=None, extra=None, missing=None):
         root = f"xa-mass-{component}-{self.version}"
         manifest = {"version": version or self.version, "gitCommit": commit or self.commit}

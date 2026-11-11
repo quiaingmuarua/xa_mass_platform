@@ -156,7 +156,7 @@ or observation replay.
 - **Primary Owner:** [Android Worker](../../transport/android-worker/README.md) and [XA Android](../../xa-android/README.md).
 - **Boundary:** library assembly, identity persistence, capability Definitions, local lifecycle, Control HTTP and Java proof-client compatibility.
 - **Required condition:** focused tests establish stop returning while a Handler is blocked and suppressing later callbacks under the [callback admission contract](../../transport/android-worker/README.md#callback-admission-and-close). Emulator Proof separately witnesses the behavior through the Android Host API.
-- **Evidence:** the linked Owners' deterministic tests and assembly checks. App connection tests cover complete settings, encrypted storage/failure recovery, saved/effective isolation and usable configuration UI without a Worker; they do not prove Android Keystore or gateway behavior on a device.
+- **Evidence:** the linked Owners' deterministic tests and assembly checks. App access tests cover static required/anonymous mode, strict private-file/origin checks, captured startup credentials and safe failure without Worker/Host HTTP creation. Provisioning tests check stopped debuggable targets and stdin-only secret transfer; these tests do not prove public device connectivity.
 - **Nonclaims:** real process, Doze, vendor policy or physical-device behavior.
 
 ## android_consumer
@@ -213,7 +213,7 @@ physical effects. State and permission edge cases remain Android Host tests.
 - **Primary Owner:** [Server Distribution](../../distribution/server/README.md) and [Worker SDK Distribution](../../distribution/worker-sdk/README.md).
 - **Boundary:** publishable archives work outside the checkout and contain only declared runtime/publication boundaries.
 - **Required evidence:** Owner archive/launch checks from extracted artifacts, without checkout fallback. The existing Linux lane also runs real Nginx/TLS refusal, credential separation, request/connection limits and restart-revocation checks, then runs the supplied Runtime with an external same-commit Java Host through the gateway. Test CA trust and hostname verification remain enabled; original internal delivery endpoints stay private.
-- **Staging nonclaims:** gateway credentials admit a trusted environment, not individual users or Workers. Android SDK tests cover credential transport; App-owned onboarding and its [public device/API witness](../../integrations/android-worker-proof/README.md#public-runtime-deployment-acceptance) are separate from Runtime Distribution. GCP deployment acceptance is a small separate witness, not execution of the CI workloads on the long-lived instance. Neither witness substitutes for pending browser interaction acceptance.
+- **Staging nonclaims:** gateway credentials admit a trusted environment, not individual users or Workers. Android SDK tests cover credential transport; static App access provisioning and its [public device/API witness](../../integrations/android-worker-proof/README.md#public-runtime-deployment-acceptance) are separate from Runtime Distribution. GCP deployment acceptance is a small separate witness, not execution of the CI workloads on the long-lived instance. Neither witness substitutes for pending browser interaction acceptance.
 - **Nonclaims:** OCI deployment or Redis lifecycle.
 
 ## docs_contract

@@ -36,7 +36,7 @@ implementation code.
 
 ## Runtime behavior
 
-With a valid startup connection selection, the Application creates and starts
+With valid static connection inputs, the Application creates and starts
 one `AndroidWorker` for `android-demo-workers`. Android Worker owns the long-lived `clientWorkerKey`
 and WorkerGroup coordinate and performs one Prepare per explicit start. Its
 [Android Client](../../transport/android-worker/README.md#platform-resources)
@@ -59,58 +59,51 @@ capability state, and the fixed probe endpoint while visible.
 Leaving the Activity stops neither owner; Android may still kill the process
 because this demo installs no Service or WorkManager.
 
-## Connection configuration
+## Static connection and private access
 
-The App owns one optional private connection override: Runtime HTTPS address,
-Worker gateway `keyId` and `secret`. The non-exported **连接配置** Activity validates
-a complete replacement through the existing SDK credential/address rules. Group
-identity and installed Definitions remain fixed. No override means the existing
-build address and anonymous local connection options; no new environment list,
-SDK mechanism or public configuration API is introduced.
+The compiled `runtime_api_base_url` comes from the existing
+`-PxaMassRuntimeApiBaseUrl`. `-PxaMassGatewayCredentialRequired` is a separate
+boolean build choice, defaulting to `false`. The false branch preserves anonymous
+local startup and ignores any private gateway file. The true branch requires
+HTTPS and reads `worker-access.json` from `Context.getNoBackupFilesDir()` once
+at process startup. It supplies the existing SDK's immutable connection options;
+there is no address override or hot reload.
 
-`AndroidConnectionSettingsStore` uses an App-scoped Android Keystore key and
-AES-GCM to encrypt the complete settings object. The bounded file is
-`runtime-connection.enc` under `Context.getNoBackupFilesDir()` and is published
-with `AtomicFile`; the file, including backup/recovery siblings, stays outside
-cloud backup and device transfer. Failure before publication preserves the
-previous saved selection. If publication cannot be confirmed, the UI marks the
-saved state unavailable instead of presenting its old cache as authoritative;
-the current connection stays unchanged and no write is automatically retried.
-Restore-default atomically publishes a fixed nonsecret
-default marker, so it can recover even when the old ciphertext/key is unreadable.
-It does not delete the Worker client key or business state. Each package has its
-own sandbox and Keystore access; the Lab packages do not share a credential store.
+The private UTF-8 JSON contains exactly `allowedOrigin`, `keyId` and `secret`.
+The allowed origin must be HTTPS with no userinfo, query or fragment and only an
+empty/root path. Its host and effective port must match the compiled Runtime
+address. Credential fields and the Runtime URI also pass the SDK's existing
+validation. Missing, unreadable, malformed or mismatched required input fails
+before Worker creation or Host HTTP startup; it never falls back anonymously.
+Safe diagnostics describe the failure without echoing input or secret material.
 
-The Application captures effective settings once at process startup. Saving or
-restoring defaults changes only the saved selection and the pending-restart
-display. It never replaces the current Worker, prepares another identity or
-changes the current run's credentials. Connect/Disconnect continue to use that
-startup snapshot. A complete process restart is required; **打开应用信息** opens
-the system App-details page for explicit force-stop/reopen. Activity recreation,
-leaving the page and `finishAffinity()` are not represented as process restart.
+The provisioning helper is a narrow developer operation for a stopped, installed
+debuggable App: `--device`, `--package` and `--credential-file` select the exact
+destination and private source. It validates the file and sends its bytes through
+ADB stdin / `run-as` to the no-backup directory. The source stays outside build
+inputs, and no secret is placed in command arguments, a public device file, an
+artifact or receipt. It does not install, stop/start, or change resources on behalf
+of the caller. Each Lab package has its own sandbox; provisioning one does not
+provision the others. The file is private JSON, not App-encrypted data; this
+development boundary does not protect it from root/debug access or process-memory
+inspection. It adds no credential issuer, login system or public read/write API.
 
-The secret is masked while entering, never reloaded into the form, and cleared
-from the editor after saving or leaving it. Input drafts are excluded from view/
-Activity state; autofill is disabled and no personalized keyboard learning is
-requested where the Android API supports those controls. Secrets do not enter resources,
-build arguments, Intents, Properties, identity, Host snapshots, logs or exported
-files. Diagnostics use fixed safe messages rather than parser/decryption causes.
-The store makes no guarantee against a rooted/debug-controlled device or process
-memory inspection and adds no account or credential-issuing service.
+Credential replacement requires stopping the App, provisioning a complete file,
+then explicitly starting a new process. Connect/Disconnect retain the credential
+captured by the current process; no file watcher, extra Prepare or automatic
+retry is introduced. Runtime address or authentication-mode changes use a new
+build/install, with ordinary upgrade installation preserving App data.
 
-Unreadable, invalid or undecryptable saved settings leave the configuration UI
-usable but create no Worker and start no Host HTTP listener. MainActivity handles
-the unavailable state through creation, rendering and listener registration;
-Worker-dependent controls are disabled. Saving a repair still requires restart,
-and failure never falls back to the anonymous build address. Empty local message
-presentation owners remain initialized, and startup cancels the previous process's
-notification. Stale notification opens/replies cannot recover a Reporter or make
-the failed connection usable.
+When required access input is invalid, MainActivity remains usable for safe
+diagnostics and disables Worker-dependent controls. Empty local message
+presentation owners still clear the previous process's notification; stale
+notification opens/replies cannot restore an old Reporter. Repair happens through
+the provisioning helper and a complete process restart, not through the App UI.
 
-Address/credential changes do not reset `clientWorkerKey`. Restart against the
-same Runtime identity registry and scope resolves the existing Worker identity;
-different Runtime/scope registries can issue different Worker IDs. The gateway
-credential controls admission to a shared trust domain, not ownership of that ID.
+Provisioning and address changes do not reset `clientWorkerKey`. Restart against
+the same Runtime identity registry and scope resolves the existing Worker
+identity; different Runtime/scope registries may issue different Worker IDs.
+Gateway credentials admit a shared trust domain, not ownership of that ID.
 
 ## Local message interaction
 
@@ -201,9 +194,9 @@ The API 33 proof also builds three fixed Debug-derived Lab variants:
 | `lab2` | `com.xa.mass.integration.androidworker.lab2` | 18185 |
 | `lab3` | `com.xa.mass.integration.androidworker.lab3` | 18186 |
 
-They keep the same WorkerGroup and build-default Runtime endpoints. Each package
-may independently save a connection override. Separate application sandboxes
-provide separate persistent client keys. The proof targets each
+They keep the same WorkerGroup and compiled Runtime endpoints. Each package
+requires its own private access file when built with gateway authentication.
+Separate application sandboxes provide separate persistent client keys. The proof targets each
 observed Worker ID directly and independently checks its `packageName` Property
 against the application ID. This is a fixed proof topology, not a general
 replica facility.
@@ -265,10 +258,10 @@ defines all Java phases and the portable Python invocation. Java retains the
 RPC digest payload in memory to check its exact content; saved evidence retains
 only identity and assertion outcomes.
 
-For an existing public Runtime, use the [private App configuration](../README.md#public-runtime-connection)
-instead of changing that build parameter or adding an ADB reverse. The small
-public deployment witness uses one existing Lab package, real native configuration
-UI and authenticated finite Task APIs. Its evidence records actual execution and
+For an existing public Runtime, use the [static build/install/provision sequence](../README.md#public-runtime-connection)
+without adding an ADB reverse. The small public deployment witness uses one
+existing Lab package and authenticated finite Task APIs. It requires no Computer
+Use or App configuration interaction. Its evidence records actual execution and
 exports independently of the older web workbench interaction acceptance.
 
 ## Hosted Emulator proof
@@ -359,9 +352,10 @@ Host contract lane and the path-selected API 33 Worker Proof lane. The
 documented real-device flow remains the manual proof for vendor behavior,
 physical Battery readings, and background execution limits.
 
-Connection tests cover complete-input validation, encrypted round trips and
-corruption, failed writes retaining old settings, restore-default, unavailable
-startup UI and saved/effective isolation. Actual device acceptance separately
-checks Keystore persistence across process restart, public HTTPS/WSS execution,
-wrong credentials and controlled gateway revocation; unit or APK build success
-does not establish those deployment facts.
+Access-file tests cover required/anonymous mode, strict input and origin checks,
+safe failures and captured startup credentials. Provisioning tests cover exact
+device/package admission, a stopped debuggable destination and stdin-only secret
+transfer. Actual device acceptance separately checks private-file loading and
+identity across process restart, public HTTPS/WSS execution, wrong credentials
+and controlled gateway revocation; unit or APK build success does not establish
+those deployment facts.

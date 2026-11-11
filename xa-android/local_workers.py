@@ -20,6 +20,8 @@ class AndroidApps:
     def __init__(self, count, serial, runtime_url, adapter_port, output, environment):
         self.count, self.serial = count, serial
         self.runtime_url, self.adapter_port = runtime_url, adapter_port
+        # The unified local environment always uses the explicit anonymous build mode.
+        self.gateway_credential_required = False
         self.output, self.environment = Path(output), environment
         self.apps = [(f"com.xa.mass.integration.androidworker.lab{i}",
                       f"xa-mass-android-worker-demo-lab{i}.apk", 18183 + i) for i in range(1, count + 1)]
@@ -87,7 +89,8 @@ class AndroidApps:
                                             self.output / "android-installation")
         self.runtime_root = Path(receipt["runtimeRoot"])
         fingerprint = hashlib.sha256()
-        fingerprint.update(json.dumps([runtime_hash, sdk_hash, self.runtime_url]).encode())
+        fingerprint.update(json.dumps([runtime_hash, sdk_hash, self.runtime_url,
+                                      self.gateway_credential_required]).encode())
         source = repository / "xa-android"
         for path in sorted(source.rglob("*")):
             relative = path.relative_to(source)
@@ -102,6 +105,7 @@ class AndroidApps:
         if provenance_path.is_file():
             provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
             valid = (provenance.get("runtimeApiBaseUrl") == self.runtime_url
+                     and provenance.get("gatewayCredentialRequired") is self.gateway_credential_required
                      and all((self.apk_root / name).is_file()
                              and consumer.digest(self.apk_root / name) == value
                              for name, value in provenance.get("apkSha256", {}).items())
@@ -122,6 +126,7 @@ class AndroidApps:
         (self.output / "android.json").write_text(json.dumps({
             "device": self.serial, "packages": [p for p, _, _ in self.apps],
             "runtimeApiBaseUrl": self.runtime_url, "apkDirectory": str(self.apk_root),
+            "gatewayCredentialRequired": self.gateway_credential_required,
             "apkSha256": {n: provenance["apkSha256"][n] for _, n, _ in self.apps},
             "runtimeSha256": runtime_hash, "sdkSha256": sdk_hash, "gitCommit": commit,
         }, indent=2) + "\n", encoding="utf-8")

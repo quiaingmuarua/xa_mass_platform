@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import importlib.util
+import json
 from pathlib import Path
 import re
 import shutil
@@ -8,6 +10,7 @@ import subprocess
 import tempfile
 import textwrap
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -51,6 +54,45 @@ class ConsumerProofGateTest(unittest.TestCase):
         self.assertEqual(0, self.run_gate(manual=True))
         self.assertNotEqual(0, self.run_gate(manual=True, CANDIDATE_DISTRIBUTIONS_RESULT="skipped"))
         self.assertNotEqual(0, self.run_gate(manual=True, ANDROID_EMULATOR_RESULT="failure"))
+
+
+class AndroidConsumerCredentialBuildTest(unittest.TestCase):
+    def test_build_property_and_provenance_match_each_explicit_mode(self):
+        spec = importlib.util.spec_from_file_location("credential_build_consumer", ROOT / ".github/scripts/build_android_consumer.py")
+        builder = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(builder)
+        for required in (False, True):
+            with self.subTest(required=required), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / "apks"
+                commands = []
+                def copy(project):
+                    project.mkdir()
+                    (project / "run_consumer.py").write_text(
+                        "def prepare_options(options, workspace):\n    return {'sdkRoot': str(workspace / 'sdk')}\n", encoding="utf-8")
+                def build(command, cwd):
+                    commands.append(command)
+                    project = Path(cwd)
+                    (project / "build").mkdir()
+                    (project / "build/sdk-consumption.json").write_text('{"fixture":true}', encoding="utf-8")
+                    for variant in ("debug", "lab1", "lab2", "lab3"):
+                        apk = project / f"worker-demo/build/outputs/apk/{variant}/xa-mass-android-worker-demo-{variant}.apk"
+                        apk.parent.mkdir(parents=True)
+                        apk.write_bytes(variant.encode())
+                    return subprocess.CompletedProcess(command, 0)
+                arguments = ["--runtime-archive", "runtime.zip", "--sdk-archive", "sdk.zip", "--version", "3.2.0",
+                             "--commit", "a" * 40, "--runtime-sha256", "b" * 64, "--sdk-sha256", "c" * 64,
+                             "--runtime-api-base-url", "https://workers.example", "--output-dir", str(output)]
+                if required: arguments.append("--gateway-credential-required")
+                with patch.object(builder.consumer, "copy_consumer", side_effect=copy), \
+                        patch.object(builder.subprocess, "run", side_effect=build), \
+                        patch.object(builder.subprocess, "check_output", return_value="d" * 40):
+                    self.assertEqual(0, builder.main(arguments))
+                self.assertEqual(1, len(commands))
+                self.assertIn(f"-PxaMassGatewayCredentialRequired={str(required).lower()}", commands[0])
+                provenance = json.loads((output / "apk-provenance.json").read_text())
+                self.assertIs(provenance["gatewayCredentialRequired"], required)
+                self.assertEqual("https://workers.example", provenance["runtimeApiBaseUrl"])
+                self.assertEqual("d" * 40, provenance["consumerSourceCommit"])
 
 
 if __name__ == "__main__":
