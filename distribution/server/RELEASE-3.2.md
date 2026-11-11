@@ -1,7 +1,13 @@
 # XA Mass 3.2 release and staging upgrade contract
 
-Status: 3.2 release contract; publication requires complete manual Proof at the
+Status: version-scoped 3.2 release contract; publication requires complete manual Proof at the
 exact candidate commit. Published 3.1 artifacts remain immutable.
+
+The changes and upgrade facts below apply to the 3.2 series. GCP's purpose and
+deployment cadence belong to the
+[Release Preview guide](../../doc/guide/operations/deploy.md#release-preview).
+The compatible 3.1-to-3.2 state transition described here is not a commitment to
+preserve interfaces, configuration or data across future releases.
 
 ## Added connection capability
 

@@ -1,6 +1,13 @@
 # XA Mass 3.1 release and upgrade contract
 
-Status: current 3.1.0 release contract; publication requires the complete manual Proof and exact-asset promotion below.
+Status: version-scoped 3.1 release contract; publication requires the complete manual Proof and exact-asset promotion below.
+
+This document retains the requirements and upgrade facts for the 3.1 series.
+For the current delivery entry use [Distribution](README.md); GCP's ongoing role
+and deployment cadence belong to the
+[Release Preview guide](../../doc/guide/operations/deploy.md#release-preview).
+This version's migration decisions do not require later releases to preserve
+GCP interfaces, configuration or data compatibility.
 
 ## Version and compatibility
 

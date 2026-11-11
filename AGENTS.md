@@ -346,7 +346,19 @@ queue retains best-effort semantics. No acknowledgment, replay, persistence or
 cross-instance cache guarantee is introduced. These rules do not replace finite
 Task archival or grant Server execution scheduling authority.
 
-## Local Development Composition
+## Release Preview Deployment
+
+GCP is a long-lived Release Preview environment. CI builds and proves artifacts;
+each Release receives a deliberate GCP deployment and small real-use acceptance.
+Ordinary PRs do not imply deployment. Long-lived infrastructure does not require
+permanent API, configuration or data compatibility: a breaking release may
+explicitly use fresh configuration and scope without an implicit migration layer.
+GCP consumes published immutable artifacts; builds, full CI and Worker Hosts stay
+outside it. Agents manage authorized deployment, diagnosis and acceptance;
+system services own process recovery and certificate renewal, not an Agent watchdog.
+Use the [Release Preview guide](doc/guide/operations/deploy.md#release-preview)
+to find actual version/configuration records and distinguish pending acceptance
+from completed proof before acting.
 
 Distribution's optional staging ingress owns TLS, environment-level Basic gates,
 route allowlists and connection limits. Administrative gateway credentials do not
@@ -356,6 +368,8 @@ only to the approved HTTPS/WSS authority, including batch Prepare and reconnects
 Simulator owns private credential-file input; secrets never enter Properties,
 inventory, logs or shipped artifacts. This adds no Server user authentication,
 Kernel identity or scheduling authority. See the [staging deployment](distribution/server/src/main/dist/examples/staging-ingress/README.md).
+
+## Local Development Composition
 
 Distribution's local launcher owns one Server/Adapter process and optional Java
 and Android Worker processes. Profiles and external resource files retain their

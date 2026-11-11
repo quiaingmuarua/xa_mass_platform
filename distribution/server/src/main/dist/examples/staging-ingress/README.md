@@ -1,6 +1,12 @@
 # Trusted staging ingress
 
-Status: opt-in delivery configuration for one long-lived trusted staging environment.
+Status: opt-in gateway configuration for a trusted Release Preview deployment.
+
+This example owns gateway setup and admission behavior. GCP's role, release-based
+deployment cadence and environment handoff belong to the
+[Release Preview guide](https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/guide/operations/deploy.md#release-preview).
+Using this gateway does not select a profile, deploy a Release or establish a
+completed environment acceptance.
 
 This gateway protects access to the deployment. Every administrator credential
 holder is trusted to select any development user/role. It does not authenticate

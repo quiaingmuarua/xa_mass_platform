@@ -16,6 +16,7 @@ XA Mass 把一批工作交给持续变化的 Java 或 Android Worker 执行，�
 | 申请号码并接收模拟短信 | [SMS](usage/sms.md) | 用原 messageId 持续查询接收窗口 |
 | 调试能力或使用通用任务 | [任务工作台](usage/workbench.md) | 选择有限 Task、RPC 或 Direct Debug |
 | 部署或处理运行问题 | [部署](operations/deploy.md) → [配置归属](operations/configuration.md) → [排障](operations/troubleshooting.md) | 明确环境坐标、资源声明和故障所在层 |
+| 维护 GCP Release Preview | [环境定位与交接](operations/deploy.md#release-preview) → 主机现有记录 → 目标版本说明 | 区分 PR、Release 和现场验收；按任务核对实际环境 |
 | 让 Agent 修改代码 | [开发入口](development/index.md) → [能力接入走读](development/walkthrough.md) | 找到 Owner、调用者、消费者及所需证明 |
 | 理解机制及项目能力 | [架构](architecture.md)、[验证](verification.md)、[实测能力](capabilities.md) | 区分系统机制、测试主张和特定版本的实测结果 |
 
