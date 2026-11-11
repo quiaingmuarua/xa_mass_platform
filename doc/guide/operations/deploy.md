@@ -2,7 +2,9 @@
 
 Status: current deployment navigation and operating guide.
 
-先确定部署的是业务 Preview，还是由自己提供资源与 Worker 的 consumer。
+先区分本地演示启动与 [GCP Release Preview](#release-preview) 的版本部署。
+Release Preview 是环境用途，不是 profile 名称；它使用已发布 Runtime 和外部 Worker，
+不要求使用本地 `preview` profile 或包含 Simulator 的 Preview ZIP。
 Server 与 Worker Host 是独立进程；Redis 由环境提供，Server 不会替你启动 Worker。
 
 ## 从源码启动
@@ -52,7 +54,75 @@ Runtime ZIP 包含 Server、Adapter 和前端，排除 Simulator；Preview ZIP �
 新构建的候选 ZIP 不会自动替换已经运行的安装。更新时先核对版本、commit 和实际文件，
 在独立目录验证，再明确切换。不要修改运行中的包或用旧文档推定数据兼容。
 
-## 长期 Staging 公网接入
+## Release Preview
+
+**GCP 是按 Release 推进的长期 Preview 环境。GitHub CI 负责构建和自动化证明；
+每个 Release 在 GCP 完成真实部署与小规模使用验证，普通 PR 不默认更新 GCP。**
+它不承担客户生产 SLA。长期存在的是环境，不要求接口、配置或数据永久兼容。
+
+工作顺序是：**PR → CI → 发布不可变 Release → 明确部署 GCP → Preview 验收 → 问题反馈**。
+发布成功不代表已经部署，部署成功也不代表现场验收完成。这里描述职责与操作顺序，
+不代表仓库已有自动部署到 GCP 的流水线。
+
+| 部分 | 职责 |
+| --- | --- |
+| GitHub CI | 构建、自动化证明和可追溯制品；完整发布证明遵循既有发布规则 |
+| GCP | 消费已发布制品，持续运行 Runtime/Adapter、Redis 和公网入口，执行小规模部署验收 |
+| 外部 Java/Android Host | 从开发机、设备或其他主机连接，提供实际或模拟的 Worker 能力 |
+| Agent | 在任务授权范围内部署、诊断、验收及整理证据；不充当 Watchdog |
+| systemd/ACME | 负责已有服务的进程恢复与证书续期，不依赖 Agent 持续运行 |
+
+GCP 不构建源码、不运行完整 CI，不安装或启动 Worker Host。环境内没有在线 Worker 时，
+不能从 Server 就绪推断任务可执行。使用的 Group、Project、Pool 和场景仍由
+[各自配置 Owner](configuration.md) 决定，Release Preview 不自动启用这些资源。
+
+### 版本切换与验证边界
+
+允许破坏性接口、配置和数据变化。目标版本说明决定复用已有数据，还是显式采用新配置、
+新 scope；GCP 不额外要求兼容层或历史迁移。版本编号和制品校验仍遵循既有发布规则。
+某次升级可以复用 scope，只是该次升级的结论，不能推广为永久兼容义务。
+
+切换前核对目标 Release、配置和数据处理方式，保留需要的旧制品及恢复点。同一 scope
+只运行一个 Pacer；使用新 scope 不意味着可以顺带清空旧数据。失败恢复不自动清 Redis，
+也不重新提交业务请求。正常运行期间仍执行 Owner 已有的数据保留与归档规则。
+
+现场验收覆盖启动、公网入口、外部 Worker、任务结果及本次 Release 影响的功能，
+不在 GCP 重复完整正确性、故障或性能 workload。分别记录版本与配置、实际操作、结果和
+未覆盖的边界；浏览器操作未完成时保留待验收状态，不以 HTTP 成功替代。
+证据区分见[验证指南](../verification.md#release-preview-的现场证据)。
+
+### 新 Agent 从哪里开始
+
+按 **README 定位 → 本节 → 只读核对主机记录 → 目标版本说明或对应 Owner** 阅读。
+单纯维护环境无需先通读调度主线；需要修改代码时再按受影响 Owner 扩展。
+
+以下是当前环境的脱敏访问入口，不是应用协议常量；使用前与主机记录核对：
+
+| 入口 | 地址 |
+| --- | --- |
+| 管理网页/API | `https://staging.xamass.net` |
+| Worker Runtime | `https://workers-staging.xamass.net` |
+| 授权后的 SSH 管理 | `root@136.85.101.232`，使用已有私有 SSH 凭据 |
+
+| 主机文件 | 查询内容 |
+| --- | --- |
+| `/etc/xa-mass/release.json` | 已安装版本、完整提交、来源和制品指纹 |
+| `/etc/xa-mass/deployment.json` | 部署坐标、配置指纹、已完成/待补验收及证据范围 |
+| `/etc/xa-mass/OPERATIONS.txt` | 服务、配置、日志、凭据位置及操作路径 |
+
+先核对这些记录，再按任务只读检查实际进程和配置；记录不是实时健康证明。
+例如 API/Worker 已通过与 `browserFlow` 待验收可以同时成立。Android SDK 通过也不代表
+Android App 已在公网使用，未执行的外部环境连接不能从本地结果推定。
+
+本地被 Git 忽略的 `build/deployments` 只是副本，不能成为全新 checkout 的唯一交接入口。
+仓库只维护职责、步骤和记录位置，不保存凭据值或完整线上状态镜像。读取运维说明不等于
+需要读取或输出其中指向的秘密文件。
+
+GCP 的 `/docs` 随已安装 Runtime 制品发布，描述的是该制品的源版本。仅更新仓库与外置
+运维说明不会更新它，也不应覆盖解压后的网页/JAR；网页文档随下一次正常 Release 更新。
+当前环境角色以仓库本节和主机外置说明为准，运行版本仍以实际安装及记录核对。
+
+### 公网接入
 
 使用 Runtime ZIP 的 [staging ingress 示例](../../../distribution/server/src/main/dist/examples/staging-ingress/README.md)
 准备两个 HTTPS 入口：管理入口保护控制台和业务 API，Worker 入口只允许指定 Group 的
@@ -67,12 +137,10 @@ Basic 认证进入；程序调用提供管理凭据及原有开发调用方头�
 外部 Java Host 使用独立 Simulator `--config`，设置 HTTPS `runtimeApiBaseUrl` 和私有
 `gatewayCredentialFile`。该路径相对主配置文件解析，读取失败不会回退匿名连接。
 更换密钥需明确重启 Host。不要运行统一的本地环境启动器去连接已有远端 Server。
-Android SDK 支持同样的传递，但本片没有为 Android Demo 增加凭据配置页面。
+3.2 SDK 支持同样的传递，但该版本没有为 Android Demo 增加凭据配置页面。
 
-GCP 只下载固定 Release；构建和完整证明留在开发环境/CI。升级前保存恢复点，保持同一
-scope 只有一个 Pacer。发布后仅做小规模任务、结果和导出验收。删除凭据会拒绝新请求，
-立即撤销还需实际关闭已有网关连接，不能把 reload 当成已断连。进程与证书续期由
-systemd/ACME 工具管理，不依赖 Agent 持续运行。
+删除凭据会拒绝新请求，立即撤销还需实际关闭已有网关连接，不能把 reload 当成已断连。
+精确的认证、路由、限额及撤销规则以链接的网关示例为准。
 
 ## Java 与 Android Worker
 

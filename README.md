@@ -26,6 +26,8 @@ Task, and many Workers inside finite Groups.
 - **部署与排障：** [部署](doc/guide/operations/deploy.md)、
   [配置归属](doc/guide/operations/configuration.md)和
   [按现象排障](doc/guide/operations/troubleshooting.md)。
+- **GCP／Release Preview：** [环境定位与交接](doc/guide/operations/deploy.md#release-preview)。
+  按 Release 部署与验收，普通 PR 不默认更新；长期环境不要求接口或数据永久兼容。
 - **开发与 Agent：** [按任务定位 Owner](doc/guide/development/index.md)，
   再使用下面的 Reading Path 和 [AGENTS](AGENTS.md)。
 - **验证与能力：** [证明如何选](doc/guide/verification.md)、
@@ -44,6 +46,7 @@ reuse established session evidence and refresh only what changed.
 | Task | Read | Stop expanding when |
 | --- | --- | --- |
 | First overall handoff | This summary, the complete [behavior mainline](doc/kernel/scheduling-overview.md), then Owner/proof navigation | State ownership, main calls, failure boundaries and evidence locations are clear. Do not open every Owner, integration or historical record. |
+| GCP / Release Preview maintenance | [Environment role and handoff](doc/guide/operations/deploy.md#release-preview), then read-only environment records; target release notes or an affected Owner only as needed | Release identity, configuration coordinates, completed/pending acceptance and the requested operation are clear. Environment maintenance alone does not require the scheduling mainline. |
 | Cross-owner mechanism change | This summary and authority map; the three [overview chapters](doc/kernel/scheduling-overview.md#system-behavior-model); affected Dispatch, Results, Scale or [Delivery](doc/kernel/worker-delivery-dispatch.md) sections; applicable Owners, callers, assembly and proof | Every affected input, state writer, consumer, call order and failure window has been checked. Follow adjacent modules only where they participate in that chain. |
 | Local change | The responsible Owner's applicable contract, the change site and its direct callers/consumers, then relevant validation | The local effect is understood. Escalate to the cross-owner route if state, authority or lifecycle propagation crosses that boundary. A local prose/link change does not require the scheduling model or runtime proof. |
 

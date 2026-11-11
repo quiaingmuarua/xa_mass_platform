@@ -4,9 +4,14 @@ This module owns Runtime and Scenario Preview ZIP delivery, frontend and
 documentation-site builds, diagnostic dictionaries, Preview process assembly
 and archive verification.
 
-The [3.1 release and upgrade contract](RELEASE-3.1.md) owns public compatibility,
-fresh-state cutover and exact-artifact release acceptance.
-It consumes the sole Boot JAR produced by
+The current [3.2 release contract](RELEASE-3.2.md) describes that version's
+connection capability, state handling and exact-artifact release acceptance.
+The [3.1 upgrade contract](RELEASE-3.1.md) retains the earlier version's
+fresh-state cutover facts; each release document applies to its named version.
+Use the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)
+for GCP's role, deployment cadence and environment handoff rather than inferring
+a permanent compatibility obligation from one release's upgrade procedure.
+Distribution consumes the sole Boot JAR produced by
 [Server Boot composition](../../server_boot_jvm/README.md). It has no Java
 entrypoint, Spring composition, application services or platform Owner operations.
 
@@ -269,8 +274,10 @@ proof and a packaged Runtime with a same-commit standalone Java Simulator. Use
 `--staging-ingress --simulator-home <installDist>` on the existing proof runner;
 Nginx, OpenSSL and htpasswd must be installed. The normal Windows Runtime proof
 still checks its original boundaries; it does not pretend to prove Linux ingress.
-The [3.2 release contract](RELEASE-3.2.md) separates CI artifact verification from
-small acceptance on the long-lived GCP deployment.
+The [3.2 release contract](RELEASE-3.2.md) records its artifact verification;
+the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)
+owns the distinction between CI evidence, a published Release and actual GCP
+deployment acceptance. The gateway example does not decide when to deploy.
 
 ## Finite Task archives
 

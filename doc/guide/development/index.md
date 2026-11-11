@@ -11,6 +11,7 @@ Status: current task-oriented development navigation.
 | 开发任务 | 从哪里开始 | 继续读什么 |
 | --- | --- | --- |
 | 第一次整体交接 | [仓库摘要](../../../README.md) → [完整行为主线](../../kernel/scheduling-overview.md) | 状态 Owner、主调用链、失败边界、代码与 proof 入口明确后停止扩展 |
+| GCP／Release Preview 维护 | [环境定位与交接](../operations/deploy.md#release-preview) → 只读核对环境记录 | 确认实际版本、配置坐标及已完成／待补验收；需要升级才读目标版本说明，需要修代码才进入对应 Owner |
 | 局部修复 | 对应 Owner 的受影响章节与修改点 | 直接调用者、消费者、最近的断言和相应验证 |
 | 新 Worker 能力 | [接入走读](walkthrough.md) → [Worker Core](../../../transport/worker-core/README.md#message-path) | Host 安装、Group 声明、场景适配及实际执行证明 |
 | 新 Batch Checks 协议或配置 | [场景 Owner](../../../scenarios/app-checks-jvm/README.md#具名执行契约) | 纯契约、配置解析、Task 保存快照、Host 绑定和前端结果 |
@@ -22,6 +23,7 @@ Status: current task-oriented development navigation.
 
 “局部”修改如果改变其他 Owner 的输入、状态、调用次序或生命周期，应扩展到对应跨模块
 链路。阅读结束的标准是影响已经闭合，而不是打开过多少文件。
+GCP 环境维护使用上面的专项路线，不要求先通读完整调度主线；普通 PR 也不隐含部署或重启环境。
 
 ## 对一次修改回答五个问题
 
