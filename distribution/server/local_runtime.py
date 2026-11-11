@@ -270,6 +270,9 @@ def check_ports(ports):
 
 
 _connections = threading.local()
+# Public development key of administrator 1000 in the built-in users directory. Local launches use the
+# built-in directory, so it is not a secret; never use this helper against a remote Runtime.
+DEVELOPMENT_ADMIN_KEY = "xak_dev_1000"
 
 
 def http(base, path, body=None, timeout=6, method=None, headers=None):
@@ -290,10 +293,13 @@ def http(base, path, body=None, timeout=6, method=None, headers=None):
     connection.timeout = timeout
     if connection.sock:
         connection.sock.settimeout(timeout)
+    request_headers = {"Content-Type": "application/json", **(headers or {})}
+    if path.startswith("/api/") and "Authorization" not in request_headers:
+        request_headers["Authorization"] = f"Bearer {DEVELOPMENT_ADMIN_KEY}"
     try:
         connection.request(method or ("GET" if body is None else "POST"), path,
                            body=None if body is None else json.dumps(body).encode(),
-                           headers={"Content-Type": "application/json", **(headers or {})})
+                           headers=request_headers)
         response = connection.getresponse()
         raw = response.read()
         if response.status >= 400:

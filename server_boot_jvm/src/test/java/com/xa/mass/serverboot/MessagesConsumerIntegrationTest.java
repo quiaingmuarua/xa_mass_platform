@@ -56,6 +56,7 @@ class MessagesConsumerIntegrationTest {
         int port; try (var socket = new ServerSocket(0)) { port = socket.getLocalPort(); }
         var host = new LinkedHashMap<String, Object>();
         host.put("logging.level.root", "ERROR");
+        host.put("xa.mass.users.seed", "classpath:users/development-directory.json");
         host.put("xa.mass.redis.url", redis);
         host.put("xa.mass.redis.scope", scope);
         host.put("xa.mass.kernel-pacer.enabled", false);

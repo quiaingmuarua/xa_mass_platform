@@ -16,7 +16,7 @@ from distribution.server.staging_ingress.renderer import ADMIN_OPERATIONS, ADMIN
 def configuration(**changes):
     original = Deployment(
         "/etc/xa-mass/tls/fullchain.pem", "/etc/xa-mass/tls/privkey.pem",
-        "/etc/xa-mass/admin.htpasswd", "/etc/xa-mass/workers.htpasswd",
+        "/etc/xa-mass/workers.htpasswd",
         "/var/lib/xa-mass/acme", "/var/lib/xa-mass/nginx", ("group-b", "group-a"))
     return dataclasses.replace(original, **changes)
 
@@ -67,7 +67,7 @@ class StagingIngressTest(unittest.TestCase):
             {"admin_host": "localhost;return 200"}, {"worker_host": "staging.xamass.net"},
             {"listen_host": "8.8.8.8"}, {"runtime_port": 443}, {"https_port": True},
             {"certificate": "/tmp/x\ninclude evil;"}, {"state_directory": "/tmp/../etc"},
-            {"worker_password_file": "/etc/xa-mass/admin.htpasswd"},
+            {"worker_password_file": "relative/workers.htpasswd"},
             {"worker_groups": ()}, {"worker_groups": ("same", "same")},
             {"worker_groups": ("a/.+",)}, {"worker_groups": ("a$host",)},
         )
@@ -81,6 +81,14 @@ class StagingIngressTest(unittest.TestCase):
         self.assertIn('"POST:/api/v1/worker-groups/group-a/workers:prepare" 1;', text)
         self.assertNotIn("worker-groups/.*", text)
         self.assertIn('proxy_set_header Authorization "";', text)
+        # The administrator host has no Basic realm; it forwards only a well-formed access key.
+        self.assertEqual(1, text.count('auth_basic "'))
+        self.assertIn('"~^Bearer xak_[A-Za-z0-9_-]{8,128}$" $http_authorization;', text)
+        self.assertIn("proxy_set_header Authorization $admin_access_key;", text)
+        admin = text[text.index("server_name localhost;") if "server_name localhost;" in text
+                     else text.index("server_name staging.xamass.net;"):]
+        admin = admin[:admin.index("server {")]
+        self.assertNotIn("auth_basic", admin)
         self.assertIn("proxy_next_upstream off;", text)
         self.assertIn("log_format staging '$time_iso8601 $host $remote_user $request_method $uri $status';", text)
 

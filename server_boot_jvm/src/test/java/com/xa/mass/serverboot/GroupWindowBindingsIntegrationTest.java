@@ -217,7 +217,7 @@ class GroupWindowBindingsIntegrationTest {
     }
     private static HttpResponse<String> send(HttpClient http, URI base, String method, String path, Object body) throws Exception {
         return http.send(HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(10))
-                .header("X-XA-Dev-User", "cHJvb2Y").header("X-XA-Dev-Role", "admin").header("Content-Type", "application/json")
+                .header("Authorization", "Bearer xak_dev_proof").header("Content-Type", "application/json")
                 .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(Jsons.toJson(body))).build(),
                 HttpResponse.BodyHandlers.ofString());
     }

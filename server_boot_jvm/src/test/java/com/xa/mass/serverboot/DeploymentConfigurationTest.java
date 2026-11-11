@@ -75,6 +75,10 @@ class DeploymentConfigurationTest {
                         case "preview" -> "test_preview_config";
                         default -> "profile_default";
                     });
+                    // Only external consumer hosts must name a users file; local profiles keep the public dev seed.
+                    assertThat(environment.getProperty("xa.mass.users.require-configured-seed", Boolean.class, false))
+                            .isEqualTo(profile.equals("consumer"));
+                    assertThat(environment.getProperty("xa.mass.users.seed", "")).isEmpty();
                     assertThat(environment.getProperty("spring.jackson.deserialization.fail-on-unknown-properties", Boolean.class)).isTrue();
                     assertThat(environment.getProperty("springdoc.paths-to-match")).isEqualTo("/api/v1/**");
                     assertThat(environment.getProperty("scalar.path")).isEqualTo("/scalar");

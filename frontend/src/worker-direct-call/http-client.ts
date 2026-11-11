@@ -1,3 +1,4 @@
+import { sessionAuthHeaders } from "@/access-session";
 import axios, { AxiosError, type AxiosInstance } from "axios";
 
 import { WorkerDirectCallError } from "./errors";
@@ -44,7 +45,7 @@ export class HttpWorkerDirectCallClient implements WorkerDirectCallClient {
           waitTimeoutMillis: request.waitTimeoutMillis
         },
         {
-          headers: { "X-Request-Id": requestId },
+          headers: { "X-Request-Id": requestId, ...sessionAuthHeaders() },
           timeout: request.waitTimeoutMillis + 5_000
         }
       );

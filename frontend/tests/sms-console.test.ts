@@ -1,3 +1,4 @@
+import { devKey } from "./identity-fixture";
 import { consoleIdentity } from "@/console-identity";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, nextTick, type App as VueApp } from "vue";
@@ -88,7 +89,7 @@ async function settle() {
   await nextTick();
 }
 async function mountConsole(path = "/sms", mode = "api") {
-  consoleIdentity.login("1000");
+  await consoleIdentity.login(devKey("1000"));
   vi.useFakeTimers();
   vi.stubEnv("VITE_RUNTIME_DATA_SOURCE", mode);
   const router = createRouter({

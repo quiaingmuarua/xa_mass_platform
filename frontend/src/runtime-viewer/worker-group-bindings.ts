@@ -1,3 +1,4 @@
+import { sessionAuthHeaders } from "@/access-session";
 import axios from "axios";
 import { reactive } from "vue";
 import { z } from "zod";
@@ -123,7 +124,10 @@ export function createWorkerGroupBindingsDirectoryLoader(config: RuntimeViewerCo
       (
         await client.get("/v1/runtime-view/worker-groups/bindings", {
           signal,
-          headers: { "X-Request-Id": `group-directory-${crypto.randomUUID()}` }
+          headers: {
+            "X-Request-Id": `group-directory-${crypto.randomUUID()}`,
+            ...sessionAuthHeaders()
+          }
         })
       ).data
     );
@@ -136,7 +140,13 @@ export function createWorkerGroupBindingsLoader(
   return async (group, signal) => {
     const response = await client.get(
       `/v1/runtime-view/worker-groups/${encodeURIComponent(group)}/bindings`,
-      { signal, headers: { "X-Request-Id": `group-bindings-${crypto.randomUUID()}` } }
+      {
+        signal,
+        headers: {
+          "X-Request-Id": `group-bindings-${crypto.randomUUID()}`,
+          ...sessionAuthHeaders()
+        }
+      }
     );
     const value = workerGroupBindingsSchema.parse(response.data);
     if (

@@ -150,6 +150,11 @@ class BatchChecksExternalDeploymentIntegrationTest {
         }
         var host = new LinkedHashMap<String,Object>();
         host.put("server.port", api); host.put("logging.level.root", "ERROR");
+        // An external host owns a writable users file instead of the built-in public development keys.
+        try (var users = new org.springframework.core.io.ClassPathResource("users/development-directory.json").getInputStream()) {
+            Files.write(root.resolve("users.json"), users.readAllBytes());
+        }
+        host.put("xa.mass.users.seed", root.resolve("users.json").toUri().toString());
         host.put("xa.mass.redis.url", redis); host.put("xa.mass.redis.scope", scope);
         host.put("xa.mass.task-retention.enabled", false); host.put("xa.mass.kernel-pacer.enabled", true);
         host.put("xa.mass.scenarios.app-checks.enabled", true);
@@ -252,7 +257,7 @@ class BatchChecksExternalDeploymentIntegrationTest {
     }
     private HttpResponse<String> send(String method, String path, String body, String contentType) throws Exception {
         return http.send(HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(10))
-                .header("X-XA-Dev-User", "MTAwMA").header("X-XA-Dev-Role", "admin").header("Content-Type", contentType)
+                .header("Authorization", "Bearer xak_dev_1000").header("Content-Type", contentType)
                 .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
     }
     private static void await(Check condition) throws Exception {

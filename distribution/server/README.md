@@ -4,10 +4,10 @@ This module owns Runtime and Scenario Preview ZIP delivery, frontend and
 documentation-site builds, diagnostic dictionaries, Preview process assembly
 and archive verification.
 
-The current [3.2 release contract](RELEASE-3.2.md) describes that version's
-connection capability, state handling and exact-artifact release acceptance.
-The [3.1 upgrade contract](RELEASE-3.1.md) retains the earlier version's
-fresh-state cutover facts; each release document applies to its named version.
+The current [4.0 release contract](RELEASE-4.0.md) describes that version's
+breaking access-key API identity, upgrade steps and exact-artifact release acceptance.
+The [3.2](RELEASE-3.2.md) and [3.1](RELEASE-3.1.md) contracts retain earlier
+versions' facts; each release document applies to its named version.
 Use the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)
 for GCP's role, deployment cadence and environment handoff rather than inferring
 a permanent compatibility obligation from one release's upgrade procedure.
@@ -163,7 +163,7 @@ against source and extracted Runtime, identified explicitly as a test capability
 
 For an already running consumer, building this repository does not replace its
 locked installation. A local candidate ZIP is acceptance output, not a published
-Release. Formal delivery separately follows the [3.2 release contract](RELEASE-3.2.md):
+Release. Formal delivery separately follows the [4.0 release contract](RELEASE-4.0.md):
 publish immutable artifacts, update the consumer's exact version/commit/checksums,
 resolve into a separate installation, and switch deliberately. The task-directory
 storage change after 1.0.0 requires a fresh Redis scope; do not reuse old descriptors
@@ -255,8 +255,9 @@ point-reads their approved descriptors from the extracted archive.
 ## Trusted staging ingress
 
 The opt-in [staging examples](src/main/dist/examples/staging-ingress/README.md)
-provide two HTTPS/WSS Nginx entrypoints, environment-administrator and Worker
-Basic gates, positive route/method lists and bounded connection admission.
+provide two HTTPS/WSS Nginx entrypoints: an administrator host that forwards only
+well-formed Runtime access keys, and a Worker host behind a shared Basic gate, with
+positive route/method lists and bounded connection admission.
 They are delivered with the Runtime ZIP but are never auto-loaded. The renderer
 is available from the checkout as `python -m distribution.server.staging_ingress`
 and from the extracted example directory as `python -m staging_ingress`.
@@ -274,7 +275,7 @@ proof and a packaged Runtime with a same-commit standalone Java Simulator. Use
 `--staging-ingress --simulator-home <installDist>` on the existing proof runner;
 Nginx, OpenSSL and htpasswd must be installed. The normal Windows Runtime proof
 still checks its original boundaries; it does not pretend to prove Linux ingress.
-The [3.2 release contract](RELEASE-3.2.md) records its artifact verification;
+The [4.0 release contract](RELEASE-4.0.md) records its artifact verification;
 the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)
 owns the distinction between CI evidence, a published Release and actual GCP
 deployment acceptance. The gateway example does not decide when to deploy.

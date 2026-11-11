@@ -2454,8 +2454,8 @@ class RuntimeBoundaryIntegrationTest {
         HttpRequest.Builder request = HttpRequest.newBuilder()
                 .uri(URI.create("http://127.0.0.1:" + port + path))
                 .method(method, publisher);
-        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks"))
-            request.header("X-XA-Dev-User", java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(caller.userId().getBytes(StandardCharsets.UTF_8))).header("X-XA-Dev-Role", caller.role());
+        // Exempt Worker routes ignore the key; every other route is admitted by the caller's public development key.
+        request.header("Authorization", "Bearer " + com.xa.mass.server.testing.TaskCallers.devKey(caller == null ? "proof" : caller.userId()));
         if (body != null) {
             request.header("Content-Type", "application/json");
         }

@@ -7,8 +7,13 @@ import {
   type Permission,
   type AccessSubject
 } from "@/access-policy";
+import { bearerHeaders, isAccessKey } from "@/access-session";
 
-export type TaskCaller = AccessSubject;
+/**
+ * A captured login. `accessKey` is non-enumerable so that copies, snapshots and serialization never carry it;
+ * requests made for this caller authenticate as this login even after another login replaces the session.
+ */
+export type TaskCaller = AccessSubject & { readonly accessKey?: string };
 
 export class TaskApiError extends Error {
   constructor(
@@ -16,31 +21,49 @@ export class TaskApiError extends Error {
     message: string,
     public readonly taskId?: string
   ) {
-    super(status === 403 ? `${message}，请刷新页面或退出后重新登录。` : message);
+    super(
+      status === 403
+        ? `${message}，请刷新页面或退出后重新登录。`
+        : status === 401
+          ? `${message}，请使用有效访问密钥重新登录。`
+          : message
+    );
   }
+}
+
+/** Attaches an access key without making it enumerable. */
+export function withAccessKey<T extends object>(
+  value: T,
+  accessKey: string | undefined
+): T {
+  if (accessKey !== undefined)
+    Object.defineProperty(value, "accessKey", { value: accessKey, enumerable: false });
+  return value;
 }
 
 export function requireCaller(caller: TaskCaller): TaskCaller {
   if (!caller || typeof caller.userId !== "string" || !isRole(caller.role))
-    throw new TaskApiError(400, "开发调用方无效");
+    throw new TaskApiError(400, "调用方无效");
   try {
-    return Object.freeze({
-      userId: normalizeTaskUserId(caller.userId),
-      role: caller.role,
-      ...(caller.access ? { access: caller.access } : {})
-    });
+    return Object.freeze(
+      withAccessKey(
+        {
+          userId: normalizeTaskUserId(caller.userId),
+          role: caller.role,
+          ...(caller.access ? { access: caller.access } : {})
+        },
+        caller.accessKey
+      )
+    );
   } catch (error) {
     throw new TaskApiError(400, (error as Error).message);
   }
 }
 
 export function callerHeaders(caller: TaskCaller): Record<string, string> {
-  const value = requireCaller(caller);
-  const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(value.userId)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-  return { "X-XA-Dev-User": encoded, "X-XA-Dev-Role": value.role };
+  const accessKey = requireCaller(caller).accessKey;
+  if (!isAccessKey(accessKey)) throw new TaskApiError(401, "当前登录没有访问密钥");
+  return bearerHeaders(accessKey);
 }
 
 export function requireCallerPermission(caller: TaskCaller, permission: Permission) {

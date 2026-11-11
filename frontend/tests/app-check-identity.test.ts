@@ -25,6 +25,7 @@ import {
 import App from "../src/App.vue";
 import { consoleRoutes } from "../src/router";
 import { consoleIdentity } from "../src/console-identity";
+import { devKey } from "./identity-fixture";
 import { installConsoleAccess, loginDestination } from "@/router/access";
 import { MockAppCheckTaskSource } from "../src/app-checks/mock-task-source";
 import { MockMessageTaskSource } from "../src/message-campaigns/mock-task-source";
@@ -96,7 +97,7 @@ async function settle() {
   await nextTick();
 }
 async function mount(user?: string, path = "/app-checks") {
-  if (user) consoleIdentity.login(user);
+  if (user) await consoleIdentity.login(devKey(user));
   const router = createRouter({
     history: createMemoryHistory(),
     routes: consoleRoutes
@@ -128,19 +129,13 @@ async function mount(user?: string, path = "/app-checks") {
   await settle();
   return router;
 }
-async function login(user: string) {
+/** Logs in through the page with a built-in user's public key or an issued key. */
+async function login(userOrKey: string) {
   if (consoleIdentity.current.value) {
     button("退出").click();
     await settle();
   }
-  const control = document.querySelector<HTMLInputElement>('[aria-label="选择用户"]')!;
-  expect(control).not.toBeNull();
-  control.click();
-  await settle();
-  const dropdown = document.getElementById(control.getAttribute("aria-controls")!)!;
-  [...dropdown.querySelectorAll<HTMLElement>('[role="option"]')]
-    .find((node) => node.textContent?.includes(user))!
-    .click();
+  input("访问密钥", userOrKey.startsWith("xak_") ? userOrKey : devKey(userOrKey));
   await settle();
   button("进入控制台").click();
   await settle();
@@ -237,9 +232,21 @@ describe("console login and shared task access", () => {
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await settle();
     expect(consoleIdentity.users.find((user) => user.userId === "userc")).toMatchObject(
-      { role: "operator", projectIds: ["messages"] }
+      { role: "operator", projectIds: ["messages"], hasAccessKey: false }
     );
-    await login("userc");
+    document
+      .querySelector<HTMLButtonElement>('[aria-label="签发访问密钥 userc"]')!
+      .click();
+    await settle();
+    const issued =
+      document.querySelector<HTMLInputElement>('[aria-label="新访问密钥"]')!;
+    const keyC = issued.value;
+    expect(keyC).toMatch(/^xak_[A-Za-z0-9_-]{43}$/);
+    button("我已保存，关闭").click();
+    await settle();
+    expect(document.querySelector('[aria-label="新访问密钥"]')).toBeNull();
+    expect(document.body.textContent).not.toContain(keyC);
+    await login(keyC);
     expect(router.currentRoute.value.fullPath).toBe("/messages");
     expect(document.querySelector('a[href="/app-checks"]')).toBeNull();
     expect(document.querySelector('a[href="/?view=users"]')).toBeNull();
@@ -278,25 +285,26 @@ describe("console login and shared task access", () => {
       .getElementById("console-user-form")!
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await settle();
-    await login("userc");
+    await login(keyC);
     expect(router.currentRoute.value.fullPath).toBe("/app-checks");
     await router.push("/messages/tasks/" + id);
     await settle();
     expect(router.currentRoute.value.fullPath).toBe("/app-checks");
   }, 15000);
   it("lands an unassigned user on an empty console without protected task reads", async () => {
-    consoleIdentity.login("1000");
+    await consoleIdentity.login(devKey("1000"));
     await consoleIdentity.saveUser({
       userId: "noproject",
       displayName: "待分配用户",
       role: "operator",
       projectIds: ["default"]
     });
+    const noProjectKey = await consoleIdentity.issueAccessKey("noproject");
     consoleIdentity.logout();
     const checks = vi.spyOn(MockAppCheckTaskSource.prototype, "listTasks");
     const messages = vi.spyOn(MockMessageTaskSource.prototype, "listTasks");
     const router = await mount();
-    await login("noproject");
+    await login(noProjectKey);
     expect(router.currentRoute.value.fullPath).toBe("/?view=home");
     expect(document.body.textContent).toContain("尚未分配可用的业务 Project");
     expect(checks).not.toHaveBeenCalled();

@@ -314,7 +314,7 @@ class OfflineTaskDeliveryRuntimeBoundaryTest {
                 .header("Content-Type", "application/json").POST(body == null
                         ? HttpRequest.BodyPublishers.noBody()
                         : HttpRequest.BodyPublishers.ofString(Jsons.toJson(body)));
-        if (path.startsWith("/api/v1/tasks")) builder.header("X-XA-Dev-User", "cHJvb2Y").header("X-XA-Dev-Role", "admin");
+        builder.header("Authorization", "Bearer " + com.xa.mass.server.testing.TaskCallers.devKey("proof"));
         var request = builder.build();
         var response = http.send(request, HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).as("POST %s; evidence=%s", path, evidence.trace).isEqualTo(200);

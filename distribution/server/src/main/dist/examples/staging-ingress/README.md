@@ -8,16 +8,19 @@ deployment cadence and environment handoff belong to the
 Using this gateway does not select a profile, deploy a Release or establish a
 completed environment acceptance.
 
-This gateway protects access to the deployment. Every administrator credential
-holder is trusted to select any development user/role. It does not authenticate
-individual Console users or isolate one Worker Host from another Worker identity.
-The two password files and realms are independent: administrator credentials
-cannot Prepare or connect Workers, and Worker credentials cannot administer Tasks.
+This gateway owns TLS, route allowlists, limits and the shared Worker Host realm.
+It does not authenticate Console users: the administrator host has no gateway
+credential and forwards only a well-formed `Authorization: Bearer xak_…` access key,
+which the Runtime [front door](https://github.com/quiaingmuarua/xa_mass_platform/blob/main/server_jvm/README.md#access-key-front-door)
+authenticates against its users file. Any other `Authorization` value, including a
+Worker Basic credential, is cleared before the Runtime. The Worker realm does not isolate
+one Worker Host from another Worker identity. Administrator access keys cannot Prepare
+or connect Workers, and Worker credentials cannot administer Tasks.
 
 ## Deployment inputs
 
 Copy `deployment.example.json` outside the immutable Runtime extraction and supply
-absolute Linux certificate, key, password-file, ACME and writable state paths.
+absolute Linux certificate, key, Worker password-file, ACME and writable state paths.
 The certificate must cover both hostnames. The renderer rejects unknown fields,
 unsafe paths, duplicate Groups and non-loopback upstream configuration. No secret
 value is accepted in the deployment JSON. The example Group must be registered and
@@ -48,8 +51,8 @@ use `-g 'user www-data;'`, with the state/password-file permissions assigned acc
 Alternatively run the whole service unprivileged with explicitly granted low-port
 binding rights. Do not use root workers as the deployed configuration. The local proof
 uses its invoking account and high loopback ports; it is not the production service unit.
-Use distinct nonempty usernames per Host and independently generated passwords;
-provision their htpasswd files outside the artifact. Never pass real passwords on
+Use distinct nonempty Worker usernames per Host and independently generated passwords;
+provision their htpasswd file outside the artifact. Never pass real passwords on
 command lines or include them in proof summaries, payloads, Worker Properties or URLs.
 
 The Runtime HTTP and Adapter listeners stay on `127.0.0.1`; Redis remains private.
@@ -62,7 +65,8 @@ application provisioning is a separate Host concern; this example installs no Wo
 ## Admission and limits
 
 The administrator hostname admits only listed current API operations and Console,
-documentation and static-asset GET/HEAD paths. Direct Call remains administrative.
+documentation and static-asset GET/HEAD paths. The Console and documentation load
+without credentials; every listed API operation still requires a Runtime access key. Direct Call remains administrative.
 Internal Adapter consume/append and Polling delivery, Worker Prepare and WebSocket
 paths are never exposed on that hostname. The Worker hostname permits only POST
 Prepare/Prepare batch for explicitly listed Groups and the exact WebSocket GET
@@ -71,7 +75,7 @@ Encoded, semicolon, repeated-slash and dot-segment paths are refused. This bound
 staging surface supports ASCII resource IDs; it is not a general URL compatibility layer.
 
 Administrator mutation requests reject foreign Origin and `Sec-Fetch-Site: cross-site`.
-CLI calls without those browser headers still require Basic authentication. Port 80
+CLI calls without those browser headers still require a Runtime access key. Port 80
 serves only GET/HEAD ACME challenge files for the two known hosts; application HTTP
 is denied without redirecting credentials. TLS is required. Certificate provisioning
 must be completed separately before starting the final TLS configuration.
@@ -86,14 +90,16 @@ The real Nginx proof exercises the actual 100/200 boundaries and checks that a w
 password still receives 401 when that username is at its limit. HTTP request-rate
 limits do not limit the subsequent WebSocket frame rate.
 
-Basic and proxy credential headers are stripped before forwarding. Upstream retries
-are disabled, including for mutation requests. Access logs contain the nonsecret
-Basic username (credential key ID), method, normalized URI and status, never query
-strings, Authorization or request/response bodies.
+Worker Basic, malformed administrator authorization and proxy credential headers are
+stripped before forwarding. Upstream retries are disabled, including for mutation
+requests. Access logs contain the nonsecret Worker Basic username (credential key ID),
+method, normalized URI and status, never query strings, Authorization or
+request/response bodies; administrator requests log no username.
 Application logs retain their existing owners and limits.
 
-Changing an htpasswd file rejects new requests/upgrades. Existing WSS connections
-remain active; a deliberate gateway stop/start closes them all. A graceful reload is
+Changing the Worker htpasswd file rejects new requests/upgrades. Existing WSS connections
+remain active; a deliberate gateway stop/start closes them all. Administrator access is
+revoked in the Runtime by clearing the user's key; the next request returns `401`. A graceful reload is
 not claimed to revoke existing connections. This is a shared trusted environment,
 not a credential-to-workerId authorization system.
 
@@ -117,8 +123,8 @@ python -m distribution.server.staging_ingress.proof --output /tmp/xa-mass-ingres
 Use a fresh output directory. The CLI retains only the safe `summary.json`; private
 fixture keys/configuration/logs live in an owned temporary directory that is removed
 after stopping its processes, including on failure. The proof checks routing,
-credentials, request filtering, body/rate/connection limits, no retry, revocation and
-restart. One unchanged raw WSS connection also stays silent for 65 seconds and then
+Worker credentials, administrator key forwarding and stripping, request filtering,
+body/rate/connection limits, no retry, revocation and restart. One unchanged raw WSS connection also stays silent for 65 seconds and then
 echoes a frame; no heartbeat or SDK reconnect can mask the default 60-second proxy
 timeout. This bounded witness does not measure the full configured one-hour idle limit.
 It is not evidence of Worker execution. The Runtime Distribution caller may

@@ -169,7 +169,10 @@ class DirectCallHttpExecutionIntegrationTest {
         HttpRequest request(String path, String body) {
             // Cold application preparation is outside the bounded Direct HTTP interactions.
             return HttpRequest.newBuilder(URI.create(base + path)).timeout(Duration.ofSeconds(path.startsWith(ROUTE) ? 5 : 30))
-                    .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
+                    .header("Content-Type", "application/json")
+                    // Exempt Worker routes ignore the key; Group register and Direct Call require it.
+                    .header("Authorization", "Bearer " + com.xa.mass.server.testing.TaskCallers.devKey("proof"))
+                    .POST(HttpRequest.BodyPublishers.ofString(body)).build();
         }
         JsonNode consume(String worker) throws Exception {
             long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();

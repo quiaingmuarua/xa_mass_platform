@@ -285,7 +285,7 @@ class ProofRunner:
         self.scopes.add(scope)
         stream = (self.logs / f"server-{label}.log").open("w", encoding="utf-8")
         self.streams.append(stream)
-        environment = dict(os.environ, XA_MASS_CONSUMER_REDIS_URL=self.options.redis_url)
+        environment = consumer.consumer_environment(self.options.redis_url)
         runtime_config = ROOT / "xa-android/config" / configuration if configuration else None
         groups = ROOT / "xa-android/config/worker-groups.json"
         example = Path(self.consumption["runtimeRoot"]) / "examples/batch-checks"

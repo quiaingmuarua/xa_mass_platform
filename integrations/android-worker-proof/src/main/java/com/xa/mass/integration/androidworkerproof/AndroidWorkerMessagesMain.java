@@ -25,7 +25,7 @@ public final class AndroidWorkerMessagesMain {
         this.options = options;
         evidence = new ProofEvidence(options, "messages", options.phase());
         http = new JsonHttpClient(options.serverBaseUrl(), options,
-                Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"));
+                Map.of("Authorization", "Bearer xak_dev_1000"));
         local = new JsonHttpClient(options.deviceBaseUrl(), options, Map.of());
         device = new AndroidDeviceHostClient(local);
         runtime = new AndroidRuntimeApiClient(http);

@@ -1,3 +1,4 @@
+import { sessionAuthHeaders } from "@/access-session";
 import { type TaskCaller, callerHeaders } from "@/task-caller";
 import { z } from "zod";
 
@@ -22,7 +23,7 @@ export async function api<T>(
   const response = await fetch(`/api/v1/messages${path}`, {
     method: body === undefined ? "GET" : "POST",
     headers: {
-      ...(caller ? callerHeaders(caller) : {}),
+      ...(caller ? callerHeaders(caller) : sessionAuthHeaders()),
       "Content-Type":
         encoding === "text" ? "text/plain;charset=UTF-8" : "application/json"
     },

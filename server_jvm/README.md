@@ -30,7 +30,7 @@ Read this Owner by use case:
 The generic frontend controller forwards `/runtime/workers`, `/runtime/tasks`
 and `/task-workbench` (including trailing slashes) to the Console entry. The
 workbench lets administrators operate any declared Project using the existing
-Task APIs. Project selection is frontend context; Server independently checks the declared caller and stored ownership;
+Task APIs. Project selection is frontend context; Server independently checks the authenticated caller and stored ownership;
 Task preparation remains explicit and Project declarations never provision Tasks. Unknown API and asset
 paths are not forwarded.
 
@@ -73,15 +73,17 @@ request-derived `servers` field and canonicalizes the committed JSON. Contract
 tests detect drift without rewriting it. Tags organize callers, not runtime
 Owners or Redis domains.
 
+Every non-exempt `/api/**` request first passes the [access-key front door](#access-key-front-door).
 After a public route matches, application outcomes use:
 
 | HTTP status | Meaning |
 | --- | --- |
 | `200` | Completed, including idempotent no-op and bounded partial observation |
 | `400 + ApiErrorResponse` | Input, business resource, precondition or state rejection |
-| `403 + ApiErrorResponse` | The declared Task caller has no access to this resource |
+| `401 + ApiErrorResponse` | Missing, malformed or unknown access key; returned before routing |
+| `403 + ApiErrorResponse` | The authenticated caller has no access to this resource |
 | `404 + ApiErrorResponse` | Credit target does not exist; see account lookup rules below |
-| `409 + ApiErrorResponse` | Credit adjustment balance/limit rejection or idempotency conflict |
+| `409 + ApiErrorResponse` | Credit balance/limit or idempotency conflict; user directory read-only or edited outside the Server |
 | `429 + ApiErrorResponse` | Admission capacity exhausted; currently Direct Call only |
 | `503 + ApiErrorResponse` | An Owner or required dependency is temporarily unavailable |
 
@@ -122,7 +124,7 @@ Task type returns `400/12008`.
 | Known Project Task | Project plus Task identity | Read descriptor attribution and Score without discovery | Ownership checks precede state reads | [Project directory](#projects-and-explicit-rpc-tasks) |
 | Project lookup | Configured Project; no default | Return Project identity and its bound Group list | Read never initializes resources | [Project directory](#projects-and-explicit-rpc-tasks) |
 | Project Task list | Configured Project; `limit=1..1000` | Select a bounded Project or user batch and read independent Task/Score projections | Missing projections stay null; corruption fails | [Server task directory](#task-attribution-and-directory) |
-| Task create | Business requestId, declared caller, declared Project, one of its registered Groups, normalized supply and valid fields | Create a finite immutable Task descriptor | Validate before writes; unknown commit retains the generated identity | [TaskCreationService](src/main/java/com/xa/mass/server/task/TaskCreationService.java) |
+| Task create | Business requestId, authenticated caller, declared Project, one of its registered Groups, normalized supply and valid fields | Create a finite immutable Task descriptor | Validate before writes; unknown commit retains the generated identity | [TaskCreationService](src/main/java/com/xa/mass/server/task/TaskCreationService.java) |
 | RPC prepare | Caller Task ID and declared Project/Group | Create or reuse and approve a parked Task | 400 conflict/invalid; 503 retains the supplied identity | [RPC preparation](#projects-and-explicit-rpc-tasks) |
 | Approve / close | Admitted caller; finite Task; approval body `{expectedItemCount}` with a positive integer | Return the shared applied/unchanged effect | Missing/wrong-type rules above; Owner failure uses `503` | [TaskLifecycleService](src/main/java/com/xa/mass/server/task/TaskLifecycleService.java) |
 | Ordinary Item append | Finite Task with `server.inputOwner=raw`; structurally valid batch | Persist admitted Items without releasing idle park | Query rejection is per Item; whole-request failure is non-2xx | [TaskDataService](src/main/java/com/xa/mass/server/task/TaskDataService.java) |
@@ -132,53 +134,71 @@ Task type returns `400/12008`.
 | Item states | Finite or managed Task | Read decoded Score, independently of Results | Missing Items return null; Owner failure uses `503` | [Item Score Owner](../kernel_jvm/doc/score/task-item-score-band-scheduling.md) |
 | Result export | Finite Task; one observed Task Score is `TERMINAL` | Stream only successful content through bounded Owner pages | Nonterminal: `400/12010`; overlapping generation: `400/12009` | [Result Owner](../kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md#taskitem-result-projection) |
 
-### Shared development caller
+### Access-key front door
 
-`TaskCaller` is an explicit immutable application argument. Server's MVC argument
-resolver parses exactly one `X-XA-Dev-User` (strict UTF-8 Base64URL) and one
-`X-XA-Dev-Role` (`admin` or `operator`), then resolves the user and role through
-`UserDirectory`. Missing, malformed or ambiguous declarations return `400/12012`;
-unknown users, role mismatches and resource denial return `403/12013` through the
-common error handler. The resulting snapshot contains the directory's role policy
-and assigned Projects. HTTP cannot supply these grants. There is no ThreadLocal,
-session or authentication claim: selecting an existing development identity remains
-trusted, while the directory determines that identity's access.
+`AccessKeyFilter` is the single authentication point for `/api/**`. Every request must carry
+exactly one `Authorization: Bearer <access key>`; missing, malformed or unknown keys return
+`401/18008` with `WWW-Authenticate: Bearer` before routing, so unknown API paths are also
+`401` rather than revealing whether they exist. The only exemptions are an exact method and
+route-template table: Worker `workers:prepare` and `workers:prepare-batch`, Worker polling
+`commands:poll` and `workers/{workerId}/results`, and internal Adapter `commands:consume` and
+`results:append`. Their exposure stays with the gateway Worker realm and loopback binding.
+The OpenAPI snapshot declares one bearer scheme and documents the same exemptions. Static
+Console pages, `/docs`, `/reference` and actuator are outside `/api`.
 
-Every request resolves once under the directory's update gate, then releases the
-gate before business work. Updates affect subsequent admissions; admitted work
-retains its snapshot, including already-issued writes. Each later HTTP request in
-a composed operation is admitted independently. Role, name and Project changes do
-not rewrite Task attribution or the Project/user/requestId creation identity.
+A key identifies one directory user. `TaskCaller` is the immutable snapshot of that user's
+current role policy and Project grants, resolved once per request under the directory gate
+and handed to operations by the MVC argument resolver; no request can declare a user, role,
+grant or internal service identity. Authorization stays with each operation: Project grants,
+Task ownership and permissions behave as before, while operations without a `TaskCaller`
+admit any authenticated user, the same reach the gateway gave before. There is no session,
+password, ThreadLocal or token refresh.
 
-### Development user directory
+Updates affect subsequent admissions; admitted work retains its snapshot, including
+already-issued writes. Each later HTTP request in a composed operation is admitted
+independently. Role, name, Project and key changes do not rewrite Task attribution or the
+Project/user/requestId creation identity.
 
-`UserDirectory` owns one Server-process map initialized once from
-`xa.mass.users.seed` (default `classpath:users/development-directory.json`).
-The JSON declares the two fixed roles (`admin`, `operator`) with Console grants
-and the initial users, names, roles and Project assignments. Roles are immutable
-until restart. Default operators can use Messages and App Checks; admin uses all
-Projects. Seed grants may refer to a currently disabled business Project.
+### User directory and access keys
 
-`GET /api/v1/users` and `GET /api/v1/roles` provide public development discovery
-for the login chooser; there are no credentials or session endpoints. POST
-`/users` creates and PUT `/users/{userId}` replaces a user's name, role and Projects.
-Writes require the admitted role's `users.manage` permission (admin in the default seed). IDs are
-immutable; duplicate IDs, unknown roles/Projects and current-user edits are rejected.
-New assignments must name declared Projects; admin's empty assignment list means
-all Projects according to its role. The selected frontend login captures a caller;
-the UI reflects edits at browser reload or the next login. Server admission already
-uses the updated directory on the next request, without rewriting in-flight requests.
+`UserDirectory` owns roles, users, Project assignments and access-key hashes from
+`xa.mass.users.seed`. Without a configured seed, `default` and `preview` load the built-in
+`classpath:users/development-directory.json` and log a warning: its users `1000`, `1001` and
+`1002` carry the documented public keys `xak_dev_<userId>` for local runs, Mock and proofs.
+The `consumer` profile sets `xa.mass.users.require-configured-seed` and refuses to start
+without an explicit seed, so public keys never go live on an external host by default.
+Roles are the two fixed ids (`admin`, `operator`); seed grants may refer to a currently
+disabled business Project. Loading rejects unknown fields, malformed or duplicate hashes,
+duplicate users and a directory without an admin.
 
-Reads return immutable snapshots. Synchronized create/update keeps a duplicate
-create atomic within this Server instance. All clients share this map; refresh
-and logout retain mutations. Restart reloads the JSON without saving, migration,
-database writes, file writes, Redis data or inter-instance replication. This
-directory does not add a Kernel user domain or change scheduling. Project grants
-are enforced together with Task ownership. User IDs cannot be reassigned to another
-person while retaining their Tasks; Preview proof uses fresh isolated scopes and
-fixed user seeds for restart workloads, without historical migration.
+A key is `xak_` followed by 32 random bytes in base64url. The file stores only its lowercase
+SHA-256 `accessKeySha256`; a user without one cannot authenticate. Reads (`GET /api/v1/me`,
+`/users`, `/roles`) need an authenticated caller and expose `hasAccessKey`, never key material.
+`/me` returns the caller's directory record and role grants for the Console.
 
-Project directory reads require a directory-admitted caller and remain discovery.
+A `file:` seed is owned by the running Server, which is its only writer. It holds a
+process-exclusive `<file>.lock` sidecar for its lifetime. Each write runs under the gate:
+it re-reads the file, compares its SHA-256 with the loaded snapshot, publishes the complete
+next document (temp file, fsync, atomic replace) and only then swaps the in-memory snapshot.
+A file edited by hand while the Server runs returns `409/18009` and is loaded at the next
+restart; hand edits belong to a stopped Server. A classpath seed is read-only and every write
+returns `409/18009`. A failed publication returns `503/18010` and leaves the snapshot unchanged.
+
+| Operation | Admission | State effect |
+| --- | --- | --- |
+| `POST /users` | `users.manage`; new id; declared Projects | Persist a user without a key |
+| `PUT /users/{userId}` | `users.manage`; another existing user | Persist name, role and Projects; keep its key |
+| `POST /users/{userId}/access-key` | `users.manage`; another existing user | Replace any key; return `{userId, accessKey}` once with `Cache-Control: no-store` |
+| `DELETE /users/{userId}/access-key` | `users.manage`; another existing user | Clear the key; its next request returns `401` |
+
+Rejections are `400/18001`, except the permission checks (`403/12013`) and the file outcomes
+above. The current user cannot edit itself, which prevents self-lockout and self-escalation;
+a fresh environment's first administrator key is written into the file while the Server is
+stopped. There is no user deletion, registration, password, key expiry, scope, multiple keys
+or usage statistics. The directory adds no Kernel user domain and does not change scheduling.
+User IDs cannot be reassigned to another person while retaining their Tasks or account.
+
+Project directory reads require an authenticated caller and remain discovery.
 
 ### User credit accounts
 
@@ -187,7 +207,7 @@ remain independent of Tasks; the internal business debit accepts immutable attri
 an amount but owns no Scenario pricing or execution policy. Stable `userId` identifies the account.
 `credits.view` permits self reads; `credits.manage` permits cross-user reads and adjustments
 (default admin, including self). Admission uses the current UserDirectory snapshot before
-account I/O. Public `/users` and `/roles` include no account data. A missing directory user
+account I/O. `/users` and `/roles` include no account data or key material. A missing directory user
 with a retained account is admin-readable but cannot receive adjustments. Reusing a userId
 for another person would reuse its account and is not supported.
 
@@ -273,7 +293,7 @@ operator's range and reject an explicit other owner. Global Runtime Task preview
 App Checks configuration, and SMS business operations respectively require
 `runtime.view`, `app-checks.configuration`, and `sms.use`; these are admin-only in
 the default seed. Business management also checks its Project grant. Catalogs remain
-caller-free discovery. Headers cannot declare an internal service role.
+discovery for any authenticated caller. No request can declare an internal service role.
 
 Assembly grants internal startup/projection paths a Project-scoped service caller.
 SMS retains one shared RPC Task with `server.inputOwner=sms`; public SMS requests
@@ -355,7 +375,7 @@ can later be explicitly prepared under the same identity. RPC preparation does n
 creation/RPC preparation: strip surrounding whitespace, then require
 `^[1-9a-z][0-9a-z]{3,8}$`. IDs stay strings; uppercase, leading zero and other
 lengths are rejected, not normalized into aliases. Every external Task creation uses
-the declared caller; scoped internal service Tasks may have no human creator.
+the authenticated caller; scoped internal service Tasks may have no human creator.
 Project/User have no Kernel interpretation or user lifecycle.
 
 Server stamps `userId`, `server.projectId`, `server.inputOwner` and `server.createdAtMillis`

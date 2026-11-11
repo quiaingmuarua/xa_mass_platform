@@ -192,8 +192,7 @@ class WorkerGroupBindingsIntegrationTest {
     }
     private static HttpResponse<String> send(HttpClient client, URI base, String method, String path, String body, String type) throws Exception {
         var request = HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(10))
-                .header("X-XA-Dev-User", Base64.getUrlEncoder().withoutPadding().encodeToString("proof".getBytes(StandardCharsets.UTF_8)))
-                .header("X-XA-Dev-Role", "admin").header("Content-Type", type)
+                .header("Authorization", "Bearer xak_dev_proof").header("Content-Type", type)
                 .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body)).build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).as("%s %s", method, path).isBetween(200, 299);

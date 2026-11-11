@@ -5,7 +5,7 @@ import { MockUserDirectorySource } from "@/user-directory-source";
 import { MockMessageTaskSource } from "@/message-campaigns/mock-task-source";
 import { MockRuntimeViewerDataSource } from "@/runtime-viewer/mock-data-source";
 import { createConsoleIdentity } from "@/console-identity";
-import { ADMIN, OPERATOR_A as A, OPERATOR_B as B } from "./identity-fixture";
+import { ADMIN, OPERATOR_A as A, OPERATOR_B as B, devKey } from "./identity-fixture";
 
 function world(project: "messages" | "app-checks") {
   const directory = new MockUserDirectorySource();
@@ -140,7 +140,7 @@ it("keeps an admitted import's snapshot and denies the next operation before rea
 it("retains login snapshots until re-entry and rechecks runtime permissions per request", async () => {
   const directory = new MockUserDirectorySource();
   const identity = createConsoleIdentity(undefined, [], directory);
-  identity.login(A.userId);
+  await identity.login(devKey(A.userId));
   const original = identity.requireCurrent();
   await directory.save(
     ADMIN,
@@ -151,7 +151,7 @@ it("retains login snapshots until re-entry and rechecks runtime permissions per 
   expect(identity.requireCurrent()).toBe(original);
   identity.logout();
   await identity.load(true);
-  identity.login(A.userId);
+  await identity.login(devKey(A.userId));
   expect(identity.requireCurrent().role).toBe("admin");
   const runtime = new MockRuntimeViewerDataSource(identity.requireCurrent(), directory);
   await expect(runtime.previewTasks(10)).resolves.toBeDefined();

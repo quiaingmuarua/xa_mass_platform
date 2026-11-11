@@ -129,7 +129,7 @@ class AppCheckProofTest(unittest.TestCase):
         self.assertEqual(16, len(set(case["numbers"])))
         self.assertTrue(all(number.startswith("+86") for number in case["numbers"]))
         self.assertNotIn("workerId", case)
-        self.assertEqual({"X-XA-Dev-User": "MTAwMA", "X-XA-Dev-Role": "admin"}, caller_headers(case["userId"], "admin"))
+        self.assertEqual({"Authorization": "Bearer xak_dev_1000"}, caller_headers(case["userId"], "admin"))
         self.assertNotIn("userId", creation_input(case))
         self.assertNotIn("numbers", creation_input(case))
         self.assertEqual(set(creation_input(case)), {"requestId", "checkId", "country"})

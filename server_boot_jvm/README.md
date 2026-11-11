@@ -128,9 +128,14 @@ standard environment, command-line and `spring.config.additional-location` input
 
 | Profile | Configuration | Default deployment |
 | --- | --- | --- |
-| Default | `application.yaml` | Server 18082, Redis `redis://localhost:6379/15`, scope `profile_default`, DEFAULT Pacer, no Adapter or Group seeds |
-| `consumer` | `application-consumer.yaml` over the base | Server 18182, `runtime-websocket` Adapter 18183, scope `profile_consumer`, DEFAULT and no Group seeds |
-| `preview` | `application-preview.yaml` over the base | Server 18500, `products-websocket` Adapter 18503, required `XA_MASS_REDIS_SCOPE`, DEFAULT and all three business Scenarios |
+| Default | `application.yaml` | Server 18082, Redis `redis://localhost:6379/15`, scope `profile_default`, DEFAULT Pacer, no Adapter or Group seeds, built-in development users |
+| `consumer` | `application-consumer.yaml` over the base | Server 18182, `runtime-websocket` Adapter 18183, scope `profile_consumer`, DEFAULT and no Group seeds; requires `xa.mass.users.seed` (or `XA_MASS_USERS_SEED`) |
+| `preview` | `application-preview.yaml` over the base | Server 18500, `products-websocket` Adapter 18503, required `XA_MASS_REDIS_SCOPE`, DEFAULT and all three business Scenarios, built-in development users |
+
+The built-in development users carry public access keys (`xak_dev_<userId>`) and are
+for local runs only. `consumer` sets `xa.mass.users.require-configured-seed`, so an
+external host refuses to start until it names its own users file; a `file:` seed is
+then persisted by that Server. See [Server user directory](../server_jvm/README.md#user-directory-and-access-keys).
 
 The external [platform proof fixture](../integrations/worker_proof_support/platform-runtime.yaml)
 retains the `scenario-workers` test Project, three Groups, original Adapter and

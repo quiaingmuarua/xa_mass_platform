@@ -1,6 +1,6 @@
 import { MockUserDirectorySource } from "@/user-directory-source";
 import { consoleIdentity } from "@/console-identity";
-import { ADMIN as CALLER } from "./identity-fixture";
+import { ADMIN as CALLER, devKey } from "./identity-fixture";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, h, nextTick, type App } from "vue";
 import { createRouter, createMemoryHistory, RouterView } from "vue-router";
@@ -25,8 +25,8 @@ import { MessageApiError } from "../src/message-campaigns/api";
 let app: App | undefined;
 let source: MockMessageTaskSource;
 const fetcher = vi.fn();
-beforeEach(() => {
-  consoleIdentity.login("1000");
+beforeEach(async () => {
+  await consoleIdentity.login(devKey("1000"));
   vi.useFakeTimers();
   vi.stubGlobal("fetch", fetcher.mockReset());
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});

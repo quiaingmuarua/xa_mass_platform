@@ -157,7 +157,9 @@ class NetworkEvidenceFilterRuntimeBoundaryTest {
         String post(String path, String body) throws Exception {
             String base = "http://127.0.0.1:" + context.getEnvironment().getProperty("local.server.port");
             var response = http.send(HttpRequest.newBuilder(URI.create(base + path))
-                    .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer " + com.xa.mass.server.testing.TaskCallers.devKey("proof"))
+                    .POST(HttpRequest.BodyPublishers.ofString(body)).build(),
                     HttpResponse.BodyHandlers.ofString());
             assertThat(response.statusCode()).as(path + " " + response.body())
                     .isEqualTo(path.endsWith("/results:append") ? 202 : 200);

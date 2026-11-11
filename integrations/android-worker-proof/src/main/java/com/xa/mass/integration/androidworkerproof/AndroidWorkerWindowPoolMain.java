@@ -15,7 +15,7 @@ public final class AndroidWorkerWindowPoolMain {
     private AndroidWorkerWindowPoolMain(AndroidWorkerProofOptions options) {
         this.options = options;
         evidence = new ProofEvidence(options, "window-pool", options.phase());
-        http = new JsonHttpClient(options.serverBaseUrl(), options, Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"));
+        http = new JsonHttpClient(options.serverBaseUrl(), options, Map.of("Authorization", "Bearer xak_dev_1000"));
     }
     public static void main(String[] args) throws IOException {
         var proof = new AndroidWorkerWindowPoolMain(AndroidWorkerProofOptions.parse(args));

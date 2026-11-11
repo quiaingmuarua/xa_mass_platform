@@ -78,7 +78,7 @@ final class CallApi implements AutoCloseable {
     private HttpRequest.Builder request(String url, Duration timeout) {
         var request = HttpRequest.newBuilder(URI.create(url)).timeout(timeout);
         String path = URI.create(url).getPath();
-        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) taskCallerHeaders.forEach(request::header);
+        if (path.startsWith("/api/")) taskCallerHeaders.forEach(request::header);
         return request;
     }
 

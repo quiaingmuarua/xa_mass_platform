@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 
 class CallApiTest {
     @Test void streamingExportsCarryTheExplicitTaskCaller() throws Exception {
-        var caller = Map.of("X-XA-Dev-User", "cGVyZi11c2Vy", "X-XA-Dev-Role", "operator");
+        var caller = Map.of("Authorization", "Bearer xak_test_perf_user");
         var requests = new AtomicInteger();
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/v1/tasks/task/results:export", exchange -> {
@@ -51,7 +51,7 @@ class CallApiTest {
             exchange.getResponseBody().write(body); exchange.close();
         });
         server.start();
-        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))) {
+        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("Authorization", "Bearer xak_dev_1000"))) {
             assertThatThrownBy(() -> api.post("/action", Map.of()))
                     .isInstanceOfSatisfying(CallApi.Unavailable.class, error -> {
                         assertThat(error.httpStatus).isEqualTo(503);
@@ -79,7 +79,7 @@ class CallApiTest {
             exchange.sendResponseHeaders(503, -1); exchange.close();
         });
         server.start();
-        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))) {
+        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("Authorization", "Bearer xak_dev_1000"))) {
             assertThat(api.call("task", "id", "worker-1")).isEqualTo(new CallLoad.Reply(503, CallLoad.Outcome.UNKNOWN));
             assertThat(count).hasValue(1);
         } finally { server.stop(0); }
@@ -99,7 +99,7 @@ class CallApiTest {
         var batch = CallLoad.schedule(1, 1, 1, "late", Runnable::run,
                 (id, index) -> new CallLoad.Reply(200, CallLoad.Outcome.NOT_OBSERVED), clock::get, clock::set);
         long ended = batch.samples().getFirst().ended;
-        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))) {
+        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("Authorization", "Bearer xak_dev_1000"))) {
             LaneCase.drain(api, java.util.Map.of("perf-a", "task", "perf-b", "task"), batch, 1);
             assertThat(batch.samples().getFirst().outcome).isEqualTo(CallLoad.Outcome.NOT_OBSERVED);
             assertThat(batch.samples().getFirst().observed).isEqualTo("succeeded");
@@ -131,7 +131,7 @@ class CallApiTest {
             exchange.close();
         });
         server.start();
-        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))) {
+        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("Authorization", "Bearer xak_dev_1000"))) {
             assertThatThrownBy(() -> api.results("task", List.of("id"), CallApi.ExpectedResult.MD5,
                     java.time.Duration.ofMillis(20))).isInstanceOf(java.net.http.HttpTimeoutException.class);
             assertThatThrownBy(() -> api.results("task", java.util.Collections.nCopies(1001, "id")))

@@ -18,8 +18,11 @@
     }
   ],
   "users": [
-    { "userId": "1000", "displayName": "管理员", "role": "admin", "projectIds": [] },
-    { "userId": "1001", "displayName": "用户 A", "role": "operator", "projectIds": ["app-checks", "messages"] },
-    { "userId": "1002", "displayName": "用户 B", "role": "operator", "projectIds": ["app-checks", "messages"] }
+    { "userId": "1000", "displayName": "管理员", "role": "admin", "projectIds": [],
+      "accessKeySha256": "0bb28598731b45a95638921710906a8b5c90441af4cf27a787c2ee42ca01eca0" },
+    { "userId": "1001", "displayName": "用户 A", "role": "operator", "projectIds": ["app-checks", "messages"],
+      "accessKeySha256": "8c43603c623b21f2469822999d8501453768824fe4f198f2eca8a5245d5d3063" },
+    { "userId": "1002", "displayName": "用户 B", "role": "operator", "projectIds": ["app-checks", "messages"],
+      "accessKeySha256": "a3f654d0cae57e29b64c846d017912779914375e1f46b5c4a95930a5c50cb384" }
   ]
 }

@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.*;
 
 @Tag("redis-owner")
 class CreditAccountRedisIntegrationTest {
+    @org.junit.jupiter.api.io.TempDir java.nio.file.Path temp;
     RedisTestScope scope;
     RedisClient redis;
     StatefulRedisConnection<String, String> connection;
@@ -149,17 +150,21 @@ class CreditAccountRedisIntegrationTest {
         store = new CreditAccountStore(redis, scope.keyspace(), clock);
         assertThat(store.adjustment("1001", request.requestId()).response().transaction().balanceAfter()).isEqualTo(100);
         assertThat(store.adjust("1001", "1000", request).transaction().sequence()).isEqualTo(1);
-        var users = CreditHttpTest.directory();
-        var admin = users.resolveCaller("1000", "admin");
+        var users = CreditHttpTest.directory(temp);
+        var admin = users.authenticate("xak_dev_1000");
         users.update(admin, "1001", new UserDirectory.UpdateUser("renamed", "admin", List.of()));
-        assertThat(new CreditService(users, store).account(users.resolveCaller("1001", "admin"), "1001").balance()).isEqualTo(100);
+        assertThat(new CreditService(users, store).account(users.authenticate("xak_dev_1001"), "1001").balance()).isEqualTo(100);
         users.create(admin, new UserDirectory.User("tempuser", "Temporary", "operator", List.of()));
         var service = new CreditService(users, store);
         service.adjust(admin, "tempuser", input(7));
-        var restarted = new CreditService(CreditHttpTest.directory(), store);
-        assertThat(restarted.account(admin, "tempuser").balance()).isEqualTo(7);
-        assertThat(restarted.account(admin, "tempuser").userPresent()).isFalse();
-        assertCode(() -> restarted.adjust(admin, "tempuser", input(1)), ServerErrorCode.CREDIT_ACCOUNT_NOT_FOUND);
+        users.close();
+        // Another environment's directory without that user keeps reading the retained account but cannot adjust it.
+        try (var other = CreditHttpTest.directory(temp.resolve("other"))) {
+            var restarted = new CreditService(other, store);
+            assertThat(restarted.account(admin, "tempuser").balance()).isEqualTo(7);
+            assertThat(restarted.account(admin, "tempuser").userPresent()).isFalse();
+            assertCode(() -> restarted.adjust(admin, "tempuser", input(1)), ServerErrorCode.CREDIT_ACCOUNT_NOT_FOUND);
+        }
     }
     @Test void corruptStorageIsNotZeroAndValidationCannotPartiallyPublish() {
         var commands = connection.sync();

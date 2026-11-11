@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { consoleMockKey } from "@/console-mock";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, inject } from "vue";
-import { ElDialog, ElDrawer } from "element-plus";
+import { ElDialog, ElDrawer, ElMessageBox } from "element-plus";
 import "element-plus/es/components/drawer/style/css";
+import "element-plus/es/components/message-box/style/css";
 import CreditAccountPanel from "@/credits/CreditAccountPanel.vue";
 import { can } from "@/access-policy";
 import { normalizeTaskUserId } from "@/task-user-id";
@@ -40,6 +41,10 @@ function openCredits(userId: string) {
   }
 }
 const saving = ref(false);
+const keyBusy = ref("");
+// The only copy of a newly issued key; cleared when its dialog closes and never stored.
+const issued = ref<{ userId: string; accessKey: string } | null>(null);
+const copied = ref(false);
 const mock = import.meta.env.VITE_RUNTIME_DATA_SOURCE === "mock";
 const opened = ref(false);
 const editing = ref<string>();
@@ -111,13 +116,63 @@ async function save() {
     );
     if (!active) return;
     notice.value = editing.value
-      ? "用户已更新，新权限用于后续操作；页面入口请刷新或重新登录。"
-      : "用户已新增，退出后即可选择该用户登录。";
+      ? "用户已更新，新权限用于后续请求；页面入口请刷新或重新登录。"
+      : "用户已新增；签发访问密钥后该用户即可登录。";
     opened.value = false;
   } catch (cause) {
     if (active) error.value = cause instanceof Error ? cause.message : "无法保存用户";
   } finally {
     if (active) saving.value = false;
+  }
+}
+async function issueKey(user: ConsoleUser) {
+  if (keyBusy.value) return;
+  notice.value = "";
+  error.value = "";
+  try {
+    if (user.hasAccessKey)
+      await ElMessageBox.confirm(
+        `为 ${user.displayName}（${user.userId}）重新签发访问密钥后，旧密钥立即失效。`,
+        "重新签发访问密钥",
+        { confirmButtonText: "重新签发", cancelButtonText: "取消", type: "warning" }
+      );
+    keyBusy.value = user.userId;
+    const accessKey = await consoleIdentity.issueAccessKey(user.userId);
+    if (active) {
+      copied.value = false;
+      issued.value = { userId: user.userId, accessKey };
+    }
+  } catch (cause) {
+    if (active && cause instanceof Error) notice.value = cause.message;
+  } finally {
+    if (active) keyBusy.value = "";
+  }
+}
+async function clearKey(user: ConsoleUser) {
+  if (keyBusy.value) return;
+  notice.value = "";
+  try {
+    await ElMessageBox.confirm(
+      `清除后 ${user.displayName}（${user.userId}）当前的访问密钥立即失效，需重新签发才能登录。`,
+      "清除访问密钥",
+      { confirmButtonText: "清除", cancelButtonText: "取消", type: "warning" }
+    );
+    keyBusy.value = user.userId;
+    await consoleIdentity.clearAccessKey(user.userId);
+    if (active) notice.value = `已清除 ${user.userId} 的访问密钥。`;
+  } catch (cause) {
+    if (active && cause instanceof Error) notice.value = cause.message;
+  } finally {
+    if (active) keyBusy.value = "";
+  }
+}
+async function copyIssued() {
+  if (!issued.value) return;
+  try {
+    await navigator.clipboard.writeText(issued.value.accessKey);
+    copied.value = true;
+  } catch {
+    copied.value = false;
   }
 }
 function projectLabel(projectId: string) {
@@ -130,7 +185,7 @@ function projectLabel(projectId: string) {
     <header class="user-management__heading">
       <div>
         <h1>用户管理</h1>
-        <p>配置开发用户的角色和可使用的 Project。</p>
+        <p>配置用户的角色、可使用的 Project 和访问密钥。</p>
       </div>
       <div>
         <el-button
@@ -144,7 +199,7 @@ function projectLabel(projectId: string) {
       :title="
         mock
           ? 'Mock 用户数据仅用于前端演示，刷新后重置。'
-          : '用户配置保存在 Server 内存中，所有客户端共享；Server 重启后重新加载初始配置。'
+          : '用户、角色与访问密钥哈希保存在 Server 用户目录文件中，修改立即用于后续请求；密钥只在签发时显示一次。'
       "
       type="info"
       :closable="false"
@@ -189,14 +244,34 @@ function projectLabel(projectId: string) {
           <span v-else>未分配</span>
         </template></el-table-column
       >
-      <el-table-column label="操作" width="230"
+      <el-table-column label="访问密钥" min-width="110"
+        ><template #default="{ row }">{{
+          (row as ConsoleUser).hasAccessKey ? "已签发" : "未签发"
+        }}</template></el-table-column
+      >
+      <el-table-column label="操作" width="360"
         ><template #default="{ row }">
           <span v-if="row.userId === consoleIdentity.current.value?.userId"
             >当前登录用户</span
           >
-          <el-button v-else :aria-label="`编辑用户 ${row.userId}`" @click="open(row)"
-            >编辑</el-button
-          >
+          <template v-else>
+            <el-button :aria-label="`编辑用户 ${row.userId}`" @click="open(row)"
+              >编辑</el-button
+            >
+            <el-button
+              :aria-label="`签发访问密钥 ${row.userId}`"
+              :loading="keyBusy === row.userId"
+              @click="issueKey(row)"
+              >{{ row.hasAccessKey ? "重新签发" : "签发密钥" }}</el-button
+            >
+            <el-button
+              v-if="row.hasAccessKey"
+              :aria-label="`清除访问密钥 ${row.userId}`"
+              :disabled="keyBusy === row.userId"
+              @click="clearKey(row)"
+              >清除密钥</el-button
+            >
+          </template>
           <el-button
             v-if="can(consoleIdentity.current.value, 'credits.manage')"
             :aria-label="`积分账户 ${row.userId}`"
@@ -238,6 +313,28 @@ function projectLabel(projectId: string) {
       管理员可使用全部 Project；普通用户仅能在获分配的业务入口管理本人任务。Project
       不会授予配置管理等管理员权限。
     </p>
+    <el-dialog
+      :model-value="issued !== null"
+      title="访问密钥已签发"
+      width="560px"
+      destroy-on-close
+      :close-on-click-modal="false"
+      @close="issued = null"
+    >
+      <div v-if="issued" class="user-management__issued">
+        <p>
+          请把下面的密钥私下交给 <strong>{{ issued.userId }}</strong
+          >。关闭后无法再次查看；旧密钥（如有）已失效。
+        </p>
+        <el-input :model-value="issued.accessKey" readonly aria-label="新访问密钥" />
+        <el-button @click="copyIssued">{{ copied ? "已复制" : "复制密钥" }}</el-button>
+      </div>
+      <template #footer
+        ><el-button type="primary" @click="issued = null"
+          >我已保存，关闭</el-button
+        ></template
+      >
+    </el-dialog>
     <el-dialog
       v-model="opened"
       :title="editing ? '编辑用户' : '新增用户'"
@@ -351,6 +448,14 @@ function projectLabel(projectId: string) {
 .user-management__form p {
   margin: 0;
   color: var(--rv-muted);
+  line-height: 1.6;
+}
+.user-management__issued {
+  display: grid;
+  gap: 12px;
+}
+.user-management__issued p {
+  margin: 0;
   line-height: 1.6;
 }
 .user-management__error {

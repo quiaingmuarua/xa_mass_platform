@@ -271,10 +271,7 @@ the business API; the receiving event owns its format interpretation.
 Server validates dependencies after host Group initialization and before Adapter startup.
 Explicit default Project scope uses current registered Groups; other Project bindings stay declared. Group discovery uses caller-driven read-only Worker catalog pages, without Project interpretation in Kernel. Project bindings do not provision Tasks. RPC preparation is an explicit Server use case;
 SMS prepares a shared Task at Scenario startup, while the workbench owns its caller-based
-Task ID convention. Server owns Project/User metadata interpretation and its single per-Project Task directory; Kernel stores opaque metadata without Project fields or index operations. Server owns one explicit TaskCaller policy across Task and Scenario entrypoints. External creators come from the declared caller; immutable server.inputOwner separates raw input from scenario conversion. Internal startup/projection callers are Project-scoped assembly values and cannot be declared over HTTP. Caller metadata supports application access checks, not a Kernel user domain or scheduling input. Server separately owns the JSON-initialized development user directory and its process-memory management API; it resolves each HTTP TaskCaller against the current directory into an immutable
-role/Project snapshot, shared by Task and Scenario access checks. Updates affect
-new request admission without rewriting Task ownership or admitted work. It adds
-no session authentication, persistence or scheduling authority. Shared Group definitions remain host-owned; scenario requirements
+Task ID convention. Server owns Project/User metadata interpretation and its single per-Project Task directory; Kernel stores opaque metadata without Project fields or index operations. Server owns one explicit TaskCaller policy across Task and Scenario entrypoints. External creators come from the authenticated caller; immutable server.inputOwner separates raw input from scenario conversion. Internal startup/projection callers are Project-scoped assembly values and cannot be declared over HTTP. Caller metadata supports application access checks, not a Kernel user domain or scheduling input. Shared Group definitions remain host-owned; scenario requirements
 may read through the startup validator but must not register, amend or enable
 resources. Configuration and module Project identities cannot shadow each other.
 
@@ -291,6 +288,22 @@ allocation feedback; Project membership independently controls Task admission an
 without introducing Project stock, quotas or interpretation in Matching.
 App Checks does not define these resources or import Matching types; it references their enabled names.
 Resource reads expose bindings without Facts or stock access.
+
+## User Directory And Access Keys
+
+Server owns API authentication: one front-door filter admits every non-exempt `/api/**`
+request by exactly one per-user Bearer access key, resolved against the Server user
+directory into an immutable role/Project TaskCaller snapshot shared by Task and Scenario
+access checks. Only the exact Worker Prepare/polling and internal Adapter routes are exempt.
+Existing per-operation authorization is unchanged; caller-less operations admit any
+authenticated user. Server also owns the users file: roles, users, Project grants and
+SHA-256 key hashes, written only by the running Server with a process lock, fingerprint
+check and atomic publication; classpath seeds are read-only. Public development keys
+exist only in the built-in seed, and the consumer profile requires an explicit seed.
+Updates affect new request admission without rewriting Task ownership or admitted work.
+There are no passwords, sessions, registration, key scopes or expiry, and no Kernel user
+domain or scheduling authority. Worker connections keep their gateway credential; Worker
+identity is not tied to user keys. See [Server access keys](server_jvm/README.md#access-key-front-door).
 
 ## Verification
 
@@ -360,14 +373,14 @@ Use the [Release Preview guide](doc/guide/operations/deploy.md#release-preview)
 to find actual version/configuration records and distinguish pending acceptance
 from completed proof before acting.
 
-Distribution's optional staging ingress owns TLS, environment-level Basic gates,
-route allowlists and connection limits. Administrative gateway credentials do not
-replace the development TaskCaller; Worker gateway credentials do not authenticate
-individual Worker identities. Java/Android SDK connection options carry credentials
+Distribution's optional staging ingress owns TLS, the shared Worker Basic gate,
+route allowlists and connection limits. Its administrator host has no gateway credential:
+it forwards only a well-formed Bearer access key and the Runtime authenticates it. Worker
+gateway credentials do not authenticate individual Worker identities. Java/Android SDK connection options carry credentials
 only to the approved HTTPS/WSS authority, including batch Prepare and reconnects.
 Simulator owns private credential-file input; secrets never enter Properties,
-inventory, logs or shipped artifacts. This adds no Server user authentication,
-Kernel identity or scheduling authority. See the [staging deployment](distribution/server/src/main/dist/examples/staging-ingress/README.md).
+inventory, logs or shipped artifacts. This adds no Kernel identity or scheduling
+authority. See the [staging deployment](distribution/server/src/main/dist/examples/staging-ingress/README.md).
 
 ## Local Development Composition
 

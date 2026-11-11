@@ -1,7 +1,8 @@
+import { devKey } from "./identity-fixture";
 import axios, { type AxiosInstance } from "axios";
 import { consoleIdentity } from "@/console-identity";
 import { beforeEach } from "vitest";
-beforeEach(() => consoleIdentity.login("1000"));
+beforeEach(() => consoleIdentity.login(devKey("1000")));
 import { createApp, nextTick } from "vue";
 import { createPinia, setActivePinia } from "pinia";
 import { ElAlert, ElButton, ElInput, ElOption, ElSelect } from "element-plus";

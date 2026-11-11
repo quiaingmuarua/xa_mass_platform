@@ -1,7 +1,7 @@
 import { consoleIdentity } from "@/console-identity";
 import { beforeEach } from "vitest";
-beforeEach(() => consoleIdentity.login("1000"));
-import { ADMIN as CALLER } from "./identity-fixture";
+beforeEach(() => consoleIdentity.login(devKey("1000")));
+import { ADMIN as CALLER, devKey } from "./identity-fixture";
 import { expect, it, vi } from "vitest";
 import type { AxiosInstance } from "axios";
 import { rpcTaskId } from "@/task-workbench/rpc-task";

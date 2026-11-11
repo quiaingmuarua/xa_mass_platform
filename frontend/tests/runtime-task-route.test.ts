@@ -1,6 +1,6 @@
 import { MockUserDirectorySource } from "@/user-directory-source";
 import { consoleIdentity } from "@/console-identity";
-import { ADMIN as CALLER } from "./identity-fixture";
+import { ADMIN as CALLER, devKey } from "./identity-fixture";
 import { createApp, nextTick } from "vue";
 import { createPinia } from "pinia";
 import { createMemoryHistory, createRouter } from "vue-router";
@@ -38,7 +38,7 @@ vi.mock("@/components/RawTaskInput.vue", () => ({
   }
 }));
 it("late drawer and submission continuations cannot replace the current context", async () => {
-  consoleIdentity.login("1000");
+  await consoleIdentity.login(devKey("1000"));
   const row = {
     taskId: "known",
     createdAtMillis: 1,

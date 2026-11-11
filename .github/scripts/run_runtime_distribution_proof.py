@@ -53,8 +53,8 @@ def _free_port() -> int:
         return int(listener.getsockname()[1])
 
 
-# Explicit administrator (1000) from the packaged Server directory.
-TASK_CALLER_HEADERS = {"X-XA-Dev-User": "MTAwMA", "X-XA-Dev-Role": "admin"}
+# Public development key of administrator 1000 in the packaged development directory.
+TASK_CALLER_HEADERS = {"Authorization": "Bearer xak_dev_1000"}
 
 def _request(
     method: str,
@@ -65,6 +65,9 @@ def _request(
     headers: dict[str, str] | None = None,
 ) -> tuple[int, bytes, str]:
     payload = None if body is None else json.dumps(body).encode("utf-8")
+    # Every Runtime API call is admitted by the front door; exempt Worker routes ignore the key.
+    if headers is None and "/api/" in url:
+        headers = TASK_CALLER_HEADERS
     request = urllib.request.Request(
         url,
         data=payload,
@@ -463,8 +466,46 @@ def _prove_agentforge_bindings(base_url: str) -> None:
             raise RuntimeError("AgentForge workbench direct route unavailable")
 
 
+def _prove_access_keys_before_restart(base_url: str, users_file: Path) -> str:
+    """An administrator creates a user and issues its key; the file keeps only the hash."""
+    status, _, _ = _request("GET", f"{base_url}/api/v1/me", headers={})
+    if status != 401:
+        raise RuntimeError("An API request without an access key was admitted")
+    status, payload, _ = _request("POST", f"{base_url}/api/v1/users", {
+        "userId": "proofkey", "displayName": "Distribution key proof", "role": "operator", "projectIds": []
+    })
+    if status != 200 or json.loads(payload).get("hasAccessKey") is not False:
+        raise RuntimeError("Persisted user creation failed")
+    status, payload, _ = _request("POST", f"{base_url}/api/v1/users/proofkey/access-key")
+    access_key = json.loads(payload).get("accessKey") if status == 200 else None
+    if not isinstance(access_key, str) or not access_key.startswith("xak_"):
+        raise RuntimeError("Access-key issuance failed")
+    status, payload, _ = _request("GET", f"{base_url}/api/v1/me",
+                                  headers={"Authorization": f"Bearer {access_key}"})
+    if status != 200 or json.loads(payload).get("userId") != "proofkey":
+        raise RuntimeError("Issued access key did not authenticate its user")
+    if access_key in users_file.read_text(encoding="utf-8"):
+        raise RuntimeError("Users file contains plaintext access-key material")
+    return access_key
+
+
+def _prove_access_keys_after_restart(base_url: str, access_key: str) -> None:
+    """The persisted key survives restart, and clearing it rejects the next request."""
+    issued = {"Authorization": f"Bearer {access_key}"}
+    status, payload, _ = _request("GET", f"{base_url}/api/v1/me", headers=issued)
+    if status != 200 or json.loads(payload).get("role", {}).get("id") != "operator":
+        raise RuntimeError("Issued access key did not survive Runtime restart")
+    status, _, _ = _request("DELETE", f"{base_url}/api/v1/users/proofkey/access-key")
+    if status != 200:
+        raise RuntimeError("Access-key clearing failed")
+    status, _, _ = _request("GET", f"{base_url}/api/v1/me", headers=issued)
+    if status != 401:
+        raise RuntimeError("A cleared access key was still admitted")
+
+
 def _prove_consumer_profile(
     runtime_root: Path,
+    repository_root: Path,
     redis_url: str,
     scope: str,
     proof_root: Path,
@@ -480,13 +521,20 @@ def _prove_consumer_profile(
     environment["XA_MASS_REDIS_SCOPE"] = scope
     environment["SERVER_PORT"] = str(server_port)
     environment["XA_MASS_ADAPTER_PORT"] = str(adapter_port)
+    # A consumer host must name its users file; this proof uses a writable copy of the public dev directory.
+    users_file = proof_root / "consumer-users.json"
+    users_file.write_bytes(
+        (repository_root / "server_jvm/src/main/resources/users/development-directory.json").read_bytes()
+    )
+    environment["XA_MASS_USERS_SEED"] = users_file.resolve().as_uri()
     flags: dict[str, Any] = {}
     if os.name == "nt":
         flags["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         flags["start_new_session"] = True
-    with log_path.open("wb") as log:
-        process = subprocess.Popen(
+
+    def start(log: Any) -> subprocess.Popen[Any]:
+        return subprocess.Popen(
             _server_command(runtime_root, "consumer", [
                 "--xa.mass.project-assembly.projects[0].project-id=agentforge",
                 *(f"--xa.mass.project-assembly.projects[0].worker-group-ids[{i}]={group}"
@@ -498,6 +546,9 @@ def _prove_consumer_profile(
             stderr=subprocess.STDOUT,
             **flags,
         )
+
+    with log_path.open("wb") as log:
+        process = start(log)
         try:
             _wait_for_readiness(base_url, process)
             manifest = json.loads((runtime_root / "manifest.json").read_text(encoding="utf-8"))
@@ -519,10 +570,15 @@ def _prove_consumer_profile(
             ):
                 pass
             _prove_agentforge_bindings(base_url)
+            access_key = _prove_access_keys_before_restart(base_url, users_file)
+            _stop_process(process)
+            process = start(log)
+            _wait_for_readiness(base_url, process)
+            _prove_access_keys_after_restart(base_url, access_key)
             print(
                 "Consumer Runtime Profile proof succeeded: "
                 f"scope={scope}, serverPort={server_port}, "
-                f"adapterPort={adapter_port}"
+                f"adapterPort={adapter_port}, persistedAccessKey=verified"
             )
         finally:
             _stop_process(process)
@@ -560,6 +616,7 @@ def main() -> int:
             )
             _prove_consumer_profile(
                 runtime_root,
+                repository_root,
                 arguments.redis_url,
                 agentforge_scope,
                 proof_root,

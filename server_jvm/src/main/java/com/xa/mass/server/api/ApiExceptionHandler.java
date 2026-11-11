@@ -21,7 +21,9 @@ public final class ApiExceptionHandler {
             ServerException error,
             HttpServletRequest request
     ) {
-        return ResponseEntity.status(statusFor(error.errorCode())).body(
+        var response = ResponseEntity.status(statusFor(error.errorCode()));
+        if (error.errorCode() == ServerErrorCode.UNAUTHENTICATED) response.header("WWW-Authenticate", "Bearer");
+        return response.body(
                 new ApiErrorResponse(
                         error.errorCode().code(),
                         error.errorCode().defaultMessage(),
@@ -53,10 +55,12 @@ public final class ApiExceptionHandler {
     private static HttpStatus statusFor(ServerErrorCode errorCode) {
         return switch (errorCode) {
             case CREDIT_ACCOUNT_NOT_FOUND -> HttpStatus.NOT_FOUND;
-            case CREDIT_BALANCE_INSUFFICIENT, CREDIT_ADJUSTMENT_CONFLICT, CREDIT_BALANCE_LIMIT -> HttpStatus.CONFLICT;
+            case CREDIT_BALANCE_INSUFFICIENT, CREDIT_ADJUSTMENT_CONFLICT, CREDIT_BALANCE_LIMIT,
+                    USER_DIRECTORY_CONFLICT -> HttpStatus.CONFLICT;
             case INVALID_CREDIT_REQUEST -> HttpStatus.BAD_REQUEST;
+            case UNAUTHENTICATED -> HttpStatus.UNAUTHORIZED;
             case TASK_ACCESS_DENIED -> HttpStatus.FORBIDDEN;
-            case CREDIT_UNAVAILABLE, TASK_DATA_UNAVAILABLE,
+            case CREDIT_UNAVAILABLE, USER_DIRECTORY_UNAVAILABLE, TASK_DATA_UNAVAILABLE,
                     TASK_CALL_REGISTRATION_UNAVAILABLE,
                     WORKER_DELIVERY_UNAVAILABLE,
                     WORKER_IDENTITY_UNAVAILABLE,
@@ -70,7 +74,7 @@ public final class ApiExceptionHandler {
                     HttpStatus.SERVICE_UNAVAILABLE;
             case DIRECT_CALL_CAPACITY_EXCEEDED ->
                     HttpStatus.TOO_MANY_REQUESTS;
-            case INVALID_USER_REQUEST, INVALID_TASK_CALLER, KERNEL_REJECTED_CONFLICT,
+            case INVALID_USER_REQUEST, KERNEL_REJECTED_CONFLICT,
                     TASK_NOT_FOUND,
                     TASK_OPERATION_NOT_SUPPORTED,
                     TASK_RESULTS_ARCHIVED,

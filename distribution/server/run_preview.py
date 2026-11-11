@@ -136,6 +136,7 @@ def main(arguments=None):
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
         with run:
             print(f"Scenario Preview: {run.url}; Java Host: {run.host}; logs: {run.output}", flush=True)
+            print(f"Console 开发登录：管理员访问密钥 {local_runtime.DEVELOPMENT_ADMIN_KEY}（内置公开密钥，仅限本地）", flush=True)
             while True:
                 run.check()
                 time.sleep(1)

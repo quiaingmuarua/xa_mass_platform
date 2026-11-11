@@ -87,7 +87,7 @@ class LaneSaturationTest {
                 } finally { active.remove(task, admission); }
             });
             server.start();
-            try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))) {
+            try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("Authorization", "Bearer xak_dev_1000"))) {
                 LaneSaturation.seed(api, LaneSaturation.Path.TASK_ANY,
                         Map.of("perf-a", List.of("a"), "perf-b", List.of("b")),
                         Map.of("perf-a", "task-a", "perf-b", "task-b"), "seed",
@@ -111,7 +111,7 @@ class LaneSaturationTest {
             reply(exchange, 400, Map.of("code", 12009, "message", "private response content"));
         });
         server.start();
-        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin"))) {
+        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("Authorization", "Bearer xak_dev_1000"))) {
             assertThatThrownBy(() -> LaneSaturation.seed(api, LaneSaturation.Path.TASK_ANY,
                     Map.of("perf-a", List.of("a"), "perf-b", List.of("b")),
                     Map.of("perf-a", "task-a", "perf-b", "task-b"), "seed",

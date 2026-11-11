@@ -77,7 +77,7 @@ export class HttpRuntimeViewerDataSource implements RuntimeViewerDataSource {
         sampleLimit,
         {
           signal,
-          headers: { "X-Request-Id": requestId }
+          headers: { "X-Request-Id": requestId, ...callerHeaders(this.caller) }
         }
       );
       const parsed = parseResponse(
@@ -109,7 +109,8 @@ export class HttpRuntimeViewerDataSource implements RuntimeViewerDataSource {
         {
           signal,
           headers: {
-            "X-Request-Id": requestId
+            "X-Request-Id": requestId,
+            ...callerHeaders(this.caller)
           }
         }
       );

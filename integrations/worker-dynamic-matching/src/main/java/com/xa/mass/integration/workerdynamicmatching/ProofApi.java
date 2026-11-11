@@ -23,7 +23,7 @@ final class ProofApi implements AutoCloseable {
                 .header("Content-Type", "application/json")
                 .method(method, body == null ? HttpRequest.BodyPublishers.noBody()
                         : HttpRequest.BodyPublishers.ofString(Jsons.toJson(body), StandardCharsets.UTF_8));
-        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) taskCallerHeaders.forEach(requestBuilder::header);
+        if (path.startsWith("/api/")) taskCallerHeaders.forEach(requestBuilder::header);
         HttpRequest request = requestBuilder.build();
         HttpResponse<String> response;
         try { response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)); }

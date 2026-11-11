@@ -1,13 +1,20 @@
 import { FundedAppCheckSource, approveCheck } from "./app-check-credit-fixture";
 import { webcrypto } from "node:crypto";
 import { MockUserDirectorySource } from "@/user-directory-source";
-import { TaskApiError, callerHeaders, type TaskCaller } from "@/task-caller";
+import {
+  TaskApiError,
+  callerHeaders,
+  withAccessKey,
+  type TaskCaller
+} from "@/task-caller";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { ApiAppCheckTaskSource } from "../src/app-checks/task-source";
 
-const a: TaskCaller = Object.freeze({ userId: "testa", role: "operator" });
-const b: TaskCaller = Object.freeze({ userId: "testb", role: "operator" });
-const admin: TaskCaller = Object.freeze({ userId: "proofadm", role: "admin" });
+const caller = (userId: string, role: TaskCaller["role"]): TaskCaller =>
+  Object.freeze(withAccessKey({ userId, role }, `xak_dev_${userId}`));
+const a = caller("testa", "operator");
+const b = caller("testb", "operator");
+const admin = caller("proofadm", "admin");
 function directory() {
   return new MockUserDirectorySource(
     [a, b, admin].map((caller) => ({
@@ -123,14 +130,7 @@ describe("App Checks declared callers", () => {
     const options = fetcher.mock.calls[0][1];
     expect(JSON.parse(options.body)).toEqual(input);
     expect(options.headers).toMatchObject(callerHeaders(a));
-    expect(
-      new TextDecoder().decode(
-        Uint8Array.from(
-          atob(options.headers["X-XA-Dev-User"].replace(/-/g, "+").replace(/_/g, "/")),
-          (c) => c.charCodeAt(0)
-        )
-      )
-    ).toBe(a.userId);
+    expect(options.headers.Authorization).toBe(`Bearer ${a.accessKey}`);
     fetcher
       .mockReset()
       .mockImplementation(() =>

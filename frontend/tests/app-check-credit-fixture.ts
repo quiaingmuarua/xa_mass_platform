@@ -14,19 +14,21 @@ export class FundedAppCheckSource extends MockAppCheckTaskSource {
     const credits = new MockCreditSource(directory, now);
     super(directory, credits, now);
     this.fixtureCredits = credits;
-    this.funded = directory.load().then(async ({ users, roles }) => {
-      const admin = users.find((u) =>
-        roles.find((r) => r.id === u.role)?.permissions.includes("credits.manage")
-      );
-      if (!admin)
-        throw new Error("Credit proof requires an explicit directory administrator");
-      for (const user of users)
-        await credits.adjust(admin, user.userId, {
-          requestId: randomUUID(),
-          delta: 1_000_000,
-          reason: "App Checks test fixture"
-        });
-    });
+    this.funded = Promise.resolve(directory.snapshot()).then(
+      async ({ users, roles }) => {
+        const admin = users.find((u) =>
+          roles.find((r) => r.id === u.role)?.permissions.includes("credits.manage")
+        );
+        if (!admin)
+          throw new Error("Credit proof requires an explicit directory administrator");
+        for (const user of users)
+          await credits.adjust(admin, user.userId, {
+            requestId: randomUUID(),
+            delta: 1_000_000,
+            reason: "App Checks test fixture"
+          });
+      }
+    );
   }
   override async loadCredits(caller: TaskCaller, taskId: string, requestId?: string) {
     await this.funded;

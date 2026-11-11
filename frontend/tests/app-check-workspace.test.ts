@@ -1,3 +1,4 @@
+import { devKey } from "./identity-fixture";
 import { FundedAppCheckSource, approveCheck } from "./app-check-credit-fixture";
 import { MockUserDirectorySource } from "@/user-directory-source";
 import { consoleIdentity } from "@/console-identity";
@@ -22,8 +23,8 @@ import { createWorkbenchSession } from "../src/app-checks/workbench";
 let app: App | undefined;
 let source: FundedAppCheckSource;
 const fetcher = vi.fn();
-beforeEach(() => {
-  consoleIdentity.login("1000");
+beforeEach(async () => {
+  await consoleIdentity.login(devKey("1000"));
   vi.useFakeTimers();
   vi.stubGlobal("crypto", webcrypto);
   vi.stubGlobal("fetch", fetcher.mockReset());

@@ -5,8 +5,6 @@ import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.project.ProjectDefinition;
 import com.xa.mass.server.task.directory.TaskAttribution;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -16,21 +14,21 @@ class TaskCallerTest {
     private final com.xa.mass.server.user.UserDirectory directory = com.xa.mass.server.testing.TaskCallers.directory(
             new com.xa.mass.server.user.UserDirectory.User("outside1", "Outside", "operator", List.of("messages")),
             new com.xa.mass.server.user.UserDirectory.User("1001", "A", "operator", List.of("messages")));
-    private String encode(String value) { return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8)); }
     private TaskRuntime.TaskDescriptor task(String project, String owner, String input) {
         return new TaskRuntime.TaskDescriptor("t", "g", TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 Map.of("priority", "0", "maxRetryTimes", "3"), List.of(), null,
                 new TaskAttribution(project, 123, owner).stamp(Map.of(TaskCaller.INPUT_OWNER, input)));
     }
-    @Test void parsesOnlyUnambiguousDevelopmentUsersAndNeverAnInternalIdentity() {
-        var caller = com.xa.mass.server.api.TaskCallerHttpConfiguration.resolveCaller(directory, new String[]{encode("  outside1  ")}, new String[]{"operator"});
+    @Test void admitsOnlyDirectoryAccessKeysAndNeverAnInternalIdentity() {
+        var caller = directory.authenticate(com.xa.mass.server.testing.TaskCallers.devKey("outside1"));
         assertThat(caller.userId()).isEqualTo("outside1");
+        assertThat(caller.isService()).isFalse();
         assertThat(caller.selectUser(null)).isEqualTo("outside1");
-        for (String[] users : new String[][]{null, {}, {"***"}, {"_w"}, {encode("1001"), encode("1002")}})
-            assertThatThrownBy(() -> com.xa.mass.server.api.TaskCallerHttpConfiguration.resolveCaller(directory, users, new String[]{"admin"}))
-                    .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.INVALID_TASK_CALLER));
-        for (String[] roles : new String[][]{null, {}, {"service"}, {"ADMIN"}, {"admin", "operator"}})
-            assertThatThrownBy(() -> com.xa.mass.server.api.TaskCallerHttpConfiguration.resolveCaller(directory, new String[]{encode("1001")}, roles)).isInstanceOf(ServerException.class);
+        for (String key : new String[]{null, "", "xak_dev_1002", "xak_dev_outside1 ", " xak_dev_outside1", "XAK_DEV_outside1", "xak_dev"})
+            assertThatThrownBy(() -> directory.authenticate(key))
+                    .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.UNAUTHENTICATED));
+        assertThatThrownBy(() -> caller.selectUser("***"))
+                .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.INVALID_TASK_DATA_REQUEST));
     }
     @Test void ownershipAndInputAuthorityAreIndependentAndServiceAccessIsProjectBounded() {
         var own = com.xa.mass.server.testing.TaskCallers.caller("1001", "operator", "messages", "sms");

@@ -219,6 +219,7 @@ class ServerApplicationContextTest {
                                 "/api/v1/worker-groups/legacy-group"
                         ))
                         .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer xak_dev_proof")
                         .PUT(HttpRequest.BodyPublishers.ofString(
                                 "{\"eventCodes\":[\"event\"],"
                                         + "\"itemAllocation"
@@ -233,6 +234,7 @@ class ServerApplicationContextTest {
                                 "/api/v1/worker-groups/indexed-legacy-group"
                         ))
                         .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer xak_dev_proof")
                         .PUT(HttpRequest.BodyPublishers.ofString(
                                 "{\"eventCodes\":[\"event\"],"
                                         + "\"indexedPropertyFields\":["
@@ -248,6 +250,7 @@ class ServerApplicationContextTest {
                                         + "workers:register"
                         ))
                         .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer xak_dev_proof")
                         .header(
                                 "X-XA-Mass-Platform-Key",
                                 "local-development"
@@ -267,6 +270,7 @@ class ServerApplicationContextTest {
                                         + ":bind"
                         ))
                         .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer xak_dev_proof")
                         .POST(HttpRequest.BodyPublishers.ofString(
                                 "{\"clientWorkerKey\":\"legacy-worker\","
                                         + "\"transportType\":\"WEBSOCKET\","
@@ -281,6 +285,7 @@ class ServerApplicationContextTest {
         HttpResponse<String> reusableTaskResponse = client.send(
                 HttpRequest.newBuilder(endpoint("/api/v1/tasks"))
                         .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer xak_dev_proof")
                         .POST(HttpRequest.BodyPublishers.ofString(
                                 "{\"taskId\":\"legacy-reusable\","
                                         + "\"workerGroupId\":\"legacy-group\","
@@ -301,6 +306,9 @@ class ServerApplicationContextTest {
         assertThat(workerResponse.statusCode()).isEqualTo(404);
         assertThat(bindingResponse.statusCode()).isEqualTo(404);
         assertThat(reusableTaskResponse.statusCode()).isEqualTo(400);
+        // Unknown API routes are denied at the front door before routing reveals whether they exist.
+        assertThat(client.send(HttpRequest.newBuilder(endpoint("/api/v1/worker-groups/legacy-group")).GET().build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)).statusCode()).isEqualTo(401);
     }
 
     @Test
@@ -410,7 +418,7 @@ class ServerApplicationContextTest {
                         }
                     }
                 }
-                for (String errorCode : Set.of("400", "403", "404", "409", "429", "503")) {
+                for (String errorCode : Set.of("400", "401", "403", "404", "409", "429", "503")) {
                     if (responses.has(errorCode)) {
                         assertThat(responses.path(errorCode)
                                 .path("content")
@@ -548,10 +556,19 @@ class ServerApplicationContextTest {
     }
 
     private static Set<String> expectedResponseCodes(String tag, String path, String method) {
+        var codes = new java.util.HashSet<>(operationResponseCodes(tag, path, method));
+        if (!com.xa.mass.server.api.AccessKeyFilter.exemptTemplate(method, path)) codes.add("401");
+        return codes;
+    }
+
+    private static Set<String> operationResponseCodes(String tag, String path, String method) {
         if (path.equals("/api/v1/runtime-view/worker-groups/bindings")) return Set.of("200");
         if (path.startsWith("/api/v1/users/{userId}/credits")) return "post".equals(method)
                 ? Set.of("200", "400", "403", "404", "409", "503") : Set.of("200", "400", "403", "404", "503");
-        if (ApiTags.USERS.equals(tag)) return "get".equals(method) ? Set.of("200", "400") : Set.of("200", "400", "403");
+        if (ApiTags.USERS.equals(tag)) {
+            if (path.equals("/api/v1/me")) return Set.of("200", "400", "403");
+            return "get".equals(method) ? Set.of("200", "400") : Set.of("200", "400", "403", "409");
+        }
         if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) return Set.of("200", "400", "403", "503");
         if (!ApiTags.WORKER_DELIVERY.equals(tag)) {
             return Set.of("200", "400", "503");

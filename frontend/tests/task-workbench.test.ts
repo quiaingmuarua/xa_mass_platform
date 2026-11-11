@@ -1,6 +1,6 @@
 import { MockUserDirectorySource } from "@/user-directory-source";
 import { consoleIdentity } from "@/console-identity";
-import { ADMIN as CALLER } from "./identity-fixture";
+import { ADMIN as CALLER, devKey } from "./identity-fixture";
 import { createApp, nextTick } from "vue";
 import { createPinia, setActivePinia } from "pinia";
 import { createMemoryHistory, createRouter } from "vue-router";
@@ -41,7 +41,7 @@ import { rpcTaskId } from "@/task-workbench/rpc-task";
 import { ProjectRequestError } from "@/task-management/projects";
 
 const disposals: (() => void)[] = [];
-beforeEach(() => consoleIdentity.login("1000"));
+beforeEach(() => consoleIdentity.login(devKey("1000")));
 afterEach(() => {
   disposals.splice(0).forEach((fn) => fn());
   consoleIdentity.logout();
@@ -299,7 +299,7 @@ it("late preparation stays with the disposed login and PRE_REVIEW does not enabl
   await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
   f.dispose();
   consoleIdentity.logout();
-  consoleIdentity.login("1000");
+  await consoleIdentity.login(devKey("1000"));
   const next = await mount("/task-workbench?tab=rpc&view=debug&taskId=rpc-pending");
   vi.mocked(next.source.task).mockResolvedValue({
     ...row("rpc-pending", "g1", true),

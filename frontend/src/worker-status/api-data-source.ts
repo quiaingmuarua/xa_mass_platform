@@ -1,3 +1,4 @@
+import { sessionAuthHeaders } from "@/access-session";
 import axios, { type AxiosInstance } from "axios";
 import { z } from "zod";
 
@@ -70,7 +71,10 @@ export class ApiWorkerStatusDataSource implements WorkerStatusDataSource {
             workerIds,
             {
               signal,
-              headers: { "X-Request-Id": createRequestId("worker-network") }
+              headers: {
+                "X-Request-Id": createRequestId("worker-network"),
+                ...sessionAuthHeaders()
+              }
             }
           );
           const parsed = networkResponseSchema.safeParse(response.data);
@@ -121,7 +125,7 @@ export class ApiWorkerStatusDataSource implements WorkerStatusDataSource {
         workerIds,
         {
           signal,
-          headers: { "X-Request-Id": createRequestId() }
+          headers: { "X-Request-Id": createRequestId(), ...sessionAuthHeaders() }
         }
       );
       const parsed = schedulingResponseSchema.safeParse(response.data);

@@ -77,9 +77,9 @@ def request(label, app, offset, count, ranges, delay):
             "simulation": {"ranges": dict(zip(("registered", "unregistered", "failed"), ranges)), "delayMs": delay}}
 
 
-def caller_headers(user, role):
-    return {"X-XA-Dev-User": base64.urlsafe_b64encode(user.encode("utf-8")).decode("ascii").rstrip("="),
-            "X-XA-Dev-Role": role}
+def caller_headers(user, role=None):
+    """The user's public development key; the Server directory, not the caller, decides the role."""
+    return {"Authorization": f"Bearer xak_dev_{user}"}
 
 
 def creation_input(case):

@@ -380,7 +380,7 @@ replace Group manifests must also replace the complete Project list under
 the lane's intended Project/Group bindings. Each lane owns its workload, fault,
 deadline and outcome assertions.
 
-Finite Task creation includes `projectId` and a fixture-owned `requestId`; task HTTP clients explicitly declare development user/role headers. Approval supplies `{expectedItemCount}` from the fixture input set. Correctness, Convergence Health and
+Finite Task creation includes `projectId` and a fixture-owned `requestId`; Runtime API clients send the built-in public development access key of their user (`Authorization: Bearer xak_dev_<userId>`) on every `/api/` request and never to Lab or device Host paths; exempt Worker routes ignore it. Approval supplies `{expectedItemCount}` from the fixture input set. Correctness, Convergence Health and
 Android clients explicitly prepare their stable caller-owned RPC Task IDs through
 `POST /api/v1/tasks/{taskId}/rpc:prepare` during setup. Project reads expose Group
 bindings only; Group registration never creates Tasks. Dynamic Matching and

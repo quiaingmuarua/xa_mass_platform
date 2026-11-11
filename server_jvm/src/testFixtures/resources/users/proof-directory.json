@@ -40,12 +40,14 @@
   "users": [
     {
       "userId": "1000",
+      "accessKeySha256": "0bb28598731b45a95638921710906a8b5c90441af4cf27a787c2ee42ca01eca0",
       "displayName": "管理员",
       "role": "admin",
       "projectIds": []
     },
     {
       "userId": "1001",
+      "accessKeySha256": "8c43603c623b21f2469822999d8501453768824fe4f198f2eca8a5245d5d3063",
       "displayName": "用户 A",
       "role": "operator",
       "projectIds": [
@@ -55,6 +57,7 @@
     },
     {
       "userId": "1002",
+      "accessKeySha256": "a3f654d0cae57e29b64c846d017912779914375e1f46b5c4a95930a5c50cb384",
       "displayName": "用户 B",
       "role": "operator",
       "projectIds": [
@@ -64,18 +67,21 @@
     },
     {
       "userId": "proof",
+      "accessKeySha256": "76004cd5376e19ce505281c0baf845c72b860483cb8e0ba12ca2c3bc3b2259fb",
       "displayName": "proof",
       "role": "admin",
       "projectIds": []
     },
     {
       "userId": "another1",
+      "accessKeySha256": "cdd2355b50654d1c87e80e8af155ca1f39dc6fd9fc66a481eacdda8bd0d92ad0",
       "displayName": "another1",
       "role": "admin",
       "projectIds": []
     },
     {
       "userId": "alice",
+      "accessKeySha256": "b86ec153130e88c8d123a6b568d249f14319c9ad2a33454ed6fa57c8bc1104b5",
       "displayName": "alice",
       "role": "operator",
       "projectIds": [
@@ -86,6 +92,7 @@
     },
     {
       "userId": "bobby",
+      "accessKeySha256": "4e2e19957b54d7c9e6f0d91aa2e065afa13001862e175b3c97d450177176bf00",
       "displayName": "bobby",
       "role": "operator",
       "projectIds": [
@@ -96,6 +103,7 @@
     },
     {
       "userId": "testa",
+      "accessKeySha256": "8c746d1a6cc65709d9947a107c629e9176db13f966845a631ce38dbef8265ec1",
       "displayName": "testa",
       "role": "operator",
       "projectIds": [
@@ -106,6 +114,7 @@
     },
     {
       "userId": "testb",
+      "accessKeySha256": "fe0048c5fc5ba870ea055a75d9c90080c5f085f9290304272ad1fc5d53e74e73",
       "displayName": "testb",
       "role": "operator",
       "projectIds": [

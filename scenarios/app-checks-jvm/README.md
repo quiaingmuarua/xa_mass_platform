@@ -30,18 +30,17 @@ SDK 和 Worker 协议使用既有机制；Matching 基础规则由宿主启动�
 | `GET /api/v1/app-checks/tasks/{taskId}/results` | `{taskId, results, truncated}`，最多 100 条业务结果 |
 
 任务列表、基础详情、统计、批准、关闭、目录确认及原始结果/导出使用
-[共同 Server Task API](../../server_jvm/README.md#shared-development-caller)。App Checks 批准请求包含
+[共同 Server Task API](../../server_jvm/README.md#access-key-front-door)。App Checks 批准请求包含
 `expectedItemCount` 和 `credits:{requestId,expectedSeedCount,expectedAmount}`，先核对实际输入及
 [启动预扣积分](#启动预扣积分)，确认扣分后才进入共同批准操作。待审核核对正数，
 已批准的同次启动不重复扣分，终态不重开。
 前端组合共同详情、共同统计和业务结果，注册答案仍是内容解释，不从预览推算全量统计。
 
-例如，以开发调用方 `1001` 创建任务时显式携带以下请求头；`MTAwMQ` 是 `1001`
-的 UTF-8 Base64URL 编码。自动化或手动调用均须自行声明角色，不由 HTTP 客户端补入。
+例如，用户 `1001` 创建任务时携带其访问密钥；本地内置目录中它的公开开发密钥是
+`xak_dev_1001`。角色和 Project 由 Server 用户目录决定，请求不声明 userId 或角色。
 
 ```http
-X-XA-Dev-User: MTAwMQ
-X-XA-Dev-Role: operator
+Authorization: Bearer xak_dev_1001
 Content-Type: application/json
 ```
 
@@ -63,10 +62,9 @@ Project 目录由 Server 登记；目录未确认保留已知 Task ID，同请�
 没有原先累计 50 请求、50,000 号码的内存账本。自动名称、salt 和日期首次创建后固定。
 自动名称使用能力名称并在 128 字符内保留时间；过长的能力名称安全缩短，完整名称仍保存在任务快照中。
 
-任务和配置 HTTP 接口必须声明开发调用方：`X-XA-Dev-User` 为 userId 的 UTF-8
-Base64URL 编码，`X-XA-Dev-Role` 为 `admin` 或 `operator`。解码后的 userId 去首尾空白，
-必须符合 `^[1-9a-z][0-9a-z]{3,8}$`，不转换大小写或接受前导零，复用 Server 的纯标识校验。缺失、非法编码、非法角色或重复请求头返回 400，
-不默认补管理员；操作范围不符返回 403。`GET /catalog` 保留无身份的只读能力探测。
+任务和配置 HTTP 接口与所有 `/api` 请求一样经过
+[访问密钥统一入口](../../server_jvm/README.md#access-key-front-door)：缺少、格式错误或未知的密钥返回 401，
+不默认补管理员；操作范围不符返回 403。`GET /catalog` 只需已认证调用方，不要求额外权限。
 
 不可变调用方由 Server 统一解析并显式传入场景服务；不由 Scenario Controller 重复实现所有权检查。
 admin 可管理全部场景任务及配置；operator 只能读取和管理自己创建的任务，不能访问配置接口。
@@ -342,7 +340,7 @@ GET 的 `saved` 与 `effective` 各包含 `fingerprint`、`configuration`。指�
 ## 页面与结果核对
 
 启动 [Preview](../../distribution/server/PREVIEW.md#source-launch)，打开 `/app-checks`，
-登录开发身份后，先选择种子格式（电话号码/文本），再选择检查能力；Group、事件、查询与内部契约在折叠详情中只读展示。号码类型还选择国家；text 不显示国家或 CSV。前端依次创建空任务、上传种子文件，
+用访问密钥登录后，先选择种子格式（电话号码/文本），再选择检查能力；Group、事件、查询与内部契约在折叠详情中只读展示。号码类型还选择国家；text 不显示国家或 CSV。前端依次创建空任务、上传种子文件，
 用户核对实际数量后启动。operator 只处理当前载入范围内自己创建的任务，admin 可管理全部任务。
 列表菜单管理任务，抽屉预览结果；未确认创建或导入保留请求身份及已知 Task ID，不自动重试。
 

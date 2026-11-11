@@ -52,8 +52,7 @@ describe("App Checks configuration API boundary", () => {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          "X-XA-Dev-User": "MTAwMA",
-          "X-XA-Dev-Role": "admin"
+          Authorization: "Bearer xak_dev_1000"
         },
         body: JSON.stringify({
           expectedFingerprint: view.saved.fingerprint,

@@ -125,24 +125,40 @@ GCP 的 `/docs` 随已安装 Runtime 制品发布，描述的是该制品的源�
 ### 公网接入
 
 使用 Runtime ZIP 的 [staging ingress 示例](../../../distribution/server/src/main/dist/examples/staging-ingress/README.md)
-准备两个 HTTPS 入口：管理入口保护控制台和业务 API，Worker 入口只允许指定 Group 的
-Prepare 与 WebSocket。两类 Basic 凭据不能串用；内部 Adapter API 和 Redis 不公开。
-这是一套可信测试环境的门禁，管理凭据持有者仍可选择开发身份，Worker 凭据不提供
-Worker ID 之间的隔离。它不承担客户 SLA。
+准备两个 HTTPS 入口：管理入口承载控制台和业务 API，Worker 入口只允许指定 Group 的
+Prepare 与 WebSocket。管理入口没有网关凭据，只把格式正确的 `Bearer` 访问密钥转给 Runtime，
+由 Runtime 的[访问密钥统一入口](../../../server_jvm/README.md#access-key-front-door)认证；
+Worker 入口使用共享 Basic 凭据，不提供 Worker ID 之间的隔离。内部 Adapter API 和 Redis 不公开。
+它不承担客户 SLA。4.0 之前已安装的 3.x 版本仍使用管理 Basic 门禁和开发调用方头，
+实际状态以主机记录为准。
 
-先准备证书、Nginx 凭据文件和宿主 Group/Pool 配置，再从包内一次性渲染网关配置。
-Server/Adapter 继续监听本机，公开 WSS 地址使用 Worker 域名。网页通过浏览器标准
-Basic 认证进入；程序调用提供管理凭据及原有开发调用方头。
+先准备证书、Worker 凭据文件、用户文件和宿主 Group/Pool 配置，再从包内一次性渲染网关配置。
+Server/Adapter 继续监听本机，公开 WSS 地址使用 Worker 域名。网页在登录页输入访问密钥；
+程序调用提供 `Authorization: Bearer <access key>`。
+
+`consumer` profile 必须用 `xa.mass.users.seed` 指向自己的用户文件，例如
+`file:/var/lib/xa-mass/users.json`；文件所在目录需要 Runtime 服务账户可写，运行中只由
+Server 写入。全新环境的第一个管理员密钥在 Server 停止时写入：
+
+```sh
+key="xak_$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
+printf '%s' "$key" | sha256sum   # 把这个十六进制值写入管理员的 accessKeySha256
+```
+
+明文密钥只私下交给管理员，不写入命令历史以外的任何文件、日志或仓库。之后的用户、角色、
+Project 与密钥签发／清除都在控制台或 API 完成；Server 运行时手工改文件会在下次写入时
+返回 409，重启后才生效。内置开发目录的公开密钥 `xak_dev_*` 只用于本地，不能用于外部环境。
 
 外部 Java Host 使用独立 Simulator `--config`，设置 HTTPS `runtimeApiBaseUrl` 和私有
 `gatewayCredentialFile`。该路径相对主配置文件解析，读取失败不会回退匿名连接。
 更换密钥需明确重启 Host。不要运行统一的本地环境启动器去连接已有远端 Server。
-Android SDK 3.2 支持同样的凭据传递；当前 App 使用
+Android SDK 支持同样的凭据传递；当前 App 使用
 [静态构建、安装和私有凭据注入](../../../xa-android/README.md#public-runtime-connection)，
 不通过配置页面更改连接。公网数据链路不依赖 SSH 隧道或 ADB reverse。
 
-删除凭据会拒绝新请求，立即撤销还需实际关闭已有网关连接，不能把 reload 当成已断连。
-精确的认证、路由、限额及撤销规则以链接的网关示例为准。
+删除 Worker 凭据会拒绝新请求，立即撤销还需实际关闭已有网关连接，不能把 reload 当成已断连。
+清除用户的访问密钥后，该密钥的下一次请求即被拒绝。精确的认证、路由、限额及撤销规则以
+链接的网关示例和 Server 用户目录为准。
 
 ## Java 与 Android Worker
 

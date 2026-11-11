@@ -184,6 +184,17 @@ def prepare_archives(runtime_archive: Path, sdk_archive: Path, version: str, com
     return receipt
 
 
+# Local loopback consumers use the built-in public development directory unless their own
+# Runtime configuration names a users file; that configuration file takes precedence over this default.
+LOCAL_USERS_SEED = "classpath:users/development-directory.json"
+
+
+def consumer_environment(redis_url: str) -> dict[str, str]:
+    environment = dict(os.environ, XA_MASS_CONSUMER_REDIS_URL=redis_url)
+    environment.setdefault("XA_MASS_USERS_SEED", LOCAL_USERS_SEED)
+    return environment
+
+
 def server_command(receipt: dict, redis_scope: str, server_port: int = 18182,
                    adapter_port: int = 18183, groups: Path | None = None,
                    runtime_config: Path | None = None) -> list[str]:
@@ -252,7 +263,7 @@ def main(arguments=None) -> int:
             return 0
         command = server_command(receipt, options.redis_scope, options.server_port,
                                  options.adapter_port, options.groups, options.runtime_config)
-        environment = dict(os.environ, XA_MASS_CONSUMER_REDIS_URL=options.redis_url)
+        environment = consumer_environment(options.redis_url)
         process = subprocess.Popen(command, cwd=options.work_dir.resolve(), env=environment)
         try:
             return process.wait()

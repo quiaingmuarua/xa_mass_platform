@@ -27,7 +27,8 @@ import time
 
 from .renderer import Deployment, render
 
-ADMIN = ("stage-admin", "fixture-admin-password")
+# A format-valid administrator access key; the gateway forwards it and the Runtime authenticates it.
+ADMIN_KEY = "xak_proof_gateway_admin"
 WORKER = ("host-a", "fixture-worker-a-password")
 OTHER_WORKER = ("host-b", "fixture-worker-b-password")
 THIRD_WORKER = ("host-c", "fixture-worker-c-password")
@@ -41,6 +42,11 @@ def free_port() -> int:
 
 def basic(credential: tuple[str, str]) -> str:
     return "Basic " + base64.b64encode(":".join(credential).encode("ascii")).decode("ascii")
+
+
+def authorization(credential) -> str:
+    """A (user, password) Worker credential uses Basic; an administrator access key uses Bearer."""
+    return "Bearer " + credential if isinstance(credential, str) else basic(credential)
 
 
 def _read_exact(stream, count: int) -> bytes:
@@ -57,7 +63,7 @@ class Gateway(AbstractContextManager):
     """A real Nginx fixture, accepting existing Runtime/Adapter upstream ports.
 
     Public properties: config, ca_file, certificate, admin_url, worker_url,
-    websocket_url, admin_password_file, worker_password_file. The caller may use
+    websocket_url, worker_password_file. The caller may use
     the supplied CA in a Java truststore. Never disable TLS verification.
     """
 
@@ -75,10 +81,8 @@ class Gateway(AbstractContextManager):
             raise RuntimeError("Real ingress proof requires nginx and openssl executables")
         self.ca_file = self.directory / "test-ca.pem"
         self.certificate = self.directory / "server.pem"
-        self.admin_password_file = self.directory / "admin.htpasswd"
         self.worker_password_file = self.directory / "workers.htpasswd"
         self._certificates()
-        self.write_passwords(self.admin_password_file, (ADMIN,))
         self.write_passwords(self.worker_password_file, (WORKER, OTHER_WORKER, THIRD_WORKER))
         state = self.directory / "state"
         for name in ("client_temp", "proxy_temp", "fastcgi_temp", "uwsgi_temp", "scgi_temp"):
@@ -86,7 +90,7 @@ class Gateway(AbstractContextManager):
         (self.directory / "acme" / ".well-known" / "acme-challenge").mkdir(parents=True, exist_ok=True)
         self.config = Deployment(
             str(self.certificate), str(self.directory / "server.key"),
-            str(self.admin_password_file), str(self.worker_password_file),
+            str(self.worker_password_file),
             str(self.directory / "acme"), str(state), worker_groups,
             admin_host="localhost", worker_host="127.0.0.1", listen_host="127.0.0.1",
             http_port=http_port or free_port(), https_port=https_port or free_port(),
@@ -192,7 +196,7 @@ class Gateway(AbstractContextManager):
         connection = http.client.HTTPSConnection(host, self.config.https_port, context=self.context, timeout=10)
         supplied = dict(headers or {})
         if credential is not None:
-            supplied["Authorization"] = basic(credential)
+            supplied["Authorization"] = authorization(credential)
         try:
             connection.request(method, path, body=body, headers=supplied)
             response = connection.getresponse()
@@ -207,7 +211,7 @@ class Gateway(AbstractContextManager):
                    "Upgrade: websocket", "Connection: Upgrade", "Sec-WebSocket-Version: 13",
                    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=="]
         if credential is not None:
-            headers.append("Authorization: " + basic(credential))
+            headers.append("Authorization: " + authorization(credential))
         stream.sendall(("\r\n".join(headers) + "\r\n\r\n").encode("ascii"))
         received = b""
         while b"\r\n\r\n" not in received:
@@ -309,26 +313,34 @@ def _verify_private(directory: Path, *, nginx="nginx", openssl="openssl") -> dic
             return gate.request(host, method, path, credential, **kwargs)[0]
 
         prepare = "/api/v1/worker-groups/staging-workers/workers:prepare"
-        require(status("localhost", "GET", "/", ADMIN) == 200, "admin TLS and Basic")
-        require(status("localhost", "GET", "/static/js/index-test.js", ADMIN) == 200, "Vite JavaScript route")
-        require(status("localhost", "GET", "/static/css/index-test.css", ADMIN) == 200, "Vite stylesheet route")
-        require(status("localhost", "POST", "/static/js/index-test.js", ADMIN) == 404, "static files are read-only")
-        require(status("localhost", "GET", "/") == 401, "anonymous admin denied")
-        require(status("localhost", "GET", "/", WORKER) == 401, "Worker key cannot administer")
-        require(status("127.0.0.1", "POST", prepare, ADMIN) == 401, "admin key cannot Prepare")
+        require(status("localhost", "GET", "/") == 200, "admin TLS serves the Console without gateway credentials")
+        require(status("localhost", "GET", "/static/js/index-test.js") == 200, "Vite JavaScript route")
+        require(status("localhost", "GET", "/static/css/index-test.css") == 200, "Vite stylesheet route")
+        require(status("localhost", "POST", "/static/js/index-test.js", ADMIN_KEY) == 404, "static files are read-only")
+        before = len(runtime.observations)
+        require(status("localhost", "GET", "/api/v1/me", ADMIN_KEY) == 200, "admin host reaches the Runtime front door")
+        require(runtime.observations[before]["authorization"] == "Bearer " + ADMIN_KEY,
+                "admin host forwards the access key unchanged")
+        for forwarded in (basic(WORKER), "not a key", "Bearer xak_short", "Bearer xak_dev_1000 extra"):
+            before = len(runtime.observations)
+            require(status("localhost", "GET", "/api/v1/me", headers={"Authorization": forwarded}) == 200,
+                    "malformed authorization still reaches the Runtime front door")
+            require(not runtime.observations[before]["authorization"],
+                    "admin host strips Worker Basic and malformed authorization")
+        require(status("127.0.0.1", "POST", prepare, ADMIN_KEY) == 401, "admin access key cannot Prepare")
         require(status("127.0.0.1", "POST", prepare, WORKER) == 200, "Worker Prepare")
         require(status("127.0.0.1", "POST", prepare + "-batch", WORKER) == 200, "Worker batch Prepare")
         require(gate.websocket()[0] == 401, "anonymous WSS denied")
-        require(gate.websocket(ADMIN)[0] == 401, "admin key cannot open WSS")
-        _, _, response_headers = gate.request("localhost", "GET", "/", ADMIN)
+        require(gate.websocket(ADMIN_KEY)[0] == 401, "admin access key cannot open WSS")
+        _, _, response_headers = gate.request("localhost", "GET", "/", ADMIN_KEY)
         require(not any(name.lower().startswith("access-control-") for name in response_headers), "upstream CORS headers suppressed")
-        require(status("localhost", "POST", "/api/v1/tasks", ADMIN,
+        require(status("localhost", "POST", "/api/v1/tasks", ADMIN_KEY,
                        headers={"Origin": gate.admin_url, "Sec-Fetch-Site": "same-origin"}) == 200, "same-origin administration")
-        require(status("localhost", "POST", "/api/v1/tasks", ADMIN,
+        require(status("localhost", "POST", "/api/v1/tasks", ADMIN_KEY,
                        headers={"Origin": "https://untrusted.invalid"}) == 403, "foreign Origin mutation denied")
-        require(status("localhost", "POST", "/api/v1/tasks", ADMIN,
+        require(status("localhost", "POST", "/api/v1/tasks", ADMIN_KEY,
                        headers={"Sec-Fetch-Site": "cross-site"}) == 403, "cross-site mutation denied")
-        require(status("localhost", "POST", "/api/v1/worker-delivery/endpoint-managers/runtime-websocket/direct-calls", ADMIN) == 200,
+        require(status("localhost", "POST", "/api/v1/worker-delivery/endpoint-managers/runtime-websocket/direct-calls", ADMIN_KEY) == 200,
                 "Direct Call remains administrative")
         forbidden = [
             "/api/v1/worker-delivery/endpoint-managers/runtime-websocket/commands:consume",
@@ -337,31 +349,32 @@ def _verify_private(directory: Path, *, nginx="nginx", openssl="openssl") -> dic
             "/api/v1/worker-delivery/endpoint-managers/runtime-websocket/workers/worker-1/results",
         ]
         before = len(runtime.observations)
-        for host, key in (("localhost", ADMIN), ("127.0.0.1", WORKER)):
+        for host, key in (("localhost", ADMIN_KEY), ("127.0.0.1", WORKER)):
             for path in forbidden:
                 require(status(host, "POST", path, key) == 404, f"internal route denied {host} {path.rsplit('/', 1)[-1]}")
         require(len(runtime.observations) == before, "internal denials never reach Runtime")
-        require(status("localhost", "POST", prepare, ADMIN) == 404, "Prepare absent from admin host")
-        require(status("localhost", "GET", "/api/v1/worker-delivery/websocket", ADMIN) == 404, "WSS absent from admin host")
+        require(status("localhost", "POST", prepare, ADMIN_KEY) == 404, "Prepare absent from admin host")
+        require(status("localhost", "GET", "/api/v1/worker-delivery/websocket", ADMIN_KEY) == 404, "WSS absent from admin host")
         require(status("127.0.0.1", "POST", prepare.replace("staging-workers", "other-group"), WORKER) == 404,
                 "undeclared Group denied")
         require(status("127.0.0.1", "POST", "/api/v1/tasks", WORKER) == 404, "Worker cannot create Tasks")
         require(status("127.0.0.1", "GET", "/@authenticated_websocket", WORKER) == 404, "named location is private")
-        require(status("localhost", "DELETE", "/api/v1/users/1000", ADMIN) == 404, "unlisted methods denied")
-        require(status("localhost", "OPTIONS", "/api/v1/tasks", ADMIN) == 404, "no CORS preflight")
+        require(status("localhost", "DELETE", "/api/v1/users/1000", ADMIN_KEY) == 404, "unlisted methods denied")
+        require(status("localhost", "OPTIONS", "/api/v1/tasks", ADMIN_KEY) == 404, "no CORS preflight")
         for path in ("/%61pi/v1/tasks", "/api//v1/tasks", "/api/v1/tasks;extra", "/x/../api/v1/tasks"):
-            require(status("localhost", "POST", path, ADMIN) == 400, "ambiguous path denied " + path)
-        require(status("localhost", "GET", "/", ADMIN, headers={"Host": "unknown.invalid"}) == 404, "unknown host denied")
-        require(status("localhost", "POST", "/api/v1/tasks", ADMIN,
+            require(status("localhost", "POST", path, ADMIN_KEY) == 400, "ambiguous path denied " + path)
+        require(status("localhost", "GET", "/", ADMIN_KEY, headers={"Host": "unknown.invalid"}) == 404, "unknown host denied")
+        require(status("localhost", "POST", "/api/v1/tasks", ADMIN_KEY,
                        headers={"Content-Length": str(16 * 1024 * 1024 + 1)}) == 413, "16 MiB body ceiling")
-        require(status("localhost", "GET", "/", ADMIN,
+        require(status("localhost", "GET", "/", ADMIN_KEY,
                        headers={"Proxy-Authorization": "secret", "X-XA-Ingress-User": "forged"}) == 200,
                 "header filtering request")
-        require(all(not row["authorization"] and not row["proxyAuthorization"] and not row["ingressUser"]
-                    for row in runtime.observations), "credentials and forged gateway identity stripped")
+        require(all(row["authorization"] in (None, "", "Bearer " + ADMIN_KEY) and not row["proxyAuthorization"]
+                    and not row["ingressUser"] for row in runtime.observations),
+                "only administrator access keys are forwarded; forged gateway identity stripped")
         runtime.status = 503
         before = len(runtime.observations)
-        require(status("localhost", "POST", "/api/v1/tasks", ADMIN) == 503, "upstream failure returned")
+        require(status("localhost", "POST", "/api/v1/tasks", ADMIN_KEY) == 503, "upstream failure returned")
         require(len(runtime.observations) == before + 1, "no mutation retry")
         runtime.status = 200
         plain = http.client.HTTPConnection("127.0.0.1", gate.config.http_port, timeout=5)
@@ -398,7 +411,7 @@ def _verify_private(directory: Path, *, nginx="nginx", openssl="openssl") -> dic
             checks.append("TLS hostname verification is active")
         finally:
             raw.close()
-        for host, key, method, path, count in (("localhost", ADMIN, "GET", "/", 130),
+        for host, key, method, path, count in (("localhost", ADMIN_KEY, "GET", "/", 130),
                                               ("127.0.0.1", WORKER, "POST", prepare, 70)):
             with ThreadPoolExecutor(max_workers=12) as executor:
                 codes = list(executor.map(lambda _: status(host, method, path, key), range(count)))
@@ -455,10 +468,10 @@ def _verify_private(directory: Path, *, nginx="nginx", openssl="openssl") -> dic
         finally:
             retained.close()
         logs = (Path(gate.config.state_directory) / "access.log").read_text(encoding="utf-8")
-        require(all(password not in logs and basic((user, password)) not in logs
-                    for user, password in (ADMIN, WORKER, OTHER_WORKER, THIRD_WORKER)), "access log omits credentials")
-        require(all(" " + key + " " in logs for key in (ADMIN[0], WORKER[0], OTHER_WORKER[0])),
-                "access log records nonsecret credential usernames")
+        require(ADMIN_KEY not in logs and all(password not in logs and basic((user, password)) not in logs
+                    for user, password in (WORKER, OTHER_WORKER, THIRD_WORKER)), "access log omits credentials")
+        require(all(" " + key + " " in logs for key in (WORKER[0], OTHER_WORKER[0])),
+                "access log records nonsecret Worker credential usernames")
     summary = {"status": "passed", "checks": sorted(set(checks)), "wssPerCredential": 100, "wssTotal": 200,
                "rawWssQuietSeconds": round(idle_seconds, 3),
                "claims": "TLS gateway routing and bounded admission with mock upstreams; not Worker execution"}

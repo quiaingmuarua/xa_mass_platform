@@ -6,7 +6,7 @@ import { creditSourceKey } from "@/credits/source";
 import { consoleIdentity } from "@/console-identity";
 import { consoleMockKey, createConsoleMock } from "@/console-mock";
 import { MockUserDirectorySource } from "@/user-directory-source";
-import { ADMIN } from "./identity-fixture";
+import { ADMIN, devKey } from "./identity-fixture";
 
 let app: App | undefined;
 afterEach(() => {
@@ -22,7 +22,7 @@ async function flush() {
 }
 async function mount(userId = "1000") {
   const mock = createConsoleMock(new MockUserDirectorySource());
-  consoleIdentity.login(userId);
+  await consoleIdentity.login(devKey(userId));
   const host = document.createElement("div");
   document.body.append(host);
   app = createApp(CreditAccountPanel, { userId: "1001" });

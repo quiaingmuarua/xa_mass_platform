@@ -93,14 +93,14 @@ record WorkerLabHarnessOptions(
         return new WorkerLabControlClient(new JsonHttpClient(
                 labControlBaseUrl,
                 requestTimeout()
-        , java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin")));
+        , java.util.Map.of("Authorization", "Bearer xak_dev_1000")));
     }
 
     RuntimeApiClient runtimeClient() {
         return new RuntimeApiClient(new JsonHttpClient(
                 runtimeApiBaseUrl,
                 requestTimeout()
-        , java.util.Map.of("X-XA-Dev-User", "MTAwMA", "X-XA-Dev-Role", "admin")),
+        , java.util.Map.of("Authorization", "Bearer xak_dev_1000")),
                 evidenceDirectory.resolve("rpc-results-" + java.net.URLEncoder.encode(proofId, java.nio.charset.StandardCharsets.UTF_8) + ".json"));
     }
 
