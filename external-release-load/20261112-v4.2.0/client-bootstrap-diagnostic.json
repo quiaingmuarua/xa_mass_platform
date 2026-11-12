@@ -1,0 +1,1841 @@
+{
+  "claim": "startup-only JVM exception observation; no Task workload",
+  "exceptionTypes": {
+    "java.lang.NoSuchMethodError": 38,
+    "java.util.MissingResourceException": 1,
+    "java.lang.IncompatibleClassChangeError": 2,
+    "java.security.NoSuchAlgorithmException": 2,
+    "java.net.SocketTimeoutException": 6,
+    "java.io.EOFException": 1,
+    "javax.net.ssl.SSLHandshakeException": 1,
+    "com.xa.mass.worker.error.WorkerException": 1
+  },
+  "networkExceptions": [
+    {
+      "at": "2026-11-12T18:25:58.880334965+08:00",
+      "type": "java.net.SocketTimeoutException",
+      "stack": [
+        {
+          "class": "java.lang.Throwable",
+          "method": "<init>",
+          "line": 275
+        },
+        {
+          "class": "java.lang.Exception",
+          "method": "<init>",
+          "line": 67
+        },
+        {
+          "class": "java.io.IOException",
+          "method": "<init>",
+          "line": 57
+        },
+        {
+          "class": "java.io.InterruptedIOException",
+          "method": "<init>",
+          "line": 63
+        },
+        {
+          "class": "java.net.SocketTimeoutException",
+          "method": "<init>",
+          "line": 44
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "timedRead",
+          "line": 278
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "implRead",
+          "line": 304
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "read",
+          "line": 346
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl$1",
+          "method": "read",
+          "line": 796
+        },
+        {
+          "class": "java.net.Socket$SocketInputStream",
+          "method": "read",
+          "line": 1099
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "read",
+          "line": 489
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "readHeader",
+          "line": 483
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "bytesInCompletePacket",
+          "line": 70
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl",
+          "method": "readApplicationRecord",
+          "line": 1460
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl$AppInputStream",
+          "method": "read",
+          "line": 1066
+        },
+        {
+          "class": "okio.internal.DefaultSocket$SocketSource",
+          "method": "read",
+          "line": 124
+        },
+        {
+          "class": "okio.RealBufferedSource",
+          "method": "exhausted",
+          "line": 223
+        },
+        {
+          "class": "okhttp3.internal._UtilJvmKt",
+          "method": "isHealthy",
+          "line": 213
+        },
+        {
+          "class": "okhttp3.internal.connection.RealConnection",
+          "method": "isHealthy",
+          "line": 320
+        },
+        {
+          "class": "okhttp3.internal.connection.RealConnectionPool",
+          "method": "callAcquirePooledConnection$okhttp",
+          "line": 105
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "planReusePooledConnection$okhttp",
+          "line": 184
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "planReusePooledConnection$okhttp$default",
+          "line": 179
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "plan",
+          "line": 68
+        },
+        {
+          "class": "okhttp3.internal.connection.FastFallbackExchangeFinder",
+          "method": "launchTcpConnect",
+          "line": 119
+        },
+        {
+          "class": "okhttp3.internal.connection.FastFallbackExchangeFinder",
+          "method": "find",
+          "line": 62
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "initExchange$okhttp",
+          "line": 298
+        },
+        {
+          "class": "okhttp3.internal.connection.ConnectInterceptor",
+          "method": "intercept",
+          "line": 32
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.cache.CacheInterceptor",
+          "method": "intercept",
+          "line": 101
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.http.BridgeInterceptor",
+          "method": "intercept",
+          "line": 85
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.http.RetryAndFollowUpInterceptor",
+          "method": "intercept",
+          "line": 74
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "getResponseWithInterceptorChain$okhttp",
+          "line": 226
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "execute",
+          "line": 178
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "executeJson",
+          "line": 237
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "executeArray",
+          "line": 202
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "prepareBatch",
+          "line": 130
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaWorkerManager",
+          "method": "prepareAndStart",
+          "line": 150
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaWorkerManager",
+          "method": "prepareAndStart",
+          "line": 120
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulator",
+          "method": "startWorker",
+          "line": 235
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "handleWorker",
+          "line": 496
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "route",
+          "line": 461
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "handle",
+          "line": 313
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer$$Lambda.0x00007103c4029890",
+          "method": "handle",
+          "line": -1
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 98
+        },
+        {
+          "class": "sun.net.httpserver.AuthFilter",
+          "method": "doFilter",
+          "line": 82
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 101
+        },
+        {
+          "class": "sun.net.httpserver.ServerImpl$Exchange$LinkHandler",
+          "method": "handle",
+          "line": 969
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 98
+        },
+        {
+          "class": "sun.net.httpserver.ServerImpl$Exchange",
+          "method": "run",
+          "line": 945
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor",
+          "method": "runWorker",
+          "line": 1144
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor$Worker",
+          "method": "run",
+          "line": 642
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "runWith",
+          "line": 1596
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "run",
+          "line": 1583
+        }
+      ],
+      "recognizedMessage": "Read timed out"
+    },
+    {
+      "at": "2026-11-12T18:26:16.652911476+08:00",
+      "type": "javax.net.ssl.SSLHandshakeException",
+      "stack": [
+        {
+          "class": "java.lang.Throwable",
+          "method": "<init>",
+          "line": 298
+        },
+        {
+          "class": "java.lang.Exception",
+          "method": "<init>",
+          "line": 85
+        },
+        {
+          "class": "java.io.IOException",
+          "method": "<init>",
+          "line": 80
+        },
+        {
+          "class": "javax.net.ssl.SSLException",
+          "method": "<init>",
+          "line": 66
+        },
+        {
+          "class": "javax.net.ssl.SSLHandshakeException",
+          "method": "<init>",
+          "line": 62
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl",
+          "method": "handleEOF",
+          "line": 1715
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl",
+          "method": "decode",
+          "line": 1513
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl",
+          "method": "readHandshakeRecord",
+          "line": 1420
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl",
+          "method": "startHandshake",
+          "line": 455
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl",
+          "method": "startHandshake",
+          "line": 426
+        },
+        {
+          "class": "okhttp3.internal.connection.ConnectPlan",
+          "method": "connectTls",
+          "line": 351
+        },
+        {
+          "class": "okhttp3.internal.connection.ConnectPlan",
+          "method": "connectTlsEtc",
+          "line": 206
+        },
+        {
+          "class": "okhttp3.internal.connection.FastFallbackExchangeFinder",
+          "method": "find",
+          "line": 78
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "initExchange$okhttp",
+          "line": 298
+        },
+        {
+          "class": "okhttp3.internal.connection.ConnectInterceptor",
+          "method": "intercept",
+          "line": 32
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.cache.CacheInterceptor",
+          "method": "intercept",
+          "line": 101
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.http.BridgeInterceptor",
+          "method": "intercept",
+          "line": 85
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.http.RetryAndFollowUpInterceptor",
+          "method": "intercept",
+          "line": 74
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "getResponseWithInterceptorChain$okhttp",
+          "line": 226
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall$AsyncCall",
+          "method": "run",
+          "line": 574
+        },
+        {
+          "class": "java.util.concurrent.ThreadPerTaskExecutor$TaskRunner",
+          "method": "run",
+          "line": 314
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "runWith",
+          "line": 1596
+        },
+        {
+          "class": "java.lang.VirtualThread",
+          "method": "run",
+          "line": 329
+        },
+        {
+          "class": "java.lang.VirtualThread$VThreadContinuation$1",
+          "method": "run",
+          "line": 209
+        },
+        {
+          "class": "jdk.internal.vm.Continuation",
+          "method": "enter0",
+          "line": 320
+        },
+        {
+          "class": "jdk.internal.vm.Continuation",
+          "method": "enter",
+          "line": 312
+        },
+        {
+          "class": "jdk.internal.vm.Continuation",
+          "method": "enterSpecial",
+          "line": -1
+        }
+      ],
+      "recognizedMessage": "omitted"
+    },
+    {
+      "at": "2026-11-12T18:26:27.036383903+08:00",
+      "type": "java.net.SocketTimeoutException",
+      "stack": [
+        {
+          "class": "java.lang.Throwable",
+          "method": "<init>",
+          "line": 275
+        },
+        {
+          "class": "java.lang.Exception",
+          "method": "<init>",
+          "line": 67
+        },
+        {
+          "class": "java.io.IOException",
+          "method": "<init>",
+          "line": 57
+        },
+        {
+          "class": "java.io.InterruptedIOException",
+          "method": "<init>",
+          "line": 63
+        },
+        {
+          "class": "java.net.SocketTimeoutException",
+          "method": "<init>",
+          "line": 44
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "timedRead",
+          "line": 278
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "implRead",
+          "line": 304
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "read",
+          "line": 346
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl$1",
+          "method": "read",
+          "line": 796
+        },
+        {
+          "class": "java.net.Socket$SocketInputStream",
+          "method": "read",
+          "line": 1099
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "read",
+          "line": 489
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "readHeader",
+          "line": 483
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "bytesInCompletePacket",
+          "line": 70
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl",
+          "method": "readApplicationRecord",
+          "line": 1460
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl$AppInputStream",
+          "method": "read",
+          "line": 1066
+        },
+        {
+          "class": "okio.internal.DefaultSocket$SocketSource",
+          "method": "read",
+          "line": 124
+        },
+        {
+          "class": "okio.RealBufferedSource",
+          "method": "exhausted",
+          "line": 223
+        },
+        {
+          "class": "okhttp3.internal._UtilJvmKt",
+          "method": "isHealthy",
+          "line": 213
+        },
+        {
+          "class": "okhttp3.internal.connection.RealConnection",
+          "method": "isHealthy",
+          "line": 320
+        },
+        {
+          "class": "okhttp3.internal.connection.RealConnectionPool",
+          "method": "callAcquirePooledConnection$okhttp",
+          "line": 105
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "planReusePooledConnection$okhttp",
+          "line": 184
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "planReusePooledConnection$okhttp$default",
+          "line": 179
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "plan",
+          "line": 68
+        },
+        {
+          "class": "okhttp3.internal.connection.FastFallbackExchangeFinder",
+          "method": "launchTcpConnect",
+          "line": 119
+        },
+        {
+          "class": "okhttp3.internal.connection.FastFallbackExchangeFinder",
+          "method": "find",
+          "line": 62
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "initExchange$okhttp",
+          "line": 298
+        },
+        {
+          "class": "okhttp3.internal.connection.ConnectInterceptor",
+          "method": "intercept",
+          "line": 32
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.cache.CacheInterceptor",
+          "method": "intercept",
+          "line": 101
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.http.BridgeInterceptor",
+          "method": "intercept",
+          "line": 85
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.http.RetryAndFollowUpInterceptor",
+          "method": "intercept",
+          "line": 74
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "getResponseWithInterceptorChain$okhttp",
+          "line": 226
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "execute",
+          "line": 178
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "executeJson",
+          "line": 237
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "executeArray",
+          "line": 202
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "prepareBatch",
+          "line": 130
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaWorkerManager",
+          "method": "prepareAndStart",
+          "line": 150
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaWorkerManager",
+          "method": "prepareAndStart",
+          "line": 120
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulator",
+          "method": "startWorker",
+          "line": 235
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "handleWorker",
+          "line": 496
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "route",
+          "line": 461
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "handle",
+          "line": 313
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer$$Lambda.0x00007103c4029890",
+          "method": "handle",
+          "line": -1
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 98
+        },
+        {
+          "class": "sun.net.httpserver.AuthFilter",
+          "method": "doFilter",
+          "line": 82
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 101
+        },
+        {
+          "class": "sun.net.httpserver.ServerImpl$Exchange$LinkHandler",
+          "method": "handle",
+          "line": 969
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 98
+        },
+        {
+          "class": "sun.net.httpserver.ServerImpl$Exchange",
+          "method": "run",
+          "line": 945
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor",
+          "method": "runWorker",
+          "line": 1144
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor$Worker",
+          "method": "run",
+          "line": 642
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "runWith",
+          "line": 1596
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "run",
+          "line": 1583
+        }
+      ],
+      "recognizedMessage": "Read timed out"
+    },
+    {
+      "at": "2026-11-12T18:26:29.340803733+08:00",
+      "type": "java.net.SocketTimeoutException",
+      "stack": [
+        {
+          "class": "java.lang.Throwable",
+          "method": "<init>",
+          "line": 275
+        },
+        {
+          "class": "java.lang.Exception",
+          "method": "<init>",
+          "line": 67
+        },
+        {
+          "class": "java.io.IOException",
+          "method": "<init>",
+          "line": 57
+        },
+        {
+          "class": "java.io.InterruptedIOException",
+          "method": "<init>",
+          "line": 63
+        },
+        {
+          "class": "java.net.SocketTimeoutException",
+          "method": "<init>",
+          "line": 44
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "timedRead",
+          "line": 278
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "implRead",
+          "line": 304
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "read",
+          "line": 346
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl$1",
+          "method": "read",
+          "line": 796
+        },
+        {
+          "class": "java.net.Socket$SocketInputStream",
+          "method": "read",
+          "line": 1099
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "read",
+          "line": 489
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "readHeader",
+          "line": 483
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "bytesInCompletePacket",
+          "line": 70
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl",
+          "method": "readApplicationRecord",
+          "line": 1460
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl$AppInputStream",
+          "method": "read",
+          "line": 1066
+        },
+        {
+          "class": "okio.internal.DefaultSocket$SocketSource",
+          "method": "read",
+          "line": 124
+        },
+        {
+          "class": "okio.RealBufferedSource",
+          "method": "exhausted",
+          "line": 223
+        },
+        {
+          "class": "okhttp3.internal._UtilJvmKt",
+          "method": "isHealthy",
+          "line": 213
+        },
+        {
+          "class": "okhttp3.internal.connection.RealConnection",
+          "method": "isHealthy",
+          "line": 320
+        },
+        {
+          "class": "okhttp3.internal.connection.RealConnectionPool",
+          "method": "callAcquirePooledConnection$okhttp",
+          "line": 105
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "planReusePooledConnection$okhttp",
+          "line": 184
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "planReusePooledConnection$okhttp$default",
+          "line": 179
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "plan",
+          "line": 68
+        },
+        {
+          "class": "okhttp3.internal.connection.FastFallbackExchangeFinder",
+          "method": "launchTcpConnect",
+          "line": 119
+        },
+        {
+          "class": "okhttp3.internal.connection.FastFallbackExchangeFinder",
+          "method": "find",
+          "line": 62
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "initExchange$okhttp",
+          "line": 298
+        },
+        {
+          "class": "okhttp3.internal.connection.ConnectInterceptor",
+          "method": "intercept",
+          "line": 32
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.cache.CacheInterceptor",
+          "method": "intercept",
+          "line": 101
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.http.BridgeInterceptor",
+          "method": "intercept",
+          "line": 85
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.http.RetryAndFollowUpInterceptor",
+          "method": "intercept",
+          "line": 74
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "getResponseWithInterceptorChain$okhttp",
+          "line": 226
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "execute",
+          "line": 178
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "executeJson",
+          "line": 237
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "executeArray",
+          "line": 202
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "prepareBatch",
+          "line": 130
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaWorkerManager",
+          "method": "prepareAndStart",
+          "line": 150
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaWorkerManager",
+          "method": "prepareAndStart",
+          "line": 120
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulator",
+          "method": "startWorker",
+          "line": 235
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "handleWorker",
+          "line": 496
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "route",
+          "line": 461
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "handle",
+          "line": 313
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer$$Lambda.0x00007103c4029890",
+          "method": "handle",
+          "line": -1
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 98
+        },
+        {
+          "class": "sun.net.httpserver.AuthFilter",
+          "method": "doFilter",
+          "line": 82
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 101
+        },
+        {
+          "class": "sun.net.httpserver.ServerImpl$Exchange$LinkHandler",
+          "method": "handle",
+          "line": 969
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 98
+        },
+        {
+          "class": "sun.net.httpserver.ServerImpl$Exchange",
+          "method": "run",
+          "line": 945
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor",
+          "method": "runWorker",
+          "line": 1144
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor$Worker",
+          "method": "run",
+          "line": 642
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "runWith",
+          "line": 1596
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "run",
+          "line": 1583
+        }
+      ],
+      "recognizedMessage": "Read timed out"
+    },
+    {
+      "at": "2026-11-12T18:26:48.808830203+08:00",
+      "type": "java.net.SocketTimeoutException",
+      "stack": [
+        {
+          "class": "java.lang.Throwable",
+          "method": "<init>",
+          "line": 275
+        },
+        {
+          "class": "java.lang.Exception",
+          "method": "<init>",
+          "line": 67
+        },
+        {
+          "class": "java.io.IOException",
+          "method": "<init>",
+          "line": 57
+        },
+        {
+          "class": "java.io.InterruptedIOException",
+          "method": "<init>",
+          "line": 63
+        },
+        {
+          "class": "java.net.SocketTimeoutException",
+          "method": "<init>",
+          "line": 44
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "timedRead",
+          "line": 278
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "implRead",
+          "line": 304
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "read",
+          "line": 346
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl$1",
+          "method": "read",
+          "line": 796
+        },
+        {
+          "class": "java.net.Socket$SocketInputStream",
+          "method": "read",
+          "line": 1099
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "read",
+          "line": 489
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "readHeader",
+          "line": 483
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "bytesInCompletePacket",
+          "line": 70
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl",
+          "method": "readApplicationRecord",
+          "line": 1460
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl$AppInputStream",
+          "method": "read",
+          "line": 1066
+        },
+        {
+          "class": "okio.internal.DefaultSocket$SocketSource",
+          "method": "read",
+          "line": 124
+        },
+        {
+          "class": "okio.RealBufferedSource",
+          "method": "exhausted",
+          "line": 223
+        },
+        {
+          "class": "okhttp3.internal._UtilJvmKt",
+          "method": "isHealthy",
+          "line": 213
+        },
+        {
+          "class": "okhttp3.internal.connection.RealConnection",
+          "method": "isHealthy",
+          "line": 320
+        },
+        {
+          "class": "okhttp3.internal.connection.RealConnectionPool",
+          "method": "callAcquirePooledConnection$okhttp",
+          "line": 105
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "planReusePooledConnection$okhttp",
+          "line": 184
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "planReusePooledConnection$okhttp$default",
+          "line": 179
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "plan",
+          "line": 68
+        },
+        {
+          "class": "okhttp3.internal.connection.FastFallbackExchangeFinder",
+          "method": "launchTcpConnect",
+          "line": 119
+        },
+        {
+          "class": "okhttp3.internal.connection.FastFallbackExchangeFinder",
+          "method": "find",
+          "line": 62
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "initExchange$okhttp",
+          "line": 298
+        },
+        {
+          "class": "okhttp3.internal.connection.ConnectInterceptor",
+          "method": "intercept",
+          "line": 32
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.cache.CacheInterceptor",
+          "method": "intercept",
+          "line": 101
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.http.BridgeInterceptor",
+          "method": "intercept",
+          "line": 85
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.http.RetryAndFollowUpInterceptor",
+          "method": "intercept",
+          "line": 74
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "getResponseWithInterceptorChain$okhttp",
+          "line": 226
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "execute",
+          "line": 178
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "executeJson",
+          "line": 237
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "executeArray",
+          "line": 202
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "prepareBatch",
+          "line": 130
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaWorkerManager",
+          "method": "prepareAndStart",
+          "line": 150
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaWorkerManager",
+          "method": "prepareAndStart",
+          "line": 120
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulator",
+          "method": "startWorker",
+          "line": 235
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "handleWorker",
+          "line": 496
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "route",
+          "line": 461
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "handle",
+          "line": 313
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer$$Lambda.0x00007103c4029890",
+          "method": "handle",
+          "line": -1
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 98
+        },
+        {
+          "class": "sun.net.httpserver.AuthFilter",
+          "method": "doFilter",
+          "line": 82
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 101
+        },
+        {
+          "class": "sun.net.httpserver.ServerImpl$Exchange$LinkHandler",
+          "method": "handle",
+          "line": 969
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 98
+        },
+        {
+          "class": "sun.net.httpserver.ServerImpl$Exchange",
+          "method": "run",
+          "line": 945
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor",
+          "method": "runWorker",
+          "line": 1144
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor$Worker",
+          "method": "run",
+          "line": 642
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "runWith",
+          "line": 1596
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "run",
+          "line": 1583
+        }
+      ],
+      "recognizedMessage": "Read timed out"
+    },
+    {
+      "at": "2026-11-12T18:27:50.925750301+08:00",
+      "type": "java.net.SocketTimeoutException",
+      "stack": [
+        {
+          "class": "java.lang.Throwable",
+          "method": "<init>",
+          "line": 275
+        },
+        {
+          "class": "java.lang.Exception",
+          "method": "<init>",
+          "line": 67
+        },
+        {
+          "class": "java.io.IOException",
+          "method": "<init>",
+          "line": 57
+        },
+        {
+          "class": "java.io.InterruptedIOException",
+          "method": "<init>",
+          "line": 63
+        },
+        {
+          "class": "java.net.SocketTimeoutException",
+          "method": "<init>",
+          "line": 44
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "timedRead",
+          "line": 278
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "implRead",
+          "line": 304
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "read",
+          "line": 346
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl$1",
+          "method": "read",
+          "line": 796
+        },
+        {
+          "class": "java.net.Socket$SocketInputStream",
+          "method": "read",
+          "line": 1099
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "read",
+          "line": 489
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "readHeader",
+          "line": 483
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketInputRecord",
+          "method": "bytesInCompletePacket",
+          "line": 70
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl",
+          "method": "readApplicationRecord",
+          "line": 1460
+        },
+        {
+          "class": "sun.security.ssl.SSLSocketImpl$AppInputStream",
+          "method": "read",
+          "line": 1066
+        },
+        {
+          "class": "okio.internal.DefaultSocket$SocketSource",
+          "method": "read",
+          "line": 124
+        },
+        {
+          "class": "okio.RealBufferedSource",
+          "method": "exhausted",
+          "line": 223
+        },
+        {
+          "class": "okhttp3.internal._UtilJvmKt",
+          "method": "isHealthy",
+          "line": 213
+        },
+        {
+          "class": "okhttp3.internal.connection.RealConnection",
+          "method": "isHealthy",
+          "line": 320
+        },
+        {
+          "class": "okhttp3.internal.connection.RealConnectionPool",
+          "method": "callAcquirePooledConnection$okhttp",
+          "line": 105
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "planReusePooledConnection$okhttp",
+          "line": 184
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "planReusePooledConnection$okhttp$default",
+          "line": 179
+        },
+        {
+          "class": "okhttp3.internal.connection.RealRoutePlanner",
+          "method": "plan",
+          "line": 68
+        },
+        {
+          "class": "okhttp3.internal.connection.FastFallbackExchangeFinder",
+          "method": "launchTcpConnect",
+          "line": 119
+        },
+        {
+          "class": "okhttp3.internal.connection.FastFallbackExchangeFinder",
+          "method": "find",
+          "line": 62
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "initExchange$okhttp",
+          "line": 298
+        },
+        {
+          "class": "okhttp3.internal.connection.ConnectInterceptor",
+          "method": "intercept",
+          "line": 32
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.cache.CacheInterceptor",
+          "method": "intercept",
+          "line": 101
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.http.BridgeInterceptor",
+          "method": "intercept",
+          "line": 85
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.http.RetryAndFollowUpInterceptor",
+          "method": "intercept",
+          "line": 74
+        },
+        {
+          "class": "okhttp3.internal.http.RealInterceptorChain",
+          "method": "proceed",
+          "line": 126
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "getResponseWithInterceptorChain$okhttp",
+          "line": 226
+        },
+        {
+          "class": "okhttp3.internal.connection.RealCall",
+          "method": "execute",
+          "line": 178
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "executeJson",
+          "line": 237
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "executeArray",
+          "line": 202
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaOkHttpWorkerControlClient",
+          "method": "prepareBatch",
+          "line": 130
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaWorkerManager",
+          "method": "prepareAndStart",
+          "line": 150
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaWorkerManager",
+          "method": "prepareAndStart",
+          "line": 120
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulator",
+          "method": "startWorker",
+          "line": 235
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "handleWorker",
+          "line": 496
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "route",
+          "line": 461
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "handle",
+          "line": 313
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer$$Lambda.0x00007103c4029890",
+          "method": "handle",
+          "line": -1
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 98
+        },
+        {
+          "class": "sun.net.httpserver.AuthFilter",
+          "method": "doFilter",
+          "line": 82
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 101
+        },
+        {
+          "class": "sun.net.httpserver.ServerImpl$Exchange$LinkHandler",
+          "method": "handle",
+          "line": 969
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 98
+        },
+        {
+          "class": "sun.net.httpserver.ServerImpl$Exchange",
+          "method": "run",
+          "line": 945
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor",
+          "method": "runWorker",
+          "line": 1144
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor$Worker",
+          "method": "run",
+          "line": 642
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "runWith",
+          "line": 1596
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "run",
+          "line": 1583
+        }
+      ],
+      "recognizedMessage": "Read timed out"
+    },
+    {
+      "at": "2026-11-12T18:28:15.198446330+08:00",
+      "type": "java.net.SocketTimeoutException",
+      "stack": [
+        {
+          "class": "java.lang.Throwable",
+          "method": "<init>",
+          "line": 275
+        },
+        {
+          "class": "java.lang.Exception",
+          "method": "<init>",
+          "line": 67
+        },
+        {
+          "class": "java.io.IOException",
+          "method": "<init>",
+          "line": 57
+        },
+        {
+          "class": "java.io.InterruptedIOException",
+          "method": "<init>",
+          "line": 63
+        },
+        {
+          "class": "java.net.SocketTimeoutException",
+          "method": "<init>",
+          "line": 44
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "timedFinishConnect",
+          "line": 546
+        },
+        {
+          "class": "sun.nio.ch.NioSocketImpl",
+          "method": "connect",
+          "line": 592
+        },
+        {
+          "class": "java.net.SocksSocketImpl",
+          "method": "connect",
+          "line": 351
+        },
+        {
+          "class": "java.net.Socket",
+          "method": "connect",
+          "line": 751
+        },
+        {
+          "class": "okhttp3.internal.platform.Platform",
+          "method": "connectSocket",
+          "line": 148
+        },
+        {
+          "class": "okhttp3.internal.connection.ConnectPlan",
+          "method": "connectSocket",
+          "line": 276
+        },
+        {
+          "class": "okhttp3.internal.connection.ConnectPlan",
+          "method": "connectTcp",
+          "line": 135
+        },
+        {
+          "class": "okhttp3.internal.connection.FastFallbackExchangeFinder$launchTcpConnect$1",
+          "method": "runOnce",
+          "line": 141
+        },
+        {
+          "class": "okhttp3.internal.concurrent.TaskRunner$runnable$1",
+          "method": "run",
+          "line": 81
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor",
+          "method": "runWorker",
+          "line": 1144
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor$Worker",
+          "method": "run",
+          "line": 642
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "runWith",
+          "line": 1596
+        },
+        {
+          "class": "java.lang.VirtualThread",
+          "method": "run",
+          "line": 329
+        },
+        {
+          "class": "java.lang.VirtualThread$VThreadContinuation$1",
+          "method": "run",
+          "line": 209
+        },
+        {
+          "class": "jdk.internal.vm.Continuation",
+          "method": "enter0",
+          "line": 320
+        },
+        {
+          "class": "jdk.internal.vm.Continuation",
+          "method": "enter",
+          "line": 312
+        },
+        {
+          "class": "jdk.internal.vm.Continuation",
+          "method": "enterSpecial",
+          "line": -1
+        }
+      ],
+      "recognizedMessage": "Connect timed out"
+    },
+    {
+      "at": "2026-11-12T18:28:15.199646703+08:00",
+      "type": "com.xa.mass.worker.error.WorkerException",
+      "stack": [
+        {
+          "class": "java.lang.Throwable",
+          "method": "<init>",
+          "line": 298
+        },
+        {
+          "class": "java.lang.Exception",
+          "method": "<init>",
+          "line": 85
+        },
+        {
+          "class": "java.lang.RuntimeException",
+          "method": "<init>",
+          "line": 81
+        },
+        {
+          "class": "com.xa.mass.worker.error.WorkerException",
+          "method": "<init>",
+          "line": 16
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaWorkerManager",
+          "method": "prepareAndStart",
+          "line": 158
+        },
+        {
+          "class": "com.xa.mass.worker.javase.JavaWorkerManager",
+          "method": "prepareAndStart",
+          "line": 120
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulator",
+          "method": "startWorker",
+          "line": 235
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "handleWorker",
+          "line": 496
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "route",
+          "line": 461
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer",
+          "method": "handle",
+          "line": 313
+        },
+        {
+          "class": "com.xa.mass.workersimulator.WorkerSimulatorControlServer$$Lambda.0x00007103c4029890",
+          "method": "handle",
+          "line": -1
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 98
+        },
+        {
+          "class": "sun.net.httpserver.AuthFilter",
+          "method": "doFilter",
+          "line": 82
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 101
+        },
+        {
+          "class": "sun.net.httpserver.ServerImpl$Exchange$LinkHandler",
+          "method": "handle",
+          "line": 969
+        },
+        {
+          "class": "com.sun.net.httpserver.Filter$Chain",
+          "method": "doFilter",
+          "line": 98
+        },
+        {
+          "class": "sun.net.httpserver.ServerImpl$Exchange",
+          "method": "run",
+          "line": 945
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor",
+          "method": "runWorker",
+          "line": 1144
+        },
+        {
+          "class": "java.util.concurrent.ThreadPoolExecutor$Worker",
+          "method": "run",
+          "line": 642
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "runWith",
+          "line": 1596
+        },
+        {
+          "class": "java.lang.Thread",
+          "method": "run",
+          "line": 1583
+        }
+      ],
+      "recognizedMessage": "omitted"
+    }
+  ]
+}

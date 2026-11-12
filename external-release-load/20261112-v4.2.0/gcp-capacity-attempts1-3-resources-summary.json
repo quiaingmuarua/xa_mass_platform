@@ -1,0 +1,662 @@
+{
+  "method": "CPU=(cgroup usage_usec delta/1e6)/(actual monotonic sample-time delta); average weighted by actual interval length; peak is a roughly five-second interval, not instantaneous. Combined CPU covers only Runtime/Nginx/Redis, not all host processes or networking softirq. Ramp windows include only complete samples between first start-worker send and last unconfirmed receipt; failed runs remain failed/unconfirmed. RSS sums can double-count shared pages; cgroup memory is reported separately.",
+  "attempts": [
+    {
+      "attempt": 1,
+      "sampler": {
+        "startedAt": "2026-11-12T09:53:17.568+00:00",
+        "endedAt": "2026-11-12T09:58:37.566+00:00",
+        "status": "complete",
+        "samples": 64,
+        "maximumCompletedGapSeconds": 5.008,
+        "logicalCpus": 8
+      },
+      "rampRequestedFrom": "2026-11-12T09:53:50.087218337Z",
+      "rampUnconfirmedThrough": "2026-11-12T09:57:32.987370251Z",
+      "fullCapture": {
+        "sampleCount": 64,
+        "firstAt": "2026-11-12T09:53:17.592+00:00",
+        "lastAt": "2026-11-12T09:58:32.590+00:00",
+        "units": {
+          "xa-mass.service": {
+            "cpuAverageCores": 0.241194,
+            "cpuPeakIntervalCores": 0.755526,
+            "cpuPeakAt": "2026-11-12T09:55:47.596+00:00",
+            "cpuPeakIntervalSeconds": 5.001,
+            "cpuSeconds": 75.975773,
+            "observedIntervalSeconds": 314.998,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 1321267200,
+            "memorySampleMeanBytes": 1132284544,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 1341722624,
+            "fdSumPeak": 4116,
+            "singlePidFdPeak": 4116,
+            "threadSumPeak": 82,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "nginx.service": {
+            "cpuAverageCores": 0.125057,
+            "cpuPeakIntervalCores": 0.279233,
+            "cpuPeakAt": "2026-11-12T09:56:02.598+00:00",
+            "cpuPeakIntervalSeconds": 5.001,
+            "cpuSeconds": 39.392743,
+            "observedIntervalSeconds": 314.998,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 362700800,
+            "memorySampleMeanBytes": 249249664,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 398090240,
+            "fdSumPeak": 8212,
+            "singlePidFdPeak": 1049,
+            "threadSumPeak": 9,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "redis-server.service": {
+            "cpuAverageCores": 0.026601,
+            "cpuPeakIntervalCores": 0.050671,
+            "cpuPeakAt": "2026-11-12T09:56:12.607+00:00",
+            "cpuPeakIntervalSeconds": 5.008,
+            "cpuSeconds": 8.379209,
+            "observedIntervalSeconds": 314.998,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 11419648,
+            "memorySampleMeanBytes": 8400704,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 18657280,
+            "fdSumPeak": 27,
+            "singlePidFdPeak": 27,
+            "threadSumPeak": 6,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          }
+        },
+        "selectedServicesCombined": {
+          "cpuAverageCores": 0.392852,
+          "cpuAveragePercentOfLogicalCapacity": 4.911,
+          "cpuPeakIntervalCores": 1.073576,
+          "cpuPeakPercentOfLogicalCapacity": 13.42,
+          "cpuPeakAt": "2026-11-12T09:55:47.596+00:00"
+        },
+        "system": {
+          "memoryAvailableMinimumBytes": 10046984192,
+          "swapUsedPeakBytes": 0,
+          "swapInPageDelta": 0,
+          "swapOutPageDelta": 0
+        },
+        "redis": {
+          "usedMemoryPeakBytes": 6390520,
+          "rssPeakBytes": 18657280,
+          "operationsPerSecondPeak": 1035,
+          "evictedDelta": 0,
+          "rejectedConnectionDelta": 0,
+          "errorRepliesDelta": 0
+        }
+      },
+      "rampOnly": {
+        "sampleCount": 45,
+        "firstAt": "2026-11-12T09:53:52.590+00:00",
+        "lastAt": "2026-11-12T09:57:32.600+00:00",
+        "units": {
+          "xa-mass.service": {
+            "cpuAverageCores": 0.302215,
+            "cpuPeakIntervalCores": 0.755526,
+            "cpuPeakAt": "2026-11-12T09:55:47.596+00:00",
+            "cpuPeakIntervalSeconds": 5.001,
+            "cpuSeconds": 66.49037,
+            "observedIntervalSeconds": 220.01,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 1318629376,
+            "memorySampleMeanBytes": 1130574279,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 1324167168,
+            "fdSumPeak": 4116,
+            "singlePidFdPeak": 4116,
+            "threadSumPeak": 82,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "nginx.service": {
+            "cpuAverageCores": 0.176611,
+            "cpuPeakIntervalCores": 0.279233,
+            "cpuPeakAt": "2026-11-12T09:56:02.598+00:00",
+            "cpuPeakIntervalSeconds": 5.001,
+            "cpuSeconds": 38.856188,
+            "observedIntervalSeconds": 220.01,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 362700800,
+            "memorySampleMeanBytes": 246779085,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 398090240,
+            "fdSumPeak": 8212,
+            "singlePidFdPeak": 1049,
+            "threadSumPeak": 9,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "redis-server.service": {
+            "cpuAverageCores": 0.032239,
+            "cpuPeakIntervalCores": 0.050671,
+            "cpuPeakAt": "2026-11-12T09:56:12.607+00:00",
+            "cpuPeakIntervalSeconds": 5.008,
+            "cpuSeconds": 7.092981,
+            "observedIntervalSeconds": 220.01,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 10297344,
+            "memorySampleMeanBytes": 8243792,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 17608704,
+            "fdSumPeak": 27,
+            "singlePidFdPeak": 27,
+            "threadSumPeak": 6,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          }
+        },
+        "selectedServicesCombined": {
+          "cpuAverageCores": 0.511066,
+          "cpuAveragePercentOfLogicalCapacity": 6.388,
+          "cpuPeakIntervalCores": 1.073576,
+          "cpuPeakPercentOfLogicalCapacity": 13.42,
+          "cpuPeakAt": "2026-11-12T09:55:47.596+00:00"
+        },
+        "system": {
+          "memoryAvailableMinimumBytes": 10072215552,
+          "swapUsedPeakBytes": 0,
+          "swapInPageDelta": 0,
+          "swapOutPageDelta": 0
+        },
+        "redis": {
+          "usedMemoryPeakBytes": 6390520,
+          "rssPeakBytes": 17608704,
+          "operationsPerSecondPeak": 1035,
+          "evictedDelta": 0,
+          "rejectedConnectionDelta": 0,
+          "errorRepliesDelta": 0
+        }
+      }
+    },
+    {
+      "attempt": 2,
+      "sampler": {
+        "startedAt": "2026-11-12T10:05:12.962+00:00",
+        "endedAt": "2026-11-12T10:14:26.477+00:00",
+        "status": "complete",
+        "samples": 111,
+        "maximumCompletedGapSeconds": 5.012,
+        "logicalCpus": 8
+      },
+      "rampRequestedFrom": "2026-11-12T10:05:40.252020294Z",
+      "rampUnconfirmedThrough": "2026-11-12T10:10:59.869531121Z",
+      "fullCapture": {
+        "sampleCount": 111,
+        "firstAt": "2026-11-12T10:05:12.984+00:00",
+        "lastAt": "2026-11-12T10:14:22.983+00:00",
+        "units": {
+          "xa-mass.service": {
+            "cpuAverageCores": 0.090013,
+            "cpuPeakIntervalCores": 0.286308,
+            "cpuPeakAt": "2026-11-12T10:11:02.984+00:00",
+            "cpuPeakIntervalSeconds": 4.99,
+            "cpuSeconds": 49.507084,
+            "observedIntervalSeconds": 549.998,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 1339551744,
+            "memorySampleMeanBytes": 1329235839,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 1349947392,
+            "fdSumPeak": 4043,
+            "singlePidFdPeak": 4043,
+            "threadSumPeak": 82,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "nginx.service": {
+            "cpuAverageCores": 0.063949,
+            "cpuPeakIntervalCores": 0.120871,
+            "cpuPeakAt": "2026-11-12T10:07:22.987+00:00",
+            "cpuPeakIntervalSeconds": 5.001,
+            "cpuSeconds": 35.171768,
+            "observedIntervalSeconds": 549.998,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 373936128,
+            "memorySampleMeanBytes": 346767545,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 408182784,
+            "fdSumPeak": 8070,
+            "singlePidFdPeak": 1049,
+            "threadSumPeak": 9,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "redis-server.service": {
+            "cpuAverageCores": 0.017177,
+            "cpuPeakIntervalCores": 0.039909,
+            "cpuPeakAt": "2026-11-12T10:11:02.984+00:00",
+            "cpuPeakIntervalSeconds": 4.99,
+            "cpuSeconds": 9.447282,
+            "observedIntervalSeconds": 549.998,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 11436032,
+            "memorySampleMeanBytes": 10263875,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 19189760,
+            "fdSumPeak": 27,
+            "singlePidFdPeak": 27,
+            "threadSumPeak": 6,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          }
+        },
+        "selectedServicesCombined": {
+          "cpuAverageCores": 0.171139,
+          "cpuAveragePercentOfLogicalCapacity": 2.139,
+          "cpuPeakIntervalCores": 0.401811,
+          "cpuPeakPercentOfLogicalCapacity": 5.023,
+          "cpuPeakAt": "2026-11-12T10:07:37.988+00:00"
+        },
+        "system": {
+          "memoryAvailableMinimumBytes": 10016579584,
+          "swapUsedPeakBytes": 0,
+          "swapInPageDelta": 0,
+          "swapOutPageDelta": 0
+        },
+        "redis": {
+          "usedMemoryPeakBytes": 6435560,
+          "rssPeakBytes": 19189760,
+          "operationsPerSecondPeak": 486,
+          "evictedDelta": 0,
+          "rejectedConnectionDelta": 0,
+          "errorRepliesDelta": 0
+        }
+      },
+      "rampOnly": {
+        "sampleCount": 64,
+        "firstAt": "2026-11-12T10:05:42.983+00:00",
+        "lastAt": "2026-11-12T10:10:57.994+00:00",
+        "units": {
+          "xa-mass.service": {
+            "cpuAverageCores": 0.12523,
+            "cpuPeakIntervalCores": 0.261512,
+            "cpuPeakAt": "2026-11-12T10:07:37.988+00:00",
+            "cpuPeakIntervalSeconds": 4.997,
+            "cpuSeconds": 39.449075,
+            "observedIntervalSeconds": 315.012,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 1339551744,
+            "memorySampleMeanBytes": 1330401472,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 1344180224,
+            "fdSumPeak": 4043,
+            "singlePidFdPeak": 4043,
+            "threadSumPeak": 82,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "nginx.service": {
+            "cpuAverageCores": 0.109857,
+            "cpuPeakIntervalCores": 0.120871,
+            "cpuPeakAt": "2026-11-12T10:07:22.987+00:00",
+            "cpuPeakIntervalSeconds": 5.001,
+            "cpuSeconds": 34.606415,
+            "observedIntervalSeconds": 315.012,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 373936128,
+            "memorySampleMeanBytes": 351893696,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 408182784,
+            "fdSumPeak": 8070,
+            "singlePidFdPeak": 1049,
+            "threadSumPeak": 9,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "redis-server.service": {
+            "cpuAverageCores": 0.021279,
+            "cpuPeakIntervalCores": 0.034193,
+            "cpuPeakAt": "2026-11-12T10:07:17.987+00:00",
+            "cpuPeakIntervalSeconds": 4.999,
+            "cpuSeconds": 6.703278,
+            "observedIntervalSeconds": 315.012,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 10842112,
+            "memorySampleMeanBytes": 10240128,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 18288640,
+            "fdSumPeak": 27,
+            "singlePidFdPeak": 27,
+            "threadSumPeak": 6,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          }
+        },
+        "selectedServicesCombined": {
+          "cpuAverageCores": 0.256367,
+          "cpuAveragePercentOfLogicalCapacity": 3.205,
+          "cpuPeakIntervalCores": 0.401811,
+          "cpuPeakPercentOfLogicalCapacity": 5.023,
+          "cpuPeakAt": "2026-11-12T10:07:37.988+00:00"
+        },
+        "system": {
+          "memoryAvailableMinimumBytes": 10016579584,
+          "swapUsedPeakBytes": 0,
+          "swapInPageDelta": 0,
+          "swapOutPageDelta": 0
+        },
+        "redis": {
+          "usedMemoryPeakBytes": 6435560,
+          "rssPeakBytes": 18288640,
+          "operationsPerSecondPeak": 486,
+          "evictedDelta": 0,
+          "rejectedConnectionDelta": 0,
+          "errorRepliesDelta": 0
+        }
+      }
+    },
+    {
+      "attempt": 3,
+      "sampler": {
+        "startedAt": "2026-11-12T10:16:00.842+00:00",
+        "endedAt": "2026-11-12T10:22:44.767+00:00",
+        "status": "complete",
+        "samples": 81,
+        "maximumCompletedGapSeconds": 5.012,
+        "logicalCpus": 8
+      },
+      "rampRequestedFrom": "2026-11-12T10:16:45.198144797Z",
+      "rampUnconfirmedThrough": "2026-11-12T10:19:12.839485678Z",
+      "fullCapture": {
+        "sampleCount": 81,
+        "firstAt": "2026-11-12T10:16:00.864+00:00",
+        "lastAt": "2026-11-12T10:22:40.864+00:00",
+        "units": {
+          "xa-mass.service": {
+            "cpuAverageCores": 0.118535,
+            "cpuPeakIntervalCores": 0.937334,
+            "cpuPeakAt": "2026-11-12T10:19:15.863+00:00",
+            "cpuPeakIntervalSeconds": 4.983,
+            "cpuSeconds": 47.413949,
+            "observedIntervalSeconds": 400.0,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 1377468416,
+            "memorySampleMeanBytes": 1356016602,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 1396871168,
+            "fdSumPeak": 5547,
+            "singlePidFdPeak": 5547,
+            "threadSumPeak": 81,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "nginx.service": {
+            "cpuAverageCores": 0.12807,
+            "cpuPeakIntervalCores": 0.436486,
+            "cpuPeakAt": "2026-11-12T10:17:30.869+00:00",
+            "cpuPeakIntervalSeconds": 5.0,
+            "cpuSeconds": 51.227998,
+            "observedIntervalSeconds": 400.0,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 460861440,
+            "memorySampleMeanBytes": 399113532,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 480796672,
+            "fdSumPeak": 11078,
+            "singlePidFdPeak": 1389,
+            "threadSumPeak": 9,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "redis-server.service": {
+            "cpuAverageCores": 0.022929,
+            "cpuPeakIntervalCores": 0.087178,
+            "cpuPeakAt": "2026-11-12T10:19:15.863+00:00",
+            "cpuPeakIntervalSeconds": 4.983,
+            "cpuSeconds": 9.171726,
+            "observedIntervalSeconds": 400.0,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 13021184,
+            "memorySampleMeanBytes": 10921504,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 19517440,
+            "fdSumPeak": 27,
+            "singlePidFdPeak": 27,
+            "threadSumPeak": 6,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          }
+        },
+        "selectedServicesCombined": {
+          "cpuAverageCores": 0.269534,
+          "cpuAveragePercentOfLogicalCapacity": 3.369,
+          "cpuPeakIntervalCores": 1.142699,
+          "cpuPeakPercentOfLogicalCapacity": 14.284,
+          "cpuPeakAt": "2026-11-12T10:19:15.863+00:00"
+        },
+        "system": {
+          "memoryAvailableMinimumBytes": 9878712320,
+          "swapUsedPeakBytes": 0,
+          "swapInPageDelta": 0,
+          "swapOutPageDelta": 0
+        },
+        "redis": {
+          "usedMemoryPeakBytes": 7287848,
+          "rssPeakBytes": 19517440,
+          "operationsPerSecondPeak": 3276,
+          "evictedDelta": 0,
+          "rejectedConnectionDelta": 0,
+          "errorRepliesDelta": 0
+        }
+      },
+      "rampOnly": {
+        "sampleCount": 30,
+        "firstAt": "2026-11-12T10:16:45.864+00:00",
+        "lastAt": "2026-11-12T10:19:10.879+00:00",
+        "units": {
+          "xa-mass.service": {
+            "cpuAverageCores": 0.224675,
+            "cpuPeakIntervalCores": 0.375901,
+            "cpuPeakAt": "2026-11-12T10:17:10.868+00:00",
+            "cpuPeakIntervalSeconds": 5.001,
+            "cpuSeconds": 32.581444,
+            "observedIntervalSeconds": 145.016,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 1358614528,
+            "memorySampleMeanBytes": 1344854699,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 1357156352,
+            "fdSumPeak": 5547,
+            "singlePidFdPeak": 5547,
+            "threadSumPeak": 81,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "nginx.service": {
+            "cpuAverageCores": 0.347259,
+            "cpuPeakIntervalCores": 0.436486,
+            "cpuPeakAt": "2026-11-12T10:17:30.869+00:00",
+            "cpuPeakIntervalSeconds": 5.0,
+            "cpuSeconds": 50.35816,
+            "observedIntervalSeconds": 145.016,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 460861440,
+            "memorySampleMeanBytes": 392629862,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 480796672,
+            "fdSumPeak": 11078,
+            "singlePidFdPeak": 1389,
+            "threadSumPeak": 9,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "redis-server.service": {
+            "cpuAverageCores": 0.039931,
+            "cpuPeakIntervalCores": 0.054554,
+            "cpuPeakAt": "2026-11-12T10:17:45.873+00:00",
+            "cpuPeakIntervalSeconds": 5.0,
+            "cpuSeconds": 5.790593,
+            "observedIntervalSeconds": 145.016,
+            "excludedIntervals": 0,
+            "memoryPeakBytes": 11284480,
+            "memorySampleMeanBytes": 10667349,
+            "swapPeakBytes": 0,
+            "processRssSumPeakBytesNotPhysicalTotal": 18731008,
+            "fdSumPeak": 27,
+            "singlePidFdPeak": 27,
+            "threadSumPeak": 6,
+            "memoryEventChanges": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          }
+        },
+        "selectedServicesCombined": {
+          "cpuAverageCores": 0.611865,
+          "cpuAveragePercentOfLogicalCapacity": 7.648,
+          "cpuPeakIntervalCores": 0.839717,
+          "cpuPeakPercentOfLogicalCapacity": 10.496,
+          "cpuPeakAt": "2026-11-12T10:17:10.868+00:00"
+        },
+        "system": {
+          "memoryAvailableMinimumBytes": 9939869696,
+          "swapUsedPeakBytes": 0,
+          "swapInPageDelta": 0,
+          "swapOutPageDelta": 0
+        },
+        "redis": {
+          "usedMemoryPeakBytes": 7213968,
+          "rssPeakBytes": 18731008,
+          "operationsPerSecondPeak": 1502,
+          "evictedDelta": 0,
+          "rejectedConnectionDelta": 0,
+          "errorRepliesDelta": 0
+        }
+      }
+    }
+  ]
+}

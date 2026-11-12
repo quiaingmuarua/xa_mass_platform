@@ -1,0 +1,533 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-12T10:50:58.576836+00:00",
+  "release": {
+    "version": "4.2.0",
+    "commit": "aaed8d648c19e2f6332f37b4e831b0b194d5553b",
+    "pullRequest": "https://github.com/quiaingmuarua/xa_mass_platform/pull/94",
+    "release": "https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.2.0",
+    "completeManualProof": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/43191523662",
+    "unchangedLocalNightly": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/43186658267"
+  },
+  "conclusion": {
+    "capacityStatus": "unconfirmed",
+    "fullCampaignCompleted": false,
+    "configuredPreparedWorkers": 15000,
+    "configuredRetainedWorkers": 10000,
+    "configuredTasksPerScale": 10,
+    "configuredItemsPerTask": 5000,
+    "configuredItemsTotal": 100000,
+    "completedTaskWorkloads": 0,
+    "createdTasksAcrossFormalAttempts": 0,
+    "serverThroughputMeasured": false,
+    "allFormalFailuresRetained": true,
+    "deploymentBaseline": "4.2 baseline passed; this does not establish external capacity"
+  },
+  "method": "All four formal attempts used the same published 4.2.0 kit and fixed full defaults without timeout changes. Confirmed start counts are local Host control-operation confirmations, not connected Worker counts. CPU is cgroup usage_usec delta divided by actual monotonic sample-time delta; averages are duration-weighted and peaks are roughly five-second averages. Ramp-only resource windows exclude post-failure idle time. Selected-service CPU excludes unrelated processes and some kernel networking work.",
+  "formalAttempts": [
+    {
+      "attempt": 1,
+      "kind": "formal-full-default-campaign",
+      "environment": "GitHub-hosted external-release",
+      "workflowRun": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/43195452791",
+      "status": "unconfirmed",
+      "phase": "ramp",
+      "failureKind": "http-500",
+      "confirmedStartOperations": 4937,
+      "unconfirmedStartOperations": 2,
+      "rejectedStartOperations": 0,
+      "sentStartOperations": 4939,
+      "rampDurationMillis": 222902,
+      "unconfirmedStartDurationsMillis": [
+        10005.456,
+        10001.475
+      ],
+      "firstStartSentAt": "2026-11-12T09:53:50.087218+00:00",
+      "lastUnconfirmedAt": "2026-11-12T09:57:32.987370+00:00",
+      "taskCreationRequestsSent": 0,
+      "knownCreatedTasks": 0,
+      "completedCases": 0,
+      "cleanup": {
+        "ownedProcessesStopped": true,
+        "privateCredentialCopiesRemoved": true,
+        "errors": []
+      },
+      "remoteTaskCleanup": "unconfirmed",
+      "sourceSummary": "public-attempt1/external-release-load/summary.json",
+      "summarySha256": "2c60d9bcda19a12ce7d7a7fc300af560f3c814156f0ab1fc59e62ab1c25fe845",
+      "receiptsSource": "public-attempt1/external-release-load/evidence/receipts.jsonl",
+      "receiptsSha256": "f5cc923fae255183cae5216d8995e1df67187831ff48e3137cfef12246d1ee5d",
+      "gcpResources": {
+        "source": "gcp-capacity-attempt1-resources.jsonl",
+        "sha256": "0e67e27939635690c2e35b60430725c459ef610d74296be0f6fd5636acb9a991",
+        "samplerStatus": "complete",
+        "allSampleCount": 64,
+        "maximumCompletedGapSeconds": 5.008,
+        "rampSampleCount": 45,
+        "rampSampleFrom": "2026-11-12T09:53:52.590+00:00",
+        "rampSampleThrough": "2026-11-12T09:57:32.600+00:00",
+        "logicalCpus": 8,
+        "selectedServiceCpuMeanCores": 0.511066,
+        "selectedServiceCpuPeakFiveSecondIntervalCores": 1.073576,
+        "peakPercentOfEightLogicalCpus": 13.42,
+        "units": {
+          "xa-mass.service": {
+            "cpuMeanCores": 0.302215,
+            "cpuPeakFiveSecondIntervalCores": 0.755526,
+            "cgroupMemoryPeakBytes": 1318629376,
+            "cgroupSwapPeakBytes": 0,
+            "fdSumPeak": 4116,
+            "singlePidFdPeak": 4116,
+            "memoryEventDeltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "nginx.service": {
+            "cpuMeanCores": 0.176611,
+            "cpuPeakFiveSecondIntervalCores": 0.279233,
+            "cgroupMemoryPeakBytes": 362700800,
+            "cgroupSwapPeakBytes": 0,
+            "fdSumPeak": 8212,
+            "singlePidFdPeak": 1049,
+            "memoryEventDeltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "redis-server.service": {
+            "cpuMeanCores": 0.032239,
+            "cpuPeakFiveSecondIntervalCores": 0.050671,
+            "cgroupMemoryPeakBytes": 10297344,
+            "cgroupSwapPeakBytes": 0,
+            "fdSumPeak": 27,
+            "singlePidFdPeak": 27,
+            "memoryEventDeltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          }
+        },
+        "system": {
+          "memAvailableMinimumBytes": 10072215552,
+          "swapUsedPeakBytes": 0,
+          "swapInPagesDelta": 0,
+          "swapOutPagesDelta": 0
+        },
+        "redis": {
+          "evictedKeysDelta": 0,
+          "rejectedConnectionsDelta": 0,
+          "errorRepliesDelta": 0
+        }
+      }
+    },
+    {
+      "attempt": 2,
+      "kind": "formal-full-default-campaign",
+      "environment": "GitHub-hosted external-release",
+      "workflowRun": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/43197224933",
+      "status": "unconfirmed",
+      "phase": "ramp",
+      "failureKind": "http-500",
+      "confirmedStartOperations": 3979,
+      "unconfirmedStartOperations": 1,
+      "rejectedStartOperations": 0,
+      "sentStartOperations": 3980,
+      "rampDurationMillis": 319620,
+      "unconfirmedStartDurationsMillis": [
+        10005.18
+      ],
+      "firstStartSentAt": "2026-11-12T10:05:40.252020+00:00",
+      "lastUnconfirmedAt": "2026-11-12T10:10:59.869531+00:00",
+      "taskCreationRequestsSent": 0,
+      "knownCreatedTasks": 0,
+      "completedCases": 0,
+      "cleanup": {
+        "ownedProcessesStopped": true,
+        "privateCredentialCopiesRemoved": true,
+        "errors": []
+      },
+      "remoteTaskCleanup": "unconfirmed",
+      "sourceSummary": "public-attempt2/external-release-load/summary.json",
+      "summarySha256": "37c41b8487784dea7c5cbc8bf524f3ce4be6b267e6a942c30dd8d9a8c4ca753f",
+      "receiptsSource": "public-attempt2/external-release-load/evidence/receipts.jsonl",
+      "receiptsSha256": "da6ce5bc66a18561f3c1686a5b20891e8da46020e494552b4e56b4ee28fff139",
+      "gcpResources": {
+        "source": "gcp-capacity-attempt2-resources.jsonl",
+        "sha256": "48631c9af0fc8342fa203402a0f81f9aa1a97ecff17ecc1010e5cd669dce46a4",
+        "samplerStatus": "complete",
+        "allSampleCount": 111,
+        "maximumCompletedGapSeconds": 5.012,
+        "rampSampleCount": 64,
+        "rampSampleFrom": "2026-11-12T10:05:42.983+00:00",
+        "rampSampleThrough": "2026-11-12T10:10:57.994+00:00",
+        "logicalCpus": 8,
+        "selectedServiceCpuMeanCores": 0.256367,
+        "selectedServiceCpuPeakFiveSecondIntervalCores": 0.401811,
+        "peakPercentOfEightLogicalCpus": 5.023,
+        "units": {
+          "xa-mass.service": {
+            "cpuMeanCores": 0.12523,
+            "cpuPeakFiveSecondIntervalCores": 0.261512,
+            "cgroupMemoryPeakBytes": 1339551744,
+            "cgroupSwapPeakBytes": 0,
+            "fdSumPeak": 4043,
+            "singlePidFdPeak": 4043,
+            "memoryEventDeltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "nginx.service": {
+            "cpuMeanCores": 0.109857,
+            "cpuPeakFiveSecondIntervalCores": 0.120871,
+            "cgroupMemoryPeakBytes": 373936128,
+            "cgroupSwapPeakBytes": 0,
+            "fdSumPeak": 8070,
+            "singlePidFdPeak": 1049,
+            "memoryEventDeltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "redis-server.service": {
+            "cpuMeanCores": 0.021279,
+            "cpuPeakFiveSecondIntervalCores": 0.034193,
+            "cgroupMemoryPeakBytes": 10842112,
+            "cgroupSwapPeakBytes": 0,
+            "fdSumPeak": 27,
+            "singlePidFdPeak": 27,
+            "memoryEventDeltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          }
+        },
+        "system": {
+          "memAvailableMinimumBytes": 10016579584,
+          "swapUsedPeakBytes": 0,
+          "swapInPagesDelta": 0,
+          "swapOutPagesDelta": 0
+        },
+        "redis": {
+          "evictedKeysDelta": 0,
+          "rejectedConnectionsDelta": 0,
+          "errorRepliesDelta": 0
+        }
+      }
+    },
+    {
+      "attempt": 3,
+      "kind": "formal-full-default-campaign",
+      "environment": "WSL with existing local proxy/fake-IP resolution",
+      "workflowRun": null,
+      "status": "unconfirmed",
+      "phase": "ramp",
+      "failureKind": "http-500",
+      "confirmedStartOperations": 6451,
+      "unconfirmedStartOperations": 2,
+      "rejectedStartOperations": 0,
+      "sentStartOperations": 6453,
+      "rampDurationMillis": 147644,
+      "unconfirmedStartDurationsMillis": [
+        10007.892,
+        10003.855
+      ],
+      "firstStartSentAt": "2026-11-12T10:16:45.198144+00:00",
+      "lastUnconfirmedAt": "2026-11-12T10:19:12.839485+00:00",
+      "taskCreationRequestsSent": 0,
+      "knownCreatedTasks": 0,
+      "completedCases": 0,
+      "cleanup": {
+        "ownedProcessesStopped": true,
+        "privateCredentialCopiesRemoved": true,
+        "errors": []
+      },
+      "remoteTaskCleanup": "unconfirmed",
+      "sourceSummary": "public-local-attempt3/summary.json",
+      "summarySha256": "25348ea984f2e3465dec4b4e01ef8968285e570cd7d0a4feea02a2890fc2ec37",
+      "receiptsSource": "public-local-attempt3/evidence/receipts.jsonl",
+      "receiptsSha256": "917b7eda6076e0a5c6d7d744a6e43807378fcbfc0b9c211644e0a1910dfe6374",
+      "gcpResources": {
+        "source": "gcp-capacity-attempt3-resources.jsonl",
+        "sha256": "a08e187ccff147bbd350a08b7f1b7a4010d6573059c03cec6574f35d5e22a49a",
+        "samplerStatus": "complete",
+        "allSampleCount": 81,
+        "maximumCompletedGapSeconds": 5.012,
+        "rampSampleCount": 30,
+        "rampSampleFrom": "2026-11-12T10:16:45.864+00:00",
+        "rampSampleThrough": "2026-11-12T10:19:10.879+00:00",
+        "logicalCpus": 8,
+        "selectedServiceCpuMeanCores": 0.611865,
+        "selectedServiceCpuPeakFiveSecondIntervalCores": 0.839717,
+        "peakPercentOfEightLogicalCpus": 10.496,
+        "units": {
+          "xa-mass.service": {
+            "cpuMeanCores": 0.224675,
+            "cpuPeakFiveSecondIntervalCores": 0.375901,
+            "cgroupMemoryPeakBytes": 1358614528,
+            "cgroupSwapPeakBytes": 0,
+            "fdSumPeak": 5547,
+            "singlePidFdPeak": 5547,
+            "memoryEventDeltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "nginx.service": {
+            "cpuMeanCores": 0.347259,
+            "cpuPeakFiveSecondIntervalCores": 0.436486,
+            "cgroupMemoryPeakBytes": 460861440,
+            "cgroupSwapPeakBytes": 0,
+            "fdSumPeak": 11078,
+            "singlePidFdPeak": 1389,
+            "memoryEventDeltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "redis-server.service": {
+            "cpuMeanCores": 0.039931,
+            "cpuPeakFiveSecondIntervalCores": 0.054554,
+            "cgroupMemoryPeakBytes": 11284480,
+            "cgroupSwapPeakBytes": 0,
+            "fdSumPeak": 27,
+            "singlePidFdPeak": 27,
+            "memoryEventDeltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          }
+        },
+        "system": {
+          "memAvailableMinimumBytes": 9939869696,
+          "swapUsedPeakBytes": 0,
+          "swapInPagesDelta": 0,
+          "swapOutPagesDelta": 0
+        },
+        "redis": {
+          "evictedKeysDelta": 0,
+          "rejectedConnectionsDelta": 0,
+          "errorRepliesDelta": 0
+        }
+      }
+    },
+    {
+      "attempt": 5,
+      "kind": "formal-full-default-campaign",
+      "environment": "WSL with temporary hosts mapping to reserved static IP; HTTPS hostname and TLS unchanged",
+      "workflowRun": null,
+      "status": "unconfirmed",
+      "phase": "ramp",
+      "failureKind": "http-500",
+      "confirmedStartOperations": 7073,
+      "unconfirmedStartOperations": 1,
+      "rejectedStartOperations": 0,
+      "sentStartOperations": 7074,
+      "rampDurationMillis": 155585,
+      "unconfirmedStartDurationsMillis": [
+        10009.458
+      ],
+      "firstStartSentAt": "2026-11-12T10:34:05.347655+00:00",
+      "lastUnconfirmedAt": "2026-11-12T10:36:40.929898+00:00",
+      "taskCreationRequestsSent": 0,
+      "knownCreatedTasks": 0,
+      "completedCases": 0,
+      "cleanup": {
+        "ownedProcessesStopped": true,
+        "privateCredentialCopiesRemoved": true,
+        "errors": []
+      },
+      "remoteTaskCleanup": "unconfirmed",
+      "sourceSummary": "public-local-direct-attempt5/summary.json",
+      "summarySha256": "17168337689ebdc70a1ad3dafc4c4eeac4da57717f923cd6d991ecc9f7b3129d",
+      "receiptsSource": "public-local-direct-attempt5/evidence/receipts.jsonl",
+      "receiptsSha256": "a98d4193ce7f2af81d1b10282bb912a3d01bad901d2c29ad1fa9238321b38011",
+      "gcpResources": {
+        "source": "gcp-capacity-attempt5-resources.jsonl",
+        "sha256": "f9ce8887aa5ef9f23044c66641e7ba324aa89bc730696d65742b6ada9491aac0",
+        "samplerStatus": "complete",
+        "allSampleCount": 134,
+        "maximumCompletedGapSeconds": 5.013,
+        "rampSampleCount": 31,
+        "rampSampleFrom": "2026-11-12T10:34:07.933+00:00",
+        "rampSampleThrough": "2026-11-12T10:36:37.948+00:00",
+        "logicalCpus": 8,
+        "selectedServiceCpuMeanCores": 0.55989,
+        "selectedServiceCpuPeakFiveSecondIntervalCores": 0.735004,
+        "peakPercentOfEightLogicalCpus": 9.188,
+        "units": {
+          "xa-mass.service": {
+            "cpuMeanCores": 0.191562,
+            "cpuPeakFiveSecondIntervalCores": 0.270284,
+            "cgroupMemoryPeakBytes": 1415323648,
+            "cgroupSwapPeakBytes": 0,
+            "fdSumPeak": 5260,
+            "singlePidFdPeak": 5260,
+            "memoryEventDeltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "nginx.service": {
+            "cpuMeanCores": 0.332995,
+            "cpuPeakFiveSecondIntervalCores": 0.425972,
+            "cgroupMemoryPeakBytes": 478552064,
+            "cgroupSwapPeakBytes": 0,
+            "fdSumPeak": 10499,
+            "singlePidFdPeak": 1327,
+            "memoryEventDeltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          },
+          "redis-server.service": {
+            "cpuMeanCores": 0.035333,
+            "cpuPeakFiveSecondIntervalCores": 0.056143,
+            "cgroupMemoryPeakBytes": 12451840,
+            "cgroupSwapPeakBytes": 0,
+            "fdSumPeak": 27,
+            "singlePidFdPeak": 27,
+            "memoryEventDeltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0,
+              "sock_throttled": 0
+            }
+          }
+        },
+        "system": {
+          "memAvailableMinimumBytes": 9760763904,
+          "swapUsedPeakBytes": 0,
+          "swapInPagesDelta": 0,
+          "swapOutPagesDelta": 0
+        },
+        "redis": {
+          "evictedKeysDelta": 0,
+          "rejectedConnectionsDelta": 0,
+          "errorRepliesDelta": 0
+        }
+      }
+    }
+  ],
+  "diagnosticAttempt4": {
+    "kind": "startup-only JFR diagnostic",
+    "taskWorkload": false,
+    "capacityClaim": false,
+    "source": "client-bootstrap-diagnostic.json",
+    "sha256": "f30778ebd4d9227caee6d5a884fae4453da2989445a9571dab6f27a9c2d600e7",
+    "selectedEvents": [
+      {
+        "atUTC": "2026-11-12T10:28:15.198446+00:00",
+        "exceptionType": "java.net.SocketTimeoutException",
+        "recognizedMessage": "Connect timed out",
+        "selectedFrames": [
+          "sun.nio.ch.NioSocketImpl.connect",
+          "java.net.SocksSocketImpl.connect",
+          "java.net.Socket.connect",
+          "okhttp3.internal.platform.Platform.connectSocket",
+          "okhttp3.internal.connection.ConnectPlan.connectSocket"
+        ]
+      },
+      {
+        "atUTC": "2026-11-12T10:28:15.199646+00:00",
+        "exceptionType": "com.xa.mass.worker.error.WorkerException",
+        "recognizedMessage": "omitted",
+        "selectedFrames": [
+          "com.xa.mass.worker.javase.JavaWorkerManager.prepareAndStart",
+          "com.xa.mass.worker.javase.JavaWorkerManager.prepareAndStart"
+        ]
+      }
+    ],
+    "finding": "A Java Socket.connect / OkHttp Platform.connectSocket Connect timed out event was followed by a JavaWorkerManager.prepareAndStart WorkerException and the local Lab HTTP 500. Other internally observed JFR exceptions are not automatically failure causes.",
+    "doesNotEstablish": [
+      "DNS failure",
+      "proxy root cause",
+      "which network segment lost or delayed the connection",
+      "GCP hardware exhaustion"
+    ]
+  },
+  "interpretation": {
+    "established": [
+      "All formal campaigns stopped unconfirmed during Worker ramp, before Task creation.",
+      "The static-IP hosts control also stopped unconfirmed; it did not resolve the symptom.",
+      "Observed Runtime/Nginx/Redis CPU, cgroup memory, swap, FD and rejection counters do not show service resource exhaustion in the recorded ramp windows."
+    ],
+    "notEstablished": [
+      "Stable full 15000/10000 Worker gates",
+      "Either 50000-Item workload or its complete export",
+      "100000 verified Item results",
+      "Server throughput or maximum capacity",
+      "A DNS/proxy/network-segment root cause"
+    ],
+    "browserBoundary": "A normally loading Chrome page is a different low-connection client path and does not prove this Java multi-connection ramp; it is not evidence of DNS failure either."
+  },
+  "operatorReportedCleanup": {
+    "source": "root verified after the comparisons",
+    "temporaryHostHarnessAndSamplersStopped": true,
+    "wslHostsRestored": true,
+    "wslEphemeralPortRangeRestored": "32768 60999",
+    "timeoutsChanged": false,
+    "gcpConfigurationChangedForPathComparison": false,
+    "longLivedRuntime": "4.2 retained; capacity unconfirmed",
+    "restorePointAndFinalHostRecords": "operator follow-up, not performed by this report"
+  }
+}
