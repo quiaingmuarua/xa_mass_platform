@@ -813,7 +813,9 @@ descriptors without fetching replacements. Unknown descriptors
 remain visible and cannot be mutated. Create, append, approve and close use
 fresh Server state, so reloading the browser does not lose the ability to manage
 existing tasks. Mutations require matching Project attribution and a fresh legal
-lifecycle state; terminal export shares the viewer's download implementation.
+lifecycle state; approving or closing from a list row first opens that Task's detail,
+then confirms against its fresh snapshot. Terminal export shares the viewer's download
+implementation.
 
 Finite filters, scroll positions, drafts and submission receipts belong to their
 Project; append drafts additionally belong to a Task. RPC Group selection is

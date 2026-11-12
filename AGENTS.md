@@ -367,7 +367,10 @@ Ordinary PRs do not imply deployment. Long-lived infrastructure does not require
 permanent API, configuration or data compatibility: a breaking release may
 explicitly use fresh configuration and scope without an implicit migration layer.
 GCP consumes published immutable artifacts; builds, full CI and Worker Hosts stay
-outside it. Agents manage authorized deployment, diagnosis and acceptance;
+outside it. GitHub Releases are the artifact archive: the host keeps only the
+running Release, and an upgrade's single restore point is deleted with the previous
+Release after acceptance. Ordinary fixes are proven locally and in CI and reach GCP
+with the next Release. Agents manage authorized deployment, diagnosis and acceptance;
 system services own process recovery and certificate renewal, not an Agent watchdog.
 Use the [Release Preview guide](doc/guide/operations/deploy.md#release-preview)
 to find actual version/configuration records and distinguish pending acceptance

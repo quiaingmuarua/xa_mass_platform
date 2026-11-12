@@ -8,6 +8,7 @@ import {
   ElDropdown,
   ElDropdownMenu,
   ElDropdownItem,
+  ElMessageBox,
   ElAlert,
   ElButton,
   ElDrawer,
@@ -658,6 +659,39 @@ it("keeps finite drafts, filters and receipts in their owning Project and ignore
   await vi.waitFor(() => expect(f.host.textContent).toContain("本会话提交"));
   expect(f.ops.draft("agentforge", "create").payloadKey).toBe("original");
   expect(f.session.project("agentforge").finiteFilter.search).toBe("finite");
+});
+it("approving from a list row opens that Task and confirms its fresh snapshot", async () => {
+  const confirm = vi
+    .spyOn(ElMessageBox, "confirm")
+    .mockRejectedValueOnce("cancel")
+    .mockResolvedValueOnce("confirm" as never);
+  const f = await mount("/task-workbench?project=default&tab=finite");
+  async function approveFromList() {
+    await vi.waitFor(() => expect(f.host.textContent).toContain("broken"));
+    const menu = [...f.host.querySelectorAll("tr")]
+      .find((tr) => tr.textContent?.includes("finite"))
+      ?.querySelector<HTMLButtonElement>("button:not([disabled])[aria-haspopup]");
+    expect(menu).toBeDefined();
+    menu!.click();
+    let item: HTMLElement | undefined;
+    await vi.waitFor(() => {
+      item = [
+        ...document.querySelectorAll<HTMLElement>(".el-dropdown-menu__item")
+      ].find((li) => li.textContent?.trim() === "核对并批准");
+      expect(item?.getAttribute("aria-disabled")).not.toBe("true");
+    });
+    item!.click();
+  }
+  await approveFromList();
+  await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+  expect(f.router.currentRoute.value.query.taskId).toBe("finite");
+  expect(f.client.approveTask).not.toHaveBeenCalled();
+  await f.router.push("/task-workbench?project=default&tab=finite");
+  await approveFromList();
+  await vi.waitFor(() =>
+    expect(f.client.approveTask).toHaveBeenCalledExactlyOnceWith(CALLER, "finite", 1)
+  );
+  expect(confirm).toHaveBeenCalledTimes(2);
 });
 it("Runtime links preserve non-default Project and actual Task identity even with an empty list", async () => {
   const f = await mount("/runtime/tasks?project=agentforge&taskId=rpc-1", {
