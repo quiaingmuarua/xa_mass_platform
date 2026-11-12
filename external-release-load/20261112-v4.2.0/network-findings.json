@@ -1,0 +1,142 @@
+{
+  "updatedAt": "2026-11-12T15:08:32.873663+00:00",
+  "status": "fault-localized; direct-public capacity not passed",
+  "release": "4.2.0",
+  "releaseCommit": "aaed8d648c19e2f6332f37b4e831b0b194d5553b",
+  "gcpHandshakeResponses": {
+    "server": {
+      "inboundUniqueSyn": 5703,
+      "repliedUniqueSyn": 5703,
+      "unreplied": 0,
+      "replyDelayMillis": {
+        "median": 0.0281,
+        "p95": 0.0391,
+        "max": 0.078
+      }
+    },
+    "github-server": {
+      "inboundUniqueSyn": 4474,
+      "repliedUniqueSyn": 4474,
+      "unreplied": 0,
+      "replyDelayMillis": {
+        "median": 0.0331,
+        "p95": 0.047,
+        "max": 0.088
+      }
+    }
+  },
+  "localDirectFailure": {
+    "confirmedStarts": 6020,
+    "unknownStarts": 1,
+    "unansweredClientSyn": 332,
+    "target": "198.18.1.105:443",
+    "synRetransmissions": 2330,
+    "exception": "SocketTimeoutException during timedFinishConnect",
+    "finding": "Failure before completing client-side TCP to TUN endpoint; exact local mechanism needs counterfactual"
+  },
+  "windows": {
+    "dynamicTcpStart": 1024,
+    "dynamicTcpCount": 13977,
+    "route": "WSL NAT to gVisor TUN to DIRECT TCP",
+    "portExclusions": "dynamic; do not equate one post-run snapshot to peak",
+    "widenedPortCounterfactual": "pending administrator action"
+  },
+  "githubDirect": {
+    "run": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/43241782359",
+    "diagnosticStatus": "complete",
+    "consumerStatus": "unconfirmed",
+    "consumerExitCode": 3,
+    "exception": "Three TCP timedFinishConnect timeouts; no DNS or TLS failure at those calls",
+    "clientUniqueSyn": 4574,
+    "clientSynWithReply": 4560,
+    "clientUnansweredSyn": 14,
+    "successfulInitialSequencesMatchedAtGcp": 4560,
+    "failedInitialSequencesSeenAtGcp": 0,
+    "captureKernelDrops": 0,
+    "observedPublicPortBlocks": [
+      {
+        "run": 43231339401,
+        "firstPort": 30728,
+        "lastPort": 34823,
+        "uniquePorts": 4096,
+        "missingWithinBlock": 0
+      },
+      {
+        "run": 43241782359,
+        "firstPort": 57528,
+        "lastPort": 61623,
+        "uniquePorts": 4096,
+        "missingWithinBlock": 0
+      }
+    ],
+    "conclusion": "Strong evidence for hosted runner egress SNAT port allocation exhaustion/recycling; not a measured GCP Runtime capacity ceiling",
+    "limits": [
+      "NAT allocation configuration is not readable from the hosted runner witness",
+      "GCP effective firewall API denied existing service-account scope; cloud-side policy not independently audited",
+      "port-set size is not a count of simultaneously active connections"
+    ]
+  },
+  "sshIsolation": {
+    "status": "passed",
+    "sameReleaseJars": true,
+    "sameRuntimeTlsGateway": true,
+    "directPublicWanClaim": false,
+    "cases": [
+      {
+        "activeWorkers": 10000,
+        "taskCount": 10,
+        "verifiedItems": 50000,
+        "elapsedMillis": 29884,
+        "minimumConnected": 10000,
+        "status": "passed"
+      },
+      {
+        "activeWorkers": 9999,
+        "taskCount": 10,
+        "verifiedItems": 50000,
+        "elapsedMillis": 29893,
+        "minimumConnected": 9999,
+        "status": "passed"
+      }
+    ],
+    "cleanup": {
+      "ownedProcessesStopped": true,
+      "privateCredentialCopiesRemoved": true,
+      "errors": []
+    }
+  },
+  "diagnosticSideEffect": {
+    "cause": "root nginx -T omitted the service global user www-data; five temp directories became nobody-owned",
+    "affectedAttempt": "tunneled-10000 first append returned500",
+    "repaired": true,
+    "renewalHookAndInstructionsCorrected": true,
+    "noRuntimeRestart": true
+  },
+  "cleanup": {
+    "localHostsRestored": true,
+    "sshSessionLimitRestored": true,
+    "capturesAndTunnelStopped": true
+  },
+  "sourceEvidenceSha256": {
+    "client-capture.txt": "cdd5ec489d5d90971bf45bc4bb21dca223f22aae5bf459fc0204a2e2cb12c44b",
+    "server-capture.txt": "fc965617c9326f7b444d1a97fcee951771a43fa460e783ef9f293e2212855f0f",
+    "github-server-capture.txt": "7d6ebc5c43c2e33274e74da6b69a7916e50d724c04b029a4197f67cdecf1b765",
+    "filtered-jfr.json": "0960e7d190a4bf3b9c37f6775a6aa8c3dd199e8cd131ea9e486fa776c8e4216f",
+    "gcp-handshake-response.json": "d5752c4c128bc1e0d1c21d289871d9d4707018645ebc9146005ecd803d300265",
+    "tunneled-repaired2-10000/summary.json": "4f015c7a3bdff20e79f83d82cb0723821895e292c9d26e4a57d6d45b6df9f992",
+    "github-flow-correlation.json": "5c378120d8490edbf44ff577bd5a063952350f11f0b650d8d68d7690aac7a1bf",
+    "github-diagnostic-server-capture.txt": "14744cfb3693d852b4905b5c4bdcf7a45ebb6a5dd478fdb8c4c2bdc5cb54222a",
+    "github-diagnostic-run/external-network-diagnostics/summary.json": "5ca0350632d2c1146b05e5ad2c998c0ff5c3d4de1ef5ec5c1c11067a10acb9a2",
+    "github-diagnostic-run/external-network-diagnostics/tcp-handshakes.jsonl": "ca5542d71ff3c17346121dcbd401d4d05d10295bef19d101026ad99069274045",
+    "github-diagnostic-run/external-network-diagnostics/network-state.jsonl": "2cae701c20492af028dd8f5052fba1e5cfa7cc80a047ed6fee4ed243bedbc8ec",
+    "github-diagnostic-run/external-network-diagnostics/jfr-metadata.jsonl": "cb39598f5657cf531868673f3715e0d5cbf8ecc1520ded520697890694ea3fef"
+  },
+  "delivery": {
+    "pullRequest": "https://github.com/quiaingmuarua/xa_mass_platform/pull/95",
+    "mainCommit": "11e5388d2dcd515170df555715fdcaa5c6a7ce75",
+    "selectedMainProof": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/43241645191",
+    "status": "merged; selected code checks passed; optional capacity run remains failed",
+    "runtimeUpgraded": false,
+    "publishedJarChanged": false
+  }
+}
