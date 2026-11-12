@@ -34,6 +34,12 @@ and `xa-mass-android-capability-http` artifacts plus its local `:capabilities` m
 depend on Server, Kernel, Adapter, Redis, Scenario Workers, or Task
 implementation code.
 
+Normal development and regression verification use the local Server/Adapter and
+existing focused/CI proofs. A local gateway and trusted test CA can exercise
+Worker gateway authentication without GCP credentials or a public deployment.
+Keep TLS/hostname verification enabled. The private-file input below works for
+any configured target; public acceptance is not an App/SDK PR completion gate.
+
 ## Runtime behavior
 
 With valid static connection inputs, the Application creates and starts
@@ -258,11 +264,11 @@ defines all Java phases and the portable Python invocation. Java retains the
 RPC digest payload in memory to check its exact content; saved evidence retains
 only identity and assertion outcomes.
 
-For an existing public Runtime, use the [static build/install/provision sequence](../README.md#public-runtime-connection)
-without adding an ADB reverse. The small public deployment witness uses one
-existing Lab package and authenticated finite Task APIs. It requires no Computer
-Use or App configuration interaction. Its evidence records actual execution and
-exports independently of the older web workbench interaction acceptance.
+When a task explicitly requests an existing public Runtime, use the
+[static build/install/provision sequence](../README.md#public-runtime-connection)
+without adding an ADB reverse for Runtime traffic. The small deployment witness
+uses a selected Lab package and authenticated Task APIs for the affected use path;
+it requires no Computer Use. Ordinary development stays on the local route above.
 
 ## Hosted Emulator proof
 
@@ -355,7 +361,8 @@ physical Battery readings, and background execution limits.
 Access-file tests cover required/anonymous mode, strict input and origin checks,
 safe failures and captured startup credentials. Provisioning tests cover exact
 device/package admission, a stopped debuggable destination and stdin-only secret
-transfer. Actual device acceptance separately checks private-file loading and
-identity across process restart, public HTTPS/WSS execution, wrong credentials
-and controlled gateway revocation; unit or APK build success does not establish
-those deployment facts.
+transfer. Local SDK/gateway tests own credential transport, redirect/TLS refusal
+and revocation semantics. An explicitly requested public device acceptance checks
+the selected deployment/use path and records its actual coverage; a successful
+unit test or APK build does not establish those deployment facts. Public checks
+outside the requested scope are not additional gates for local development.

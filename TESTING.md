@@ -12,6 +12,13 @@ Primary Owners. Each linked Integration README owns its complete world,
 workload, mutation sequence and oracle. This file owns selection, commands,
 prerequisites and CI routing.
 
+Ordinary development selects local and CI proof for the affected claim, including
+Android Worker, API authentication and gateway changes. Real Redis, Runtime,
+device and TLS fixtures run in those environments; GCP access or credentials are
+not prerequisites. Public deployment acceptance is added only when the requested
+task explicitly includes it. This does not change any selected lane, assertion or
+complete manual Proof requirement for a Release.
+
 For project orientation, follow the [root reading path](README.md#reading-path)
 from Runtime summary through the behavior model to the affected Owner and caller.
 Then choose proof for the changed claim. Matching, Execution and Convergence
@@ -206,7 +213,7 @@ these correctness claims and add no heavy ordinary CI lane.
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-connected 14800 --minimum-retained-connected 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
 | [Worker Call Performance](integrations/worker-call-performance/README.md) | Nightly: parallel `rate-500`, `rate-1000`, `rate-2000` and `saturation` jobs with three repetitions, merged, recorded on `perf-lane-data` and compared with the last seven records. Manual: the same with optional JFR diagnostics, or per-case A/B with `baseline_ref` and `lane_case` | Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21 |
 | Android Host | Platform Android library/proof-tool contracts; no consumer artifact prerequisite | Robolectric, MockWebServer, JDK HttpServer |
-| Candidate Distribution Archives | One clean-commit 3.1.0 Runtime/SDK pair, archive checks and hashes | Java, Android SDK, Node |
+| Candidate Distribution Archives | One clean-commit Runtime/SDK/Simulator kit set, archive checks and hashes | Java, Android SDK, Node |
 | Android APK Assembly | Independent consumer unit tests and Debug plus three fixed Lab APKs from that SDK ZIP | Android SDK |
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |
 | Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
@@ -265,26 +272,29 @@ summary; the matrix aggregate remains the one selected Proof Gate result.
 ## Proof Quality
 
 The Runtime Distribution Linux job includes the optional staging ingress proof:
-real Nginx with a trusted test CA, two credential realms, denied internal routes,
+real Nginx with a trusted test CA, API Bearer forwarding, the Worker Basic realm, denied internal routes,
 credential/connection limits and actual restart revocation. It then runs the
 supplied Runtime ZIP with the extracted same-build Worker Simulator kit as its external
 Java Host through that gateway, and each finite round runs the kit's shipped round command
-as a Project-scoped operator. TLS and hostname validation must remain enabled. This proves environment-level
-access, not user/Worker identity isolation; it adds no performance workload.
-GCP only consumes published artifacts and runs small deployment acceptance.
+as a Project-scoped operator. TLS and hostname validation must remain enabled. This proves
+authenticated API admission and gateway access, not individual Worker ownership; it adds
+no performance workload and needs no GCP connection. GCP consumes published artifacts
+and runs small acceptance only within an explicit environment task.
 
 Android App static access retains the existing Android Host/consumer/
 Emulator lane selection; no new CI phase or workload is implied by a public
 deployment check. Focused App tests own required/anonymous mode, private-file and
 origin validation, captured startup credentials and safe unavailable startup;
-provisioning tests own the stopped debuggable target and stdin transfer. The separate
+provisioning tests own the stopped debuggable target and stdin transfer. Local Server/Adapter
+and the existing test gateway cover these features during development. When explicitly
+requested, the separate
 [public Runtime acceptance](integrations/android-worker-proof/README.md#public-runtime-deployment-acceptance)
 uses the existing static build/install/provision/start sequence and authenticated
 finite Task APIs against the published Runtime, with normal TLS and no SSH/ADB
 reverse for Runtime traffic. It does not require Computer Use. Record App and
-published SDK provenance separately. Preserve
-the existing CI assertions, and do not mark the pending browser workbench flow
-complete from device/API evidence.
+published SDK provenance separately. Preserve the existing CI assertions. Device/API
+evidence does not prove an unperformed browser flow; this limit does not add a browser
+or GCP acceptance requirement to an unrelated development task.
 
 A mechanism proof must reject at least one locally plausible but systemically
 invalid implementation:

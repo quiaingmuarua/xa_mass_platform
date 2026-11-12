@@ -39,6 +39,14 @@ does not import Android Worker, Server, Adapter, Kernel, Redis, or their
 implementation types. The cross-platform launcher owns ADB, port mapping, Server and App
 processes; Java owns workload, observation, assertions, and evidence.
 
+This local Server/Adapter topology and the focused Owner tests are the ordinary
+development/CI correctness path, including App and authentication changes. Use
+a local gateway with a trusted test CA when exercising that boundary; never
+disable TLS or hostname validation. GCP access and public credentials are not
+required to complete an ordinary PR. Public provisioning adds no Computer Use
+gate; UI changes still follow their affected local interaction proof. The optional
+deployment section below applies only to an explicitly requested public-environment acceptance.
+
 ## Correctness
 
 The correctness proof uses a clean App identity and Redis scope. It closes one
@@ -262,15 +270,18 @@ it must not add a test-only Properties control API to the Demo Host.
 ## Public Runtime deployment acceptance
 
 The [static App connection](../../xa-android/worker-demo/README.md#static-connection-and-private-access)
-has a separate small Release Preview witness. The existing CI correctness,
+can have a separate small deployment witness when the task explicitly requests
+public connectivity or Release Preview acceptance. It is not a default
+App/SDK/authentication PR completion gate. The existing CI correctness,
 convergence, Triad and scenario phases retain their workloads, assertions and
 deadlines; their local port mappings do not prove public connectivity.
 
-Use one existing development emulator and one Lab APK. Record the App source
-commit independently from the published SDK 3.2.0 commit/ZIP, actual resolved
-dependencies and APK hash. GCP continues to consume its published Runtime;
-Group/event registration, Any binding and gateway allowlisting are a deliberate
-external configuration adjustment. Do not copy the CI suite or a Worker Host to GCP.
+Use the explicitly selected device/package and record the actual App source
+commit, SDK version/commit/ZIP, resolved dependencies and APK hash. For GCP, choose
+published inputs compatible with that deployment; no fixed SDK version is a
+permanent requirement of this witness. Group/event registration, Pool binding
+and gateway allowlisting are explicit deployment configuration, not side effects
+of App development. Do not copy the CI suite or a Worker Host to GCP.
 
 Build the App with the HTTPS Runtime address and required gateway access, install
 it, stop it, provision `worker-access.json` through the narrow stdin/run-as helper,
@@ -279,24 +290,28 @@ uses normal certificate/hostname validation and no SSH tunnel or ADB reverse.
 ADB may install/control the selected device and inspect its loopback Host
 evidence, but does not carry Runtime/Adapter traffic or put secrets in arguments.
 
-Create a raw finite Task through the authenticated administrative API with Any
-refill and `worker.any`. Three fixed ASCII/Unicode digest inputs must close across
+Keep the deployment baseline small: verify startup/connection and the affected
+function. For a finite digest witness, create a Task through the authenticated
+API with Any refill and `worker.any`. Fixed ASCII/Unicode inputs must close across
 the actual Android Worker, saved Item queries, independently calculated digests,
-terminal Item/Task states and complete JSONL. Verify same-environment identity and
-private-file loading across process restart. Invalid credentials must not fall back
-anonymously. Revocation requires removing the temporary credential and closing
-old gateway connections; reload alone is not an immediate-revocation witness.
-A daily credential can then be provisioned while stopped and explicitly started
-for another execution. The filename and allowed origin are App access inputs;
-they do not rename the Worker or create a GCP-specific product/profile.
+terminal Item/Task states and complete JSONL. Include same-environment identity
+and private-file loading across restart when persistence/restart is in scope.
+
+Existing local SDK/gateway proofs retain their negative TLS, redirect, credential
+and revocation assertions. Do not repeat them on GCP by default. If the requested
+public acceptance explicitly includes revocation, removing a credential must also
+close old gateway connections; reload alone is not an immediate-revocation witness.
+The filename and allowed origin are target-independent App access inputs, not
+a Worker rename or GCP-specific product/profile.
 
 Record IDs, quantities, hashes, configuration changes, assertion outcomes and
-uncovered boundaries, not secrets, full seeds or result bodies. Retain the reusable
-Android Group/Any/gateway binding and daily private credential; stop the test App,
-revoke temporary credentials and restore touched mappings. Do not clear the
-long-lived GCP scope. These are acceptance requirements, not an assertion that a
-particular deployment has passed. Device/API execution does not
-complete a still-pending browser workbench creation/download acceptance.
+uncovered boundaries, not secrets, full seeds or result bodies. Stop owned test
+Apps and restore touched mappings. Retaining deployment bindings or credentials,
+revoking temporary access and changing persistent data follow the explicit task's
+scope; do not clear a long-lived scope as routine proof cleanup. These instructions
+do not assert that a particular deployment passed. Report the actual device/API
+and browser coverage when requested; one kind of evidence does not establish
+another. Checks outside the requested scope are not additional development gates.
 
 ## Verification
 

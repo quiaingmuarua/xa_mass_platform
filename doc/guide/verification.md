@@ -7,6 +7,10 @@ Status: current proof navigation guide.
 精确 claims/nonclaims 由 [Proof Registry](../testing/proof-registry.md)维护，
 命令和 CI 选路由 [TESTING](../../TESTING.md)维护。
 
+日常功能开发在本地和 CI 中取得所需证据，包括真实 Redis、Server／Adapter、
+Android 设备和测试网关。认证或公网连接能力的改动也不默认依赖 GCP。
+明确的部署或公网验收任务才增加现场证据；普通 PR 不因缺少 GCP 验收而未完成。
+
 ## 选择证明
 
 | 要确认的事情 | 首先看哪类证据 |
@@ -43,8 +47,10 @@ Proof Gate 要求被选中的 lane 成功、未选中的 lane 正确跳过；不
 
 ## Release Preview 的现场证据
 
-[GCP Release Preview](operations/deploy.md#release-preview) 按 Release 推进，普通 PR 不默认部署。
-CI 负责完整自动化证明，GCP 消费已发布制品并验证真实部署；不在主机重复完整 proof。
+本节用于明确的部署、现场诊断或公网验收任务。
+[GCP Release Preview](operations/deploy.md#release-preview) 按 Release 推进；普通 PR
+只按既有规则选择本地／CI 检查，不附加主机访问或现场验收。发布所需的完整 Proof
+要求保持不变。GCP 消费已发布制品并验证真实部署，不在主机重复完整 proof。
 
 | 已取得的证据 | 可以说明什么 | 不能代替什么 |
 | --- | --- | --- |
@@ -55,7 +61,8 @@ CI 负责完整自动化证明，GCP 消费已发布制品并验证真实部署�
 | 网页交互验收 | 实际操作过的页面、任务步骤和下载可用 | 未覆盖的场景或长期 SLA |
 
 主机部署记录分别保留通过、失败、待验收和未覆盖的事实，不把文档更新当成新运行证据。
-版本、配置或客户端变化后，根据本次变化重新选择现场验收范围。
+在部署或公网验收任务中，根据实际部署版本、配置及客户端变化选择现场验收范围；
+仓库中的普通改动本身不会启动这项工作。
 发布前核对所需 Proof，PR 收尾同时核对 main 自身的最终检查汇总；独立手动 run 通过
 不能消除另一份被取消检查的状态。不要在 main 自动检查未结束时启动会取消它的手动发布 Proof。
 

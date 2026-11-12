@@ -27,7 +27,8 @@ Task, and many Workers inside finite Groups.
   [配置归属](doc/guide/operations/configuration.md)和
   [按现象排障](doc/guide/operations/troubleshooting.md)。
 - **GCP／Release Preview：** [环境定位与交接](doc/guide/operations/deploy.md#release-preview)。
-  按 Release 部署与验收，普通 PR 不默认更新；长期环境不要求接口或数据永久兼容。
+  用于明确的部署、现场诊断或公网验收任务；日常开发和项目理解默认不访问主机。
+  按 Release 部署与验收，长期环境不要求接口或数据永久兼容。
 - **开发与 Agent：** [按任务定位 Owner](doc/guide/development/index.md)，
   再使用下面的 Reading Path 和 [AGENTS](AGENTS.md)。
 - **验证与能力：** [证明如何选](doc/guide/verification.md)、
@@ -42,6 +43,8 @@ version, not an API stability promise or a compatibility layer for older deploym
 
 Check HEAD, the worktree and requested scope first. Choose the route below;
 reuse established session evidence and refresh only what changed.
+Ordinary development and orientation use repository evidence and the selected
+local/CI proofs. GCP records are needed only when the task includes that deployed environment.
 
 | Task | Read | Stop expanding when |
 | --- | --- | --- |

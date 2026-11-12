@@ -361,6 +361,16 @@ Task archival or grant Server execution scheduling authority.
 
 ## Release Preview Deployment
 
+Ordinary development follows affected Owner code, focused/local infrastructure
+tests, selected CI and PR delivery. Code review and project orientation default
+to repository evidence and do not imply running tests or creating a PR.
+Android Worker, access-key and gateway changes follow this same path. Do not add
+GCP access, host-record reads, credentials or public acceptance to these tasks merely
+because the feature can run remotely. An undeployed change is not unfinished ordinary
+development. Enter the environment workflow only when the requested scope explicitly
+includes Release deployment, on-host diagnosis or public acceptance; then complete
+that task's scoped checks. Existing proof-selection and Release gates remain unchanged.
+
 GCP is a long-lived Release Preview environment. CI builds and proves artifacts;
 each Release receives a deliberate GCP deployment and small real-use acceptance.
 Ordinary PRs do not imply deployment. Long-lived infrastructure does not require

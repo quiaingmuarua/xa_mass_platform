@@ -8,6 +8,11 @@ deployment cadence and environment handoff belong to the
 Using this gateway does not select a profile, deploy a Release or establish a
 completed environment acceptance.
 
+Gateway and authentication development use local fixtures and the existing CI
+Nginx/TLS proof. The examples do not require access to GCP, its credentials or its
+DNS for ordinary changes. Apply them to a public host only within an explicitly
+requested deployment or environment acceptance task.
+
 This gateway owns TLS, route allowlists, limits and the shared Worker Host realm.
 It does not authenticate Console users: the administrator host has no gateway
 credential and forwards only a well-formed `Authorization: Bearer xak_…` access key,

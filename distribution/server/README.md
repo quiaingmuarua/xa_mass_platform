@@ -12,6 +12,8 @@ A Release publishes three components: the Runtime, the Worker SDK and the Worker
 Use the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)
 for GCP's role, deployment cadence and environment handoff rather than inferring
 a permanent compatibility obligation from one release's upgrade procedure.
+That environment handoff is not a reading or validation prerequisite for ordinary
+source changes; use local fixtures and the selected CI proofs for development.
 Distribution consumes the sole Boot JAR produced by
 [Server Boot composition](../../server_boot_jvm/README.md). It has no Java
 entrypoint, Spring composition, application services or platform Owner operations.
