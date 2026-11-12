@@ -370,7 +370,8 @@ GCP consumes published immutable artifacts; builds, full CI and Worker Hosts sta
 outside it. GitHub Releases are the artifact archive: the host keeps only the
 running Release, and an upgrade's single restore point is deleted with the previous
 Release after acceptance. Ordinary fixes are proven locally and in CI and reach GCP
-with the next Release. Agents manage authorized deployment, diagnosis and acceptance;
+with the next Release. Version-specific upgrade steps belong in the reviewed Release
+notes; host changes run one operator at a time through the host operations log. Agents manage authorized deployment, diagnosis and acceptance;
 system services own process recovery and certificate renewal, not an Agent watchdog.
 Use the [Release Preview guide](doc/guide/operations/deploy.md#release-preview)
 to find actual version/configuration records and distinguish pending acceptance
