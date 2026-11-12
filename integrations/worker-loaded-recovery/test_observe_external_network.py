@@ -1,11 +1,14 @@
 import argparse
 import importlib.util
 import json
+import os
 from pathlib import Path
 import signal
 import subprocess
 import sys
 import tempfile
+import textwrap
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -124,6 +127,104 @@ class LifecycleTest(unittest.TestCase):
             with patch.object(observer, "command", return_value='{"recording":{"events":[]}}'): observer.close()
             self.assertIn("tcp-capture-kernel-drops", observer.failures)
             self.assertNotIn("PRIVATE", json.dumps(observer.capture_stats))
+
+    def test_jfr_data_loss_is_incomplete_and_exports_only_numeric_loss_metadata(self):
+        for amount in (0, 1024):
+            with self.subTest(amount=amount), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                observer = OBSERVER.Observer(argparse.Namespace(output_dir=root), root)
+                observer.attached, observer.sample_count, observer.packet_count = True, 1, 1
+                (root / "tcpdump.stderr").write_text("1 packet captured\n1 packet received by filter\n0 packets dropped by kernel\n")
+                event = {"type": "jdk.DataLoss", "values": {"startTime": "2026-11-12T12:00:00Z",
+                         "duration": "PT0S", "amount": amount, "total": 4096,
+                         "message": "PRIVATE_EXCEPTION_MESSAGE", "payload": "PRIVATE_BODY"}}
+                with patch.object(observer, "command", return_value=json.dumps({"recording": {"events": [event]}})):
+                    observer.close()
+                self.assertEqual(["jfr-data-loss"] if amount else [], observer.failures)
+                exported = json.loads((root / "jfr-metadata.jsonl").read_text())
+                self.assertEqual({"event", "at", "duration", "amount", "total"}, set(exported))
+                self.assertEqual(amount, exported["amount"])
+                self.assertEqual(4096, exported["total"])
+                self.assertNotIn("PRIVATE", json.dumps(exported))
+
+    @unittest.skipUnless(sys.platform == "linux", "real POSIX process-group cancellation requires Linux")
+    def test_group_sigint_is_forwarded_once_and_consumer_finally_finishes(self):
+        consumer_source = textwrap.dedent('''
+            import json, os, signal, sys, time
+            from pathlib import Path
+            root = Path(sys.argv[1])
+            def interrupted(signum, frame):
+                with (root / "signals").open("a") as output:
+                    output.write(str(signum) + "\\n")
+                raise InterruptedError("cancelled")
+            signal.signal(signal.SIGINT, interrupted)
+            signal.signal(signal.SIGTERM, interrupted)
+            (root / "ready.json").write_text(json.dumps({"pid": os.getpid(), "group": os.getpgrp()}))
+            try:
+                time.sleep(30)
+            except InterruptedError:
+                pass
+            finally:
+                (root / "cleanup-started").write_text("yes")
+                time.sleep(0.4)
+                (root / "cleanup-complete").write_text("yes")
+            sys.exit(23)
+        ''')
+        wrapper_source = textwrap.dedent('''
+            import argparse, importlib.util, sys
+            from pathlib import Path
+            spec = importlib.util.spec_from_file_location("observer", sys.argv[1])
+            observer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(observer)
+            root = Path(sys.argv[2])
+            class FakeObserver:
+                def __init__(self, value, private):
+                    self.failures, self.capture_stats = [], {}
+                    self.packet_count, self.sample_count, self.attached = 1, 1, True
+                def start(self): pass
+                def sample(self, consumer_pid): pass
+                def failed(self, reason): self.failures.append(reason)
+                def close(self): (root / "observer-closed").write_text("yes")
+            observer.Observer = FakeObserver
+            value = argparse.Namespace(command=[sys.executable, str(root / "consumer.py"), str(root)],
+                                       output_dir=root / "diagnostics", target_port=443)
+            sys.exit(observer.run(value))
+        ''')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "consumer.py").write_text(consumer_source)
+            (root / "diagnostics").mkdir()
+            wrapper = subprocess.Popen([sys.executable, "-c", wrapper_source,
+                                        str(Path(OBSERVER.__file__).resolve()), str(root)],
+                                       start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                deadline = time.monotonic() + 5
+                while not (root / "ready.json").exists() and wrapper.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertTrue((root / "ready.json").is_file(), "consumer did not install signal handlers")
+                identity = json.loads((root / "ready.json").read_text())
+                os.killpg(wrapper.pid, signal.SIGINT)
+                stdout, stderr = wrapper.communicate(timeout=10)
+                self.assertEqual(23, wrapper.returncode, stderr)
+                self.assertNotEqual(wrapper.pid, identity["group"])
+                self.assertEqual([str(int(signal.SIGTERM))], (root / "signals").read_text().splitlines())
+                self.assertTrue((root / "cleanup-complete").is_file())
+                self.assertTrue((root / "observer-closed").is_file())
+                summary = json.loads((root / "diagnostics/summary.json").read_text())
+                self.assertTrue(summary["cancelled"])
+                self.assertEqual(23, summary["consumerExitCode"])
+                self.assertTrue(summary["privateTemporaryFilesRemoved"])
+            finally:
+                if wrapper.poll() is None:
+                    wrapper.kill()
+                    wrapper.communicate(timeout=5)
+                if (root / "ready.json").exists():
+                    pid = json.loads((root / "ready.json").read_text())["pid"]
+                    try:
+                        if str(root / "consumer.py").encode() in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0"):
+                            os.kill(pid, signal.SIGKILL)
+                    except (FileNotFoundError, ProcessLookupError):
+                        pass
 
     def test_original_command_runs_and_private_material_is_removed_after_failure(self):
         instances = []
