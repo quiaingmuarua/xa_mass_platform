@@ -217,6 +217,15 @@ async function changeTask(action: "approve" | "close", id = taskId.value) {
 }
 async function action(row: TaskRow, value: string) {
   if (value === "approve" || value === "close") {
+    // Approval and close act only on the open, fresh Task: open the row first.
+    if (taskId.value !== row.taskId) {
+      rememberFocus();
+      await router.push({
+        query: { project: projectId, tab: "finite", taskId: row.taskId }
+      });
+      await nextTick();
+      if (disposed || taskId.value !== row.taskId) return;
+    }
     await changeTask(value, row.taskId);
     return;
   }
