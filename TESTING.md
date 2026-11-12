@@ -272,6 +272,19 @@ summary; the matrix aggregate remains the one selected Proof Gate result.
 
 ## External Release load
 
+For a failed public connection run, the existing manual workflow accepts
+`network_diagnostics=true`. This adds client TCP and filtered JVM observations
+around the same Release command, without rebuilding or changing the workload:
+
+```text
+gh workflow run worker-loaded-recovery.yml --ref main -f mode=external-release -f network_diagnostics=true
+```
+
+Diagnostics are off by default. The safe diagnostic summary reports collection
+and cleanup separately from the load result; raw JFR, credentials and opaque
+payloads are not uploaded. The [Integration Owner](integrations/worker-loaded-recovery/README.md#workflow-selection-and-deployment-boundary)
+defines the observation boundary.
+
 The existing `worker-loaded-recovery.yml` keeps `local-proof` as its default and
 scheduled mode, with the original local Server faults, workload sizes and resource
 assertions. Its `external-release` mode is manual-only on `main` and uses the
@@ -300,8 +313,9 @@ produce diagnostic-only evidence. The packaged Runtime Distribution fixture uses
 this reduced mode through real local Redis/TLS; it cannot prove public 15k capacity.
 The original `finite_round.py` remains a separate small 1..100-Item command.
 
-The workflow uploads only consumption provenance, the public summary, periodic
-consumer process samples and Java summary/timeline/receipt evidence. It excludes
+The workflow uploads consumption provenance, the public summary, periodic
+consumer process samples and Java summary/timeline/receipt evidence, plus the
+allowlisted network metadata when explicitly requested. It excludes
 private key files, child logs and inventory. Consumer cleanup stops only its own
 Host/Harness and removes temporary credential copies; remote Tasks follow normal
 retention. Failed or unconfirmed writes are not replayed. A separately authorized

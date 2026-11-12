@@ -297,6 +297,20 @@ and verifies the installed Release's immutable kit; it does not build the kit or
 receive Server administrator credentials. Environment coordinates and private
 inputs are documented in [TESTING](../../TESTING.md#external-release-load).
 
+The same manual workflow has an optional `network_diagnostics` input, disabled
+by default. Its checkout-side `observe_external_network.py` observes the unchanged
+published consumer command. It records TCP handshake headers, kernel counter
+samples, owned Host SYN-SENT addresses and filtered JFR network/exception metadata.
+It does not change startup rates, timeouts, retries, workload or acceptance gates.
+The observer verifies the Host process identity before attaching JFR. Raw JFR and
+unfiltered exception messages stay in a private temporary directory and are removed;
+only allowlisted metadata is uploaded. Capture and JFR completeness are reported
+separately from the original consumer outcome. Diagnostic failure cannot turn a
+failed load into success, and a successful load with incomplete requested
+diagnostics fails the diagnostic job. Cleanup stops only owned observation
+processes and lets the consumer retain its existing shutdown responsibility.
+This is fault-localization evidence, not an additional capacity or recovery claim.
+
 The version-scoped [4.2 Release contract](../../distribution/server/RELEASE-4.2.md)
 owns the target resource budget, installed-version checks and host operation
 record. Ordinary code changes continue to use local/CI proofs without GCP access.
