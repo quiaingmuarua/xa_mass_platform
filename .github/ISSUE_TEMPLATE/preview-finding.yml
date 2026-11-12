@@ -1,0 +1,45 @@
+name: Preview finding
+description: Report what an external user of a published Runtime observed, for example with the Worker Simulator kit.
+title: "[Preview] "
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Describe what you observed as a user; no fix or code change is expected. Never paste access keys,
+        Worker secrets, Authorization values, or Item and Result content.
+  - type: input
+    id: version
+    attributes:
+      label: Release version
+      description: The kit's `kitVersion`, or the Runtime Release you used.
+      placeholder: "4.1.0"
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime
+      description: The Console/API origin you tested.
+      placeholder: "https://staging.xamass.net"
+    validations:
+      required: true
+  - type: textarea
+    id: rounds
+    attributes:
+      label: Round output
+      description: The JSON lines printed by `acceptance/finite_round.py` for the affected rounds.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: pattern
+    attributes:
+      label: When and how often
+      description: When it started, how many rounds were affected, and whether it recovered by itself.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and observed
+      description: What you expected, what happened instead, and whether your Worker Host was running.

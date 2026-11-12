@@ -1,0 +1,127 @@
+import groovy.json.JsonOutput
+
+plugins {
+    id 'base'
+}
+
+def kitVersion = project.version.toString()
+def requestedVersion = providers.gradleProperty('xaMassVersion')
+def repositoryRoot = rootProject.projectDir
+def pythonExecutable = providers.environmentVariable('XA_MASS_PYTHON_EXECUTABLE')
+        .orElse('python')
+def generatedDirectory = layout.buildDirectory.dir('generated/simulator')
+def stagedDirectory = layout.buildDirectory.dir("simulator/${kitVersion}")
+def kitBaseName = 'xa-mass-worker-simulator'
+def kitRootName = "${kitBaseName}-${kitVersion}"
+def gitCommit = providers.exec {
+    workingDir repositoryRoot
+    commandLine 'git', 'rev-parse', 'HEAD'
+}.standardOutput.asText.map { it.trim() }
+
+evaluationDependsOn(':worker_simulator_jvm')
+def simulatorInstall = project(':worker_simulator_jvm').tasks.named('installDist')
+def simulatorInstallDirectory = project(':worker_simulator_jvm').layout.buildDirectory
+        .dir('install/xa-mass-worker-simulator')
+
+tasks.register('validateWorkerSimulatorVersion') {
+    group = 'verification'
+    description = 'Requires one explicit release SemVer for the Worker Simulator kit.'
+    doLast {
+        if (!requestedVersion.isPresent()) {
+            throw new GradleException(
+                    'Worker Simulator kit requires -PxaMassVersion=<major.minor.patch>'
+            )
+        }
+        if (!(kitVersion ==~ /[0-9]+\.[0-9]+\.[0-9]+/)) {
+            throw new GradleException(
+                    "Worker Simulator kit version must be release SemVer: ${kitVersion}"
+            )
+        }
+    }
+}
+
+tasks.register('generateWorkerSimulatorManifest') {
+    group = 'distribution'
+    description = 'Generates the checked Worker Simulator kit manifest.'
+    dependsOn tasks.named('validateWorkerSimulatorVersion')
+    inputs.property('kitVersion', kitVersion)
+    inputs.property('gitCommit', gitCommit)
+    outputs.file(generatedDirectory.map { it.file('manifest.json') })
+    doLast {
+        String resolvedGitCommit = gitCommit.get()
+        if (!(resolvedGitCommit ==~ /[0-9a-f]{40}/)) {
+            throw new GradleException('git rev-parse HEAD did not return a full commit')
+        }
+        File output = generatedDirectory.get().file('manifest.json').asFile
+        output.parentFile.mkdirs()
+        output.setText(
+                JsonOutput.prettyPrint(JsonOutput.toJson([
+                        schemaVersion : 1,
+                        version       : kitVersion,
+                        gitCommit     : resolvedGitCommit,
+                        javaVersion   : 21,
+                        simulatorEntry: 'bin/xa-mass-worker-simulator',
+                        roundEntry    : 'acceptance/finite_round.py'
+                ])) + System.lineSeparator(),
+                'UTF-8'
+        )
+    }
+}
+
+tasks.register('stageWorkerSimulator', Sync) {
+    group = 'distribution'
+    description = 'Stages the installed Simulator with the finite-round acceptance command.'
+    dependsOn tasks.named('generateWorkerSimulatorManifest'), simulatorInstall
+    into stagedDirectory
+    from(simulatorInstallDirectory)
+    from(rootProject.file('distribution/acceptance/finite_round.py')) {
+        into 'acceptance'
+    }
+    from('src/main/dist')
+    from(generatedDirectory.map { it.file('manifest.json') })
+}
+
+tasks.register('distZip', Zip) {
+    group = 'distribution'
+    description = 'Builds the publishable Worker Simulator kit ZIP.'
+    dependsOn tasks.named('stageWorkerSimulator')
+    archiveBaseName.set(kitBaseName)
+    archiveVersion.set(kitVersion)
+    destinationDirectory.set(layout.buildDirectory.dir('distributions'))
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    into(kitRootName) {
+        from(stagedDirectory)
+        // The archive, not the staging filesystem, carries the POSIX mode on every build host.
+        filesMatching('**/bin/xa-mass-worker-simulator') {
+            permissions { unix('rwxr-xr-x') }
+        }
+    }
+}
+
+tasks.register('workerSimulatorDistributionTest', Exec) {
+    group = 'verification'
+    description = 'Verifies the Worker Simulator kit archive.'
+    dependsOn tasks.named('distZip')
+    workingDir repositoryRoot
+    inputs.file(tasks.named('distZip', Zip).flatMap { it.archiveFile })
+    inputs.file(rootProject.file('distribution/archive_tools.py'))
+    outputs.upToDateWhen { false }
+    commandLine(
+            pythonExecutable.get(),
+            '-m', 'distribution.archive_tools', 'simulator',
+            '--archive',
+            tasks.named('distZip', Zip).flatMap {
+                it.archiveFile
+            }.get().asFile.absolutePath,
+            '--version', kitVersion
+    )
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('workerSimulatorDistributionTest')
+}
+
+tasks.named('assemble') {
+    dependsOn tasks.named('distZip')
+}

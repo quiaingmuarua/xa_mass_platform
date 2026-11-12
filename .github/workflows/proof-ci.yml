@@ -18,7 +18,7 @@ concurrency:
 env:
   XA_MASS_PYTHON_EXECUTABLE: python3
   XA_MASS_REDIS_EPHEMERAL: "true"
-  XA_MASS_DISTRIBUTION_VERSION: "4.0.0"
+  XA_MASS_DISTRIBUTION_VERSION: "4.1.0"
 
 jobs:
   changes:
@@ -479,6 +479,7 @@ jobs:
     outputs:
       runtime_sha256: ${{ steps.candidate.outputs.runtime_sha256 }}
       sdk_sha256: ${{ steps.candidate.outputs.sdk_sha256 }}
+      simulator_sha256: ${{ steps.candidate.outputs.simulator_sha256 }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -497,10 +498,11 @@ jobs:
           node-version: 22.19.0
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-      - name: Build the single candidate ZIP pair
+      - name: Build the single candidate ZIP set
         run: >-
           ./gradlew --no-daemon :distribution:server:distZip
           :distribution:worker-sdk:distZip
+          :distribution:worker-simulator:distZip
           -PxaMassVersion=${{ env.XA_MASS_DISTRIBUTION_VERSION }}
       - name: Validate and identify candidate
         id: candidate
@@ -508,6 +510,7 @@ jobs:
           python3 .github/scripts/prepare_distribution_candidate.py
           --runtime-archive distribution/server/build/distributions/xa-mass-server-runtime-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
           --sdk-archive distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
+          --simulator-archive distribution/worker-simulator/build/distributions/xa-mass-worker-simulator-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
           --version ${{ env.XA_MASS_DISTRIBUTION_VERSION }} --commit ${{ github.sha }}
           --output-dir build/distribution-candidate
       - name: Upload Runtime archive
@@ -522,6 +525,13 @@ jobs:
         with:
           name: xa-mass-worker-sdk-${{ github.run_attempt }}
           path: distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload Worker Simulator kit archive
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: xa-mass-worker-simulator-${{ github.run_attempt }}
+          path: distribution/worker-simulator/build/distributions/xa-mass-worker-simulator-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
           if-no-files-found: error
           retention-days: 30
       - name: Upload candidate identity
@@ -767,6 +777,11 @@ jobs:
         with:
           name: xa-mass-worker-sdk-${{ github.run_attempt }}
           path: build/consumer-inputs
+      - name: Download candidate Worker Simulator kit ZIP
+        uses: actions/download-artifact@v8.0.0
+        with:
+          name: xa-mass-worker-simulator-${{ github.run_attempt }}
+          path: build/consumer-inputs
       - name: Verify distribution and release helper contracts
         run: |
           sudo apt-get update -qq
@@ -778,16 +793,19 @@ jobs:
           python3 .github/scripts/test_run_local_runtime.py -v
           python3 .github/scripts/test_run_runtime_distribution_proof.py -v
           python3 .github/scripts/test_staging_runtime_proof.py -v
+          python3 .github/scripts/test_finite_round.py -v
           python3 -m unittest discover -s distribution/server/src/test/python -p 'test_staging*.py' -v
-      - name: Build the external Java Host at the candidate commit
-        run: ./gradlew --no-daemon :worker_simulator_jvm:installDist -PxaMassVersion=${{ env.XA_MASS_DISTRIBUTION_VERSION }}
+      - name: Extract the candidate Worker Simulator kit as the external Java Host
+        run: >-
+          unzip -q build/consumer-inputs/xa-mass-worker-simulator-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
+          -d build/external-host
       - name: Prove the supplied Runtime ZIP with real Redis
         run: >-
           python3 .github/scripts/run_runtime_distribution_proof.py
           --archive build/consumer-inputs/xa-mass-server-runtime-${{ env.XA_MASS_DISTRIBUTION_VERSION }}.zip
           --redis-url redis://127.0.0.1:6379/15
           --staging-ingress
-          --simulator-home worker_simulator_jvm/build/install/xa-mass-worker-simulator
+          --simulator-home build/external-host/xa-mass-worker-simulator-${{ env.XA_MASS_DISTRIBUTION_VERSION }}
 
   product-coexistence:
     name: Product Coexistence

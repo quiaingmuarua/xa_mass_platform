@@ -1,0 +1,11 @@
+{
+  "runtimeApiBaseUrl": "https://workers.example.com",
+  "gatewayCredentialFile": "./private/worker-access.json",
+  "workerGroups": {
+    "your-java-workers": {
+      "count": 2,
+      "events": ["extension.worker.string.md5"],
+      "propertiesTemplate": {}
+    }
+  }
+}

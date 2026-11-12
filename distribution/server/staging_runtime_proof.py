@@ -21,9 +21,9 @@ import secrets
 import subprocess
 import sys
 import time
-import uuid
 from urllib.parse import urlsplit
 
+from distribution.acceptance.finite_round import EVENT
 from distribution.server.local_runtime import child_environment
 from distribution.server.staging_ingress.proof import (
     OTHER_WORKER, WORKER, Gateway, basic, free_port,
@@ -34,12 +34,13 @@ from integrations.worker_proof_support.processes import start_process, stop_proc
 # Administrator 1000 receives a fresh private key in this proof's users file; the public
 # development key of the same user must be rejected through the gateway.
 ADMIN_KEY = "xak_" + secrets.token_urlsafe(32)
+# Kit rounds run as a separate operator granted only the default Project, never as the administrator.
+# Server user IDs are 4..9 lowercase alphanumerics (TaskUserId).
+EXTERNAL_USER = "external"
+EXTERNAL_KEY = "xak_" + secrets.token_urlsafe(32)
 PUBLIC_DEVELOPMENT_KEY = "xak_dev_1000"
 GROUP_A = "ingress-java-a"
 GROUP_B = "ingress-java-b"
-EVENT = "extension.worker.string.md5"
-VECTORS = ("a", "hello", "号码检查 ☕")
-SELECTOR = {"executorName": "worker.any", "input": {}}
 
 
 class ProofFailure(RuntimeError):
@@ -120,13 +121,16 @@ def _ready(runtime_port: int) -> bool:
 
 
 def _users_file(directory: Path) -> Path:
-    """The built-in roles and users, with administrator 1000's public key replaced by a private one."""
+    """Built-in roles and users with private keys: administrator 1000 and the external operator."""
     source = Path(__file__).resolve().parents[2] / "server_jvm/src/main/resources/users/development-directory.json"
     document = json.loads(source.read_text(encoding="utf-8"))
     for user in document["users"]:
         user.pop("accessKeySha256", None)
         if user["userId"] == "1000":
             user["accessKeySha256"] = hashlib.sha256(ADMIN_KEY.encode("utf-8")).hexdigest()
+    document["users"].append({"userId": EXTERNAL_USER, "displayName": "External user", "role": "operator",
+                              "projectIds": ["default"],
+                              "accessKeySha256": hashlib.sha256(EXTERNAL_KEY.encode("utf-8")).hexdigest()})
     path = directory / "users.json"
     path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
@@ -225,81 +229,33 @@ def _network(gate: Gateway, ids: set[str]) -> dict:
                  sorted(ids))["statesByWorkerId"]
 
 
-def _assert_results(results: dict, expected: dict[str, str]) -> None:
-    _require(set(results) == set(expected), "Result identities differ from submitted Items")
-    for message_id, seed in expected.items():
-        result = results[message_id]
-        _require(result.get("status") == "succeeded", "An ingress Item did not succeed")
-        content = json.loads(result["opaqueResultPayload"])
-        _require(isinstance(content, dict) and content.get("valid") is True
-                 and content == {"input": seed, "valid": True,
-                             "md5": hashlib.md5(seed.encode("utf-8")).hexdigest()},
-                 "Worker MD5 output differs from independently computed UTF-8 vector")
-
-
-def _assert_preview(preview: dict, expected: dict[str, str]) -> None:
-    rows = preview.get("results", [])
-    _require(preview.get("truncated") is False and len(rows) == len(expected), "Small Result preview is incomplete")
-    _require(len({row["messageId"] for row in rows}) == len(rows), "Preview repeated an Item identity")
-    _assert_results({row["messageId"]: row["result"] for row in rows}, expected)
-    for row in rows:
-        item = row.get("item")
-        _require(isinstance(item, dict) and item.get("messageId") == row["messageId"]
-                 and item.get("eventCode") == EVENT and item.get("workerSelector") == SELECTOR
-                 and item.get("payload") == {"value": expected[row["messageId"]]},
-                 "Stored Item differs from original event, Pool query or input")
-
-
-def _finite(gate: Gateway, group: str, label: str, processes) -> dict:
-    created = _json(gate, "POST", "/api/v1/tasks", {
-        "requestId": "ingress-" + label + "-" + uuid.uuid4().hex,
-        "projectId": "default", "workerGroupId": group, "name": "Ingress " + label,
-        "priority": 50, "maxRetryTimes": 3,
-        "refill": [{"poolName": "any", "target": {}, "count": 100}],
-    })
-    task_id = created["taskId"]
-    expected = {f"ingress-{index}-{uuid.uuid4().hex}": seed for index, seed in enumerate(VECTORS)}
-    items = [{"messageId": message_id, "eventCode": EVENT, "payload": {"value": seed}, "workerSelector": SELECTOR}
-             for message_id, seed in expected.items()]
-    appended = _json(gate, "POST", f"/api/v1/tasks/{task_id}/items", items)
-    _require(set(appended) == set(expected) and all(value.get("status") == "applied" for value in appended.values()),
-             "Finite append was not fully confirmed")
-    point = _json(gate, "GET", f"/api/v1/projects/default/tasks/{task_id}")
-    descriptor = point["task"]
-    _require(descriptor.get("projectId") == "default" and descriptor["workerGroupId"] == group
-             and descriptor["idleDisposition"] == "CLOSE_WHEN_IDLE"
-             and descriptor.get("metadata", {}).get("server.inputOwner") == "raw"
-             and descriptor.get("metadata", {}).get("userId") == "1000"
-             and descriptor["refill"] == [{"poolName": "any", "target": {}, "count": 100}],
-             "Saved finite descriptor does not use the declared Group and Any supply")
-    approved = _json(gate, "POST", f"/api/v1/tasks/{task_id}/approve", {"expectedItemCount": len(expected)})
-    _require(approved.get("status") in ("applied", "unchanged"), "Finite approval was not confirmed")
-
-    def completed():
-        results = _json(gate, "POST", f"/api/v1/tasks/{task_id}/results:load", list(expected))
-        _require(all(value.get("status") != "failed" for value in results.values()), "A finite ingress Item failed")
-        if any(value.get("status") != "succeeded" for value in results.values()) or set(results) != set(expected):
-            return None
-        point = _json(gate, "GET", f"/api/v1/projects/default/tasks/{task_id}")
-        return results if point.get("scoreBand") == "terminal" else None
-
-    results = _wait(completed, processes, 90, "finite Any execution and termination")
-    _assert_results(results, expected)
-    states = _json(gate, "POST", f"/api/v1/tasks/{task_id}/items:states", list(expected))
-    _require(set(states) == set(expected) and all(isinstance(value, dict) and value.get("band") == "terminal"
-                                                 for value in states.values()), "Item Scores are not all terminal")
-    _assert_preview(_json(gate, "GET", f"/api/v1/tasks/{task_id}/results:preview"), expected)
-    status, exported, _ = gate.request("localhost", "POST", f"/api/v1/tasks/{task_id}/results:export", ADMIN_KEY,
-                                      body=b"")
-    _require(status == 200, "Terminal raw JSONL export failed")
-    lines = [json.loads(line) for line in exported.decode("utf-8").splitlines() if line]
-    _require(len(lines) == len(expected) and all(set(row) == {"messageId", "opaqueResultPayload"} for row in lines),
-             "Raw JSONL export shape or quantity differs")
-    _require({row["messageId"]: row["opaqueResultPayload"] for row in lines}
-             == {key: value["opaqueResultPayload"] for key, value in results.items()},
-             "Raw JSONL differs from the complete Result identity set")
-    return {"taskId": task_id, "group": group, "items": len(expected),
-            "exportSha256": hashlib.sha256(exported).hexdigest()}
+def _finite(gate: Gateway, group: str, label: str, processes, *, simulator_home: Path, proof_root: Path,
+            environment: dict) -> dict:
+    """One round through the kit's shipped command, as the non-administrator external user."""
+    key_file = proof_root / "external-access-key.txt"
+    if not key_file.exists():
+        key_file.write_text(EXTERNAL_KEY + "\n", encoding="utf-8")
+        key_file.chmod(0o600)
+    command = [sys.executable, "-I", str(simulator_home / "acceptance/finite_round.py"),
+               "--runtime-url", gate.admin_url, "--access-key-file", str(key_file),
+               "--group", group, "--timeout-seconds", "90"]
+    clean = {**environment, "SSL_CERT_FILE": str(gate.ca_file)}
+    clean.pop("PYTHONPATH", None)
+    completed = subprocess.run(command, cwd=proof_root, env=clean, capture_output=True, timeout=150)
+    (proof_root / f"round-{label}.log").write_bytes(completed.stdout + b"\n" + completed.stderr)
+    _require(all(process.poll() is None for process in processes), f"Owned process exited during {label} round")
+    lines = completed.stdout.decode("utf-8", errors="replace").splitlines()
+    _require(len(lines) == 1, f"Kit round {label} did not print exactly one JSON line")
+    record = json.loads(lines[0])
+    _require(completed.returncode == 0 and record.get("outcome") == "passed" and record.get("group") == group,
+             f"Kit round {label} did not pass: outcome={record.get('outcome')} phase={record.get('phase')}")
+    point = _json(gate, "GET", f"/api/v1/projects/default/tasks/{record['taskId']}")
+    _require(point.get("scoreBand") == "terminal" and point["task"]["workerGroupId"] == group
+             and point["task"].get("metadata", {}).get("userId") == EXTERNAL_USER,
+             "Kit round Task is not the external user's terminal Task in the declared Group")
+    return {"taskId": record["taskId"], "group": group, "items": record["items"],
+            "exportSha256": record["exportSha256"], "kitVersion": record["kitVersion"],
+            "approveToTerminalMillis": record["durationsMillis"]["approveToTerminal"]}
 
 
 def verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: str, proof_root: Path) -> dict:
@@ -331,7 +287,12 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
     evidence["ownedProofRoot"] = True
     manifest = json.loads((runtime_root / "manifest.json").read_text(encoding="utf-8"))
     host_jars = sorted((simulator_home / "lib").glob("*.jar"))
-    _require(bool(host_jars), "Simulator must be supplied as its existing installDist/distribution")
+    kit_manifest = simulator_home / "manifest.json"
+    _require(bool(host_jars) and kit_manifest.is_file() and (simulator_home / "acceptance/finite_round.py").is_file(),
+             "The external Host must be the extracted Worker Simulator kit")
+    kit = json.loads(kit_manifest.read_text(encoding="utf-8"))
+    _require(kit.get("version") == manifest["version"] and kit.get("gitCommit") == manifest["gitCommit"],
+             "Worker Simulator kit and Runtime must come from the same build")
     java = shutil.which("java")
     _require(java is not None, "Ingress proof requires Java on PATH")
     java = str(Path(java).resolve())
@@ -379,7 +340,8 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
             return all(states.get(identity) == "connected" for identity in ids_a | ids_b)
         _wait(connected, processes, 30, "all Worker WebSocket routes")
         evidence["phase"] = "initial-finite-task"
-        witnesses.append(_finite(gate, GROUP_A, "initial", processes))
+        round_inputs = {"simulator_home": simulator_home, "proof_root": proof_root, "environment": environment}
+        witnesses.append(_finite(gate, GROUP_A, "initial", processes, **round_inputs))
 
         # No artificial application heartbeat or API traffic during the idle window.
         evidence["phase"] = "idle-window"
@@ -388,7 +350,7 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
             _require(all(process.poll() is None for process in processes), "Owned process exited during idle window")
             time.sleep(0.5)
         evidence["phase"] = "post-idle-finite-task"
-        witnesses.append(_finite(gate, GROUP_A, "after-idle", processes))
+        witnesses.append(_finite(gate, GROUP_A, "after-idle", processes, **round_inputs))
 
         evidence["phase"] = "credential-revocation-and-reconnect"
         gate.write_passwords(gate.worker_password_file, (OTHER_WORKER,))
@@ -400,7 +362,7 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
                 states.get(identity) == "connected" for identity in ids_b)
         _wait(reconnected, processes, 45, "revoked A disconnected and remaining B reconnected")
         evidence["phase"] = "post-revocation-finite-task"
-        witnesses.append(_finite(gate, GROUP_B, "after-revocation", processes))
+        witnesses.append(_finite(gate, GROUP_B, "after-revocation", processes, **round_inputs))
         access = (Path(gate.config.state_directory) / "access.log").read_text(encoding="utf-8")
         _require(f"POST /api/v1/worker-groups/{GROUP_A}/workers:prepare-batch 200" in access,
                  "Actual Simulator did not traverse batch Prepare through the gateway")
@@ -408,8 +370,9 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
     evidence["phase"] = "safe-evidence"
     for log in proof_root.rglob("*.log"):
         contents = log.read_text(encoding="utf-8", errors="replace")
-        _require(ADMIN_KEY not in contents and all(secret not in contents and basic((key, secret)) not in contents
-                                                   for key, secret in (WORKER, OTHER_WORKER)),
+        _require(ADMIN_KEY not in contents and EXTERNAL_KEY not in contents
+                 and all(secret not in contents and basic((key, secret)) not in contents
+                         for key, secret in (WORKER, OTHER_WORKER)),
                  "Credential material appeared in a private process log")
     summary = {"status": "passed", "runtimeVersion": manifest["version"], "runtimeCommit": manifest["gitCommit"],
                "console": console,
@@ -417,10 +380,13 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
                "gatewayRendererSha256": hashlib.sha256((runtime_root / "examples/staging-ingress/staging_ingress/renderer.py").read_bytes()).hexdigest(),
                "runtimeJarSha256": hashlib.sha256((runtime_root / manifest["serverJar"]).read_bytes()).hexdigest(),
                "simulatorJars": {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in host_jars},
+               "simulatorKit": {"version": kit["version"], "gitCommit": kit["gitCommit"], "roundSha256":
+                                hashlib.sha256((simulator_home / "acceptance/finite_round.py").read_bytes()).hexdigest()},
                "workerCounts": {GROUP_A: len(ids_a), GROUP_B: len(ids_b)},
                "workers": {GROUP_A: sorted(ids_a), GROUP_B: sorted(ids_b)}, "tasks": witnesses,
                "totalCheckedItems": sum(row["items"] for row in witnesses), "idleSeconds": 65,
                "revokedHostDisconnected": True, "remainingHostExecutedAfterReconnect": True,
-               "claims": "Packaged Runtime and external Java SDK Host over verified TLS gateway; Any finite execution and raw export"}
+               "claims": "Packaged Runtime and the published Worker Simulator kit over verified TLS gateway; the kit's "
+                         "finite-round command as a Project-scoped operator; Any finite execution and raw export"}
     (proof_root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return summary

@@ -1,4 +1,4 @@
-"""Distribution-owned Runtime, Worker SDK and Preview archive verification."""
+"""Distribution-owned Runtime, Worker SDK, Worker Simulator kit and Preview archive verification."""
 from __future__ import annotations
 
 import argparse
@@ -345,7 +345,7 @@ def _sdk_require(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
-def _safe_members(archive: zipfile.ZipFile, expected_root: str) -> set[str]:
+def _safe_members(archive: zipfile.ZipFile, expected_root: str, label: str = "Worker SDK") -> set[str]:
     names: set[str] = set()
     for entry in archive.infolist():
         path = PurePosixPath(entry.filename)
@@ -353,15 +353,15 @@ def _safe_members(archive: zipfile.ZipFile, expected_root: str) -> set[str]:
             not path.is_absolute()
             and bool(path.parts)
             and ".." not in path.parts,
-            f"unsafe Worker SDK ZIP entry: {entry.filename}",
+            f"unsafe {label} ZIP entry: {entry.filename}",
         )
         _sdk_require(
             path.parts[0] == expected_root,
-            "Worker SDK ZIP has an unexpected root",
+            f"{label} ZIP has an unexpected root",
         )
-        _sdk_require(entry.filename not in names, "Worker SDK ZIP has duplicates")
+        _sdk_require(entry.filename not in names, f"{label} ZIP has duplicates")
         file_type = (entry.external_attr >> 16) & 0o170000
-        _sdk_require(file_type != stat.S_IFLNK, "Worker SDK ZIP contains a symlink")
+        _sdk_require(file_type != stat.S_IFLNK, f"{label} ZIP contains a symlink")
         names.add(entry.filename)
     return names
 
@@ -478,6 +478,40 @@ def consume_sdk(
         subprocess.run(command, check=True)
 
 
+SIMULATOR_FILES = ("manifest.json", "LICENSE", "THIRD_PARTY_NOTICES.md", "README.md",
+                   "bin/xa-mass-worker-simulator", "bin/xa-mass-worker-simulator.bat",
+                   "acceptance/finite_round.py", "examples/remote-host.json")
+
+
+def verify_simulator(archive_path: Path, version: str) -> None:
+    """The published external-user kit: installed Simulator plus the finite-round command, no private state."""
+    root = f"xa-mass-worker-simulator-{version}"
+    with zipfile.ZipFile(archive_path) as archive:
+        names = _safe_members(archive, root, "Worker Simulator kit")
+        relative = {name[len(root) + 1:] for name in names if not name.endswith("/")}
+        missing = [name for name in SIMULATOR_FILES if name not in relative]
+        _sdk_require(not missing, "Worker Simulator kit is missing " + ", ".join(missing))
+        manifest = json.loads(archive.read(f"{root}/manifest.json"))
+        _sdk_require(manifest == {
+            "schemaVersion": 1, "version": version, "gitCommit": manifest.get("gitCommit"), "javaVersion": 21,
+            "simulatorEntry": "bin/xa-mass-worker-simulator", "roundEntry": "acceptance/finite_round.py",
+        } and re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("gitCommit"))) is not None,
+            "Worker Simulator kit manifest differs from the current contract")
+        for jar in ("xa-mass-worker-simulator-jvm", "xa-mass-worker-core", "xa-mass-java-worker",
+                    "xa-mass-worker-delivery-contract"):
+            _sdk_require(f"lib/{jar}-{version}.jar" in relative, f"Worker Simulator kit lacks {jar} {version}")
+        entry = archive.getinfo(f"{root}/bin/xa-mass-worker-simulator")
+        _sdk_require((entry.external_attr >> 16) & 0o111, "Worker Simulator entry is not executable")
+        private = [name for name in relative
+                   if PurePosixPath(name).parts[0] in ("data", "private")
+                   or name.endswith(".jsonl") or "credential" in name.lower()
+                   or PurePosixPath(name).name in ("worker-access.json", "access-key.txt")]
+        _sdk_require(not private, "Worker Simulator kit contains inventory or private files")
+        template = json.loads(archive.read(f"{root}/examples/remote-host.json"))
+        _sdk_require(isinstance(template, dict) and "secret" not in json.dumps(template).lower(),
+                     "Worker Simulator Host template must reference, not contain, a credential")
+
+
 def verify_preview(archive, frontend):
     root = "xa-mass-scenario-preview-0.1.0-preview"
     with zipfile.ZipFile(archive) as bundle:
@@ -548,7 +582,7 @@ def verify_preview(archive, frontend):
 def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     actions = parser.add_subparsers(dest="component", required=True)
-    for component in ("runtime", "sdk", "preview"):
+    for component in ("runtime", "sdk", "simulator", "preview"):
         action = actions.add_parser(component)
         action.add_argument("--archive", type=Path, required=True)
         if component == "preview":
@@ -568,6 +602,9 @@ def main(arguments: list[str] | None = None) -> int:
         if args.consumer_project is not None:
             consume_sdk(archive, args.version, args.consumer_project.resolve())
         print(f"Worker SDK distribution proof succeeded: {archive}")
+    elif args.component == "simulator":
+        verify_simulator(archive, args.version)
+        print(f"Worker Simulator kit verified: {archive}")
     else:
         result = json.dumps(verify_preview(archive, args.frontend), indent=2)
         if args.output:

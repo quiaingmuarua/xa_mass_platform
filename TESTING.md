@@ -267,8 +267,9 @@ summary; the matrix aggregate remains the one selected Proof Gate result.
 The Runtime Distribution Linux job includes the optional staging ingress proof:
 real Nginx with a trusted test CA, two credential realms, denied internal routes,
 credential/connection limits and actual restart revocation. It then runs the
-supplied Runtime ZIP with a same-commit standalone Java Host through that gateway.
-TLS and hostname validation must remain enabled. This proves environment-level
+supplied Runtime ZIP with the extracted same-build Worker Simulator kit as its external
+Java Host through that gateway, and each finite round runs the kit's shipped round command
+as a Project-scoped operator. TLS and hostname validation must remain enabled. This proves environment-level
 access, not user/Worker identity isolation; it adds no performance workload.
 GCP only consumes published artifacts and runs small deployment acceptance.
 
@@ -356,7 +357,7 @@ HOT/RECOVERY counts retained as diagnostics. Actual recovery is proved by the
 unchanged four finite workloads and exact terminal exports, without idle RPC roots.
 
 Android Host owns platform deterministic tests and library assembly. Candidate
-Distribution Archives produces one verified pair when Runtime Distribution,
+Distribution Archives produces one verified Runtime/SDK pair plus the Worker Simulator kit when Runtime Distribution,
 Android Consumer or Android Worker Proof is selected. APK Assembly runs consumer
 unit tests and builds the four variants outside the checkout from that SDK.
 Consumer-only tests select assembly without requiring Emulator execution. Pure

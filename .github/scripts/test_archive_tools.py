@@ -102,6 +102,51 @@ class ArchiveToolsTest(unittest.TestCase):
                 for group, artifact in dependencies) + "</dependencies></project>"
         return files
 
+    def simulator_archive(self, files, executable=True):
+        path = self.root / "worker-simulator.zip"
+        prefix = f"xa-mass-worker-simulator-{self.version}/"
+        with zipfile.ZipFile(path, "w") as archive:
+            for name, value in files.items():
+                entry = zipfile.ZipInfo(prefix + name)
+                mode = 0o755 if executable and name == "bin/xa-mass-worker-simulator" else 0o644
+                entry.external_attr = (0o100000 | mode) << 16
+                archive.writestr(entry, value)
+        return path
+
+    def simulator_files(self):
+        files = {name: "fixture" for name in tools.SIMULATOR_FILES}
+        files["manifest.json"] = json.dumps({
+            "schemaVersion": 1, "version": self.version, "gitCommit": self.commit, "javaVersion": 21,
+            "simulatorEntry": "bin/xa-mass-worker-simulator", "roundEntry": "acceptance/finite_round.py"})
+        files["examples/remote-host.json"] = json.dumps({"gatewayCredentialFile": "./private/worker-access.json"})
+        for jar in ("xa-mass-worker-simulator-jvm", "xa-mass-worker-core", "xa-mass-java-worker",
+                    "xa-mass-worker-delivery-contract"):
+            files[f"lib/{jar}-{self.version}.jar"] = b"fixture"
+        return files
+
+    def test_simulator_kit_requires_entries_identity_and_no_private_state(self):
+        original = self.simulator_files()
+        tools.verify_simulator(self.simulator_archive(original), self.version)
+        self.assertEqual(0, tools.main(["simulator", "--archive", str(self.simulator_archive(original)),
+                                        "--version", self.version]))
+        broken = []
+        for missing in ("acceptance/finite_round.py", "bin/xa-mass-worker-simulator.bat", "README.md",
+                        f"lib/xa-mass-java-worker-{self.version}.jar"):
+            broken.append({key: value for key, value in original.items() if key != missing})
+        for change in ({"version": "9.9.9"}, {"gitCommit": "short"}, {"roundEntry": "elsewhere.py"},
+                       {"schemaVersion": 2}):
+            manifest = {**json.loads(original["manifest.json"]), **change}
+            broken.append({**original, "manifest.json": json.dumps(manifest)})
+        for private in ("data/scenario-workers/g/workers-000.jsonl", "private/worker-access.json",
+                        "examples/credential.json"):
+            broken.append({**original, private: "{}"})
+        broken.append({**original, "examples/remote-host.json": json.dumps({"keyId": "k", "secret": "s"})})
+        for files in broken:
+            with self.assertRaises(RuntimeError):
+                tools.verify_simulator(self.simulator_archive(files), self.version)
+        with self.assertRaises(RuntimeError):
+            tools.verify_simulator(self.simulator_archive(original, executable=False), self.version)
+
     def test_valid_component_archives_and_sdk_build_are_independent(self):
         runtime = self.archive("server-runtime", self.runtime_files())
         sdk = self.archive("worker-sdk", self.sdk_files())

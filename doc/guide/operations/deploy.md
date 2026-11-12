@@ -166,6 +166,14 @@ Project 与密钥签发／清除都在控制台或 API 完成；Server 运行时
 外部 Java Host 使用独立 Simulator `--config`，设置 HTTPS `runtimeApiBaseUrl` 和私有
 `gatewayCredentialFile`。该路径相对主配置文件解析，读取失败不会回退匿名连接。
 更换密钥需明确重启 Host。不要运行统一的本地环境启动器去连接已有远端 Server。
+不 checkout 仓库时，使用同一 Release 发布的
+[Worker Simulator kit](../../../distribution/worker-simulator/README.md)：它包含这个 Host 入口和
+一轮有限任务验收命令，后者输出一行 JSON（passed / failed / unconfirmed）。
+
+任何机器都可以作为长期运行的外部使用者（soak）：它只下载 kit，用自己的 operator 用户、
+Worker 凭据和独立 Group，按自己的节奏低频跑验收轮次，不参与编码；发现问题时提交 GitHub
+issue（Preview finding 表单），附上该轮 JSON。仓库和主机都不为它保存调度器，它的 Group 与
+验收 Group 分开，避免执行验收任务。
 Android SDK 支持同样的凭据传递；当前 App 使用
 [静态构建、安装和私有凭据注入](../../../xa-android/README.md#public-runtime-connection)，
 不通过配置页面更改连接。公网数据链路不依赖 SSH 隧道或 ADB reverse。
