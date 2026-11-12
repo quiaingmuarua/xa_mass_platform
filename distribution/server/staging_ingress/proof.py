@@ -10,6 +10,7 @@ import argparse
 import base64
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractContextManager
+from dataclasses import replace
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import http.client
@@ -478,12 +479,69 @@ def _verify_private(directory: Path, *, nginx="nginx", openssl="openssl") -> dic
     return summary
 
 
+def _verify_custom_capacity(directory: Path, *, nginx="nginx", openssl="openssl") -> dict:
+    """Keep the default witness intact and exercise separate small configured limits."""
+    checks = []
+
+    def require(condition, name):
+        if not condition:
+            raise AssertionError(name)
+        checks.append(name)
+
+    with _Backend() as runtime, _Backend() as adapter:
+        gate = Gateway(directory, runtime.port, adapter.port, nginx=nginx, openssl=openssl)
+        gate.config = replace(gate.config, worker_connections=128,
+                              worker_connection_limit=2, worker_total_connection_limit=3,
+                              worker_requests_per_second=1, worker_request_burst=2,
+                              admin_requests_per_second=1, admin_request_burst=2)
+        gate.configuration.write_text(render(gate.config), encoding="utf-8")
+        with gate:
+            prepare = "/api/v1/worker-groups/staging-workers/workers:prepare"
+            for host, key, method, path in (("localhost", ADMIN_KEY, "GET", "/"),
+                                            ("127.0.0.1", WORKER, "POST", prepare)):
+                with ThreadPoolExecutor(max_workers=12) as executor:
+                    codes = list(executor.map(lambda _: gate.request(host, method, path, key)[0], range(12)))
+                require(set(codes) == {200, 429}, f"custom rate/burst admits then refuses {host}")
+            # Clear HTTP burst state before separately proving connection limits.
+            gate.restart()
+            opened = []
+
+            def connect(key):
+                # Keep handshakes below the configured one-request/second boundary.
+                time.sleep(1.1)
+                code, stream = gate.websocket(key)
+                if stream is not None:
+                    opened.append(stream)
+                return code
+
+            try:
+                require(connect(WORKER) == 101 and connect(WORKER) == 101,
+                        "custom per-credential capacity admits two WSS")
+                require(connect((WORKER[0], "wrong-password")) == 401,
+                        "custom capacity preserves authentication before connection limits")
+                require(connect(WORKER) == 429, "custom per-credential capacity refuses third WSS")
+                require(connect(OTHER_WORKER) == 101, "custom total capacity admits third WSS")
+                require(connect(THIRD_WORKER) == 429, "custom total capacity refuses fourth WSS")
+                opened[0].close()
+                require(connect(THIRD_WORKER) == 101, "custom capacity releases a closed WSS slot")
+                require(all(not row["authorization"] for row in adapter.observations),
+                        "custom capacity preserves Worker credential stripping")
+            finally:
+                for stream in opened:
+                    stream.close()
+    return {"status": "passed", "checks": checks, "wssPerCredential": 2, "wssTotal": 3,
+            "adminRequestsPerSecond": 1, "adminRequestBurst": 2,
+            "workerRequestsPerSecond": 1, "workerRequestBurst": 2}
+
+
 def verify(directory: Path, *, nginx="nginx", openssl="openssl") -> dict:
     """Retain only the safe summary; close processes and remove private CA/logs."""
     directory = directory.resolve()
     directory.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="xa-mass-ingress-proof-") as private:
         summary = _verify_private(Path(private), nginx=nginx, openssl=openssl)
+        summary["customCapacity"] = _verify_custom_capacity(Path(private) / "custom-capacity",
+                                                           nginx=nginx, openssl=openssl)
     summary["privateFixtureCleaned"] = True
     (directory / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return summary

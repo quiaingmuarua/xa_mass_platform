@@ -331,9 +331,19 @@
     {
       "path": "integrations/worker-loaded-recovery/src/main/java/com/xa/mass/integration/workerloadedrecovery/WorkerLoadedRecoveryMain.java",
       "lanes": [
-        "jvm_contracts"
+        "jvm_contracts", "runtime_distribution"
       ],
-      "reason": "Worker Loaded Capacity and Recovery Stability remains a separately scheduled high-cost proof while compiling in JVM Contracts."
+      "reason": "The shared workload compiles in JVM Contracts and ships in the kit; small packaged consumption belongs to Runtime Distribution, while full capacity remains explicit."
+    },
+    {
+      "path": "integrations/worker-loaded-recovery/run_external_loaded.py",
+      "lanes": ["jvm_contracts", "runtime_distribution"],
+      "reason": "The external consumer runs shipped binaries; focused runner contracts and a small real packaged fixture protect it without triggering public load."
+    },
+    {
+      "path": ".github/workflows/worker-loaded-recovery.yml",
+      "lanes": ["jvm_contracts"],
+      "reason": "Manual external-release routing is checked by runner contracts; ordinary CI never triggers the public environment."
     },
     {
       "path": "server_jvm/src/main/java/com/xa/mass/server/error/ServerException.java",
@@ -1380,10 +1390,21 @@
       "path": "integrations/worker_proof_support/processes.py",
       "lanes": [
         "jvm_contracts",
+        "runtime_distribution",
         "worker_convergence_health",
         "worker_correctness"
       ],
-      "reason": "Only Correctness and Convergence consume the shared process primitives."
+      "reason": "Correctness, Convergence and the shipped external-capacity runner consume these owned-process primitives."
+    },
+    {
+      "path": "integrations/worker_proof_support/process_sampling.py",
+      "lanes": ["jvm_contracts", "runtime_distribution", "worker_correctness", "worker_dynamic_matching", "worker_convergence_health"],
+      "reason": "The nightly and shipped external consumer share resource-sampling behavior; public load is not automatically selected."
+    },
+    {
+      "path": ".github/scripts/prepare_external_release_load.py",
+      "lanes": ["jvm_contracts"],
+      "reason": "The manual consumer release verification and workflow contract are checked in the loaded-runner tests."
     },
     {
       "path": "integrations/worker_proof_support/test_processes.py",

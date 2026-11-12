@@ -85,14 +85,37 @@ serves only GET/HEAD ACME challenge files for the two known hosts; application H
 is denied without redirecting credentials. TLS is required. Certificate provisioning
 must be completed separately before starting the final TLS configuration.
 
-HTTP admission is limited per source address to admin 30 requests/s with burst 60,
-and Worker 10 requests/s with burst 30. Bodies are limited to 16 MiB. WSS has a
-100-connection limit per verified Basic username and 200 total, with a 1-hour idle
-read/send timeout. The public WebSocket location authenticates first, then `try_files`
+The deployment JSON accepts these optional capacity fields. Omitting them preserves
+the existing defaults; each supplied value must be a positive JSON integer (not a
+boolean, string, fraction or null).
+
+| Field | Default | Meaning |
+| --- | ---: | --- |
+| `worker_processes` | 1 | Nginx worker processes, not XA Mass Worker instances |
+| `worker_connections` | 2048 | Connections per Nginx process, including both client and upstream sockets |
+| `worker_connection_limit` | 100 | WSS connections per verified Worker Basic username |
+| `worker_total_connection_limit` | 200 | WSS connections across the Worker hostname |
+| `worker_requests_per_second` | 10 | Prepare/handshake requests per source IP per second |
+| `worker_request_burst` | 30 | Excess Worker requests admitted immediately by the rate limiter |
+| `admin_requests_per_second` | 30 | Administrator HTTP requests per source IP per second |
+| `admin_request_burst` | 60 | Excess administrator requests admitted immediately by the rate limiter |
+
+`worker_connection_limit` must not exceed `worker_total_connection_limit`. Connection
+and rate-limit zones remain shared across Nginx processes; starting more processes
+does not multiply the configured admission limits. Choose process/file-descriptor
+limits for the actual deployment, accounting for proxied connections using client
+and upstream sockets. The renderer does not change systemd limits or assert that the
+Runtime, host or network can sustain the selected capacity. These are deployment
+controls, not Kernel scheduling or XA Mass Worker limits.
+
+Bodies remain limited to 16 MiB. WSS retains a 1-hour idle read/send timeout.
+The public WebSocket location authenticates first, then `try_files`
 enters an internal named proxy location where `limit_conn` runs. Thus its key is
 already verified; it does not rely on an empty/unverified pre-auth `$remote_user`.
-The real Nginx proof exercises the actual 100/200 boundaries and checks that a wrong
-password still receives 401 when that username is at its limit. HTTP request-rate
+The real Nginx proof retains the actual default 100/200 boundaries and checks that a wrong
+password still receives 401 when that username is at its limit. A separate small custom
+configuration proves overridden rate/burst and 2/3 connection limits without changing
+the default assertions. HTTP request-rate
 limits do not limit the subsequent WebSocket frame rate.
 
 Worker Basic, malformed administrator authorization and proxy credential headers are
@@ -129,7 +152,8 @@ Use a fresh output directory. The CLI retains only the safe `summary.json`; priv
 fixture keys/configuration/logs live in an owned temporary directory that is removed
 after stopping its processes, including on failure. The proof checks routing,
 Worker credentials, administrator key forwarding and stripping, request filtering,
-body/rate/connection limits, no retry, revocation and restart. One unchanged raw WSS connection also stays silent for 65 seconds and then
+body/rate/connection limits (default and small configured values), no retry, revocation
+and restart. One unchanged raw WSS connection also stays silent for 65 seconds and then
 echoes a frame; no heartbeat or SDK reconnect can mask the default 60-second proxy
 timeout. This bounded witness does not measure the full configured one-hour idle limit.
 It is not evidence of Worker execution. The Runtime Distribution caller may

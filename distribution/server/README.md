@@ -4,9 +4,9 @@ This module owns Runtime and Scenario Preview ZIP delivery, frontend and
 documentation-site builds, diagnostic dictionaries, Preview process assembly
 and archive verification.
 
-The current [4.1 release contract](RELEASE-4.1.md) describes that version's new
-[Worker Simulator kit](../worker-simulator/README.md) asset, upgrade steps and exact-artifact
-release acceptance. The [4.0](RELEASE-4.0.md), [3.2](RELEASE-3.2.md) and [3.1](RELEASE-3.1.md)
+The current [4.2 release contract](RELEASE-4.2.md) describes the published external-capacity
+consumer, explicit gateway budgets, upgrade steps and exact-artifact acceptance.
+The [4.1](RELEASE-4.1.md), [4.0](RELEASE-4.0.md), [3.2](RELEASE-3.2.md) and [3.1](RELEASE-3.1.md)
 contracts retain earlier versions' facts; each release document applies to its named version.
 A Release publishes three components: the Runtime, the Worker SDK and the Worker Simulator kit.
 Use the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)

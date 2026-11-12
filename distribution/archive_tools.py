@@ -480,11 +480,13 @@ def consume_sdk(
 
 SIMULATOR_FILES = ("manifest.json", "LICENSE", "THIRD_PARTY_NOTICES.md", "README.md",
                    "bin/xa-mass-worker-simulator", "bin/xa-mass-worker-simulator.bat",
-                   "acceptance/finite_round.py", "examples/remote-host.json")
+                   "acceptance/finite_round.py", "acceptance/run_loaded.py",
+    "acceptance/support/__init__.py", "acceptance/support/processes.py", "acceptance/support/process_sampling.py",
+                   "examples/remote-host.json")
 
 
 def verify_simulator(archive_path: Path, version: str) -> None:
-    """The published external-user kit: installed Simulator plus the finite-round command, no private state."""
+    """The published external-user kit: Simulator and compiled load consumer, no private state."""
     root = f"xa-mass-worker-simulator-{version}"
     with zipfile.ZipFile(archive_path) as archive:
         names = _safe_members(archive, root, "Worker Simulator kit")
@@ -493,13 +495,17 @@ def verify_simulator(archive_path: Path, version: str) -> None:
         _sdk_require(not missing, "Worker Simulator kit is missing " + ", ".join(missing))
         manifest = json.loads(archive.read(f"{root}/manifest.json"))
         _sdk_require(manifest == {
-            "schemaVersion": 1, "version": version, "gitCommit": manifest.get("gitCommit"), "javaVersion": 21,
+            "schemaVersion": 2, "version": version, "gitCommit": manifest.get("gitCommit"), "javaVersion": 21,
             "simulatorEntry": "bin/xa-mass-worker-simulator", "roundEntry": "acceptance/finite_round.py",
+            "loadedEntry": "acceptance/run_loaded.py",
         } and re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("gitCommit"))) is not None,
             "Worker Simulator kit manifest differs from the current contract")
         for jar in ("xa-mass-worker-simulator-jvm", "xa-mass-worker-core", "xa-mass-java-worker",
                     "xa-mass-worker-delivery-contract"):
             _sdk_require(f"lib/{jar}-{version}.jar" in relative, f"Worker Simulator kit lacks {jar} {version}")
+        for jar in ("xa-mass-worker-loaded-recovery", "xa-mass-worker-delivery-contract"):
+            _sdk_require(f"acceptance/loaded/lib/{jar}-{version}.jar" in relative,
+                         f"Worker Simulator kit lacks loaded consumer {jar} {version}")
         entry = archive.getinfo(f"{root}/bin/xa-mass-worker-simulator")
         _sdk_require((entry.external_attr >> 16) & 0o111, "Worker Simulator entry is not executable")
         private = [name for name in relative

@@ -4,12 +4,18 @@ on:
   schedule:
     - cron: "0 18 * * *"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Local recovery proof or published-Release external consumer
+        type: choice
+        default: local-proof
+        options: [local-proof, external-release]
 
 permissions:
   contents: read
 
 concurrency:
-  group: worker-loaded-recovery
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'external-release' && 'release-preview-load' || 'worker-loaded-recovery' }}
   cancel-in-progress: false
 
 env:
@@ -17,6 +23,7 @@ env:
 
 jobs:
   worker-loaded-recovery:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'external-release'
     name: Worker Loaded Capacity + Recovery Stability
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -79,4 +86,95 @@ jobs:
             integrations/worker-loaded-recovery/build/test-results/test/**
             integrations/worker-loaded-recovery/build/reports/tests/test/**
           if-no-files-found: ignore
+          retention-days: 7
+
+  external-release:
+    name: External published Release capacity
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'external-release' && github.ref == 'refs/heads/main'
+    environment: release-preview-load
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Download the installed immutable Release kit
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ vars.INSTALLED_RELEASE_TAG }}
+          RELEASE_COMMIT: ${{ vars.INSTALLED_RELEASE_COMMIT }}
+        run: >-
+          python .github/scripts/prepare_external_release_load.py
+          --repository "$GITHUB_REPOSITORY"
+          --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
+          --output-dir build/external-release-input
+      - name: Prepare private consumer credentials
+        env:
+          RUNTIME_ACCESS_KEY: ${{ secrets.RUNTIME_ACCESS_KEY }}
+          WORKER_GATEWAY_KEY_ID: ${{ secrets.WORKER_GATEWAY_KEY_ID }}
+          WORKER_GATEWAY_SECRET: ${{ secrets.WORKER_GATEWAY_SECRET }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          names = ('RUNTIME_ACCESS_KEY', 'WORKER_GATEWAY_KEY_ID', 'WORKER_GATEWAY_SECRET')
+          if any(not os.environ.get(name) for name in names):
+              raise SystemExit('The protected external-consumer Environment is incomplete')
+          os.umask(0o077)
+          root = Path(os.environ['RUNNER_TEMP']) / 'external-release-load-private'
+          root.mkdir(mode=0o700)
+          (root / 'access-key.txt').write_text(os.environ['RUNTIME_ACCESS_KEY'] + '\n', encoding='utf-8')
+          (root / 'worker-gateway.json').write_text(json.dumps({
+              'keyId': os.environ['WORKER_GATEWAY_KEY_ID'], 'secret': os.environ['WORKER_GATEWAY_SECRET']
+          }), encoding='utf-8')
+          PY
+      - name: Configure only this disposable consumer host
+        run: sudo sysctl -w net.ipv4.ip_local_port_range="10000 65535"
+      - name: Run the published external consumer
+        env:
+          KIT_ROOT: ${{ steps.release.outputs.kit-root }}
+          RUNTIME_API_URL: ${{ vars.RUNTIME_API_URL }}
+          WORKER_RUNTIME_URL: ${{ vars.WORKER_RUNTIME_URL }}
+          PROJECT_ID: ${{ vars.PROJECT_ID }}
+          WORKER_GROUP_ID: ${{ vars.WORKER_GROUP_ID }}
+          ENDPOINT_MANAGER_ID: ${{ vars.ENDPOINT_MANAGER_ID }}
+        run: |
+          ulimit -n 65536
+          python "$KIT_ROOT/acceptance/run_loaded.py" \
+            --runtime-url "$RUNTIME_API_URL" --worker-runtime-url "$WORKER_RUNTIME_URL" \
+            --project "$PROJECT_ID" --group "$WORKER_GROUP_ID" --endpoint-manager "$ENDPOINT_MANAGER_ID" \
+            --access-key-file "$RUNNER_TEMP/external-release-load-private/access-key.txt" \
+            --gateway-credential-file "$RUNNER_TEMP/external-release-load-private/worker-gateway.json" \
+            --output-dir build/external-release-load
+      - name: Remove this job's private input copies
+        if: always()
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'external-release-load-private'
+          for name in ('access-key.txt', 'worker-gateway.json'):
+              (root / name).unlink(missing_ok=True)
+          if root.is_dir():
+              root.rmdir()
+          PY
+      - name: Upload safe external-consumer evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: external-release-load-${{ github.run_attempt }}
+          path: |
+            build/external-release-input/consumption.json
+            build/external-release-load/summary.json
+            build/external-release-load/process-resources.jsonl
+            build/external-release-load/evidence/summary.json
+            build/external-release-load/evidence/timeline.jsonl
+            build/external-release-load/evidence/receipts.jsonl
+          if-no-files-found: warn
           retention-days: 7
