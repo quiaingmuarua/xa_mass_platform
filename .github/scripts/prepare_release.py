@@ -15,14 +15,14 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from distribution.archive_tools import verify_runtime, verify_sdk
+from distribution.archive_tools import verify_runtime, verify_sdk, verify_simulator
 REQUIRED_JOBS = {
     "Select proof lanes", "Docs Contract", "JVM Contracts", "Redis Owner",
     "Runtime Boundary", "Worker Correctness", "Worker Dynamic Matching",
     "Android Host", "Android APK Assembly", "Android Worker Proof", "Frontend",
     "Runtime And Worker SDK Distribution", "Candidate Distribution Archives", "Product Coexistence", "Proof Gate",
 }
-COMPONENTS = ("server-runtime", "worker-sdk")
+COMPONENTS = ("server-runtime", "worker-sdk", "worker-simulator")
 
 
 def require(condition: bool, message: str) -> None:
@@ -172,6 +172,7 @@ def prepare(repository: str, tag: str, commit: str, output: Path) -> None:
     # Content belongs to Distribution's existing archive validators.
     verify_runtime(archives[0], version)
     verify_sdk(archives[1], version)
+    verify_simulator(archives[2], version)
     assets = [*archives, *(checksum(path) for path in archives)]
 
     release = next((candidate for candidate in paged(f"repos/{repository}/releases", None)
@@ -202,7 +203,7 @@ def prepare(repository: str, tag: str, commit: str, output: Path) -> None:
     release = api(f"repos/{repository}/releases/{release['id']}")
     validate_draft(release, tag, assets)
     require({asset['name'] for asset in release['assets']} == {path.name for path in assets}, "Draft assets are incomplete")
-    print(f"Draft ready: {tag} commit={commit} proofRun={run['id']} assets=4")
+    print(f"Draft ready: {tag} commit={commit} proofRun={run['id']} assets={len(assets)}")
 
 
 def main() -> None:

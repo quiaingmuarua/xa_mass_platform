@@ -51,10 +51,10 @@ class ReleasePromotionTest(unittest.TestCase):
                 release.validate_run(self.run, [job for job in self.jobs if job["name"] != name],
                                      self.commit, self.repository)
 
-    def test_artifacts_require_current_attempt_and_unexpired_pair(self):
+    def test_artifacts_require_current_attempt_and_every_unexpired_component(self):
         artifacts = [dict(name=f"xa-mass-{component}-2", expired=False) for component in release.COMPONENTS]
-        self.assertEqual(2, len(release.validate_artifacts(artifacts, 2)))
-        for invalid, attempt in [(artifacts[:1], 2),
+        self.assertEqual(3, len(release.validate_artifacts(artifacts, 2)))
+        for invalid, attempt in [(artifacts[:1], 2), (artifacts[:2], 2),
                                  ([dict(artifact, expired=True) for artifact in artifacts], 2),
                                  (artifacts + [artifacts[0]], 2), (artifacts, 1)]:
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
@@ -97,7 +97,7 @@ class ReleasePromotionTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     release.validate_draft({**dict(tag_name="v1.0.0", draft=True, assets=[]), **changes}, "v1.0.0", [expected])
 
-    def test_creation_uses_returned_draft_without_relisting_then_uploads_four_assets(self):
+    def test_creation_uses_returned_draft_without_relisting_then_uploads_every_component(self):
         self._assert_draft_creation("1.0.0")
 
     def test_major_two_uses_its_own_contract_and_exact_asset_versions(self):
@@ -113,6 +113,10 @@ class ReleasePromotionTest(unittest.TestCase):
 
     def test_staging_minor_uses_its_own_contract_and_exact_asset_versions(self):
         self._assert_draft_creation("3.2.0")
+
+    def test_simulator_kit_minor_uses_its_own_contract_and_three_components(self):
+        self.assertEqual(("server-runtime", "worker-sdk", "worker-simulator"), release.COMPONENTS)
+        self._assert_draft_creation("4.1.0")
 
     def test_missing_minor_contract_fails_before_github_without_major_fallback(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -163,15 +167,18 @@ class ReleasePromotionTest(unittest.TestCase):
                 return {**created, "assets": [{"name": name} for name in uploaded]}
             run = dict(id=1, html_url="https://github.com/example/proof")
             with patch.object(release, "verify_tag"), \
-                    patch.object(release, "find_run", return_value=(run, ["xa-mass-server-runtime-1", "xa-mass-worker-sdk-1"])), \
+                    patch.object(release, "find_run",
+                                 return_value=(run, [f"xa-mass-{c}-1" for c in release.COMPONENTS])), \
                     patch.object(release, "paged", return_value=[]) as listing, \
                     patch.object(release, "gh", side_effect=fake_gh), \
                     patch.object(release, "api", side_effect=fake_api), \
                     patch.object(release, "verify_runtime"), \
-                    patch.object(release, "verify_sdk"):
+                    patch.object(release, "verify_sdk"), \
+                    patch.object(release, "verify_simulator") as simulator:
                 release.prepare(self.repository, tag, self.commit, root / "output")
             listing.assert_called_once()
-            self.assertEqual(4, len(uploaded))
+            simulator.assert_called_once()
+            self.assertEqual(2 * len(release.COMPONENTS), len(uploaded))
 
 
 if __name__ == "__main__":

@@ -86,7 +86,10 @@ The control listener is loopback-only; port `0` selects an ephemeral test port.
 
 The standalone Host can connect to an existing HTTPS/WSS Runtime through the
 deployment's Basic-authenticated Worker entrance. It starts only Workers, not a
-Server. Add an explicit private file reference to the same JSON:
+Server. Outside a checkout, the published
+[Worker Simulator kit](../distribution/worker-simulator/README.md) provides this installed
+entry, a remote Host template and a finite-round acceptance command. Add an explicit private
+file reference to the same JSON:
 
 ```json
 {

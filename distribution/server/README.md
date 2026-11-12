@@ -4,10 +4,11 @@ This module owns Runtime and Scenario Preview ZIP delivery, frontend and
 documentation-site builds, diagnostic dictionaries, Preview process assembly
 and archive verification.
 
-The current [4.0 release contract](RELEASE-4.0.md) describes that version's
-breaking access-key API identity, upgrade steps and exact-artifact release acceptance.
-The [3.2](RELEASE-3.2.md) and [3.1](RELEASE-3.1.md) contracts retain earlier
-versions' facts; each release document applies to its named version.
+The current [4.1 release contract](RELEASE-4.1.md) describes that version's new
+[Worker Simulator kit](../worker-simulator/README.md) asset, upgrade steps and exact-artifact
+release acceptance. The [4.0](RELEASE-4.0.md), [3.2](RELEASE-3.2.md) and [3.1](RELEASE-3.1.md)
+contracts retain earlier versions' facts; each release document applies to its named version.
+A Release publishes three components: the Runtime, the Worker SDK and the Worker Simulator kit.
 Use the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)
 for GCP's role, deployment cadence and environment handoff rather than inferring
 a permanent compatibility obligation from one release's upgrade procedure.
@@ -163,7 +164,7 @@ against source and extracted Runtime, identified explicitly as a test capability
 
 For an already running consumer, building this repository does not replace its
 locked installation. A local candidate ZIP is acceptance output, not a published
-Release. Formal delivery separately follows the [4.0 release contract](RELEASE-4.0.md):
+Release. Formal delivery separately follows the [4.1 release contract](RELEASE-4.1.md):
 publish immutable artifacts, update the consumer's exact version/commit/checksums,
 resolve into a separate installation, and switch deliberately. The task-directory
 storage change after 1.0.0 requires a fresh Redis scope; do not reuse old descriptors
@@ -271,11 +272,12 @@ slice supports an external Java Host; Android SDK credential transport is tested
 but Android App provisioning is a separate slice. Secrets remain outside archives.
 
 The existing Runtime Distribution Linux lane runs the actual Nginx/TLS contract
-proof and a packaged Runtime with a same-commit standalone Java Simulator. Use
-`--staging-ingress --simulator-home <installDist>` on the existing proof runner;
+proof and a packaged Runtime with the same-build Worker Simulator kit as its external Java
+Host; its finite rounds run the kit's shipped round command as a Project-scoped operator. Use
+`--staging-ingress --simulator-home <extracted kit root>` on the existing proof runner;
 Nginx, OpenSSL and htpasswd must be installed. The normal Windows Runtime proof
 still checks its original boundaries; it does not pretend to prove Linux ingress.
-The [4.0 release contract](RELEASE-4.0.md) records its artifact verification;
+The [4.1 release contract](RELEASE-4.1.md) records its artifact verification;
 the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)
 owns the distinction between CI evidence, a published Release and actual GCP
 deployment acceptance. The gateway example does not decide when to deploy.

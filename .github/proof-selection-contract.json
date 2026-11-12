@@ -17,6 +17,16 @@
       "reason": "A finite HTTP witness checks the supplied docs pages and assets in Runtime and Preview delivery."
     },
     {
+      "path": "distribution/acceptance/finite_round.py",
+      "lanes": ["runtime_distribution"],
+      "reason": "The shipped finite-round command is proven from the extracted kit through the packaged gateway."
+    },
+    {
+      "path": "distribution/worker-simulator/build.gradle",
+      "lanes": ["runtime_distribution"],
+      "reason": "Kit packaging is built once as a candidate archive and consumed as the external Java Host."
+    },
+    {
       "path": ".github/scripts/test_run_runtime_distribution_proof.py",
       "lanes": ["runtime_distribution"],
       "reason": "Runtime and documentation HTTP proof regression tests belong to Distribution."

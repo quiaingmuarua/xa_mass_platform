@@ -592,7 +592,7 @@ def main() -> int:
     parser.add_argument("--staging-ingress", action="store_true",
                         help="Also prove the supplied Runtime through real Nginx/TLS on Linux")
     parser.add_argument("--simulator-home", type=Path,
-                        help="Same-commit Simulator installDist for the external Host witness")
+                        help="Extracted same-build Worker Simulator kit root for the external Host and round witness")
     arguments = parser.parse_args()
     if arguments.staging_ingress and (os.name == "nt" or arguments.simulator_home is None):
         parser.error("--staging-ingress requires Linux, Nginx and --simulator-home")

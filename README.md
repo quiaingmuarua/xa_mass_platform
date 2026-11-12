@@ -81,7 +81,7 @@ status; source pointers alone do not establish a passing proof.
 | [Server Boot](server_boot_jvm/README.md) | Sole production main, Boot JAR, production YAML and explicit profiles |
 | [Transport](transport/README.md) | Adapter routes/delivery; Worker-local Event Handlers and execution evidence; Java and Android SDKs |
 | [Frontend](frontend/README.md) | Runtime observation, scenario pages, finite Task files, Direct Debug and public Mock demo |
-| Distribution | [Server Runtime and Preview](distribution/server/README.md), [Worker SDK](distribution/worker-sdk/README.md): packaging existing owners |
+| Distribution | [Server Runtime and Preview](distribution/server/README.md), [Worker SDK](distribution/worker-sdk/README.md), [Worker Simulator kit](distribution/worker-simulator/README.md): packaging existing owners |
 
 Matching selects bounded candidate evidence; Kernel decides whether the current
 Worker and Item can be assigned. Server routes an
@@ -142,7 +142,8 @@ scheduling and delivery truth.
 Use [Boot](server_boot_jvm/README.md) for main, profiles and page/Scenario assembly;
 [Server Distribution](distribution/server/README.md) for artifacts, prerequisites
 and delivery commands; and [Preview](distribution/server/PREVIEW.md) for the
-Server/Simulator launcher. Worker SDKs are [published separately](distribution/worker-sdk/README.md).
+Server/Simulator launcher. Worker SDKs are [published separately](distribution/worker-sdk/README.md), and
+external users run the published [Worker Simulator kit](distribution/worker-simulator/README.md).
 Server never starts Worker processes. AgentForge consumes release artifacts and
 public APIs. Within one Redis scope, only one Server may enable Pacer; the
 [Pacer lifecycle contract](kernel_pacer_jvm/doc/application-assembly.md#lifecycle) defines this boundary.
