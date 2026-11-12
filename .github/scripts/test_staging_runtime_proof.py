@@ -55,6 +55,8 @@ class PackagedIngressOracleTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             users = json.loads(proof._users_file(Path(directory)).read_text(encoding="utf-8"))["users"]
         external = next(user for user in users if user["userId"] == proof.EXTERNAL_USER)
+        # The Server's TaskUserId format; an invalid ID makes the packaged Runtime refuse the users file.
+        self.assertRegex(external["userId"], r"^[1-9a-z][0-9a-z]{3,8}$")
         self.assertEqual((external["role"], external["projectIds"]), ("operator", ["default"]))
         self.assertEqual(external["accessKeySha256"], hashlib.sha256(proof.EXTERNAL_KEY.encode()).hexdigest())
         self.assertNotEqual(proof.EXTERNAL_KEY, proof.ADMIN_KEY)

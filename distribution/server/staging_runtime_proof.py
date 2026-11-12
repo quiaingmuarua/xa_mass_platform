@@ -35,7 +35,8 @@ from integrations.worker_proof_support.processes import start_process, stop_proc
 # development key of the same user must be rejected through the gateway.
 ADMIN_KEY = "xak_" + secrets.token_urlsafe(32)
 # Kit rounds run as a separate operator granted only the default Project, never as the administrator.
-EXTERNAL_USER = "external-user"
+# Server user IDs are 4..9 lowercase alphanumerics (TaskUserId).
+EXTERNAL_USER = "external"
 EXTERNAL_KEY = "xak_" + secrets.token_urlsafe(32)
 PUBLIC_DEVELOPMENT_KEY = "xak_dev_1000"
 GROUP_A = "ingress-java-a"
