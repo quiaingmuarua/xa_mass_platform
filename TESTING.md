@@ -211,6 +211,7 @@ these correctness claims and add no heavy ordinary CI lane.
 | Worker Dynamic Matching | `python integrations/worker-dynamic-matching/run_worker_dynamic_matching.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-connected 14800 --minimum-retained-connected 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
+| External Release load | Published kit `acceptance/run_loaded.py`; explicitly selected manual `external-release` workflow mode | External Linux, Java 21, standard-library Python 3.11+; operator/Worker credentials, no SSH or Redis access |
 | [Worker Call Performance](integrations/worker-call-performance/README.md) | Nightly: parallel `rate-500`, `rate-1000`, `rate-2000` and `saturation` jobs with three repetitions, merged, recorded on `perf-lane-data` and compared with the last seven records. Manual: the same with optional JFR diagnostics, or per-case A/B with `baseline_ref` and `lane_case` | Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21 |
 | Android Host | Platform Android library/proof-tool contracts; no consumer artifact prerequisite | Robolectric, MockWebServer, JDK HttpServer |
 | Candidate Distribution Archives | One clean-commit Runtime/SDK/Simulator kit set, archive checks and hashes | Java, Android SDK, Node |
@@ -269,6 +270,48 @@ one-shot command. Proof CI runs `state` and `task-fault` as two independent
 matrix jobs, each with its own Redis service, scope, evidence artifact and
 summary; the matrix aggregate remains the one selected Proof Gate result.
 
+## External Release load
+
+The existing `worker-loaded-recovery.yml` keeps `local-proof` as its default and
+scheduled mode, with the original local Server faults, workload sizes and resource
+assertions. Its `external-release` mode is manual-only on `main` and uses the
+protected `release-preview-load` Environment. It is outside the ordinary PR gate;
+source changes do not require a live GCP connection or this campaign.
+
+The Environment supplies these explicit coordinates:
+
+| Kind | Names |
+| --- | --- |
+| Variables | `RUNTIME_API_URL`, `WORKER_RUNTIME_URL`, `PROJECT_ID`, `WORKER_GROUP_ID`, `ENDPOINT_MANAGER_ID`, `INSTALLED_RELEASE_TAG`, `INSTALLED_RELEASE_COMMIT` |
+| Secrets | `RUNTIME_ACCESS_KEY` (Project-scoped operator), `WORKER_GATEWAY_KEY_ID`, `WORKER_GATEWAY_SECRET` |
+
+The environment operator verifies the actually installed version before setting
+these coordinates. The workflow verifies the published immutable Release, commit,
+asset digests and schema-2 Simulator kit, then invokes its shipped command. It
+does not receive an administrator key or SSH credential, build source, start a
+Server, stop the remote Runtime or access Redis. The target Group has one active
+consumer owner; independent local inventories do not isolate same-Group identities.
+
+The [Integration contract](integrations/worker-loaded-recovery/README.md#external-release-capacity)
+fixes 15,000 prepared / 10,000 retained Workers, 14,800 / 9,900 connection minima
+and ten Tasks of 5,000 Items at each scale. Both 50,000-Item results are measured
+and verified separately. Changes to scale or timings require `--diagnostic` and
+produce diagnostic-only evidence. The packaged Runtime Distribution fixture uses
+this reduced mode through real local Redis/TLS; it cannot prove public 15k capacity.
+The original `finite_round.py` remains a separate small 1..100-Item command.
+
+The workflow uploads only consumption provenance, the public summary, periodic
+consumer process samples and Java summary/timeline/receipt evidence. It excludes
+private key files, child logs and inventory. Consumer cleanup stops only its own
+Host/Harness and removes temporary credential copies; remote Tasks follow normal
+retention. Failed or unconfirmed writes are not replayed. A separately authorized
+host resource witness is recorded by the environment operator, not by giving the
+consumer SSH. The [4.2 Release contract](distribution/server/RELEASE-4.2.md) owns the
+resource budget and host acceptance steps; no public pass is implied by this entry.
+Normal Harness failures make one bounded close attempt only for confirmed-created,
+nonterminal Tasks. Forced termination can bypass that path; remote cleanup is then
+unconfirmed even if owned local processes stopped, with receipts retained for follow-up.
+
 ## Proof Quality
 
 The Runtime Distribution Linux job includes the optional staging ingress proof:
@@ -278,8 +321,9 @@ supplied Runtime ZIP with the extracted same-build Worker Simulator kit as its e
 Java Host through that gateway, and each finite round runs the kit's shipped round command
 as a Project-scoped operator. TLS and hostname validation must remain enabled. This proves
 authenticated API admission and gateway access, not individual Worker ownership; it adds
-no performance workload and needs no GCP connection. GCP consumes published artifacts
-and runs small acceptance only within an explicit environment task.
+no performance workload and needs no GCP connection. GCP consumes published artifacts;
+this lane's small deployment witness and the separately authorized external-load
+campaign have distinct evidence and scopes.
 
 Android App static access retains the existing Android Host/consumer/
 Emulator lane selection; no new CI phase or workload is implied by a public
@@ -362,9 +406,11 @@ and Convergence Health own independent Server/Host processes. Use their linked
 mutation order, workload, private evidence and observation deadlines. A successful
 Harness does not replace a lane's independent runner audit. Loaded Recovery keeps
 its separate nightly/manual workflow outside the pull-request Proof Gate.
-Its idle checkpoints gate connections and retained scheduling identities, with
+The default local mode's idle checkpoints gate connections and retained scheduling identities, with
 HOT/RECOVERY counts retained as diagnostics. Actual recovery is proved by the
 unchanged four finite workloads and exact terminal exports, without idle RPC roots.
+Its explicitly selected external mode has two capacity workloads and no Server
+faults; consumer-only process sampling does not establish remote Server resources.
 
 Android Host owns platform deterministic tests and library assembly. Candidate
 Distribution Archives produces one verified Runtime/SDK pair plus the Worker Simulator kit when Runtime Distribution,

@@ -102,7 +102,8 @@ final class LoadedRecoveryWorkload {
             int ordinal
     ) {
         String label = String.format("task-%02d", ordinal);
-        String taskId = api.createTask(options.workerGroupId());
+        String taskId = api.createTask("scenario-workers", options.workerGroupId(),
+                java.util.UUID.randomUUID().toString());
         List<TaskItem> items = new ArrayList<>();
         List<String> messageIds = new ArrayList<>();
         for (int index = 0;

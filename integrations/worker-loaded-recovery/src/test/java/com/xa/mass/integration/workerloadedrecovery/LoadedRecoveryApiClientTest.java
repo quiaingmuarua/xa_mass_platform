@@ -51,7 +51,7 @@ class LoadedRecoveryApiClientTest {
             requests.add(Jsons.parseArray(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)));
             respond(exchange, 200, appendResponse.get());
         });
-        assertThat(client.createTask("group-a")).isEqualTo("task-1");
+        assertThat(client.createTask("scenario-workers", "group-a", "request-1")).isEqualTo("task-1");
         client.appendItems("task-1", List.of(new LoadedRecoveryApiClient.TaskItem("message-1", "event", Map.of())));
         assertThat(((Map<?, ?>) requests.get(0)).get("refill"))
                 .isEqualTo(List.of(Map.of("poolName", "any", "target", Map.of(), "count", 1000L)));
@@ -118,6 +118,24 @@ class LoadedRecoveryApiClientTest {
                 .containsExactly(Map.entry("worker-a", "connected"));
         assertThat(client.observeScheduling("group-a", List.of("worker-a")))
                 .containsExactly(Map.entry("worker-a", "held-hot"));
+    }
+
+    @Test
+    void neverFollowsCredentialedRedirectsEvenToAnotherPathOnTheSameOrigin() {
+        var leaked = new java.util.concurrent.atomic.AtomicBoolean();
+        server.createContext("/api/v1/tasks", exchange -> {
+            exchange.getResponseHeaders().set("Location", "/redirect-target");
+            exchange.sendResponseHeaders(307, -1);
+            exchange.close();
+        });
+        server.createContext("/redirect-target", exchange -> {
+            leaked.set(true);
+            respond(exchange, 200, Map.of("taskId", "wrong-task"));
+        });
+        assertThatThrownBy(() -> client.createTask("explicit-project", "group-a", "request-redirect"))
+                .isInstanceOf(LoadedRecoveryApiClient.HttpStatusFailure.class)
+                .hasMessageContaining("307");
+        assertThat(leaked).isFalse();
     }
 
     @Test

@@ -19,9 +19,13 @@ def gitCommit = providers.exec {
 }.standardOutput.asText.map { it.trim() }
 
 evaluationDependsOn(':worker_simulator_jvm')
+evaluationDependsOn(':integrations:worker-loaded-recovery')
 def simulatorInstall = project(':worker_simulator_jvm').tasks.named('installDist')
 def simulatorInstallDirectory = project(':worker_simulator_jvm').layout.buildDirectory
         .dir('install/xa-mass-worker-simulator')
+def loadedInstall = project(':integrations:worker-loaded-recovery').tasks.named('installDist')
+def loadedInstallDirectory = project(':integrations:worker-loaded-recovery').layout.buildDirectory
+        .dir('install/xa-mass-worker-loaded-recovery')
 
 tasks.register('validateWorkerSimulatorVersion') {
     group = 'verification'
@@ -56,12 +60,13 @@ tasks.register('generateWorkerSimulatorManifest') {
         output.parentFile.mkdirs()
         output.setText(
                 JsonOutput.prettyPrint(JsonOutput.toJson([
-                        schemaVersion : 1,
+                        schemaVersion : 2,
                         version       : kitVersion,
                         gitCommit     : resolvedGitCommit,
                         javaVersion   : 21,
                         simulatorEntry: 'bin/xa-mass-worker-simulator',
-                        roundEntry    : 'acceptance/finite_round.py'
+                        roundEntry    : 'acceptance/finite_round.py',
+                        loadedEntry   : 'acceptance/run_loaded.py'
                 ])) + System.lineSeparator(),
                 'UTF-8'
         )
@@ -70,13 +75,21 @@ tasks.register('generateWorkerSimulatorManifest') {
 
 tasks.register('stageWorkerSimulator', Sync) {
     group = 'distribution'
-    description = 'Stages the installed Simulator with the finite-round acceptance command.'
-    dependsOn tasks.named('generateWorkerSimulatorManifest'), simulatorInstall
+    description = 'Stages the Simulator and the compiled external capacity consumer.'
+    dependsOn tasks.named('generateWorkerSimulatorManifest'), simulatorInstall, loadedInstall
     into stagedDirectory
     from(simulatorInstallDirectory)
     from(rootProject.file('distribution/acceptance/finite_round.py')) {
         into 'acceptance'
     }
+    from(rootProject.file('integrations/worker-loaded-recovery/run_external_loaded.py')) {
+        into 'acceptance'
+        rename { 'run_loaded.py' }
+    }
+    from(loadedInstallDirectory) { into 'acceptance/loaded' }
+    from(rootProject.file('integrations/worker_proof_support/processes.py')) { into 'acceptance/support' }
+    from(rootProject.file('integrations/worker_proof_support/__init__.py')) { into 'acceptance/support' }
+    from(rootProject.file('integrations/worker_proof_support/process_sampling.py')) { into 'acceptance/support' }
     from('src/main/dist')
     from(generatedDirectory.map { it.file('manifest.json') })
 }
@@ -94,6 +107,9 @@ tasks.register('distZip', Zip) {
         from(stagedDirectory)
         // The archive, not the staging filesystem, carries the POSIX mode on every build host.
         filesMatching('**/bin/xa-mass-worker-simulator') {
+            permissions { unix('rwxr-xr-x') }
+        }
+        filesMatching('**/bin/xa-mass-worker-loaded-recovery') {
             permissions { unix('rwxr-xr-x') }
         }
     }

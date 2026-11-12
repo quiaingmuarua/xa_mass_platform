@@ -102,6 +102,8 @@ GCP 只承担固定版本的长期验收：日常 PR 与问题修复在本地和
 结果核对；其余只覆盖本次 Release 改变的功能，Console 行为变化时才执行浏览器流程。
 不在 GCP 重复完整正确性、故障或性能 workload。分别记录版本与配置、实际操作、结果和
 未覆盖的边界；浏览器操作未完成时保留待验收状态，不以 HTTP 成功替代。
+若某个 Release 明确安排外部容量验收，按该版本说明执行独立 campaign，并记录其规模与
+边界；这不会把日常 PR 或每次部署的默认小规模检查升级成负载实验。
 证据区分见[验证指南](../verification.md#release-preview-的现场证据)。
 
 ### 新 Agent 从哪里开始
@@ -182,6 +184,34 @@ Project 与密钥签发／清除都在控制台或 API 完成；Server 运行时
 Worker 凭据和独立 Group，按自己的节奏低频跑验收轮次，不参与编码；发现问题时提交 GitHub
 issue（Preview finding 表单），附上该轮 JSON。仓库和主机都不为它保存调度器，它的 Group 与
 验收 Group 分开，避免执行验收任务。
+
+### 显式外部容量验收
+
+需要衡量已发布 Runtime 的外部负载时，使用同 Release 的 Simulator kit 中
+`acceptance/run_loaded.py`。它在外部 Linux 主机启动自己的 Java Host 和编译好的
+Harness，不在 GCP 构建源码或运行 Worker Host，也不注入 Server 重启／故障。
+固定完整规模为 15,000 Worker、保留 10,000 Worker，各运行十个 Task、每 Task 5,000 Item；
+分别记录两阶段结果，不能把缩小的 `--diagnostic` fixture 报告为完整规模通过。
+
+这个入口使用明确的管理 API／Worker HTTPS 地址、Project、Group、Endpoint Manager、
+operator 访问密钥文件、Worker 凭据文件和输出目录。它没有 SSH、管理员密钥或 Redis
+清理权限。Group 的 inventory 坐标必须由一个 Host 独占，另一目录不会隔离相同身份。
+原来的 `finite_round.py` 仍只处理每轮 1～100 Item，低频 soak 与本次容量 campaign 分开。
+
+既有 loaded-recovery workflow 默认及定时运行仍为 `local-proof`，保留原本地故障与断言；
+`external-release` 只能从 `main` 手工触发，使用受保护的 `release-preview-load` Environment。
+其坐标、密钥与制品核验见 [TESTING](../../../TESTING.md#external-release-load)，
+完整命令与结果口径见[外部消费契约](../../../integrations/worker-loaded-recovery/README.md#external-release-capacity)。
+
+初始预算、主机配置及运维记录按 [4.2 Release 说明](../../../distribution/server/RELEASE-4.2.md)
+处理；消费者自身的进程采样不能替代 GCP 的 Server／Redis／Nginx 资源观测。结果速率包含
+公网、Worker 执行和观测延迟，不代表 Server 极限 TPS 或全部在线 Worker 都执行过任务。
+失败和未确认保留原回执，不重提任务、不调小规模掩盖失败。完成后停止本次消费者进程并
+删除临时凭据副本，长期配置、业务数据和正常归档仍按环境约定保留。这里说明执行方法，
+不宣称当前 GCP 已通过该规模验收，也不增加普通开发任务的 GCP 依赖。
+
+### Android 公网连接
+
 Android SDK 支持同样的凭据传递；当前 App 使用
 [静态构建、安装和私有凭据注入](../../../xa-android/README.md#public-runtime-connection)，
 不通过配置页面更改连接。公网数据链路不依赖 SSH 隧道或 ADB reverse。

@@ -161,12 +161,12 @@ final class LoadedRecoveryApiClient {
         return Collections.unmodifiableMap(scoreBands);
     }
 
-    String createTask(String workerGroupId) {
+    String createTask(String projectId, String workerGroupId, String requestId) {
         LoadedRecoveryHttpClient.JsonResponse response = runtime.json(
                 "POST",
                 "/api/v1/tasks",
                 Map.of(
-                        "requestId", java.util.UUID.randomUUID().toString(), "projectId", "scenario-workers", "workerGroupId", workerGroupId,
+                        "requestId", requestId, "projectId", projectId, "workerGroupId", workerGroupId,
                         "refill", List.of(Map.of("poolName", "any", "target", Map.of(), "count", 1000)),
                         "priority", 50,
                         "maxRetryTimes", 3
@@ -276,6 +276,10 @@ final class LoadedRecoveryApiClient {
     }
 
     TaskExport exportTask(String taskId) {
+        return exportTask(taskId, (messageId, payload) -> { });
+    }
+
+    TaskExport exportTask(String taskId, java.util.function.BiConsumer<String, String> inspect) {
         LoadedRecoveryHttpClient.BinaryResponse response = runtime.binary(
                 "POST",
                 "/api/v1/tasks/" + segment(taskId) + "/results:export",
@@ -300,10 +304,11 @@ final class LoadedRecoveryApiClient {
             }
             Map<String, Object> result = Jsons.parseObject(line);
             String messageId = LoadedRecoveryJson.string(result, "messageId");
-            LoadedRecoveryJson.string(result, "opaqueResultPayload");
+            String payload = LoadedRecoveryJson.string(result, "opaqueResultPayload");
             if (!messageIds.add(messageId)) {
                 throw LoadedRecoveryJson.invalid("Task export contains duplicate messageId");
             }
+            inspect.accept(messageId, payload);
         }
         return new TaskExport(true, Set.copyOf(messageIds));
     }
@@ -353,9 +358,7 @@ final class LoadedRecoveryApiClient {
             String operation
     ) {
         if (actual != expected) {
-            throw new IllegalStateException(
-                    "Runtime API " + operation + " returned HTTP " + actual
-            );
+            throw new HttpStatusFailure(operation, actual);
         }
     }
 
@@ -374,6 +377,79 @@ final class LoadedRecoveryApiClient {
             String runtimeState,
             String workerId
     ) {
+    }
+
+    void startWorker(String workerGroupId, String labWorkerKey) {
+        var response = lab.json("POST", "/lab/v1/workers/" + segment(workerGroupId)
+                + "/" + segment(labWorkerKey) + ":start", null);
+        requireStatus(response.statusCode(), 202, "start Lab Worker");
+    }
+
+    Map<String, Object> groupBindings(String workerGroupId) {
+        var response = runtime.json("GET", "/api/v1/runtime-view/worker-groups/"
+                + segment(workerGroupId) + "/bindings", null);
+        requireStatus(response.statusCode(), 200, "read Group bindings");
+        return response.body();
+    }
+
+    Map<String, Object> task(String projectId, String taskId) {
+        var response = runtime.json("GET", "/api/v1/projects/" + segment(projectId)
+                + "/tasks/" + segment(taskId), null);
+        requireStatus(response.statusCode(), 200, "read Project Task");
+        if (!taskId.equals(response.body().get("taskId"))) {
+            throw LoadedRecoveryJson.invalid("Project Task identity changed");
+        }
+        return response.body();
+    }
+
+    Map<String, Object> taskStats(String projectId, List<String> taskIds) {
+        requireIds(taskIds, 100);
+        var response = runtime.json("POST", "/api/v1/projects/" + segment(projectId)
+                + "/tasks:stats", taskIds);
+        requireStatus(response.statusCode(), 200, "read Task statistics");
+        if (!response.body().keySet().equals(new LinkedHashSet<>(taskIds))) {
+            throw LoadedRecoveryJson.invalid("Task statistics identities changed");
+        }
+        return response.body();
+    }
+
+    Map<String, Object> itemStates(String taskId, List<String> messageIds) {
+        requireIds(messageIds, 100);
+        var response = runtime.json("POST", "/api/v1/tasks/" + segment(taskId)
+                + "/items:states", messageIds);
+        requireStatus(response.statusCode(), 200, "read Item states");
+        if (!response.body().keySet().equals(new LinkedHashSet<>(messageIds))) {
+            throw LoadedRecoveryJson.invalid("Item state identities changed");
+        }
+        return response.body();
+    }
+
+    void closeTask(String taskId) {
+        var response = runtime.json("POST", "/api/v1/tasks/" + segment(taskId) + "/close", null);
+        requireStatus(response.statusCode(), 200, "close Task");
+        String status = LoadedRecoveryJson.string(response.body(), "status");
+        if (!Set.of("applied", "unchanged").contains(status)) {
+            throw LoadedRecoveryJson.invalid("Task close status is invalid");
+        }
+    }
+
+    private static void requireIds(List<String> ids, int maximum) {
+        if (ids == null || ids.isEmpty() || ids.size() > maximum
+                || new LinkedHashSet<>(ids).size() != ids.size()
+                || ids.stream().anyMatch(id -> id == null || id.isBlank())) {
+            throw new IllegalArgumentException("request identities are invalid");
+        }
+    }
+
+    static final class HttpStatusFailure extends IllegalStateException {
+        private final int status;
+
+        HttpStatusFailure(String operation, int status) {
+            super("Runtime API " + operation + " returned HTTP " + status);
+            this.status = status;
+        }
+
+        int status() { return status; }
     }
 
     record TaskItem(

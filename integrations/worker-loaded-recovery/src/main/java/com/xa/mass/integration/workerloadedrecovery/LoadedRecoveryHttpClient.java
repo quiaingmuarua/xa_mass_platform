@@ -26,13 +26,15 @@ final class LoadedRecoveryHttpClient {
         this.timeout = timeout;
         client = HttpClient.newBuilder()
                 .connectTimeout(timeout)
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .version(HttpClient.Version.HTTP_1_1)
                 .build();
     }
 
     JsonResponse json(String method, String path, Object body) {
         BinaryResponse response = binary(method, path, body);
-        Map<String, Object> decoded = response.body().length == 0
+        Map<String, Object> decoded = response.statusCode() < 200 || response.statusCode() >= 300
+                || response.body().length == 0
                 ? Map.of()
                 : Jsons.parseObject(new String(
                         response.body(),
@@ -65,9 +67,9 @@ final class LoadedRecoveryHttpClient {
             );
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("HTTP request was interrupted", error);
+            throw new TransportFailure(error);
         } catch (IOException | IllegalArgumentException error) {
-            throw new IllegalStateException("HTTP request failed", error);
+            throw new TransportFailure(error);
         }
     }
 
@@ -88,6 +90,7 @@ final class LoadedRecoveryHttpClient {
                 || value.getHost() == null
                 || value.getQuery() != null
                 || value.getFragment() != null
+                || value.getUserInfo() != null
                 || (!("http".equalsIgnoreCase(value.getScheme()))
                 && !("https".equalsIgnoreCase(value.getScheme())))) {
             throw new IllegalArgumentException(
@@ -98,6 +101,10 @@ final class LoadedRecoveryHttpClient {
     }
 
     record JsonResponse(int statusCode, Map<String, Object> body) {
+    }
+
+    static final class TransportFailure extends IllegalStateException {
+        TransportFailure(Throwable cause) { super("HTTP response was not confirmed", cause); }
     }
 
     record BinaryResponse(int statusCode, byte[] body) {

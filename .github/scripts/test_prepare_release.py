@@ -118,6 +118,9 @@ class ReleasePromotionTest(unittest.TestCase):
         self.assertEqual(("server-runtime", "worker-sdk", "worker-simulator"), release.COMPONENTS)
         self._assert_draft_creation("4.1.0")
 
+    def test_external_capacity_minor_uses_its_own_contract_and_three_components(self):
+        self._assert_draft_creation("4.2.0")
+
     def test_missing_minor_contract_fails_before_github_without_major_fallback(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -138,7 +141,7 @@ class ReleasePromotionTest(unittest.TestCase):
                 name = f"xa-mass-{component}-{version}.zip"
                 path = root / name
                 manifest = dict(version=version, gitCommit=self.commit,
-                                schemaVersion=6 if component == "server-runtime" else 1)
+                                schemaVersion={"server-runtime": 6, "worker-sdk": 1, "worker-simulator": 2}[component])
                 with zipfile.ZipFile(path, "w") as archive:
                     archive.writestr(name[:-4] + "/manifest.json", json.dumps(manifest))
                 fixtures[component] = path

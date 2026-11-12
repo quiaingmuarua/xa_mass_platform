@@ -1,9 +1,17 @@
 # Worker Loaded Capacity + Recovery Stability
 
-`integrations:worker-loaded-recovery` is the nightly/manual proof of loaded
-capacity, repeated recovery and process-resource stability for one Java 21
-Worker Simulator process, one `JavaWorkerManager`, one WorkerGroup and one
-WebSocket Adapter Endpoint.
+`integrations:worker-loaded-recovery` owns the local nightly/manual recovery proof
+and the published kit's external capacity consumer. Both use one Java 21 Worker
+Simulator process, one `JavaWorkerManager`, one WorkerGroup and one WebSocket
+Adapter Endpoint, but their evidence and process authority are separate:
+
+| Mode | Runtime and lifecycle | Work and claim |
+| --- | --- | --- |
+| `local-proof` | Runner owns Redis, Server and Host, including planned Server faults | Existing four 50,000-Item recovery stages and process stability |
+| `external-release` | Runner owns only its local Host and Harness; connects to an explicitly supplied published Runtime | Separate 15k and retained-10k connection/work observations, 50,000 Items at each scale; no Server recovery claim |
+
+The following local proof remains unchanged. The [external consumer](#external-release-capacity)
+is a distinct manual deployment acceptance, not another ordinary PR requirement.
 
 ```text
 15,000 prepared Worker identities
@@ -178,6 +186,122 @@ The same command runs in `.github/workflows/worker-loaded-recovery.yml`; this
 high-cost proof is intentionally outside the ordinary pull-request gate. It is
 expected to finish in roughly 15-30 minutes and exits as soon as its four
 stages pass; the 60-minute Workflow timeout is only a failure ceiling.
+
+## External Release capacity
+
+The same Integration supplies the compiled `WorkerExternalCapacityMain` Harness
+and `run_external_loaded.py`, shipped as `acceptance/run_loaded.py` in the
+[Worker Simulator kit](../../distribution/worker-simulator/README.md). Kit manifest
+schema 2 records this third entry. Consume the published kit from the same Release
+as the target Runtime; do not run Gradle, build source or use a checkout fallback
+on the external consumer. It requires Linux, Java 21 and standard-library Python
+3.11+, `nofile >= 65536` and at least 45,000 local ephemeral ports.
+
+```sh
+python3 acceptance/run_loaded.py \
+  --runtime-url https://console.example.com \
+  --worker-runtime-url https://workers.example.com \
+  --project your-project --group your-java-workers \
+  --endpoint-manager runtime-websocket \
+  --access-key-file /private/operator-access-key.txt \
+  --gateway-credential-file /private/worker-access.json \
+  --output-dir /data/loaded-run-001
+```
+
+Both URLs are explicit HTTPS origins. The caller supplies a Project-granted
+operator access key and a Worker gateway credential, never an administrator key
+or SSH access. The target operator prepares the Group, MD5 event, Any Pool/query
+and gateway admission before the run. The consumer neither registers resources
+nor updates Server configuration. Before starting Workers, it point-reads the
+requested Group's registered MD5 event, `any` / `worker.any` relationship and
+Project association; it does not discover other Groups. Give its Group/inventory coordinates one active
+Host owner; a different local directory is not a new identity namespace. This is
+an operator handoff precondition, not an exclusive-ownership claim established by
+the consumer's local inventory or a bounded Worker preview.
+
+The full run fixes the workload and observation defaults:
+
+1. Prepare 15,000 identities and establish at least 14,800 stable connections.
+2. Create ten fully populated finite Tasks with 5,000 Items each, approve them,
+   observe completion and verify their exact successful Results and full exports.
+3. After this workload drains, stop the final 5,000 local runs once. Retain the
+   same Host process, all prepared identities and the exact first 10,000 active set.
+4. Establish at least 9,900 retained connections and run another ten Tasks of
+   5,000 Items. Record the 15k and 10k measurements separately.
+
+Each pre/post-work stable gate requires three qualifying scans and 60 seconds
+without a violating scan. Missing scheduling identities or connected stopped
+Workers fail qualification; the active connection minimum also applies to the
+in-work scans. Requests have at most eight in flight, and individual Worker
+starts are spaced at least 20 ms apart. Work retains the 120-second first-success,
+90-second no-progress and 900-second terminal deadlines.
+
+Both scales use `any / {} / 1000` shared supply and `worker.any`, not targeted
+Worker selection. Results are checked against independently calculated MD5
+answers as well as message identities and terminal Item/Task states. Idle
+scheduling polarity remains diagnostic; no auxiliary Task or direct Score update
+manufactures HOT evidence. No Server stop/restart, Redis access/cleanup or SSH is
+available in this entry. The original local four-stage proof is not replaced by
+these two external workloads.
+
+Each successful case reports `elapsedMillis` from immediately before the first
+approval until all ten Tasks are observed terminal, and `observedItemsPerSecond`
+as independently verified Item count divided by that interval. Preloading, final
+Item checks and complete export verification are outside the interval. These
+measurements include approval, public network, Worker execution and observation
+lag. They do not measure Server maximum TPS, Handler concurrency, per-Worker work
+distribution or the claim that every connected Worker executed. A failed or
+unconfirmed operation retains its known identities and receipts; it is not
+automatically replayed. On failure the Harness point-checks only Tasks whose
+creation it confirmed, and makes one close attempt for each still-nonterminal
+Task, recording confirmation or uncertainty. It neither discovers other Tasks
+nor deletes data or retries an uncertain close. Do not reduce the workload to turn a
+failed full run into a capacity success.
+
+`preloadMillis`, `verificationMillis` and its `exportMillis` subset remain separate
+from the completion interval. Per-Task `terminalObservedMillis` uses the same
+first-approval origin, with final counts and independently verified totals;
+`phaseDurationsMillis` describes whole-run phase costs. Fixed inputs include ASCII
+and Unicode. These fields explain where time was observed rather than attributing
+all delay to the Runtime.
+
+Cancellation, a sampler failure or the outer timeout can terminate the Harness
+before its normal failure cleanup runs. Stopping the local processes does not
+prove remote Tasks were closed. The wrapper records remote cleanup as unconfirmed
+and retains pre-send receipts and confirmed Task identities for explicit operator
+follow-up; it does not add a competing shutdown-time mutation path.
+
+`--diagnostic` permits reduced fixture counts/timings and an explicitly trusted
+test CA. Its successful result is `diagnostic-passed`, with claim
+`diagnostic-only`, never the 15k/10k capacity claim. Runtime Distribution runs
+this reduced entry against its extracted local Runtime, real Redis and TLS
+gateway to prove the shipped path. Normal HTTPS/WSS certificate and hostname
+verification remain enabled in both modes.
+
+Python samples only the consumer's Host and Harness through `/proc`, using the
+existing fail-closed sampler. It stops its own processes and removes its temporary
+credential copies; remote Tasks remain subject to normal retention. The output
+directory must be new and outside the immutable kit. Public artifacts are
+`summary.json`, `process-resources.jsonl`, and Java `evidence/summary.json`,
+`evidence/timeline.jsonl` and `evidence/receipts.jsonl`. Child logs, inventory,
+private inputs and `evidence/private/` identities are not public artifacts. Server/Redis/Nginx resource
+observations, if requested, belong to a separate environment-operator witness;
+the consumer cannot infer them from its own process samples.
+
+### Workflow selection and deployment boundary
+
+The existing `worker-loaded-recovery.yml` defaults to `local-proof`, including
+scheduled runs. `external-release` is available only through a manual dispatch
+on `main`, using the protected `release-preview-load` Environment. It downloads
+and verifies the installed Release's immutable kit; it does not build the kit or
+receive Server administrator credentials. Environment coordinates and private
+inputs are documented in [TESTING](../../TESTING.md#external-release-load).
+
+The version-scoped [4.2 Release contract](../../distribution/server/RELEASE-4.2.md)
+owns the target resource budget, installed-version checks and host operation
+record. Ordinary code changes continue to use local/CI proofs without GCP access.
+An implemented consumer or passing reduced fixture is not evidence that a public
+15k/10k campaign has run; only that campaign's versioned result establishes it.
 
 ## Project fixture
 

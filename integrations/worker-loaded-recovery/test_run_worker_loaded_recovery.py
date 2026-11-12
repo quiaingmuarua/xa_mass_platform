@@ -18,6 +18,7 @@ SPEC = importlib.util.spec_from_file_location("worker_loaded_recovery_runner", M
 RUNNER = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(RUNNER)
+from integrations.worker_proof_support import process_sampling as SAMPLING
 
 
 class WorkerLoadedRecoveryRunnerTest(unittest.TestCase):
@@ -284,11 +285,11 @@ class ProcessSamplerTest(unittest.TestCase):
         for error in (PermissionError("fd access denied"), FileNotFoundError("status missing"), ValueError("invalid stat")):
             with self.subTest(error=type(error).__name__), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
-                with patch.object(RUNNER, "_process_sample", side_effect=error):
+                with patch.object(SAMPLING, "_process_sample", side_effect=error):
                     sampler = self.sampler(root)
                     sampler.register("worker-host", self.live_process())
                     self.wait_until(lambda: sampler.diagnostics()["failure"] is not None)
-                with patch.object(RUNNER, "_process_sample", return_value=_sample(fds=10, threads=2)) as read:
+                with patch.object(SAMPLING, "_process_sample", return_value=_sample(fds=10, threads=2)) as read:
                     stage = Mock()
                     stage.wait.return_value = 0
                     with self.assertRaises(RUNNER._ResourceSamplingError) as failure:
@@ -319,7 +320,7 @@ class ProcessSamplerTest(unittest.TestCase):
                 if pid == 123:
                     raise PermissionError("exiting process fd")
                 return _sample(fds=10, threads=2)
-            with patch.object(RUNNER, "_process_sample", side_effect=sample):
+            with patch.object(SAMPLING, "_process_sample", side_effect=sample):
                 sampler = self.sampler(Path(directory))
                 sampler.register("runtime-server-graceful", exiting)
                 sampler.register("worker-host", self.live_process(456))
@@ -334,8 +335,8 @@ class ProcessSamplerTest(unittest.TestCase):
 
     def test_background_writer_failure_is_not_hidden_by_collected_maxima(self):
         with tempfile.TemporaryDirectory() as directory, \
-             patch.object(RUNNER, "_process_sample", return_value=_sample(fds=10, threads=2)), \
-             patch.object(RUNNER, "_append_jsonl", side_effect=OSError("disk full")):
+             patch.object(SAMPLING, "_process_sample", return_value=_sample(fds=10, threads=2)), \
+             patch.object(SAMPLING, "_append_jsonl", side_effect=OSError("disk full")):
             sampler = self.sampler(Path(directory))
             sampler.register("worker-host", self.live_process())
             self.wait_until(lambda: sampler.diagnostics()["failure"] is not None)
@@ -350,8 +351,8 @@ class ProcessSamplerTest(unittest.TestCase):
             blocked.set()
             release.wait(3)
         with tempfile.TemporaryDirectory() as directory, \
-             patch.object(RUNNER, "_process_sample", return_value=_sample(fds=10, threads=2)), \
-             patch.object(RUNNER, "_append_jsonl", side_effect=stalled_write):
+             patch.object(SAMPLING, "_process_sample", return_value=_sample(fds=10, threads=2)), \
+             patch.object(SAMPLING, "_append_jsonl", side_effect=stalled_write):
             sampler = RUNNER._ProcessSampler(Path(directory) / "resources.jsonl", interval_seconds=0.01, maximum_gap_seconds=0.1)
             sampler.start()
             try:
@@ -373,8 +374,8 @@ class ProcessSamplerTest(unittest.TestCase):
             release.wait(3)
             raise OSError("last write failed")
         with tempfile.TemporaryDirectory() as directory, \
-             patch.object(RUNNER, "_process_sample", return_value=_sample(fds=10, threads=2)), \
-             patch.object(RUNNER, "_append_jsonl", side_effect=failing_write):
+             patch.object(SAMPLING, "_process_sample", return_value=_sample(fds=10, threads=2)), \
+             patch.object(SAMPLING, "_append_jsonl", side_effect=failing_write):
             sampler = self.sampler(Path(directory))
             sampler.register("worker-host", self.live_process())
             self.assertTrue(blocked.wait(1))
@@ -387,8 +388,8 @@ class ProcessSamplerTest(unittest.TestCase):
         def slow_write(*_):
             time.sleep(0.08)
         with tempfile.TemporaryDirectory() as directory, \
-             patch.object(RUNNER, "_process_sample", return_value=_sample(fds=10, threads=2)), \
-             patch.object(RUNNER, "_append_jsonl", side_effect=slow_write):
+             patch.object(SAMPLING, "_process_sample", return_value=_sample(fds=10, threads=2)), \
+             patch.object(SAMPLING, "_append_jsonl", side_effect=slow_write):
             sampler = RUNNER._ProcessSampler(Path(directory) / "resources.jsonl", interval_seconds=0.01, maximum_gap_seconds=0.05)
             sampler.start()
             try:

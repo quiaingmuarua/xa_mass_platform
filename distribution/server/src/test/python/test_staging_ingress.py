@@ -22,6 +22,63 @@ def configuration(**changes):
 
 
 class StagingIngressTest(unittest.TestCase):
+    CAPACITY_DEFAULTS = {
+        "worker_processes": 1,
+        "worker_connections": 2048,
+        "worker_connection_limit": 100,
+        "worker_total_connection_limit": 200,
+        "worker_requests_per_second": 10,
+        "worker_request_burst": 30,
+        "admin_requests_per_second": 30,
+        "admin_request_burst": 60,
+    }
+
+    def test_omitted_capacity_fields_keep_existing_defaults(self):
+        document = dataclasses.asdict(configuration())
+        for name in self.CAPACITY_DEFAULTS:
+            del document[name]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "deployment.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            loaded = Deployment.load(path)
+        self.assertEqual(self.CAPACITY_DEFAULTS,
+                         {name: getattr(loaded, name) for name in self.CAPACITY_DEFAULTS})
+        self.assertEqual(render(configuration()), render(loaded))
+        for directive in ("worker_processes 1;", "worker_connections 2048;",
+                          "limit_conn worker_credential 100;", "limit_conn worker_total 200;",
+                          "zone=worker_rate:1m rate=10r/s;", "zone=admin_rate:1m rate=30r/s;",
+                          "zone=worker_rate burst=30 nodelay;", "zone=admin_rate burst=60 nodelay;"):
+            self.assertIn(directive, render(loaded))
+
+    def test_custom_capacity_changes_only_the_declared_nginx_capacity_directives(self):
+        custom = configuration(worker_processes=8, worker_connections=32768,
+                               worker_connection_limit=20000, worker_total_connection_limit=30000,
+                               worker_requests_per_second=200, worker_request_burst=1000,
+                               admin_requests_per_second=300, admin_request_burst=600)
+        expected = render(configuration())
+        for original, replacement in (
+            ("worker_processes 1;", "worker_processes 8;"),
+            ("worker_connections 2048;", "worker_connections 32768;"),
+            ("limit_conn worker_credential 100;", "limit_conn worker_credential 20000;"),
+            ("limit_conn worker_total 200;", "limit_conn worker_total 30000;"),
+            ("zone=worker_rate:1m rate=10r/s;", "zone=worker_rate:1m rate=200r/s;"),
+            ("zone=worker_rate burst=30 nodelay;", "zone=worker_rate burst=1000 nodelay;"),
+            ("zone=admin_rate:1m rate=30r/s;", "zone=admin_rate:1m rate=300r/s;"),
+            ("zone=admin_rate burst=60 nodelay;", "zone=admin_rate burst=600 nodelay;"),
+        ):
+            expected = expected.replace(original, replacement)
+        self.assertEqual(expected, render(custom))
+
+    def test_capacity_is_strictly_positive_integer_and_per_credential_fits_total(self):
+        for name in self.CAPACITY_DEFAULTS:
+            for value in (0, -1, True, False, 1.0, "1", None):
+                with self.subTest(name=name, value=value), self.assertRaisesRegex(ValueError, name):
+                    configuration(**{name: value})
+        with self.assertRaisesRegex(ValueError, "worker_connection_limit.*worker_total_connection_limit"):
+            configuration(worker_connection_limit=201)
+        self.assertEqual(1, configuration(worker_connection_limit=1,
+                                         worker_total_connection_limit=1).worker_connection_limit)
+
     def test_vite_output_and_current_public_files_are_readable_but_not_writable(self):
         vite = (ROOT / "frontend/vite.config.ts").read_text(encoding="utf-8")
         outputs = re.findall(r'(?:chunkFileNames|entryFileNames|assetFileNames): "([^\"]+)"', vite)

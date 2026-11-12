@@ -14,6 +14,38 @@ from distribution.server import staging_runtime_proof as proof
 
 
 class PackagedIngressOracleTest(unittest.TestCase):
+    def test_loaded_fixture_consumes_zip_and_checks_each_terminal_task_as_external_user(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            entry = root / "kit/acceptance/run_loaded.py"
+            entry.parent.mkdir(parents=True)
+            entry.write_text("# shipped fixture", encoding="utf-8")
+            output = root / "external-capacity-diagnostic"
+            output.mkdir()
+            cases = [{"taskCount": 10, "verifiedItems": 30, "terminalTaskCount": 10,
+                      "taskIds": [f"task-{stage}-{index}" for index in range(10)]} for stage in range(2)]
+            summary = {"status": "diagnostic-passed", "claim": "diagnostic-only", "acceptance": {"cases": cases},
+                       "cleanup": {"ownedProcessesStopped": True, "privateCredentialCopiesRemoved": True}}
+            (output / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+            gate = Mock(admin_url="https://localhost:8443", worker_url="https://workers.localhost:8443")
+            gate.request.return_value = (200, json.dumps({"scoreBand": "terminal", "task": {
+                "workerGroupId": proof.GROUP_LOADED, "metadata": {"userId": proof.EXTERNAL_USER}}}).encode(), {})
+            server = Mock()
+            server.poll.return_value = None
+            child = Mock()
+            child.wait.return_value = 0
+            with patch.object(proof, "start_process", return_value=child) as start, patch.object(proof, "stop_process"):
+                result = proof._loaded(gate, [server], simulator_home=root / "kit", proof_root=root,
+                                       truststore=root / "ca.p12", environment={"PYTHONPATH": "checkout"})
+            command = start.call_args.args[0]
+            self.assertEqual(command[1], str(entry))
+            self.assertIn("--diagnostic", command)
+            self.assertNotIn(proof.EXTERNAL_KEY, " ".join(command))
+            self.assertNotIn("PYTHONPATH", start.call_args.args[2])
+            self.assertEqual(gate.request.call_count, 20)
+            self.assertEqual(result["verifiedItems"], 60)
+            self.assertFalse((root / "loaded-worker-credential.json").exists())
+
     def finite(self, stdout: bytes, returncode=0, *, user=proof.EXTERNAL_USER, alive=True):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

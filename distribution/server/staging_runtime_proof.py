@@ -41,6 +41,7 @@ EXTERNAL_KEY = "xak_" + secrets.token_urlsafe(32)
 PUBLIC_DEVELOPMENT_KEY = "xak_dev_1000"
 GROUP_A = "ingress-java-a"
 GROUP_B = "ingress-java-b"
+GROUP_LOADED = "ingress-loaded"
 
 
 class ProofFailure(RuntimeError):
@@ -142,7 +143,7 @@ def _runtime_command(runtime_root: Path, data_root: Path, manifest: dict, java: 
     jar = (runtime_root / manifest["serverJar"]).resolve()
     _require(jar.is_relative_to(runtime_root) and jar.is_file(), "Runtime manifest JAR must belong to the extracted archive")
     groups = {group: {"attributes": {"capability": "ingress-md5-proof"}, "eventCodes": [EVENT]}
-              for group in (GROUP_A, GROUP_B)}
+              for group in (GROUP_A, GROUP_B, GROUP_LOADED)}
     return [java, "-Xms128m", "-Xmx1g", "-jar", str(jar),
             "--spring.profiles.active=consumer", "--server.address=127.0.0.1", f"--server.port={runtime_port}",
             "--spring.web.resources.static-locations=" + (runtime_root / "frontend/dist").as_uri() + "/",
@@ -258,6 +259,59 @@ def _finite(gate: Gateway, group: str, label: str, processes, *, simulator_home:
             "approveToTerminalMillis": record["durationsMillis"]["approveToTerminal"]}
 
 
+def _loaded(gate: Gateway, processes, *, simulator_home: Path, proof_root: Path,
+            truststore: Path, environment: dict) -> dict:
+    """Exercise the shipped large-run path with an explicitly non-capacity fixture."""
+    credentials = proof_root / "loaded-worker-credential.json"
+    credentials.write_text(json.dumps({"keyId": OTHER_WORKER[0], "secret": OTHER_WORKER[1]}), encoding="utf-8")
+    credentials.chmod(0o600)
+    output = proof_root / "external-capacity-diagnostic"
+    command = [sys.executable, str(simulator_home / "acceptance/run_loaded.py"),
+               "--runtime-url", gate.admin_url, "--worker-runtime-url", gate.worker_url,
+               "--project", "default", "--group", GROUP_LOADED, "--endpoint-manager", "runtime-websocket",
+               "--access-key-file", str(proof_root / "external-access-key.txt"),
+               "--gateway-credential-file", str(credentials), "--output-dir", str(output),
+               "--diagnostic", "--prepared-workers", "6", "--retained-workers", "4",
+               "--minimum-initial-connected", "6", "--minimum-retained-connected", "4",
+               "--workload-items-per-task", "3", "--stable-hold-millis", "6000",
+               "--scan-interval-millis", "200", "--maximum-convergence-wait-millis", "60000",
+               "--task-result-wait-millis", "90000", "--java-truststore", str(truststore),
+               "--java-truststore-password", "fixture-truststore-password"]
+    clean = dict(environment)
+    clean.pop("PYTHONPATH", None)
+    child = None
+    try:
+        child = start_process(command, proof_root / "external-capacity-diagnostic.log", clean, cwd=proof_root)
+        code = child.wait(timeout=240)
+    finally:
+        if child is not None:
+            stop_process(child, force=False)
+        credentials.unlink(missing_ok=True)
+    _require(code == 0 and all(process.poll() is None for process in processes),
+             "Packaged external capacity diagnostic failed; inspect its safe summary")
+    result = json.loads((output / "summary.json").read_text(encoding="utf-8"))
+    _require(result.get("status") == "diagnostic-passed" and result.get("claim") == "diagnostic-only",
+             "Small external fixture must not claim large-scale acceptance")
+    acceptance = result.get("acceptance", {})
+    cases = acceptance.get("cases", [])
+    _require(len(cases) == 2 and all(case.get("taskCount") == 10 and case.get("verifiedItems") == 30
+                                   and case.get("terminalTaskCount") == 10 for case in cases),
+             "Packaged external diagnostic did not verify both complete workloads")
+    task_ids = [task for case in cases for task in case["taskIds"]]
+    _require(len(task_ids) == len(set(task_ids)) == 20, "External diagnostic reused a Task identity")
+    for task_id in task_ids:
+        point = _json(gate, "GET", f"/api/v1/projects/default/tasks/{task_id}")
+        _require(point.get("scoreBand") == "terminal" and point["task"]["workerGroupId"] == GROUP_LOADED
+                 and point["task"].get("metadata", {}).get("userId") == EXTERNAL_USER,
+                 "External diagnostic Task ownership, Group or terminal state is incorrect")
+    _require(result.get("cleanup", {}).get("ownedProcessesStopped") is True
+             and result["cleanup"].get("privateCredentialCopiesRemoved") is True,
+             "External diagnostic did not clean its owned processes and private credential copies")
+    return {"claim": "diagnostic-only", "preparedWorkers": 6, "retainedWorkers": 4,
+            "taskCount": 20, "verifiedItems": 60, "taskIds": task_ids,
+            "entrySha256": hashlib.sha256((simulator_home / "acceptance/run_loaded.py").read_bytes()).hexdigest()}
+
+
 def verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: str, proof_root: Path) -> dict:
     """Run on Linux with real nginx/openssl/Java and a caller-cleaned Redis test scope."""
     evidence = {"phase": "preflight"}
@@ -301,7 +355,7 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
     while len(ports) != 4:
         ports.add(free_port())
     runtime_port, adapter_port, http_port, https_port = sorted(ports)
-    gate = Gateway(proof_root / "gateway", runtime_port, adapter_port, worker_groups=(GROUP_A, GROUP_B),
+    gate = Gateway(proof_root / "gateway", runtime_port, adapter_port, worker_groups=(GROUP_A, GROUP_B, GROUP_LOADED),
                    http_port=http_port, https_port=https_port)
     _render_packaged_gateway(gate, runtime_root, environment)
     truststore = _truststore(java, gate, proof_root)
@@ -366,6 +420,9 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
         access = (Path(gate.config.state_directory) / "access.log").read_text(encoding="utf-8")
         _require(f"POST /api/v1/worker-groups/{GROUP_A}/workers:prepare-batch 200" in access,
                  "Actual Simulator did not traverse batch Prepare through the gateway")
+        evidence["phase"] = "packaged-external-capacity-diagnostic"
+        loaded = _loaded(gate, processes, simulator_home=simulator_home, proof_root=proof_root,
+                         truststore=truststore, environment=environment)
 
     evidence["phase"] = "safe-evidence"
     for log in proof_root.rglob("*.log"):
@@ -376,6 +433,7 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
                  "Credential material appeared in a private process log")
     summary = {"status": "passed", "runtimeVersion": manifest["version"], "runtimeCommit": manifest["gitCommit"],
                "console": console,
+               "externalCapacityDiagnostic": loaded,
                "gatewayConfigSha256": hashlib.sha256(gate.configuration.read_bytes()).hexdigest(),
                "gatewayRendererSha256": hashlib.sha256((runtime_root / "examples/staging-ingress/staging_ingress/renderer.py").read_bytes()).hexdigest(),
                "runtimeJarSha256": hashlib.sha256((runtime_root / manifest["serverJar"]).read_bytes()).hexdigest(),
