@@ -10,6 +10,10 @@ on:
         type: choice
         default: local-proof
         options: [local-proof, external-release]
+      network_diagnostics:
+        description: Capture bounded client network diagnostics for external-release only
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -136,6 +140,13 @@ jobs:
           PY
       - name: Configure only this disposable consumer host
         run: sudo sysctl -w net.ipv4.ip_local_port_range="10000 65535"
+      - name: Prepare optional client network observation
+        if: inputs.network_diagnostics
+        run: |
+          if ! command -v tcpdump >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y tcpdump
+          fi
       - name: Run the published external consumer
         env:
           KIT_ROOT: ${{ steps.release.outputs.kit-root }}
@@ -144,14 +155,24 @@ jobs:
           PROJECT_ID: ${{ vars.PROJECT_ID }}
           WORKER_GROUP_ID: ${{ vars.WORKER_GROUP_ID }}
           ENDPOINT_MANAGER_ID: ${{ vars.ENDPOINT_MANAGER_ID }}
+          NETWORK_DIAGNOSTICS: ${{ inputs.network_diagnostics }}
         run: |
           ulimit -n 65536
-          python "$KIT_ROOT/acceptance/run_loaded.py" \
+          consumer=(python "$KIT_ROOT/acceptance/run_loaded.py" \
             --runtime-url "$RUNTIME_API_URL" --worker-runtime-url "$WORKER_RUNTIME_URL" \
             --project "$PROJECT_ID" --group "$WORKER_GROUP_ID" --endpoint-manager "$ENDPOINT_MANAGER_ID" \
             --access-key-file "$RUNNER_TEMP/external-release-load-private/access-key.txt" \
             --gateway-credential-file "$RUNNER_TEMP/external-release-load-private/worker-gateway.json" \
-            --output-dir build/external-release-load
+            --output-dir build/external-release-load)
+          if [[ "$NETWORK_DIAGNOSTICS" == "true" ]]; then
+            python integrations/worker-loaded-recovery/observe_external_network.py \
+              --target-url "$WORKER_RUNTIME_URL" \
+              --consumer-output-dir build/external-release-load \
+              --output-dir build/external-network-diagnostics \
+              -- "${consumer[@]}"
+          else
+            "${consumer[@]}"
+          fi
       - name: Remove this job's private input copies
         if: always()
         run: |
@@ -176,5 +197,9 @@ jobs:
             build/external-release-load/evidence/summary.json
             build/external-release-load/evidence/timeline.jsonl
             build/external-release-load/evidence/receipts.jsonl
+            build/external-network-diagnostics/summary.json
+            build/external-network-diagnostics/tcp-handshakes.jsonl
+            build/external-network-diagnostics/network-state.jsonl
+            build/external-network-diagnostics/jfr-metadata.jsonl
           if-no-files-found: warn
           retention-days: 7

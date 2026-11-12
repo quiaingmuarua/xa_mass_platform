@@ -140,7 +140,9 @@ class ExternalWorkflowBoundaryTest(unittest.TestCase):
         actual = {line.strip() for line in upload.splitlines() if line.strip()}
         self.assertEqual({"build/external-release-input/consumption.json", "build/external-release-load/summary.json",
                           "build/external-release-load/process-resources.jsonl", "build/external-release-load/evidence/summary.json",
-                          "build/external-release-load/evidence/timeline.jsonl", "build/external-release-load/evidence/receipts.jsonl"}, actual)
+                          "build/external-release-load/evidence/timeline.jsonl", "build/external-release-load/evidence/receipts.jsonl",
+                          "build/external-network-diagnostics/summary.json", "build/external-network-diagnostics/tcp-handshakes.jsonl",
+                          "build/external-network-diagnostics/network-state.jsonl", "build/external-network-diagnostics/jfr-metadata.jsonl"}, actual)
 
 
 if __name__ == "__main__":

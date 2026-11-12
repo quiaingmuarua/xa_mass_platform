@@ -1,0 +1,169 @@
+import argparse
+import importlib.util
+import json
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest.mock import Mock, patch
+
+SPEC = importlib.util.spec_from_file_location("external_network_observer", Path(__file__).with_name("observe_external_network.py"))
+OBSERVER = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(OBSERVER)
+
+
+def exception_event(owner="java.net.SocketTimeoutException", method="timedFinishConnect", message="Connect timed out"):
+    return {"type": "jdk.JavaExceptionThrow", "values": {
+        "startTime": "2026-11-12T12:00:00Z", "duration": "PT0S", "message": message,
+        "thrownClass": {"name": owner}, "eventThread": {"javaThreadId": 42, "javaName": "secret-thread-value"},
+        "stackTrace": {"frames": [{"method": {"type": {"name": "sun.nio.ch.NioSocketImpl"}, "name": method}, "lineNumber": 1}]}}}
+
+
+class MetadataTest(unittest.TestCase):
+    def test_exception_export_keeps_only_known_metadata_and_never_arbitrary_messages(self):
+        event = exception_event(message="credential=VERY_PRIVATE; body=PAYLOAD")
+        event["values"]["properties"] = {"secret": "VERY_PRIVATE"}
+        result = OBSERVER.jfr_metadata(event)
+        self.assertEqual("java.net.SocketTimeoutException", result["exceptionClass"])
+        self.assertEqual(42, result["javaThreadId"])
+        self.assertIsNone(result["recognizedTimeout"])
+        self.assertNotIn("VERY_PRIVATE", json.dumps(result))
+        self.assertNotIn("PAYLOAD", json.dumps(result))
+        self.assertNotIn("secret-thread", json.dumps(result))
+        self.assertEqual("connect-timeout", OBSERVER.jfr_metadata(exception_event())["recognizedTimeout"])
+
+    def test_expected_one_millisecond_okhttp_probe_and_unrelated_exceptions_are_excluded(self):
+        event = exception_event()
+        event["values"]["stackTrace"]["frames"][0]["method"] = {
+            "type": {"name": "okhttp3.internal._UtilJvmKt"}, "name": "isHealthy"}
+        self.assertIsNone(OBSERVER.jfr_metadata(event))
+        self.assertIsNone(OBSERVER.jfr_metadata(exception_event("java.lang.IllegalArgumentException")))
+        self.assertIsNotNone(OBSERVER.jfr_metadata(exception_event("javax.net.ssl.SSLHandshakeException")))
+
+    def test_socket_and_packet_exports_never_contain_payload_or_command_text(self):
+        event = {"type": "jdk.SocketRead", "values": {"startTime": "2026-11-12T12:00:00Z", "address": "192.0.2.1",
+                 "port": 443, "timeout": 10000, "bytesRead": 0, "payload": "PRIVATE"}}
+        self.assertNotIn("PRIVATE", json.dumps(OBSERVER.jfr_metadata(event)))
+        packet = OBSERVER.packet_metadata("2026-11-12 12:00:00.123456 eth0 Out IP 192.0.2.2.34567 > 192.0.2.1.443: Flags [SEW], seq 2, length 0 PRIVATE")
+        self.assertEqual({"address": "192.0.2.1", "port": 443}, packet["destination"])
+        self.assertEqual(2, packet["seq"])
+        self.assertNotIn("PRIVATE", json.dumps(packet))
+        self.assertEqual("2001:db8::1", OBSERVER.packet_metadata(
+            "2026-11-12 12:00:00.123456 IP6 2001:db8::2.34567 > 2001:db8::1.443: Flags [S.], seq 1")["destination"]["address"])
+        self.assertIsNone(OBSERVER.packet_metadata("tcpdump: arbitrary error SECRET"))
+        self.assertEqual({"captured": 10, "received": 11, "dropped": 1}, OBSERVER.capture_statistics(
+            "PRIVATE ERROR TEXT\n10 packets captured\n11 packets received by filter\n1 packet dropped by kernel\n"))
+
+    def test_syn_sent_is_restricted_to_owned_pid_and_keeps_the_actual_port(self):
+        text = ('0 1 192.0.2.2:45678 192.0.2.1:1080 users:(("java",pid=123,fd=9))\n'
+                '0 1 192.0.2.2:45679 192.0.2.9:443 users:(("other-secret",pid=1234,fd=10))')
+        self.assertEqual([{"source": {"address": "192.0.2.2", "port": 45678},
+                           "destination": {"address": "192.0.2.1", "port": 1080}}], OBSERVER.syn_sent_metadata(text, 123))
+
+
+class IdentityTest(unittest.TestCase):
+    def process(self, root, pid, parent, started, main=OBSERVER.HOST_MAIN):
+        path = root / str(pid)
+        path.mkdir(exist_ok=True)
+        fields = ["S", str(parent), *(["0"] * 17), str(started)]
+        (path / "stat").write_text(str(pid) + " (java worker) " + " ".join(fields))
+        (path / "cmdline").write_bytes(b"java\0" + main.encode() + b"\0private-config-path\0")
+
+    def test_requires_main_ancestry_and_unchanged_starttime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.process(root, 123, 10, 500)
+            self.process(root, 10, 1, 400, "python")
+            self.assertEqual(500, OBSERVER.verify_host(123, 10, proc=root))
+            with self.assertRaises(ValueError): OBSERVER.verify_host(123, 10, 499, proc=root)
+            with self.assertRaises(ValueError): OBSERVER.verify_host(123, 11, proc=root)
+            self.process(root, 123, 10, 500, "unrelated.Main")
+            with self.assertRaises(ValueError): OBSERVER.verify_host(123, 10, proc=root)
+
+    def test_attach_rejects_mismatched_pid_before_jcmd(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "process-resources.jsonl").write_text('{"process":"worker-host","pid":123}\n')
+            value = argparse.Namespace(consumer_output_dir=root, output_dir=root)
+            observer = OBSERVER.Observer(value, root)
+            with patch.object(OBSERVER, "verify_host", side_effect=ValueError("PID mismatch")), patch.object(observer, "command") as command:
+                with self.assertRaises(ValueError): observer.attach(100)
+                command.assert_not_called()
+
+
+class LifecycleTest(unittest.TestCase):
+    def test_privileged_capture_gets_sigint_then_bounded_escalation_for_only_its_group(self):
+        process = Mock(pid=123)
+        process.poll.return_value = None
+        process.wait.side_effect = [subprocess.TimeoutExpired("tcpdump", 5), 0]
+        with patch.object(OBSERVER.subprocess, "run") as call:
+            OBSERVER.stop_capture(process)
+        self.assertEqual(["sudo", "-n", "kill", "-INT", "--", "-123"], call.call_args_list[0].args[0])
+        self.assertEqual(["sudo", "-n", "kill", "-TERM", "--", "-123"], call.call_args_list[1].args[0])
+
+    def test_failed_consumer_code_is_preserved_when_diagnostics_fail(self):
+        self.assertEqual(3, OBSERVER.consumer_exit_code(3, ["diagnostic-failed"]))
+        self.assertEqual(42, OBSERVER.consumer_exit_code(42, ["diagnostic-failed"]))
+        self.assertEqual(1, OBSERVER.consumer_exit_code(0, ["diagnostic-failed"]))
+        self.assertEqual(0, OBSERVER.consumer_exit_code(0, []))
+
+    def test_capture_exit_race_does_not_claim_cleanup_failed(self):
+        process = Mock(pid=123)
+        process.poll.side_effect = [None, 0]
+        with patch.object(OBSERVER.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "kill")):
+            OBSERVER.stop_capture(process)
+
+    def test_kernel_drops_are_incomplete_without_exposing_stderr(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            observer = OBSERVER.Observer(argparse.Namespace(output_dir=root), root)
+            observer.attached, observer.sample_count, observer.packet_count = True, 1, 1
+            (root / "tcpdump.stderr").write_text("PRIVATE\n1 packet captured\n2 packets received by filter\n1 packet dropped by kernel\n")
+            with patch.object(observer, "command", return_value='{"recording":{"events":[]}}'): observer.close()
+            self.assertIn("tcp-capture-kernel-drops", observer.failures)
+            self.assertNotIn("PRIVATE", json.dumps(observer.capture_stats))
+
+    def test_original_command_runs_and_private_material_is_removed_after_failure(self):
+        instances = []
+        class FailedObserver:
+            def __init__(self, value, private):
+                self.private = private
+                self.failures, self.packet_count, self.sample_count, self.attached = ["capture-start-failed"], 0, 0, False
+                self.capture_stats = {}
+                self.closed = False
+                instances.append(self)
+            def start(self): (self.private / "raw.jfr").write_text("PRIVATE_EXCEPTION_MESSAGE")
+            def failed(self, reason): self.failures.append(reason)
+            def sample(self, consumer_pid): pass
+            def close(self):
+                self.closed = True
+                raise OSError("private finalization detail must not replace consumer exit")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            command = [sys.executable, "-c", "import sys; sys.exit(7)"]
+            value = argparse.Namespace(command=command, output_dir=root, target_port=443)
+            with patch.object(OBSERVER, "Observer", FailedObserver): code = OBSERVER.run(value)
+            summary = json.loads((root / "summary.json").read_text())
+            self.assertEqual(7, code)
+            self.assertEqual(7, summary["consumerExitCode"])
+            self.assertEqual("incomplete", summary["status"])
+            self.assertTrue(instances[0].closed)
+            self.assertIn("diagnostic-finalization-failed", summary["failures"])
+            self.assertFalse(instances[0].private.exists())
+            self.assertNotIn("PRIVATE_EXCEPTION_MESSAGE", json.dumps(summary))
+
+    def test_target_can_be_observed_from_unchanged_command_and_origins_are_strict(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            command = ["python", "release/acceptance/run_loaded.py", "--worker-runtime-url", "https://workers.example.test"]
+            value = OBSERVER.options(["--output-dir", str(root / "diagnostics"), "--consumer-output-dir", str(root / "consumer"), "--", *command])
+            self.assertEqual(command, value.command)
+            self.assertEqual(("workers.example.test", 443), (value.target_host, value.target_port))
+            for invalid in ("http://workers.example.test", "https://secret@workers.example.test", "https://workers.example.test/private"):
+                with self.assertRaises(ValueError): OBSERVER.origin(invalid)
+
+
+if __name__ == "__main__":
+    unittest.main()
