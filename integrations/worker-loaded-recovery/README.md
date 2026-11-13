@@ -297,6 +297,16 @@ and verifies the installed Release's immutable kit; it does not build the kit or
 receive Server administrator credentials. Environment coordinates and private
 inputs are documented in [TESTING](../../TESTING.md#external-release-load).
 
+The manual `external_runner` choice selects the standard `ubuntu-24.04` (default)
+or `ubuntu-24.04-arm` hosted runner. Both are free for this public repository;
+the same published Java kit, workload, timeouts and assertions run on either.
+This is one serial external run, not a matrix. The protected Environment,
+`main` restriction and environment-wide concurrency group remain the same;
+scheduled/local recovery still uses `ubuntu-24.04`. Resource evidence records the
+actual client architecture. Changing runner architecture is a network/client
+comparison, not a guarantee of a larger outbound NAT allocation or a comparable
+performance result without accounting for the changed client.
+
 The same manual workflow has an optional `network_diagnostics` input, disabled
 by default. Its checkout-side `observe_external_network.py` observes the unchanged
 published consumer command. It records TCP handshake headers, kernel counter
