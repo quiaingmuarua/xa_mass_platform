@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import select
 import signal
 import socket
 import subprocess
@@ -183,6 +184,7 @@ class Observer:
         self.failures, self.packet_count, self.sample_count = [], 0, 0
         self.host, self.started, self.attached, self.jfr_stopped = None, None, False, False
         self.capture, self.reader = None, None
+        self.reader_stop = threading.Event()
         self.capture_error_stream, self.capture_stats = None, {}
         self.offset = 0
 
@@ -201,21 +203,39 @@ class Observer:
         expression = f"({targets}) and tcp port {self.value.target_port} and ((ip and tcp[13] & 6 != 0) or (ip6 and ip6[53] & 6 != 0))"
         self.capture_error_stream = (self.private / "tcpdump.stderr").open("wb")
         self.capture = subprocess.Popen(["sudo", "-n", "tcpdump", "-i", "any", "-nn", "-l", "-tttt", "-S", expression],
-                                        stdout=subprocess.PIPE, stderr=self.capture_error_stream, text=True, start_new_session=True,
+                                        stdout=subprocess.PIPE, stderr=self.capture_error_stream, bufsize=0, start_new_session=True,
                                         env={**os.environ, "TZ": "UTC", "LC_ALL": "C"})
-        def read():
-            try:
-                for line in self.capture.stdout:
-                    value = packet_metadata(line)
+        self.reader = threading.Thread(target=self.read_capture, name="external-network-capture", daemon=True)
+        self.reader.start()
+
+    def read_capture(self):
+        # Do not block in buffered readline: a failed stop can leave the writer open.
+        stream = self.capture.stdout
+        pending = b""
+        try:
+            descriptor = stream.fileno()
+            os.set_blocking(descriptor, False)
+            while not self.reader_stop.is_set():
+                if not select.select([descriptor], [], [], 0.1)[0]: continue
+                try: chunk = os.read(descriptor, 65536)
+                except BlockingIOError: continue
+                if not chunk:
+                    if pending: self.failed("tcp-capture-incomplete-line")
+                    return
+                lines = (pending + chunk).split(b"\n")
+                pending = lines.pop()
+                for line in lines:
+                    if self.reader_stop.is_set(): return
+                    value = packet_metadata(line.decode("utf-8"))
                     if value:
                         if self.packet_count >= MAX_PACKETS:
                             self.failed("tcp-packet-metadata-truncated")
                             continue  # Keep draining the pipe so the owned capture can stop normally.
                         append(self.value.output_dir / "tcp-handshakes.jsonl", value)
                         self.packet_count += 1
-            except Exception: self.failed("tcp-capture-read-failed")
-        self.reader = threading.Thread(target=read, name="external-network-capture", daemon=True)
-        self.reader.start()
+        except Exception: self.failed("tcp-capture-read-failed")
+        finally:
+            stream.close()
 
     def attach(self, consumer_pid):
         path = self.value.consumer_output_dir / "process-resources.jsonl"
@@ -269,11 +289,18 @@ class Observer:
 
     def close(self):
         try: stop_capture(self.capture)
-        except Exception: self.failed("tcp-capture-cleanup-failed")
+        except Exception:
+            self.failed("tcp-capture-cleanup-failed")
+            self.reader_stop.set()
         if self.reader:
+            # Normal shutdown drains to EOF; a retained writer must not prevent finalization.
             self.reader.join(5)
-            if self.reader.is_alive(): self.failed("tcp-reader-did-not-stop")
-        if self.capture and self.capture.stdout: self.capture.stdout.close()
+            if self.reader.is_alive():
+                self.failed("tcp-reader-did-not-stop")
+                self.reader_stop.set()
+                self.reader.join(1)
+        if self.capture and self.capture.stdout and (not self.reader or not self.reader.is_alive()):
+            self.capture.stdout.close()
         if self.capture_error_stream: self.capture_error_stream.close()
         error_file = self.private / "tcpdump.stderr"
         if error_file.exists(): self.capture_stats = capture_statistics(error_file.read_text(errors="replace"))
