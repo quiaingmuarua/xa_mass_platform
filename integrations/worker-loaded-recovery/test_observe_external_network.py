@@ -97,6 +97,101 @@ class IdentityTest(unittest.TestCase):
 
 
 class LifecycleTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "linux", "capture pipe polling requires Linux")
+    def test_open_writer_cannot_block_summary_or_private_cleanup(self):
+        wrapper_source = textwrap.dedent('''
+            import argparse, importlib.util, json, os, sys, time
+            from pathlib import Path
+            from unittest.mock import Mock, patch
+            spec = importlib.util.spec_from_file_location("observer", sys.argv[1])
+            observer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(observer)
+            root, stop_fails, consumer_code = Path(sys.argv[2]), sys.argv[3] == "fail", int(sys.argv[4])
+            instances = []
+            class PipeObserver(observer.Observer):
+                def start(self):
+                    instances.append(self)
+                    read_fd, self.writer = os.pipe()
+                    def capture(*args, **kwargs):
+                        # Respect the real Popen stream mode, including the former buffered reader.
+                        self.stream = os.fdopen(read_fd, "r" if kwargs.get("text") else "rb")
+                        return Mock(stdout=self.stream, poll=Mock(return_value=None))
+                    with patch.object(observer.socket, "getaddrinfo", return_value=[(None, None, None, None, ("192.0.2.1", 443))]), \
+                         patch.object(observer.subprocess, "Popen", side_effect=capture):
+                        super().start()
+                    (self.private / "network.jfr").write_text("PRIVATE_RECORDING")
+                    self.attached, self.sample_count = True, 1
+                def sample(self, consumer_pid): pass
+                def command(self, *args): return '{"recording":{"events":[]}}'
+            value = argparse.Namespace(command=[sys.executable, "-c", "import sys; sys.exit(" + str(consumer_code) + ")"],
+                                       output_dir=root, target_host="workers.example.test", target_port=443)
+            started = time.monotonic()
+            try:
+                with patch.object(observer, "Observer", PipeObserver), \
+                     patch.object(observer, "stop_capture", side_effect=OSError("PRIVATE_STOP_FAILURE") if stop_fails else None):
+                    code = observer.run(value)
+                instance = instances[0]
+                summary = json.loads((root / "summary.json").read_text())
+                assert code == (consumer_code or 1), (code, summary)
+                assert summary["consumerExitCode"] == consumer_code
+                assert summary["status"] == "incomplete"
+                expected = "tcp-capture-cleanup-failed" if stop_fails else "tcp-reader-did-not-stop"
+                assert expected in summary["failures"], summary
+                assert not instance.reader.is_alive()
+                assert instance.stream.closed
+                assert summary["privateTemporaryFilesRemoved"] and not instance.private.exists()
+                assert "PRIVATE" not in json.dumps(summary)
+                assert time.monotonic() - started < 12
+            finally:
+                for instance in instances:
+                    os.close(instance.writer)
+        ''')
+        # Failed stop must preserve the consumer failure; successful stop with a retained
+        # writer must still fail diagnostics, even when the consumer itself succeeds.
+        for stop, code in (("fail", 7), ("retained-writer", 0)):
+            with self.subTest(stop=stop), tempfile.TemporaryDirectory() as directory:
+                result = subprocess.run([sys.executable, "-c", wrapper_source, str(Path(OBSERVER.__file__).resolve()),
+                                         directory, stop, str(code)], capture_output=True, text=True, timeout=15)
+                self.assertEqual(0, result.returncode, result.stderr)
+
+    @unittest.skipUnless(sys.platform == "linux", "capture pipe polling requires Linux")
+    def test_capture_drains_split_lines_at_eof_and_reports_incomplete_tail(self):
+        packet = b"2026-11-12 12:00:00.123456 IP 192.0.2.2.34567 > 192.0.2.1.443: Flags [S], seq 2, length 0"
+        for complete_tail in (True, False):
+            with self.subTest(complete_tail=complete_tail), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                value = argparse.Namespace(output_dir=root, target_host="workers.example.test", target_port=443)
+                observer = OBSERVER.Observer(value, root)
+                read_fd, writer = os.pipe()
+                stream = os.fdopen(read_fd, "rb", buffering=0)
+                capture = Mock(stdout=stream, poll=Mock(return_value=0))
+                try:
+                    with patch.object(OBSERVER.socket, "getaddrinfo", return_value=[(None, None, None, None, ("192.0.2.1", 443))]), \
+                         patch.object(OBSERVER.subprocess, "Popen", return_value=capture):
+                        observer.start()
+                    os.write(writer, packet + b"\n" + packet[:40])
+                    deadline = time.monotonic() + 3
+                    while observer.packet_count == 0 and time.monotonic() < deadline: time.sleep(0.01)
+                    self.assertEqual(1, observer.packet_count)
+                    os.write(writer, packet[40:] + (b"\n" if complete_tail else b""))
+                    os.close(writer)
+                    writer = None
+                    (root / "tcpdump.stderr").write_text("2 packets captured\n2 packets received by filter\n0 packets dropped by kernel\n")
+                    observer.attached, observer.sample_count = True, 1
+                    with patch.object(observer, "command", return_value='{"recording":{"events":[]}}'):
+                        observer.close()
+                    self.assertFalse(observer.reader.is_alive())
+                    self.assertTrue(stream.closed)
+                    rows = [json.loads(line) for line in (root / "tcp-handshakes.jsonl").read_text().splitlines()]
+                    self.assertEqual(2 if complete_tail else 1, len(rows))
+                    self.assertEqual([] if complete_tail else ["tcp-capture-incomplete-line", "tcp-capture-parse-or-limit-gap"], observer.failures)
+                finally:
+                    if writer is not None: os.close(writer)
+                    observer.reader_stop.set()
+                    if observer.reader: observer.reader.join(2)
+                    if observer.capture_error_stream: observer.capture_error_stream.close()
+                    if not observer.reader or not observer.reader.is_alive(): stream.close()
+
     def test_privileged_capture_gets_sigint_then_bounded_escalation_for_only_its_group(self):
         process = Mock(pid=123)
         process.poll.return_value = None

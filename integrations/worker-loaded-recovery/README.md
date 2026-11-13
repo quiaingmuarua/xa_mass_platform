@@ -338,6 +338,10 @@ separately from the original consumer outcome. Diagnostic failure cannot turn a
 failed load into success, and a successful load with incomplete requested
 diagnostics fails the diagnostic job. Cleanup stops only owned observation
 processes and lets the consumer retain its existing shutdown responsibility.
+The capture reader drains buffered output on normal shutdown. If capture shutdown
+fails or the pipe does not reach EOF within the bounded drain wait, it cancels
+the reader and records incomplete diagnostics instead of blocking summary creation
+and private-file cleanup. This does not claim the capture process stopped successfully.
 This is fault-localization evidence, not an additional capacity or recovery claim.
 
 The version-scoped [4.2 Release contract](../../distribution/server/RELEASE-4.2.md)
