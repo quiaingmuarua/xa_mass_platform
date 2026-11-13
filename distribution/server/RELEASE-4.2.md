@@ -3,12 +3,6 @@
 Status: version-scoped 4.2 contract. Publication requires the complete manual Proof at the
 exact candidate commit. Published 4.1 artifacts remain immutable.
 
-Subsequent public acceptance is recorded in the dated
-[2026-11-13 closeout](../../doc/guide/capabilities.md#external-public-closeout).
-It accepts bounded 100/1,000 diagnostics, not this version's full 15k/10k target.
-The current manual workflow defaults to an explicit bounded preset; the shipped
-4.2 command and full-target contract below remain unchanged.
-
 ## External capacity consumer
 
 The existing Worker Simulator kit adds `acceptance/run_loaded.py` and the compiled

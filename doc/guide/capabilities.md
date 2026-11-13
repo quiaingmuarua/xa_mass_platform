@@ -9,15 +9,15 @@ Status: current capability guide with explicitly dated evidence.
 <a id="external-public-closeout"></a>
 ## 外部公网验收收尾
 
-**2026-11-13 收尾决定：以已经通过的有限规模结束本轮工作，不再继续追高。**
+**2026-11-13 收尾决定：以已经通过的 1,000 Worker 作为基础验收，不再继续追高。**
 被测 Runtime 与 Simulator kit 为 Release **4.2.0**，源码提交
 `aaed8d648c19e2f6332f37b4e831b0b194d5553b`。以下是该版本、配置和运行日期的证据，
 不是当前环境的实时健康状态、Server 容量上限或长期 SLA。
 
 | 公网直连配置 | 已完成工作 | 结果 |
 | --- | --- | --- |
-| 100 → 99 Worker | 两阶段各 10 Task × 5,000 Items，共 100,000 个结果与完整导出 | `diagnostic-passed`，2026-11-12 |
-| 1,000 → 999 Worker | 两阶段各 10 Task × 5,000 Items，共 100,000 个结果与完整导出 | `diagnostic-passed`，2026-11-12 |
+| 1,000 → 999 Worker（当前基础档） | 两阶段各 10 Task × 5,000 Items，共 100,000 个结果与完整导出 | `diagnostic-passed`，2026-11-12 |
+| 历史 100 → 99 Worker（已移除手动 CI 档位） | 两阶段各 10 Task × 5,000 Items，共 100,000 个结果与完整导出 | 仅保留历史 `diagnostic-passed`，2026-11-12 |
 | 原 15k → 10k 目标及直接公网 10k 对照 | 建连阶段未通过，没有对应的完整工作量结果 | 未通过，不以小规模结果替代 |
 
 两档成功运行来自本地外部 Java Host 经公网 HTTPS/WSS 连接 GCP，使用同一发布 JAR、
@@ -40,13 +40,14 @@ Status: current capability guide with explicitly dated evidence.
   简单配置。本轮不引入分布式验收、额外机器、重试放宽或更高负载。
 
 完整配置、日期、制品/证据指纹、失败轮次与清理范围见不可变的
-[收尾报告](https://github.com/quiaingmuarua/xa_mass_platform/blob/2f38ee0dd6cb2cd31af923c24c373937324cbc48/external-release-load/20261113-v4.2.0-closeout/closeout.md)、
-[结构化结果](https://github.com/quiaingmuarua/xa_mass_platform/blob/2f38ee0dd6cb2cd31af923c24c373937324cbc48/external-release-load/20261113-v4.2.0-closeout/closeout.json)和
-[证据索引](https://github.com/quiaingmuarua/xa_mass_platform/blob/2f38ee0dd6cb2cd31af923c24c373937324cbc48/external-release-load/20261113-v4.2.0-closeout/evidence-index.json)。
+[收尾报告](https://github.com/quiaingmuarua/xa_mass_platform/blob/73bd766c8b5c44dd4002a6390649e75d512f83cb/external-release-load/20261113-v4.2.0-closeout/closeout.md)、
+[结构化结果](https://github.com/quiaingmuarua/xa_mass_platform/blob/73bd766c8b5c44dd4002a6390649e75d512f83cb/external-release-load/20261113-v4.2.0-closeout/closeout.json)和
+[证据索引](https://github.com/quiaingmuarua/xa_mass_platform/blob/73bd766c8b5c44dd4002a6390649e75d512f83cb/external-release-load/20261113-v4.2.0-closeout/evidence-index.json)。
 旧报告按日期保留；其中早期 TUN 归因、待扩大端口等描述不能覆盖本次结论。
 索引区分公开聚合证据与仅保留哈希的本地原始抓包，不把哈希当作公开原始数据。
 
-手动 CI 现以 1,000 档为默认，100 档可选，均保留发布工具的 `diagnostic-only` 标识；
+手动 CI 仅以 1,000 档作为默认基础档，保留发布工具的 `diagnostic-only` 标识；
+100 档已移除，不再提供或推荐为新验收入口，其结果只作为历史证据保留。
 15k 完整模式仍可显式选择，原断言不变。已通过的是上述本地公网运行，
 **不据此声称新的 1,000 档 CI 入口已经在 GitHub 执行通过**。收尾只验证参数接线和文档，
 不重新运行远端负载。命令见 [TESTING](../../TESTING.md#external-release-load)。

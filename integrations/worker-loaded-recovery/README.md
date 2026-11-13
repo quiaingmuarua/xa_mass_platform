@@ -8,7 +8,7 @@ Adapter Endpoint, but their evidence and process authority are separate:
 | Mode | Runtime and lifecycle | Work and claim |
 | --- | --- | --- |
 | `local-proof` | Runner owns Redis, Server and Host, including planned Server faults | Existing four 50,000-Item recovery stages and process stability |
-| `external-release` | Runner owns only its local Host and Harness; connects to an explicitly supplied published Runtime | Manual bounded 100/1,000 diagnostics or explicit full 15k/10k target; 50,000 Items per stage; no Server recovery claim |
+| `external-release` | Runner owns only its local Host and Harness; connects to an explicitly supplied published Runtime | Manual 1,000-Worker diagnostic baseline or explicit full 15k/10k target; 50,000 Items per stage; no Server recovery claim |
 
 The following local proof remains unchanged. The [external consumer](#external-release-capacity)
 is a distinct manual deployment acceptance, not another ordinary PR requirement.
@@ -298,10 +298,11 @@ receive Server administrator credentials. Environment coordinates and private
 inputs are documented in [TESTING](../../TESTING.md#external-release-load).
 
 The manual `external_scale` choice defaults to `1000`, using the previously
-exercised 1,000/999-Worker direct-public configuration. `100` selects 100/99.
-Both require every selected active Worker connected, append `--diagnostic`, and
-retain ten 5,000-Item Tasks in each of two stages, the original timing defaults
-and exact checks. They report `diagnostic-only`, not full capacity acceptance.
+exercised 1,000/999-Worker direct-public baseline. The 100 preset is removed and
+its results remain historical only. The baseline requires every selected active
+Worker connected, appends `--diagnostic`, and retains ten 5,000-Item Tasks in each
+of two stages, the original timing defaults and exact checks. It reports
+`diagnostic-only`, not full capacity acceptance.
 `15000` explicitly selects the unchanged full command with no scale overrides.
 Invalid selections fail before launching the consumer. The published CLI's own
 default remains 15k/10k; no JAR, manifest or immutable Release was changed.

@@ -134,7 +134,7 @@ class ExternalWorkflowBoundaryTest(unittest.TestCase):
         self.assertIn("--workload-items-per-task 5000", local)
         self.assertIn("external_scale:", local)
         self.assertIn("default: '1000'", local)
-        self.assertIn("options: ['100', '1000', '15000']", local)
+        self.assertIn("options: ['1000', '15000']", local)
         local_job = local.split("\n  worker-loaded-recovery:\n", 1)[1]
         self.assertNotIn("external_scale", local_job)
         self.assertNotIn("EXTERNAL_SCALE", local_job)
@@ -157,7 +157,7 @@ class ExternalWorkflowBoundaryTest(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", "The actual workflow Bash contract runs on Linux")
     def test_selected_scale_constructs_the_actual_release_command_without_running_it(self):
-        for scale in ("100", "1000", "15000"):
+        for scale in ("1000", "15000"):
             for diagnostics in ("false", "true"):
                 with self.subTest(scale=scale, diagnostics=diagnostics):
                     result, argv, base = self._capture_release_command(scale, diagnostics)
@@ -175,7 +175,7 @@ class ExternalWorkflowBoundaryTest(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", "The actual workflow Bash contract runs on Linux")
     def test_invalid_scale_rejects_before_invoking_the_release_command(self):
-        for scale in ("", "999", "15001", "1000; exit 0"):
+        for scale in ("", "100", "999", "15001", "1000; exit 0"):
             with self.subTest(scale=scale):
                 result, argv, _ = self._capture_release_command(scale, "false")
                 self.assertEqual(2, result.returncode)

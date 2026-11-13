@@ -144,8 +144,9 @@ command (all other workload and timing defaults remain unchanged):
 --diagnostic --prepared-workers 1000 --retained-workers 999 --minimum-initial-connected 1000 --minimum-retained-connected 999
 ```
 
-The 100/99 configuration substitutes 100, 99, 100, 99. Both still execute two
-stages of ten 5,000-Item Tasks and report `diagnostic-only`. Read the dated
+This baseline still executes two stages of ten 5,000-Item Tasks and reports
+`diagnostic-only`. The manual 100-Worker preset has been removed; its results
+are historical only. Read the dated
 [public acceptance closeout](https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/guide/capabilities.md#external-public-closeout)
 for measured scope and unresolved network boundaries; the full 15k/10k target
 has not passed publicly, and SSH controls do not count toward it.
@@ -169,8 +170,8 @@ Server/Redis/gateway resource evidence must be collected separately by its opera
 
 The existing loaded-recovery workflow can run this command with manual
 `external-release` mode on `main` through its protected `release-preview-load`
-Environment. That manual job defaults to `external_scale=1000`; `100` and the
-explicit full target `15000` are selectable without rebuilding this kit.
+Environment. That manual job defaults to the `external_scale=1000` baseline;
+only the explicit full target `15000` is also selectable, without rebuilding this kit.
 The shipped command without overrides still uses its full 15k/10k default.
 Its scheduled/default `local-proof` mode remains the existing four-stage local
 recovery proof. Public campaigns are not ordinary PR gates.

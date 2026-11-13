@@ -274,7 +274,8 @@ summary; the matrix aggregate remains the one selected Proof Gate result.
 
 Read the dated [public acceptance closeout](doc/guide/capabilities.md#external-public-closeout)
 before repeating a connection investigation. The 2026-11-13 campaign is closed
-at its passed 100/1,000-Worker direct-public diagnostics; larger direct-public
+at its passed 1,000-Worker direct-public baseline; 100-Worker results are historical
+only and the 100 preset has been removed. Larger direct-public
 acceptance remains unpassed, not an outstanding instruction to keep retrying.
 
 The manual external job defaults to `external_scale=1000`. It invokes the same
@@ -282,12 +283,11 @@ published entry with the exact previously exercised bounded parameters:
 
 | `external_scale` | Prepared / retained | Required connected | Result claim |
 | --- | --- | --- | --- |
-| `100` | 100 / 99 | 100 / 99 | `diagnostic-only` |
 | `1000` (default) | 1,000 / 999 | 1,000 / 999 | `diagnostic-only` |
 | `15000` (explicit full target) | 15,000 / 10,000 | 14,800 / 9,900 | Original full capacity claim; not yet passed publicly |
 
-All three retain ten 5,000-Item Tasks per stage, two stages, the original timing
-defaults and exact result/export checks. Small presets append `--diagnostic`
+Both retain ten 5,000-Item Tasks per stage, two stages, the original timing
+defaults and exact result/export checks. The baseline preset appends `--diagnostic`
 and four connection-count options; the full preset appends no overrides.
 Invalid presets are rejected. The shipped CLI itself still defaults to the full
 target: this is workflow argument selection, not a changed or republished kit.

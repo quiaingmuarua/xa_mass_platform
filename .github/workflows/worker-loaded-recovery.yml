@@ -20,10 +20,10 @@ on:
         default: ubuntu-24.04
         options: [ubuntu-24.04, ubuntu-24.04-arm]
       external_scale:
-        description: External Worker count (100/1000 are diagnostic; 15000 retains full acceptance)
+        description: External Worker count (1000 is diagnostic; 15000 retains full acceptance)
         type: choice
         default: '1000'
-        options: ['100', '1000', '15000']
+        options: ['1000', '15000']
 
 permissions:
   contents: read
@@ -170,13 +170,13 @@ jobs:
         run: |
           scale_args=()
           case "$EXTERNAL_SCALE" in
-            100|1000)
+            1000)
               retained=$((EXTERNAL_SCALE - 1))
               scale_args=(--diagnostic --prepared-workers "$EXTERNAL_SCALE" --retained-workers "$retained"
                 --minimum-initial-connected "$EXTERNAL_SCALE" --minimum-retained-connected "$retained")
               ;;
             15000) ;;
-            *) echo 'Unsupported external scale; choose 100, 1000 or 15000.' >&2; exit 2 ;;
+            *) echo 'Unsupported external scale; choose 1000 or 15000.' >&2; exit 2 ;;
           esac
           ulimit -n 65536
           consumer=(python "$KIT_ROOT/acceptance/run_loaded.py" \
