@@ -40,9 +40,9 @@ Status: current capability guide with explicitly dated evidence.
   简单配置。本轮不引入分布式验收、额外机器、重试放宽或更高负载。
 
 完整配置、日期、制品/证据指纹、失败轮次与清理范围见不可变的
-[收尾报告](https://github.com/quiaingmuarua/xa_mass_platform/blob/73bd766c8b5c44dd4002a6390649e75d512f83cb/external-release-load/20261113-v4.2.0-closeout/closeout.md)、
-[结构化结果](https://github.com/quiaingmuarua/xa_mass_platform/blob/73bd766c8b5c44dd4002a6390649e75d512f83cb/external-release-load/20261113-v4.2.0-closeout/closeout.json)和
-[证据索引](https://github.com/quiaingmuarua/xa_mass_platform/blob/73bd766c8b5c44dd4002a6390649e75d512f83cb/external-release-load/20261113-v4.2.0-closeout/evidence-index.json)。
+[收尾报告](https://github.com/quiaingmuarua/xa_mass_platform/blob/69773ada6b5bd6c67d3d5ee2b2adf6c5269c5db2/external-release-load/20261113-v4.2.0-closeout/closeout.md)、
+[结构化结果](https://github.com/quiaingmuarua/xa_mass_platform/blob/69773ada6b5bd6c67d3d5ee2b2adf6c5269c5db2/external-release-load/20261113-v4.2.0-closeout/closeout.json)和
+[证据索引](https://github.com/quiaingmuarua/xa_mass_platform/blob/69773ada6b5bd6c67d3d5ee2b2adf6c5269c5db2/external-release-load/20261113-v4.2.0-closeout/evidence-index.json)。
 旧报告按日期保留；其中早期 TUN 归因、待扩大端口等描述不能覆盖本次结论。
 索引区分公开聚合证据与仅保留哈希的本地原始抓包，不把哈希当作公开原始数据。
 
