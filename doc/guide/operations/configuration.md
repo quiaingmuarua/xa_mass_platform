@@ -20,6 +20,11 @@ Status: current configuration ownership guide.
 | 用户积分 | [Server 账户](../../../server_jvm/README.md#user-credit-accounts) | Server 自有 Redis 账本；与用户目录分开 |
 | Task 归档路径和保留时间 | [Server retention](../../../server_jvm/README.md#finite-task-retention) | 配置由 Boot 提供，归档与清理由 Server/Kernel 分工完成 |
 
+consumer 默认启用 Batch Checks 和 Messages，但不自动提供应用、检查项、Group 或 Pool。
+使用[两业务组合样例](../../../distribution/server/src/main/dist/examples/consumer-business/README.md)准备有效外部配置。
+只用一个业务时关闭另一个；纯平台 consumer 显式将两项 `enabled` 设为 `false`。
+缺配置时启动失败，不会自动套用 Preview 演示数据。SMS 继续仅由 Preview 装配。
+
 ## 新增一个 Batch Checks 检查项
 
 同一个结果协议可以复用现有静态契约；新协议需要先实现契约代码。一个可执行检查项

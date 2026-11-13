@@ -7,11 +7,31 @@ import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import Mock, call, patch
+import yaml
 
 import run_android_emulator_worker as proof
 
 
 class EmulatorChoreographyTest(unittest.TestCase):
+    def test_rpc_phase_explicitly_loads_platform_only_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner = self.runner(root)
+            runner.logs.mkdir(); runner.evidence.mkdir()
+            runner.consumption = {"runtimeRoot": str(root / "runtime")}
+            process = Mock(); process.poll.return_value = None
+            with patch.object(proof.consumer, "server_command", return_value=["java"]) as command, \
+                    patch.object(proof, "spawn", return_value=process), patch.object(proof, "urlopen") as ready:
+                ready.return_value.__enter__.return_value.status = 200
+                runner.start_server("rpc", "test_rpc")
+            selected = command.call_args.kwargs["runtime_config"]
+            self.assertEqual(proof.ROOT / "xa-android/config/platform-runtime.yaml", selected)
+            scenarios = yaml.safe_load(selected.read_text(encoding="utf-8"))["xa"]["mass"]["scenarios"]
+            self.assertEqual({"app-checks": {"enabled": False}, "messages": {"enabled": False}}, scenarios)
+            self.assertEqual(proof.consumer.digest(selected), runner.consumption["runtimeInputs"]["rpc"]["runtimeSha256"])
+            for stream in runner.streams:
+                stream.close()
+
     def test_messages_uses_packaged_runtime_and_group_without_scenario_store(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -29,6 +49,9 @@ class EmulatorChoreographyTest(unittest.TestCase):
                 runner.start_server("messages", "test_messages", configuration="messages-runtime.yaml")
             self.assertEqual(example / "messages-runtime.yaml", command.call_args.kwargs["runtime_config"])
             self.assertEqual(example / "worker-groups.json", command.call_args.kwargs["groups"])
+            scenarios = yaml.safe_load((example / "messages-runtime.yaml").read_text(encoding="utf-8"))["xa"]["mass"]["scenarios"]
+            self.assertTrue(scenarios["messages"]["enabled"])
+            self.assertFalse(scenarios["app-checks"]["enabled"])
             self.assertNotIn("XA_MASS_APP_CHECKS_CONFIG_PATH", spawn.call_args.kwargs["env"])
             self.assertIsNone(runner.consumption["runtimeInputs"]["messages"]["seedSha256"])
             for stream in runner.streams:
@@ -65,6 +88,9 @@ class EmulatorChoreographyTest(unittest.TestCase):
                     runner.start_server("external", "test_external", configuration=configuration)
                 self.assertEqual(example / "worker-groups.json", command.call_args.kwargs["groups"])
                 runtime = command.call_args.kwargs["runtime_config"]
+                scenarios = yaml.safe_load(runtime.read_text(encoding="utf-8"))["xa"]["mass"]["scenarios"]
+                self.assertTrue(scenarios["app-checks"]["enabled"])
+                self.assertFalse(scenarios["messages"]["enabled"])
                 environment = spawn.call_args.kwargs["env"]
                 if configuration == "batch-checks-runtime.yaml":
                     self.assertEqual(example / configuration, runtime)

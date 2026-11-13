@@ -13,19 +13,21 @@ composition; `server_jvm` retains the complete platform implementation.
 
 ## Platform and preview
 
-Messages is independently selected by `xa.mass.scenarios.messages.enabled`
-(default false). Preview explicitly enables it; consumer supplies applications
-and Matching enablement through external YAML and registers Groups separately.
+Messages is independently selected by `xa.mass.scenarios.messages.enabled`.
+Consumer and Preview enable it by default; the base/default profile leaves it off.
+Consumer supplies applications and Matching enablement through external YAML and
+registers Groups separately.
 Disabled composition contributes no Messages service, Project or qualified-country
 definition. The strict properties object also validates the enable switch.
 See [Messages deployment](../distribution/server/src/main/dist/examples/messages/README.md).
 
 Batch Checks is independently selected by the strict Boolean
-`xa.mass.scenarios.app-checks.enabled` (default false). Boot binds its properties
+`xa.mass.scenarios.app-checks.enabled` (enabled by consumer and Preview; off in the base/default profile). Boot binds its properties
 but imports the Scenario only when enabled. It requires explicit
-`configuration.path` and `configuration.seed`. Preview enables it; consumer may
-opt in through external YAML without SMS, Messages or Simulator Groups. No profile
-is added. See the [Android Pool example](../xa-android/README.md#batch-checks-through-an-android-pool).
+`configuration.path` and `configuration.seed`. Consumer supplies these through
+external YAML and may explicitly disable Messages for a checks-only composition.
+Neither Scenario starts a Worker process. No profile is added. See the
+[Android Pool example](../xa-android/README.md#batch-checks-through-an-android-pool).
 
 For deployment, use external Runtime YAML, Group registration JSON and the Scenario
 configuration document. Source and ZIP instructions are owned by
@@ -35,12 +37,21 @@ Batch Checks contributes its Project from the effective check configuration; do 
 repeat that Project in host YAML. Preview's built-in Groups remain demonstration data.
 
 
-Ordinary platform profiles load no business Scenario Controllers, registrations or
-jobs. The base platform and `consumer` remain independent of business modules. `preview` imports [SMS Reception](../scenarios/sms-reception-jvm/README.md),
+The base/default profile loads no business Scenario Controllers or jobs. `consumer`
+loads Messages and Batch Checks using required external configuration; either can
+be disabled explicitly. It never imports SMS. Missing enabled-business configuration
+fails startup instead of borrowing Preview bindings. `preview` imports [SMS Reception](../scenarios/sms-reception-jvm/README.md),
 [Message Campaigns](../scenarios/message-campaigns-jvm/README.md) and
 [App Checks](../scenarios/app-checks-jvm/README.md). There is one
 fixed preview assembly. Messages and Batch Checks also have explicit independent
-enable switches, without adding per-business deployment profiles.
+enable switches, without adding per-business deployment profiles. SMS retains its
+existing Preview-only Group binding and startup behavior.
+
+The [combined consumer example](../distribution/server/src/main/dist/examples/consumer-business/README.md)
+supplies both businesses without repeating their enabled defaults. Existing raw
+consumer deployments must explicitly set both switches to `false`; single-business
+deployments disable the other one. This startup-default change does not deploy GCP
+or change the default profile recorded in the Runtime archive.
 
 Preview's host configuration and enabled module declarations form this topology:
 
@@ -129,7 +140,7 @@ standard environment, command-line and `spring.config.additional-location` input
 | Profile | Configuration | Default deployment |
 | --- | --- | --- |
 | Default | `application.yaml` | Server 18082, Redis `redis://localhost:6379/15`, scope `profile_default`, DEFAULT Pacer, no Adapter or Group seeds, built-in development users |
-| `consumer` | `application-consumer.yaml` over the base | Server 18182, `runtime-websocket` Adapter 18183, scope `profile_consumer`, DEFAULT and no Group seeds; requires `xa.mass.users.seed` (or `XA_MASS_USERS_SEED`) |
+| `consumer` | `application-consumer.yaml` over the base | Server 18182, `runtime-websocket` Adapter 18183, scope `profile_consumer`, DEFAULT, Batch Checks and Messages enabled; no Group seeds; requires user and enabled-business configuration |
 | `preview` | `application-preview.yaml` over the base | Server 18500, `products-websocket` Adapter 18503, required `XA_MASS_REDIS_SCOPE`, DEFAULT and all three business Scenarios, built-in development users |
 
 The built-in development users carry public access keys (`xak_dev_<userId>`) and are
@@ -141,8 +152,9 @@ The external [platform proof fixture](../integrations/worker_proof_support/platf
 retains the `scenario-workers` test Project, three Groups, original Adapter and
 SCENARIO_LAB settings. Runners explicitly load that fixture before lane overlays;
 it is not a production profile or packaged application resource.
-External consumers register their own Groups through the public API; the profile does not
-embed Consumer or Scenario capabilities. Groups without a task-rpc refill
+External consumers register their own Groups through host initialization or the public API;
+enabled-business dependencies must exist before startup validation. The profile embeds
+no Group bindings or Worker capabilities. Groups without a task-rpc refill
 override save empty managed supply and may use Identity without a Pool.
 
 [Preview delivery](../distribution/server/PREVIEW.md#archive-delivery) copies the
@@ -163,9 +175,10 @@ Select another checked profile explicitly, for example:
 
 ```text
 ./gradlew :server_boot_jvm:bootRun \
-  --args="--spring.profiles.active=consumer"
+  --args="--spring.profiles.active=consumer --spring.config.additional-location=file:/absolute/business-inputs/runtime.yaml"
 ```
 
+Supply Group registrations and user configuration as described in the combined example.
 This starts the selected Server composition, without a Worker Host. Server
 readiness does not depend on that Host. Use Distribution's
 [source launcher](../distribution/server/README.md#source-launch) for the complete
@@ -234,8 +247,9 @@ host-owned; module requirements only validate subsets and can use an already
 registered Group without a host creation entry. Explicit preparation with the same
 caller Task ID and complete descriptor reuses retained work. Changing Group
 is a new binding, not an implicit data migration.
-Default and Consumer have empty Project lists; downstream deployments provide
-Groups and Projects before explicitly preparing RPC Tasks. An external
+Default and Consumer have empty host Project lists. Enabled consumer businesses
+contribute their own Projects from their configuration; raw-only consumers explicitly
+disable both businesses and provide their own Groups and Projects before preparing RPC Tasks. An external
 Group registration or Project declaration alone creates no Task. Projects have no mutation API.
 The Console workbench consumes this directory and works without a Project named
 `default`: use `/task-workbench?project=agentforge&tab=rpc` for a deployment that

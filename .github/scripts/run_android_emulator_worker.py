@@ -17,6 +17,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 import uuid
 from xml.etree import ElementTree
+import yaml
 
 from cleanup_redis_test_scope import cleanup as cleanup_scope
 
@@ -286,7 +287,7 @@ class ProofRunner:
         stream = (self.logs / f"server-{label}.log").open("w", encoding="utf-8")
         self.streams.append(stream)
         environment = consumer.consumer_environment(self.options.redis_url)
-        runtime_config = ROOT / "xa-android/config" / configuration if configuration else None
+        runtime_config = ROOT / "xa-android/config" / (configuration or "platform-runtime.yaml")
         groups = ROOT / "xa-android/config/worker-groups.json"
         example = Path(self.consumption["runtimeRoot"]) / "examples/batch-checks"
         if configuration == "messages-runtime.yaml":
@@ -308,10 +309,12 @@ class ProofRunner:
                 seed = inputs / "checks.json"
                 seed.write_text(json.dumps(seed_document, ensure_ascii=False), encoding="utf-8")
                 runtime_config = inputs / "runtime.yaml"
-                runtime_config.write_text((ROOT / "xa-android/config/window-pool-runtime.yaml").read_text(encoding="utf-8")
-                        + '\n"xa.mass.scenarios.app-checks.enabled": true\n'
-                        + '"xa.mass.scenarios.app-checks.configuration.path": ${XA_MASS_APP_CHECKS_CONFIG_PATH}\n'
-                        + '"xa.mass.scenarios.app-checks.configuration.seed": ${XA_MASS_APP_CHECKS_SEED}\n', encoding="utf-8")
+                runtime = yaml.safe_load((ROOT / "xa-android/config/window-pool-runtime.yaml").read_text(encoding="utf-8"))
+                runtime["xa"]["mass"]["scenarios"]["app-checks"] = {
+                    "enabled": True,
+                    "configuration": {"path": "${XA_MASS_APP_CHECKS_CONFIG_PATH}", "seed": "${XA_MASS_APP_CHECKS_SEED}"},
+                }
+                runtime_config.write_text(yaml.safe_dump(runtime, allow_unicode=True, sort_keys=False), encoding="utf-8")
                 state_name = "app-checks-window"
             environment.update(
                 XA_MASS_APP_CHECKS_CONFIG_PATH=str(self.proof_root / "data" / state_name / "configuration.json"),

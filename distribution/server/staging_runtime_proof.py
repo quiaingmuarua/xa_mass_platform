@@ -146,6 +146,7 @@ def _runtime_command(runtime_root: Path, data_root: Path, manifest: dict, java: 
               for group in (GROUP_A, GROUP_B, GROUP_LOADED)}
     return [java, "-Xms128m", "-Xmx1g", "-jar", str(jar),
             "--spring.profiles.active=consumer", "--server.address=127.0.0.1", f"--server.port={runtime_port}",
+            "--xa.mass.scenarios.app-checks.enabled=false", "--xa.mass.scenarios.messages.enabled=false",
             "--spring.web.resources.static-locations=" + (runtime_root / "frontend/dist").as_uri() + "/",
             f"--xa.mass.redis.url={redis_url}", f"--xa.mass.redis.scope={scope}",
             "--xa.mass.users.seed=" + _users_file(data_root).resolve().as_uri(),

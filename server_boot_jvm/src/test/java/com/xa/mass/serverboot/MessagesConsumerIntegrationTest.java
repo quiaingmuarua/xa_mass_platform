@@ -61,10 +61,11 @@ class MessagesConsumerIntegrationTest {
         host.put("xa.mass.redis.scope", scope);
         host.put("xa.mass.kernel-pacer.enabled", false);
         host.put("xa.mass.task-retention.enabled", false);
+        host.put("xa.mass.scenarios.app-checks.enabled", false);
         host.put("xa.mass.worker-delivery.adapter.instances.runtime-websocket.listen-port", port);
         host.put("xa.mass.worker-endpoints.endpoints.runtime-websocket.public-uri",
                 "ws://127.0.0.1:" + port + "/api/v1/worker-delivery/websocket");
-        host.put("xa.mass.scenarios.messages.enabled", enabled);
+        if (!enabled) host.put("xa.mass.scenarios.messages.enabled", false);
         if (enabled && !missing.equals("application")) {
             host.put("xa.mass.scenarios.messages.applications[0].id", "external-application");
             host.put("xa.mass.scenarios.messages.applications[0].label", "External messages");

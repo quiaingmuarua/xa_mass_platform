@@ -536,6 +536,8 @@ def _prove_consumer_profile(
     def start(log: Any) -> subprocess.Popen[Any]:
         return subprocess.Popen(
             _server_command(runtime_root, "consumer", [
+                "--xa.mass.scenarios.app-checks.enabled=false",
+                "--xa.mass.scenarios.messages.enabled=false",
                 "--xa.mass.project-assembly.projects[0].project-id=agentforge",
                 *(f"--xa.mass.project-assembly.projects[0].worker-group-ids[{i}]={group}"
                   for i, group in enumerate(_AGENTFORGE_GROUPS))

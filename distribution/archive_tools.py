@@ -27,6 +27,7 @@ HOST_CONFIGURATIONS = {"application.yaml",
                        "application-consumer.yaml", "application-preview.yaml"}
 BATCH_CHECK_EXAMPLES = {"README.md", "batch-checks-runtime.yaml", "worker-groups.json", "batch-checks-configuration.json"}
 MESSAGES_EXAMPLES = {"README.md", "messages-runtime.yaml", "worker-groups.json"}
+CONSUMER_BUSINESS_EXAMPLES = {"README.md", "runtime.yaml", "worker-groups.json", "batch-checks-configuration.json"}
 STAGING_INGRESS_EXAMPLES = {"README.md", "deployment.example.json",
                           "staging_ingress/__init__.py", "staging_ingress/__main__.py",
                           "staging_ingress/renderer.py"}
@@ -155,6 +156,7 @@ def verify_runtime(archive: Path, version: str) -> None:
         missing = required - set(names)
         _runtime_require(not missing, f"runtime archive is missing: {sorted(missing)}")
         for directory, expected in (("batch-checks", BATCH_CHECK_EXAMPLES), ("messages", MESSAGES_EXAMPLES),
+                                    ("consumer-business", CONSUMER_BUSINESS_EXAMPLES),
                                     ("staging-ingress", STAGING_INGRESS_EXAMPLES)):
             example_prefix = f"{root}/examples/{directory}/"
             examples = {name.removeprefix(example_prefix) for name in names

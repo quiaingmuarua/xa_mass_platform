@@ -1,7 +1,9 @@
 # Batch Checks external deployment
 
 This is an explicitly loaded Android digest example, not a production default.
-The `consumer` profile itself has no business Project, Group or enabled Scenario.
+The `consumer` profile enables Batch Checks and Messages by default, requiring
+external configuration. This checks-only sample explicitly disables Messages.
+The profile provides no Group bindings, and SMS retains the Preview assembly.
 No Simulator is started. The Android App must install and expose the existing
 digest Handler; Group registration alone does not prove that it can execute.
 
@@ -9,7 +11,7 @@ digest Handler; Group registration alone does not prove that it can execute.
 
 | File | Owner and purpose |
 | --- | --- |
-| `batch-checks-runtime.yaml` | Host: enables Batch Checks and the Group's Any Pool/query; explicitly declares the optional raw `default` Project. |
+| `batch-checks-runtime.yaml` | Host: selects Batch Checks-only by disabling Messages, enables the Group's Any Pool/query and declares the optional raw `default` Project. |
 | `worker-groups.json` | Host: Group attributes and event declarations, registered through the existing initializer. |
 | `batch-checks-configuration.json` | Scenario seed: the check, saved execution settings, grouping and price. |
 
@@ -29,10 +31,12 @@ scope. Do not put runtime state or lock files back in this examples directory.
 ## Extracted Runtime ZIP: PowerShell
 
 Use absolute paths for the installation, configuration and data. Replace the
-example locations and Redis scope deliberately. Java 21 and Redis are required.
+example locations and Redis scope deliberately. Prepare a private users file and
+set `xa.mass.users.seed` in the copied YAML to its absolute `file:` URI; the sample
+does not ship credentials. Java 21 and Redis are required.
 
 ```powershell
-$runtimeRoot = (Resolve-Path 'D:\deploy\xa-mass-server-runtime-3.1.0').Path
+$runtimeRoot = (Resolve-Path '<extracted-runtime-directory>').Path
 $inputs = (Resolve-Path 'D:\deploy\checks-inputs').Path
 $dataRoot = [IO.Path]::GetFullPath('D:\deploy\checks-data')
 $manifest = Get-Content -LiteralPath (Join-Path $runtimeRoot 'manifest.json') -Raw | ConvertFrom-Json
@@ -58,19 +62,24 @@ verify the effective deployment before admitting business work.
 
 ## Source checkout
 
-Use the same three inputs and data environment values. With this repository as
+Use the same three inputs, but replace the copied YAML's Scenario environment
+placeholders with the explicit absolute configuration path and absolute `file:`
+seed URI. Keep the explicit user-file URI there too. The local launcher does not
+inherit the preceding deployment environment variables. With this repository as
 `$checkout`, launch from any working directory:
 
 ```powershell
-$env:XA_MASS_TASK_ARCHIVE_DIRECTORY = Join-Path $dataRoot 'task-archives'
 python (Join-Path $checkout 'run_local_runtime.py') --profile consumer `
   --runtime-config (Join-Path $inputs 'batch-checks-runtime.yaml') `
-  --groups (Join-Path $inputs 'worker-groups.json') --server-port 19182
+  --groups (Join-Path $inputs 'worker-groups.json') --server-port 19182 --adapter-port 19183 `
+  --work-dir $dataRoot --redis-url redis://127.0.0.1:6379/15 --redis-scope checks_deployment
 ```
 
-The launcher builds only frontend and Server. Its HTTP port precedence is
-`--server-port`, then `SERVER_PORT`, then `18182`; it explicitly passes the same
-port to Server and readiness. Adapter coordinates remain in host configuration.
+The launcher builds only frontend and Server unless Worker options are selected.
+Its HTTP port precedence is `--server-port`, then literal Runtime YAML, then `18182`;
+it passes the same resolved port to Server and readiness. Inherited business
+environment variables do not override the local entry. Adapter coordinates use
+the corresponding CLI, Runtime YAML and profile defaults.
 It never adds Projects, enables Pools, tops up credit or submits Tasks.
 
 ## Worker and business acceptance

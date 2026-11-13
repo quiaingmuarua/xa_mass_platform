@@ -49,6 +49,8 @@ class ArchiveToolsTest(unittest.TestCase):
                for name in tools.BATCH_CHECK_EXAMPLES},
             **{"examples/messages/" + name: ("{}" if name.endswith(".json") else "fixture")
                for name in tools.MESSAGES_EXAMPLES},
+            **{"examples/consumer-business/" + name: ("{}" if name.endswith(".json") else "fixture")
+               for name in tools.CONSUMER_BUSINESS_EXAMPLES},
             **{"examples/staging-ingress/" + name: ("{}" if name.endswith(".json") else "fixture")
                for name in tools.STAGING_INGRESS_EXAMPLES},
             f"lib/xa-mass-server-jvm-{self.version}.jar": jar,
@@ -185,6 +187,7 @@ class ArchiveToolsTest(unittest.TestCase):
     def test_runtime_examples_are_explicit_and_contain_no_saved_state(self):
         original = self.runtime_files()
         for directory, examples in (("batch-checks", tools.BATCH_CHECK_EXAMPLES), ("messages", tools.MESSAGES_EXAMPLES),
+                                    ("consumer-business", tools.CONSUMER_BUSINESS_EXAMPLES),
                                     ("staging-ingress", tools.STAGING_INGRESS_EXAMPLES)):
             for name in examples:
                 with self.subTest(missing=directory + "/" + name):
@@ -197,6 +200,11 @@ class ArchiveToolsTest(unittest.TestCase):
                 tools.verify_runtime(self.archive("server-runtime", {**original, "examples/batch-checks/" + filename: "{}"}), self.version)
         with self.assertRaisesRegex(ValueError, "application configuration"):
             tools.verify_runtime(self.archive("server-runtime", {**original, "examples/batch-checks/application.yaml": "fixture"}), self.version)
+        for filename in ("configuration.json.lock", "configuration.json.tmp", "data/configuration.json", "private/users.json"):
+            with self.subTest(consumer_state=filename), self.assertRaisesRegex(ValueError, "runtime data"):
+                tools.verify_runtime(self.archive("server-runtime", {**original, "examples/consumer-business/" + filename: "{}"}), self.version)
+        with self.assertRaisesRegex(ValueError, "application configuration"):
+            tools.verify_runtime(self.archive("server-runtime", {**original, "examples/consumer-business/application.yaml": "fixture"}), self.version)
         for filename in ("run.py", "examples/staging-ingress/extra.py", "examples/staging-ingress/staging_ingress/proof.py"):
             with self.subTest(unexpected_python=filename), self.assertRaisesRegex(ValueError, "Python production"):
                 tools.verify_runtime(self.archive("server-runtime", {**original, filename: "fixture"}), self.version)

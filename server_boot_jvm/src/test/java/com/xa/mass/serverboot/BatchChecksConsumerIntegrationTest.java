@@ -24,7 +24,7 @@ class BatchChecksConsumerIntegrationTest {
     final String redis = System.getenv().getOrDefault("XA_MASS_REDIS_URL", "redis://127.0.0.1:6379/15");
     static final String GROUP = "external-check-workers", EVENT = "extension.worker.android.string.digest";
 
-    @Test void consumerKeepsScenarioDisabledWithoutOpeningItsStore() throws Exception {
+    @Test void explicitlyDisabledConsumerDoesNotOpenItsStore() throws Exception {
         try (var context = start(false, "valid")) {
             assertThat(context.getBeansOfType(AppCheckTaskService.class)).isEmpty();
             assertThat(context.getBeansOfType(SmsReceptionService.class)).isEmpty();
@@ -82,12 +82,13 @@ class BatchChecksConsumerIntegrationTest {
                 "--xa.mass.worker-delivery.adapter.instances.runtime-websocket.listen-port=" + port,
                 "--xa.mass.worker-endpoints.endpoints.runtime-websocket.public-uri=ws://127.0.0.1:" + port + "/api/v1/worker-delivery/websocket",
                 "--xa.mass.project-assembly.projects[0].project-id=default",
-                "--xa.mass.scenarios.app-checks.enabled=" + enabled,
+                "--xa.mass.scenarios.messages.enabled=false",
                 "--xa.mass.scenarios.app-checks.configuration.path=" + directory.resolve("data/configuration.json"),
                 "--xa.mass.scenarios.app-checks.configuration.seed=" + seedFile.toUri(),
                 "--xa.mass.worker-assembly.group-config-json=" + Jsons.toJson(Map.of(
                     missing.equals("group") ? "another-group" : GROUP,
                     Map.of("attributes", Map.of(), "eventCodes", List.of(missing.equals("event") ? "extension.worker.other" : EVENT))))));
+        if (!enabled) args.add("--xa.mass.scenarios.app-checks.enabled=false");
         if (!missing.equals("pool")) args.add("--xa.mass.worker-matching.groups." + GROUP + ".pools[0]=any");
         if (!missing.equals("function")) args.add("--xa.mass.worker-matching.groups." + GROUP + ".functions[0]=worker.any");
         if (missing.equals("window-pool")) {

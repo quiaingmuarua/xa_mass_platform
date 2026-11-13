@@ -27,8 +27,13 @@ Group 绑定和窗口状态；不兼容切换使用新的环境坐标。
 | profile | 当前用途 | 默认行为 |
 | --- | --- | --- |
 | `preview` | 三个业务场景的本地体验 | Server、Adapter 与 Java Simulator |
-| `consumer` | 外部 Host 接入 | 干净 Server/Adapter；资源和 Worker 显式提供 |
+| `consumer` | Batch Checks／Messages 与外部 Host 接入 | 两业务默认启用，必须提供有效业务及资源配置；不自动启动 Worker，SMS 不装配 |
 | `default` | 普通平台 | 无默认 Adapter、Group 或业务 Worker |
+
+consumer 的完整外部输入见[两业务组合样例](../../../distribution/server/src/main/dist/examples/consumer-business/README.md)。
+旧的纯平台 consumer 在升级时需显式将 `xa.mass.scenarios.app-checks.enabled` 和
+`xa.mass.scenarios.messages.enabled` 设为 `false`；只用一个业务时关闭另一个。
+这项默认装配变化不自动更新已运行的 GCP，仍由下一次明确的 Release 部署应用。
 
 具体默认端口和所有参数属于
 [Distribution source launch](../../../distribution/server/README.md#source-launch)。

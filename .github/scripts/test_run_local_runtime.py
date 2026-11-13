@@ -62,6 +62,24 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         self.assertEqual(settings["groups"], json.loads(next(x.split("=", 1)[1] for x in command if "group-config-json=" in x)))
         self.assertFalse(any("project-id" in x for x in command))
 
+    def test_consumer_business_defaults_and_explicit_switches_belong_to_boot(self):
+        for scenarios in (None, {"app-checks": {"enabled": False}, "messages": {"enabled": False}},
+                          {"app-checks": {"enabled": False}, "messages": {"enabled": True}}):
+            with self.subTest(scenarios=scenarios):
+                arguments = ["--profile", "consumer"]
+                if scenarios is not None:
+                    config = self.document("business.yaml", {"xa": {"mass": {"scenarios": scenarios}}})
+                    arguments += ["--runtime-config", config]
+                settings = self.resolve(*arguments)
+                run = local.LocalRun(settings, output=self.directory / "run")
+                run.server_jar, run.frontend = self.directory / "server.jar", self.directory / "frontend"
+                command = run.server_arguments()
+                self.assertFalse(any("--xa.mass.scenarios." in argument for argument in command))
+                self.assertIsNone(settings["java_config"])
+                self.assertEqual(0, settings["android_count"])
+                if scenarios is not None:
+                    self.assertIn("--spring.config.additional-location=" + Path(config).as_uri(), command)
+
     def test_preview_adapter_callbacks_follow_the_selected_http_port(self):
         settings = self.resolve("--server-port", "19400", "--adapter-port", "19403")
         run = local.LocalRun(settings, output=self.directory / "run")
