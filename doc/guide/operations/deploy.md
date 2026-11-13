@@ -112,6 +112,10 @@ GCP 只承担固定版本的长期验收：日常 PR 与问题修复在本地和
 按 **README 定位 → 本节 → 只读核对主机记录 → 目标版本说明或对应 Owner** 阅读。
 单纯维护环境无需先通读调度主线；需要修改代码时再按受影响 Owner 扩展。
 
+涉及外部连接/容量时，先读[公网验收收尾](../capabilities.md#external-public-closeout)。
+该轮已按通过的 1,000 档结束；100 档仅保留历史证据。完整规模未通过不表示仍有待执行的压测任务。
+复用已完成的端口、跨系统、物理出口和 CI 对照证据，不从历史的待办文字重新开始调查。
+
 以下是当前环境的脱敏访问入口，不是应用协议常量；使用前与主机记录核对：
 
 | 入口 | 地址 |
@@ -190,8 +194,12 @@ issue（Preview finding 表单），附上该轮 JSON。仓库和主机都不为
 需要衡量已发布 Runtime 的外部负载时，使用同 Release 的 Simulator kit 中
 `acceptance/run_loaded.py`。它在外部 Linux 主机启动自己的 Java Host 和编译好的
 Harness，不在 GCP 构建源码或运行 Worker Host，也不注入 Server 重启／故障。
-固定完整规模为 15,000 Worker、保留 10,000 Worker，各运行十个 Task、每 Task 5,000 Item；
-分别记录两阶段结果，不能把缩小的 `--diagnostic` fixture 报告为完整规模通过。
+发布工具不带规模覆盖时仍为完整 15,000 Worker、保留 10,000 Worker，
+各运行十个 Task、每 Task 5,000 Item；分别记录两阶段结果。
+当前手动 CI 的 `external_scale` 默认选择已验的 1,000 → 999 基础档，
+显式使用 `--diagnostic` 并保留 `diagnostic-only` 结果口径；100 档已移除。
+原 15k → 10k 模式仅通过 `external_scale=15000` 显式选择；其原门槛没有降低，
+本轮也没有通过它。不要把默认小档的通过报告成完整容量通过。
 
 这个入口使用明确的管理 API／Worker HTTPS 地址、Project、Group、Endpoint Manager、
 operator 访问密钥文件、Worker 凭据文件和输出目录。它没有 SSH、管理员密钥或 Redis

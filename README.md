@@ -29,6 +29,8 @@ Task, and many Workers inside finite Groups.
 - **GCP／Release Preview：** [环境定位与交接](doc/guide/operations/deploy.md#release-preview)。
   用于明确的部署、现场诊断或公网验收任务；日常开发和项目理解默认不访问主机。
   按 Release 部署与验收，长期环境不要求接口或数据永久兼容。
+  外部连接测试先读[已验规模与排查收尾](doc/guide/capabilities.md#external-public-closeout)，
+  区分通过的有限范围、未通过的容量目标和已经结束的调查。
 - **开发与 Agent：** [按任务定位 Owner](doc/guide/development/index.md)，
   再使用下面的 Reading Path 和 [AGENTS](AGENTS.md)。
 - **验证与能力：** [证明如何选](doc/guide/verification.md)、

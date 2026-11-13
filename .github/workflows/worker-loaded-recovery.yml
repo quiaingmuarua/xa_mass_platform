@@ -19,6 +19,11 @@ on:
         type: choice
         default: ubuntu-24.04
         options: [ubuntu-24.04, ubuntu-24.04-arm]
+      external_scale:
+        description: External Worker count (1000 is diagnostic; 15000 retains full acceptance)
+        type: choice
+        default: '1000'
+        options: ['1000', '15000']
 
 permissions:
   contents: read
@@ -98,7 +103,7 @@ jobs:
           retention-days: 7
 
   external-release:
-    name: External published Release capacity
+    name: External published Release (${{ inputs.external_scale || '1000' }} Workers)
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'external-release' && github.ref == 'refs/heads/main'
     environment: release-preview-load
     runs-on: ${{ inputs.external_runner == 'ubuntu-24.04-arm' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
@@ -161,14 +166,25 @@ jobs:
           WORKER_GROUP_ID: ${{ vars.WORKER_GROUP_ID }}
           ENDPOINT_MANAGER_ID: ${{ vars.ENDPOINT_MANAGER_ID }}
           NETWORK_DIAGNOSTICS: ${{ inputs.network_diagnostics }}
+          EXTERNAL_SCALE: ${{ inputs.external_scale || '1000' }}
         run: |
+          scale_args=()
+          case "$EXTERNAL_SCALE" in
+            1000)
+              retained=$((EXTERNAL_SCALE - 1))
+              scale_args=(--diagnostic --prepared-workers "$EXTERNAL_SCALE" --retained-workers "$retained"
+                --minimum-initial-connected "$EXTERNAL_SCALE" --minimum-retained-connected "$retained")
+              ;;
+            15000) ;;
+            *) echo 'Unsupported external scale; choose 1000 or 15000.' >&2; exit 2 ;;
+          esac
           ulimit -n 65536
           consumer=(python "$KIT_ROOT/acceptance/run_loaded.py" \
             --runtime-url "$RUNTIME_API_URL" --worker-runtime-url "$WORKER_RUNTIME_URL" \
             --project "$PROJECT_ID" --group "$WORKER_GROUP_ID" --endpoint-manager "$ENDPOINT_MANAGER_ID" \
             --access-key-file "$RUNNER_TEMP/external-release-load-private/access-key.txt" \
             --gateway-credential-file "$RUNNER_TEMP/external-release-load-private/worker-gateway.json" \
-            --output-dir build/external-release-load)
+            --output-dir build/external-release-load "${scale_args[@]}")
           if [[ "$NETWORK_DIAGNOSTICS" == "true" ]]; then
             python integrations/worker-loaded-recovery/observe_external_network.py \
               --target-url "$WORKER_RUNTIME_URL" \
