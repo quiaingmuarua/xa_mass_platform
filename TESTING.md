@@ -280,6 +280,18 @@ around the same Release command, without rebuilding or changing the workload:
 gh workflow run worker-loaded-recovery.yml --ref main -f mode=external-release -f network_diagnostics=true
 ```
 
+To compare another free standard runner while consuming the same Release kit:
+
+```text
+gh workflow run worker-loaded-recovery.yml --ref main -f mode=external-release -f network_diagnostics=true -f external_runner=ubuntu-24.04-arm
+```
+
+`external_runner` defaults to `ubuntu-24.04` and affects only the external job.
+The two allowed choices are standard hosted runners, free for this public
+repository; no paid runner is selected. Runs remain serial for the target
+environment. Neither choice changes the 15k/10k workload or certifies an outbound
+connection budget; inspect the recorded client resources and network evidence.
+
 Diagnostics are off by default. The safe diagnostic summary reports collection
 and cleanup separately from the load result; raw JFR, credentials and opaque
 payloads are not uploaded. The [Integration Owner](integrations/worker-loaded-recovery/README.md#workflow-selection-and-deployment-boundary)

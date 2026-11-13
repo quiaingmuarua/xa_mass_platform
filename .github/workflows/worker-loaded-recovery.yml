@@ -14,6 +14,11 @@ on:
         description: Capture bounded client network diagnostics for external-release only
         type: boolean
         default: false
+      external_runner:
+        description: Standard hosted runner for external-release only (free in this public repository)
+        type: choice
+        default: ubuntu-24.04
+        options: [ubuntu-24.04, ubuntu-24.04-arm]
 
 permissions:
   contents: read
@@ -96,7 +101,7 @@ jobs:
     name: External published Release capacity
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'external-release' && github.ref == 'refs/heads/main'
     environment: release-preview-load
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.external_runner == 'ubuntu-24.04-arm' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7.0.1
