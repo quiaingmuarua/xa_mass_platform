@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "scope": "byte fingerprints of selected existing public-format source JSON and links to prior public reports",
+  "localSourceBoundary": "Original local JSON and large captures are not copied into this closeout; a hash is not a retrieval link and does not independently reproduce the measurements.",
+  "sources": [
+    {
+      "id": "direct100-run",
+      "localSource": "build/external-release-load/staged/scale-100/summary.json",
+      "bytes": 16315,
+      "sha256": "81f105440216b6f0398e5a7dbb8a4d5b51775b09f1acee02c9e0d8001d6093ba",
+      "availability": "local source only; this index does not publish its bytes"
+    },
+    {
+      "id": "direct100-harness",
+      "localSource": "build/external-release-load/staged/scale-100/evidence/summary.json",
+      "bytes": 8281,
+      "sha256": "def0cc13b4e795d771aa59bb434908fe396912af3517f26b8266c8f9f25ebb58",
+      "availability": "local source only; this index does not publish its bytes"
+    },
+    {
+      "id": "direct1000-run",
+      "localSource": "build/external-release-load/staged/scale-1000/summary.json",
+      "bytes": 16343,
+      "sha256": "603f8ad0fd66970f37e4778f1a8f37f88aee4d290b0bb556c791ec1bf1545dd3",
+      "availability": "local source only; this index does not publish its bytes"
+    },
+    {
+      "id": "direct1000-harness",
+      "localSource": "build/external-release-load/staged/scale-1000/evidence/summary.json",
+      "bytes": 8310,
+      "sha256": "aba18405ef24b82484f2cf62cc082dca3278c7ab1f676c7ae23c07c18ec7d8ea",
+      "availability": "local source only; this index does not publish its bytes"
+    },
+    {
+      "id": "direct-resources",
+      "localSource": "build/external-release-load/staged/primary-100-1000-resource-summary.json",
+      "bytes": 14222,
+      "sha256": "f7ab52dcc1d974ceb584aa47bc580f520c62ab01c120667dffec6b94ceb14ad7",
+      "availability": "local source only; this index does not publish its bytes"
+    },
+    {
+      "id": "staged10000-run",
+      "localSource": "build/external-release-load/staged/scale-10000/summary.json",
+      "bytes": 5162,
+      "sha256": "479feebe27e851ad130ebeaf61bda98196de3aa362dbd6971420b2ac7eb6364d",
+      "availability": "local source only; this index does not publish its bytes"
+    },
+    {
+      "id": "physical-hop-run",
+      "localSource": "build/external-release-load/physical-hop-20261113/full-run/summary.json",
+      "bytes": 4965,
+      "sha256": "5bd429b1547a41fd09f6225a399aef52056b412c357d47932d90b4a4d13ae77f",
+      "availability": "local source only; this index does not publish its bytes"
+    },
+    {
+      "id": "physical-hop-correlation",
+      "localSource": "build/external-release-load/network-diagnosis/physical-hop-correlated-review.json",
+      "bytes": 791170,
+      "sha256": "12e287b79af6b38c0dde13d6c58bb27f3360ae143108749354c9f3d877f55283",
+      "availability": "local source only; this index does not publish its bytes"
+    },
+    {
+      "id": "physical-hop-failed-connection",
+      "localSource": "build/external-release-load/physical-hop-20261113/failed-connection-review.json",
+      "bytes": 9294,
+      "sha256": "d282acdf9976c1bda26f31b32601932cc735ecd77a0098b055c24ebd805318e0",
+      "availability": "local source only; this index does not publish its bytes"
+    },
+    {
+      "id": "x64-run",
+      "localSource": "build/external-release-load/github-free-x64-retest-20261113/evidence/external-release-load/summary.json",
+      "bytes": 5524,
+      "sha256": "a019354329ca2df810ae2d326d96bef273667cd2d0d46b43c9210d07ceec5b43",
+      "availability": "local source only; this index does not publish its bytes"
+    },
+    {
+      "id": "x64-correlation",
+      "localSource": "build/external-release-load/github-free-x64-retest-20261113/independent-review.json",
+      "bytes": 16713,
+      "sha256": "7e13164fc5695c8153efadbd428b7e69e09765b6a300b4a46bf85eacbbff884d",
+      "availability": "local source only; this index does not publish its bytes"
+    },
+    {
+      "id": "arm-run",
+      "localSource": "build/external-release-load/github-free-arm-20261113/evidence/external-release-load/summary.json",
+      "bytes": 5045,
+      "sha256": "fbef925411c04aaab782e18e39bafdd17b76ef47b744e252c98fae1e2568e054",
+      "availability": "local source only; this index does not publish its bytes"
+    },
+    {
+      "id": "arm-correlation",
+      "localSource": "build/external-release-load/github-free-arm-20261113/independent-review.json",
+      "bytes": 11709,
+      "sha256": "96ee46ff318f7862f4e7bd67267c9cdebbb40076878dad79b50f123e06671c0d",
+      "availability": "local source only; this index does not publish its bytes"
+    },
+    {
+      "id": "ssh-isolation",
+      "localSource": "build/external-release-load/network-diagnosis/tunneled-repaired2-10000/summary.json",
+      "bytes": 16376,
+      "sha256": "4f015c7a3bdff20e79f83d82cb0723821895e292c9d26e4a57d6d45b6df9f992",
+      "availability": "local source only; this index does not publish its bytes"
+    }
+  ],
+  "olderPublishedReports": [
+    {
+      "path": "external-release-load/20261112-v4.2.0/staged-capacity-report.md",
+      "immutableUrl": "https://github.com/quiaingmuarua/xa_mass_platform/blob/93f381b63986bb63dc0506ce0cb4dcf29d50430e/external-release-load/20261112-v4.2.0/staged-capacity-report.md",
+      "bytes": 3635,
+      "sha256": "f5d6ce633d37bf0360ba89c28e718ef7b304a18d7f758039435fc28068824d33",
+      "availability": "already-public version-scoped history; retained without rewriting"
+    },
+    {
+      "path": "external-release-load/20261112-v4.2.0/consolidated-capacity-report.md",
+      "immutableUrl": "https://github.com/quiaingmuarua/xa_mass_platform/blob/93f381b63986bb63dc0506ce0cb4dcf29d50430e/external-release-load/20261112-v4.2.0/consolidated-capacity-report.md",
+      "bytes": 2784,
+      "sha256": "9366ba4002d3e0d0262fe574216e71553d149e54a40afcf26ced90e61f0b7520",
+      "availability": "already-public version-scoped history; retained without rewriting"
+    },
+    {
+      "path": "external-release-load/20261112-v4.2.0/network-findings.md",
+      "immutableUrl": "https://github.com/quiaingmuarua/xa_mass_platform/blob/93f381b63986bb63dc0506ce0cb4dcf29d50430e/external-release-load/20261112-v4.2.0/network-findings.md",
+      "bytes": 5739,
+      "sha256": "936f651014b46b6a397805867080c2ab74ad429643025d26e481cedd2f618f48",
+      "availability": "already-public version-scoped history; retained without rewriting"
+    }
+  ],
+  "permanentFileSet": [
+    "closeout.md",
+    "closeout.json",
+    "evidence-index.json",
+    "matched-witness.json"
+  ],
+  "excluded": [
+    "raw captures/ETL",
+    "raw process logs",
+    "private directories",
+    "credential/config files",
+    "business payloads and Results",
+    "raw Worker/Task identity inventories"
+  ],
+  "verificationPerformed": "Existing JSON consistency, per-Task counts, stability gates, cleanup flags and published-JAR digests were checked. No new workload was executed. Workflow argument tests and documentation/record synchronization are separately validated and do not add runtime proof."
+}

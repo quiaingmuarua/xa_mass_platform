@@ -1,0 +1,509 @@
+{
+  "schemaVersion": 1,
+  "closedOn": "2026-11-13",
+  "decision": {
+    "status": "closed-at-user-accepted-observed-scope",
+    "acceptedDirectWorkerCounts": [
+      100,
+      1000
+    ],
+    "higherScaleCampaign": "not-passed; investigation closed by user decision",
+    "followupPolicy": "Do not automatically resume higher-count load, change thresholds, buy runners, or reopen network diagnosis. Reopen only for a new explicitly requested requirement.",
+    "proofThresholdsChanged": false,
+    "manualWorkflowDefaultScale": 1000,
+    "publishedCliDefaultScale": 15000,
+    "boundedWorkflowPublicExecutionDuringCloseout": "not run; argument wiring only"
+  },
+  "release": {
+    "tag": "v4.2.0",
+    "gitCommit": "aaed8d648c19e2f6332f37b4e831b0b194d5553b",
+    "kitSha256": "8edd9965b8a33dbf58920d50629927eab8e6e3ad3e3c8bcfa257142147d41cf9",
+    "url": "https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.2.0",
+    "jarFingerprints": [
+      {
+        "path": "lib/xa-mass-worker-simulator-jvm-4.2.0.jar",
+        "sha256": "7bceed182335132905cba2c56cb8657eeac525e00b4a0b71b7a583d2c0a03e80"
+      },
+      {
+        "path": "acceptance/loaded/lib/xa-mass-worker-loaded-recovery-4.2.0.jar",
+        "sha256": "d8bca6fa49254031af1e5f522b47db8e736b1db943da8fcc3e78d0a3d9717d35"
+      }
+    ]
+  },
+  "directPublicRuns": [
+    {
+      "preparedWorkers": 100,
+      "sourceRunLabel": "diagnostic-passed",
+      "sourceClaim": "diagnostic-only",
+      "acceptedScopeAtCloseout": "direct-public 100/1000 observation; does not relabel the original diagnostic run as a 15k pass",
+      "evidenceWindowUtc": {
+        "first": "2026-11-12T11:44:11.371107271Z",
+        "last": "2026-11-12T11:54:10.250710557Z"
+      },
+      "configured": {
+        "prepared_workers": 100,
+        "retained_workers": 99,
+        "minimum_initial_connected": 100,
+        "minimum_retained_connected": 99,
+        "workload_items_per_task": 5000,
+        "stable_hold_millis": 60000,
+        "maximum_convergence_wait_millis": 900000,
+        "task_result_wait_millis": 900000,
+        "request_timeout_millis": 30000,
+        "scan_interval_millis": 10000
+      },
+      "workerConnection": {
+        "requestTimeoutMillis": 60000,
+        "reconnectPolicy": {
+          "maxUnstableAttempts": 600,
+          "reconnectIntervalMillis": 500,
+          "stableConnectionDurationMillis": 10000
+        }
+      },
+      "recordedHostConfigurationSha256": "8e266d7ed7f510aa67052db7fb2d5b9ab2ee6608fba3331aa82f428b3ec8bfea",
+      "fingerprintBoundary": "Fingerprint is recorded in the public complete run summary; no private configuration file is copied or re-read.",
+      "confirmedStarts": 100,
+      "unknownStarts": 0,
+      "cases": [
+        {
+          "case": "initial",
+          "activeWorkers": 100,
+          "taskCount": 10,
+          "expectedItems": 50000,
+          "succeededItems": 50000,
+          "verifiedItems": 50000,
+          "terminalTaskCount": 10,
+          "startedAt": "2026-11-12T11:45:35.068985279Z",
+          "elapsedMillis": 98727,
+          "observedItemsPerSecond": 506.4470712165872,
+          "preloadMillis": 9107,
+          "verificationMillis": 61810,
+          "exportMillis": 7473,
+          "minimumConnected": 100,
+          "status": "passed",
+          "allTenTaskCountsVerified": true,
+          "preWorkStability": {
+            "activeConnected": 100,
+            "requiredConnected": 100,
+            "minimumConnected": 100,
+            "qualifyingScans": 7,
+            "stableMillis": 61390,
+            "missingSchedulingIdentities": 0,
+            "stoppedConnected": 0
+          },
+          "postWorkStability": {
+            "activeConnected": 100,
+            "requiredConnected": 100,
+            "minimumConnected": 100,
+            "qualifyingScans": 7,
+            "stableMillis": 61111,
+            "missingSchedulingIdentities": 0,
+            "stoppedConnected": 0
+          }
+        },
+        {
+          "case": "retained",
+          "activeWorkers": 99,
+          "taskCount": 10,
+          "expectedItems": 50000,
+          "succeededItems": 50000,
+          "verifiedItems": 50000,
+          "terminalTaskCount": 10,
+          "startedAt": "2026-11-12T11:50:27.437120752Z",
+          "elapsedMillis": 100735,
+          "observedItemsPerSecond": 496.3518141658808,
+          "preloadMillis": 9066,
+          "verificationMillis": 60937,
+          "exportMillis": 6786,
+          "minimumConnected": 99,
+          "status": "passed",
+          "allTenTaskCountsVerified": true,
+          "preWorkStability": {
+            "activeConnected": 99,
+            "requiredConnected": 99,
+            "minimumConnected": 99,
+            "qualifyingScans": 7,
+            "stableMillis": 61104,
+            "missingSchedulingIdentities": 0,
+            "stoppedConnected": 0
+          },
+          "postWorkStability": {
+            "activeConnected": 99,
+            "requiredConnected": 99,
+            "minimumConnected": 99,
+            "qualifyingScans": 7,
+            "stableMillis": 61009,
+            "missingSchedulingIdentities": 0,
+            "stoppedConnected": 0
+          }
+        }
+      ],
+      "resourceSampling": {
+        "status": "complete",
+        "periodicCycles": 120,
+        "maximumPeriodicGapMillis": 5014
+      },
+      "cleanup": {
+        "ownedProcessesStopped": true,
+        "privateCredentialCopiesRemoved": true,
+        "errors": []
+      },
+      "remoteTaskCleanup": "not-required-verified-terminal"
+    },
+    {
+      "preparedWorkers": 1000,
+      "sourceRunLabel": "diagnostic-passed",
+      "sourceClaim": "diagnostic-only",
+      "acceptedScopeAtCloseout": "direct-public 100/1000 observation; does not relabel the original diagnostic run as a 15k pass",
+      "evidenceWindowUtc": {
+        "first": "2026-11-12T11:54:49.205530623Z",
+        "last": "2026-11-12T12:02:53.022393633Z"
+      },
+      "configured": {
+        "prepared_workers": 1000,
+        "retained_workers": 999,
+        "minimum_initial_connected": 1000,
+        "minimum_retained_connected": 999,
+        "workload_items_per_task": 5000,
+        "stable_hold_millis": 60000,
+        "maximum_convergence_wait_millis": 900000,
+        "task_result_wait_millis": 900000,
+        "request_timeout_millis": 30000,
+        "scan_interval_millis": 10000
+      },
+      "workerConnection": {
+        "requestTimeoutMillis": 60000,
+        "reconnectPolicy": {
+          "maxUnstableAttempts": 600,
+          "reconnectIntervalMillis": 500,
+          "stableConnectionDurationMillis": 10000
+        }
+      },
+      "recordedHostConfigurationSha256": "bd26afcf1ad145592ab7f090cfaf2aa7ca502af2e323a6486adb05b3f2e228fb",
+      "fingerprintBoundary": "Fingerprint is recorded in the public complete run summary; no private configuration file is copied or re-read.",
+      "confirmedStarts": 1000,
+      "unknownStarts": 0,
+      "cases": [
+        {
+          "case": "initial",
+          "activeWorkers": 1000,
+          "taskCount": 10,
+          "expectedItems": 50000,
+          "succeededItems": 50000,
+          "verifiedItems": 50000,
+          "terminalTaskCount": 10,
+          "startedAt": "2026-11-12T11:56:32.097064034Z",
+          "elapsedMillis": 28694,
+          "observedItemsPerSecond": 1742.5245695964313,
+          "preloadMillis": 9072,
+          "verificationMillis": 64454,
+          "exportMillis": 9917,
+          "minimumConnected": 1000,
+          "status": "passed",
+          "allTenTaskCountsVerified": true,
+          "preWorkStability": {
+            "activeConnected": 1000,
+            "requiredConnected": 1000,
+            "minimumConnected": 1000,
+            "qualifyingScans": 7,
+            "stableMillis": 62130,
+            "missingSchedulingIdentities": 0,
+            "stoppedConnected": 0
+          },
+          "postWorkStability": {
+            "activeConnected": 1000,
+            "requiredConnected": 1000,
+            "minimumConnected": 1000,
+            "qualifyingScans": 7,
+            "stableMillis": 61899,
+            "missingSchedulingIdentities": 0,
+            "stoppedConnected": 0
+          }
+        },
+        {
+          "case": "retained",
+          "activeWorkers": 999,
+          "taskCount": 10,
+          "expectedItems": 50000,
+          "succeededItems": 50000,
+          "verifiedItems": 50000,
+          "terminalTaskCount": 10,
+          "startedAt": "2026-11-12T12:00:19.207858346Z",
+          "elapsedMillis": 28730,
+          "observedItemsPerSecond": 1740.341106856944,
+          "preloadMillis": 8981,
+          "verificationMillis": 62875,
+          "exportMillis": 8411,
+          "minimumConnected": 999,
+          "status": "passed",
+          "allTenTaskCountsVerified": true,
+          "preWorkStability": {
+            "activeConnected": 999,
+            "requiredConnected": 999,
+            "minimumConnected": 999,
+            "qualifyingScans": 7,
+            "stableMillis": 62164,
+            "missingSchedulingIdentities": 0,
+            "stoppedConnected": 0
+          },
+          "postWorkStability": {
+            "activeConnected": 999,
+            "requiredConnected": 999,
+            "minimumConnected": 999,
+            "qualifyingScans": 7,
+            "stableMillis": 61875,
+            "missingSchedulingIdentities": 0,
+            "stoppedConnected": 0
+          }
+        }
+      ],
+      "resourceSampling": {
+        "status": "complete",
+        "periodicCycles": 97,
+        "maximumPeriodicGapMillis": 5015
+      },
+      "cleanup": {
+        "ownedProcessesStopped": true,
+        "privateCredentialCopiesRemoved": true,
+        "errors": []
+      },
+      "remoteTaskCleanup": "not-required-verified-terminal"
+    }
+  ],
+  "counts": {
+    "primaryAcceptedTasks": 20,
+    "primaryAcceptedVerifiedItems": 100000,
+    "includingAttached99And999Tasks": 40,
+    "includingAttached99And999VerifiedItems": 200000
+  },
+  "measurement": "Approval-to-observed-terminal finite backlog rate includes WAN and polling. Preload and full independent UTF-8 MD5/state/export verification are outside this timer.",
+  "resourceHeadroom": {
+    "source": "existing operator samples during primary direct cases",
+    "samplesAreNotContinuousPeakProof": true,
+    "doesNotEstablishServerCapacityCeiling": true,
+    "cases": [
+      {
+        "workers": 100,
+        "cpu": {
+          "cpuMeanCores": 0.879337,
+          "cpuPeakFiveSecondCores": 1.313625,
+          "logicalCpus": 8
+        },
+        "system": {
+          "memAvailableMinimumGiB": 9.086,
+          "swapUsedPeakBytes": 0,
+          "swapInPagesDelta": 0,
+          "swapOutPagesDelta": 0
+        },
+        "runtimeRssPeakMiB": 1423.898,
+        "redis": {
+          "usedMemoryPeakMiB": 49.967,
+          "evictionDelta": 0,
+          "rejectedConnectionDelta": 0,
+          "errorRepliesDelta": 0
+        },
+        "observedOomOrOomKill": false
+      },
+      {
+        "workers": 1000,
+        "cpu": {
+          "cpuMeanCores": 1.773026,
+          "cpuPeakFiveSecondCores": 2.036146,
+          "logicalCpus": 8
+        },
+        "system": {
+          "memAvailableMinimumGiB": 9.033,
+          "swapUsedPeakBytes": 0,
+          "swapInPagesDelta": 0,
+          "swapOutPagesDelta": 0
+        },
+        "runtimeRssPeakMiB": 1429.328,
+        "redis": {
+          "usedMemoryPeakMiB": 135.772,
+          "evictionDelta": 0,
+          "rejectedConnectionDelta": 0,
+          "errorRepliesDelta": 0
+        },
+        "observedOomOrOomKill": false
+      }
+    ]
+  },
+  "notPassed": {
+    "originalTarget": {
+      "preparedWorkers": 15000,
+      "retainedWorkers": 10000,
+      "itemsPerCase": 50000
+    },
+    "staged10000": {
+      "status": "unconfirmed",
+      "phase": "ramp",
+      "confirmedStarts": 6404,
+      "unconfirmedStarts": 2,
+      "tasksCreated": 0,
+      "cleanup": {
+        "ownedProcessesStopped": true,
+        "privateCredentialCopiesRemoved": true,
+        "errors": []
+      }
+    },
+    "localPhysicalHop": {
+      "status": "unconfirmed",
+      "phase": "ramp",
+      "starts": {
+        "sending": 11790,
+        "confirmed": 11789,
+        "unconfirmed": 1
+      },
+      "tasksCreated": 0,
+      "cleanup": {
+        "ownedProcessesStopped": true,
+        "privateCredentialCopiesRemoved": true,
+        "errors": []
+      },
+      "witness": "matched-witness.json"
+    },
+    "freeCiAttempts": [
+      {
+        "client": "free-x64",
+        "status": "unconfirmed",
+        "phase": "ramp",
+        "tasksCreated": 0,
+        "architecture": "x86_64",
+        "limits": {
+          "logicalCpuCount": 4,
+          "memTotalBytes": 16760344576,
+          "nofile": 65536,
+          "ephemeralPortRange": [
+            10000,
+            65535
+          ]
+        },
+        "recordedHostConfigurationSha256": "d966d144feb570d83827baadf22708cf63e1d543ec1146ca4ecf46006e589afa",
+        "starts": {
+          "sending": 3901,
+          "confirmed": 3898,
+          "unconfirmed": 3
+        },
+        "clientUniqueSyn": 4464,
+        "answeredAndMatchedAtGcp": 4447,
+        "unansweredSyn": 17,
+        "unansweredSynSeenAtGcp": 0,
+        "observedPublicPortCount": 4096,
+        "observedPublicPortRuns": [
+          [
+            48128,
+            52223,
+            4096
+          ]
+        ],
+        "tcpConnectTimeouts": 3,
+        "hostSampledPeaks": {
+          "fd": 3942,
+          "rssMiB": 479.715,
+          "threads": 52,
+          "cpuCores": 0.966
+        },
+        "cleanup": {
+          "ownedProcessesStopped": true,
+          "privateCredentialCopiesRemoved": true,
+          "errors": []
+        },
+        "remoteTaskCleanup": "unconfirmed",
+        "resourceSampling": "complete",
+        "networkDiagnostics": "complete"
+      },
+      {
+        "client": "free-arm64",
+        "status": "unconfirmed",
+        "phase": "ramp",
+        "tasksCreated": 0,
+        "architecture": "aarch64",
+        "limits": {
+          "logicalCpuCount": 4,
+          "memTotalBytes": 16715923456,
+          "nofile": 65536,
+          "ephemeralPortRange": [
+            10000,
+            65535
+          ]
+        },
+        "recordedHostConfigurationSha256": "d966d144feb570d83827baadf22708cf63e1d543ec1146ca4ecf46006e589afa",
+        "starts": {
+          "sending": 4014,
+          "confirmed": 4013,
+          "unconfirmed": 1
+        },
+        "clientUniqueSyn": 4594,
+        "answeredAndMatchedAtGcp": 4580,
+        "unansweredSyn": 14,
+        "unansweredSynSeenAtGcp": 0,
+        "observedPublicPortCount": 4096,
+        "observedPublicPortRuns": [
+          [
+            55368,
+            59463,
+            4096
+          ]
+        ],
+        "tcpConnectTimeouts": 1,
+        "hostSampledPeaks": {
+          "fd": 4055,
+          "rssMiB": 472.562,
+          "threads": 51,
+          "cpuCores": 0.986
+        },
+        "cleanup": {
+          "ownedProcessesStopped": true,
+          "privateCredentialCopiesRemoved": true,
+          "errors": []
+        },
+        "remoteTaskCleanup": "unconfirmed",
+        "resourceSampling": "complete",
+        "networkDiagnostics": "complete"
+      }
+    ]
+  },
+  "networkFinding": {
+    "confirmed": "Unanswered SYN identities were absent from GCP. Local physical-hop witnesses show positive WLAN Tx observations for all 1270 absent identities; free x64 and ARM each expose one complete observed 4096-port public range.",
+    "inference": "A bounded egress/NAT allocation is supported by repeated port geometry; no official provider quota or unique failing network component was established.",
+    "physicalBoundary": "Physical WLAN Tx is not proof of radio transmission or AP/router reception.",
+    "capacityBoundary": "Observed public-port sets are cumulative, not instantaneous allocation counts; no Runtime maximum follows."
+  },
+  "sshIsolation": {
+    "classification": "diagnostic-only; excluded from direct-public acceptance and throughput comparison",
+    "observedCases": [
+      {
+        "workers": 10000,
+        "terminalTasks": 10,
+        "verifiedItems": 50000
+      },
+      {
+        "workers": 9999,
+        "terminalTasks": 10,
+        "verifiedItems": 50000
+      }
+    ],
+    "reason": "SSH changes the transport path and connection shape. Its pass does not satisfy the original direct-public 15k/10k campaign.",
+    "cleanup": {
+      "ownedProcessesStopped": true,
+      "privateCredentialCopiesRemoved": true,
+      "errors": []
+    }
+  },
+  "cleanupBoundary": "Cleanup fields report completed-run observations: owned processes stopped and temporary credential copies removed. Passed Tasks were terminal; failed startup runs created zero known Tasks. This evidence review does not rerun loads or purge Redis/scope. External operational-record text synchronization is separately logged and is not new runtime acceptance.",
+  "nonClaims": [
+    "15k/10k direct-public acceptance",
+    "Server maximum throughput",
+    "per-Worker execution coverage",
+    "P99 latency",
+    "official 4096-port provider quota",
+    "AP/router receipt of WLAN Tx packets"
+  ],
+  "evidence": {
+    "index": "evidence-index.json",
+    "matchedWitness": "matched-witness.json",
+    "publicAggregateBoundary": "These aggregates and a sanitized packet witness can be archived. Hashes identify local source JSON bytes; they do not make the omitted local raw captures/JSON available for public recomputation.",
+    "olderArchiveCommit": "93f381b63986bb63dc0506ce0cb4dcf29d50430e",
+    "olderArchiveUrl": "https://github.com/quiaingmuarua/xa_mass_platform/tree/93f381b63986bb63dc0506ce0cb4dcf29d50430e/external-release-load/20261112-v4.2.0"
+  }
+}

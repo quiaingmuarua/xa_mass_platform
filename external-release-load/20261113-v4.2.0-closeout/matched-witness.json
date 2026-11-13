@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "claim": "positive physical transmit-boundary observations; not AP/router reception",
+  "candidate": {
+    "tcpInitialSequence": 1285597519,
+    "requestSentAt": "2026-11-13T03:43:14.440606674Z",
+    "requestUnconfirmedAt": "2026-11-13T03:43:24.451099790Z",
+    "requestElapsedSeconds": 10.010493,
+    "wslSynObservations": [
+      {
+        "atUtc": "2026-11-13T03:43:14.443572+00:00",
+        "isn": 1285597519
+      },
+      {
+        "atUtc": "2026-11-13T03:43:15.443918+00:00",
+        "isn": 1285597519
+      },
+      {
+        "atUtc": "2026-11-13T03:43:16.467973+00:00",
+        "isn": 1285597519
+      },
+      {
+        "atUtc": "2026-11-13T03:43:17.491924+00:00",
+        "isn": 1285597519
+      },
+      {
+        "atUtc": "2026-11-13T03:43:18.515941+00:00",
+        "isn": 1285597519
+      },
+      {
+        "atUtc": "2026-11-13T03:43:19.539930+00:00",
+        "isn": 1285597519
+      },
+      {
+        "atUtc": "2026-11-13T03:43:21.559880+00:00",
+        "isn": 1285597519
+      }
+    ],
+    "virtualToPhysicalWitnesses": [
+      {
+        "isn": 1285597519,
+        "ipv4Id": 37898,
+        "virtualAtUtc": "2026-11-13T03:43:14.449343+00:00",
+        "physicalTxAtUtc": "2026-11-13T03:43:14.449587+00:00"
+      },
+      {
+        "isn": 1285597519,
+        "ipv4Id": 37899,
+        "virtualAtUtc": "2026-11-13T03:43:15.449744+00:00",
+        "physicalTxAtUtc": "2026-11-13T03:43:15.449855+00:00"
+      },
+      {
+        "isn": 1285597519,
+        "ipv4Id": 37900,
+        "virtualAtUtc": "2026-11-13T03:43:16.473746+00:00",
+        "physicalTxAtUtc": "2026-11-13T03:43:16.473904+00:00"
+      },
+      {
+        "isn": 1285597519,
+        "ipv4Id": 37901,
+        "virtualAtUtc": "2026-11-13T03:43:17.497720+00:00",
+        "physicalTxAtUtc": "2026-11-13T03:43:17.497899+00:00"
+      },
+      {
+        "isn": 1285597519,
+        "ipv4Id": 37902,
+        "virtualAtUtc": "2026-11-13T03:43:18.521757+00:00",
+        "physicalTxAtUtc": "2026-11-13T03:43:18.521833+00:00"
+      },
+      {
+        "isn": 1285597519,
+        "ipv4Id": 37903,
+        "virtualAtUtc": "2026-11-13T03:43:19.545704+00:00",
+        "physicalTxAtUtc": "2026-11-13T03:43:19.545751+00:00"
+      }
+    ],
+    "wslSynCount": 7,
+    "explicitPhysicalTxCount": 6,
+    "gcpSynCount": 0,
+    "gcpSynAckCount": 0
+  },
+  "aggregate": {
+    "clientUniqueSYN": 11936,
+    "clientAnswered": 10655,
+    "sharedClientServerISNs": 10666,
+    "missingServerISNs": 1270,
+    "missingServerISNsSeenWlanTx": 1270,
+    "missingServerISNsValidatedAtVirtualNIC": 1270,
+    "missingServerISNsWithSameIpIdAtVirtualAndPhysical": 1270,
+    "clientISNsSeenWlanTx": 7156
+  },
+  "coverage": {
+    "pktmonEventsLost": 0,
+    "pktmonBuffersLost": 0,
+    "physicalCounterRx": 10670,
+    "physicalCounterTx": 23376,
+    "decodedPhysicalRx": 8694,
+    "decodedPhysicalTx": 13678,
+    "boundary": "The text lacks some successful packets too. Positive Tx witnesses are usable; missing Windows records are not proof of Windows drops."
+  },
+  "omitted": [
+    "IP addresses",
+    "MAC addresses",
+    "Worker/Task/request identities",
+    "payloads",
+    "credentials",
+    "private paths",
+    "raw logs"
+  ],
+  "sourceIndexIds": [
+    "physical-hop-correlation",
+    "physical-hop-failed-connection"
+  ]
+}
