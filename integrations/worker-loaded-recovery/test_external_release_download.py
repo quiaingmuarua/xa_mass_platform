@@ -2,8 +2,11 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
+import subprocess
 import tempfile
+import textwrap
 import re
 import unittest
 from unittest.mock import Mock, patch
@@ -129,7 +132,15 @@ class ExternalWorkflowBoundaryTest(unittest.TestCase):
         self.assertIn("--prepared-workers 15000", local)
         self.assertIn("--retained-workers 10000", local)
         self.assertIn("--workload-items-per-task 5000", local)
+        self.assertIn("external_scale:", local)
+        self.assertIn("default: '1000'", local)
+        self.assertIn("options: ['100', '1000', '15000']", local)
+        local_job = local.split("\n  worker-loaded-recovery:\n", 1)[1]
+        self.assertNotIn("external_scale", local_job)
+        self.assertNotIn("EXTERNAL_SCALE", local_job)
         self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.mode == 'external-release' && github.ref == 'refs/heads/main'", external)
+        self.assertIn("name: External published Release (${{ inputs.external_scale || '1000' }} Workers)", external)
+        self.assertIn("EXTERNAL_SCALE: ${{ inputs.external_scale || '1000' }}", external)
         self.assertIn("environment: release-preview-load", external)
         self.assertIn("cancel-in-progress: false", text)
         self.assertEqual({"RUNTIME_ACCESS_KEY", "WORKER_GATEWAY_KEY_ID", "WORKER_GATEWAY_SECRET"},
@@ -143,6 +154,67 @@ class ExternalWorkflowBoundaryTest(unittest.TestCase):
                           "build/external-release-load/evidence/timeline.jsonl", "build/external-release-load/evidence/receipts.jsonl",
                           "build/external-network-diagnostics/summary.json", "build/external-network-diagnostics/tcp-handshakes.jsonl",
                           "build/external-network-diagnostics/network-state.jsonl", "build/external-network-diagnostics/jfr-metadata.jsonl"}, actual)
+
+    @unittest.skipIf(os.name == "nt", "The actual workflow Bash contract runs on Linux")
+    def test_selected_scale_constructs_the_actual_release_command_without_running_it(self):
+        for scale in ("100", "1000", "15000"):
+            for diagnostics in ("false", "true"):
+                with self.subTest(scale=scale, diagnostics=diagnostics):
+                    result, argv, base = self._capture_release_command(scale, diagnostics)
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    expected = base
+                    if scale != "15000":
+                        retained = str(int(scale) - 1)
+                        expected += ["--diagnostic", "--prepared-workers", scale, "--retained-workers", retained,
+                                     "--minimum-initial-connected", scale, "--minimum-retained-connected", retained]
+                    if diagnostics == "true":
+                        self.assertEqual("integrations/worker-loaded-recovery/observe_external_network.py", argv[0])
+                        self.assertEqual(["python", *expected], argv[argv.index("--") + 1:])
+                    else:
+                        self.assertEqual(expected, argv)
+
+    @unittest.skipIf(os.name == "nt", "The actual workflow Bash contract runs on Linux")
+    def test_invalid_scale_rejects_before_invoking_the_release_command(self):
+        for scale in ("", "999", "15001", "1000; exit 0"):
+            with self.subTest(scale=scale):
+                result, argv, _ = self._capture_release_command(scale, "false")
+                self.assertEqual(2, result.returncode)
+                self.assertIsNone(argv)
+                self.assertIn("Unsupported external scale", result.stderr)
+
+    def _capture_release_command(self, scale, diagnostics):
+        root = Path(__file__).resolve().parents[2]
+        workflow = (root / ".github/workflows/worker-loaded-recovery.yml").read_text()
+        step = workflow.split("      - name: Run the published external consumer\n", 1)[1].split("      - name:", 1)[0]
+        body = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory)
+            bin_dir = fixture / "bin"
+            bin_dir.mkdir()
+            capture = fixture / "argv.json"
+            python_stub = bin_dir / "python"
+            python_stub.write_text("#!/usr/bin/env python3\nimport json, os, sys\nfrom pathlib import Path\n"
+                                   "Path(os.environ['ARGV_CAPTURE']).write_text(json.dumps(sys.argv[1:]))\n")
+            python_stub.chmod(0o755)
+            script = fixture / "workflow.sh"
+            script.write_text(body)
+            kit = fixture / "kit with spaces"
+            private = fixture / "private with spaces"
+            environment = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+                           "ARGV_CAPTURE": str(capture), "KIT_ROOT": str(kit), "RUNNER_TEMP": str(private),
+                           "RUNTIME_API_URL": "https://runtime.example.test", "WORKER_RUNTIME_URL": "https://workers.example.test",
+                           "PROJECT_ID": "example-project", "WORKER_GROUP_ID": "example-group", "ENDPOINT_MANAGER_ID": "example-adapter",
+                           "NETWORK_DIAGNOSTICS": diagnostics, "EXTERNAL_SCALE": scale}
+            result = subprocess.run(["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", str(script)],
+                                    env=environment, capture_output=True, text=True, timeout=10)
+            argv = json.loads(capture.read_text()) if capture.exists() else None
+            base = [str(kit / "acceptance/run_loaded.py"), "--runtime-url", environment["RUNTIME_API_URL"],
+                    "--worker-runtime-url", environment["WORKER_RUNTIME_URL"], "--project", "example-project",
+                    "--group", "example-group", "--endpoint-manager", "example-adapter",
+                    "--access-key-file", str(private / "external-release-load-private/access-key.txt"),
+                    "--gateway-credential-file", str(private / "external-release-load-private/worker-gateway.json"),
+                    "--output-dir", "build/external-release-load"]
+            return result, argv, base
 
 
 if __name__ == "__main__":

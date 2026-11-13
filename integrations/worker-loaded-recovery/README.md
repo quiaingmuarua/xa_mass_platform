@@ -8,7 +8,7 @@ Adapter Endpoint, but their evidence and process authority are separate:
 | Mode | Runtime and lifecycle | Work and claim |
 | --- | --- | --- |
 | `local-proof` | Runner owns Redis, Server and Host, including planned Server faults | Existing four 50,000-Item recovery stages and process stability |
-| `external-release` | Runner owns only its local Host and Harness; connects to an explicitly supplied published Runtime | Separate 15k and retained-10k connection/work observations, 50,000 Items at each scale; no Server recovery claim |
+| `external-release` | Runner owns only its local Host and Harness; connects to an explicitly supplied published Runtime | Manual bounded 100/1,000 diagnostics or explicit full 15k/10k target; 50,000 Items per stage; no Server recovery claim |
 
 The following local proof remains unchanged. The [external consumer](#external-release-capacity)
 is a distinct manual deployment acceptance, not another ordinary PR requirement.
@@ -296,6 +296,24 @@ on `main`, using the protected `release-preview-load` Environment. It downloads
 and verifies the installed Release's immutable kit; it does not build the kit or
 receive Server administrator credentials. Environment coordinates and private
 inputs are documented in [TESTING](../../TESTING.md#external-release-load).
+
+The manual `external_scale` choice defaults to `1000`, using the previously
+exercised 1,000/999-Worker direct-public configuration. `100` selects 100/99.
+Both require every selected active Worker connected, append `--diagnostic`, and
+retain ten 5,000-Item Tasks in each of two stages, the original timing defaults
+and exact checks. They report `diagnostic-only`, not full capacity acceptance.
+`15000` explicitly selects the unchanged full command with no scale overrides.
+Invalid selections fail before launching the consumer. The published CLI's own
+default remains 15k/10k; no JAR, manifest or immutable Release was changed.
+
+The dated [public acceptance closeout](../../doc/guide/capabilities.md#external-public-closeout)
+records the accepted scope, immutable evidence and limits of the network
+investigation. Full-scale public acceptance remains unpassed. The campaign was
+closed by scope decision, not by weakening a full-run assertion or treating SSH
+isolation as a public result. Multi-Host distribution is not a configuration
+feature of this single-Host Harness; independent smaller runs are not a combined
+simultaneous capacity proof. Closeout validates the new workflow argument paths
+without a new remote load; it does not claim a passing small-scale GitHub run.
 
 The manual `external_runner` choice selects the standard `ubuntu-24.04` (default)
 or `ubuntu-24.04-arm` hosted runner. Both are free for this public repository;

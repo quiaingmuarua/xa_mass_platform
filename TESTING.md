@@ -272,25 +272,55 @@ summary; the matrix aggregate remains the one selected Proof Gate result.
 
 ## External Release load
 
-For a failed public connection run, the existing manual workflow accepts
-`network_diagnostics=true`. This adds client TCP and filtered JVM observations
-around the same Release command, without rebuilding or changing the workload:
+Read the dated [public acceptance closeout](doc/guide/capabilities.md#external-public-closeout)
+before repeating a connection investigation. The 2026-11-13 campaign is closed
+at its passed 100/1,000-Worker direct-public diagnostics; larger direct-public
+acceptance remains unpassed, not an outstanding instruction to keep retrying.
+
+The manual external job defaults to `external_scale=1000`. It invokes the same
+published entry with the exact previously exercised bounded parameters:
+
+| `external_scale` | Prepared / retained | Required connected | Result claim |
+| --- | --- | --- | --- |
+| `100` | 100 / 99 | 100 / 99 | `diagnostic-only` |
+| `1000` (default) | 1,000 / 999 | 1,000 / 999 | `diagnostic-only` |
+| `15000` (explicit full target) | 15,000 / 10,000 | 14,800 / 9,900 | Original full capacity claim; not yet passed publicly |
+
+All three retain ten 5,000-Item Tasks per stage, two stages, the original timing
+defaults and exact result/export checks. Small presets append `--diagnostic`
+and four connection-count options; the full preset appends no overrides.
+Invalid presets are rejected. The shipped CLI itself still defaults to the full
+target: this is workflow argument selection, not a changed or republished kit.
+
+Run the bounded manual entry only when an external run is requested:
 
 ```text
-gh workflow run worker-loaded-recovery.yml --ref main -f mode=external-release -f network_diagnostics=true
+gh workflow run worker-loaded-recovery.yml --ref main -f mode=external-release -f external_scale=1000
+```
+
+For a specifically requested network investigation, `network_diagnostics=true`
+adds client TCP and filtered JVM observations around the same Release command:
+
+```text
+gh workflow run worker-loaded-recovery.yml --ref main -f mode=external-release -f external_scale=1000 -f network_diagnostics=true
 ```
 
 To compare another free standard runner while consuming the same Release kit:
 
 ```text
-gh workflow run worker-loaded-recovery.yml --ref main -f mode=external-release -f network_diagnostics=true -f external_runner=ubuntu-24.04-arm
+gh workflow run worker-loaded-recovery.yml --ref main -f mode=external-release -f external_scale=1000 -f network_diagnostics=true -f external_runner=ubuntu-24.04-arm
 ```
 
 `external_runner` defaults to `ubuntu-24.04` and affects only the external job.
 The two allowed choices are standard hosted runners, free for this public
 repository; no paid runner is selected. Runs remain serial for the target
-environment. Neither choice changes the 15k/10k workload or certifies an outbound
-connection budget; inspect the recorded client resources and network evidence.
+environment. Runner selection does not change the selected scale or certify an
+outbound connection budget; inspect recorded client resources and network evidence.
+An explicitly reopened full-capacity run must set `external_scale=15000`.
+The original failed full runs remain failed/unconfirmed; a green bounded run
+cannot replace them. The new bounded CI presets have argument-level verification;
+the dated passing public evidence was executed from the external local Host,
+not newly rerun on GitHub during closeout.
 
 Diagnostics are off by default. The safe diagnostic summary reports collection
 and cleanup separately from the load result; raw JFR, credentials and opaque
@@ -318,9 +348,9 @@ Server, stop the remote Runtime or access Redis. The target Group has one active
 consumer owner; independent local inventories do not isolate same-Group identities.
 
 The [Integration contract](integrations/worker-loaded-recovery/README.md#external-release-capacity)
-fixes 15,000 prepared / 10,000 retained Workers, 14,800 / 9,900 connection minima
-and ten Tasks of 5,000 Items at each scale. Both 50,000-Item results are measured
-and verified separately. Changes to scale or timings require `--diagnostic` and
+keeps the full target at 15,000 prepared / 10,000 retained Workers with 14,800 / 9,900
+connection minima. Both 50,000-Item stages are measured and verified separately.
+Changes to scale or timings require `--diagnostic` and
 produce diagnostic-only evidence. The packaged Runtime Distribution fixture uses
 this reduced mode through real local Redis/TLS; it cannot prove public 15k capacity.
 The original `finite_round.py` remains a separate small 1..100-Item command.

@@ -387,6 +387,12 @@ Use the [Release Preview guide](doc/guide/operations/deploy.md#release-preview)
 to find actual version/configuration records and distinguish pending acceptance
 from completed proof before acting.
 
+For external connection/capacity work, start with the dated
+[public acceptance closeout](doc/guide/capabilities.md#external-public-closeout).
+Keep accepted bounded runs, unpassed full-scale targets and isolated diagnostic
+controls distinct. A closed investigation is not an outstanding requirement to
+repeat failed loads; use its evidence before choosing a new experiment.
+
 Distribution's optional staging ingress owns TLS, the shared Worker Basic gate,
 route allowlists and connection limits. Its administrator host has no gateway credential:
 it forwards only a well-formed Bearer access key and the Runtime authenticates it. Worker

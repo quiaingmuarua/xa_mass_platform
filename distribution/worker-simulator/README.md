@@ -31,6 +31,11 @@ The kit lets any machine act as an external user of a published Runtime without 
 or a build. It is a test and acceptance capability, not a production Worker. It ships from the
 same Release as the Runtime and makes no cross-version promise.
 
+The [dated public closeout](../../doc/guide/capabilities.md#external-public-closeout)
+distinguishes the passed bounded configurations from the unpassed full target.
+Manual workflow scale selection reuses existing CLI arguments; it does not
+modify or republish an installed kit, nor add multi-Host orchestration.
+
 `python -m distribution.archive_tools simulator` validates the archive: its root, manifest,
 both entries, non-empty `lib/`, and the absence of inventory, private or credential files.
 In CI, Candidate Distribution Archives builds the ZIP once. Runtime And Worker SDK

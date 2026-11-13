@@ -6,6 +6,51 @@ Status: current capability guide with explicitly dated evidence.
 用于理解已执行的 workload；它不是当前 checkout 的新测试结果，也不是生产 SLA。
 产品能力、配置验收规模、实测吞吐和期望目标必须分别表达。
 
+<a id="external-public-closeout"></a>
+## 外部公网验收收尾
+
+**2026-11-13 收尾决定：以已经通过的有限规模结束本轮工作，不再继续追高。**
+被测 Runtime 与 Simulator kit 为 Release **4.2.0**，源码提交
+`aaed8d648c19e2f6332f37b4e831b0b194d5553b`。以下是该版本、配置和运行日期的证据，
+不是当前环境的实时健康状态、Server 容量上限或长期 SLA。
+
+| 公网直连配置 | 已完成工作 | 结果 |
+| --- | --- | --- |
+| 100 → 99 Worker | 两阶段各 10 Task × 5,000 Items，共 100,000 个结果与完整导出 | `diagnostic-passed`，2026-11-12 |
+| 1,000 → 999 Worker | 两阶段各 10 Task × 5,000 Items，共 100,000 个结果与完整导出 | `diagnostic-passed`，2026-11-12 |
+| 原 15k → 10k 目标及直接公网 10k 对照 | 建连阶段未通过，没有对应的完整工作量结果 | 未通过，不以小规模结果替代 |
+
+两档成功运行来自本地外部 Java Host 经公网 HTTPS/WSS 连接 GCP，使用同一发布 JAR、
+`default` Project、专用测试 Group、MD5 Handler 和 Any 供给/查询；没有 SSH 转发。
+最高已通过的直连档位是 1,000 Worker。启动请求确认数不等于稳定连接数，多个独立运行
+也不能简单相加成一次更大的同时在线验收。SSH 隔离对照仅保留为诊断，完全不计入上述验收。
+
+排查已经得到以下边界，后续 Agent 应复用这些证据：
+
+- 免费 GitHub x64 与 ARM Runner 均复现 TCP 建连超时。两轮分别使用连续的 4,096 个
+  公网源端口；未应答 SYN 未到达 GCP。它支持出口 SNAT 分配限制的方向，**不是读取到了
+  GitHub 内部配额，也不是所有 Runner 永久只有 4,096 连接的声明**。
+- Runner 的 FD 上限为 65,536、临时端口为 10000–65535；实际进程 FD、CPU、内存未耗尽。
+  GCP 同期也未见主机资源饱和、监听溢出或主机防火墙连接限额触发。
+- 本地扩大端口、真实 IP 解析对照、Windows/WSL 双端口探针和三点抓包均已执行。
+  最后一轮 1,270 个未到 GCP 的 SYN 身份均有物理 WLAN Tx 的正向匹配。
+  **Tx 只证明到达网卡发送观测边界，不证明无线链路或路由器已经收到**；具体中间设备
+  仍未定位，不能认定 TUN、Wi-Fi 信号或 GCP 算力就是根因。云控制面防火墙读取也受权限限制。
+- 出口设备无法管理；多 Runner 需要身份分片、共同阶段控制和结果汇总，不是现有工具的
+  简单配置。本轮不引入分布式验收、额外机器、重试放宽或更高负载。
+
+完整配置、日期、制品/证据指纹、失败轮次与清理范围见不可变的
+[收尾报告](https://github.com/quiaingmuarua/xa_mass_platform/blob/2f38ee0dd6cb2cd31af923c24c373937324cbc48/external-release-load/20261113-v4.2.0-closeout/closeout.md)、
+[结构化结果](https://github.com/quiaingmuarua/xa_mass_platform/blob/2f38ee0dd6cb2cd31af923c24c373937324cbc48/external-release-load/20261113-v4.2.0-closeout/closeout.json)和
+[证据索引](https://github.com/quiaingmuarua/xa_mass_platform/blob/2f38ee0dd6cb2cd31af923c24c373937324cbc48/external-release-load/20261113-v4.2.0-closeout/evidence-index.json)。
+旧报告按日期保留；其中早期 TUN 归因、待扩大端口等描述不能覆盖本次结论。
+索引区分公开聚合证据与仅保留哈希的本地原始抓包，不把哈希当作公开原始数据。
+
+手动 CI 现以 1,000 档为默认，100 档可选，均保留发布工具的 `diagnostic-only` 标识；
+15k 完整模式仍可显式选择，原断言不变。已通过的是上述本地公网运行，
+**不据此声称新的 1,000 档 CI 入口已经在 GitHub 执行通过**。收尾只验证参数接线和文档，
+不重新运行远端负载。命令见 [TESTING](../../TESTING.md#external-release-load)。
+
 ## 固定证据快照
 
 本节数据来自北京时间 **2026-10-20 03:39** 的
