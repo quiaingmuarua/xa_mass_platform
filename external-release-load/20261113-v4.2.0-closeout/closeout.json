@@ -41,7 +41,6 @@
       "preparedWorkers": 100,
       "sourceRunLabel": "diagnostic-passed",
       "sourceClaim": "diagnostic-only",
-      "acceptedScopeAtCloseout": "direct-public 100/1000 observation; does not relabel the original diagnostic run as a 15k pass",
       "evidenceWindowUtc": {
         "first": "2026-11-12T11:44:11.371107271Z",
         "last": "2026-11-12T11:54:10.250710557Z"
@@ -154,13 +153,13 @@
         "privateCredentialCopiesRemoved": true,
         "errors": []
       },
-      "remoteTaskCleanup": "not-required-verified-terminal"
+      "remoteTaskCleanup": "not-required-verified-terminal",
+      "scopeAtCloseout": "historical-only 100/99 run; removed from active manual presets"
     },
     {
       "preparedWorkers": 1000,
       "sourceRunLabel": "diagnostic-passed",
       "sourceClaim": "diagnostic-only",
-      "acceptedScopeAtCloseout": "direct-public 100/1000 observation; does not relabel the original diagnostic run as a 15k pass",
       "evidenceWindowUtc": {
         "first": "2026-11-12T11:54:49.205530623Z",
         "last": "2026-11-12T12:02:53.022393633Z"
@@ -273,14 +272,19 @@
         "privateCredentialCopiesRemoved": true,
         "errors": []
       },
-      "remoteTaskCleanup": "not-required-verified-terminal"
+      "remoteTaskCleanup": "not-required-verified-terminal",
+      "scopeAtCloseout": "current 1000/999 direct-public baseline; original diagnostic-only claim preserved"
     }
   ],
   "counts": {
-    "primaryAcceptedTasks": 20,
-    "primaryAcceptedVerifiedItems": 100000,
-    "includingAttached99And999Tasks": 40,
-    "includingAttached99And999VerifiedItems": 200000
+    "currentBaselinePrimaryTasks": 10,
+    "currentBaselinePrimaryVerifiedItems": 50000,
+    "currentBaselineIncludingRetained999Tasks": 20,
+    "currentBaselineIncludingRetained999VerifiedItems": 100000,
+    "allHistoricalPrimaryTasks": 20,
+    "allHistoricalPrimaryVerifiedItems": 100000,
+    "allHistoricalIncludingRetainedTasks": 40,
+    "allHistoricalIncludingRetainedVerifiedItems": 200000
   },
   "measurement": "Approval-to-observed-terminal finite backlog rate includes WAN and polling. Preload and full independent UTF-8 MD5/state/export verification are outside this timer.",
   "resourceHeadroom": {
