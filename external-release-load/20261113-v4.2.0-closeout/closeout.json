@@ -2,9 +2,8 @@
   "schemaVersion": 1,
   "closedOn": "2026-11-13",
   "decision": {
-    "status": "closed-at-user-accepted-observed-scope",
+    "status": "closed-at-1000-worker-baseline",
     "acceptedDirectWorkerCounts": [
-      100,
       1000
     ],
     "higherScaleCampaign": "not-passed; investigation closed by user decision",
@@ -12,7 +11,14 @@
     "proofThresholdsChanged": false,
     "manualWorkflowDefaultScale": 1000,
     "publishedCliDefaultScale": 15000,
-    "boundedWorkflowPublicExecutionDuringCloseout": "not run; argument wiring only"
+    "boundedWorkflowPublicExecutionDuringCloseout": "not run; argument wiring only",
+    "historicalPassedDirectWorkerCounts": [
+      100,
+      1000
+    ],
+    "removedManualPreset": 100,
+    "currentBaselineTaskCount": 20,
+    "currentBaselineVerifiedItems": 100000
   },
   "release": {
     "tag": "v4.2.0",
