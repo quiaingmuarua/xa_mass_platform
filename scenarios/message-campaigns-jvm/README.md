@@ -47,10 +47,11 @@ Worker message.send → 发送通道确认受理 → SENT 执行结果 → Item 
 
 ## Worker 供给与装配
 
-Boot 用 `xa.mass.scenarios.messages.enabled` 显式启用本模块，默认关闭，Preview
-显式开启。consumer 可以只装配 Messages，使用外部 Runtime YAML 的 applications／
+Boot 用 `xa.mass.scenarios.messages.enabled` 选择本模块；consumer 和 Preview 默认开启，
+default profile 保持关闭。consumer 必须提供外部 Runtime YAML 的 applications／
 Matching 启用及独立 Group JSON；不依赖 Preview、SMS、Batch Checks 或 Simulator。
-关闭时没有业务服务、Project、资源需求或资格声明。
+consumer 默认还启用 Batch Checks；只装配 Messages 时显式设置 `app-checks.enabled: false`。
+关闭 Messages 时没有业务服务、Project、资源需求或资格声明。SMS 不参与 consumer 装配。
 源码和 ZIP 入口见 [Android 本地消息部署](../../distribution/server/src/main/dist/examples/messages/README.md)。
 
 `MessageWorkerSupply` 集中 Project、发送事件、Pool、查询名称和 Worker 资格字段。

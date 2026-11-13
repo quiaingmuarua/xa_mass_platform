@@ -1,6 +1,8 @@
 xa:
   mass:
     scenarios:
+      app-checks:
+        enabled: false
       messages:
         enabled: true
         applications:

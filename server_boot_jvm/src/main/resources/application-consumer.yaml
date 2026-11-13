@@ -3,6 +3,11 @@ server:
 
 xa:
   mass:
+    scenarios:
+      app-checks:
+        enabled: true
+      messages:
+        enabled: true
     users:
       # External hosts must name their own users file; the built-in seed's access keys are public.
       seed: ${XA_MASS_USERS_SEED:}

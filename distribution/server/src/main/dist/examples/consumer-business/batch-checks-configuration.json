@@ -1,0 +1,18 @@
+{
+  "common": {"typeDefaults": {}},
+  "checks": {
+    "example-md5-prefix": {
+      "label": "MD5 prefix match (example)",
+      "checkType": "md5-prefix-demo-v1",
+      "workerGroupId": "example-workers",
+      "unitPrice": 1,
+      "parameters": {},
+      "execution": {
+        "eventCode": "extension.worker.string.md5",
+        "seedsPerItem": 1,
+        "refill": [{"poolName": "any", "target": {}, "count": 100}],
+        "workerSelector": {"executorName": "worker.any", "input": {}}
+      }
+    }
+  }
+}

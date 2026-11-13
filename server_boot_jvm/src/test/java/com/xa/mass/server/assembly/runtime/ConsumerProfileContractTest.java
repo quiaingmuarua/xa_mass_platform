@@ -17,7 +17,7 @@ import org.springframework.core.io.ClassPathResource;
 class ConsumerProfileContractTest {
 
     @Test
-    void profileOwnsOneEmptyConsumerAdapterAssembly() throws IOException {
+    void profileEnablesFiniteBusinessesWithoutSupplyingTheirConfigurationOrGroups() throws IOException {
         assertThat(new ClassPathResource("application-agentforge.yaml").exists()).isFalse();
         List<PropertySource<?>> sources = new YamlPropertySourceLoader().load(
                 "consumer",
@@ -32,6 +32,11 @@ class ConsumerProfileContractTest {
                 .isEqualTo("profile_consumer");
         assertThat(environment.getProperty("xa.mass.kernel-pacer.preset"))
                 .isEqualTo("DEFAULT");
+        assertThat(environment.getProperty("xa.mass.scenarios.app-checks.enabled", Boolean.class)).isTrue();
+        assertThat(environment.getProperty("xa.mass.scenarios.messages.enabled", Boolean.class)).isTrue();
+        assertThat(environment.getProperty("xa.mass.scenarios.app-checks.configuration.path")).isNull();
+        assertThat(environment.getProperty("xa.mass.scenarios.app-checks.configuration.seed")).isNull();
+        assertThat(environment.getProperty("xa.mass.scenarios.messages.applications[0].id")).isNull();
         assertThat(environment.getProperty(
                 "xa.mass.worker-assembly.group-config-json"
         )).isEqualTo("{}");

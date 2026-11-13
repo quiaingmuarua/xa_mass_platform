@@ -49,8 +49,11 @@ The App's own version remains independent of the Runtime/SDK version.
 ## Normal Runtime and App startup
 
 Use the same archive arguments without `--prepare-only`, adding
-`--redis-url redis://127.0.0.1:6379/15 --redis-scope profile_consumer_example`.
-Normal startup selects `consumer`, defaults to Project `default` when no external Runtime YAML is supplied, loads
+`--redis-url redis://127.0.0.1:6379/15 --redis-scope profile_consumer_example
+--runtime-config ./config/platform-runtime.yaml` for the raw RPC example.
+Normal startup selects `consumer`, whose business defaults require external configuration.
+The platform sample explicitly disables Batch Checks and Messages and declares
+Project `default`. The launcher loads
 `config/worker-groups.json` through Runtime's existing create-only initialization,
 and starts the extracted JAR with its extracted frontend. It uses DEFAULT Pacer.
 It neither provisions RPC Tasks nor controls Android/freezer/Redis cleanup.
@@ -146,8 +149,9 @@ to the explicit task's scope. No browser or Computer Use gate is added.
 
 ## Batch Checks through an Android Pool
 
-The same verified consumer can explicitly enable Batch Checks without Preview,
-SMS, Messages or a Simulator. Use a new candidate containing the independent
+The same verified consumer can run Batch Checks without Preview,
+SMS, Messages or a Simulator. Its checks-only Runtime YAML explicitly disables
+Messages; consumer otherwise enables both businesses. Use a new candidate containing the independent
 composition and `string-digest-md5-prefix-v1`; published 3.0.0 predates this feature.
 Never modify an extracted JAR to add it.
 
@@ -161,7 +165,9 @@ python .\run_consumer.py --runtime-archive $runtime --sdk-archive $sdk --version
 
 `--runtime-config` resolves the host YAML to an absolute file URI. The two
 variables explicitly select the writable configuration and seed addresses.
-Omitting the option retains clean consumer startup. The launcher does not parse
+Omitting the option does not disable the consumer's business defaults: absent
+business configuration then fails startup. Use `config/platform-runtime.yaml`
+explicitly for raw-only operation. The launcher does not parse
 business configuration, fund accounts or infer Pool enablement.
 With `--runtime-config`, the file owns the complete host Project list: the launcher adds no command-line Project override.
 The Batch Checks sample explicitly retains `default`; its business Project is contributed once by the Scenario.

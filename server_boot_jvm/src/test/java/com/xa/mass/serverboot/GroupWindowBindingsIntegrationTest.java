@@ -90,6 +90,7 @@ class GroupWindowBindingsIntegrationTest {
                 "--server.port=" + serverPort, "--logging.level.root=ERROR", "--xa.mass.redis.url=" + redis,
                 "--xa.mass.redis.scope=" + scope, "--xa.mass.users.seed=classpath:users/proof-directory.json",
                 "--xa.mass.task-retention.enabled=false",
+                "--xa.mass.scenarios.app-checks.enabled=false", "--xa.mass.scenarios.messages.enabled=false",
                 "--xa.mass.worker-delivery.adapter.instances.runtime-websocket.listen-port=" + adapterPort,
                 "--xa.mass.worker-endpoints.endpoints.runtime-websocket.public-uri=ws://127.0.0.1:" + adapterPort + "/api/v1/worker-delivery/websocket");
         try (var context = application.run(args.toArray(String[]::new)); var http = HttpClient.newHttpClient()) {

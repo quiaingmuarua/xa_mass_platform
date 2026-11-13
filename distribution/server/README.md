@@ -44,9 +44,10 @@ another maintained YAML default.
 `run_local_runtime.py` owns one local Server/Adapter and its optional Java and
 Android Workers. Install `distribution/server/requirements-preview.txt` once.
 The default `preview` keeps the five Batch Checks capabilities, SMS and Messages,
-60 Demo Workers and 20 Workers in each App Group. `consumer` starts the clean
-Server/Adapter; `default` starts the plain platform. Neither implicitly selects
-business resources or starts Workers.
+60 Demo Workers and 20 Workers in each App Group. `consumer` starts Server/Adapter
+with Batch Checks and Messages enabled, requiring external business and resource
+configuration; it starts no Worker by default. `default` starts the plain platform.
+SMS keeps the Preview assembly. Selecting a profile never installs Worker Handlers.
 
 > **Data retention warning:** the default Preview command below uses a temporary
 > Redis scope. Normal shutdown deletes its Tasks, Results, credit balances and
@@ -119,13 +120,21 @@ retain their artifact-specific entrypoints and use these existing owner boundari
 
 ## External consumer workbench deployment
 
-Messages can independently opt in with external Runtime YAML and Group JSON.
+Consumer enables Batch Checks and Messages by default, without starting Workers.
+The [combined example](src/main/dist/examples/consumer-business/README.md) supplies
+both businesses, Group registration and a check seed from one packaged source.
+Missing enabled-business configuration fails startup; no Preview fallback is used.
+Existing raw consumer deployments must explicitly disable both businesses before
+upgrading. Single-business deployments disable the other one. SMS remains Preview-only.
+
+Messages-only deployments use external Runtime YAML and Group JSON and explicitly
+disable Batch Checks.
 The [Messages guide](src/main/dist/examples/messages/README.md) is packaged with
 the canonical Android sample files under `examples/messages`. It uses the existing
 consumer launch parameters and requires neither a Scenario store nor Simulator.
 The archive verifier checks this example set without loading it as default config.
 
-The verified consumer may explicitly opt into Batch Checks using external host
+Batch Checks-only deployments explicitly disable Messages and use external host
 configuration and a separate writable Scenario document. See the
 [Android Pool example](../../xa-android/README.md#batch-checks-through-an-android-pool).
 Use new candidate bytes containing this addition; do not modify released archives.
@@ -142,8 +151,10 @@ The unchanged Preview entry is the built-in multi-Scenario demonstration.
 
 [XA Android](../../xa-android/README.md) supplies the portable dual-ZIP reference entry, explicit initialization and real RPC business example.
 
-The `consumer` profile supplies Server/Adapter coordinates and no Project or
-Group resources. The host supplies an explicit Project; `default` has no bound
+The `consumer` profile supplies Server/Adapter coordinates but no host Project or
+Group bindings. Enabled business modules contribute their Projects from external
+configuration. For raw-only use, explicitly disable both businesses and supply
+an explicit Project; `default` has no bound
 Group IDs and uses the registered catalog, while other Projects declare their
 bindings. The name need not equal the profile. The Console accepts any declared
 Project, including an environment whose only Project is `agentforge`.
@@ -212,12 +223,19 @@ java -jar .\lib\xa-mass-server-jvm-3.2.0.jar `
   --xa.mass.redis.url=redis://127.0.0.1:6379/15
 ```
 
-Select the built-in clean `consumer` deployment preset explicitly:
+Select `consumer` with the required external business configuration and Groups;
+the [combined deployment commands](src/main/dist/examples/consumer-business/README.md)
+use the manifest's JAR and the same three inputs as the source entry. For a raw-only
+consumer, make the business disablement explicit in its Runtime YAML:
 
-```powershell
-java -jar .\lib\xa-mass-server-jvm-3.2.0.jar `
-  --spring.profiles.active=consumer `
-  --spring.web.resources.static-locations=file:frontend/dist/
+```yaml
+xa:
+  mass:
+    scenarios:
+      app-checks:
+        enabled: false
+      messages:
+        enabled: false
 ```
 
 Only profiles listed in the schema-v6 Runtime manifest are supported. Redis

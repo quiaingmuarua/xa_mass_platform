@@ -1,0 +1,25 @@
+# Copy outside the Runtime extraction and replace all /replace/with/absolute paths.
+# consumer enables Batch Checks and Messages; the example deliberately supplies no enabled overrides.
+xa:
+  mass:
+    users:
+      seed: file:/replace/with/absolute/users.json
+    scenarios:
+      app-checks:
+        configuration:
+          path: /replace/with/absolute/data/app-checks/configuration.json
+          seed: file:/replace/with/absolute/inputs/batch-checks-configuration.json
+      messages:
+        applications:
+          - id: example-messages
+            label: Example Messages
+            worker-group-id: example-workers
+    project-assembly:
+      projects:
+        - project-id: default
+          worker-group-ids: []
+    worker-matching:
+      groups:
+        example-workers:
+          pools: [any, messaging]
+          functions: [worker.any, worker.messaging.available]

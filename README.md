@@ -155,7 +155,9 @@ public APIs. Within one Redis scope, only one Server may enable Pacer; the
 
 For local work, `python run_local_runtime.py` starts the business Preview;
 `--profile default` starts the plain platform and `--profile consumer` selects
-the clean Server/Adapter preset. The linked delivery documents own the complete
+Server/Adapter with Batch Checks and Messages enabled by default. Consumer deployments
+supply their business configuration and resources; they start no Worker process.
+SMS retains the Preview assembly. The linked delivery documents own the complete
 build, configuration and launch procedures.
 
 The [public UI demo](https://frontend-kylerrun-s-projects.vercel.app) uses Mock

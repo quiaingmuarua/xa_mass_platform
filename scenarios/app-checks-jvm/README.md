@@ -148,8 +148,10 @@ CSV 各自的下载临时文件在失败或传输结束时清理；CSV 不再生
 `details.md5` 和 CSV。不要求 Simulator 的 valid/md5 字段，不补造 Worker 身份，
 不重新计算摘要。协议异常排除有效 CSV。Preview 默认仍只配置原五项能力。
 
-Boot 通过严格绑定的 `xa.mass.scenarios.app-checks.enabled` 独立装配，缺省关闭，
-Preview 显式开启；consumer 可用外部配置开启，无需其他 Scenario。关闭时不打开
+Boot 通过严格绑定的 `xa.mass.scenarios.app-checks.enabled` 独立装配。
+Preview 和 consumer 默认开启；consumer 必须提供外部配置，default profile 保持关闭。
+consumer 默认还启用 Messages；只使用 Batch Checks 时显式设置 `messages.enabled: false`。
+SMS 不参与 consumer 装配。关闭 Batch Checks 时不打开
 配置文件或锁；开启必须明确提供 configuration.path/seed，不回退 Preview 种子。
 
 独立部署使用[三份外部输入](../../distribution/server/README.md#external-consumer-workbench-deployment)：宿主 YAML、Group 注册 JSON 和本模块配置 JSON。

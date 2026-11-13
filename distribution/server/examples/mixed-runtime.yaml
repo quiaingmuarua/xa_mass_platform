@@ -9,6 +9,8 @@ xa:
         - project-id: default
           worker-group-ids: []
     scenarios:
+      app-checks:
+        enabled: false
       messages:
         enabled: true
         applications:

@@ -1,0 +1,11 @@
+xa:
+  mass:
+    scenarios:
+      app-checks:
+        enabled: false
+      messages:
+        enabled: false
+    project-assembly:
+      projects:
+        - project-id: default
+          worker-group-ids: []

@@ -78,6 +78,8 @@ class ConsumerArchiveTest(unittest.TestCase):
         self.assertIn("--spring.profiles.active=consumer", command)
         self.assertIn("--xa.mass.project-assembly.projects[0].project-id=default", command)
         self.assertIn("--xa.mass.kernel-pacer.preset=DEFAULT", command)
+        self.assertFalse(any("xa.mass.scenarios." in argument for argument in command),
+                         "The consumer launcher must not override the profile's business defaults")
         self.assertEqual(4, len(receipt["sdkArtifacts"]))
         self.assertFalse(any("scenario-workers" in argument for argument in command))
         self.assertTrue(Path(receipt["sdkRoot"], "consumer-origin.json").is_file())
@@ -107,6 +109,14 @@ class ConsumerArchiveTest(unittest.TestCase):
         self.assertFalse(any("preview" in argument for argument in selected))
         with self.assertRaisesRegex(ValueError, "configuration file"):
             consumer.server_command(receipt, "test_consumer", runtime_config=self.root / "missing.yaml")
+
+    def test_platform_only_startup_is_an_explicit_configuration_choice(self):
+        receipt = self.prepare()
+        config = consumer.ROOT / "config/platform-runtime.yaml"
+        command = consumer.server_command(receipt, "test_platform", runtime_config=config)
+        self.assertIn("--spring.config.additional-location=" + config.resolve().as_uri(), command)
+        self.assertFalse(any("xa.mass.scenarios." in argument for argument in command))
+        self.assertNotIn("--xa.mass.project-assembly.projects[0].project-id=default", command)
 
     def test_missing_binaries_and_corrupt_zip_are_rejected(self):
         runtime = self.archive("server-runtime", missing=f"lib/xa-mass-server-jvm-{self.version}.jar")

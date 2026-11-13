@@ -2,17 +2,22 @@
 
 These are opt-in deployment examples, not automatically loaded Spring configuration.
 `messages-runtime.yaml` and `worker-groups.json` are packaged from the XA Android
-consumer's configuration sources. The first enables Messages and the Messaging
+consumer's configuration sources. Consumer enables Messages and Batch Checks by
+default; this Messages-only sample explicitly disables Batch Checks. The first enables the Messaging
 Pool/query for `android-demo-workers`; the second registers its declared events.
 Messages contributes its own Project. Registration does not install a Handler,
 connect a Worker or prove that stock is available.
 
-From any working directory, use absolute paths. For example, in PowerShell:
+Copy the inputs outside the extraction before editing. Prepare a private users
+file and set `xa.mass.users.seed` in the copied YAML to its absolute `file:` URI;
+consumer requires it independently of the business configuration. From any working
+directory, use absolute paths. For example, in PowerShell:
 
 ```powershell
 $runtime = (Resolve-Path '<extracted-runtime-directory>').Path
-$yaml = ([System.Uri](Join-Path $runtime 'examples/messages/messages-runtime.yaml')).AbsoluteUri
-$groups = Get-Content (Join-Path $runtime 'examples/messages/worker-groups.json') -Raw
+$inputs = (Resolve-Path '<copied-messages-input-directory>').Path
+$yaml = ([System.Uri](Join-Path $inputs 'messages-runtime.yaml')).AbsoluteUri
+$groups = Get-Content (Join-Path $inputs 'worker-groups.json') -Raw
 java -jar (Join-Path $runtime 'lib/xa-mass-server-jvm-<version>.jar') `
   --spring.profiles.active=consumer `
   "--spring.config.additional-location=$yaml" `

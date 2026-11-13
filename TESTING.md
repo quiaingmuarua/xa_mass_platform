@@ -39,6 +39,14 @@ checks the three host configurations, absence of application configuration in
 nested platform/Scenario libraries, and absence of test configuration. Moving
 configuration ownership retains the original proof-path selections.
 
+Consumer defaults enable Batch Checks and Messages with required external inputs;
+SMS remains Preview-only. Composition proof covers zero-Worker readiness and
+catalog/import availability, followed by real Worker execution and restart retention.
+Single-business fixtures explicitly disable the other business; raw/Android RPC,
+gateway and platform fixtures disable both. Keep their original isolation assertions
+instead of loading extra businesses. The packaged `examples/consumer-business`
+inputs remain external examples, never automatically loaded configuration.
+
 Business workloads retain their scenario assertions while platform regressions
 belong to the owning proof. Select the dedicated SMS Preview workflow for SMS
 composition, console and source/fresh-ZIP delivery changes; its claims and limits

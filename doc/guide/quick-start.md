@@ -60,6 +60,7 @@ Worker inventory 和业务配置仍按各自 Owner 的规则保留。不要通�
 ## 其他入口
 
 - 已有 Runtime/Preview ZIP：使用[包内启动](operations/deploy.md#从发行包启动)。
-- 只需要干净 Server/Adapter：使用 `--profile consumer`，再显式提供资源和 Worker。
+- 需要 Batch Checks／Messages：使用 `--profile consumer` 和[两业务外部配置样例](../../distribution/server/src/main/dist/examples/consumer-business/README.md)，Worker 单独接入。
+- 只需要 Server/Adapter：consumer 的外部 YAML 显式关闭 `app-checks.enabled` 和 `messages.enabled`；纯平台也可使用 `--profile default`。
 - 只看页面：公开 Mock 演示不需要 Redis 或 Worker；其显示不能作为真实执行证据。
 - Android 或混合 Worker：使用[部署指南](operations/deploy.md)，沿用已有设备和独立 APK。

@@ -1,0 +1,9 @@
+{
+  "example-workers": {
+    "attributes": {},
+    "eventCodes": [
+      "extension.worker.string.md5",
+      "extension.worker.message.send"
+    ]
+  }
+}
