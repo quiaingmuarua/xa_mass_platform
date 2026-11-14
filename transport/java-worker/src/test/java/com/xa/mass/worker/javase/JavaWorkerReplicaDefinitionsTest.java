@@ -30,7 +30,7 @@ class JavaWorkerReplicaDefinitionsTest {
             try (var manager = builder.build()) {
                 for (String key : List.of("first", "second")) {
                     String endpoint = server.url("/worker").toString().replaceFirst("^http", "ws");
-                    server.enqueue(new MockResponse.Builder().code(200).body("{\"workerId\":\"" + key
+                    server.enqueue(new MockResponse.Builder().code(200).body("{\"status\":\"prepared\",\"workerId\":\"" + key
                             + "\",\"transportType\":\"WEBSOCKET\",\"endpointUri\":\"" + endpoint + "\"}").build());
                     server.enqueue(new MockResponse.Builder().webSocketUpgrade(new okhttp3.WebSocketListener() {
                         @Override public void onMessage(okhttp3.WebSocket socket, String message) {

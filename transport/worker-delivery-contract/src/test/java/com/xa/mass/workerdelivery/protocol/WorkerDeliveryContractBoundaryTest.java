@@ -29,6 +29,7 @@ class WorkerDeliveryContractBoundaryTest {
                 Set.of(
                         "Jsons.java",
                         "WorkerDeliveryCodec.java",
+                        "WorkerConnectionClose.java",
                         "WorkerDeliveryProtocol.java"
                 ),
                 sourceFiles

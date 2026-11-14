@@ -13,6 +13,8 @@ public interface WorkerLifecycle extends AutoCloseable {
         RUNNING
     }
 
+    enum StopReason { MANUAL, COOLDOWN, UNAVAILABLE, REJECTED, TERMINATED }
+
     @FunctionalInterface
     interface Listener {
 
@@ -50,6 +52,8 @@ public interface WorkerLifecycle extends AutoCloseable {
         private final String workerId;
         private final URI endpointUri;
         private final String diagnosticMessage;
+        private final StopReason stopReason;
+        private final Long cooldownUntilMillis;
 
         public Snapshot(
                 State state,
@@ -57,10 +61,17 @@ public interface WorkerLifecycle extends AutoCloseable {
                 URI endpointUri,
                 String diagnosticMessage
         ) {
+            this(state, workerId, endpointUri, diagnosticMessage, null, null);
+        }
+
+        public Snapshot(State state, String workerId, URI endpointUri, String diagnosticMessage,
+                        StopReason stopReason, Long cooldownUntilMillis) {
             this.state = Objects.requireNonNull(state, "state");
             this.workerId = workerId;
             this.endpointUri = endpointUri;
             this.diagnosticMessage = diagnosticMessage;
+            this.stopReason = stopReason;
+            this.cooldownUntilMillis = cooldownUntilMillis;
         }
 
         public State state() {
@@ -78,5 +89,8 @@ public interface WorkerLifecycle extends AutoCloseable {
         public String diagnosticMessage() {
             return diagnosticMessage;
         }
+
+        public StopReason stopReason() { return stopReason; }
+        public Long cooldownUntilMillis() { return cooldownUntilMillis; }
     }
 }

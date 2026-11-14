@@ -206,8 +206,12 @@ manager.prepareAndStart(List.of(
 
 `prepareAndStart` loads each selected stopped replica's complete Properties
 once, sends one batch of at most 100 entries, correlates the ordered response
-by request position, and injects each returned workerId/Endpoint into that
-replica's Controller. The configured batch kind tells Server how to derive
+by request position, validates the entire tagged response, and injects each outcome
+into that replica's Controller. A `prepared` item starts normally; a `cooldown`
+item ends that replica's run without an Endpoint or immediate reconciliation retry.
+Other items are unaffected. A later explicit `start` or `reconcile` performs a new
+check; no automatic recovery timer or Host JVM exit is introduced.
+The configured batch kind tells Server how to derive
 identity coordinates from the submitted Map; Java Worker does not interpret
 that strategy. The batch creates no Matching facts; those arrive through the
 verified connections. Running replicas are untouched. Batch failure does not fall back to

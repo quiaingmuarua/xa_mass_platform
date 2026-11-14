@@ -990,6 +990,75 @@
         },
         "type" : "object"
       },
+      "WorkerConnectionControlRequest" : {
+        "properties" : {
+          "cooldownUntilMillis" : {
+            "description" : "Absolute deadline; null releases admission",
+            "format" : "int64",
+            "maximum" : 9007199254740991,
+            "minimum" : 1,
+            "type" : [ "integer", "null" ]
+          },
+          "expectedRevision" : {
+            "maxLength" : 128,
+            "type" : [ "string", "null" ]
+          },
+          "reason" : {
+            "maxLength" : 256,
+            "type" : "string"
+          },
+          "requestId" : {
+            "maxLength" : 128,
+            "type" : "string"
+          }
+        },
+        "required" : [ "cooldownUntilMillis", "reason", "requestId" ],
+        "type" : "object"
+      },
+      "WorkerConnectionControlView" : {
+        "properties" : {
+          "cooldownUntilMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "readAt" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "reason" : {
+            "type" : "string"
+          },
+          "requestId" : {
+            "type" : "string"
+          },
+          "revision" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "supported" : {
+            "type" : "boolean"
+          },
+          "transportType" : {
+            "type" : "string"
+          },
+          "unsupportedReason" : {
+            "type" : "string"
+          },
+          "updatedAt" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "workerGroupId" : {
+            "type" : "string"
+          },
+          "workerId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "WorkerGroupBatchGetResponse" : {
         "properties" : {
           "missingWorkerGroupIds" : {
@@ -1167,7 +1236,14 @@
       },
       "WorkerPreparationResponse" : {
         "properties" : {
+          "cooldownUntilMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
           "endpointUri" : {
+            "type" : "string"
+          },
+          "status" : {
             "type" : "string"
           },
           "transportType" : {
@@ -1450,7 +1526,7 @@
     },
     "/api/v1/projects/{projectId}" : {
       "get" : {
-        "operationId" : "get",
+        "operationId" : "get_1",
         "parameters" : [ {
           "in" : "path",
           "name" : "projectId",
@@ -4477,6 +4553,180 @@
         },
         "summary" : "Append one Worker result",
         "tags" : [ "Worker Delivery" ]
+      }
+    },
+    "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}/connection-control" : {
+      "get" : {
+        "description" : "A time-derived policy view, not proof of physical connection closure or scheduling availability.",
+        "operationId" : "get",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "workerId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerConnectionControlView"
+                }
+              }
+            },
+            "description" : "Current control view"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid or unsupported Worker control"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Control storage or disconnect is unavailable or unconfirmed"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Read Worker connection control (administrator)",
+        "tags" : [ "Worker Resources" ]
+      },
+      "put" : {
+        "description" : "Null cooldownUntilMillis releases admission only. Keep the full request on 503; read and explicitly reconcile. An identical current request can repeat route revocation without extending the deadline.",
+        "operationId" : "put",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "workerId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/WorkerConnectionControlRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerConnectionControlView"
+                }
+              }
+            },
+            "description" : "Current control view"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid or unsupported Worker control"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "409" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Current control changed or request identity conflicts"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Control storage or disconnect is unavailable or unconfirmed"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Set or release Worker connection cooldown (administrator)",
+        "tags" : [ "Worker Resources" ]
       }
     },
     "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}/platform-properties" : {

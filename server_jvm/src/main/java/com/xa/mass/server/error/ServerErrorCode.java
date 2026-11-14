@@ -1,6 +1,9 @@
 package com.xa.mass.server.error;
 
 public enum ServerErrorCode {
+    INVALID_WORKER_CONNECTION_CONTROL(15012, "Worker connection control request is invalid or unsupported"),
+    WORKER_CONNECTION_CONTROL_CONFLICT(15013, "Worker connection control changed or request identity conflicts"),
+    WORKER_CONNECTION_CONTROL_UNAVAILABLE(15014, "Worker connection control or disconnect is unavailable; reconcile the original request before retrying"),
     INVALID_USER_REQUEST(18001, "User directory request is invalid"),
     INVALID_CREDIT_REQUEST(18002, "Credit request is invalid"),
     CREDIT_ACCOUNT_NOT_FOUND(18003, "Credit user or account was not found"),

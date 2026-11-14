@@ -46,6 +46,51 @@ class WorkerRunControllerTest {
     }
 
     @Test
+    void cooledPreparationDoesNotCreateTransportAndRequiresExplicitNewStart() throws Exception {
+        ScriptedPreparation preparation = new ScriptedPreparation(0);
+        RecordingClientCreator networks = new RecordingClientCreator();
+        WorkerRunController controller = controller(preparation, networks);
+        controller.start(WorkerPreparationResult.cooldown(WORKER_ID, 123456L));
+        awaitStopped(controller);
+        assertEquals(WorkerLifecycle.StopReason.COOLDOWN, controller.snapshot().stopReason());
+        assertEquals(123456L, controller.snapshot().cooldownUntilMillis());
+        assertEquals(WORKER_ID, controller.snapshot().workerId());
+        assertTrue(networks.clients.isEmpty());
+        assertEquals(0, preparation.calls.get());
+        controller.start();
+        networks.awaitClient(0);
+        assertEquals(1, preparation.calls.get());
+        assertEquals(null, controller.snapshot().stopReason());
+        assertEquals(null, controller.snapshot().cooldownUntilMillis());
+    }
+
+    @Test
+    void adapterCooldownPreservesReasonAcrossLateTerminalCallbackAndNewRun() throws Exception {
+        RecordingClientCreator networks = new RecordingClientCreator();
+        WorkerRunController controller = controller(new ScriptedPreparation(0), networks);
+        controller.start();
+        FakeTextMessageClient first = networks.awaitClient(0);
+        com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec codec =
+                new com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec();
+        first.listener.onMessage(codec.encodeDeliveryCommand(
+                com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand.create(
+                        com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER,
+                        com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER,
+                        "worker.connection.close", System.currentTimeMillis() + 60000,
+                        com.xa.mass.workerdelivery.protocol.WorkerConnectionClose.cooldown(123456L).encode(), "")));
+        assertEquals(WorkerLifecycle.StopReason.COOLDOWN, controller.snapshot().stopReason());
+        assertEquals(123456L, controller.snapshot().cooldownUntilMillis());
+        first.terminate();
+        assertEquals(WorkerLifecycle.StopReason.COOLDOWN, controller.snapshot().stopReason());
+        controller.start();
+        networks.awaitClient(1);
+        first.terminate();
+        assertEquals(WorkerLifecycle.State.RUNNING, controller.snapshot().state());
+        controller.stop();
+        assertEquals(WorkerLifecycle.StopReason.MANUAL, controller.snapshot().stopReason());
+    }
+
+    @Test
     void startSubmitsOnePreparationAndDuplicateIsIdempotent()
             throws Exception {
         BlockingPreparation preparation = new BlockingPreparation();
@@ -125,7 +170,7 @@ class WorkerRunControllerTest {
                 URI.create("ws://127.0.0.1:18083/batch")
         );
 
-        controller.start(injected);
+        controller.start(WorkerPreparationResult.prepared(injected));
         networks.awaitClient(0);
 
         assertEquals(0, preparation.calls.get());
@@ -341,7 +386,7 @@ class WorkerRunControllerTest {
             throws Exception {
         WorkerPreparation preparation = new WorkerPreparation() {
             @Override
-            public PreparedWorker prepare() {
+            public WorkerPreparationResult prepare() {
                 throw new AssertionError("fatal prepare");
             }
 
@@ -521,13 +566,13 @@ class WorkerRunControllerTest {
         }
 
         @Override
-        public PreparedWorker prepare() throws Exception {
+        public WorkerPreparationResult prepare() throws Exception {
             calls.incrementAndGet();
             if (failuresRemaining.getAndUpdate(value ->
                     Math.max(0, value - 1)) > 0) {
                 throw new IOException("unavailable");
             }
-            return new PreparedWorker(WORKER_ID, ENDPOINT);
+            return WorkerPreparationResult.prepared(new PreparedWorker(WORKER_ID, ENDPOINT));
         }
 
         @Override
@@ -543,11 +588,11 @@ class WorkerRunControllerTest {
         private final CountDownLatch release = new CountDownLatch(1);
 
         @Override
-        public PreparedWorker prepare() {
+        public WorkerPreparationResult prepare() {
             calls.incrementAndGet();
             entered.countDown();
             awaitLatch(release);
-            return new PreparedWorker(WORKER_ID, ENDPOINT);
+            return WorkerPreparationResult.prepared(new PreparedWorker(WORKER_ID, ENDPOINT));
         }
 
         @Override

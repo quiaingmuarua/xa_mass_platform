@@ -15,6 +15,7 @@ import {
 import JsonBlock from "@/components/JsonBlock.vue";
 import MetricCard from "@/components/MetricCard.vue";
 import WorkerDirectDebug from "@/components/WorkerDirectDebug.vue";
+import WorkerConnectionControl from "@/components/WorkerConnectionControl.vue";
 import { createWorkerGroupBindingsLoader } from "@/runtime-viewer/worker-group-bindings";
 import {
   useRuntimeViewerConfig,
@@ -49,7 +50,7 @@ const schedulingIsMock = runtimeConfig.mode === "mock";
 const searchText = ref("");
 const selectedWorker = ref<WorkerView>();
 const detailsOpen = ref(false);
-type WorkerDetailTab = "overview" | "debug";
+type WorkerDetailTab = "overview" | "debug" | "connection-control";
 const detailTab = ref<WorkerDetailTab>("overview");
 
 const activeWorkers = computed(() => store.activeSample?.workers ?? []);
@@ -975,6 +976,16 @@ function metricValue(value: number, observed: number): string {
             <WorkerDirectDebug
               :worker="selectedWorker"
               :event-codes="store.activeGroup?.eventCodes ?? []"
+            />
+          </el-tab-pane>
+          <el-tab-pane label="接入控制" name="connection-control">
+            <WorkerConnectionControl
+              v-if="detailTab === 'connection-control'"
+              :key="
+                JSON.stringify([selectedWorker.workerGroupId, selectedWorker.workerId])
+              "
+              :worker-group-id="selectedWorker.workerGroupId"
+              :worker-id="selectedWorker.workerId"
             />
           </el-tab-pane>
         </el-tabs>

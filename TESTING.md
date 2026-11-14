@@ -132,6 +132,13 @@ not another definition of transitions, storage budgets or evidence guarantees.
 
 ## Selection Decision
 
+Worker connection cooldown selects Server control/HTTP tests and real Redis CAS
+proof, Adapter verification/revocation races, SDK preparation and terminal-reason
+tests, and Runtime Boundary online rejection/release with finite Pool execution.
+Android process-local checking uses a controllable clock; the existing Android
+Worker Proof owns actual disconnect, process restart, early release and execution.
+No hour-long wait, keepalive claim, GCP deployment or extra CI lane is required.
+
 Project topology and startup changes select Server/Boot contracts; persistent
 Project descriptors and directory changes additionally select Redis Owner.
 Query admission and Pool changes select Matching contracts, with Redis Owner

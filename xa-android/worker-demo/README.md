@@ -5,6 +5,8 @@ local Lab. It composes existing owners instead of copying their mechanisms:
 
 ```text
 AndroidWorkerDemoApplication
+  -> AndroidWorkerHostControl
+     -> process-local connection intent and one delayed cooldown check
   -> AndroidWorker
      -> persistent client key, Prepare, WebSocket Transport
   -> AndroidDemoCapabilities
@@ -25,7 +27,7 @@ AndroidWorkerDemoApplication
      -> local-only host.snapshot / host.start / host.stop / host.messages.read Definitions
 
 MainActivity
-  -> observes WorkerLifecycle
+  -> observes Worker lifecycle and Host connection control
   -> observes capability Snapshot
 ```
 
@@ -62,8 +64,51 @@ never appear in `platform.worker.events.snapshot`, and never become WorkerGroup
 capability truth. HTTP startup failure is diagnostic-only and does not prevent
 the Worker from starting. The Activity only observes Worker lifecycle,
 capability state, and the fixed probe endpoint while visible.
-Leaving the Activity stops neither owner; Android may still kill the process
-because this demo installs no Service or WorkManager.
+Leaving the Activity stops neither owner; Android may still kill the process.
+This demo installs no Service, system job, alarm, wake lock or WorkManager.
+
+## Connection cooldown recovery
+
+Server connection cooldown is separate from scheduling PAUSE and Pool
+qualification. The SDK reports a structured `COOLDOWN` stop with the Server's
+deadline; the App does not infer cooldown from diagnostic text. Closing a busy
+connection does not cancel an admitted Handler or undo its business effects.
+The original run still fences its Reporter; the App never replays a Task.
+Immediate physical close can race a busy serialized Handler, so delivery of the
+cooldown notification itself is best-effort. Without an observed `COOLDOWN`, an
+ordinary unavailable/terminated run does not acquire this recovery policy; the
+next explicit start or new process Prepare obtains the authoritative decision.
+
+`AndroidWorkerHostControl` serializes the page and the device-local Host HTTP
+start/stop requests on the main Looper. The Application makes the initial start
+once. A confirmed cooldown begins a process-local recovery episode with at most
+one `Handler.postDelayed` callback, one hour plus uniformly chosen 0..5 minutes
+of jitter. A day-long cooldown is therefore checked before the old deadline so
+an early Server release can be discovered. Server decides admission on every
+attempt; the displayed deadline is not a client-side permission to connect.
+
+A transient unavailable result during this recovery keeps the low-frequency
+check. Authentication/configuration rejection or a non-recoverable terminal
+stop ends it. An installed new run ends the episode; ordinary network reconnect
+and its finite budget remain SDK-owned. No automatic retry is added to an
+ordinary failed startup that did not follow cooldown.
+
+Manual **尝试连接** cancels the old callback and requests one immediate attempt.
+Manual **停止连接／检查**, including the local HTTP stop event, clears intent
+before SDK stop. Delayed callbacks and unordered SDK listener notifications
+cannot restore it: the Host reads the current snapshot and checks its current
+callback identity. The UI shows the stop reason, Server deadline and approximate
+next check separately from actual connection or scheduling truth.
+
+Elapsed time controls the local due time. Returning to the Activity can run an
+already due check, but recreation or foreground entry before it is due does not
+start another Prepare. The callback only runs when this process receives CPU;
+it does not wake the device and has no exact wall-clock guarantee. Process death
+removes all recovery state. The next full process startup reads its unchanged
+static connection inputs and immediately tries again with the persistent client
+key. There is no timer file, persistent manual-stop flag, background service or
+system scheduling registration. `Application.onTerminate()` remains a test/tool
+cleanup hook, not the device lifecycle guarantee.
 
 ## Static connection and private access
 
@@ -96,7 +141,7 @@ inspection. It adds no credential issuer, login system or public read/write API.
 
 Credential replacement requires stopping the App, provisioning a complete file,
 then explicitly starting a new process. Connect/Disconnect retain the credential
-captured by the current process; no file watcher, extra Prepare or automatic
+captured by the current process; no file watcher or authentication-specific
 retry is introduced. Runtime address or authentication-mode changes use a new
 build/install, with ordinary upgrade installation preserving App data.
 
@@ -242,6 +287,11 @@ shown by the App because HTTP and Worker delivery share one capability
 instance. The fixed `extension.worker.android-demo.host.snapshot`, `.start`
 and `.stop` Events expose only Demo Host lifecycle control and observation.
 They reuse the same finite HTTP dispatcher but are not Worker capabilities.
+The snapshot also carries `stopReason`, `cooldownUntilMillis`,
+`connectionRequested` and `nextConnectionCheckAtMillis`. These describe the
+local run and process-local check intent, not Server admission or network truth.
+The start/stop events use the same Host control as the page, so stopping a
+cooled Worker also cancels its pending recovery check.
 Local business calls prove capability execution only; the Emulator acceptance
 relates them to the real Worker transport separately. Remove the forwarding
 rule when finished:
@@ -361,7 +411,13 @@ physical Battery readings, and background execution limits.
 Access-file tests cover required/anonymous mode, strict input and origin checks,
 safe failures and captured startup credentials. Provisioning tests cover exact
 device/package admission, a stopped debuggable destination and stdin-only secret
-transfer. Local SDK/gateway tests own credential transport, redirect/TLS refusal
+transfer. Host control tests use a controllable scheduler and elapsed clock for
+the hourly interval, early-release checking, transient failure, permanent
+rejection, stale callback fencing and process-local cleanup. Activity and local
+HTTP tests prove both control surfaces cancel the same recovery and Activity
+recreation does not make another Prepare. These tests do not claim background
+process survival or precise device wake timing.
+Local SDK/gateway tests own credential transport, redirect/TLS refusal
 and revocation semantics. An explicitly requested public device acceptance checks
 the selected deployment/use path and records its actual coverage; a successful
 unit test or APK build does not establish those deployment facts. Public checks

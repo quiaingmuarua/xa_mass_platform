@@ -9,6 +9,7 @@ import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory.Endpoint;
 import com.xa.mass.server.worker.endpoint.WorkerTransportType;
 import com.xa.mass.server.worker.identity.WorkerIdentityService;
 import com.xa.mass.server.worker.identity.WorkerRegistrationKind;
+import com.xa.mass.server.worker.connection.WorkerConnectionControlStore;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -23,18 +24,21 @@ public final class WorkerPreparationService {
     private final WorkerIdentityService identities;
     private final WorkerEndpointDirectory endpoints;
     private final WorkerResourceCatalog catalog;
+    private final WorkerConnectionControlStore connectionControls;
 
     public WorkerPreparationService(
             WorkerIdentityService identities,
             WorkerEndpointDirectory endpoints,
-            WorkerResourceCatalog catalog
+            WorkerResourceCatalog catalog,
+            WorkerConnectionControlStore connectionControls
     ) {
         this.identities = Objects.requireNonNull(identities, "identities");
         this.endpoints = Objects.requireNonNull(endpoints, "endpoints");
         this.catalog = Objects.requireNonNull(catalog, "catalog");
+        this.connectionControls = Objects.requireNonNull(connectionControls, "connectionControls");
     }
 
-    public List<PreparedWorker> prepareAll(
+    public List<PreparationResult> prepareAll(
             String workerGroupId,
             WorkerRegistrationKind workerKind,
             WorkerTransportType transportType,
@@ -90,8 +94,15 @@ public final class WorkerPreparationService {
         } catch (RuntimeException error) {
             throw failure(ServerErrorCode.WORKER_BINDING_UNAVAILABLE, operation, null, error);
         }
-        // The whole batch has run. A later error does not imply prefix-only side effects.
-        List<PreparedWorker> prepared = new ArrayList<>();
+        Map<String, WorkerConnectionControlStore.Control> controls;
+        try {
+            controls = transportType == WorkerTransportType.WEBSOCKET
+                    ? connectionControls.readAllAsync(workerGroupId, workerIds).join() : Map.of();
+        } catch (RuntimeException error) {
+            throw failure(ServerErrorCode.WORKER_CONNECTION_CONTROL_UNAVAILABLE, operation, null, error);
+        }
+        // Identity/Binding stages survive any later failure. The response is one complete ordered decision list.
+        List<PreparationResult> prepared = new ArrayList<>();
         for (String workerId : workerIds) {
             WorkerRegistrationResult result = registrations.get(workerId);
             switch (result.status()) {
@@ -109,7 +120,10 @@ public final class WorkerPreparationService {
                 throw failure(ServerErrorCode.WORKER_BINDING_CONFLICT, operation,
                         "Worker is already bound to a different transport; registration does not migrate bindings", null);
             }
-            prepared.add(new PreparedWorker(workerId, endpoint.transportType(), endpoint.publicUri()));
+            var control = controls.get(workerId);
+            if (control != null && control.cooling(System.currentTimeMillis()))
+                prepared.add(new PreparationResult("cooldown", workerId, null, null, control.cooldownUntilMillis()));
+            else prepared.add(new PreparationResult("prepared", workerId, endpoint.transportType(), endpoint.publicUri(), null));
         }
         return List.copyOf(prepared);
     }
@@ -130,10 +144,12 @@ public final class WorkerPreparationService {
         return new ServerException(code, operation, message, cause);
     }
 
-    public record PreparedWorker(
+    public record PreparationResult(
+            String status,
             String workerId,
             WorkerTransportType transportType,
-            URI endpointUri
+            URI endpointUri,
+            Long cooldownUntilMillis
     ) {
     }
 

@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.worker.runtime.PreparedWorker;
+import com.xa.mass.worker.runtime.WorkerPreparationResult;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.net.URI;
@@ -55,17 +55,43 @@ class JavaOkHttpWorkerControlClientTest {
     }
 
     @Test
+    void acceptsMixedBatchWithoutInventingEndpointForCooldown() throws Exception {
+        var rows = new java.util.ArrayList<Map<String, Object>>();
+        var properties = new java.util.ArrayList<Map<String, String>>();
+        for (int index = 0; index < 100; index++) {
+            rows.add(index % 2 == 0
+                    ? Map.of("status", "cooldown", "workerId", "worker-" + index, "cooldownUntilMillis", 123456L)
+                    : Map.of("status", "prepared", "workerId", "worker-" + index,
+                            "transportType", "WEBSOCKET", "endpointUri", "ws://127.0.0.1:18083/ws"));
+            properties.add(Map.of("labSlot", Integer.toString(index)));
+        }
+        server.enqueue(new MockResponse.Builder().code(200).body(Jsons.toJson(rows)).build());
+        var outcomes = client.prepareBatch("SCENARIO_LAB", "group", WorkerTransportType.WEBSOCKET,
+                properties, Duration.ofSeconds(2));
+        assertEquals(100, outcomes.size());
+        assertNull(outcomes.get(0).preparedWorker());
+        assertEquals(123456L, outcomes.get(0).cooldownUntilMillis());
+        assertEquals("worker-99", outcomes.get(99).workerId());
+        assertNotNull(outcomes.get(99).preparedWorker());
+        rows.set(99, Map.of("status", "cooldown", "workerId", "worker-99", "cooldownUntilMillis", "bad"));
+        server.enqueue(new MockResponse.Builder().code(200).body(Jsons.toJson(rows)).build());
+        assertThrows(WorkerException.class, () -> client.prepareBatch("SCENARIO_LAB", "group",
+                WorkerTransportType.WEBSOCKET, properties, Duration.ofSeconds(2)));
+        assertEquals(2, server.getRequestCount());
+    }
+
+    @Test
     void preparesWorkerWithOneRequestAndReturnsIdentityAndEndpoint()
             throws Exception {
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                .body("{\"status\":\"prepared\",\"workerId\":\"" + WORKER_ID + "\","
                         + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":"
                         + "\"ws://127.0.0.1:18083/connect\"}")
                 .build());
 
-        PreparedWorker prepared = client.prepare(
+        WorkerPreparationResult prepared = client.prepare(
                 "group a",
                 WorkerTransportType.WEBSOCKET,
                 Map.of(
@@ -78,7 +104,7 @@ class JavaOkHttpWorkerControlClientTest {
         assertEquals(WORKER_ID, prepared.workerId());
         assertEquals(
                 URI.create("ws://127.0.0.1:18083/connect"),
-                prepared.endpointUri()
+                prepared.preparedWorker().endpointUri()
         );
         RecordedRequest request = server.takeRequest(1, TimeUnit.SECONDS);
         assertNotNull(request);
@@ -103,7 +129,7 @@ class JavaOkHttpWorkerControlClientTest {
     void rejectsIncompleteOrTransportMismatchedPreparationResponses() {
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workerId\":\"\","
+                .body("{\"status\":\"prepared\",\"workerId\":\"\","
                         + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"ws://127.0.0.1:18083\"}")
                 .build());
@@ -111,7 +137,7 @@ class JavaOkHttpWorkerControlClientTest {
 
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                .body("{\"status\":\"prepared\",\"workerId\":\"" + WORKER_ID + "\","
                         + "\"transportType\":\"SOCKET\","
                         + "\"endpointUri\":\"tcp://127.0.0.1:18084\"}")
                 .build());
@@ -124,16 +150,16 @@ class JavaOkHttpWorkerControlClientTest {
         server.enqueue(new MockResponse.Builder()
                 .code(200)
                 .body("["
-                        + "{\"workerId\":\"worker-a\","
+                        + "{\"status\":\"prepared\",\"workerId\":\"worker-a\","
                         + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"ws://127.0.0.1:18083/a\"},"
-                        + "{\"workerId\":\"worker-b\","
+                        + "{\"status\":\"prepared\",\"workerId\":\"worker-b\","
                         + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"ws://127.0.0.1:18083/b\"}"
                         + "]")
                 .build());
 
-        List<PreparedWorker> prepared = client.prepareBatch(
+        List<WorkerPreparationResult> prepared = client.prepareBatch(
                 "SCENARIO_LAB",
                 "group a",
                 WorkerTransportType.WEBSOCKET,
@@ -234,6 +260,10 @@ class JavaOkHttpWorkerControlClientTest {
         assertTrue(unavailable.getMessage().contains("requestId=request-1"));
         assertTrue(!unavailable.getMessage().contains("hidden"));
 
+        server.enqueue(new MockResponse.Builder().code(429).build());
+        assertEquals(WorkerErrorCode.WORKER_CONTROL_UNAVAILABLE,
+                assertThrows(WorkerException.class, this::prepare).errorCode());
+
         server.enqueue(new MockResponse.Builder().code(409).build());
         WorkerException rejected = assertThrows(
                 WorkerException.class,
@@ -245,7 +275,7 @@ class JavaOkHttpWorkerControlClientTest {
         );
     }
 
-    private PreparedWorker prepare() throws IOException {
+    private WorkerPreparationResult prepare() throws IOException {
         return client.prepare(
                 "group",
                 WorkerTransportType.WEBSOCKET,

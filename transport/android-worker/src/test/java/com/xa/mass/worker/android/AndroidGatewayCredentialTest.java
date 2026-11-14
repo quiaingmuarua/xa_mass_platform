@@ -134,7 +134,7 @@ public class AndroidGatewayCredentialTest {
     }
 
     private static String prepared(String endpoint) {
-        return "{\"workerId\":\"worker\",\"transportType\":\"WEBSOCKET\",\"endpointUri\":\"" + endpoint + "\"}";
+        return "{\"status\":\"prepared\",\"workerId\":\"worker\",\"transportType\":\"WEBSOCKET\",\"endpointUri\":\"" + endpoint + "\"}";
     }
 
     private static MockResponse upgrade(boolean reconnect) {

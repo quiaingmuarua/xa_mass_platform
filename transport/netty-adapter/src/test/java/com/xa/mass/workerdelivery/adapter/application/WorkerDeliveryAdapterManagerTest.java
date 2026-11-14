@@ -128,6 +128,24 @@ class WorkerDeliveryAdapterManagerTest {
         assertThat(failure.getSuppressed()).hasSize(1);
     }
 
+    @Test
+    void connectionControlOnlyTargetsLocallyRunningAdapters() {
+        List<String> events = new ArrayList<>();
+        WorkerDeliveryAdapterManager manager = new WorkerDeliveryAdapterManager();
+        manager.register(new FakeAdapter("adapter-1", events, false));
+        assertThatThrownBy(() -> manager.requireConnectionControl("adapter-1"))
+                .isInstanceOf(IllegalStateException.class);
+        manager.start();
+        assertThatThrownBy(() -> manager.requireConnectionControl("unknown"))
+                .isInstanceOf(IllegalStateException.class);
+        manager.requireConnectionControl("adapter-1");
+        manager.revokeWorkerConnection("adapter-1", "worker-1", 1234);
+        assertThat(events).containsExactly("start:adapter-1", "revoke:adapter-1:worker-1:1234");
+        manager.close();
+        assertThatThrownBy(() -> manager.revokeWorkerConnection("adapter-1", "worker-1", 1234))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
     private static final class FakeAdapter
             implements WorkerDeliveryAdapter {
 
@@ -175,6 +193,11 @@ class WorkerDeliveryAdapterManagerTest {
                 throw new IllegalStateException("start failed");
             }
             state = WorkerDeliveryAdapterState.RUNNING;
+        }
+
+        @Override
+        public void revokeWorkerConnection(String workerId, long cooldownUntilMillis) {
+            events.add("revoke:" + adapterId + ":" + workerId + ":" + cooldownUntilMillis);
         }
 
         @Override

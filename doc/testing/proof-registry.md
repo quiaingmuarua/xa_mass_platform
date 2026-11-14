@@ -37,6 +37,11 @@ contracts and architecture guards.
 
 ## redis_owner
 
+Server's `WorkerConnectionControlStoreIntegrationTest` proves exact-record CAS,
+concurrent control writes, release revisions, last-request reconciliation, expiry
+without timer writes, corruption refusal and same-scope reopen. It does not prove
+physical disconnection or transactional persistence plus route revocation.
+
 **Primary Owner:** Java Redis providers and the Server Identity registry.
 Real Redis establishes Owner-local atomicity, exact fences and bounded command
 cost; it does not combine independent commits.
@@ -92,6 +97,12 @@ No RPC reclamation, historical migration, permanent tombstones or distributed fi
 replication is claimed.
 
 ## runtime_boundary
+
+Worker cooldown traverses administrator HTTP, persisted control, live Adapter
+revocation, mixed Prepare outcomes, explicit release and a recovered finite Any
+Task. It checks saved Item query, actual executor, raw Result, terminal Item/Task
+and complete JSONL. Adapter focused tests own exact late-verification/close races;
+no scheduling pause, Pool exclusion or business cancellation is inferred.
 
 **Primary Owner:** Server assembly over Kernel, Pacer, Matching and Transport ports.
 
@@ -157,6 +168,11 @@ or observation replay.
 - **Nonclaims:** scarce-resource turnover, Group fairness, production SLA, larger-world correctness, recovery, actual executor, Handler concurrency or soak. Redis Owner separately owns command cost/mailbox races; measured performance is not a correctness threshold.
 
 ## android_host
+
+Worker connection-cooldown recovery is tested with a controlled clock and one
+process-local callback: early release probes, jitter, manual stop, late observations
+and Activity recreation. These tests do not claim process keepalive, exact wakeup
+timing or delivery of the terminal reason across a lost connection.
 
 - **Primary Owner:** [Android Worker](../../transport/android-worker/README.md) and [XA Android](../../xa-android/README.md).
 - **Boundary:** library assembly, identity persistence, capability Definitions, local lifecycle, Control HTTP and Java proof-client compatibility.

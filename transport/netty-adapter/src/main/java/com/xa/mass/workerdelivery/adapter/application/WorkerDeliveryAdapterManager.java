@@ -99,6 +99,26 @@ public final class WorkerDeliveryAdapterManager implements AutoCloseable {
         }
     }
 
+    /** Narrow control admission; the Server validates the Endpoint's transport. */
+    public synchronized void requireConnectionControl(String adapterId) {
+        connectionControlAdapter(adapterId);
+    }
+
+    public synchronized void revokeWorkerConnection(
+            String adapterId, String workerId, long cooldownUntilMillis
+    ) {
+        connectionControlAdapter(adapterId).revokeWorkerConnection(workerId, cooldownUntilMillis);
+    }
+
+    private WorkerDeliveryAdapter connectionControlAdapter(String adapterId) {
+        WorkerDeliveryAdapter adapter = adapters.get(requireAdapterId(adapterId));
+        if (closed || !started || adapter == null
+                || adapter.state() != WorkerDeliveryAdapterState.RUNNING) {
+            throw new IllegalStateException("Connection control requires a locally managed running Adapter");
+        }
+        return adapter;
+    }
+
     private static String requireAdapterId(String adapterId) {
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException(

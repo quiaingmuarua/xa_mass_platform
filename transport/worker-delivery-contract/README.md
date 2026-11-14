@@ -135,14 +135,13 @@ WebSocket and line Socket send a direct `DeliveryReport` as their first value:
 ```
 
 The Adapter consumes this Adapter-directed Report locally and takes the opaque
-route identity from `sourceId`; the payload is exactly `null`. The first
-workerId occurrence in one Adapter process is passed through the injected
-Server route-verification port. Server may batch those single-item requests
-when reading current Endpoint Bindings. While a current verified Channel or retained
-verification evidence exists, a later physical reconnect for that workerId
-activates a replacement Channel without another Server read. Evidence expiry
-or eviction requires fresh verification; the [Adapter connection Owner](../netty-adapter/README.md#connection-protocol)
-owns that lifetime. There is no ACK or verification HTTP route.
+route identity from `sourceId`; the payload is exactly `null`. Every physical
+WebSocket identity admission, including reconnects and replacement Channels,
+passes through the injected Server route-verification port. Server may batch
+these reads of Endpoint Binding and current connection cooldown. A cached
+previous allowance cannot admit a cooled Worker. The
+[Adapter connection Owner](../netty-adapter/README.md#connection-protocol)
+owns pending/active route fencing. There is no ACK or verification HTTP route.
 Polling sends no identity Report; Server verifies its persisted
 `system-polling` route on each point request.
 Identity reporting does not create or update Endpoint Binding and is not
@@ -174,12 +173,16 @@ The Server transports the evidence to the Kernel-owned handoff; Transport does
 not interpret snapshot state or mutate scheduling score.
 
 The fixed connection-lifecycle control event is
-`ADAPTER -> WORKER / worker.connection.close`. Its payload and forward fields
-are empty JSON value and empty string respectively. Worker Transport consumes
-the non-expired Command and ends its current run without returning a Result.
+`ADAPTER -> WORKER / worker.connection.close`. Its forward is empty; the payload
+is either JSON `null` for ordinary terminal closure or exactly
+`{"reason":"cooldown","cooldownUntilMillis":<positive integer>}`.
+`WorkerConnectionClose` encodes this payload. Worker Transport consumes the
+non-expired Command and ends its current run without returning a Result, preserving
+the structured cooldown reason for its Host. It does not wait for the deadline,
+retry, cancel admitted business effects or alter scheduling state.
 Connection lifecycle and direct SERVER controls both use the existing
 `DeliveryCommand` and `DeliveryReport` DTOs; there is no third connection DTO
-or transport-specific wrapper.
+or transport-specific outer wrapper.
 
 ## Report Semantics
 
@@ -223,6 +226,11 @@ remains diagnostic, and `observed` can represent a failed command.
 Reports and observed Direct Call results use only the `diagnosticCode` field
 name; the retired diagnostic field spelling is not an accepted alias.
 Existing Redis data is not cleared or rewritten by this migration.
+
+Connection-control preparation uses the strict `status=prepared` or
+`status=cooldown` response in both single and ordered batch HTTP operations.
+Server and SDK clients upgrade together; a response without status is not a
+legacy fallback. This HTTP shape remains Server-owned and is not a Delivery frame.
 
 ## JSON Boundary
 

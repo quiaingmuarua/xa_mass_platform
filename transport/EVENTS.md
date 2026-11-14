@@ -245,7 +245,7 @@ They bypass the Adapter/Worker Event Definition maps:
 | Message type | Direction | Transport meaning |
 | --- | --- | --- |
 | `worker.connection.identify` | `WORKER -> ADAPTER` Report | Declares the Server-issued `workerId` for a newly opened physical connection; payload is `null` |
-| `worker.connection.close` | `ADAPTER -> WORKER` Command | Ends the current Worker run without producing a Delivery Report |
+| `worker.connection.close` | `ADAPTER -> WORKER` Command | Ends the current Worker run without producing a Delivery Report; payload is `null` or `{reason:"cooldown",cooldownUntilMillis:<positive integer>}` |
 
 Their DTO and direction contracts are owned by the
 [Worker Delivery Contract](worker-delivery-contract/README.md).

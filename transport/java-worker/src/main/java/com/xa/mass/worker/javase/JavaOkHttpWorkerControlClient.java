@@ -4,7 +4,7 @@ import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.worker.runtime.PreparedWorker;
+import com.xa.mass.worker.runtime.WorkerPreparationResult;
 import com.xa.mass.worker.runtime.WorkerGatewayCredential;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
@@ -54,7 +54,7 @@ final class JavaOkHttpWorkerControlClient
         this.gatewayCredential = gatewayCredential;
     }
 
-    public PreparedWorker prepare(
+    public WorkerPreparationResult prepare(
             String workerGroupId,
             WorkerTransportType transportType,
             Map<String, String> workerProperties,
@@ -85,12 +85,11 @@ final class JavaOkHttpWorkerControlClient
         return parsePreparedWorker(
                 response,
                 transportType,
-                "workerControl.prepare",
-                Set.of("workerId", "transportType", "endpointUri")
+                "workerControl.prepare"
         );
     }
 
-    List<PreparedWorker> prepareBatch(
+    List<WorkerPreparationResult> prepareBatch(
             String workerKind,
             String workerGroupId,
             WorkerTransportType transportType,
@@ -136,29 +135,19 @@ final class JavaOkHttpWorkerControlClient
         if (responseWorkers.size() != workerProperties.size()) {
             throw invalidBatchResponse();
         }
-        List<PreparedWorker> prepared = new ArrayList<>();
+        List<WorkerPreparationResult> prepared = new ArrayList<>();
+        Set<String> identities = new java.util.HashSet<>();
         for (Object rawItem : responseWorkers) {
             if (!(rawItem instanceof Map<?, ?>)) {
                 throw invalidBatchResponse();
             }
             Map<String, Object> item = stringObject((Map<?, ?>) rawItem);
-            if (!item.keySet().equals(Set.of(
-                    "workerId",
-                    "transportType",
-                    "endpointUri"
-            ))) {
-                throw invalidBatchResponse();
-            }
-            prepared.add(parsePreparedWorker(
+            WorkerPreparationResult result = parsePreparedWorker(
                             item,
                             transportType,
-                            "workerControl.prepareBatch",
-                            Set.of(
-                                    "workerId",
-                                    "transportType",
-                                    "endpointUri"
-                            )
-                    ));
+                            "workerControl.prepareBatch");
+            if (!identities.add(result.workerId())) throw invalidBatchResponse();
+            prepared.add(result);
         }
         return List.copyOf(prepared);
     }
@@ -235,7 +224,7 @@ final class JavaOkHttpWorkerControlClient
                 TimeUnit.MILLISECONDS
         );
         try (Response response = call.execute()) {
-            if (response.code() >= 500) {
+            if (response.code() >= 500 || response.code() == 429) {
                 throw failure(
                         WorkerErrorCode.WORKER_CONTROL_UNAVAILABLE,
                         operation,
@@ -340,35 +329,20 @@ final class JavaOkHttpWorkerControlClient
         return uri;
     }
 
-    private PreparedWorker parsePreparedWorker(
+    private WorkerPreparationResult parsePreparedWorker(
             Map<String, Object> response,
             WorkerTransportType transportType,
-            String operation,
-            Set<String> expectedFields
+            String operation
     ) {
-        if (!response.keySet().equals(expectedFields)
-                || !(response.get("workerId") instanceof String)
-                || ((String) response.get("workerId")).isBlank()
-                || !(response.get("transportType") instanceof String)
-                || !(response.get("endpointUri") instanceof String)
-                || !transportType.name().equals(
-                        response.get("transportType")
-                )) {
-            throw failure(
-                    WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
-                    operation,
-                    "Worker preparation response is invalid",
-                    null
-            );
+        try {
+            WorkerPreparationResult result = WorkerPreparationResult.decode(response, transportType);
+            if (result.preparedWorker() != null) {
+                requireEndpointUri(result.preparedWorker().endpointUri().toString(), transportType, operation);
+            }
+            return result;
+        } catch (IllegalArgumentException invalid) {
+            throw invalidResponse(operation, invalid);
         }
-        return new PreparedWorker(
-                (String) response.get("workerId"),
-                requireEndpointUri(
-                        (String) response.get("endpointUri"),
-                        transportType,
-                        operation
-                )
-        );
     }
 
     private static Map<String, Object> stringObject(Map<?, ?> source) {

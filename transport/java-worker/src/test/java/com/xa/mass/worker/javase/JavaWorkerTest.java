@@ -215,7 +215,7 @@ class JavaWorkerTest {
         ).toString().replaceFirst("^http", "ws"));
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                .body("{\"status\":\"prepared\",\"workerId\":\"" + WORKER_ID + "\","
                         + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"" + endpoint + "\"}")
                 .build());
@@ -314,7 +314,7 @@ class JavaWorkerTest {
             );
             server.enqueue(new MockResponse.Builder()
                     .code(200)
-                    .body("{\"workerId\":\"" + WORKER_ID + "\","
+                    .body("{\"status\":\"prepared\",\"workerId\":\"" + WORKER_ID + "\","
                             + "\"transportType\":\"SOCKET\","
                             + "\"endpointUri\":\"" + endpoint + "\"}")
                     .build());
@@ -387,7 +387,7 @@ class JavaWorkerTest {
         ).toString().replaceFirst("^http", "ws"));
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                .body("{\"status\":\"prepared\",\"workerId\":\"" + WORKER_ID + "\","
                         + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"" + endpoint + "\"}")
                 .build());

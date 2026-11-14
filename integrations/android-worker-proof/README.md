@@ -108,6 +108,7 @@ is not Adapter connectivity, Kernel state, or schedulability evidence.
 | Convergence | `terminal` | stop Server | `active` | endpoint exhaustion and local STOPPED |
 | Convergence | `server-restart` | restart Server, then explicit Host start | `active` | no automatic start and explicit recovery |
 | Triad | `baseline` / `outage` / `recovery` | force-stop/start `lab2` | `baseline` | partial outage isolation |
+| Connection cooldown | `initial` / `process-restart` | administrator cooldown, force-stop/start Debug App, early release | `initial` | denied restart keeps identity; Any finite execution recovers |
 
 Java phases own Runtime calls, observations, assertions and Evidence. The launcher
 performs each ADB or process mutation once after the phase emits its stable
@@ -177,6 +178,30 @@ fingerprint and ledger without replaying mutations. Python owns process/ADB and
 external configuration paths. Original correctness/convergence/triad assertions
 and deadlines remain. Evidence contains IDs, counts, fingerprints and verdicts,
 never complete seeds or result bodies.
+
+## Connection cooldown
+
+The existing Any-enabled Batch Checks Runtime also hosts two bounded
+`AndroidWorkerCooldownMain` phases after its original initial phase. Java sets
+the known online Worker to a one-day cooldown, independently checks the stopped
+App's structured reason/deadline and the Adapter route, and records the control
+revision. Python force-stops and starts the same Debug APK without clearing data
+or restarting Server. The next phase proves the same identity remains denied,
+releases the saved revision early, explicitly starts through the existing device
+Host control, and completes one raw finite Task through `any / worker.any`.
+
+Three fixed ASCII/Unicode vectors are checked across saved Item queries, original
+Results, terminal Item/Task state and the complete identity-exact JSONL export.
+The actual device identity and increased digest execution counter independently
+establish the controlled single-Worker relation. No Scenario conversion, RPC or
+directed Worker query substitutes for that finite Task. Original Batch Checks
+restart assertions and all other phases keep their workloads and timeouts.
+
+This device proof does not wait an hour or claim background wakeup. The App's
+clock tests own jitter, single pending checks, manual-stop cancellation and early
+release discovery by periodic check. Close-reason delivery is best effort; this
+phase cools an idle Worker after prior work completes. Busy Handler behavior and
+lost reason recovery retain their SDK/Adapter Owner tests and original boundaries.
 
 ## Messages finite consumer
 

@@ -123,7 +123,7 @@ ends that start attempt. The accepted run follows:
 ```text
 queued startup request
   -> load and defensively copy one complete Properties map
-  -> one Prepare request resolves Worker ID and Endpoint
+  -> one Prepare request resolves a prepared coordinate or cooldown
   -> install one Core TextMessageWorkerTransport
   -> concrete Client connects asynchronously
 
@@ -137,6 +137,14 @@ endpoint retry exhausted
   -> enter STOPPED
   -> wait for an explicit Host start
 ```
+
+The shared tagged preparation outcome and structured Adapter close payload can
+end the run with `Snapshot.stopReason() == COOLDOWN` and a Server deadline.
+No Client is created for a cooled Prepare. Temporary control I/O/service failure
+and permanent rejection remain separate `UNAVAILABLE` and `REJECTED` reasons.
+The SDK does not schedule another Prepare; an Application may implement a
+process-local low-frequency check without a Service, keepalive or device wakeup.
+Stopping and restarting the SDK preserves its original immutable connection input.
 
 Prepare uses the existing input only for Server-owned identity and access
 preparation; Properties publication follows the

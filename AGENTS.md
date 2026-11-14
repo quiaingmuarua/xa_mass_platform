@@ -190,6 +190,13 @@ lifecycle changes.
 
 ## Worker Delivery Contract
 
+Server owns administrator connection-cooldown decisions and their current Redis
+records. Adapter owns enforcement on each physical identity admission and local
+route revocation. Cooldown is independent of scheduling PAUSE and Pool qualification;
+it does not cancel admitted Handlers or transfer Reporters to a later run. Android
+Host recovery is process-local low-frequency checking, not keepalive or a new SDK
+retry policy. See [Server connection cooldown](server_jvm/README.md#worker-connection-cooldown).
+
 [Delivery Contract](transport/worker-delivery-contract/README.md) owns the Java 11
 transport-neutral DTOs and encoding; [Event Catalog](transport/EVENTS.md) owns event
 meaning and producer/target admission. Read both relevant contracts before changing

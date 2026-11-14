@@ -82,6 +82,13 @@ The Application owns one persistent client key. Observe its issued Worker ID in
 the App or through the public Runtime catalog; do not invent or persist a Server
 Worker ID as App identity. The normal example does not clear App data.
 
+The App's [cooldown recovery](worker-demo/README.md#connection-cooldown-recovery)
+uses the same connection settings. A Server cooldown stops the run and schedules
+one process-local check about hourly; manually stopping also cancels that check.
+This does not keep the process alive or wake the device. Opening a new process
+makes a new admission attempt; returning to an existing Activity only runs a due
+check. No Android system scheduler or new configuration input is required.
+
 ## Public Runtime connection
 
 These static build/install/provision steps also work with a local authenticated

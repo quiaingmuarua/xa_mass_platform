@@ -321,9 +321,12 @@ class WorkerRouteVerificationBatcherTest {
             int capacity,
             Duration timeout
     ) {
+        var controls = mock(com.xa.mass.server.worker.connection.WorkerConnectionControlStore.class);
+        when(controls.readAllAsync(org.mockito.ArgumentMatchers.anyString(), anyList())).thenReturn(CompletableFuture.completedFuture(Map.of()));
         WorkerRouteVerificationBatcher batcher =
                 new WorkerRouteVerificationBatcher(
                         bindings,
+                        controls,
                         capacity,
                         timeout
                 );

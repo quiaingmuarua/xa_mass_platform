@@ -9,7 +9,7 @@ import static org.junit.Assert.assertTrue;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.worker.runtime.PreparedWorker;
+import com.xa.mass.worker.runtime.WorkerPreparationResult;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.net.URI;
@@ -52,6 +52,20 @@ public final class AndroidOkHttpWorkerControlClientTest {
     }
 
     @Test
+    public void cooldownIsAnExplicitOutcomeWithoutEndpointAndOldShapeIsRejected() throws Exception {
+        server.enqueue(new MockResponse.Builder().code(200).body(
+                "{\"status\":\"cooldown\",\"workerId\":\"worker\",\"cooldownUntilMillis\":123456}").build());
+        WorkerPreparationResult outcome = prepare();
+        assertEquals("worker", outcome.workerId());
+        assertEquals(null, outcome.preparedWorker());
+        assertEquals(Long.valueOf(123456L), outcome.cooldownUntilMillis());
+        server.enqueue(new MockResponse.Builder().code(200).body(
+                "{\"workerId\":\"worker\",\"transportType\":\"WEBSOCKET\",\"endpointUri\":\"ws://localhost/ws\"}").build());
+        assertEquals(WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
+                assertThrows(WorkerException.class, this::prepare).errorCode());
+    }
+
+    @Test
     public void sendsClientKeyPreparationAndReturnsOpaqueIdentity()
             throws Exception {
         server.enqueue(success(
@@ -59,7 +73,7 @@ public final class AndroidOkHttpWorkerControlClientTest {
                 "ws://127.0.0.1:18083/connect"
         ));
 
-        PreparedWorker prepared = client.prepare(
+        WorkerPreparationResult prepared = client.prepare(
                 "group a",
                 WorkerTransportType.WEBSOCKET,
                 Map.of(
@@ -74,7 +88,7 @@ public final class AndroidOkHttpWorkerControlClientTest {
         assertEquals("server-issued-worker-id", prepared.workerId());
         assertEquals(
                 URI.create("ws://127.0.0.1:18083/connect"),
-                prepared.endpointUri()
+                prepared.preparedWorker().endpointUri()
         );
         RecordedRequest request = server.takeRequest(1, TimeUnit.SECONDS);
         assertNotNull(request);
@@ -112,6 +126,10 @@ public final class AndroidOkHttpWorkerControlClientTest {
         assertTrue(unavailable.getMessage().contains("code=15007"));
         assertTrue(unavailable.getMessage().contains("requestId=request-1"));
 
+        server.enqueue(new MockResponse.Builder().code(429).build());
+        assertEquals(WorkerErrorCode.WORKER_CONTROL_UNAVAILABLE,
+                assertThrows(WorkerException.class, this::prepare).errorCode());
+
         server.enqueue(new MockResponse.Builder().code(409).build());
         assertEquals(
                 WorkerErrorCode.WORKER_CONTROL_REJECTED,
@@ -129,7 +147,7 @@ public final class AndroidOkHttpWorkerControlClientTest {
 
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workerId\":\"worker\","
+                .body("{\"status\":\"prepared\",\"workerId\":\"worker\","
                         + "\"transportType\":\"SOCKET\","
                         + "\"endpointUri\":\"tcp://127.0.0.1:18084\"}")
                 .build());
@@ -140,7 +158,7 @@ public final class AndroidOkHttpWorkerControlClientTest {
 
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workerId\":\"worker\","
+                .body("{\"status\":\"prepared\",\"workerId\":\"worker\","
                         + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"ws://127.0.0.1:18083\","
                         + "\"extra\":true}")
@@ -177,7 +195,7 @@ public final class AndroidOkHttpWorkerControlClientTest {
         assertThrows(IllegalStateException.class, this::prepare);
     }
 
-    private PreparedWorker prepare() throws IOException {
+    private WorkerPreparationResult prepare() throws IOException {
         return client.prepare(
                 "group",
                 WorkerTransportType.WEBSOCKET,
@@ -189,7 +207,7 @@ public final class AndroidOkHttpWorkerControlClientTest {
     private static MockResponse success(String workerId, String endpointUri) {
         return new MockResponse.Builder()
                 .code(200)
-                .body("{\"workerId\":\"" + workerId + "\","
+                .body("{\"status\":\"prepared\",\"workerId\":\"" + workerId + "\","
                         + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"" + endpointUri + "\"}")
                 .build();

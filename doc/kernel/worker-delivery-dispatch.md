@@ -37,11 +37,14 @@ Neither Prepare nor Binding proves that a physical connection is live.
 
 A long-lived connection sends its identity Report first. Adapter verification
 crosses the injected single-item Server port, whose owner compares persisted
-Binding with the receiving endpoint. The Adapter owns pending verification
-and the exact current Channel. Disconnected verification evidence may be
-retained within the Adapter's TTL/capacity bounds; active routes cannot be
-cache-evicted. Reconnect after evidence expiry requires verification again.
-Identity and retained verification are not authentication or schedulability.
+Binding with the receiving endpoint and reads Server-owned connection cooldown.
+Every physical identity admission is checked, including cached reconnects and
+replacement Channels. The Adapter owns pending verification and the exact current
+Channel; it retains a valid old active Channel until a replacement is admitted.
+Disconnected route evidence remains TTL/capacity bounded and active routes cannot
+be cache-evicted. Neither retained evidence nor identity is authentication or
+schedulability. Administrator cooldown removes active/pending route evidence;
+exact pending-Channel checks reject a late pre-cooldown verification result.
 
 The assignment-time endpointManagerId selects the mailbox bucket; its workerId
 field selects the Worker. Those addresses stay outside DeliveryCommand.

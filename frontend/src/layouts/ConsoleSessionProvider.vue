@@ -27,6 +27,11 @@ import { createWorkerStatusDataSource } from "../worker-status/data-source";
 import { HttpWorkerDirectCallClient } from "../worker-direct-call/http-client";
 import { createTaskSession, taskSessionKey } from "@/task-workbench/session";
 import { createProjectSource } from "@/task-management/projects";
+import { ApiWorkerConnectionControlSource } from "@/runtime-viewer/connection-control";
+import {
+  createWorkerConnectionControlSession,
+  workerConnectionControlKey
+} from "@/runtime-viewer/connection-control-state";
 
 const configResult = parseRuntimeViewerConfig(import.meta.env);
 const route = useRoute();
@@ -42,6 +47,15 @@ if (configResult.ok) {
       ? mock?.credits
       : new ApiCreditSource(configResult.value.apiBaseUrl);
   if (credits) provide(creditSourceKey, credits);
+  const connectionSource =
+    configResult.value.mode === "mock"
+      ? mock!.workerConnectionControl
+      : new ApiWorkerConnectionControlSource(configResult.value.apiBaseUrl);
+  const connectionControl = createWorkerConnectionControlSession(
+    connectionSource,
+    caller
+  );
+  provide(workerConnectionControlKey, connectionControl);
   const dataSource = createRuntimeViewerDataSource(
     configResult.value,
     caller,
@@ -82,6 +96,7 @@ if (configResult.ok) {
   );
   provide(taskSessionKey, taskSession);
   onBeforeUnmount(() => {
+    connectionControl.dispose();
     taskSession.dispose();
     runtimeViewerStore.dispose();
     workerStatusStore.dispose();

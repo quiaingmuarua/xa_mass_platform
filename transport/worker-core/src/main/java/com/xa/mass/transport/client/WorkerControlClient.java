@@ -1,6 +1,6 @@
 package com.xa.mass.transport.client;
 
-import com.xa.mass.worker.runtime.PreparedWorker;
+import com.xa.mass.worker.runtime.WorkerPreparationResult;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
@@ -10,7 +10,7 @@ import java.util.Map;
  */
 public interface WorkerControlClient extends AutoCloseable {
 
-    PreparedWorker prepare(
+    WorkerPreparationResult prepare(
             String workerGroupId,
             WorkerTransportType transportType,
             Map<String, String> workerProperties,

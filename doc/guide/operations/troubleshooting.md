@@ -17,6 +17,7 @@ Status: current bounded-observation troubleshooting guide.
 | 403，或列表缺少别人的任务 | 当前用户、角色、Project 授权、任务所有者 | 刷新/重新登录；授权范围不等于系统故障 |
 | 新配置保存后没生效 | 保存文档、当前生效文档、是否重启、是否旧 Task | 按[配置](configuration.md)核对，不重复覆盖 seed |
 | Worker 已连接，但任务不执行 | Task 是否已审核、Group/event、查询和 Pool 供给、实际属性 | 逐项区分准入与资格；查看下面的执行链 |
+| Worker 被断开且无法重新接入 | 管理员在 Worker 详情中读取“接入控制”，区分冷却、认证错误和暂时不可用 | 冷却到期或解除后仍需客户端再次检查；不要用调度恢复替代解除冷却 |
 | Batch Checks 无法启动 | 实际 Item/种子数、固定单价、所有者余额、原费用请求状态 | 先核对原请求；余额不足与启动结果未知采用不同恢复方式 |
 | 有执行但没看到结果 | 原 Task/messageId、查询方式、预览截断、业务 contentError | 保留身份，分别核对原始 Result 与业务解释 |
 | SMS 重启后原 ID 空结果 | 已消费结果、Server 短期缓存、是否保留过 HTTP 回执 | 空读取不等于曾经没有结果；见 [SMS 保留边界](../usage/sms.md#保留边界) |
@@ -37,6 +38,22 @@ Runtime 页面是有界观察。某页没有 Worker 或 Result，不等于全库
 优先使用已知 ID 点查。不要把 Properties Preview 的样本当作完整 fleet 清单。
 持续待处理工作与持续空闲、兼容的 Worker 在多轮合格条件下仍无法匹配，才值得沿
 [调度活性主线](../../kernel/scheduling-overview.md#scale-and-liveness)继续定位。
+
+## 管理 Worker 接入冷却
+
+管理员进入 Runtime Workers，打开指定 Group／Worker 的详情和“接入控制”。
+先读取当前状态，再选择未来截止时间设置冷却，或显式解除。该操作立即撤销
+WebSocket 路由，不等待忙碌 Handler 完成；已发生的业务副作用不能撤销。
+不支持的 Transport 或不由当前 Runtime 管理的 Adapter 会明确拒绝修改。
+
+冷却状态、网络连接、调度暂停和 Pool 资格是不同事实。解除冷却不会恢复 PAUSE，
+也不会改变 Pool 规则。保存／断连未确认时保留原请求，读取核对后显式重试；
+遇到更新的修订时不能用旧请求覆盖，放弃本地核对也不撤销 Server 已执行的操作。
+
+Android 进程存活时约每小时检查一次；退出后没有定时任务，下次启动会重新检查。
+页面手动“尝试连接”可以立即核对，手动停止会取消本进程的自动检查。
+Java 对应实例保持停止，需显式启动；其他实例不受影响。
+详细边界见 [Server 接入冷却](../../../server_jvm/README.md#worker-connection-cooldown)。
 
 ## 结果不一致时
 

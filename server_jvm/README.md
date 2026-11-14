@@ -748,7 +748,8 @@ actual Bindings, then initializes absent cold members. Calls are batch-bounded,
 without per-Worker synchronous round trips or identity confirmation rereads;
 Kernel storage and registration atomicity belong to the
 [Worker Owner](../kernel_jvm/doc/runtime-redis/worker-runtime-redis-shape.md).
-A normal Prepare uses four client commands including the Group read, while
+A WebSocket Prepare adds one bounded Group-local admission read to the four
+identity/Binding commands, while Polling/Socket Prepare retains four and
 Catalog registration uses two; this is a command budget, not throughput/latency
 proof. Callers may retry the same derived coordinates. Failure does not imply
 that only a prefix produced side effects.
@@ -777,6 +778,13 @@ Group/client key coordinate and never send a Worker ID hint. Transparent
 reconnect reuses the current in-memory identity and Endpoint without preparing
 again.
 
+The single and batch HTTP responses use tagged outcomes: `status=prepared` carries
+Worker ID, transport and Endpoint; `status=cooldown` carries Worker ID and
+`cooldownUntilMillis`, without an Endpoint. A batch is complete, ordered and may
+contain both outcomes. Admission storage failure returns 503, never an allowed
+or invented cooldown result. Resolving identities and Kernel Bindings remains
+an independent effect, so denial/failure is not a promise of zero registration writes.
+
 Prepare success does not imply connectivity, scheduling availability or observed
 Properties. All Workers, including Polling, initially remain cold. Valid network
 evidence may later request activation; evidence loss has no replay guarantee. New Workers
@@ -787,6 +795,47 @@ Explicit Any Pool and direct workerId need no Facts. Polling has no current Adap
 Properties path, so new Polling Workers use explicitly supplied Any or Identity. Existing stored facts remain readable
 until a later complete observation replaces them; repeated Prepare never
 overwrites them, Platform Properties, an active Worker lease or PAUSE.
+
+### Worker connection cooldown
+
+Server owns administrator-only `GET/PUT /api/v1/worker-groups/{groupId}/workers/{workerId}/connection-control`.
+This is separate from scheduling PAUSE and Matching Pool qualification. Only known
+WebSocket Workers bound to a running Adapter managed by this Runtime can be changed;
+Polling and Socket control requests are rejected before mutation. User admission
+precedes storage and Adapter access. This does not bind gateway credentials to
+Worker identities or prevent trusted clients from acquiring a different identity.
+
+The Server-owned `xa_mass:<scope>:server:worker-connection-control:<groupId>` HASH
+holds one current record per controlled Worker. It retains request identity,
+expected/committed revisions, absolute deadline or release, reason, actor and time.
+An exact-record CAS publishes changes; only the current receipt is retained.
+Same-request retries preserve the original deadline, including after expiry.
+Release retains a revision to fence late old writes. No connection history,
+directory scan, timer, global index or expiration worker is added. Reads derive
+allowed/cooldown from Server time; expiry does not itself reconnect or resume work.
+
+PUT serializes same-Worker operations locally, validates the active bound Adapter,
+persists the decision, then revokes its route, pending verification and cached
+admission. Physical terminal close is requested outside the route lock. Persistence
+and disconnect are independent effects: 409 means conflict; 503 means unavailable
+or unconfirmed and requires retaining the complete original request. Read back the
+policy and independently observe connectivity. Explicit same-request retry can
+repeat revocation without extending the deadline; no automatic write retry or rollback
+is performed. Only the latest receipt can reconcile a lost response; newer records
+do not prove that an earlier request never took effect.
+
+Every physical WebSocket identity admission rechecks the Server, including cached
+reconnects and replacements. Pending-channel identity fences late verification;
+old close callbacks cannot remove a resumed connection. A Redis outage refuses
+new admission as a transient failure, not a policy cooldown. No Redis read is added
+per business frame and Kernel scheduling authority is unchanged.
+
+Busy Workers disconnect immediately. An admitted Handler can finish independently;
+its original run Reporter cannot transfer to a new run. Side effects cannot be
+cancelled and existing Task retries may occur. Structured cooldown notification is
+best-effort: a lost notification does not weaken Server enforcement; the next
+explicit Prepare discovers the current policy. Existing shared Worker credentials
+are not individual device identity protection. Releasing admission does not clear PAUSE.
 
 ### Runtime Worker Properties Admission
 
@@ -918,10 +967,11 @@ Server owns the Worker Delivery HTTP and owner-provider composition. It
 constructs active Adapters only through the finite public Netty factory.
 
 Adapter Command consume and Report append use the loopback Worker Delivery HTTP
-boundary. First route verification uses a Server-injected asynchronous port:
+boundary. Each physical route verification uses a Server-injected asynchronous port:
 one bounded Server queue is drained by one resident virtual thread, and current
 Catalog Binding snapshots are read asynchronously in batches of at most 100 IDs
-before the individual Adapter requests complete. The queue is transient coordination, not Route
+followed by bounded per-Group connection-control reads under the same timeout
+before individual Adapter requests complete. The queue is transient coordination, not Route
 or Binding truth. Adapter lifecycle, schedulers, queues, current route registry
 and physical Channels remain owned by `transport/netty-adapter`.
 

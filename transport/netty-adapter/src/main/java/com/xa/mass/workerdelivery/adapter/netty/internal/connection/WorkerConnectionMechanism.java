@@ -25,6 +25,7 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttemp
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportDispatcher;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerConnectionClose;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import io.netty.channel.Channel;
@@ -110,7 +111,8 @@ public final class WorkerConnectionMechanism {
         String workerId = routes.claimedWorkerId(context.channel());
         if (workerId == null) {
             receiveIdentity(context, encodedReport);
-        } else if (routes.hasVerificationEvidence(workerId)) {
+        } else if (routes.wasVerified(context.channel())
+                && routes.hasVerificationEvidence(workerId)) {
             receiveBoundReport(context, workerId, encodedReport);
         } else {
             // First-verification input is deliberately not buffered.
@@ -244,6 +246,34 @@ public final class WorkerConnectionMechanism {
         propertiesCache.clear();
     }
 
+    /** Clears every local admission state before performing physical I/O. */
+    public void revokeWorkerConnection(String workerId, long cooldownUntilMillis) {
+        String payload = WorkerConnectionClose.cooldown(cooldownUntilMillis).encode();
+        WorkerRouteRegistry.Revocation revoked = routes.revoke(workerId);
+        propertiesCache.invalidate(workerId);
+        if (revoked.activeChannel() != null) {
+            reportConnectionChanged(workerId, "DISCONNECTED");
+        }
+        RuntimeException failure = null;
+        for (Channel channel : new Channel[] {revoked.activeChannel(), revoked.pendingChannel()}) {
+            if (channel == null) {
+                continue;
+            }
+            try {
+                writeTerminalClose(channel, payload);
+            } catch (RuntimeException error) {
+                if (failure == null) {
+                    failure = error;
+                } else {
+                    failure.addSuppressed(error);
+                }
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
+    }
+
     private void receiveIdentity(
             ChannelHandlerContext context,
             String encodedReport
@@ -288,15 +318,8 @@ public final class WorkerConnectionMechanism {
                     channel,
                     AdapterConnectionCloseReason.VERIFICATION_IN_PROGRESS
             );
-            case VERIFIED_ACTIVATED -> {
-                if (admission.becameAvailable()) {
-                    reportConnectionChanged(workerId, "CONNECTED");
-                }
-                closeReplaced(admission.replacedChannel());
-                requestPropertiesSnapshot(workerId, channel);
-            }
             case VERIFICATION_CLAIMED -> {
-                propertiesCache.invalidate(workerId);
+                invalidatePropertiesIfRouteForgotten(workerId);
                 verifyRoute(context, workerId);
             }
         }
@@ -340,9 +363,12 @@ public final class WorkerConnectionMechanism {
             );
             return;
         }
-        if (decision == Decision.REJECTED) {
+        if (decision.status() != WorkerRouteVerifier.Status.VERIFIED) {
             if (routes.cancelVerification(workerId, channel)) {
-                writeTerminalClose(channel);
+                writeTerminalClose(channel,
+                        decision.status() == WorkerRouteVerifier.Status.COOLDOWN
+                                ? WorkerConnectionClose.cooldown(decision.cooldownUntilMillis()).encode()
+                                : "null");
             }
             return;
         }
@@ -352,7 +378,8 @@ public final class WorkerConnectionMechanism {
             return;
         }
 
-        if (!routes.completeVerification(workerId, channel)) {
+        WorkerRouteRegistry.Activation activation = routes.completeVerification(workerId, channel);
+        if (activation == null) {
             routes.onChannelClosed(channel);
             networkServer.closeConnection(
                     channel,
@@ -360,7 +387,10 @@ public final class WorkerConnectionMechanism {
             );
             return;
         }
-        reportConnectionChanged(workerId, "CONNECTED");
+        if (activation.becameAvailable()) {
+            reportConnectionChanged(workerId, "CONNECTED");
+        }
+        closeReplaced(activation.replacedChannel());
         requestPropertiesSnapshot(workerId, channel);
     }
 
@@ -506,7 +536,7 @@ public final class WorkerConnectionMechanism {
         }
     }
 
-    private void writeTerminalClose(Channel channel) {
+    private void writeTerminalClose(Channel channel, String payload) {
         try {
             DeliveryCommand command = DeliveryCommand.create(
                     ADAPTER,
@@ -516,7 +546,7 @@ public final class WorkerConnectionMechanism {
                             System.currentTimeMillis(),
                             sendTimeLimit.toMillis()
                     ),
-                    "null",
+                    payload,
                     ""
             );
             networkServer.writeTextAndClose(
