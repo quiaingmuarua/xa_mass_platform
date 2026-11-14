@@ -103,7 +103,15 @@ public final class WorkerConnectionControlService {
                 "workerConnectionControl.access", null, cause);
     }
     @io.swagger.v3.oas.annotations.media.Schema(name = "WorkerConnectionControlView")
-    public record View(String workerGroupId, String workerId, String transportType, boolean supported,
-            String unsupportedReason, String status, String revision, String requestId, Long cooldownUntilMillis,
-            String reason, Long updatedAt, long readAt) { }
+    public record View(String workerGroupId, String workerId,
+            @io.swagger.v3.oas.annotations.media.Schema(nullable = true) String transportType,
+            boolean supported,
+            @io.swagger.v3.oas.annotations.media.Schema(nullable = true) String unsupportedReason,
+            String status,
+            @io.swagger.v3.oas.annotations.media.Schema(nullable = true) String revision,
+            @io.swagger.v3.oas.annotations.media.Schema(nullable = true) String requestId,
+            @io.swagger.v3.oas.annotations.media.Schema(nullable = true) Long cooldownUntilMillis,
+            @io.swagger.v3.oas.annotations.media.Schema(nullable = true) String reason,
+            @io.swagger.v3.oas.annotations.media.Schema(nullable = true) Long updatedAt,
+            long readAt) { }
 }

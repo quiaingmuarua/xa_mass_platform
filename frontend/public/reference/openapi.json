@@ -1019,20 +1019,20 @@
         "properties" : {
           "cooldownUntilMillis" : {
             "format" : "int64",
-            "type" : "integer"
+            "type" : [ "integer", "null" ]
           },
           "readAt" : {
             "format" : "int64",
             "type" : "integer"
           },
           "reason" : {
-            "type" : "string"
+            "type" : [ "string", "null" ]
           },
           "requestId" : {
-            "type" : "string"
+            "type" : [ "string", "null" ]
           },
           "revision" : {
-            "type" : "string"
+            "type" : [ "string", "null" ]
           },
           "status" : {
             "type" : "string"
@@ -1041,14 +1041,14 @@
             "type" : "boolean"
           },
           "transportType" : {
-            "type" : "string"
+            "type" : [ "string", "null" ]
           },
           "unsupportedReason" : {
-            "type" : "string"
+            "type" : [ "string", "null" ]
           },
           "updatedAt" : {
             "format" : "int64",
-            "type" : "integer"
+            "type" : [ "integer", "null" ]
           },
           "workerGroupId" : {
             "type" : "string"
