@@ -37,12 +37,12 @@ final class AndroidWorkerHostEvents {
     static Collection<? extends WorkerEventDefinition<?>> assemble(
             Collection<? extends WorkerEventDefinition<?>>
                     businessDefinitions,
-            WorkerLifecycle worker,
+            AndroidWorkerHostControl worker,
             AndroidDemoCapabilities capabilities,
             AndroidWorkerLabEvents labEvents
     ) {
         Objects.requireNonNull(businessDefinitions, "businessDefinitions");
-        WorkerLifecycle resolvedWorker = Objects.requireNonNull(
+        AndroidWorkerHostControl resolvedWorker = Objects.requireNonNull(
                 worker,
                 "worker"
         );
@@ -85,7 +85,7 @@ final class AndroidWorkerHostEvents {
     }
 
     private static String snapshot(
-            WorkerLifecycle worker,
+            AndroidWorkerHostControl worker,
             AndroidDemoCapabilities capabilities,
             AndroidWorkerLabEvents labEvents
     ) {
@@ -104,6 +104,12 @@ final class AndroidWorkerHostEvents {
                 "diagnosticMessage",
                 workerSnapshot.diagnosticMessage()
         );
+        result.put("stopReason", workerSnapshot.stopReason() == null
+                ? null : workerSnapshot.stopReason().name());
+        result.put("cooldownUntilMillis", workerSnapshot.cooldownUntilMillis());
+        AndroidWorkerHostControl.Status control = worker.status();
+        result.put("connectionRequested", control.desiredRunning());
+        result.put("nextConnectionCheckAtMillis", control.nextCheckAtMillis());
         result.put(
                 "processedCommands",
                 capabilitySnapshot.processedCommands()
@@ -113,12 +119,12 @@ final class AndroidWorkerHostEvents {
         return Jsons.toJson(result);
     }
 
-    private static String requestStart(WorkerLifecycle worker) {
+    private static String requestStart(AndroidWorkerHostControl worker) {
         worker.start();
         return accepted(WorkerLifecycle.State.RUNNING);
     }
 
-    private static String requestStop(WorkerLifecycle worker) {
+    private static String requestStop(AndroidWorkerHostControl worker) {
         worker.stop();
         return accepted(WorkerLifecycle.State.STOPPED);
     }

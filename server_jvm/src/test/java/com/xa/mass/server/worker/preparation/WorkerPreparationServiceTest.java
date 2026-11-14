@@ -20,12 +20,14 @@ class WorkerPreparationServiceTest {
     private final WorkerIdentityService identities = mock(WorkerIdentityService.class);
     private final WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
     private final WorkerEndpointDirectory endpoints = mock(WorkerEndpointDirectory.class);
-    private final WorkerPreparationService service = new WorkerPreparationService(identities, endpoints, catalog);
+    private final com.xa.mass.server.worker.connection.WorkerConnectionControlStore controls = mock(com.xa.mass.server.worker.connection.WorkerConnectionControlStore.class);
+    private final WorkerPreparationService service = new WorkerPreparationService(identities, endpoints, catalog, controls);
     private final Endpoint endpoint = new Endpoint( WorkerTransportType.WEBSOCKET,
             URI.create("ws://127.0.0.1:18083/connect"));
 
     @BeforeEach
     void setup() {
+        when(controls.readAllAsync(anyString(), anyList())).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(Map.of()));
         when(identities.registrationKey(eq(WorkerRegistrationKind.CLIENT_KEY), anyMap()))
                 .thenAnswer(call -> ((Map<?, ?>) call.getArgument(1)).get("clientWorkerKey"));
         when(catalog.getWorkerGroupDescriptors(List.of("group"))).thenReturn(Map.of(
@@ -41,7 +43,7 @@ class WorkerPreparationServiceTest {
         });
     }
 
-    private List<WorkerPreparationService.PreparedWorker> prepare(List<Map<String, Object>> properties) {
+    private List<WorkerPreparationService.PreparationResult> prepare(List<Map<String, Object>> properties) {
         return service.prepareAll("group", WorkerRegistrationKind.CLIENT_KEY, WorkerTransportType.WEBSOCKET, properties);
     }
 
@@ -50,7 +52,7 @@ class WorkerPreparationServiceTest {
         var properties = java.util.stream.IntStream.range(0, 100)
                 .mapToObj(i -> Map.<String, Object>of("clientWorkerKey", "worker-" + i)).toList();
         var ids = java.util.stream.IntStream.range(0, 100).mapToObj(i -> "worker-" + i).toList();
-        assertThat(prepare(properties)).extracting(WorkerPreparationService.PreparedWorker::workerId)
+        assertThat(prepare(properties)).extracting(WorkerPreparationService.PreparationResult::workerId)
                 .containsExactlyElementsOf(ids);
         var order = inOrder(catalog, endpoints, identities);
         order.verify(catalog).getWorkerGroupDescriptors(List.of("group"));
@@ -106,5 +108,25 @@ class WorkerPreparationServiceTest {
     private static void assertCode(Runnable action, ServerErrorCode code) {
         assertThatThrownBy(action::run).isInstanceOfSatisfying(ServerException.class,
                 error -> assertThat(error.errorCode()).isEqualTo(code));
+    }
+
+    @Test
+    void batchKeepsHealthyWorkersAndReturnsNoEndpointForCoolingWorker() {
+        long until = System.currentTimeMillis() + 60_000;
+        when(controls.readAllAsync("group", List.of("cool", "ready"))).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(Map.of(
+                "cool", new com.xa.mass.server.worker.connection.WorkerConnectionControlStore.Control(
+                        "r", "q", null, until, "maintenance", "admin", 1))));
+        var results = prepare(List.of(Map.of("clientWorkerKey", "cool"), Map.of("clientWorkerKey", "ready")));
+        assertThat(results).extracting(WorkerPreparationService.PreparationResult::status).containsExactly("cooldown", "prepared");
+        assertThat(results.getFirst().endpointUri()).isNull();
+        assertThat(results.getFirst().cooldownUntilMillis()).isEqualTo(until);
+        assertThat(results.getLast().endpointUri()).isEqualTo(endpoint.publicUri());
+    }
+
+    @Test
+    void admissionReadFailureDoesNotReturnPreparedEndpoints() {
+        when(controls.readAllAsync(anyString(), anyList())).thenReturn(java.util.concurrent.CompletableFuture.failedFuture(new IllegalStateException("offline")));
+        assertCode(() -> prepare(List.of(Map.of("clientWorkerKey", "w"))), ServerErrorCode.WORKER_CONNECTION_CONTROL_UNAVAILABLE);
+        verify(catalog).registerWorkers("group", List.of("w"), "default");
     }
 }

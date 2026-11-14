@@ -87,6 +87,14 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
     }
 
     @Override
+    public synchronized void revokeWorkerConnection(String workerId, long cooldownUntilMillis) {
+        if (state != WorkerDeliveryAdapterState.RUNNING) {
+            throw new IllegalStateException("Connection control requires a running Adapter");
+        }
+        connectionMechanism.revokeWorkerConnection(workerId, cooldownUntilMillis);
+    }
+
+    @Override
     public synchronized void close() {
         if (state == WorkerDeliveryAdapterState.CLOSED) {
             return;

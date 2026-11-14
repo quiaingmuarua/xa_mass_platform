@@ -4,7 +4,7 @@ import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.worker.runtime.PreparedWorker;
+import com.xa.mass.worker.runtime.WorkerPreparationResult;
 import com.xa.mass.worker.runtime.WorkerGatewayCredential;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
@@ -54,7 +54,7 @@ final class AndroidOkHttpWorkerControlClient
     }
 
     @Override
-    public PreparedWorker prepare(
+    public WorkerPreparationResult prepare(
             String workerGroupId,
             WorkerTransportType transportType,
             Map<String, String> workerProperties,
@@ -84,32 +84,20 @@ final class AndroidOkHttpWorkerControlClient
                 timeout,
                 "workerControl.prepare"
         );
-        if (!response.keySet().equals(Set.of(
-                "workerId",
-                "transportType",
-                "endpointUri"
-        ))
-                || !(response.get("workerId") instanceof String)
-                || ((String) response.get("workerId")).isBlank()
-                || !(response.get("transportType") instanceof String)
-                || !(response.get("endpointUri") instanceof String)
-                || !transportType.name().equals(
-                        response.get("transportType")
-                )) {
+        try {
+            WorkerPreparationResult result = WorkerPreparationResult.decode(response, transportType);
+            if (result.preparedWorker() != null) {
+                requireEndpointUri(result.preparedWorker().endpointUri().toString(), transportType);
+            }
+            return result;
+        } catch (IllegalArgumentException invalid) {
             throw failure(
                     WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
                     "workerControl.prepare",
                     "Worker preparation response is invalid",
-                    null
+                    invalid
             );
         }
-        return new PreparedWorker(
-                (String) response.get("workerId"),
-                requireEndpointUri(
-                        (String) response.get("endpointUri"),
-                        transportType
-                )
-        );
     }
 
     @Override
@@ -148,7 +136,7 @@ final class AndroidOkHttpWorkerControlClient
                 TimeUnit.MILLISECONDS
         );
         try (Response response = call.execute()) {
-            if (response.code() >= 500) {
+            if (response.code() >= 500 || response.code() == 429) {
                 throw failure(
                         WorkerErrorCode.WORKER_CONTROL_UNAVAILABLE,
                         operation,

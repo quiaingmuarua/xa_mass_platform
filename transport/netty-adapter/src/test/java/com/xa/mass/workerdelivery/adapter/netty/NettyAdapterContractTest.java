@@ -110,7 +110,7 @@ class NettyAdapterContractTest {
 
     @ParameterizedTest
     @EnumSource(Protocol.class)
-    void verifiedReconnectSkipsAnotherRemoteVerification(
+    void verifiedReconnectRequiresAnotherRemoteVerification(
             Protocol protocol
     ) throws Exception {
         TestRemoteApi remoteApi = new TestRemoteApi();
@@ -141,9 +141,9 @@ class NettyAdapterContractTest {
                         .isEqualTo(command);
             }
 
-            assertThat(remoteApi.verificationCount).hasValue(1);
+            assertThat(remoteApi.verificationCount).hasValue(2);
             assertThat(remoteApi.verifiedWorkerIds)
-                    .containsExactly(WORKER_ID);
+                    .containsExactly(WORKER_ID, WORKER_ID);
         } finally {
             adapter.close();
         }
@@ -223,7 +223,7 @@ class NettyAdapterContractTest {
             awaitReport(remoteApi, "close-for-reconnect");
             awaitProperties(remoteApi, properties.get());
             awaitPropertiesPublication(remoteApi, protocol.adapterId, properties.get());
-            assertThat(remoteApi.verificationCount.get()).isEqualTo(1);
+            assertThat(remoteApi.verificationCount.get()).isEqualTo(2);
             assertThat(remoteApi.prepareCount.get()).isEqualTo(1);
             assertThat(remoteApi.appendedResults.stream().flatMap(List::stream))
                     .noneMatch(report -> report.messageType().equals("platform.worker.properties.updated")
@@ -646,6 +646,7 @@ class NettyAdapterContractTest {
             if (request.rawPath().endsWith("/workers:prepare")) {
                 prepareCount.incrementAndGet();
                 return new Response(200, Jsons.toJson(Map.of(
+                        "status", "prepared",
                         "workerId", WORKER_ID, "transportType", preparedTransport,
                         "endpointUri", preparedEndpoint
                 )));

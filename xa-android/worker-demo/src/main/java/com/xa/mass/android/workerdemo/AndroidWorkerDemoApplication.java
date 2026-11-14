@@ -20,6 +20,7 @@ public class AndroidWorkerDemoApplication extends Application {
     static final String WORKER_GROUP_ID = "android-demo-workers";
 
     private AndroidWorker worker;
+    private AndroidWorkerHostControl workerControl;
     private AndroidDemoCapabilities demoCapabilities;
     private AndroidWorkerLabEvents labEvents;
     private AndroidMessageDemo messages;
@@ -78,11 +79,12 @@ public class AndroidWorkerDemoApplication extends Application {
             if (snapshot.state() == WorkerLifecycle.State.STOPPED
                     && worker.snapshot().state() == WorkerLifecycle.State.STOPPED) messages.revokeReporters();
         });
+        workerControl = AndroidWorkerHostControl.create(worker);
         capabilityHttpServer = AndroidCapabilityHttpServer.create(
                 getResources().getInteger(R.integer.capability_http_port),
                 AndroidWorkerHostEvents.assemble(
                         hostDefinitions,
-                        worker,
+                        workerControl,
                         demoCapabilities,
                         labEvents
                 )
@@ -93,7 +95,7 @@ public class AndroidWorkerDemoApplication extends Application {
             capabilityHttpDiagnostic = diagnosticMessage(error);
             capabilityHttpServer.close();
         }
-        worker.start();
+        workerControl.start();
     }
 
     WorkerConnectionOptions loadWorkerConnectionOptions(URI runtimeApiBaseUrl) {
@@ -104,13 +106,13 @@ public class AndroidWorkerDemoApplication extends Application {
     String connectionStartupError() { return connectionStartupError; }
     boolean hasWorker() { return worker != null; }
 
-    AndroidWorker worker() {
-        if (worker == null) {
+    AndroidWorkerHostControl workerControl() {
+        if (workerControl == null) {
             throw new IllegalStateException(
                     "Android Worker is not initialized"
             );
         }
-        return worker;
+        return workerControl;
     }
 
     AndroidDemoCapabilities demoCapabilities() {
@@ -145,8 +147,8 @@ public class AndroidWorkerDemoApplication extends Application {
         if (capabilityHttpServer != null) {
             capabilityHttpServer.close();
         }
-        if (worker != null) {
-            worker.close();
+        if (workerControl != null) {
+            workerControl.close();
         }
         super.onTerminate();
     }

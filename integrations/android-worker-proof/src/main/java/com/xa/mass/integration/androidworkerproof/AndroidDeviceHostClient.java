@@ -103,7 +103,10 @@ final class AndroidDeviceHostClient {
                 ),
                 processedCommands,
                 JsonValues.optionalString(result.get("lastEvent"), "lastEvent"),
-                activeDelayCount
+                activeDelayCount,
+                JsonValues.optionalString(result.get("stopReason"), "stopReason"),
+                result.get("cooldownUntilMillis") == null ? null : JsonValues.requiredLong(result, "cooldownUntilMillis"),
+                result.get("nextConnectionCheckAtMillis") == null ? null : JsonValues.requiredLong(result, "nextConnectionCheckAtMillis")
         );
     }
 
@@ -182,7 +185,10 @@ final class AndroidDeviceHostClient {
             String diagnosticMessage,
             long processedCommands,
             String lastEvent,
-            long activeDelayCount
+            long activeDelayCount,
+            String stopReason,
+            Long cooldownUntilMillis,
+            Long nextConnectionCheckAtMillis
     ) {
     }
 }

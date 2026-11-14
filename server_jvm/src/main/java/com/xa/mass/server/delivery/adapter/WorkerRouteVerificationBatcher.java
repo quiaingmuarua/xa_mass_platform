@@ -3,9 +3,11 @@ package com.xa.mass.server.delivery.adapter;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.workerdelivery.adapter.application.WorkerRouteVerifier;
+import com.xa.mass.server.worker.connection.WorkerConnectionControlStore;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -22,6 +24,7 @@ public final class WorkerRouteVerificationBatcher
     static final int MAX_BATCH_SIZE = 100;
 
     private final WorkerResourceCatalog workerCatalog;
+    private final WorkerConnectionControlStore connectionControls;
     private final Duration timeout;
     private final ArrayBlockingQueue<Request> requests;
     private final Object lifecycleGate = new Object();
@@ -33,10 +36,12 @@ public final class WorkerRouteVerificationBatcher
 
     public WorkerRouteVerificationBatcher(
             WorkerResourceCatalog workerCatalog,
+            WorkerConnectionControlStore connectionControls,
             int queueCapacity,
             Duration timeout
     ) {
         this.workerCatalog = Objects.requireNonNull(workerCatalog, "workerCatalog");
+        this.connectionControls = Objects.requireNonNull(connectionControls, "connectionControls");
         if (queueCapacity <= 0) {
             throw new IllegalArgumentException(
                     "queueCapacity must be positive"
@@ -195,6 +200,7 @@ public final class WorkerRouteVerificationBatcher
     }
 
     private void process(List<Request> batch) {
+        long deadline = System.nanoTime() + timeout.toNanos();
         CompletableFuture<Map<String, WorkerDescriptor>> lookup;
         try {
             List<String> workerIds = List.copyOf(new LinkedHashSet<>(
@@ -210,18 +216,37 @@ public final class WorkerRouteVerificationBatcher
                 activeLookup = lookup;
             }
             Map<String, WorkerDescriptor> endpoints = lookup.get(
-                    timeout.toNanos(),
+                    Math.max(1, deadline - System.nanoTime()),
                     TimeUnit.NANOSECONDS
             );
+            // Known identities only, at most 100 in total. No directory or Facts scan.
+            Map<String, List<String>> groups = new LinkedHashMap<>();
+            for (String id : workerIds) {
+                WorkerDescriptor descriptor = endpoints.get(id);
+                if (descriptor != null) groups.computeIfAbsent(descriptor.workerGroupId(), ignored -> new ArrayList<>()).add(id);
+            }
+            List<CompletableFuture<Map<String, WorkerConnectionControlStore.Control>>> reads = new ArrayList<>();
+            groups.forEach((group, ids) -> reads.add(connectionControls.readAllAsync(group, ids)));
+            CompletableFuture<Void> policyLookup = CompletableFuture.allOf(reads.toArray(CompletableFuture[]::new));
+            synchronized (lifecycleGate) {
+                if (state != State.RUNNING || activeBatch != batch) { policyLookup.cancel(true); return; }
+                activeLookup = policyLookup;
+            }
+            policyLookup.get(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            Map<String, WorkerConnectionControlStore.Control> controls = new LinkedHashMap<>();
+            reads.forEach(read -> controls.putAll(read.join()));
             if (!releaseActive(batch)) {
                 return;
             }
-            batch.forEach(request -> request.completion().complete(
-                    request.adapterId().equals(
-                            endpoints.get(request.workerId()) == null ? null
-                                    : endpoints.get(request.workerId()).endpointManagerId()
-                    ) ? Decision.VERIFIED : Decision.REJECTED
-            ));
+            long now = System.currentTimeMillis();
+            batch.forEach(request -> {
+                WorkerDescriptor descriptor = endpoints.get(request.workerId());
+                var control = controls.get(request.workerId());
+                Decision decision = descriptor == null || !request.adapterId().equals(descriptor.endpointManagerId())
+                        ? Decision.REJECTED : control != null && control.cooling(now)
+                        ? Decision.cooldown(control.cooldownUntilMillis()) : Decision.VERIFIED;
+                request.completion().complete(decision);
+            });
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             failBatchAndQueued(batch, error);

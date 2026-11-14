@@ -11,7 +11,8 @@ protocol-extension framework.
 This module is a plain `java-library`. It does not depend on Spring, Server,
 Kernel, Redis, score, or Pacer code. It reaches the Server Worker Delivery
 Command and Report batch APIs through one `WorkerDeliveryRemoteApi`. First
-route verification uses the injected `WorkerRouteVerifier` application port.
+route verification uses the injected `WorkerRouteVerifier` application port;
+every new physical connection is verified, including reconnects and replacements.
 All Adapter instances share one process-lifetime JDK `HttpClient` for physical
 HTTP resources.
 
@@ -56,8 +57,9 @@ failure callbacks.
 The shared connection mechanism owns identity
 interpretation, route verification, Command routing, and Result ingress; its
 Registry alone owns
-the single per-Worker route truth. Each claimed Channel carries only its Worker
-identity as Adapter-local Netty metadata for inbound correlation. The selected
+the single per-Worker route truth. Each claimed Channel carries its Worker
+identity and completed-verification mark as Adapter-local Netty metadata for
+inbound correlation and admission. The selected
 physical Server owns its listener, acceptor EventLoop, child EventLoop group,
 all child Channels, complete Pipeline, framing, physical writes, asynchronous
 write failures, and close behavior. These are internal owners, not a public SPI
@@ -122,8 +124,9 @@ reconnect, and rejection flush-before-close. Production does not share a
 lifecycle helper or base class.
 
 `WorkerDeliveryAdapterManager` manages complete instances: register before
-start, start in order, and close in reverse order. It is a lifecycle owner, not
-an Adapter lookup or observation directory. Multiple instances in one JVM are
+start, start in order, and close in reverse order. Its narrow connection-control
+operations validate a locally running Adapter and revoke one known Worker's
+routes. They do not expose a generic lookup or observation directory. Multiple instances in one JVM are
 meaningful only when they use different listener endpoints and different
 endpoint-manager mailboxes.
 
@@ -163,16 +166,19 @@ Every physical connection sends this identity first. Adapter requires
 `src=WORKER`, a non-blank opaque `sourceId`, and exact `null` payload. It does
 not parse the workerId format.
 
-Each Adapter process submits a single route-verification request when it has no
-current route or retained verification evidence. The first Channel atomically
-claims the single pending Route entry; another initial Channel for the same
-workerId is physically closed. Server confirms that the workerId's current Endpoint Binding
-points to this Adapter's `endpointManagerId`. Successful verification
-atomically turns that same entry into `workerId -> current Channel` without an
+Each physical connection submits one route-verification request. The first
+Channel atomically claims the single pending slot; another pending Channel for
+the same workerId is physically closed. An existing verified Channel remains
+usable while its replacement is pending. Server confirms that the workerId's
+current Endpoint Binding points to this Adapter's `endpointManagerId` and that
+its current connection control permits admission. Successful verification
+atomically installs that exact pending Channel as the current route without an
 identity ACK. No WorkerGroup metadata is stored on the Channel or route. A
 `WorkerRouteVerifier.REJECTED` decision causes the Adapter to write
 `DeliveryCommand(ADAPTER -> WORKER, worker.connection.close, payload="null")`
-and close the physical Channel after the write flushes. An exceptional
+and close the physical Channel after the write flushes. A `COOLDOWN` decision
+sends the same terminal command with the strict structured payload
+`{"reason":"cooldown","cooldownUntilMillis":...}`. An exceptional
 verification completion only closes the physical Channel, allowing the Worker
 Client to consume its current-Endpoint reconnect budget.
 
@@ -184,8 +190,8 @@ later connection may start verification again. A late callback cannot activate
 the cancelled Channel.
 
 Ordinary disconnect removes only the exact active Channel. Fresh verification
-evidence remains cached, so a later identity for the same workerId can skip
-Server verification. WorkerGroup does not participate in route admission, route
+evidence remains cached for observation and Properties continuity; it never
+authorizes a new connection without Server verification. WorkerGroup does not participate in route admission, route
 state, or availability evidence. The retained `Disconnected` route is not
 persistent Endpoint Binding, authentication, authorization, Worker online
 truth, or a Property cache. It is bounded by the configured retention and
@@ -205,10 +211,10 @@ mailbox configuration, not from a URL path or message field.
 After the physical Pipeline normalizes input to `String`, one sharable
 `WorkerConnectionInboundHandler` forwards Netty callbacks to the instance's
 `WorkerConnectionMechanism`. The Handler stores no connection-local state. The
-mechanism validates the first Report and coordinates optional asynchronous
-verification. Later input is accepted only when the claimed workerId has
-verification evidence in `WorkerRouteRegistry`; input received while the
-single Route entry is pending is dropped. The callback Handler remains installed for the full
+mechanism validates the first Report and coordinates asynchronous verification.
+Later input requires that Channel to have completed verification and its Worker
+to retain Registry evidence. A pending replacement's input is dropped while the
+old verified Channel remains usable. The callback Handler remains installed for the full
 physical connection; there is no phase enum, Session, or Pipeline replacement. The fixed
 identity Report is not routed through an
 event registry or plugin dispatcher. Adapter-directed Reports never enter the
@@ -233,12 +239,15 @@ evidence uses the fourth Queue.
 
 Each Adapter constructs one `WorkerRouteRegistry`. It owns the process-local
 `workerId -> RouteEntry` truth in one Caffeine cache. One immutable entry holds
-exactly one pending Channel, one connected Channel plus verification time, or
-disconnected verification evidence; these facts are never split into parallel
-active/pending/verified maps. A claimed Channel stores only its workerId as
+at most one connected Channel, one pending replacement, and retained verification
+time. A disconnected entry contains only observation evidence; these facts are never split into parallel
+active/pending/verified maps. A claimed Channel stores its workerId as
 thread-safe Channel-local metadata. That attribute answers which Worker a
 Channel claimed for callback correlation; it does not say whether verification
-succeeded and is not a second route index or wire field.
+succeeded and is not a second route index or wire field. A second Channel-local
+boolean records completed verification for inbound eligibility: a pending
+replacement cannot submit Results merely because the old route is verified.
+The Registry still owns the only current route and pending slot.
 Per-Worker `ConcurrentMap.compute` transitions prevent an old Channel's late
 callback from changing a replacement route while still allowing its valid
 ordinary execution Result before physical close. Later Task outcome observations
@@ -260,20 +269,20 @@ transition first becomes connected or loses its current connected Channel.
 The payload contains only `workerId`, `CONNECTED|DISCONNECTED`, and the
 Adapter-observed wall-clock time; the Report is `ADAPTER -> KERNEL` with fixed
 `worker-serviceability-evidence:v1` forward. First verification success and a
-disconnected-cache reconnect produce `CONNECTED`. Exact inactive, write
+remotely verified disconnected reconnect produce `CONNECTED`. Exact inactive, write
 failure, management close, and Adapter shutdown produce `DISCONNECTED`.
 Connected-Channel replacement, pending verification, verification failure,
 duplicate removal, and stale old-Channel callbacks produce no evidence. A full
 or closed Result queue drops this evidence without closing the Worker Channel.
 WorkerGroup remains outside Route state and payload.
 
-Route verification has a ten-minute retention horizon by default, measured from
-successful verification, not from disconnect. A disconnected route retains only
-the remainder of that window; reconnect activates locally without renewing the
-evidence. A current connected route remains trusted for its physical
-lifetime even after that time; a new Channel replaces it locally and preserves
-the original verification time. Once no current Channel remains, expired
-evidence is discarded and the next identity verifies remotely. Only
+Route observation evidence has a ten-minute retention horizon by default,
+measured from successful verification, not from disconnect. A disconnected route
+retains the remainder of that window. Every reconnect verifies remotely and a
+successful verification renews that time. A current connected route remains
+trusted for its physical lifetime unless explicitly revoked; a replacement
+must pass verification before taking its place. Expired disconnected evidence
+is discarded. Only
 disconnected evidence participates in the configured capacity (`100000` by
 default). Connected and pending entries have zero cache weight and no time
 expiry; physical Channel resources, not the disconnected-cache budget, bound
@@ -282,6 +291,26 @@ projects as `UNKNOWN`. Cache eviction never emits availability evidence.
 
 The independent [Properties projection](#worker-properties-projection) is
 visible through its own snapshot event and has no atomic join with Route state.
+
+### Connection cooldown enforcement
+
+Server owns persistent cooldown policy. After a confirmed policy write it invokes
+the Manager's narrow `revokeWorkerConnection` operation; the Server accepts this
+management path only for a locally managed WebSocket Endpoint. The Registry
+atomically removes the current Channel, pending replacement and cached evidence,
+and revokes their inbound verification marks. Exact pending-Channel comparison
+prevents an earlier verification callback from installing a revoked route.
+Terminal cooldown commands and physical close requests run outside route mutation.
+An old close callback cannot remove a newly verified route.
+
+Successful revocation confirms local route removal and close initiation, not
+remote receipt of the terminal message. A synchronous close failure is surfaced;
+the Server retains its saved cooldown and reports an unconfirmed operation.
+Prepare and every new identity still consult Server policy, so delivery of the
+terminal message is not a prerequisite for blocking reconnect. No per-frame
+Redis read, maintenance thread, new retry queue or scheduling-state write is
+introduced. A Handler admitted before closure may finish; cooldown neither
+cancels its external side effects nor transfers its Reporter to another run.
 
 ## Worker Properties Projection
 
@@ -338,8 +367,8 @@ both events and joins by workerId. `updatedAtMillis` is comparable only within
 one retained entry lifetime; after UNKNOWN or Adapter restart, the next value is
 a new baseline.
 
-After committing each verified activation, including retained verification
-reconnect, Adapter requests one `platform.worker.properties.snapshot`
+After committing each verified activation, including reconnect, Adapter requests
+one `platform.worker.properties.snapshot`
 directly on that exact Channel. The Command is ADAPTER -> WORKER, payload `null`,
 empty forward, with the configured `sendTimeLimit` deadline. It runs outside
 Route mutation, never enters a retry Queue and failure never closes a healthy
@@ -520,9 +549,9 @@ the process-local verification cache, so the next identity starts from
 reported disconnected only after the network stack, close, failure, or a write
 detects it. Close-current atomically moves the observed route to disconnected
 and asks the physical Server to close that Channel (`1000` for WebSocket, TCP
-close for Socket). While its verification evidence remains fresh, the existing
-Client reconnect path can install a new active Channel without another route
-verification. Expired evidence requires verification again.
+close for Socket). This ordinary close does not set persistent cooldown. The
+existing Client reconnect path may try again, but must pass fresh Server route
+verification before installing a new active Channel.
 
 ### Result ingress loop
 

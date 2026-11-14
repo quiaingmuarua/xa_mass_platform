@@ -188,7 +188,7 @@ class ServerArchitectureBoundaryTest {
                     );
         }
 
-        assertThat(countJavaSources(CONTROLLERS)).isEqualTo(15L);
+        assertThat(countJavaSources(CONTROLLERS)).isEqualTo(16L);
         assertThat(CONTRACTS.resolve("ApiErrorResponse.java"))
                 .isRegularFile();
         assertThat(CONTRACTS.resolve("ActionOutcome.java"))
@@ -206,6 +206,7 @@ class ServerArchitectureBoundaryTest {
                         "TaskRpcCallRequest",
                         "TaskRpcPrepareRequest",
                         "WorkerGroupRegisterRequest",
+                        "WorkerConnectionControlRequest",
                         "WorkerPreparationRequest",
                         "WorkerResultRequest"
                 );
@@ -290,6 +291,8 @@ class ServerArchitectureBoundaryTest {
                 MATCHING_ASSEMBLY,
                 DELIVERY_ASSEMBLY,
                 WORKER_IDENTITY,
+                SERVER_PACKAGE.resolve("worker/connection/WorkerConnectionControlStore.java"),
+                SERVER_PACKAGE.resolve("worker/connection/WorkerConnectionControlConfiguration.java"),
                 SERVER_PACKAGE.resolve("credits"),
                 TASK.resolve("directory"),
                 TASK.resolve("credit/TaskCreditStartStore.java")
@@ -307,6 +310,8 @@ class ServerArchitectureBoundaryTest {
         assertThat(Files.readString(TASK.resolve("credit/TaskCreditStartStore.java")))
                 .contains(":server:task-credit-start:")
                 .doesNotContain("TaskRuntime", "TaskScoreBandCore", "Pacer", "resultsKey", "itemsKey");
+        assertThat(readSources(SERVER_PACKAGE.resolve("worker/connection")))
+                .doesNotContain("WorkerScoreCore", "TaskRuntime", "TaskLifecycleService", "TaskItemScore", "MatchingComposition");
         assertThat(readSources(SERVICEABILITY_REDIS))
                 .contains("io.lettuce")
                 .doesNotContain("WorkerScoreCore")

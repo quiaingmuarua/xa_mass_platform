@@ -101,8 +101,9 @@ public class AndroidWorkerDemoArchitectureTest {
         assertTrue(application.contains(
                 "R.integer.capability_http_port"
         ));
-        assertTrue(application.contains("worker.start();"));
-        assertTrue(application.contains("worker.close();"));
+        assertTrue(application.contains("workerControl.start();"));
+        assertTrue(application.contains("workerControl.close();"));
+        assertTrue(application.contains("AndroidWorkerHostControl.create(worker)"));
 
         assertFalse(activity.contains("AndroidWorker.create("));
         assertFalse(activity.contains("AndroidCapabilityHttpServer"));

@@ -717,6 +717,43 @@ scheduling, creates no TaskItem or Worker lease, and never proves that a Worker
 is schedulable or executing. Mock mode disables this mutating action and does
 not fabricate a response.
 
+### Worker connection cooldown
+
+The detail drawer's **接入控制** tab is an explicit administrator operation,
+separate from Network, scheduling PAUSE and Pool qualification. The session
+requires both the Server `admin` role and existing Runtime permission before
+reading or showing controls. GET/PUT target one known Group/Worker at
+`/api/v1/worker-groups/{groupId}/workers/{workerId}/connection-control`.
+Polling and nonlocal/stopped Adapters show the Server's unsupported reason.
+No row-wide scan, automatic refresh or automatic write is added.
+
+Setting or changing cooldown confirms the exact target, absolute deadline and
+immediate disconnection consequence. An admitted Handler may finish; the page
+does not promise cancellation or undone effects. Release only restores admission,
+not scheduling or Pool eligibility. A returned control decision is labeled with
+its Server read time and does not replace the independently refreshed Network
+observation. The browser does not locally advance Server status when a clock expires.
+
+Writes freeze request ID, revision, deadline, reason and the login caller. A
+timeout, 503 or unrecognizable success retains that exact input and blocks a new
+intent. Readback can confirm stored policy, but cannot confirm a previously
+uncertain route revocation; that remains an explicit same-request retry. Release
+readback can confirm release because it has no disconnection step. A newer
+revision fences the old request without claiming it never ran. Conflicted and
+superseded requests remain visible with their original identity/content, and
+cannot be replayed. After a fresh read the administrator may explicitly discard
+that local reconciliation and edit against the current revision; this does not
+undo Server state or assert the old operation never ran. Read failure retains
+text and the previous snapshot/time and disables dependent writes. There is no
+automatic merge, overwrite or replay.
+
+Each login owns a per-Worker control workspace. Closing/reopening the drawer
+preserves pending input; other Workers and late responses cannot replace it.
+Logout disposes the workspace, aborts reads and does not start follow-up writes.
+Mock uses the same application-lifetime directory and models conditional saves,
+expiry, release and lost responses without network requests. Its management
+state never edits Mock Network/Score observations or simulates scheduling.
+
 ## Task page
 
 `/runtime/tasks` is a raw viewer. Project tabs use the immutable directory from

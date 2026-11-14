@@ -133,7 +133,8 @@ class RedisWorkerIdentityRegistryIntegrationTest {
                     new Endpoint(WorkerTransportType.POLLING,
                             URI.create("http://127.0.0.1:18082"))),
                     Map.of(WorkerTransportType.POLLING, "system-polling"));
-            var preparation = new WorkerPreparationService(new WorkerIdentityService(registry), directory, catalog);
+            var preparation = new WorkerPreparationService(new WorkerIdentityService(registry), directory, catalog,
+                    org.mockito.Mockito.mock(com.xa.mass.server.worker.connection.WorkerConnectionControlStore.class));
             var properties = java.util.stream.IntStream.range(0, count)
                     .mapToObj(i -> Map.<String, Object>of("clientWorkerKey", "installation-" + i)).toList();
             commands.clear();
@@ -141,7 +142,7 @@ class RedisWorkerIdentityRegistryIntegrationTest {
                 var prepared = preparation.prepareAll("g", WorkerRegistrationKind.CLIENT_KEY,
                         WorkerTransportType.POLLING, properties);
                 assertThat(commands).containsExactly("HMGET", "EVAL", "EVAL", "EVAL");
-                var ids = prepared.stream().map(WorkerPreparationService.PreparedWorker::workerId).toList();
+                var ids = prepared.stream().map(WorkerPreparationService.PreparationResult::workerId).toList();
                 commands.clear();
                 assertThat(preparation.prepareAll("g", WorkerRegistrationKind.CLIENT_KEY,
                         WorkerTransportType.POLLING, properties)).isEqualTo(prepared);

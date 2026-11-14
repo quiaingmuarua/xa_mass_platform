@@ -37,7 +37,7 @@ class WorkerControlPreparationTest {
         source.put("network.type", "wifi");
         WorkerControlPreparation preparation = preparation(() -> source, control);
 
-        assertEquals(PREPARED, preparation.prepare());
+        assertEquals(PREPARED, preparation.prepare().preparedWorker());
 
         assertEquals(1, control.prepareCalls);
         assertThrows(
@@ -92,7 +92,7 @@ class WorkerControlPreparationTest {
         AtomicInteger closeCalls = new AtomicInteger();
         WorkerControlClient control = new WorkerControlClient() {
             @Override
-            public PreparedWorker prepare(
+            public WorkerPreparationResult prepare(
                     String workerGroupId,
                     WorkerTransportType transportType,
                     Map<String, String> workerProperties,
@@ -100,7 +100,7 @@ class WorkerControlPreparationTest {
             ) {
                 entered.countDown();
                 awaitLatch(release);
-                return PREPARED;
+                return WorkerPreparationResult.prepared(PREPARED);
             }
 
             @Override
@@ -121,7 +121,7 @@ class WorkerControlPreparationTest {
                 );
         ExecutorService callers = Executors.newFixedThreadPool(2);
         try {
-            Future<PreparedWorker> preparing =
+            Future<WorkerPreparationResult> preparing =
                     callers.submit(preparation::prepare);
             assertTrue(entered.await(1, TimeUnit.SECONDS));
 
@@ -131,7 +131,7 @@ class WorkerControlPreparationTest {
             assertEquals(1, closeCalls.get());
             assertFalse(preparing.isDone());
             release.countDown();
-            assertEquals(PREPARED, preparing.get(1, TimeUnit.SECONDS));
+            assertEquals(PREPARED, preparing.get(1, TimeUnit.SECONDS).preparedWorker());
             assertThrows(
                     IllegalStateException.class,
                     preparation::prepare
@@ -179,7 +179,7 @@ class WorkerControlPreparationTest {
                 new ArrayList<>();
 
         @Override
-        public PreparedWorker prepare(
+        public WorkerPreparationResult prepare(
                 String workerGroupId,
                 WorkerTransportType transportType,
                 Map<String, String> workerProperties,
@@ -187,7 +187,7 @@ class WorkerControlPreparationTest {
         ) {
             prepareCalls++;
             properties.add(workerProperties);
-            return PREPARED;
+            return WorkerPreparationResult.prepared(PREPARED);
         }
 
         @Override

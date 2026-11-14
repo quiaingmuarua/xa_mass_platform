@@ -221,6 +221,9 @@ class RuntimeBoundaryIntegrationTest {
     private TaskItemScoreBandCore itemScoreWitness;
 
     @Autowired
+    private com.xa.mass.kernel.score.TaskScoreBandCore taskScoreWitness;
+
+    @Autowired
     private IdentityHintPoolFixture identityHintRule;
 
     @Autowired
@@ -266,6 +269,7 @@ class RuntimeBoundaryIntegrationTest {
         groups.put("direct-query-boundary", Map.of("eventCodes", List.of("extension.worker.direct.query")));
         groups.put("shared-pool-functions", Map.of("eventCodes", List.of("extension.worker.pool.share")));
         groups.put("rpc-explicit-pool", Map.of("eventCodes", List.of(TEST_EVENT_CODE)));
+        groups.put("connection-cooldown-boundary", Map.of("eventCodes", List.of(TEST_EVENT_CODE)));
         for (String group : List.of("group-refill-a", "group-refill-b"))
             groups.put(group, Map.of("eventCodes", List.of("extension.worker.group.refill")));
         for (String group : List.of("property-tools-boundary", SERVICEABILITY_WORKER_GROUP_ID))
@@ -281,6 +285,8 @@ class RuntimeBoundaryIntegrationTest {
         registry.add("xa.mass.worker-matching.groups[default-pool-boundary].functions[0]", () -> "worker.any");
         registry.add("xa.mass.worker-matching.groups[rpc-explicit-pool].pools[0]", () -> "any");
         registry.add("xa.mass.worker-matching.groups[rpc-explicit-pool].functions[0]", () -> "worker.any");
+        registry.add("xa.mass.worker-matching.groups[connection-cooldown-boundary].pools[0]", () -> "any");
+        registry.add("xa.mass.worker-matching.groups[connection-cooldown-boundary].functions[0]", () -> "worker.any");
         int groupIndex = 0;
         for (String group : groups.keySet()) {
             registry.add("xa.mass.project-assembly.projects[0].worker-group-ids[" + groupIndex++ + "]", () -> group);
@@ -658,6 +664,112 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(Jsons.parseObject(results.get(id).get("opaqueResultPayload").asText())).containsEntry("executor", workerId);
             }
             assertThat(identityHintRule.hintsReturned()).isGreaterThanOrEqualTo(ids.size());
+        }
+    }
+
+    @Test
+    void connectionCooldownDisconnectsRejectsPrepareAndExplicitReleaseRestoresPoolExecution() throws Exception {
+        String group = "connection-cooldown-boundary";
+        String clientKey = "cooldown-worker";
+        var actualWorker = new AtomicReference<JavaWorker>();
+        var handler = WorkerEventDefinition.extension(TEST_CAPABILITY, WorkerEventParameterResolvers.jsonMap(),
+                input -> Jsons.toJson(Map.of("observed", input.get("value"),
+                        "executor", actualWorker.get().snapshot().workerId())));
+        Map<String, String> properties = Map.of("fixture", "connection-cooldown");
+        try (var worker = JavaWorker.create(URI.create("http://127.0.0.1:" + port), group, clientKey,
+                WorkerTransportType.WEBSOCKET, () -> properties, List.of(handler),
+                WorkerConnectionOptions.of(Duration.ofSeconds(2), connectionPolicy()))) {
+            actualWorker.set(worker);
+            worker.start();
+            awaitCondition(() -> worker.snapshot().workerId() != null);
+            String workerId = worker.snapshot().workerId();
+            awaitRuntimeProperties(group, workerId, WEBSOCKET_ENDPOINT_MANAGER_ID, properties);
+            String controlPath = "/api/v1/worker-groups/" + group + "/workers/" + workerId + "/connection-control";
+            var initial = send("GET", controlPath, null);
+            assertThat(initial.statusCode()).isEqualTo(200);
+            assertThat(JSON.readTree(initial.body()).get("status").asText()).isEqualTo("allowed");
+            assertThat(JSON.readTree(initial.body()).get("revision").isNull()).isTrue();
+
+            long until = System.currentTimeMillis() + Duration.ofDays(1).toMillis();
+            var change = new LinkedHashMap<String, Object>();
+            change.put("requestId", UUID.randomUUID().toString());
+            change.put("expectedRevision", null);
+            change.put("cooldownUntilMillis", until);
+            change.put("reason", "Runtime Boundary fixture");
+            String frozen = Jsons.toJson(change);
+            var operator = com.xa.mass.server.testing.TaskCallers.caller("1001", "operator", "boundary");
+            assertThat(send(operator, "GET", controlPath, null).statusCode()).isEqualTo(403);
+            assertThat(send(operator, "PUT", controlPath, frozen).statusCode()).isEqualTo(403);
+            var applied = send("PUT", controlPath, frozen);
+            assertThat(applied.statusCode()).isEqualTo(200);
+            var control = JSON.readTree(applied.body());
+            assertThat(control.get("status").asText()).isEqualTo("cooldown");
+            String revision = control.get("revision").asText();
+            awaitCondition(() -> worker.snapshot().stopReason()
+                    == com.xa.mass.worker.runtime.WorkerLifecycle.StopReason.COOLDOWN);
+            assertThat(worker.snapshot().state()).isEqualTo(com.xa.mass.worker.runtime.WorkerLifecycle.State.STOPPED);
+            assertThat(worker.snapshot().cooldownUntilMillis()).isEqualTo(until);
+            var repeated = send("PUT", controlPath, frozen);
+            assertThat(repeated.statusCode()).isEqualTo(200);
+            assertThat(JSON.readTree(repeated.body()).get("revision").asText()).isEqualTo(revision);
+
+            var cooledRequest = Map.of("transportType", "WEBSOCKET",
+                    "workerProperties", Map.of("clientWorkerKey", clientKey));
+            var single = send("POST", "/api/v1/worker-groups/" + group + "/workers:prepare", Jsons.toJson(cooledRequest));
+            assertThat(single.statusCode()).isEqualTo(200);
+            assertThat(JSON.readTree(single.body()).get("status").asText()).isEqualTo("cooldown");
+            assertThat(JSON.readTree(single.body()).get("workerId").asText()).isEqualTo(workerId);
+            assertThat(JSON.readTree(single.body()).hasNonNull("endpointUri")).isFalse();
+            var batch = send("POST", "/api/v1/worker-groups/" + group + "/workers:prepare-batch",
+                    Jsons.toJson(List.of(cooledRequest, Map.of("transportType", "WEBSOCKET",
+                            "workerProperties", Map.of("clientWorkerKey", "cooldown-healthy-peer")))));
+            assertThat(batch.statusCode()).isEqualTo(200);
+            var decisions = JSON.readTree(batch.body());
+            assertThat(decisions.size()).isEqualTo(2);
+            assertThat(decisions.get(0).get("status").asText()).isEqualTo("cooldown");
+            assertThat(decisions.get(0).get("workerId").asText()).isEqualTo(workerId);
+            assertThat(decisions.get(1).get("status").asText()).isEqualTo("prepared");
+            assertThat(decisions.get(1).get("workerId").asText()).isNotEqualTo(workerId);
+
+            change.put("requestId", UUID.randomUUID().toString());
+            change.put("expectedRevision", revision);
+            change.put("cooldownUntilMillis", null);
+            var released = send("PUT", controlPath, Jsons.toJson(change));
+            assertThat(released.statusCode()).isEqualTo(200);
+            assertThat(JSON.readTree(released.body()).get("status").asText()).isEqualTo("allowed");
+            assertThat(send("PUT", controlPath, frozen).statusCode()).isEqualTo(409);
+            assertThat(worker.snapshot().state()).isEqualTo(com.xa.mass.worker.runtime.WorkerLifecycle.State.STOPPED);
+            worker.start();
+            awaitCondition(() -> workerId.equals(worker.snapshot().workerId())
+                    && worker.snapshot().state() == com.xa.mass.worker.runtime.WorkerLifecycle.State.RUNNING);
+            awaitRuntimeProperties(group, workerId, WEBSOCKET_ENDPOINT_MANAGER_ID, properties);
+
+            String taskId = createTask(group, "worker.any");
+            String messageId = "after-cooldown";
+            appendItem(taskId, messageId, Map.of("executorName", "worker.any", "input", Map.of()));
+            assertThat(send("POST", "/api/v1/tasks/" + taskId + "/approve",
+                    Jsons.toJson(Map.of("expectedItemCount", 1))).statusCode()).isEqualTo(200);
+            var exported = awaitTaskExport(taskId);
+            assertThat(exported.body().lines().filter(line -> !line.isBlank()).count()).isEqualTo(1);
+            var exportedRow = JSON.readTree(exported.body().strip());
+            assertThat(exportedRow.get("messageId").asText()).isEqualTo(messageId);
+            assertThat(Jsons.parseObject(exportedRow.get("opaqueResultPayload").asText()))
+                    .containsEntry("executor", workerId).containsEntry("observed", "input");
+            var preview = send("GET", "/api/v1/tasks/" + taskId + "/results:preview", null);
+            assertThat(preview.statusCode()).isEqualTo(200);
+            var row = JSON.readTree(preview.body()).get("results").get(0);
+            assertThat(row.get("item").get("workerSelector").get("executorName").asText()).isEqualTo("worker.any");
+            assertThat(row.get("item").get("eventCode").asText()).isEqualTo(TEST_EVENT_CODE);
+            assertThat(row.get("result").get("status").asText()).isEqualTo("succeeded");
+            assertThat(row.get("result").get("opaqueResultPayload").asText())
+                    .isEqualTo(exportedRow.get("opaqueResultPayload").asText());
+            var states = send("POST", "/api/v1/tasks/" + taskId + "/items:states", Jsons.toJson(List.of(messageId)));
+            assertThat(states.statusCode()).isEqualTo(200);
+            assertThat(JSON.readTree(states.body()).get(messageId).get("tag").asInt()).isEqualTo(6);
+            assertThat(taskScoreWitness.getScoreStates(List.of(taskId)).get(taskId).band())
+                    .isEqualTo(com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand.TERMINAL);
+            assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId).refill())
+                    .extracting(RefillTarget::poolName).containsExactly("any");
         }
     }
 

@@ -45,7 +45,7 @@ public final class AndroidWorkerHostEventsTest {
         Collection<? extends WorkerEventDefinition<?>> assembled =
                 AndroidWorkerHostEvents.assemble(
                         List.of(business),
-                        worker,
+                        AndroidWorkerHostControl.create(worker),
                         capabilities,
                         new AndroidWorkerLabEvents()
                 );
@@ -73,7 +73,7 @@ public final class AndroidWorkerHostEventsTest {
         WorkerCommandDispatcher dispatcher = WorkerCommandDispatcher.forWorker(
                 AndroidWorkerHostEvents.assemble(
                         List.of(),
-                        worker,
+                        AndroidWorkerHostControl.create(worker),
                         capabilities,
                         new AndroidWorkerLabEvents()
                 )
@@ -90,6 +90,9 @@ public final class AndroidWorkerHostEventsTest {
                 initial.get("endpointUri")
         );
         assertNull(initial.get("diagnosticMessage"));
+        assertNull(initial.get("stopReason"));
+        assertNull(initial.get("cooldownUntilMillis"));
+        assertNull(initial.get("nextConnectionCheckAtMillis"));
         assertEquals(0L, initial.get("processedCommands"));
         assertNull(initial.get("lastEvent"));
         assertEquals(0L, initial.get("activeDelayCount"));
@@ -121,7 +124,7 @@ public final class AndroidWorkerHostEventsTest {
         Collection<? extends WorkerEventDefinition<?>> assembled =
                 AndroidWorkerHostEvents.assemble(
                         List.of(),
-                        new FakeWorker(),
+                        AndroidWorkerHostControl.create(new FakeWorker()),
                         capabilities,
                         new AndroidWorkerLabEvents()
                 );
@@ -145,7 +148,7 @@ public final class AndroidWorkerHostEventsTest {
         WorkerCommandDispatcher dispatcher = WorkerCommandDispatcher.forWorker(
                 AndroidWorkerHostEvents.assemble(
                         List.of(),
-                        worker,
+                        AndroidWorkerHostControl.create(worker),
                         new AndroidDemoCapabilities(
                                 RuntimeEnvironment.getApplication()
                         ),
@@ -167,6 +170,34 @@ public final class AndroidWorkerHostEventsTest {
                 AndroidWorkerHostEvents.START_EVENT
         );
         assertEquals("3303", failure.diagnosticCode());
+    }
+
+    @Test
+    public void localHttpStopCancelsTheSameRecoveryAsThePage() {
+        AndroidWorkerHostControlTest.Fixture fixture = new AndroidWorkerHostControlTest.Fixture(0);
+        WorkerCommandDispatcher dispatcher = WorkerCommandDispatcher.forWorker(
+                AndroidWorkerHostEvents.assemble(List.of(), fixture.control,
+                        new AndroidDemoCapabilities(RuntimeEnvironment.getApplication()),
+                        new AndroidWorkerLabEvents()));
+        result(dispatcher, AndroidWorkerHostEvents.START_EVENT);
+        fixture.worker.stopped(WorkerLifecycle.StopReason.COOLDOWN, 99_000_000L);
+        Runnable staleTimer = fixture.scheduler.pending.get(0).action;
+        Map<String, Object> cooled = result(dispatcher, AndroidWorkerHostEvents.SNAPSHOT_EVENT);
+        assertEquals("COOLDOWN", cooled.get("stopReason"));
+        assertEquals(99_000_000L, cooled.get("cooldownUntilMillis"));
+        assertEquals(Boolean.TRUE, cooled.get("connectionRequested"));
+        assertTrue(cooled.get("nextConnectionCheckAtMillis") instanceof Number);
+
+        result(dispatcher, AndroidWorkerHostEvents.STOP_EVENT);
+        staleTimer.run();
+        assertEquals(1, fixture.worker.starts);
+        assertEquals(1, fixture.worker.stops);
+        Map<String, Object> stopped = result(dispatcher, AndroidWorkerHostEvents.SNAPSHOT_EVENT);
+        assertEquals(Boolean.FALSE, stopped.get("connectionRequested"));
+        assertNull(stopped.get("nextConnectionCheckAtMillis"));
+
+        result(dispatcher, AndroidWorkerHostEvents.START_EVENT);
+        assertEquals(2, fixture.worker.starts);
     }
 
     private static Map<String, Object> result(

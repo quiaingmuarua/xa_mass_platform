@@ -179,7 +179,7 @@ class JavaGatewayCredentialTest {
     }
 
     private static String prepared(String id, String endpoint) {
-        return "{\"workerId\":\"" + id + "\",\"transportType\":\"WEBSOCKET\",\"endpointUri\":\"" + endpoint + "\"}";
+        return "{\"status\":\"prepared\",\"workerId\":\"" + id + "\",\"transportType\":\"WEBSOCKET\",\"endpointUri\":\"" + endpoint + "\"}";
     }
 
     private static MockResponse upgrade(boolean reconnect) {

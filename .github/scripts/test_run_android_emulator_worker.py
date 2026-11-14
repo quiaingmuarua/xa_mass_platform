@@ -13,6 +13,29 @@ import run_android_emulator_worker as proof
 
 
 class EmulatorChoreographyTest(unittest.TestCase):
+    def test_cooldown_restarts_only_the_app_without_clearing_identity_or_server_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runner = self.runner(Path(directory))
+            runner.evidence.mkdir(parents=True)
+            events = []
+            for name in ("preflight", "setup_device", "start_server", "stop_server", "reset_apps", "start_app", "stop_app", "adb"):
+                setattr(runner, name, Mock(side_effect=lambda *args, _name=name, **kwargs: events.append((_name, args))))
+            def phase(*args, **kwargs):
+                events.append(("phase", args))
+                if args[:3] == ("Messages", "android-messages", "initial"):
+                    (runner.evidence / "messages-initial.json").write_text('{"checks":{"messageIds":["known"]}}')
+            runner.phase = Mock(side_effect=phase)
+            runner.run()
+            first = next(i for i, event in enumerate(events) if event ==
+                         ("phase", ("Cooldown", "android-worker-cooldown", "initial", "cooldown-initial")))
+            self.assertEqual([
+                ("stop_app", (proof.APPLICATIONS[0],)),
+                ("start_app", (proof.APPLICATIONS[0],)),
+                ("phase", ("Cooldown", "android-worker-cooldown", "process-restart", "cooldown-process-restart", "cooldown-initial")),
+            ], events[first + 1:first + 4])
+            self.assertEqual(("phase", ("BatchChecks", "android-batch-checks", "initial", "batch-checks-initial")), events[first - 1])
+            self.assertIn(("phase", ("BatchChecks", "android-batch-checks", "restart", "batch-checks-restart", "batch-checks-initial")), events)
+
     def test_rpc_phase_explicitly_loads_platform_only_configuration(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

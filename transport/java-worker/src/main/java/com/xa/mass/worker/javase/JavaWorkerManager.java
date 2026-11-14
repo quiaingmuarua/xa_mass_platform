@@ -4,7 +4,7 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.worker.runtime.PreparedWorker;
+import com.xa.mass.worker.runtime.WorkerPreparationResult;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
@@ -142,7 +142,7 @@ public final class JavaWorkerManager implements AutoCloseable {
             properties.add(loadBatchProperties(target));
         }
 
-        List<PreparedWorker> prepared;
+        List<WorkerPreparationResult> prepared;
         try {
             prepared = Objects.requireNonNull(
                     batchControlClient,
@@ -414,7 +414,7 @@ public final class JavaWorkerManager implements AutoCloseable {
 
     private void installPreparedWorker(
             ManagedReplica target,
-            PreparedWorker preparedWorker
+            WorkerPreparationResult preparedWorker
     ) {
         if (closed.get()
                 || !target.desiredRunning.get()
@@ -423,7 +423,9 @@ public final class JavaWorkerManager implements AutoCloseable {
             return;
         }
         target.controller().start(preparedWorker);
-        throwIfPresent(reconcile(target));
+        // Reconcile only a concurrent stop, never immediately retry a denied
+        // supplied result. A later explicit start/reconcile is a new check.
+        if (closed.get() || !target.desiredRunning.get()) target.worker.stop();
     }
 
     private static Map<String, String> loadBatchProperties(

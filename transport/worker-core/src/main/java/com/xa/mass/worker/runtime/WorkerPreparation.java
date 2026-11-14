@@ -5,7 +5,7 @@ package com.xa.mass.worker.runtime;
  */
 public interface WorkerPreparation extends AutoCloseable {
 
-    PreparedWorker prepare() throws Exception;
+    WorkerPreparationResult prepare() throws Exception;
 
     @Override
     void close();

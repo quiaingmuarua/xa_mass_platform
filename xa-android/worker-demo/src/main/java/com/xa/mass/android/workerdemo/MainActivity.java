@@ -13,15 +13,16 @@ import android.widget.Toast;
 
 import com.xa.mass.android.capabilities.AndroidDemoCapabilities;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
+import java.text.DateFormat;
+import java.util.Date;
 
 public final class MainActivity extends Activity {
 
-    private final WorkerLifecycle.Listener workerListener =
-            ignored -> requestRender();
+    private final Runnable workerListener = this::requestRender;
     private final AndroidDemoCapabilities.Listener capabilityListener =
             this::requestRender;
 
-    private WorkerLifecycle worker;
+    private AndroidWorkerHostControl worker;
     private AndroidDemoCapabilities demoCapabilities;
     private AndroidWorkerDemoApplication application;
     private TextView statusValue;
@@ -32,6 +33,7 @@ public final class MainActivity extends Activity {
     private TextView processedValue;
     private TextView lastEventValue;
     private TextView errorValue;
+    private TextView connectionControlValue;
     private Button connectButton;
     private Button disconnectButton;
     private View copyWorkerIdButton;
@@ -43,7 +45,7 @@ public final class MainActivity extends Activity {
         bindViews();
         application =
                 (AndroidWorkerDemoApplication) getApplication();
-        worker = application.hasWorker() ? application.worker() : null;
+        worker = application.hasWorker() ? application.workerControl() : null;
         demoCapabilities = application.demoCapabilities();
 
         connectButton.setOnClickListener(view -> { if (worker != null) worker.start(); });
@@ -65,7 +67,10 @@ public final class MainActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
-        if (worker != null) worker.addListener(workerListener);
+        if (worker != null) {
+            worker.addListener(workerListener);
+            worker.onForeground();
+        }
         demoCapabilities.addListener(capabilityListener);
         render();
     }
@@ -86,6 +91,7 @@ public final class MainActivity extends Activity {
         processedValue = findViewById(R.id.processedValue);
         lastEventValue = findViewById(R.id.lastEventValue);
         errorValue = findViewById(R.id.errorValue);
+        connectionControlValue = findViewById(R.id.connectionControlValue);
         connectButton = findViewById(R.id.connectButton);
         disconnectButton = findViewById(R.id.disconnectButton);
         copyWorkerIdButton = findViewById(R.id.copyWorkerIdButton);
@@ -123,11 +129,34 @@ public final class MainActivity extends Activity {
                 ? application.connectionStartupError() : workerSnapshot.diagnosticMessage();
         errorValue.setText(orFallback(diagnostic, ""));
         errorValue.setVisibility(diagnostic == null ? View.GONE : View.VISIBLE);
+        connectionControlValue.setText(connectionControlStatus(workerSnapshot));
         boolean restartable = workerSnapshot != null && workerSnapshot.state()
                 == WorkerLifecycle.State.STOPPED;
         connectButton.setEnabled(restartable);
-        disconnectButton.setEnabled(workerSnapshot != null && !restartable);
+        disconnectButton.setEnabled(workerSnapshot != null
+                && (worker.status().desiredRunning() || !restartable));
         copyWorkerIdButton.setEnabled(workerSnapshot != null && workerSnapshot.workerId() != null);
+    }
+
+    private String connectionControlStatus(WorkerLifecycle.Snapshot snapshot) {
+        if (snapshot == null) return "";
+        StringBuilder text = new StringBuilder();
+        if (snapshot.stopReason() != null) {
+            text.append("停止原因：").append(snapshot.stopReason().name());
+        }
+        if (snapshot.cooldownUntilMillis() != null) {
+            text.append("\nServer 冷却至：").append(formatTime(snapshot.cooldownUntilMillis()));
+        }
+        Long nextCheck = worker.status().nextCheckAtMillis();
+        if (nextCheck != null) {
+            text.append("\n预计下次接入检查：").append(formatTime(nextCheck));
+            text.append("\n仅在 App 进程可运行时检查；不会唤醒设备。可手动尝试连接或停止检查。");
+        }
+        return text.toString();
+    }
+
+    private static String formatTime(long millis) {
+        return DateFormat.getDateTimeInstance().format(new Date(millis));
     }
 
     private String capabilityHttpStatus() {

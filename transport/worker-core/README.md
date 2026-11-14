@@ -269,14 +269,14 @@ One accepted `WorkerRunController.start()` represents one complete run:
 ```text
 RUNNING
   -> submit exactly one WorkerPreparation.prepare()
-  -> PreparedWorker(workerId, endpointUri)
+  -> WorkerPreparationResult: prepared coordinate or connection cooldown
   -> create and start one TextMessageWorkerTransport
   -> Client reconnects within that Endpoint budget
   -> current Transport identity accepts one terminal transition
   -> STOPPED
 ```
 
-Java Manager hosts may instead call `start(PreparedWorker)` with a coordinate
+Java Manager hosts may instead call `start(WorkerPreparationResult)` with an outcome
 returned by their own explicit batch Prepare. That run uses the same state
 fence and Transport creation path but does not invoke the Controller's
 `WorkerPreparation`; the injected coordinate is not retained for a later run.
@@ -285,9 +285,13 @@ Core does not own the batch protocol or Properties aggregation.
 `WorkerControlPreparation` owns `WorkerPropertiesProvider` and
 `WorkerControlClient`. Each call loads one Properties map, validates and
 copies its flat string KV entries, and performs exactly one Prepare request. Server resolves
-the long-lived Worker ID from `workerGroupId + clientWorkerKey`, establishes
-the Endpoint Binding, initializes minimal Kernel resources, and returns one
-`PreparedWorker`. Core never persists Worker ID, starts networking, or executes
+the long-lived Worker ID from `workerGroupId + clientWorkerKey` and returns a
+tagged outcome. `prepared` includes workerId, transportType and endpointUri;
+`cooldown` includes workerId and cooldownUntilMillis with no Endpoint. Binding
+and minimal Kernel initialization remain Server operations; identity resolution
+may already have side effects when a cooldown is returned. `PreparedWorker`
+remains a success-only coordinate inside `WorkerPreparationResult`.
+Core never persists Worker ID, starts networking, or executes
 Commands during preparation. It requires `workerId` to be non-blank but does
 not parse its Server-owned format.
 
@@ -295,7 +299,7 @@ Prepare carries the existing Map for Server-owned identity resolution and does
 not persist Matching facts. Live observation uses the separate
 [Properties reporting path](#properties-reporting).
 
-Preparation failure or Endpoint termination ends the run. Core does not retry
+Cooldown ends the run without creating a Transport. Preparation failure or Endpoint termination ends the run. Core does not retry
 Preparation, schedule restart, or persist the Endpoint URI. A Host may
 explicitly call `start()` again. Temporary disconnects remain inside the
 current `TextMessageClient` and reuse the current URI.
@@ -330,6 +334,23 @@ the owner transition. Notifications may repeat or race; `snapshot()` is
 authoritative.
 Hosts move UI or blocking observation work to their own platform execution
 mechanism.
+
+Snapshots distinguish `COOLDOWN`, `UNAVAILABLE`, `REJECTED`, `MANUAL` and
+`TERMINATED` stop reasons without parsing diagnostics. A cooldown snapshot carries
+the known Worker ID and the Server deadline, with no Endpoint. A new accepted start
+clears those fields before asynchronous preparation. The state remains
+`STOPPED / RUNNING`; stop reasons are observations, not scheduling state.
+Hosts may use explicit cooldown as input to their own bounded retry policy;
+Core never creates a retry timer. Transient preparation I/O and service failures
+and HTTP 429 are `UNAVAILABLE`; invalid responses, configuration and permanent control rejection
+are `REJECTED`.
+
+The close reason is best-effort delivery. A busy synchronous Handler or lost
+connection can prevent the cooldown Command from being received; endpoint loss
+then remains `UNAVAILABLE`, not an invented cooldown. Server still rejects a
+cooled identity on its next admission. A subsequent explicit or new-process
+Prepare discovers the authoritative decision; ordinary network failure does not
+silently acquire a new automatic Prepare loop.
 
 There is no local Command injection or Properties-refresh lifecycle method.
 Do not add in-flight registries or Result caches to Core.

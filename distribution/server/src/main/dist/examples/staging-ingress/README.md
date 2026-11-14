@@ -22,6 +22,11 @@ Worker Basic credential, is cleared before the Runtime. The Worker realm does no
 one Worker Host from another Worker identity. Administrator access keys cannot Prepare
 or connect Workers, and Worker credentials cannot administer Tasks.
 
+The management allowlist includes administrator Worker connection-control GET/PUT.
+Runtime still checks the authenticated administrator and the locally managed
+WebSocket binding. The Worker host exposes neither operation; shared gateway
+access remains separate from individual Worker identity and scheduling pause.
+
 ## Deployment inputs
 
 Copy `deployment.example.json` outside the immutable Runtime extraction and supply

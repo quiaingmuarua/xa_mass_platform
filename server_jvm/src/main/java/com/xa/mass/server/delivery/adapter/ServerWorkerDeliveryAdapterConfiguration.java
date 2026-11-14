@@ -4,6 +4,7 @@ import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerDescriptor;
 import com.xa.mass.server.worker.endpoint.WorkerTransportType;
+import com.xa.mass.server.worker.connection.WorkerConnectionControlStore;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerDeliveryAdapterConfig;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerDeliveryAdapterFactory;
@@ -20,10 +21,12 @@ public class ServerWorkerDeliveryAdapterConfiguration {
     @Bean
     WorkerRouteVerificationBatcher workerRouteVerificationBatcher(
             ServerWorkerDeliveryAdapterProperties properties,
-            WorkerResourceCatalog workerCatalog
+            WorkerResourceCatalog workerCatalog,
+            WorkerConnectionControlStore connectionControls
     ) {
         return new WorkerRouteVerificationBatcher(
                 workerCatalog,
+                connectionControls,
                 properties.verificationQueueCapacity(),
                 properties.verificationTimeout()
         );

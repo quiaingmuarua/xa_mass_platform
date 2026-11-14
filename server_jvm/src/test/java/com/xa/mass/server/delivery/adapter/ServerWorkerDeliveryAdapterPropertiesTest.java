@@ -20,6 +20,8 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
 
     private final ApplicationContextRunner contextRunner =
             new ApplicationContextRunner()
+                    .withBean(com.xa.mass.server.worker.connection.WorkerConnectionControlStore.class,
+                            () -> mock(com.xa.mass.server.worker.connection.WorkerConnectionControlStore.class))
                     .withUserConfiguration(
                             ServerWorkerDeliveryAdapterConfiguration.class,
                             EndpointConfiguration.class

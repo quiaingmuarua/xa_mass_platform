@@ -343,6 +343,8 @@ class RuntimeApiControllerTest {
                 taskRuntime,
                 projects, taskCatalog, mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), new com.xa.mass.server.operation.OperationGuard()
         , org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), com.xa.mass.server.testsupport.TaskRetentionFixtures.creations());
+        var connectionControls = mock(com.xa.mass.server.worker.connection.WorkerConnectionControlStore.class);
+        when(connectionControls.readAllAsync(anyString(), anyList())).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(Map.of()));
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
                                 new WorkerResourceCommandService(workerProperties, mock(WorkerSchedulingService.class))
@@ -353,7 +355,7 @@ class RuntimeApiControllerTest {
                                 )
                         ),
                         new WorkerPreparationController(
-                                new WorkerPreparationService(workerIdentity, workerEndpoints, workerCatalog)
+                                new WorkerPreparationService(workerIdentity, workerEndpoints, workerCatalog, connectionControls)
                         ),
                         new TaskControlController(
                                 taskCreation,

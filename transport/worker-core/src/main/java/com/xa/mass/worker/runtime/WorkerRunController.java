@@ -1,6 +1,9 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.worker.error.WorkerException;
+import com.xa.mass.worker.error.WorkerErrorCode;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +39,9 @@ public final class WorkerRunController implements WorkerLifecycle {
     private PreparedWorker preparedWorker;
     private TextMessageWorkerTransport activeTransport;
     private String diagnosticMessage;
+    private StopReason stopReason;
+    private Long cooldownUntilMillis;
+    private String cooledWorkerId;
 
     public WorkerRunController(
             WorkerPreparation preparation,
@@ -64,14 +70,14 @@ public final class WorkerRunController implements WorkerLifecycle {
     /**
      * Starts one run from a coordinate prepared by the owning Host.
      */
-    public void start(PreparedWorker preparedWorker) {
+    public void start(WorkerPreparationResult preparedWorker) {
         requestStart(Objects.requireNonNull(
                 preparedWorker,
                 "preparedWorker"
         ));
     }
 
-    private void requestStart(PreparedWorker suppliedPreparedWorker) {
+    private void requestStart(WorkerPreparationResult suppliedPreparedWorker) {
         synchronized (stateLock) {
             if (phase == Phase.CLOSED) {
                 throw new IllegalStateException(
@@ -86,6 +92,9 @@ public final class WorkerRunController implements WorkerLifecycle {
             this.preparedWorker = null;
             activeTransport = null;
             diagnosticMessage = null;
+            stopReason = null;
+            cooldownUntilMillis = null;
+            cooledWorkerId = null;
         }
         publish();
         try {
@@ -146,12 +155,14 @@ public final class WorkerRunController implements WorkerLifecycle {
             return new Snapshot(
                     lifecycleStateLocked(),
                     preparedWorker == null
-                            ? null
+                            ? cooledWorkerId
                             : preparedWorker.workerId(),
                     preparedWorker == null
                             ? null
                             : preparedWorker.endpointUri(),
-                    diagnosticMessage
+                    diagnosticMessage,
+                    stopReason,
+                    cooldownUntilMillis
             );
         }
     }
@@ -190,6 +201,9 @@ public final class WorkerRunController implements WorkerLifecycle {
             activeTransport = null;
             preparedWorker = null;
             diagnosticMessage = null;
+            stopReason = StopReason.MANUAL;
+            cooldownUntilMillis = null;
+            cooledWorkerId = null;
         }
 
         closeQuietly(transport);
@@ -200,11 +214,11 @@ public final class WorkerRunController implements WorkerLifecycle {
         publish(closingListeners, closingSnapshot);
     }
 
-    private void runStart(PreparedWorker suppliedPreparedWorker) {
+    private void runStart(WorkerPreparationResult suppliedPreparedWorker) {
         TextMessageWorkerTransport transport = null;
         boolean installed = false;
         try {
-            PreparedWorker prepared = Objects.requireNonNull(
+            WorkerPreparationResult result = Objects.requireNonNull(
                     suppliedPreparedWorker == null
                             ? preparation.prepare()
                             : suppliedPreparedWorker,
@@ -213,6 +227,25 @@ public final class WorkerRunController implements WorkerLifecycle {
             if (finishDiscardedPreparation()) {
                 return;
             }
+
+            if (result.cooldownUntilMillis() != null) {
+                boolean stopped = false;
+                synchronized (stateLock) {
+                    if (phase == Phase.PREPARING) {
+                        if (discardPreparedResult) {
+                            transitionStoppedLocked(null);
+                        } else {
+                            transitionStoppedLocked("Worker connection is cooling down",
+                                    StopReason.COOLDOWN, result.cooldownUntilMillis());
+                            cooledWorkerId = result.workerId();
+                        }
+                        stopped = true;
+                    }
+                }
+                if (stopped) publish();
+                return;
+            }
+            PreparedWorker prepared = result.preparedWorker();
 
             transport = transportFactory.create(
                     prepared,
@@ -247,7 +280,8 @@ public final class WorkerRunController implements WorkerLifecycle {
                         discardPreparedResult
                                 ? null
                                 : "Worker start request rejected: "
-                                        + safeFailureType(failure)
+                                        + safeFailureType(failure),
+                        discardPreparedResult ? StopReason.MANUAL : StopReason.UNAVAILABLE, null
                 );
                 stopped = true;
             }
@@ -289,7 +323,8 @@ public final class WorkerRunController implements WorkerLifecycle {
                         discardPreparedResult
                                 ? null
                                 : "Worker start failed: "
-                                        + safeFailureType(error)
+                                        + safeFailureType(error),
+                        discardPreparedResult ? StopReason.MANUAL : failureReason(error), null
                 );
                 stopped = true;
             }
@@ -327,12 +362,16 @@ public final class WorkerRunController implements WorkerLifecycle {
                     && activeTransport == transport;
             if (current) {
                 activeTransport = null;
-                transitionStoppedLocked(
-                        failure == null
-                                ? "Endpoint terminated"
-                                : "Worker transport failed: "
-                                        + safeFailureType(failure)
-                );
+                Long until = transport.adapterClose() == null ? null
+                        : transport.adapterClose().cooldownUntilMillis();
+                String workerId = preparedWorker == null ? null : preparedWorker.workerId();
+                transitionStoppedLocked(until != null ? "Worker connection is cooling down"
+                                : failure == null ? "Endpoint terminated"
+                                : "Worker transport failed: " + safeFailureType(failure),
+                        until != null ? StopReason.COOLDOWN
+                                : transport.adapterClose() != null ? StopReason.TERMINATED : StopReason.UNAVAILABLE,
+                        until);
+                if (until != null) cooledWorkerId = workerId;
             }
         }
         if (current) {
@@ -342,10 +381,26 @@ public final class WorkerRunController implements WorkerLifecycle {
     }
 
     private void transitionStoppedLocked(String message) {
+        transitionStoppedLocked(message, StopReason.MANUAL, null);
+    }
+
+    private void transitionStoppedLocked(String message, StopReason reason, Long untilMillis) {
         phase = Phase.STOPPED;
         discardPreparedResult = false;
         preparedWorker = null;
         diagnosticMessage = message;
+        stopReason = reason;
+        cooldownUntilMillis = untilMillis;
+        cooledWorkerId = null;
+    }
+
+    private static StopReason failureReason(Throwable error) {
+        if (error instanceof IOException) return StopReason.UNAVAILABLE;
+        if (error instanceof WorkerException
+                && ((WorkerException) error).errorCode() == WorkerErrorCode.WORKER_CONTROL_UNAVAILABLE) {
+            return StopReason.UNAVAILABLE;
+        }
+        return StopReason.REJECTED;
     }
 
     private State lifecycleStateLocked() {

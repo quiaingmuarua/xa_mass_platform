@@ -39,7 +39,7 @@ class JavaWorkerManagerTest {
             server.start();
             String endpoint = server.url("/worker").toString().replaceFirst("^http", "ws");
             server.enqueue(new MockResponse.Builder().code(200).body(
-                    "{\"workerId\":\"worker-1\",\"transportType\":\"WEBSOCKET\","
+                    "{\"status\":\"prepared\",\"workerId\":\"worker-1\",\"transportType\":\"WEBSOCKET\","
                             + "\"endpointUri\":\"" + endpoint + "\"}").build());
             var reports = new java.util.concurrent.LinkedBlockingQueue<
                     com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport>();
@@ -264,6 +264,33 @@ class JavaWorkerManagerTest {
             if (manager != null) {
                 manager.close();
             }
+            server.close();
+        }
+    }
+
+    @Test
+    void mixedCooldownBatchStopsOnlyDeniedReplicaWithoutImmediateReprepare() throws Exception {
+        MockWebServer server = new MockWebServer();
+        server.start();
+        JavaWorkerManager manager = null;
+        try {
+            server.enqueue(new MockResponse.Builder().code(200).body("["
+                    + "{\"status\":\"cooldown\",\"workerId\":\"worker-1\",\"cooldownUntilMillis\":123456},"
+                    + batchItem("worker-2", "ws://127.0.0.1:1/two") + "]").build());
+            manager = batchManager(server);
+            manager.prepareAndStart(List.of("workers.jsonl:1", "workers.jsonl:2"));
+            awaitWorkerId(manager, "workers.jsonl:2", "worker-2");
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (manager.snapshot("workers.jsonl:1").stopReason() == null && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            assertEquals(WorkerLifecycle.StopReason.COOLDOWN, manager.snapshot("workers.jsonl:1").stopReason());
+            assertEquals(WorkerLifecycle.State.STOPPED, manager.snapshot("workers.jsonl:1").state());
+            assertEquals(WorkerLifecycle.State.RUNNING, manager.snapshot("workers.jsonl:2").state());
+            Thread.sleep(150);
+            assertEquals(1, server.getRequestCount());
+        } finally {
+            if (manager != null) manager.close();
             server.close();
         }
     }
@@ -909,7 +936,7 @@ class JavaWorkerManagerTest {
             String workerId,
             String endpointUri
     ) {
-        return "{\"workerId\":\"" + workerId + "\","
+        return "{\"status\":\"prepared\",\"workerId\":\"" + workerId + "\","
                 + "\"transportType\":\"WEBSOCKET\","
                 + "\"endpointUri\":\"" + endpointUri + "\"}";
     }

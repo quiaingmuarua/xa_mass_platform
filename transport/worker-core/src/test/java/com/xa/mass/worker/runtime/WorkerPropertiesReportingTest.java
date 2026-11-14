@@ -207,9 +207,9 @@ class WorkerPropertiesReportingTest {
 
         Fixture(WorkerPropertiesProvider provider) {
             worker = new WorkerRunController(new WorkerPreparation() {
-                public PreparedWorker prepare() {
+                public WorkerPreparationResult prepare() {
                     prepares.incrementAndGet();
-                    return new PreparedWorker("worker-1", URI.create("ws://127.0.0.1/worker"));
+                    return WorkerPreparationResult.prepared(new PreparedWorker("worker-1", URI.create("ws://127.0.0.1/worker")));
                 }
                 public void close() { }
             }, new TextMessageWorkerTransportFactory(uri -> client,

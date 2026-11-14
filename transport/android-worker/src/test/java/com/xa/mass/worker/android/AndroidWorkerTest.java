@@ -430,7 +430,7 @@ public class AndroidWorkerTest {
             throws Exception {
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                .body("{\"status\":\"prepared\",\"workerId\":\"" + WORKER_ID + "\","
                         + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"" + endpointUri() + "\"}")
                 .bodyDelay(300L, TimeUnit.MILLISECONDS)
@@ -453,7 +453,7 @@ public class AndroidWorkerTest {
             throws Exception {
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                .body("{\"status\":\"prepared\",\"workerId\":\"" + WORKER_ID + "\","
                         + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"" + endpointUri() + "\"}")
                 .bodyDelay(30L, TimeUnit.SECONDS)
@@ -552,7 +552,7 @@ public class AndroidWorkerTest {
     private void enqueuePrepare() {
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                .body("{\"status\":\"prepared\",\"workerId\":\"" + WORKER_ID + "\","
                         + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"" + endpointUri() + "\"}")
                 .build());

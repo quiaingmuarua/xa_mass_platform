@@ -338,7 +338,6 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("pendingVerifications")
                 .doesNotContain("verifiedWorkerIds")
                 .doesNotContain("ROUTE_VERIFIED")
-                .doesNotContain("AttributeKey<Boolean>")
                 .doesNotContain("verifyingChannel")
                 .doesNotContain("InboundKind")
                 .doesNotContain("InboundInspection")
@@ -354,7 +353,9 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("removalListener")
                 .doesNotContain(".scheduler(");
         assertThat(outsideConnection)
-                .doesNotContain("com.github.benmanes.caffeine");
+                .doesNotContain("com.github.benmanes.caffeine")
+                .doesNotContain("VERIFIED_CHANNEL")
+                .doesNotContain("pendingChannel()");
     }
 
     @Test

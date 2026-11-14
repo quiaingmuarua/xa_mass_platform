@@ -361,6 +361,11 @@ class TextMessageWorkerTransportTest {
 
         client.message(CODEC.encodeDeliveryCommand(closeCommand("{}")));
 
+        assertEquals(0, client.closeCalls.get());
+        assertEquals(0, listener.terminations.get());
+        client.message(CODEC.encodeDeliveryCommand(closeCommand(
+                com.xa.mass.workerdelivery.protocol.WorkerConnectionClose.cooldown(123456L).encode())));
+        assertEquals(123456L, transport.adapterClose().cooldownUntilMillis());
         assertEquals(1, client.sent.size());
         assertEquals(1, client.closeCalls.get());
         assertEquals(1, listener.terminations.get());

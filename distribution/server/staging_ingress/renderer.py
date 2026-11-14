@@ -41,6 +41,8 @@ ADMIN_OPERATIONS = (
     ("PATCH", "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}/platform-properties"),
     ("POST", "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}:pause-scheduling"),
     ("POST", "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}:resume-scheduling"),
+    ("GET", "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}/connection-control"),
+    ("PUT", "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}/connection-control"),
     ("POST", "/api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/direct-calls"),
     ("GET", "/api/v1/sms/catalog"), ("GET", "/api/v1/sms/metrics"),
     ("GET", "/api/v1/sms/messages/{messageId}"), ("POST", "/api/v1/sms/numbers:lease"),

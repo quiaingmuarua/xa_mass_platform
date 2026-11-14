@@ -20,6 +20,7 @@ import com.xa.mass.worker.execution.WorkerCommandOutcome;
 import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerConnectionClose;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 
@@ -56,6 +57,7 @@ final class TextMessageWorkerTransport
     private final WorkerCommandExecutor commandDispatcher;
     private final Listener listener;
     private volatile boolean closed;
+    private volatile WorkerConnectionClose adapterClose;
 
     TextMessageWorkerTransport(
             TextMessageClient client,
@@ -104,7 +106,7 @@ final class TextMessageWorkerTransport
             if (isConnectionClose(command)) {
                 if (System.currentTimeMillis()
                         < command.executeBeforeMillis()) {
-                    terminateFromAdapter();
+                    terminateFromAdapter(WorkerConnectionClose.decode(command.payload()));
                 }
                 return;
             }
@@ -199,10 +201,16 @@ final class TextMessageWorkerTransport
         notifyTerminated();
     }
 
-    private void terminateFromAdapter() {
-        closeClientQuietly();
+    private void terminateFromAdapter(WorkerConnectionClose reason) {
+        adapterClose = reason;
+        closed = true;
+        // Revoke the run before Client teardown; a synchronous terminal callback
+        // must observe the same structured reason, never replace it with a fault.
         notifyTerminated();
+        closeClientQuietly();
     }
+
+    WorkerConnectionClose adapterClose() { return adapterClose; }
 
     private WorkerOutcomeReporter reporter(DeliveryCommand command) {
         if (command.src() != TASK) {

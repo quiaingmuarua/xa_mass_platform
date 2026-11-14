@@ -74,7 +74,7 @@ class WorkerRouteRegistryTest {
     }
 
     @Test
-    void disconnectedReconnectUsesButDoesNotRenewVerificationEvidence() {
+    void disconnectedReconnectRequiresAndRenewsVerification() {
         MutableTicker ticker = new MutableTicker();
         WorkerRouteRegistry registry = registry(100, ticker);
         EmbeddedChannel first = new EmbeddedChannel();
@@ -87,9 +87,10 @@ class WorkerRouteRegistryTest {
             var admission = registry.admitIdentity("worker-1", reconnect);
             assertThat(admission.kind()).isEqualTo(
                     WorkerRouteRegistry.IdentityAdmissionKind
-                            .VERIFIED_ACTIVATED
+                            .VERIFICATION_CLAIMED
             );
-            assertThat(admission.becameAvailable()).isTrue();
+            assertThat(registry.activeChannel("worker-1")).isNull();
+            assertThat(registry.completeVerification("worker-1", reconnect).becameAvailable()).isTrue();
             ticker.advance(Duration.ofMinutes(7));
             assertThat(registry.onChannelClosed(reconnect))
                     .isEqualTo("worker-1");
@@ -97,8 +98,11 @@ class WorkerRouteRegistryTest {
             assertThat(registry.connectionStates(List.of("worker-1")))
                     .containsExactly(Map.entry(
                             "worker-1",
-                            WorkerConnectionState.UNKNOWN
+                            WorkerConnectionState.DISCONNECTED
                     ));
+            ticker.advance(Duration.ofMinutes(4));
+            assertThat(registry.connectionStates(List.of("worker-1")))
+                    .containsEntry("worker-1", WorkerConnectionState.UNKNOWN);
         } finally {
             first.finishAndReleaseAll();
             reconnect.finishAndReleaseAll();
@@ -106,7 +110,7 @@ class WorkerRouteRegistryTest {
     }
 
     @Test
-    void connectedRouteReplacementNeverReverifiesOrRenewsEvidence() {
+    void connectedRouteReplacementKeepsCurrentUntilFreshVerification() {
         MutableTicker ticker = new MutableTicker();
         WorkerRouteRegistry registry = registry(100, ticker);
         EmbeddedChannel current = new EmbeddedChannel();
@@ -121,10 +125,13 @@ class WorkerRouteRegistryTest {
             );
             assertThat(admission.kind()).isEqualTo(
                     WorkerRouteRegistry.IdentityAdmissionKind
-                            .VERIFIED_ACTIVATED
+                            .VERIFICATION_CLAIMED
             );
-            assertThat(admission.replacedChannel()).isSameAs(current);
-            assertThat(admission.becameAvailable()).isFalse();
+            assertThat(registry.activeChannel("worker-1"))
+                    .isSameAs(current);
+            var activation = registry.completeVerification("worker-1", replacement);
+            assertThat(activation.replacedChannel()).isSameAs(current);
+            assertThat(activation.becameAvailable()).isFalse();
             assertThat(registry.activeChannel("worker-1"))
                     .isSameAs(replacement);
             assertThat(registry.hasVerificationEvidence("worker-1"))
@@ -136,7 +143,7 @@ class WorkerRouteRegistryTest {
             assertThat(registry.connectionStates(List.of("worker-1")))
                     .containsExactly(Map.entry(
                             "worker-1",
-                            WorkerConnectionState.UNKNOWN
+                            WorkerConnectionState.DISCONNECTED
                     ));
         } finally {
             current.finishAndReleaseAll();
@@ -245,6 +252,7 @@ class WorkerRouteRegistryTest {
         try {
             verifyAndActivate(registry, "worker-1", first);
             registry.admitIdentity("worker-1", replacement);
+            registry.completeVerification("worker-1", replacement);
 
             assertThat(registry.onChannelClosed(first)).isNull();
             assertThat(registry.deactivate("worker-1", first)).isFalse();
@@ -294,6 +302,61 @@ class WorkerRouteRegistryTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void revocationRemovesActivePendingAndCacheAndFencesLateSuccess() {
+        WorkerRouteRegistry registry = registry(100);
+        EmbeddedChannel active = new EmbeddedChannel();
+        EmbeddedChannel pending = new EmbeddedChannel();
+        EmbeddedChannel resumed = new EmbeddedChannel();
+        try {
+            verifyAndActivate(registry, "worker-1", active);
+            registry.admitIdentity("worker-1", pending);
+            assertThat(registry.wasVerified(pending)).isFalse();
+            var revoked = registry.revoke("worker-1");
+            assertThat(revoked.activeChannel()).isSameAs(active);
+            assertThat(revoked.pendingChannel()).isSameAs(pending);
+            assertThat(registry.wasVerified(active)).isFalse();
+            assertThat(registry.hasVerificationEvidence("worker-1")).isFalse();
+            assertThat(registry.completeVerification("worker-1", pending)).isNull();
+
+            verifyAndActivate(registry, "worker-1", resumed);
+            assertThat(registry.onChannelClosed(active)).isNull();
+            assertThat(registry.onChannelClosed(pending)).isNull();
+            assertThat(registry.activeChannel("worker-1")).isSameAs(resumed);
+
+            registry.onChannelClosed(resumed);
+            registry.revoke("worker-1");
+            assertThat(registry.hasVerificationEvidence("worker-1")).isFalse();
+        } finally {
+            active.finishAndReleaseAll();
+            pending.finishAndReleaseAll();
+            resumed.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void deniedReplacementDoesNotDetachCurrentAndClosingCurrentKeepsPending() {
+        WorkerRouteRegistry registry = registry(100);
+        EmbeddedChannel active = new EmbeddedChannel();
+        EmbeddedChannel denied = new EmbeddedChannel();
+        EmbeddedChannel pending = new EmbeddedChannel();
+        try {
+            verifyAndActivate(registry, "worker-1", active);
+            registry.admitIdentity("worker-1", denied);
+            assertThat(registry.cancelVerification("worker-1", denied)).isTrue();
+            assertThat(registry.onChannelClosed(denied)).isNull();
+            assertThat(registry.activeChannel("worker-1")).isSameAs(active);
+            registry.admitIdentity("worker-1", pending);
+            assertThat(registry.onChannelClosed(active)).isEqualTo("worker-1");
+            assertThat(registry.completeVerification("worker-1", pending).becameAvailable()).isTrue();
+            assertThat(registry.activeChannel("worker-1")).isSameAs(pending);
+        } finally {
+            active.finishAndReleaseAll();
+            denied.finishAndReleaseAll();
+            pending.finishAndReleaseAll();
+        }
+    }
+
     private static WorkerRouteRegistry registry(long capacity) {
         return registry(capacity, new MutableTicker());
     }
@@ -319,7 +382,7 @@ class WorkerRouteRegistryTest {
                         WorkerRouteRegistry.IdentityAdmissionKind
                                 .VERIFICATION_CLAIMED
                 );
-        assertThat(registry.completeVerification(workerId, channel)).isTrue();
+        assertThat(registry.completeVerification(workerId, channel)).isNotNull();
     }
 
     private static final class MutableTicker implements Ticker {

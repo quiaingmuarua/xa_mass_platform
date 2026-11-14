@@ -50,7 +50,7 @@ public final class WorkerControlPreparation implements WorkerPreparation {
     }
 
     @Override
-    public PreparedWorker prepare() throws Exception {
+    public WorkerPreparationResult prepare() throws Exception {
         requireOpen();
         Map<String, String> properties = immutableProperties(
                 propertiesProvider.loadProperties()

@@ -33,6 +33,14 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/connectionControlValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="#52645E"
+            android:textSize="14sp" />
+
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
@@ -97,7 +105,7 @@
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:text="Connect" />
+                android:text="尝试连接" />
 
             <Button
                 android:id="@+id/disconnectButton"
@@ -105,7 +113,7 @@
                 android:layout_height="48dp"
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:text="Disconnect" />
+                android:text="停止连接／检查" />
         </LinearLayout>
 
         <Button
