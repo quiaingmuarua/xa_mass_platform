@@ -500,6 +500,13 @@ class ServerApplicationContextTest {
         assertThat(itemStateType.get(1).asText()).isEqualTo("null");
 
         var schemas = document.path("components").path("schemas");
+        var connectionView = schemas.path("WorkerConnectionControlView").path("properties");
+        for (String field : List.of("transportType", "unsupportedReason", "revision", "requestId",
+                "cooldownUntilMillis", "reason", "updatedAt")) {
+            var types = connectionView.path(field).path("type");
+            assertThat(types.isArray()).as("nullable connection control field %s", field).isTrue();
+            assertThat(types.valueStream().map(JsonNode::asText).toList()).contains("null");
+        }
         assertPositiveOptionalBound(schemas, TaskItemRequest.class, "ttlMillis", null);
         assertPositiveOptionalBound(schemas, TaskRpcCallRequest.class, "waitTimeoutMillis", 60_000L);
         assertPositiveOptionalBound(schemas, DirectCallRequest.class, "waitTimeoutMillis", 10_000L);
