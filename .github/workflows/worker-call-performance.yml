@@ -179,8 +179,11 @@ jobs:
           fi
           mkdir -p build/lane-data/runs
           cp "$record" "build/lane-data/runs/$name"
+          # This orphan branch is evidence, not the frontend application.
+          mkdir -p build/lane-data/frontend
+          printf '%s\n' '{"git":{"deploymentEnabled":false}}' > build/lane-data/frontend/vercel.json
           cd build/lane-data
-          git add runs
+          git add runs frontend/vercel.json
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -q -m "Record performance lane run ${GITHUB_RUN_ID} (${GITHUB_REF_NAME})"
           for attempt in 1 2 3; do

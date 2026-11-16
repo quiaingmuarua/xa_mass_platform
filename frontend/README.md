@@ -267,6 +267,13 @@ also builds. These project settings allow the repository-level documentation
 inputs to reach that decision. See the
 [Vercel monorepo guidance](https://vercel.com/docs/monorepos/monorepo-faq).
 
+The orphan `perf-lane-data` branch contains reports rather than application source.
+Its publication step maintains its own `frontend/vercel.json` with
+`git.deploymentEnabled=false`; the main/PR application configuration above remains
+independent. The application `ignoreCommand` cannot handle that branch because its
+application files are absent. See the
+[performance report publication](../integrations/worker-call-performance/README.md#trend-and-ab).
+
 ## SMS business pages
 
 `src/sms/` owns `/sms` and `/sms/metrics` under the shared Console. The

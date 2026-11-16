@@ -20,6 +20,9 @@ entry requires Linux, Java 21 and Python 3.11+ (standard library only). Use the 
 from the **same Release** as the Runtime you test (`manifest.json` schema 2 holds
 its version, commit and three entries); other combinations are not supported.
 The kit includes the compiled loaded Harness; consumers do not run Gradle or build source.
+The [4.3 upgrade contract](https://github.com/quiaingmuarua/xa_mass_platform/blob/main/distribution/server/RELEASE-4.3.md#worker-compatibility)
+changes Worker Prepare responses for connection cooldown. Stop a 4.2 Host and use the
+matching 4.3 kit after the Runtime upgrade; its retained inventory can be reused.
 
 ## 1. Start a Worker Host
 
