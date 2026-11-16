@@ -53,9 +53,9 @@ logout; see [access-key login](../../frontend/README.md#access-key-login-and-acc
 Direct App Checks task/configuration requests send the same
 [Bearer key](../../scenarios/app-checks-jvm/README.md#api-和-task-数据).
 Each request resolves its key against the Server directory; role and Project changes
-affect the next admission. Single-user proof
-clients explicitly use seed administrator `1000`. Catalog readiness remains
-caller-free. These identities do not authenticate users.
+affect the next admission. Catalog discovery admits any authenticated user;
+it still passes through the [access-key front door](../../server_jvm/README.md#access-key-front-door).
+API user authentication is separate from Worker gateway admission and Worker identity.
 
 ## Inventory and process lifecycle
 
@@ -93,7 +93,8 @@ unless external Runtime YAML supplies its own absolute path; it never removes
 the configuration on shutdown.
 An external Runtime YAML may specify an absolute seed file URI for a fresh environment;
 otherwise the module's packaged Preview seed is used. Seeds initialize only a missing
-configuration file. Saved edits require a manual Server restart. Host window length changes require a new Redis scope. Tasks and execution state remain in Redis.
+configuration file. Host window length changes require a new Redis scope. Tasks and
+execution state remain in Redis.
 The scenario holds `configuration.json.lock` while running and publishes complete edits
 with same-directory atomic replacement. A second instance cannot own the same file.
 Stop Server before editing the file manually. Failed or uncertain saves retain editor
@@ -103,19 +104,18 @@ temporary files. Acceptance runs use their private inventory sibling for a disti
 configuration file; source/ZIP starts do not
 touch an already running Preview's configuration.
 
-Batch Checks configuration uses a checkId-keyed checks object, named type
-defaults and per-check event/refill/query bindings. Host `xa.mass.worker-assembly.fixed-window` owns window definitions,
-Group bindings and registration-assigned feedback. App A/B retain 60000 ms/10 and their original fields; other resources are unchanged.
-The JSON file stores the whole document without fingerprints or format/revision counters;
-saves compare a computed content fingerprint. The admin page edits the whole JSON document;
-saving does not affect the running process. Use a new JSON file and Redis scope when
-switching from H2; old databases are neither read, migrated nor deleted. Creation sends only
-requestId, checkId and (for phone seeds only) country. Tasks retain their execution snapshot across later
-configuration saves/restarts; changing an existing window length requires a new scope.
-Preview exposes app-a-registration, app-b-registration, original-carrier, uint32-prime and md5-prefix. Carrier and MD5 use explicit batch events with seedsPerItem=10; registration and prime remain at 1. Input and CSV remain one seed per row. Existing configuration files are not reseeded; verify this configuration with a new file/scope/inventory.
-The two text checks are local computation demonstrations, with no external city/DNS/stock data source.
-The scenario document now contains common/checks only; old poolGroups input is rejected. Use a new configuration file/scope
-for this cutover. The launcher does not migrate or replace a running environment.
+Preview exposes `app-a-registration`, `app-b-registration`, `original-carrier`,
+`uint32-prime` and `md5-prefix`. Carrier and MD5 use batch events with
+`seedsPerItem=10`; registration and prime use one seed per Item. Input and CSV remain
+one seed per row. The two text checks are local computation demonstrations.
+Host `xa.mass.worker-assembly.fixed-window` owns window definitions, Group bindings
+and paired allocation feedback; App A/B use 60000 ms/10 windows.
+The Scenario owns the `common`/`checks` configuration. Its configuration page distinguishes
+the saved document from the effective startup snapshot; saved edits require a manual
+Server restart, while existing Tasks retain their execution bindings.
+See [Scenario configuration storage](../../scenarios/app-checks-jvm/README.md#模块内配置存储)
+for the document, save and migration contracts. The launcher does not migrate or
+replace an existing environment.
 
 `<run-output>/run.json` records `profile`, `scope`, `temporaryScope`, Server `url`,
 Host `host`, `adapter`, `adapterPort`, `javaCounts`, `androidCount`, `seed`, process
@@ -151,7 +151,11 @@ The shared HTTP client reuses a connection per thread and endpoint while request
 remain less than five seconds apart. It closes an idle connection before the next
 request; a failed or uncertain mutation is surfaced without automatic replay.
 Optional headers belong to each request and are not retained on the connection;
-the shared client never injects a default developer caller.
+for `/api/` requests without an explicit `Authorization` header, the client adds
+the public development administrator Bearer key. Server authenticates it through
+the same user directory as other API keys. The launcher's Worker connection check
+uses this default and exposes no private-key override; see the
+[local consumer credential limitation](README.md#source-launch).
 
 ## Messages multi-application cutover
 

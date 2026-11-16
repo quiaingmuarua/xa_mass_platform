@@ -31,14 +31,16 @@ Android 设备和测试网关。认证或公网连接能力的改动也不默认
 大场景不自动覆盖小而精确的原子性或异常断言；几千 Worker 的连接成功也不能替代
 某个 Handler 真正执行的证据。
 
-## 在改代码前看选路
+## 查看已提交分支的 CI 选路
 
 ```powershell
 python .github/scripts/explain_proof_selection.py --base origin/main
 ```
 
-它解释分支改动会选哪些 proof，不运行这些 proof。随后按
-[Selection Decision](../../TESTING.md#selection-decision)执行受影响 Owner 检查和必需边界证明。
+它比较 `origin/main...HEAD`，解释已提交分支改动会选哪些 proof，不运行这些 proof，
+也不包含暂存、未暂存或未跟踪文件。未提交改动仍按
+[Selection Decision](../../TESTING.md#selection-decision)选择受影响 Owner 检查和必需边界证明，
+不能以 `selectedLanes=none` 判断工作区无需验证。
 Proof Gate 要求被选中的 lane 成功、未选中的 lane 正确跳过；不能用局部检查
 声明整个 gate 已通过。
 

@@ -122,9 +122,10 @@ The documentation site at `/docs/` is a static frontend artifact packaged by
 [Distribution](../distribution/server/README.md), with source content in the
 [repository documentation](../doc/README.md). It does not require a Scenario
 profile or add application Controllers; Frontend owns its rendering and navigation.
-Server loads its development user/role JSON into process memory; an installation may
-set `xa.mass.users.seed` to another resource. Browser refresh retains user edits;
-Server restart reloads that seed. This introduces no account database or session.
+`xa.mass.users.seed` selects the Server user directory. The built-in classpath
+directory is read-only; a `file:` directory persists successful edits across
+restarts. Server owns its locking and atomic publication; see the
+[user-directory contract](../server_jvm/README.md#user-directory-and-access-keys).
 Catalog observation controls feature
 availability; static assets never enable business. Unknown API and asset paths
 remain errors. The [Frontend Owner](../frontend/README.md) owns page data and

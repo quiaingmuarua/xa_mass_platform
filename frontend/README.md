@@ -288,6 +288,12 @@ including after its first SMS; manual ID lookup/refresh remains available afterw
 are kept in browser session storage; a Server run change does not discard their IDs.
 There is no server-side order list, cancellation UI or call to the Host API.
 
+Queries merge new content by business revision, retaining higher revisions. When
+Server returns `NOT_OBSERVED`, the UI labels any retained value as a previous browser
+observation. The Server SMS cache is bounded process-local retention; it does not
+guarantee history across restarts or instances. Login, 403 and late-response isolation
+remain in force.
+
 Navigation retains local selection; leaving the workspace aborts requests and stops
 polling without resubmitting. Public Mock Demo hides the entry, makes no SMS requests
 and explains direct visits; a platform-only Server serves the shared page with the
@@ -584,8 +590,10 @@ presented as a fourth business category.
 
 One monospaced textarea edits the saved JSON document. Its structure is
 `common.typeDefaults`, `checks` (a checkId-keyed object containing label, checkType, Group,
-event, Task refill and Item selector). Check parameters replace the named
-default object as a whole; there is no recursive merge. A collapsed reference shows
+event, Task refill and Item selector), as defined by the
+[App Checks configuration contract](../scenarios/app-checks-jvm/README.md#模块内配置存储).
+Check parameters replace the named default object as a whole; there is no recursive
+merge. A collapsed reference shows
 registered contracts and examples, read-only countries/import limits, and the current
 effective document. There is no second form or editor framework.
 
@@ -724,6 +732,21 @@ scheduling, creates no TaskItem or Worker lease, and never proves that a Worker
 is schedulable or executing. Mock mode disables this mutating action and does
 not fabricate a response.
 
+### WorkerGroup effective resource bindings
+
+Runtime Workers separates Worker observations from the read-only resource relation view at
+`/runtime/workers?view=bindings&group=...`. The default remains Worker observation. The binding directory endpoint lists startup
+Matching/window Groups plus declared Project members without Redis access; it is not a complete registration directory. Known-ID
+lookup remains available, including identities outside this list. Binding direct entry never starts random Worker sampling.
+The detail shows independent Project scope, declared events, Pool/query relations and windows with embedded paired feedback.
+Read and write property fields are explicit; feedback is event-selected allocation observation, not Pool consumption accounting.
+Missing registration, unavailable reads and stale snapshots stay visible. There is no claim of installed Handlers, online Workers or stock.
+An explicit observation link point-checks the selected Group and samples its Workers even outside the random Group sample.
+Directory, detail and sample state are separate; late responses do not change current selection. Refresh is manual.
+The raw finite form shows the query/Pool relation and supply separately and reads matching event feedback when its auxiliary summary is expanded;
+summary failure does not reset drafts or replace existing submission admission. Batch Checks links current bindings separately from
+saved Task values, only within existing Runtime UI permissions. Mock shares one scope fixture and independent Group capabilities.
+
 ### Worker connection cooldown
 
 The detail drawer's **接入控制** tab is an explicit administrator operation,
@@ -842,8 +865,11 @@ independently shows succeeded, failed or not_observed with original Worker outpu
 Uncertain HTTP outcomes and rejected requests are separate from Item execution
 failure; non-2xx does not prove no work occurred. Manual `results:take` reads use
 original IDs and caller snapshots, including batches entered without browser
-history. Failed reads preserve the previous results and successful read time.
-The UI never automatically resends; same message IDs are not an exactly-once
+history. Successful and failed receipts remain in session history; follow-up takes
+target unresolved IDs, while explicit known-ID takes can obtain later values.
+Empty results do not erase earlier receipts. Failed reads preserve the previous
+results and successful read time. Consumption can commit before an HTTP response
+is lost. The UI never automatically resends; same message IDs are not an exactly-once
 promise. The default example waits 3000ms; omission follows the Server default.
 
 A Task keeps 20 browser-session request records and its JSON draft. Project list
@@ -919,6 +945,21 @@ storage; reload clears them. Drawer close restores focus only while its route
 is still current. Lists, RPC and finite details have independent request slots,
 so late reads and submission continuations cannot replace another context.
 
+## Finite Task retention views
+
+The common Project Task contract includes retention phase, first termination,
+freeze and expiry timestamps. Finite workbench, App Checks and Messages show the
+same facts. OPEN terminal tasks may receive late outcomes; FROZEN/RELEASED tasks
+cannot. Archived previews and exports use existing URLs. Item Score counts remain
+available and unfinished Items are not displayed as successful. Archived raw
+point queries are unsupported (`400/12014`); RPC point queries are unaffected.
+
+MockTaskRetention provides the single controllable 1h/7d policy used by both
+business Mock sources. Their explicit maintenance helpers require the shared
+admin permission, freeze later observations, retain preview/export data, and
+remove task-local maps plus creation correlation on purge. Same-request creation
+then has a new Task ID. No timer, filesystem or Server data fallback is simulated.
+
 ## Verification
 
 Lazy business pages import product-specific Element Plus components themselves.
@@ -937,45 +978,3 @@ pnpm build:demo
 The frontend owns no Task, Worker identity, scheduling, result, or file-storage
 truth. It only composes public Runtime API calls and downloads the response
 stream selected by the user.
-
-## Finite Task retention views
-
-The common Project Task contract includes retention phase, first termination,
-freeze and expiry timestamps. Finite workbench, App Checks and Messages show the
-same facts. OPEN terminal tasks may receive late outcomes; FROZEN/RELEASED tasks
-cannot. Archived previews and exports use existing URLs. Item Score counts remain
-available and unfinished Items are not displayed as successful. Archived raw
-point queries are unsupported (`400/12014`); RPC point queries are unaffected.
-
-MockTaskRetention provides the single controllable 1h/7d policy used by both
-business Mock sources. Their explicit maintenance helpers require the shared
-admin permission, freeze later observations, retain preview/export data, and
-remove task-local maps plus creation correlation on purge. Same-request creation
-then has a new Task ID. No timer, filesystem or Server data fallback is simulated.
-
-## Consuming RPC Results and SMS cache views
-
-RPC debug uses `results:take`: successful/failed receipts remain in session history,
-follow-up takes target unresolved IDs, and explicit known-ID takes can obtain later
-values. Empty results do not erase earlier receipts. Consumption can commit before
-an HTTP response is lost; no automatic execution retry or Mock fallback is added.
-SMS queries still refresh new content, retain higher business revisions, and label
-a previous browser observation when Server returns NOT_OBSERVED. Server SMS cache
-is bounded process-local retention, not history available after every restart or
-from another instance. Existing login/403/late-response isolation remains in force.
-
-### WorkerGroup effective resource bindings
-
-Runtime Workers separates Worker observations from the read-only resource relation view at
-`/runtime/workers?view=bindings&group=...`. The default remains Worker observation. The binding directory endpoint lists startup
-Matching/window Groups plus declared Project members without Redis access; it is not a complete registration directory. Known-ID
-lookup remains available, including identities outside this list. Binding direct entry never starts random Worker sampling.
-The detail shows independent Project scope, declared events, Pool/query relations and windows with embedded paired feedback.
-Read and write property fields are explicit; feedback is event-selected allocation observation, not Pool consumption accounting.
-Missing registration, unavailable reads and stale snapshots stay visible. There is no claim of installed Handlers, online Workers or stock.
-An explicit observation link point-checks the selected Group and samples its Workers even outside the random Group sample.
-Directory, detail and sample state are separate; late responses do not change current selection. Refresh is manual.
-The raw finite form shows the query/Pool relation and supply separately and reads matching event feedback when its auxiliary summary is expanded;
-summary failure does not reset drafts or replace existing submission admission. Batch Checks links current bindings separately from
-saved Task values, only within existing Runtime UI permissions. Mock shares one scope fixture and independent Group capabilities.
-Batch Checks config retains only common/checks; its response no longer exposes newScopeRequired and its editor rejects old poolGroups input.

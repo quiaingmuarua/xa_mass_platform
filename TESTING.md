@@ -188,11 +188,15 @@ requires every selected lane. The local check set is not a claim that those CI
 lanes ran, or permission to bypass them. Runtime validation/DTO behavior changes
 retain the ordinary Owner and Boundary proof requirements above.
 
-Inspect selection for a branch without running a proof:
+Inspect CI selection for committed branch changes without running a proof:
 
 ```powershell
 python .github/scripts/explain_proof_selection.py --base origin/main
 ```
+
+This compares `origin/main...HEAD`; staged, unstaged and untracked changes are
+not included. Select their checks from the affected claims above. An empty
+selection does not establish that an uncommitted worktree needs no verification.
 
 The checked representative-path contract is:
 
@@ -438,23 +442,14 @@ for child-process creation, readiness, bounded log tails and owned-process shutd
 It owns no phase registry, workload or scheduling behavior. Linux resource samplers
 and Android ADB/freezer orchestration retain their own contracts.
 
-
-Android Worker Proof includes a Batch Checks finite consumer phase using the same
-candidate pair. Affected Scenario contracts select this existing lane. Its
-independent configuration/scope exercises Any selection, complete known-identity
-Results and CSV plus credit admission; RPC consumption cannot replace this proof.
-It loads the candidate ZIP's explicit deployment examples and also runs a separate
-three-seed window/feedback check. Boot's external deployment test starts the same
-production assembly twice with actual external files to add another Group, retain
-saved Task snapshots and prove real paid execution without rebuilding production code.
-
-The same Android lane includes an independent Messages consumer stage, reading
-packaged YAML/Group JSON and using Messaging Pool rather than a directed query.
-It checks SENT before interaction, native inbox/notification READ and REPLIED,
-123 complete finite results/JSONL, stop/start Reporter isolation and Server/App
-restart. Android Host tests own bounded acceptance, fixed expiry and notification
-permission failures. The local channel is not real SMS or cross-device deduplication.
-
+Affected Scenario contracts select the existing Android Worker Proof lane. Its
+[Batch Checks](integrations/android-worker-proof/README.md#batch-checks-finite-consumer)
+and [Messages](integrations/android-worker-proof/README.md#messages-finite-consumer)
+stages use independent configuration/scopes and the verified candidate ZIP/APK chain.
+Those sections own workloads, credit/export checks and native interaction assertions;
+RPC cannot replace finite-task proof, nor a directed query replace Pool selection.
+Boot's external deployment test separately proves configuration-only Group expansion,
+saved Task snapshots and paid execution with the same production artifact.
 
 High-level Integration Harnesses use public Runtime and local device/Host APIs,
 without production implementation imports or Report injection. Device/Host state
@@ -500,9 +495,15 @@ shared JVM fixture. Its full scenario remains owned by [Android Worker Proof](in
 
 ### Worker Project Fixture
 
-Worker Correctness, Dynamic Matching, Convergence Health and Loaded Recovery load `integrations/worker_proof_support/platform-runtime.yaml`
-through `spring.config.additional-location` and use its explicit `scenario-workers`
-Project. Lane overlays follow that fixture; no Preview profile or scenario configuration file is involved. Runners that
+The local JVM Worker lanes (Correctness, Dynamic Matching, Convergence Health,
+Loaded Recovery and Call Performance) load
+`integrations/worker_proof_support/platform-runtime.yaml` through
+`spring.config.additional-location` before lane overlays/CLI flags. It supplies
+the explicit `scenario-workers` Project and test Group/Adapter identities without
+activating a business profile or changing lane budgets. The fixture is not packaged
+in the production Server; historical benchmark checkouts retain their version-specific
+configuration inputs. Loaded Recovery's external-release mode consumes the target's
+existing configuration instead. Runners that
 replace Group manifests must also replace the complete Project list under
 [Boot's topology contract](server_boot_jvm/README.md#project-topology), preserving
 the lane's intended Project/Group bindings. Each lane owns its workload, fault,
@@ -545,9 +546,48 @@ for local query, Pool, Properties and index changes, then the
 budgets and actual Pacer/Matching composition. Runtime Boundary owns protocol
 traversal; [Dynamic Matching](integrations/worker-dynamic-matching/README.md) owns
 loaded live-facts execution, and [Coexistence](integrations/scenario-coexistence/README.md)
-owns business observations. A qualified Phone migration or another focused pass
-does not by itself establish a fix for the separately recorded Dynamic Matching
-drain failure or a performance improvement.
+owns business observations. A focused pass does not establish another lane's
+correctness or a performance improvement; retain each claim's own evidence.
+
+## Long-running commands and CI waiting
+
+Compilation, tests, packaging and CI use one execution and one waiter per task.
+Retain the process/session or Run ID and its existing log location. Prefer a
+completion notification or watch mode over repeated one-shot status queries:
+
+```bash
+gh pr checks <PR> --watch --fail-fast --interval 60
+gh run watch <RUN_ID> --exit-status --interval 60
+```
+
+Confirm the target PR head or workflow SHA before interpreting its results.
+Watch mode still polls GitHub internally; it keeps that polling in one process
+rather than requiring a fresh agent query and analysis on every interval.
+Output may go to the existing task log directory; preserve the actual exit code
+and return a concise outcome instead of streaming repeated status tables.
+
+A process deadline and a tool's single wait/yield window are different limits.
+Reuse the existing runner or CI deadline. A yielded session or `running` result
+does not mean the command timed out or failed. If completion callbacks are
+unavailable, use a longer wait within the tool's limits on the same task. Quiet
+output alone is not evidence of a hang. These instructions add no supervisor,
+common timeout value or guarantee that the harness will avoid every wakeup.
+
+- On success, read the final outcome and required evidence summary; do not rerun
+  unchanged successful checks merely because time has passed.
+- On an explicit failure, locate the failed job or relevant log excerpt before
+  choosing a retry scope. Preserve required artifact and consumer-proof integrity.
+- `--fail-fast` ends the watcher on a failure; other CI jobs may still be running.
+  It does not authorize automatic cancellation, redispatch or a full rerun.
+- A failed status query, interrupted wait or cancellation alone does not establish
+  a failed test assertion.
+  Retain the original task identity, reconcile its actual state, and distinguish
+  unconfirmed results from confirmed failures. Never report cancellation as success.
+
+Independent work can proceed while a task runs, without adding a second watcher.
+Follow the existing [verification guide](doc/guide/verification.md) for main and
+manual Release Proof sequencing. Waiting commands do not change lane selection,
+assertions, time limits or the release gate below.
 
 ## CI Gate
 

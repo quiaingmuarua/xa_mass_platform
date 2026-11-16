@@ -59,9 +59,28 @@ SMS keeps the Preview assembly. Selecting a profile never installs Worker Handle
 
 ```powershell
 python run_local_runtime.py --profile preview
-python run_local_runtime.py --profile consumer --runtime-config xa-android/config/messages-runtime.yaml --groups xa-android/config/worker-groups.json --android-count 1
-python run_local_runtime.py --profile consumer --runtime-config distribution/server/examples/mixed-runtime.yaml --groups distribution/server/examples/mixed-groups.json --java-config distribution/server/examples/mixed-java-workers.json --java-count local-java-workers=5 --android-count 3 --work-dir .runtime/mixed
 ```
+
+For a local consumer demonstration, first copy
+`xa-android/config/messages-runtime.yaml` or
+`distribution/server/examples/mixed-runtime.yaml` to your input directory. These
+samples omit the required `xa.mass.users.seed`. Set it explicitly in the copy;
+the Worker launch examples below use `classpath:users/development-directory.json`
+with the public local development keys. For example, after preparing the copies:
+
+```powershell
+python run_local_runtime.py --profile consumer --runtime-config .runtime/inputs/messages-runtime.yaml --groups xa-android/config/worker-groups.json --android-count 1
+python run_local_runtime.py --profile consumer --runtime-config .runtime/inputs/mixed-runtime.yaml --groups distribution/server/examples/mixed-groups.json --java-config distribution/server/examples/mixed-java-workers.json --java-count local-java-workers=5 --android-count 3 --work-dir .runtime/mixed
+```
+
+The launcher's Worker connection check currently uses the public development
+administrator key and has no private-key option. A directory containing only
+private keys cannot pass that check when local Java or Android Workers are selected.
+For private-user deployment, prepare an explicit `file:` users seed using the
+[combined consumer example](src/main/dist/examples/consumer-business/README.md),
+start the Runtime without local Worker options, and connect Workers independently.
+API user keys, Worker gateway credentials and Worker identities have separate roles;
+see the [Server access-key boundary](../../server_jvm/README.md#access-key-front-door).
 
 Java and Android are independent options on the same environment. Counts mean
 Worker instances, not JVM threads or emulator counts. Android uses the existing
@@ -178,11 +197,11 @@ against source and extracted Runtime, identified explicitly as a test capability
 
 For an already running consumer, building this repository does not replace its
 locked installation. A local candidate ZIP is acceptance output, not a published
-Release. Formal delivery separately follows the [4.1 release contract](RELEASE-4.1.md):
+Release. Formal delivery separately follows the [current release contract](RELEASE-4.3.md):
 publish immutable artifacts, update the consumer's exact version/commit/checksums,
-resolve into a separate installation, and switch deliberately. The task-directory
-storage change after 1.0.0 requires a fresh Redis scope; do not reuse old descriptors
-or indexes. Register Groups and prepare required Tasks in the new scope. Keep the
+resolve into a separate installation, and switch deliberately. Apply the target
+release's configuration and data instructions; when it requires a fresh Redis scope,
+register Groups and prepare required Tasks there. Keep the
 old installation/scope for rollback, and do not overwrite a running consumer's
 `.runtime` directory or restart its Server as part of local acceptance.
 

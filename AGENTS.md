@@ -35,6 +35,25 @@ keep the full narrative in the linked mainline.
   when the requested investigation needs them; do not restore retired designs
   or historical defects as default constraints.
 
+## Execution Discipline
+
+Use the [long-command and CI waiting guidance](TESTING.md#long-running-commands-and-ci-waiting)
+for compilation, tests, packaging and remote checks. These are best-effort rules
+within the available tools, not a promise of callback support or zero model wakeups.
+
+- Start a long task once, retain its process/session or Run ID, and assign one
+  waiter. Prefer background execution, completion notifications or watch mode.
+- Treat `running` as an intermediate state: continue waiting on the same task,
+  rather than starting another query, command or diagnosis without new evidence.
+- Do not repeatedly read unchanged logs or generate the same analysis and progress
+  text. Report meaningful changes and answer user status requests directly.
+- Do not create a sub-agent solely to wait or duplicate an existing watcher.
+  Independent work may run in parallel; give delegates only the needed context.
+- Reuse established evidence. Expand or repeat checks when code, inputs, failures
+  or unresolved verification needs change, while preserving required proof gates.
+- Bound searches and tool output to relevant fields, sections and diffs; avoid
+  repeatedly returning whole documents, tool catalogs or unchanged state trees.
+
 ## Evolution Principles
 
 - Long-term discussions explain possible directions. They do not establish
@@ -304,10 +323,10 @@ request by exactly one per-user Bearer access key, resolved against the Server u
 directory into an immutable role/Project TaskCaller snapshot shared by Task and Scenario
 access checks. Only the exact Worker Prepare/polling and internal Adapter routes are exempt.
 Existing per-operation authorization is unchanged; caller-less operations admit any
-authenticated user. Server also owns the users file: roles, users, Project grants and
-SHA-256 key hashes, written only by the running Server with a process lock, fingerprint
-check and atomic publication; classpath seeds are read-only. Public development keys
-exist only in the built-in seed, and the consumer profile requires an explicit seed.
+authenticated user. Server is the sole writer of the file-backed user directory;
+classpath seeds are read-only. Public development keys belong to local runs, and
+consumer requires an explicit seed. Persistence and key handling follow the
+[User Directory contract](server_jvm/README.md#user-directory-and-access-keys).
 Updates affect new request admission without rewriting Task ownership or admitted work.
 There are no passwords, sessions, registration, key scopes or expiry, and no Kernel user
 domain or scheduling authority. Worker connections keep their gateway credential; Worker
@@ -343,17 +362,17 @@ no historical -1 decoding, identity migration or permanent tombstones are added.
 
 ## User Credit Accounts
 
-Server owns credit balances, immutable transactions, manual adjustment receipts and business debit receipts in
-its own per-user Redis HASH. UserDirectory and TaskCaller supply identity/access only;
-they carry no balance. Account identity is stable userId, independent of Project grants.
-Account mutation validates all touched state before a single atomic publication; unknown
-responses retain the original request identity for explicit reconciliation. App Checks alone
+Server owns credit balances, transactions and adjustment/business debit receipts.
+UserDirectory and TaskCaller supply identity/access, not balances; account identity
+is stable userId, independent of Project grants. Atomicity and storage follow the
+[Server accounts contract](server_jvm/README.md#user-credit-accounts); unknown responses
+retain the original request identity for explicit reconciliation. App Checks alone
 supplies fixed per-seed pricing and actual persisted input quantity to a startup-bound
 finite approval admission. Server records its Task start intent before debiting, then calls
 the unchanged approval Owner only after confirmed payment. Retained intents fence imports;
 response loss is reconciled or explicitly continued without a new debit. This introduces
-no refund policy, credit scheduler, Kernel user domain or scheduling authority. Frontend and Mock share
-the same access and confirmation semantics. See [Server accounts](server_jvm/README.md#user-credit-accounts).
+no refund policy, credit scheduler, Kernel user domain or scheduling authority.
+Frontend and Mock share the same access and confirmation semantics.
 
 ## RPC Result Consumption
 

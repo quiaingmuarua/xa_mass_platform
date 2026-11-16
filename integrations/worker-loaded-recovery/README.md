@@ -352,12 +352,6 @@ An implemented consumer or passing reduced fixture is not evidence that a public
 
 ## Project fixture
 
-Use the shared [`scenario-workers` Project fixture](../../TESTING.md#worker-project-fixture).
-
-### Platform configuration source
-
-Current runs load `../worker_proof_support/platform-runtime.yaml` explicitly,
-before this lane's overlay/CLI flags. It preserves the test Project, Group and
-Adapter identities and existing budgets without activating a business profile.
-The fixture is not packaged in the production Server. Historical benchmark
-checkouts retain their version-specific configuration inputs.
+Local runs use the [shared Worker Project fixture](../../TESTING.md#worker-project-fixture)
+before this lane's overlay/CLI flags; workload, budgets and assertions remain here.
+External-release runs use the remote deployment and do not load this local fixture.
