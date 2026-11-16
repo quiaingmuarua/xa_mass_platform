@@ -10,12 +10,12 @@ owns packaging and verification only: the Simulator module owns the Host,
 external-capacity workload and its bounded consumer orchestration.
 
 ```powershell
-.\gradlew.bat "-PxaMassVersion=4.3.0" `
+.\gradlew.bat "-PxaMassVersion=4.3.1" `
   :distribution:worker-simulator:workerSimulatorDistributionTest
 ```
 
-The result is `build/distributions/xa-mass-worker-simulator-4.3.0.zip`, rooted at
-`xa-mass-worker-simulator-4.3.0/`:
+The result is `build/distributions/xa-mass-worker-simulator-4.3.1.zip`, rooted at
+`xa-mass-worker-simulator-4.3.1/`:
 
 | Path | Source |
 | --- | --- |
@@ -32,6 +32,8 @@ or a build. It is a test and acceptance capability, not a production Worker. It 
 same Release as the Runtime and makes no cross-version promise.
 The [4.3 contract](../server/RELEASE-4.3.md#worker-compatibility) requires the matching
 kit/SDK for the changed Worker Prepare response; a 4.2 Host cannot reconnect to 4.3.
+The 4.3.1 dialog patch keeps the 4.3.0 Worker protocol; use the matching 4.3.1 kit for
+its release acceptance.
 
 The [dated public closeout](../../doc/guide/capabilities.md#external-public-closeout)
 distinguishes the passed bounded configurations from the unpassed full target.

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, nextTick, type App } from "vue";
-import { ElButton, ElDialog, ElInput } from "element-plus";
+import { ElButton, ElInput } from "element-plus";
 import WorkerConnectionControl from "@/components/WorkerConnectionControl.vue";
 import {
   ApiWorkerConnectionControlSource,
@@ -330,6 +330,7 @@ describe("Worker connection control state", () => {
 
 it("panel confirms the destructive effect and retains unknown content across closing and reopening", async () => {
   const source = mock();
+  const save = vi.spyOn(source, "save");
   const session = createWorkerConnectionControlSession(source, ADMIN);
   const mount = async () => {
     const host = document.createElement("div");
@@ -339,7 +340,8 @@ it("panel confirms the destructive effect and retains unknown content across clo
       workerId: "one"
     });
     app.provide(workerConnectionControlKey, session);
-    for (const component of [ElButton, ElDialog, ElInput]) app.use(component);
+    // Match the production shell: the panel must import its own dialog.
+    for (const component of [ElButton, ElInput]) app.use(component);
     app.mount(host);
     await flush();
     return host;
@@ -355,10 +357,23 @@ it("panel confirms the destructive effect and retains unknown content across clo
   await flush();
   click("设置／调整冷却");
   await flush();
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+  expect(dialog).not.toBeNull();
+  expect(host.contains(dialog)).toBe(false);
+  expect(dialog?.querySelector(".el-dialog__footer")?.textContent).toContain(
+    "确认提交"
+  );
   expect(document.body.textContent).toContain("已进入的 Handler 可能继续执行");
+  expect(save).not.toHaveBeenCalled();
+  click("取消");
+  await flush();
+  expect(save).not.toHaveBeenCalled();
+  click("设置／调整冷却");
+  await flush();
   source.loseNextSaveResponse();
   click("确认提交");
   await flush();
+  expect(save).toHaveBeenCalledTimes(1);
   expect(host.textContent).toContain("保留的原请求");
   expect(host.querySelector("fieldset")?.disabled).toBe(true);
   expect(host.textContent).toContain("unchanged text");

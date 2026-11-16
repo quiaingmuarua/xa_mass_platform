@@ -740,6 +740,8 @@ does not promise cancellation or undone effects. Release only restores admission
 not scheduling or Pool eligibility. A returned control decision is labeled with
 its Server read time and does not replace the independently refreshed Network
 observation. The browser does not locally advance Server status when a clock expires.
+The control panel imports its confirmation dialog and styles locally, and mounts
+the dialog under the document body so the surrounding Worker drawer cannot clip it.
 
 Writes freeze request ID, revision, deadline, reason and the login caller. A
 timeout, 503 or unrecognizable success retains that exact input and blocks a new
@@ -920,9 +922,9 @@ so late reads and submission continuations cannot replace another context.
 ## Verification
 
 Lazy business pages import product-specific Element Plus components themselves.
-Messages console tests register only the production shell's component set and
-submit through the visible button, so global test registration cannot hide a
-missing production form or pagination component.
+Messages and Worker connection-control tests register only the production shell's
+component set and submit through visible buttons, so global test registration cannot
+hide a missing production form, pagination component or confirmation dialog.
 
 ```text
 pnpm lint

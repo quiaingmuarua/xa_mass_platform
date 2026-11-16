@@ -5,7 +5,8 @@ documentation-site builds, diagnostic dictionaries, Preview process assembly
 and archive verification.
 
 The current [4.3 release contract](RELEASE-4.3.md) describes Worker connection cooldown,
-matched SDK/Runtime upgrades, consumer business defaults and deployment acceptance.
+the 4.3.1 confirmation-dialog fix, matched SDK/Runtime upgrades, consumer business
+defaults and deployment acceptance. It retains the failed 4.3.0 browser acceptance.
 The [4.2](RELEASE-4.2.md), [4.1](RELEASE-4.1.md), [4.0](RELEASE-4.0.md), [3.2](RELEASE-3.2.md) and [3.1](RELEASE-3.1.md)
 contracts retain earlier versions' facts; each release document applies to its named version.
 A Release publishes three components: the Runtime, the Worker SDK and the Worker Simulator kit.
