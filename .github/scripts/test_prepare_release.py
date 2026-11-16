@@ -121,6 +121,9 @@ class ReleasePromotionTest(unittest.TestCase):
     def test_external_capacity_minor_uses_its_own_contract_and_three_components(self):
         self._assert_draft_creation("4.2.0")
 
+    def test_connection_cooldown_minor_uses_its_own_contract_and_three_components(self):
+        self._assert_draft_creation("4.3.0")
+
     def test_missing_minor_contract_fails_before_github_without_major_fallback(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

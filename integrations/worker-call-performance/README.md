@@ -361,7 +361,10 @@ outcomes.
   `laneConfigVersion`, host calibration per job, per-case status counts and the
   median, minimum and maximum of each metric over passed repetitions. Nightly
   runs, and manual runs with `lane_record`, append it to the `perf-lane-data`
-  branch; only the summary job has write permission.
+  branch; only the summary job has write permission. This orphan evidence branch
+  also carries `frontend/vercel.json` with `git.deploymentEnabled=false`, maintained
+  by every publication, so recording measurements does not deploy an application.
+  Existing records and external acceptance evidence are retained.
 - Nightly trend: compares with the last seven records of the same ref, lane
   config version and resolved job configuration hashes, else reports
   `insufficient-history`. Values are normalized to
