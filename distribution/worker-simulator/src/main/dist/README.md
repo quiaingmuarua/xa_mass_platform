@@ -23,6 +23,8 @@ The kit includes the compiled loaded Harness; consumers do not run Gradle or bui
 The [4.3 upgrade contract](https://github.com/quiaingmuarua/xa_mass_platform/blob/main/distribution/server/RELEASE-4.3.md#worker-compatibility)
 changes Worker Prepare responses for connection cooldown. Stop a 4.2 Host and use the
 matching 4.3 kit after the Runtime upgrade; its retained inventory can be reused.
+4.3.1 fixes the Console cooldown confirmation and keeps the 4.3.0 Worker protocol.
+Use the matching patch's kit when recording Release acceptance.
 
 ## 1. Start a Worker Host
 

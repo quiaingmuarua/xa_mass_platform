@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from "vue";
+import { ElDialog } from "element-plus";
+import "element-plus/es/components/dialog/style/css";
 import { workerConnectionControlKey } from "@/runtime-viewer/connection-control-state";
 import JsonBlock from "./JsonBlock.vue";
 
@@ -174,6 +176,7 @@ function proposeDiscard() {
       </fieldset>
       <el-dialog
         :model-value="!!confirmation"
+        append-to-body
         title="确认 Worker 接入控制"
         width="min(520px, 95vw)"
         :close-on-click-modal="false"

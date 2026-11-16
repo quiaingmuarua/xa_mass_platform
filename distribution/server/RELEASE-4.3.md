@@ -1,7 +1,32 @@
 # XA Mass 4.3 release and upgrade contract
 
 Status: version-scoped 4.3 contract. Publication requires the complete manual Proof at
-the exact candidate commit. Published 4.2 artifacts remain immutable.
+the exact candidate commit. The current patch target is 4.3.1. Published 4.2 and 4.3.0
+artifacts remain immutable.
+
+## 4.3.1 patch: cooldown confirmation dialog
+
+The actual 4.3.0 GCP browser acceptance found that the connection-control component
+used `ElDialog` without importing it. The application's component registration did
+not supply it, so the cooldown confirmation did not render. The earlier component
+test registered the dialog globally and therefore missed this shipped-page defect.
+4.3.0's complete manual Proof passed, but its required browser acceptance failed;
+publication and API/Worker success must not be recorded as a completed deployment
+acceptance.
+
+4.3.1 imports the dialog in the owning component and tests the confirmation with the
+application's actual registration boundary. The patch changes no Worker wire shape,
+SDK connection behavior, Server API, configuration or stored data relative to 4.3.0.
+The 4.3.0 and 4.3.1 SDKs use the same protocol. Release acceptance still consumes the
+matching 4.3.1 Runtime and Simulator kit so its artifact provenance is unambiguous.
+Do not modify or overwrite the published 4.3.0 ZIPs to apply this fix.
+
+For an installation still on, or restored to, 4.2, apply the complete 4.2-to-4.3
+configuration and client steps below. An installation on 4.3.0 can keep its scope,
+users, configuration, identities and archives and replace only the published release
+artifacts. In either case repeat the real cooldown confirmation, refusal, release and
+recovered finite round below before declaring 4.3.1 accepted. The 4.3.0 failure remains
+historical evidence even after the patch passes.
 
 This minor release includes Worker connection cooldown, consumer business defaults,
 the current external-load closeout and the report-branch deployment repair. The
@@ -118,7 +143,7 @@ with a small workload:
   versions and scope. Mark any unexecuted current-version flow as such. An older APK
   is not expected to reconnect until upgraded to the new SDK.
 
-Use the standing acceptance user and a temporary `acceptance-4.3.0` Worker key following
+Use the standing acceptance user and a temporary `acceptance-4.3.1` Worker key following
 the host's existing private-file procedure. Read current control revisions before
 changes and retain a request identity on an unconfirmed response; never automatically
 retry a mutation with a new identity. Finish with the test Worker's cooldown released.
