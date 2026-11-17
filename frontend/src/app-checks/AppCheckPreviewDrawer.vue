@@ -42,9 +42,10 @@ import ImportSummary from "./ImportSummary.vue";
 import AppCheckDiagnostics from "./AppCheckDiagnostics.vue";
 import ConfigurationRows from "./ConfigurationRows.vue";
 import { savedTaskConfiguration } from "./configuration";
-import { consoleIdentity, identityLabel } from "@/console-identity";
+import { captureTaskCaller, consoleIdentity, identityLabel } from "@/console-identity";
 import { canUseConsole, canAccessTask } from "@/access-policy";
 const identity = consoleIdentity.requireCurrent();
+const caller = captureTaskCaller();
 const canConfigure = canUseConsole(identity, "app-checks.configuration");
 const canDiagnose = canUseConsole(identity, "app-checks.diagnostics");
 const canDemonstrate = canUseConsole(identity, "demo.control");
@@ -92,7 +93,7 @@ let generation = 0,
 const auxiliaryGeneration = { import: 0, activity: 0 };
 const preview = computed(() =>
   detail.value
-    ? (props.source.previewState?.(identity, detail.value.task.taskId) ?? {})
+    ? (props.source.previewState?.(caller, detail.value.task.taskId) ?? {})
     : {}
 );
 const stage = computed(() => (detail.value ? taskStage(detail.value.task) : "unknown"));
@@ -122,8 +123,8 @@ async function readAuxiliary(kind: Auxiliary) {
   try {
     const value =
       kind === "import"
-        ? await props.source.loadImport?.(identity, id)
-        : await props.source.loadActivity?.(identity, id);
+        ? await props.source.loadImport?.(caller, id)
+        : await props.source.loadActivity?.(caller, id);
     if (disposed || token !== auxiliaryGeneration[kind] || id !== props.taskId) return;
     if (kind === "import") imported.value = value as ImportSnapshot | undefined;
     else activities.value = (value as TaskActivity[] | undefined) ?? [];
@@ -151,7 +152,7 @@ async function refresh() {
   error.value = "";
   emit("loaded", detail.value?.task, true);
   try {
-    const value = await props.source.loadTask(identity, id);
+    const value = await props.source.loadTask(caller, id);
     if (disposed || token !== generation || id !== props.taskId) return;
     if (!canAccessTask(identity, value.task)) {
       detail.value = undefined;
