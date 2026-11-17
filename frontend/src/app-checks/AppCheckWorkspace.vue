@@ -17,7 +17,7 @@ import {
   toRef,
   watch
 } from "vue";
-import { consoleIdentity } from "@/console-identity";
+import { captureTaskCaller, consoleIdentity } from "@/console-identity";
 import { useRoute, useRouter } from "vue-router";
 import { ElDialog } from "element-plus";
 import "element-plus/es/components/dialog/style/css";
@@ -52,6 +52,7 @@ const props = defineProps<{
 const emit = defineEmits<{ refreshConfiguration: [] }>();
 const session = props.session ?? createWorkbenchSession();
 const identity = consoleIdentity.requireCurrent();
+const caller = captureTaskCaller();
 const canConfigure = canUseConsole(identity, "app-checks.configuration");
 const allTasks = taskScope(identity) === "all";
 const canDemonstrate = canUseConsole(identity, "demo.control");
@@ -112,7 +113,7 @@ async function loadCreditQuote(reconcile = false) {
   const pending = startRequests.get(target.taskId);
   try {
     const value = await props.source.loadCredits(
-      identity,
+      caller,
       target.taskId,
       reconcile ? pending?.credits.requestId : undefined
     );
@@ -168,7 +169,7 @@ function reconfirmCredits() {
   });
 }
 async function simulateStartLoss() {
-  props.source.simulateStartResponseLoss?.(identity);
+  props.source.simulateStartResponseLoss?.(caller);
   await perform("approve");
 }
 const confirmationFocus = ref<HTMLElement>(),
@@ -228,7 +229,7 @@ async function loadList() {
   listError.value = "";
   try {
     const value = await props.source.listTasks(
-      identity,
+      caller,
       allTasks ? session.ownerFilter || undefined : undefined
     );
     if (disposed || token !== listGeneration) return;
@@ -238,7 +239,7 @@ async function loadList() {
     previews.value = Object.fromEntries(
       tasks.value.map((task) => [
         task.taskId,
-        props.source.previewState?.(identity, task.taskId) ?? {}
+        props.source.previewState?.(caller, task.taskId) ?? {}
       ])
     );
   } catch (error) {
@@ -371,7 +372,7 @@ async function openExport(task: CheckTask) {
   exportLoading.value = true;
   const token = ++exportGeneration;
   try {
-    const value = await props.source.exportCounts?.(identity, task.taskId);
+    const value = await props.source.exportCounts?.(caller, task.taskId);
     if (token === exportGeneration && !disposed && exportOpen.value)
       counts.value = value;
   } catch (error) {
@@ -468,13 +469,13 @@ async function perform(action: "approve" | "close") {
         startRequests.set(target.taskId, pending);
       }
       await props.source.approveTask!(
-        identity,
+        caller,
         target.taskId,
         pending.itemCount,
         pending.credits
       );
       if (!disposed) startRequests.delete(target.taskId);
-    } else await props.source.closeTask!(identity, target.taskId);
+    } else await props.source.closeTask!(caller, target.taskId);
     if (disposed) return;
     confirmation.value = undefined;
     if (route.fullPath === origin)
@@ -518,9 +519,8 @@ async function demo(action: "advance" | "complete" | "late") {
   actionError.value = "";
   dismissNotice();
   try {
-    if (action === "complete")
-      await props.source.completeTask?.(identity, target.taskId);
-    else await props.source.advanceTask?.(identity, target.taskId, action === "late");
+    if (action === "complete") await props.source.completeTask?.(caller, target.taskId);
+    else await props.source.advanceTask?.(caller, target.taskId, action === "late");
     if (!disposed) await refreshVisible(target.taskId);
   } catch (error) {
     if (!disposed && route.fullPath === origin)
@@ -545,7 +545,7 @@ async function generateExport() {
   exportError.value = "";
   clearExportFile();
   try {
-    const file = await props.source.exportTask(identity, target.taskId, selected);
+    const file = await props.source.exportTask(caller, target.taskId, selected);
     if (disposed || token !== exportGeneration || !exportOpen.value) return;
     exportFile.value = {
       url: URL.createObjectURL(file.blob),

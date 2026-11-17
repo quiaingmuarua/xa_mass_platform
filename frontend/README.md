@@ -88,6 +88,10 @@ key. List query `userId` remains a target-owner filter. The RPC cURL example sho
 `Bearer <access key>` placeholder and never the real key. Unauthenticated UI cannot
 issue protected operations.
 
+Batch Checks list, detail, configuration and submission recovery capture a TaskCaller
+for source operations. The separate ConsoleUser profile supplies display, permissions
+and login-change comparisons; it carries no access key and is not an API caller.
+
 Server supplies `metadata.userId` from the caller. Operator lists select the
 caller's range before limiting and reject an explicit other owner; admin may
 filter by user. Known Task reads, counts, input, results, approval, closure and

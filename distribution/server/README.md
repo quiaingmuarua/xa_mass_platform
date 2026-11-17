@@ -4,9 +4,9 @@ This module owns Runtime and Scenario Preview ZIP delivery, frontend and
 documentation-site builds, diagnostic dictionaries, Preview process assembly
 and archive verification.
 
-The current [4.3 release contract](RELEASE-4.3.md) describes Worker connection cooldown,
-the 4.3.1 confirmation-dialog fix, matched SDK/Runtime upgrades, consumer business
-defaults and deployment acceptance. It retains the failed 4.3.0 browser acceptance.
+The current [4.3 release contract](RELEASE-4.3.md) describes the 4.3.2 Batch Checks
+caller fix, matched SDK/Runtime upgrades, retained business configuration and deployment
+acceptance. It retains the 4.3.1 cooldown-dialog fix and the earlier browser failures.
 The [4.2](RELEASE-4.2.md), [4.1](RELEASE-4.1.md), [4.0](RELEASE-4.0.md), [3.2](RELEASE-3.2.md) and [3.1](RELEASE-3.1.md)
 contracts retain earlier versions' facts; each release document applies to its named version.
 A Release publishes three components: the Runtime, the Worker SDK and the Worker Simulator kit.

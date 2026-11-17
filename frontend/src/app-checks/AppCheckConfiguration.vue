@@ -2,7 +2,7 @@
 import { computed, markRaw, onBeforeUnmount, onMounted, ref } from "vue";
 import { Refresh } from "@element-plus/icons-vue";
 import { TaskApiError } from "@/task-caller";
-import { consoleIdentity } from "@/console-identity";
+import { captureTaskCaller } from "@/console-identity";
 import type { Catalog } from "./model";
 import { scenarioConfiguration, type ConfigurationReadState } from "./configuration";
 import {
@@ -26,7 +26,7 @@ const props = defineProps<{
   returnToCreate: boolean;
 }>();
 const emit = defineEmits<{ refresh: []; returnToDraft: [] }>();
-const identity = consoleIdentity.requireCurrent();
+const caller = captureTaskCaller();
 const state = props.session;
 const busy = ref(false),
   heading = ref<HTMLElement>(),
@@ -55,7 +55,7 @@ async function load(refreshCatalog = false) {
   busy.value = true;
   if (refreshCatalog) emit("refresh");
   try {
-    const value = await props.source.loadConfiguration(identity);
+    const value = await props.source.loadConfiguration(caller);
     if (disposed || token !== generation) return;
     state.snapshot = markRaw(value);
     state.readAt = Date.now();
@@ -130,7 +130,7 @@ async function save() {
   state.notice = "";
   try {
     const value = await props.source.saveConfiguration(
-      identity,
+      caller,
       state.baseFingerprint,
       document
     );
@@ -167,7 +167,7 @@ async function simulateRestart() {
     return;
   busy.value = true;
   try {
-    await props.source.simulateConfigurationRestart(identity);
+    await props.source.simulateConfigurationRestart(caller);
   } catch (failure) {
     state.error = failure instanceof Error ? failure.message : "模拟重启失败";
     return;
