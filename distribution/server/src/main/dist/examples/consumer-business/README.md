@@ -65,7 +65,7 @@ java -jar "$runtime/$jar" \
   --spring.config.additional-location="file:$inputs/runtime.yaml" \
   --xa.mass.worker-assembly.group-config-json="$(cat "$inputs/worker-groups.json")" \
   --spring.web.resources.static-locations="file:$runtime/frontend/dist/" \
-  --xa.mass.task-retention.directory="$data/task-archives" \
+  --xa.mass.task-retention.database-path="$data/task-history.sqlite" \
   --xa.mass.redis.url=redis://127.0.0.1:6379/15 \
   --xa.mass.redis.scope=consumer_business_example \
   --server.port=19182 \

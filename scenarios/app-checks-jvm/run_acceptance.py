@@ -388,6 +388,7 @@ def main():
     parser.add_argument("--root", type=Path, default=PREVIEW)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--port", type=int, default=18620, help="First functional fixture base port; second uses +10, each uses Adapter +3 and Host +4")
+    parser.add_argument("--redis-url", default="redis://127.0.0.1:6379/15")
     parser.add_argument("--benchmark", action="store_true", help="Run three isolated 20-Worker/1360-number measurements")
     parser.add_argument("--baseline", action="store_true", help="Benchmark only: use the pinned pre-migration configuration")
     args = parser.parse_args()
@@ -407,7 +408,7 @@ def main():
     if args.benchmark:
         from pool_benchmark import benchmark
         result = benchmark(preview, root, output, args.port, args.baseline, regression_window_configuration,
-                           create_import_approve, request, require)
+                           create_import_approve, request, require, redis_url=args.redis_url)
         print(json.dumps(result, indent=2), flush=True)
         return
     # Each startup fixture fixes execution parameters; requests never override them.
@@ -434,7 +435,7 @@ def main():
             # A closed JVM can leave TCP connections behind. Each startup fixture owns
             # separate ports; keep the launcher's strict occupancy check unchanged.
             fixture_port = args.port + index * 10
-            run = preview.Preview(1, fixture_port, root=root, output=folder / "private", sandbox_root=inventory, app_count=2)
+            run = preview.Preview(1, fixture_port, root=root, output=folder / "private", sandbox_root=inventory, app_count=2, redis_url=args.redis_url)
             with regression_window_configuration(parameters_by_check={case["checkId"]: case["simulation"] for case in cases}) as overrides:
                 run.server_overrides = overrides
                 with run:

@@ -63,7 +63,7 @@ class TaskDirectoryRedisIntegrationTest {
                 new WorkerResourceCatalog.WorkerGroupDescriptor("g", Map.of(), Set.of("event"))));
         matching = mock(WorkerMatchingCatalog.class);
         when(matching.normalizeRefill(anyString(), anyList())).thenAnswer(call -> call.getArgument(1));
-        directory = newDirectory(); queries = new ProjectTaskQueryService(projects, catalog, scores, directory, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class), runtime, com.xa.mass.server.testsupport.TaskRetentionFixtures.properties());
+        directory = newDirectory(); queries = new ProjectTaskQueryService(projects, catalog, scores, directory, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class), runtime, com.xa.mass.server.testsupport.TaskRetentionFixtures.properties(), new com.xa.mass.kernel.redis.RedisKeyspace("test_queries"));
     }
     TaskDirectory newDirectory() { return new TaskDirectory(client, scope.keyspace(), projects, catalog, scores, groups, guard, runtime); }
     TaskCreationService creator() { return new TaskCreationService(groups, matching, runtime, projects, catalog, scores, guard, directory, creations); }

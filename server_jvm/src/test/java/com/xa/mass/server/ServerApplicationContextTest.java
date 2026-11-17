@@ -578,7 +578,7 @@ class ServerApplicationContextTest {
             if (path.equals("/api/v1/me")) return Set.of("200", "400", "403");
             return "get".equals(method) ? Set.of("200", "400") : Set.of("200", "400", "403", "409");
         }
-        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks")) return Set.of("200", "400", "403", "503");
+        if (path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/projects") || path.startsWith("/api/v1/runtime-view/tasks") || path.startsWith("/api/v1/storage/tasks")) return Set.of("200", "400", "403", "503");
         if (!ApiTags.WORKER_DELIVERY.equals(tag)) {
             return Set.of("200", "400", "503");
         }

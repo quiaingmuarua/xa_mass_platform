@@ -353,11 +353,12 @@ Before completion:
 
 ## Finite Task Data Maintenance
 
-Server owns finite Task retention timing, sequential archive files and its creation
+Server owns finite Task retention timing, immutable SQLite history and its creation
 associations; this does not grant execution scheduling authority. Kernel owns the
 persistent data fence and exact terminal/resource operations. Task Score records
-first termination time and remains the cleanup entry until final removal. Reads,
-Scenario CSV and Mock must follow the common retention semantics. Use new scopes;
+first termination time and remains the cleanup entry until final removal. Runtime reads remain Redis-only and unpaginated. Independent Storage APIs read current-scope
+history with saved attribution and explicit pagination. Scenario interpretation/export and Mock
+follow the same freeze, Runtime release and history expiry semantics. Use new scopes;
 no historical -1 decoding, identity migration or permanent tombstones are added.
 
 ## User Credit Accounts

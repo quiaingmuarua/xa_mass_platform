@@ -1,4 +1,5 @@
 import { MockTaskRetention } from "@/task-management/retention";
+import { MockTaskHistorySource } from "@/task-history/source";
 import type { MockUserDirectorySource } from "@/user-directory-source";
 import {
   type TaskCaller,
@@ -181,7 +182,8 @@ export class MockMessageTaskSource implements MessageTaskSource {
   constructor(
     private readonly directory: MockUserDirectorySource,
     records: MessageTaskDetail[] = initialRecords(),
-    now: () => number = Date.now
+    now: () => number = Date.now,
+    readonly history = new MockTaskHistorySource(directory, now)
   ) {
     this.retention = new MockTaskRetention(now);
     this.records = new Map(
@@ -231,6 +233,12 @@ export class MockMessageTaskSource implements MessageTaskSource {
     requireTaskCaller(caller, record.task);
     if (this.failedReads.delete(taskId))
       throw new Error("Mock 结果读取失败。已保留上次数据，可再次刷新。");
+    if (record.task.retention?.phase === "RELEASED")
+      return structuredClone({
+        task: record.task,
+        results: [],
+        resultsTruncated: false
+      });
     return structuredClone({
       task: record.task,
       results: record.results.slice(0, 100),
@@ -359,7 +367,16 @@ export class MockMessageTaskSource implements MessageTaskSource {
     requireCallerPermission(caller, "tasks.retention.manage");
     const record = this.requireTask(caller, taskId, false);
     const outcome = this.retention.maintain(record.task);
-    if (outcome === "archived") this.recipients.delete(taskId);
+    if (outcome !== "unchanged")
+      this.history.capture(
+        "messages",
+        record.task,
+        record.results.map((row) => ({ ...row }))
+      );
+    if (outcome === "archived") {
+      this.recipients.delete(taskId);
+      record.results = [];
+    }
     if (outcome === "purged") {
       this.records.delete(taskId);
       this.recipients.delete(taskId);

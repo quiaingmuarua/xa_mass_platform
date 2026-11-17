@@ -157,7 +157,7 @@ def _runtime_command(runtime_root: Path, data_root: Path, manifest: dict, java: 
             f"--xa.mass.worker-delivery.adapter.instances.runtime-websocket.listen-port={adapter_port}",
             "--xa.mass.worker-delivery.adapter.instances.runtime-websocket.listen-host=127.0.0.1",
             f"--xa.mass.worker-endpoints.endpoints.runtime-websocket.public-uri={websocket_url}",
-            f"--xa.mass.task-retention.directory={data_root / 'task-archives'}",
+            f"--xa.mass.task-retention.database-path={data_root / 'task-history.sqlite'}",
             *(argument for group in groups for argument in (
                 f"--xa.mass.worker-matching.groups.{group}.pools[0]=any",
                 f"--xa.mass.worker-matching.groups.{group}.functions[0]=worker.any"))]

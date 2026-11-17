@@ -15,7 +15,7 @@ import static org.mockito.Mockito.*;
 public final class TaskRetentionFixtures {
     private TaskRetentionFixtures() { }
     public static TaskRetentionProperties properties() {
-        return new TaskRetentionProperties(false, Duration.ofHours(1), Duration.ofDays(7), Duration.ofHours(1), Path.of("build/test-archives"));
+        return new TaskRetentionProperties(false, Duration.ofHours(1), Duration.ofDays(7), Duration.ofDays(30), Duration.ofHours(1), Path.of("build/test-history.sqlite"));
     }
     public static TaskRuntime openRuntime() { return openData(mock(TaskRuntime.class)); }
     public static TaskRuntime openData(TaskRuntime runtime) {
@@ -28,7 +28,7 @@ public final class TaskRetentionFixtures {
         return runtime;
     }
     public static TaskResultsExportService results(TaskRuntime runtime, TaskResourceCatalog catalog, TaskScoreBandCore scores, OperationGuard operations) {
-        return new TaskResultsExportService(catalog, scores, runtime, tools.jackson.databind.json.JsonMapper.builder().build(), operations, mock(TaskResultArchive.class));
+        return new TaskResultsExportService(catalog, scores, runtime, tools.jackson.databind.json.JsonMapper.builder().build(), operations);
     }
     public static TaskCreationRegistry creations() {
         var registry = mock(TaskCreationRegistry.class);

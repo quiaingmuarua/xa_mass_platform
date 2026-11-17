@@ -57,6 +57,7 @@ class SmsCompositionIntegrationTest {
         try (var context = app.run(AppCheckConfigurationFixture.arguments(10,
                 "--spring.profiles.active=preview", "--server.port=" + serverPort,
                 "--xa.mass.users.seed=classpath:users/proof-directory.json", "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
+                    "--xa.mass.task-retention.database-path=" + java.nio.file.Path.of("build", "task-history-fixtures", scope + ".sqlite").toAbsolutePath(),
                 "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                 "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapterPort,
                 "--xa.mass.worker-endpoints.endpoints.products-websocket.public-uri=ws://127.0.0.1:"
@@ -136,6 +137,7 @@ class SmsCompositionIntegrationTest {
         app.setRegisterShutdownHook(false);
         try (var context = app.run("--spring.profiles.active=default", "--server.port=" + serverPort,
                 "--xa.mass.users.seed=classpath:users/proof-directory.json", "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
+                    "--xa.mass.task-retention.database-path=" + java.nio.file.Path.of("build", "task-history-fixtures", scope + ".sqlite").toAbsolutePath(),
                 "--xa.mass.worker-assembly.group-config-json={}", "--spring.web.resources.static-locations=" + java.nio.file.Path.of(System.getProperty("xa.mass.test.frontend")).toUri(),
                 "--logging.level.root=WARN");
              var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()) {

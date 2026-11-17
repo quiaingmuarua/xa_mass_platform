@@ -296,13 +296,13 @@ cutover; no TTL backfill or old-result migration is performed.
 ## Finite Task retention configuration
 
 All profiles explicitly provide `xa.mass.task-retention` defaults: 1h grace, 7d
-retention, 1h maintenance interval, and `./data/task-archives`. Enablement defaults
+Runtime retention, 30d history retention, 1h maintenance interval, and `./data/task-history.sqlite`. Enablement defaults
 to the resolved Pacer enablement and can be overridden with
-`XA_MASS_TASK_RETENTION_ENABLED`; `XA_MASS_TASK_ARCHIVE_DIRECTORY` selects storage.
+`XA_MASS_TASK_RETENTION_ENABLED`; `XA_MASS_TASK_HISTORY_DATABASE` selects the SQLite history file. The separate history-retention default is 30d; Runtime retention remains 7d.
 Only one instance per scope runs maintenance. The implementation belongs to Server,
-not Boot; Kernel continues to own Task finality and mutation fences. The directory
-must survive restarts for retained tasks and be shared with other API readers.
-Preview assigns a private archive root per generated scope. No old scope is migrated.
+not Boot; Kernel continues to own Task finality and mutation fences. The local database
+must survive restarts for retained history. The first SQLite deployment has one Runtime writer.
+Preview assigns a private database per generated scope. No old scope is migrated.
 
 ### Named WorkerGroup window bindings
 

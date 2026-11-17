@@ -13,6 +13,9 @@ import com.xa.mass.server.task.directory.TaskCreationRegistry;
 import com.xa.mass.server.task.access.TaskCaller;
 import com.xa.mass.server.task.directory.TaskAttribution;
 import com.xa.mass.server.task.directory.TaskDirectory;
+import com.xa.mass.server.task.history.TaskHistoryPublisher;
+import com.xa.mass.server.task.history.TaskHistoryStore;
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.function.LongSupplier;
@@ -21,7 +24,7 @@ import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Service;
 import org.jspecify.annotations.Nullable;
 
-/** Retention policy and files; never participates in execution scheduling. */
+/** Runtime and immutable history retention policy; never participates in execution scheduling. */
 @Service
 public final class TaskRetentionService implements SmartLifecycle {
     public static final String PERMISSION = "tasks.retention.manage";
@@ -32,7 +35,9 @@ public final class TaskRetentionService implements SmartLifecycle {
     private final TaskDirectory directory;
     private final TaskCreationRegistry creations;
     private final com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts;
-    private final TaskResultArchive archive;
+    private final TaskHistoryPublisher history;
+    private final TaskHistoryStore historyStore;
+    private final String scope;
     private final OperationGuard operations;
     private final TaskRetentionProperties properties;
     private final LongSupplier clock;
@@ -40,25 +45,34 @@ public final class TaskRetentionService implements SmartLifecycle {
 
     @Autowired
     public TaskRetentionService(TaskRuntime runtime, TaskResourceCatalog catalog, TaskScoreBandCore scores,
-            TaskDirectory directory, TaskCreationRegistry creations, TaskResultArchive archive,
+            TaskDirectory directory, TaskCreationRegistry creations, TaskHistoryPublisher history, TaskHistoryStore historyStore, RedisKeyspace keyspace,
             OperationGuard operations, TaskRetentionProperties properties, com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts) {
-        this(runtime, catalog, scores, directory, creations, archive, operations, properties, creditStarts, System::currentTimeMillis);
+        this(runtime, catalog, scores, directory, creations, history, historyStore, keyspace, operations, properties, creditStarts, System::currentTimeMillis);
     }
     public TaskRetentionService(TaskRuntime runtime, TaskResourceCatalog catalog, TaskScoreBandCore scores,
-            TaskDirectory directory, TaskCreationRegistry creations, TaskResultArchive archive,
+            TaskDirectory directory, TaskCreationRegistry creations, TaskHistoryPublisher history, TaskHistoryStore historyStore, RedisKeyspace keyspace,
             OperationGuard operations, TaskRetentionProperties properties, com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts, LongSupplier clock) {
         this.runtime = runtime; this.catalog = catalog; this.scores = scores; this.directory = directory;
-        this.creations = creations; this.archive = archive; this.operations = operations; this.properties = properties; this.creditStarts = creditStarts; this.clock = clock;
+        this.creations = creations; this.history = history; this.historyStore = historyStore; this.scope = keyspace.base();
+        this.operations = operations; this.properties = properties; this.creditStarts = creditStarts; this.clock = clock;
     }
 
-    public record Info(String phase, @Nullable Long terminatedAtMillis, @Nullable Long frozenAtMillis, @Nullable Long expiresAtMillis) { }
+    public record Info(String phase, @Nullable Long terminatedAtMillis, @Nullable Long frozenAtMillis, @Nullable Long expiresAtMillis,
+            @Nullable String historyId, @Nullable Long historyExpiresAtMillis) { }
     public record Result(ActionOutcome outcome, @Nullable Info retention) { }
 
     public @Nullable Info info(TaskDescriptor task, TaskScoreState score, TaskDataState data) {
         if (task.idleDisposition() != TaskIdleDisposition.CLOSE_WHEN_IDLE) return null;
         if (data == null || score == null) throw unavailable("observe", new IllegalStateException("Task resources are incomplete"));
-        Long ended = score.terminatedAtMillis();
-        return new Info(data.phase().name(), ended, data.frozenAtMillis(), ended == null ? null : Math.addExact(ended, properties.retention().toMillis()));
+        return info(scope, task, score, data, properties);
+    }
+
+    public static Info info(String scope, TaskDescriptor task, TaskScoreState score, TaskDataState data, TaskRetentionProperties properties) {
+        Long ended = score == null ? null : score.terminatedAtMillis();
+        return new Info(data.phase().name(), ended, data.frozenAtMillis(),
+                ended == null ? null : Math.addExact(ended, properties.retention().toMillis()),
+                data.frozenAtMillis() == null || data.phase() == TaskDataPhase.OPEN ? null : TaskHistoryStore.historyId(scope, task.taskId(), data.frozenAtMillis()),
+                ended == null ? null : Math.addExact(ended, properties.historyRetention().toMillis()));
     }
 
     public Result run(TaskCaller caller, String taskId) {
@@ -82,7 +96,7 @@ public final class TaskRetentionService implements SmartLifecycle {
             try {
                 var task = catalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
                 var score = scores.getScoreStates(List.of(taskId)).get(taskId);
-                if (task == null && score == null) return new Result(ActionOutcome.unchanged(), new Info("PURGED", null, null, null));
+                if (task == null && score == null) return new Result(ActionOutcome.unchanged(), new Info("PURGED", null, null, null, null, null));
                 if (task == null || score == null) throw new IllegalStateException("Task resources are incomplete");
                 if (task.idleDisposition() != TaskIdleDisposition.CLOSE_WHEN_IDLE) return new Result(ActionOutcome.unchanged(), null);
                 var data = runtime.loadTaskDataStates(List.of(taskId)).get(taskId);
@@ -90,8 +104,15 @@ public final class TaskRetentionService implements SmartLifecycle {
                 Long ended = score.terminatedAtMillis();
                 if (ended == null) return new Result(ActionOutcome.unchanged(), info);
                 if (data.phase() == TaskDataPhase.PURGING || now >= info.expiresAtMillis()) {
+                    if (now < Math.addExact(ended, properties.historyRetention().toMillis())) {
+                        if (data.phase() == TaskDataPhase.OPEN) {
+                            runtime.freezeTaskData(taskId, score.score());
+                            data = runtime.loadTaskDataStates(List.of(taskId)).get(taskId);
+                        }
+                        if (data.phase() == TaskDataPhase.FROZEN) history.publish(task, score, data, now);
+                        else history.requirePublished(task, data, now);
+                    }
                     runtime.beginTaskPurge(taskId, score.score());
-                    archive.remove(taskId);
                     runtime.purgeTaskData(taskId, score.score());
                     var attribution = TaskAttribution.read(task.metadata());
                     if (attribution != null) directory.remove(attribution.projectId(), taskId);
@@ -99,13 +120,14 @@ public final class TaskRetentionService implements SmartLifecycle {
                     String association = task.metadata().get(TaskCreationRegistry.METADATA_KEY);
                     if (association != null) creations.remove(association, taskId);
                     runtime.finishTaskPurge(taskId, score.score());
-                    return new Result(ActionOutcome.applied(), new Info("PURGED", ended, data.frozenAtMillis(), info.expiresAtMillis()));
+                    return new Result(ActionOutcome.applied(), new Info("PURGED", ended, data.frozenAtMillis(), info.expiresAtMillis(),
+                            data.frozenAtMillis() == null ? null : TaskHistoryStore.historyId(scope, taskId, data.frozenAtMillis()), info.historyExpiresAtMillis()));
                 }
                 if (data.phase() == TaskDataPhase.RELEASED || now < Math.addExact(ended, properties.grace().toMillis()))
                     return new Result(ActionOutcome.unchanged(), info);
                 runtime.freezeTaskData(taskId, score.score());
                 data = runtime.loadTaskDataStates(List.of(taskId)).get(taskId);
-                archive.publish(task, data);
+                history.publish(task, score, data, now);
                 runtime.releaseTaskPayloads(taskId, score.score());
                 return new Result(ActionOutcome.applied(), info(task, score, runtime.loadTaskDataStates(List.of(taskId)).get(taskId)));
             } catch (ServerException known) { throw known;
@@ -117,6 +139,9 @@ public final class TaskRetentionService implements SmartLifecycle {
         long now = clock.getAsLong();
         sweep(now, Math.max(0, now - properties.retention().toMillis()), false);
         sweep(now, Math.max(0, now - properties.grace().toMillis()), true);
+        try {
+            while (!Thread.currentThread().isInterrupted() && historyStore.deleteExpiredBatch(now) != 0) { }
+        } catch (Exception failure) { LOG.log(System.Logger.Level.WARNING, "Task history expiry deferred: {0}", failure.getClass().getSimpleName()); }
     }
     private void sweep(long now, long cutoff, boolean archivePass) {
         String cursor = "0";

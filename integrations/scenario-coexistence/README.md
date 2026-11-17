@@ -28,22 +28,25 @@ It does not write scores or synthesize Worker results.
 The proof overrides grace to two seconds, keeps seven-day retention during
 archive comparisons, and triggers the ordinary administrator maintenance API.
 It checks preserved totals, stable frozen counts, identical completed JSONL/CSV
-content, archive-backed export content, bounded preview,
+content, SQLite-backed independent Storage export content, bounded preview,
 archived point-query refusal and retained creation identity. It then restarts
 Server with one-millisecond retention to exercise startup expiry, verifies the
-old resources and files are gone, and recreates each request with a new Task ID.
+old Runtime resources are gone while complete Storage history/exports remain readable,
+and recreates each request with a new Task ID. History expiry is separately proven with
+controlled clocks in the SQLite/Redis Owner tests.
 This policy override accelerates eligibility; it is not a production default or
 a force-delete API. Focused Owner tests separately prove exact default thresholds.
 For early closes, pre-freeze observations may still change while exports are
 generated; the oracle compares the frozen archive and its exports, not two
 independent live observations as though they were an atomic snapshot.
 
-The summary contains per-Task Redis key memory, file bytes, archive duration,
+The summary contains per-Task Redis key memory, SQLite/WAL bytes, publication duration,
 sampled heap/RSS and Redis PING latency. JFR allocation samples and `jstat` heap
-samples remain private diagnostic artifacts. Result scan deduplication retains
-one ID per observed result; allocation sampling does not claim constant memory
+samples remain private diagnostic artifacts. Publication traverses both inputs and Results; SQLite uniqueness handles duplicate
+scan identities. Export comparisons preserve row multiplicity without requiring scan order; allocation sampling does not claim constant memory
 or an exact retained-heap measurement. Process RSS need not fall after `UNLINK`.
-The launcher cleans only its new scope and private archive root on exit.
+The launcher cleans only its new scope and private database and sidecars on exit. `--redis-url` may select an explicit local test Redis;
+this changes no workload or assertion.
 
 ```sh
 python integrations/scenario-coexistence/run_retention_proof.py --port 18720

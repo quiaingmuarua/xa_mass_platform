@@ -77,6 +77,8 @@ export class ApiMessageTaskSource implements MessageTaskSource {
       "messages",
       taskId
     );
+    if (entry.retention?.phase === "RELEASED")
+      return { task: messageTaskView(entry), results: [], resultsTruncated: false };
     const preview = z
       .object({
         taskId: z.literal(taskId),

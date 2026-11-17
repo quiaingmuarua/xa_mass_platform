@@ -17,7 +17,7 @@ import java.io.UncheckedIOException;
 import java.util.*;
 
 @Configuration(proxyBeanMethods = false)
-@Import(AppCheckController.class)
+@Import({AppCheckController.class, AppCheckHistoryController.class})
 @EnableConfigurationProperties(AppCheckConfigurationProperties.class)
 public class AppCheckScenarioConfiguration {
     @Bean AppCheckContract registrationContract() { return AppCheckContracts.registration(); }

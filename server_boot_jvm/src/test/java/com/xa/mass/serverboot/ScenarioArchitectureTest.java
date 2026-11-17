@@ -20,8 +20,12 @@ class ScenarioArchitectureTest {
             Path directory = Path.of("..", module);
             assertThat(Files.readString(directory.resolve("build.gradle"))).doesNotContain("com.h2database", "spring-boot-starter-jdbc");
             try (var paths = Files.walk(directory.resolve("src/main/java"))) {
-                for (Path path : paths.filter(p -> p.toString().endsWith(".java")).toList())
-                    assertThat(Files.readString(path)).as(path.toString()).doesNotContain("java.sql.", "org.h2.", "AppCheckConfigurationStore");
+                for (Path path : paths.filter(p -> p.toString().endsWith(".java")).toList()) {
+                    String source = Files.readString(path);
+                    assertThat(source).as(path.toString()).doesNotContain("org.h2.", "AppCheckConfigurationStore");
+                    if (!module.equals("server_jvm") || !path.toString().replace('\\', '/').contains("/task/history/"))
+                        assertThat(source).as(path.toString()).doesNotContain("java.sql.");
+                }
             }
         }
     }
@@ -39,6 +43,7 @@ class ScenarioArchitectureTest {
         var allowed = Map.of(
                 "app-checks-jvm", Set.of("task.access.TaskCaller", "project.ProjectDirectory", "project.ProjectTaskQueryService", "project.ProjectDefinition", "project.ProjectWorkerRequirements",
                         "task.TaskCreationService", "task.TaskCreationUnconfirmedException", "task.TaskDataService", "task.directory.TaskUserId",
+                        "task.history.TaskHistoryService", "task.result.TaskResultRecord",
                         "credits.CreditModels", "credits.CreditModels.BusinessCharge", "credits.CreditModels.CreditTransaction",
                         "credits.CreditService", "error.ServerErrorCode", "error.ServerException",
                         "task.FiniteTaskApprovalAdmission", "task.credit.TaskCreditConfirmation",
@@ -54,7 +59,7 @@ class ScenarioArchitectureTest {
                 "message-campaigns-jvm", Set.of("task.access.TaskCaller", "project.ProjectDirectory",
                         "project.ProjectDefinition", "project.ProjectWorkerRequirements", "operation.OperationGuard", "error.ServerException", "api.v1.contract.ActionOutcome",
                         "project.ProjectTaskQueryService", "task.TaskCreationUnconfirmedException",
-                        "task.TaskCreationService", "task.TaskDataService",
+                        "task.TaskCreationService", "task.TaskDataService", "task.history.TaskHistoryService", "error.ServerErrorCode",
                         "api.v1.contract.task.TaskCreateRequest", "api.v1.contract.task.TaskItemRequest",
                         "api.v1.contract.task.TaskItemResultResponse", "api.v1.contract.task.TaskItemResultStatus"));
         var imports = Pattern.compile("import\\s+com\\.xa\\.mass\\.server\\.([\\w.*]+)\\s*;");

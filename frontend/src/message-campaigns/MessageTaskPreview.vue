@@ -198,7 +198,7 @@ defineExpose({
         <p>实际收件人数：{{ quantity(detail.task.sendTotal) }}。导入后不会自动启动。</p>
         <MessageTemplateContent :content="detail.task.body" />
       </template>
-      <template v-else>
+      <template v-else-if="detail.task.retention?.phase !== 'RELEASED'">
         <h3>结果预览</h3>
         <p class="message-range">
           当前预览 {{ preview.length }} 条／匹配 {{ rows.length }} 条{{

@@ -136,9 +136,11 @@ CSV 复用 Server 共同顺序结果读取，使用每条结果携带的原 Item
 原始运营商及识别说明。失败、异常内容和缺少有效判定的记录不导出；不满足属于有效结果。
 文件生成完成后才通过 `X-Export-Count` 返回准确行数，不额外扫描以预估数量。通用 JSONL 导出与
 CSV 各自的下载临时文件在失败或传输结束时清理；CSV 不再生成中间 JSONL。导出独立于预览筛选；收尾期迟到结果可使下一次导出内容变化。
-默认终态 1 小时后由 Server 冻结并归档，释放 Redis 输入和结果；业务预览与 CSV 使用相同的
-归档结果和原输入，保留当前协议解析与关联校验。Item Score 及统计保留至终态 7 天后最终清理。
-场景不另设归档表、Hash 索引、统计存储或清理定时器。
+默认终态 1 小时后由 Server 冻结并完整保存 SQLite 历史，再释放 Redis 输入和结果；
+Runtime 结果接口随后明确拒绝读取。独立 `/api/v1/storage/app-checks/tasks/{historyId}/results`
+及 `results:export` 使用保存的输入与契约，复用相同解析、关联校验和 CSV 实现。
+Runtime Item Score 和任务目录默认 7 天清理，历史默认从首次终止起保留 30 天。
+历史已发布且仍有效时，Runtime Task 删除后仍可查看和导出。场景不持有数据库连接、表或清理定时器。
 
 ## 具名执行契约
 
@@ -203,7 +205,7 @@ Preview 运营商使用 `original-carrier-batch-v1` / `extension.worker.phonenum
 合法负面答案继续 matched=false。解析不改变 Item 状态或触发重试；平台重试仍以整个 Item 为单位。
 
 CSV 每个种子一行，整组校验成功后才按 all/matched/unmatched 写入，计数是业务行。
-Redis 与归档使用同一解释；原始 JSONL 仍每 Item 一条。分配观察不按组内种子数放大，
+独立的 Runtime 与 Storage 入口使用同一纯解释；原始 JSONL 仍每 Item 一条。分配观察不按组内种子数放大，
 一次成功 Item 不证明物理 Handler 仅执行一次。
 
 ## Simulator 协议与可复算性

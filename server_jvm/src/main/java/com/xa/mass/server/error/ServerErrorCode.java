@@ -15,7 +15,7 @@ public enum ServerErrorCode {
     USER_DIRECTORY_CONFLICT(18009, "User directory is read-only or changed outside this Server; restart to load external edits"),
     USER_DIRECTORY_UNAVAILABLE(18010, "User directory storage is unavailable; reload the directory before retrying"),
     TASK_ACCESS_DENIED(12013, "Task access is denied"),
-    TASK_RESULTS_ARCHIVED(12014, "Task results are archived; use preview or export instead of point queries"),
+    TASK_RESULTS_ARCHIVED(12014, "Task inputs and results have moved to the explicit history API"),
     TASK_CLEANUP_IN_PROGRESS(12015, "Task cleanup is in progress"),
     KERNEL_REJECTED_CONFLICT(
             11005,

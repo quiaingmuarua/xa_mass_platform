@@ -5,6 +5,7 @@ import {
   type CheckCredits
 } from "./credits";
 import { MockTaskRetention } from "@/task-management/retention";
+import { MockTaskHistorySource } from "@/task-history/source";
 import { decodeUtf8 } from "@/files/text";
 import type { MockUserDirectorySource } from "@/user-directory-source";
 import {
@@ -651,7 +652,8 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
   constructor(
     private readonly directory: MockUserDirectorySource,
     private readonly credits: MockCreditSource,
-    now: () => number = Date.now
+    now: () => number = Date.now,
+    readonly history = new MockTaskHistorySource(directory, now)
   ) {
     this.retention = new MockTaskRetention(now);
     let ownerIndex = 0;
@@ -805,6 +807,8 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     this.reads.set(id, count);
     if (id === "check-read-error" && count === 2)
       throw new Error("Mock 读取失败；已保留上次数据，可再次刷新。");
+    if (record.task.retention?.phase === "RELEASED")
+      return structuredClone({ ...record, results: [], resultsTruncated: false });
     return structuredClone({ ...record, results: record.results.slice(0, 100) });
   }
   async createTask(caller: TaskCaller, input: CreateCheckTask) {
@@ -1256,7 +1260,29 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
     requireCallerPermission(caller, "tasks.retention.manage");
     const record = this.owned(caller, id);
     const outcome = this.retention.maintain(record.task);
-    if (outcome === "archived") this.imported.delete(id);
+    if (outcome !== "unchanged") {
+      const files = new Map(
+        ["all", "matched", "unmatched"].map((filter) => [
+          filter,
+          this.exportFile(id, filter as ExportFilter)
+        ])
+      );
+      const inputs = [...(this.imported.get(id)?.values() ?? [])].map((group) => ({
+        messageId: group.messageId,
+        item: {
+          messageId: group.messageId,
+          payload: { seeds: [...group.seeds] },
+          mock: true
+        },
+        state: null,
+        result: null
+      }));
+      this.history.capture("app-checks", record.task, record.results, files, inputs);
+    }
+    if (outcome === "archived") {
+      this.imported.delete(id);
+      record.results = [];
+    }
     if (outcome === "purged") {
       for (const map of [
         this.records,
@@ -1304,6 +1330,12 @@ export class MockAppCheckTaskSource implements AppCheckTaskSource {
   async exportTask(caller: TaskCaller, id: string, filter: ExportFilter) {
     const record = this.owned(caller, id);
     if (record.task.state !== "terminal") throw new Error("任务结束后可以导出演示结果");
+    if (record.task.retention?.phase === "RELEASED")
+      throw new TaskApiError(400, "请从历史任务入口导出");
+    return this.exportFile(id, filter);
+  }
+  private exportFile(id: string, filter: ExportFilter) {
+    const record = this.require(id);
     const rows = this.exportRows(id, filter);
     const carrier = isCarrierContract(record.task.checkType),
       phone = record.task.seedType === "phonenumber";

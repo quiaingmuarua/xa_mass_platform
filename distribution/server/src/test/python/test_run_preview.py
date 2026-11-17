@@ -189,7 +189,7 @@ class PreviewLifecycleTest(unittest.TestCase):
                     self.assertIn("--spring.profiles.active=preview", server.args[1])
                     self.assertEqual(str(run.sandbox_root.parent / "app-checks" / "configuration.json"),
                                      next(x.split("=", 1)[1] for x in server.args[1] if x.startswith("--xa.mass.scenarios.app-checks.configuration.path=")))
-                    self.assertEqual(str(run.output / "task-archives"), next(x.split("=", 1)[1] for x in server.args[1] if x.startswith("--xa.mass.task-retention.directory=")))
+                    self.assertEqual(str(run.output / "task-history.sqlite"), next(x.split("=", 1)[1] for x in server.args[1] if x.startswith("--xa.mass.task-retention.database-path=")))
                     self.assertIn("--spring.config.additional-location=" + (root / ("config" if packaged else "build/preview/config") / "application-preview.yaml").as_uri(), server.args[1])
                     self.assertIn(str(run.output / "artifacts/xa-mass-server-jvm-test.jar"), server.args[1])
                     self.assertIn("--server.tomcat.accesslog.pattern=%m %U %s", server.args[1])
@@ -299,18 +299,32 @@ class PreviewLifecycleTest(unittest.TestCase):
             run.close()
         client.unlink.assert_not_called()
 
-    def test_cleanup_removes_only_this_runs_archives(self):
+    def test_cleanup_removes_only_this_runs_history_database(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             run = Preview(root=root, output=root / "run")
-            run.task_archives.mkdir(parents=True)
-            (run.task_archives / "result.jsonl").write_text("fixture", encoding="utf-8")
+            run.task_history.parent.mkdir(parents=True)
+            run.task_history.write_text("fixture", encoding="utf-8")
+            Path(str(run.task_history) + "-wal").write_text("wal", encoding="utf-8")
             retained = root / "data" / "keep.txt"
             retained.parent.mkdir()
             retained.write_text("configuration", encoding="utf-8")
             run.close()
-            self.assertFalse(run.task_archives.exists())
+            self.assertFalse(run.task_history.exists())
+            self.assertFalse(Path(str(run.task_history) + "-wal").exists())
             self.assertEqual("configuration", retained.read_text(encoding="utf-8"))
+
+    def test_explicit_history_path_is_retained_even_inside_temporary_run_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            preview = Preview(root=root, output=root / "run")
+            path = preview.output / "task-history.sqlite"
+            settings = dict(preview.settings, runtime={"xa": {"mass": {"task-retention": {"database-path": str(path)}}}})
+            run = run_preview.local_runtime.LocalRun(settings, output=preview.output)
+            path.parent.mkdir(parents=True)
+            path.write_text("operator database", encoding="utf-8")
+            run.close()
+            self.assertEqual("operator database", path.read_text(encoding="utf-8"))
 
     def test_live_child_failure_ends_run_instead_of_restarting(self):
         run = Preview()

@@ -42,14 +42,23 @@ it("freezes Messages receipts and changes execution identity only after purge", 
   expect(await source.createTask(A, input)).toEqual(first);
   await expect(source.demonstrate(ADMIN, first.taskId, "read")).rejects.toThrow("冻结");
   const archived = await source.loadTask(A, first.taskId);
-  expect(archived.results[0].status).toBe("DELIVERED");
+  expect(archived.results).toEqual([]);
+  const historyId = archived.task.retention!.historyId!;
+  expect(
+    (await source.history.preview(A, historyId, "messages")).results[0].status
+  ).toBe("DELIVERED");
   expect(retentionLabel(taskRetentionSchema.parse(archived.task.retention))).toBe(
     "结果已归档"
   );
   now += 7 * 86400000;
   expect(await source.runRetention(ADMIN, first.taskId)).toBe("purged");
   await expect(source.loadTask(A, first.taskId)).rejects.toThrow();
+  expect((await source.history.preview(A, historyId, "messages")).results).toHaveLength(
+    1
+  );
   expect((await source.createTask(A, input)).taskId).not.toBe(first.taskId);
+  now += 24 * 86400000;
+  await expect(source.history.get(A, historyId)).rejects.toThrow("到期");
 });
 
 it("keeps App Checks statistics and CSV after archive and removes the creation association at expiry", async () => {
@@ -68,10 +77,17 @@ it("keeps App Checks statistics and CSV after archive and removes the creation a
   now += 3600000;
   expect(await source.runRetention(ADMIN, first.taskId)).toBe("archived");
   const after = await source.loadTask(A, first.taskId);
-  expect(after.results).toEqual(before.results);
+  expect(after.results).toEqual([]);
+  const historyId = after.task.retention!.historyId!;
+  expect((await source.history.preview(A, historyId, "app-checks")).results).toEqual(
+    before.results
+  );
   expect(after.task.totalCount).toBe(before.task.totalCount);
   expect(after.task.succeededCount).toBe(before.task.succeededCount);
-  expect((await source.exportTask(A, first.taskId, "all")).count).toBe(1);
+  await expect(source.exportTask(A, first.taskId, "all")).rejects.toThrow("历史");
+  expect(
+    (await source.history.export(A, historyId, "app-checks", "all")).fileName
+  ).toContain("all");
   expect(await source.createTask(A, input)).toEqual(first);
   now += 7 * 86400000;
   expect(await source.runRetention(ADMIN, first.taskId)).toBe("purged");
@@ -79,4 +95,5 @@ it("keeps App Checks statistics and CSV after archive and removes the creation a
     (await source.listTasks(A)).tasks.some((task) => task.taskId === first.taskId)
   ).toBe(false);
   expect((await source.createTask(A, input)).taskId).not.toBe(first.taskId);
+  expect((await source.history.get(A, historyId)).taskId).toBe(first.taskId);
 });

@@ -78,23 +78,27 @@ rollback or loss repair.
 FiniteTaskRetentionRedisIntegrationTest proves immutable first terminal time,
 keyset progress after previous-page deletion and corrupt rows, atomic write seals,
 retained Item counts, exact purge fences and RPC exclusion. TaskRetentionServiceRedisIntegrationTest
-proves file publication/reuse, archive corruption refusal, authorization before files,
-expiry without an archive, resumed cleanup and fresh execution identity after conditional
-creation-association removal. These tests use unique scopes and private file roots.
-Faults include partial JSONL writes and committed release, directory removal or
-final purge with a lost response. A multi-page sweep passes already archived and
-continuously failing entries before expiring the same complete set.
+proves SQLite publication/reuse, complete input retention, explicit Runtime read refusal,
+expiry with and without still-retained history, resumed cleanup and fresh execution identity
+after conditional creation-association removal. TaskHistoryStoreTest uses real SQLite files
+for pending visibility, transaction rollback, busy-writer failure, reopen, permission-filtered
+pagination, cross-scope isolation and independent expiry. Tests use unique Redis scopes and
+private databases. Partial SQL batches and lost publication/release/directory/final-purge
+responses retain their original identities. Multi-page maintenance advances past failures.
 FrozenTaskResultReleaseRedisIntegrationTest traverses the production result policy
 and real Redis Owners: ignored content after freeze, release and purge still
-releases the original Worker lease.
-Independent Score/Result commits are not repaired into a common snapshot.
+releases the original Worker lease. Independent Score/Result commits are not repaired.
 
-Frontend task-retention tests use a controlled clock and the shared Mock directory
-to prove grace updates, frozen results, retained CSV/counts, permission checks and
-new identities after expiry. The [explicit 10k/100k acceptance](../../integrations/scenario-coexistence/README.md#finite-storage-acceptance) records Redis key memory,
-file size, archive latency and process memory separately; RSS reduction is not required.
-No RPC reclamation, historical migration, permanent tombstones or distributed file
-replication is claimed.
+Frontend history/retention tests prove explicit Storage routing, captured Bearer credentials,
+no released Runtime Result fallback, stale reads, late responses, grouped seed identity,
+Mock history after Runtime purge and expiry. AppChecksIntegrationTest reads Scenario history
+and CSV both before and after actual Runtime purge. The
+[explicit 10k/100k acceptance](../../integrations/scenario-coexistence/README.md#finite-storage-acceptance)
+retains its workload and reports Redis memory, SQLite/WAL size, publication latency and
+process memory separately; RSS/file-size reduction is not required. Export equality preserves
+all rows and multiplicities without assuming traversal order. Controlled clocks own 30d expiry;
+the real workload proves independent history survives the Runtime purge.
+No RPC reclamation, historical file migration, database replication or credit refund is claimed.
 
 ## runtime_boundary
 

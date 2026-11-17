@@ -16,8 +16,9 @@ xa:
       enabled: ${XA_MASS_TASK_RETENTION_ENABLED:${xa.mass.kernel-pacer.enabled}}
       grace: 1h
       retention: 7d
+      history-retention: 30d
       interval: 1h
-      directory: ${XA_MASS_TASK_ARCHIVE_DIRECTORY:./data/task-archives}
+      database-path: ${XA_MASS_TASK_HISTORY_DATABASE:./data/task-history.sqlite}
     project-assembly:
       projects: []
     kernel-pacer:

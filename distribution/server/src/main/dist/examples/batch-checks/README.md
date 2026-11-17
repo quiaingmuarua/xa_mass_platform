@@ -51,7 +51,7 @@ java -jar (Join-Path $runtimeRoot $manifest.serverJar) `
   "--spring.config.additional-location=$(([uri](Join-Path $inputs 'batch-checks-runtime.yaml')).AbsoluteUri)" `
   "--spring.web.resources.static-locations=$(([uri](Join-Path $runtimeRoot 'frontend/dist/')).AbsoluteUri)" `
   '--xa.mass.worker-assembly.group-config-json=${XA_MASS_GROUPS_JSON}' `
-  "--xa.mass.task-retention.directory=$(Join-Path $dataRoot 'task-archives')" `
+  "--xa.mass.task-retention.database-path=$(Join-Path $dataRoot 'task-history.sqlite')" `
   --server.port=19182
 ```
 

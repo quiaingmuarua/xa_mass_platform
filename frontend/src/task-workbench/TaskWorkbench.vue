@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useTaskSession } from "./session";
 import RpcTaskPage from "./RpcTaskPage.vue";
 import FiniteTaskPage from "./FiniteTaskPage.vue";
+import TaskHistoryWorkspace from "@/task-history/TaskHistoryWorkspace.vue";
 import "./workbench.css";
 const route = useRoute();
 const router = useRouter();
@@ -103,7 +104,14 @@ function selectTab(value: string | number) {
       :closable="false"
       ><el-button @click="session.loadDirectory">重读 Project 目录</el-button></el-alert
     >
-    <p v-if="!session.directory.value" class="raw-muted">
+    <TaskHistoryWorkspace
+      v-if="tab === 'finite' && route.query.view === 'history'"
+      :key="projectId"
+      :project-id="projectId"
+      kind="raw"
+      runtime-path="/task-workbench"
+    />
+    <p v-else-if="!session.directory.value" class="raw-muted">
       {{
         session.directory.loading ? "正在读取 Project 目录…" : "Project 目录不可用。"
       }}
@@ -120,6 +128,12 @@ function selectTab(value: string | number) {
       ><el-button @click="session.loadDirectory">刷新目录</el-button></el-alert
     >
     <template v-else>
+      <router-link
+        v-if="tab === 'finite'"
+        :to="{ query: { project: projectId, tab: 'finite', view: 'history' } }"
+        class="history-entry"
+        >历史任务</router-link
+      >
       <RpcTaskPage v-if="tab === 'rpc'" :key="project.projectId" :project="project" />
       <FiniteTaskPage v-else :key="project.projectId" :project="project" />
     </template>

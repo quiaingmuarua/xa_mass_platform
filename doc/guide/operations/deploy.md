@@ -249,9 +249,9 @@ Java Host 通过一个 JSON 选择能力、属性、身份 inventory 和数量�
 不要按进程名称批量结束其他 Java/ADB 进程。异常退出后，依据本次启动目录记录的
 PID、端口和 scope 检查残留。
 
-运行目录、Worker inventory、Batch Checks 配置和 Task archive 的保留不是同一件事。
-部署需保留配置与 archive 所在的实际路径；目录选择和任务保留规则见
-[Distribution archives](../../../distribution/server/README.md#finite-task-archives)。
+运行目录、Worker inventory、Batch Checks 配置和 Task history 的保留不是同一件事。
+部署需保留配置与 SQLite 历史所在的实际路径；目录选择和任务保留规则见
+[Distribution history](../../../distribution/server/README.md#finite-task-history)。
 只有明确拥有的临时 `test_*` scope 才可按仓库规定清理；不用全库删除来恢复服务。
 
 运行异常从[排障](troubleshooting.md)定位，不通过改调度参数、清空数据或更换请求 ID

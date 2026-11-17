@@ -27,11 +27,14 @@ public final class ProjectTaskQueryService {
     private final com.xa.mass.kernel.score.TaskItemScoreBandCore itemScores;
     private final com.xa.mass.kernel.task.TaskRuntime runtime;
     private final com.xa.mass.server.task.retention.TaskRetentionProperties retention;
+    private final String scope;
 
     public ProjectTaskQueryService(ProjectDirectory projects, TaskResourceCatalog tasks, TaskScoreBandCore scores, TaskDirectory directory, com.xa.mass.kernel.score.TaskItemScoreBandCore itemScores,
-            com.xa.mass.kernel.task.TaskRuntime runtime, com.xa.mass.server.task.retention.TaskRetentionProperties retention) {
+            com.xa.mass.kernel.task.TaskRuntime runtime, com.xa.mass.server.task.retention.TaskRetentionProperties retention,
+            com.xa.mass.kernel.redis.RedisKeyspace keyspace) {
         this.projects = projects; this.tasks = tasks; this.scores = scores; this.directory = directory; this.itemScores = itemScores;
         this.runtime = runtime; this.retention = retention;
+        this.scope = keyspace.base();
     }
 
     public ProjectTasks list(TaskCaller caller, String projectId, int limit, @Nullable String userId) {
@@ -130,9 +133,7 @@ public final class ProjectTaskQueryService {
     private com.xa.mass.server.task.retention.TaskRetentionService.Info retentionInfo(TaskDescriptor task,
             TaskScoreBandCore.TaskScoreState score, com.xa.mass.kernel.task.TaskRuntime.TaskDataState data) {
         if (task.idleDisposition() != com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE) return null;
-        var ended = score == null ? null : score.terminatedAtMillis();
-        return new com.xa.mass.server.task.retention.TaskRetentionService.Info(data.phase().name(), ended, data.frozenAtMillis(),
-                ended == null ? null : Math.addExact(ended, retention.retention().toMillis()));
+        return com.xa.mass.server.task.retention.TaskRetentionService.info(scope, task, score, data, retention);
     }
 
     private static ServerException unavailable(String operation, Throwable error) {
