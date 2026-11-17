@@ -25,7 +25,7 @@ class ProjectTaskQueryServiceTest {
     private final TaskScoreBandCore scores = mock(TaskScoreBandCore.class);
     private final TaskDirectory directory = mock(TaskDirectory.class);
     private final com.xa.mass.kernel.task.TaskRuntime runtime = com.xa.mass.server.testsupport.TaskRetentionFixtures.openRuntime();
-    private final ProjectTaskQueryService service = new ProjectTaskQueryService(projects, tasks, scores, directory, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class), runtime, com.xa.mass.server.testsupport.TaskRetentionFixtures.properties());
+    private final ProjectTaskQueryService service = new ProjectTaskQueryService(projects, tasks, scores, directory, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class), runtime, com.xa.mass.server.testsupport.TaskRetentionFixtures.properties(), new com.xa.mass.kernel.redis.RedisKeyspace("test_queries"));
 
     private TaskDescriptor task(String id, String project, long time, String user) {
         return new TaskDescriptor(id, "g", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "0", "maxRetryTimes", "3"),

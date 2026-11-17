@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 import statistics
+import tempfile
 import subprocess
 import threading
 import time
@@ -41,12 +44,17 @@ def export(base, path):
     size = lines = 0
     digest = hashlib.sha256()
     started = time.monotonic()
-    with urllib.request.urlopen(req, timeout=180) as response:
-        while chunk := response.read(65536):
-            size += len(chunk)
-            lines += chunk.count(b"\n")
-            digest.update(chunk)
-    return {"bytes": size, "lines": lines, "sha256": digest.hexdigest(), "seconds": time.monotonic() - started}
+    with tempfile.TemporaryFile() as saved:
+        with urllib.request.urlopen(req, timeout=180) as response:
+            while chunk := response.read(65536):
+                size += len(chunk)
+                lines += chunk.count(b"\n")
+                digest.update(chunk)
+                saved.write(chunk)
+        saved.seek(0)
+        # Result traversal order is not a contract. Preserve every row and its multiplicity.
+        canonical = hashlib.sha256(b"\n".join(sorted(line.rstrip(b"\r\n") for line in saved))).hexdigest()
+    return {"bytes": size, "lines": lines, "sha256": digest.hexdigest(), "canonicalSha256": canonical, "seconds": time.monotonic() - started}
 
 
 def snapshot(client, prefix, task):
@@ -57,14 +65,15 @@ def snapshot(client, prefix, task):
     return {"resources": rows, "bytes": sum(row["bytes"] for row in rows.values())}
 
 
-def archived_successes(folder):
+def archived_successes(database, history_id):
     count = 0
     digest = hashlib.sha256()
-    with (folder / "results.jsonl").open(encoding="utf-8") as records:
-        for line in records:
-            row = json.loads(line)
-            if row["result"]["code"] == "200":
-                value = {"messageId": row["messageId"], "opaqueResultPayload": row["result"]["opaqueResultPayload"]}
+    with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as connection:
+        for message_id, raw in connection.execute(
+                "SELECT message_id,result FROM task_history_rows WHERE history_id=? AND result IS NOT NULL ORDER BY message_id", (history_id,)):
+            result = json.loads(raw)
+            if result["code"] == "200":
+                value = {"messageId": message_id, "opaqueResultPayload": result["opaqueResultPayload"]}
                 digest.update((json.dumps(value, ensure_ascii=False, separators=(",", ":")) + os.linesep).encode())
                 count += 1
     return count, digest.hexdigest()
@@ -76,6 +85,7 @@ def main():
     parser.add_argument("--output", type=Path)
     parser.add_argument("--port", type=int, default=18720)
     parser.add_argument("--app-count", type=int, default=2000)
+    parser.add_argument("--redis-url", default="redis://127.0.0.1:6379/15")
     args = parser.parse_args()
     output = (args.output or REPO / "build" / ("finite-retention-" + uuid.uuid4().hex)).resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -94,7 +104,7 @@ def main():
             super().launch(name, command, env)
 
     run = RetentionPreview(1, args.port, root=args.root, output=output / "private",
-                           sandbox_root=output / "private/data/scenario-workers", app_count=args.app_count)
+                           sandbox_root=output / "private/data/scenario-workers", app_count=args.app_count, redis_url=args.redis_url)
     report = {"passed": False, "cases": [], "samples": [], "claim": "Finite storage lifecycle with simulated App Workers; no throughput SLA or RSS reclamation guarantee"}
     stop = threading.Event()
     monitor = None
@@ -179,21 +189,24 @@ def main():
                         "Payload hashes survived archive release")
                 case["counts"] = request(run.url, "/projects/app-checks/tasks:stats", [task])[task]
                 require(case["counts"]["total"] == case["countsBeforeFreeze"]["total"] == count, "Archive lost Item counts")
-                case["archivedJsonl"] = export(run.url, f"/tasks/{task}/results:export")
-                case["archivedCsv"] = export(run.url, f"/app-checks/tasks/{task}/results:export?filter=all")
+                history_id = outcome["retention"]["historyId"]
+                case["historyId"] = history_id
+                case["archivedJsonl"] = export(run.url, f"/storage/tasks/{history_id}/results:export")
+                case["archivedCsv"] = export(run.url, f"/storage/app-checks/tasks/{history_id}/results:export?filter=all")
                 if mode == "natural":
                     require(case["counts"] == case["countsBeforeFreeze"], "Completed Task counts changed")
                     for kind in ("Jsonl", "Csv"):
-                        require(case["live" + kind]["sha256"] == case["archived" + kind]["sha256"], "Archive changed completed export content")
-                view = request(run.url, f"/app-checks/tasks/{task}/results")
+                        require(case["live" + kind]["canonicalSha256"] == case["archived" + kind]["canonicalSha256"], "Archive changed completed export content")
+                view = request(run.url, f"/storage/app-checks/tasks/{history_id}/results")
                 require(len(view["results"]) <= 100, "Preview exceeded its bound")
-                folder = run.task_archives / hashlib.sha256(prefix.encode()).hexdigest() / hashlib.sha256(task.encode()).hexdigest()
-                manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
-                successes, raw_digest = archived_successes(folder)
+                stored = request(run.url, f"/storage/tasks/{history_id}")
+                require(stored["itemRows"] == count, "History lost input Items without Results")
+                successes, raw_digest = archived_successes(run.task_history, history_id)
                 require(case["archivedJsonl"]["sha256"] == raw_digest, "Raw export differs from frozen archive content")
                 require(case["archivedCsv"]["lines"] == successes + 1, "CSV lost valid App results")
                 require(request(run.url, "/projects/app-checks/tasks:stats", [task])[task] == case["counts"], "Frozen counts continued changing")
-                case["archive"] = {key: manifest[key] for key in ("records", "bytes", "sha256")}
+                case["archive"] = {key: stored[key] for key in ("itemRows", "resultRows", "publishedAtMillis", "expiresAtMillis")}
+                case["databaseBytes"] = sum(path.stat().st_size for path in run.task_history.parent.glob(run.task_history.name + "*"))
                 case["previewCount"], case["truncated"] = len(view["results"]), view["truncated"]
                 require(request(run.url, "/app-checks/tasks", body)["taskId"] == task, "Retained creation changed execution identity")
                 try:
@@ -221,8 +234,9 @@ def main():
             for case in report["cases"]:
                 task = case["taskId"]
                 require(snapshot(client, prefix, task)["bytes"] == 0, "Task resources survived purge")
-                folder = run.task_archives / hashlib.sha256(prefix.encode()).hexdigest() / hashlib.sha256(task.encode()).hexdigest()
-                require(not folder.exists(), "Archive survived purge")
+                stored = request(run.url, f"/storage/tasks/{case['historyId']}")
+                require(stored["taskId"] == task and stored["itemRows"] == case["count"], "Runtime purge lost retained history")
+                require(export(run.url, f"/storage/tasks/{case['historyId']}/results:export")["canonicalSha256"] == case["archivedJsonl"]["canonicalSha256"], "History export changed after Runtime purge")
                 new_task = request(run.url, "/app-checks/tasks", case["creation"])["taskId"]
                 require(new_task != task, "Purged request reused an old execution identity")
                 case["newTaskId"] = new_task

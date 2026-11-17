@@ -43,6 +43,7 @@ class ScenarioCompositionIntegrationTest {
         String profiles = preview ? "preview" : "default";
         var arguments = new ArrayList<>(List.of("--spring.profiles.active=" + profiles, "--server.port=" + port,
                 "--xa.mass.users.seed=classpath:users/proof-directory.json", "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
+                    "--xa.mass.task-retention.database-path=" + java.nio.file.Path.of("build", "task-history-fixtures", scope + ".sqlite").toAbsolutePath(),
                 "--spring.web.resources.static-locations=" + Path.of(System.getProperty("xa.mass.test.frontend")).toUri(),
                 "--logging.level.root=ERROR"));
         var storage = AppCheckConfigurationFixture.properties(10);

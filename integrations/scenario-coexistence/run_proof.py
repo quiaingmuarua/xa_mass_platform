@@ -972,6 +972,7 @@ def main():
     parser.add_argument("--root", type=Path, default=PREVIEW)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--port", type=int, default=18520)
+    parser.add_argument("--redis-url", default="redis://127.0.0.1:6379/15")
     args = parser.parse_args()
     if args.build:
         preview.build()
@@ -993,7 +994,7 @@ def main():
                                          for properties in world["demo-sim"][:app_count])
     materialize_inventory(sandbox_root, world)
     run = preview.Preview(sum(counts), args.port, root=args.root, output=output / "private", sandbox_root=sandbox_root, app_count=app_count,
-                          message_content_mode="text" if args.scenario == "messages-send-100k" else "lab-json")
+                          message_content_mode="text" if args.scenario == "messages-send-100k" else "lab-json", redis_url=args.redis_url)
     result = execute_scenario(run, args.scenario, output)
     (output / "summary.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2), flush=True)

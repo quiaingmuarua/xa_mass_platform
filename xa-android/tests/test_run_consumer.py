@@ -181,7 +181,7 @@ class ConsumerArchiveTest(unittest.TestCase):
         state.write_text('{}')
         self.assertEqual(receipt, self.prepare())
         command = consumer.server_command(receipt, "profile_example")
-        self.assertIn("--xa.mass.task-retention.directory=" + str(self.root / "installation/data/task-archives"),
+        self.assertIn("--xa.mass.task-retention.database-path=" + str(self.root / "installation/data/task-history.sqlite"),
                       command)
 
 

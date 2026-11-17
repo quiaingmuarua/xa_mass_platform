@@ -166,6 +166,7 @@ class MessageFailureIntegrationTest {
             application = app;
             arguments = AppCheckConfigurationFixture.arguments(10, "--spring.profiles.active=preview", "--server.port=" + port,
                     "--xa.mass.users.seed=classpath:users/proof-directory.json", "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
+                    "--xa.mass.task-retention.database-path=" + java.nio.file.Path.of("build", "task-history-fixtures", scope + ".sqlite").toAbsolutePath(),
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                     "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,
                     "--xa.mass.worker-endpoints.endpoints.products-websocket.public-uri=ws://127.0.0.1:" + adapter + "/api/v1/worker-delivery/websocket",

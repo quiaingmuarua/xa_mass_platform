@@ -302,7 +302,7 @@ class AppChecksIntegrationTest {
                     savedCsv.put(taskId, world.post("/api/v1/app-checks/tasks/" + taskId + "/results:export", "", "application/json").body());
                 Path archives = root.resolve("archives");
                 world.restart("--xa.mass.task-retention.enabled=true", "--xa.mass.task-retention.grace=0ms",
-                        "--xa.mass.task-retention.directory=" + archives.toAbsolutePath());
+                        "--xa.mass.task-retention.database-path=" + archives.resolve("history.sqlite").toAbsolutePath());
                 for (String taskId : List.of(id, primeId)) {
                     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
                     Object phase;
@@ -312,8 +312,9 @@ class AppChecksIntegrationTest {
                         Thread.sleep(20);
                     } while (System.nanoTime() < deadline);
                     assertThat(phase).isEqualTo("RELEASED");
-                    assertThat(rows(world.detail(taskId))).containsExactlyInAnyOrderElementsOf(rows(taskId.equals(id) ? detail : primeDetail));
-                    assertThat(world.post("/api/v1/app-checks/tasks/" + taskId + "/results:export", "", "application/json").body().lines().toList())
+                    String historyId = (String) ((Map<?,?>) world.get("/api/v1/projects/app-checks/tasks/" + taskId).get("retention")).get("historyId");
+                    assertThat(rows(world.get("/api/v1/storage/app-checks/tasks/" + historyId + "/results"))).containsExactlyInAnyOrderElementsOf(rows(taskId.equals(id) ? detail : primeDetail));
+                    assertThat(world.post("/api/v1/storage/app-checks/tasks/" + historyId + "/results:export", "", "application/json").body().lines().toList())
                             .containsExactlyInAnyOrderElementsOf(savedCsv.get(taskId).lines().toList());
                 }
             } finally {
@@ -786,7 +787,7 @@ class AppChecksIntegrationTest {
             }
             var archives = java.nio.file.Files.createTempDirectory(Path.of("build"), "carrier-archives-");
             world.restart("--xa.mass.task-retention.enabled=true", "--xa.mass.task-retention.grace=0ms",
-                    "--xa.mass.task-retention.directory=" + archives.toAbsolutePath());
+                    "--xa.mass.task-retention.database-path=" + archives.resolve("history.sqlite").toAbsolutePath());
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
             Object phase;
             do {
@@ -796,13 +797,17 @@ class AppChecksIntegrationTest {
                 Thread.sleep(20);
             } while (System.nanoTime() < deadline);
             assertThat(phase).isEqualTo("RELEASED");
-            assertThat(rows(world.detail(id))).containsExactlyInAnyOrderElementsOf(rows(before));
-            assertThat(world.post("/api/v1/app-checks/tasks/" + id + "/results:export", "", "application/json").body().lines().toList())
+            String historyId = (String) ((Map<?,?>) world.get("/api/v1/projects/app-checks/tasks/" + id).get("retention")).get("historyId");
+            assertThat(rows(world.get("/api/v1/storage/app-checks/tasks/" + historyId + "/results"))).containsExactlyInAnyOrderElementsOf(rows(before));
+            assertThat(world.post("/api/v1/storage/app-checks/tasks/" + historyId + "/results:export", "", "application/json").body().lines().toList())
                     .containsExactlyInAnyOrderElementsOf(csv.lines().toList());
             assertThat(world.post("/api/v1/tasks/" + id + "/results:load", "[\"known\"]", "application/json").statusCode()).isEqualTo(400);
             var purged = world.context.getBean(com.xa.mass.server.task.retention.TaskRetentionService.class)
                     .maintain(id, System.currentTimeMillis() + TimeUnit.DAYS.toMillis(8));
             assertThat(purged.retention().phase()).isEqualTo("PURGED");
+            assertThat(rows(world.get("/api/v1/storage/app-checks/tasks/" + historyId + "/results"))).containsExactlyInAnyOrderElementsOf(rows(before));
+            assertThat(world.post("/api/v1/storage/app-checks/tasks/" + historyId + "/results:export", "", "application/json").body().lines().toList())
+                    .containsExactlyInAnyOrderElementsOf(csv.lines().toList());
             var missing = world.http.send(world.request("/api/v1/app-checks/tasks/" + id + "/results", "proof", "admin").GET().build(),
                     HttpResponse.BodyHandlers.ofString());
             assertThat(missing.statusCode()).isEqualTo(400);
@@ -899,6 +904,7 @@ class AppChecksIntegrationTest {
             }
             arguments = new String[] { "--spring.profiles.active=preview", "--server.port=" + port,
                     "--xa.mass.users.seed=" + users.resolve("users.json").toUri(), "--xa.mass.redis.url=" + redisUrl, "--xa.mass.redis.scope=" + scope,
+                    "--xa.mass.task-retention.database-path=" + java.nio.file.Path.of("build", "task-history-fixtures", scope + ".sqlite").toAbsolutePath(),
                     "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,
                     "--xa.mass.worker-delivery.adapter.instances.products-websocket.listen-port=" + adapter,
                     "--xa.mass.worker-endpoints.endpoints.products-websocket.public-uri=ws://127.0.0.1:" + adapter + "/api/v1/worker-delivery/websocket",
@@ -1061,7 +1067,12 @@ class AppChecksIntegrationTest {
         }
         void restart(String... overrides) {
             context.close();
-            var next = new ArrayList<>(List.of(arguments)); next.addAll(List.of(overrides));
+            var next = new ArrayList<>(List.of(arguments));
+            for (String override : overrides) {
+                String prefix = override.split("=", 2)[0] + "=";
+                next.removeIf(value -> value.startsWith(prefix));
+                next.add(override);
+            }
             arguments = next.toArray(String[]::new);
             context = application.run(arguments);
         }

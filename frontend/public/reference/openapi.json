@@ -354,6 +354,13 @@
             "format" : "int64",
             "type" : "integer"
           },
+          "historyExpiresAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "historyId" : {
+            "type" : "string"
+          },
           "phase" : {
             "type" : "string"
           },
@@ -370,6 +377,34 @@
             "type" : "string"
           },
           "userId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PageTaskHistoryEntry" : {
+        "properties" : {
+          "entries" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TaskHistoryEntry"
+            },
+            "type" : "array"
+          },
+          "nextCursor" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PageTaskHistoryItem" : {
+        "properties" : {
+          "entries" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TaskHistoryItem"
+            },
+            "type" : "array"
+          },
+          "nextCursor" : {
             "type" : "string"
           }
         },
@@ -521,6 +556,7 @@
         },
         "type" : "object"
       },
+      "StreamingResponseBody" : { },
       "TaskApproveRequest" : {
         "properties" : {
           "credits" : {
@@ -530,6 +566,14 @@
             "format" : "int64",
             "minimum" : 0,
             "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "TaskCaller" : {
+        "properties" : {
+          "service" : {
+            "type" : "boolean"
           }
         },
         "type" : "object"
@@ -614,6 +658,71 @@
           }
         },
         "required" : [ "expectedAmount", "expectedSeedCount", "requestId" ],
+        "type" : "object"
+      },
+      "TaskHistoryEntry" : {
+        "properties" : {
+          "counts" : {
+            "$ref" : "#/components/schemas/TaskItemScoreCounts"
+          },
+          "createdAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "expiresAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "frozenAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "historyId" : {
+            "type" : "string"
+          },
+          "itemRows" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "publishedAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "resultRows" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "scoreBand" : {
+            "type" : "string"
+          },
+          "task" : {
+            "$ref" : "#/components/schemas/TaskView"
+          },
+          "taskId" : {
+            "type" : "string"
+          },
+          "terminatedAtMillis" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "TaskHistoryItem" : {
+        "properties" : {
+          "item" : {
+            "$ref" : "#/components/schemas/TaskItem"
+          },
+          "messageId" : {
+            "type" : "string"
+          },
+          "result" : {
+            "$ref" : "#/components/schemas/TaskItemResultResponse"
+          },
+          "state" : {
+            "$ref" : "#/components/schemas/TaskItemStateResponse"
+          }
+        },
         "type" : "object"
       },
       "TaskItem" : {
@@ -1461,7 +1570,7 @@
     },
     "/api/v1/projects" : {
       "get" : {
-        "operationId" : "list",
+        "operationId" : "list_1",
         "responses" : {
           "200" : {
             "content" : {
@@ -1526,7 +1635,7 @@
     },
     "/api/v1/projects/{projectId}" : {
       "get" : {
-        "operationId" : "get_1",
+        "operationId" : "get_2",
         "parameters" : [ {
           "in" : "path",
           "name" : "projectId",
@@ -2490,6 +2599,438 @@
         } ],
         "summary" : "Preview a bounded WorkerGroup sample",
         "tags" : [ "Runtime View" ]
+      }
+    },
+    "/api/v1/storage/tasks" : {
+      "get" : {
+        "description" : "Storage only. Authorization filters precede cursor pagination; no Runtime fallback.",
+        "operationId" : "list",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "caller",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/TaskCaller"
+          }
+        }, {
+          "in" : "query",
+          "name" : "projectId",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "userId",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "taskId",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "cursor",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageTaskHistoryEntry"
+                }
+              }
+            },
+            "description" : "Saved history read"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid query or history is missing or expired"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "History storage unavailable"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "List immutable finite Task history in the current scope",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/storage/tasks/{historyId}" : {
+      "get" : {
+        "operationId" : "get_1",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "caller",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/TaskCaller"
+          }
+        }, {
+          "in" : "path",
+          "name" : "historyId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskHistoryEntry"
+                }
+              }
+            },
+            "description" : "Saved history read"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid query or history is missing or expired"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "History storage unavailable"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Read a saved finite Task",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/storage/tasks/{historyId}/items" : {
+      "get" : {
+        "operationId" : "items",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "caller",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/TaskCaller"
+          }
+        }, {
+          "in" : "path",
+          "name" : "historyId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "cursor",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageTaskHistoryItem"
+                }
+              }
+            },
+            "description" : "Saved history read"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid query or history is missing or expired"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "History storage unavailable"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Page saved Item inputs, independent states and observed Results",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/storage/tasks/{historyId}/results" : {
+      "get" : {
+        "operationId" : "preview",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "caller",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/TaskCaller"
+          }
+        }, {
+          "in" : "path",
+          "name" : "historyId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultPreview"
+                }
+              }
+            },
+            "description" : "Saved history read"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid query or history is missing or expired"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "History storage unavailable"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Preview at most 100 observed historical Results",
+        "tags" : [ "Tasks" ]
+      }
+    },
+    "/api/v1/storage/tasks/{historyId}/results:export" : {
+      "post" : {
+        "operationId" : "export",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "caller",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/TaskCaller"
+          }
+        }, {
+          "in" : "path",
+          "name" : "historyId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/StreamingResponseBody"
+                }
+              }
+            },
+            "description" : "Saved history read"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid query or history is missing or expired"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "History storage unavailable"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Export every successful historical Result as JSONL",
+        "tags" : [ "Tasks" ]
       }
     },
     "/api/v1/tasks" : {

@@ -1,13 +1,34 @@
 <script setup lang="ts">
 import { useMessageAvailability } from "./availability";
 import MessageTaskWorkspace from "./MessageTaskWorkspace.vue";
+import { useRoute } from "vue-router";
+import TaskHistoryWorkspace from "@/task-history/TaskHistoryWorkspace.vue";
+const route = useRoute();
 const availability = useMessageAvailability();
 const state = availability.state;
 </script>
 
 <template>
-  <MessageTaskWorkspace v-if="state.status === 'demo' || state.status === 'enabled'" />
-  <section v-else class="message-unavailable" aria-live="polite">
+  <TaskHistoryWorkspace
+    v-if="route.query.view === 'history'"
+    project-id="messages"
+    kind="messages"
+    runtime-path="/messages"
+  />
+  <router-link v-else to="/messages?view=history" class="history-entry"
+    >历史任务</router-link
+  >
+  <MessageTaskWorkspace
+    v-if="
+      route.query.view !== 'history' &&
+      (state.status === 'demo' || state.status === 'enabled')
+    "
+  />
+  <section
+    v-else-if="route.query.view !== 'history'"
+    class="message-unavailable"
+    aria-live="polite"
+  >
     <h1>Messages</h1>
     <p v-if="state.status === 'loading'">正在确认 Messages 可用性…</p>
     <p v-else-if="state.status === 'disabled'">当前实例未启用消息触达场景。</p>

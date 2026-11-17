@@ -45,13 +45,18 @@ const fresh = computed(
 watch(
   () => [taskId.value, fresh.value],
   () => {
-    if (fresh.value && workspace.resultsKey.value !== projectId + "/" + taskId.value)
+    if (
+      fresh.value &&
+      detail.value?.retention?.phase !== "RELEASED" &&
+      workspace.resultsKey.value !== projectId + "/" + taskId.value
+    )
       void workspace.loadResults(projectId, taskId.value);
   }
 );
 function refreshResults() {
   if (
     detail.value?.task?.projectId === projectId &&
+    detail.value?.retention?.phase !== "RELEASED" &&
     detail.value.taskId === taskId.value
   )
     void workspace.loadResults(projectId, taskId.value);
@@ -454,7 +459,10 @@ function returnSubmission() {
         >
         <TaskResultExport :key="detail.taskId" :task="detail" :fresh="fresh" />
         <RawTaskResults
-          v-if="workspace.resultsKey.value === projectId + '/' + taskId"
+          v-if="
+            detail.retention?.phase !== 'RELEASED' &&
+            workspace.resultsKey.value === projectId + '/' + taskId
+          "
           :key="detail.taskId"
           :state="workspace.results.value"
           @refresh="refreshResults"

@@ -27,7 +27,7 @@ java -jar (Join-Path $runtime 'lib/xa-mass-server-jvm-<version>.jar') `
   --xa.mass.worker-delivery.adapter.instances.runtime-websocket.listen-port=19183 `
   --xa.mass.worker-endpoints.endpoints.runtime-websocket.public-uri=ws://127.0.0.1:19183/api/v1/worker-delivery/websocket `
   --xa.mass.redis.scope=profile_android_messages `
-  "--xa.mass.task-retention.directory=<absolute-data-directory>/task-archives"
+  "--xa.mass.task-retention.database-path=<absolute-data-directory>/task-history.sqlite"
 ```
 
 The source consumer accepts the same two files with

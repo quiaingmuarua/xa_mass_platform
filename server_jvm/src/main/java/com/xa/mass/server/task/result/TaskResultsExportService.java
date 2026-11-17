@@ -11,7 +11,6 @@ import com.xa.mass.server.operation.OperationGuard;
 import com.xa.mass.server.task.TaskDataService.ResultEntry;
 import com.xa.mass.server.task.TaskDataService.ResultPreview;
 import com.xa.mass.server.task.access.TaskCaller;
-import com.xa.mass.server.task.retention.TaskResultArchive;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -21,7 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
-/** Common sequential result view and export across live Redis and frozen archives. */
+/** Runtime-only sequential Result view and export. History has a separate API and service. */
 @Service
 public final class TaskResultsExportService {
     private final TaskResourceCatalog taskCatalog;
@@ -30,17 +29,16 @@ public final class TaskResultsExportService {
     private final ObjectMapper mapper;
     private final Path temporaryDirectory;
     private final OperationGuard operations;
-    private final TaskResultArchive archive;
 
     @Autowired
     public TaskResultsExportService(TaskResourceCatalog catalog, TaskScoreBandCore scores, TaskRuntime runtime,
-            ObjectMapper mapper, OperationGuard operations, TaskResultArchive archive) {
-        this(catalog, scores, runtime, mapper, Path.of(System.getProperty("java.io.tmpdir")), operations, archive);
+            ObjectMapper mapper, OperationGuard operations) {
+        this(catalog, scores, runtime, mapper, Path.of(System.getProperty("java.io.tmpdir")), operations);
     }
     TaskResultsExportService(TaskResourceCatalog catalog, TaskScoreBandCore scores, TaskRuntime runtime,
-            ObjectMapper mapper, Path temporaryDirectory, OperationGuard operations, TaskResultArchive archive) {
+            ObjectMapper mapper, Path temporaryDirectory, OperationGuard operations) {
         this.taskCatalog = catalog; this.taskScores = scores; this.taskRuntime = runtime;
-        this.mapper = mapper; this.temporaryDirectory = temporaryDirectory; this.operations = operations; this.archive = archive;
+        this.mapper = mapper; this.temporaryDirectory = temporaryDirectory; this.operations = operations;
     }
 
     public TaskResultsExport export(TaskCaller caller, String taskId) {
@@ -75,11 +73,10 @@ public final class TaskResultsExportService {
             requireTask(caller, taskId, true);
             var before = requireReadableState(taskId);
             try {
-                if (before.phase() == TaskDataPhase.RELEASED) archive.forEach(taskId, consumer);
-                else scanLive(taskId, consumer);
+                scanLive(taskId, consumer);
                 requireUnchanged(taskId, before);
                 return null;
-            } catch (IOException | RuntimeException failure) {
+            } catch (RuntimeException failure) {
                 if (failure instanceof ServerException known) throw known;
                 throw unavailable("read", failure);
             }
@@ -91,22 +88,15 @@ public final class TaskResultsExportService {
             requireTask(caller, taskId, false);
             var before = requireReadableState(taskId);
             try {
-                List<TaskResultRecord> rows;
-                boolean truncated;
-                if (before.phase() == TaskDataPhase.RELEASED) {
-                    rows = archive.preview(taskId, 101);
-                    truncated = rows.size() > 100;
-                } else {
-                    var page = taskRuntime.scanTaskItemResults(taskId, "0", 100);
-                    var ids = page.results().keySet().stream().limit(100).toList();
-                    var items = ids.isEmpty() ? Map.<String, TaskItem>of() : taskRuntime.loadTaskItems(taskId, ids);
-                    rows = ids.stream().map(id -> new TaskResultRecord(id, page.results().get(id), items.get(id))).toList();
-                    truncated = !page.nextCursor().equals("0") || page.results().size() > 100;
-                }
+                var page = taskRuntime.scanTaskItemResults(taskId, "0", 100);
+                var ids = page.results().keySet().stream().limit(100).toList();
+                var items = ids.isEmpty() ? Map.<String, TaskItem>of() : taskRuntime.loadTaskItems(taskId, ids);
+                var rows = ids.stream().map(id -> new TaskResultRecord(id, page.results().get(id), items.get(id))).toList();
+                boolean truncated = !page.nextCursor().equals("0") || page.results().size() > 100;
                 requireUnchanged(taskId, before);
                 return new ResultPreview(rows.stream().limit(100).map(row -> new ResultEntry(row.messageId(), row.item(),
                         TaskItemResultResponse.from(row.result()))).toList(), truncated);
-            } catch (IOException | RuntimeException failure) {
+            } catch (RuntimeException failure) {
                 if (failure instanceof ServerException known) throw known;
                 throw unavailable("preview", failure);
             }
@@ -153,6 +143,8 @@ public final class TaskResultsExportService {
             if (state == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskResults.read", null, null);
             if (state.phase() == TaskDataPhase.PURGING)
                 throw new ServerException(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, "taskResults.read", null, null);
+            if (state.phase() == TaskDataPhase.RELEASED)
+                throw new ServerException(ServerErrorCode.TASK_RESULTS_ARCHIVED, "taskResults.read", "Read the explicit Task history API", null);
             return state;
         } catch (ServerException known) { throw known;
         } catch (RuntimeException unavailable) { throw unavailable("phase", unavailable); }

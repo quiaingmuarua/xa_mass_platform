@@ -44,6 +44,7 @@ const labels: Record<TaskAction, string> = {
 };
 function unavailable(action: TaskAction) {
   if (action === "preview") return "";
+  if (props.task.retention?.phase === "RELEASED") return "请从历史任务入口查看和导出";
   if (action === "approve" && !props.task.totalCount) return "请先导入种子";
   const supported =
     action === "import"

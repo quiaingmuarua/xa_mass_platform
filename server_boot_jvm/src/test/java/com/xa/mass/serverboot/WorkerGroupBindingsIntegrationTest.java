@@ -47,7 +47,8 @@ class WorkerGroupBindingsIntegrationTest {
         groups.put(GROUP, Map.of("attributes", Map.of(), "eventCodes", List.of(EVENT, OTHER_EVENT)));
         var args = new ArrayList<>(List.of("--spring.profiles.active=" + (scenario ? "preview" : "default"),
                 "--server.port=" + serverPort, "--logging.level.root=ERROR", "--xa.mass.redis.url=" + redis,
-                "--xa.mass.redis.scope=" + scope, "--xa.mass.users.seed=classpath:users/proof-directory.json",
+                "--xa.mass.redis.scope=" + scope,
+                    "--xa.mass.task-retention.database-path=" + java.nio.file.Path.of("build", "task-history-fixtures", scope + ".sqlite").toAbsolutePath(), "--xa.mass.users.seed=classpath:users/proof-directory.json",
                 "--xa.mass.task-retention.enabled=false",
                 "--xa.mass.worker-assembly.group-config-json=" + Jsons.toJson(groups),
                 "--xa.mass.worker-delivery.adapter.remote-base-url=" + base,

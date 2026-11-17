@@ -77,6 +77,7 @@ class BatchChecksConsumerIntegrationTest {
         int port; try (var socket = new ServerSocket(0)) { port = socket.getLocalPort(); }
         var args = new ArrayList<>(List.of("--spring.profiles.active=consumer", "--logging.level.root=ERROR",
                 "--xa.mass.redis.url=" + redis, "--xa.mass.redis.scope=" + scope,
+                    "--xa.mass.task-retention.database-path=" + java.nio.file.Path.of("build", "task-history-fixtures", scope + ".sqlite").toAbsolutePath(),
                 "--xa.mass.users.seed=classpath:users/development-directory.json",
                 "--xa.mass.kernel-pacer.enabled=false", "--xa.mass.task-retention.enabled=false",
                 "--xa.mass.worker-delivery.adapter.instances.runtime-websocket.listen-port=" + port,

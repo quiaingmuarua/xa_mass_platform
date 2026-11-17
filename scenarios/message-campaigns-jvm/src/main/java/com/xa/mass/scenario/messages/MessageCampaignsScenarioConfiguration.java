@@ -13,7 +13,7 @@ import static com.xa.mass.scenario.messages.MessageWorkerSupply.*;
 import org.springframework.context.annotation.*;
 
 @Configuration(proxyBeanMethods = false)
-@Import(MessageController.class)
+@Import({MessageController.class, MessageHistoryController.class})
 @EnableConfigurationProperties(MessageScenarioProperties.class)
 public class MessageCampaignsScenarioConfiguration {
     @Bean

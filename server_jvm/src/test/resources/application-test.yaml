@@ -9,6 +9,9 @@ spring:
 
 xa:
   mass:
+    task-retention:
+      enabled: false
+      database-path: ./build/task-history-fixtures/context-${random.uuid}.sqlite
     redis:
       # Assembly contract tests must not depend on a locally running Redis.
       url: redis://127.0.0.1:1/15

@@ -6,7 +6,9 @@ export const taskRetentionSchema = z
     phase: z.enum(["OPEN", "FROZEN", "RELEASED", "PURGING"]),
     terminatedAtMillis: z.number().int().positive().nullable(),
     frozenAtMillis: z.number().int().positive().nullable(),
-    expiresAtMillis: z.number().int().positive().nullable()
+    expiresAtMillis: z.number().int().positive().nullable(),
+    historyId: z.string().min(1).nullable(),
+    historyExpiresAtMillis: z.number().int().positive().nullable()
   })
   .strict();
 export type TaskRetention = z.infer<typeof taskRetentionSchema>;
@@ -38,11 +40,15 @@ export class MockTaskRetention {
       phase: "OPEN",
       terminatedAtMillis: null,
       frozenAtMillis: null,
-      expiresAtMillis: null
+      expiresAtMillis: null,
+      historyId: null,
+      historyExpiresAtMillis: null
     };
     if (task.state === "terminal" && task.retention.terminatedAtMillis === null) {
       task.retention.terminatedAtMillis = this.now();
       task.retention.expiresAtMillis = task.retention.terminatedAtMillis + 7 * 86400000;
+      task.retention.historyExpiresAtMillis =
+        task.retention.terminatedAtMillis + 30 * 86400000;
     }
   }
 
@@ -51,6 +57,7 @@ export class MockTaskRetention {
     const info = task.retention;
     if (!info || info.terminatedAtMillis === null) return "unchanged";
     if (this.now() >= info.expiresAtMillis!) {
+      info.frozenAtMillis ??= this.now();
       info.phase = "PURGING";
       return "purged";
     }

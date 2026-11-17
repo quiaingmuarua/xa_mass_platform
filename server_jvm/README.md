@@ -505,68 +505,95 @@ latest-result ordering nor Task progress. Terminal successful JSONL export remai
 independent and complete; neither path applies Scenario business interpretation.
 
 TaskResultsExportService supplies one sequential Result/Input view from Redis or
-archive to common export and Scenario CSV. Scenarios do not read Redis or archive
+Runtime Results to common export and Scenario CSV. Separate Storage readers supply saved history. Scenarios do not read Redis or database
 paths. No observation scans for substitute identities.
 
 ### Finite Task retention
 
-Boot configures `xa.mass.task-retention`: grace=1h, retention=7d, interval=1h and
-an archive directory separate from temporary downloads. Retention is enabled on
-the configured maintenance instance, runs once at startup, and then uses one
-fixed-delay executor. All thresholds derive from first termination time. Actual
-freeze/deletion occurs on an eligible pass; repeated close does not renew retention.
-RPC and SMS shared Tasks are excluded by disposition.
+Server owns immutable finite Task history in SQLite and its retention policy. Kernel
+continues to own the OPEN → FROZEN → RELEASED → PURGING fences and exact resource
+operations. History never restores execution, schedules work or reconciles independent
+Item Score/Result observations. RPC and SMS shared Tasks remain excluded by disposition.
 
-TaskRetentionService first scans expired Tasks, then archive-eligible Tasks, using
-bounded keyset pages of the existing Score index. Per-Task failures do not block
-subsequent identities. The traversal window is fixed at pass start, while each
-Task rechecks the current time before acting; a Task expiring during traversal
-goes directly to deletion. It freezes through Kernel, publishes immutable UTF-8 JSONL
-and a manifest atomically, and only then releases Redis inputs and Results. The
-archive stores each observed success/failure with its original Item association,
-including content whose independent Score is still ACTIVE. There is no random
-access index, payload-wide heap load, execution restore or additional statistics
-store. Scan deduplication retains message IDs and is not constant-memory.
+`xa.mass.task-retention` uses grace=1h, retention=7d, history-retention=30d,
+interval=1h and database-path=./data/task-history.sqlite. Require
+0 <= grace < retention <= history-retention and a positive interval. All deadlines
+start at the Task's first termination; reads, repeated close and retries do not renew them.
+The existing single maintenance executor runs at startup and at fixed delay. There
+is one maintenance instance per scope; this slice supports a local database and one
+Runtime writer, without distributed coordination.
 
-Files live under the configured root, SHA-256(scope base), SHA-256(Task ID).
-Pending directories are restart-retryable; a valid published archive is reused.
-The manifest records format, descriptor, freeze time, count, size and checksum.
-Readers verify file integrity before returning archived content. Verification
-reads the file sequentially even for bounded previews; no verification cache is
-introduced. Missing/corrupt archives are unavailable, never an empty-success view.
+The publisher freezes through Kernel, traverses both the Item and Result HASHes,
+and point-reads independent Item states in batches of at most 100. HSCAN COUNT remains
+a hint, with duplicate identities checked by SQL uniqueness. History retains every
+saved input, observed Result and their independent states, including inputs without
+Results and Results with missing input. Task counts come from the Owner, not from row
+counts. No absent Result becomes a business answer or a fabricated failure.
 
-After release, list/detail, statistics and Item states remain available. Their
-common Task entry includes retention phase, terminatedAtMillis, frozenAtMillis
-and expiresAtMillis. Previews keep their 100-row/truncated contract; raw successful
-JSONL and App Checks CSV retain their formats. Point Result/Item reads after
-release return `400/12014`, directing callers to preview/export. All access checks
-precede file reads. Reads crossing a data-phase change are rejected rather than
-returning a partial view. These remain independent observations, not an atomic
-execution snapshot or execution history.
+Pending SQL batches are invisible. After complete traversal and an unchanged frozen
+phase, a short transaction publishes the snapshot; only then may Server release Redis
+Items and Results. Publication retries retain the scope/Task/freeze-derived historyId,
+compare existing content and reuse confirmed publication. A new execution with a reused
+Task ID cannot overwrite the prior history. SQL transactions never span Redis reads.
 
-At expiry, PURGING prevents new application reads or directory confirmation with
-`400/12015` (Task cleanup is in progress). Creation retries return the same explicit
-rejection until association removal, without reopening or reporting an unknown submission. The
-service deletes archive/pending files and Kernel payloads/Item Score, removes its
-Project membership, conditionally removes the creation association, then asks
-Kernel to atomically delete descriptor and final Score membership. The descriptor
-retains cleanup context until that last operation. Failure preserves retry state;
-unknown completion is reconciled idempotently. Expired Tasks can be purged without
-a successful archive, and a retried old purge cannot remove a newer association.
-Shared Worker, Pool, queue and other Task resources are untouched.
+At 7d, Server performs the existing exact Runtime purge: payloads/Item Score, Project
+membership, Task credit-start intent and conditional creation association, then descriptor
+and terminal Score membership. If history is still within its retention window, complete
+publication is required first. Failure defers that Task without blocking other identities.
+At 30d, missing history is no longer backfilled and Runtime leftovers may be purged.
+The database expiry index deletes published and pending history in bounded batches,
+including old scopes within this database; it needs no Redis lookup or keyspace scan.
+Expired history is invisible before physical removal. No permanent tombstone is retained.
 
-`POST /api/v1/tasks/{taskId}/retention:run` requires `tasks.retention.manage`
-(default admin) and uses the same use case. It cannot bypass age thresholds; a
-completed purge returns phase PURGED, which is not a persisted Task phase. There
-is no global job API or forced-delete endpoint. One maintenance instance per
-scope is required; API instances must share the archive storage. Task admission
-continues to use the existing instance-local OperationGuard, without distributed
-transactions or leader election. Scheduler shutdown precedes Redis owner closure.
+`POST /api/v1/tasks/{taskId}/retention:run` retains its admin permission and age checks;
+it cannot force early deletion. Runtime list/detail/statistics remain available until
+Runtime purge. Retention metadata includes historyId and historyExpiresAtMillis alongside
+the existing phase, termination/freeze time and Runtime expiresAtMillis. FROZEN identifies
+a publication in progress; RELEASED confirms the history handoff. Runtime Result preview,
+export and point payload reads return `400/12014` after release; PURGING remains `400/12015`.
+Runtime queries never read SQLite. Final Runtime purge retains its ordinary not-found
+behavior instead of transparently searching history.
 
-Use a new scope for this cutover. No old -1 terminal decoding, missing-phase
-fallback, deterministic-ID alias, historical association backfill or migration
-is provided. Final purge removes the Task from ordinary discovery and known-ID
-reads return the existing not-found contract.
+### Finite Task history API
+
+`/api/v1/storage/tasks` is an independent, read-only current-scope history API. List
+filters are Project, creator and exact Task ID; cursor pages default to 20 and allow
+at most 100, ordered by termination time and historyId. Project and ownership predicates
+apply before LIMIT. Existing TaskCaller checks also apply to saved descriptors on point
+reads; no live Task, Project catalog or Group lookup is needed. Unattributed Tasks remain
+admin-only, and known IDs cannot cross scopes. An unfiltered Project listing is admin-only.
+Item cursors use a database-owned per-history ordinal, avoiding an additional URL-length
+limit on valid message IDs. This coordinate is not an execution sequence or a Score.
+
+`/{historyId}` reads the saved Task/counts; `/items` pages inputs, independent states and
+nullable Results; `/results` previews at most 100 observed Results; POST
+`/results:export` exports every successful raw Result as JSONL. Missing/expired history
+uses the Task not-found rejection, invalid queries use the Task input rejection, denied
+access is 403, and storage failures are 503, never empty-success responses.
+
+Scenario Storage controllers reuse pure interpretation over the saved descriptor and
+raw rows. Batch Checks owns `/api/v1/storage/app-checks/tasks/{historyId}/results` and
+`results:export`; Messages owns `/api/v1/storage/messages/tasks/{historyId}/results`.
+They do not silently replace Runtime reads. Invalid or unsupported business contracts
+cannot hide the separately readable raw history. CSV preserves grouped seed expansion
+and excludes failures/content errors; raw JSONL remains one successful Item Result per row.
+
+SQLite enables WAL, foreign keys, FULL synchronization and a finite busy timeout. A minimal
+schema version is checked at startup; SQL and JDBC remain within the Server history Store.
+Queries/exports authorize and read within one database snapshot so concurrent expiry cannot
+return a partial view. Downloads are prepared in temporary files, outside HTTP streaming
+transactions, and deleted after transfer or preparation failure. No per-Task VACUUM runs;
+deleted pages are reusable and database file size need not immediately decrease.
+
+For a consistent operator backup, stop the Runtime, confirm it is stopped, and copy the
+database together with any remaining `-wal`/`-shm` files. Never delete a live WAL as a log.
+Optional offline VACUUM needs sufficient free disk and is an explicit operation, not an
+Agent loop. Task expiry does not retire users, credit ledgers, Workers or logs.
+
+This cutover uses a new scope and database. Old JSONL/manifest archives and the old directory
+configuration are not read or migrated; user data is not automatically deleted. Payload JSON
+is stored without database-specific JSON query semantics. No PostgreSQL implementation or
+general Storage framework is introduced.
 
 ### Managed Task Call
 

@@ -322,12 +322,18 @@ the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview
 owns the distinction between CI evidence, a published Release and actual GCP
 deployment acceptance. The gateway example does not decide when to deploy.
 
-## Finite Task archives
+## Finite Task history
 
-The Runtime consumes Boot's finite Task retention configuration and Server-owned
-archive files. Production keeps the configured archive directory across restarts;
-API readers of one scope share that storage. The Preview launcher instead supplies
-one private root for each generated test scope and cleans it on normal shutdown.
-See [Preview archives](PREVIEW.md#task-result-archives) and
-[Server retention](../../server_jvm/README.md#finite-task-retention). Packaging adds
-no background cleanup implementation or historical data migration.
+Runtime carries the SQLite JDBC implementation used by Server's finite history Owner.
+The database, WAL and SHM files belong outside immutable installations and are never
+packaged. `xa.mass.task-retention.database-path` selects the local database; the old
+archive-directory property has no alias. API history queries are explicitly separate
+from Runtime reads. There is no JSONL/manifest migration in this cutover.
+
+A fixed local environment preserves its database across restarts. Generated temporary
+Preview scopes instead own a database under their run output and remove only that file
+and its sidecars after the owned Server has stopped successfully. Explicit external
+paths are not temporary cleanup targets. See
+[Preview history](PREVIEW.md#task-result-history) and
+[Server retention](../../server_jvm/README.md#finite-task-retention) for 1h/7d/30d policy,
+backup, and independent historical expiry. Packaging adds no maintenance process.

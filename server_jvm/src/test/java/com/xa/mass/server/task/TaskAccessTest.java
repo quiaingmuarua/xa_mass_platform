@@ -78,7 +78,7 @@ class TaskAccessTest {
     }
     @Test void statisticsPreflightTheCompleteProjectAndOwnershipBatch() {
         var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("p", List.of("g"), null))), List.of());
-        var queries = new ProjectTaskQueryService(projects, catalog, scores, mock(TaskDirectory.class), items, runtime, com.xa.mass.server.testsupport.TaskRetentionFixtures.properties());
+        var queries = new ProjectTaskQueryService(projects, catalog, scores, mock(TaskDirectory.class), items, runtime, com.xa.mass.server.testsupport.TaskRetentionFixtures.properties(), new com.xa.mass.kernel.redis.RedisKeyspace("test_queries"));
         when(catalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("mine", task("mine", "1001", "raw"), "other", task("other", "1002", "raw")));
         assertThatThrownBy(() -> queries.stats(caller, "p", List.of("mine", "other")))
                 .isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_ACCESS_DENIED));

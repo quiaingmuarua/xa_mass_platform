@@ -493,6 +493,17 @@ Android uses the packaged `consumer` profile, DEFAULT Pacer, explicit `default`
 Project and [consumer Group JSON](xa-android/config/worker-groups.json), not the
 shared JVM fixture. Its full scenario remains owned by [Android Worker Proof](integrations/android-worker-proof/README.md).
 
+### Finite Task history
+
+Server focused tests include real SQLite files: pending/confirmed publication, interrupted
+writes, read snapshots during expiry, busy writer failure, scoped authorization and cursor
+pagination. The existing Redis retention proofs own freeze/release/purge fences and
+conditional identity cleanup; their SQLite handoff preserves all inputs and observed
+Results. Scenario Composition owns HTTP business history/CSV after Runtime purge.
+Use controlled clocks for the 1h/7d/30d boundaries. The existing 10k/100k finite-storage
+runner retains its workload, comparing full exports without assuming row order and
+recording SQLite/WAL size separately from Redis memory. No new lane or PostgreSQL matrix.
+
 ### Worker Project Fixture
 
 The local JVM Worker lanes (Correctness, Dynamic Matching, Convergence Health,

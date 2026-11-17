@@ -190,6 +190,7 @@ class ConsumerBusinessIntegrationTest {
         host.put("server.port", api); host.put("logging.level.root", "ERROR");
         host.put("xa.mass.users.seed", root.resolve("users.json").toUri().toString());
         host.put("xa.mass.redis.url", redis); host.put("xa.mass.redis.scope", scope);
+        host.put("xa.mass.task-retention.database-path", java.nio.file.Path.of("build", "task-history-fixtures", scope + ".sqlite").toAbsolutePath().toString());
         host.put("xa.mass.task-retention.enabled", false);
         host.put("xa.mass.scenarios.app-checks.configuration.path", root.resolve("data/configuration.json").toString());
         host.put("xa.mass.scenarios.app-checks.configuration.seed", root.resolve("checks.json").toUri().toString());

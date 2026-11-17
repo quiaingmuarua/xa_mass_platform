@@ -276,15 +276,16 @@ successful JSONL exports preserve Worker output without Scenario interpretation.
 Project declarations never create Tasks. Existing caller and input-owner checks
 continue to apply.
 
-## Task result archives
+## Task result history
 
 For a generated temporary scope, the launcher supplies
-`--xa.mass.task-retention.directory=<run-output>/task-archives`. An explicit scope
-defaults to `<work-dir>/data/task-archives`; an external Runtime YAML may supply
-its own absolute archive path. Server owns the 1h grace, sequential archive and 7d
-final retention lifecycle. Grace/retention overrides are explicit proof configuration,
-not alternate product defaults. Normal launcher shutdown stops owned processes,
-then cleans only its generated Redis scope and private archive root when cleanup
-has succeeded. Explicit scopes and externally configured archive paths are retained.
-Persistent Worker inventory and App Checks configuration file remain untouched.
-A hard-killed launcher still requires explicit cleanup of its own run resources.
+`--xa.mass.task-retention.database-path=<run-output>/task-history.sqlite`.
+An explicit scope defaults to `<work-dir>/data/task-history.sqlite`; external Runtime
+YAML may supply its own absolute database path. Server owns the default 1h grace,
+7d Runtime retention and 30d historical retention. Proof overrides are explicit.
+
+Normal shutdown stops owned processes before cleaning its generated Redis scope and
+private database plus `-wal`/`-shm` sidecars, only after successful process cleanup.
+Explicit scopes and external database paths are retained. Worker inventory and Batch
+Checks configuration remain independent. A killed launcher requires explicit cleanup
+of its owned resources; fixed scopes still have the Server's normal data expiry.

@@ -159,7 +159,7 @@ def resolve(args, *, product=PRODUCT):
     http_default, adapter_default, adapter_id, scope_default = PROFILES[args.profile]
     mass = at(runtime, "xa", "mass", default={})
     for name, value in (
-        ("Task archive directory", at(mass, "task-retention", "directory")),
+        ("Task history database", at(mass, "task-retention", "database-path")),
         ("Batch Checks configuration path", at(mass, "scenarios", "app-checks", "configuration", "path")),
     ):
         if value is not None and not Path(literal(value, name)).is_absolute():
@@ -396,8 +396,12 @@ class LocalRun(Processes):
         self.sandbox_root = Path(settings["java_config"]["sandboxRoot"]) if settings["java_config"] else None
         self.app_checks_config = settings["work"] / "data/app-checks/configuration.json"
         super().__init__(output or settings["work"] / "build/runs" / uuid.uuid4().hex, settings["work"])
-        self.task_archives = (self.output / "task-archives" if settings["temporary_scope"]
-                              else settings["work"] / "data/task-archives")
+        self.task_history = (self.output / "task-history.sqlite" if settings["temporary_scope"]
+                              else settings["work"] / "data/task-history.sqlite")
+        configured_history = at(settings["runtime"], "xa", "mass", "task-retention", "database-path")
+        self.owns_history = settings["temporary_scope"] and configured_history is None
+        if configured_history is not None:
+            self.task_history = Path(literal(configured_history, "Task history database")).resolve()
         self.redis, self.android, self.closed, self.artifacts = None, None, False, {}
 
     def preflight(self):
@@ -486,11 +490,11 @@ class LocalRun(Processes):
                         f"--xa.mass.worker-delivery.adapter.instances.{self.adapter}.listen-host=127.0.0.1",
                         f"--xa.mass.worker-endpoints.endpoints.{self.adapter}.public-uri=ws://127.0.0.1:{s['adapter_port']}/api/v1/worker-delivery/websocket"]
         mass = at(s["runtime"], "xa", "mass", default={})
-        archive = at(mass, "task-retention", "directory")
-        if archive is None:
-            command.append("--xa.mass.task-retention.directory=" + str(self.task_archives))
-        elif not Path(literal(archive, "Task archive directory")).is_absolute():
-            raise ValueError("External Task archive directory must be absolute")
+        database = at(mass, "task-retention", "database-path")
+        if database is None:
+            command.append("--xa.mass.task-retention.database-path=" + str(self.task_history))
+        elif not Path(literal(database, "Task history database")).is_absolute():
+            raise ValueError("External Task history database must be absolute")
         if s["profile"] == "preview" and at(mass, "scenarios", "app-checks", "configuration", "path") is None:
             command.append("--xa.mass.scenarios.app-checks.configuration.path=" + str(self.app_checks_config))
         return command
@@ -591,14 +595,15 @@ class LocalRun(Processes):
                 failures.append(f"Redis scope {self.scope}: {type(error).__name__}")
             finally:
                 self.redis.close()
-        if self.settings["temporary_scope"] and not failures and self.task_archives.exists():
-            if self.task_archives.resolve().parent != self.output.resolve():
-                failures.append("Task archive path is outside this run")
+        if self.owns_history and not failures and any(Path(str(self.task_history) + suffix).exists() for suffix in ("", "-wal", "-shm")):
+            if self.task_history.resolve().parent != self.output.resolve():
+                failures.append("Task history database path is outside this run")
             else:
                 try:
-                    shutil.rmtree(self.task_archives)
+                    for suffix in ("", "-wal", "-shm"):
+                        Path(str(self.task_history) + suffix).unlink(missing_ok=True)
                 except OSError as error:
-                    failures.append(f"Task archives {self.task_archives}: {error}")
+                    failures.append(f"Task history {self.task_history}: {error}")
         if failures:
             raise RuntimeError("Cleanup incomplete: " + "; ".join(failures))
 

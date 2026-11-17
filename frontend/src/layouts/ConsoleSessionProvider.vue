@@ -2,6 +2,8 @@
 import { consoleMockKey } from "@/console-mock";
 import { creditSourceKey, ApiCreditSource } from "@/credits/source";
 import ConsoleLayout from "./ConsoleLayout.vue";
+import { historySourceKey, historySessionsKey } from "@/task-history/context";
+import { ApiTaskHistorySource } from "@/task-history/source";
 import { computed, provide, onBeforeUnmount, inject } from "vue";
 import { getActivePinia } from "pinia";
 import { captureTaskCaller } from "@/console-identity";
@@ -42,6 +44,13 @@ const needsRuntime = computed(() =>
   ["Runtime", "Workbench"].includes(String(route.meta.section))
 );
 if (configResult.ok) {
+  provide(
+    historySourceKey,
+    configResult.value.mode === "mock"
+      ? mock!.history
+      : new ApiTaskHistorySource(configResult.value.apiBaseUrl)
+  );
+  provide(historySessionsKey, new Map());
   const credits =
     configResult.value.mode === "mock"
       ? mock?.credits

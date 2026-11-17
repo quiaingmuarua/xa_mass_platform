@@ -951,18 +951,30 @@ so late reads and submission continuations cannot replace another context.
 
 ## Finite Task retention views
 
-The common Project Task contract includes retention phase, first termination,
-freeze and expiry timestamps. Finite workbench, App Checks and Messages show the
-same facts. OPEN terminal tasks may receive late outcomes; FROZEN/RELEASED tasks
-cannot. Archived previews and exports use existing URLs. Item Score counts remain
-available and unfinished Items are not displayed as successful. Archived raw
-point queries are unsupported (`400/12014`); RPC point queries are unaffected.
+Runtime and Storage are separate data sources. Existing Project windows remain bounded
+and unpaginated. After payload release, detail retains counts and a historyId link;
+it does not request Runtime Results or silently read historical payloads.
 
-MockTaskRetention provides the single controllable 1h/7d policy used by both
-business Mock sources. Their explicit maintenance helpers require the shared
-admin permission, freeze later observations, retain preview/export data, and
-remove task-local maps plus creation correlation on purge. Same-request creation
-then has a new Task ID. No timer, filesystem or Server data fallback is simulated.
+Finite workbench, Batch Checks and Messages use an explicit `view=history` entry.
+The common historical workspace reads `/api/v1/storage/tasks` for current-scope lists,
+saved descriptors and paginated inputs/states; Scenario Storage controllers supply
+business preview/CSV using saved contracts. History is read-only, does not consult the
+current Group catalog and never provides Task lifecycle actions. Its list is 20 rows
+per page and result preview remains bounded to 100; full exports are independent.
+Raw input/result reads remain available when a saved business contract is unavailable.
+
+Retention shows first termination, freeze/publication time, Runtime expiry (default 7d)
+and history expiry (default 30d), after the default 1h grace window. Missing Results
+are not fabricated business answers. Reads do not renew deadlines. Permissions and
+Bearer credentials use the captured TaskCaller; operator routes are not expanded into
+Runtime management. List/detail request identities, stale timestamps, cursor routes,
+scroll and login-scoped state prevent late responses from replacing another view.
+
+MockTaskRetention and MockTaskHistorySource retain the same separation in session memory:
+maintenance publishes frozen historical members/results, Runtime cleanup removes live
+records, and history expiry removes saved snapshots. Shared Mock user admission still
+applies before pagination and known-ID reads. No network, filesystem, timer, SQL engine
+or execution recovery is simulated. Example history is explicitly labelled as Mock.
 
 ## Verification
 

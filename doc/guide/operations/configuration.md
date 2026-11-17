@@ -18,7 +18,7 @@ Status: current configuration ownership guide.
 | Messages 应用到 Group 的选择 | [Messages applications](../../../scenarios/message-campaigns-jvm/README.md#worker-供给与装配) | 新建 Task 解析；旧 Task 不随映射改写 |
 | 用户、角色、Project 授权与访问密钥 | [Server 用户目录](../../../server_jvm/README.md#user-directory-and-access-keys) | `xa.mass.users.seed` 指向的文件；运行中只由 Server 写入，手工修改需先停止 Server；consumer 必须显式配置 |
 | 用户积分 | [Server 账户](../../../server_jvm/README.md#user-credit-accounts) | Server 自有 Redis 账本；与用户目录分开 |
-| Task 归档路径和保留时间 | [Server retention](../../../server_jvm/README.md#finite-task-retention) | 配置由 Boot 提供，归档与清理由 Server/Kernel 分工完成 |
+| Task 历史数据库路径和保留时间 | [Server retention](../../../server_jvm/README.md#finite-task-retention) | 配置由 Boot 提供；Runtime 与历史分别到期，保存与清理由 Server/Kernel 分工完成 |
 
 consumer 默认启用 Batch Checks 和 Messages，但不自动提供应用、检查项、Group 或 Pool。
 使用[两业务组合样例](../../../distribution/server/src/main/dist/examples/consumer-business/README.md)准备有效外部配置。

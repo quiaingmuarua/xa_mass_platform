@@ -22,7 +22,8 @@ import com.xa.mass.server.testsupport.RedisTestScope;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
-import java.io.IOException;
+import java.sql.SQLException;
+import com.xa.mass.server.task.history.*;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
@@ -48,13 +49,15 @@ class TaskRetentionServiceRedisIntegrationTest {
     private TaskCreationRegistry creations;
     private com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts;
     private TaskCreationService creator;
-    private TaskResultArchive archive;
+    private TaskHistoryPublisher archive;
+    private TaskHistoryStore historyStore;
+    private TaskHistoryService history;
     private TaskRetentionProperties properties;
     private TaskResultsExportService exports;
     private final OperationGuard guard = new OperationGuard();
     private final AtomicLong clock = new AtomicLong(2_000_000_000_000L);
 
-    @BeforeEach void start() {
+    @BeforeEach void start() throws Exception {
         scope = RedisTestScope.create("server_retention");
         client = RedisClient.create(REDIS_URL); connection = client.connect();
         scores = new RedisTaskScoreBandCore(client, scope.keyspace(), clock::get);
@@ -70,11 +73,14 @@ class TaskRetentionServiceRedisIntegrationTest {
         when(matching.normalizeRefill(anyString(), anyList())).thenAnswer(call -> call.getArgument(1));
         directory = new TaskDirectory(client, scope.keyspace(), projects, catalog, scores, groups, guard, runtime);
         creator = new TaskCreationService(groups, matching, runtime, projects, catalog, scores, guard, directory, creations);
-        properties = new TaskRetentionProperties(true, Duration.ofHours(1), Duration.ofDays(7), Duration.ofHours(1), files);
-        archive = new TaskResultArchive(runtime, JsonMapper.builder().build(), scope.keyspace(), properties);
-        exports = new TaskResultsExportService(catalog, scores, runtime, JsonMapper.builder().build(), guard, archive);
+        properties = new TaskRetentionProperties(true, Duration.ofHours(1), Duration.ofDays(7), Duration.ofDays(30), Duration.ofHours(1), files.resolve("history.sqlite"));
+        historyStore = new TaskHistoryStore(JsonMapper.builder().build(), properties);
+        archive = new TaskHistoryPublisher(runtime, items, historyStore, scope.keyspace(), properties);
+        history = new TaskHistoryService(historyStore, scope.keyspace(), JsonMapper.builder().build(), guard, clock::get);
+        exports = new TaskResultsExportService(catalog, scores, runtime, JsonMapper.builder().build(), guard);
     }
-    @AfterEach void stop() {
+    @AfterEach void stop() throws Exception {
+        if (historyStore != null) historyStore.close();
         if (connection != null) scope.cleanup(connection.sync());
         if (directory != null) directory.close();
         if (creations != null) creations.close();
@@ -86,8 +92,11 @@ class TaskRetentionServiceRedisIntegrationTest {
         if (connection != null) connection.close();
         if (client != null) client.shutdown();
     }
-    private TaskRetentionService maintenance(TaskResultArchive archive, TaskCreationRegistry registry) {
-        return new TaskRetentionService(runtime, catalog, scores, directory, registry, archive, guard, properties, creditStarts, clock::get);
+    private TaskRetentionService maintenance(TaskHistoryPublisher archive, TaskCreationRegistry registry) {
+        return new TaskRetentionService(runtime, catalog, scores, directory, registry, archive, historyStore, scope.keyspace(), guard, properties, creditStarts, clock::get);
+    }
+    private String historyId(String id) {
+        return TaskHistoryStore.historyId(scope.keyspace().base(), id, runtime.loadTaskDataStates(List.of(id)).get(id).frozenAtMillis());
     }
     private String create() {
         return creator.create(CALLER, new TaskCreateRequest("same-request", "p", "g", 1, 1, List.of(), "test", Map.of())).taskId();
@@ -108,18 +117,20 @@ class TaskRetentionServiceRedisIntegrationTest {
         assertThat(create()).isEqualTo(id);
         assertThat(connection.sync().exists(TaskRedisKeys.items(scope.keyspace(), id), TaskRedisKeys.results(scope.keyspace(), id))).isZero();
         assertThat(items.observeItemScoreCounts(List.of(id)).get(id).total()).isEqualTo(2);
-        var preview = exports.preview(CALLER, id);
+        var preview = history.preview(CALLER, historyId(id));
         assertThat(preview.results()).hasSize(1);
         assertThat(preview.results().getFirst().item().payload()).containsEntry("number", "one");
-        var output = exports.export(CALLER, id);
+        var output = history.export(CALLER, historyId(id));
         try { assertThat(Files.readAllLines(output.file())).containsExactly("{\"messageId\":\"one\",\"opaqueResultPayload\":\"answer\"}"); }
         finally { Files.deleteIfExists(output.file()); }
+        String historyId = historyId(id);
         clock.addAndGet(Duration.ofDays(7).toMillis());
         assertThat(service.maintain(id, clock.get()).retention().phase()).isEqualTo("PURGED");
         assertThat(directory.contains("p", id)).isFalse();
         assertThat(catalog.loadTaskAllocationDescriptors(List.of(id)).get(id)).isNull();
         assertThat(scores.getScoreStates(List.of(id)).get(id)).isNull();
-        try (var paths = Files.walk(files)) { assertThat(paths.filter(Files::isRegularFile).count()).isZero(); }
+        assertThat(history.preview(CALLER, historyId).results()).hasSize(1);
+        assertThat(history.items(CALLER, historyId, null, 100).entries()).hasSize(2);
         String replacement = create();
         assertThat(replacement).isNotEqualTo(id);
         runtime.storeTaskItemSuccessResults(id, Map.of("one", new TaskItemSuccessResult(9, clock.get(), "old")));
@@ -130,20 +141,18 @@ class TaskRetentionServiceRedisIntegrationTest {
         String id = create(); long score = closeWithResult(id);
         clock.addAndGet(Duration.ofHours(1).toMillis());
         var broken = spy(archive);
-        doThrow(new IOException("disk unavailable")).when(broken).publish(any(), any());
+        doThrow(new SQLException("disk unavailable")).when(broken).publish(any(), any(), any(), anyLong());
         assertThatThrownBy(() -> maintenance(broken, creations).maintain(id, clock.get())).isInstanceOf(com.xa.mass.server.error.ServerException.class);
         assertThat(runtime.loadTaskDataStates(List.of(id)).get(id).phase()).isEqualTo(TaskDataPhase.FROZEN);
         assertThat(runtime.loadTaskItemResults(id, List.of("one")).get("one")).isNotNull();
-        archive.publish(catalog.loadTaskAllocationDescriptors(List.of(id)).get(id), runtime.loadTaskDataStates(List.of(id)).get(id));
-        var before = archive.verify(id);
-        var reopened = new TaskResultArchive(runtime, JsonMapper.builder().build(), scope.keyspace(), properties);
+        archive.publish(catalog.loadTaskAllocationDescriptors(List.of(id)).get(id), scores.getScoreStates(List.of(id)).get(id), runtime.loadTaskDataStates(List.of(id)).get(id), clock.get());
+        var before = history.get(CALLER, historyId(id));
+        var reopened = new TaskHistoryPublisher(runtime, items, historyStore, scope.keyspace(), properties);
         maintenance(reopened, creations).maintain(id, clock.get());
-        assertThat(reopened.verify(id)).isEqualTo(before);
+        assertThat(history.get(CALLER, historyId(id))).isEqualTo(before);
         assertThat(scores.getScoreStates(List.of(id)).get(id).score()).isEqualTo(score);
-        Path result;
-        try (var paths = Files.walk(files)) { result = paths.filter(path -> path.getFileName().toString().equals("results.jsonl")).findFirst().orElseThrow(); }
-        Files.writeString(result, "corrupt");
-        assertThatThrownBy(() -> exports.preview(CALLER, id)).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        assertThatThrownBy(() -> exports.preview(CALLER, id)).isInstanceOfSatisfying(com.xa.mass.server.error.ServerException.class,
+                error -> assertThat(error.errorCode()).isEqualTo(com.xa.mass.server.error.ServerErrorCode.TASK_RESULTS_ARCHIVED));
     }
     @Test void deletionCanResumeAfterLostAssociationDeleteWithoutErasingTheNewGeneration() {
         String old = create(); closeWithResult(old);
@@ -158,31 +167,29 @@ class TaskRetentionServiceRedisIntegrationTest {
         maintenance(archive, creations).maintain(old, clock.get());
         assertThat(create()).isEqualTo(next);
     }
-    @Test void aCorruptManifestCountRejectsPreviewBeforeReturningAnyRows() throws Exception {
+    @Test void historyFailureAfterReleaseDoesNotBecomeAnEmptyRuntimePreview() throws Exception {
         String id = create(); closeWithResult(id);
         clock.addAndGet(Duration.ofHours(1).toMillis());
         maintenance(archive, creations).maintain(id, clock.get());
-        Path metadata;
-        try (var paths = Files.walk(files)) {
-            metadata = paths.filter(path -> path.getFileName().toString().equals("manifest.json")).findFirst().orElseThrow();
-        }
-        var mapper = JsonMapper.builder().build();
-        var manifest = (tools.jackson.databind.node.ObjectNode) mapper.readTree(Files.readString(metadata));
-        manifest.put("records", 0);
-        Files.writeString(metadata, mapper.writeValueAsString(manifest));
-        assertThatThrownBy(() -> exports.preview(CALLER, id)).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        String historyId = historyId(id);
+        historyStore.close();
+        Files.writeString(properties.databasePath(), "corrupt");
+        assertThatThrownBy(() -> history.preview(CALLER, historyId)).isInstanceOf(com.xa.mass.server.error.ServerException.class);
+        assertThatThrownBy(() -> exports.preview(CALLER, id)).isInstanceOfSatisfying(com.xa.mass.server.error.ServerException.class,
+                error -> assertThat(error.errorCode()).isEqualTo(com.xa.mass.server.error.ServerErrorCode.TASK_RESULTS_ARCHIVED));
         assertThat(runtime.loadTaskDataStates(List.of(id)).get(id).phase()).isEqualTo(TaskDataPhase.RELEASED);
     }
-    @Test void authorizationPrecedesFilesAndExpiredTasksDoNotRequireAnArchive() throws Exception {
+
+    @Test void authorizationPrecedesHistoryAndHistoryExpiredTasksDoNotRequirePublication() throws Exception {
         var files = spy(archive);
         var service = maintenance(files, creations);
         assertThatThrownBy(() -> service.run(TaskCallers.caller("1001", "operator", "p"), "unknown"))
                 .isInstanceOfSatisfying(com.xa.mass.server.error.ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(com.xa.mass.server.error.ServerErrorCode.TASK_ACCESS_DENIED));
         verifyNoInteractions(files);
         String id = create(); closeWithResult(id);
-        clock.addAndGet(Duration.ofDays(8).toMillis());
+        clock.addAndGet(Duration.ofDays(31).toMillis());
         service.maintain(id, clock.get());
-        verify(files, never()).publish(any(), any());
+        verify(files, never()).publish(any(), any(), any(), anyLong());
         assertThat(scores.getScoreStates(List.of(id)).get(id)).isNull();
     }
 
@@ -196,15 +203,22 @@ class TaskRetentionServiceRedisIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"release", "directory", "finish"})
+    @ValueSource(strings = {"publish", "release", "directory", "finish"})
     void resumesAfterEachCommittedStepLosesItsResponse(String step) {
         String id = create(); closeWithResult(id);
         var interruptedRuntime = spy(runtime);
         var interruptedDirectory = spy(directory);
+        var interruptedHistory = spy(archive);
         var interrupted = new TaskRetentionService(interruptedRuntime, catalog, scores, interruptedDirectory,
-                creations, archive, guard, properties, creditStarts, clock::get);
-        clock.addAndGet(step.equals("release") ? Duration.ofHours(1).toMillis() : Duration.ofDays(8).toMillis());
-        if (step.equals("release")) doAnswer(call -> {
+                creations, interruptedHistory, historyStore, scope.keyspace(), guard, properties, creditStarts, clock::get);
+        boolean publishing = step.equals("release") || step.equals("publish");
+        clock.addAndGet(publishing ? Duration.ofHours(1).toMillis() : Duration.ofDays(8).toMillis());
+        if (step.equals("publish")) {
+            try {
+                doAnswer(call -> { call.callRealMethod(); throw new IllegalStateException("publication response lost"); })
+                        .when(interruptedHistory).publish(any(), any(), any(), anyLong());
+            } catch (SQLException failure) { throw new AssertionError(failure); }
+        } else if (step.equals("release")) doAnswer(call -> {
             call.callRealMethod(); throw new IllegalStateException("release response lost");
         }).when(interruptedRuntime).releaseTaskPayloads(eq(id), anyLong());
         else if (step.equals("directory")) doAnswer(call -> {
@@ -215,17 +229,17 @@ class TaskRetentionServiceRedisIntegrationTest {
         }).when(interruptedRuntime).finishTaskPurge(eq(id), anyLong());
         assertThatThrownBy(() -> interrupted.maintain(id, clock.get())).isInstanceOf(com.xa.mass.server.error.ServerException.class);
         var resumed = maintenance(archive, creations).maintain(id, clock.get());
-        assertThat(resumed.retention().phase()).isEqualTo(step.equals("release") ? "RELEASED" : "PURGED");
-        if (step.equals("release")) {
+        assertThat(resumed.retention().phase()).isEqualTo(publishing ? "RELEASED" : "PURGED");
+        if (publishing) {
             assertThat(create()).isEqualTo(id);
-            assertThat(exports.preview(CALLER, id).results()).hasSize(1);
+            assertThat(history.preview(CALLER, historyId(id)).results()).hasSize(1);
         } else {
             assertThat(directory.contains("p", id)).isFalse();
             assertThat(create()).isNotEqualTo(id);
         }
     }
 
-    @Test void interruptedJsonlWriteIsRebuiltFromTheFrozenSource() throws Exception {
+    @Test void interruptedSqlPublicationResumesFromTheFrozenSource() throws Exception {
         String id = create(); closeWithResult(id);
         clock.addAndGet(Duration.ofHours(1).toMillis());
         var interruptedRuntime = spy(runtime);
@@ -233,25 +247,21 @@ class TaskRetentionServiceRedisIntegrationTest {
                 .when(interruptedRuntime).scanTaskItemResults(eq(id), eq("0"), anyInt());
         doThrow(new IllegalStateException("process interrupted during scan"))
                 .when(interruptedRuntime).scanTaskItemResults(eq(id), eq("42"), anyInt());
-        var partialArchive = new TaskResultArchive(interruptedRuntime, JsonMapper.builder().build(), scope.keyspace(), properties);
+        var partialArchive = new TaskHistoryPublisher(interruptedRuntime, items, historyStore, scope.keyspace(), properties);
         assertThatThrownBy(() -> maintenance(partialArchive, creations).maintain(id, clock.get()))
                 .isInstanceOf(com.xa.mass.server.error.ServerException.class);
         assertThat(runtime.loadTaskDataStates(List.of(id)).get(id).phase()).isEqualTo(TaskDataPhase.FROZEN);
         assertThat(runtime.loadTaskItemResults(id, List.of("one")).get("one")).isNotNull();
-        try (var paths = Files.walk(files)) {
-            assertThat(paths.anyMatch(path -> path.getFileName().toString().endsWith(".pending"))).isTrue();
-        }
+        assertThat(historyStore.get(scope.keyspace().base(), historyId(id), clock.get())).isNull();
         maintenance(archive, creations).maintain(id, clock.get());
-        assertThat(archive.verify(id).records()).isEqualTo(1);
-        try (var paths = Files.walk(files)) {
-            assertThat(paths.anyMatch(path -> path.getFileName().toString().endsWith(".pending"))).isFalse();
-        }
+        assertThat(history.get(CALLER, historyId(id)).resultRows()).isEqualTo(1);
+        assertThat(history.get(CALLER, historyId(id)).itemRows()).isEqualTo(2);
     }
 
     @Test void sweepAdvancesPastArchivedAndFailingPagesAndLaterDeletesThemAll() throws Exception {
         var failing = spy(archive);
-        doThrow(new IOException("unavailable file")).when(failing).publish(
-                argThat(task -> task.taskId().equals("page-0101") || task.taskId().equals("page-0102")), any());
+        doThrow(new SQLException("unavailable file")).when(failing).publish(
+                argThat(task -> task.taskId().equals("page-0101") || task.taskId().equals("page-0102")), any(), any(), anyLong());
         var service = maintenance(failing, creations);
         for (int i = 0; i < 205; i++) {
             String id = "page-%04d".formatted(i);
@@ -270,12 +280,15 @@ class TaskRetentionServiceRedisIntegrationTest {
                 });
         clock.addAndGet(Duration.ofDays(7).toMillis());
         service.runOnce();
+        assertThat(connection.sync().zcard(TaskRedisKeys.scores(scope.keyspace()))).isEqualTo(2);
+        clock.addAndGet(Duration.ofDays(24).toMillis());
+        service.runOnce();
         assertThat(connection.sync().zcard(TaskRedisKeys.scores(scope.keyspace()))).isZero();
     }
 
-    @Test void aTaskThatExpiresDuringTraversalIsDeletedWithoutAnArchive() throws Exception {
+    @Test void aTaskWhoseHistoryExpiresDuringTraversalIsDeletedWithoutPublication() throws Exception {
         String id = create(); closeWithResult(id);
-        clock.addAndGet(properties.retention().toMillis() - 1);
+        clock.addAndGet(properties.historyRetention().toMillis() - 1);
         var observedScores = spy(scores);
         doAnswer(call -> {
             Object page = call.callRealMethod();
@@ -284,9 +297,9 @@ class TaskRetentionServiceRedisIntegrationTest {
         }).when(observedScores).scanTerminalTasks(anyLong(), anyString(), anyInt());
         var files = spy(archive);
         var service = new TaskRetentionService(runtime, catalog, observedScores, directory, creations,
-                files, guard, properties, creditStarts, clock::get);
+                files, historyStore, scope.keyspace(), guard, properties, creditStarts, clock::get);
         service.runOnce();
-        verify(files, never()).publish(any(), any());
+        verify(files, never()).publish(any(), any(), any(), anyLong());
         assertThat(scores.getScoreStates(List.of(id)).get(id)).isNull();
     }
 

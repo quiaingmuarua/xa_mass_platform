@@ -60,7 +60,7 @@ class TaskResultsExportServiceTest {
                 JsonMapper.builder().build(),
                 temporaryDirectory,
                 operations
-        , org.mockito.Mockito.mock(com.xa.mass.server.task.retention.TaskResultArchive.class));
+        );
         when(taskCatalog.loadTaskAllocationDescriptors(anyList()))
                 .thenReturn(Map.of("task-1", finiteTask("task-1")));
         doReturn(Map.of(
@@ -206,7 +206,7 @@ class TaskResultsExportServiceTest {
                 JsonMapper.builder().build(),
                 notDirectory,
                 operations
-        , org.mockito.Mockito.mock(com.xa.mass.server.task.retention.TaskResultArchive.class));
+        );
         doReturn(Map.of(
                         "task-1",
                         score("task-1", TaskScoreBand.TERMINAL)

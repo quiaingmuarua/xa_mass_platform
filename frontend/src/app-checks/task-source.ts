@@ -197,6 +197,8 @@ export class ApiAppCheckTaskSource implements AppCheckTaskSource {
       "app-checks",
       taskId
     );
+    if (entry.retention?.phase === "RELEASED")
+      return { task: checkTaskView(entry), results: [], resultsTruncated: false };
     const preview = z
       .object({
         taskId: z.literal(taskId),

@@ -28,7 +28,7 @@ class AcceptanceOracleTest(unittest.TestCase):
             self.assertEqual("server", name)
             self.assertEqual(process.args, arguments)
             self.assertIn("--xa.mass.scenarios.app-checks.configuration.path=" + str(run.app_checks_config), arguments)
-            self.assertIn("--xa.mass.task-retention.directory=" + str(run.task_archives), arguments)
+            self.assertIn("--xa.mass.task-retention.database-path=" + str(run.task_history), arguments)
             self.assertIn("--xa.mass.redis.scope=" + run.scope, arguments)
             self.assertIn("--server.port=18400", arguments)
             self.assertEqual(run.redis_url, environment["XA_MASS_LOCAL_REDIS_URL"])

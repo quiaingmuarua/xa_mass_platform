@@ -204,6 +204,7 @@ class MessagesAssemblyIntegrationTest {
             var settings = new LinkedHashMap<String, String>();
             settings.put("spring.profiles.active", "default"); settings.put("server.port", Integer.toString(port));
             settings.put("xa.mass.users.seed", "classpath:users/proof-directory.json"); settings.put("xa.mass.redis.url", redisUrl); settings.put("xa.mass.redis.scope", scope);
+        settings.put("xa.mass.task-retention.database-path", java.nio.file.Path.of("build", "task-history-fixtures", scope + ".sqlite").toAbsolutePath().toString());
             settings.put("xa.mass.kernel-pacer.enabled", "false"); settings.put("logging.level.root", "ERROR");
             settings.put("xa.mass.scenarios.messages.enabled", Boolean.toString(messages));
             if (messages) {

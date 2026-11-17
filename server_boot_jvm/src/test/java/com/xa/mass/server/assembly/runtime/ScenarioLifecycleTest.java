@@ -79,6 +79,8 @@ class ScenarioLifecycleTest {
             context.registerBean(com.xa.mass.server.operation.OperationGuard.class);
             context.registerBean(com.xa.mass.server.task.result.TaskResultsExportService.class,
                     () -> mock(com.xa.mass.server.task.result.TaskResultsExportService.class));
+            context.registerBean(com.xa.mass.server.task.history.TaskHistoryService.class,
+                    () -> mock(com.xa.mass.server.task.history.TaskHistoryService.class));
             context.registerBean(ServerConfiguredRuntimeLifecycleHost.class, () -> platform,
                     definition -> definition.setDestroyMethodName("stop"));
             context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource(

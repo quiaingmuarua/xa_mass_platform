@@ -88,7 +88,8 @@ class GroupWindowBindingsIntegrationTest {
         application.addInitializers(context -> context.getBeanFactory().addBeanPostProcessor(observations));
         var args = List.of("--spring.profiles.active=consumer", "--spring.config.additional-location=" + configuration.toUri(),
                 "--server.port=" + serverPort, "--logging.level.root=ERROR", "--xa.mass.redis.url=" + redis,
-                "--xa.mass.redis.scope=" + scope, "--xa.mass.users.seed=classpath:users/proof-directory.json",
+                "--xa.mass.redis.scope=" + scope,
+                    "--xa.mass.task-retention.database-path=" + java.nio.file.Path.of("build", "task-history-fixtures", scope + ".sqlite").toAbsolutePath(), "--xa.mass.users.seed=classpath:users/proof-directory.json",
                 "--xa.mass.task-retention.enabled=false",
                 "--xa.mass.scenarios.app-checks.enabled=false", "--xa.mass.scenarios.messages.enabled=false",
                 "--xa.mass.worker-delivery.adapter.instances.runtime-websocket.listen-port=" + adapterPort,

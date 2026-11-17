@@ -40,7 +40,7 @@ def compile_observer(root, output):
     return os.pathsep.join(map(str, [observer, *dependencies])), hashlib.sha256(source.read_bytes()).hexdigest()
 
 
-def benchmark(preview, root, output, port, baseline, configure, create_import_approve, request, require):
+def benchmark(preview, root, output, port, baseline, configure, create_import_approve, request, require, *, redis_url="redis://127.0.0.1:6379/15"):
     classpath, observer_hash = compile_observer(root, output)
 
     class ObservedPreview(preview.Preview):
@@ -64,7 +64,7 @@ def benchmark(preview, root, output, port, baseline, configure, create_import_ap
         for repetition in range(1, 4):
             folder = output / ("run-" + str(repetition))
             inventory = folder / "private" / ("inventory-" + uuid.uuid4().hex) / "data/scenario-workers"
-            run = ObservedPreview(1, port, root=root, output=folder / "private", sandbox_root=inventory, app_count=20)
+            run = ObservedPreview(1, port, root=root, output=folder / "private", sandbox_root=inventory, app_count=20, redis_url=redis_url)
             with configure(baseline=baseline, window_millis=60000,
                            parameters_by_check={"app-a-registration": {"ranges": {"registered": [0,1000], "unregistered": [1000,1000], "failed": [1000,1000]}, "delayMs": [0,0]}}) as overrides:
                 if not baseline:

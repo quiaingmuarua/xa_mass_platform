@@ -25,6 +25,8 @@ __pycache__/
 *.log
 *.log.*
 *.sqlite
+*.sqlite-wal
+*.sqlite-shm
 *.mv.db
 *.trace.db
 local.properties

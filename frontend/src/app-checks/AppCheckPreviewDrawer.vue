@@ -321,7 +321,10 @@ defineExpose({ refresh, focusHeading });
           等待核对并启动。请确认检查能力和执行项数量，再通过“操作”菜单启动。
         </p>
         <section
-          v-if="stage !== 'pre_review' || resultPreview.length"
+          v-if="
+            detail.task.retention?.phase !== 'RELEASED' &&
+            (stage !== 'pre_review' || resultPreview.length)
+          "
           aria-label="结果预览"
         >
           <p class="checks-hint">{{ checkCondition(detail.task.checkType) }}</p>
