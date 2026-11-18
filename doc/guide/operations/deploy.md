@@ -174,6 +174,17 @@ Server 与 Consumer kit 分开固定版本：`INSTALLED_RELEASE_TAG/COMMIT` 描�
 Ali 常驻 Host 的 `/opt/xa-mass-worker-simulator/current` 另有安装记录；它不跟随 Actions
 自动切换。修改源码或发布 kit 不会自动更新这些坐标，当前值应从对应记录核对。
 
+2026-11-19 收尾后，按需 Performance kit pins 为
+`4.4.4/01f795013ee9ded817304eba26e40805a21ddb89`；常驻 Host 保持 4.4.2，Runtime 保持 4.4.0。
+GCP 的管理员连接另设 `admin_keepalive_requests=100000`，仍为 H2 8192 streams、
+API 3000/s、burst 6000；该连接复用设置不改变请求速率、Worker 数量或性能判据。
+最新 renderer Release、commit、ZIP SHA、工具目录和配置指纹见主机
+`/etc/xa-mass/deployment.json` 的 `http2ReuseChange`；较早的 `http2TransportChange`
+保留 4.4.3 的原始 invalid 观测。新的 10k Run44368693491 九项 passed，315,000 正式结果闭合，
+自动清理及常驻 20 已独立确认，两台主机操作已关闭，原恢复点及临时 Runtime ZIP 已删除。
+完整范围与非主张仍从[能力记录](../capabilities.md#external-public-closeout)进入。
+这里是 dated 事实，下一次操作仍先核对原 Run、当前主机记录和未结束事项。
+
 2026-11-19 的传输补丁将按需 Performance kit 更新为
 `4.4.3/13e60437f30da282614a03c869a3e6871acdcfc7`，常驻 Host 保持 4.4.2，
 Runtime 保持 4.4.0。GCP 入口单独消费发布 Runtime ZIP 中的 4.4.3 renderer，启用

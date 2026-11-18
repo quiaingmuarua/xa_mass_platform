@@ -1,9 +1,10 @@
 # XA Mass 4.4 release and upgrade contract
 
-Status: version-scoped 4.4 contract. 4.4.4 is the next ingress reuse patch;
-publication and public acceptance are pending. 4.4.3 is published; its normal 10k public
-observation completed with nine invalid cases and confirmed cleanup. Generator
-dispatch and connection rotation remain under investigation. 4.4.2 is published and the Ali
+Status: version-scoped 4.4 contract. 4.4.4 is published and its normal 10k
+observation completed with all nine cases passed and automatic cleanup confirmed.
+The earlier 4.4.3 observation retained nine invalid cases and confirmed cleanup;
+its generator investigation was closed by the bounded 4.4.4 observation below.
+4.4.2 is published and the Ali
 consumers have been updated; GCP Runtime remains 4.4.0. The 4.4.2 campaign and automatic
 cleanup completed, and the bounded 75-minute idle and single controlled
 fault/reconnect acceptance passed on 2026-11-18.
@@ -20,7 +21,7 @@ rejects older instruments that use the retired HTTP/2-specific directive.
 This does not change request admission, authentication, stream capacity,
 idle timeout, Worker behavior or the Performance workload and case oracle.
 
-The Preview candidate explicitly uses 100000 requests per administrator
+The Preview deployment explicitly uses 100000 requests per administrator
 connection. That spans the existing 3000 warmup and up to 60000 formal calls
 per case, reducing repeated GOAWAY/cold-cache TLS bursts. Longer reuse delays
 reclamation of connection allocations; retain memory/FD observations. Runtime
@@ -40,8 +41,59 @@ retained separately and do not support this comparison.
 
 The existing real Nginx/JDK proof retains the default GOAWAY boundary and adds
 an SNI-selected administrator reuse case beyond 1000 requests, checked for
-complete, exact-once mock receipt. Release publication and another unchanged
-normal 10k observation remain pending.
+complete, exact-once mock receipt.
+
+4.4.4 was published from merged commit
+`01f795013ee9ded817304eba26e40805a21ddb89` after
+[manual Proof 44364668882](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44364668882),
+attempt 1, with all 17 jobs successful.
+[Promotion 44367760555](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44367760555)
+provided the identical verified bytes to immutable
+[Release 4.4.4](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.4.4)
+(ID `450377682`). All six GitHub digests and SHA256 sidecars matched; the bounded
+current-credential-format scan found zero matches in 1,542 text entries,
+including nested archives.
+
+| ZIP component | SHA256 |
+| --- | --- |
+| Runtime | `121f161a27fd7f54298001f983c704f1944504702fb71f8eeae4578f00a9fc8b` |
+| Worker SDK | `662dfbe36de4d42057f2099695ecc17d1fe972f34ce57805717366e1428efbd9` |
+| Worker Simulator kit | `75698f07a411aa35390f6ee96f1d28393b402279f2f0c7e22aaf156d7659ddaa` |
+
+GCP consumed only the published renderer and one new administrator directive,
+followed by a graceful Nginx reload. The configuration fingerprint is
+`sha256:bc1a46b635341c32a76d5089f0a1975265ab49900c2d0ca49ebe55061560c8e5`.
+The original Runtime/Redis/Nginx master processes and standing 4.4.2 Host were
+retained; a separate post-reload check found all 20 standing Workers connected.
+The unprofiled 10k observation
+[44368693491](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44368693491)
+completed with **nine passed cases**: the unchanged three paths at 500, 1000 and
+2000/s, one repetition, each with its full 30-second formal window. All 315,000
+formal calls received complete HTTP/2 replies and successful Results were observed
+after the original drain. HTTP 429, unknown submissions, not-sent and failed Results
+were zero. The 3,992 initially accepted calls without an observed Result all closed
+under their original IDs; warmup cohorts remain separate. Schedule-lag p99 was at
+most 6.206ms and executor-dispatch p99 at most 0.352ms. The earlier invalid and
+unknown outcomes remain unchanged; this does not establish maximum Server TPS.
+
+Automatic cleanup confirmed the original 10,000 identities unknown in 8,105ms,
+100 pages with eight concurrent reads. Owned Host/Harness processes and temporary
+credential copies were removed; the independent postcheck agreed and found the
+original standing Host with 20 connected Workers and the same Runtime process.
+All four public artifacts had zero current credential-format matches, zero
+complete matches against the 10,000 private Worker IDs, and zero matches against
+the two current consumer secret values checked on GCP.
+
+Separate operator `/proc` sampling retained 192 samples over a 960-second lifecycle,
+covering all formal cases and an idle tail. Nginx summed RSS peaked at 1.11GB across
+multiple generations, including shared pages; minimum host MemAvailable was
+7.81GB (about 7.28GiB). Means include warmup/quiesce/idle and role peaks are not
+simultaneous. These observations do not replace the Harness's explicit missing
+Server/Redis/JFR collection fields or prove sustained capacity. Canonical consumer
+and GCP records were updated, scoped operations closed, the one original restore
+point and two temporary Runtime ZIP downloads removed. Runtime remains 4.4.0 and
+the standing Host remains 4.4.2. Full dated evidence is retained in the
+[2026-11-19 observation](../../integrations/worker-call-performance/observations/external/2026-11-19.json).
 
 ## 4.4.3 Performance transport patch
 
@@ -112,8 +164,9 @@ Worker observations. All 75,019 complete formal replies used HTTP/2 and successf
 Results were observed; 3,061 attempted calls without complete HTTP responses
 remain unknown and 26,920 were not sent. No formal HTTP 429 was observed.
 At 500/s, offer-lag p99 was below 11ms while dispatch-lag p99 was 198–232ms;
-HTTP/2 preference alone did not repair generator pacing. Investigation continues
-without changing the workload or replaying unknown requests.
+HTTP/2 preference alone did not repair generator pacing. The subsequent 4.4.4
+reuse change and observation above completed that investigation without changing
+the workload or replaying these unknown requests.
 
 Automatic cleanup confirmed all 10,000 original identities unknown in 8,114ms,
 100 pages with eight concurrent requests. Owned processes and credential copies

@@ -582,7 +582,8 @@
       "completeIdentityMatches": 0,
       "currentConsumerSecretValuesChecked": 2,
       "secretValueMatches": 0
-    }
+    },
+    "followup": "The original invalid observation is preserved. The subsequent 4.4.4 reuseAcceptance completed the scoped investigation without replay."
   },
   "connectionReuseControl": {
     "instrumentStatus": "valid",
@@ -709,5 +710,775 @@
       "Earlier invalid controls are retained privately and are not comparison evidence.",
       "Default request rates, warmup, in-flight bound and result semantics were unchanged."
     ]
+  },
+  "reuseAcceptance": {
+    "status": "observed-passed",
+    "githubRunId": 44368693491,
+    "artifactManifest": {
+      "gitCommit": "01f795013ee9ded817304eba26e40805a21ddb89",
+      "javaVersion": 21,
+      "loadedEntry": "acceptance/run_loaded.py",
+      "performanceEntry": "acceptance/performance/run_worker_call_performance.py",
+      "roundEntry": "acceptance/finite_round.py",
+      "schemaVersion": 3,
+      "simulatorEntry": "bin/xa-mass-worker-simulator",
+      "version": "4.4.4"
+    },
+    "serverDeployment": {
+      "configurationId": "sha256:bc1a46b635341c32a76d5089f0a1975265ab49900c2d0ca49ebe55061560c8e5",
+      "gitCommit": "b28a87ac918a34ffabb4feb8c63a29998a0610db",
+      "version": "4.4.0"
+    },
+    "workersPerGroup": 5000,
+    "totalWorkers": 10000,
+    "groups": 2,
+    "repetitions": 1,
+    "rates": [
+      500,
+      1000,
+      2000
+    ],
+    "mode": "open",
+    "jfrEnabled": false,
+    "ingress": {
+      "adminRequestsPerSecond": 3000,
+      "adminRequestBurst": 6000,
+      "http2MaxConcurrentStreams": 8192,
+      "adminKeepaliveRequests": 100000
+    },
+    "caseCounts": {
+      "passed": 9
+    },
+    "formalCounts": {
+      "planned": 315000,
+      "sent": 315000,
+      "completeHttp2Responses": 315000,
+      "observedSuccessfulResultsAfterDrain": 315000,
+      "initiallyAcceptedWithoutObservedResult": 3992,
+      "unknownSubmissions": 0,
+      "notSent": 0,
+      "http429": 0,
+      "failedResults": 0
+    },
+    "originalSubmissionEvidence": {
+      "status": "complete",
+      "phases": {
+        "formal": {
+          "samples": 315000,
+          "sent": 315000,
+          "httpVersion:HTTP_2": 315000,
+          "outcome:succeeded": 311008,
+          "observed:succeeded": 315000,
+          "outcome:not_observed": 3992
+        },
+        "innerWarmup": {
+          "samples": 27000,
+          "sent": 27000,
+          "httpVersion:HTTP_2": 27000,
+          "outcome:succeeded": 25589,
+          "observed:succeeded": 27000,
+          "outcome:not_observed": 1411
+        },
+        "discardedWarmup": {
+          "samples": 63000,
+          "sent": 63000,
+          "httpVersion:HTTP_2": 63000,
+          "outcome:succeeded": 61460,
+          "observed:succeeded": 63000,
+          "outcome:not_observed": 1540
+        }
+      }
+    },
+    "cases": [
+      {
+        "case": "task-any-500",
+        "status": "passed",
+        "rate": 500,
+        "path": "task-any",
+        "repetition": 1,
+        "invalidReasons": [],
+        "httpVersions": {
+          "HTTP_2": 15000
+        },
+        "acceptedResultsAfterDrain": {
+          "failed": 0,
+          "not_observed": 0,
+          "succeeded": 15000
+        },
+        "planned": 15000,
+        "sent": 15000,
+        "accepted": 15000,
+        "scheduleLagMillis": {
+          "p95": 0.295675,
+          "p50": 0.094377,
+          "samples": 15000,
+          "p99": 0.366808
+        },
+        "offerLagMillis": {
+          "p95": 0.110307,
+          "p50": 0.068734,
+          "samples": 15000,
+          "p99": 0.192631
+        },
+        "executorDispatchLagMillis": {
+          "p95": 0.227423,
+          "p50": 0.025551,
+          "samples": 15000,
+          "p99": 0.278665
+        },
+        "successfulCallLatencyMillis": {
+          "p95": 532.93236,
+          "p50": 448.958485,
+          "samples": 15000,
+          "p99": 1435.837253
+        }
+      },
+      {
+        "case": "task-targeted-500",
+        "status": "passed",
+        "rate": 500,
+        "path": "task-targeted",
+        "repetition": 1,
+        "invalidReasons": [],
+        "httpVersions": {
+          "HTTP_2": 15000
+        },
+        "acceptedResultsAfterDrain": {
+          "failed": 0,
+          "not_observed": 0,
+          "succeeded": 15000
+        },
+        "planned": 15000,
+        "sent": 15000,
+        "accepted": 15000,
+        "scheduleLagMillis": {
+          "samples": 15000,
+          "p99": 0.321816,
+          "p95": 0.138438,
+          "p50": 0.092522
+        },
+        "offerLagMillis": {
+          "samples": 15000,
+          "p99": 0.181334,
+          "p95": 0.10524,
+          "p50": 0.06944
+        },
+        "executorDispatchLagMillis": {
+          "samples": 15000,
+          "p99": 0.126334,
+          "p95": 0.040436,
+          "p50": 0.023021
+        },
+        "successfulCallLatencyMillis": {
+          "samples": 15000,
+          "p99": 532.233774,
+          "p95": 512.862927,
+          "p50": 445.762571
+        }
+      },
+      {
+        "case": "direct-500",
+        "status": "passed",
+        "rate": 500,
+        "path": "direct",
+        "repetition": 1,
+        "invalidReasons": [],
+        "httpVersions": {
+          "HTTP_2": 15000
+        },
+        "acceptedResultsAfterDrain": {
+          "failed": 0,
+          "not_observed": 0,
+          "succeeded": 15000
+        },
+        "planned": 15000,
+        "sent": 15000,
+        "accepted": 15000,
+        "scheduleLagMillis": {
+          "p99": 0.378414,
+          "samples": 15000,
+          "p50": 0.092747,
+          "p95": 0.250464
+        },
+        "offerLagMillis": {
+          "p99": 0.145384,
+          "samples": 15000,
+          "p50": 0.068247,
+          "p95": 0.087614
+        },
+        "executorDispatchLagMillis": {
+          "p99": 0.298839,
+          "samples": 15000,
+          "p50": 0.024396,
+          "p95": 0.170918
+        },
+        "successfulCallLatencyMillis": {
+          "p99": 442.421263,
+          "samples": 15000,
+          "p50": 346.659681,
+          "p95": 354.920041
+        }
+      },
+      {
+        "case": "task-any-1000",
+        "status": "passed",
+        "rate": 1000,
+        "path": "task-any",
+        "repetition": 1,
+        "invalidReasons": [],
+        "httpVersions": {
+          "HTTP_2": 30000
+        },
+        "acceptedResultsAfterDrain": {
+          "failed": 0,
+          "not_observed": 0,
+          "succeeded": 30000
+        },
+        "planned": 30000,
+        "sent": 30000,
+        "accepted": 30000,
+        "scheduleLagMillis": {
+          "p50": 0.088868,
+          "p95": 0.127899,
+          "p99": 0.8787,
+          "samples": 30000
+        },
+        "offerLagMillis": {
+          "p50": 0.068927,
+          "p95": 0.089747,
+          "p99": 0.648043,
+          "samples": 30000
+        },
+        "executorDispatchLagMillis": {
+          "p50": 0.01893,
+          "p95": 0.0398,
+          "p99": 0.130157,
+          "samples": 30000
+        },
+        "successfulCallLatencyMillis": {
+          "p50": 465.982297,
+          "p95": 593.903622,
+          "p99": 959.780625,
+          "samples": 28130
+        }
+      },
+      {
+        "case": "task-targeted-1000",
+        "status": "passed",
+        "rate": 1000,
+        "path": "task-targeted",
+        "repetition": 1,
+        "invalidReasons": [],
+        "httpVersions": {
+          "HTTP_2": 30000
+        },
+        "acceptedResultsAfterDrain": {
+          "failed": 0,
+          "not_observed": 0,
+          "succeeded": 30000
+        },
+        "planned": 30000,
+        "sent": 30000,
+        "accepted": 30000,
+        "scheduleLagMillis": {
+          "p99": 0.60199,
+          "samples": 30000,
+          "p50": 0.086972,
+          "p95": 0.114999
+        },
+        "offerLagMillis": {
+          "p99": 0.40019,
+          "samples": 30000,
+          "p50": 0.068008,
+          "p95": 0.081252
+        },
+        "executorDispatchLagMillis": {
+          "p99": 0.112268,
+          "samples": 30000,
+          "p50": 0.018309,
+          "p95": 0.035126
+        },
+        "successfulCallLatencyMillis": {
+          "p99": 582.043327,
+          "samples": 30000,
+          "p50": 460.656476,
+          "p95": 534.816086
+        }
+      },
+      {
+        "case": "direct-1000",
+        "status": "passed",
+        "rate": 1000,
+        "path": "direct",
+        "repetition": 1,
+        "invalidReasons": [],
+        "httpVersions": {
+          "HTTP_2": 30000
+        },
+        "acceptedResultsAfterDrain": {
+          "failed": 0,
+          "not_observed": 0,
+          "succeeded": 30000
+        },
+        "planned": 30000,
+        "sent": 30000,
+        "accepted": 30000,
+        "scheduleLagMillis": {
+          "p50": 0.088921,
+          "p95": 0.122149,
+          "p99": 0.63519,
+          "samples": 30000
+        },
+        "offerLagMillis": {
+          "p50": 0.068073,
+          "p95": 0.085943,
+          "p99": 0.403688,
+          "samples": 30000
+        },
+        "executorDispatchLagMillis": {
+          "p50": 0.020319,
+          "p95": 0.038675,
+          "p99": 0.135629,
+          "samples": 30000
+        },
+        "successfulCallLatencyMillis": {
+          "p50": 345.401712,
+          "p95": 375.110493,
+          "p99": 510.955975,
+          "samples": 30000
+        }
+      },
+      {
+        "case": "task-any-2000",
+        "status": "passed",
+        "rate": 2000,
+        "path": "task-any",
+        "repetition": 1,
+        "invalidReasons": [],
+        "httpVersions": {
+          "HTTP_2": 60000
+        },
+        "acceptedResultsAfterDrain": {
+          "failed": 0,
+          "not_observed": 0,
+          "succeeded": 60000
+        },
+        "planned": 60000,
+        "sent": 60000,
+        "accepted": 60000,
+        "scheduleLagMillis": {
+          "p99": 5.80192,
+          "samples": 60000,
+          "p50": 0.087812,
+          "p95": 0.197593
+        },
+        "offerLagMillis": {
+          "p99": 5.273622,
+          "samples": 60000,
+          "p50": 0.07017,
+          "p95": 0.116203
+        },
+        "executorDispatchLagMillis": {
+          "p99": 0.341199,
+          "samples": 60000,
+          "p50": 0.017275,
+          "p95": 0.04662
+        },
+        "successfulCallLatencyMillis": {
+          "p99": 1024.541605,
+          "samples": 58612,
+          "p50": 495.929191,
+          "p95": 703.417711
+        }
+      },
+      {
+        "case": "task-targeted-2000",
+        "status": "passed",
+        "rate": 2000,
+        "path": "task-targeted",
+        "repetition": 1,
+        "invalidReasons": [],
+        "httpVersions": {
+          "HTTP_2": 60000
+        },
+        "acceptedResultsAfterDrain": {
+          "failed": 0,
+          "not_observed": 0,
+          "succeeded": 60000
+        },
+        "planned": 60000,
+        "sent": 60000,
+        "accepted": 60000,
+        "scheduleLagMillis": {
+          "p95": 0.175396,
+          "p50": 0.086817,
+          "samples": 60000,
+          "p99": 4.025544
+        },
+        "offerLagMillis": {
+          "p95": 0.105173,
+          "p50": 0.067794,
+          "samples": 60000,
+          "p99": 3.678842
+        },
+        "executorDispatchLagMillis": {
+          "p95": 0.043424,
+          "p50": 0.018331,
+          "samples": 60000,
+          "p99": 0.27969
+        },
+        "successfulCallLatencyMillis": {
+          "p95": 658.370765,
+          "p50": 487.580057,
+          "samples": 59266,
+          "p99": 967.900059
+        }
+      },
+      {
+        "case": "direct-2000",
+        "status": "passed",
+        "rate": 2000,
+        "path": "direct",
+        "repetition": 1,
+        "invalidReasons": [],
+        "httpVersions": {
+          "HTTP_2": 60000
+        },
+        "acceptedResultsAfterDrain": {
+          "failed": 0,
+          "not_observed": 0,
+          "succeeded": 60000
+        },
+        "planned": 60000,
+        "sent": 60000,
+        "accepted": 60000,
+        "scheduleLagMillis": {
+          "p50": 0.088559,
+          "p95": 0.166372,
+          "p99": 6.205967,
+          "samples": 60000
+        },
+        "offerLagMillis": {
+          "p50": 0.068473,
+          "p95": 0.107846,
+          "p99": 4.282997,
+          "samples": 60000
+        },
+        "executorDispatchLagMillis": {
+          "p50": 0.019306,
+          "p95": 0.047589,
+          "p99": 0.351765,
+          "samples": 60000
+        },
+        "successfulCallLatencyMillis": {
+          "p50": 346.609148,
+          "p95": 374.027188,
+          "p99": 556.271238,
+          "samples": 60000
+        }
+      }
+    ],
+    "cleanup": {
+      "errors": [],
+      "ownedProcessesStopped": true,
+      "privateCredentialCopiesRemoved": true,
+      "workerConnections": {
+        "identityCount": 10000,
+        "observation": {
+          "complete": true,
+          "completedPages": 100,
+          "deadlineExpired": false,
+          "elapsedMillis": 8105,
+          "errorTypes": {},
+          "observedIdentityCount": 10000,
+          "pageConcurrency": 8,
+          "pageSize": 100,
+          "scanCount": 1,
+          "totalPages": 100
+        },
+        "states": {
+          "unknown": 10000
+        },
+        "status": "confirmed"
+      }
+    },
+    "publicationReview": {
+      "files": 4,
+      "projectCredentialFormatMatches": 0,
+      "identityCount": 10000,
+      "completeIdentityMatches": 0,
+      "currentConsumerSecretValuesChecked": 2,
+      "secretValueMatches": 0
+    },
+    "artifactsSha256": {
+      "summary.json": "645b2536fbd42381ce7827ddfb0d67a70b12bda14c1e3bb098c1df0afc15da85",
+      "summary.md": "c1878bad1dadcee0686cd7f3523f18581735e11c0e9c2abe1de2693e510797f7",
+      "consumption.json": "f259f8601fca3d38733a6633f55772eb5c45df698b05fdf2507123d8a7c1bd4c",
+      "orchestration.json": "4997a0321ea74a4ddbe37bc0dc43acd3544794ed2f116e49c90f99c948824e7c"
+    },
+    "independentPostcheck": {
+      "observedAt": "2026-11-18T18:37:22.300224+00:00",
+      "campaignStates": {
+        "unknown": 10000
+      },
+      "persistentStates": {
+        "connected": 20
+      },
+      "persistentPid": 53788,
+      "persistentInputsUnchanged": true,
+      "runtimePid": 511640,
+      "runtimeRestarts": 0,
+      "ownedJavaAbsent": true,
+      "inputCredentialsAbsent": true,
+      "runnerCredentialsAbsent": true,
+      "newSubmissionsIssued": 0
+    },
+    "operatorGcpResources": {
+      "status": "completed",
+      "failureType": null,
+      "samples": 192,
+      "durationSeconds": 960.0625117219752,
+      "firstAt": "2026-11-18T18:21:17.185248+00:00",
+      "lastAt": "2026-11-18T18:37:12.078933+00:00",
+      "stopReason": "stop-file",
+      "roles": {
+        "runtime": {
+          "rssBytesPeak": 2122948608,
+          "fdPeak": 11575,
+          "threadsPeak": 281,
+          "processesPeak": 1,
+          "cpuCoresMean": 1.10135366101153,
+          "cpuCoresPeak": 4.567695179374099
+        },
+        "redis": {
+          "rssBytesPeak": 568422400,
+          "fdPeak": 29,
+          "threadsPeak": 7,
+          "processesPeak": 1,
+          "cpuCoresMean": 0.20564130114527077,
+          "cpuCoresPeak": 0.7038696672715387
+        },
+        "nginx": {
+          "rssBytesPeak": 1110585344,
+          "fdPeak": 21724,
+          "threadsPeak": 12,
+          "processesPeak": 12,
+          "cpuCoresMean": 0.23220504763231517,
+          "cpuCoresPeak": 1.4978940291018954
+        }
+      },
+      "limits": "CPU cores=CPU seconds/wall second; system CPU is host-wide0..100%. Nginx RSS sums shared pages. CPU of exited-between-sample processes and pre-first-observation work is unobserved. Separate operator evidence; Harness notCollected is unchanged.",
+      "systemCpuPercent": {
+        "mean": 24.190274114717585,
+        "min": 1.3003250812703149,
+        "max": 83.00518134715026
+      },
+      "nginxEstablishedTcp": {
+        "mean": 18111.239583333332,
+        "min": 40,
+        "max": 21428
+      },
+      "memAvailableBytes": {
+        "mean": 7983439488.0,
+        "min": 7813607424,
+        "max": 8600072192
+      },
+      "sourceSha256": "ccc7b2f646104b89a1f3e233a3ee2c5574701e7410eea4fc54ce5f65c1c717eb",
+      "samplesSha256": "9edecfe06abff00f9bd60a1e0d08956b5b94c8a8c2a0546b64b5ab77c7ab1930",
+      "source": "Separate operator /proc evidence; common Harness notCollected unchanged",
+      "unit": {
+        "Result": "success",
+        "ActiveState": "inactive",
+        "SubState": "dead"
+      }
+    },
+    "consumerCpuObservations": [
+      {
+        "case": "direct-1000",
+        "status": "passed",
+        "processCpuDuringMeasurement": {
+          "host": {
+            "samples": 29,
+            "averageCpuCoresMean": 0.16296554064364574,
+            "averageCpuCoresPeak": 0.8687605508640368,
+            "rssBytesPeak": 1107865600
+          },
+          "harness": {
+            "samples": 29,
+            "averageCpuCoresMean": 0.5518760735866735,
+            "averageCpuCoresPeak": 1.632181567028134,
+            "rssBytesPeak": 331509760
+          }
+        }
+      },
+      {
+        "case": "direct-2000",
+        "status": "passed",
+        "processCpuDuringMeasurement": {
+          "host": {
+            "samples": 30,
+            "averageCpuCoresMean": 0.2993597771953575,
+            "averageCpuCoresPeak": 1.0561705171949252,
+            "rssBytesPeak": 1109696512
+          },
+          "harness": {
+            "samples": 30,
+            "averageCpuCoresMean": 0.7871339651786416,
+            "averageCpuCoresPeak": 2.5382749507410254,
+            "rssBytesPeak": 354025472
+          }
+        }
+      },
+      {
+        "case": "direct-500",
+        "status": "passed",
+        "processCpuDuringMeasurement": {
+          "host": {
+            "samples": 30,
+            "averageCpuCoresMean": 0.07837934082414812,
+            "averageCpuCoresPeak": 0.23438902809114437,
+            "rssBytesPeak": 1105002496
+          },
+          "harness": {
+            "samples": 30,
+            "averageCpuCoresMean": 0.3948266696255464,
+            "averageCpuCoresPeak": 1.2780418815601895,
+            "rssBytesPeak": 332828672
+          }
+        }
+      },
+      {
+        "case": "task-any-1000",
+        "status": "passed",
+        "processCpuDuringMeasurement": {
+          "host": {
+            "samples": 30,
+            "averageCpuCoresMean": 0.10822401365693007,
+            "averageCpuCoresPeak": 0.7522954576426802,
+            "rssBytesPeak": 1106624512
+          },
+          "harness": {
+            "samples": 30,
+            "averageCpuCoresMean": 0.49862333130885295,
+            "averageCpuCoresPeak": 1.355203743686933,
+            "rssBytesPeak": 349978624
+          }
+        }
+      },
+      {
+        "case": "task-any-2000",
+        "status": "passed",
+        "processCpuDuringMeasurement": {
+          "host": {
+            "samples": 29,
+            "averageCpuCoresMean": 0.18549193715885365,
+            "averageCpuCoresPeak": 0.5917647301894653,
+            "rssBytesPeak": 1108627456
+          },
+          "harness": {
+            "samples": 29,
+            "averageCpuCoresMean": 0.7118123119087539,
+            "averageCpuCoresPeak": 2.351276841291718,
+            "rssBytesPeak": 409268224
+          }
+        }
+      },
+      {
+        "case": "task-any-500",
+        "status": "passed",
+        "processCpuDuringMeasurement": {
+          "host": {
+            "samples": 29,
+            "averageCpuCoresMean": 0.05221813319533354,
+            "averageCpuCoresPeak": 0.19250776192143193,
+            "rssBytesPeak": 1104773120
+          },
+          "harness": {
+            "samples": 29,
+            "averageCpuCoresMean": 0.3641915049198332,
+            "averageCpuCoresPeak": 1.456194162721356,
+            "rssBytesPeak": 326172672
+          }
+        }
+      },
+      {
+        "case": "task-targeted-1000",
+        "status": "passed",
+        "processCpuDuringMeasurement": {
+          "host": {
+            "samples": 29,
+            "averageCpuCoresMean": 0.08999052338188354,
+            "averageCpuCoresPeak": 0.2537161474770376,
+            "rssBytesPeak": 1107763200
+          },
+          "harness": {
+            "samples": 29,
+            "averageCpuCoresMean": 0.4546487393671575,
+            "averageCpuCoresPeak": 1.7833965210037193,
+            "rssBytesPeak": 321036288
+          }
+        }
+      },
+      {
+        "case": "task-targeted-2000",
+        "status": "passed",
+        "processCpuDuringMeasurement": {
+          "host": {
+            "samples": 29,
+            "averageCpuCoresMean": 0.18480853445761997,
+            "averageCpuCoresPeak": 0.7576888397630148,
+            "rssBytesPeak": 1109454848
+          },
+          "harness": {
+            "samples": 29,
+            "averageCpuCoresMean": 0.7218736489747684,
+            "averageCpuCoresPeak": 2.3875783412486307,
+            "rssBytesPeak": 346787840
+          }
+        }
+      },
+      {
+        "case": "task-targeted-500",
+        "status": "passed",
+        "processCpuDuringMeasurement": {
+          "host": {
+            "samples": 30,
+            "averageCpuCoresMean": 0.0708623734137283,
+            "averageCpuCoresPeak": 0.7455634679441029,
+            "rssBytesPeak": 1105002496
+          },
+          "harness": {
+            "samples": 30,
+            "averageCpuCoresMean": 0.35822133479515733,
+            "averageCpuCoresPeak": 0.8888338759184544,
+            "rssBytesPeak": 331165696
+          }
+        }
+      }
+    ],
+    "operationalCloseout": {
+      "originalRestorePointRemoved": true,
+      "temporaryRuntimeZipsRemoved": true,
+      "removedAt": "2026-11-18T18:40:50.556470+00:00",
+      "operationsClosed": true
+    },
+    "limits": [
+      "The 3992 initial not_observed Results were consumed under the original IDs; they are not unknown submissions.",
+      "Warmup cohorts are separate from the 315000 formal calls.",
+      "All original 4.4.2 and 4.4.3 unknown outcomes remain unchanged without replay.",
+      "This is bounded open-loop public observation, not saturation, maximum TPS, zero-disconnection or every-Worker-executed proof.",
+      "CPU observations compare different runs and window lengths, not a strict A/B.",
+      "The operator GCP samples cover all formal cases plus quiesce/idle tail; mean CPU is not a 2000/s-only mean.",
+      "Nginx RSS sums shared pages and multiple generations; role peaks are not simultaneous.",
+      "Common Harness notCollected fields are retained; operator data is a separate source."
+    ]
+  },
+  "closeout": {
+    "status": "complete",
+    "observedAt": "2026-11-18T18:40:50.556470+00:00",
+    "acceptedRun": 44368693491,
+    "release": "v4.4.4",
+    "historicalUnknownOutcomesPreserved": true,
+    "noPendingScopedOperations": true
   }
 }

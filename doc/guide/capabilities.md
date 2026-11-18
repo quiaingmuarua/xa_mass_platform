@@ -9,7 +9,41 @@ Status: current capability guide with explicitly dated evidence.
 <a id="external-public-closeout"></a>
 ## 外部公网验收收尾
 
-### 2026-11-19：4.4.3 传输观测完成，发压问题继续定位
+### 2026-11-19：4.4.4 公网 10k Performance 九项通过
+
+不可变 [4.4.4 Release](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.4.4)
+来自 `01f795013ee9ded817304eba26e40805a21ddb89`；完整手动
+[Proof 44364668882](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44364668882)
+attempt 1 的 17 个 job 全部成功。GCP 继续使用 Runtime 4.4.0，常驻 Host 继续使用 4.4.2；
+只消费发布 renderer，在管理员 TLS server 显式设置 `admin_keepalive_requests=100000`
+并平滑 reload Nginx，保留 API 3000/s、burst 6000、H2 8192 streams 及 Worker 限额。
+配置指纹为 `sha256:bc1a46b635341c32a76d5089f0a1975265ab49900c2d0ca49ebe55061560c8e5`。
+
+原手动入口的 [10k 运行 44368693491](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44368693491)
+使用两个 Group 各 5000 Worker、一次重复、原三条路径和 500／1000／2000/s，
+**九项均 passed**，每项完整测量 30 秒。315,000 个正式请求均有完整 HTTP/2 响应，
+最终观察到 315,000 个成功 Result；429、未知提交、not-sent、failed Result 均为 0。
+其中 3,992 个初始尚未观察到 Result 的已接收请求，在原身份下全部 drain 闭合；
+它们不是未知提交，也没有重提。warmup 另计，不加入正式数量。
+计划到发送的 schedule-lag p99 最大 6.206ms，单独 executor-dispatch p99 最大 0.352ms。
+
+自动撤销在 8105ms 完成原 10,000 身份的完整扫描，100 页、最多 8 并发，均为 unknown。
+拥有的 Host／Harness 和临时凭据已清理；独立核对看到常驻 20 connected，
+原 Host 与 Runtime 进程、常驻配置／凭据／库存保持。这里的 cleanup unknown 是连接投影，
+与本轮为 0 的“未知提交”不同。四份公开报告的当前凭据格式、完整 Worker 身份交集及
+两个实际 consumer secret 值匹配均为 0；这只是当前材料的有界检查。
+
+另有 192 个低频 GCP 资源样本，覆盖全部正式 case 并包含空闲尾部。
+Nginx 多代进程的 RSS sum 峰值 1.11GB（包含共享页重复），MemAvailable 最低 7.81GB，
+不是单独 2000/s 场景的资源余量保证；Harness 仍明确标记自己未采集的 Server／Redis／JFR。
+主机记录已更新、操作已关闭，原单份恢复点和两份临时 Runtime ZIP 已删除。
+版本、原始四文件摘要、逐 case、资源来源及清理回执见
+[2026-11-19 观测](../../integrations/worker-call-performance/observations/external/2026-11-19.json)。
+
+这是既有 open-loop workload 的有限公网观测，不是 saturation、最大 TPS、长期 SLA、
+瞬时零断连或每个 Worker 都执行过任务的证明。下列历史失败及未知结果继续保留，不重放。
+
+### 2026-11-19：4.4.3 当轮未通过，后续由 4.4.4 收尾
 
 保留原 10k、三档速率和判据的
 [诊断运行 44333272615](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44333272615)
@@ -32,13 +66,13 @@ workload、warmup、5 秒预算、Oracle 和退出状态保持不变。
 正式 429 为 0。500/s 的到达调度 p99 小于 11ms，执行派发 p99 为 198–232ms。
 因此 HTTP/2 协商成功并不表示发压节奏已修复，也不证明始终只用一条 TCP 连接。
 自动撤销在 8114ms 确认原 10,000 个身份为 unknown；独立核对确认本轮进程和凭据清理、
-常驻 20 connected，原 Host 与 Runtime 进程保持。继续定位派发和连接换代问题；
-不重放原请求、不修改判据，不把 Actions 成功当作性能有效。
+常驻 20 connected，原 Host 与 Runtime 进程保持。当轮进入派发和连接换代定位，
+后续收尾见上节 4.4.4；不重放原请求、不修改判据，不把 Actions 成功当作性能有效。
 后续同版本 Nginx 1.24 的有效本地对照，以原 4.4.3 客户端、4 CPU、ECDSA 和双向各
 175ms 延迟，仅比较管理员连接复用预算 1000／100000。派发 p99 为 81.49／0.085ms，
 FD 峰值为 1647／90，正式测量新建连接数为 1519／0，两组正式 5000 个结果均成功；
-低预算 warmup 的 22 个 unknown 另行保留。这支持 4.4.4 入口复用候选，
-尚不表示已修复 GCP 的全部延迟。原不兼容本地 Nginx 等无效对照不进入比较结论。
+低预算 warmup 的 22 个 unknown 另行保留。该控制当时支持 4.4.4 入口复用候选；
+GCP 现场结果另见上节，不能只用本地对照推断。原不兼容本地 Nginx 等无效对照不进入比较结论。
 定位数据和边界见[2026-11-19 观测](../../integrations/worker-call-performance/observations/external/2026-11-19.json)。
 
 ### 2026-11-18：4.4.2 的 10k、空闲与受控恢复验收已完成
