@@ -9,7 +9,7 @@ Status: current capability guide with explicitly dated evidence.
 <a id="external-public-closeout"></a>
 ## 外部公网验收收尾
 
-### 2026-11-19：Performance 传输定位，4.4.3 待现场复测
+### 2026-11-19：4.4.3 传输观测完成，发压问题继续定位
 
 保留原 10k、三档速率和判据的
 [诊断运行 44333272615](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44333272615)
@@ -22,9 +22,23 @@ Status: current capability guide with explicitly dated evidence.
 尚不能把整个路径的 saturated 归为 Server 容量上限。独立 TLS 控制观察到后续 11/11
 连接成功恢复会话，因此不调整 TLS 会话缓存。
 
-4.4.3 修复共用 HTTP 客户端的连接复用和完整响应超时边界，补充安全的阶段与协议计数；
-workload、warmup、5 秒预算、Oracle 和退出状态保持不变。代码及真实 Nginx 传输回归
-与发布后正常 10k 观测分别记账，当前尚未获得新 patch 的公网性能结果。
+4.4.3 为共用 HTTP 客户端启用 HTTP/2，并修正完整响应超时边界，补充安全的阶段与协议计数；
+workload、warmup、5 秒预算、Oracle 和退出状态保持不变。
+完整手动 Proof 的 17 个 job 通过后发布了不可变 Release，GCP 仅平滑 reload 入口；
+随后未使用 JFR 的正常
+[10k 运行 44353588495](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44353588495)
+产生 **9 invalid**：6 个 generator-lag、3 个缺少合格 Worker 采样。75,019 个完整正式响应
+均为 HTTP/2，已取得对应成功 Result；另有 3,061 个未知响应、26,920 个 not-sent，
+正式 429 为 0。500/s 的到达调度 p99 小于 11ms，执行派发 p99 为 198–232ms。
+因此 HTTP/2 协商成功并不表示发压节奏已修复，也不证明始终只用一条 TCP 连接。
+自动撤销在 8114ms 确认原 10,000 个身份为 unknown；独立核对确认本轮进程和凭据清理、
+常驻 20 connected，原 Host 与 Runtime 进程保持。继续定位派发和连接换代问题；
+不重放原请求、不修改判据，不把 Actions 成功当作性能有效。
+后续同版本 Nginx 1.24 的有效本地对照，以原 4.4.3 客户端、4 CPU、ECDSA 和双向各
+175ms 延迟，仅比较管理员连接复用预算 1000／100000。派发 p99 为 81.49／0.085ms，
+FD 峰值为 1647／90，正式测量新建连接数为 1519／0，两组正式 5000 个结果均成功；
+低预算 warmup 的 22 个 unknown 另行保留。这支持 4.4.4 入口复用候选，
+尚不表示已修复 GCP 的全部延迟。原不兼容本地 Nginx 等无效对照不进入比较结论。
 定位数据和边界见[2026-11-19 观测](../../integrations/worker-call-performance/observations/external/2026-11-19.json)。
 
 ### 2026-11-18：4.4.2 的 10k、空闲与受控恢复验收已完成

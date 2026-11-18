@@ -18,6 +18,7 @@ import http.client
 import json
 import os
 from pathlib import Path
+import re
 import select
 import shutil
 import socket
@@ -381,15 +382,22 @@ class _Http2Backend(AbstractContextManager):
 
 def _verify_http2(directory: Path, *, nginx="nginx", openssl="openssl") -> dict:
     """Exercise the real JDK stream-cap boundary, GOAWAY and native HTTP/1 fallback."""
+    binary = shutil.which(nginx) or str(Path(nginx).resolve())
+    version = subprocess.run([binary, "-v"], capture_output=True, text=True, timeout=10, check=False)
+    match = re.search(r"nginx/(\d+)\.(\d+)\.(\d+)", version.stdout + version.stderr)
+    if version.returncode or match is None or tuple(map(int, match.groups())) < (1, 19, 7):
+        raise RuntimeError("HTTP/2 keepalive proof requires Nginx 1.19.7+; older HTTP/2 uses http2_max_requests")
     java = shutil.which("java")
     source = Path(__file__).resolve().parents[1] / "src/test/java/StagingHttp2Client.java"
     if java is None or not source.is_file():
         raise RuntimeError("HTTP/2 ingress proof requires JDK 21 and its source fixture")
     results = {}
-    for mode, streams in (("default-limit", 128), ("configured-limit", 8192), ("http1-fallback", 8192)):
+    for mode, streams, keepalive in (("default-limit", 128, 1000), ("configured-limit", 8192, 1000),
+                                     ("reused-connection", 8192, 100000), ("http1-fallback", 8192, 1000)):
         with _Http2Backend() as backend, _Backend() as adapter:
             gate = Gateway(directory / mode, backend.port, adapter.port, nginx=nginx, openssl=openssl)
             gate.config = replace(gate.config, http2_max_concurrent_streams=streams,
+                                  admin_keepalive_requests=keepalive,
                                   admin_requests_per_second=3000, admin_request_burst=6000)
             text = render(gate.config)
             # The fallback control uses only a fixture edit, never a deployed protocol switch.
@@ -412,7 +420,7 @@ def _verify_http2(directory: Path, *, nginx="nginx", openssl="openssl") -> dict:
                 raise AssertionError("JDK ingress transport fixture was incomplete")
             count = 1 if mode == "http1-fallback" else 128 if mode == "default-limit" else 256
             expected = {"fallback"} if mode == "http1-fallback" else {f"hold-{index}" for index in range(count)}
-            if mode == "configured-limit":
+            if mode in ("configured-limit", "reused-connection"):
                 expected.update(f"serial-{index}" for index in range(1001))
             if set(backend.received) != expected or any(value != 1 for value in backend.received.values()):
                 raise AssertionError("backend did not receive each original POST body exactly once")
@@ -426,13 +434,15 @@ def _verify_http2(directory: Path, *, nginx="nginx", openssl="openssl") -> dict:
             maximum_requests = max(int(row[1]) for row in rows)
             if mode == "configured-limit" and (len(connections) < 2 or maximum_requests != 1000):
                 raise AssertionError("the same JDK client did not cross Nginx's real default GOAWAY boundary")
-            evidence.update({"declaredMaxConcurrentStreams": streams,
+            if mode == "reused-connection" and (len(connections) != 1 or maximum_requests != len(expected) + 2):
+                raise AssertionError("the declared administrator policy did not reuse one connection beyond1000requests")
+            evidence.update({"declaredMaxConcurrentStreams": streams, "declaredAdminKeepaliveRequests": keepalive,
                 "backendCompletePosts": len(backend.received), "backendDuplicatePosts": 0,
                 "backendHeldPeak": backend.held_peak, "bearerForwardingConfirmed": True,
                 "routeDenialConfirmed": True, "nginxConnections": len(connections),
                 "nginxMaxRequestsPerConnection": maximum_requests})
             results[mode] = evidence
-    return {"status": "passed", "cases": results,
+    return {"status": "passed", "nginxVersion": match.group(0), "cases": results,
             "claims": "JDK/Nginx transport and exact mock POST receipt; not Runtime capacity or Worker execution"}
 
 

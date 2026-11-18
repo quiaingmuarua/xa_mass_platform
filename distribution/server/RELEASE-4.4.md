@@ -1,7 +1,9 @@
 # XA Mass 4.4 release and upgrade contract
 
-Status: version-scoped 4.4 contract. 4.4.3 is the next consumer/ingress patch;
-publication and its public acceptance are pending. 4.4.2 is published and the Ali
+Status: version-scoped 4.4 contract. 4.4.4 is the next ingress reuse patch;
+publication and public acceptance are pending. 4.4.3 is published; its normal 10k public
+observation completed with nine invalid cases and confirmed cleanup. Generator
+dispatch and connection rotation remain under investigation. 4.4.2 is published and the Ali
 consumers have been updated; GCP Runtime remains 4.4.0. The 4.4.2 campaign and automatic
 cleanup completed, and the bounded 75-minute idle and single controlled
 fault/reconnect acceptance passed on 2026-11-18.
@@ -9,13 +11,45 @@ Published artifacts remain immutable.
 Actual installation and acceptance status belongs to host records and
 [dated evidence](../../doc/guide/capabilities.md#external-public-closeout), not a live claim here.
 
+## 4.4.4 Administrator connection reuse patch
+
+The staging renderer adds the positive integer `admin_keepalive_requests`,
+default 1000, at administrator TLS-server scope. It retains the ordinary
+Worker-server policy. Nginx 1.19.7+ applies this setting to HTTP/2; the proof
+rejects older instruments that use the retired HTTP/2-specific directive.
+This does not change request admission, authentication, stream capacity,
+idle timeout, Worker behavior or the Performance workload and case oracle.
+
+The Preview candidate explicitly uses 100000 requests per administrator
+connection. That spans the existing 3000 warmup and up to 60000 formal calls
+per case, reducing repeated GOAWAY/cold-cache TLS bursts. Longer reuse delays
+reclamation of connection allocations; retain memory/FD observations. Runtime
+remains 4.4.0 and the standing Host remains 4.4.2. Apply the published renderer,
+validate and gracefully reload Nginx, then synchronize the Performance kit
+and configuration pins without changing API 3000/s, burst 6000 or H2 8192 streams.
+
+A valid private Nginx 1.24 comparison used the actual 4.4.3 client, four CPUs,
+an ECDSA certificate and 175ms delay in each TLS direction. Changing only the
+administrator reuse budget from 1000 to 100000 reduced measured dispatch p99
+from 81.49ms to 0.085ms, FD peak from 1647 to 90 and new measurement connections
+from 1519 to zero. Both 500/s formal cohorts completed 5000 calls without unknown
+or duplicate results; the low-budget warmup retained 22 unknowns. This local
+control does not claim to reproduce every cloud delay or establish GCP capacity.
+Earlier controls with an unsupported Nginx version or invalid instruments are
+retained separately and do not support this comparison.
+
+The existing real Nginx/JDK proof retains the default GOAWAY boundary and adds
+an SNI-selected administrator reuse case beyond 1000 requests, checked for
+complete, exact-once mock receipt. Release publication and another unchanged
+normal 10k observation remain pending.
+
 ## 4.4.3 Performance transport patch
 
 The common Performance HTTP client prefers HTTP/2 with the JDK's HTTP/1.1
 fallback. The staging renderer enables HTTP/2 on TLS listeners; WSS retains
 its existing HTTP/1.1 Upgrade path. The optional positive integer
 `http2_max_concurrent_streams` defaults to 128. An operator must provision it
-for concurrent consumer requests: the 10k Preview campaign will use 8192 for
+for concurrent consumer requests: the 10k Preview campaign uses 8192 for
 the unchanged 4096 in-flight bound and observation/cancellation headroom.
 This does not change API rate, burst, connection limits or authentication.
 Runtime can remain 4.4.0; apply the published 4.4.3 renderer to the gateway
@@ -43,8 +77,50 @@ unknown outcomes are preserved without replay.
 The existing ingress proof exercises real JDK/Nginx HTTP/2 stream admission,
 complete mock POST receipt, connection rollover and HTTP/1.1 fallback alongside
 the existing TLS, Basic/Bearer, route and WSS checks. This is transport proof,
-not Runtime throughput proof. Release publication and the subsequent normal
-10k public observation must be recorded separately after execution.
+not Runtime throughput proof.
+
+4.4.3 was published from merged commit
+`13e60437f30da282614a03c869a3e6871acdcfc7` after
+[manual Proof 44349083564](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44349083564),
+attempt 1, completed all 17 jobs successfully.
+[Promotion 44352535338](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44352535338)
+supplied the same bytes to immutable
+[Release 4.4.3](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.4.3)
+(ID `450286254`). All six GitHub digests and sidecars were verified; current
+credential-format inspection found zero matches in 1,542 text entries, including
+nested archives. This bounded scan is not a historical security audit.
+
+| ZIP component | SHA256 |
+| --- | --- |
+| Runtime | `1fe7ce58ac83278e50cf5d4139a81610ff550a9e8f4ec7435c173e5dbf349abe` |
+| Worker SDK | `dcb2b55b1d84f836bcd62548208155a7ba51502f8bc12fcdb2f02245ec8438f8` |
+| Worker Simulator kit | `0ae3bc25ee5b10750ad78dec2d4e78602631479690971fc7d744b67835eeb6ec` |
+
+The published renderer was applied to the GCP gateway with an explicit 8192
+stream budget and a graceful Nginx reload. API 3000/s and burst 6000, Worker
+admission and authentication remained unchanged. Runtime 4.4.0, Redis and Nginx
+master processes did not restart. The configuration fingerprint became
+`sha256:df061f31e09c448e6c3b99a6cf96cae84de9e8342d6f2e97aa08d2b53ac3ef67`.
+The standing 4.4.2 Host retained its process and protected inputs, with all 20
+logical Workers observed connected after reload. This point check does not
+repeat or extend the previous 75-minute recovery proof.
+
+The normal unprofiled 10k observation
+[44353588495](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44353588495)
+completed with nine invalid cases: six generator-lag and three with no qualified
+Worker observations. All 75,019 complete formal replies used HTTP/2 and successful
+Results were observed; 3,061 attempted calls without complete HTTP responses
+remain unknown and 26,920 were not sent. No formal HTTP 429 was observed.
+At 500/s, offer-lag p99 was below 11ms while dispatch-lag p99 was 198–232ms;
+HTTP/2 preference alone did not repair generator pacing. Investigation continues
+without changing the workload or replaying unknown requests.
+
+Automatic cleanup confirmed all 10,000 original identities unknown in 8,114ms,
+100 pages with eight concurrent requests. Owned processes and credential copies
+were removed. The independent postcheck agreed, confirmed 20 standing connections,
+and retained the original Host/Runtime processes. These operational outcomes do
+not turn the invalid cases into comparable performance evidence. The original
+record is retained in the [dated observation](../../integrations/worker-call-performance/observations/external/2026-11-19.json).
 
 ## 4.4.2 Consumer closeout patch
 

@@ -113,6 +113,7 @@ boolean, string, fraction or null).
 | `admin_requests_per_second` | 30 | Administrator HTTP requests per source IP per second |
 | `admin_request_burst` | 60 | Excess administrator requests admitted immediately by the rate limiter |
 | `http2_max_concurrent_streams` | 128 | Concurrent HTTP/2 request streams per client connection, shared by the TLS virtual hosts |
+| `admin_keepalive_requests` | 1000 | Requests before retiring an administrator TLS connection; requires Nginx 1.19.7+ for HTTP/2 |
 
 `worker_connection_limit` must not exceed `worker_total_connection_limit`. Connection
 and rate-limit zones remain shared across Nginx processes; starting more processes
@@ -123,6 +124,14 @@ Runtime, host or network can sustain the selected capacity. These are deployment
 controls, not Kernel scheduling or XA Mass Worker limits.
 
 The HTTP/2 stream ceiling is independent of request-rate and WSS admission limits.
+The administrator connection's request-reuse budget is independent of those limits
+and idle timeout. Frequent GOAWAY can produce concurrent cold TLS connections while
+a JDK client's replacement HTTP/2 connection is being negotiated. A deployment can
+explicitly raise `admin_keepalive_requests` to reduce that churn. Longer reuse also
+delays reclamation of connection allocations; observe memory and FD usage when
+choosing this budget. It applies to the administrator TLS server selected by SNI;
+the Worker server retains its existing request-reuse policy. This does not change
+request rates, authentication, WSS admission or workload oracles.
 Keep its explicit budget large enough for a caller's in-flight HTTP requests and
 concurrent observation requests: for example, 4,096 offered calls plus eight
 observation pages fit an explicit value of 8,192. A JDK HTTP client can reject a
@@ -165,7 +174,7 @@ The deterministic tests run from source with:
 python -m unittest discover -s distribution/server/src/test/python -p test_staging_ingress.py
 ```
 
-The Linux proof requires HTTP/2-enabled `nginx`, `openssl`, JDK 21 and Python 3.10+.
+The Linux proof requires HTTP/2-enabled Nginx 1.19.7+, `openssl`, JDK 21 and Python 3.10+.
 It creates a private CA
 and a localhost/IP SAN certificate, verifies TLS normally, and runs only its own
 Nginx and loopback mock upstream processes. It requires neither Redis nor an external
@@ -183,7 +192,9 @@ body/rate/connection limits (default and small configured values), no retry, rev
 and restart. Its JDK client verifies negotiated HTTP/2 with the test CA, witnesses
 the default 128-stream boundary, exceeds 128 simultaneous streams under an explicit
 custom stream budget, and crosses Nginx's default 1,000-request keepalive boundary
-with POST requests checked for missing or duplicate upstream delivery. An HTTP/1.1-only
+with POST requests checked for missing or duplicate upstream delivery. A separate administrator reuse budget
+retains one SNI-selected connection beyond 1,000 requests; the original default
+GOAWAY control remains. An HTTP/1.1-only
 TLS control checks native client fallback. The proof retains Bearer forwarding,
 Worker Basic separation and route refusals. One unchanged raw HTTP/1.1 WSS connection
 also stays silent for 65 seconds and then

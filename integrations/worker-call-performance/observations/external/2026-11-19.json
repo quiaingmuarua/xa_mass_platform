@@ -241,6 +241,473 @@
     ]
   },
   "fixAcceptance": {
-    "status": "pending-release-and-normal-10k-observation"
+    "status": "observed-performance-invalid-investigation-continues",
+    "githubRunId": 44353588495,
+    "profiled": false,
+    "artifactManifest": {
+      "gitCommit": "13e60437f30da282614a03c869a3e6871acdcfc7",
+      "javaVersion": 21,
+      "loadedEntry": "acceptance/run_loaded.py",
+      "performanceEntry": "acceptance/performance/run_worker_call_performance.py",
+      "roundEntry": "acceptance/finite_round.py",
+      "schemaVersion": 3,
+      "simulatorEntry": "bin/xa-mass-worker-simulator",
+      "version": "4.4.3"
+    },
+    "serverDeployment": {
+      "configurationId": "sha256:df061f31e09c448e6c3b99a6cf96cae84de9e8342d6f2e97aa08d2b53ac3ef67",
+      "gitCommit": "b28a87ac918a34ffabb4feb8c63a29998a0610db",
+      "version": "4.4.0"
+    },
+    "workersPerGroup": 5000,
+    "groups": 2,
+    "rates": [
+      500,
+      1000,
+      2000
+    ],
+    "repetitions": 1,
+    "caseCounts": {
+      "invalid": 9
+    },
+    "formalCounts": {
+      "samples": 105000,
+      "sent": 78080,
+      "httpVersion:HTTP_2": 75019,
+      "outcome:succeeded": 70756,
+      "observed:succeeded": 75019,
+      "sentHttp0Unknown": 3061,
+      "clientTimeouts": 2685,
+      "timeoutPhase:before-headers": 2372,
+      "exceptionType:HttpTimeoutException": 975,
+      "outcome:unknown": 3061,
+      "observed:not_observed": 29981,
+      "exceptionType:TimeoutException": 1710,
+      "timeoutPhase:response-body": 313,
+      "notSent": 26920,
+      "outcome:not_sent": 26920,
+      "exceptionType:other": 49,
+      "outcome:not_observed": 4263,
+      "exceptionType:IOException": 327
+    },
+    "originalCleanup": {
+      "errors": [],
+      "ownedProcessesStopped": true,
+      "privateCredentialCopiesRemoved": true,
+      "workerConnections": {
+        "identityCount": 10000,
+        "observation": {
+          "complete": true,
+          "completedPages": 100,
+          "deadlineExpired": false,
+          "elapsedMillis": 8114,
+          "errorTypes": {},
+          "observedIdentityCount": 10000,
+          "pageConcurrency": 8,
+          "pageSize": 100,
+          "scanCount": 1,
+          "totalPages": 100
+        },
+        "states": {
+          "unknown": 10000
+        },
+        "status": "confirmed"
+      }
+    },
+    "cases": [
+      {
+        "case": "task-any-500",
+        "status": "invalid",
+        "invalidReasons": [
+          "generator-lag"
+        ],
+        "httpVersions": {
+          "HTTP_2": 5000
+        },
+        "offerLagMillis": {
+          "samples": 5000,
+          "p99": 7.074595,
+          "p95": 0.466055,
+          "p50": 0.072911
+        },
+        "executorDispatchLagMillis": {
+          "samples": 5000,
+          "p99": 232.147198,
+          "p95": 82.086391,
+          "p50": 0.033047
+        },
+        "timeoutPhases": {},
+        "exceptionTypes": {}
+      },
+      {
+        "case": "task-targeted-500",
+        "status": "invalid",
+        "invalidReasons": [
+          "generator-lag"
+        ],
+        "httpVersions": {
+          "HTTP_2": 5000
+        },
+        "offerLagMillis": {
+          "p50": 0.072967,
+          "samples": 5000,
+          "p99": 4.590317,
+          "p95": 0.362247
+        },
+        "executorDispatchLagMillis": {
+          "p50": 0.030526,
+          "samples": 5000,
+          "p99": 224.95714,
+          "p95": 72.894453
+        },
+        "timeoutPhases": {},
+        "exceptionTypes": {}
+      },
+      {
+        "case": "direct-500",
+        "status": "invalid",
+        "invalidReasons": [
+          "generator-lag"
+        ],
+        "httpVersions": {
+          "HTTP_2": 5000
+        },
+        "offerLagMillis": {
+          "p50": 0.07349,
+          "p95": 0.376831,
+          "p99": 10.33372,
+          "samples": 5000
+        },
+        "executorDispatchLagMillis": {
+          "p50": 0.032191,
+          "p95": 83.032741,
+          "p99": 197.906608,
+          "samples": 5000
+        },
+        "timeoutPhases": {},
+        "exceptionTypes": {}
+      },
+      {
+        "case": "task-any-1000",
+        "status": "invalid",
+        "invalidReasons": [
+          "generator-lag"
+        ],
+        "httpVersions": {
+          "HTTP_2": 10000
+        },
+        "offerLagMillis": {
+          "p99": 33.637782,
+          "samples": 10000,
+          "p50": 0.071346,
+          "p95": 6.834774
+        },
+        "executorDispatchLagMillis": {
+          "p99": 481.895321,
+          "samples": 10000,
+          "p50": 2.910047,
+          "p95": 324.520948
+        },
+        "timeoutPhases": {},
+        "exceptionTypes": {}
+      },
+      {
+        "case": "task-targeted-1000",
+        "status": "invalid",
+        "invalidReasons": [
+          "generator-lag"
+        ],
+        "httpVersions": {
+          "HTTP_2": 10000
+        },
+        "offerLagMillis": {
+          "p99": 32.348958,
+          "samples": 10000,
+          "p50": 0.071548,
+          "p95": 6.588704
+        },
+        "executorDispatchLagMillis": {
+          "p99": 520.818657,
+          "samples": 10000,
+          "p50": 4.55023,
+          "p95": 413.19477
+        },
+        "timeoutPhases": {},
+        "exceptionTypes": {}
+      },
+      {
+        "case": "direct-1000",
+        "status": "invalid",
+        "invalidReasons": [
+          "generator-lag"
+        ],
+        "httpVersions": {
+          "HTTP_2": 10000
+        },
+        "offerLagMillis": {
+          "p99": 27.569324,
+          "samples": 10000,
+          "p50": 0.0717,
+          "p95": 5.454297
+        },
+        "executorDispatchLagMillis": {
+          "p99": 559.068395,
+          "samples": 10000,
+          "p50": 2.543126,
+          "p95": 397.410529
+        },
+        "timeoutPhases": {},
+        "exceptionTypes": {}
+      },
+      {
+        "case": "task-any-2000",
+        "status": "invalid",
+        "invalidReasons": [
+          "worker-observation-unavailable"
+        ],
+        "httpVersions": {
+          "HTTP_2": 11460
+        },
+        "offerLagMillis": {
+          "p99": 65.378281,
+          "p95": 28.781231,
+          "p50": 0.066798,
+          "samples": 20000
+        },
+        "executorDispatchLagMillis": {
+          "p99": 1636.951531,
+          "p95": 1426.396234,
+          "p50": 124.348265,
+          "samples": 11796
+        },
+        "timeoutPhases": {
+          "before-headers": 129,
+          "response-body": 192
+        },
+        "exceptionTypes": {
+          "HttpTimeoutException": 122,
+          "TimeoutException": 199,
+          "EOFException": 15
+        }
+      },
+      {
+        "case": "task-targeted-2000",
+        "status": "invalid",
+        "invalidReasons": [
+          "worker-observation-unavailable"
+        ],
+        "httpVersions": {
+          "HTTP_2": 9129
+        },
+        "offerLagMillis": {
+          "p95": 24.128357,
+          "p50": 0.062981,
+          "samples": 20000,
+          "p99": 54.86691
+        },
+        "executorDispatchLagMillis": {
+          "p95": 529.565213,
+          "p50": 83.148705,
+          "samples": 10556,
+          "p99": 1591.756764
+        },
+        "timeoutPhases": {
+          "response-body": 76,
+          "before-headers": 1024
+        },
+        "exceptionTypes": {
+          "TimeoutException": 858,
+          "HttpTimeoutException": 242,
+          "IOException": 327
+        }
+      },
+      {
+        "case": "direct-2000",
+        "status": "invalid",
+        "invalidReasons": [
+          "worker-observation-unavailable"
+        ],
+        "httpVersions": {
+          "HTTP_2": 9430
+        },
+        "offerLagMillis": {
+          "p95": 27.928453,
+          "p50": 0.066558,
+          "samples": 20000,
+          "p99": 58.015491
+        },
+        "executorDispatchLagMillis": {
+          "p95": 1185.302961,
+          "p50": 67.249369,
+          "samples": 10728,
+          "p99": 1937.103913
+        },
+        "timeoutPhases": {
+          "before-headers": 1219,
+          "response-body": 45
+        },
+        "exceptionTypes": {
+          "HttpTimeoutException": 611,
+          "TimeoutException": 653,
+          "EOFException": 34
+        }
+      }
+    ],
+    "artifactsSha256": {
+      "summary.json": "299a67717a2aa3ea12d086aef0d035f9a7fe50581173100d70fe1d6012a7036e",
+      "summary.md": "d3d106f48d19adc201eec83be83ba1eafee543e3d9804317f83af436e898f99d",
+      "consumption.json": "9ecf98d4e692bff38c49417cc8aa4abb57480097061f92206b67c20bee449b5b",
+      "orchestration.json": "cfb55e762b118aec06286dd2356794c23999066a7bef8a3e8549ebb5660dc0bb"
+    },
+    "independentPostcheck": {
+      "observedAt": "2026-11-18T17:12:13.633164+00:00",
+      "campaignNetworkStates": {
+        "unknown": 10000
+      },
+      "persistentNetworkStates": {
+        "connected": 20
+      },
+      "ownedJavaAbsent": true,
+      "inputCredentialsAbsent": true,
+      "runnerCredentialsAbsent": true,
+      "persistentPid": 53788,
+      "runtimePid": 511640,
+      "newSubmissionsIssued": 0
+    },
+    "interpretation": "HTTP/2 negotiated and cleanup worked; all cases invalid. H2 preference alone did not repair generator pacing. Original unknown outcomes are preserved; no replay. Connection rotation and dispatch scheduling remain under investigation.",
+    "publicationReview": {
+      "files": 4,
+      "projectCredentialFormatMatches": 0,
+      "identityCount": 10000,
+      "completeIdentityMatches": 0,
+      "currentConsumerSecretValuesChecked": 2,
+      "secretValueMatches": 0
+    }
+  },
+  "connectionReuseControl": {
+    "instrumentStatus": "valid",
+    "scope": "Finite local actual-release client control, not GCP capacity proof",
+    "sourceSha256": "8af86ce4bae354e82bcd8bfbda91bbdee1a6a6dfc8dfaf8f43b8176fa64f693c",
+    "artifactSha256": "0ae3bc25ee5b10750ad78dec2d4e78602631479690971fc7d744b67835eeb6ec",
+    "nginxVersion": "nginx version: nginx/1.24.0",
+    "nginxBinarySha256": "7f5676b86626417dbb040e2537fd860a9c94aa2c367178cc8e31505de4029650",
+    "processors": 4,
+    "tlsDelayMillisEachDirection": 175,
+    "certificateKeyType": "ECDSA-prime256v1",
+    "privateFixtureCleaned": true,
+    "variants": [
+      {
+        "adminKeepaliveRequests": 1000,
+        "formalPlanned": 5000,
+        "formalOutcomes": {
+          "succeeded": 5000,
+          "failed": 0,
+          "not_observed": 0,
+          "unknown": 0,
+          "not_sent": 0,
+          "protocol_error": 0,
+          "rejected": 0,
+          "timed_out": 0
+        },
+        "formalHttpVersions": {
+          "HTTP_2": 5000
+        },
+        "offerLagMillis": {
+          "samples": 5000,
+          "p50": 0.101118,
+          "p95": 0.274454,
+          "p99": 2.814552
+        },
+        "dispatchLagMillis": {
+          "samples": 5000,
+          "p50": 0.036714,
+          "p95": 13.365321,
+          "p99": 81.48869
+        },
+        "processCpuCoresMean": 1.0579145150093165,
+        "fdPeak": 1647,
+        "warmupOutcomes": {
+          "succeeded": 2978,
+          "failed": 0,
+          "not_observed": 0,
+          "unknown": 22,
+          "not_sent": 0,
+          "protocol_error": 0,
+          "rejected": 0,
+          "timed_out": 0
+        },
+        "measurementNewConnections": 1519,
+        "measurementNginxConnections": 1520,
+        "requestsPerConnectionHistogram": {
+          "1": 1737,
+          "241": 1,
+          "1000": 6
+        },
+        "queueFullWaits": 0,
+        "byteBudgetWaits": 0,
+        "proxyErrors": {},
+        "remainingActive": 0,
+        "remainingQueuedBytes": 0,
+        "backendDuplicates": 0
+      },
+      {
+        "adminKeepaliveRequests": 100000,
+        "formalPlanned": 5000,
+        "formalOutcomes": {
+          "succeeded": 5000,
+          "failed": 0,
+          "not_observed": 0,
+          "unknown": 0,
+          "not_sent": 0,
+          "protocol_error": 0,
+          "rejected": 0,
+          "timed_out": 0
+        },
+        "formalHttpVersions": {
+          "HTTP_2": 5000
+        },
+        "offerLagMillis": {
+          "p50": 0.079108,
+          "p95": 0.192909,
+          "p99": 0.236731,
+          "samples": 5000
+        },
+        "dispatchLagMillis": {
+          "p50": 0.029305,
+          "p95": 0.059148,
+          "p99": 0.084724,
+          "samples": 5000
+        },
+        "processCpuCoresMean": 0.4328313750326382,
+        "fdPeak": 90,
+        "warmupOutcomes": {
+          "succeeded": 3000,
+          "failed": 0,
+          "not_observed": 0,
+          "unknown": 0,
+          "not_sent": 0,
+          "protocol_error": 0,
+          "rejected": 0,
+          "timed_out": 0
+        },
+        "measurementNewConnections": 0,
+        "measurementNginxConnections": 1,
+        "requestsPerConnectionHistogram": {
+          "1": 76,
+          "7924": 1
+        },
+        "queueFullWaits": 0,
+        "byteBudgetWaits": 0,
+        "proxyErrors": {},
+        "remainingActive": 0,
+        "remainingQueuedBytes": 0,
+        "backendDuplicates": 0
+      }
+    ],
+    "limits": [
+      "The local low-budget dispatch p99 did not reproduce the full cloud 200ms lag.",
+      "Earlier invalid controls are retained privately and are not comparison evidence.",
+      "Default request rates, warmup, in-flight bound and result semantics were unchanged."
+    ]
   }
 }

@@ -174,6 +174,19 @@ Server 与 Consumer kit 分开固定版本：`INSTALLED_RELEASE_TAG/COMMIT` 描�
 Ali 常驻 Host 的 `/opt/xa-mass-worker-simulator/current` 另有安装记录；它不跟随 Actions
 自动切换。修改源码或发布 kit 不会自动更新这些坐标，当前值应从对应记录核对。
 
+2026-11-19 的传输补丁将按需 Performance kit 更新为
+`4.4.3/13e60437f30da282614a03c869a3e6871acdcfc7`，常驻 Host 保持 4.4.2，
+Runtime 保持 4.4.0。GCP 入口单独消费发布 Runtime ZIP 中的 4.4.3 renderer，启用
+HTTP/2 和显式 `http2_max_concurrent_streams=8192`，仅平滑 reload Nginx；
+原 API 3000/s、burst 6000 及 Worker 限额不变。实际来源、工具／证据目录和配置指纹见
+`/etc/xa-mass/deployment.json` 的 `http2TransportChange`，不以此将 Runtime 重标为 4.4.3。
+以后修改该入口时，从这条记录取得 renderer Release／commit／SHA；校验发布 ZIP 后，
+用对应 renderer 生成私有候选配置，按主机 Nginx 启动参数执行语法检查，再 reload。
+旧 4.4.0 安装内的 renderer 不认识新增字段，不应使用它重写当前入口配置。
+同步 `PERFORMANCE_DEPLOYMENT_JSON.serverDeployment.configurationId`，保留实际 Server
+版本及 `INSTALLED_RELEASE_*`。本轮观测状态从[能力记录](../capabilities.md#external-public-closeout)
+进入；版本同步本身不证明测量或清理成功。
+
 2026-11-18 已将 Ali 常驻 Host 更新为 4.4.2，并将按需 Performance kit pins 设为
 `4.4.2/ccf676801663f953169f2d03058cbe7236a01123`。安装核对保留了原 20 个 Worker
 身份和配置／凭据／库存指纹；GCP Runtime 仍为
