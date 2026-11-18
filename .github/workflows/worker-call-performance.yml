@@ -315,8 +315,10 @@ jobs:
           RUNTIME_ACCESS_KEY: ${{ secrets.PERFORMANCE_RUNTIME_ACCESS_KEY }}
           WORKER_GATEWAY_KEY_ID: ${{ secrets.PERFORMANCE_WORKER_GATEWAY_KEY_ID }}
           WORKER_GATEWAY_SECRET: ${{ secrets.PERFORMANCE_WORKER_GATEWAY_SECRET }}
-          RELEASE_TAG: ${{ vars.INSTALLED_RELEASE_TAG }}
-          RELEASE_COMMIT: ${{ vars.INSTALLED_RELEASE_COMMIT }}
+          RELEASE_TAG: ${{ vars.PERFORMANCE_KIT_RELEASE_TAG }}
+          RELEASE_COMMIT: ${{ vars.PERFORMANCE_KIT_RELEASE_COMMIT }}
+          SERVER_RELEASE_TAG: ${{ vars.INSTALLED_RELEASE_TAG }}
+          SERVER_RELEASE_COMMIT: ${{ vars.INSTALLED_RELEASE_COMMIT }}
           WORKERS_PER_GROUP: ${{ inputs.external_workers_per_group }}
           REPETITIONS: ${{ inputs.external_repetitions }}
         run: |
@@ -336,8 +338,10 @@ jobs:
           RUNTIME_ACCESS_KEY: ${{ secrets.PERFORMANCE_RUNTIME_ACCESS_KEY }}
           WORKER_GATEWAY_KEY_ID: ${{ secrets.PERFORMANCE_WORKER_GATEWAY_KEY_ID }}
           WORKER_GATEWAY_SECRET: ${{ secrets.PERFORMANCE_WORKER_GATEWAY_SECRET }}
-          RELEASE_TAG: ${{ vars.INSTALLED_RELEASE_TAG }}
-          RELEASE_COMMIT: ${{ vars.INSTALLED_RELEASE_COMMIT }}
+          RELEASE_TAG: ${{ vars.PERFORMANCE_KIT_RELEASE_TAG }}
+          RELEASE_COMMIT: ${{ vars.PERFORMANCE_KIT_RELEASE_COMMIT }}
+          SERVER_RELEASE_TAG: ${{ vars.INSTALLED_RELEASE_TAG }}
+          SERVER_RELEASE_COMMIT: ${{ vars.INSTALLED_RELEASE_COMMIT }}
           WORKERS_PER_GROUP: ${{ inputs.external_workers_per_group }}
           REPETITIONS: ${{ inputs.external_repetitions }}
         run: |

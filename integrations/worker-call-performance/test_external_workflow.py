@@ -153,7 +153,8 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
                             "secrets.CONSUMER_SSH_PRIVATE_KEY", "vars.PERFORMANCE_DEPLOYMENT_JSON",
                             "vars.PERFORMANCE_CONNECTION_BUDGET_JSON", "secrets.PERFORMANCE_RUNTIME_ACCESS_KEY",
                             "secrets.PERFORMANCE_WORKER_GATEWAY_KEY_ID", "secrets.PERFORMANCE_WORKER_GATEWAY_SECRET",
-                            "vars.INSTALLED_RELEASE_TAG", "vars.INSTALLED_RELEASE_COMMIT"):
+                            "vars.INSTALLED_RELEASE_TAG", "vars.INSTALLED_RELEASE_COMMIT",
+                            "vars.PERFORMANCE_KIT_RELEASE_TAG", "vars.PERFORMANCE_KIT_RELEASE_COMMIT"):
                 self.assertIn(binding, selected)
         self.assertIn("--action stop", run_body(finalize))
         guard = re.search(r"^        if: (.+)$", finalize, re.MULTILINE).group(1)

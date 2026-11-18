@@ -128,32 +128,96 @@ final class LaneWorld {
         }
     }
 
-    /** Waits until every Worker is RUNNING in the Lab, connected, idle HOT and has published facts. */
+    /** Waits for the full fleet's live gates and Properties coverage of its bounded known-identity targets. */
     private static Map<String, List<String>> readyGroups(CallApi api, Coordinates coordinates) throws Exception {
         long deadline = System.nanoTime() + BOOTSTRAP_TIMEOUT_NANOS;
-        int unavailable = 0;
+        var readiness = new Readiness();
         do {
             try {
-                var ids = labWorkers(api, coordinates);
-                if (ids != null && ready(api, ids, coordinates)) return ids;
+                var ids = readiness.observe(api, coordinates);
+                if (ids != null) return ids;
             } catch (CallApi.Unavailable busy) {
                 // Runtime View may be briefly unavailable while 2,000 connections are verified.
-                unavailable++;
+                readiness.unavailable++;
+                readiness.notReady.put("runtime-view", Map.of("unavailable", 1L));
             }
             Thread.sleep(500);
         } while (System.nanoTime() < deadline);
         throw new IllegalStateException(coordinates.groups().size() * coordinates.workersPerGroup()
-                + " lane Workers did not become ready; unavailable observations " + unavailable);
+                + " lane Workers did not become ready; unavailable observations " + readiness.unavailable
+                + "; non-ready states " + Jsons.toJson(readiness.notReady));
     }
 
-    private static boolean ready(CallApi api, Map<String, List<String>> ids, Coordinates coordinates) throws Exception {
-        for (String group : coordinates.groups()) {
-            var groupIds = ids.get(group);
-            if (!allIn(observe(api, networkPath(coordinates.endpoint()), groupIds), Set.of("connected"))
-                    || !allIn(observe(api, schedulingPath(group), groupIds), Set.of("held-hot", IDLE))
-                    || !facts(api, group, groupIds)) return false;
+    /** Bootstrap-local coverage: a Group Preview samples registered identities, including historical Workers. */
+    static final class Readiness {
+        private Map<String, List<String>> world = Map.of();
+        private final Map<String, Set<String>> targets = new LinkedHashMap<>();
+        private final Map<String, Set<String>> published = new LinkedHashMap<>();
+        private Map<String, Map<String, Long>> notReady = new LinkedHashMap<>();
+        private int unavailable;
+
+        Map<String, List<String>> observe(CallApi api, Coordinates coordinates) throws Exception {
+            notReady = new LinkedHashMap<>();
+            var ids = labWorkers(api, coordinates);
+            if (ids == null) {
+                notReady.put("lab", Map.of("not-running-or-unassigned", 1L));
+                return null;
+            }
+            if (!ids.equals(world)) {
+                world = ids;
+                targets.clear();
+                published.clear();
+                for (String group : coordinates.groups()) {
+                    var groupIds = ids.get(group); // labWorkers sorts the complete, exact identity set.
+                    targets.put(group, Set.copyOf(groupIds.subList(0, Math.min(1000, groupIds.size()))));
+                    published.put(group, new java.util.HashSet<>());
+                }
+            }
+            // Every unfinished Group gets a sample, even when another Group still lacks Properties.
+            for (String group : coordinates.groups()) {
+                var target = targets.get(group);
+                var seen = published.get(group);
+                if (seen.size() < target.size()) {
+                    try {
+                        var preview = api.post("/api/v1/runtime-view/worker-groups/" + group + "/workers:preview", 1000);
+                        if (preview.get("workers") instanceof List<?> entries) {
+                            for (var entry : entries) {
+                                var worker = CallApi.object(entry);
+                                if (worker.get("workerId") instanceof String id && target.contains(id)
+                                        && worker.get("workerProperties") instanceof Map<?, ?> properties && !properties.isEmpty())
+                                    seen.add(id);
+                            }
+                        }
+                    } catch (CallApi.Unavailable busy) {
+                        unavailable++;
+                    }
+                }
+                if (seen.size() < target.size())
+                    notReady.put(group, Map.of("properties-missing", (long) target.size() - seen.size()));
+            }
+            if (!notReady.isEmpty()) return null;
+
+            // Coverage is only Properties evidence; all current identities still need the original live gates.
+            var current = labWorkers(api, coordinates);
+            if (current == null || !current.equals(ids)) {
+                if (current != null) {
+                    world = Map.of();
+                    targets.clear();
+                    published.clear();
+                }
+                notReady.put("lab", Map.of("not-running-or-identity-changed", 1L));
+                return null;
+            }
+            for (String group : coordinates.groups()) {
+                var states = new LinkedHashMap<String, Long>();
+                count(states, LaneWorld.observe(api, networkPath(coordinates.endpoint()), ids.get(group)), "connected", "network:");
+                LaneWorld.observe(api, schedulingPath(group), ids.get(group)).values().forEach(state -> {
+                    if (!Set.of("held-hot", IDLE).contains(state)) states.merge("scheduling:" + state, 1L, Long::sum);
+                });
+                if (!states.isEmpty()) notReady.put(group, states);
+            }
+            return notReady.isEmpty() ? ids : null;
         }
-        return true;
     }
 
     /** Sorted RUNNING Worker IDs per Group, or null while the Lab has not assigned every identity. */
@@ -174,19 +238,6 @@ final class LaneWorld {
             group.sort(null);
         }
         return ids;
-    }
-
-    private static boolean facts(CallApi api, String group, List<String> ids) throws Exception {
-        int limit = Math.min(1000, ids.size());
-        var preview = api.post("/api/v1/runtime-view/worker-groups/" + group + "/workers:preview", limit);
-        if (!(preview.get("workers") instanceof List<?> entries) || entries.size() != limit) return false;
-        var seen = new java.util.HashSet<Object>();
-        for (var entry : entries) {
-            var worker = CallApi.object(entry);
-            if (!(worker.get("workerProperties") instanceof Map<?, ?> properties) || properties.isEmpty()) return false;
-            seen.add(worker.get("workerId"));
-        }
-        return seen.size() == limit && Set.copyOf(ids).containsAll(seen);
     }
 
     /**

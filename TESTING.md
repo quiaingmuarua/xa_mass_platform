@@ -311,6 +311,12 @@ concurrency group. It leaves source Nightly unchanged and runs only the pinned p
 Release kit on the dedicated Ali consumer user, without Git/Gradle, root or GCP
 administrator credentials. Its Vars, Secrets, manifest pins and declared
 host/gateway budget preflight are listed in the Owner.
+`PERFORMANCE_KIT_RELEASE_TAG` / `PERFORMANCE_KIT_RELEASE_COMMIT` pin the consumed
+immutable schema-3 kit; the existing `INSTALLED_RELEASE_TAG` /
+`INSTALLED_RELEASE_COMMIT` independently pin the GCP Server and must match the
+configuration's `serverDeployment`. Each is verified against its own declared
+identity, with no cross-pin fallback or `latest` selection. A Consumer kit patch
+does not require upgrading the target Server when its API contract is unchanged.
 
 ```bash
 gh workflow run worker-call-performance.yml --ref main \
@@ -320,7 +326,9 @@ gh workflow run worker-call-performance.yml --ref main \
 ```
 
 The two Groups default to 5,000 Workers each; per-Group inventory accepts
-`1..15000`, and external repetitions are `1` or `3` (default `1`). One repetition
+`1..15000`; selecting `external_workers_per_group=1000` is a 2k delivery check,
+not evidence for the default 10k size. External repetitions are `1` or `3`
+(default `1`). One repetition
 has a 45-minute campaign budget, three have 100 minutes, GitHub has 120 minutes,
 and owned-unit shutdown has 120 seconds. Re-running the same GitHub Run ID only
 reconnects to its unit or collects evidence; a new run needs a new Run ID. Retain
@@ -331,6 +339,14 @@ persistent 20-Worker system service is outside
 this lifecycle. Publish only the allowlisted sanitized receipts, without bootstrap
 Worker IDs; exit status `0` still requires inspecting case validity. This change
 adds no proof lane, Release publication, GCP upgrade or claimed 10k acceptance.
+
+Source and external execution share the same [bootstrap readiness](integrations/worker-call-performance/README.md#bootstrap-readiness):
+Properties coverage accumulates for a fixed sample of this run's Lab identities,
+while readiness still requires every current Worker `RUNNING`, connected and HOT
+within the existing deadline. Historical Group Preview rows do not count as
+current-run coverage; their registrations are retained, without changing Groups
+or clearing history to pass a check. The public API and later case/Result oracles
+remain unchanged.
 
 ## External Release load
 

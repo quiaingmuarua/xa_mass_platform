@@ -150,11 +150,11 @@ def locked(path, *, wait_seconds=0):
         yield
 
 
-def validate_config(config, tag, commit, workers):
-    require(re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag) and re.fullmatch(r"[0-9a-f]{40}", commit), "Invalid Release identity")
+def validate_config(config, server_tag, server_commit, workers):
+    require(re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", server_tag) and re.fullmatch(r"[0-9a-f]{40}", server_commit), "Invalid Server Release identity")
     require(config.get("consumerId") == "public43-performance", "Stable consumerId differs")
     deployment = config.get("serverDeployment", {})
-    require(deployment.get("version") == tag[1:] and deployment.get("gitCommit") == commit, "Deployment and Release differ")
+    require(deployment.get("version") == server_tag[1:] and deployment.get("gitCommit") == server_commit, "Deployment and Server Release differ")
     require(isinstance(config.get("groups"), list) and len(config["groups"]) == 2
             and len(set(config["groups"])) == 2 and all(isinstance(g, str) for g in config["groups"]), "Two existing Groups are required")
     require(type(workers) is int and 1 <= workers <= 15000, "Worker quantity is outside the existing Host bound")
@@ -227,7 +227,7 @@ def remote_prepare(identifier, envelope):
     with locked(root / "control.lock"):
         if any((root / name).exists() for name in ("state.json", "start-request.json", "stop-request.json", "receipt.json")):
             return remote_status(identifier)
-        config = validate_config(envelope["deployment"], envelope["tag"], envelope["commit"], envelope["workers"])
+        config = validate_config(envelope["deployment"], envelope["serverTag"], envelope["serverCommit"], envelope["workers"])
         # An active campaign holds this same global lock throughout execution.
         with locked(root.parent / "performance.lock"):
             budget = preflight(config, envelope["workers"], envelope["budget"])
@@ -246,7 +246,8 @@ def remote_prepare(identifier, envelope):
         state = {"runId": identifier, "firstAttempt": envelope["attempt"], "tag": envelope["tag"],
                  "commit": envelope["commit"], "workersPerGroup": envelope["workers"], "repetitions": envelope["repetitions"],
                  "kitRoot": str(kit), "manifest": manifest, "consumption": envelope["consumption"],
-                 "preflight": budget, "preparedAt": now(), "github": envelope.get("github", {})}
+                 "preflight": budget, "preparedAt": now(), "github": envelope.get("github", {}),
+                 "serverTag": envelope["serverTag"], "serverCommit": envelope["serverCommit"]}
         write_json(root / "state.json", state, exclusive=True)
     return {"state": "prepared", "preflight": budget}
 
@@ -569,8 +570,9 @@ def controller(arguments):
             if not attach:
                 require(arguments.action == "run" and attempt == 1, "Original helper is missing; outcome unknown, never restart")
                 tag, commit = env_required(environment, "RELEASE_TAG"), env_required(environment, "RELEASE_COMMIT")
+                server_tag, server_commit = env_required(environment, "SERVER_RELEASE_TAG"), env_required(environment, "SERVER_RELEASE_COMMIT")
                 config = json.loads(env_required(environment, "DEPLOYMENT_JSON"))
-                validate_config(config, tag, commit, arguments.workers_per_group)
+                validate_config(config, server_tag, server_commit, arguments.workers_per_group)
                 require(not interrupted, "Controller cancelled before preparation")
                 transport.copy(Path(__file__).resolve(), helper)
                 spec = importlib.util.spec_from_file_location("external_release_input", Path(__file__).with_name("prepare_external_release_load.py"))
@@ -580,7 +582,8 @@ def controller(arguments):
                 consumption = {k: consumed[k] for k in ("release", "releaseId", "tag", "gitCommit", "kitSha256", "manifest")}
                 archive = private / "kit" / f"xa-mass-worker-simulator-{tag[1:]}.zip"
                 transport.copy(archive, root + "/kit.zip")
-                envelope = {"deployment": config, "tag": tag, "commit": commit, "workers": arguments.workers_per_group,
+                envelope = {"deployment": config, "tag": tag, "commit": commit, "serverTag": server_tag,
+                            "serverCommit": server_commit, "workers": arguments.workers_per_group,
                             "repetitions": arguments.repetitions, "attempt": attempt, "consumption": consumption,
                             "kitSha256": consumed["kitSha256"], "budget": json.loads(env_required(environment, "CONNECTION_BUDGET_JSON")),
                             "accessKey": env_required(environment, "RUNTIME_ACCESS_KEY"),

@@ -1,9 +1,41 @@
 # XA Mass 4.4 release and upgrade contract
 
-Status: version-scoped 4.4 contract; target 4.4.0. Publication requires complete
-manual Proof at the exact merged candidate commit. This document does not record
-publication, deployment or passing public acceptance. Published 4.3 artifacts
-remain immutable.
+Status: version-scoped 4.4 contract; the 4.4.0 cutover contract is retained below.
+The next patch target is 4.4.1. Its publication requires complete manual Proof at
+the exact merged candidate commit; its real deployed-Performance validation is
+pending. Published artifacts remain immutable. Actual deployment and acceptance
+status belongs to the installed host records and dated evidence.
+
+## 4.4.1 Performance consumer patch
+
+4.4.1 corrects the shared Performance Harness bootstrap readiness check. A Group
+preview can contain Worker identities retained from earlier campaigns, so checking
+that its returned identities all belong to the current Host inventory can falsely
+reject a ready campaign. The Harness retains the existing Group preview API and
+its 1000-entry ceiling, filters observations to known current Worker IDs and
+accumulates nonempty Properties coverage. Groups of up to 1000 current Workers
+require coverage of all of them; larger Groups use a stable 1000-Worker sample
+from the current inventory. Historical identities and empty Properties do not
+count. The whole current fleet must still be RUNNING, connected and HOT; the
+240-second bootstrap budget, path cases, rates, warmup, windows and result
+assertions are unchanged. This changes no Server, SDK or wire contract.
+
+Publish this patch through the ordinary complete manual Proof and Release path:
+build and prove the Runtime, Worker SDK and Worker Simulator kit ZIPs once, then
+publish those exact bytes with their SHA256 sidecars. Manifest schemas remain
+Runtime 6, SDK 1 and Simulator kit 3. Do not replace files inside the published
+4.4.0 kit or build a separate consumer-only Release format.
+
+The recommended deployed-Performance combination is the published **4.4.1
+Simulator kit** with the existing GCP **4.4.0 Runtime**, whose installed commit is
+`b28a87ac918a34ffabb4feb8c63a29998a0610db`. Record and validate the kit's Release
+tag, exact Release commit and ZIP SHA256 independently of that installed Server
+version/commit. The two commits need not match; neither coordinate uses `latest`
+or a fallback. This consumer correction requires no GCP Runtime replacement,
+Server restart, new scope/database or replacement of the standing 20-Worker Host.
+The selected 4.4.0 scope, SQLite database and retained old data below remain as
+installed. The single real external validation of this patch remains pending;
+the fix and packaging checks alone establish no successful public load result.
 
 ## Finite Task history
 
@@ -57,8 +89,9 @@ failure domain. See the [kit examples](../worker-simulator/src/main/dist/example
 
 This consumer delivery change adds no Worker protocol or existing Runtime Task API
 change relative to 4.3.2. The new Storage APIs belong to the history change above.
-Use the matching 4.4.0 kit/SDK for this Release's recorded acceptance; no existing
-APK is replaced automatically and prior-version witnesses retain their versions.
+The 4.4.0 cutover acceptance uses its matching 4.4.0 kit/SDK; the 4.4.1 Performance
+consumer combination is described above. No existing APK is replaced automatically
+and prior-version witnesses retain their versions.
 
 ## Selected GCP cutover
 
@@ -133,7 +166,7 @@ Runtime, Android, distribution and business regression evidence. Publish the
 existing workflow's exact verified ZIP bytes; publication and deployment remain
 separate recorded facts.
 
-Normal GCP acceptance is small and specific to this Release:
+The 4.4.0 GCP cutover acceptance is small and specific to that Release:
 
 Use the standing test identity `accept4`, currently an administrator without an
 access key, for external acceptance. Before changing it, privately record its
