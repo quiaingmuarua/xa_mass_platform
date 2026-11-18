@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "date": "2026-11-18",
   "kind": "dated-external-performance-observations",
-  "recordedAt": "2026-11-18T09:46:58.261430+00:00",
+  "recordedAt": "2026-11-18T13:01:03.415841+00:00",
   "boundary": "Published kit consumers against a separately pinned existing GCP Runtime. These are finite observations, not live health or a Server capacity/SLA claim.",
   "runs": [
     {
@@ -668,6 +668,1299 @@
         "266 sent requests without HTTP responses remain unknown and were not replayed",
         "Persistent20 process/config unchanged; known half-open connection finding remains"
       ]
+    },
+    {
+      "githubRunId": "44297177821",
+      "runUrl": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44297177821",
+      "preparedAt": "2026-11-18T11:43:07+00:00",
+      "kit": {
+        "tag": "v4.4.2",
+        "gitCommit": "ccf676801663f953169f2d03058cbe7236a01123",
+        "kitSha256": "fb848b6d8194e2ddd1affc7a6507b2e22bcf47be75e1b57d233b44a35824341f"
+      },
+      "serverDeployment": {
+        "version": "4.4.0",
+        "gitCommit": "b28a87ac918a34ffabb4feb8c63a29998a0610db",
+        "configurationId": "sha256:8fee159a3d8a95820503ff66c5a55daeefd3b7d8407baa95a000c135845c6a2f"
+      },
+      "workersPerGroup": 5000,
+      "groups": 2,
+      "repetitions": 1,
+      "originalWorkflowConclusion": "success",
+      "workflowConclusionSource": "operator-supplied final Run metadata",
+      "originalRunnerStatus": "passed",
+      "originalOrchestrationReceipt": {
+        "runnerExitCode": 0,
+        "privateInputsRemoved": true,
+        "summaryPresent": true,
+        "finishedAt": "2026-11-18T11:56:13+00:00",
+        "serviceResult": "not-reported",
+        "status": "passed",
+        "runnerStatus": "passed",
+        "finalizationFailures": []
+      },
+      "originalRunnerFailure": null,
+      "originalResourceFailure": null,
+      "originalOrchestration": {
+        "controllerAttempt": 1,
+        "attached": true,
+        "controllerCancelled": false,
+        "startAcknowledged": true,
+        "state": "finished"
+      },
+      "formalMeasurements": 9,
+      "caseCounts": {
+        "passed": 3,
+        "invalid": 3,
+        "saturated": 3
+      },
+      "recordCoverage": {
+        "expectedRecords": 9,
+        "presentRecords": 9,
+        "missing": [],
+        "duplicates": []
+      },
+      "discardedJobWarmup": {
+        "p99LatencyMillis": 4413.072835,
+        "case": "task-any-2000",
+        "status": "saturated"
+      },
+      "submissionEvidenceStatus": "complete",
+      "submissionTotals": {
+        "notSent": 15651,
+        "clientTimeouts": 560,
+        "observed:not_observed": 16211,
+        "sentHttp0Unknown": 560,
+        "sent": 119349,
+        "observed:succeeded": 118789,
+        "outcome:unknown": 560,
+        "samples": 135000,
+        "outcome:not_sent": 15651,
+        "outcome:not_observed": 7263,
+        "outcome:succeeded": 111526,
+        "http429": 0
+      },
+      "submissionEvidenceByPhase": {
+        "formal": {
+          "notSent": 15651,
+          "clientTimeouts": 560,
+          "observed:not_observed": 16211,
+          "sentHttp0Unknown": 560,
+          "sent": 119349,
+          "observed:succeeded": 118789,
+          "outcome:unknown": 560,
+          "samples": 135000,
+          "outcome:not_sent": 15651,
+          "outcome:not_observed": 7263,
+          "outcome:succeeded": 111526,
+          "http429": 0
+        },
+        "innerWarmup": {
+          "sent": 27000,
+          "observed:succeeded": 27000,
+          "samples": 27000,
+          "outcome:not_observed": 1411,
+          "outcome:succeeded": 25589,
+          "http429": 0
+        },
+        "discardedWarmup": {
+          "notSent": 4470,
+          "observed:not_observed": 4470,
+          "sent": 18530,
+          "observed:succeeded": 18530,
+          "samples": 23000,
+          "outcome:not_sent": 4470,
+          "outcome:not_observed": 4076,
+          "outcome:succeeded": 14454,
+          "http429": 0
+        }
+      },
+      "originalRunnerCleanup": {
+        "ownedProcessesStopped": true,
+        "privateCredentialCopiesRemoved": true,
+        "errors": [],
+        "workerConnections": {
+          "identityCount": 10000,
+          "status": "confirmed",
+          "states": {
+            "unknown": 10000
+          },
+          "observation": {
+            "pageSize": 100,
+            "pageConcurrency": 8,
+            "totalPages": 100,
+            "completedPages": 100,
+            "observedIdentityCount": 10000,
+            "scanCount": 1,
+            "elapsedMillis": 8048,
+            "complete": true,
+            "deadlineExpired": false,
+            "errorTypes": {}
+          }
+        }
+      },
+      "preparation": {
+        "lease": {
+          "ttlSeconds": 300,
+          "armConfirmed": true
+        },
+        "cleanup": {
+          "timerStopped": true,
+          "timerStoppedAt": "2026-11-18T11:43:08+00:00"
+        }
+      },
+      "resourcePeaks": {
+        "harness-bootstrap-1": {
+          "peakFileDescriptors": 22,
+          "peakNativeThreads": 26,
+          "peakRssBytes": 334671872,
+          "samples": 98
+        },
+        "harness-case-11": {
+          "peakFileDescriptors": 2893,
+          "peakNativeThreads": 28,
+          "peakRssBytes": 502755328,
+          "samples": 44
+        },
+        "harness-case-13": {
+          "peakFileDescriptors": 1169,
+          "peakNativeThreads": 28,
+          "peakRssBytes": 414703616,
+          "samples": 40
+        },
+        "harness-case-15": {
+          "peakFileDescriptors": 965,
+          "peakNativeThreads": 28,
+          "peakRssBytes": 399753216,
+          "samples": 40
+        },
+        "harness-case-17": {
+          "peakFileDescriptors": 4112,
+          "peakNativeThreads": 28,
+          "peakRssBytes": 836202496,
+          "samples": 47
+        },
+        "harness-case-19": {
+          "peakFileDescriptors": 4117,
+          "peakNativeThreads": 28,
+          "peakRssBytes": 716800000,
+          "samples": 42
+        },
+        "harness-case-21": {
+          "peakFileDescriptors": 4117,
+          "peakNativeThreads": 28,
+          "peakRssBytes": 658522112,
+          "samples": 40
+        },
+        "harness-case-3": {
+          "peakFileDescriptors": 4115,
+          "peakNativeThreads": 28,
+          "peakRssBytes": 755990528,
+          "samples": 46
+        },
+        "harness-case-5": {
+          "peakFileDescriptors": 951,
+          "peakNativeThreads": 28,
+          "peakRssBytes": 438939648,
+          "samples": 61
+        },
+        "harness-case-7": {
+          "peakFileDescriptors": 411,
+          "peakNativeThreads": 28,
+          "peakRssBytes": 363896832,
+          "samples": 60
+        },
+        "harness-case-9": {
+          "peakFileDescriptors": 284,
+          "peakNativeThreads": 28,
+          "peakRssBytes": 354250752,
+          "samples": 60
+        },
+        "harness-quiesce-10": {
+          "peakFileDescriptors": 21,
+          "peakNativeThreads": 27,
+          "peakRssBytes": 137314304,
+          "samples": 13
+        },
+        "harness-quiesce-12": {
+          "peakFileDescriptors": 21,
+          "peakNativeThreads": 27,
+          "peakRssBytes": 138780672,
+          "samples": 13
+        },
+        "harness-quiesce-14": {
+          "peakFileDescriptors": 21,
+          "peakNativeThreads": 27,
+          "peakRssBytes": 139227136,
+          "samples": 13
+        },
+        "harness-quiesce-16": {
+          "peakFileDescriptors": 21,
+          "peakNativeThreads": 27,
+          "peakRssBytes": 138199040,
+          "samples": 13
+        },
+        "harness-quiesce-18": {
+          "peakFileDescriptors": 21,
+          "peakNativeThreads": 27,
+          "peakRssBytes": 140529664,
+          "samples": 13
+        },
+        "harness-quiesce-2": {
+          "peakFileDescriptors": 21,
+          "peakNativeThreads": 27,
+          "peakRssBytes": 139255808,
+          "samples": 12
+        },
+        "harness-quiesce-20": {
+          "peakFileDescriptors": 21,
+          "peakNativeThreads": 27,
+          "peakRssBytes": 132710400,
+          "samples": 13
+        },
+        "harness-quiesce-4": {
+          "peakFileDescriptors": 21,
+          "peakNativeThreads": 27,
+          "peakRssBytes": 139481088,
+          "samples": 13
+        },
+        "harness-quiesce-6": {
+          "peakFileDescriptors": 21,
+          "peakNativeThreads": 27,
+          "peakRssBytes": 140267520,
+          "samples": 13
+        },
+        "harness-quiesce-8": {
+          "peakFileDescriptors": 21,
+          "peakNativeThreads": 27,
+          "peakRssBytes": 140009472,
+          "samples": 13
+        },
+        "host": {
+          "peakFileDescriptors": 10028,
+          "peakNativeThreads": 54,
+          "peakRssBytes": 1058537472,
+          "samples": 750
+        }
+      },
+      "notCollected": [
+        "server-resources",
+        "redis-resources",
+        "redis-calibration",
+        "server-jfr"
+      ],
+      "cases": [
+        {
+          "case": "task-any-500",
+          "repetition": 1,
+          "status": "passed",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 500.0,
+          "measurementStartedEpochMillis": 1795002435385,
+          "measurementEndedEpochMillis": 1795002465988,
+          "workerSamples": 4,
+          "leaseHeldPeakRatio": 0.0168,
+          "generatorLimited": false,
+          "fastFail": null,
+          "measurementObserved": true,
+          "acceptedResultsAfterDrain": {
+            "succeeded": 15000,
+            "failed": 0,
+            "not_observed": 0
+          },
+          "originalMetrics": {
+            "planned": 15000,
+            "sent": 15000,
+            "accepted": 15000,
+            "http429": 0,
+            "clientTimeouts": 0,
+            "unknownSubmissions": 0,
+            "acceptedUnobservedAfterResponses": 294,
+            "resultCounts": {
+              "succeeded": 15000,
+              "failed": 0,
+              "not_observed": 0
+            },
+            "acceptedResultsAfterDrain": {
+              "succeeded": 15000,
+              "failed": 0,
+              "not_observed": 0
+            }
+          },
+          "submissionCounts": {
+            "sent": 15000,
+            "observed:succeeded": 15000,
+            "samples": 15000,
+            "outcome:not_observed": 294,
+            "outcome:succeeded": 14706,
+            "http429": 0
+          },
+          "processCpuDuringMeasurement": {
+            "host": {
+              "samples": 29,
+              "averageCpuCoresMean": 0.07181830865028399,
+              "averageCpuCoresPeak": 0.41351125762811486,
+              "rssBytesPeak": 1043447808
+            },
+            "harness": {
+              "samples": 29,
+              "averageCpuCoresMean": 0.47254310157279716,
+              "averageCpuCoresPeak": 3.020215736360974,
+              "rssBytesPeak": 438693888
+            }
+          }
+        },
+        {
+          "case": "task-targeted-500",
+          "repetition": 1,
+          "status": "passed",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 500.0,
+          "measurementStartedEpochMillis": 1795002511569,
+          "measurementEndedEpochMillis": 1795002542180,
+          "workerSamples": 4,
+          "leaseHeldPeakRatio": 0.0194,
+          "generatorLimited": false,
+          "fastFail": null,
+          "measurementObserved": true,
+          "acceptedResultsAfterDrain": {
+            "succeeded": 15000,
+            "failed": 0,
+            "not_observed": 0
+          },
+          "originalMetrics": {
+            "planned": 15000,
+            "sent": 15000,
+            "accepted": 15000,
+            "http429": 0,
+            "clientTimeouts": 0,
+            "unknownSubmissions": 0,
+            "acceptedUnobservedAfterResponses": 0,
+            "resultCounts": {
+              "succeeded": 15000,
+              "failed": 0,
+              "not_observed": 0
+            },
+            "acceptedResultsAfterDrain": {
+              "succeeded": 15000,
+              "failed": 0,
+              "not_observed": 0
+            }
+          },
+          "submissionCounts": {
+            "sent": 15000,
+            "observed:succeeded": 15000,
+            "samples": 15000,
+            "outcome:succeeded": 15000,
+            "http429": 0
+          },
+          "processCpuDuringMeasurement": {
+            "host": {
+              "samples": 29,
+              "averageCpuCoresMean": 0.05357489865125587,
+              "averageCpuCoresPeak": 0.20516393882458006,
+              "rssBytesPeak": 1045811200
+            },
+            "harness": {
+              "samples": 29,
+              "averageCpuCoresMean": 0.4480688869304412,
+              "averageCpuCoresPeak": 2.4311137713471243,
+              "rssBytesPeak": 363896832
+            }
+          }
+        },
+        {
+          "case": "direct-500",
+          "repetition": 1,
+          "status": "passed",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 500.0,
+          "measurementStartedEpochMillis": 1795002587037,
+          "measurementEndedEpochMillis": 1795002617437,
+          "workerSamples": 4,
+          "leaseHeldPeakRatio": 0.0,
+          "generatorLimited": false,
+          "fastFail": null,
+          "measurementObserved": true,
+          "acceptedResultsAfterDrain": {
+            "succeeded": 15000,
+            "failed": 0,
+            "not_observed": 0
+          },
+          "originalMetrics": {
+            "planned": 15000,
+            "sent": 15000,
+            "accepted": 15000,
+            "http429": 0,
+            "clientTimeouts": 0,
+            "unknownSubmissions": 0,
+            "acceptedUnobservedAfterResponses": 0,
+            "resultCounts": {
+              "succeeded": 15000,
+              "failed": 0,
+              "not_observed": 0
+            },
+            "acceptedResultsAfterDrain": {
+              "succeeded": 15000,
+              "failed": 0,
+              "not_observed": 0
+            }
+          },
+          "submissionCounts": {
+            "sent": 15000,
+            "observed:succeeded": 15000,
+            "samples": 15000,
+            "outcome:succeeded": 15000,
+            "http429": 0
+          },
+          "processCpuDuringMeasurement": {
+            "host": {
+              "samples": 29,
+              "averageCpuCoresMean": 0.09910085728423375,
+              "averageCpuCoresPeak": 0.7812918418466489,
+              "rssBytesPeak": 1045815296
+            },
+            "harness": {
+              "samples": 29,
+              "averageCpuCoresMean": 0.4120516208528723,
+              "averageCpuCoresPeak": 2.492243866945134,
+              "rssBytesPeak": 354250752
+            }
+          }
+        },
+        {
+          "case": "task-any-1000",
+          "repetition": 1,
+          "status": "invalid",
+          "invalidReasons": [
+            "generator-lag"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 1000.0,
+          "measurementStartedEpochMillis": 1795002663098,
+          "measurementEndedEpochMillis": 1795002673548,
+          "workerSamples": 1,
+          "leaseHeldPeakRatio": 0.0658,
+          "generatorLimited": true,
+          "fastFail": "generator-lag",
+          "measurementObserved": true,
+          "acceptedResultsAfterDrain": {
+            "succeeded": 10000,
+            "failed": 0,
+            "not_observed": 0
+          },
+          "originalMetrics": {
+            "planned": 10000,
+            "sent": 10000,
+            "accepted": 10000,
+            "http429": 0,
+            "clientTimeouts": 0,
+            "unknownSubmissions": 0,
+            "acceptedUnobservedAfterResponses": 2291,
+            "resultCounts": {
+              "succeeded": 10000,
+              "failed": 0,
+              "not_observed": 0
+            },
+            "acceptedResultsAfterDrain": {
+              "succeeded": 10000,
+              "failed": 0,
+              "not_observed": 0
+            }
+          },
+          "submissionCounts": {
+            "sent": 10000,
+            "observed:succeeded": 10000,
+            "samples": 10000,
+            "outcome:not_observed": 2291,
+            "outcome:succeeded": 7709,
+            "http429": 0
+          },
+          "processCpuDuringMeasurement": {
+            "host": {
+              "samples": 10,
+              "averageCpuCoresMean": 0.09013500656798365,
+              "averageCpuCoresPeak": 0.22318428059605355,
+              "rssBytesPeak": 1045843968
+            },
+            "harness": {
+              "samples": 10,
+              "averageCpuCoresMean": 2.155774493995124,
+              "averageCpuCoresPeak": 3.6382504155674016,
+              "rssBytesPeak": 502755328
+            }
+          }
+        },
+        {
+          "case": "task-targeted-1000",
+          "repetition": 1,
+          "status": "invalid",
+          "invalidReasons": [
+            "generator-lag"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 1000.0,
+          "measurementStartedEpochMillis": 1795002721643,
+          "measurementEndedEpochMillis": 1795002732216,
+          "workerSamples": 1,
+          "leaseHeldPeakRatio": 0.0494,
+          "generatorLimited": true,
+          "fastFail": "generator-lag",
+          "measurementObserved": true,
+          "acceptedResultsAfterDrain": {
+            "succeeded": 10000,
+            "failed": 0,
+            "not_observed": 0
+          },
+          "originalMetrics": {
+            "planned": 10000,
+            "sent": 10000,
+            "accepted": 10000,
+            "http429": 0,
+            "clientTimeouts": 0,
+            "unknownSubmissions": 0,
+            "acceptedUnobservedAfterResponses": 0,
+            "resultCounts": {
+              "succeeded": 10000,
+              "failed": 0,
+              "not_observed": 0
+            },
+            "acceptedResultsAfterDrain": {
+              "succeeded": 10000,
+              "failed": 0,
+              "not_observed": 0
+            }
+          },
+          "submissionCounts": {
+            "sent": 10000,
+            "observed:succeeded": 10000,
+            "samples": 10000,
+            "outcome:succeeded": 10000,
+            "http429": 0
+          },
+          "processCpuDuringMeasurement": {
+            "host": {
+              "samples": 10,
+              "averageCpuCoresMean": 0.07957377974229735,
+              "averageCpuCoresPeak": 0.11586294206136727,
+              "rssBytesPeak": 1045860352
+            },
+            "harness": {
+              "samples": 10,
+              "averageCpuCoresMean": 1.4398745431937352,
+              "averageCpuCoresPeak": 3.609801700483081,
+              "rssBytesPeak": 414703616
+            }
+          }
+        },
+        {
+          "case": "direct-1000",
+          "repetition": 1,
+          "status": "invalid",
+          "invalidReasons": [
+            "generator-lag"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 1000.0,
+          "measurementStartedEpochMillis": 1795002776819,
+          "measurementEndedEpochMillis": 1795002787220,
+          "workerSamples": 1,
+          "leaseHeldPeakRatio": 0.0,
+          "generatorLimited": true,
+          "fastFail": "generator-lag",
+          "measurementObserved": true,
+          "acceptedResultsAfterDrain": {
+            "succeeded": 10000,
+            "failed": 0,
+            "not_observed": 0
+          },
+          "originalMetrics": {
+            "planned": 10000,
+            "sent": 10000,
+            "accepted": 10000,
+            "http429": 0,
+            "clientTimeouts": 0,
+            "unknownSubmissions": 0,
+            "acceptedUnobservedAfterResponses": 0,
+            "resultCounts": {
+              "succeeded": 10000,
+              "failed": 0,
+              "not_observed": 0
+            },
+            "acceptedResultsAfterDrain": {
+              "succeeded": 10000,
+              "failed": 0,
+              "not_observed": 0
+            }
+          },
+          "submissionCounts": {
+            "sent": 10000,
+            "observed:succeeded": 10000,
+            "samples": 10000,
+            "outcome:succeeded": 10000,
+            "http429": 0
+          },
+          "processCpuDuringMeasurement": {
+            "host": {
+              "samples": 10,
+              "averageCpuCoresMean": 0.13549066281642022,
+              "averageCpuCoresPeak": 0.20048205241251899,
+              "rssBytesPeak": 1046413312
+            },
+            "harness": {
+              "samples": 10,
+              "averageCpuCoresMean": 1.5250165163860723,
+              "averageCpuCoresPeak": 3.575919071506666,
+              "rssBytesPeak": 399753216
+            }
+          }
+        },
+        {
+          "case": "task-any-2000",
+          "repetition": 1,
+          "status": "saturated",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 1618.5,
+          "admittedPerSecond": 1618.5,
+          "measurementStartedEpochMillis": 1795002833020,
+          "measurementEndedEpochMillis": 1795002843561,
+          "workerSamples": 1,
+          "leaseHeldPeakRatio": 0.0728,
+          "generatorLimited": true,
+          "fastFail": "in-flight-cap",
+          "measurementObserved": true,
+          "acceptedResultsAfterDrain": {
+            "succeeded": 16185,
+            "failed": 0,
+            "not_observed": 0
+          },
+          "originalMetrics": {
+            "planned": 20000,
+            "sent": 16185,
+            "accepted": 16185,
+            "http429": 0,
+            "clientTimeouts": 0,
+            "unknownSubmissions": 0,
+            "acceptedUnobservedAfterResponses": 3803,
+            "resultCounts": {
+              "succeeded": 16185,
+              "failed": 0,
+              "not_observed": 3815
+            },
+            "acceptedResultsAfterDrain": {
+              "succeeded": 16185,
+              "failed": 0,
+              "not_observed": 0
+            }
+          },
+          "submissionCounts": {
+            "notSent": 3815,
+            "observed:not_observed": 3815,
+            "sent": 16185,
+            "observed:succeeded": 16185,
+            "samples": 20000,
+            "outcome:not_sent": 3815,
+            "outcome:not_observed": 3803,
+            "outcome:succeeded": 12382,
+            "http429": 0
+          },
+          "processCpuDuringMeasurement": {
+            "host": {
+              "samples": 10,
+              "averageCpuCoresMean": 0.1624978953845126,
+              "averageCpuCoresPeak": 0.6037274456298434,
+              "rssBytesPeak": 1047158784
+            },
+            "harness": {
+              "samples": 10,
+              "averageCpuCoresMean": 2.75016586007946,
+              "averageCpuCoresPeak": 3.8501228225795705,
+              "rssBytesPeak": 836087808
+            }
+          }
+        },
+        {
+          "case": "task-targeted-2000",
+          "repetition": 1,
+          "status": "saturated",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 1472.7,
+          "admittedPerSecond": 1472.7,
+          "measurementStartedEpochMillis": 1795002894895,
+          "measurementEndedEpochMillis": 1795002905427,
+          "workerSamples": 1,
+          "leaseHeldPeakRatio": 0.0322,
+          "generatorLimited": true,
+          "fastFail": "in-flight-cap",
+          "measurementObserved": true,
+          "acceptedResultsAfterDrain": {
+            "succeeded": 14727,
+            "failed": 0,
+            "not_observed": 0
+          },
+          "originalMetrics": {
+            "planned": 20000,
+            "sent": 14775,
+            "accepted": 14727,
+            "http429": 0,
+            "clientTimeouts": 48,
+            "unknownSubmissions": 48,
+            "acceptedUnobservedAfterResponses": 875,
+            "resultCounts": {
+              "succeeded": 14727,
+              "failed": 0,
+              "not_observed": 5273
+            },
+            "acceptedResultsAfterDrain": {
+              "succeeded": 14727,
+              "failed": 0,
+              "not_observed": 0
+            }
+          },
+          "submissionCounts": {
+            "notSent": 5225,
+            "clientTimeouts": 48,
+            "observed:not_observed": 5273,
+            "sentHttp0Unknown": 48,
+            "sent": 14775,
+            "observed:succeeded": 14727,
+            "outcome:unknown": 48,
+            "samples": 20000,
+            "outcome:not_sent": 5225,
+            "outcome:not_observed": 875,
+            "outcome:succeeded": 13852,
+            "http429": 0
+          },
+          "processCpuDuringMeasurement": {
+            "host": {
+              "samples": 10,
+              "averageCpuCoresMean": 0.11102812043942482,
+              "averageCpuCoresPeak": 0.1800570457496627,
+              "rssBytesPeak": 1047142400
+            },
+            "harness": {
+              "samples": 10,
+              "averageCpuCoresMean": 3.1889452828535054,
+              "averageCpuCoresPeak": 3.824589177342,
+              "rssBytesPeak": 716705792
+            }
+          }
+        },
+        {
+          "case": "direct-2000",
+          "repetition": 1,
+          "status": "saturated",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 1287.7,
+          "admittedPerSecond": 1287.7,
+          "measurementStartedEpochMillis": 1795002952215,
+          "measurementEndedEpochMillis": 1795002962665,
+          "workerSamples": 1,
+          "leaseHeldPeakRatio": 0.0,
+          "generatorLimited": true,
+          "fastFail": "in-flight-cap",
+          "measurementObserved": true,
+          "acceptedResultsAfterDrain": {
+            "succeeded": 12877,
+            "failed": 0,
+            "not_observed": 0
+          },
+          "originalMetrics": {
+            "planned": 20000,
+            "sent": 13389,
+            "accepted": 12877,
+            "http429": 0,
+            "clientTimeouts": 512,
+            "unknownSubmissions": 512,
+            "acceptedUnobservedAfterResponses": 0,
+            "resultCounts": {
+              "succeeded": 12877,
+              "failed": 0,
+              "not_observed": 7123
+            },
+            "acceptedResultsAfterDrain": {
+              "succeeded": 12877,
+              "failed": 0,
+              "not_observed": 0
+            }
+          },
+          "submissionCounts": {
+            "notSent": 6611,
+            "clientTimeouts": 512,
+            "observed:not_observed": 7123,
+            "sentHttp0Unknown": 512,
+            "sent": 13389,
+            "observed:succeeded": 12877,
+            "outcome:unknown": 512,
+            "samples": 20000,
+            "outcome:not_sent": 6611,
+            "outcome:succeeded": 12877,
+            "http429": 0
+          },
+          "processCpuDuringMeasurement": {
+            "host": {
+              "samples": 9,
+              "averageCpuCoresMean": 0.13115254947738508,
+              "averageCpuCoresPeak": 0.2522474598487021,
+              "rssBytesPeak": 1047715840
+            },
+            "harness": {
+              "samples": 9,
+              "averageCpuCoresMean": 3.2720405842148472,
+              "averageCpuCoresPeak": 3.7834318872986605,
+              "rssBytesPeak": 657752064
+            }
+          }
+        }
+      ],
+      "evidenceSha256": {
+        "summary.json": "0b71b092c7117cbd111cf2d5f5d7b8d8352ff5f924eb254f6db3d17896b14c85",
+        "summary.md": "ba446d6e43e015c75058ae3ea672f033024b7aedef54966368889203d7a22ccf",
+        "consumption.json": "91da62b490c390197b3c93717719b79cfdd9943faea1418443499f0aa78f2430",
+        "orchestration.json": "cb06d232b548bc6e6ff6ce68a7cfd8bd896bbdc3e50288607ed5a17ee28ae78a"
+      },
+      "counterNormalization": {
+        "http429": {
+          "basis": "Absent sparse Counter entry is zero only where complete, readable sample evidence is present.",
+          "sourceSubmissionEvidenceStatus": "complete",
+          "appliedTo": [
+            "submissionTotals",
+            "submissionEvidenceByPhase.formal",
+            "submissionEvidenceByPhase.innerWarmup",
+            "submissionEvidenceByPhase.discardedWarmup",
+            "cases.task-any-500.submissionCounts",
+            "cases.task-targeted-500.submissionCounts",
+            "cases.direct-500.submissionCounts",
+            "cases.task-any-1000.submissionCounts",
+            "cases.task-targeted-1000.submissionCounts",
+            "cases.direct-1000.submissionCounts",
+            "cases.task-any-2000.submissionCounts",
+            "cases.task-targeted-2000.submissionCounts",
+            "cases.direct-2000.submissionCounts"
+          ]
+        }
+      },
+      "independentOperatorPostcheck": {
+        "observedAt": "2026-11-18T11:59:48.148098+00:00",
+        "campaignUnitState": "inactive",
+        "campaignUnitResult": "success",
+        "campaignJavaProcessesAbsent": true,
+        "inputCredentialsAbsent": true,
+        "runnerCredentialsAbsent": true,
+        "campaignNetworkStates": {
+          "unknown": 10000
+        },
+        "persistentServiceState": "active",
+        "persistentServiceFilesUnchanged": true,
+        "persistentLabRuntimeStates": {
+          "RUNNING": 20
+        },
+        "persistentDiagnosticCount": 0,
+        "persistentNetworkStates": {
+          "connected": 20
+        },
+        "serverReadiness": "UP",
+        "serverRuntimeState": "active",
+        "serverRuntimeRestartCount": 0,
+        "nginxUpstreamWebsocketConnections": 20,
+        "newSubmissionsIssued": 0,
+        "sourceEvidenceSha256": "e76f9daf8949100b1714597cf93250b19a0691863a8f8012801bc5d313f496d5",
+        "interpretation": "Separate point-in-time operator observation. It does not replace original automatic cleanup, reconcile unknown submissions or establish future connection health."
+      },
+      "independentGcpResourceObservation": {
+        "scope": "partial-campaign-and-post-run-window",
+        "source": "Finite independent operator /proc observation, separate from the Harness resource sampler.",
+        "observedAt": "2026-11-18T12:00:04.409633+00:00",
+        "sampleCount": 49,
+        "firstSampleAt": "2026-11-18T11:50:21.185+00:00",
+        "lastSampleAt": "2026-11-18T11:58:21.150+00:00",
+        "declaredIntervalSeconds": 10,
+        "intervalSeconds": {
+          "count": 48,
+          "first": 9.995216618990526,
+          "last": 9.999988204916008,
+          "minimum": 9.995216618990526,
+          "maximum": 10.00005830801092,
+          "mean": 9.99989886218585,
+          "p95": 10.000049358000979
+        },
+        "coverage": {
+          "entireCampaign": false,
+          "caseAligned": false,
+          "observedIntervalSeconds": 479.99514538492076,
+          "samplerElapsedSeconds": 481.0044585180003,
+          "sampleSpanSeconds": 479.99514538492076,
+          "declaredIntervalSeconds": 10,
+          "samplerFailure": false,
+          "systemCpuCoveredSeconds": 479.99514538492076,
+          "includesPostRunIdle": true,
+          "postRunTailSeconds": 128.15,
+          "runnerFinishedAt": "2026-11-18T11:56:13+00:00"
+        },
+        "cpuCount": 8,
+        "system": {
+          "cpuBusyPercent": {
+            "count": 48,
+            "first": 2.2855707647871406,
+            "last": 1.488988988988989,
+            "minimum": 1.2404460593910538,
+            "maximum": 52.94636111810627,
+            "mean": 12.936036103899065,
+            "p95": 47.75034465471864,
+            "timeWeightedMean": 12.93614360150646,
+            "coveredSeconds": 479.99514538492076
+          },
+          "cpuUserPercent": {
+            "count": 48,
+            "first": 1.2558081125204068,
+            "last": 0.7257257257257257,
+            "minimum": 0.6636614074630603,
+            "maximum": 34.47454226235265,
+            "mean": 7.732715074091771,
+            "p95": 31.106654969294397,
+            "timeWeightedMean": 7.732780628951159,
+            "coveredSeconds": 479.99514538492076
+          },
+          "cpuSystemPercent": {
+            "count": 48,
+            "first": 1.0172045711415296,
+            "last": 0.7507507507507507,
+            "minimum": 0.5262498433780228,
+            "maximum": 19.831276756484513,
+            "mean": 5.178627226562033,
+            "p95": 15.92886870979947,
+            "timeWeightedMean": 5.178669045348298,
+            "coveredSeconds": 479.99514538492076
+          },
+          "cpuIowaitPercent": {
+            "count": 48,
+            "first": 0.0,
+            "last": 0.03753753753753754,
+            "minimum": 0.0,
+            "maximum": 0.11252813203300825,
+            "mean": 0.04425873038185771,
+            "p95": 0.0870105655686762,
+            "timeWeightedMean": 0.04425916073558349,
+            "coveredSeconds": 479.99514538492076
+          },
+          "cpuStealPercent": {
+            "count": 48,
+            "first": 0.012558081125204068,
+            "last": 0.012512512512512513,
+            "minimum": 0.0,
+            "maximum": 0.04978839930296241,
+            "mean": 0.024693803245262557,
+            "p95": 0.049554013875123884,
+            "timeWeightedMean": 0.024693927207003884,
+            "coveredSeconds": 479.99514538492076
+          },
+          "load1": {
+            "count": 49,
+            "first": 2.25,
+            "last": 0.89,
+            "minimum": 0.81,
+            "maximum": 6.27,
+            "mean": 1.9418367346938776,
+            "p95": 4.55
+          },
+          "load5": {
+            "count": 49,
+            "first": 1.93,
+            "last": 1.77,
+            "minimum": 1.45,
+            "maximum": 2.67,
+            "mean": 1.8508163265306121,
+            "p95": 2.52
+          },
+          "load15": {
+            "count": 49,
+            "first": 0.98,
+            "last": 1.29,
+            "minimum": 0.96,
+            "maximum": 1.46,
+            "mean": 1.1383673469387756,
+            "p95": 1.44
+          },
+          "MemTotalBytes": {
+            "count": 49,
+            "first": 12532805632,
+            "last": 12532805632,
+            "minimum": 12532805632,
+            "maximum": 12532805632,
+            "mean": 12532805632.0,
+            "p95": 12532805632
+          },
+          "MemAvailableBytes": {
+            "count": 49,
+            "first": 8580423680,
+            "last": 8699072512,
+            "minimum": 8500330496,
+            "maximum": 8701841408,
+            "mean": 8587238755.265306,
+            "p95": 8694427648
+          },
+          "SwapTotalBytes": {
+            "count": 49,
+            "first": 2147479552,
+            "last": 2147479552,
+            "minimum": 2147479552,
+            "maximum": 2147479552,
+            "mean": 2147479552.0,
+            "p95": 2147479552
+          },
+          "SwapFreeBytes": {
+            "count": 49,
+            "first": 2145583104,
+            "last": 2145583104,
+            "minimum": 2145583104,
+            "maximum": 2145583104,
+            "mean": 2145583104.0,
+            "p95": 2145583104
+          }
+        },
+        "roles": {
+          "runtime": {
+            "cpuPercentOfOneCore": {
+              "count": 48,
+              "first": 11.705599234108096,
+              "last": 6.800008020666575,
+              "minimum": 6.299999102224956,
+              "maximum": 230.19973184072916,
+              "mean": 59.70428833180761,
+              "p95": 224.40067513246646,
+              "timeWeightedMean": 59.70477050766502,
+              "coveredSeconds": 479.99514538492076
+            },
+            "cpuPercentOfHost": {
+              "count": 48,
+              "first": 1.463199904263512,
+              "last": 0.8500010025833219,
+              "minimum": 0.7874998877781195,
+              "maximum": 28.774966480091145,
+              "mean": 7.463036041475951,
+              "p95": 28.050084391558308,
+              "timeWeightedMean": 7.463096313458127,
+              "coveredSeconds": 479.99514538492076
+            },
+            "rssBytes": {
+              "count": 49,
+              "first": 1909751808,
+              "last": 1918713856,
+              "minimum": 1909751808,
+              "maximum": 1918713856,
+              "mean": 1913576218.122449,
+              "p95": 1918713856
+            },
+            "threads": {
+              "count": 49,
+              "first": 273,
+              "last": 274,
+              "minimum": 273,
+              "maximum": 275,
+              "mean": 273.59183673469386,
+              "p95": 274
+            },
+            "fdCount": {
+              "count": 49,
+              "first": 10118,
+              "last": 118,
+              "minimum": 116,
+              "maximum": 11535,
+              "mean": 7329.0,
+              "p95": 10464
+            },
+            "processCount": {
+              "count": 49,
+              "first": 1,
+              "last": 1,
+              "minimum": 1,
+              "maximum": 1,
+              "mean": 1.0,
+              "p95": 1
+            },
+            "samplesWithMissingProcesses": 0,
+            "samplesWithPartialCpuDeltas": 0,
+            "completeCpuCoveredSeconds": 479.99514538492076
+          },
+          "redis": {
+            "cpuPercentOfOneCore": {
+              "count": 48,
+              "first": 1.700813563930236,
+              "last": 2.000002359019581,
+              "minimum": 1.699992526823445,
+              "maximum": 55.00016547364374,
+              "mean": 11.362519380214948,
+              "p95": 43.20001213481991,
+              "timeWeightedMean": 11.362614919003594,
+              "coveredSeconds": 479.99514538492076
+            },
+            "cpuPercentOfHost": {
+              "count": 48,
+              "first": 0.2126016954912795,
+              "last": 0.2500002948774476,
+              "minimum": 0.21249906585293063,
+              "maximum": 6.8750206842054675,
+              "mean": 1.4203149225268685,
+              "p95": 5.400001516852488,
+              "timeWeightedMean": 1.4203268648754492,
+              "coveredSeconds": 479.99514538492076
+            },
+            "rssBytes": {
+              "count": 49,
+              "first": 265244672,
+              "last": 297283584,
+              "minimum": 265244672,
+              "maximum": 298557440,
+              "mean": 285339397.2244898,
+              "p95": 297750528
+            },
+            "threads": {
+              "count": 49,
+              "first": 7,
+              "last": 7,
+              "minimum": 7,
+              "maximum": 7,
+              "mean": 7.0,
+              "p95": 7
+            },
+            "fdCount": {
+              "count": 49,
+              "first": 27,
+              "last": 27,
+              "minimum": 27,
+              "maximum": 29,
+              "mean": 27.122448979591837,
+              "p95": 29
+            },
+            "processCount": {
+              "count": 49,
+              "first": 1,
+              "last": 1,
+              "minimum": 1,
+              "maximum": 1,
+              "mean": 1.0,
+              "p95": 1
+            },
+            "samplesWithMissingProcesses": 0,
+            "samplesWithPartialCpuDeltas": 0,
+            "completeCpuCoveredSeconds": 479.99514538492076
+          },
+          "nginx": {
+            "cpuPercentOfOneCore": {
+              "count": 48,
+              "first": 1.200574280421343,
+              "last": 0.0,
+              "minimum": 0.0,
+              "maximum": 98.39988537414314,
+              "mean": 13.966670937064784,
+              "p95": 71.99959773124499,
+              "timeWeightedMean": 13.966807923909075,
+              "coveredSeconds": 479.99514538492076
+            },
+            "cpuPercentOfHost": {
+              "count": 48,
+              "first": 0.15007178505266788,
+              "last": 0.0,
+              "minimum": 0.0,
+              "maximum": 12.299985671767892,
+              "mean": 1.745833867133098,
+              "p95": 8.999949716405624,
+              "timeWeightedMean": 1.7458509904886343,
+              "coveredSeconds": 479.99514538492076
+            },
+            "rssBytes": {
+              "count": 49,
+              "first": 875925504,
+              "last": 839413760,
+              "minimum": 839413760,
+              "maximum": 890331136,
+              "mean": 864294452.244898,
+              "p95": 879022080
+            },
+            "threads": {
+              "count": 49,
+              "first": 9,
+              "last": 9,
+              "minimum": 9,
+              "maximum": 9,
+              "mean": 9.0,
+              "p95": 9
+            },
+            "fdCount": {
+              "count": 49,
+              "first": 20207,
+              "last": 199,
+              "minimum": 199,
+              "maximum": 25764,
+              "mean": 14955.959183673469,
+              "p95": 24047
+            },
+            "processCount": {
+              "count": 49,
+              "first": 9,
+              "last": 9,
+              "minimum": 9,
+              "maximum": 9,
+              "mean": 9.0,
+              "p95": 9
+            },
+            "samplesWithMissingProcesses": 0,
+            "samplesWithPartialCpuDeltas": 0,
+            "completeCpuCoveredSeconds": 479.99514538492076
+          }
+        },
+        "collectionCompletion": {
+          "startedAt": "2026-11-18T11:50:21.146+00:00",
+          "finishedAt": "2026-11-18T11:58:22.150+00:00",
+          "elapsedSeconds": 481.0044585180003,
+          "sampleCount": 49,
+          "stopReason": "STOP-file",
+          "failureType": null
+        },
+        "collectorProcessExited": true,
+        "samplerSourceSha256": "7864416b66ecaee6dec39851e21070904158fdaa0506076e41e4b666987be731",
+        "sourceEvidenceSha256": "98d4306d6622b19782c8b2a46bea8664af7ff2d2837354ada1d37f414ea22f9b",
+        "limits": [
+          "Partial window begins after the campaign started; it is not the whole campaign or a per-case attribution.",
+          "Operator observation is separate from the Harness missing Server-resources field; this is not JFR.",
+          "CPU values cover sampled intervals. First sample has no CPU delta; p95 uses the nearest-rank method.",
+          "100 cpuPercentOfOneCore is one core; cpuPercentOfHost and host busy CPU are normalized to all host CPUs.",
+          "Nginx includes the master and sampled descendants. Summed RSS may double-count shared pages.",
+          "PID/start-time deltas can miss short-lived processes; missing or partial component deltas are reported.",
+          "The sampled window includes approximately 128.15 seconds after the runner finished. Its diluted mean does not establish Runtime headroom or whole-campaign/per-case CPU usage."
+        ],
+        "sourceDeclaredScope": "partial-campaign-window"
+      },
+      "processCpuAggregation": {
+        "sourceEvidenceSha256": "e5c9f15168031ab2fd13e3fdd727fe69b16ea5511bf50907e41871ef698c8276",
+        "scope": "Existing operator aggregation of the consumer Host and Harness process-resource samples during each case measurement.",
+        "limits": "CPU is sampled average cores over the observed process-resource intervals. It is not Server/Redis attribution or a maximum throughput claim. Consumer Host/Harness values are on the 4-CPU external machine, distinct from the independently sampled 8-CPU GCP machine.",
+        "consumerCpuCount": 4
+      },
+      "publicationReview": {
+        "allowlistedArtifactFiles": 4,
+        "projectCredentialFormatFindings": 0,
+        "ownedIdentityCountChecked": 10000,
+        "completeOwnedWorkerIdentitiesInPublicFiles": 0,
+        "rawLogsIncluded": false,
+        "sourceEvidenceSha256": "82d349ab66031c045b475c6cbf9bac31cecfe919219872ff754cd13311f47176",
+        "scope": "Original four allowlisted artifacts checked for recognized project credential formats and the exact 10000 owned Worker identities; this is not a universal secret guarantee.",
+        "publicWorkflowLogChecked": true,
+        "workflowLogCredentialFormatFindings": 0,
+        "workflowLogCompleteOwnedIdentityFindings": 0
+      },
+      "remainingFindings": [
+        "1000/s cases remain invalid due to generator lag; 2000/s cases remain saturated, not a Server capacity limit proof.",
+        "560 sent requests without HTTP responses remain unknown: task-targeted-2000 has 48 and direct-2000 has 512. Accepted-result drain does not reconcile them.",
+        "15651 planned formal arrivals were not sent; they are separate from the 560 sent requests without HTTP responses.",
+        "Independent GCP resources cover a partial window including the post-run tail; original Harness notCollected fields remain unchanged."
+      ]
     }
   ],
   "nonclaims": [
@@ -676,5 +1969,49 @@
     "Original unconfirmed cleanup and unknown submissions are retained; operator postchecks do not rewrite them.",
     "No request was replayed to reconcile these observations.",
     "Persistent20 process or Lab RUNNING state does not establish a live network connection."
-  ]
+  ],
+  "persistentConsumerValidation": {
+    "observedAt": "2026-11-18T13:01:03.415841+00:00",
+    "kit": {
+      "tag": "v4.4.2",
+      "gitCommit": "ccf676801663f953169f2d03058cbe7236a01123",
+      "zipSha256": "fb848b6d8194e2ddd1affc7a6507b2e22bcf47be75e1b57d233b44a35824341f"
+    },
+    "serverDeployment": {
+      "version": "4.4.0",
+      "gitCommit": "b28a87ac918a34ffabb4feb8c63a29998a0610db",
+      "configurationId": "sha256:8fee159a3d8a95820503ff66c5a55daeefd3b7d8407baa95a000c135845c6a2f"
+    },
+    "workerCount": 20,
+    "sameHostProcessAcrossIdleAndFault": true,
+    "serviceRestartCount": 0,
+    "sameIdentityAndCoordinates": true,
+    "protectedInputsUnchanged": true,
+    "inventoryFileHashChanges": 0,
+    "idle": {
+      "status": "passed",
+      "durationSeconds": 4500.017550913995,
+      "tupleChangeObservations": 2,
+      "lateTupleChangeObservations": 1,
+      "maximumSampleGapSeconds": 5.120077204992413,
+      "sourceReceiptSha256": "a28af4c9f9ed7560bce9c9a052aa212df29eb91bbe2320b39c9dd07c81c73cd5"
+    },
+    "fault": {
+      "status": "passed",
+      "kind": "one UID-scoped outbound TCP DROP to the deployed GCP HTTPS authority",
+      "requestedDurationSeconds": 120,
+      "acknowledgedBlockedSeconds": 120.70177006800077,
+      "independentAutomaticRuleRemoval": true,
+      "ruleRemoved": true,
+      "droppedPackets": 620,
+      "originalOwnedSocketCount": 20,
+      "originalOwnedSocketsRetainedDuringFault": 0,
+      "firstSocketReplacementSeconds": 82.42403506000119,
+      "localRecoverySeconds": 3.951179972005775,
+      "gcpConfirmedSecondsAfterRestore": 59.619484900002135,
+      "gcpConnected": 20,
+      "sourceReceiptSha256": "484595895fb790c9c82486a46f5e0e079c15f63bfb6dcfb6d1ba5df22fc580bd"
+    },
+    "interpretation": "Finite observations of the fixed identity set and same Host process. No claim of zero instantaneous disconnections, every Worker executing tasks, unlimited endpoint retry or maximum Server capacity."
+  }
 }

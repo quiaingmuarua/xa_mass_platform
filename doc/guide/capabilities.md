@@ -9,7 +9,57 @@ Status: current capability guide with explicitly dated evidence.
 <a id="external-public-closeout"></a>
 ## 外部公网验收收尾
 
-### 2026-11-18：外部 Performance consumer
+### 2026-11-18：4.4.2 的 10k、空闲与受控恢复验收已完成
+
+不可变 [4.4.2 Release](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.4.2)
+来自 `ccf676801663f953169f2d03058cbe7236a01123`；
+[完整手动 Proof 44293971501](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44293971501)
+attempt 1 的 17 个 job 全部成功。制品摘要和发布记录见
+[4.4 Release 说明](../../distribution/server/RELEASE-4.4.md#442-consumer-closeout-patch)。
+
+Ali 的常驻 Host 已更新，20 个 Worker 身份及配置／凭据／库存指纹保持不变；
+安装后的有界核对看到了 20 个 TCP keepalive Worker sockets 和 GCP 的 20 connected。
+按需 Performance kit pins 也已选为 4.4.2。目标 GCP Runtime 仍为 **4.4.0**
+（`b28a87ac918a34ffabb4feb8c63a29998a0610db`），没有随 kit 发布升级。
+
+单次默认 10k、重复 1 次、包含所有既有 rate 的
+[Actions 44297177821](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44297177821)
+已成功结束；源码 Nightly jobs 按 external 选路正常跳过。九个正式测量均有结果：
+500/s 三路 passed，1000/s 三路因 generator-lag invalid，2000/s 三路 saturated，
+后者的 admitted rate 为 1287.7–1618.5/s。正式请求观测到 118,789 个成功 Result、
+15,651 个 not-sent、0 个 HTTP 429；另有 **560 个 sent/HTTP-zero unknown** 保持未知，
+没有重放。进程成功不使 invalid 数据变为可比较，也不表示所有计划请求都成功。
+
+自动 cleanup 在原 30 秒预算内，以最多 8 个并发请求完成一次 100 页 × 100 IDs 的完整
+扫描，耗时 8,048ms，10,000 个原身份均为 unknown，因此按既有 Owner 契约 confirmed。
+拥有的进程及临时凭据已清理；准备态 300 秒 timer 已确认 armed，之后停止。
+独立 operator 核对保留原始状态，看到 campaign 无 Java 进程／临时凭据、10,000 unknown，
+常驻 20 connected。四份公开 artifact 的格式凭据检查为 0，且与私有 10,000 Worker IDs
+的完整身份交集为 0；这只是该次公开投影的有界检查。
+
+同轮 GCP 资源辅助记录只有后段 49 个样本、480 秒窗口（11:50–11:58 UTC），
+其中包含 128 秒收尾空闲，不能作逐 case 资源归因或容量证明。Ali 四核 consumer 在
+2000/s case 的 Harness 平均消耗约 2.75–3.272 核、峰值约 3.85 核，只支持 generator
+受限方向，不能据此推出 Server 上限。完整四轮原始状态、计数与边界见
+[脱敏观测](../../integrations/worker-call-performance/observations/external/2026-11-18.json)。
+
+常驻 Host 从 11:42:07.733 UTC 起完成 4,500.018 秒（75 分钟）空闲观察，
+进程没有重启，原 20 个逻辑身份及配置／凭据／库存保持不变，结束后 GCP 确认
+20 connected。最大采样间隔为 5.1201 秒；观察到两次 TCP tuple 变化，其中一次为
+接近一小时处的换连，原 20 个物理 socket 到 elapsed 3,558.77 秒时已全部替换。
+因此这是有采样边界的连续运行与恢复证据，不能写成“75 分钟零瞬时断线”。
+
+随后只执行一次该 Host 用户到 GCP 443 的出站 DROP，申请 120 秒，由独立清理机制
+在 120.702 秒时移除，计数 620 个丢弃包。故障期间原 20 个 socket 均消失，
+82.424 秒时首次观察到 replacement；恢复后本地 20 个新 TCP 在 3.951 秒内出现，
+独立 GCP 观察在恢复后 **59.619 秒**确认 20 connected，满足声明的 180 秒有界目标。
+进程没有重启、原身份保持不变；规则最终不存在，没有手工删除来补验收结果。
+
+这些结果仅覆盖本次 Ubuntu／Java 21 环境、一次故障及其观察窗口；不推出 Android、
+SOCKS、无限重试保证、所有半开路径、完整容量或长期 SLA。持久 consumer 的脱敏证据
+与四轮调用观测分开保存在同一 JSON，既有失败和 unknown 不改写，也不表示实时健康。
+
+### 2026-11-18：4.4.0／4.4.1 外部 Performance 观测
 
 手动 Actions 已交付从 GitHub-hosted runner 经 SSH 调度 Ali consumer 的路径：
 consumer 只运行已发布 kit，不构建源码；目标 GCP Runtime 仍为 **4.4.0**
@@ -40,8 +90,7 @@ consumer 只运行已发布 kit，不构建源码；目标 GCP Runtime 仍为 **
 - 2k job warmup 的 372 个失败保持原样。一次 32 项有界只读诊断排除了这些样本的
   TTL 分支，指向 claim 预算耗尽；没有持久分配账本可证明离线历史 Worker 的因果。
 - invalid 不可作性能比较，saturated 给出准入速率，不是 Server 极限 TPS。
-  4.4.2 的自动清理观察、采样间隔与 TCP keepalive 修复仍待其发布及现场验证，
-  不能用计划覆盖上述结果。
+  4.4.2 的新 10k 自动清理及本次常驻连接有界验收已完成，后续结果不改写上述原始记录。
 
 ### 2026-11-13：Loaded Recovery 基础档收尾
 

@@ -174,9 +174,19 @@ Server 与 Consumer kit 分开固定版本：`INSTALLED_RELEASE_TAG/COMMIT` 描�
 Ali 常驻 Host 的 `/opt/xa-mass-worker-simulator/current` 另有安装记录；它不跟随 Actions
 自动切换。修改源码或发布 kit 不会自动更新这些坐标，当前值应从对应记录核对。
 
-4.4.2 计划只更新 Ali 的两个 consumer kit，GCP Runtime 保持 4.4.0；具体步骤和待验证范围见
-[4.4 Release 说明](../../../distribution/server/RELEASE-4.4.md)。常驻服务更新保留原配置、
-私有 gateway 文件和库存坐标，不重新生成库存来掩盖旧状态。
+2026-11-18 已将 Ali 常驻 Host 更新为 4.4.2，并将按需 Performance kit pins 设为
+`4.4.2/ccf676801663f953169f2d03058cbe7236a01123`。安装核对保留了原 20 个 Worker
+身份和配置／凭据／库存指纹；GCP Runtime 仍为
+`4.4.0/b28a87ac918a34ffabb4feb8c63a29998a0610db`，没有替换 Runtime 或改动其配置。
+新 10k campaign 44297177821 已完成，原身份的自动连接 cleanup 已 confirmed；
+invalid/saturated case 和 560 个 unknown 仍按原回执保留。75 分钟空闲观察及一次
+受控出站 DROP／恢复验收也已完成：无进程重启、原 20 个逻辑身份和输入保留；
+恢复后本地 TCP 重建与 GCP 确认分别计时，后者为 59.619 秒。
+这不表示零瞬时断线或实时健康，详见
+[4.4 Release 说明](../../../distribution/server/RELEASE-4.4.md)。这些是 dated 安装事实，
+后续任务仍须核对主机记录，不重新生成库存来掩盖旧状态。
+本轮 Ali 与 GCP 的既有运维记录已更新，两个操作日志均已关闭本次操作；
+没有 Runtime／Nginx restart 或 reload，GCP 的原 Runtime 制品和受保护配置保持不变。
 
 新 session 先读两台主机的操作日志及原 GitHub Run ID。仍在运行时接回同一个 Run／unit；
 使用 [CI 等待规则](../../../TESTING.md#long-running-commands-and-ci-waiting)保持一个 waiter。

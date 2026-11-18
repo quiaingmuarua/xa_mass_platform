@@ -349,12 +349,22 @@ or clearing history to pass a check. The public API and later case/Result oracle
 remain unchanged.
 
 The [2026-11-18 public observations](integrations/worker-call-performance/observations/external/2026-11-18.json)
-retain three completed runs, independently pinned kit/Server coordinates,
+retain four completed runs, independently pinned kit/Server coordinates,
 per-case validity, unknown submissions and original cleanup outcomes. Their
 operator postchecks are separate evidence, never a replacement for failed or
 unconfirmed runner cleanup. The [capability guide](doc/guide/capabilities.md#external-public-closeout)
 summarizes the delivered path and remaining findings. These static observations
-select no execution lane and do not establish current host health or 4.4.2 proof.
+select no execution lane or live-health claim. The 4.4.2 run records automatic
+cleanup confirmed by one complete bounded scan; 560 sent/HTTP-zero submissions
+remain unknown, and invalid/saturated cases retain their statuses. The same JSON
+separately records completed 75-minute standing-Host observation and one outbound
+DROP/recovery check: no process restart, retained logical identities and inputs,
+and independent GCP reconnection confirmation 59.619 seconds after restoration.
+Observed TCP turnover remains explicit; this is bounded Ubuntu/Java 21 evidence,
+not zero instantaneous disconnects, Android/SOCKS coverage or unlimited retry.
+The 4.4.2 complete manual Proof and publication are recorded in the
+[Release contract](distribution/server/RELEASE-4.4.md#442-consumer-closeout-patch);
+those remain separate from the dated onsite observations and current host state.
 
 ## External Release load
 
