@@ -1,8 +1,12 @@
 package com.xa.mass.workersimulator;
 
 import static org.assertj.core.api.Assertions.*;
+import com.xa.mass.workerdelivery.json.Jsons;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -51,5 +55,31 @@ class WorkerSimulatorMainTest {
                     .hasRootCauseMessage("Number capabilities require phone and uppercase two-letter country");
         }
         assertThat(directory.resolve("data/scenario-workers/demo-sim")).doesNotExist();
+    }
+
+    @Test void persistentDistributionExamplePassesActualHostInventoryAdmission(@TempDir Path directory) throws Exception {
+        Path example = Path.of("../distribution/worker-simulator/src/main/dist/examples/persistent-20-host.json");
+        var input = new LinkedHashMap<>(Jsons.parseObject(Files.readString(example)));
+        String deployedRoot = (String) input.get("sandboxRoot");
+        String statePrefix = "/var/lib/xa-mass-worker/";
+        assertThat(deployedRoot).startsWith(statePrefix);
+        // Rebase only the environment prefix; preserve the example's suffix for real startup validation.
+        Path sandbox = directory.resolve(deployedRoot.substring(statePrefix.length()));
+        input.put("sandboxRoot", sandbox.toString());
+        Path credential = directory.resolve("private/worker-access.json");
+        Files.createDirectories(credential.getParent());
+        Files.writeString(credential, Jsons.toJson(Map.of("keyId", "test-persistent", "secret", "test-only-secret")));
+        Path configuration = directory.resolve("persistent-20-host.json");
+        Files.writeString(configuration, Jsons.toJson(input));
+        WorkerSimulatorConfig config = WorkerSimulatorConfig.load(configuration);
+        var noConnections = WorkerSimulatorStartupPlan.parse(Map.of("initialWorkers", List.of(), "scheduledStops", List.of()));
+        try (WorkerSimulator simulator = WorkerSimulator.create(config)) {
+            simulator.start(noConnections);
+            assertThat(simulator.workerSnapshots()).hasSize(20).allSatisfy(worker -> {
+                assertThat(worker.workerGroupId()).isEqualTo("persistent-java-workers");
+                assertThat(worker.runtime().state()).isEqualTo(com.xa.mass.worker.runtime.WorkerLifecycle.State.STOPPED);
+            });
+        }
+        assertThat(sandbox.resolve("persistent-java-workers/workers-000.jsonl")).isRegularFile();
     }
 }
