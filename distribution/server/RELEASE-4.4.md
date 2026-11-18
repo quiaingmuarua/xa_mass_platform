@@ -25,7 +25,9 @@ and the database together with any remaining WAL/SHM files. A live WAL is not a
 disposable log.
 
 This is a fresh-scope/database cutover. Old JSONL/manifest archives and the retired
-`xa.mass.task-retention.archive-directory` configuration are not read or migrated.
+`xa.mass.task-retention.directory` configuration are not read or migrated.
+Remove that legacy launch input and any `xa.mass.task-retention.archive-directory`
+input; neither is a supported alias for the new database setting.
 Do not point 4.4 at an old archive directory or convert it in place. No historical
 identity, Task, credit or result migration is included.
 
@@ -71,7 +73,8 @@ and its actual host records. The reviewed 4.4 deployment selects:
 Set `xa.mass.redis.scope` and `xa.mass.task-retention.database-path` accordingly
 through the existing external configuration; `XA_MASS_REDIS_SCOPE` and
 `XA_MASS_TASK_HISTORY_DATABASE` are the corresponding Boot inputs. Remove the
-retired archive-directory setting from launch inputs. Create a fresh database,
+retired `directory` and any `archive-directory` settings from launch inputs;
+the new YAML uses only `database-path` for this storage location. Create a fresh database,
 not a copy of previous Task archives, and preserve Runtime ownership/permissions.
 
 Keep the users file, role/Project grants, daily gateway credentials and external
@@ -132,13 +135,24 @@ separate recorded facts.
 
 Normal GCP acceptance is small and specific to this Release:
 
+Use the standing test identity `accept4`, currently an administrator without an
+access key, for external acceptance. Before changing it, privately record its
+original name, role and Project grants. Temporarily make it an operator with the
+actual declared acceptance Projects (including `default`, business Projects and
+`performance-consumer`), then issue one ephemeral access key for the external
+acceptance client and browser. Perform administrator operations on GCP with user
+`1000`; its private key stays on GCP throughout and is never given to the external
+host or browser. Afterwards revoke the `accept4` key, remove its temporary copies
+and restore that identity's original name, role and Project grants. Existing daily
+users, grants and access keys remain unchanged; no extra acceptance user is needed.
+
 - Verify readiness, public Console, unauthenticated API rejection and valid
   authenticated access. Confirm Batch Checks and Messages remain enabled with
   the preserved external configuration and new-scope Group/resource registrations.
 - Start a small external Host from the published 4.4.0 kit and run its shipped
   finite round. Independently verify Item identities/states, MD5 Results, terminal
-  Task and complete export. Use the normal standing acceptance identity and a
-  temporary Worker credential under the host's existing private-file procedure.
+  Task and complete export. Use the ephemeral operator access above and a temporary
+  Worker credential under the host's existing private-file procedure.
 - In the actual Console, open the finite workbench history view and the Batch
   Checks/Messages history entries with an appropriately granted user. In the fresh
   scope/database, an accurate empty history view is expected before publication;

@@ -14,6 +14,24 @@ from distribution.server import staging_runtime_proof as proof
 
 
 class PackagedIngressOracleTest(unittest.TestCase):
+    def test_performance_rpc_tasks_receive_the_host_any_supply_defaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            jar = runtime / "lib/server.jar"
+            jar.parent.mkdir(parents=True)
+            jar.write_bytes(b"fixture")
+            with patch.object(proof, "_users_file", return_value=root / "users.json"):
+                command = proof._runtime_command(runtime, root, {"serverJar": "lib/server.jar"}, "java",
+                                                 18082, 18083, "wss://localhost/worker", "redis://localhost/15",
+                                                 "test_performance_rpc_supply")
+            flags = dict(argument[2:].split("=", 1) for argument in command if argument.startswith("--"))
+            prefix = "xa.mass.task-rpc.refill-by-worker-group["
+            defaults = {key: json.loads(value) for key, value in flags.items() if key.startswith(prefix)}
+            self.assertEqual(defaults, {
+                f"{prefix}{group}][0]": {"poolName": "any", "target": {}, "count": 1000}
+                for group in proof.PERFORMANCE_GROUPS})
+
     def performance(self, change=None, *, returncode=0):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -162,7 +162,9 @@ def _runtime_command(runtime_root: Path, data_root: Path, manifest: dict, java: 
             f"--xa.mass.task-retention.database-path={data_root / 'task-history.sqlite'}",
             *(argument for group in groups for argument in (
                 f"--xa.mass.worker-matching.groups.{group}.pools[0]=any",
-                f"--xa.mass.worker-matching.groups.{group}.functions[0]=worker.any"))]
+                f"--xa.mass.worker-matching.groups.{group}.functions[0]=worker.any")),
+            *(f"--xa.mass.task-rpc.refill-by-worker-group[{group}][0]=" + json.dumps(
+                {"poolName": "any", "target": {}, "count": 1000}) for group in PERFORMANCE_GROUPS)]
 
 
 def _truststore(java: str, gateway: Gateway, directory: Path) -> Path:
