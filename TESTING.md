@@ -231,7 +231,7 @@ these correctness claims and add no heavy ordinary CI lane.
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-connected 14800 --minimum-retained-connected 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
 | External Release load | Published kit `acceptance/run_loaded.py`; explicitly selected manual `external-release` workflow mode | External Linux, Java 21, standard-library Python 3.11+; operator/Worker credentials, no SSH or Redis access |
-| [Worker Call Performance](integrations/worker-call-performance/README.md) | Nightly: parallel `rate-500`, `rate-1000`, `rate-2000` and `saturation` jobs with three repetitions, merged, recorded on `perf-lane-data` and compared with the last seven records. Manual: the same with optional JFR diagnostics, or per-case A/B with `baseline_ref` and `lane_case`. The same runner also supports declared deployed Runtime open cases, with separate public-path evidence | Source lane: Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21. Deployed mode: Linux, Java 21, Python 3.11+, published Simulator kit |
+| [Worker Call Performance](integrations/worker-call-performance/README.md) | Source Nightly: parallel `rate-500`, `rate-1000`, `rate-2000` and `saturation` jobs with three repetitions, merged, recorded on `perf-lane-data` and compared with the last seven records. Source manual: the same with optional JFR diagnostics, or per-case A/B. Manual `execution_target=external`: the same deployed open runner from a pinned kit, with separate public-path evidence | Source lane: Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21. External: GitHub-hosted SSH to the dedicated Linux consumer, Java 21, Python 3.11+, published Simulator kit |
 | Android Host | Platform Android library/proof-tool contracts; no consumer artifact prerequisite | Robolectric, MockWebServer, JDK HttpServer |
 | Candidate Distribution Archives | One clean-commit Runtime/SDK/Simulator kit set, archive checks and hashes | Java, Android SDK, Node |
 | Android APK Assembly | Independent consumer unit tests and Debug plus three fixed Lab APKs from that SDK ZIP | Android SDK |
@@ -304,6 +304,33 @@ samples remote Server/Redis, and makes no saturation, Server JFR, Redis calibrat
 reference-host or CI-trend claim. Its existing focused Harness/runner and archive
 consumption checks verify the delivery contract; an actual public run requires
 its own explicitly requested, versioned evidence.
+
+The same workflow's manual [external Actions execution](integrations/worker-call-performance/README.md#external-actions-execution)
+uses the protected `release-preview-load` Environment and its shared external-load
+concurrency group. It leaves source Nightly unchanged and runs only the pinned published
+Release kit on the dedicated Ali consumer user, without Git/Gradle, root or GCP
+administrator credentials. Its Vars, Secrets, manifest pins and declared
+host/gateway budget preflight are listed in the Owner.
+
+```bash
+gh workflow run worker-call-performance.yml --ref main \
+  -f execution_target=external \
+  -f external_workers_per_group=5000 \
+  -f external_repetitions=1
+```
+
+The two Groups default to 5,000 Workers each; per-Group inventory accepts
+`1..15000`, and external repetitions are `1` or `3` (default `1`). One repetition
+has a 45-minute campaign budget, three have 100 minutes, GitHub has 120 minutes,
+and owned-unit shutdown has 120 seconds. Re-running the same GitHub Run ID only
+reconnects to its unit or collects evidence; a new run needs a new Run ID. Retain
+unknown/429 outcomes and reconcile any active old process or unknown cleanup
+before starting another run. A prior unknown/429 workload receipt does not itself
+prohibit a new independent run after process cleanup is reconciled. The separate
+persistent 20-Worker system service is outside
+this lifecycle. Publish only the allowlisted sanitized receipts, without bootstrap
+Worker IDs; exit status `0` still requires inspecting case validity. This change
+adds no proof lane, Release publication, GCP upgrade or claimed 10k acceptance.
 
 ## External Release load
 

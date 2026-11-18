@@ -28,6 +28,7 @@ jvm_contracts:
   - '.github/workflows/worker-call-performance.yml'
   - '.github/workflows/worker-loaded-recovery.yml'
   - '.github/scripts/prepare_external_release_load.py'
+  - '.github/scripts/run_external_performance.py'
   - 'build.gradle'
   - 'settings.gradle'
   - 'gradle.properties'

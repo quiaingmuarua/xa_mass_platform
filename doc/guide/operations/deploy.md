@@ -193,6 +193,9 @@ Project 与密钥签发／清除都在控制台或 API 完成；Server 运行时
 外部 Java Host 使用独立 Simulator `--config`，设置 HTTPS `runtimeApiBaseUrl` 和私有
 `gatewayCredentialFile`。该路径相对主配置文件解析，读取失败不会回退匿名连接。
 更换密钥需明确重启 Host。不要运行统一的本地环境启动器去连接已有远端 Server。
+通过现有 Performance workflow 手工调度外部调用测量时，使用
+[External Actions 入口](../../../integrations/worker-call-performance/README.md#external-actions-execution)；
+它消费固定版本的已发布 Release kit，并保持长期 20-Worker 系统服务独立。
 不 checkout 仓库时，使用同一 Release 发布的
 [Worker Simulator kit](../../../distribution/worker-simulator/README.md)：它包含这个 Host 入口和
 一轮有限任务验收命令，后者输出一行 JSON（passed / failed / unconfirmed）。
