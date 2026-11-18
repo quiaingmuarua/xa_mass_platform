@@ -75,7 +75,10 @@ class FakeSSH:
         elif action == "stop":
             self.state = "finished"
         elif action == "collect":
-            return collection()
+            result = collection()
+            if hasattr(self, "envelope"):
+                result["consumption.json"] = self.envelope["consumption"]
+            return result
         return {"state": self.state}
 
     def copy(self, source, destination):
@@ -90,7 +93,8 @@ class ControllerTest(unittest.TestCase):
         self.args = Namespace(repository="owner/repository", workers_per_group=5000, repetitions=1,
                               output_dir=self.output, action="run")
         self.environment = {"GITHUB_RUN_ID": RUN, "GITHUB_RUN_ATTEMPT": "1", "RELEASE_TAG": TAG,
-                            "RELEASE_COMMIT": COMMIT, "DEPLOYMENT_JSON": json.dumps(configuration()),
+                            "RELEASE_COMMIT": COMMIT, "SERVER_RELEASE_TAG": TAG, "SERVER_RELEASE_COMMIT": COMMIT,
+                            "DEPLOYMENT_JSON": json.dumps(configuration()),
                             "CONNECTION_BUDGET_JSON": json.dumps({"perCredential": 20000, "total": 30000, "reserved": 20}),
                             "RUNTIME_ACCESS_KEY": ACCESS_KEY, "WORKER_GATEWAY_KEY_ID": "operator-gate",
                             "WORKER_GATEWAY_SECRET": "private-gateway-secret"}
@@ -101,6 +105,7 @@ class ControllerTest(unittest.TestCase):
         self.environment["GITHUB_RUN_ATTEMPT"] = str(attempt)
         consumed = dict(collection()["consumption.json"], release="release-url", releaseId=44,
                         kitSha256="c" * 64, manifest={"schemaVersion": 3})
+        consumed.update(tag=self.environment["RELEASE_TAG"], gitCommit=self.environment["RELEASE_COMMIT"])
         self.downloader = SimpleNamespace(prepare=Mock(return_value=consumed))
         loader = SimpleNamespace(exec_module=lambda module: None)
         signals = handlers if handlers is not None else {}
@@ -149,6 +154,19 @@ class ControllerTest(unittest.TestCase):
         receipt = json.loads((self.output / "orchestration.json").read_text())
         self.assertTrue(receipt["controllerCancelled"])
         self.assertEqual(set(ORCHESTRATOR.FILES), {path.name for path in self.output.iterdir()})
+
+    def test_explicit_consumer_kit_pin_does_not_relabel_deployed_server(self):
+        self.environment.update(RELEASE_TAG="v4.4.1", RELEASE_COMMIT="d" * 40)
+        fake = FakeSSH(attached=False)
+        self.assertEqual(0, self.execute(fake))
+        self.assertEqual("v4.4.1", self.downloader.prepare.call_args.args[1])
+        self.assertEqual("d" * 40, self.downloader.prepare.call_args.args[2])
+        self.assertEqual(TAG, fake.envelope["serverTag"])
+        self.assertEqual(COMMIT, fake.envelope["serverCommit"])
+        self.assertEqual(TAG[1:], fake.envelope["deployment"]["serverDeployment"]["version"])
+        artifact = json.loads((self.output / "consumption.json").read_text())
+        self.assertEqual("v4.4.1", artifact["tag"])
+        self.assertEqual("d" * 40, artifact["gitCommit"])
 
     def test_finished_stop_only_collects_original_without_restarting(self):
         self.args.action = "stop"
@@ -243,7 +261,8 @@ class RemoteLifecycleTest(unittest.TestCase):
         self.assertEqual(["systemctl", "--user", "stop", ORCHESTRATOR.unit_name(RUN)], systemd.call_args.args[0])
 
     def test_rejected_preflight_never_extracts_kit_or_writes_private_input(self):
-        envelope = {"deployment": configuration(), "tag": TAG, "commit": COMMIT, "workers": 5000,
+        envelope = {"deployment": configuration(), "tag": TAG, "commit": COMMIT,
+                    "serverTag": TAG, "serverCommit": COMMIT, "workers": 5000,
                     "budget": {"perCredential": 9999, "total": 30000, "reserved": 20}}
         with patch.object(ORCHESTRATOR.os, "getuid", return_value=self.root.stat().st_uid, create=True), \
                 patch.object(ORCHESTRATOR, "preflight", side_effect=ORCHESTRATOR.Failure("Connection budget insufficient")), \

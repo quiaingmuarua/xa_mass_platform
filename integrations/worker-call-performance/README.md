@@ -140,7 +140,8 @@ arguments, logs and published artifacts.
 | `CONSUMER_SSH_HOST`, `CONSUMER_SSH_USER`, `CONSUMER_SSH_KNOWN_HOSTS` | Dedicated `xa-mass-performance` consumer account and pinned SSH host keys |
 | `PERFORMANCE_DEPLOYMENT_JSON` | Deployment configuration described above, with `consumerId=public43-performance` and private credential-file references |
 | `PERFORMANCE_CONNECTION_BUDGET_JSON` | Exactly three integer gateway-budget fields: `perCredential`, `total`, `reserved`; requested Workers must fit both `perCredential` and `total - reserved` |
-| `INSTALLED_RELEASE_TAG`, `INSTALLED_RELEASE_COMMIT` | Release tag and full source commit deployed to the target GCP Runtime; the campaign consumes that Release's kit independently of the persistent Host installation |
+| `PERFORMANCE_KIT_RELEASE_TAG`, `PERFORMANCE_KIT_RELEASE_COMMIT` | Exact immutable published Consumer kit Release and full source commit; mapped to the controller's `RELEASE_TAG` / `RELEASE_COMMIT` |
+| `INSTALLED_RELEASE_TAG`, `INSTALLED_RELEASE_COMMIT` | Release tag and full source commit deployed to the target GCP Runtime; mapped to `SERVER_RELEASE_TAG` / `SERVER_RELEASE_COMMIT` and matched against `serverDeployment` |
 
 | Environment Secrets | Use |
 | --- | --- |
@@ -166,6 +167,14 @@ The ordinary persistent 20-Worker Host has its own Group, inventory, credentials
 and system service; Actions never starts or stops it. Both roles still share the
 physical consumer host's CPU, memory and network failure domain.
 
+Consumer kit and target Server pins are independent. The kit must pass the strict
+immutable Release, asset digest and schema-3 manifest checks for its own commit;
+`PERFORMANCE_DEPLOYMENT_JSON.serverDeployment` must match the declared Server
+pins. Their versions and commits need not match when the existing API contract is unchanged.
+Neither identity falls back to the other or to `latest`. `consumption.json`
+traces the kit, while the summary's `serverDeployment` traces the target Server;
+using a patched Consumer kit does not upgrade GCP or the persistent Host.
+
 The campaign is one owned systemd unit, identified by the GitHub Run ID. A rerun
 of that same Run ID only attaches to its existing unit or collects its receipt;
 it must not execute the workload again. A new independent run may follow a
@@ -188,6 +197,31 @@ statuses are unchanged. Exit status `0` alone does not establish that every case
 was valid: inspect each `passed`, `saturated`, `invalid` or `failed` outcome before
 comparing measurements. Delivery checks of this mode do not establish a real
 10,000-Worker public-path result; that needs its own actual run and evidence.
+For a smaller delivery check, set `external_workers_per_group=1000` to request
+2,000 Workers total. That leaves the default 10k command and measurement oracle
+unchanged and provides evidence only for the selected size.
+
+### Bootstrap Readiness
+
+Source and deployed execution use the same Java Harness bootstrap. The current
+Lab inventory supplies the known Worker IDs. Group Properties Preview remains a
+bounded global sample of registered identities, including historical Workers;
+it is not the current run's inventory. Per Group, bootstrap fixes a target of all
+current IDs when there are at most 1,000, or the first 1,000 sorted current IDs
+for a larger inventory. Across Preview responses it accumulates target IDs whose
+Properties are nonempty. Historical IDs, empty Properties and repeats do not
+contribute coverage. Each incomplete Group continues sampling; a changed Lab
+identity set clears the accumulated coverage.
+
+After Properties coverage, every current Worker must still be Lab `RUNNING`,
+network `connected`, and scheduling `held-hot` or `hot-score-overdue`, within the
+existing 240-second bootstrap deadline. Properties evidence is cumulative and
+adds no freshness timestamp requirement. `complete-known-fixture` covers all
+known identities at up to 1,000 per Group; larger inventories retain the
+`bounded-sample` claim and do not prove every Worker's Properties publication.
+Historical registrations are retained. Do not clear their data or replace a
+Group to make readiness pass. Runtime APIs, Worker protocol and later quiesce,
+case and Result checks are unchanged.
 
 ## World And Configuration
 
@@ -370,9 +404,10 @@ measurement, close both Tasks, wait at most 60 seconds for quiet Workers, and
 verify each export identity and MD5 payload. Unexecuted backlog is expected.
 
 Known Worker IDs come from the Lab inventory. Runtime network/scheduling checks
-use pages of 100 IDs. Properties Preview is limited to 1000 and is only a sample
-above that fleet size; it does not enumerate the fleet or prove every Properties
-publication.
+use pages of 100 IDs. The common [bootstrap readiness](#bootstrap-readiness)
+accumulates nonempty Properties for a fixed known-identity target through
+bounded Group Preview samples; above 1,000 Workers per Group this remains a
+sample and does not prove every Properties publication.
 
 The evidence oracle reconciles CLAIMED, COMMAND_PUBLISHED and RESULT_STORED with
 the unique export count over the whole case, while counting only measurement

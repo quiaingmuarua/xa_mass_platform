@@ -55,7 +55,7 @@ Runtime ZIP 包含 Server、Adapter 和前端，排除 Simulator；Preview ZIP �
   见[包内部署示例](../../../distribution/server/src/main/dist/examples/batch-checks/README.md)。
 - **独立 Messages/Android**：使用[消息示例](../../../distribution/server/src/main/dist/examples/messages/README.md)
   和 [Android Host](../../../xa-android/README.md)。
-- **外部 Java Worker consumer**：使用同 Release 的
+- **外部 Java Worker consumer**：使用明确固定版本的已发布
   [Simulator kit](../../../distribution/worker-simulator/README.md)。包内提供普通长期 20-Worker Host
   和 systemd 示例，以及现有 Performance runner 的
   [已部署 Runtime 模式](../../../integrations/worker-call-performance/README.md#deployed-runtime-consumer)。
@@ -196,7 +196,9 @@ Project 与密钥签发／清除都在控制台或 API 完成；Server 运行时
 通过现有 Performance workflow 手工调度外部调用测量时，使用
 [External Actions 入口](../../../integrations/worker-call-performance/README.md#external-actions-execution)；
 它消费固定版本的已发布 Release kit，并保持长期 20-Worker 系统服务独立。
-不 checkout 仓库时，使用同一 Release 发布的
+Consumer kit 的 Release/commit 与目标 Server 的部署记录分别固定、核验和追溯；
+仅更新 kit 不会升级 GCP，Properties 就绪核验沿用同一 Harness 并保留历史 Group 注册。
+不 checkout 仓库时，使用所选 Release 发布的
 [Worker Simulator kit](../../../distribution/worker-simulator/README.md)：它包含这个 Host 入口和
 一轮有限任务验收命令，后者输出一行 JSON（passed / failed / unconfirmed）。
 
