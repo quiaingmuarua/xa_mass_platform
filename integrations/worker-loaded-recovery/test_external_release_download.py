@@ -24,9 +24,10 @@ class ExternalReleaseDownloadTest(unittest.TestCase):
         self.repository = "owner/repo"
         self.tag, self.commit = "v5.0.0", "a" * 40
         self.name = "xa-mass-worker-simulator-5.0.0.zip"
-        self.manifest = {"schemaVersion": 2, "version": "5.0.0", "gitCommit": self.commit, "javaVersion": 21,
+        self.manifest = {"schemaVersion": 3, "version": "5.0.0", "gitCommit": self.commit, "javaVersion": 21,
                          "simulatorEntry": "bin/xa-mass-worker-simulator", "roundEntry": "acceptance/finite_round.py",
-                         "loadedEntry": "acceptance/run_loaded.py"}
+                         "loadedEntry": "acceptance/run_loaded.py",
+                         "performanceEntry": "acceptance/performance/run_worker_call_performance.py"}
         self.release = {"tag_name": self.tag, "draft": False, "immutable": True,
                         "id": 123, "html_url": "https://github.com/owner/repo/releases/tag/v5.0.0",
                         "assets": [{"name": self.name, "state": "uploaded"}, {"name": self.name + ".sha256", "state": "uploaded"}]}
@@ -40,6 +41,7 @@ class ExternalReleaseDownloadTest(unittest.TestCase):
             with zipfile.ZipFile(destination, "w") as archive:
                 archive.writestr("xa-mass-worker-simulator-5.0.0/manifest.json", json.dumps(self.manifest))
                 archive.writestr("xa-mass-worker-simulator-5.0.0/acceptance/run_loaded.py", "# published entry\n")
+                archive.writestr("xa-mass-worker-simulator-5.0.0/acceptance/performance/run_worker_call_performance.py", "# existing runner\n")
         else:
             digest = hashlib.sha256(destination.with_suffix("").read_bytes()).hexdigest()
             destination.write_text(digest + "  " + self.name + "\n")
@@ -53,6 +55,7 @@ class ExternalReleaseDownloadTest(unittest.TestCase):
             self.assertEqual(self.commit, result["gitCommit"])
             self.assertEqual(self.manifest, result["manifest"])
             self.assertTrue((Path(result["kitRoot"]) / "acceptance/run_loaded.py").is_file())
+            self.assertTrue((Path(result["kitRoot"]) / self.manifest["performanceEntry"]).is_file())
             self.assertEqual(result, json.loads((output / "consumption.json").read_text()))
 
     def test_draft_mutable_and_wrong_tag_are_rejected_before_download(self):
@@ -71,7 +74,8 @@ class ExternalReleaseDownloadTest(unittest.TestCase):
             download.assert_not_called()
 
     def test_old_kit_and_wrong_manifest_commit_cannot_supply_capacity_entry(self):
-        for change in ({"schemaVersion": 1}, {"gitCommit": "b" * 40}, {"loadedEntry": "another.py"}):
+        for change in ({"schemaVersion": 1}, {"schemaVersion": 2}, {"gitCommit": "b" * 40},
+                       {"loadedEntry": "another.py"}, {"performanceEntry": "another.py"}):
             original = dict(self.manifest)
             self.manifest.update(change)
             with self.subTest(change=change), tempfile.TemporaryDirectory() as directory, \

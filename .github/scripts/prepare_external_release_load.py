@@ -96,7 +96,8 @@ def prepare(repository: str, tag: str, commit: str, output: Path) -> dict:
     kit = output / f"xa-mass-worker-simulator-{version}"
     with zipfile.ZipFile(archive) as source:
         manifest = json.loads(source.read(f"{kit.name}/manifest.json"))
-        require(manifest.get("schemaVersion") == 2 and manifest.get("loadedEntry") == "acceptance/run_loaded.py"
+        require(manifest.get("schemaVersion") == 3 and manifest.get("loadedEntry") == "acceptance/run_loaded.py"
+                and manifest.get("performanceEntry") == "acceptance/performance/run_worker_call_performance.py"
                 and manifest.get("gitCommit") == commit and manifest.get("version") == version,
                 "Published kit does not supply the matching external capacity entry")
         source.extractall(output)

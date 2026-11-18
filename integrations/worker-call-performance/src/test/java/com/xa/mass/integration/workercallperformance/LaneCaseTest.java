@@ -111,6 +111,18 @@ class LaneCaseTest {
     }
 
     @Test
+    void absentWorkerObservationsRemainInvalidEvenWhenTheOfferedLoadSaturates() {
+        var reasons = new ArrayList<String>();
+        LaneCase.addWorkerEvidenceReasons(reasons, List.of(Map.of("unavailable", true)), List.of("wan-a", "wan-b"), true);
+        assertThat(reasons).containsExactly("worker-observation-unavailable");
+        var usable = Map.<String, Object>of("wan-a", Map.of("held-hot", 2L), "wan-b", Map.of("held-hot", 2L));
+        reasons.clear();
+        LaneCase.addWorkerEvidenceReasons(reasons, List.of(usable), List.of("wan-a", "wan-b"), true);
+        assertThat(reasons).isEmpty();
+        assertThat(LaneCase.leaseHeldPeakRatio(List.of(usable), 2, List.of("wan-a", "wan-b"))).isEqualTo(1.0);
+    }
+
+    @Test
     void completionThroughputCountsSucceededResultsPerOfferedSecond() {
         var clock = new AtomicLong(1_000_000_000L);
         var batch = CallLoad.schedule(10, 2, 4, "lane", Runnable::run,

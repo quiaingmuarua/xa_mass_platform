@@ -1,0 +1,22 @@
+[Unit]
+Description=XA Mass persistent Java Worker Host
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=xa-mass-worker
+Group=xa-mass-worker
+WorkingDirectory=/var/lib/xa-mass-worker
+Environment="JAVA_OPTS=-Xms128m -Xmx3g -XX:+ExitOnOutOfMemoryError"
+ExecStart=/opt/xa-mass-worker-simulator/current/bin/xa-mass-worker-simulator --config /etc/xa-mass-worker/persistent-20-host.json
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillMode=control-group
+LimitNOFILE=32768
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

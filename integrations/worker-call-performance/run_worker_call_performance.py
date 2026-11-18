@@ -22,8 +22,12 @@ import urllib.request
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-from integrations.worker_proof_support.scenario_inventory import materialize_inventory
+if (ROOT / "acceptance/performance/harness").is_dir():
+    sys.path.insert(0, str(ROOT / "acceptance"))
+    from support.scenario_inventory import materialize_inventory
+else:
+    sys.path.insert(0, str(ROOT))
+    from integrations.worker_proof_support.scenario_inventory import materialize_inventory
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lane_trend  # noqa: E402  (sibling module; this directory name is not a package)
 
@@ -56,13 +60,26 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def fresh_output(path):
+def fresh_output(path, *, deployment=False):
     path = path.resolve()
     build = (ROOT / "build").resolve()
-    if not path.is_relative_to(build) or path == build or path.exists():
-        raise ValueError("Output must be a fresh directory below repository build")
-    path.mkdir(parents=True)
+    if deployment and (ROOT / "acceptance/performance/harness").is_dir() and path.is_relative_to(ROOT.resolve()):
+        raise ValueError("Deployment output must be outside the immutable Simulator kit")
+    if path.exists() or (not deployment and (not path.is_relative_to(build) or path == build)):
+        raise ValueError("Output must be a fresh directory" + ("" if deployment else " below repository build"))
+    path.mkdir(parents=True, mode=0o700)
     return path
+
+
+def harness_classpath(root=None):
+    root = ROOT if root is None else root
+    packaged = root / "acceptance/performance/harness/lib"
+    return packaged / "*" if packaged.is_dir() else root / "integrations/worker-call-performance/build/install/xa-mass-worker-call-performance/lib/*"
+
+
+def host_classpath(root=None):
+    root = ROOT if root is None else root
+    return root / "lib/*" if (root / "acceptance/performance/harness").is_dir() else root / "worker_simulator_jvm/build/install/xa-mass-worker-simulator/lib/*"
 
 
 def parse_proc(status, stat, open_files, ticks):
@@ -230,15 +247,16 @@ class Sampler:
                     if self.swap_start is not None and swap_counters() != self.swap_start:
                         raise RuntimeError("WSL swap activity during experiment")
                     # Aggregate diagnostics only: no domain keys, command arguments or payloads.
-                    stats = self.redis.info("stats")
-                    memory = self.redis.info("memory")
-                    cpu = self.redis.info("cpu")
-                    output.write(json.dumps({"role": "redis", "epochMillis": int(time.time() * 1000),
-                        "totalCommandsProcessed": stats["total_commands_processed"],
-                        "usedMemory": memory["used_memory"], "usedMemoryRss": memory["used_memory_rss"],
-                        "cpuUserSeconds": cpu["used_cpu_user"], "cpuSystemSeconds": cpu["used_cpu_sys"],
-                        "commandStats": self.redis.info("commandstats")}) + "\n")
-                    self.counts["redis"] += 1
+                    if self.redis is not None:
+                        stats = self.redis.info("stats")
+                        memory = self.redis.info("memory")
+                        cpu = self.redis.info("cpu")
+                        output.write(json.dumps({"role": "redis", "epochMillis": int(time.time() * 1000),
+                            "totalCommandsProcessed": stats["total_commands_processed"],
+                            "usedMemory": memory["used_memory"], "usedMemoryRss": memory["used_memory_rss"],
+                            "cpuUserSeconds": cpu["used_cpu_user"], "cpuSystemSeconds": cpu["used_cpu_sys"],
+                            "commandStats": self.redis.info("commandstats")}) + "\n")
+                        self.counts["redis"] += 1
                     output.flush()
                     self.stopped.wait(1)
             if machine:
@@ -477,16 +495,18 @@ def resource_peaks(path):
     return peaks
 
 
-def run_lane_harness(phase, harness_output, private, env, processes, sampler, deadline, *extra, accepted=("passed",)):
+def run_lane_harness(phase, harness_output, private, env, processes, sampler, deadline, *extra, accepted=("passed",), deployment=None, lab_url=None, java_options=()):
     """One bounded Harness phase while Server and Host must stay alive; returns its safe summary."""
     role = f"harness-{phase}-{len(processes)}"
     harness_output.mkdir(parents=True, exist_ok=True)
-    processes[role] = start_process(["java", *JVM, "-cp", ROOT / "integrations/worker-call-performance/build/install/xa-mass-worker-call-performance/lib/*",
+    if deployment is not None:
+        extra = (*extra, f"--deployment-config={deployment}", f"--lab-url={lab_url}")
+    processes[role] = start_process(["java", *JVM, *java_options, "-cp", harness_classpath(),
         "com.xa.mass.integration.workercallperformance.WorkerCallPerformanceMain", f"--phase={phase}",
         f"--output={harness_output}", *extra], private / f"{role}.log", env)
     sampler.register(role, processes[role])
     while processes[role].poll() is None:
-        if time.monotonic() >= deadline or sampler.failure or any(processes[r].poll() is not None for r in ("server", "host")):
+        if time.monotonic() >= deadline or sampler.failure or any(processes[r].poll() is not None for r in ("server", "host") if r in processes):
             raise RuntimeError(f"Deadline, resource evidence or process survival failed during {phase}")
         time.sleep(.25)
     path = harness_output / ("case.json" if phase == "case" else f"{phase}.json")
@@ -634,6 +654,40 @@ def attribute_lane(private, evidence, records):
     return {key: result[key] for key in ("complete", "dataLoss", "dispatchEvents")}
 
 
+def run_lane_cases(output, deadline, plan, warmup_case, env, processes, sampler, result, *, deployment=None, lab_url=None, java_options=(), started=None):
+    """The same warmup, quiet gates, cases and records for both process compositions."""
+    evidence, private = output / "evidence", output / "private"
+    harness_output = evidence / "harness"
+    world = harness_output / "bootstrap.json"
+    records = result["cases"]
+    warmup = [dict(lane_entry(warmup_case, 0), warmup=True)] if warmup_case else []
+    phase_options = dict(deployment=deployment, lab_url=lab_url, java_options=java_options)
+    for index, entry in enumerate(warmup + plan):
+        case_output = harness_output / ("warmup" if entry.get("warmup") else f"r{entry['repetition']}") / entry["case"]
+        try:
+            run_lane_harness("quiesce", case_output, private, env, processes, sampler, deadline,
+                             f"--world={world}", **phase_options)
+        except RuntimeError:
+            records.extend(dict(later, status="invalid", invalidReasons=["quiesce-timeout"])
+                           for later in (warmup + plan)[index:] if not later.get("warmup"))
+            break
+        case = run_lane_harness("case", case_output, private, env, processes, sampler, deadline,
+                               f"--case={entry['case']}", f"--repetition={entry['repetition']}", f"--world={world}",
+                               accepted=("passed", "invalid", "saturated"), **phase_options)
+        if entry.get("warmup"):
+            result["warmup"] = {"case": entry["case"], "status": case.get("status"),
+                                "p99LatencyMillis": (case.get("metrics", {}).get("successfulCallLatencyMillis") or {}).get("p99")}
+            if started is not None:
+                result["timingsMillis"]["warmedUp"] = int((time.monotonic() - started) * 1000)
+            continue
+        cost = None
+        if case.get("measurementEndedEpochMillis"):
+            cost = lane_window_cost(evidence / "process-resources.jsonl", case["measurementStartedEpochMillis"],
+                                    case["measurementEndedEpochMillis"])
+        records.append(lane_case_record(entry, case, cost))
+        print("lane case " + json.dumps({k: records[-1][k] for k in ("repetition", "case", "status", "invalidReasons", "failureReason")}), flush=True)
+
+
 def run_lane(root, output, deadline, plan, attribution=True, warmup_case=None, calibrate=True, diagnostics="off"):
     """Start the world once, then run each case between quiesce gates (README.md)."""
     import redis
@@ -726,32 +780,7 @@ def run_lane(root, output, deadline, plan, attribution=True, warmup_case=None, c
         timings["hostListening"] = elapsed()
         result["bootstrap"] = run_lane_harness("bootstrap", harness_output, private, env, processes, sampler, deadline)
         timings["bootstrapped"] = elapsed()
-        world = harness_output / "bootstrap.json"
-        warmup = [dict(lane_entry(warmup_case, 0), warmup=True)] if warmup_case else []
-        for index, entry in enumerate(warmup + plan):
-            case_output = harness_output / ("warmup" if entry.get("warmup") else f"r{entry['repetition']}") / entry["case"]
-            try:
-                run_lane_harness("quiesce", case_output, private, env, processes, sampler, deadline, f"--world={world}")
-            except RuntimeError:
-                # F6: a polluted world makes this and every later case incomparable.
-                records.extend(dict(later, status="invalid", invalidReasons=["quiesce-timeout"])
-                               for later in (warmup + plan)[index:] if not later.get("warmup"))
-                break
-            case = run_lane_harness("case", case_output, private, env, processes, sampler, deadline,
-                                    f"--case={entry['case']}", f"--repetition={entry['repetition']}", f"--world={world}",
-                                    accepted=("passed", "invalid", "saturated"))
-            if entry.get("warmup"):
-                # Discarded: it only brings the JIT and connection pools to the job's load before measurement.
-                result["warmup"] = {"case": entry["case"], "status": case.get("status"),
-                                    "p99LatencyMillis": (case.get("metrics", {}).get("successfulCallLatencyMillis") or {}).get("p99")}
-                timings["warmedUp"] = elapsed()
-                continue
-            cost = None
-            if case.get("measurementEndedEpochMillis"):
-                cost = lane_window_cost(evidence / "process-resources.jsonl", case["measurementStartedEpochMillis"],
-                                        case["measurementEndedEpochMillis"])
-            records.append(lane_case_record(entry, case, cost))
-            print("lane case " + json.dumps({k: records[-1][k] for k in ("repetition", "case", "status", "invalidReasons", "failureReason")}), flush=True)
+        run_lane_cases(output, deadline, plan, warmup_case, env, processes, sampler, result, started=started)
         timings["casesCompleted"] = elapsed()
         if sampler.failure or any(sampler.counts[r] < 1 for r in ("server", "host", "redis")):
             raise RuntimeError("Resource evidence incomplete")
@@ -937,8 +966,8 @@ def merge_lane(evidence_root, jobs, history=None, meta=None):
 def lane_markdown(result):
     timings = result.get("timingsMillis", {})
     lines = ["# Performance Lane", "", f"Status: **{result['status']}**. Cases: {result.get('caseCounts', {})}.", "",
-             f"{len(LANE_GROUPS)} Groups, one Adapter, assignment ceiling "
-             f"{LANE_ASSIGNMENT_BATCH_LIMIT}. Offered load splits evenly across the Groups.", "",
+             f"{len(result.get('groups', LANE_GROUPS))} Groups, one Adapter, assignment ceiling "
+             f"{result.get('assignmentBatchLimit', LANE_ASSIGNMENT_BATCH_LIMIT)}. Offered load splits evenly across the Groups.", "",
              "| Rep | Case | Status | HTTP success ratio | Completed/s | Success p50 / p99 ms | Checked Items/s | Shortfall | Acquisition rejected | Lease-held peak | Redis cmds / completed |",
              "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for r in result.get("cases", []):
@@ -982,6 +1011,10 @@ def lane_markdown(result):
                          f"| {resource['serverHeapMiB']} / {resource['hostHeapMiB']} / {resource['harnessHeapMiB']} "
                          f"| {window['warmupSeconds']} / {window['measurementSeconds']} | {window['itemsPerGroup']} "
                          f"| {resource['redisMemoryMiB']} / {resource['redisMaxmemoryMiB']} |")
+        elif world.get("executionEnvironment") == "existing-server":
+            lines.append(f"| {world['job']} (existing deployment) | {world['workersPerGroup']} "
+                         f"| {world.get('cpuCount') or '—'} | not collected / {world.get('hostMaxHeap', '—')} / 1024 "
+                         "| original open-loop windows | per case | not collected |")
         else:
             lines.append(f"| {world['job']} (legacy world) | {world.get('workersPerGroup', LANE_WORKERS_PER_GROUP)} "
                          f"| {world.get('cpuCount') or '—'} | 1024 / 1024 / 1024 | per case | per case | unconstrained |")
@@ -1013,6 +1046,12 @@ def lane_markdown(result):
                   for role, peak in peaks.items()]
     if result.get("runnerFailure"):
         lines += ["", f"Failure: {result['runnerFailure']}"]
+    if result.get("executionEnvironment") == "existing-server":
+        lines += ["", "Existing-deployment open-loop observation; not a same-host reference or saturation measurement.",
+                  "Server/Redis resources, Redis calibration and Server JFR were not collected. "
+                  "Completion rates include eventual Results after drain; they are not Server maximum TPS.",
+                  "", "Server deployment (operator-declared): " + json.dumps(result.get("serverDeployment", {}), sort_keys=True),
+                  "", "Consumer cleanup: " + json.dumps(result.get("cleanup", {}), sort_keys=True)]
     lines += ["", "Saturation cases count successful Result-store completion events inside the window and reconcile "
               "full-lifecycle claims, publications and stores with unique validated public exports. Warmup and drain "
               "are excluded; missing or inconsistent evidence is invalid. Resource cost denominators use the same sampled interval.", ""]
@@ -1068,6 +1107,224 @@ def diagnose_lane(private, evidence, records):
     return {"complete": bool(summary) and all(summary.values()), "cases": summary}
 
 
+def deployment_java_options(options):
+    if not options.java_truststore:
+        return ()
+    path = options.java_truststore.resolve(strict=True)
+    return (f"-Djavax.net.ssl.trustStore={path}", f"-Djavax.net.ssl.trustStorePassword={options.java_truststore_password}")
+
+
+def deployment_environment():
+    allowed = {"PATH", "JAVA_HOME", "HOME", "USER", "LANG", "LC_ALL", "TMPDIR", "TEMP", "TMP", "SSL_CERT_FILE"}
+    return {key: value for key, value in os.environ.items() if key in allowed}
+
+
+def wait_deployment_host(process, log, sampler, deadline):
+    marker = re.compile(r"WORKER_SIMULATOR_READY control=(http://127\.0\.0\.1:([0-9]+)/lab)")
+    while time.monotonic() < deadline:
+        if process.poll() is not None or sampler.failure:
+            raise RuntimeError("Worker Host exited or resource sampling failed before readiness")
+        if log.is_file():
+            match = marker.search(log.read_text(encoding="utf-8", errors="replace")[-65536:])
+            if match and 1 <= int(match.group(2)) <= 65535:
+                return match.group(1).removesuffix("/lab")
+        time.sleep(.2)
+    raise RuntimeError("Worker Host readiness deadline exceeded")
+
+
+def deployment_inventory(lab_url):
+    with deployment_open(lab_url + "/lab/v1/workers", timeout=5) as response:
+        workers = json.load(response)["workers"]
+    return sorted({row["workerId"] for row in workers if isinstance(row.get("workerId"), str) and row["workerId"]})
+
+
+class DeploymentNoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, message, headers, new_url):
+        return None
+
+
+def deployment_open(request, *, timeout):
+    # In particular, an authenticated cleanup POST must never follow a redirect to another authority.
+    return urllib.request.build_opener(DeploymentNoRedirect()).open(request, timeout=timeout)
+
+
+def observe_deployment_disconnect(config, identities, seconds=30):
+    """Cleanup observation only; never mutate remote Worker or Task state."""
+    if not identities:
+        return {"status": "unconfirmed", "reason": "no-owned-identity-evidence"}
+    key = Path(config["accessKeyFile"]).read_text(encoding="utf-8").strip()
+    url = config["runtimeUrl"] + "/api/v1/runtime-view/endpoint-managers/" + config["endpointManager"] + "/workers:network-observe"
+    deadline = time.monotonic() + seconds
+    while True:
+        counts = Counter()
+        for offset in range(0, len(identities), 100):
+            page = identities[offset:offset + 100]
+            request = urllib.request.Request(url, data=json.dumps(page).encode("utf-8"), method="POST",
+                                             headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
+            with deployment_open(request, timeout=min(5, max(.1, deadline - time.monotonic()))) as response:
+                states = json.load(response)["statesByWorkerId"]
+            if set(states) != set(page):
+                raise RuntimeError("Cleanup observation returned a different identity set")
+            counts.update(states.values())
+        if not counts["connected"] and set(counts).issubset({"unknown", "disconnected"}):
+            return {"status": "confirmed", "identityCount": len(identities), "states": dict(counts)}
+        if time.monotonic() >= deadline:
+            return {"status": "unconfirmed", "identityCount": len(identities), "states": dict(counts)}
+        time.sleep(1)
+
+
+def main_deployment(options):
+    """Existing-server composition around the same lane phases; owns only local consumers."""
+    import fcntl
+    import resource
+    os.umask(0o077)
+    java_options = deployment_java_options(options)
+    java = subprocess.run(["java", "-version"], capture_output=True, text=True, check=True).stderr
+    if not re.search(r'version "21[.\"]', java):
+        raise ValueError("Java 21 is required")
+    for classpath in (host_classpath(), harness_classpath()):
+        if not list(classpath.parent.glob("*.jar")):
+            raise ValueError("The built or published Host and Performance Harness are required")
+    output = fresh_output(options.output_root, deployment=True)
+    evidence, private = output / "evidence", output / "private"
+    evidence.mkdir()
+    private.mkdir(mode=0o700)
+    env = deployment_environment()
+    input_config = options.deployment_config.resolve(strict=True)
+    # Java owns measurement configuration and credential validation; Python consumes its resolved values.
+    command(["java", *JVM, *java_options, "-cp", harness_classpath(),
+             "com.xa.mass.integration.workercallperformance.WorkerCallPerformanceMain",
+             "--phase=deployment-config", f"--output={evidence}", f"--deployment-config={input_config}"], timeout=30)
+    config = json.loads((evidence / "deployment.json").read_text(encoding="utf-8"))
+    if resource.getrlimit(resource.RLIMIT_NOFILE)[0] < config["hostFdLimit"]:
+        raise ValueError("Consumer nofile soft limit is below the configured Host FD budget")
+    lock_root = Path.home() / ".cache/xa-mass-performance"
+    lock_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    identity = json.dumps([config["runtimeUrl"], config["project"], config["consumerId"]]).encode("utf-8")
+    lock = (lock_root / (hashlib.sha256(identity).hexdigest() + ".lock")).open("a")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock.close()
+        raise ValueError("This consumer already owns a Performance run") from None
+    plan = lane_plan(options.lane_rates or LANE_RATES, options.repetitions, ("open",))
+    warmup_case = lane_warmup_case(options.lane_rates or LANE_RATES, ("open",))
+    result = {"lane": "performance", "executionEnvironment": "existing-server", "referenceHost": False,
+              "status": "failed", "plan": plan, "warmupCase": warmup_case, "cases": [], "timingsMillis": {},
+              "groups": config["groups"], "workersPerGroup": config["workersPerGroup"],
+              "assignmentBatchLimit": config["assignmentBatchLimit"], "serverDeployment": config["serverDeployment"],
+              "hostMaxHeap": config["hostMaxHeap"],
+              "runtimeUrl": config["runtimeUrl"], "cpuCount": os.cpu_count(), "java": java.strip(),
+              "os": platform.freedesktop_os_release(), "machine": platform.machine(), "kernel": platform.release(),
+              "notCollected": ["server-resources", "redis-resources", "redis-calibration", "server-jfr"],
+              "attribution": None, "calibration": None}
+    started = time.monotonic()
+    deadline = started + LANE_WORLD_SECONDS + (len(plan) + 1) * LANE_CASE_SECONDS
+    processes, credentials, cleanup_errors = {}, [], []
+    sampler = None
+    lab_url = None
+    identities = []
+    previous_term = signal.getsignal(signal.SIGTERM)
+    def interrupted(signum, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, interrupted)
+    try:
+        private_config = {key: value for key, value in config.items() if key != "rpcTaskIds"}
+        for field, filename in (("accessKeyFile", "access-key.txt"), ("gatewayCredentialFile", "worker-gateway.json")):
+            destination = private / filename
+            shutil.copyfile(config[field], destination)
+            destination.chmod(0o600)
+            credentials.append(destination)
+            private_config[field] = str(destination)
+        config_file = private / "deployment.json"
+        write_json(config_file, private_config)
+        inventory = private / "data/scenario-workers"
+        materialize_inventory(inventory, {group: tuple({"runtime": "java", "capability": "string-utils"}
+                                                       for _ in range(config["workersPerGroup"])) for group in config["groups"]})
+        host_groups = {group: dict(next(iter(lane_host_groups(config["workersPerGroup"]).values()))) for group in config["groups"]}
+        host_config = private / "worker-simulator.json"
+        write_json(host_config, {"runtimeApiBaseUrl": config["workerRuntimeUrl"],
+                                "gatewayCredentialFile": private_config["gatewayCredentialFile"],
+                                "sandboxRoot": str(inventory), "controlPort": 0, "workerGroups": host_groups})
+        manifest = ROOT / "manifest.json"
+        if manifest.is_file():
+            result["artifactManifest"] = json.loads(manifest.read_text(encoding="utf-8"))
+        write_json(evidence / "artifact-fingerprints.json", [
+            {"role": role, "name": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            for role, cp in (("host", host_classpath()), ("harness", harness_classpath()))
+            for path in sorted(cp.parent.glob("*.jar"))])
+        write_json(evidence / "effective-config.json", {"deployment": config, "plan": plan,
+                   "warmupCase": warmup_case, "hostMaxHeap": config["hostMaxHeap"],
+                   "hostFdLimit": config["hostFdLimit"], "harnessJvmOptions": JVM, "nativeThreadLimit": 512})
+        sampler = Sampler(evidence / "process-resources.jsonl", None, fd_limit=config["hostFdLimit"])
+        sampler.thread.start()
+        processes["host"] = start_process(["java", "-Xms256m", f"-Xmx{config['hostMaxHeap']}",
+                                           "-XX:+ExitOnOutOfMemoryError", *java_options, "-cp", host_classpath(),
+                                           "com.xa.mass.workersimulator.WorkerSimulatorMain", "--config", host_config],
+                                          private / "host.log", env, fd_limit=config["hostFdLimit"])
+        sampler.register("host", processes["host"])
+        lab_url = wait_deployment_host(processes["host"], private / "host.log", sampler,
+                                       min(deadline, time.monotonic() + 180))
+        result["timingsMillis"]["hostListening"] = int((time.monotonic() - started) * 1000)
+        result["bootstrap"] = run_lane_harness("bootstrap", evidence / "harness", private, env, processes, sampler,
+                                               deadline, deployment=config_file, lab_url=lab_url, java_options=java_options)
+        result["timingsMillis"]["bootstrapped"] = int((time.monotonic() - started) * 1000)
+        run_lane_cases(output, deadline, plan, warmup_case, env, processes, sampler, result,
+                       deployment=config_file, lab_url=lab_url, java_options=java_options, started=started)
+        if sampler.failure or sampler.counts["host"] < 1 or not any(count for role, count in sampler.counts.items() if role.startswith("harness-")):
+            raise RuntimeError("Consumer resource evidence incomplete")
+        result["status"] = "passed" if len(result["cases"]) == len(plan) and not any(row["status"] == "failed" for row in result["cases"]) else "failed"
+    except (Exception, KeyboardInterrupt) as error:
+        result.update(status="failed", runnerFailure=type(error).__name__)
+    finally:
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        if lab_url:
+            try:
+                identities = deployment_inventory(lab_url)
+                write_json(private / "owned-worker-identities.json", identities)
+            except Exception as error:
+                cleanup_errors.append("identity-evidence-" + type(error).__name__)
+        for process in reversed(tuple(processes.values())):
+            try:
+                stop_process(process)
+            except Exception as error:
+                cleanup_errors.append("process-stop-" + type(error).__name__)
+        if sampler:
+            try:
+                sampler.stop()
+            except Exception as error:
+                cleanup_errors.append("sampler-stop-" + type(error).__name__)
+            if sampler.failure:
+                result.update(status="failed", resourceFailure=sampler.failure)
+            try:
+                result["resourcePeaks"] = resource_peaks(evidence / "process-resources.jsonl")
+            except Exception as error:
+                cleanup_errors.append("resource-summary-" + type(error).__name__)
+        try:
+            disconnect = observe_deployment_disconnect(private_config, identities)
+        except Exception as error:
+            disconnect = {"status": "unconfirmed", "failureType": type(error).__name__}
+        for path in credentials:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as error:
+                cleanup_errors.append("credential-removal-" + type(error).__name__)
+        result["cleanup"] = {"ownedProcessesStopped": all(p.poll() is not None for p in processes.values()),
+                             "workerConnections": disconnect,
+                             "privateCredentialCopiesRemoved": all(not p.exists() for p in credentials), "errors": cleanup_errors}
+        if cleanup_errors or disconnect["status"] != "confirmed":
+            result["status"] = "failed"
+        result["timingsMillis"]["completed"] = int((time.monotonic() - started) * 1000)
+        result["caseCounts"] = dict(Counter(row["status"] for row in result["cases"]))
+        result["pathRatios"] = lane_path_ratios(result["cases"])
+        lock.close()
+        signal.signal(signal.SIGTERM, previous_term)
+        write_json(evidence / "lane-summary.json", result)
+        (evidence / "summary.md").write_text(lane_markdown(result), encoding="utf-8")
+    print(json.dumps({"status": result["status"], "cases": result["caseCounts"], "evidence": str(evidence / "lane-summary.json")}))
+    return 0 if result["status"] == "passed" else 1
+
+
 def main():
     run_started = time.monotonic()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1086,10 +1343,27 @@ def main():
     parser.add_argument("--merge-lane", type=Path, help="Merge the per-job lane evidence found below this directory")
     parser.add_argument("--merge-jobs", help="Comma-separated lane job names expected by --merge-lane")
     parser.add_argument("--skip-build", action="store_true")
+    parser.add_argument("--deployment-config", type=Path,
+                        help="Connect the same open-loop lane to an existing deployment; no local Server or Redis")
+    parser.add_argument("--java-truststore", type=Path, help="Explicit CA store for a packaged TLS fixture")
+    parser.add_argument("--java-truststore-password", default="changeit")
     parser.add_argument("--experiment-config", type=Path,
                         help="Java-owned experiment configuration; purpose=lane with --lane-modes saturation or a sat-* A/B")
     parser.add_argument("--allow-nonreference-host", action="store_true", help="Local diagnostics only; no reference claim")
     options = parser.parse_args()
+    if options.deployment_config:
+        if ((options.lane_modes is not None and options.lane_modes != ("open",))
+                or options.baseline_ref or options.lane_case or options.experiment_config or options.lane_history
+                or options.merge_lane or options.merge_jobs or options.diagnostics != "off"):
+            parser.error("Existing deployments support only open-loop execution, without A/B, reference history or Server recording")
+        # The public path has no Server recording. An explicitly requested recording is an error.
+        if any(arg == "--lane-attribution" or arg.startswith("--lane-attribution=") for arg in sys.argv[1:]) and options.lane_attribution != "off":
+            parser.error("Existing deployments do not collect Server attribution; use --lane-attribution off")
+        if sys.platform != "linux":
+            parser.error("Existing deployment consumers require Linux with /proc and Java 21")
+        return main_deployment(options)
+    if options.java_truststore:
+        parser.error("An explicit CA store is supported only with --deployment-config")
     configured_lane = options.experiment_config and options.lane_modes == ("saturation",)
     configured_ab = bool(options.experiment_config and options.lane_case)
     if configured_lane and any((options.baseline_ref, options.lane_case, options.lane_rates, options.merge_lane, options.merge_jobs)):

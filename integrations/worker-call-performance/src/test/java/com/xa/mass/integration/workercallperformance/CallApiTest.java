@@ -13,6 +13,26 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 class CallApiTest {
+    @Test void directCallsUseTheConfiguredEndpointAndCaller() throws Exception {
+        var requests = new AtomicInteger();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/worker-delivery/endpoint-managers/wan-endpoint/direct-calls", exchange -> {
+            if (!"Bearer xak_private_operator".equals(exchange.getRequestHeaders().getFirst("Authorization")))
+                throw new AssertionError("Missing configured caller");
+            var request = Jsons.parseObject(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            if (!"wan-a".equals(request.get("workerGroupId"))) throw new AssertionError("Wrong Group");
+            requests.incrementAndGet();
+            byte[] body = Jsons.toJson(Map.of("directCallId", "direct-one", "status", "partial", "results", Map.of(
+                    "worker-one", Map.of("status", "unobserved", "reason", "timeout")))).getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length); exchange.getResponseBody().write(body); exchange.close();
+        });
+        server.start();
+        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused",
+                Map.of("Authorization", "Bearer xak_private_operator"), "wan-endpoint")) {
+            assertThat(api.directCall("wan-a", "worker-one").outcome()).isEqualTo(CallLoad.Outcome.TIMED_OUT);
+            assertThat(requests).hasValue(1);
+        } finally { server.stop(0); }
+    }
     @Test void streamingExportsCarryTheExplicitTaskCaller() throws Exception {
         var caller = Map.of("Authorization", "Bearer xak_test_perf_user");
         var requests = new AtomicInteger();

@@ -26,10 +26,36 @@ final class LaneWorld {
     static final int QUIET_PASSES = 2;
     private static final String IDLE = "hot-score-overdue";
 
+    record Coordinates(List<String> groups, String project, String endpoint, int workersPerGroup,
+                       int maximumWorkersPerGroup, int assignmentBatchLimit, DeploymentConfig deployment) {
+        Coordinates { groups = List.copyOf(groups); }
+
+        CallApi api(Map<String, String> options) throws Exception {
+            return new CallApi(deployment == null ? options.getOrDefault("--runtime-url", "http://127.0.0.1:18082")
+                    : deployment.runtimeUrl(), options.getOrDefault("--lab-url", "http://127.0.0.1:18086"),
+                    deployment == null ? Map.of("Authorization", "Bearer xak_dev_1000") : deployment.callerHeaders(),
+                    endpoint, deployment == null ? 1 : 8);
+        }
+
+        String rpcTaskId(String group) { return deployment == null ? "perf-rpc-" + group : deployment.rpcTaskId(group); }
+    }
+
+    static Coordinates coordinates(Map<String, String> options) throws Exception {
+        var deployment = DeploymentConfig.from(options);
+        return deployment == null ? reference(ExperimentConfig.settings(options).workers())
+                : new Coordinates(deployment.groups(), deployment.project(), deployment.endpointManager(),
+                        deployment.workersPerGroup(), 15_000, deployment.assignmentBatchLimit(), deployment);
+    }
+
+    private static Coordinates reference(int workers) {
+        return new Coordinates(GROUPS, PROJECT, ENDPOINT, workers, 4_000, LaneCase.ASSIGNMENT_BATCH_LIMIT, null);
+    }
+
     private LaneWorld() {}
 
     static void run(Map<String, String> options) throws Exception {
         String phase = options.get("--phase");
+        var coordinates = coordinates(options);
         Path output = Path.of(require(options, "--output"));
         Files.createDirectories(output);
         var summary = new LinkedHashMap<String, Object>();
@@ -37,11 +63,11 @@ final class LaneWorld {
         summary.put("status", "failed");
         Exception failure = null;
         long started = System.nanoTime();
-        try (var api = new CallApi(options.getOrDefault("--runtime-url", "http://127.0.0.1:18082"),
-                options.getOrDefault("--lab-url", "http://127.0.0.1:18086"), java.util.Map.of("Authorization", "Bearer xak_dev_1000"))) {
+        try (var api = coordinates.api(options)) {
             switch (phase) {
-                case "bootstrap" -> summary.putAll(bootstrap(api, ExperimentConfig.settings(options).workers()));
-                case "quiesce" -> summary.putAll(quiesce(api, readWorld(Path.of(require(options, "--world")))));
+                case "bootstrap" -> summary.putAll(bootstrap(api, coordinates));
+                case "quiesce" -> summary.putAll(quiesce(api, readWorld(Path.of(require(options, "--world")), coordinates),
+                        30, coordinates));
                 default -> throw new IllegalArgumentException("Unknown lane phase");
             }
             summary.put("status", "passed");
@@ -56,52 +82,74 @@ final class LaneWorld {
         if (failure != null) throw new IllegalStateException("Lane world " + phase + " failed; inspect safe summary", failure);
     }
 
-    private static Map<String, Object> bootstrap(CallApi api, int workers) throws Exception {
+    static Map<String, Object> bootstrap(CallApi api, Coordinates coordinates) throws Exception {
+        if (coordinates.deployment() != null) preflight(api, coordinates);
         var prepared = new LinkedHashMap<String, String>();
-        for (String group : GROUPS) {
-            String id = "perf-rpc-" + group;
+        for (String group : coordinates.groups()) {
+            String id = coordinates.rpcTaskId(group);
             var response = api.post("/api/v1/tasks/" + id + "/rpc:prepare",
-                    Map.of("projectId", PROJECT, "workerGroupId", group));
+                    Map.of("projectId", coordinates.project(), "workerGroupId", group));
             if (!id.equals(CallApi.string(response, "taskId")))
                 throw new CallLoad.ProtocolFailure("RPC Task preparation changed identity");
             prepared.put(group, id);
         }
-        var ids = readyGroups(api, workers);
+        var ids = readyGroups(api, coordinates);
         var groups = new LinkedHashMap<String, Object>();
-        for (String group : GROUPS) {
-            var registration = api.post("/api/v1/worker-groups/" + group + ":register", Map.of(
-                    "attributes", Map.of("capability", "string-utils"),
-                    "eventCodes", List.of("extension.worker.string.md5", "extension.worker.lab.delay")));
-            if (!group.equals(registration.get("workerGroupId")))
-                throw new CallLoad.ProtocolFailure("Registration Group changed");
+        for (String group : coordinates.groups()) {
+            if (coordinates.deployment() == null) {
+                var registration = api.post("/api/v1/worker-groups/" + group + ":register", Map.of(
+                        "attributes", Map.of("capability", "string-utils"),
+                        "eventCodes", List.of("extension.worker.string.md5", "extension.worker.lab.delay")));
+                if (!group.equals(registration.get("workerGroupId")))
+                    throw new CallLoad.ProtocolFailure("Registration Group changed");
+            }
             groups.put(group, Map.of("managedTaskId", prepared.get(group), "workerIds", ids.get(group)));
         }
-        return Map.of("groups", groups, "workersPerGroup", workers, "endpoint", ENDPOINT,
-                "propertiesObservation", workers <= 1000 ? "complete-known-fixture" : "bounded-sample");
+        return Map.of("groups", groups, "workersPerGroup", coordinates.workersPerGroup(), "endpoint", coordinates.endpoint(),
+                "propertiesObservation", coordinates.workersPerGroup() <= 1000 ? "complete-known-fixture" : "bounded-sample");
+    }
+
+    static void preflight(CallApi api, Coordinates coordinates) throws Exception {
+        for (String group : coordinates.groups()) {
+            var bindings = api.get("/api/v1/runtime-view/worker-groups/" + group + "/bindings");
+            var descriptor = CallApi.object(bindings.get("workerGroup"));
+            var matching = CallApi.object(bindings.get("matching"));
+            if (!group.equals(bindings.get("workerGroupId")) || !group.equals(descriptor.get("workerGroupId"))
+                    || !(descriptor.get("eventCodes") instanceof List<?> events)
+                    || !events.contains("extension.worker.string.md5")
+                    || !(matching.get("pools") instanceof List<?> pools) || !pools.contains("any")
+                    || !(matching.get("functions") instanceof List<?> functions)
+                    || !functions.stream().map(CallApi::object).anyMatch(f -> "worker.any".equals(f.get("name"))
+                            && "any".equals(f.get("poolName")))
+                    || !functions.stream().map(CallApi::object).anyMatch(f -> "workerId".equals(f.get("name")))
+                    || !(bindings.get("projects") instanceof List<?> projects)
+                    || !projects.stream().map(CallApi::object).anyMatch(p -> coordinates.project().equals(p.get("projectId"))))
+                throw new CallLoad.ProtocolFailure("Deployment Group is missing the declared Project, MD5 event or query resources");
+        }
     }
 
     /** Waits until every Worker is RUNNING in the Lab, connected, idle HOT and has published facts. */
-    private static Map<String, List<String>> readyGroups(CallApi api, int workers) throws Exception {
+    private static Map<String, List<String>> readyGroups(CallApi api, Coordinates coordinates) throws Exception {
         long deadline = System.nanoTime() + BOOTSTRAP_TIMEOUT_NANOS;
         int unavailable = 0;
         do {
             try {
-                var ids = labWorkers(api, workers);
-                if (ids != null && ready(api, ids)) return ids;
+                var ids = labWorkers(api, coordinates);
+                if (ids != null && ready(api, ids, coordinates)) return ids;
             } catch (CallApi.Unavailable busy) {
                 // Runtime View may be briefly unavailable while 2,000 connections are verified.
                 unavailable++;
             }
             Thread.sleep(500);
         } while (System.nanoTime() < deadline);
-        throw new IllegalStateException(GROUPS.size() * workers
+        throw new IllegalStateException(coordinates.groups().size() * coordinates.workersPerGroup()
                 + " lane Workers did not become ready; unavailable observations " + unavailable);
     }
 
-    private static boolean ready(CallApi api, Map<String, List<String>> ids) throws Exception {
-        for (String group : GROUPS) {
+    private static boolean ready(CallApi api, Map<String, List<String>> ids, Coordinates coordinates) throws Exception {
+        for (String group : coordinates.groups()) {
             var groupIds = ids.get(group);
-            if (!allIn(observe(api, networkPath(), groupIds), Set.of("connected"))
+            if (!allIn(observe(api, networkPath(coordinates.endpoint()), groupIds), Set.of("connected"))
                     || !allIn(observe(api, schedulingPath(group), groupIds), Set.of("held-hot", IDLE))
                     || !facts(api, group, groupIds)) return false;
         }
@@ -109,11 +157,12 @@ final class LaneWorld {
     }
 
     /** Sorted RUNNING Worker IDs per Group, or null while the Lab has not assigned every identity. */
-    private static Map<String, List<String>> labWorkers(CallApi api, int expected) throws Exception {
-        if (!(api.workers().get("workers") instanceof List<?> workers) || workers.size() != GROUPS.size() * expected)
+    private static Map<String, List<String>> labWorkers(CallApi api, Coordinates coordinates) throws Exception {
+        int expected = coordinates.workersPerGroup();
+        if (!(api.workers().get("workers") instanceof List<?> workers) || workers.size() != coordinates.groups().size() * expected)
             throw new CallLoad.ProtocolFailure("Unexpected Lab Worker count");
         var ids = new LinkedHashMap<String, List<String>>();
-        GROUPS.forEach(group -> ids.put(group, new ArrayList<>()));
+        coordinates.groups().forEach(group -> ids.put(group, new ArrayList<>()));
         for (var entry : workers) {
             var worker = CallApi.object(entry);
             var group = ids.get(worker.get("workerGroupId"));
@@ -144,11 +193,12 @@ final class LaneWorld {
      * Quiet means every Worker of both Groups is connected and idle due HOT: no execution hold,
      * RECOVERY or PAUSE. The state must hold for consecutive observations one second apart.
      */
-    private static Map<String, Object> quiesce(CallApi api, Map<String, List<String>> world) throws Exception {
-        return quiesce(api, world, 30);
+    static Map<String, Object> quiesce(CallApi api, Map<String, List<String>> world, int seconds) throws Exception {
+        return quiesce(api, world, seconds, reference(WORKERS_PER_GROUP));
     }
 
-    static Map<String, Object> quiesce(CallApi api, Map<String, List<String>> world, int seconds) throws Exception {
+    private static Map<String, Object> quiesce(CallApi api, Map<String, List<String>> world, int seconds,
+                                             Coordinates coordinates) throws Exception {
         long started = System.nanoTime();
         long deadline = started + seconds * 1_000_000_000L;
         int passes = 0;
@@ -158,10 +208,10 @@ final class LaneWorld {
             observations++;
             var notQuiet = new LinkedHashMap<String, Map<String, Long>>();
             try {
-                for (String group : GROUPS) {
+                for (String group : coordinates.groups()) {
                     var ids = world.get(group);
                     var states = new LinkedHashMap<String, Long>();
-                    count(states, observe(api, networkPath(), ids), "connected", "network:");
+                    count(states, observe(api, networkPath(coordinates.endpoint()), ids), "connected", "network:");
                     count(states, observe(api, schedulingPath(group), ids), IDLE, "scheduling:");
                     if (!states.isEmpty()) notQuiet.put(group, states);
                 }
@@ -195,17 +245,47 @@ final class LaneWorld {
     /** Bounded public observation in pages of 100; the identity set must be returned exactly. */
     private static Map<String, Object> observe(CallApi api, String path, List<String> ids) throws Exception {
         var result = new LinkedHashMap<String, Object>();
-        for (int offset = 0; offset < ids.size(); offset += 100) {
-            var page = ids.subList(offset, Math.min(offset + 100, ids.size()));
-            var states = CallApi.object(api.post(path, page).get("statesByWorkerId"));
-            if (!states.keySet().equals(Set.copyOf(page))) throw new CallLoad.ProtocolFailure("Worker observation identity changed");
-            result.putAll(states);
+        if (api.observationPageConcurrency() == 1) {
+            for (int offset = 0; offset < ids.size(); offset += 100)
+                result.putAll(observePage(api, path, ids.subList(offset, Math.min(offset + 100, ids.size()))));
+            return result;
+        }
+        var pending = new java.util.ArrayDeque<java.util.concurrent.Future<Map<String, Object>>>();
+        try (var pages = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            try {
+                int offset = 0;
+                while (offset < ids.size() || !pending.isEmpty()) {
+                    while (offset < ids.size() && pending.size() < api.observationPageConcurrency()) {
+                        var page = List.copyOf(ids.subList(offset, Math.min(offset + 100, ids.size())));
+                        pending.addLast(pages.submit(() -> observePage(api, path, page)));
+                        offset += 100;
+                    }
+                    try {
+                        // Keep the original identity order even when later HTTP pages return first.
+                        result.putAll(pending.removeFirst().get());
+                    } catch (java.util.concurrent.ExecutionException failure) {
+                        if (failure.getCause() instanceof Exception cause) throw cause;
+                        if (failure.getCause() instanceof Error cause) throw cause;
+                        throw new IllegalStateException("Worker observation failed", failure.getCause());
+                    }
+                }
+            } finally {
+                pending.forEach(page -> page.cancel(true));
+            }
         }
         return result;
     }
 
-    private static String networkPath() {
-        return "/api/v1/runtime-view/endpoint-managers/" + ENDPOINT + "/workers:network-observe";
+    private static Map<String, Object> observePage(CallApi api, String path, List<String> page) throws Exception {
+        var states = CallApi.object(api.post(path, page).get("statesByWorkerId"));
+        if (!states.keySet().equals(Set.copyOf(page))) throw new CallLoad.ProtocolFailure("Worker observation identity changed");
+        var ordered = new LinkedHashMap<String, Object>();
+        page.forEach(id -> ordered.put(id, states.get(id)));
+        return ordered;
+    }
+
+    private static String networkPath(String endpoint) {
+        return "/api/v1/runtime-view/endpoint-managers/" + endpoint + "/workers:network-observe";
     }
 
     private static String schedulingPath(String group) {
@@ -213,14 +293,23 @@ final class LaneWorld {
     }
 
     static Map<String, List<String>> readWorld(Path bootstrap) throws Exception {
+        return readWorld(bootstrap, reference(WORKERS_PER_GROUP));
+    }
+
+    static Map<String, List<String>> readWorld(Path bootstrap, Coordinates coordinates) throws Exception {
         var root = Jsons.parseObject(Files.readString(bootstrap));
         int workers = root.containsKey("workersPerGroup")
-                ? ExperimentConfig.integer(root, "workersPerGroup", 1, 4000) : WORKERS_PER_GROUP;
+                ? ExperimentConfig.integer(root, "workersPerGroup", 1, coordinates.maximumWorkersPerGroup()) : coordinates.workersPerGroup();
+        if (coordinates.deployment() != null && workers != coordinates.workersPerGroup())
+            throw new CallLoad.ProtocolFailure("Bootstrap and deployment Worker counts differ");
         var groups = CallApi.object(root.get("groups"));
+        if (!groups.keySet().equals(Set.copyOf(coordinates.groups())))
+            throw new CallLoad.ProtocolFailure("Bootstrap Group identities differ");
         var world = new LinkedHashMap<String, List<String>>();
-        for (String group : GROUPS) {
+        for (String group : coordinates.groups()) {
             if (!(CallApi.object(groups.get(group)).get("workerIds") instanceof Collection<?> ids)
-                    || ids.size() != workers || Set.copyOf(ids).size() != workers)
+                    || ids.size() != workers || ids.stream().anyMatch(id -> !(id instanceof String value) || value.isBlank())
+                    || Set.copyOf(ids).size() != workers)
                 throw new CallLoad.ProtocolFailure("Bootstrap world is incomplete");
             world.put(group, ids.stream().map(String.class::cast).toList());
         }
@@ -228,9 +317,18 @@ final class LaneWorld {
     }
 
     static Map<String, String> readTasks(Path bootstrap) throws Exception {
+        return readTasks(bootstrap, reference(WORKERS_PER_GROUP));
+    }
+
+    static Map<String, String> readTasks(Path bootstrap, Coordinates coordinates) throws Exception {
         var groups = CallApi.object(Jsons.parseObject(Files.readString(bootstrap)).get("groups"));
         var tasks = new LinkedHashMap<String, String>();
-        for (String group : GROUPS) tasks.put(group, CallApi.string(CallApi.object(groups.get(group)), "managedTaskId"));
+        for (String group : coordinates.groups()) {
+            String task = CallApi.string(CallApi.object(groups.get(group)), "managedTaskId");
+            if (coordinates.deployment() != null && !coordinates.rpcTaskId(group).equals(task))
+                throw new CallLoad.ProtocolFailure("Bootstrap RPC Task identity differs");
+            tasks.put(group, task);
+        }
         return tasks;
     }
 

@@ -7,7 +7,7 @@ import java.util.Set;
 public final class WorkerCallPerformanceMain {
     private static final Set<String> OPTIONS = Set.of("--phase", "--case", "--output", "--world", "--repetition",
             "--runtime-url", "--lab-url", "--experiment-config", "--experiment-profile", "--experiment-stage",
-            "--recording", "--input", "--resources");
+            "--recording", "--input", "--resources", "--deployment-config");
 
     private WorkerCallPerformanceMain() {}
 
@@ -20,12 +20,18 @@ public final class WorkerCallPerformanceMain {
         }
         String phase = options.get("--phase");
         if (phase == null || !options.containsKey("--output")) throw new IllegalArgumentException("phase and output required");
+        if (options.containsKey("--deployment-config")
+                && !Set.of("deployment-config", "case", "bootstrap", "quiesce").contains(phase))
+            throw new IllegalArgumentException("Existing deployments support configuration and open-loop phases only");
         switch (phase) {
+            case "deployment-config" -> DeploymentConfig.resolve(options);
             case "experiment-config" -> ExperimentConfig.resolve(options);
             case "experiment-analyze" -> CapacityEvidence.run(options);
             case "experiment-report" -> ExperimentReport.run(options);
             case "calibrate" -> LaneCalibration.run(options);
             case "case" -> {
+                if (options.containsKey("--deployment-config") && LaneSaturation.handles(options.get("--case")))
+                    throw new IllegalArgumentException("Existing deployments support the open-loop lane only");
                 if (LaneSaturation.handles(options.get("--case"))) LaneSaturation.run(options);
                 else LaneCase.run(options);
             }

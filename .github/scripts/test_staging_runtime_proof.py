@@ -14,6 +14,95 @@ from distribution.server import staging_runtime_proof as proof
 
 
 class PackagedIngressOracleTest(unittest.TestCase):
+    def test_performance_rpc_tasks_receive_the_host_any_supply_defaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            jar = runtime / "lib/server.jar"
+            jar.parent.mkdir(parents=True)
+            jar.write_bytes(b"fixture")
+            with patch.object(proof, "_users_file", return_value=root / "users.json"):
+                command = proof._runtime_command(runtime, root, {"serverJar": "lib/server.jar"}, "java",
+                                                 18082, 18083, "wss://localhost/worker", "redis://localhost/15",
+                                                 "test_performance_rpc_supply")
+            flags = dict(argument[2:].split("=", 1) for argument in command if argument.startswith("--"))
+            prefix = "xa.mass.task-rpc.refill-by-worker-group["
+            defaults = {key: json.loads(value) for key, value in flags.items() if key.startswith(prefix)}
+            self.assertEqual(defaults, {
+                f"{prefix}{group}][0]": {"poolName": "any", "target": {}, "count": 1000}
+                for group in proof.PERFORMANCE_GROUPS})
+
+    def performance(self, change=None, *, returncode=0):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            entry = root / "kit/acceptance/performance/run_worker_call_performance.py"
+            entry.parent.mkdir(parents=True)
+            entry.write_text("# the shipped existing runner", encoding="utf-8")
+            output = root / "performance-deployment/evidence"
+            output.mkdir(parents=True)
+            summary = {"status": "passed", "executionEnvironment": "existing-server", "referenceHost": False,
+                       "calibration": None, "attribution": None,
+                       "notCollected": ["server-resources", "redis-resources", "server-jfr"],
+                       "cases": [{"case": case, "status": "passed", "repetition": 1,
+                                  "measurementStartedEpochMillis": 1000, "measurementEndedEpochMillis": 31000}
+                                 for case in ("task-any-500", "task-targeted-500", "direct-500")],
+                       "cleanup": {"ownedProcessesStopped": True, "privateCredentialCopiesRemoved": True,
+                                   "workerConnections": {"status": "confirmed"}, "errors": []}}
+            if change:
+                change(summary)
+            (output / "lane-summary.json").write_text(json.dumps(summary), encoding="utf-8")
+            gate = Mock(admin_url="https://localhost:8443", worker_url="https://127.0.0.1:8443", ca_file=root / "ca.pem")
+            process, child = Mock(), Mock()
+            process.poll.return_value = None
+            child.wait.return_value = returncode
+            with patch.object(proof, "start_process", return_value=child) as start, patch.object(proof, "stop_process"):
+                result = proof._performance(gate, [process], simulator_home=root / "kit", proof_root=root,
+                                            truststore=root / "ca.p12", environment={"PYTHONPATH": "checkout"},
+                                            runtime_manifest={"version": "4.4.0", "gitCommit": "a" * 40})
+            command = start.call_args.args[0]
+            self.assertEqual(command[1], str(entry))
+            self.assertIn("--deployment-config", command)
+            self.assertIn("--skip-build", command)
+            self.assertIn("--java-truststore", command)
+            self.assertNotIn(proof.EXTERNAL_KEY, " ".join(command))
+            self.assertNotIn(proof.PERFORMANCE_WORKER[1], " ".join(command))
+            self.assertNotIn("PYTHONPATH", start.call_args.args[2])
+            self.assertEqual(start.call_args.args[2]["SSL_CERT_FILE"], str(root / "ca.pem"))
+            configuration = json.loads((root / "performance-deployment.json").read_text(encoding="utf-8"))
+            self.assertEqual(configuration["groups"], list(proof.PERFORMANCE_GROUPS))
+            self.assertEqual((configuration["workersPerGroup"], configuration["assignmentBatchLimit"]), (100, 100))
+            self.assertEqual(Path(configuration["accessKeyFile"]), root / "external-access-key.txt")
+            self.assertFalse((root / "performance-worker-credential.json").exists())
+            gate.write_passwords.assert_called_once_with(gate.worker_password_file, (proof.OTHER_WORKER, proof.PERFORMANCE_WORKER))
+            return result
+
+    def test_performance_consumes_the_existing_runner_from_the_same_kit(self):
+        result = self.performance()
+        self.assertEqual(result["claim"], "packaged-existing-performance-flow")
+        self.assertEqual({case["case"] for case in result["cases"]},
+                         {"task-any-500", "task-targeted-500", "direct-500"})
+        self.assertTrue(result["consumerCleanupConfirmed"])
+        self.assertFalse(result["referenceHost"])
+
+    def test_packaged_performance_requires_all_paths_and_confirmed_consumer_cleanup(self):
+        changes = [lambda s: s.update(executionEnvironment="local"),
+                   lambda s: s.update(referenceHost=True), lambda s: s.update(cases=s["cases"][:1]),
+                   lambda s: s["cases"][0].update(status="failed"),
+                   lambda s: s["cases"][0].update(measurementEndedEpochMillis=None),
+                   lambda s: s["cleanup"].update(privateCredentialCopiesRemoved=False),
+                   lambda s: s["cleanup"]["workerConnections"].update(status="unconfirmed"),
+                   lambda s: s.update(calibration={"server": "claimed"}),
+                   lambda s: s.update(notCollected=[])]
+        for change in changes:
+            with self.subTest(change=change), self.assertRaises(RuntimeError):
+                self.performance(change)
+        with self.assertRaises(RuntimeError):
+            self.performance(returncode=1)
+
+    def test_packaged_performance_does_not_add_a_throughput_pass_threshold(self):
+        result = self.performance(lambda s: s["cases"][-1].update(status="invalid"))
+        self.assertEqual(result["cases"][-1]["status"], "invalid")
+
     def test_loaded_fixture_consumes_zip_and_checks_each_terminal_task_as_external_user(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

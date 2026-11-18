@@ -151,11 +151,12 @@ def _private_inputs(access_path: Path, gateway_path: Path) -> tuple[str, dict]:
 
 def _kit(root: Path) -> dict:
     manifest = _object((root / "manifest.json").read_text(encoding="utf-8"), "Kit manifest")
-    expected = {"schemaVersion": 2, "version": manifest.get("version"), "gitCommit": manifest.get("gitCommit"),
+    expected = {"schemaVersion": 3, "version": manifest.get("version"), "gitCommit": manifest.get("gitCommit"),
                 "javaVersion": 21, "simulatorEntry": "bin/xa-mass-worker-simulator",
-                "roundEntry": "acceptance/finite_round.py", "loadedEntry": "acceptance/run_loaded.py"}
+                "roundEntry": "acceptance/finite_round.py", "loadedEntry": "acceptance/run_loaded.py",
+                "performanceEntry": "acceptance/performance/run_worker_call_performance.py"}
     if manifest != expected or not re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("gitCommit"))):
-        raise ValueError("This entry requires the verified version-2 Worker Simulator kit")
+        raise ValueError("This entry requires the verified version-3 Worker Simulator kit")
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", str(manifest.get("version"))):
         raise ValueError("Kit version must be a released numeric version")
     for relative in ("lib", "acceptance/loaded/lib"):

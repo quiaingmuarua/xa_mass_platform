@@ -17,6 +17,74 @@ import org.junit.jupiter.api.io.TempDir;
 class LaneWorldTest {
 
     @Test
+    void deploymentObservationBoundsParallelPagesAndKeepsOriginalIdentityOrder() throws Exception {
+        var active = new java.util.concurrent.atomic.AtomicInteger();
+        var maximum = new java.util.concurrent.atomic.AtomicInteger();
+        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var firstWave = new java.util.concurrent.CountDownLatch(8);
+        var laterPageFinished = new java.util.concurrent.CountDownLatch(1);
+        var finished = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        try (var handlers = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            server.setExecutor(handlers);
+            server.createContext("/", exchange -> {
+                int concurrent = active.incrementAndGet();
+                maximum.accumulateAndGet(concurrent, Math::max);
+                boolean processing = true;
+                try {
+                    var page = Jsons.parseArray(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+                    if (page.isEmpty() || page.size() > 100) throw new AssertionError("Public observation page exceeded 100 identities");
+                    String first = (String) page.getFirst();
+                    if (requests.incrementAndGet() <= 8) {
+                        firstWave.countDown();
+                        if (!firstWave.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("Pages were not concurrent");
+                    }
+                    if (first.equals("w-0") && !laterPageFinished.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                        throw new AssertionError("Later page did not finish first");
+                    var states = new LinkedHashMap<String, Object>();
+                    // Response member order also differs from the requested identity order.
+                    for (int i = page.size() - 1; i >= 0; i--) states.put((String) page.get(i), "hot-score-overdue");
+                    byte[] bytes = Jsons.toJson(Map.of("statesByWorkerId", states)).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    active.decrementAndGet();
+                    processing = false;
+                    exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes);
+                    finished.add(first);
+                    if (!first.equals("w-0")) laterPageFinished.countDown();
+                } catch (InterruptedException stopped) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    if (processing) active.decrementAndGet();
+                    exchange.close();
+                }
+            });
+            server.start();
+            try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", Map.of(), "wan", 8)) {
+                var expected = ids("w", 1501);
+                assertThat(LaneWorld.observeScheduling(api, "wan-a", expected).keySet()).containsExactlyElementsOf(expected);
+                assertThat(requests).hasValue(16);
+                assertThat(maximum.get()).isEqualTo(8);
+                assertThat(finished.getFirst()).isNotEqualTo("w-0");
+            } finally { server.stop(0); }
+        }
+    }
+
+    @Test
+    void deploymentObservationRejectsWrongPageIdentitiesInsteadOfMergingPartialEvidence() throws Exception {
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            byte[] bytes = Jsons.toJson(Map.of("statesByWorkerId", Map.of("foreign-worker", "hot-score-overdue")))
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes); exchange.close();
+        });
+        server.start();
+        try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", Map.of(), "wan", 8)) {
+            assertThatThrownBy(() -> LaneWorld.observeScheduling(api, "wan-a", ids("w", 201)))
+                    .isInstanceOf(CallLoad.ProtocolFailure.class).hasMessage("Worker observation identity changed");
+        } finally { server.stop(0); }
+    }
+
+    @Test
     void expandedInventoryUsesCompleteIdentityPagesWithinThePublicLimit() throws Exception {
         var requests = new java.util.concurrent.atomic.AtomicInteger();
         var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
