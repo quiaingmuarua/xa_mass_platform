@@ -1,8 +1,10 @@
 # XA Mass 4.4 release and upgrade contract
 
-Status: version-scoped 4.4 contract. 4.4.0 Runtime and 4.4.1 Consumer kit have been
-published; the next patch target is 4.4.2. Its complete manual Proof, publication
-and consumer validation remain pending. Published artifacts remain immutable.
+Status: version-scoped 4.4 contract. 4.4.2 is published and the Ali consumers have
+been updated; GCP Runtime remains 4.4.0. The new 10k campaign and automatic
+cleanup completed, and the bounded 75-minute idle and single controlled
+fault/reconnect acceptance passed on 2026-11-18.
+Published artifacts remain immutable.
 Actual installation and acceptance status belongs to host records and
 [dated evidence](../../doc/guide/capabilities.md#external-public-closeout), not a live claim here.
 
@@ -24,16 +26,79 @@ The [Java Worker Owner](../../transport/java-worker/README.md) owns fallback and
 SOCKS boundaries. This adds no application Ping or Handler execution deadline,
 and is not yet a claim that every half-open path has been repaired.
 
-Publish the normal Runtime, Worker SDK and Simulator kit set only after complete
-manual Proof at the exact final merged candidate. Then update only the Ali
-consumer installations: verify the 4.4.2 kit manifest and digest, stop the owned
-persistent Host before switching its installed kit, preserve its external config,
-gateway credential and inventory, and restart that service. Set the Performance
-kit pins to the published 4.4.2 tag/commit independently. Keep GCP Runtime 4.4.0,
-its `INSTALLED_RELEASE_*` pins, scope and database unchanged; this patch schedules
-no GCP Runtime deployment or restart. A bounded consumer check must record actual
-connections, automatic cleanup and the controlled reconnect behavior, retaining
-unknown/failed outcomes. Publication and this validation are still pending.
+4.4.2 was published on 2026-11-18 from merged commit
+`ccf676801663f953169f2d03058cbe7236a01123` after
+[complete manual Proof 44293971501](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44293971501),
+attempt 1, with all 17 jobs successful.
+[Promotion 44296410463](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44296410463)
+prepared verified Draft assets. After independent audit, the immutable
+[4.4.2 Release](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.4.2) was published
+(Release ID `449899527`) with the normal three ZIPs and their three SHA256 sidecars:
+
+| ZIP component | SHA256 |
+| --- | --- |
+| Runtime | `876e8110feed31b631bd5d98450d3b2420e7236ecf038609fd3d5f53d63f6866` |
+| Worker SDK | `9c0059dd6f243db50f987110971430c7f1487ae3b189ab36190594b20297c99d` |
+| Worker Simulator kit | `fb848b6d8194e2ddd1affc7a6507b2e22bcf47be75e1b57d233b44a35824341f` |
+
+The release inspection found zero current credential-format matches in 1,542 text
+entries, including nested JAR entries. This is a bounded artifact inspection,
+not a historical leak audit or comprehensive security guarantee.
+
+Ali installation verification retained all 20 Worker IDs and the existing
+configuration, gateway credential and inventory hashes. The updated Host had
+20 TCP-keepalive Worker sockets and GCP observed 20 connected Workers. Performance
+kit pins now select 4.4.2 at the commit above. GCP Runtime remains 4.4.0 at
+`b28a87ac918a34ffabb4feb8c63a29998a0610db`; its configuration fingerprint and
+recorded service restart state were unchanged. Its `INSTALLED_RELEASE_*` pins,
+scope and database were not upgraded.
+
+The single default 10k, one-repetition campaign
+[44297177821](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44297177821)
+completed successfully using the external route. All nine formal measurements
+are present: three 500/s cases passed, three 1000/s cases were invalid due to
+generator lag, and three 2000/s cases saturated at admitted rates of
+1287.7–1618.5/s. Formal requests had no observed 429; 118,789 successful Results
+were observed, 15,651 requests were not sent, and 560 sent requests without HTTP
+responses remain unknown without replay. Workflow success does not make the
+invalid cases comparable or establish maximum Server capacity.
+
+Automatic cleanup confirmed the original 10,000 identities as unknown in one
+complete scan: 100 pages of 100, at most eight concurrent reads, 8,048ms within
+the existing 30-second budget. Owned processes and temporary credential copies
+were removed; the 300-second preparation timer had been armed and was stopped.
+The separate operator postcheck agreed on absent campaign processes/credentials,
+10,000 unknown campaign identities and 20 connected standing Workers, without
+rewriting the original receipt. The four public artifacts had zero current
+credential-format findings and zero complete matches against the 10,000 private
+Worker IDs in the bounded publication review. Full observations and their
+limitations are linked above; the older failed cleanup and unknown submissions
+remain unchanged.
+
+The standing Host then completed **4,500.018 seconds (75 minutes)** of idle
+observation from **2026-11-18 11:42:07.733 UTC**, with no process restart and the
+same 20 logical Worker IDs, configuration, credential and inventory. Maximum
+sample gap was 5.1201 seconds. Two TCP-tuple changes were observed, including one
+late-hour turnover; all original 20 sockets had been replaced by elapsed
+3,558.77 seconds. GCP confirmed 20 connected after the window. This is successful
+sampled continuity/recovery, not proof of zero instantaneous disconnections.
+
+One outbound DROP from the owned Host user to GCP HTTPS was requested for 120
+seconds and independently removed after 120.702 seconds, recording 620 dropped
+packets. All original 20 sockets were gone during the fault; the first replacement
+was observed after 82.424 seconds. After restoration, local 20-TCP recovery took
+3.951 seconds, while the independent GCP check confirmed all 20 connected after
+59.619 seconds, within the declared 180-second bound. The same process and logical
+identities were retained; the rule was absent afterward without manual removal.
+
+The [dated public observations](../../integrations/worker-call-performance/observations/external/2026-11-18.json)
+retain the bounded persistent-consumer evidence separately from the 10k campaign
+and earlier failures. These results apply to this Ubuntu/Java 21 deployment;
+they establish no Android/SOCKS behavior, unlimited retry, full capacity or
+zero-disconnection guarantee. Current host state still requires its own read.
+The existing Ali and GCP operations records were updated and the scoped
+operations closed. No GCP Runtime/Nginx restart or reload was performed; the
+original Runtime artifact and protected configuration remained unchanged.
 
 The project-owned current-tree credential check runs inside existing Proof CI;
 it adds no workflow or historical secret audit. Lab remains a trusted loopback
@@ -60,7 +125,7 @@ retains the normal three ZIPs and SHA256 sidecars. Manifest schemas remain
 Runtime 6, SDK 1 and Simulator kit 3. Do not replace files inside the published
 4.4.0 kit or build a separate consumer-only Release format.
 
-The recommended deployed-Performance combination is the published **4.4.1
+The 4.4.1 deployed-Performance combination used the published **4.4.1
 Simulator kit** with the existing GCP **4.4.0 Runtime**, whose installed commit is
 `b28a87ac918a34ffabb4feb8c63a29998a0610db`. Record and validate the kit's Release
 tag, exact Release commit and ZIP SHA256 independently of that installed Server
