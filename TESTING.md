@@ -467,11 +467,13 @@ unconfirmed even if owned local processes stopped, with receipts retained for fo
 ## Proof Quality
 
 The Runtime Distribution Linux job includes the optional staging ingress proof:
-real Nginx with a trusted test CA, API Bearer forwarding, the Worker Basic realm, denied internal routes,
+real HTTP/2-enabled Nginx 1.19.7+ with a trusted test CA, API Bearer forwarding, the Worker Basic realm, denied internal routes,
 credential/connection limits and actual restart revocation. Its JDK 21 transport
 fixture checks negotiated HTTP/2, the default stream-limit refusal, more than 128
 concurrent streams under a declared budget, original POST bodies received once
-across the default GOAWAY boundary, and native HTTP/1.1 fallback. It then runs the
+across the default GOAWAY boundary, reuse beyond that boundary under an explicit
+administrator budget selected by SNI, and native HTTP/1.1 fallback. The proof
+rejects older Nginx versions whose HTTP/2 request-reuse setting differs. It then runs the
 supplied Runtime ZIP with the extracted same-build Worker Simulator kit as its external
 Java Host through that gateway, and each finite round runs the kit's shipped round command
 as a Project-scoped operator. TLS and hostname validation must remain enabled. This proves

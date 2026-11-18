@@ -117,6 +117,7 @@ class Deployment:
     worker_request_burst: int = 30
     admin_requests_per_second: int = 30
     admin_request_burst: int = 60
+    admin_keepalive_requests: int = 1000
     http2_max_concurrent_streams: int = 128
 
     def __post_init__(self) -> None:
@@ -133,7 +134,8 @@ class Deployment:
             raise ValueError("the four ports must be distinct integers in 1..65535")
         for name in ("worker_processes", "worker_connections", "worker_connection_limit",
                      "worker_total_connection_limit", "worker_requests_per_second", "worker_request_burst",
-                     "admin_requests_per_second", "admin_request_burst", "http2_max_concurrent_streams"):
+                     "admin_requests_per_second", "admin_request_burst", "admin_keepalive_requests",
+                     "http2_max_concurrent_streams"):
             value = getattr(self, name)
             if type(value) is not int or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
@@ -295,6 +297,7 @@ http {{
     server {{
         listen {config.listen_host}:{config.https_port} ssl http2;
         server_name {config.admin_host};
+        keepalive_requests {config.admin_keepalive_requests};
         {tls}
         if ($unsafe_path) {{ return 400; }}
         if ($admin_route = 0) {{ return 404; }}

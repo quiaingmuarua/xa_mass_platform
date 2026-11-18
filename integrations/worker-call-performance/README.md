@@ -398,9 +398,14 @@ version evidence. The staging ingress operator must provision the HTTP/2 stream
 budget for the declared load: the fixed 4,096 call cap shares a client with up to
 eight observation requests. An explicit 8,192-stream deployment budget covers
 that bound; the ingress's small default remains 128. A peer stream-limit exception is a client transport failure,
-not proof of Server execution capacity. HTTP/2 multiplexing avoids a separate TLS
-connection for every concurrent HTTP call; the rates, warmup, API requests and
-result checks remain unchanged. Worker WebSocket delivery keeps its HTTP/1.1
+not proof of Server execution capacity. HTTP/2 supports connection reuse; a JDK
+client may still open concurrent cold TLS connections during a cache miss after
+GOAWAY. The ingress operator separately owns `admin_keepalive_requests` (default
+1000) and its connection-memory tradeoff. An explicit 100000 request-reuse budget
+can span the existing 3000 warmup calls and at most 60000 formal calls per case;
+it does not increase request rates or the in-flight cap. Record the actual budget
+and configuration fingerprint. The rates, warmup, API requests and result checks
+remain unchanged. Worker WebSocket delivery keeps its HTTP/1.1
 Upgrade contract.
 
 Every HTTP-accepted Task Item must have an observed Result within the drain

@@ -31,6 +31,7 @@ class StagingIngressTest(unittest.TestCase):
         "worker_request_burst": 30,
         "admin_requests_per_second": 30,
         "admin_request_burst": 60,
+        "admin_keepalive_requests": 1000,
         "http2_max_concurrent_streams": 128,
     }
 
@@ -49,7 +50,7 @@ class StagingIngressTest(unittest.TestCase):
                           "limit_conn worker_credential 100;", "limit_conn worker_total 200;",
                           "zone=worker_rate:1m rate=10r/s;", "zone=admin_rate:1m rate=30r/s;",
                           "zone=worker_rate burst=30 nodelay;", "zone=admin_rate burst=60 nodelay;",
-                          "http2_max_concurrent_streams 128;"):
+                          "http2_max_concurrent_streams 128;", "keepalive_requests 1000;"):
             self.assertIn(directive, render(loaded))
 
     def test_custom_capacity_changes_only_the_declared_nginx_capacity_directives(self):
@@ -57,6 +58,7 @@ class StagingIngressTest(unittest.TestCase):
                                worker_connection_limit=20000, worker_total_connection_limit=30000,
                                worker_requests_per_second=200, worker_request_burst=1000,
                                admin_requests_per_second=300, admin_request_burst=600,
+                               admin_keepalive_requests=100000,
                                http2_max_concurrent_streams=8192)
         expected = render(configuration())
         for original, replacement in (
@@ -68,10 +70,20 @@ class StagingIngressTest(unittest.TestCase):
             ("zone=worker_rate burst=30 nodelay;", "zone=worker_rate burst=1000 nodelay;"),
             ("zone=admin_rate:1m rate=30r/s;", "zone=admin_rate:1m rate=300r/s;"),
             ("zone=admin_rate burst=60 nodelay;", "zone=admin_rate burst=600 nodelay;"),
+            ("keepalive_requests 1000;", "keepalive_requests 100000;"),
             ("http2_max_concurrent_streams 128;", "http2_max_concurrent_streams 8192;"),
         ):
             expected = expected.replace(original, replacement)
         self.assertEqual(expected, render(custom))
+
+    def test_keepalive_request_policy_is_only_in_the_administrator_tls_server(self):
+        text = render(configuration(admin_keepalive_requests=100000))
+        admin_start = text.index("server_name staging.xamass.net;")
+        admin_end = text.index("server {", admin_start)
+        self.assertEqual(1, text.count("keepalive_requests 100000;"))
+        self.assertIn("keepalive_requests 100000;", text[admin_start:admin_end])
+        self.assertNotIn("keepalive_requests", text[:admin_start])
+        self.assertNotIn("keepalive_requests", text[admin_end:])
 
     def test_http2_uses_shared_tls_listener_options_and_preserves_http1_websocket_upgrades(self):
         text = render(configuration())

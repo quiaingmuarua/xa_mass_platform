@@ -14,6 +14,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SNIHostName;
 import javax.net.ssl.TrustManagerFactory;
 
 /** Finite JDK/Nginx transport fixture. No Runtime, Redis, Worker or production credentials. */
@@ -39,7 +40,13 @@ public final class StagingHttp2Client {
         boolean fallback = mode.equals("http1-fallback");
         boolean negative = mode.equals("default-limit");
         HttpClient.Version expected = fallback ? HttpClient.Version.HTTP_1_1 : HttpClient.Version.HTTP_2;
-        var client = HttpClient.newBuilder().sslContext(trust(Path.of(args[2])))
+        // Select the fixture's administrator TLS context explicitly; keep hostname verification enabled.
+        var context = trust(Path.of(args[2]));
+        var parameters = context.getDefaultSSLParameters();
+        parameters.setServerNames(List.of(new SNIHostName("localhost")));
+        parameters.setEndpointIdentificationAlgorithm("HTTPS");
+        var client = HttpClient.newBuilder().sslContext(context)
+                .sslParameters(parameters)
                 .connectTimeout(Duration.ofSeconds(5)).build(); // The same JDK default preference as CallApi.
         var control = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(5)).build();
@@ -75,7 +82,7 @@ public final class StagingHttp2Client {
                     checked(pending.get(index), "hold-" + index, expected);
                 sent = pending.size();
                 if (!negative) {
-                    // Keep one client and original identities through Nginx's real default 1000-request GOAWAY.
+                    // Keep one client and original identities beyond 1000 requests for both declared policies.
                     for (int index = 0; index < 1_001; index++) {
                         checked(send(client, gateway, "serial-" + index), "serial-" + index, expected);
                         sent++;
