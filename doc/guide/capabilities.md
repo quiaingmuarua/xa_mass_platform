@@ -9,6 +9,42 @@ Status: current capability guide with explicitly dated evidence.
 <a id="external-public-closeout"></a>
 ## 外部公网验收收尾
 
+### 2026-11-18：外部 Performance consumer
+
+手动 Actions 已交付从 GitHub-hosted runner 经 SSH 调度 Ali consumer 的路径：
+consumer 只运行已发布 kit，不构建源码；目标 GCP Runtime 仍为 **4.4.0**
+（`b28a87ac918a34ffabb4feb8c63a29998a0610db`）。4.4.1 kit 独立固定为
+`60752f8b51bdc9d291bcbde53de97d65592cd984`。下表是已经结束的有限观测，
+不是当前主机健康状态，也不替代下节不同 workload 的 Loaded Recovery 结论。
+
+| 运行 | Kit / Worker 数 | 正式测量 | 原始 runner 与清理结果 |
+| --- | --- | --- | --- |
+| [44265176327](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44265176327) | 4.4.0 / 10,000 | 9 个 case：1 passed、8 invalid；49,170 个 HTTP-accepted 调用取得成功 Result | runner failed；连接清理 `URLError/unconfirmed`，原始状态保留 |
+| [44270827560](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44270827560) | 4.4.1 / 2,000 | 9 个 case：3 passed、5 invalid、1 saturated | runner passed；2,000 disconnected confirmed；丢弃的 job warmup 仍有 372 个 failed Result |
+| [44275882139](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44275882139) | 4.4.1 / 10,000 | 9 个 case：500/s 三路 passed，1000/s 三路因 generator-lag invalid，2000/s 三路 saturated；119,892 个 HTTP-accepted 调用取得成功 Result | runner failed；进程及临时凭据已清理，连接清理仍为 `URLError/unconfirmed` |
+
+完整脱敏聚合、各 case、配置指纹和原始四份 artifact 的 SHA256 见
+[2026-11-18 外网观测](../../integrations/worker-call-performance/observations/external/2026-11-18.json)。
+最后一轮仅调整了该环境的管理员入口限流：每秒 300 → 3000、burst 600 → 6000；
+这是有配置指纹的运维变更，不是产品默认值或容量建议。该轮正式请求未观测到 429，
+仍有 **266 个已发送但未收到 HTTP 响应的请求**；它们保留 unknown，不重放，
+不能从 accepted Results 全部成功推断这些请求也已成功。
+
+以下边界仍需保留：
+
+- 原始连接 cleanup 未确认，与后续 operator 观察分别记录。最后一轮的独立核对看到
+  campaign 无 Java 进程、临时凭据不存在、GCP 上游 WebSocket 为 0，网络投影为
+  10,000 unknown；这不把原始 cleanup 改写成 confirmed。
+- persistent20 的服务与 Lab `RUNNING` 曾同时存在，但 GCP 网络投影为 20 unknown、
+  无相应上游连接。半开连接问题尚未在该轮修复；进程存活不等于可执行任务。
+- 2k job warmup 的 372 个失败保持原样。一次 32 项有界只读诊断排除了这些样本的
+  TTL 分支，指向 claim 预算耗尽；没有持久分配账本可证明离线历史 Worker 的因果。
+- invalid 不可作性能比较，saturated 给出准入速率，不是 Server 极限 TPS。
+  4.4.2 的自动清理观察、采样间隔与 TCP keepalive 修复仍待其发布及现场验证，
+  不能用计划覆盖上述结果。
+
+### 2026-11-13：Loaded Recovery 基础档收尾
+
 **2026-11-13 收尾决定：以已经通过的 1,000 Worker 作为基础验收，不再继续追高。**
 被测 Runtime 与 Simulator kit 为 Release **4.2.0**，源码提交
 `aaed8d648c19e2f6332f37b4e831b0b194d5553b`。以下是该版本、配置和运行日期的证据，

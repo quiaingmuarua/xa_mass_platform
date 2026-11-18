@@ -607,6 +607,13 @@ convergence proof.
 
 The Host exposes a loopback-only JDK `HttpServer` control surface:
 
+The Lab trusts processes on that host and has no application authentication.
+Keep its listener on loopback and do not publish it through a reverse proxy,
+public port or untrusted shared-host network. Gateway Basic credentials protect
+the remote Worker entrance, not these local control operations. Operational
+access uses the existing authorized host channel; this boundary adds no Lab
+authentication service or remote management protocol.
+
 ```text
 GET    /lab/v1/workers
 POST   /lab/v1/workers:stop

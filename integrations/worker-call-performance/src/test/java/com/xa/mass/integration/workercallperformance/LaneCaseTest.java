@@ -6,6 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
@@ -120,6 +124,45 @@ class LaneCaseTest {
         LaneCase.addWorkerEvidenceReasons(reasons, List.of(usable), List.of("wan-a", "wan-b"), true);
         assertThat(reasons).isEmpty();
         assertThat(LaneCase.leaseHeldPeakRatio(List.of(usable), 2, List.of("wan-a", "wan-b"))).isEqualTo(1.0);
+    }
+
+    @Test
+    void failedAndSuccessfulWorkerSamplesBothPauseInsteadOfHotRetrying() throws Exception {
+        for (boolean unavailable : List.of(false, true)) {
+            var sampling = new AtomicBoolean(true);
+            var samples = new ArrayList<Map<String, Object>>();
+            var first = new CountDownLatch(1);
+            var second = new CountDownLatch(1);
+            var attempts = new AtomicInteger();
+            Thread sampler = LaneCase.startWorkerSampler(sampling, samples, System.currentTimeMillis(), offset -> {
+                if (attempts.incrementAndGet() == 1) first.countDown(); else second.countDown();
+                if (unavailable) throw new IllegalStateException("observation unavailable");
+                return Map.of("offsetMillis", offset);
+            });
+            try {
+                assertThat(first.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(second.await(200, TimeUnit.MILLISECONDS)).as("unavailable=%s", unavailable).isFalse();
+            } finally {
+                sampling.set(false);
+                sampler.interrupt();
+                sampler.join(1_000);
+            }
+            assertThat(sampler.isAlive()).isFalse();
+            assertThat(attempts).hasValue(1);
+            assertThat(samples).hasSize(1);
+            assertThat(Boolean.TRUE.equals(samples.getFirst().get("unavailable"))).isEqualTo(unavailable);
+        }
+    }
+
+    @Test
+    void interruptedWorkerReadExitsWithoutTakingTheFiveSecondPause() throws Exception {
+        var samples = new ArrayList<Map<String, Object>>();
+        Thread sampler = LaneCase.startWorkerSampler(new AtomicBoolean(true), samples, System.currentTimeMillis(), offset -> {
+            throw new InterruptedException("stop observation");
+        });
+        sampler.join(1_000);
+        assertThat(sampler.isAlive()).isFalse();
+        assertThat(samples).isEmpty();
     }
 
     @Test

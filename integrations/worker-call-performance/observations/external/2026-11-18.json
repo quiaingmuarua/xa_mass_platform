@@ -1,0 +1,680 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-18",
+  "kind": "dated-external-performance-observations",
+  "recordedAt": "2026-11-18T09:46:58.261430+00:00",
+  "boundary": "Published kit consumers against a separately pinned existing GCP Runtime. These are finite observations, not live health or a Server capacity/SLA claim.",
+  "runs": [
+    {
+      "githubRunId": "44265176327",
+      "runUrl": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44265176327",
+      "preparedAt": "2026-11-18T08:14:09+00:00",
+      "kit": {
+        "tag": "v4.4.0",
+        "gitCommit": "b28a87ac918a34ffabb4feb8c63a29998a0610db",
+        "kitSha256": "27febb74aac761a161eeaa3f546813c56a120259b6611cf2693eff19df1dfba4"
+      },
+      "serverDeployment": {
+        "configurationId": "sha256:08a402abadceda7685ddab5ebd230fa00abcd546f8787f8ccd4b0ece795d26e3",
+        "gitCommit": "b28a87ac918a34ffabb4feb8c63a29998a0610db",
+        "version": "4.4.0"
+      },
+      "workersPerGroup": 5000,
+      "groups": 2,
+      "repetitions": 1,
+      "originalRunnerStatus": "failed",
+      "formalMeasurements": 9,
+      "caseCounts": {
+        "invalid": 8,
+        "passed": 1
+      },
+      "discardedJobWarmup": {
+        "case": "task-any-2000",
+        "p99LatencyMillis": 5172.161577,
+        "status": "invalid"
+      },
+      "submissionTotals": {
+        "samples": 135000,
+        "sent": 120612,
+        "outcome:succeeded": 47192,
+        "observed:succeeded": 49170,
+        "http429": 71025,
+        "outcome:rejected": 23113,
+        "observed:not_observed": 85830,
+        "sentHttp0Unknown": 417,
+        "clientTimeouts": 416,
+        "outcome:unknown": 48329,
+        "notSent": 14388,
+        "outcome:not_sent": 14388,
+        "outcome:not_observed": 1978
+      },
+      "originalRunnerCleanup": {
+        "errors": [],
+        "ownedProcessesStopped": true,
+        "privateCredentialCopiesRemoved": true,
+        "workerConnections": {
+          "failureType": "URLError",
+          "status": "unconfirmed"
+        }
+      },
+      "cases": [
+        {
+          "case": "task-any-500",
+          "status": "passed",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 313.6,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 9408
+          }
+        },
+        {
+          "case": "task-targeted-500",
+          "status": "invalid",
+          "invalidReasons": [
+            "worker-observation-unavailable"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 312.3333333333333,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 9370
+          }
+        },
+        {
+          "case": "direct-500",
+          "status": "invalid",
+          "invalidReasons": [
+            "worker-observation-unavailable"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 312.8,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 9384
+          }
+        },
+        {
+          "case": "task-any-1000",
+          "status": "invalid",
+          "invalidReasons": [
+            "generator-lag",
+            "worker-observation-unavailable"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 352.6,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 3526
+          }
+        },
+        {
+          "case": "task-targeted-1000",
+          "status": "invalid",
+          "invalidReasons": [
+            "generator-lag",
+            "worker-observation-unavailable"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 352.8,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 3528
+          }
+        },
+        {
+          "case": "direct-1000",
+          "status": "invalid",
+          "invalidReasons": [
+            "generator-lag",
+            "worker-observation-unavailable"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 353.9,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 3539
+          }
+        },
+        {
+          "case": "task-any-2000",
+          "status": "invalid",
+          "invalidReasons": [
+            "worker-observation-unavailable"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 356.2,
+          "admittedPerSecond": 356.2,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 3562
+          }
+        },
+        {
+          "case": "task-targeted-2000",
+          "status": "invalid",
+          "invalidReasons": [
+            "worker-observation-unavailable"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 341.2,
+          "admittedPerSecond": 341.2,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 3412
+          }
+        },
+        {
+          "case": "direct-2000",
+          "status": "invalid",
+          "invalidReasons": [
+            "worker-observation-unavailable"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 344.1,
+          "admittedPerSecond": 344.1,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 3441
+          }
+        }
+      ],
+      "evidenceSha256": {
+        "summary.json": "4544c485ac019c9049e4875196833572c0422b892a07b46963720cb82706be40",
+        "summary.md": "0200acbe9e72cd899c6bd361e7cfe9ba2baf80da9d1ea2e3a7ff0edcaa1c0d6c",
+        "consumption.json": "8e09c0e959801dc242a3065a5121b8a08cd68ba6aef2444f8f0662dba7831d7c",
+        "orchestration.json": "12c9c40eb99087cc6ef598b0dae1ea825f938f5cebfec17caf7aaec3eb66dbcd"
+      },
+      "independentOperatorPostcheck": {
+        "observedAt": "2026-11-18T08:31:40.289866+00:00",
+        "campaignUnitState": "failed",
+        "campaignUnitResult": "exit-code",
+        "campaignJavaProcessesAbsent": true,
+        "inputCredentialsAbsent": true,
+        "runnerCredentialsAbsent": true,
+        "campaignNetworkStates": {
+          "unknown": 10000
+        },
+        "persistentLabRuntimeStates": {
+          "RUNNING": 20
+        },
+        "persistentNetworkStates": {
+          "unknown": 20
+        },
+        "serverReadiness": "UP",
+        "nginxUpstreamWebsocketConnections": 0,
+        "newSubmissionsIssued": 0,
+        "interpretation": "Separate operator observation; it does not replace the original runner cleanup or establish current health."
+      }
+    },
+    {
+      "githubRunId": "44270827560",
+      "runUrl": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44270827560",
+      "preparedAt": "2026-11-18T08:53:29+00:00",
+      "kit": {
+        "tag": "v4.4.1",
+        "gitCommit": "60752f8b51bdc9d291bcbde53de97d65592cd984",
+        "kitSha256": "444b0a89bca2f438a8e3d7c986e92eb9f9028a5320ce6a0013a5e95adc524427"
+      },
+      "serverDeployment": {
+        "configurationId": "sha256:08a402abadceda7685ddab5ebd230fa00abcd546f8787f8ccd4b0ece795d26e3",
+        "gitCommit": "b28a87ac918a34ffabb4feb8c63a29998a0610db",
+        "version": "4.4.0"
+      },
+      "workersPerGroup": 1000,
+      "groups": 2,
+      "repetitions": 1,
+      "originalRunnerStatus": "passed",
+      "formalMeasurements": 9,
+      "caseCounts": {
+        "invalid": 5,
+        "passed": 3,
+        "saturated": 1
+      },
+      "discardedJobWarmup": {
+        "case": "task-any-2000",
+        "p99LatencyMillis": null,
+        "status": "failed"
+      },
+      "submissionTotals": {
+        "samples": 135000,
+        "sent": 122809,
+        "outcome:succeeded": 49695,
+        "observed:succeeded": 49695,
+        "http429": 72881,
+        "outcome:rejected": 23028,
+        "observed:not_observed": 85305,
+        "sentHttp0Unknown": 233,
+        "clientTimeouts": 232,
+        "outcome:unknown": 50086,
+        "notSent": 12191,
+        "outcome:not_sent": 12191
+      },
+      "originalRunnerCleanup": {
+        "errors": [],
+        "ownedProcessesStopped": true,
+        "privateCredentialCopiesRemoved": true,
+        "workerConnections": {
+          "identityCount": 2000,
+          "states": {
+            "disconnected": 2000
+          },
+          "status": "confirmed"
+        }
+      },
+      "cases": [
+        {
+          "case": "task-any-500",
+          "status": "passed",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 314.76666666666665,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 9443
+          }
+        },
+        {
+          "case": "task-targeted-500",
+          "status": "passed",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 315.56666666666666,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 9467
+          }
+        },
+        {
+          "case": "direct-500",
+          "status": "passed",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 316.3,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 9489
+          }
+        },
+        {
+          "case": "task-any-1000",
+          "status": "invalid",
+          "invalidReasons": [
+            "generator-lag"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 356.7,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 3567
+          }
+        },
+        {
+          "case": "task-targeted-1000",
+          "status": "invalid",
+          "invalidReasons": [
+            "generator-lag"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 355.5,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 3555
+          }
+        },
+        {
+          "case": "direct-1000",
+          "status": "invalid",
+          "invalidReasons": [
+            "generator-lag"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 356.4,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 3564
+          }
+        },
+        {
+          "case": "task-any-2000",
+          "status": "invalid",
+          "invalidReasons": [
+            "worker-observation-unavailable"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 356.1,
+          "admittedPerSecond": 356.1,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 3561
+          }
+        },
+        {
+          "case": "task-targeted-2000",
+          "status": "invalid",
+          "invalidReasons": [
+            "worker-observation-unavailable"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 356.9,
+          "admittedPerSecond": 356.9,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 3569
+          }
+        },
+        {
+          "case": "direct-2000",
+          "status": "saturated",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 348.0,
+          "admittedPerSecond": 348.0,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 3480
+          }
+        }
+      ],
+      "evidenceSha256": {
+        "summary.json": "b7855398cf0a608f71d7de6658a876a77af79a7597ed956bb90ff66e31a169c8",
+        "summary.md": "65a22903dacaa355913688e44272c6c4d62c228a7139f1291998c3b437dbd5e4",
+        "consumption.json": "79a2455073b4d7acd99a6f6e6a2980dbf63cd19e47e144d4247f728338254039",
+        "orchestration.json": "54ac3b9f7a70187dd9ab91a2f5a9a930788e8911310388952b30385a2dcfc95a"
+      },
+      "independentOperatorPostcheck": {
+        "observedAt": "2026-11-18T09:05:03.276826+00:00",
+        "campaignUnitState": "inactive",
+        "campaignUnitResult": "success",
+        "campaignJavaProcessesAbsent": true,
+        "inputCredentialsAbsent": true,
+        "runnerCredentialsAbsent": true,
+        "campaignNetworkStates": {
+          "unknown": 2000
+        },
+        "persistentLabRuntimeStates": {
+          "RUNNING": 20
+        },
+        "persistentNetworkStates": {
+          "unknown": 20
+        },
+        "serverReadiness": "UP",
+        "nginxUpstreamWebsocketConnections": 0,
+        "newSubmissionsIssued": 0,
+        "interpretation": "Separate operator observation; it does not replace the original runner cleanup or establish current health."
+      },
+      "discardedWarmupDiagnostic": {
+        "originalObservedResults": {
+          "succeeded": 2628,
+          "failed": 372
+        },
+        "selectedItems": 32,
+        "failedTerminalBeforeExpiry": 32,
+        "conclusion": "All 32 sampled failures precede Item expiry by over 95 seconds; ordinary Dispatch points to exhausted claim budget. This does not identify assigned Workers or establish an offline-history cause for all 372 failures."
+      }
+    },
+    {
+      "githubRunId": "44275882139",
+      "runUrl": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44275882139",
+      "preparedAt": "2026-11-18T09:26:34+00:00",
+      "kit": {
+        "tag": "v4.4.1",
+        "gitCommit": "60752f8b51bdc9d291bcbde53de97d65592cd984",
+        "kitSha256": "444b0a89bca2f438a8e3d7c986e92eb9f9028a5320ce6a0013a5e95adc524427"
+      },
+      "serverDeployment": {
+        "configurationId": "sha256:8fee159a3d8a95820503ff66c5a55daeefd3b7d8407baa95a000c135845c6a2f",
+        "gitCommit": "b28a87ac918a34ffabb4feb8c63a29998a0610db",
+        "version": "4.4.0"
+      },
+      "workersPerGroup": 5000,
+      "groups": 2,
+      "repetitions": 1,
+      "originalRunnerStatus": "failed",
+      "formalMeasurements": 9,
+      "caseCounts": {
+        "invalid": 3,
+        "passed": 3,
+        "saturated": 3
+      },
+      "discardedJobWarmup": {
+        "case": "task-any-2000",
+        "p99LatencyMillis": 4397.093673,
+        "status": "saturated"
+      },
+      "submissionTotals": {
+        "samples": 135000,
+        "sent": 120158,
+        "outcome:succeeded": 112699,
+        "observed:succeeded": 119892,
+        "sentHttp0Unknown": 266,
+        "clientTimeouts": 266,
+        "outcome:unknown": 266,
+        "observed:not_observed": 15108,
+        "notSent": 14842,
+        "outcome:not_sent": 14842,
+        "outcome:not_observed": 7193
+      },
+      "originalRunnerCleanup": {
+        "errors": [],
+        "ownedProcessesStopped": true,
+        "privateCredentialCopiesRemoved": true,
+        "workerConnections": {
+          "failureType": "URLError",
+          "status": "unconfirmed"
+        }
+      },
+      "cases": [
+        {
+          "case": "task-any-500",
+          "status": "passed",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 500.0,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 15000
+          }
+        },
+        {
+          "case": "task-targeted-500",
+          "status": "passed",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 500.0,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 15000
+          }
+        },
+        {
+          "case": "direct-500",
+          "status": "passed",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 500.0,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 15000
+          }
+        },
+        {
+          "case": "task-any-1000",
+          "status": "invalid",
+          "invalidReasons": [
+            "generator-lag"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 1000.0,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 10000
+          }
+        },
+        {
+          "case": "task-targeted-1000",
+          "status": "invalid",
+          "invalidReasons": [
+            "generator-lag"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 1000.0,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 10000
+          }
+        },
+        {
+          "case": "direct-1000",
+          "status": "invalid",
+          "invalidReasons": [
+            "generator-lag"
+          ],
+          "failureReason": null,
+          "completedPerSecond": 1000.0,
+          "admittedPerSecond": null,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 10000
+          }
+        },
+        {
+          "case": "task-any-2000",
+          "status": "saturated",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 1501.7,
+          "admittedPerSecond": 1501.7,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 15017
+          }
+        },
+        {
+          "case": "task-targeted-2000",
+          "status": "saturated",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 1512.2,
+          "admittedPerSecond": 1512.2,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 15122
+          }
+        },
+        {
+          "case": "direct-2000",
+          "status": "saturated",
+          "invalidReasons": [],
+          "failureReason": null,
+          "completedPerSecond": 1475.3,
+          "admittedPerSecond": 1475.3,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 14753
+          }
+        }
+      ],
+      "evidenceSha256": {
+        "summary.json": "dcafe00dc66afb291f6d9686e5a89647e4e5281e69c50a6a095f4876ae43e815",
+        "summary.md": "e1681c8f386352c7b74ff657d541c0a2610e863287b56f176f97433af4f3e27b",
+        "consumption.json": "79a2455073b4d7acd99a6f6e6a2980dbf63cd19e47e144d4247f728338254039",
+        "orchestration.json": "1ee54e291795deee2a09a39e4a975b6df0e73d2d0157554669b83862f0a8efad"
+      },
+      "independentOperatorPostcheck": {
+        "observedAt": "2026-11-18T09:40:57.445485+00:00",
+        "campaignUnitState": "failed",
+        "campaignUnitResult": "exit-code",
+        "campaignJavaProcessesAbsent": true,
+        "inputCredentialsAbsent": true,
+        "runnerCredentialsAbsent": true,
+        "campaignNetworkStates": {
+          "unknown": 10000
+        },
+        "persistentLabRuntimeStates": {
+          "RUNNING": 20
+        },
+        "persistentNetworkStates": {
+          "unknown": 20
+        },
+        "serverReadiness": "UP",
+        "nginxUpstreamWebsocketConnections": 0,
+        "newSubmissionsIssued": 0,
+        "interpretation": "Separate operator observation; it does not replace the original runner cleanup or establish current health."
+      },
+      "adminIngressConfigurationChange": {
+        "admin_requests_per_second": {
+          "from": 300,
+          "to": 3000
+        },
+        "admin_request_burst": {
+          "from": 600,
+          "to": 6000
+        }
+      },
+      "ingressWindow": {
+        "start": "2026-11-18T09:26:34+00:00",
+        "end": "2026-11-18T09:39:39+00:00",
+        "rateLimitErrorsByZone": {}
+      },
+      "remainingFindings": [
+        "Runner connection-cleanup URLError preserved; operator postcheck is separate",
+        "1000/s cases invalid due to generator lag;2000/s cases saturated, not a Server capacity limit proof",
+        "266 sent requests without HTTP responses remain unknown and were not replayed",
+        "Persistent20 process/config unchanged; known half-open connection finding remains"
+      ]
+    }
+  ],
+  "nonclaims": [
+    "A successful process does not make invalid cases comparable.",
+    "In-flight saturation reports admitted rate, not maximum Server throughput.",
+    "Original unconfirmed cleanup and unknown submissions are retained; operator postchecks do not rewrite them.",
+    "No request was replayed to reconcile these observations.",
+    "Persistent20 process or Lab RUNNING state does not establish a live network connection."
+  ]
+}

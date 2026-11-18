@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import hashlib
 import json
 import os
@@ -1152,25 +1153,86 @@ def observe_deployment_disconnect(config, identities, seconds=30):
     """Cleanup observation only; never mutate remote Worker or Task state."""
     if not identities:
         return {"status": "unconfirmed", "reason": "no-owned-identity-evidence"}
+    if any(not isinstance(identity, str) or not identity for identity in identities) or len(set(identities)) != len(identities):
+        return {"status": "unconfirmed", "reason": "invalid-owned-identity-evidence"}
     key = Path(config["accessKeyFile"]).read_text(encoding="utf-8").strip()
     url = config["runtimeUrl"] + "/api/v1/runtime-view/endpoint-managers/" + config["endpointManager"] + "/workers:network-observe"
-    deadline = time.monotonic() + seconds
-    while True:
-        counts = Counter()
-        for offset in range(0, len(identities), 100):
-            page = identities[offset:offset + 100]
-            request = urllib.request.Request(url, data=json.dumps(page).encode("utf-8"), method="POST",
-                                             headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
-            with deployment_open(request, timeout=min(5, max(.1, deadline - time.monotonic()))) as response:
+    started = time.monotonic()
+    deadline = started + seconds
+    pages = [tuple(identities[offset:offset + 100]) for offset in range(0, len(identities), 100)]
+    scans = 0
+
+    def read_page(page):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None, "deadline", None
+        request = urllib.request.Request(url, data=json.dumps(page).encode("utf-8"), method="POST",
+                                         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
+        try:
+            with deployment_open(request, timeout=min(5, remaining)) as response:
                 states = json.load(response)["statesByWorkerId"]
-            if set(states) != set(page):
-                raise RuntimeError("Cleanup observation returned a different identity set")
-            counts.update(states.values())
-        if not counts["connected"] and set(counts).issubset({"unknown", "disconnected"}):
-            return {"status": "confirmed", "identityCount": len(identities), "states": dict(counts)}
+            if not isinstance(states, dict) or set(states) != set(page):
+                return None, "identity-set-mismatch", None
+            if any(state not in ("connected", "disconnected", "unknown") for state in states.values()):
+                return None, "unexpected-network-state", None
+            return Counter(states.values()), None, time.monotonic()
+        except Exception as error:
+            # No response body, URL, request identity or authentication text enters diagnostics.
+            return None, type(error).__name__, None
+
+    while True:
+        scans += 1
+        counts = Counter()
+        errors = Counter()
+        completed = 0
+        offset = 0
+        pending = set()
+        expired = False
+        executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="deployment-disconnect")
+        try:
+            while pending or offset < len(pages):
+                while offset < len(pages) and len(pending) < 8 and time.monotonic() < deadline:
+                    pending.add(executor.submit(read_page, pages[offset]))
+                    offset += 1
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    expired = True
+                    break
+                done, pending = wait(pending, timeout=remaining, return_when=FIRST_COMPLETED)
+                if not done:
+                    expired = True
+                    break
+                for future in done:
+                    states, failure, ended = future.result()
+                    if failure:
+                        errors[failure] += 1
+                    elif ended >= deadline or time.monotonic() >= deadline:
+                        expired = True
+                    else:
+                        completed += 1
+                        counts.update(states)
+                if errors or expired:
+                    break
+        finally:
+            # The observation decision must not wait on ThreadPoolExecutor.__exit__.
+            # Active I/O retains its original remaining-budget timeout; it cannot amend this result.
+            executor.shutdown(wait=False, cancel_futures=True)
+        expired = expired or time.monotonic() >= deadline
+        complete = completed == len(pages) and not errors and not expired
+        result = {"status": "unconfirmed", "identityCount": len(identities), "states": dict(counts),
+                  "observation": {"pageSize": 100, "pageConcurrency": 8, "totalPages": len(pages),
+                                  "completedPages": completed, "observedIdentityCount": sum(counts.values()),
+                                  "scanCount": scans, "complete": complete, "deadlineExpired": expired,
+                                  "elapsedMillis": int((time.monotonic() - started) * 1000), "errorTypes": dict(errors)}}
+        if complete and not counts["connected"]:
+            result["status"] = "confirmed"
+            return result
+        if not complete or expired:
+            return result
+        time.sleep(min(1, max(0, deadline - time.monotonic())))
         if time.monotonic() >= deadline:
-            return {"status": "unconfirmed", "identityCount": len(identities), "states": dict(counts)}
-        time.sleep(1)
+            result["observation"].update(deadlineExpired=True, elapsedMillis=int((time.monotonic() - started) * 1000))
+            return result
 
 
 def main_deployment(options):

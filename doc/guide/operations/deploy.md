@@ -125,8 +125,9 @@ GCP 只承担固定版本的长期验收：日常 PR 与问题修复在本地和
 单纯维护环境无需先通读调度主线；需要修改代码时再按受影响 Owner 扩展。
 
 涉及外部连接/容量时，先读[公网验收收尾](../capabilities.md#external-public-closeout)。
-该轮已按通过的 1,000 档结束；100 档仅保留历史证据。完整规模未通过不表示仍有待执行的压测任务。
-复用已完成的端口、跨系统、物理出口和 CI 对照证据，不从历史的待办文字重新开始调查。
+其中 4.4.x Performance consumer 与 4.2.0 Loaded Recovery 是不同的 workload 和证据；
+前者保留运行状态、unknown 与未修复问题，后者已按通过的 1,000 档结束。
+复用已完成的证据，不从历史待办重新开始调查，也不把当前问题当作重跑完整压测的授权。
 
 以下是当前环境的脱敏访问入口，不是应用协议常量；使用前与主机记录核对：
 
@@ -135,6 +136,7 @@ GCP 只承担固定版本的长期验收：日常 PR 与问题修复在本地和
 | 管理网页/API | `https://staging.xamass.net` |
 | Worker Runtime | `https://workers-staging.xamass.net` |
 | 授权后的 SSH 管理 | `root@136.85.101.232`，使用已有私有 SSH 凭据 |
+| Ali 外部 consumer | 坐标来自 `release-preview-load` Environment 的 `CONSUMER_SSH_HOST`；campaign 使用 `CONSUMER_SSH_USER=xa-mass-performance`，主机管理使用已有私有运维入口 |
 
 | 主机文件 | 查询内容 |
 | --- | --- |
@@ -142,6 +144,9 @@ GCP 只承担固定版本的长期验收：日常 PR 与问题修复在本地和
 | `/etc/xa-mass/deployment.json` | 部署坐标、配置指纹、已完成/待补验收及证据范围 |
 | `/etc/xa-mass/OPERATIONS.txt` | 服务、配置、日志、凭据位置、操作约定及操作路径 |
 | `/etc/xa-mass/operations.log` | 每次主机改动的开始与结束，以及是否有未结束的操作 |
+| Ali `/var/log/xa-mass-consumer/OPERATIONS.txt`、`operations.log` | consumer 安装、常驻服务、当前问题与主机操作记录 |
+| Ali `/var/log/xa-mass-consumer/external-actions-setup/` | 私有安装／单次验收收据；不要复制原始身份或凭据到公开证据 |
+| Ali `/var/lib/xa-mass-performance/runs/<RunID>/` | campaign 原始 helper、unit 收据和私有结果；可接回原 Run，不是重新提交 workload 的依据 |
 
 先核对这些记录，再按任务只读检查实际进程和配置；记录不是实时健康证明。
 
@@ -161,6 +166,22 @@ Android App 已在公网使用，未执行的外部环境连接不能从本地�
 
 GCP 的 `/docs` 随已安装 Runtime 制品发布，描述的是该制品的源版本。仅更新仓库与外置
 运维说明不会更新它，也不应覆盖解压后的网页/JAR；网页文档随下一次正常 Release 更新。
+
+### Consumer 版本同步与接回
+
+Server 与 Consumer kit 分开固定版本：`INSTALLED_RELEASE_TAG/COMMIT` 描述 GCP Runtime，
+`PERFORMANCE_KIT_RELEASE_TAG/COMMIT` 选择按需 campaign 消费的不可变 kit。
+Ali 常驻 Host 的 `/opt/xa-mass-worker-simulator/current` 另有安装记录；它不跟随 Actions
+自动切换。修改源码或发布 kit 不会自动更新这些坐标，当前值应从对应记录核对。
+
+4.4.2 计划只更新 Ali 的两个 consumer kit，GCP Runtime 保持 4.4.0；具体步骤和待验证范围见
+[4.4 Release 说明](../../../distribution/server/RELEASE-4.4.md)。常驻服务更新保留原配置、
+私有 gateway 文件和库存坐标，不重新生成库存来掩盖旧状态。
+
+新 session 先读两台主机的操作日志及原 GitHub Run ID。仍在运行时接回同一个 Run／unit；
+使用 [CI 等待规则](../../../TESTING.md#long-running-commands-and-ci-waiting)保持一个 waiter。
+同 Run ID rerun 只观察／收取原收据，不重新执行 campaign。已有未知结果和原始失败收据
+继续保留；进程仍活跃或 cleanup 未确认时先核对，不能先删除目录或重放请求。
 当前环境角色以仓库本节和主机外置说明为准，运行版本仍以实际安装及记录核对。
 
 ### 公网接入

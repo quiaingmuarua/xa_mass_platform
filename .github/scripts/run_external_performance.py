@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 import hashlib
 import importlib.util
@@ -31,6 +31,7 @@ USER = "xa-mass-performance"
 ENTRY = "acceptance/performance/run_worker_call_performance.py"
 FILES = ("summary.json", "summary.md", "consumption.json", "orchestration.json")
 UNIT_PREFIX = "xa-mass-performance-"
+PREPARE_TTL_SECONDS = 300
 SENSITIVE = re.compile(r"\bxak_[A-Za-z0-9_-]+\b|\bBasic\s+[A-Za-z0-9+/]{12,}={0,2}")
 IDENTITY = re.compile(r"\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b|\btask-[0-9a-f]{32}\b|\bperf-rpc-[0-9a-f]+\b")
 PRIVATE_PATH = re.compile(r"/(?:run/user/[0-9]+|var/lib/xa-mass-performance|home/[^\s/\"']+)(?:/[^\s\"',;)}\]]+)*")
@@ -106,6 +107,81 @@ def unit_name(identifier):
     return UNIT_PREFIX + run_id(identifier) + ".service"
 
 
+def prepare_cleanup_name(identifier, suffix="timer"):
+    return UNIT_PREFIX + run_id(identifier) + "-prepare-cleanup." + suffix
+
+
+def current_boot_id():
+    return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+
+
+def prepare_timer_status(identifier):
+    completed = subprocess.run(["systemctl", "--user", "show", prepare_cleanup_name(identifier), "--no-pager",
+                                "--property=LoadState,ActiveState,Unit"], env=user_environment(), capture_output=True, timeout=30)
+    value = dict(line.split("=", 1) for line in completed.stdout.decode().splitlines() if "=" in line)
+    require("LoadState" in value and (completed.returncode == 0 or value["LoadState"] == "not-found"),
+            "Preparation cleanup timer state is unavailable")
+    return value
+
+
+def arm_prepare_cleanup(identifier, root):
+    """Called under control.lock, before the first private input; the lease never renews."""
+    lease = {"runId": identifier, "requestedAt": now(), "ttlSeconds": PREPARE_TTL_SECONDS,
+             "expiresAtMonotonic": time.monotonic() + PREPARE_TTL_SECONDS,
+             "bootId": current_boot_id(), "armConfirmed": False}
+    write_json(root / "prepare-lease.json", lease, exclusive=True)
+    call(["systemd-run", "--user", "--collect", "--unit=" + prepare_cleanup_name(identifier, "service"),
+          "--on-active=300s", "--timer-property=AccuracySec=1s", "--timer-property=RemainAfterElapse=no",
+          "--property=Type=oneshot", "--property=TimeoutStartSec=120s", "--property=UMask=0077",
+          sys.executable, str(root / "orchestrator.py"), "remote", "expire-preparation", "--run-id", identifier],
+         env=user_environment())
+    status = prepare_timer_status(identifier)
+    require(status.get("LoadState") == "loaded" and status.get("ActiveState") == "active"
+            and status.get("Unit") == prepare_cleanup_name(identifier, "service"), "Preparation cleanup timer was not confirmed")
+    lease["armConfirmed"] = True
+    write_json(root / "prepare-lease.json", lease)
+
+
+def preparation_expired(root):
+    path = root / "prepare-lease.json"
+    if not path.exists():
+        return False
+    lease = read_json(path)
+    require(lease.get("bootId") == current_boot_id(), "Original preparation belongs to another boot; outcome unknown, never restart")
+    return time.monotonic() >= lease["expiresAtMonotonic"]
+
+
+def update_prepare_cleanup(root, values):
+    """The caller holds control.lock; only safe aggregate lifecycle fields are retained."""
+    path = root / "prepare-cleanup.json"
+    current = read_json(path) if path.exists() else {}
+    current.update(values)
+    write_json(path, current)
+    return current
+
+
+def stop_prepare_cleanup(identifier, root):
+    # Never wait for systemd while holding control.lock: an already-fired helper may need it.
+    if not (root / "prepare-lease.json").exists():
+        return
+    path = root / "prepare-cleanup.json"
+    if path.exists() and read_json(path).get("timerStopped"):
+        return
+    try:
+        status = prepare_timer_status(identifier)
+        if status.get("LoadState") != "not-found" and status.get("ActiveState") not in {"inactive", "failed"}:
+            call(["systemctl", "--user", "stop", prepare_cleanup_name(identifier)], env=user_environment(), timeout=30)
+        values = {"timerStopped": True, "timerStoppedAt": now()}
+    except (Failure, OSError, subprocess.SubprocessError) as error:
+        values = {"timerStopped": False, "timerStopFailureType": type(error).__name__}
+    try:
+        with locked(root / "control.lock", wait_seconds=90):
+            update_prepare_cleanup(root, values)
+    except Exception as error:
+        write_json(root / "prepare-cleanup-failure.json", {"outcome": "unconfirmed", "observedAt": now(),
+                                                          "failureType": type(error).__name__})
+
+
 def unit_status(identifier):
     completed = subprocess.run(["systemctl", "--user", "show", unit_name(identifier), "--no-pager",
                                "--property=LoadState,ActiveState,SubState,Result,ExecMainCode,ExecMainStatus"],
@@ -121,6 +197,8 @@ def remote_status(identifier):
     receipt = root / "receipt.json"
     if receipt.is_file():
         return {"state": "finished", "receipt": read_json(receipt)}
+    if (root / "prepare-lease.json").exists() and read_json(root / "prepare-lease.json").get("bootId") != current_boot_id():
+        return {"state": "unknown"}
     if not (root / "state.json").is_file():
         return {"state": "unknown" if (root / "orchestrator.py").exists() else "absent"}
     status = unit_status(identifier)
@@ -225,7 +303,7 @@ def remote_prepare(identifier, envelope):
     require(not root.is_symlink() and root.stat().st_uid == os.getuid(), "Run directory ownership differs")
     os.chmod(root, 0o700)
     with locked(root / "control.lock"):
-        if any((root / name).exists() for name in ("state.json", "start-request.json", "stop-request.json", "receipt.json")):
+        if any((root / name).exists() for name in ("state.json", "start-request.json", "stop-request.json", "receipt.json", "prepare-lease.json")):
             return remote_status(identifier)
         config = validate_config(envelope["deployment"], envelope["serverTag"], envelope["serverCommit"], envelope["workers"])
         # An active campaign holds this same global lock throughout execution.
@@ -236,6 +314,8 @@ def remote_prepare(identifier, envelope):
         require(set(gateway) == {"keyId", "secret"} and all(isinstance(v, str) and v for v in gateway.values())
                 and not any(ord(c) < 32 for v in gateway.values() for c in v), "Invalid private gateway input")
         kit, manifest = extract_kit(root / "kit.zip", root, envelope["tag"], envelope["commit"], envelope["kitSha256"])
+        arm_prepare_cleanup(identifier, root)
+        require(not preparation_expired(root), "Preparation cleanup deadline expired before private input")
         private.mkdir(parents=True, exist_ok=False, mode=0o700)
         write_json(private / "gateway.json", gateway, exclusive=True)
         descriptor = os.open(private / "access-key.txt", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -264,16 +344,26 @@ def start_command(identifier, root, repetitions):
 
 
 def remote_start(identifier):
-    root, _ = paths(identifier)
+    root, private = paths(identifier)
+    disarm = False
     with locked(root / "control.lock"):
         if any((root / name).exists() for name in ("start-request.json", "stop-request.json", "receipt.json")):
-            return remote_status(identifier)
-        state = read_json(root / "state.json")
-        require(not (root / "result").exists(), "An original result already exists; never restart it")
-        write_json(root / "start-request.json", {"requestedAt": now(), "runId": identifier}, exclusive=True)
-        # No retry after this point, including a lost systemd-run/SSH acknowledgement.
-        call(start_command(identifier, root, state["repetitions"]), env=user_environment())
-    return remote_status(identifier)
+            value = remote_status(identifier)
+            disarm = value["state"] == "finished"
+        elif preparation_expired(root):
+            expire_preparation_locked(identifier, root, private)
+            value, disarm = remote_status(identifier), True
+        else:
+            state = read_json(root / "state.json")
+            require(not (root / "result").exists(), "An original result already exists; never restart it")
+            write_json(root / "start-request.json", {"requestedAt": now(), "runId": identifier}, exclusive=True)
+            # No retry after this point, including a lost systemd-run/SSH acknowledgement.
+            call(start_command(identifier, root, state["repetitions"]), env=user_environment())
+            value = remote_status(identifier)
+            disarm = value["state"] in {"running", "finished"}
+    if disarm:
+        stop_prepare_cleanup(identifier, root)
+    return value
 
 
 def finalize_locked(identifier, root, private):
@@ -305,6 +395,8 @@ def finalize_locked(identifier, root, private):
                "runnerExitCode": execution.get("exitCode"), "finishedAt": now(), "privateInputsRemoved": all(removed),
                "serviceResult": os.environ.get("SERVICE_RESULT", "not-reported"), "summaryPresent": result_file.exists(),
                "finalizationFailures": failures}
+    if (root / "prepare-expired.json").exists():
+        receipt["stopReason"] = "prepare-expired"
     write_json(root / "receipt.json", receipt, exclusive=True)
     return receipt
 
@@ -312,30 +404,73 @@ def finalize_locked(identifier, root, private):
 def remote_finalize(identifier):
     root, private = paths(identifier)
     with locked(root / "control.lock", wait_seconds=180):
-        return finalize_locked(identifier, root, private)
+        receipt = finalize_locked(identifier, root, private)
+    stop_prepare_cleanup(identifier, root)
+    return receipt
+
+
+def expire_preparation_locked(identifier, root, private):
+    if (root / "receipt.json").exists():
+        return update_prepare_cleanup(root, {"outcome": "already-finished", "observedAt": now()})
+    if (root / "prepare-lease.json").exists():
+        require(read_json(root / "prepare-lease.json").get("bootId") == current_boot_id(),
+                "Original preparation belongs to another boot; outcome unknown, never restart")
+    status = unit_status(identifier)
+    active = status.get("ActiveState")
+    if status.get("LoadState") != "not-found" and (active in {"activating", "deactivating"}
+            or (active == "active" and status.get("SubState") != "exited")):
+        return update_prepare_cleanup(root, {"outcome": "handed-off", "observedAt": now()})
+    if not (root / "prepare-expired.json").exists():
+        write_json(root / "prepare-expired.json", {"observedAt": now(), "reason": "prepare-expired"}, exclusive=True)
+    if not (root / "stop-request.json").exists():
+        write_json(root / "stop-request.json", {"requestedAt": now(), "reason": "prepare-expired"}, exclusive=True)
+    receipt = finalize_locked(identifier, root, private)
+    value = {"outcome": "expired" if receipt["privateInputsRemoved"] else "unconfirmed", "observedAt": now(),
+             "privateInputsRemoved": receipt["privateInputsRemoved"]}
+    if not receipt["privateInputsRemoved"]:
+        value["failureType"] = "PrivateInputRemoval"
+    return update_prepare_cleanup(root, value)
+
+
+def remote_expire_preparation(identifier):
+    root, private = paths(identifier)
+    try:
+        with locked(root / "control.lock", wait_seconds=90):
+            value = expire_preparation_locked(identifier, root, private)
+    except Exception as error:
+        # No successful-cleanup receipt is manufactured if the lock or removal could not complete.
+        write_json(root / "prepare-cleanup-failure.json", {"outcome": "unconfirmed", "observedAt": now(),
+                                                          "failureType": type(error).__name__})
+        return {"outcome": "unconfirmed", "failureType": type(error).__name__}
+    stop_prepare_cleanup(identifier, root)
+    return value
 
 
 def remote_execute(identifier):
     root, _ = paths(identifier)
     state = read_json(root / "state.json")
     try:
-        with locked(root.parent / "performance.lock"):
-            require((root / "start-request.json").exists() and not (root / "receipt.json").exists()
-                    and not (root / "stop-request.json").exists() and not (root / "result").exists(), "Original work cannot be restarted")
-            command = [sys.executable, "-u", str(Path(state["kitRoot"]) / ENTRY), "--deployment-config", str(root / "deployment.json"),
-                       "--lane-rates", "500,1000,2000", "--lane-modes", "open", "--repetitions", str(state["repetitions"]),
-                       "--lane-attribution", "off", "--skip-build", "--output-root", str(root / "result")]
-            stopping = []
-            signal.signal(signal.SIGTERM, lambda *_: stopping.append(True))
-            signal.signal(signal.SIGINT, lambda *_: stopping.append(True))
-            with (root / "runner.log").open("wb") as log:
+        # The global lease remains nonblocking. Preparation's opposite lock order
+        # never waits on that lease, so this short control wait cannot form a cycle.
+        with locked(root.parent / "performance.lock"), ExitStack() as resources:
+            with locked(root / "control.lock", wait_seconds=90):
+                require((root / "start-request.json").exists() and not (root / "receipt.json").exists()
+                        and not (root / "stop-request.json").exists() and not (root / "result").exists(), "Original work cannot be restarted")
+                command = [sys.executable, "-u", str(Path(state["kitRoot"]) / ENTRY), "--deployment-config", str(root / "deployment.json"),
+                           "--lane-rates", "500,1000,2000", "--lane-modes", "open", "--repetitions", str(state["repetitions"]),
+                           "--lane-attribution", "off", "--skip-build", "--output-root", str(root / "result")]
+                stopping = []
+                signal.signal(signal.SIGTERM, lambda *_: stopping.append(True))
+                signal.signal(signal.SIGINT, lambda *_: stopping.append(True))
+                log = resources.enter_context((root / "runner.log").open("wb"))
+                # Serialize admission and spawn with expiry's unit snapshot/fence.
                 process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
-                forwarded = False
-                while process.poll() is None:
-                    if stopping and not forwarded:
-                        process.terminate()
-                        forwarded = True
-                    time.sleep(.25)
+            forwarded = False
+            while process.poll() is None:
+                if stopping and not forwarded:
+                    process.terminate()
+                    forwarded = True
+                time.sleep(.25)
             write_json(root / "execution.json", {"exitCode": process.returncode, "finishedAt": now()}, exclusive=True)
     except Exception as error:
         if not (root / "execution.json").exists():
@@ -358,6 +493,8 @@ def remote_stop(identifier):
         call(["systemctl", "--user", "stop", unit_name(identifier)], env=user_environment(), timeout=150)
     if not (root / "receipt.json").exists():
         remote_finalize(identifier)
+    else:
+        stop_prepare_cleanup(identifier, root)
     return remote_status(identifier)
 
 
@@ -460,6 +597,15 @@ def remote_collect(identifier):
     summary["run"] = {key: state[key] for key in ("runId", "firstAttempt", "tag", "commit", "workersPerGroup", "repetitions", "preparedAt") if key in state}
     summary["preflight"] = state.get("preflight", {})
     summary["github"] = state.get("github", {})
+    preparation = {}
+    for filename, key in (("prepare-lease.json", "lease"), ("prepare-cleanup.json", "cleanup"),
+                          ("prepare-cleanup-failure.json", "failure")):
+        if (root / filename).is_file():
+            value = read_json(root / filename)
+            preparation[key] = {name: value[name] for name in ("ttlSeconds", "armConfirmed", "outcome", "observedAt",
+                                "timerStopped", "timerStoppedAt", "timerStopFailureType", "privateInputsRemoved", "failureType") if name in value}
+    if preparation:
+        summary["preparation"] = preparation
     try:
         summary["submissionEvidence"] = sample_counts(result)
     except (OSError, ValueError, TypeError) as error:
@@ -486,6 +632,8 @@ def remote_main(arguments):
         value = remote_stop(arguments.run_id)
     elif action == "finalize":
         value = remote_finalize(arguments.run_id)
+    elif action == "expire-preparation":
+        value = remote_expire_preparation(arguments.run_id)
     elif action == "execute":
         return remote_execute(arguments.run_id)
     elif action == "preflight":
@@ -494,7 +642,7 @@ def remote_main(arguments):
     else:
         value = remote_collect(arguments.run_id)
     print(json.dumps(value, ensure_ascii=False))
-    return 0
+    return 1 if action == "expire-preparation" and value.get("outcome") == "unconfirmed" else 0
 
 
 BOOTSTRAP = """import json,os,pwd,sys;from pathlib import Path
@@ -642,7 +790,7 @@ def main(argv=None):
     if argv and argv[0] == "remote":
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument("remote")
-        parser.add_argument("remote_action", choices=("prepare", "start", "status", "stop", "collect", "finalize", "execute", "preflight"))
+        parser.add_argument("remote_action", choices=("prepare", "start", "status", "stop", "collect", "finalize", "expire-preparation", "execute", "preflight"))
         parser.add_argument("--run-id", required=True, type=run_id)
         return remote_main(parser.parse_args(argv))
     if argv and argv[0] == "controller":

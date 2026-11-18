@@ -188,6 +188,39 @@ is 45 minutes for one repetition or 100 minutes for three; GitHub allows 120
 minutes, and owned-unit shutdown has a 120-second budget. Cleanup and receipt
 collection remain limited to this run's processes, credential copies and files.
 
+Before the first temporary credential is written, preparation confirms a one-shot
+user timer `xa-mass-performance-<RunID>-prepare-cleanup.timer`, with a five-minute
+deadline and one-second timer accuracy. This finite cleanup timer never starts a
+campaign or renews its deadline. Its handler shares the run's control lock: an
+existing final receipt is immutable, and an actually running/stopping campaign
+unit retains cleanup ownership. Otherwise the handler writes a stop fence,
+removes the same private input copies and records `prepare-expired`; a late start
+cannot execute. Execute's fence check and runner spawn share that same short
+control-lock section, so a queued unit cannot slip between expiry's status
+snapshot and stop fence. Execute releases the control lock before waiting for the
+runner; its global Performance lease remains nonblocking. An unconfirmed timer
+registration writes no credentials. Campaign
+handoff, explicit stop and finalization stop the timer outside the control lock.
+The transient cleanup attempt has a 120-second bound; lock or removal failure
+remains unconfirmed rather than claiming that private input was removed. The
+lease is tied to the current boot: a reboot without a final receipt remains
+unknown and cannot renew or replay the same Run. This timer does not change the
+45/100-minute campaign budgets or manage the separate persistent Host.
+
+After stopping its owned processes, the shared deployed runner observes exactly
+its inventory IDs in pages of 100, with at most eight concurrent page reads and
+one complete scan at a time. All scans share the original 30-second observation
+deadline. A page must return its exact requested identity set; only a complete
+scan received before the deadline, with every identity `unknown` or
+`disconnected`, confirms cleanup. A complete scan with connected Workers can be
+observed again after the existing one-second pause, without renewing the budget.
+Missing, malformed, failed or late pages remain unconfirmed. Safe nested
+`cleanup.workerConnections.observation` diagnostics report page counts, observed
+identity count, elapsed time, deadline expiry and error-type counts, without IDs,
+error bodies or authentication text. Active HTTP reads retain their original
+remaining-budget timeout; executor shutdown does not wait to revise the
+observation decision, and late completions cannot change its status.
+
 Public evidence contains only the allowlisted `summary.json`, `summary.md`,
 `consumption.json` and `orchestration.json`; bootstrap Worker IDs, inventory, raw
 logs and private configuration remain on the consumer. These receipts identify
@@ -200,6 +233,13 @@ comparing measurements. Delivery checks of this mode do not establish a real
 For a smaller delivery check, set `external_workers_per_group=1000` to request
 2,000 Workers total. That leaves the default 10k command and measurement oracle
 unchanged and provides evidence only for the selected size.
+
+Worker scheduling observations retain the same five-second interval after both
+successful and failed samples. Interrupting a read or its pause ends the sampler
+immediately. Failures remain unavailable samples under the existing case oracle;
+the sampler does not hot-retry an unavailable observation. The four public
+receipt files additionally retain safe `preparation` lease/cleanup diagnostics;
+private boot identity, credential paths and Worker/request identities stay local.
 
 ### Bootstrap Readiness
 

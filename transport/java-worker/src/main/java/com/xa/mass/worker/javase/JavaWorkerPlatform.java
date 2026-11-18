@@ -6,9 +6,13 @@ import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.runtime.WorkerGatewayCredential;
 
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.Socket;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -17,6 +21,8 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.net.SocketFactory;
+import jdk.net.ExtendedSocketOptions;
 
 import okhttp3.Dispatcher;
 import okhttp3.OkHttpClient;
@@ -28,6 +34,7 @@ final class JavaWorkerPlatform implements AutoCloseable {
     private static final long HTTP_SHUTDOWN_TIMEOUT_MILLIS = 5_000;
 
     private final OkHttpClient httpClient;
+    private final SocketFactory webSocketSocketFactory;
     private final ExecutorService controlExecutor;
     private final ScheduledExecutorService networkScheduler;
     private final ExecutorService socketExecutor;
@@ -42,6 +49,7 @@ final class JavaWorkerPlatform implements AutoCloseable {
             TaskRunner.RealBackend httpTaskBackend
     ) {
         this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
+        this.webSocketSocketFactory = new WebSocketSocketFactory(httpClient.socketFactory());
         this.controlExecutor = Objects.requireNonNull(
                 controlExecutor,
                 "controlExecutor"
@@ -232,6 +240,7 @@ final class JavaWorkerPlatform implements AutoCloseable {
                     "requestTimeout"
             ).toMillis();
             OkHttpClient socketHttp = httpClient.newBuilder()
+                    .socketFactory(webSocketSocketFactory)
                     .connectTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
                     .readTimeout(0, TimeUnit.MILLISECONDS)
                     .writeTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
@@ -277,6 +286,63 @@ final class JavaWorkerPlatform implements AutoCloseable {
     private void requireOpen() {
         if (closed.get()) {
             throw new IllegalStateException("Java Worker platform is closed");
+        }
+    }
+
+    /** TCP probes do not require the WebSocket reader to leave a synchronous Handler. */
+    private static final class WebSocketSocketFactory extends SocketFactory {
+        private final SocketFactory delegate;
+
+        private WebSocketSocketFactory(SocketFactory delegate) {
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
+        }
+
+        @Override
+        public Socket createSocket() throws IOException {
+            return configure(delegate.createSocket());
+        }
+
+        @Override
+        public Socket createSocket(String host, int port) throws IOException {
+            return configure(delegate.createSocket(host, port));
+        }
+
+        @Override
+        public Socket createSocket(String host, int port, InetAddress local, int localPort) throws IOException {
+            return configure(delegate.createSocket(host, port, local, localPort));
+        }
+
+        @Override
+        public Socket createSocket(InetAddress host, int port) throws IOException {
+            return configure(delegate.createSocket(host, port));
+        }
+
+        @Override
+        public Socket createSocket(InetAddress host, int port, InetAddress local, int localPort) throws IOException {
+            return configure(delegate.createSocket(host, port, local, localPort));
+        }
+
+        private static Socket configure(Socket socket) throws IOException {
+            Objects.requireNonNull(socket, "socket");
+            try {
+                socket.setKeepAlive(true);
+                if (socket.supportedOptions().containsAll(Set.of(
+                        ExtendedSocketOptions.TCP_KEEPIDLE,
+                        ExtendedSocketOptions.TCP_KEEPINTERVAL,
+                        ExtendedSocketOptions.TCP_KEEPCOUNT))) {
+                    socket.setOption(ExtendedSocketOptions.TCP_KEEPIDLE, 60);
+                    socket.setOption(ExtendedSocketOptions.TCP_KEEPINTERVAL, 10);
+                    socket.setOption(ExtendedSocketOptions.TCP_KEEPCOUNT, 3);
+                }
+                return socket;
+            } catch (IOException | RuntimeException | Error failure) {
+                try {
+                    socket.close();
+                } catch (IOException | RuntimeException | Error closeFailure) {
+                    if (closeFailure != failure) failure.addSuppressed(closeFailure);
+                }
+                throw failure;
+            }
         }
     }
 
