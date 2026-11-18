@@ -69,7 +69,7 @@ def archive_manifest(path: Path, component: str, version: str, commit: str) -> d
         manifest = json.loads(archive.read(root + "/manifest.json"))
     require(manifest.get("version") == version, "Archive version differs from release tag")
     require(manifest.get("gitCommit") == commit, "Archive commit differs from Proof SHA")
-    require(manifest.get("schemaVersion") == {"server-runtime": 6, "worker-sdk": 1, "worker-simulator": 2}[component],
+    require(manifest.get("schemaVersion") == {"server-runtime": 6, "worker-sdk": 1, "worker-simulator": 3}[component],
             "Archive manifest schema differs from the current contract")
     return manifest
 

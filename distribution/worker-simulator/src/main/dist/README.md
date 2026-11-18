@@ -9,6 +9,8 @@ without a repository checkout or a build:
    checks every Result independently.
 3. `acceptance/run_loaded.py` runs an explicitly requested external capacity campaign:
    15,000 Workers, then 10,000 retained Workers, with 50,000 Items measured at each scale.
+4. `acceptance/performance/run_worker_call_performance.py` runs the existing call-performance
+   open cases against a declared deployment, with its own local Host and compiled Harness.
 
 It is a test and acceptance capability, not a production Worker. It starts no Server and
 changes no deployment. The Runtime operator provides a registered Worker Group, a Worker
@@ -16,10 +18,11 @@ gateway credential and your access key; nothing here registers Groups, enables P
 creates users.
 
 The Host and small finite round require Java 21 and Python 3.9 or later. The loaded
-entry requires Linux, Java 21 and Python 3.11+ (standard library only). Use the kit
-from the **same Release** as the Runtime you test (`manifest.json` schema 2 holds
-its version, commit and three entries); other combinations are not supported.
-The kit includes the compiled loaded Harness; consumers do not run Gradle or build source.
+and deployed Performance entries require Linux, Java 21 and Python 3.11+.
+Use the kit from the **same Release** as the Runtime you test (`manifest.json`
+schema 3 holds its version, commit and four entries); other combinations are not
+supported. The kit includes both compiled Harness installations; consumers do not
+run Gradle or build source.
 The [4.3 upgrade contract](https://github.com/quiaingmuarua/xa_mass_platform/blob/main/distribution/server/RELEASE-4.3.md#worker-compatibility)
 changes Worker Prepare responses for connection cooldown. Stop a 4.2 Host and use the
 matching 4.3 kit after the Runtime upgrade; its retained inventory can be reused.
@@ -42,6 +45,11 @@ On Windows use `bin\xa-mass-worker-simulator.bat`. The Host prints a
 `data/scenario-workers` next to `host.json`; keep that directory so that restarts reuse the
 same Worker identities. Run the Host under your own supervisor. A changed credential takes
 effect only after an explicit restart.
+
+For an ordinary long-lived 20-Worker Host, see
+[the configuration and systemd examples](examples/README.md#persistent-ordinary-host).
+They use the same Host command and retained inventory, without an operator key,
+Task timer or health-judgment loop.
 
 ## 2. Run one round
 
@@ -180,6 +188,47 @@ only the explicit full target `15000` is also selectable, without rebuilding thi
 The shipped command without overrides still uses its full 15k/10k default.
 Its scheduled/default `local-proof` mode remains the existing four-stage local
 recovery proof. Public campaigns are not ordinary PR gates.
+
+## 4. Measure calls against a deployment
+
+Copy `examples/performance-deployment.json` outside the kit. Replace its template
+origins, Project, Adapter, two Group IDs and Server deployment declaration, then
+provide the referenced private operator and Worker credential files. Relative file
+paths resolve against that configuration, not the shell directory. The Runtime
+operator must already have supplied the MD5 event, Any Pool/query, Group/Project
+bindings and access; the runner does not provision them.
+
+```sh
+python3 acceptance/performance/run_worker_call_performance.py \
+  --deployment-config /etc/xa-mass-worker/performance-deployment.json \
+  --lane-modes open --lane-attribution off --diagnostics off \
+  --output-root /var/lib/xa-mass-worker/runs/open-001
+```
+
+Use a new private output directory outside the immutable kit. Keep `consumerId`
+stable for these bindings so the setup reuses its explicit per-Group RPC Tasks;
+those Tasks are not removed when local processes stop. The configuration declares
+two distinct Groups, `workersPerGroup` in `1..15000`, Host heap/FD ceilings and the
+actual Server assignment ceiling. Its `serverDeployment` values identify the
+operator's recorded version, full commit and configuration; they are not automatic
+discovery or proof of live Server settings.
+
+This mode runs only the original open rates `500,1000,2000`, path cases, warmup and
+measurement windows. `--lane-rates` can select a subset of those rates. It supplies
+no new low-rate profile or health scheduler. The runner starts and cleans up only
+its own local Host and Harness. It starts no Server or Redis and collects no
+Server JFR, Redis calibration or remote process-resource evidence. Saturation,
+attribution, diagnostics, reference-host comparison and CI trends retain their
+source-lane contracts and are not deployed-mode claims.
+
+Observed latency and outcomes include the public network and the recorded client
+configuration; they are not a maximum Server throughput, recovery or soak result.
+Use different Group/inventory coordinates from any persistent Host. Two roles on
+one physical machine still share its CPU, memory, source ports and network failure
+domain. See the [deployment examples](examples/README.md#on-demand-call-performance)
+and the [Performance Owner](https://github.com/quiaingmuarua/xa_mass_platform/blob/main/integrations/worker-call-performance/README.md#deployed-runtime-consumer)
+for the shared measurement contract. Keep credentials, full identities, raw logs
+and inventory private.
 
 ## Reporting a problem
 

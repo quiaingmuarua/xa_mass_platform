@@ -231,7 +231,7 @@ these correctness claims and add no heavy ordinary CI lane.
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-connected 14800 --minimum-retained-connected 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
 | External Release load | Published kit `acceptance/run_loaded.py`; explicitly selected manual `external-release` workflow mode | External Linux, Java 21, standard-library Python 3.11+; operator/Worker credentials, no SSH or Redis access |
-| [Worker Call Performance](integrations/worker-call-performance/README.md) | Nightly: parallel `rate-500`, `rate-1000`, `rate-2000` and `saturation` jobs with three repetitions, merged, recorded on `perf-lane-data` and compared with the last seven records. Manual: the same with optional JFR diagnostics, or per-case A/B with `baseline_ref` and `lane_case` | Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21 |
+| [Worker Call Performance](integrations/worker-call-performance/README.md) | Nightly: parallel `rate-500`, `rate-1000`, `rate-2000` and `saturation` jobs with three repetitions, merged, recorded on `perf-lane-data` and compared with the last seven records. Manual: the same with optional JFR diagnostics, or per-case A/B with `baseline_ref` and `lane_case`. The same runner also supports declared deployed Runtime open cases, with separate public-path evidence | Source lane: Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21. Deployed mode: Linux, Java 21, Python 3.11+, published Simulator kit |
 | Android Host | Platform Android library/proof-tool contracts; no consumer artifact prerequisite | Robolectric, MockWebServer, JDK HttpServer |
 | Candidate Distribution Archives | One clean-commit Runtime/SDK/Simulator kit set, archive checks and hashes | Java, Android SDK, Node |
 | Android APK Assembly | Independent consumer unit tests and Debug plus three fixed Lab APKs from that SDK ZIP | Android SDK |
@@ -288,6 +288,22 @@ The local Worker Convergence `--scenario all` entry remains the complete
 one-shot command. Proof CI runs `state` and `task-fault` as two independent
 matrix jobs, each with its own Redis service, scope, evidence artifact and
 summary; the matrix aggregate remains the one selected Proof Gate result.
+
+## Deployed Call Performance
+
+The [deployed Call Performance mode](integrations/worker-call-performance/README.md#deployed-runtime-consumer)
+is a separate use of the existing Performance runner, not the Loaded Recovery
+campaign described below. The schema-3 Simulator kit ships
+`acceptance/performance/run_worker_call_performance.py` and its compiled Harness.
+Use `--deployment-config` with `--lane-modes open --lane-attribution off --diagnostics off`
+and a fresh private output directory outside the kit. It retains the original
+`500,1000,2000` rates, warmup and windows; there is no low-rate profile or new
+proof lane. It creates only its owned local Host/Harness, reuses stable explicit
+RPC Task IDs and records declared Server coordinates. It neither starts nor
+samples remote Server/Redis, and makes no saturation, Server JFR, Redis calibration,
+reference-host or CI-trend claim. Its existing focused Harness/runner and archive
+consumption checks verify the delivery contract; an actual public run requires
+its own explicitly requested, versioned evidence.
 
 ## External Release load
 
@@ -361,7 +377,7 @@ The Environment supplies these explicit coordinates:
 
 The environment operator verifies the actually installed version before setting
 these coordinates. The workflow verifies the published immutable Release, commit,
-asset digests and schema-2 Simulator kit, then invokes its shipped command. It
+asset digests and the supported schema-2 or schema-3 Simulator manifest, then invokes its shipped loaded command. It
 does not receive an administrator key or SSH credential, build source, start a
 Server, stop the remote Runtime or access Redis. The target Group has one active
 consumer owner; independent local inventories do not isolate same-Group identities.

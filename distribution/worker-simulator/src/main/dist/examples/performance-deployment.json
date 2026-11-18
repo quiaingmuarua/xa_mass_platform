@@ -1,0 +1,19 @@
+{
+  "runtimeUrl": "https://console.example.com",
+  "workerRuntimeUrl": "https://workers.example.com",
+  "project": "performance-consumer",
+  "endpointManager": "runtime-websocket",
+  "groups": ["performance-a", "performance-b"],
+  "workersPerGroup": 1000,
+  "consumerId": "consumer-01",
+  "accessKeyFile": "./private/operator-access-key.txt",
+  "gatewayCredentialFile": "./private/worker-access.json",
+  "hostMaxHeap": "3g",
+  "hostFdLimit": 32768,
+  "assignmentBatchLimit": 100,
+  "serverDeployment": {
+    "version": "0.0.0",
+    "gitCommit": "0000000000000000000000000000000000000000",
+    "configurationId": "replace-with-recorded-server-config"
+  }
+}

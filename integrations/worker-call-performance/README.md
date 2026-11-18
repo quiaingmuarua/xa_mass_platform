@@ -12,9 +12,11 @@ their non-consuming export path.
 
 All protected Runtime requests, including streamed finite Result exports, carry
 the fixture's public development access key through the same request
-builder. Streaming preserves the export timeout and identity/payload validation.
+builder in the source lane. A deployed consumer uses the access-key file from its
+deployment configuration. Streaming preserves the export timeout and
+identity/payload validation.
 
-Primary claim: with configurable resources set so they do not bind, the
+Source-lane primary claim: with configurable resources set so they do not bind, the
 performance of each call path at fixed offered rates, the capacity of the Task
 paths, and the difference between paths on one host. The lane does not measure
 turnover efficiency under scarce resources.
@@ -24,15 +26,88 @@ turnover efficiency under scarce resources.
 | Worker reuse, candidate recycling or Pool exhaustion under scarcity | Dynamic Matching, Convergence Health |
 | Group isolation or fairness under contention | Convergence Health or a dedicated scheduling proof |
 | Disconnect, restart, failure retry and recovery | Loaded Recovery, Worker Correctness |
-| Production SLA, device capacity, cross-machine latency, soak | Outside repository CI |
+| Production SLA, device capacity or soak | Outside repository CI |
 | Configuration trade-offs such as assignment ceiling 100 against 1000 | A separate configuration experiment |
 
-Correctness floors can fail the lane. Performance values never fail it; they
-enter the trend comparison.
+Correctness floors can fail a run. Source-lane performance values enter the trend
+comparison; they are not pass/fail thresholds.
+
+## Deployed Runtime Consumer
+
+The same runner and Java Harness can measure an already deployed Runtime with
+`--deployment-config`. This is an execution mode of this Owner, not a separate
+proof lane or a replacement for the source lane below. The published schema-3
+[Worker Simulator kit](../../distribution/worker-simulator/README.md) ships the
+runner at `acceptance/performance/run_worker_call_performance.py` and its compiled
+Harness at `acceptance/performance/harness/`; consumption needs no checkout or
+build. Use Linux, Java 21 and Python 3.11 or newer.
+
+Copy the kit's `examples/performance-deployment.json` outside the immutable kit,
+replace its template values with the operator-provided deployment coordinates,
+and place both credential files beside that private configuration. Relative file
+paths resolve against the configuration file's directory. The configuration holds
+file references, never access keys or Worker secrets:
+
+| Field | Meaning |
+| --- | --- |
+| `runtimeUrl` | HTTPS administrator/API origin; requests carry the supplied user's Bearer access key |
+| `workerRuntimeUrl` | Approved HTTPS Worker origin for Prepare and WSS gateway admission |
+| `project`, `endpointManager` | Existing Project and Adapter identities |
+| `groups` | Exactly two distinct, already configured Group IDs, in stable order |
+| `workersPerGroup` | Host inventory per Group, `1..15000` |
+| `consumerId` | Stable identity used to name this consumer's RPC Tasks; reuse it for the same declared bindings |
+| `accessKeyFile`, `gatewayCredentialFile` | Private operator access-key and Worker gateway files |
+| `hostMaxHeap`, `hostFdLimit` | Explicit owned Host budgets; the template uses `3g` and `32768` |
+| `assignmentBatchLimit` | Recorded Server assignment ceiling, `1..1000`; the consumer does not change the Server |
+| `serverDeployment` | Operator-recorded `version`, full `gitCommit` and `configurationId` for the target Server |
+
+The operator must supply Group registrations, `any` Pool / `worker.any`, the
+MD5 event, Project grants and gateway admission before the run. Declared deployment
+metadata is attribution supplied by the operator, not a live measurement of Server
+configuration or resources. A separate persistent Host must use different Group
+and inventory coordinates; another local directory alone does not create distinct
+Worker identities.
+
+Run from the extracted kit, using a new private output directory outside it:
+
+```bash
+python3 acceptance/performance/run_worker_call_performance.py \
+  --deployment-config /etc/xa-mass-worker/performance-deployment.json \
+  --lane-modes open --lane-attribution off --diagnostics off \
+  --output-root /var/lib/xa-mass-worker/runs/open-001
+```
+
+This mode retains the existing open cases, rates `500,1000,2000`, path order,
+warmup and measurement windows; `--lane-rates` may select only those existing
+rates. It introduces no low-rate profile. Setup explicitly prepares one stable RPC
+Task per Group and reuses those Tasks on later invocations with the same consumer
+identity and bindings. A conflicting saved descriptor fails setup; the runner does
+not invent a replacement identity. Received RPC Results remain retained locally
+when later consuming reads are empty, as in the source lane.
+
+Deployment Worker observations read at most eight pages concurrently within one
+complete scan. Every page still contains at most 100 known identities and must
+return exactly that identity set; results retain request order. The next scan
+starts only after the current one finishes. Source reference observations remain
+serial, and the existing quiesce deadline and sampling intervals are unchanged.
+
+The runner owns only its local Host, Harness and output. It does not start,
+restart, configure or sample the remote Server, Redis or gateway, and cleans up
+only the local processes it created. RPC Tasks are retained for reuse. TLS checks
+remain enabled; credentials and full Worker identities stay private. Keep raw logs,
+inventory and private configuration outside shared evidence.
+
+Deployed mode supports open-loop execution with attribution and diagnostics off.
+It supplies no Server JFR, Redis calibration or saturation evidence, no local
+Server resource costs, and no reference-host or CI-trend claim. Report observed
+public-path latency and outcomes together with the exact kit, Server declaration,
+configuration and client resources. These measurements do not establish maximum
+Server throughput, every Worker's execution, recovery or soak. The existing
+source, saturation, diagnostics and A/B contracts below remain separate.
 
 ## World And Configuration
 
-Open-loop jobs start one world and reuse it for every case: Ubuntu 24.04 with four
+Source open-loop jobs start one world and reuse it for every case: Ubuntu 24.04 with four
 logical CPUs, Java 21, Docker Redis 7.4.10, the DEFAULT Pacer preset, two Groups
 (`perf-a`, `perf-b`) of 1,000 Java Workers each in one Host JVM, one WebSocket
 Adapter and Project `perf-lane`. Bootstrap waits until every Worker is running,

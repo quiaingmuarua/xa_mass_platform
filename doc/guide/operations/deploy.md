@@ -55,6 +55,13 @@ Runtime ZIP 包含 Server、Adapter 和前端，排除 Simulator；Preview ZIP �
   见[包内部署示例](../../../distribution/server/src/main/dist/examples/batch-checks/README.md)。
 - **独立 Messages/Android**：使用[消息示例](../../../distribution/server/src/main/dist/examples/messages/README.md)
   和 [Android Host](../../../xa-android/README.md)。
+- **外部 Java Worker consumer**：使用同 Release 的
+  [Simulator kit](../../../distribution/worker-simulator/README.md)。包内提供普通长期 20-Worker Host
+  和 systemd 示例，以及现有 Performance runner 的
+  [已部署 Runtime 模式](../../../integrations/worker-call-performance/README.md#deployed-runtime-consumer)。
+  长期 Host 不运行任务定时器或健康判定；按需测量只启动自己的 Host/Harness，
+  不启动或重配远端 Server/Redis。两种角色的 Group 和库存坐标应分开，
+  同物理机仍共享资源和网络故障域。
 
 新构建的候选 ZIP 不会自动替换已经运行的安装。更新时先核对版本、commit 和实际文件，
 在独立目录验证，再明确切换。不要修改运行中的包或用旧文档推定数据兼容。

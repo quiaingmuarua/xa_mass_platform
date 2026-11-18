@@ -1,6 +1,6 @@
 """Packaged Runtime + real Java Host through the staging TLS gateway.
 
-This is an existing Runtime Distribution witness, not a deployment or load test.
+This is an existing Runtime Distribution witness, not a deployment or capacity result.
 All services are local, Redis writes use the caller's exact test_* scope, and only
 owned child processes are stopped. The caller owns exact-scope Redis cleanup.
 """
@@ -8,7 +8,7 @@ owned child processes are stopped. The caller owns exact-scope Redis cleanup.
 from __future__ import annotations
 
 from contextlib import ExitStack
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import hashlib
 from html.parser import HTMLParser
 import http.client
@@ -42,6 +42,8 @@ PUBLIC_DEVELOPMENT_KEY = "xak_dev_1000"
 GROUP_A = "ingress-java-a"
 GROUP_B = "ingress-java-b"
 GROUP_LOADED = "ingress-loaded"
+PERFORMANCE_GROUPS = ("ingress-performance-a", "ingress-performance-b")
+PERFORMANCE_WORKER = ("performance-fixture", secrets.token_urlsafe(32))
 
 
 class ProofFailure(RuntimeError):
@@ -143,7 +145,7 @@ def _runtime_command(runtime_root: Path, data_root: Path, manifest: dict, java: 
     jar = (runtime_root / manifest["serverJar"]).resolve()
     _require(jar.is_relative_to(runtime_root) and jar.is_file(), "Runtime manifest JAR must belong to the extracted archive")
     groups = {group: {"attributes": {"capability": "ingress-md5-proof"}, "eventCodes": [EVENT]}
-              for group in (GROUP_A, GROUP_B, GROUP_LOADED)}
+              for group in (GROUP_A, GROUP_B, GROUP_LOADED, *PERFORMANCE_GROUPS)}
     return [java, "-Xms128m", "-Xmx1g", "-jar", str(jar),
             "--spring.profiles.active=consumer", "--server.address=127.0.0.1", f"--server.port={runtime_port}",
             "--xa.mass.scenarios.app-checks.enabled=false", "--xa.mass.scenarios.messages.enabled=false",
@@ -313,6 +315,67 @@ def _loaded(gate: Gateway, processes, *, simulator_home: Path, proof_root: Path,
             "entrySha256": hashlib.sha256((simulator_home / "acceptance/run_loaded.py").read_bytes()).hexdigest()}
 
 
+def _performance(gate: Gateway, processes, *, simulator_home: Path, proof_root: Path,
+                 truststore: Path, environment: dict, runtime_manifest: dict) -> dict:
+    """Run the existing Performance entry from the kit, without a throughput acceptance threshold."""
+    credentials = proof_root / "performance-worker-credential.json"
+    credentials.write_text(json.dumps({"keyId": PERFORMANCE_WORKER[0], "secret": PERFORMANCE_WORKER[1]}), encoding="utf-8")
+    credentials.chmod(0o600)
+    # The earlier revocation witness remains intact; this consumer owns a different credential.
+    gate.write_passwords(gate.worker_password_file, (OTHER_WORKER, PERFORMANCE_WORKER))
+    configuration = proof_root / "performance-deployment.json"
+    configuration.write_text(json.dumps({
+        "runtimeUrl": gate.admin_url, "workerRuntimeUrl": gate.worker_url,
+        "project": "default", "endpointManager": "runtime-websocket", "groups": list(PERFORMANCE_GROUPS),
+        "workersPerGroup": 100, "consumerId": "runtime-distribution-performance",
+        "accessKeyFile": str(proof_root / "external-access-key.txt"), "gatewayCredentialFile": str(credentials),
+        "hostMaxHeap": "512m", "hostFdLimit": 8192, "assignmentBatchLimit": 100,
+        "serverDeployment": {"version": runtime_manifest["version"], "gitCommit": runtime_manifest["gitCommit"],
+                             "configurationId": "runtime-distribution-performance-fixture"},
+    }), encoding="utf-8")
+    configuration.chmod(0o600)
+    entry = simulator_home / "acceptance/performance/run_worker_call_performance.py"
+    output = proof_root / "performance-deployment"
+    command = [sys.executable, str(entry), "--deployment-config", str(configuration), "--output-root", str(output),
+               "--skip-build", "--lane-rates", "500", "--repetitions", "1", "--lane-modes", "open",
+               "--lane-attribution", "off", "--java-truststore", str(truststore),
+               "--java-truststore-password", "fixture-truststore-password"]
+    clean = dict(environment)
+    clean.pop("PYTHONPATH", None)
+    clean["SSL_CERT_FILE"] = str(gate.ca_file)
+    child = None
+    try:
+        child = start_process(command, proof_root / "performance-deployment.log", clean, cwd=proof_root)
+        code = child.wait(timeout=900)
+    finally:
+        if child is not None:
+            stop_process(child, force=False)
+        credentials.unlink(missing_ok=True)
+    _require(code == 0 and all(process.poll() is None for process in processes),
+             "Packaged Performance deployment execution failed; inspect its safe summary")
+    result = json.loads((output / "evidence/lane-summary.json").read_text(encoding="utf-8"))
+    cases = result.get("cases", [])
+    expected = {"task-any-500", "task-targeted-500", "direct-500"}
+    _require(result.get("executionEnvironment") == "existing-server" and result.get("referenceHost") is False
+             and len(cases) == 3 and {case.get("case") for case in cases} == expected,
+             "Packaged Performance entry did not execute the existing three-path flow")
+    _require(all(case.get("status") in ("passed", "saturated", "invalid") and case.get("repetition") == 1
+                 and type(case.get("measurementStartedEpochMillis")) is int
+                 and type(case.get("measurementEndedEpochMillis")) is int
+                 and case["measurementEndedEpochMillis"] > case["measurementStartedEpochMillis"]
+                 for case in cases), "Packaged Performance case did not complete its protocol and measurement")
+    cleanup = result.get("cleanup", {})
+    _require(cleanup.get("ownedProcessesStopped") is True and cleanup.get("privateCredentialCopiesRemoved") is True
+             and cleanup.get("workerConnections", {}).get("status") == "confirmed" and cleanup.get("errors") == [],
+             "Packaged Performance entry did not clean its owned consumer resources")
+    _require(result.get("calibration") is None and result.get("attribution") is None
+             and {"server-resources", "redis-resources", "server-jfr"} <= set(result.get("notCollected", [])),
+             "External Performance execution claimed local Server or Redis observations")
+    return {"claim": "packaged-existing-performance-flow", "referenceHost": False,
+            "workersPerGroup": 100, "cases": [{"case": case["case"], "status": case["status"]} for case in cases],
+            "entrySha256": hashlib.sha256(entry.read_bytes()).hexdigest(), "consumerCleanupConfirmed": True}
+
+
 def verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: str, proof_root: Path) -> dict:
     """Run on Linux with real nginx/openssl/Java and a caller-cleaned Redis test scope."""
     evidence = {"phase": "preflight"}
@@ -356,8 +419,14 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
     while len(ports) != 4:
         ports.add(free_port())
     runtime_port, adapter_port, http_port, https_port = sorted(ports)
-    gate = Gateway(proof_root / "gateway", runtime_port, adapter_port, worker_groups=(GROUP_A, GROUP_B, GROUP_LOADED),
+    gate = Gateway(proof_root / "gateway", runtime_port, adapter_port,
+                   worker_groups=(GROUP_A, GROUP_B, GROUP_LOADED, *PERFORMANCE_GROUPS),
                    http_port=http_port, https_port=https_port)
+    # The separate ingress contract proof retains the actual conservative defaults.
+    # This Runtime fixture keeps the gateway from bounding the unchanged 500/s Performance cases.
+    gate.config = replace(gate.config, worker_connection_limit=300, worker_total_connection_limit=400,
+                          worker_requests_per_second=200, worker_request_burst=1000,
+                          admin_requests_per_second=2000, admin_request_burst=4000)
     _render_packaged_gateway(gate, runtime_root, environment)
     truststore = _truststore(java, gate, proof_root)
     witnesses = []
@@ -424,17 +493,21 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
         evidence["phase"] = "packaged-external-capacity-diagnostic"
         loaded = _loaded(gate, processes, simulator_home=simulator_home, proof_root=proof_root,
                          truststore=truststore, environment=environment)
+        evidence["phase"] = "packaged-performance-deployment"
+        performance = _performance(gate, processes, simulator_home=simulator_home, proof_root=proof_root,
+                                   truststore=truststore, environment=environment, runtime_manifest=manifest)
 
     evidence["phase"] = "safe-evidence"
     for log in proof_root.rglob("*.log"):
         contents = log.read_text(encoding="utf-8", errors="replace")
         _require(ADMIN_KEY not in contents and EXTERNAL_KEY not in contents
                  and all(secret not in contents and basic((key, secret)) not in contents
-                         for key, secret in (WORKER, OTHER_WORKER)),
+                         for key, secret in (WORKER, OTHER_WORKER, PERFORMANCE_WORKER)),
                  "Credential material appeared in a private process log")
     summary = {"status": "passed", "runtimeVersion": manifest["version"], "runtimeCommit": manifest["gitCommit"],
                "console": console,
                "externalCapacityDiagnostic": loaded,
+               "performanceDeployment": performance,
                "gatewayConfigSha256": hashlib.sha256(gate.configuration.read_bytes()).hexdigest(),
                "gatewayRendererSha256": hashlib.sha256((runtime_root / "examples/staging-ingress/staging_ingress/renderer.py").read_bytes()).hexdigest(),
                "runtimeJarSha256": hashlib.sha256((runtime_root / manifest["serverJar"]).read_bytes()).hexdigest(),

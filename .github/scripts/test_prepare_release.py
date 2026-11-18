@@ -82,6 +82,19 @@ class ReleasePromotionTest(unittest.TestCase):
             self.assertEqual(release.digest(archive) + "  runtime.zip\n", sidecar.read_text())
             self.assertEqual(sidecar, release.checksum(archive))
 
+    def test_simulator_requires_current_schema_without_changing_other_components(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "simulator.zip"
+            for schema in (2, 3):
+                with zipfile.ZipFile(path, "w") as archive:
+                    archive.writestr("xa-mass-worker-simulator-4.4.0/manifest.json", json.dumps({
+                        "version": "4.4.0", "gitCommit": self.commit, "schemaVersion": schema}))
+                if schema == 3:
+                    release.archive_manifest(path, "worker-simulator", "4.4.0", self.commit)
+                else:
+                    with self.assertRaisesRegex(ValueError, "schema"):
+                        release.archive_manifest(path, "worker-simulator", "4.4.0", self.commit)
+
     def test_draft_resume_accepts_only_identical_assets(self):
         with tempfile.TemporaryDirectory() as directory:
             expected = Path(directory) / "runtime.zip"
@@ -150,7 +163,7 @@ class ReleasePromotionTest(unittest.TestCase):
                 name = f"xa-mass-{component}-{version}.zip"
                 path = root / name
                 manifest = dict(version=version, gitCommit=self.commit,
-                                schemaVersion={"server-runtime": 6, "worker-sdk": 1, "worker-simulator": 2}[component])
+                                schemaVersion={"server-runtime": 6, "worker-sdk": 1, "worker-simulator": 3}[component])
                 with zipfile.ZipFile(path, "w") as archive:
                     archive.writestr(name[:-4] + "/manifest.json", json.dumps(manifest))
                 fixtures[component] = path

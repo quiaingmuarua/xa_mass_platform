@@ -54,6 +54,7 @@ final class LaneCase {
 
     static void run(Map<String, String> options) throws Exception {
         var spec = Spec.parse(options.get("--case"));
+        var coordinates = LaneWorld.coordinates(options);
         java.nio.file.Path output = java.nio.file.Path.of(options.get("--output"));
         Files.createDirectories(output);
         var summary = new LinkedHashMap<String, Object>();
@@ -69,17 +70,16 @@ final class LaneCase {
         var workerSamples = new ArrayList<Map<String, Object>>();
         var invalid = new ArrayList<String>();
         Exception failure = null;
-        try (var api = new CallApi(options.getOrDefault("--runtime-url", "http://127.0.0.1:18082"),
-                options.getOrDefault("--lab-url", "http://127.0.0.1:18086"), java.util.Map.of("Authorization", "Bearer xak_dev_1000"));
+        try (var api = coordinates.api(options);
              var execution = Executors.newVirtualThreadPerTaskExecutor()) {
-            var world = LaneWorld.readWorld(java.nio.file.Path.of(options.get("--world")));
-            var tasks = LaneWorld.readTasks(java.nio.file.Path.of(options.get("--world")));
+            var world = LaneWorld.readWorld(java.nio.file.Path.of(options.get("--world")), coordinates);
+            var tasks = LaneWorld.readTasks(java.nio.file.Path.of(options.get("--world")), coordinates);
             String prefix = UUID.randomUUID().toString();
             summary.put("stage", "warmup");
             warmup = CallLoad.schedule(WARMUP_RATE, WARMUP_SECONDS, MAX_IN_FLIGHT, prefix + "-warmup", execution,
-                    sender(api, spec.path(), world, tasks));
+                    sender(api, spec.path(), world, tasks, coordinates.groups()));
             warmup.await();
-            if (spec.path() != Path.DIRECT) drain(api, tasks, warmup, 180);
+            if (spec.path() != Path.DIRECT) drain(api, tasks, warmup, 180, coordinates.groups());
             if (warmup.samples().stream().anyMatch(s -> !s.observed.equals("succeeded")))
                 throw new Failed("warmup", "Warmup calls did not all succeed");
 
@@ -91,7 +91,7 @@ final class LaneCase {
             Thread sampler = Thread.ofVirtual().name("lane-worker-sampler").start(() -> {
                 while (sampling.get()) {
                     try {
-                        workerSamples.add(sampleWorkers(api, world, System.currentTimeMillis() - started));
+                        workerSamples.add(sampleWorkers(api, world, System.currentTimeMillis() - started, coordinates.groups()));
                         Thread.sleep(SAMPLE_INTERVAL_MILLIS);
                     } catch (InterruptedException stopped) {
                         return;
@@ -102,7 +102,7 @@ final class LaneCase {
             });
             try {
                 measured = CallLoad.schedule(spec.rate(), MEASUREMENT_SECONDS, MAX_IN_FLIGHT, prefix + "-measured",
-                        execution, sender(api, spec.path(), world, tasks), stop);
+                        execution, sender(api, spec.path(), world, tasks, coordinates.groups()), stop);
                 measured.await();
             } finally {
                 sampling.set(false);
@@ -116,9 +116,9 @@ final class LaneCase {
             if (spec.path() != Path.DIRECT) {
                 summary.put("stage", "drain");
                 long accepted = measured.samples().stream().filter(CallLoad.Sample::accepted).count();
-                int budget = drainBudgetSeconds(spec.rate(), accepted, ASSIGNMENT_BATCH_LIMIT);
+                int budget = drainBudgetSeconds(spec.rate(), accepted, coordinates.assignmentBatchLimit());
                 summary.put("drainBudgetSeconds", budget);
-                drain(api, tasks, measured, budget);
+                drain(api, tasks, measured, budget, coordinates.groups());
                 if (measured.samples().stream().anyMatch(s -> s.accepted() && s.observed.equals("not_observed")))
                     throw new Failed("drain-budget", "Accepted Items remain unobserved after the drain budget");
             }
@@ -130,9 +130,9 @@ final class LaneCase {
                 invalid.add("generator-lag");
             // Overload holds every lease while Results queue: exhausted idle Workers are then a
             // consequence of saturation, recorded but not a separate resource gap.
-            boolean workersExhausted = !workersAvailable(workerSamples);
+            boolean workersExhausted = !workersAvailable(workerSamples, coordinates.groups());
             summary.put("workersExhausted", workersExhausted);
-            if (workersExhausted && !saturated) invalid.add("workers-exhausted");
+            addWorkerEvidenceReasons(invalid, workerSamples, coordinates.groups(), saturated);
             if (saturated) summary.put("admittedPerSecond",
                     ((Number) window.get("accepted")).longValue() / (measured.windowNanos() / 1e9));
             summary.put("status", !invalid.isEmpty() ? "invalid" : saturated ? "saturated" : "passed");
@@ -145,7 +145,7 @@ final class LaneCase {
         } finally {
             summary.put("invalidReasons", invalid);
             summary.put("workerSamples", workerSamples);
-            summary.put("leaseHeldPeakRatio", leaseHeldPeakRatio(workerSamples));
+            summary.put("leaseHeldPeakRatio", leaseHeldPeakRatio(workerSamples, coordinates.workersPerGroup(), coordinates.groups()));
             if (warmup != null) summary.put("warmup", warmup.responseSummary());
             if (measured != null) {
                 var metrics = measured.summary();
@@ -172,8 +172,13 @@ final class LaneCase {
 
     /** Alternates Groups per planned call; targeted and Direct paths rotate through each Group's Workers. */
     static CallLoad.Sender sender(CallApi api, Path path, Map<String, List<String>> world, Map<String, String> tasks) {
+        return sender(api, path, world, tasks, LaneWorld.GROUPS);
+    }
+
+    private static CallLoad.Sender sender(CallApi api, Path path, Map<String, List<String>> world,
+                                          Map<String, String> tasks, List<String> groups) {
         return (id, index) -> {
-            var target = target(index, world);
+            var target = target(index, world, groups);
             return switch (path) {
                 case TASK_ANY -> api.call(tasks.get(target.group()), id, null);
                 case TASK_TARGETED -> api.call(tasks.get(target.group()), id, target.worker());
@@ -186,9 +191,13 @@ final class LaneCase {
 
     /** Planned call {@code index} goes to Group {@code index % 2} and that Group's next Worker. */
     static Target target(int index, Map<String, List<String>> world) {
-        String group = LaneWorld.GROUPS.get(index % LaneWorld.GROUPS.size());
+        return target(index, world, LaneWorld.GROUPS);
+    }
+
+    static Target target(int index, Map<String, List<String>> world, List<String> groups) {
+        String group = groups.get(index % groups.size());
         var ids = world.get(group);
-        return new Target(group, ids.get((index / LaneWorld.GROUPS.size()) % ids.size()));
+        return new Target(group, ids.get((index / groups.size()) % ids.size()));
     }
 
     /** Succeeded Results (after drain) per offered second; the open-loop completion throughput. */
@@ -216,10 +225,14 @@ final class LaneCase {
      * wait on Result convergence, not on Worker execution. An all-unavailable run is not evidence.
      */
     static boolean workersAvailable(List<Map<String, Object>> samples) {
+        return workersAvailable(samples, LaneWorld.GROUPS);
+    }
+
+    static boolean workersAvailable(List<Map<String, Object>> samples, List<String> groups) {
         var usable = usable(samples);
         if (usable.isEmpty()) return false;
         for (var sample : usable)
-            for (String group : LaneWorld.GROUPS)
+            for (String group : groups)
                 if (count(sample, group, "hot-score-overdue") == 0) return false;
         return true;
     }
@@ -230,9 +243,13 @@ final class LaneCase {
     }
 
     static double leaseHeldPeakRatio(List<Map<String, Object>> samples, int workersPerGroup) {
+        return leaseHeldPeakRatio(samples, workersPerGroup, LaneWorld.GROUPS);
+    }
+
+    static double leaseHeldPeakRatio(List<Map<String, Object>> samples, int workersPerGroup, List<String> groups) {
         double peak = 0;
         for (var sample : usable(samples))
-            for (String group : LaneWorld.GROUPS)
+            for (String group : groups)
                 peak = Math.max(peak, count(sample, group, "held-hot") / (double) workersPerGroup);
         return peak;
     }
@@ -241,14 +258,21 @@ final class LaneCase {
         return samples.stream().filter(s -> !Boolean.TRUE.equals(s.get("unavailable"))).toList();
     }
 
+    static void addWorkerEvidenceReasons(List<String> invalid, List<Map<String, Object>> samples,
+                                         List<String> groups, boolean saturated) {
+        if (usable(samples).isEmpty()) invalid.add("worker-observation-unavailable");
+        else if (!workersAvailable(samples, groups) && !saturated) invalid.add("workers-exhausted");
+    }
+
     private static long count(Map<String, Object> sample, String group, String state) {
         return ((Number) CallApi.object(sample.get(group)).getOrDefault(state, 0L)).longValue();
     }
 
-    private static Map<String, Object> sampleWorkers(CallApi api, Map<String, List<String>> world, long offset) throws Exception {
+    private static Map<String, Object> sampleWorkers(CallApi api, Map<String, List<String>> world, long offset,
+                                                     List<String> groups) throws Exception {
         var sample = new LinkedHashMap<String, Object>();
         sample.put("offsetMillis", offset);
-        for (String group : LaneWorld.GROUPS) {
+        for (String group : groups) {
             var counts = new LinkedHashMap<String, Long>();
             LaneWorld.observeScheduling(api, group, world.get(group))
                     .values().forEach(state -> counts.merge(String.valueOf(state), 1L, Long::sum));
@@ -263,6 +287,11 @@ final class LaneCase {
      * finish within the remaining budget (projection).
      */
     static void drain(CallApi api, Map<String, String> tasks, CallLoad.Batch batch, int seconds) throws Exception {
+        drain(api, tasks, batch, seconds, LaneWorld.GROUPS);
+    }
+
+    static void drain(CallApi api, Map<String, String> tasks, CallLoad.Batch batch, int seconds,
+                      List<String> groups) throws Exception {
         long started = System.nanoTime();
         long deadline = started + seconds * 1_000_000_000L;
         long lastProgress = started;
@@ -281,8 +310,8 @@ final class LaneCase {
                     throw new Failed("drain-projected-late", "Observed Result rate cannot close within the budget");
             }
             boolean progressed = false;
-            for (String group : LaneWorld.GROUPS) {
-                var groupPending = pending.stream().filter(s -> group.equals(groupOf(s))).toList();
+            for (String group : groups) {
+                var groupPending = pending.stream().filter(s -> group.equals(groupOf(s, groups))).toList();
                 for (int offset = 0; offset < groupPending.size(); offset += 1_000) {
                     var page = groupPending.subList(offset, Math.min(offset + 1_000, groupPending.size()));
                     long remaining = deadline - System.nanoTime();
@@ -311,8 +340,12 @@ final class LaneCase {
 
     /** Sample IDs end with their planned index; even indexes went to the first Group. */
     static String groupOf(CallLoad.Sample sample) {
+        return groupOf(sample, LaneWorld.GROUPS);
+    }
+
+    static String groupOf(CallLoad.Sample sample, List<String> groups) {
         int index = Integer.parseInt(sample.id.substring(sample.id.lastIndexOf('-') + 1));
-        return LaneWorld.GROUPS.get(index % LaneWorld.GROUPS.size());
+        return groups.get(index % groups.size());
     }
 
     private static void writeSamples(java.nio.file.Path path, CallLoad.Batch batch) throws Exception {

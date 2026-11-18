@@ -118,15 +118,18 @@ class ArchiveToolsTest(unittest.TestCase):
     def simulator_files(self):
         files = {name: "fixture" for name in tools.SIMULATOR_FILES}
         files["manifest.json"] = json.dumps({
-            "schemaVersion": 2, "version": self.version, "gitCommit": self.commit, "javaVersion": 21,
+            "schemaVersion": 3, "version": self.version, "gitCommit": self.commit, "javaVersion": 21,
             "simulatorEntry": "bin/xa-mass-worker-simulator", "roundEntry": "acceptance/finite_round.py",
-            "loadedEntry": "acceptance/run_loaded.py"})
+            "loadedEntry": "acceptance/run_loaded.py",
+            "performanceEntry": "acceptance/performance/run_worker_call_performance.py"})
         files["examples/remote-host.json"] = json.dumps({"gatewayCredentialFile": "./private/worker-access.json"})
         for jar in ("xa-mass-worker-simulator-jvm", "xa-mass-worker-core", "xa-mass-java-worker",
                     "xa-mass-worker-delivery-contract"):
             files[f"lib/{jar}-{self.version}.jar"] = b"fixture"
         for jar in ("xa-mass-worker-loaded-recovery", "xa-mass-worker-delivery-contract"):
             files[f"acceptance/loaded/lib/{jar}-{self.version}.jar"] = b"fixture"
+        for jar in ("xa-mass-worker-call-performance", "xa-mass-worker-delivery-contract"):
+            files[f"acceptance/performance/harness/lib/{jar}-{self.version}.jar"] = b"fixture"
         return files
 
     def test_simulator_kit_requires_entries_identity_and_no_private_state(self):
@@ -136,14 +139,23 @@ class ArchiveToolsTest(unittest.TestCase):
                                         "--version", self.version]))
         broken = []
         for missing in ("acceptance/finite_round.py", "acceptance/run_loaded.py", "acceptance/support/process_sampling.py",
+                        "acceptance/support/scenario_inventory.py", "acceptance/performance/run_worker_call_performance.py",
+                        "acceptance/performance/lane_trend.py", "acceptance/performance/diagnostics.jfc",
+                        "acceptance/performance/lane-attribution.jfc",
                         f"acceptance/loaded/lib/xa-mass-worker-loaded-recovery-{self.version}.jar",
+                        f"acceptance/performance/harness/lib/xa-mass-worker-call-performance-{self.version}.jar",
+                        f"acceptance/performance/harness/lib/xa-mass-worker-delivery-contract-{self.version}.jar",
                         "bin/xa-mass-worker-simulator.bat", "README.md",
                         f"lib/xa-mass-java-worker-{self.version}.jar"):
             broken.append({key: value for key, value in original.items() if key != missing})
         for change in ({"version": "9.9.9"}, {"gitCommit": "short"}, {"roundEntry": "elsewhere.py"},
-                       {"schemaVersion": 1}, {"loadedEntry": "wrong.py"}):
+                       {"schemaVersion": 1}, {"schemaVersion": 2}, {"loadedEntry": "wrong.py"},
+                       {"performanceEntry": "another.py"}):
             manifest = {**json.loads(original["manifest.json"]), **change}
             broken.append({**original, "manifest.json": json.dumps(manifest)})
+        manifest = json.loads(original["manifest.json"])
+        del manifest["performanceEntry"]
+        broken.append({**original, "manifest.json": json.dumps(manifest)})
         for private in ("data/scenario-workers/g/workers-000.jsonl", "private/worker-access.json",
                         "examples/credential.json"):
             broken.append({**original, private: "{}"})

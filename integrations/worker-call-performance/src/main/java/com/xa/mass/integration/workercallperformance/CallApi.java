@@ -38,8 +38,29 @@ final class CallApi implements AutoCloseable {
             .connectTimeout(Duration.ofSeconds(5)).version(HttpClient.Version.HTTP_1_1).build();
     private final String runtime;
     private final String lab;
+    private final String endpointManager;
+    private final int observationPageConcurrency;
 
-    CallApi(String runtime, String lab, Map<String, String> taskCallerHeaders) { this.taskCallerHeaders = Map.copyOf(taskCallerHeaders); this.runtime = runtime; this.lab = lab; }
+    CallApi(String runtime, String lab, Map<String, String> taskCallerHeaders) {
+        this(runtime, lab, taskCallerHeaders, LaneWorld.ENDPOINT);
+    }
+
+    CallApi(String runtime, String lab, Map<String, String> taskCallerHeaders, String endpointManager) {
+        this(runtime, lab, taskCallerHeaders, endpointManager, 1);
+    }
+
+    CallApi(String runtime, String lab, Map<String, String> taskCallerHeaders, String endpointManager,
+            int observationPageConcurrency) {
+        if (observationPageConcurrency != 1 && observationPageConcurrency != 8)
+            throw new IllegalArgumentException("Observation page concurrency must be one or eight");
+        this.taskCallerHeaders = Map.copyOf(taskCallerHeaders);
+        this.runtime = runtime;
+        this.lab = lab;
+        this.endpointManager = endpointManager;
+        this.observationPageConcurrency = observationPageConcurrency;
+    }
+
+    int observationPageConcurrency() { return observationPageConcurrency; }
 
     Map<String, Object> post(String path, Object body) throws Exception { return json(runtime + path, body); }
     Map<String, Object> get(String path) throws Exception { return json(runtime + path, null); }
@@ -112,7 +133,7 @@ final class CallApi implements AutoCloseable {
     }
 
     CallLoad.Reply directCall(String group, String worker) throws Exception {
-        var response = send(runtime + "/api/v1/worker-delivery/endpoint-managers/scenario-websocket/direct-calls",
+        var response = send(runtime + "/api/v1/worker-delivery/endpoint-managers/" + endpointManager + "/direct-calls",
                 Map.of("workerGroupId", group, "workerPayloads", Map.of(worker, Jsons.toJson(Map.of("value", INPUT))),
                         "messageType", "extension.worker.string.md5", "waitTimeoutMillis", 1_000));
         int status = response.statusCode();

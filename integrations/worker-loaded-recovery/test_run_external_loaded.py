@@ -107,6 +107,27 @@ class ExternalOptionsTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 RUNNER._kit(root)
 
+    def test_loaded_consumer_accepts_schema_three_and_rejects_incomplete_entry_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = {"schemaVersion": 3, "version": "4.4.0", "gitCommit": "a" * 40,
+                        "javaVersion": 21, "simulatorEntry": "bin/xa-mass-worker-simulator",
+                        "roundEntry": "acceptance/finite_round.py", "loadedEntry": "acceptance/run_loaded.py",
+                        "performanceEntry": "acceptance/performance/run_worker_call_performance.py"}
+            for relative in ("lib", "acceptance/loaded/lib"):
+                library = root / relative / "fixture.jar"
+                library.parent.mkdir(parents=True)
+                library.write_bytes(b"fixture")
+            path = root / "manifest.json"
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            self.assertEqual(manifest, RUNNER._kit(root))
+            without_performance = {key: value for key, value in manifest.items() if key != "performanceEntry"}
+            for invalid in ({**manifest, "schemaVersion": 2}, without_performance,
+                            {**manifest, "performanceEntry": "another.py"}):
+                path.write_text(json.dumps(invalid), encoding="utf-8")
+                with self.subTest(manifest=invalid), self.assertRaisesRegex(ValueError, "version-3"):
+                    RUNNER._kit(root)
+
     def test_platform_record_keeps_cpu_memory_toolchain_and_optional_cgroup_values(self):
         with patch.object(Path, "read_text", return_value="MemTotal:       8000000 kB\n"), \
              patch.object(RUNNER, "_optional_cgroup", side_effect=[{"status": "observed", "value": "400000 100000"},

@@ -12,6 +12,7 @@ import java.util.Map;
 import jdk.jfr.Event;
 import jdk.jfr.Name;
 import jdk.jfr.Recording;
+import jdk.jfr.consumer.RecordingFile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -37,22 +38,25 @@ class CapacityEvidenceTest {
 
     @Test void recordedCountsCannotOverrideExhaustedBacklogOrMissingRecording() throws Exception {
         Path file = temporary.resolve("completion.jfr");
-        long start, end;
         try (var recording = new Recording()) {
             recording.enable(StoreEvent.class);
             recording.enable(DispatchEvent.class);
             recording.enable(CoverageEvent.class);
             recording.start();
-            start = System.currentTimeMillis() - 1;
             new CoverageEvent().commit();
             for (String name : List.of("CLAIMED", "COMMAND_PUBLISHED")) {
                 var event = new DispatchEvent(); event.stage = name; event.commit();
             }
             new StoreEvent().commit();
-            end = System.currentTimeMillis() + 1;
             recording.stop();
             recording.dump(file);
         }
+        // JFR timestamps and currentTimeMillis need not share millisecond rounding on every OS.
+        // This fixture tests reconciliation, so derive its inclusive event bounds from the recording.
+        long[] timestamps = RecordingFile.readAllEvents(file).stream()
+                .mapToLong(event -> event.getStartTime().toEpochMilli()).toArray();
+        long start = java.util.Arrays.stream(timestamps).min().orElseThrow() - 1;
+        long end = java.util.Arrays.stream(timestamps).max().orElseThrow() + 1;
         var raw = new LinkedHashMap<String, Object>(Map.of("status", "passed", "exportedSuccessCount", 100L,
                 "lifecycleStartedEpochMillis", start, "validationEndedEpochMillis", end,
                 "measurementStartedEpochMillis", start, "measurementEndedEpochMillis", end));
