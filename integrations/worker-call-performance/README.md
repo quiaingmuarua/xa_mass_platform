@@ -105,6 +105,90 @@ configuration and client resources. These measurements do not establish maximum
 Server throughput, every Worker's execution, recovery or soak. The existing
 source, saturation, diagnostics and A/B contracts below remain separate.
 
+### External Actions Execution
+
+The existing [Worker Call Performance workflow](../../.github/workflows/worker-call-performance.yml)
+can run this deployed mode from a GitHub-hosted runner through SSH to a dedicated
+consumer user on the Ali Worker host. Select `execution_target=external` manually
+on `main`; the default target and scheduled Nightly remain `source`, with their
+existing build, rates, saturation, diagnostics, repetitions and trend behavior.
+The external job consumes the pinned published Simulator kit in its own run directory. It does
+not checkout or build source on the consumer, and needs neither Git nor Gradle
+there. Its kit consumption is independent of the persistent Host's current link;
+selecting a workflow revision does not upgrade the GCP Server.
+External selection rejects JFR, A/B and source trend-recording options before
+starting the campaign.
+
+```bash
+gh workflow run worker-call-performance.yml --ref main \
+  -f execution_target=external \
+  -f external_workers_per_group=5000 \
+  -f external_repetitions=1
+```
+
+| External input | Contract |
+| --- | --- |
+| `external_workers_per_group` | `1..15000`, default `5000` in each of the two declared Groups: 10,000 Workers total by default |
+| `external_repetitions` | `1` or `3`, default `1`; the source `repetitions` input remains separate |
+
+The protected `release-preview-load` Environment supplies the following
+deployment and consumer coordinates. Keep credential values out of JSON, command
+arguments, logs and published artifacts.
+
+| Environment Vars | Meaning |
+| --- | --- |
+| `CONSUMER_SSH_HOST`, `CONSUMER_SSH_USER`, `CONSUMER_SSH_KNOWN_HOSTS` | Dedicated `xa-mass-performance` consumer account and pinned SSH host keys |
+| `PERFORMANCE_DEPLOYMENT_JSON` | Deployment configuration described above, with `consumerId=public43-performance` and private credential-file references |
+| `PERFORMANCE_CONNECTION_BUDGET_JSON` | Exactly three integer gateway-budget fields: `perCredential`, `total`, `reserved`; requested Workers must fit both `perCredential` and `total - reserved` |
+| `INSTALLED_RELEASE_TAG`, `INSTALLED_RELEASE_COMMIT` | Release tag and full source commit deployed to the target GCP Runtime; the campaign consumes that Release's kit independently of the persistent Host installation |
+
+| Environment Secrets | Use |
+| --- | --- |
+| `CONSUMER_SSH_PRIVATE_KEY` | SSH admission to the dedicated consumer account |
+| `PERFORMANCE_RUNTIME_ACCESS_KEY` | Project-scoped Performance operator access key |
+| `PERFORMANCE_WORKER_GATEWAY_KEY_ID`, `PERFORMANCE_WORKER_GATEWAY_SECRET` | Dedicated Performance Worker gateway credential |
+
+The dedicated account must already have its user systemd manager and linger
+enabled, alongside Java 21, Python 3.11+ and SSH admission. Its campaign unit is
+`xa-mass-performance-<RunID>.service`; retained files are under `~/runs/<RunID>`
+and temporary credential inputs under `/run/user/<uid>/xa-mass-performance/<RunID>`.
+For example, a declared gateway budget of
+`{"perCredential":20000,"total":30000,"reserved":20}` leaves 20 shared gateway
+connections outside the campaign; replace these values with the actual declared
+deployment limits. Host FD, local port, memory and disk checks run separately.
+
+No root key or GCP administrator credential belongs in CI. Before load, verify the
+consumed kit manifest and configured pins, the two declared Groups and Project,
+and the explicit host/gateway budgets for the requested inventory. This records
+the declared limits; it does not tune the Server or infer a higher capacity from
+an FD limit. Group inventory coordinates must remain exclusive to this campaign.
+The ordinary persistent 20-Worker Host has its own Group, inventory, credentials
+and system service; Actions never starts or stops it. Both roles still share the
+physical consumer host's CPU, memory and network failure domain.
+
+The campaign is one owned systemd unit, identified by the GitHub Run ID. A rerun
+of that same Run ID only attaches to its existing unit or collects its receipt;
+it must not execute the workload again. A new independent run may follow a
+completed run whose evidence contains unknown responses or HTTP 429. Preserve
+those outcomes without resubmitting their request identities. Before starting,
+reconcile any still-active old campaign process or unknown cleanup result;
+unknown workload outcomes and unknown process cleanup are different evidence.
+External load shares the `release-preview-load` concurrency group with other
+external Release load, with cancellation disabled. The remote campaign budget
+is 45 minutes for one repetition or 100 minutes for three; GitHub allows 120
+minutes, and owned-unit shutdown has a 120-second budget. Cleanup and receipt
+collection remain limited to this run's processes, credential copies and files.
+
+Public evidence contains only the allowlisted `summary.json`, `summary.md`,
+`consumption.json` and `orchestration.json`; bootstrap Worker IDs, inventory, raw
+logs and private configuration remain on the consumer. These receipts identify
+the consumed Release and declared deployment without exposing access keys or
+Worker identities. The public API, request/Result oracle and existing case
+statuses are unchanged. Exit status `0` alone does not establish that every case
+was valid: inspect each `passed`, `saturated`, `invalid` or `failed` outcome before
+comparing measurements. Delivery checks of this mode do not establish a real
+10,000-Worker public-path result; that needs its own actual run and evidence.
+
 ## World And Configuration
 
 Source open-loop jobs start one world and reuse it for every case: Ubuntu 24.04 with four

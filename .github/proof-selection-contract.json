@@ -102,6 +102,13 @@
       "reason": "The independent performance workflow retains its own runtime claim."
     },
     {
+      "path": ".github/scripts/run_external_performance.py",
+      "lanes": [
+        "jvm_contracts"
+      ],
+      "reason": "External Performance orchestration has deterministic consumer and routing contracts; public measurement remains an explicit manual execution of the existing Performance lane."
+    },
+    {
       "path": "README.md",
       "lanes": [],
       "reason": "Documentation is owned by the always-running Docs Contract."
