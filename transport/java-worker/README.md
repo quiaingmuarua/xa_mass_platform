@@ -169,6 +169,31 @@ callback. Callbacks not admitted from stale Attempts are suppressed; admitted
 callbacks may finish, and a late Result remains a one-shot best-effort send.
 Platform shutdown remains the owning Worker or Manager's responsibility.
 
+Only the WebSocket-derived OkHttp client uses the Platform's shared private
+SocketFactory, which delegates to the original raw SocketFactory. Every returned
+socket enables `SO_KEEPALIVE`. When that socket supports all three JDK 21
+`jdk.net.ExtendedSocketOptions`, it sets `TCP_KEEPIDLE=60` seconds,
+`TCP_KEEPINTERVAL=10` seconds and `TCP_KEEPCOUNT=3`. Otherwise the operating
+system's keepalive timing remains unchanged. An option-setting failure closes
+that socket and follows the existing connection-failure path. This uses the
+exported `jdk.net` module in a standard JDK 21 runtime, without reflective JDK access.
+
+TCP probes and their ACKs are handled by the kernel, so a synchronous Handler
+does not acquire a read-progress deadline. Read/call timeouts remain zero for
+WebSocket, and no application Ping, Reporter timer, executor or public connection
+option is added. TCP loss observed by an idle reader follows the existing
+`onFailure` and bounded same-Endpoint reconnect path. Keepalive does not send
+application data or refresh an HTTP gateway's read-idle timeout; a gateway's
+normal close still uses the same reconnect path.
+
+OkHttp 5.3 uses this raw SocketFactory for direct and HTTP-proxy WS/WSS connections;
+WSS retains its original TLS wrapping, trust checks and gateway credential. Its
+SOCKS path bypasses this factory. Unsupported fast options and SOCKS routes carry
+no equivalent recovery-time promise. A TCP peer that continues to ACK can still
+have an unhealthy application or upstream; keepalive is not application health
+evidence. Control HTTP, line-Socket, Android and reconnect budgets retain their
+existing behavior.
+
 ## Managed Java Host
 
 `JavaWorkerManager` runs a fixed replica set for exactly one WorkerGroup:

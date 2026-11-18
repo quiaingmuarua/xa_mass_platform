@@ -1,10 +1,43 @@
 # XA Mass 4.4 release and upgrade contract
 
-Status: version-scoped 4.4 contract; the 4.4.0 cutover contract is retained below.
-The next patch target is 4.4.1. Its publication requires complete manual Proof at
-the exact merged candidate commit; its real deployed-Performance validation is
-pending. Published artifacts remain immutable. Actual deployment and acceptance
-status belongs to the installed host records and dated evidence.
+Status: version-scoped 4.4 contract. 4.4.0 Runtime and 4.4.1 Consumer kit have been
+published; the next patch target is 4.4.2. Its complete manual Proof, publication
+and consumer validation remain pending. Published artifacts remain immutable.
+Actual installation and acceptance status belongs to host records and
+[dated evidence](../../doc/guide/capabilities.md#external-public-closeout), not a live claim here.
+
+## 4.4.2 Consumer closeout patch
+
+The patch keeps the existing Runtime APIs, Worker protocol, workload and result
+oracles. Deployed Performance connection cleanup uses a bounded complete scan
+with eight concurrent pages of at most 100 original IDs, sharing the existing
+30-second deadline. A missing page, read error or deadline remains unconfirmed;
+safe counts and error types explain the observation without publishing identities.
+It does not retry failed pages or replace unknown submissions. Sampling retains
+the five-second interval after successful and failed observations. Prepared
+credential copies receive a one-time five-minute cleanup fence before any secret
+is written; a campaign must take ownership without extending or replaying work.
+
+Java WSS sockets enable TCP keepalive; where all extended options are supported,
+the private SocketFactory sets 60-second idle, 10-second interval and three probes.
+The [Java Worker Owner](../../transport/java-worker/README.md) owns fallback and
+SOCKS boundaries. This adds no application Ping or Handler execution deadline,
+and is not yet a claim that every half-open path has been repaired.
+
+Publish the normal Runtime, Worker SDK and Simulator kit set only after complete
+manual Proof at the exact final merged candidate. Then update only the Ali
+consumer installations: verify the 4.4.2 kit manifest and digest, stop the owned
+persistent Host before switching its installed kit, preserve its external config,
+gateway credential and inventory, and restart that service. Set the Performance
+kit pins to the published 4.4.2 tag/commit independently. Keep GCP Runtime 4.4.0,
+its `INSTALLED_RELEASE_*` pins, scope and database unchanged; this patch schedules
+no GCP Runtime deployment or restart. A bounded consumer check must record actual
+connections, automatic cleanup and the controlled reconnect behavior, retaining
+unknown/failed outcomes. Publication and this validation are still pending.
+
+The project-owned current-tree credential check runs inside existing Proof CI;
+it adds no workflow or historical secret audit. Lab remains a trusted loopback
+control surface, not a new authenticated public service.
 
 ## 4.4.1 Performance consumer patch
 
@@ -20,9 +53,10 @@ count. The whole current fleet must still be RUNNING, connected and HOT; the
 240-second bootstrap budget, path cases, rates, warmup, windows and result
 assertions are unchanged. This changes no Server, SDK or wire contract.
 
-Publish this patch through the ordinary complete manual Proof and Release path:
-build and prove the Runtime, Worker SDK and Worker Simulator kit ZIPs once, then
-publish those exact bytes with their SHA256 sidecars. Manifest schemas remain
+4.4.1 was published on 2026-11-18 from
+`60752f8b51bdc9d291bcbde53de97d65592cd984` through the ordinary Release path;
+the [published Release](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.4.1)
+retains the normal three ZIPs and SHA256 sidecars. Manifest schemas remain
 Runtime 6, SDK 1 and Simulator kit 3. Do not replace files inside the published
 4.4.0 kit or build a separate consumer-only Release format.
 
@@ -34,8 +68,9 @@ version/commit. The two commits need not match; neither coordinate uses `latest`
 or a fallback. This consumer correction requires no GCP Runtime replacement,
 Server restart, new scope/database or replacement of the standing 20-Worker Host.
 The selected 4.4.0 scope, SQLite database and retained old data below remain as
-installed. The single real external validation of this patch remains pending;
-the fix and packaging checks alone establish no successful public load result.
+installed. The dated 2k and 10k Performance observations are linked above;
+invalid/saturated cases, unknown requests and unconfirmed runner cleanup remain
+explicit. Neither publication nor an operator postcheck makes all cases valid.
 
 ## Finite Task history
 
@@ -86,6 +121,12 @@ and needs no operator key. It installs no Task timer or health-judgment loop. A
 persistent Host and an on-demand Performance Host require distinct Group/inventory
 coordinates; on one physical machine they still share resources and a network
 failure domain. See the [kit examples](../worker-simulator/src/main/dist/examples/README.md).
+
+**4.4.0 example erratum:** its immutable `persistent-20-host.json` used the parent
+`/var/lib/xa-mass-worker/persistent-20` as `sandboxRoot`, which the Host rejects.
+The external operator configuration was corrected to
+`/var/lib/xa-mass-worker/persistent-20/data/scenario-workers`; the published ZIP
+was not patched. The corrected example is included in 4.4.1 and later kits.
 
 This consumer delivery change adds no Worker protocol or existing Runtime Task API
 change relative to 4.3.2. The new Storage APIs belong to the history change above.

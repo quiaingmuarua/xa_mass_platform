@@ -348,6 +348,14 @@ current-run coverage; their registrations are retained, without changing Groups
 or clearing history to pass a check. The public API and later case/Result oracles
 remain unchanged.
 
+The [2026-11-18 public observations](integrations/worker-call-performance/observations/external/2026-11-18.json)
+retain three completed runs, independently pinned kit/Server coordinates,
+per-case validity, unknown submissions and original cleanup outcomes. Their
+operator postchecks are separate evidence, never a replacement for failed or
+unconfirmed runner cleanup. The [capability guide](doc/guide/capabilities.md#external-public-closeout)
+summarizes the delivered path and remaining findings. These static observations
+select no execution lane and do not establish current host health or 4.4.2 proof.
+
 ## External Release load
 
 Read the dated [public acceptance closeout](doc/guide/capabilities.md#external-public-closeout)
@@ -671,6 +679,34 @@ uses the aggregate result of both Worker Convergence matrix jobs.
 CI does not retry failed proofs. Evidence artifacts contain IDs, relation sets,
 counts, state timelines and process logs, never full Worker payloads,
 Properties or Task results.
+
+### Current-tree credential check
+
+The existing Select proof lanes job also runs:
+
+```powershell
+python .github/scripts/test_check_credentials.py
+python .github/scripts/check_credentials.py
+```
+
+The project-owned standard-library check reads only files in the current tracked
+working tree. It detects production-shaped `xak_` plus 43 URL-safe characters,
+complete PEM private-key material, and 43-character gateway secrets in explicit
+secret assignments. It reports only file, line and kind. It does not inspect Git
+history, follow symlink targets, scan ignored private directories or replace
+general secret review. Public `xak_dev_` development keys are permitted. An
+explicit `credential-check: synthetic` annotation on the same or preceding line
+permits that fixture literal only in a test file; the rest of the file is still
+checked. No directory is exempted wholesale. Failed checks fail the existing
+selection/Gate chain; no workflow or proof lane is added.
+
+On 2026-11-18, GitHub settings were applied and read back: `main` requires a PR,
+the latest branch state and the GitHub Actions `Proof Gate` check (app 15368),
+including administrators, with no forced human review; force pushes and deletion
+are disabled. Secret Scanning and Push Protection are enabled. The external
+Environment remains `main`-only without a manual reviewer. These are dated
+configuration observations, not a claim of no historical leaks or comprehensive
+security coverage; recheck actual repository settings for an administration task.
 
 ## Deliberate Nonclaims
 

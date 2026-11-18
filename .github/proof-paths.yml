@@ -1,4 +1,6 @@
 jvm_contracts:
+  - '.github/scripts/check_credentials.py'
+  - '.github/scripts/test_check_credentials.py'
   - 'server_boot_jvm/src/main/resources/application-consumer.yaml'
   - 'integrations/worker_proof_support/platform-runtime.yaml'
   - 'server_boot_jvm/src/main/resources/application.yaml'
@@ -29,6 +31,7 @@ jvm_contracts:
   - '.github/workflows/worker-loaded-recovery.yml'
   - '.github/scripts/prepare_external_release_load.py'
   - '.github/scripts/run_external_performance.py'
+  - '!integrations/worker-call-performance/observations/**'
   - 'build.gradle'
   - 'settings.gradle'
   - 'gradle.properties'

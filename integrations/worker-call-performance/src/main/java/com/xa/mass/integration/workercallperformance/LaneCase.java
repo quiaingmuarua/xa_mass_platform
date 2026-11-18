@@ -91,18 +91,8 @@ final class LaneCase {
             var sampling = new AtomicBoolean(true);
             long started = System.currentTimeMillis();
             summary.put("measurementStartedEpochMillis", started);
-            Thread sampler = Thread.ofVirtual().name("lane-worker-sampler").start(() -> {
-                while (sampling.get()) {
-                    try {
-                        workerSamples.add(sampleWorkers(api, world, System.currentTimeMillis() - started, coordinates.groups()));
-                        Thread.sleep(SAMPLE_INTERVAL_MILLIS);
-                    } catch (InterruptedException stopped) {
-                        return;
-                    } catch (Exception unavailable) {
-                        workerSamples.add(Map.of("offsetMillis", System.currentTimeMillis() - started, "unavailable", true));
-                    }
-                }
-            });
+            Thread sampler = startWorkerSampler(sampling, workerSamples, started,
+                    offset -> sampleWorkers(api, world, offset, coordinates.groups()));
             try {
                 measured = CallLoad.schedule(spec.rate(), MEASUREMENT_SECONDS, MAX_IN_FLIGHT, prefix + "-measured",
                         execution, sender(api, spec.path(), world, tasks, coordinates.groups()), stop);
@@ -272,6 +262,30 @@ final class LaneCase {
 
     private static long count(Map<String, Object> sample, String group, String state) {
         return ((Number) CallApi.object(sample.get(group)).getOrDefault(state, 0L)).longValue();
+    }
+
+    @FunctionalInterface
+    interface WorkerSampler { Map<String, Object> read(long offsetMillis) throws Exception; }
+
+    static Thread startWorkerSampler(AtomicBoolean sampling, List<Map<String, Object>> samples,
+                                     long started, WorkerSampler reader) {
+        return Thread.ofVirtual().name("lane-worker-sampler").start(() -> {
+            while (sampling.get()) {
+                try {
+                    samples.add(reader.read(System.currentTimeMillis() - started));
+                } catch (InterruptedException stopped) {
+                    return;
+                } catch (Exception unavailable) {
+                    samples.add(Map.of("offsetMillis", System.currentTimeMillis() - started, "unavailable", true));
+                }
+                try {
+                    // Failed observations use the same pace; interrupt must never enter another pause.
+                    Thread.sleep(SAMPLE_INTERVAL_MILLIS);
+                } catch (InterruptedException stopped) {
+                    return;
+                }
+            }
+        });
     }
 
     private static Map<String, Object> sampleWorkers(CallApi api, Map<String, List<String>> world, long offset,

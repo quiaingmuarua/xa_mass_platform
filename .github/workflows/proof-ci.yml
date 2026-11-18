@@ -18,7 +18,7 @@ concurrency:
 env:
   XA_MASS_PYTHON_EXECUTABLE: python3
   XA_MASS_REDIS_EPHEMERAL: "true"
-  XA_MASS_DISTRIBUTION_VERSION: "4.4.1"
+  XA_MASS_DISTRIBUTION_VERSION: "4.4.2"
 
 jobs:
   changes:
@@ -51,6 +51,8 @@ jobs:
           python3 .github/scripts/test_check_proof_selection.py
           python3 .github/scripts/check_proof_selection.py
           python3 .github/scripts/test_consumer_ci_gate.py
+          python3 .github/scripts/test_check_credentials.py
+          python3 .github/scripts/check_credentials.py
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             proof_base="$PR_BASE_SHA"
           elif [[ "$EVENT_NAME" == "push" && \

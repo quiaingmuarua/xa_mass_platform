@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from argparse import Namespace
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 import importlib.util
 import json
@@ -11,6 +11,7 @@ from pathlib import Path
 import signal
 import stat
 import tempfile
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -195,15 +196,339 @@ class RemoteLifecycleTest(unittest.TestCase):
         self.private = Path(self.temporary.name) / "private" / RUN
         self.root.mkdir(parents=True)
         self.private.mkdir(parents=True)
+        (self.root / "orchestrator.py").write_text("# local helper fixture")
         self.addCleanup(patch.stopall)
         patch.object(ORCHESTRATOR, "paths", return_value=(self.root, self.private)).start()
         patch.object(ORCHESTRATOR, "locked", side_effect=lambda _, **kwargs: nullcontext()).start()
         patch.object(ORCHESTRATOR, "user_environment", return_value={}).start()
+        patch.object(ORCHESTRATOR, "current_boot_id", return_value="fixture-boot").start()
+        patch.object(ORCHESTRATOR, "prepare_timer_status", return_value={"LoadState": "not-found", "ActiveState": "inactive"}).start()
 
     def write(self, name, value):
         target = self.root / name
         target.parent.mkdir(parents=True, exist_ok=True)
         ORCHESTRATOR.write_json(target, value)
+
+    def lease(self, *, expired=False, boot="fixture-boot"):
+        self.write("prepare-lease.json", {"runId": RUN, "ttlSeconds": 300, "armConfirmed": True,
+                   "bootId": boot, "expiresAtMonotonic": ORCHESTRATOR.time.monotonic() + (-1 if expired else 300)})
+
+    def envelope(self):
+        return {"deployment": configuration(), "tag": TAG, "commit": COMMIT, "serverTag": TAG,
+                "serverCommit": COMMIT, "workers": 5000, "repetitions": 1, "attempt": 1,
+                "budget": {"perCredential": 20000, "total": 30000, "reserved": 20}, "accessKey": ACCESS_KEY,
+                "gateway": {"keyId": "fixture-gateway", "secret": "private-gateway-secret"},
+                "kitSha256": "c" * 64, "consumption": {"tag": TAG}}
+
+    def prepare_patches(self):
+        return (patch.object(ORCHESTRATOR.os, "getuid", return_value=self.root.stat().st_uid, create=True),
+                patch.object(ORCHESTRATOR, "preflight", return_value={"connections": 10000}),
+                patch.object(ORCHESTRATOR, "extract_kit", return_value=(self.root / "kit", {"schemaVersion": 3})))
+
+    def test_preparation_timer_is_confirmed_before_keys_and_same_run_never_renews(self):
+        self.private.rmdir()
+        events = []
+
+        def systemd(command, **kwargs):
+            self.assertFalse(self.private.exists())
+            events.append(command)
+            return b""
+
+        identity, preflight, extract = self.prepare_patches()
+        with identity, preflight, extract, patch.object(ORCHESTRATOR, "call", side_effect=systemd), \
+                patch.object(ORCHESTRATOR, "prepare_timer_status", return_value={"LoadState": "loaded", "ActiveState": "active",
+                             "Unit": ORCHESTRATOR.prepare_cleanup_name(RUN, "service")}), \
+                patch.object(ORCHESTRATOR, "unit_status", return_value={"LoadState": "not-found"}):
+            self.assertEqual("prepared", ORCHESTRATOR.remote_prepare(RUN, self.envelope())["state"])
+            original = (self.root / "prepare-lease.json").read_bytes()
+            self.assertEqual("prepared", ORCHESTRATOR.remote_prepare(RUN, self.envelope())["state"])
+            self.assertEqual(original, (self.root / "prepare-lease.json").read_bytes())
+        self.assertEqual(1, len(events))
+        command = events[0]
+        for option in ("--on-active=300s", "--timer-property=AccuracySec=1s", "--property=TimeoutStartSec=120s",
+                       "--unit=" + ORCHESTRATOR.prepare_cleanup_name(RUN, "service"), "expire-preparation"):
+            self.assertIn(option, command)
+        self.assertNotIn(ACCESS_KEY, " ".join(command))
+        self.assertNotIn("private-gateway-secret", " ".join(command))
+        self.assertTrue(ORCHESTRATOR.read_json(self.root / "prepare-lease.json")["armConfirmed"])
+        self.assertEqual(ACCESS_KEY, (self.private / "access-key.txt").read_text().strip())
+
+    def test_lost_timer_ack_writes_no_keys_and_does_not_retry_arming(self):
+        self.private.rmdir()
+        identity, preflight, extract = self.prepare_patches()
+        with identity, preflight, extract, \
+                patch.object(ORCHESTRATOR, "call", side_effect=ORCHESTRATOR.Failure("lost timer acknowledgement")) as systemd:
+            with self.assertRaises(ORCHESTRATOR.Failure):
+                ORCHESTRATOR.remote_prepare(RUN, self.envelope())
+            self.assertEqual("unknown", ORCHESTRATOR.remote_prepare(RUN, self.envelope())["state"])
+        self.assertEqual(1, systemd.call_count)
+        self.assertFalse(self.private.exists())
+        self.assertFalse((self.root / "state.json").exists())
+        self.assertFalse(ORCHESTRATOR.read_json(self.root / "prepare-lease.json")["armConfirmed"])
+
+    def test_unarmed_timer_after_ack_is_rejected_before_private_input(self):
+        self.private.rmdir()
+        identity, preflight, extract = self.prepare_patches()
+        with identity, preflight, extract, patch.object(ORCHESTRATOR, "call", return_value=b""):
+            with self.assertRaisesRegex(ORCHESTRATOR.Failure, "timer was not confirmed"):
+                ORCHESTRATOR.remote_prepare(RUN, self.envelope())
+        self.assertFalse(self.private.exists())
+        self.assertFalse((self.root / "deployment.json").exists())
+
+    def test_expired_preparation_removes_keys_and_fences_late_start_without_replaying(self):
+        self.lease(expired=True)
+        self.write("state.json", {"repetitions": 1})
+        (self.private / "access-key.txt").write_text(ACCESS_KEY)
+        (self.private / "gateway.json").write_text("private-gateway-secret")
+        with patch.object(ORCHESTRATOR, "unit_status", return_value={"LoadState": "not-found"}), \
+                patch.object(ORCHESTRATOR, "call") as systemd:
+            self.assertEqual("expired", ORCHESTRATOR.remote_expire_preparation(RUN)["outcome"])
+            receipt = ORCHESTRATOR.read_json(self.root / "receipt.json")
+            self.assertEqual("cancelled", receipt["status"])
+            self.assertEqual("prepare-expired", receipt["stopReason"])
+            self.assertTrue(receipt["privateInputsRemoved"])
+            self.assertEqual(receipt, ORCHESTRATOR.remote_start(RUN)["receipt"])
+            self.assertEqual("already-finished", ORCHESTRATOR.remote_expire_preparation(RUN)["outcome"])
+            self.assertEqual(receipt, ORCHESTRATOR.read_json(self.root / "receipt.json"))
+        systemd.assert_not_called()
+        self.assertFalse(list(self.private.iterdir()))
+        self.assertTrue((self.root / "stop-request.json").exists())
+
+    def test_late_start_checks_expiry_even_before_the_timer_handler_runs(self):
+        self.lease(expired=True)
+        self.write("state.json", {"repetitions": 1})
+        with patch.object(ORCHESTRATOR, "unit_status", return_value={"LoadState": "not-found"}), \
+                patch.object(ORCHESTRATOR, "call") as systemd:
+            receipt = ORCHESTRATOR.remote_start(RUN)["receipt"]
+        self.assertEqual("prepare-expired", receipt["stopReason"])
+        self.assertFalse((self.root / "start-request.json").exists())
+        systemd.assert_not_called()
+
+    def test_a_previously_queued_unit_cannot_execute_after_preparation_expiry(self):
+        self.lease(expired=True)
+        self.write("state.json", {"repetitions": 1})
+        self.write("start-request.json", {"runId": RUN})
+        with patch.object(ORCHESTRATOR, "unit_status", return_value={"LoadState": "not-found"}):
+            ORCHESTRATOR.remote_expire_preparation(RUN)
+        receipt = (self.root / "receipt.json").read_bytes()
+        with patch.object(ORCHESTRATOR.subprocess, "Popen") as process:
+            self.assertEqual(1, ORCHESTRATOR.remote_execute(RUN))
+        process.assert_not_called()
+        self.assertEqual(receipt, (self.root / "receipt.json").read_bytes())
+
+    def test_expiry_snapshot_and_queued_execute_spawn_share_the_control_lock(self):
+        self.lease(expired=True)
+        self.write("state.json", {"repetitions": 1, "kitRoot": str(self.root / "kit")})
+        self.write("start-request.json", {"runId": RUN})
+        (self.private / "access-key.txt").write_text(ACCESS_KEY)
+        control_lock, performance_lock = threading.Lock(), threading.Lock()
+        execute_waiting = threading.Event()
+        snapshot_returned = False
+        observations, results, failures, global_waits = {}, [], [], []
+
+        def execute():
+            try:
+                results.append(ORCHESTRATOR.remote_execute(RUN))
+            except BaseException as error:
+                failures.append(type(error).__name__)
+
+        worker = threading.Thread(target=execute, name="queued-execute-race")
+
+        @contextmanager
+        def serialized(path, *, wait_seconds=0):
+            if path.name == "performance.lock":
+                global_waits.append(wait_seconds)
+                acquired = performance_lock.acquire(blocking=False)
+                target = performance_lock
+            else:
+                if threading.current_thread() is worker:
+                    execute_waiting.set()
+                target = control_lock
+                acquired = target.acquire(timeout=3) if wait_seconds else target.acquire(blocking=False)
+            if not acquired:
+                raise ORCHESTRATOR.Failure("Fixture lock unavailable")
+            try:
+                yield
+            finally:
+                target.release()
+
+        def snapshot(_):
+            nonlocal snapshot_returned
+            snapshot_returned = True
+            return {"LoadState": "not-found"}
+
+        original_write = ORCHESTRATOR.write_json
+        child = Mock(returncode=0)
+        child.poll.return_value = 0
+        with patch.object(ORCHESTRATOR, "locked", side_effect=serialized), \
+                patch.object(ORCHESTRATOR, "unit_status", side_effect=snapshot), \
+                patch.object(ORCHESTRATOR.signal, "signal", return_value=None), \
+                patch.object(ORCHESTRATOR.subprocess, "Popen", return_value=child) as process:
+            def write(path, value, **kwargs):
+                if path.name == "prepare-expired.json":
+                    # Activate execute after the not-found snapshot returned, before expiry writes its fence.
+                    self.assertTrue(snapshot_returned)
+                    self.assertFalse((self.root / "stop-request.json").exists())
+                    worker.start()
+                    self.assertTrue(execute_waiting.wait(3))
+                    observations["spawnedBeforeFence"] = process.called
+                return original_write(path, value, **kwargs)
+
+            try:
+                with patch.object(ORCHESTRATOR, "write_json", side_effect=write):
+                    result = ORCHESTRATOR.remote_expire_preparation(RUN)
+            finally:
+                worker.join(3)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual("expired", result["outcome"])
+            self.assertFalse(observations["spawnedBeforeFence"])
+            process.assert_not_called()
+        self.assertEqual([], failures)
+        self.assertEqual([1], results)
+        self.assertEqual([0], global_waits)
+        self.assertFalse((self.private / "access-key.txt").exists())
+        self.assertEqual("prepare-expired", ORCHESTRATOR.read_json(self.root / "receipt.json")["stopReason"])
+
+    def test_execute_holds_control_for_spawn_but_releases_it_before_waiting_for_runner(self):
+        self.write("state.json", {"repetitions": 1, "kitRoot": str(self.root / "kit")})
+        self.write("start-request.json", {"runId": RUN})
+        depth, global_waits = 0, []
+
+        @contextmanager
+        def serialized(path, *, wait_seconds=0):
+            nonlocal depth
+            if path.name == "control.lock":
+                depth += 1
+            else:
+                global_waits.append(wait_seconds)
+            try:
+                yield
+            finally:
+                if path.name == "control.lock":
+                    depth -= 1
+
+        child = Mock(returncode=0)
+
+        def poll():
+            self.assertEqual(0, depth)
+            return 0
+
+        child.poll.side_effect = poll
+
+        def spawn(*args, **kwargs):
+            self.assertEqual(1, depth)
+            self.write("result/evidence/lane-summary.json", {"status": "passed"})
+            return child
+
+        with patch.object(ORCHESTRATOR, "locked", side_effect=serialized), \
+                patch.object(ORCHESTRATOR.signal, "signal", return_value=None), \
+                patch.object(ORCHESTRATOR.subprocess, "Popen", side_effect=spawn):
+            self.assertEqual(0, ORCHESTRATOR.remote_execute(RUN))
+        self.assertEqual([0], global_waits)
+        self.assertEqual(0, depth)
+
+    def test_private_input_removal_failure_never_claims_successful_expiry_cleanup(self):
+        self.lease(expired=True)
+        key = self.private / "access-key.txt"
+        key.write_text(ACCESS_KEY)
+        unlink = Path.unlink
+
+        def remove(path, *args, **kwargs):
+            if path == key:
+                raise PermissionError("private removal rejected")
+            return unlink(path, *args, **kwargs)
+
+        with patch.object(ORCHESTRATOR, "unit_status", return_value={"LoadState": "not-found"}), \
+                patch.object(Path, "unlink", remove):
+            result = ORCHESTRATOR.remote_expire_preparation(RUN)
+        self.assertEqual("unconfirmed", result["outcome"])
+        self.assertFalse(result["privateInputsRemoved"])
+        self.assertEqual("PrivateInputRemoval", result["failureType"])
+        self.assertTrue(key.is_file())
+
+    def test_expiry_and_timer_stop_failure_preserve_an_existing_successful_receipt(self):
+        self.lease(expired=True)
+        self.write("receipt.json", {"status": "passed", "privateInputsRemoved": True})
+        original = (self.root / "receipt.json").read_bytes()
+        with patch.object(ORCHESTRATOR, "prepare_timer_status", return_value={"LoadState": "loaded", "ActiveState": "active"}), \
+                patch.object(ORCHESTRATOR, "unit_status", side_effect=AssertionError("A final receipt must be authoritative")), \
+                patch.object(ORCHESTRATOR, "call", side_effect=ORCHESTRATOR.Failure("timer stop not confirmed")):
+            self.assertEqual("already-finished", ORCHESTRATOR.remote_expire_preparation(RUN)["outcome"])
+        self.assertEqual(original, (self.root / "receipt.json").read_bytes())
+        self.assertFalse(ORCHESTRATOR.read_json(self.root / "prepare-cleanup.json")["timerStopped"])
+
+    def test_expiry_leaves_the_actual_running_unit_in_charge_after_lost_start_ack(self):
+        self.lease(expired=True)
+        self.write("state.json", {"repetitions": 1})
+        self.write("start-request.json", {"runId": RUN})
+        (self.private / "access-key.txt").write_text(ACCESS_KEY)
+        with patch.object(ORCHESTRATOR, "unit_status", return_value={"LoadState": "loaded", "ActiveState": "activating", "SubState": "start"}), \
+                patch.object(ORCHESTRATOR, "call") as systemd:
+            self.assertEqual("handed-off", ORCHESTRATOR.remote_expire_preparation(RUN)["outcome"])
+        self.assertTrue((self.private / "access-key.txt").is_file())
+        self.assertFalse((self.root / "stop-request.json").exists())
+        self.assertFalse((self.root / "receipt.json").exists())
+        systemd.assert_not_called()
+
+    def test_cross_boot_lease_stays_unknown_without_restart_or_false_expiration(self):
+        self.lease(boot="previous-boot")
+        self.write("state.json", {"repetitions": 1})
+        with patch.object(ORCHESTRATOR, "call") as systemd:
+            self.assertEqual("unknown", ORCHESTRATOR.remote_status(RUN)["state"])
+            with self.assertRaisesRegex(ORCHESTRATOR.Failure, "another boot"):
+                ORCHESTRATOR.remote_start(RUN)
+            self.assertEqual("unconfirmed", ORCHESTRATOR.remote_expire_preparation(RUN)["outcome"])
+        self.assertFalse((self.root / "start-request.json").exists())
+        self.assertFalse((self.root / "prepare-expired.json").exists())
+        self.assertFalse((self.root / "receipt.json").exists())
+        systemd.assert_not_called()
+        public = ORCHESTRATOR.remote_collect(RUN)
+        self.assertNotIn("previous-boot", json.dumps(public))
+        self.assertNotIn("expiresAtMonotonic", json.dumps(public))
+
+    def test_guard_lock_failure_records_unconfirmed_without_claiming_key_removal(self):
+        self.lease(expired=True)
+        (self.private / "access-key.txt").write_text(ACCESS_KEY)
+        with patch.object(ORCHESTRATOR, "locked", side_effect=ORCHESTRATOR.Failure("control lock unavailable")):
+            self.assertEqual("unconfirmed", ORCHESTRATOR.remote_expire_preparation(RUN)["outcome"])
+        self.assertTrue((self.private / "access-key.txt").exists())
+        self.assertFalse((self.root / "receipt.json").exists())
+        failure = ORCHESTRATOR.read_json(self.root / "prepare-cleanup-failure.json")
+        self.assertEqual("unconfirmed", failure["outcome"])
+        self.assertNotIn(ACCESS_KEY, json.dumps(failure))
+
+    def test_cancel_stops_only_current_campaign_and_timer_outside_the_control_lock(self):
+        self.lease()
+        self.write("state.json", {"repetitions": 1})
+        self.write("start-request.json", {"runId": RUN})
+        state = {"LoadState": "loaded", "ActiveState": "active"}
+        depth = 0
+
+        @contextmanager
+        def control(path, **kwargs):
+            nonlocal depth
+            depth += 1
+            try:
+                yield
+            finally:
+                depth -= 1
+
+        def stop(command, **kwargs):
+            self.assertEqual(0, depth)
+            if command[-1] == ORCHESTRATOR.unit_name(RUN):
+                state["ActiveState"] = "inactive"
+            return b""
+
+        with patch.object(ORCHESTRATOR, "locked", side_effect=control), \
+                patch.object(ORCHESTRATOR, "unit_status", side_effect=lambda _: dict(state)), \
+                patch.object(ORCHESTRATOR, "prepare_timer_status", return_value={"LoadState": "loaded", "ActiveState": "active"}), \
+                patch.object(ORCHESTRATOR, "call", side_effect=stop) as systemd:
+            receipt = ORCHESTRATOR.remote_stop(RUN)["receipt"]
+            self.assertEqual("cancelled", receipt["status"])
+            self.assertEqual(receipt, ORCHESTRATOR.remote_stop(RUN)["receipt"])
+        self.assertEqual([ORCHESTRATOR.unit_name(RUN), ORCHESTRATOR.prepare_cleanup_name(RUN)],
+                         [call.args[0][-1] for call in systemd.call_args_list])
+        self.assertTrue(ORCHESTRATOR.read_json(self.root / "prepare-cleanup.json")["timerStopped"])
 
     def test_start_marker_prevents_second_systemd_start_after_lost_ack(self):
         self.write("state.json", {"repetitions": 1})

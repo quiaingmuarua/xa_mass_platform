@@ -2,6 +2,16 @@
   "schemaVersion": 1,
   "cases": [
     {
+      "path": ".github/scripts/check_credentials.py",
+      "lanes": ["jvm_contracts"],
+      "reason": "The lightweight current-tree credential guard is tested before lane selection; its changes retain the existing JVM contract lane."
+    },
+    {
+      "path": "integrations/worker-call-performance/observations/external/2026-11-18.json",
+      "lanes": [],
+      "reason": "Dated sanitized observations are existing evidence, not a new execution or a change to the Performance workload; current documentation is checked by Docs Contract."
+    },
+    {
       "path": "doc/guide/index.md",
       "lanes": [],
       "reason": "Guide prose is built and link-checked by the always-running Docs Contract."

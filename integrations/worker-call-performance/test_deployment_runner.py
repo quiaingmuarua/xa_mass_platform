@@ -5,6 +5,8 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -76,8 +78,120 @@ class DeploymentRunnerTest(unittest.TestCase):
             self.assertEqual(["a", "b"], json.loads(sent.data))
             self.assertTrue(key.is_file())
             with patch.object(runner, "deployment_open", return_value=io.BytesIO(b'{"statesByWorkerId":{}}')):
-                with self.assertRaisesRegex(RuntimeError, "identity set"):
-                    runner.observe_deployment_disconnect(config, ["a"])
+                mismatch = runner.observe_deployment_disconnect(config, ["a"])
+            self.assertEqual("unconfirmed", mismatch["status"])
+            self.assertEqual({"identity-set-mismatch": 1}, mismatch["observation"]["errorTypes"])
+            self.assertEqual(0, mismatch["observation"]["observedIdentityCount"])
+
+    def test_cleanup_bounds_eight_parallel_pages_and_merges_out_of_order_exact_coverage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.cleanup_config(directory)
+            identities = ["worker-" + str(i) for i in range(1001)]
+            lock, first_wave, later = threading.Lock(), threading.Barrier(8, timeout=3), threading.Event()
+            active, maximum, requests = 0, 0, []
+
+            def observe(request, *, timeout):
+                nonlocal active, maximum
+                page = json.loads(request.data)
+                self.assertLessEqual(len(page), 100)
+                self.assertGreater(timeout, 0)
+                self.assertLessEqual(timeout, 5)
+                with lock:
+                    active += 1
+                    maximum = max(maximum, active)
+                    requests.append(page)
+                    order = len(requests)
+                try:
+                    if order <= 8:
+                        first_wave.wait()
+                    if page[0] == "worker-0":
+                        self.assertTrue(later.wait(3))
+                    else:
+                        later.set()
+                    return io.BytesIO(json.dumps({"statesByWorkerId": {identity: "disconnected" for identity in reversed(page)}}).encode())
+                finally:
+                    with lock:
+                        active -= 1
+
+            with patch.object(runner, "deployment_open", side_effect=observe):
+                result = runner.observe_deployment_disconnect(config, identities)
+            self.assertEqual("confirmed", result["status"])
+            self.assertEqual(8, maximum)
+            self.assertEqual(11, len(requests))
+            self.assertEqual(set(identities), {identity for page in requests for identity in page})
+            self.assertEqual(1001, result["states"]["disconnected"])
+            self.assertTrue(result["observation"]["complete"])
+            self.assertEqual(11, result["observation"]["completedPages"])
+
+    def test_cleanup_deadline_returns_without_waiting_for_or_accepting_late_pages(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.cleanup_config(directory)
+            release, finished = threading.Event(), threading.Event()
+            started = []
+
+            def delayed(request, *, timeout):
+                started.append(json.loads(request.data))
+                release.wait(3)
+                finished.set()
+                return io.BytesIO(json.dumps({"statesByWorkerId": {identity: "disconnected" for identity in started[0]}}).encode())
+
+            try:
+                with patch.object(runner, "deployment_open", side_effect=delayed):
+                    before = time.monotonic()
+                    result = runner.observe_deployment_disconnect(config, ["only-owned-worker"], seconds=.05)
+                    elapsed = time.monotonic() - before
+                    self.assertLess(elapsed, 1)
+                    self.assertEqual("unconfirmed", result["status"])
+                    self.assertTrue(result["observation"]["deadlineExpired"])
+                    self.assertEqual(0, result["observation"]["completedPages"])
+                    self.assertFalse(result["observation"]["complete"])
+                    snapshot = json.dumps(result, sort_keys=True)
+                    release.set()
+                    self.assertTrue(finished.wait(3))
+                    self.assertEqual(snapshot, json.dumps(result, sort_keys=True))
+            finally:
+                release.set()
+
+    def test_cleanup_expired_budget_issues_no_pages_and_partial_errors_are_safe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.cleanup_config(directory)
+            with patch.object(runner, "deployment_open") as observe:
+                result = runner.observe_deployment_disconnect(config, ["owned"], seconds=0)
+            observe.assert_not_called()
+            self.assertTrue(result["observation"]["deadlineExpired"])
+            private = "private-transport-detail-and-worker-identity"
+
+            def fail_page(request, *, timeout):
+                page = json.loads(request.data)
+                if page[0] == "worker-100":
+                    raise runner.urllib.error.URLError(private)
+                return io.BytesIO(json.dumps({"statesByWorkerId": {identity: "unknown" for identity in page}}).encode())
+
+            with patch.object(runner, "deployment_open", side_effect=fail_page):
+                result = runner.observe_deployment_disconnect(config, ["worker-" + str(i) for i in range(201)])
+            self.assertEqual("unconfirmed", result["status"])
+            self.assertEqual(1, result["observation"]["errorTypes"]["URLError"])
+            self.assertLess(result["observation"]["completedPages"], 3)
+            self.assertFalse(result["observation"]["complete"])
+            self.assertNotIn(private, json.dumps(result))
+            self.assertNotIn("xak_private_test_key", json.dumps(result))
+
+    def test_cleanup_does_not_carry_disconnected_evidence_between_scans(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.cleanup_config(directory)
+            responses = [io.BytesIO(json.dumps({"statesByWorkerId": {"a": "connected", "b": "disconnected"}}).encode()),
+                         io.BytesIO(json.dumps({"statesByWorkerId": {"a": "disconnected", "b": "unknown"}}).encode())]
+            with patch.object(runner, "deployment_open", side_effect=responses), patch.object(runner.time, "sleep"):
+                result = runner.observe_deployment_disconnect(config, ["a", "b"])
+            self.assertEqual("confirmed", result["status"])
+            self.assertEqual({"disconnected": 1, "unknown": 1}, result["states"])
+            self.assertEqual(2, result["observation"]["scanCount"])
+
+    @staticmethod
+    def cleanup_config(directory):
+        key = Path(directory) / "key.txt"
+        key.write_text("xak_private_test_key")
+        return {"accessKeyFile": str(key), "runtimeUrl": "https://runtime.example", "endpointManager": "public"}
 
     def test_authenticated_cleanup_does_not_follow_redirects(self):
         handler = runner.DeploymentNoRedirect()
