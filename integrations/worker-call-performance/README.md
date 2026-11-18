@@ -222,6 +222,10 @@ budget: 180 seconds within the single-Task check budget of `10 x B` Items/s,
 otherwise `120 + accepted / (10 x B)` seconds. An observed failed Result is not
 success; this finite fault-free oracle is not a replay guarantee.
 
+Each open case writes its request prefix before offering load and retains both
+warmup and measured request samples. A failed warmup therefore retains request
+identities for diagnosis; none of these records authorize resubmission.
+
 ## Metrics And Attribution
 
 Open cases retain their response-success ratio, eventual completions per offered

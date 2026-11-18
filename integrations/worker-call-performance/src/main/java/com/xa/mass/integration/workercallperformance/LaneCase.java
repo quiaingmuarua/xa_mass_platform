@@ -75,6 +75,9 @@ final class LaneCase {
             var world = LaneWorld.readWorld(java.nio.file.Path.of(options.get("--world")), coordinates);
             var tasks = LaneWorld.readTasks(java.nio.file.Path.of(options.get("--world")), coordinates);
             String prefix = UUID.randomUUID().toString();
+            // Keep the planned request identity even if this process stops before its final summary.
+            Files.writeString(output.resolve("request-prefix.txt"), prefix + "\n", StandardOpenOption.CREATE_NEW);
+            summary.put("requestPrefix", prefix);
             summary.put("stage", "warmup");
             warmup = CallLoad.schedule(WARMUP_RATE, WARMUP_SECONDS, MAX_IN_FLIGHT, prefix + "-warmup", execution,
                     sender(api, spec.path(), world, tasks, coordinates.groups()));
@@ -146,7 +149,10 @@ final class LaneCase {
             summary.put("invalidReasons", invalid);
             summary.put("workerSamples", workerSamples);
             summary.put("leaseHeldPeakRatio", leaseHeldPeakRatio(workerSamples, coordinates.workersPerGroup(), coordinates.groups()));
-            if (warmup != null) summary.put("warmup", warmup.responseSummary());
+            if (warmup != null) {
+                summary.put("warmup", warmup.responseSummary());
+                writeSamples(output.resolve("warmup-samples.jsonl"), warmup);
+            }
             if (measured != null) {
                 var metrics = measured.summary();
                 metrics.remove("unresolvedAcceptedIds");
