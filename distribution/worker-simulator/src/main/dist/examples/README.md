@@ -25,6 +25,10 @@ explicit process ceilings, not allocations or minimum requirements.
 The Host's control listener remains loopback-only. Retain the configured sandbox
 across service and Release restarts so that the same inventory coordinates are
 reused; Server-issued IDs also depend on the Runtime retaining its identity state.
+The example uses `/var/lib/xa-mass-worker/persistent-20/data/scenario-workers`:
+the final `data/scenario-workers` segments are required by the Host's owned-root
+validation. A parent such as `/var/lib/xa-mass-worker/persistent-20` is not a valid
+`sandboxRoot`, even when its permissions allow writes.
 Credential changes take effect after an explicit Host restart. Keep the inventory,
 credential and logs outside the immutable kit.
 

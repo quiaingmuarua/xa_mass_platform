@@ -1,7 +1,7 @@
 {
   "runtimeApiBaseUrl": "https://workers.example.com",
   "gatewayCredentialFile": "./private/worker-access.json",
-  "sandboxRoot": "/var/lib/xa-mass-worker/persistent-20",
+  "sandboxRoot": "/var/lib/xa-mass-worker/persistent-20/data/scenario-workers",
   "controlPort": 18600,
   "workerGroups": {
     "persistent-java-workers": {
