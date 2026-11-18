@@ -117,6 +117,7 @@ class Deployment:
     worker_request_burst: int = 30
     admin_requests_per_second: int = 30
     admin_request_burst: int = 60
+    http2_max_concurrent_streams: int = 128
 
     def __post_init__(self) -> None:
         for name in ("admin_host", "worker_host"):
@@ -132,7 +133,7 @@ class Deployment:
             raise ValueError("the four ports must be distinct integers in 1..65535")
         for name in ("worker_processes", "worker_connections", "worker_connection_limit",
                      "worker_total_connection_limit", "worker_requests_per_second", "worker_request_burst",
-                     "admin_requests_per_second", "admin_request_burst"):
+                     "admin_requests_per_second", "admin_request_burst", "http2_max_concurrent_streams"):
             value = getattr(self, name)
             if type(value) is not int or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
@@ -218,6 +219,7 @@ pid {config.state_directory}/nginx.pid;
 error_log {config.state_directory}/error.log warn;
 events {{ worker_connections {config.worker_connections}; }}
 http {{
+    http2_max_concurrent_streams {config.http2_max_concurrent_streams};
     server_tokens off;
     map_hash_bucket_size 512;
     server_names_hash_bucket_size 512;
@@ -285,13 +287,13 @@ http {{
         location / {{ return 404; }}
     }}
     server {{
-        listen {config.listen_host}:{config.https_port} ssl default_server;
+        listen {config.listen_host}:{config.https_port} ssl http2 default_server;
         server_name _;
         {tls}
         return 404;
     }}
     server {{
-        listen {config.listen_host}:{config.https_port} ssl;
+        listen {config.listen_host}:{config.https_port} ssl http2;
         server_name {config.admin_host};
         {tls}
         if ($unsafe_path) {{ return 400; }}
@@ -303,7 +305,7 @@ http {{
         }}
     }}
     server {{
-        listen {config.listen_host}:{config.https_port} ssl;
+        listen {config.listen_host}:{config.https_port} ssl http2;
         server_name {config.worker_host};
         {tls}
         auth_basic "XA Mass staging Worker Hosts";

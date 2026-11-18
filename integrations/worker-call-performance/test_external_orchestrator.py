@@ -721,6 +721,7 @@ class InputsAndProjectionTest(unittest.TestCase):
                "resourcePeaks": {"host": {"rssBytes": 123456}},
                "runnerFailure": "read " + PRIVATE_PATH + " with " + ACCESS_KEY,
                "cases": [{"case": "task-any-2000", "status": "invalid", "workerSamples": 10000,
+                          "httpVersions": {"HTTP_2": 96},
                           "invalidReasons": ["worker-observation-unavailable"], "generatorLimited": True,
                           "acceptedResultsAfterDrain": {"succeeded": 3476, "failed": 2, "not_observed": 0},
                           "metrics": {"unknownSubmissions": 11764, "clientTimeouts": 96, "http429": 11668,
@@ -733,6 +734,7 @@ class InputsAndProjectionTest(unittest.TestCase):
         self.assertEqual("invalid", public["status"])
         self.assertEqual("invalid", row["status"])
         self.assertEqual(10000, row["workerSamples"])
+        self.assertEqual({"HTTP_2": 96}, row["httpVersions"])
         self.assertEqual(96, row["metrics"]["clientTimeouts"])
         self.assertEqual(11764, row["metrics"]["unknownSubmissions"])
         self.assertEqual(11668, row["metrics"]["http429"])
@@ -770,6 +772,33 @@ class InputsAndProjectionTest(unittest.TestCase):
         self.assertEqual(1, evidence["phases"]["innerWarmup"]["samples"])
         self.assertEqual(4, len(evidence["cases"]))
         self.assertNotIn(WORKER_ID, json.dumps(evidence))
+
+    def test_sample_timeout_projection_keeps_safe_phase_without_diagnostic_text(self):
+        rows = [{"sentOffsetMillis": 0, "httpStatus": 0, "outcome": "unknown", "detail": "client-timeout",
+                 "timeoutPhase": phase, "exceptionType": exception, "messageId": WORKER_ID,
+                 "exceptionMessage": ACCESS_KEY}
+                for phase, exception in (("connect-tls", "HttpConnectTimeoutException"),
+                                         ("before-headers", "TimeoutException"),
+                                         ("response-body", "TimeoutException"),
+                                         (WORKER_ID, ACCESS_KEY))]
+        rows.append({"sentOffsetMillis": 1, "httpStatus": 200, "outcome": "succeeded",
+                     "httpVersion": "HTTP_2", "messageId": WORKER_ID, "observedResult": "succeeded"})
+        with tempfile.TemporaryDirectory() as temporary:
+            result = Path(temporary)
+            target = result / "evidence/harness/r1/direct-2000/samples.jsonl"
+            target.parent.mkdir(parents=True)
+            target.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+            evidence = ORCHESTRATOR.sample_counts(result)
+        totals = evidence["totals"]
+        self.assertEqual(4, totals["clientTimeouts"])
+        self.assertEqual(4, totals["sentHttp0Unknown"])
+        self.assertEqual(1, totals["httpVersion:HTTP_2"])
+        for phase in ("connect-tls", "before-headers", "response-body", "unclassified"):
+            self.assertEqual(1, totals["timeoutPhase:" + phase])
+        self.assertEqual(2, totals["exceptionType:TimeoutException"])
+        self.assertEqual(1, totals["exceptionType:other"])
+        for private in (WORKER_ID, ACCESS_KEY, "exceptionMessage"):
+            self.assertNotIn(private, json.dumps(evidence))
 
 
 if __name__ == "__main__":

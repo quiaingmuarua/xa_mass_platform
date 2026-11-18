@@ -66,6 +66,14 @@ provision their htpasswd file outside the artifact. Never pass real passwords on
 command lines or include them in proof summaries, payloads, Worker Properties or URLs.
 
 The Runtime HTTP and Adapter listeners stay on `127.0.0.1`; Redis remains private.
+Nginx must include `--with-http_v2_module` and TLS ALPN support; check the installed
+build with `nginx -V`. The renderer uses `listen ... ssl http2`, which works on
+Nginx 1.24; the newer `http2 on` syntax requires 1.25.1 or later. Every TLS virtual
+host on the shared address uses the same listener options, so both administrator
+and Worker hostnames can negotiate HTTP/2 for ordinary HTTP requests. HTTP/1.1
+remains available. WebSockets retain the HTTP/1.1 Upgrade path; HTTP/2 extended
+CONNECT is not enabled. Nginx still proxies to Runtime and Adapter using HTTP/1.1;
+enabling the public protocol requires no upstream protocol or Worker event change.
 Set the WebSocket public endpoint to
 `wss://workers-staging.xamass.net/api/v1/worker-delivery/websocket`.
 Adapter-to-Runtime HTTP continues to use its internal loopback address.
@@ -104,6 +112,7 @@ boolean, string, fraction or null).
 | `worker_request_burst` | 30 | Excess Worker requests admitted immediately by the rate limiter |
 | `admin_requests_per_second` | 30 | Administrator HTTP requests per source IP per second |
 | `admin_request_burst` | 60 | Excess administrator requests admitted immediately by the rate limiter |
+| `http2_max_concurrent_streams` | 128 | Concurrent HTTP/2 request streams per client connection, shared by the TLS virtual hosts |
 
 `worker_connection_limit` must not exceed `worker_total_connection_limit`. Connection
 and rate-limit zones remain shared across Nginx processes; starting more processes
@@ -112,6 +121,18 @@ limits for the actual deployment, accounting for proxied connections using clien
 and upstream sockets. The renderer does not change systemd limits or assert that the
 Runtime, host or network can sustain the selected capacity. These are deployment
 controls, not Kernel scheduling or XA Mass Worker limits.
+
+The HTTP/2 stream ceiling is independent of request-rate and WSS admission limits.
+Keep its explicit budget large enough for a caller's in-flight HTTP requests and
+concurrent observation requests: for example, 4,096 offered calls plus eight
+observation pages fit an explicit value of 8,192. A JDK HTTP client can reject a
+request when its peer's stream ceiling is reached; preferring HTTP/2 alone does not
+remove that bound. Multiplexing reduces public TCP/TLS connections, while concurrent
+proxied requests still consume upstream sockets and request memory. Neither a
+larger stream budget nor successful protocol negotiation establishes application
+throughput. HTTP/1.1 fallback remains a client transport behavior, not an alternative
+authentication path. Nginx's existing keepalive request limit and GOAWAY lifecycle
+continue to apply.
 
 Bodies remain limited to 16 MiB. WSS retains a 1-hour idle read/send timeout.
 The public WebSocket location authenticates first, then `try_files`
@@ -144,7 +165,8 @@ The deterministic tests run from source with:
 python -m unittest discover -s distribution/server/src/test/python -p test_staging_ingress.py
 ```
 
-The Linux proof requires `nginx`, `openssl` and Python 3.10+. It creates a private CA
+The Linux proof requires HTTP/2-enabled `nginx`, `openssl`, JDK 21 and Python 3.10+.
+It creates a private CA
 and a localhost/IP SAN certificate, verifies TLS normally, and runs only its own
 Nginx and loopback mock upstream processes. It requires neither Redis nor an external
 DNS/server. From source:
@@ -158,7 +180,13 @@ fixture keys/configuration/logs live in an owned temporary directory that is rem
 after stopping its processes, including on failure. The proof checks routing,
 Worker credentials, administrator key forwarding and stripping, request filtering,
 body/rate/connection limits (default and small configured values), no retry, revocation
-and restart. One unchanged raw WSS connection also stays silent for 65 seconds and then
+and restart. Its JDK client verifies negotiated HTTP/2 with the test CA, witnesses
+the default 128-stream boundary, exceeds 128 simultaneous streams under an explicit
+custom stream budget, and crosses Nginx's default 1,000-request keepalive boundary
+with POST requests checked for missing or duplicate upstream delivery. An HTTP/1.1-only
+TLS control checks native client fallback. The proof retains Bearer forwarding,
+Worker Basic separation and route refusals. One unchanged raw HTTP/1.1 WSS connection
+also stays silent for 65 seconds and then
 echoes a frame; no heartbeat or SDK reconnect can mask the default 60-second proxy
 timeout. This bounded witness does not measure the full configured one-hour idle limit.
 It is not evidence of Worker execution. The Runtime Distribution caller may

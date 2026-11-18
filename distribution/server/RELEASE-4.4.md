@@ -1,12 +1,50 @@
 # XA Mass 4.4 release and upgrade contract
 
-Status: version-scoped 4.4 contract. 4.4.2 is published and the Ali consumers have
-been updated; GCP Runtime remains 4.4.0. The new 10k campaign and automatic
+Status: version-scoped 4.4 contract. 4.4.3 is the next consumer/ingress patch;
+publication and its public acceptance are pending. 4.4.2 is published and the Ali
+consumers have been updated; GCP Runtime remains 4.4.0. The 4.4.2 campaign and automatic
 cleanup completed, and the bounded 75-minute idle and single controlled
 fault/reconnect acceptance passed on 2026-11-18.
 Published artifacts remain immutable.
 Actual installation and acceptance status belongs to host records and
 [dated evidence](../../doc/guide/capabilities.md#external-public-closeout), not a live claim here.
+
+## 4.4.3 Performance transport patch
+
+The common Performance HTTP client prefers HTTP/2 with the JDK's HTTP/1.1
+fallback. The staging renderer enables HTTP/2 on TLS listeners; WSS retains
+its existing HTTP/1.1 Upgrade path. The optional positive integer
+`http2_max_concurrent_streams` defaults to 128. An operator must provision it
+for concurrent consumer requests: the 10k Preview campaign will use 8192 for
+the unchanged 4096 in-flight bound and observation/cancellation headroom.
+This does not change API rate, burst, connection limits or authentication.
+Runtime can remain 4.4.0; apply the published 4.4.3 renderer to the gateway
+configuration and validate before a graceful Nginx reload. Do not replace
+the running Runtime artifact or the standing 4.4.2 Worker Host for this patch.
+
+The existing five-second call budget now covers client dispatch, response
+headers and the complete body. Expiry cancels the same exchange without an
+application retry; a completed response remains known even if its awaiting
+thread resumes late. Safe timeout-stage, offer/dispatch-lag and negotiated
+protocol counts explain consumer observations. They do not reconcile an
+unknown request or establish that it never reached Runtime. The workload,
+warmup, fast-fail limits, result checks and case statuses remain unchanged.
+
+Private profiling of diagnostic run
+[44333272615](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44333272615)
+found client CPU concentrated in TLS handshake cryptography while its TCP
+connection count expanded. TLS session resumption already worked, so this
+patch addresses connection reuse rather than changing session-cache policy.
+That profiled run retained three passed, three invalid and three saturated
+cases, with 2794 attempted calls lacking HTTP responses; profiling makes it
+diagnostic evidence rather than a clean performance comparison. Original
+unknown outcomes are preserved without replay.
+
+The existing ingress proof exercises real JDK/Nginx HTTP/2 stream admission,
+complete mock POST receipt, connection rollover and HTTP/1.1 fallback alongside
+the existing TLS, Basic/Bearer, route and WSS checks. This is transport proof,
+not Runtime throughput proof. Release publication and the subsequent normal
+10k public observation must be recorded separately after execution.
 
 ## 4.4.2 Consumer closeout patch
 

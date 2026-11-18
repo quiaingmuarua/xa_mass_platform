@@ -3,20 +3,41 @@ package com.xa.mass.integration.workercallperformance;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executors;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 final class CallApi implements AutoCloseable {
     private final Map<String, String> taskCallerHeaders;
     static final String GROUP = "scenario-string-utils-workers";
     static final String INPUT = "x".repeat(64);
     enum ExpectedResult { MD5, DELAY }
+
+    enum TimeoutPhase { CONNECT_TLS, BEFORE_HEADERS, RESPONSE_BODY }
+
+    /** Safe caller-observed stage only; BEFORE_HEADERS is not evidence that no request was sent. */
+    static final class ExchangeTimeout extends HttpTimeoutException {
+        final TimeoutPhase phase;
+        final String exceptionType;
+
+        ExchangeTimeout(TimeoutPhase phase, Class<? extends Throwable> exceptionType) {
+            super("HTTP exchange exceeded its declared deadline");
+            this.phase = java.util.Objects.requireNonNull(phase);
+            this.exceptionType = java.util.Objects.requireNonNull(exceptionType).getSimpleName();
+        }
+    }
 
     /** Safe action diagnostics: never retain or publish an error body or its message. */
     static class ActionFailure extends IllegalStateException {
@@ -35,7 +56,7 @@ final class CallApi implements AutoCloseable {
     }
     private final java.util.concurrent.ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final HttpClient http = HttpClient.newBuilder().executor(executor)
-            .connectTimeout(Duration.ofSeconds(5)).version(HttpClient.Version.HTTP_1_1).build();
+            .connectTimeout(Duration.ofSeconds(5)).version(HttpClient.Version.HTTP_2).build();
     private final String runtime;
     private final String lab;
     private final String endpointManager;
@@ -93,7 +114,40 @@ final class CallApi implements AutoCloseable {
         var request = request(url, timeout);
         if (body == null) request.GET();
         else request.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(Jsons.toJson(body)));
-        return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+        return sendWithDeadline(http, request.build(), timeout);
+    }
+
+    /** The existing budget starts after serialization and covers client queue, headers and complete body. */
+    static HttpResponse<String> sendWithDeadline(HttpClient client, HttpRequest request, Duration timeout) throws Exception {
+        long started = System.nanoTime();
+        var headersReceived = new AtomicBoolean();
+        var response = client.sendAsync(request, info -> {
+            headersReceived.set(true);
+            return HttpResponse.BodyHandlers.ofString().apply(info);
+        });
+        try {
+            long remaining = timeout.toNanos() - (System.nanoTime() - started);
+            // A known complete body is retained even when the awaiting caller resumes late.
+            return response.get(Math.max(0L, remaining), TimeUnit.NANOSECONDS);
+        } catch (TimeoutException expired) {
+            response.cancel(true);
+            throw new ExchangeTimeout(headersReceived.get() ? TimeoutPhase.RESPONSE_BODY : TimeoutPhase.BEFORE_HEADERS,
+                    TimeoutException.class);
+        } catch (InterruptedException interrupted) {
+            response.cancel(true);
+            throw interrupted;
+        } catch (ExecutionException failed) {
+            Throwable cause = failed.getCause();
+            while (cause instanceof CompletionException && cause.getCause() != null) cause = cause.getCause();
+            if (cause instanceof HttpConnectTimeoutException)
+                throw new ExchangeTimeout(TimeoutPhase.CONNECT_TLS, HttpConnectTimeoutException.class);
+            if (cause instanceof HttpTimeoutException)
+                throw new ExchangeTimeout(headersReceived.get() ? TimeoutPhase.RESPONSE_BODY : TimeoutPhase.BEFORE_HEADERS,
+                        HttpTimeoutException.class);
+            if (cause instanceof Exception error) throw error;
+            if (cause instanceof Error error) throw error;
+            throw new IllegalStateException("HTTP exchange failed without an exception");
+        }
     }
 
     private HttpRequest.Builder request(String url, Duration timeout) {
@@ -113,8 +167,8 @@ final class CallApi implements AutoCloseable {
         var response = send(runtime + "/api/v1/tasks/" + task + "/items:call",
                 Map.of("items", List.of(item), "waitTimeoutMillis", 1_000));
         if (Set.of(400, 401, 403, 404, 405, 415, 422).contains(response.statusCode()))
-            return new CallLoad.Reply(response.statusCode(), CallLoad.Outcome.PROTOCOL_ERROR);
-        if (response.statusCode() != 200) return new CallLoad.Reply(response.statusCode(), CallLoad.Outcome.UNKNOWN);
+            return new CallLoad.Reply(response.statusCode(), CallLoad.Outcome.PROTOCOL_ERROR).withHttpVersion(response.version());
+        if (response.statusCode() != 200) return new CallLoad.Reply(response.statusCode(), CallLoad.Outcome.UNKNOWN).withHttpVersion(response.version());
         try {
             var results = Jsons.parseObject(response.body());
             if (!results.keySet().equals(Set.of(id))) throw new IllegalArgumentException();
@@ -122,7 +176,7 @@ final class CallApi implements AutoCloseable {
                 case "succeeded" -> CallLoad.Outcome.SUCCEEDED;
                 case "failed" -> CallLoad.Outcome.FAILED;
                 default -> CallLoad.Outcome.NOT_OBSERVED;
-            });
+            }).withHttpVersion(response.version());
         } catch (RuntimeException error) {
             throw new CallLoad.ProtocolFailure("Call response shape or correlation changed");
         }
@@ -137,12 +191,12 @@ final class CallApi implements AutoCloseable {
                 Map.of("workerGroupId", group, "workerPayloads", Map.of(worker, Jsons.toJson(Map.of("value", INPUT))),
                         "messageType", "extension.worker.string.md5", "waitTimeoutMillis", 1_000));
         int status = response.statusCode();
-        if (status == 429) return new CallLoad.Reply(status, CallLoad.Outcome.REJECTED, null, "http-429");
+        if (status == 429) return new CallLoad.Reply(status, CallLoad.Outcome.REJECTED, null, "http-429").withHttpVersion(response.version());
         if (Set.of(400, 401, 403, 404, 405, 415, 422).contains(status))
-            return new CallLoad.Reply(status, CallLoad.Outcome.PROTOCOL_ERROR);
-        if (status != 200) return new CallLoad.Reply(status, CallLoad.Outcome.UNKNOWN, null, "http-" + status);
+            return new CallLoad.Reply(status, CallLoad.Outcome.PROTOCOL_ERROR).withHttpVersion(response.version());
+        if (status != 200) return new CallLoad.Reply(status, CallLoad.Outcome.UNKNOWN, null, "http-" + status).withHttpVersion(response.version());
         try {
-            return checkedDirectResult(Jsons.parseObject(response.body()), worker);
+            return checkedDirectResult(Jsons.parseObject(response.body()), worker).withHttpVersion(response.version());
         } catch (RuntimeException error) {
             throw new CallLoad.ProtocolFailure("Direct Call response shape, target or result changed");
         }

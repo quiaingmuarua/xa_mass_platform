@@ -428,7 +428,8 @@ def _verify(*, runtime_root: Path, simulator_home: Path, redis_url: str, scope: 
     # This Runtime fixture keeps the gateway from bounding the unchanged 500/s Performance cases.
     gate.config = replace(gate.config, worker_connection_limit=300, worker_total_connection_limit=400,
                           worker_requests_per_second=200, worker_request_burst=1000,
-                          admin_requests_per_second=2000, admin_request_burst=4000)
+                          admin_requests_per_second=2000, admin_request_burst=4000,
+                          http2_max_concurrent_streams=8192)
     _render_packaged_gateway(gate, runtime_root, environment)
     truststore = _truststore(java, gate, proof_root)
     witnesses = []

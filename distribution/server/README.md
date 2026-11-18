@@ -299,6 +299,8 @@ The opt-in [staging examples](src/main/dist/examples/staging-ingress/README.md)
 provide two HTTPS/WSS Nginx entrypoints: an administrator host that forwards only
 well-formed Runtime access keys, and a Worker host behind a shared Basic gate, with
 positive route/method lists and bounded connection admission.
+Ordinary HTTP requests can negotiate HTTP/2 over TLS with HTTP/1.1 fallback;
+Worker WebSockets retain their HTTP/1.1 Upgrade contract. Upstream proxying stays HTTP/1.1.
 They are delivered with the Runtime ZIP but are never auto-loaded. The renderer
 is available from the checkout as `python -m distribution.server.staging_ingress`
 and from the extracted example directory as `python -m staging_ingress`.
@@ -315,7 +317,9 @@ The existing Runtime Distribution Linux lane runs the actual Nginx/TLS contract
 proof and a packaged Runtime with the same-build Worker Simulator kit as its external Java
 Host; its finite rounds run the kit's shipped round command as a Project-scoped operator. Use
 `--staging-ingress --simulator-home <extracted kit root>` on the existing proof runner;
-Nginx, OpenSSL and htpasswd must be installed. The normal Windows Runtime proof
+HTTP/2-enabled Nginx, OpenSSL, htpasswd and JDK 21 must be installed. The same
+gateway proof checks JDK stream limits, POST receipt across GOAWAY and HTTP/1.1 fallback;
+these mock transport checks establish no Runtime throughput. The normal Windows Runtime proof
 still checks its original boundaries; it does not pretend to prove Linux ingress.
 The [4.1 release contract](RELEASE-4.1.md) records its artifact verification;
 the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)

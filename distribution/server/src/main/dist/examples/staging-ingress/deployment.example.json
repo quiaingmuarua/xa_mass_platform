@@ -14,6 +14,7 @@
   "worker_request_burst": 30,
   "admin_requests_per_second": 30,
   "admin_request_burst": 60,
+  "http2_max_concurrent_streams": 128,
   "certificate": "/etc/letsencrypt/live/xamass-staging/fullchain.pem",
   "certificate_key": "/etc/letsencrypt/live/xamass-staging/privkey.pem",
   "worker_password_file": "/etc/xa-mass/ingress/workers.htpasswd",

@@ -468,12 +468,15 @@ unconfirmed even if owned local processes stopped, with receipts retained for fo
 
 The Runtime Distribution Linux job includes the optional staging ingress proof:
 real Nginx with a trusted test CA, API Bearer forwarding, the Worker Basic realm, denied internal routes,
-credential/connection limits and actual restart revocation. It then runs the
+credential/connection limits and actual restart revocation. Its JDK 21 transport
+fixture checks negotiated HTTP/2, the default stream-limit refusal, more than 128
+concurrent streams under a declared budget, original POST bodies received once
+across the default GOAWAY boundary, and native HTTP/1.1 fallback. It then runs the
 supplied Runtime ZIP with the extracted same-build Worker Simulator kit as its external
 Java Host through that gateway, and each finite round runs the kit's shipped round command
 as a Project-scoped operator. TLS and hostname validation must remain enabled. This proves
-authenticated API admission and gateway access, not individual Worker ownership; it adds
-no performance workload and needs no GCP connection. GCP consumes published artifacts;
+authenticated API admission and gateway access, not individual Worker ownership
+or Runtime throughput, and needs no GCP connection. GCP consumes published artifacts;
 this lane's small deployment witness and the separately authorized external-load
 campaign have distinct evidence and scopes.
 

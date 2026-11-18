@@ -15,8 +15,14 @@ import java.util.function.LongSupplier;
 /** Finite open-loop offered load. Scheduling never waits for HTTP capacity. */
 final class CallLoad {
     enum Outcome { SUCCEEDED, FAILED, NOT_OBSERVED, UNKNOWN, NOT_SENT, PROTOCOL_ERROR, REJECTED, TIMED_OUT }
-    record Reply(int httpStatus, Outcome outcome, String directCallId, String detail) {
-        Reply(int httpStatus, Outcome outcome) { this(httpStatus, outcome, null, null); }
+    record Reply(int httpStatus, Outcome outcome, String directCallId, String detail, String httpVersion) {
+        Reply(int httpStatus, Outcome outcome) { this(httpStatus, outcome, null, null, null); }
+        Reply(int httpStatus, Outcome outcome, String directCallId, String detail) {
+            this(httpStatus, outcome, directCallId, detail, null);
+        }
+        Reply withHttpVersion(java.net.http.HttpClient.Version version) {
+            return new Reply(httpStatus, outcome, directCallId, detail, version.name());
+        }
     }
     @FunctionalInterface interface Sender { Reply send(String id, int index) throws Exception; }
     static final class ProtocolFailure extends IllegalStateException {
@@ -26,11 +32,15 @@ final class CallLoad {
     static final class Sample {
         final String id;
         final long planned;
+        long offered;
         long sent;
         long ended;
         int httpStatus;
         String directCallId;
         String detail;
+        String timeoutPhase;
+        String exceptionType;
+        String httpVersion;
         Outcome outcome = Outcome.NOT_SENT;
         String observed = "not_observed";
         long observedAfterWaitMillis = -1;
@@ -41,11 +51,15 @@ final class CallLoad {
             var row = new LinkedHashMap<String, Object>();
             row.put("messageId", id);
             row.put("plannedOffsetMillis", millis(planned - started));
+            row.put("offeredOffsetMillis", offered == 0 ? -1 : millis(offered - started));
             row.put("sentOffsetMillis", sent == 0 ? -1 : millis(sent - started));
             row.put("endedOffsetMillis", ended == 0 ? -1 : millis(ended - started));
             row.put("httpStatus", httpStatus);
             if (directCallId != null) row.put("directCallId", directCallId);
             if (detail != null) row.put("detail", detail);
+            if (timeoutPhase != null) row.put("timeoutPhase", timeoutPhase);
+            if (exceptionType != null) row.put("exceptionType", exceptionType);
+            if (httpVersion != null) row.put("httpVersion", httpVersion);
             row.put("outcome", outcome.name().toLowerCase(java.util.Locale.ROOT));
             row.put("accepted", accepted());
             row.put("observedResult", observed);
@@ -77,6 +91,9 @@ final class CallLoad {
             var scheduledResponse = cohort.stream().filter(s -> s.httpStatus != 0).map(s -> s.ended - s.planned).toList();
             var success = cohort.stream().filter(s -> s.outcome == Outcome.SUCCEEDED).map(s -> s.ended - s.planned).toList();
             var lag = cohort.stream().filter(s -> s.sent != 0).map(s -> s.sent - s.planned).toList();
+            var offerLag = cohort.stream().filter(s -> s.offered != 0).map(s -> s.offered - s.planned).toList();
+            var dispatchLag = cohort.stream().filter(s -> s.sent != 0 && s.offered != 0)
+                    .map(s -> s.sent - s.offered).toList();
             long responsesInWindow = samples.stream().filter(s -> s.httpStatus != 0 && s.ended >= lower && s.ended < upper).count();
             var summary = new LinkedHashMap<String, Object>();
             summary.put("fromSeconds", fromNanos / 1e9);
@@ -97,6 +114,11 @@ final class CallLoad {
             summary.put("scheduledResponseLatencyMillis", percentiles(scheduledResponse));
             summary.put("successfulCallLatencyMillis", percentiles(success));
             summary.put("scheduleLagMillis", percentiles(lag));
+            summary.put("offerLagMillis", percentiles(offerLag));
+            summary.put("executorDispatchLagMillis", percentiles(dispatchLag));
+            summary.put("timeoutPhases", counts(cohort.stream().map(s -> s.timeoutPhase).toList()));
+            summary.put("exceptionTypes", counts(cohort.stream().map(s -> s.exceptionType).toList()));
+            summary.put("httpVersions", counts(cohort.stream().map(s -> s.httpVersion).toList()));
             summary.put("generatorLimited", sent != cohort.size() || percentile(lag, .99) > 100_000_000L);
             summary.put("outstandingHttpAtWindowStart", samples.stream()
                     .filter(s -> s.sent != 0 && s.sent < lower && s.ended >= lower).count());
@@ -139,9 +161,10 @@ final class CallLoad {
     }
 
     /**
-     * Fast-fail checkpoint. Arrivals refused at the in-flight cap mean responses outlast their
-     * wait: the server side is saturated. Otherwise a schedule-lag p99 above 100ms means the
-     * generator itself could not keep pace.
+     * Fast-fail checkpoint. The in-flight cap bounds the whole end-to-end consumer path,
+     * including executor dispatch before HTTP starts; refusal alone does not identify a Server
+     * capacity ceiling. Otherwise a schedule-lag p99 above 100ms means the generator could not
+     * keep pace.
      */
     static final long EARLY_CHECK_NANOS = 10_000_000_000L;
     static final long LATE_SEND_NANOS = 100_000_000L;
@@ -197,6 +220,7 @@ final class CallLoad {
             var sample = new Sample(prefix + "-" + i, planned);
             samples.add(sample);
             waitUntil.accept(planned);
+            sample.offered = clock.getAsLong();
             if (!slots.tryAcquire()) { notSent++; done.countDown(); continue; }
             int index = i;
             try {
@@ -210,20 +234,31 @@ final class CallLoad {
                         sample.outcome = reply.outcome();
                         sample.directCallId = reply.directCallId();
                         sample.detail = reply.detail();
+                        sample.httpVersion = reply.httpVersion();
                         if (reply.outcome() == Outcome.SUCCEEDED) sample.observed = "succeeded";
                         if (reply.outcome() == Outcome.FAILED) sample.observed = "failed";
                     } catch (ProtocolFailure error) {
                         sample.httpStatus = 200;
                         sample.outcome = Outcome.PROTOCOL_ERROR;
+                        sample.exceptionType = exceptionType(error);
                         if (stop != null) stop.compareAndSet(null, STOP_PROTOCOL_ERROR);
+                    } catch (CallApi.ExchangeTimeout error) {
+                        sample.outcome = Outcome.UNKNOWN;
+                        sample.detail = "client-timeout";
+                        sample.timeoutPhase = error.phase.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-');
+                        sample.exceptionType = error.exceptionType;
                     } catch (java.net.http.HttpTimeoutException error) {
                         sample.outcome = Outcome.UNKNOWN;
                         sample.detail = "client-timeout";
+                        sample.timeoutPhase = error instanceof java.net.http.HttpConnectTimeoutException ? "connect-tls" : "unclassified";
+                        sample.exceptionType = exceptionType(error);
                     } catch (InterruptedException error) {
                         Thread.currentThread().interrupt();
                         sample.outcome = Outcome.UNKNOWN;
+                        sample.exceptionType = exceptionType(error);
                     } catch (Exception error) {
                         sample.outcome = Outcome.UNKNOWN;
+                        sample.exceptionType = exceptionType(error);
                     } finally {
                         sample.ended = clock.getAsLong();
                         slots.release();
@@ -231,6 +266,7 @@ final class CallLoad {
                     }
                 });
             } catch (java.util.concurrent.RejectedExecutionException error) {
+                sample.exceptionType = exceptionType(error);
                 slots.release(); done.countDown();
             }
         }
@@ -256,6 +292,15 @@ final class CallLoad {
     private static Map<String, Object> percentiles(List<Long> values) {
         return Map.of("samples", values.size(), "p50", millis(percentile(values, .50)),
                 "p95", millis(percentile(values, .95)), "p99", millis(percentile(values, .99)));
+    }
+    private static Map<String, Long> counts(List<String> values) {
+        var counts = new LinkedHashMap<String, Long>();
+        for (String value : values) if (value != null) counts.merge(value, 1L, Long::sum);
+        return counts;
+    }
+    private static String exceptionType(Exception error) {
+        String type = error.getClass().getSimpleName();
+        return type.isEmpty() ? "Exception" : type;
     }
     private static double millis(long nanos) { return nanos / 1e6; }
 }

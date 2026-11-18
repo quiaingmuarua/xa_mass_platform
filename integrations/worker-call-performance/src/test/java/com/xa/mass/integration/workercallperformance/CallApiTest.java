@@ -29,7 +29,9 @@ class CallApiTest {
         server.start();
         try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused",
                 Map.of("Authorization", "Bearer xak_private_operator"), "wan-endpoint")) {
-            assertThat(api.directCall("wan-a", "worker-one").outcome()).isEqualTo(CallLoad.Outcome.TIMED_OUT);
+            var response = api.directCall("wan-a", "worker-one");
+            assertThat(response.outcome()).isEqualTo(CallLoad.Outcome.TIMED_OUT);
+            assertThat(response.httpVersion()).isEqualTo("HTTP_1_1");
             assertThat(requests).hasValue(1);
         } finally { server.stop(0); }
     }
@@ -100,7 +102,8 @@ class CallApiTest {
         });
         server.start();
         try (var api = new CallApi("http://127.0.0.1:" + server.getAddress().getPort(), "unused", java.util.Map.of("Authorization", "Bearer xak_dev_1000"))) {
-            assertThat(api.call("task", "id", "worker-1")).isEqualTo(new CallLoad.Reply(503, CallLoad.Outcome.UNKNOWN));
+            assertThat(api.call("task", "id", "worker-1")).isEqualTo(new CallLoad.Reply(503, CallLoad.Outcome.UNKNOWN)
+                    .withHttpVersion(java.net.http.HttpClient.Version.HTTP_1_1));
             assertThat(count).hasValue(1);
         } finally { server.stop(0); }
     }

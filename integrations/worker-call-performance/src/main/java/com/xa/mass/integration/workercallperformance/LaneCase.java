@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * One open-loop performance-lane case: a fixed path and total offered rate split evenly across
  * the two lane Groups. Status is {@code passed}; {@code saturated} (the offered rate exceeds the
- * path capacity: responses outlast their wait until arrivals meet the in-flight cap);
+ * end-to-end consumer path capacity: arrivals meet the in-flight cap, including dispatch);
  * {@code invalid} (the generator or Worker availability bound the case, so its numbers are not
  * comparable); or {@code failed} (a correctness floor or fast-fail rule was violated).
  */
