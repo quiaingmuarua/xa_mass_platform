@@ -610,6 +610,7 @@ def lane_case_record(entry, case, cost):
               "successWithinWait": metrics.get("successRate"),
               "successfulCallLatencyMillis": metrics.get("successfulCallLatencyMillis"),
               "generatorLimited": metrics.get("generatorLimited"),
+              "httpVersions": metrics.get("httpVersions", {}),
               "acceptedResultsAfterDrain": metrics.get("acceptedResultsAfterDrain"),
               "workerSamples": len(case.get("workerSamples", []))}
     if cost:
@@ -986,6 +987,9 @@ def lane_markdown(result):
                      f"| {num(attribution.get('checkedItemsPerSecond'), '.0f')} | {pct(attribution.get('candidateShortfallRatio'))} "
                      f"| {pct(attribution.get('workerAcquisitionRejectedRatio'))} | {pct(r.get('leaseHeldPeakRatio'))} "
                      f"| {num(cost.get('redisCommandsPerCompleted'), '.1f')} |")
+    versions = {r["case"]: r["httpVersions"] for r in result.get("cases", []) if r.get("httpVersions")}
+    if versions:
+        lines += ["", "HTTP versions observed in complete call responses: " + json.dumps(versions, sort_keys=True) + "."]
     if result.get("jobs"):
         lines += ["", "| Job | Status | Cases | Case time s | Host CPU ops/s (4 threads) | Redis ping µs | Warmup | Server peak threads / FDs |",
                   "| --- | --- | --- | --- | --- | --- | --- | --- |"]

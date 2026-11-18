@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractContextManager
 from dataclasses import replace
@@ -299,6 +300,142 @@ class _Backend(AbstractContextManager):
         self.thread.join(timeout=3)
 
 
+class _Http2Backend(AbstractContextManager):
+    """Finite held-body fixture; its direct loopback control never passes the gateway."""
+
+    def __init__(self):
+        self.received = Counter()
+        self.held = 0
+        self.held_peak = 0
+        self.bad_authorization = 0
+        self.lock = threading.Lock()
+        self.release = threading.Event()
+        owner = self
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *_):
+                pass
+
+            def answer(self, code, body):
+                payload = body.encode("ascii")
+                self.send_response(code)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def do_GET(self):
+                if self.path == "/proof/held":
+                    with owner.lock:
+                        held = owner.held
+                    self.answer(200, str(held))
+                elif self.path == "/api/v1/me":
+                    self.answer(200, "ready")
+                else:
+                    self.answer(404, "denied")
+
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers.get("Content-Length", 0))).decode("ascii")
+                if self.path == "/proof/release":
+                    owner.release.set()
+                    self.answer(200, "released")
+                    return
+                if self.path != "/api/v1/tasks/proof/items:call":
+                    self.answer(404, "denied")
+                    return
+                with owner.lock:
+                    owner.received[body] += 1
+                    if self.headers.get("Authorization") != "Bearer " + ADMIN_KEY:
+                        owner.bad_authorization += 1
+                    if body.startswith("hold-"):
+                        owner.held += 1
+                        owner.held_peak = max(owner.held_peak, owner.held)
+                if body.startswith("hold-"):
+                    released = owner.release.wait(10)
+                    with owner.lock:
+                        owner.held -= 1
+                    if not released:
+                        self.answer(504, "fixture-hold-expired")
+                        return
+                self.answer(200, body)
+
+        class Server(ThreadingHTTPServer):
+            daemon_threads = True
+            request_queue_size = 512
+
+        self.server = Server(("127.0.0.1", 0), Handler)
+        self.port = self.server.server_port
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *_):
+        self.release.set()
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=3)
+
+
+def _verify_http2(directory: Path, *, nginx="nginx", openssl="openssl") -> dict:
+    """Exercise the real JDK stream-cap boundary, GOAWAY and native HTTP/1 fallback."""
+    java = shutil.which("java")
+    source = Path(__file__).resolve().parents[1] / "src/test/java/StagingHttp2Client.java"
+    if java is None or not source.is_file():
+        raise RuntimeError("HTTP/2 ingress proof requires JDK 21 and its source fixture")
+    results = {}
+    for mode, streams in (("default-limit", 128), ("configured-limit", 8192), ("http1-fallback", 8192)):
+        with _Http2Backend() as backend, _Backend() as adapter:
+            gate = Gateway(directory / mode, backend.port, adapter.port, nginx=nginx, openssl=openssl)
+            gate.config = replace(gate.config, http2_max_concurrent_streams=streams,
+                                  admin_requests_per_second=3000, admin_request_burst=6000)
+            text = render(gate.config)
+            # The fallback control uses only a fixture edit, never a deployed protocol switch.
+            if mode == "http1-fallback":
+                if text.count(" ssl http2") != 3:
+                    raise AssertionError("all TLS fixture listeners must have the same protocol options")
+                text = text.replace(" ssl http2", " ssl")
+            text = text.replace("    server_tokens off;", "    server_tokens off;\n"
+                    "    log_format h2proof '$connection $connection_requests $server_protocol $request_method $status';\n"
+                    f"    access_log {gate.directory}/http2.log h2proof;")
+            gate.configuration.write_text(text, encoding="utf-8")
+            with gate:
+                completed = subprocess.run([java, "--source", "21", str(source), gate.admin_url,
+                        f"http://127.0.0.1:{backend.port}", str(gate.ca_file), mode],
+                        capture_output=True, text=True, timeout=90, check=False)
+            if completed.returncode:
+                raise AssertionError("JDK ingress transport fixture failed in " + mode)
+            evidence = json.loads(completed.stdout)
+            if evidence.get("status") != "passed":
+                raise AssertionError("JDK ingress transport fixture was incomplete")
+            count = 1 if mode == "http1-fallback" else 128 if mode == "default-limit" else 256
+            expected = {"fallback"} if mode == "http1-fallback" else {f"hold-{index}" for index in range(count)}
+            if mode == "configured-limit":
+                expected.update(f"serial-{index}" for index in range(1001))
+            if set(backend.received) != expected or any(value != 1 for value in backend.received.values()):
+                raise AssertionError("backend did not receive each original POST body exactly once")
+            if backend.bad_authorization or evidence.get("successfulPosts") != len(expected):
+                raise AssertionError("complete correlated responses and unchanged Bearer forwarding are required")
+            rows = [line.split() for line in (gate.directory / "http2.log").read_text(encoding="ascii").splitlines()]
+            protocol = "HTTP/1.1" if mode == "http1-fallback" else "HTTP/2.0"
+            if not rows or any(len(row) != 5 or row[2] != protocol for row in rows):
+                raise AssertionError("Nginx did not independently observe the expected application protocol")
+            connections = {row[0] for row in rows}
+            maximum_requests = max(int(row[1]) for row in rows)
+            if mode == "configured-limit" and (len(connections) < 2 or maximum_requests != 1000):
+                raise AssertionError("the same JDK client did not cross Nginx's real default GOAWAY boundary")
+            evidence.update({"declaredMaxConcurrentStreams": streams,
+                "backendCompletePosts": len(backend.received), "backendDuplicatePosts": 0,
+                "backendHeldPeak": backend.held_peak, "bearerForwardingConfirmed": True,
+                "routeDenialConfirmed": True, "nginxConnections": len(connections),
+                "nginxMaxRequestsPerConnection": maximum_requests})
+            results[mode] = evidence
+    return {"status": "passed", "cases": results,
+            "claims": "JDK/Nginx transport and exact mock POST receipt; not Runtime capacity or Worker execution"}
+
+
 def _verify_private(directory: Path, *, nginx="nginx", openssl="openssl") -> dict:
     """Run all routing, TLS, Basic separation, rate and actual 100/200 WSS checks."""
     checks = []
@@ -542,6 +679,7 @@ def verify(directory: Path, *, nginx="nginx", openssl="openssl") -> dict:
         summary = _verify_private(Path(private), nginx=nginx, openssl=openssl)
         summary["customCapacity"] = _verify_custom_capacity(Path(private) / "custom-capacity",
                                                            nginx=nginx, openssl=openssl)
+        summary["http2Transport"] = _verify_http2(Path(private) / "http2", nginx=nginx, openssl=openssl)
     summary["privateFixtureCleaned"] = True
     (directory / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return summary

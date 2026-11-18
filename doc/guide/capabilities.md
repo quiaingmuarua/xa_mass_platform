@@ -9,6 +9,24 @@ Status: current capability guide with explicitly dated evidence.
 <a id="external-public-closeout"></a>
 ## 外部公网验收收尾
 
+### 2026-11-19：Performance 传输定位，4.4.3 待现场复测
+
+保留原 10k、三档速率和判据的
+[诊断运行 44333272615](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44333272615)
+仍为 3 passed／3 invalid／3 saturated，2794 个 attempted/HTTP-zero 请求未知，未重放。
+自动撤销在 8131ms 完成原 10,000 身份的完整扫描；独立核对确认本轮进程、凭据已清理，
+常驻 20 connected、原 Host 与 Runtime 进程未重启。
+
+该轮有私有客户端／Server JFR，属于诊断，不能作为无采集干扰的性能比较。
+高档窗口的客户端 CPU 样本集中在 TLS 握手密码计算，TCP 连接数由 1465 增至 4104；
+尚不能把整个路径的 saturated 归为 Server 容量上限。独立 TLS 控制观察到后续 11/11
+连接成功恢复会话，因此不调整 TLS 会话缓存。
+
+4.4.3 修复共用 HTTP 客户端的连接复用和完整响应超时边界，补充安全的阶段与协议计数；
+workload、warmup、5 秒预算、Oracle 和退出状态保持不变。代码及真实 Nginx 传输回归
+与发布后正常 10k 观测分别记账，当前尚未获得新 patch 的公网性能结果。
+定位数据和边界见[2026-11-19 观测](../../integrations/worker-call-performance/observations/external/2026-11-19.json)。
+
 ### 2026-11-18：4.4.2 的 10k、空闲与受控恢复验收已完成
 
 不可变 [4.4.2 Release](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.4.2)

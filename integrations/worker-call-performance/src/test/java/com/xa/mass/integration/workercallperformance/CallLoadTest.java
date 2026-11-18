@@ -68,6 +68,74 @@ class CallLoadTest {
         assertThat(batch.summary()).containsEntry("planned", 4).containsEntry("sent", 1L).containsEntry("generatorLimited", true);
         assertThat(batch.samples().stream().filter(s -> s.outcome == CallLoad.Outcome.NOT_SENT).count()).isEqualTo(3);
         assertThat(batch.samples().getFirst().sent - batch.samples().getFirst().planned).isEqualTo(1_000_000_000L);
+        assertThat(batch.samples()).allSatisfy(sample -> assertThat(sample.offered).isEqualTo(sample.planned));
+        assertThat(CallApi.object(batch.summary().get("offerLagMillis"))).containsEntry("samples", 4).containsEntry("p99", 0.0);
+        assertThat(CallApi.object(batch.summary().get("executorDispatchLagMillis")))
+                .containsEntry("samples", 1).containsEntry("p99", 1_000.0);
+    }
+
+    @Test void schedulerDelayAndQueuedDispatchHaveSeparateEvidenceWithoutChangingTotalLag() throws Exception {
+        var clock = new AtomicLong(1_000_000_000L);
+        var queued = new ArrayList<Runnable>();
+        var batch = CallLoad.schedule(4, 1, 4, "delayed", queued::add,
+                (id, index) -> new CallLoad.Reply(200, CallLoad.Outcome.SUCCEEDED),
+                clock::get, deadline -> clock.set(deadline + 20_000_000L));
+        queued.forEach(Runnable::run);
+        batch.await();
+
+        assertThat(batch.samples()).allSatisfy(sample -> {
+            assertThat(sample.offered - sample.planned).isEqualTo(20_000_000L);
+            assertThat(sample.sent - sample.planned)
+                    .isEqualTo((sample.offered - sample.planned) + (sample.sent - sample.offered));
+        });
+        var summary = batch.responseSummary();
+        assertThat(CallApi.object(summary.get("offerLagMillis")))
+                .containsEntry("samples", 4).containsEntry("p50", 20.0).containsEntry("p99", 20.0);
+        assertThat(CallApi.object(summary.get("executorDispatchLagMillis")))
+                .containsEntry("samples", 4).containsEntry("p50", 500.0).containsEntry("p99", 1_000.0);
+        assertThat(CallApi.object(summary.get("scheduleLagMillis")))
+                .containsEntry("p50", 520.0).containsEntry("p99", 1_020.0);
+        assertThat(batch.samples().getFirst().evidence(batch.started()))
+                .containsEntry("offeredOffsetMillis", 20.0).containsEntry("sentOffsetMillis", 1_020.0);
+        assertThat(summary).containsEntry("generatorLimited", true);
+    }
+
+    @Test void timeoutPhasesAndExceptionClassesStayUnknownWithoutPublishingExceptionMessages() throws Exception {
+        var clock = new AtomicLong(1_000_000_000L);
+        var batch = CallLoad.schedule(6, 1, 6, "failure", Runnable::run, (id, index) -> {
+            switch (index) {
+                case 0 -> throw new CallApi.ExchangeTimeout(CallApi.TimeoutPhase.CONNECT_TLS,
+                        java.net.http.HttpConnectTimeoutException.class);
+                case 1 -> throw new CallApi.ExchangeTimeout(CallApi.TimeoutPhase.BEFORE_HEADERS,
+                        java.net.http.HttpTimeoutException.class);
+                case 2 -> throw new CallApi.ExchangeTimeout(CallApi.TimeoutPhase.RESPONSE_BODY,
+                        java.util.concurrent.TimeoutException.class);
+                case 3 -> throw new java.net.http.HttpTimeoutException("private timeout message");
+                case 4 -> throw new IOException("private transport message");
+                default -> throw new java.net.http.HttpConnectTimeoutException("private connect message");
+            }
+        }, clock::get, clock::set);
+        batch.await();
+
+        assertThat(batch.samples()).allSatisfy(sample -> {
+            assertThat(sample.httpStatus).isZero();
+            assertThat(sample.outcome).isEqualTo(CallLoad.Outcome.UNKNOWN);
+            assertThat(sample.evidence(batch.started()).toString()).doesNotContain("private");
+        });
+        assertThat(batch.samples().subList(0, 4)).allSatisfy(sample -> assertThat(sample.detail).isEqualTo("client-timeout"));
+        var summary = batch.summary();
+        assertThat(summary).containsEntry("unknownSubmissions", 6L).containsEntry("clientTimeouts", 5L)
+                .containsEntry("accepted", 0L);
+        assertThat(CallApi.object(summary.get("timeoutPhases"))).containsOnly(
+                org.assertj.core.api.Assertions.entry("connect-tls", 2L),
+                org.assertj.core.api.Assertions.entry("before-headers", 1L),
+                org.assertj.core.api.Assertions.entry("response-body", 1L),
+                org.assertj.core.api.Assertions.entry("unclassified", 1L));
+        assertThat(CallApi.object(summary.get("exceptionTypes"))).containsOnly(
+                org.assertj.core.api.Assertions.entry("HttpConnectTimeoutException", 2L),
+                org.assertj.core.api.Assertions.entry("HttpTimeoutException", 2L),
+                org.assertj.core.api.Assertions.entry("TimeoutException", 1L),
+                org.assertj.core.api.Assertions.entry("IOException", 1L));
     }
 
     @Test void nearestRankAndEmptySamplesAreExplicit() {

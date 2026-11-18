@@ -31,6 +31,7 @@ class StagingIngressTest(unittest.TestCase):
         "worker_request_burst": 30,
         "admin_requests_per_second": 30,
         "admin_request_burst": 60,
+        "http2_max_concurrent_streams": 128,
     }
 
     def test_omitted_capacity_fields_keep_existing_defaults(self):
@@ -47,14 +48,16 @@ class StagingIngressTest(unittest.TestCase):
         for directive in ("worker_processes 1;", "worker_connections 2048;",
                           "limit_conn worker_credential 100;", "limit_conn worker_total 200;",
                           "zone=worker_rate:1m rate=10r/s;", "zone=admin_rate:1m rate=30r/s;",
-                          "zone=worker_rate burst=30 nodelay;", "zone=admin_rate burst=60 nodelay;"):
+                          "zone=worker_rate burst=30 nodelay;", "zone=admin_rate burst=60 nodelay;",
+                          "http2_max_concurrent_streams 128;"):
             self.assertIn(directive, render(loaded))
 
     def test_custom_capacity_changes_only_the_declared_nginx_capacity_directives(self):
         custom = configuration(worker_processes=8, worker_connections=32768,
                                worker_connection_limit=20000, worker_total_connection_limit=30000,
                                worker_requests_per_second=200, worker_request_burst=1000,
-                               admin_requests_per_second=300, admin_request_burst=600)
+                               admin_requests_per_second=300, admin_request_burst=600,
+                               http2_max_concurrent_streams=8192)
         expected = render(configuration())
         for original, replacement in (
             ("worker_processes 1;", "worker_processes 8;"),
@@ -65,9 +68,22 @@ class StagingIngressTest(unittest.TestCase):
             ("zone=worker_rate burst=30 nodelay;", "zone=worker_rate burst=1000 nodelay;"),
             ("zone=admin_rate:1m rate=30r/s;", "zone=admin_rate:1m rate=300r/s;"),
             ("zone=admin_rate burst=60 nodelay;", "zone=admin_rate burst=600 nodelay;"),
+            ("http2_max_concurrent_streams 128;", "http2_max_concurrent_streams 8192;"),
         ):
             expected = expected.replace(original, replacement)
         self.assertEqual(expected, render(custom))
+
+    def test_http2_uses_shared_tls_listener_options_and_preserves_http1_websocket_upgrades(self):
+        text = render(configuration())
+        tls_listeners = re.findall(r"^\s*listen [^;]+ ssl[^;]*;", text, re.MULTILINE)
+        self.assertEqual(3, len(tls_listeners))
+        self.assertTrue(all(" ssl http2" in listener for listener in tls_listeners))
+        self.assertNotIn("http2 on;", text)  # Keep the rendered syntax usable by Nginx 1.24.
+        self.assertEqual(1, text.count("http2_max_concurrent_streams 128;"))
+        self.assertLess(text.index("http2_max_concurrent_streams 128;"), text.index("server {"))
+        self.assertIn("proxy_http_version 1.1;", text)
+        self.assertIn("proxy_set_header Upgrade $http_upgrade;", text)
+        self.assertIn("proxy_set_header Connection upgrade;", text)
 
     def test_capacity_is_strictly_positive_integer_and_per_credential_fits_total(self):
         for name in self.CAPACITY_DEFAULTS:

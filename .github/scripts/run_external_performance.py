@@ -536,8 +536,22 @@ def sample_counts(result):
                     counts["sentHttp0Unknown"] += 1
                 if row.get("httpStatus") == 429:
                     counts["http429"] += 1
+                version = row.get("httpVersion")
+                if isinstance(version, str) and version in {"HTTP_1_1", "HTTP_2"}:
+                    counts["httpVersion:" + version] += 1
                 if row.get("detail") == "client-timeout":
                     counts["clientTimeouts"] += 1
+                    # Static categories only; raw diagnostics and identifiers stay private.
+                    phase = row.get("timeoutPhase", "unclassified")
+                    if phase not in {"connect-tls", "before-headers", "response-body", "unclassified"}:
+                        phase = "unclassified"
+                    counts["timeoutPhase:" + phase] += 1
+                exception = row.get("exceptionType")
+                if exception is not None:
+                    allowed = {"HttpConnectTimeoutException", "HttpTimeoutException", "TimeoutException",
+                               "ConnectException", "SSLHandshakeException", "SSLException", "UnknownHostException",
+                               "SocketException", "IOException", "InterruptedException", "Exception"}
+                    counts["exceptionType:" + (exception if isinstance(exception, str) and exception in allowed else "other")] += 1
                 outcome = row.get("outcome")
                 if outcome in {"succeeded", "failed", "not_observed", "unknown", "not_sent", "protocol_error", "rejected", "timed_out"}:
                     counts["outcome:" + outcome] += 1
@@ -561,7 +575,7 @@ def safe_result(raw):
     case_keys = ("repetition", "mode", "rate", "path", "case", "status", "invalidReasons", "failureReason", "fastFail",
                  "measurementStartedEpochMillis", "measurementEndedEpochMillis", "completedPerSecond", "admittedPerSecond",
                  "completedCount", "workersBound", "seedMillis", "leaseHeldPeakRatio", "successWithinWait",
-                 "successfulCallLatencyMillis", "generatorLimited", "acceptedResultsAfterDrain", "workerSamples", "metrics")
+                 "successfulCallLatencyMillis", "generatorLimited", "httpVersions", "acceptedResultsAfterDrain", "workerSamples", "metrics")
     value = {key: raw[key] for key in top if key in raw}
     value["cases"] = [{key: row[key] for key in case_keys if key in row} for row in raw.get("cases", [])]
     # The summary's workerSamples field is a count, never the private sample/identity arrays.

@@ -364,7 +364,7 @@ them. Path ratios compare cases inside one job, so on one host.
 | Status | Meaning |
 | --- | --- |
 | `passed` | Offered load within path capacity and no resource bound. |
-| `saturated` | Arrivals met the in-flight cap because responses outlasted their wait: the rate exceeds the path capacity. The report gives the admitted rate, not a completion ceiling. Exhausted idle Workers are then a consequence and recorded as `workersExhausted`. |
+| `saturated` | Arrivals met the consumer's in-flight cap across the whole end-to-end path, including executor dispatch before HTTP starts. This does not identify a Server capacity ceiling. The report gives the admitted rate, not a completion ceiling. Exhausted idle Workers are recorded as `workersExhausted`. |
 | `invalid` | The generator lagged (schedule-lag p99 above 100ms without in-flight refusal), a Group had no idle HOT Worker in a sample, a quiesce gate timed out, or a saturation backlog drained. Numbers are not comparable. |
 | `failed` | A correctness floor or fast-fail rule was violated; the lane fails. |
 
@@ -374,6 +374,34 @@ protocol or correlation error (immediate), 30 seconds without a new Result while
 Items remain, an observed Result rate that cannot close within the budget, thread
 or FD caps (open-loop defaults: 512 / 8,192 per process; experiment files set their own
 guards) and unexpected process exits.
+
+`scheduleLagMillis` remains planned arrival to executor-task start. The additive
+`offerLagMillis` measures planned arrival to the scheduler's capacity attempt;
+`executorDispatchLagMillis` measures that attempt to executor-task start. Private
+sample rows retain `offeredOffsetMillis` beside the existing `sentOffsetMillis`.
+Neither timestamp proves bytes reached the network. Safe summary counters
+`timeoutPhases` and `exceptionTypes` distinguish bounded timeout stages and
+exception class names without publishing exception messages; timeouts retain
+`detail=client-timeout`, HTTP status zero and an unknown submission outcome.
+Non-streaming JSON exchanges retain the five-second bounded wait after request
+serialization and construction, covering client queueing, connect/TLS, response
+headers and the complete body. Expiry cancels the same request future without
+resubmission. `connect-tls`, `before-headers` and `response-body` describe what the
+caller observed; `before-headers` does not prove the request was never sent.
+An already completed full response is retained when its caller is scheduled late;
+the remaining wait budget cancels exchanges that are still pending.
+
+The shared client prefers HTTP/2 and uses the JDK's HTTP/1.1 fallback when the
+peer does not support it. Complete response versions are counted in `httpVersions`
+and the private sample's `httpVersion`; a missing response supplies no negotiated
+version evidence. The staging ingress operator must provision the HTTP/2 stream
+budget for the declared load: the fixed 4,096 call cap shares a client with up to
+eight observation requests. An explicit 8,192-stream deployment budget covers
+that bound; the ingress's small default remains 128. A peer stream-limit exception is a client transport failure,
+not proof of Server execution capacity. HTTP/2 multiplexing avoids a separate TLS
+connection for every concurrent HTTP call; the rates, warmup, API requests and
+result checks remain unchanged. Worker WebSocket delivery keeps its HTTP/1.1
+Upgrade contract.
 
 Every HTTP-accepted Task Item must have an observed Result within the drain
 budget: 180 seconds within the single-Task check budget of `10 x B` Items/s,

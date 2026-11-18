@@ -1,0 +1,246 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-11-19",
+  "purpose": "Performance transport diagnosis; profiled diagnostic is not an untouched capacity comparison",
+  "diagnostic": {
+    "githubRunId": 44333272615,
+    "artifactManifest": {
+      "gitCommit": "ccf676801663f953169f2d03058cbe7236a01123",
+      "javaVersion": 21,
+      "loadedEntry": "acceptance/run_loaded.py",
+      "performanceEntry": "acceptance/performance/run_worker_call_performance.py",
+      "roundEntry": "acceptance/finite_round.py",
+      "schemaVersion": 3,
+      "simulatorEntry": "bin/xa-mass-worker-simulator",
+      "version": "4.4.2"
+    },
+    "serverDeployment": {
+      "configurationId": "sha256:8fee159a3d8a95820503ff66c5a55daeefd3b7d8407baa95a000c135845c6a2f",
+      "gitCommit": "b28a87ac918a34ffabb4feb8c63a29998a0610db",
+      "version": "4.4.0"
+    },
+    "workersPerGroup": 5000,
+    "groups": 2,
+    "rates": [
+      500,
+      1000,
+      2000
+    ],
+    "repetitions": 1,
+    "caseCounts": {
+      "invalid": 3,
+      "passed": 3,
+      "saturated": 3
+    },
+    "http429": 0,
+    "attemptedWithoutHttpResponse": 2794,
+    "notSent": 19451,
+    "observedSuccessfulResults": 112754,
+    "cleanup": {
+      "errors": [],
+      "ownedProcessesStopped": true,
+      "privateCredentialCopiesRemoved": true,
+      "workerConnections": {
+        "identityCount": 10000,
+        "observation": {
+          "complete": true,
+          "completedPages": 100,
+          "deadlineExpired": false,
+          "elapsedMillis": 8131,
+          "errorTypes": {},
+          "observedIdentityCount": 10000,
+          "pageConcurrency": 8,
+          "pageSize": 100,
+          "scanCount": 1,
+          "totalPages": 100
+        },
+        "states": {
+          "unknown": 10000
+        },
+        "status": "confirmed"
+      }
+    },
+    "cases": [
+      {
+        "case": "task-any-500",
+        "status": "passed",
+        "invalidReasons": [],
+        "fastFail": null,
+        "scheduleLagP99Millis": 4.000877,
+        "unknownSubmissions": 0,
+        "notSent": 0
+      },
+      {
+        "case": "task-targeted-500",
+        "status": "passed",
+        "invalidReasons": [],
+        "fastFail": null,
+        "scheduleLagP99Millis": 15.802537,
+        "unknownSubmissions": 0,
+        "notSent": 0
+      },
+      {
+        "case": "direct-500",
+        "status": "passed",
+        "invalidReasons": [],
+        "fastFail": null,
+        "scheduleLagP99Millis": 0.818777,
+        "unknownSubmissions": 0,
+        "notSent": 0
+      },
+      {
+        "case": "task-any-1000",
+        "status": "invalid",
+        "invalidReasons": [
+          "generator-lag"
+        ],
+        "fastFail": "generator-lag",
+        "scheduleLagP99Millis": 198.899656,
+        "unknownSubmissions": 0,
+        "notSent": 0
+      },
+      {
+        "case": "task-targeted-1000",
+        "status": "invalid",
+        "invalidReasons": [
+          "generator-lag"
+        ],
+        "fastFail": "generator-lag",
+        "scheduleLagP99Millis": 293.606088,
+        "unknownSubmissions": 0,
+        "notSent": 0
+      },
+      {
+        "case": "direct-1000",
+        "status": "invalid",
+        "invalidReasons": [
+          "generator-lag"
+        ],
+        "fastFail": "generator-lag",
+        "scheduleLagP99Millis": 279.99925,
+        "unknownSubmissions": 0,
+        "notSent": 0
+      },
+      {
+        "case": "task-any-2000",
+        "status": "saturated",
+        "invalidReasons": [],
+        "fastFail": "in-flight-cap",
+        "scheduleLagP99Millis": 713.448806,
+        "unknownSubmissions": 13,
+        "notSent": 5913
+      },
+      {
+        "case": "task-targeted-2000",
+        "status": "saturated",
+        "invalidReasons": [],
+        "fastFail": "in-flight-cap",
+        "scheduleLagP99Millis": 979.016152,
+        "unknownSubmissions": 239,
+        "notSent": 4784
+      },
+      {
+        "case": "direct-2000",
+        "status": "saturated",
+        "invalidReasons": [],
+        "fastFail": "in-flight-cap",
+        "scheduleLagP99Millis": 793.476647,
+        "unknownSubmissions": 2542,
+        "notSent": 8754
+      }
+    ]
+  },
+  "findings": {
+    "clientTlsConnectionExpansion": true,
+    "clientOfferingWindowResources": [
+      {
+        "case": "direct-1000",
+        "window": "offering",
+        "start": 1795015428159,
+        "end": 1795015438159,
+        "sampleCount": 10,
+        "coveredSeconds": 9.671999999999999,
+        "cpuCores": {
+          "count": 10,
+          "min": 0.2880244182027015,
+          "mean": 1.830996369954142,
+          "median": 2.0265441595054443,
+          "max": 3.5874706510987164
+        },
+        "tcpSockets": {
+          "count": 10,
+          "min": 183,
+          "mean": 1065.6,
+          "median": 1197,
+          "max": 1197
+        },
+        "globalRxMbps": {
+          "count": 9,
+          "min": 9.912634920634922,
+          "mean": 13.724904634525126,
+          "median": 11.00383819379116,
+          "max": 28.483719887955186
+        },
+        "globalTxMbps": {
+          "count": 9,
+          "min": 10.05670588235294,
+          "mean": 12.252952988296322,
+          "median": 10.820221596244131,
+          "max": 18.647790849673203
+        },
+        "globalRetransmits": 4
+      },
+      {
+        "case": "direct-2000",
+        "window": "offering",
+        "start": 1795015600510,
+        "end": 1795015610510,
+        "sampleCount": 9,
+        "coveredSeconds": 9.027999999999999,
+        "cpuCores": {
+          "count": 9,
+          "min": 2.7553136178222473,
+          "mean": 3.378296111183486,
+          "median": 3.534011556789119,
+          "max": 3.7215802987150233
+        },
+        "tcpSockets": {
+          "count": 9,
+          "min": 1465,
+          "mean": 2971.222222222222,
+          "median": 3714,
+          "max": 4104
+        },
+        "globalRxMbps": {
+          "count": 8,
+          "min": 11.297498680738785,
+          "mean": 26.894603765643726,
+          "median": 24.65961757105943,
+          "max": 70.42059454705365
+        },
+        "globalTxMbps": {
+          "count": 8,
+          "min": 6.823221360895779,
+          "mean": 16.776607448468198,
+          "median": 17.001996557659208,
+          "max": 28.321991204925244
+        },
+        "globalRetransmits": 5
+      }
+    ],
+    "tlsResumptionControl": {
+      "subsequentConnections": 11,
+      "resumed": 11,
+      "protocol": "TLSv1.3"
+    },
+    "scope": [
+      "CPU stack sample counts are not CPU duration; overlapping events are not additive wall time.",
+      "NIC counters include the whole consumer; they do not establish a fixed network bandwidth ceiling.",
+      "No individual HTTP-unknown request is reconciled by aggregate Nginx counts or profiling.",
+      "Runtime APIs, scheduling, workload, warmup, case oracle and declared request budget are unchanged."
+    ]
+  },
+  "fixAcceptance": {
+    "status": "pending-release-and-normal-10k-observation"
+  }
+}
