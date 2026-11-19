@@ -161,6 +161,9 @@ override save empty managed supply and may use Identity without a Pool.
 [Preview delivery](../distribution/server/PREVIEW.md#archive-delivery) copies the
 preview profile from this source and verifies it against the packaged resource.
 External overrides do not create a second maintained default configuration.
+Consumer and Preview inherit shared retention settings and the Adapter remote
+base URL from `application.yaml`. The remote URL follows the resolved `server.port`,
+including an explicit external override.
 
 ## Run
 
@@ -296,7 +299,7 @@ contract; these configuration defaults do not require a fresh scope for each upg
 
 ## Finite Task retention configuration
 
-All profiles explicitly provide `xa.mass.task-retention` defaults: 1h grace, 7d
+The base `application.yaml` provides inherited `xa.mass.task-retention` defaults: 1h grace, 7d
 Runtime retention, 30d history retention, 1h maintenance interval, and `./data/task-history.sqlite`. Enablement defaults
 to the resolved Pacer enablement and can be overridden with
 `XA_MASS_TASK_RETENTION_ENABLED`; `XA_MASS_TASK_HISTORY_DATABASE` selects the SQLite history file. The separate history-retention default is 30d; Runtime retention remains 7d.

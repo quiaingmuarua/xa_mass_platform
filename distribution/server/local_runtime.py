@@ -131,6 +131,8 @@ def parse_arguments(arguments=None, *, preview=False):
     args = parser.parse_args(arguments)
     if preview and args.profile != "preview":
         parser.error("The packaged Preview entry supports only preview")
+    if preview and args.android_count:
+        parser.error("Preview does not support Android Workers; use the repository root run_local_runtime.py")
     if args.no_java_workers and (args.java_config or args.java_count):
         parser.error("--no-java-workers cannot be combined with Java configuration/counts")
     if args.android_device and not args.android_count:
@@ -220,15 +222,29 @@ def resolve(args, *, product=PRODUCT):
                 raise ValueError("--java-count requires integer counts") from error
         if "startupPlan" in java_config and counts:
             raise ValueError("Explicit counts cannot replace a file's startupPlan")
-        if "startupPlan" not in java_config:
-            selected = {group: counts.get(group, config.get("count", 50)) for group, config in group_configs.items()}
-            if any(type(n) is not int or not 0 <= n <= 15000 for n in selected.values()):
-                raise ValueError("Java counts must be integers in 0..15000")
-            if any(config.get("newEnvironment") is True for config in group_configs.values()):
-                raise ValueError("Quantity launch preserves inventory; perform an explicit inventory rebuild separately")
+        if "startupPlan" in java_config:
+            plan = java_config["startupPlan"]
+            if not isinstance(plan, dict) or set(plan) != {"workerCounts"}:
+                raise ValueError("Local CLI startupPlan supports only workerCounts; use the standalone Worker Simulator Host for other plans")
+            selected = plan["workerCounts"]
+            if not isinstance(selected, dict):
+                raise ValueError("startupPlan.workerCounts must be an object")
+            if any(group not in group_configs for group in selected):
+                raise ValueError("startupPlan.workerCounts must name configured Java Groups")
+        else:
+            selected = {}
+            for group, config in group_configs.items():
+                if group not in counts and "count" not in config:
+                    raise ValueError(f"Java Group {group} requires --java-count {group}=N or an explicit count")
+                selected[group] = counts[group] if group in counts else config["count"]
             java_config["startupPlan"] = {"workerCounts": selected}
-            if not any(selected.values()):
-                java_config = None
+        for group, count in selected.items():
+            if type(count) is not int or not 0 <= count <= 15000:
+                raise ValueError(f"Java Group {group} count must be an integer in 0..15000")
+        if any(config.get("newEnvironment") is True for config in group_configs.values()):
+            raise ValueError("Quantity launch preserves inventory; perform an explicit inventory rebuild separately")
+        if not any(selected.values()):
+            java_config = None
         if java_config:
             java_config["runtimeApiBaseUrl"] = f"http://127.0.0.1:{server_port}"
             # An explicit environment directory owns inventory; otherwise honor file-relative paths.
@@ -557,8 +573,7 @@ class LocalRun(Processes):
         s = self.settings
         record = dict(scope=self.scope, url=self.url, host=self.host, profile=s["profile"],
                       adapter=self.adapter, adapterPort=s["adapter_port"], artifacts=self.artifacts,
-                      javaCounts=s["java_config"].get("startupPlan", {}).get("workerCounts",
-                          {g: c.get("count", 50) for g, c in s["java_config"]["workerGroups"].items()}) if s["java_config"] else {},
+                      javaCounts=s["java_config"].get("startupPlan", {}).get("workerCounts") if s["java_config"] else {},
                       seed=s["java_config"].get("seed", 0) if s["java_config"] else None,
                       androidCount=s["android_count"], pids={name: p.pid for name, p in self.processes.items()},
                       workDir=str(s["work"]), sandboxRoot=str(self.sandbox_root) if self.sandbox_root else None,

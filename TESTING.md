@@ -235,7 +235,7 @@ these correctness claims and add no heavy ordinary CI lane.
 | Worker Dynamic Matching | `python integrations/worker-dynamic-matching/run_worker_dynamic_matching.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-connected 14800 --minimum-retained-connected 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
-| [Worker Call Performance](integrations/worker-call-performance/README.md) | Source Nightly: parallel `rate-500`, `rate-1000`, `rate-2000` and `saturation` jobs with three repetitions, merged, recorded on `perf-lane-data` and compared with the last seven records. Source manual: the same with optional JFR diagnostics, or per-case A/B. Manual `execution_target=external` and the fixed seven-date observation share the reusable deployed consumer and pinned kit, with separate public-path evidence | Source lane: Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21. External: GitHub-hosted SSH to the dedicated Linux consumer, Java 21, Python 3.11+, published Simulator kit |
+| [Worker Call Performance](integrations/worker-call-performance/README.md) | Source nightly/manual [execution and A/B](integrations/worker-call-performance/README.md#trend-and-ab); public-network [deployed entry](#deployed-call-performance) | Source: Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21. External: dedicated Linux consumer, Java 21, Python 3.11+, published Simulator kit |
 | Android Host | Platform Android library/proof-tool contracts; no consumer artifact prerequisite | Robolectric, MockWebServer, JDK HttpServer |
 | Candidate Distribution Archives | One clean-commit Runtime/SDK/Simulator kit set, archive checks and hashes | Java, Android SDK, Node |
 | Android APK Assembly | Independent consumer unit tests and Debug plus three fixed Lab APKs from that SDK ZIP | Android SDK |
@@ -296,34 +296,22 @@ summary; the matrix aggregate remains the one selected Proof Gate result.
 ## Deployed Call Performance
 
 The [deployed Call Performance mode](integrations/worker-call-performance/README.md#deployed-runtime-consumer)
-is the current public-network CI route, using the existing Performance runner. The schema-3 Simulator kit ships
-`acceptance/performance/run_worker_call_performance.py` and its compiled Harness.
-Use `--deployment-config` with `--lane-modes open --lane-attribution off --diagnostics off`
-and a fresh private output directory outside the kit. It retains the original
-`500,1000,2000` rates, warmup and windows; there is no low-rate profile or new
-proof lane. It creates only its owned local Host/Harness, reuses stable explicit
-RPC Task IDs and records declared Server coordinates. It neither starts nor
-samples remote Server/Redis, and makes no saturation, Server JFR, Redis calibration,
-reference-host or CI-trend claim. Its existing focused Harness/runner and archive
-consumption checks verify the delivery contract; an actual public run requires
-its own explicitly requested, versioned evidence.
+is the public-network CI route. Select the existing Harness/runner tests and
+Simulator archive-consumption checks for delivery changes; an actual public run
+requires its own explicitly requested, versioned evidence. The
+[Registry](doc/testing/proof-registry.md#worker_call_performance) records its claims.
 
-The same workflow's manual [external Actions execution](integrations/worker-call-performance/README.md#external-actions-execution)
-uses the protected `release-preview-load` Environment and its serial external-load
-Actions concurrency group. Manual and fixed-date scheduled execution share
-`.github/workflows/external-performance-consumer.yml`; the schedule uses remote
-nonblocking admission instead of waiting in that Actions queue. Loaded Recovery
-no longer has a public-network Actions route.
-External Performance leaves source Nightly unchanged and runs only the pinned
-published Release kit on the dedicated Ali consumer user, without Git/Gradle, root or GCP
-administrator credentials. Its Vars, Secrets, manifest pins and declared
-host/gateway budget preflight are listed in the Owner.
-`PERFORMANCE_KIT_RELEASE_TAG` / `PERFORMANCE_KIT_RELEASE_COMMIT` pin the consumed
-immutable schema-3 kit; the existing `INSTALLED_RELEASE_TAG` /
-`INSTALLED_RELEASE_COMMIT` independently pin the GCP Server and must match the
-configuration's `serverDeployment`. Each is verified against its own declared
-identity, with no cross-pin fallback or `latest` selection. A Consumer kit patch
-does not require upgrading the target Server when its API contract is unchanged.
+Direct kit consumption requires Linux, Java 21, Python 3.11+, the pinned published
+schema-3 Simulator kit, private deployment/credential files and a fresh private
+output directory outside the kit. Use `--deployment-config` with
+`--lane-modes open --lane-attribution off --diagnostics off` as shown in the
+[Owner command](integrations/worker-call-performance/README.md#deployed-runtime-consumer).
+
+For manual Actions execution, prepare the protected `release-preview-load`
+Environment's coordinates, credentials, independent kit/Server pins and declared
+host/gateway budgets from the
+[external execution contract](integrations/worker-call-performance/README.md#external-actions-execution),
+then dispatch on `main`:
 
 ```bash
 gh workflow run worker-call-performance.yml --ref main \
@@ -332,78 +320,27 @@ gh workflow run worker-call-performance.yml --ref main \
   -f external_repetitions=1
 ```
 
-The two Groups default to 5,000 Workers each; per-Group inventory accepts
-`1..15000`; selecting `external_workers_per_group=1000` is a 2k delivery check,
-not evidence for the default 10k size. External repetitions are `1` or `3`
-(default `1`). One repetition
-has a 45-minute campaign budget, three have 100 minutes, GitHub has 120 minutes,
-and owned-unit shutdown has 120 seconds. Re-running the same GitHub Run ID only
-reconnects to its unit or collects evidence; a new run needs a new Run ID. Retain
-unknown/429 outcomes and reconcile any active old process or unknown cleanup
-before starting another run. A prior unknown/429 workload receipt does not itself
-prohibit a new independent run after process cleanup is reconciled. The separate
-persistent 20-Worker system service is outside
-this lifecycle. Publish only the allowlisted sanitized receipts, without bootstrap
-Worker IDs; exit status `0` still requires inspecting case validity. This change
-adds no proof lane, Release publication, GCP upgrade or claimed 10k acceptance.
+Manual and scheduled execution share the
+[reusable consumer](.github/workflows/external-performance-consumer.yml).
+The schedule-only [observation workflow](.github/workflows/external-performance-observation.yml)
+has no manual dispatch. Its
+[fixed window](.github/external-performance-observation.json), admission, Run reuse,
+budgets, cleanup and report retention belong to the
+[Performance Owner](integrations/worker-call-performance/README.md#seven-date-external-observation).
+Source Nightly remains independent. Use the Owner's
+[bootstrap](integrations/worker-call-performance/README.md#bootstrap-readiness),
+[case validity](integrations/worker-call-performance/README.md#case-status-and-validity)
+and [reporting](integrations/worker-call-performance/README.md#reporting-and-run-attribution)
+contracts when interpreting a run; workflow success alone is insufficient.
 
-The schedule-only `.github/workflows/external-performance-observation.yml`
-uses seven explicit cron entries for **2026-11-20..26 at 05:30 Asia/Shanghai**,
-recorded in `.github/external-performance-observation.json`
-(`windowId=external-10k-20261120`, schema 1). It has no manual dispatch; the command
-above remains the manual entry. Each planned date selects the unchanged 10k,
-one-repetition, three-path `500,1000,2000` open workload through the shared consumer.
-The source 03:00 Nightly keeps its original matrix, three repetitions and history.
-
-The original cron determines the target date. Delay within that same Beijing
-date is allowed; cross-date arrival, rerun, missing/missed event, remote lock
-collision or unconfirmed prior cleanup starts no new workload. Each date needs
-an exclusive remote daily claim; there is no retry, catch-up or eighth date.
-The denominator is the seven configured dates, not seven obtained reports. A
-dropped trigger may leave no Run/artifact and remains an absent observation.
-Scheduled artifacts retain the same four sanitized files for 30 days, compared
-with the manual seven-day default. The existing five-minute prepare timer,
-45-minute run, 120-second stop and case/cleanup judgments are unchanged.
-See the [complete observation contract](integrations/worker-call-performance/README.md#seven-date-external-observation)
-for admission and result interpretation. Configuration delivery neither launches
-an immediate external test nor establishes future window execution or a passing
-10k result; GCP and the persistent 20-Worker service are unchanged.
-
-Source and external execution share the same [bootstrap readiness](integrations/worker-call-performance/README.md#bootstrap-readiness):
-Properties coverage accumulates for a fixed sample of this run's Lab identities,
-while readiness still requires every current Worker `RUNNING`, connected and HOT
-within the existing deadline. Historical Group Preview rows do not count as
-current-run coverage; their registrations are retained, without changing Groups
-or clearing history to pass a check. The public API and later case/Result oracles
-remain unchanged.
-
-The latest [2026-11-19 public observations](integrations/worker-call-performance/observations/external/2026-11-19.json)
-and [capability closeout](doc/guide/capabilities.md#external-public-closeout)
-record the separate 4.4.4 10k run with nine passed cases. The earlier
-[2026-11-18 public observations](integrations/worker-call-performance/observations/external/2026-11-18.json)
-retain four completed runs, independently pinned kit/Server coordinates,
-per-case validity, unknown submissions and original cleanup outcomes. Their
-operator postchecks are separate evidence, never a replacement for failed or
-unconfirmed runner cleanup. The [capability guide](doc/guide/capabilities.md#external-public-closeout)
-summarizes the delivered path and remaining findings. These static observations
-select no execution lane or live-health claim. The 4.4.2 run records automatic
-cleanup confirmed by one complete bounded scan; 560 sent/HTTP-zero submissions
-remain unknown, and invalid/saturated cases retain their statuses. The same JSON
-separately records completed 75-minute standing-Host observation and one outbound
-DROP/recovery check: no process restart, retained logical identities and inputs,
-and independent GCP reconnection confirmation 59.619 seconds after restoration.
-Observed TCP turnover remains explicit; this is bounded Ubuntu/Java 21 evidence,
-not zero instantaneous disconnects, Android/SOCKS coverage or unlimited retry.
-The 4.4.2 complete manual Proof and publication are recorded in the
-[Release contract](https://github.com/quiaingmuarua/xa_mass_platform/blob/9c30061d0188036f48b296c1be2cdd3872416b45/distribution/server/RELEASE-4.4.md#442-consumer-closeout-patch);
-those remain separate from the dated onsite observations and current host state.
+The [capability closeout](doc/guide/capabilities.md#external-public-closeout)
+selects dated public observations and their immutable evidence. Historical results
+do not select a new execution lane or establish current host health.
 
 ## External Release load
 
-The Loaded Recovery public-network Actions route was retired on 2026-11-19.
 Current public-network CI uses only [Deployed Call Performance](#deployed-call-performance).
-The Loaded workflow retains its original local nightly/manual recovery proof;
-its public scale, runner and network-diagnostic inputs have been removed.
+The Loaded workflow runs the local nightly/manual recovery proof.
 
 The schema-3 Simulator kit still supplies `acceptance/run_loaded.py` and its
 compiled Harness. Runtime Distribution consumes that command in its local
@@ -414,8 +351,7 @@ retains the command's actual behavior and limits; the manifest and existing
 published Release ZIPs are unchanged.
 
 The dated [public acceptance closeout](doc/guide/capabilities.md#external-public-closeout)
-retains the earlier accepted 1,000-Worker configuration and unpassed public
-15k/10k target. Retirement neither changes those outcomes nor requests another run.
+retains historical public results and their limits.
 
 ## Proof Quality
 
@@ -729,7 +665,11 @@ cross-queue ordering, reliable replay or an atomic Facts/Score transaction.
 | Consolidated | Runtime/SDK/Preview archive verification uses `python -m distribution.archive_tools` |
 | Consolidated | Correctness and Convergence share process primitives; each owns its workload and fault sequence |
 | Retained | Candidate production, external APK assembly, Runtime Distribution and Android Emulator are separate stages |
-| Review only | SMS refill diagnostics, JFR summarization and fixed A/B evaluation are historical experiment candidates; no current workflow/docs caller was found beyond their unit tests. They remain available pending a separate retirement decision |
+
+The retired SMS refill experiment's scripts and dedicated tests are available at
+the [fixed source revision](https://github.com/quiaingmuarua/xa_mass_platform/tree/fa27697b09c0d47d8b15f200d96b7a905165e5b2/scenarios/sms-reception-jvm).
+Its retained baseline records are historical evidence; current SMS verification
+uses the [Scenario Owner](scenarios/sms-reception-jvm/README.md#检查与验收).
 
 The archive checker rejects unsafe Runtime member paths, duplicate names and
 symlinks before inspecting payloads. Consumer identity/hash verification stays

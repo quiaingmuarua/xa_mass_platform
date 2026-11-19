@@ -98,20 +98,10 @@ jobs:
       - name: Finalize the same external run
         if: ${{ always() && (steps.external_run.outcome == 'success' || steps.external_run.outcome == 'failure' || steps.external_run.outcome == 'cancelled') && (inputs.observation_plan == '' || steps.external_run.outputs.observation_admitted == 'true') }}
         env:
-          GH_TOKEN: ${{ github.token }}
           SSH_HOST: ${{ vars.CONSUMER_SSH_HOST }}
           SSH_USER: ${{ vars.CONSUMER_SSH_USER }}
           SSH_PRIVATE_KEY: ${{ secrets.CONSUMER_SSH_PRIVATE_KEY }}
           SSH_KNOWN_HOSTS: ${{ vars.CONSUMER_SSH_KNOWN_HOSTS }}
-          DEPLOYMENT_JSON: ${{ vars.PERFORMANCE_DEPLOYMENT_JSON }}
-          CONNECTION_BUDGET_JSON: ${{ vars.PERFORMANCE_CONNECTION_BUDGET_JSON }}
-          RUNTIME_ACCESS_KEY: ${{ secrets.PERFORMANCE_RUNTIME_ACCESS_KEY }}
-          WORKER_GATEWAY_KEY_ID: ${{ secrets.PERFORMANCE_WORKER_GATEWAY_KEY_ID }}
-          WORKER_GATEWAY_SECRET: ${{ secrets.PERFORMANCE_WORKER_GATEWAY_SECRET }}
-          RELEASE_TAG: ${{ vars.PERFORMANCE_KIT_RELEASE_TAG }}
-          RELEASE_COMMIT: ${{ vars.PERFORMANCE_KIT_RELEASE_COMMIT }}
-          SERVER_RELEASE_TAG: ${{ vars.INSTALLED_RELEASE_TAG }}
-          SERVER_RELEASE_COMMIT: ${{ vars.INSTALLED_RELEASE_COMMIT }}
           WORKERS_PER_GROUP: ${{ inputs.workers_per_group }}
           REPETITIONS: ${{ inputs.repetitions }}
           OBSERVATION_PLAN: ${{ inputs.observation_plan }}

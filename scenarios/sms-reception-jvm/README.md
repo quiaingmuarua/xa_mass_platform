@@ -214,13 +214,13 @@ are not promised, and neither this fixture nor green CI establishes a platform l
 
 The concurrency report retains final `initialResponses` counts/rates by country
 and all client acquisition/query latency samples. Progress checkpoints and Server
-latency rings are not substitutes for the complete client distribution. Candidate
-recycle experiments compare fixed artifacts with the same Host, frontend and
-workload, using three alternating A/B pairs and separate diagnostic runs. They
-do not alter the 60-second SMS business lease or the client query workload.
-The [2026-10-10 full-candidate evaluation](baselines/2026-10-10-full-candidate-recycle.md)
-records the retained 10-second policy, frozen artifacts, cost gates and executed
-proofs; its fixed workload measurements are not platform capacity guarantees.
+latency rings are not substitutes for the complete client distribution.
+The historical
+[2026-10-10 full-candidate evaluation](https://github.com/quiaingmuarua/xa_mass_platform/blob/fa27697b09c0d47d8b15f200d96b7a905165e5b2/scenarios/sms-reception-jvm/baselines/2026-10-10-full-candidate-recycle.md)
+retains its fixed artifacts, experiment criteria and results. Its retired tooling
+is available at that same revision; those measurements establish neither a current
+execution requirement nor platform capacity. Current recycling behavior belongs
+to the [Pacer Owner](../../kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#full-candidate-recycling).
 
 The runner uses exact pre-materialized SMS-only inventory with `app_count=0`, a
 unique `test_*` scope and the packaged launcher's lifecycle/cleanup. Server restart

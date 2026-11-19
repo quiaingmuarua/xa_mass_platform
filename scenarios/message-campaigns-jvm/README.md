@@ -194,9 +194,9 @@ Android 的容量、10 分钟进程内窗口及回调清理由该 Host 拥有，
 可创建空任务或创建并导入，随后独立审核启动。内容默认留空，Lab JSON 示例位于折叠帮助，注明仅适用于显式配置的演示 Worker。
 创建身份核对、导入恢复、手动刷新和最多 100 条预览沿用原边界。
 
-本片使用新的 Redis scope 和新的 Simulator inventory，不迁移旧任务、Group 或 Worker 文件。
-沿用 [Preview 启动入口](../../distribution/server/PREVIEW.md#messages-multi-application-cutover)，
-不自动重启当前实例，不用新配置覆盖旧 Group；旧未确认提交不得在新环境自动重放。
+普通启动沿用 [Preview 启动入口](../../distribution/server/PREVIEW.md#source-launch)。
+仅在改变既有不可变 Group 事件定义或不兼容资源时，使用新的 Redis scope 和 Simulator inventory；
+这不是每次升级的要求。不覆盖运行中的实例或旧 Group，旧未确认提交不得在新环境自动重放。
 
 ## 检查与验收
 

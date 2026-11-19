@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import importlib.util
 import io
@@ -506,6 +507,22 @@ def verify_simulator(archive_path: Path, version: str) -> None:
             "performanceEntry": "acceptance/performance/run_worker_call_performance.py",
         } and re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("gitCommit"))) is not None,
             "Worker Simulator kit manifest differs from the current contract")
+        # Validate the shipped entry's dependency, not the verifier checkout's version.
+        # Self-contained immutable kits do not import the newer report module.
+        entry_source = archive.read(f"{root}/{manifest['performanceEntry']}").decode("utf-8-sig")
+        try:
+            imports = ast.walk(ast.parse(entry_source))
+            requires_reporting = any(
+                isinstance(node, ast.ImportFrom) and node.level == 0 and node.module == "reporting"
+                or isinstance(node, ast.Import) and any(alias.name == "reporting" for alias in node.names)
+                for node in imports
+            )
+        except SyntaxError as failure:
+            raise RuntimeError("Worker Simulator Performance entry is invalid Python") from failure
+        if requires_reporting:
+            reporter = "acceptance/performance/reporting.py"
+            _sdk_require(reporter in relative and archive.getinfo(f"{root}/{reporter}").file_size > 0,
+                         "Worker Simulator Performance entry is missing its reporting.py dependency")
         for jar in ("xa-mass-worker-simulator-jvm", "xa-mass-worker-core", "xa-mass-java-worker",
                     "xa-mass-worker-delivery-contract"):
             _sdk_require(f"lib/{jar}-{version}.jar" in relative, f"Worker Simulator kit lacks {jar} {version}")

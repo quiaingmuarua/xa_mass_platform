@@ -100,6 +100,18 @@ Consumer 18182/18183; the plain platform uses HTTP 18082 without a default Adapt
 Java Host details, properties/templates, events and seed stay in its JSON.
 There are no business example selectors or additional profiles.
 
+The local CLI uses only quantity startup. Without a supplied `startupPlan`, each
+configured Java Group needs an explicit `count` or `--java-count GROUP=N`; it does
+not infer a count from retained inventory. A supplied plan may contain only
+`workerCounts` and is passed
+through without CLI count overrides. Coordinate and scheduled-stop plans belong
+to the standalone [Simulator Host](../../worker_simulator_jvm/README.md#embedded-startup-plan)
+and explicit proof fixtures. Quantity startup preserves retained inventory,
+grows it through the Simulator when necessary, and selects a subset when counts
+shrink; zero starts none. Counts are integers in `0..15000`, and `newEnvironment`
+rebuilds must be performed separately. `--no-java-workers` selects no Java Host.
+These controls do not add a Simulator business mode or change Group resources.
+
 Precedence is explicit CLI, then the selected file, then profile defaults.
 Unset CLI options do not overwrite file values. Local coordinates must be
 literal values; the local YAML must not hide them behind imports or profile
@@ -135,6 +147,17 @@ before building or starting processes; `--help` explains how to retain the scope
 Task retention still applies when the launcher preserves the scope.
 The [Preview delivery](PREVIEW.md) and portable [Android consumer](../../xa-android/README.md)
 retain their artifact-specific entrypoints and use these existing owner boundaries.
+
+### Local HTTP client
+
+The shared launcher/proof HTTP client reuses one connection per thread and
+endpoint while requests remain less than five seconds apart. It closes an idle
+connection before the next request; failed or uncertain mutations are surfaced
+without automatic replay. Optional headers belong to each request and are not
+retained on the connection. For `/api/` requests without explicit `Authorization`,
+the client supplies the public development administrator Bearer key, authenticated
+through the normal Server directory. The local Worker connection check uses this
+default and has no private-key override; see the source-launch limitation above.
 
 ## External consumer workbench deployment
 
@@ -332,7 +355,7 @@ Runtime carries the SQLite JDBC implementation used by Server's finite history O
 The database, WAL and SHM files belong outside immutable installations and are never
 packaged. `xa.mass.task-retention.database-path` selects the local database; the old
 archive-directory property has no alias. API history queries are explicitly separate
-from Runtime reads. There is no JSONL/manifest migration in this cutover.
+from Runtime reads.
 
 A fixed local environment preserves its database across restarts. Generated temporary
 Preview scopes instead own a database under their run output and remove only that file

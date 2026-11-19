@@ -2,21 +2,22 @@
 
 Status: current shared scenario launch and archive owner.
 
-By default this finite preview starts one Server and one independent Worker Simulator.
-[Boot](../../server_boot_jvm/README.md#platform-and-preview) owns the fixed scenario
-topology and profile; this document owns source/ZIP launch and delivery. The
+This finite Preview launches one Server and an optional independent Worker
+Simulator. [Boot](../../server_boot_jvm/README.md#platform-and-preview) owns its
+profile and Scenario composition. This document owns Preview paths, source/ZIP
+delivery and cleanup; [local composition](README.md#source-launch) owns shared
+argument resolution and process lifecycle. The
 [production Runtime ZIP](README.md#runtime-archive) excludes Host.
 
 ## Source launch
 
-From the checkout root, install Python prerequisites and launch:
+From the checkout root:
 
-> **Data retention warning:** this default launch uses a temporary Redis scope.
-> Normal shutdown deletes its Tasks, Results, credit balances and transactions,
-> other scoped Redis state, and this run's private Task archives. Configuration
-> files and Worker inventory remain. To retain runtime data across restarts, add
-> `--redis-scope <stable-name>` and reuse the same `--work-dir` from the first launch;
-> `--work-dir` alone does not disable scope cleanup. See the
+> **Data retention warning:** the default launch uses a temporary Redis scope.
+> Normal shutdown deletes its Tasks, Results, credit data and other scoped Redis
+> state, plus this run's private Task archives. To retain runtime data, supply
+> `--redis-scope <stable-name>` and reuse the same `--work-dir` from the first launch.
+> A work directory alone does not disable cleanup. See the
 > [retained launch example](../../doc/guide/operations/deploy.md#从源码启动).
 
 ```powershell
@@ -24,167 +25,79 @@ python -m pip install -r distribution/server/requirements-preview.txt
 python run_local_runtime.py --profile preview
 ```
 
-From this directory the entry is `python run_preview.py --build`. Build requires
-Java 21, Node 22.19+ below 25, Corepack/pnpm 11.9.0 and Gradle's existing wrapper.
-The frontend build uses Corepack when available, otherwise pnpm on PATH, with
-the versions declared in `frontend/package.json`; neither tool present fails
-before dependency installation. An install/build failure is reported without
-retrying through another package manager.
-Run requires external Java 21, Python 3.11+ and Redis 7. It does not start or stop Redis.
-Redis defaults to `redis://127.0.0.1:6379/15`; override it with `--redis-url`.
-The root and packaged entries share local argument resolution and process lifecycle.
-Use `--java-count GROUP=N`, `--server-port`, `--adapter-port`, `--work-dir`, or
-`--java-config` for an explicit environment. No business environment variables
-or retired population CLI aliases are read. See [source launch](README.md#source-launch).
+From this directory, use `python run_preview.py --build`. Build requires Java 21,
+Node 22.19+ below 25, Corepack/pnpm 11.9.0 and the existing Gradle wrapper. The
+frontend build uses Corepack when available, otherwise pnpm on PATH, with the
+versions declared in `frontend/package.json`; missing tools or a failed build
+are reported without retrying through another package manager.
 
-Open the Console at `http://127.0.0.1:18500` and the device Host at
-`http://127.0.0.1:18504/lab`. Boot owns the
-[page mappings](../../server_boot_jvm/README.md#pages-and-configuration);
-the [Frontend Owner](../../frontend/README.md) describes page operations.
-The documentation site is served by the same Server at
-`http://127.0.0.1:18500/docs/`.
+Run requires Java 21, Python 3.11+ and external Redis 7. The launcher does not
+manage Redis. Its default URL is `redis://127.0.0.1:6379/15`; use `--redis-url`
+to override it. Source and packaged entries share
+[local options and precedence](README.md#source-launch). Their Java selection
+uses quantity counts; coordinate and scheduled-stop plans belong to the
+standalone [Simulator Host](../../worker_simulator_jvm/README.md#embedded-startup-plan)
+or explicit proof fixtures. `run_preview.py` rejects positive `--android-count`;
+use the checkout's `run_local_runtime.py` for Android or mixed composition.
 
-The Console starts at access-key login. The built-in development directory has one
-admin and two operators for Messages and App Checks workflow verification, with the
-public keys `xak_dev_1000`, `xak_dev_1001` and `xak_dev_1002`; the launcher prints the
-admin key. This classpath directory is read-only, so Console user edits and key
-issuance report a read-only directory. Its top bar displays the current user and
-logout; see [access-key login](../../frontend/README.md#access-key-login-and-access).
-Direct App Checks task/configuration requests send the same
-[Bearer key](../../scenarios/app-checks-jvm/README.md#api-和-task-数据).
-Each request resolves its key against the Server directory; role and Project changes
-affect the next admission. Catalog discovery admits any authenticated user;
-it still passes through the [access-key front door](../../server_jvm/README.md#access-key-front-door).
-API user authentication is separate from Worker gateway admission and Worker identity.
+The default Console is `http://127.0.0.1:18500`, documentation is `/docs/`, and
+the Host is `http://127.0.0.1:18504/lab`. Use the
+[quick start](../../doc/guide/quick-start.md) for login and user steps,
+[Frontend](../../frontend/README.md#access-key-login-and-access) for page behavior,
+and [Boot page mappings](../../server_boot_jvm/README.md#pages-and-configuration)
+for serving configuration. Business contracts remain in
+[SMS](../../scenarios/sms-reception-jvm/README.md),
+[Messages](../../scenarios/message-campaigns-jvm/README.md) and
+[App Checks](../../scenarios/app-checks-jvm/README.md).
 
 ## Inventory and process lifecycle
 
-The default Java configuration starts 60 Demo Workers and 20 in each App Group.
-App A/B retain simulated registration and Messages. Demo installs original-carrier,
-uint32-prime and MD5 events alongside its other capabilities. Only registration
-uses assignment-window observation. No Worker selection implicitly enables resources.
+The default Java input is `worker-simulator/config/products.json` in the ZIP,
+or `worker_simulator_jvm/config/products.json` in the checkout. The launcher
+writes resolved Runtime URL, absolute inventory path, Host port and the selected
+configuration to one run-local `worker-simulator.json`, then supplies only
+`--config` to Simulator Main. It does not evaluate templates or repair country
+quotas. Quantity inventory growth and subset selection belong to the
+[Simulator](../../worker_simulator_jvm/README.md#persistent-worker-lab).
 
-The public local/ZIP entry turns configured counts into an explicit quantity
-startup plan. It preserves existing inventory and asks the Simulator Owner to
-add validated records only when needed; lowering a count starts a subset without
-deleting data. A zero count starts none. Coordinates and retained Properties do
-not change. Java controls still belong to one Host process.
-
-The Python `Preview` composition used by Scenario proofs retains their explicit
-seeded inventory and coordinate-based fixture behavior; it shares `LocalRun` for
-staging, Server/Host launch, readiness and cleanup. Proof workload counts and
-fault timing are not reinterpreted as an inventory migration.
-
-Default inventory remains `<preview-root>/data/scenario-workers`. An explicit
-`--work-dir` supplies `<work-dir>/data/scenario-workers`; detailed Java configuration
-may supply its own file-relative inventory when no work directory is selected.
-Readiness checks selected RUNNING identities and actual Adapter routes, not
-Properties publication, Matching eligibility or business success.
-Each acceptance run uses an isolated inventory root and reuses it for Host restarts.
-The launcher selects a complete Simulator example, writes the final Runtime URL,
-absolute inventory path, port, events, count, seed and template into one
-`worker-simulator.json` in its run directory, and passes only `--config` to Main.
-The launcher never evaluates templates or corrects sampled country counts.
-App Checks configuration defaults to `<work-dir>/data/app-checks/configuration.json`;
-without `--work-dir`, the Preview directory is the work directory. An explicit
-Java configuration can place inventory elsewhere without moving this Scenario file.
-The launcher passes the default file as the Scenario configuration-path argument
-unless external Runtime YAML supplies its own absolute path; it never removes
-the configuration on shutdown.
-An external Runtime YAML may specify an absolute seed file URI for a fresh environment;
-otherwise the module's packaged Preview seed is used. Seeds initialize only a missing
-configuration file. Host window length changes require a new Redis scope. Tasks and
-execution state remain in Redis.
-The scenario holds `configuration.json.lock` while running and publishes complete edits
-with same-directory atomic replacement. A second instance cannot own the same file.
-Stop Server before editing the file manually. Failed or uncertain saves retain editor
-text for readback; missing or damaged files are not reseeded while running.
-The ZIP contains code and the seed resource, never materialized configuration, lock or
-temporary files. Acceptance runs use their private inventory sibling for a distinct
-configuration file; source/ZIP starts do not
-touch an already running Preview's configuration.
-
-Preview exposes `app-a-registration`, `app-b-registration`, `original-carrier`,
-`uint32-prime` and `md5-prefix`. Carrier and MD5 use batch events with
-`seedsPerItem=10`; registration and prime use one seed per Item. Input and CSV remain
-one seed per row. The two text checks are local computation demonstrations.
-Host `xa.mass.worker-assembly.fixed-window` owns window definitions, Group bindings
-and paired allocation feedback; App A/B use 60000 ms/10 windows.
-The Scenario owns the `common`/`checks` configuration. Its configuration page distinguishes
-the saved document from the effective startup snapshot; saved edits require a manual
-Server restart, while existing Tasks retain their execution bindings.
-See [Scenario configuration storage](../../scenarios/app-checks-jvm/README.md#模块内配置存储)
-for the document, save and migration contracts. The launcher does not migrate or
-replace an existing environment.
+Default inventory is `<preview-root>/data/scenario-workers`. An explicit
+`--work-dir` selects `<work-dir>/data/scenario-workers`; without it, an explicit
+Java configuration may retain its file-relative inventory. App Checks defaults to
+`<work-dir>/data/app-checks/configuration.json`, with the Preview directory as
+the default work directory. An external Runtime YAML's absolute configuration
+path takes precedence. Choosing a separate Java inventory does not move this
+Scenario file. The launcher preserves configuration and inventory on shutdown;
+the Scenario owns [configuration storage and restart activation](../../scenarios/app-checks-jvm/README.md#模块内配置存储).
 
 `<run-output>/run.json` records `profile`, `scope`, `temporaryScope`, Server `url`,
 Host `host`, `adapter`, `adapterPort`, `javaCounts`, `androidCount`, `seed`, process
-`pids`, `workDir`, `sandboxRoot`, `runtimeConfig`, `groupsFile` and artifact fingerprints.
-`appChecksConfiguration` records the launcher's default Scenario file path; an
-explicit `configuration.path` in the supplied Runtime YAML takes precedence.
-The record does not promise a country distribution. The Host uses the existing combined capability
-configuration; no Simulator runtime mode selects business deployment.
-Acceptance fixtures materialize their exact inventory before launch instead of
-searching seeds or repairing quotas; each [business proof](#verification) owns
-its population and capability selection. Existing inventories and historical run
-evidence are never migrated or deleted by this launcher.
-The public CLI uses independent `--server-port` and `--adapter-port` values in
-1..65535. Changing only the Server port does not change the Adapter port. Without
-an explicit Java configuration, the Host control port defaults to Server +4 and
-must also be valid and distinct. Occupied ports fail without stopping an existing
-service. Scenario proof runners separately retain their internal `Preview(port=...)`
-fixture and its Adapter +3 / Host +4 offsets; that is not a public launcher option.
-Ctrl+C stops only owned processes. When the launcher generated a temporary
-`test_products_<UUID>` scope, successful process cleanup permits SCAN/UNLINK of
-that exact scope; an explicit scope is retained. A child process exiting ends the
-run, with no automatic recovery. A hard-killed launcher may leave processes and
-data, so normal shutdown is required for cleanup.
-Both public entries warn about the temporary scope before building or starting
-processes, and `--help` states the data-loss consequence and retention option.
+`pids`, `workDir`, `sandboxRoot`, `runtimeConfig`, `groupsFile` and artifact
+fingerprints. `javaCounts` is the resolved quantity map, `{}` when no Java Host
+is selected, and `null` for a proof's non-quantity startup plan.
+`appChecksConfiguration` records the launcher's default Scenario path; an explicit
+Runtime YAML path takes precedence. This record does not certify country
+distribution, installed business capabilities or Matching eligibility.
 
-The launcher waits for `/actuator/health/readiness` to report `UP` before starting
-the Host, then checks selected RUNNING identities and actual Adapter routes.
-It does not separately poll every Scenario catalog or prove Matching eligibility,
-installed capability names or successful business execution. Source and ZIP use
-this same launcher.
-The shared HTTP client reuses a connection per thread and endpoint while requests
-remain less than five seconds apart. It closes an idle connection before the next
-request; a failed or uncertain mutation is surfaced without automatic replay.
-Optional headers belong to each request and are not retained on the connection;
-for `/api/` requests without an explicit `Authorization` header, the client adds
-the public development administrator Bearer key. Server authenticates it through
-the same user directory as other API keys. The launcher's Worker connection check
-uses this default and exposes no private-key override; see the
-[local consumer credential limitation](README.md#source-launch).
+Public HTTP and Adapter ports are independent values in `1..65535`. Without an
+explicit Java configuration, the Host port defaults to Server +4 and must be
+valid and distinct. Occupied ports fail without stopping an existing service.
+The Server readiness gate precedes Host launch; Worker readiness checks selected
+RUNNING identities and actual Adapter routes. Shared
+[HTTP client behavior](README.md#local-http-client) and the public-development-key
+limitation apply equally to source and ZIP.
 
-## Messages multi-application cutover
+Scenario proofs use Python `Preview` with their own pre-materialized inventory,
+explicit coordinate plans and Adapter +3 / Host +4 fixture offsets. They share
+`LocalRun` staging, readiness and cleanup without converting proof counts or fault
+timing into the public quantity interface. Each proof owns its exact fixture and
+reuses its private inventory/configuration paths for restart.
 
-Preview binds Messages applications Demo, App A and App B to the corresponding
-Groups. All three install message.send; App A/B retain app.registration.check.
-Their explicit phone ranges do not overlap, and country/messaging.enabled
-Properties are initialized in new inventories. API creation requires appId and
-no longer accepts senderPhone. Template content is opaque to Messages. The Host
-now defaults each Group to text sending; existing JSON demonstration fixtures
-explicitly set `messageContentMode: "lab-json"`. Creation success is not sending
-acceptance or a receipt. Host-root `messages` settings define finite deduplication
-and observation windows; they do not change Runtime Item retention.
-
-This configuration expands the immutable App Group event definitions. Use a fresh
-Redis scope and fresh inventory; do not apply it over existing create-only Groups
-or edit retained inventory to resemble a migration. The launcher already selects
-an independent test_products scope unless an explicit scope is supplied. For
-source and ZIP alike, choose unused ports and a new work directory, for example
-from the Preview directory:
-
-```powershell
-python run_preview.py --server-port 18640 --adapter-port 18643 --work-dir ./environments/messages-v3
-```
-
-Use a new inventory path ending in `data/scenario-workers`. The three Catalog
-applications and actual Worker capabilities must be verified after startup.
-Keep the previous instance and inventory separate; no task copying, Group overwrite,
-automatic replay of frozen requests or automatic replacement of an existing Preview
-occurs. Opening a new console session avoids carrying old environment drafts.
+Ctrl+C stops only owned processes. A child exit ends the run without automatic
+recovery. After successful process cleanup, a generated `test_products_<UUID>`
+scope is removed with SCAN/UNLINK of that exact scope; explicit scopes remain.
+Both public entries print the temporary-scope warning before build/start and
+describe retention in `--help`. A hard-killed launcher may leave owned processes
+and data requiring explicit cleanup.
 
 ## Archive delivery
 
@@ -193,99 +106,68 @@ occurs. Opening a new console session avoids carrying old environment drafts.
 .\gradlew.bat :distribution:server:verifyPreviewArchive
 ```
 
-The ZIP contains the current Server JAR, Host classpath in `worker-simulator/lib`,
-the four standalone Simulator examples in `worker-simulator/config` (including the
-minimal Lab configuration using built-in defaults), unified frontend with `/docs/`, config,
-Python entry and requirements. The output is
+The ZIP contains the Server JAR, Host classpath in `worker-simulator/lib`, the
+four Simulator examples in `worker-simulator/config`, unified frontend with
+`/docs/`, configuration, Python entry and requirements. The output is
 `distribution/server/build/distributions/xa-mass-scenario-preview-0.1.0-preview.zip`.
 After extraction, run from its root:
 
-> **The packaged default also deletes runtime data on normal exit.** Add
-> `--redis-scope <stable-name>` and reuse the same `--work-dir` to retain Tasks,
-> Results and credit data across restarts. Existing Task retention rules still apply.
+> **The packaged default also deletes runtime data on normal exit.** Supply
+> `--redis-scope <stable-name>` and reuse `--work-dir` to retain it. Server retention
+> still applies to retained scopes.
 
 ```text
 python -m pip install -r requirements.txt
 python run_preview.py
 ```
 
-No Node or Gradle is needed. The manifest identifies versions, HEAD, the fixed scenarios and
-SHA-256 fingerprints of binaries, frontend, launcher and deployment config.
-Preview version `0.1.0-preview` is independent of the platform project version.
-Its tasks do not require a release version or stage the Runtime ZIP.
-Source staging uses `build/preview/server`, `build/preview/host`,
-`build/preview/config` and `build/preview/frontend` in this distribution;
-the frontend includes the current build's documentation site and generated diagnostic dictionary. It does not reuse
-a possibly running installation in another preview. All staging inputs come from
-the same Gradle graph as the ZIP.
+No Node or Gradle is needed. The manifest identifies versions, HEAD, the fixed
+Scenarios and SHA-256 fingerprints of binaries, frontend, launcher and deployment
+configuration. Preview version `0.1.0-preview` is independent of the platform
+version; its tasks require no release version or Runtime ZIP staging.
 
-[The canonical preview YAML](../../server_boot_jvm/src/main/resources/application-preview.yaml)
-is packaged in the Boot JAR and copied to source `build/preview/config` and archive
-`config`. Archive verification checks the three Boot configuration files
-(`application.yaml`, `application-consumer.yaml`, `application-preview.yaml`), compares that external
-copy with the JAR resource, and rejects application configuration in nested
-platform/Scenario libraries and all test configuration. It also compares frontend
-bytes and manifest fingerprints; the generated diagnostic dictionary is delivered
-alongside the frontend.
+Source staging uses `build/preview/server`, `build/preview/host`,
+`build/preview/config` and `build/preview/frontend` in this distribution, including
+the current documentation site and diagnostic dictionary. All inputs use the
+same Gradle graph as the ZIP; a running installation is not reused or overwritten.
+
+[Canonical Preview YAML](../../server_boot_jvm/src/main/resources/application-preview.yaml)
+is packaged in the Boot JAR and copied to source `build/preview/config` and ZIP
+`config`. Verification compares the external copy with the JAR resource, checks
+all three Boot configurations, rejects application configuration in nested
+platform/Scenario libraries and all test configuration, and compares frontend
+bytes and manifest fingerprints. The archive includes seeds, never materialized
+Scenario configuration, lock files or temporary state.
 
 ## Verification
 
-Business runners remain in the checkout. Their `--build` path uses source staging;
-`--root <extracted-directory>` loads the packaged launcher, shared HTTP client and
-artifacts without checkout fallback or building inside the ZIP. Run evidence and
-acceptance scripts are not packaged. Runs store private process metadata/logs
-beneath `build/runs`; CI
-publishes only safe summaries, never message bodies, replies or full Properties.
-The private Server access log contains only HTTP method, path and status, enabling
-proofs to count Prepare calls independently without logging request or result bodies.
-The [SMS acceptance](../../scenarios/sms-reception-jvm/README.md#检查与验收),
+Business runners remain in the checkout. `--build` uses source staging;
+`--root <extracted-directory>` loads only the packaged launcher, HTTP client and
+artifacts, without checkout fallback or ZIP-local builds. Proof scripts and run
+evidence are not packaged. Private process metadata/logs live beneath `build/runs`;
+CI publishes bounded safe summaries. The private Server access log records only
+HTTP method, path and status for independent Prepare counts.
+
+[SMS acceptance](../../scenarios/sms-reception-jvm/README.md#检查与验收),
 [Scenario Coexistence](../../integrations/scenario-coexistence/README.md) and
-[App Checks oracle](../../scenarios/app-checks-jvm/README.md#装配与证明)
-own their independent workloads, exact fixtures, source/ZIP commands and nonclaims.
-Launch lifecycle and archive checks belong here; run them with
-`.\gradlew.bat :distribution:server:previewLauncherTest`, which also runs the root
-launcher tests. The preview verifier is `python -m distribution.archive_tools preview`.
-Both the SMS Preview workflow and Scenario Coexistence lane run these checks before
-their separate business proofs.
-
-### Text sending cutover
-
-The shipped products/messages Host configurations explicitly select text mode.
-JSON-looking bodies remain literal text in that mode. To retain an old receipt
-demonstration, configure its Group as lab-json before startup. Existing Task/Item
-identities and stored Results need no migration; queued work is interpreted by the
-Worker configuration selected for execution. Host windows do not survive restart.
-Do not restart an existing Preview or overwrite its staged artifacts as part of
-validation: build and run a separate source copy, port, scope and inventory.
-
-## Raw Task workspace
-
-Preview explicitly declares `default` with an empty Group binding list alongside
-the business Projects. Its Group capabilities include all registered resources,
-including later API registrations after manual refresh. Other Projects retain
-their declared bindings. The admin task workbench supports RPC and finite tasks
-for declared Projects. RPC lists long-lived Tasks separately from its JSON debug
-page. Creation uses the logged-in caller, explicit immutable supply (initially
-empty), and creation-time approval; SMS retains the host-configured default.
-Programmatic and web calls use the same 1..100 Item HTTP batch and known-ID Result
-reads. Neither opening the debugger nor switching Groups creates work. The list
-is a bounded current batch; known Task IDs remain directly accessible.
-Finite creation uses a content-area page with payload JSONL, TXT and full Item
-JSONL, followed by independent quantity approval. Raw result previews and terminal
-successful JSONL exports preserve Worker output without Scenario interpretation.
-Project declarations never create Tasks. Existing caller and input-owner checks
-continue to apply.
+[App Checks](../../scenarios/app-checks-jvm/README.md#装配与证明) own their workloads,
+fixtures and assertions. [TESTING](../../TESTING.md) owns proof selection/commands.
+Run launcher tests with `:distribution:server:previewLauncherTest`, including the
+root entry tests; the archive verifier is `python -m distribution.archive_tools preview`.
+SMS Preview and Scenario Coexistence run these delivery checks before their
+independent business proofs.
 
 ## Task result history
 
 For a generated temporary scope, the launcher supplies
 `--xa.mass.task-retention.database-path=<run-output>/task-history.sqlite`.
-An explicit scope defaults to `<work-dir>/data/task-history.sqlite`; external Runtime
-YAML may supply its own absolute database path. Server owns the default 1h grace,
-7d Runtime retention and 30d historical retention. Proof overrides are explicit.
+An explicit scope defaults to `<work-dir>/data/task-history.sqlite`; external
+Runtime YAML may supply its own absolute database path.
+[Server retention](../../server_jvm/README.md#finite-task-retention) owns expiry,
+history and Runtime/Storage semantics; the
+[workbench guide](../../doc/guide/usage/workbench.md) explains user operations.
 
-Normal shutdown stops owned processes before cleaning its generated Redis scope and
-private database plus `-wal`/`-shm` sidecars, only after successful process cleanup.
-Explicit scopes and external database paths are retained. Worker inventory and Batch
-Checks configuration remain independent. A killed launcher requires explicit cleanup
-of its owned resources; fixed scopes still have the Server's normal data expiry.
+After successful owned-process shutdown, cleanup removes only the generated
+scope's private database and its `-wal`/`-shm` sidecars. Explicit scopes and
+external database paths remain. Worker inventory and Scenario configuration are
+independent retained inputs.
