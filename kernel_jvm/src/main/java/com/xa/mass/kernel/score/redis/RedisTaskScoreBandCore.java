@@ -39,6 +39,25 @@ public final class RedisTaskScoreBandCore
             end
             return result
             """;
+    private static final String PARKED_PAGE_SCRIPT = """
+            local lo, hi = 0, redis.call('ZCARD', KEYS[1])
+            local score, member = tonumber(ARGV[1]), ARGV[2]
+            local exclusive = ARGV[5] == '1'
+            while lo < hi do
+              local mid = math.floor((lo + hi) / 2)
+              local row = redis.call('ZRANGE', KEYS[1], mid, mid, 'WITHSCORES')
+              local s = tonumber(row[2])
+              if s < score or (exclusive and s == score and row[1] <= member) then lo = mid + 1 else hi = mid end
+            end
+            local rows = redis.call('ZRANGE', KEYS[1], lo, lo + tonumber(ARGV[4]) - 1, 'WITHSCORES')
+            local result = {}
+            for i = 1, #rows, 2 do
+              if tonumber(rows[i + 1]) > tonumber(ARGV[3]) then break end
+              result[#result + 1] = rows[i]
+              result[#result + 1] = rows[i + 1]
+            end
+            return result
+            """;
 
     private static final String CAS_UPDATE_SCRIPT = """
             local key = KEYS[1]
@@ -832,6 +851,39 @@ public final class RedisTaskScoreBandCore
                     (rows.getLast() + "\n" + rows.get(rows.size() - 2)).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
         return new TerminalTaskPage(tasks, next);
+    }
+
+    @Override
+    public ParkedTaskPage scanParkedTasks(String cursor, int limit) {
+        if (cursor == null || limit < 1 || limit > 1000)
+            throw new IllegalArgumentException("Invalid parked Task page");
+        String member = "";
+        if (!cursor.equals("0")) {
+            try {
+                String decoded = new String(java.util.Base64.getUrlDecoder().decode(cursor), java.nio.charset.StandardCharsets.UTF_8);
+                int split = decoded.indexOf('\n');
+                if (Double.parseDouble(decoded.substring(0, split)) != idleParkScore())
+                    throw new IllegalArgumentException("Cursor outside parked Task window");
+                member = decoded.substring(split + 1);
+            } catch (RuntimeException invalid) { throw new IllegalArgumentException("Invalid parked Task cursor", invalid); }
+        }
+        List<?> rows = commands().eval(PARKED_PAGE_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{scoreKey()}, Long.toString(idleParkScore()), member, Long.toString(idleParkScore()),
+                Integer.toString(limit), cursor.equals("0") ? "0" : "1");
+        var tasks = new ArrayList<TaskScoreState>();
+        for (int i = 0; i < rows.size(); i += 2) {
+            String taskId = String.valueOf(rows.get(i));
+            try {
+                if (taskId.isBlank()) continue;
+                var state = decodeState(taskId, scoreToLong(rows.get(i + 1)));
+                if (state.isIdleParked()) tasks.add(state);
+            } catch (IllegalStateException corrupt) { /* Corrupt rows consume budget without blocking progress. */ }
+        }
+        String next = rows.size() == limit * 2
+                ? java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                        (rows.getLast() + "\n" + rows.get(rows.size() - 2)).getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                : "0";
+        return new ParkedTaskPage(tasks, next, rows.size() / 2);
     }
 
     private static DecodedPositive decodePositive(long storedScore) {

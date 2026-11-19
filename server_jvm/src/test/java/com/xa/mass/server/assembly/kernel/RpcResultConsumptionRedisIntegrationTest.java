@@ -50,7 +50,14 @@ class RpcResultConsumptionRedisIntegrationTest {
     }
     private String key(String id) { return TaskRedisKeys.results(scope.keyspace(), id); }
     private void write(String task, String id, long time, String payload) {
+        seed(task, id);
         runtime.storeTaskItemSuccessResults(task, Map.of(id, new TaskItemSuccessResult(6, time, payload)));
+    }
+    private void seed(String task, String id) {
+        if (items.getItemScoreStates(task, List.of(id)).get(id) != null) return;
+        long now = System.currentTimeMillis();
+        runtime.appendItems(task, List.of(new TaskItem(id, "event", now, Map.of(), 5,
+                now + 60_000, new WorkerQuery("workerId", "w"))));
     }
 
     @Test void onlyActualRpcWritesRenewTheWholeHashAndTakeDoesNotChangeExecutionResources() {
@@ -59,6 +66,7 @@ class RpcResultConsumptionRedisIntegrationTest {
         var taskBefore = scores.getScoreStates(List.of("rpc"));
         var itemBefore = items.getItemScoreStates("rpc", List.of("a"));
         write("rpc", "a", 10, "first");
+        seed("rpc", "b");
         runtime.storeTaskItemFailedResults("rpc", List.of("b"));
         assertThat(connection.sync().pttl(key("rpc"))).isBetween(50_000L, 60_000L);
         connection.sync().pexpire(key("rpc"), 10_000);
@@ -73,6 +81,7 @@ class RpcResultConsumptionRedisIntegrationTest {
         assertThat(scores.getScoreStates(List.of("rpc"))).isEqualTo(taskBefore);
         assertThat(items.getItemScoreStates("rpc", List.of("a"))).isEqualTo(itemBefore);
         assertThat(runtime.loadTaskItems("rpc", List.of("a")).get("a")).isNotNull();
+        seed("rpc", "c");
         runtime.storeTaskItemFailedResults("rpc", List.of("c"));
         assertThat(connection.sync().pttl(key("rpc"))).isBetween(50_000L, 60_000L);
         assertThat(runtime.takeTaskItemResults("rpc", List.of("b", "c")).values()).allMatch(row -> !row.succeeded());

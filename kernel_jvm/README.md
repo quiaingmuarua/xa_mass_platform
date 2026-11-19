@@ -79,6 +79,7 @@ The Java providers implement the operations currently called by the Runtime
 API and the fixed production Pacers, including:
 
 - Task create/lifecycle/Call submission, Item record access and read-only Item HASH pages, Result storage and bounded atomic RPC Result consumption;
+- read-only parked Task and per-tag terminal Item keyset pages, and caller-bounded RPC input release/final Item reclamation for Server maintenance;
 - Task, TaskItem and Worker score range reads, exact CAS transitions, leases,
   idle park/close, final promotion and completed-HOT release;
 - Worker registration and minimal identity/Group/Endpoint descriptors, including caller-driven read-only Group HASH pages;
@@ -144,6 +145,32 @@ cross-key retention fence is an explicit exception to ordinary independent commi
 late Item/Score/Result writers atomically check OPEN, and final descriptor/Score
 removal preserves the cleanup entry until the end. Server owns timing, archive
 files and application associations; Kernel starts no maintenance thread.
+
+## RPC Terminal Item Retention
+
+Server's existing maintenance Owner may select parked raw RPC Tasks and ask the
+Score Owners for bounded terminal candidates. Task Score owns private parked
+classification. Item Score owns per-tag time-range interpretation and opaque
+`(score, messageId)` cursors, including equal-Score pages and deleted predecessors.
+No Server caller decodes Score coordinates, and Kernel starts no cleanup thread.
+
+`TaskRuntime.reclaimRpcItems` admits at most 100 caller-observed terminal Scores.
+It confirms terminal qualification through the Item Score Owner, preflights Redis
+types, requires OPEN/PARK Task data, and compares each current opaque Score before
+mutation. RELEASE_INPUTS removes only input fields. PURGE_TERMINAL removes the
+corresponding input, Result and Score fields together. This same-Task retention
+operation is an explicit cross-resource exception, without new Redis keys or
+changes to scheduling transitions. Task descriptor, Task Score, directory, Worker
+and lease resources are not reclaimed by it.
+
+RPC Result commits require existing Item Score membership in their own Lua;
+missing retired identities are normal no-ops. RPC initialization preserves an
+existing member as NOOP and creates a new member only while its input exists.
+These guards remain effective when the maintenance feature is disabled. Result
+storage and Score promotion keep independent commits and original lease release.
+Server owns periods, raw-input attribution, budgets and the bounded replay
+contract; the [resource contract](doc/resource-model/task-resource-model.md#rpc-terminal-item-retention)
+and [Server policy](../server_jvm/README.md#rpc-terminal-item-retention) define it.
 
 ## Boundaries
 

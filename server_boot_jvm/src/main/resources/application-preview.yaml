@@ -14,6 +14,9 @@ xa:
       history-retention: 30d
       interval: 1h
       database-path: ${XA_MASS_TASK_HISTORY_DATABASE:./data/task-history.sqlite}
+      rpc-item-retention-enabled: false
+      rpc-input-retention: 1h
+      rpc-terminal-retention: 24h
     project-assembly:
       projects:
         - project-id: default

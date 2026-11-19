@@ -87,7 +87,8 @@
       "initialize_item_scores",
       "observe_item_score_counts",
       "promote_item_outcomes",
-      "rewrite_observed_item_scores"
+      "rewrite_observed_item_scores",
+      "scan_terminal_items"
     ],
     "TaskResourceCatalog": [
       "load_task_allocation_descriptors"
@@ -102,6 +103,7 @@
       "load_task_item_results",
       "load_task_items",
       "purge_task_data",
+      "reclaim_rpc_items",
       "release_task_payloads",
       "scan_task_item_results",
       "scan_task_items",
@@ -124,6 +126,7 @@
       "promote_observed_initial_tasks",
       "release_observed_score_hold",
       "rewrite_same_band_time_millis",
+      "scan_parked_tasks",
       "scan_terminal_tasks",
       "start_observed_pre_review_task",
       "try_release_idle_park"
@@ -305,6 +308,23 @@
     "TerminalTaskPage": [
       "tasks",
       "next_cursor"
+    ],
+    "ParkedTaskPage": [
+      "tasks",
+      "next_cursor",
+      "scanned_count"
+    ],
+    "TerminalItemPage": [
+      "observed_scores",
+      "next_cursor",
+      "scanned_count"
+    ],
+    "RpcItemRetentionResult": [
+      "examined_items",
+      "matched_items",
+      "deleted_inputs",
+      "deleted_results",
+      "deleted_scores"
     ]
   },
   "enums": {
@@ -409,6 +429,10 @@
       "FROZEN",
       "RELEASED",
       "PURGING"
+    ],
+    "RpcItemRetentionStage": [
+      "RELEASE_INPUTS",
+      "PURGE_TERMINAL"
     ]
   }
 }

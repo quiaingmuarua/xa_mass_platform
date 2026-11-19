@@ -1,6 +1,7 @@
 package com.xa.mass.server.task.retention;
 
 import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreState;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
@@ -41,20 +42,22 @@ public final class TaskRetentionService implements SmartLifecycle {
     private final OperationGuard operations;
     private final TaskRetentionProperties properties;
     private final LongSupplier clock;
+    private final RpcTaskItemRetention rpcItems;
     private volatile ScheduledExecutorService executor;
 
     @Autowired
-    public TaskRetentionService(TaskRuntime runtime, TaskResourceCatalog catalog, TaskScoreBandCore scores,
+    public TaskRetentionService(TaskRuntime runtime, TaskResourceCatalog catalog, TaskScoreBandCore scores, TaskItemScoreBandCore itemScores,
             TaskDirectory directory, TaskCreationRegistry creations, TaskHistoryPublisher history, TaskHistoryStore historyStore, RedisKeyspace keyspace,
             OperationGuard operations, TaskRetentionProperties properties, com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts) {
-        this(runtime, catalog, scores, directory, creations, history, historyStore, keyspace, operations, properties, creditStarts, System::currentTimeMillis);
+        this(runtime, catalog, scores, itemScores, directory, creations, history, historyStore, keyspace, operations, properties, creditStarts, System::currentTimeMillis);
     }
-    public TaskRetentionService(TaskRuntime runtime, TaskResourceCatalog catalog, TaskScoreBandCore scores,
+    public TaskRetentionService(TaskRuntime runtime, TaskResourceCatalog catalog, TaskScoreBandCore scores, TaskItemScoreBandCore itemScores,
             TaskDirectory directory, TaskCreationRegistry creations, TaskHistoryPublisher history, TaskHistoryStore historyStore, RedisKeyspace keyspace,
             OperationGuard operations, TaskRetentionProperties properties, com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts, LongSupplier clock) {
         this.runtime = runtime; this.catalog = catalog; this.scores = scores; this.directory = directory;
         this.creations = creations; this.history = history; this.historyStore = historyStore; this.scope = keyspace.base();
         this.operations = operations; this.properties = properties; this.creditStarts = creditStarts; this.clock = clock;
+        this.rpcItems = new RpcTaskItemRetention(runtime, catalog, scores, itemScores, operations, properties);
     }
 
     public record Info(String phase, @Nullable Long terminatedAtMillis, @Nullable Long frozenAtMillis, @Nullable Long expiresAtMillis,
@@ -142,6 +145,7 @@ public final class TaskRetentionService implements SmartLifecycle {
         try {
             while (!Thread.currentThread().isInterrupted() && historyStore.deleteExpiredBatch(now) != 0) { }
         } catch (Exception failure) { LOG.log(System.Logger.Level.WARNING, "Task history expiry deferred: {0}", failure.getClass().getSimpleName()); }
+        rpcItems.runPass(now);
     }
     private void sweep(long now, long cutoff, boolean archivePass) {
         String cursor = "0";

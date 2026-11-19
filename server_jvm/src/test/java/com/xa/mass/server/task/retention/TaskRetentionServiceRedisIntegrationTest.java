@@ -73,7 +73,8 @@ class TaskRetentionServiceRedisIntegrationTest {
         when(matching.normalizeRefill(anyString(), anyList())).thenAnswer(call -> call.getArgument(1));
         directory = new TaskDirectory(client, scope.keyspace(), projects, catalog, scores, groups, guard, runtime);
         creator = new TaskCreationService(groups, matching, runtime, projects, catalog, scores, guard, directory, creations);
-        properties = new TaskRetentionProperties(true, Duration.ofHours(1), Duration.ofDays(7), Duration.ofDays(30), Duration.ofHours(1), files.resolve("history.sqlite"));
+        properties = new TaskRetentionProperties(true, Duration.ofHours(1), Duration.ofDays(7), Duration.ofDays(30), Duration.ofHours(1), files.resolve("history.sqlite"),
+                false, Duration.ofHours(1), Duration.ofHours(24));
         historyStore = new TaskHistoryStore(JsonMapper.builder().build(), properties);
         archive = new TaskHistoryPublisher(runtime, items, historyStore, scope.keyspace(), properties);
         history = new TaskHistoryService(historyStore, scope.keyspace(), JsonMapper.builder().build(), guard, clock::get);
@@ -93,7 +94,7 @@ class TaskRetentionServiceRedisIntegrationTest {
         if (client != null) client.shutdown();
     }
     private TaskRetentionService maintenance(TaskHistoryPublisher archive, TaskCreationRegistry registry) {
-        return new TaskRetentionService(runtime, catalog, scores, directory, registry, archive, historyStore, scope.keyspace(), guard, properties, creditStarts, clock::get);
+        return new TaskRetentionService(runtime, catalog, scores, items, directory, registry, archive, historyStore, scope.keyspace(), guard, properties, creditStarts, clock::get);
     }
     private String historyId(String id) {
         return TaskHistoryStore.historyId(scope.keyspace().base(), id, runtime.loadTaskDataStates(List.of(id)).get(id).frozenAtMillis());
@@ -209,7 +210,7 @@ class TaskRetentionServiceRedisIntegrationTest {
         var interruptedRuntime = spy(runtime);
         var interruptedDirectory = spy(directory);
         var interruptedHistory = spy(archive);
-        var interrupted = new TaskRetentionService(interruptedRuntime, catalog, scores, interruptedDirectory,
+        var interrupted = new TaskRetentionService(interruptedRuntime, catalog, scores, items, interruptedDirectory,
                 creations, interruptedHistory, historyStore, scope.keyspace(), guard, properties, creditStarts, clock::get);
         boolean publishing = step.equals("release") || step.equals("publish");
         clock.addAndGet(publishing ? Duration.ofHours(1).toMillis() : Duration.ofDays(8).toMillis());
@@ -296,7 +297,7 @@ class TaskRetentionServiceRedisIntegrationTest {
             return page;
         }).when(observedScores).scanTerminalTasks(anyLong(), anyString(), anyInt());
         var files = spy(archive);
-        var service = new TaskRetentionService(runtime, catalog, observedScores, directory, creations,
+        var service = new TaskRetentionService(runtime, catalog, observedScores, items, directory, creations,
                 files, historyStore, scope.keyspace(), guard, properties, creditStarts, clock::get);
         service.runOnce();
         verify(files, never()).publish(any(), any(), any(), anyLong());

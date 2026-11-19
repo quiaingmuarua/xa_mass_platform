@@ -273,6 +273,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test void thousandItemsAreCountedByRangesWithOneReadOnlyCommandPerTask() {
         storeTask("counts");
         var ids = IntStream.range(0, 1000).mapToObj(i -> "item-" + i).toList();
+        inputRecordsBeforeScoreInitialization("counts", ids);
         for (int start = 0; start < ids.size(); start += 100) {
             var batch = new LinkedHashMap<String, Long>();
             ids.subList(start, start + 100).forEach(id -> batch.put(id, 0L));
@@ -513,6 +514,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void failedResultsAreIdempotentAndSuccessIsAbsorbing() {
         storeTask("task-1");
+        appendFixtureInputs("task-1", List.of("message-failed", "message-late"));
         runtime.storeTaskItemFailedResults(
                 "task-1",
                 List.of("message-failed", "message-late", "message-late")
@@ -581,6 +583,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void resultWritesRejectAWrongRedisTypeWithoutReplacingIt() {
         storeTask("task-1");
+        appendFixtureInputs("task-1", List.of("message-success", "message-failed"));
         String resultsKey = keyspace.base() + ":task:task-1:results";
         redis.set(resultsKey, "corrupt-type");
 
@@ -596,6 +599,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void executionResultsKeepOpaqueWhitespacePayloadCompatibility() {
         storeTask("task-1");
+        appendFixtureInputs("task-1", List.of("rpc"));
         runtime.storeTaskItemSuccessResults("task-1", successResults(Map.of("rpc", " "), 5000));
         assertThat(runtime.loadTaskItemResults("task-1", List.of("rpc")))
                 .containsEntry("rpc", TaskItemResult.succeeded(" "));
@@ -1479,6 +1483,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         storeTask("outcomes");
         for (int tag = 2; tag <= 9; tag++) {
             String id = "item-" + tag;
+            inputRecordsBeforeScoreInitialization("outcomes", List.of(id));
             itemScoreCore.initializeItemScores("outcomes", Map.of(id, 0L), 3);
             var active = itemScoreCore.getItemScoreStates("outcomes", List.of(id)).get(id);
             assertThat(active.tag()).isEqualTo(1);
@@ -1509,6 +1514,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void terminalOrderingUsesTheWholeScoreIncludingEarlierTimesInHigherTags() {
         storeTask("outcomes");
+        inputRecordsBeforeScoreInitialization("outcomes", List.of("item"));
         itemScoreCore.initializeItemScores("outcomes", Map.of("item", TaskItemScoreBandCore.MAX_TIME_MILLIS), 98);
         for (int tag = 2; tag <= 9; tag++) {
             assertThat(itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(List.of("item"), tag, 0))
@@ -1564,6 +1570,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void concurrentPromotionsKeepMaximumAndClaimsRequireTheExactActiveObservation() throws Exception {
         storeTask("outcomes");
+        inputRecordsBeforeScoreInitialization("outcomes", List.of("item"));
         itemScoreCore.initializeItemScores("outcomes", Map.of("item", 0L), 2);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var start = new CountDownLatch(1);
@@ -1579,6 +1586,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
             for (int round = 0; round < 20; round++) {
                 String id = "race-" + round;
+                inputRecordsBeforeScoreInitialization("outcomes", List.of(id));
                 long observed = itemScoreCore.initializeItemScores("outcomes", Map.of(id, 0L), 2).get(id).score();
                 var gate = new CountDownLatch(1);
                 var claims = IntStream.range(0, 2).mapToObj(index -> executor.submit(() -> {
@@ -1613,6 +1621,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         storeTask("outcomes");
         Map<String, Long> due = new LinkedHashMap<>();
         IntStream.range(0, 100).forEach(i -> due.put("id-" + i, 0L));
+        inputRecordsBeforeScoreInitialization("outcomes", List.copyOf(due.keySet()));
         itemScoreCore.initializeItemScores("outcomes", due, 0);
         catalog.loadTaskAllocationDescriptors(List.of("outcomes"));
         var calls = new CopyOnWriteArrayList<String>();
@@ -1625,8 +1634,10 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         try {
             itemScoreCore.close();
             catalog.close();
+            runtime.close();
             itemScoreCore.getItemScoreStates("outcomes", List.of("id-0"));
             catalog.loadTaskAllocationDescriptors(List.of("outcomes"));
+            runtime.loadTaskDataStates(List.of("outcomes"));
             calls.clear();
             var ids = List.copyOf(due.keySet());
             var promoted = itemScoreCore.promoteItemOutcomes("outcomes", outcomeTargets(ids, 6, 1_000));
@@ -1682,6 +1693,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         storeTask("tracked");
         Map<String, Long> due = new LinkedHashMap<>();
         IntStream.range(0, 100).forEach(i -> due.put("id-" + i, 0L));
+        inputRecordsBeforeScoreInitialization("tracked", List.copyOf(due.keySet()));
         itemScoreCore.initializeItemScores("tracked", due, 0);
         var observations = IntStream.range(0, 100).mapToObj(i ->
                 new com.xa.mass.kernel.task.TaskItemResultEvents.TaskItemOutcomeObservation(
@@ -1723,6 +1735,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void concurrentResultUpdatesKeepHighestTagThenLatestMillis() throws Exception {
         storeTask("tracked");
+        appendFixtureInputs("tracked", List.of("item"));
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var start = new CountDownLatch(1);
             var writes = IntStream.range(0, 100).mapToObj(i -> executor.submit(() -> {
@@ -1749,6 +1762,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void sameSlotContentUpdatesAndTerminalObservationsDoNotReopenTheTask() {
         runtime.createTask(descriptor("tracked", 0));
+        inputRecordsBeforeScoreInitialization("tracked", List.of("item"));
         itemScoreCore.initializeItemScores("tracked", Map.of("item", 0L), 0);
         long closedScore = scoreCore.closeScore("tracked").score();
         var events = new com.xa.mass.kernel.task.DefaultTaskItemResultEvents(runtime, itemScoreCore, 6);
@@ -1768,6 +1782,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void observationDoesNotCreateMissingOrCorruptItemsAndResultCorruptionIsNotOverwritten() {
         storeTask("tracked");
+        appendFixtureInputs("tracked", List.of("item"));
         String scoreKey = keyspace.base() + ":task:tracked:item_score";
         redis.zadd(scoreKey, 1, "corrupt");
         var events = new com.xa.mass.kernel.task.DefaultTaskItemResultEvents(runtime, itemScoreCore, 6);
@@ -1831,6 +1846,23 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 )
         );
         scoreCore.initializeScore(taskId, 1, 3000);
+    }
+
+    private void appendFixtureInputs(String taskId, List<String> ids) {
+        long now = ownerClockMillis();
+        for (int from = 0; from < ids.size(); from += 100) {
+            var batch = ids.subList(from, Math.min(from + 100, ids.size())).stream()
+                    .map(id -> new TaskItem(id, "test.event", now, Map.of(), 0, now + 60_000,
+                            new WorkerQuery("workerId", "w"))).toList();
+            runtime.appendItems(taskId, batch);
+        }
+    }
+
+    private void inputRecordsBeforeScoreInitialization(String taskId, List<String> ids) {
+        appendFixtureInputs(taskId, ids);
+        // Establish the real input-first interrupted stage in this unique test
+        // scope; the initialization under test must then create its own Scores.
+        redis.zrem(keyspace.base() + ":task:" + taskId + ":item_score", ids.toArray(String[]::new));
     }
 
     /** The Kernel owners' clock; Redis TIME is not a scheduling source. */

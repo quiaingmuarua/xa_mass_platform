@@ -659,4 +659,27 @@ Project, user, archive paths and retention durations remain outside this Owner.
 Reads and count aggregation retain their original single-ZSET semantics. Server
 checks phase around application observations to reject reads crossing reclamation.
 Released payloads do not remove Item Score or rewrite unfinished members. All
-members are removed only in final finite Task purge.
+members are removed in final finite Task purge or the separately authorized
+RPC terminal-item reclamation described below.
+
+## RPC Retention Traversal
+
+`scanTerminalItems(taskId, tag, atOrBeforeMillis, cursor, limit)` reads one bounded
+page from terminal tag 2..9. The Owner constructs its encoded inclusive time
+range using the existing 100ms precision. An opaque `(score, messageId)` keyset
+continues across equal Scores and deletion of the preceding page; skipped corrupt
+rows consume scan budget. It does not scan ACTIVE tag 1 or refill a page until a
+requested valid count is reached. No external caller constructs range Scores.
+
+The age rule uses this current band-local time coordinate, not first completion
+or last content-write time. A higher tag with an earlier time can become eligible
+immediately under the selected rule. Later advancement after a scan invalidates
+that observation for a reclaim batch.
+
+Server may retain a terminal member after releasing input, then ask TaskRuntime
+to reclaim its resources under the exact observed Score. This explicit retention
+boundary ends future observation and same-ID deduplication. Initializing an
+existing RPC member remains NOOP, including when input is absent; creating a new
+RPC member requires input presence in that initialization Lua. Missing members
+are never recreated by outcome promotion. Worker lease release remains outside
+this resource operation.

@@ -113,21 +113,28 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             """;
     private static final String STORE_SUCCESS_RESULTS_SCRIPT = RESULT_CODEC_SCRIPT + """
             if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return 0 end
+            local rpc = redis.call('HGET', KEYS[2], 'idleDisposition') == 'PARK_WHEN_IDLE'
+            if rpc then
+              local kind = redis.call('TYPE', KEYS[3]).ok
+              if kind ~= 'none' and kind ~= 'zset' then return redis.error_reply('Task Item Score key must be a zset') end
+            end
             local updates = {}
             for i = 2, #ARGV, 2 do
-              local target = cjson.decode(ARGV[i + 1])
-              local stored = redis.call("HGET", KEYS[1], ARGV[i])
-              local replace = true
-              if stored then
-                local current = decode_result(stored)
-                if current.code == "200" then
-                  replace = target.tag > current.tag or
-                      (target.tag == current.tag and target.observedAtMillis > current.observedAtMillis)
+              if not rpc or redis.call('ZSCORE', KEYS[3], ARGV[i]) then
+                local target = cjson.decode(ARGV[i + 1])
+                local stored = redis.call("HGET", KEYS[1], ARGV[i])
+                local replace = true
+                if stored then
+                  local current = decode_result(stored)
+                  if current.code == "200" then
+                    replace = target.tag > current.tag or
+                        (target.tag == current.tag and target.observedAtMillis > current.observedAtMillis)
+                  end
                 end
-              end
-              if replace then
-                updates[#updates + 1] = ARGV[i]
-                updates[#updates + 1] = ARGV[i + 1]
+                if replace then
+                  updates[#updates + 1] = ARGV[i]
+                  updates[#updates + 1] = ARGV[i + 1]
+                end
               end
             end
             if #updates > 0 then
@@ -140,6 +147,11 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             """;
     private static final String STORE_FAILED_RESULTS_SCRIPT = """
             if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return 0 end
+            local rpc = redis.call('HGET', KEYS[2], 'idleDisposition') == 'PARK_WHEN_IDLE'
+            if rpc then
+              local kind = redis.call('TYPE', KEYS[3]).ok
+              if kind ~= 'none' and kind ~= 'zset' then return redis.error_reply('Task Item Score key must be a zset') end
+            end
             local results_key = KEYS[1]
             local failed_result = ARGV[2]
             local results_type = redis.call("TYPE", results_key).ok
@@ -148,12 +160,14 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             end
             local stored = 0
             for index = 3, #ARGV do
-              stored = stored + redis.call(
-                "HSETNX",
-                results_key,
-                ARGV[index],
-                failed_result
-              )
+              if not rpc or redis.call('ZSCORE', KEYS[3], ARGV[index]) then
+                stored = stored + redis.call(
+                  "HSETNX",
+                  results_key,
+                  ARGV[index],
+                  failed_result
+                )
+              end
             end
             if stored > 0 and redis.call('HGET', KEYS[2], 'idleDisposition') == 'PARK_WHEN_IDLE' then
               redis.call('PEXPIRE', results_key, ARGV[1])
@@ -167,7 +181,35 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             return 1
             """;
 
-    // The only cross-resource transaction: seal against writers and retain the
+    private static final String RECLAIM_RPC_ITEMS_SCRIPT = """
+            local expected_types = {'hash', 'hash', 'hash', 'zset'}
+            for index, expected in ipairs(expected_types) do
+              local kind = redis.call('TYPE', KEYS[index]).ok
+              if kind ~= 'none' and kind ~= expected then
+                return redis.error_reply('RPC Item retention key has invalid type')
+              end
+            end
+            if redis.call('HGET', KEYS[1], 'dataPhase') ~= 'OPEN'
+                or redis.call('HGET', KEYS[1], 'idleDisposition') ~= 'PARK_WHEN_IDLE' then
+              return {0, 0, 0, 0}
+            end
+            local matched, inputs, results, scores = 0, 0, 0, 0
+            for index = 2, #ARGV, 2 do
+              local id = ARGV[index]
+              local current = redis.call('ZSCORE', KEYS[4], id)
+              if current and tonumber(current) == tonumber(ARGV[index + 1]) then
+                matched = matched + 1
+                inputs = inputs + redis.call('HDEL', KEYS[2], id)
+                if ARGV[1] == 'PURGE_TERMINAL' then
+                  results = results + redis.call('HDEL', KEYS[3], id)
+                  scores = scores + redis.call('ZREM', KEYS[4], id)
+                end
+              end
+            end
+            return {matched, inputs, results, scores}
+            """;
+
+    // Finite Task transaction: seal against writers and retain the
     // descriptor until the final discoverable Score can be removed atomically.
     private static final String RETENTION_SCRIPT = """
             local score = redis.call('ZSCORE', KEYS[2], ARGV[1])
@@ -582,6 +624,46 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     }
 
     @Override
+    public RpcItemRetentionResult reclaimRpcItems(String taskId, Map<String, Long> observedTerminalScores,
+                                                  RpcItemRetentionStage stage) {
+        requireNonBlank(taskId, "taskId");
+        if (observedTerminalScores == null || observedTerminalScores.size() > TaskItemScoreBandCore.MAX_ITEM_BATCH_SIZE
+                || stage == null) {
+            throw new IllegalArgumentException("RPC Item retention requires a stage and at most 100 observed Scores");
+        }
+        var captured = new LinkedHashMap<String, Long>();
+        observedTerminalScores.forEach((id, score) -> {
+            requireNonBlank(id, "messageId");
+            if (score == null || score <= 0 || captured.putIfAbsent(id, score) != null
+                    || captured.size() > TaskItemScoreBandCore.MAX_ITEM_BATCH_SIZE) {
+                throw new IllegalArgumentException("RPC Item retention requires unique identities and positive observed Scores");
+            }
+        });
+        if (captured.isEmpty()) return new RpcItemRetentionResult(0, 0, 0, 0, 0);
+        // Only the Score Owner qualifies terminal coordinates. The Lua merely exact-compares their opaque fences.
+        var states = itemScoreBand.getItemScoreStates(taskId, List.copyOf(captured.keySet()));
+        var arguments = new ArrayList<String>();
+        arguments.add(stage.name());
+        captured.forEach((id, observed) -> {
+            var state = states.get(id);
+            if (state != null && state.band() == TaskItemScoreBandCore.TaskItemScoreBand.TERMINAL
+                    && state.score() == observed) {
+                arguments.add(id);
+                arguments.add(Long.toString(observed));
+            }
+        });
+        if (arguments.size() == 1) return new RpcItemRetentionResult(captured.size(), 0, 0, 0, 0);
+        List<Long> counts = commands().eval(RECLAIM_RPC_ITEMS_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{taskDescriptorKey(taskId), itemsKey(taskId), resultsKey(taskId),
+                        TaskRedisKeys.itemScores(keyspace, taskId)}, arguments.toArray(String[]::new));
+        if (counts == null || counts.size() != 4 || counts.stream().anyMatch(value -> value == null || value < 0 || value > captured.size())) {
+            throw new IllegalStateException("RPC Item retention returned invalid counts");
+        }
+        return new RpcItemRetentionResult(captured.size(), counts.get(0).intValue(), counts.get(1).intValue(),
+                counts.get(2).intValue(), counts.get(3).intValue());
+    }
+
+    @Override
     public void storeTaskItemSuccessResults(
             String taskId,
             Map<String, TaskItemSuccessResult> results
@@ -606,7 +688,8 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                     "tag", result.tag(), "observedAtMillis", result.observedAtMillis()))));
         });
         commands().eval(STORE_SUCCESS_RESULTS_SCRIPT, ScriptOutputType.INTEGER,
-                new String[]{resultsKey(taskId), taskDescriptorKey(taskId)}, arguments.toArray(String[]::new));
+                new String[]{resultsKey(taskId), taskDescriptorKey(taskId), TaskRedisKeys.itemScores(keyspace, taskId)},
+                arguments.toArray(String[]::new));
     }
 
     @Override
@@ -638,7 +721,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         commands().eval(
                 STORE_FAILED_RESULTS_SCRIPT,
                 ScriptOutputType.INTEGER,
-                new String[]{resultsKey(taskId), taskDescriptorKey(taskId)},
+                new String[]{resultsKey(taskId), taskDescriptorKey(taskId), TaskRedisKeys.itemScores(keyspace, taskId)},
                 arguments.toArray(String[]::new)
         );
     }

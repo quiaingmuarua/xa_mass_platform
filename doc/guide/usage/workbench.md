@@ -40,6 +40,12 @@ Project 绑定控制准入，不会创建 Task、Pool 或 Worker。
 RPC 工作台调用的 `items:call` 和后续 `results:take` 会消费取得的内容，
 应保留返回值并用原 messageId 核对未知状态。`results:load` 仍是非消费观察，
 可用于诊断，但不会恢复已经取走的结果。
+
+包含终态回收能力的版本若显式启用该配置，历史 RPC 输入可以返回 null；
+过期 Result 和 Score 删除后可能返回 not-observed，Item 数量也会下降。
+去重仅在记录保留期间有效，过期旧调用不要自动重放，新业务调用使用新 messageId。
+启用条件与保留期限见[RPC 终态数据保留](../operations/deploy.md#rpc-终态数据保留)。
+
 有限 Task 的保留和导出使用另一套生命周期，不能套用 RPC 的消费语义。
 详情见 [Server Task 与 RPC](../../../server_jvm/README.md#projects-and-explicit-rpc-tasks)、
 [结果消费](../../../server_jvm/README.md#rpc-result-consumption-and-idle-reclamation)及

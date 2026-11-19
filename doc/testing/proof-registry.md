@@ -104,6 +104,24 @@ all rows and multiplicities without assuming traversal order. Controlled clocks 
 the real workload proves independent history survives the Runtime purge.
 No RPC reclamation, historical file migration, database replication or credit refund is claimed.
 
+### RPC terminal Item retention proof
+
+RpcRetentionScoreRedisIntegrationTest owns parked/terminal keyset traversal,
+equal-Score pages, deleted predecessors, corrupted-row budgets and 100ms per-tag
+age boundaries. RpcItemRetentionRedisIntegrationTest owns exact observed-Score
+qualification, full type preflight, input-only/final reclamation, idempotent
+responses, retained Result TTL and independent late Result/Score commits.
+RpcTaskRetentionServiceRedisIntegrationTest and focused Server tests own raw RPC
+qualification, default-off/timing configuration, stage order and bounded/resumable
+maintenance. Existing Runtime Boundary and Result export tests retain HTTP/read
+contracts; original Worker lease release is witnessed through the production
+Result policy with reclaimed RPC data.
+
+These are additions to existing Redis Owner/Runtime Boundary claims, not a new
+proof lane. They do not establish a hard deletion deadline, infinite-ID
+idempotency, continuously active RPC capacity or an applied GCP cleanup. Finite
+archive/expiry proof and SMS business claims remain separate.
+
 ## runtime_boundary
 
 Worker cooldown traverses administrator HTTP, persisted control, live Adapter

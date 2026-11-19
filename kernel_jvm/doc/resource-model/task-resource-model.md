@@ -114,5 +114,33 @@ then removes only this Task's member from the global Score ZSET atomically.
 
 Kernel owns no archive path, retention duration, scan loop, Project index, or
 creation-request association. Server orchestrates those effects. RPC Tasks are
-excluded from the retention operations. Missing Task data rejects late mutations
+excluded from these finite retention operations. Missing Task data rejects late mutations
 rather than creating a replacement resource. No Worker, Pool or shared queue is deleted.
+
+## RPC Terminal Item Retention
+
+RPC reclamation uses separate caller-bounded operations while the parent remains
+OPEN/PARK_WHEN_IDLE. It does not freeze, close, archive or recreate the Task.
+The caller supplies at most 100 terminal observations qualified by the Item Score
+Owner; TaskRuntime confirms those observations and preflights all descriptor,
+input, Result and Item Score key types before the first deletion. The same Lua
+exact-compares each current opaque Score. A changed/missing member is skipped;
+corrupt types fail without partial batch deletion.
+
+RELEASE_INPUTS performs field-level HDEL on the input HASH. PURGE_TERMINAL deletes
+the matching input and Result fields and the Item Score member in one bounded
+commit. Missing fields are idempotent. No Task metadata, global Task Score,
+application directory, Worker or shared queue is removed, and Result expiration
+is not renewed. This extends the explicit same-Task retention exception; it
+introduces no generation, tombstone, timestamp index or new Redis key.
+
+PARK Result writes check Score membership at commit time, not input membership:
+inputs may already have been released while later Results remain legal. Missing
+Score permits neither an ordinary success nor a failure to recreate Result
+content. Score initialization similarly creates a missing RPC member only while
+its input exists; an existing member remains NOOP. Finite behavior is unchanged.
+
+The Server policy supplies age cutoffs and restricts callers to raw RPC Tasks.
+Retirement ends retained-ID deduplication and outcome observation. Old calls must
+not be automatically replayed after reclamation; new business calls use new
+message IDs. No permanent rejection of every historical opaque ID is promised.

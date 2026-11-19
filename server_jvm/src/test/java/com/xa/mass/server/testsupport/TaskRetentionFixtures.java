@@ -15,7 +15,8 @@ import static org.mockito.Mockito.*;
 public final class TaskRetentionFixtures {
     private TaskRetentionFixtures() { }
     public static TaskRetentionProperties properties() {
-        return new TaskRetentionProperties(false, Duration.ofHours(1), Duration.ofDays(7), Duration.ofDays(30), Duration.ofHours(1), Path.of("build/test-history.sqlite"));
+        return new TaskRetentionProperties(false, Duration.ofHours(1), Duration.ofDays(7), Duration.ofDays(30), Duration.ofHours(1), Path.of("build/test-history.sqlite"),
+                false, Duration.ofHours(1), Duration.ofHours(24));
     }
     public static TaskRuntime openRuntime() { return openData(mock(TaskRuntime.class)); }
     public static TaskRuntime openData(TaskRuntime runtime) {

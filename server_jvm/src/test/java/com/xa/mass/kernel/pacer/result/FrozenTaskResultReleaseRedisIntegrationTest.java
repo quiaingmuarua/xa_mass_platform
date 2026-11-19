@@ -25,6 +25,48 @@ import org.junit.jupiter.api.Test;
 
 @Tag("redis-owner")
 class FrozenTaskResultReleaseRedisIntegrationTest {
+    @Test void reclaimedRpcItemStillReleasesTheOriginalWorkerLease() {
+        var scope = RedisTestScope.create("rpc_retention_result_release");
+        var client = RedisClient.create(REDIS_URL);
+        var clock = new AtomicLong(2_000_000_000_000L);
+        try (var connection = client.connect();
+             var taskScores = new RedisTaskScoreBandCore(client, scope.keyspace(), clock::get);
+             var itemScores = new RedisTaskItemScoreBandCore(client, scope.keyspace(), clock::get);
+             var runtime = new RedisTaskRuntime(client, taskScores, itemScores, scope.keyspace(), java.time.Duration.ofDays(7).toMillis(), clock::get);
+             var workerScores = new RedisWorkerScoreCore(client, scope.keyspace(), clock::get)) {
+            try {
+                runtime.createTask(new TaskDescriptor("rpc", "g", TaskIdleDisposition.PARK_WHEN_IDLE,
+                        Map.of("priority", "1", "maxRetryTimes", "2"), List.of(), null, Map.of()));
+                runtime.appendItems("rpc", List.of(new TaskItem("item", "event", clock.get(), Map.of(),
+                        1, clock.get() + 60_000, new WorkerQuery("workerId", "worker"))));
+                workerScores.initializeRegisteredScores("g", List.of("worker"));
+                workerScores.rewriteCurrentPolarityWithinTimeFence("g", Map.of("worker", clock.get()),
+                        WorkerScoreCore.WorkerScorePolarity.HOT_ACQUIRE, 0);
+                clock.addAndGet(1_000);
+                var lease = workerScores.acquireCurrentHotScoreLeases("g", List.of("worker"), clock.get() + 60_000).get("worker");
+                assertThat(lease.status()).isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
+                itemScores.promoteItemOutcomes("rpc", Map.of("item",
+                        new com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemOutcomeTarget(5, clock.get())));
+                long terminal = itemScores.getItemScoreStates("rpc", List.of("item")).get("item").score();
+                assertThat(runtime.reclaimRpcItems("rpc", Map.of("item", terminal), RpcItemRetentionStage.PURGE_TERMINAL)
+                        .deletedScores()).isEqualTo(1);
+
+                var policy = new TaskResultBatchPolicy(new DefaultTaskItemResultEvents(runtime, itemScores, 6),
+                        new DefaultWorkerExecutionResultEvents(workerScores), clock::get, new ResultContextCodec());
+                String context = "{\"taskId\":\"rpc\",\"messageId\":\"item\",\"workerId\":\"worker\",\"workerGroupId\":\"g\",\"workerLeaseScore\":%d}"
+                        .formatted(lease.score());
+                policy.handleSuccess(List.of(DeliveryReport.create(DeliveryEndpoint.WORKER, "worker",
+                        DeliveryEndpoint.TASK, "event", "200", "late", context)));
+                assertThat(connection.sync().exists(TaskRedisKeys.results(scope.keyspace(), "rpc"))).isZero();
+                assertThat(itemScores.getItemScoreStates("rpc", List.of("item")).get("item")).isNull();
+                assertThat(runtime.loadTaskDataStates(List.of("rpc")).get("rpc").phase()).isEqualTo(TaskDataPhase.OPEN);
+                clock.addAndGet(1_000);
+                assertThat(workerScores.acquireCurrentHotScoreLeases("g", List.of("worker"), clock.get() + 60_000)
+                        .get("worker").status()).isEqualTo(WorkerScoreCore.WorkerScoreTransitionStatus.TRANSITIONED);
+            } finally { scope.cleanup(connection.sync()); }
+        } finally { client.shutdown(); }
+    }
+
     @Test void ignoredSuccessStillReleasesTheActualWorkerLeaseAfterFreezeReleaseAndPurge() {
         var scope = RedisTestScope.create("retention_result_release");
         var client = RedisClient.create(REDIS_URL);
