@@ -182,8 +182,8 @@ Ali 常驻 Host 的 `/opt/xa-mass-worker-simulator/current` 另有安装记录�
 按需 Performance kit 继续为 4.4.4，常驻 Host 继续为 4.4.2，不由 Server 升级联动替换。
 首轮维护 23,813ms 完成：删除 892,741 个输入、250,774 个 Item Score、69 个 Result；
 现存 RPC 家族在新验收调用前分别由 892,741／1,279／892,741 降为 0／1,210／641,967。
-Redis `used_memory` 由 545,717,368 降为 148,777,632 bytes；受保护的当前状态和旧 scope
-保留的 347 个 key 未做清理，已核对保护项的指纹不变。外部有限任务 3 Item 和新 RPC 3 Item 均通过独立 UTF-8 MD5 核对，
+Redis `used_memory` 由 545,717,368 降为 148,777,632 bytes，受保护的当前状态指纹一致。
+旧 scope 保留的 347 个 key 未做清理，已核对保护项的指纹不变。外部有限任务 3 Item 和新 RPC 3 Item 均通过独立 UTF-8 MD5 核对，
 Runtime、认证、对应版本文档与 SQLite 已核对。版本、制品、样本和边界见
 [4.4.5 记录](../../../distribution/server/RELEASE-4.4.md#445-terminal-rpc-data-retention-patch)。
 2026-11-19 09:58:31 UTC 已确认旧 4.4.0 制品、单份临时恢复点和临时 Runtime 下载均已删除；
