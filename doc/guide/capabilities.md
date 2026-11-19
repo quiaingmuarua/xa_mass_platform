@@ -197,11 +197,11 @@ consumer 只运行已发布 kit，不构建源码；目标 GCP Runtime 仍为 **
 旧报告按日期保留；其中早期 TUN 归因、待扩大端口等描述不能覆盖本次结论。
 索引区分公开聚合证据与仅保留哈希的本地原始抓包，不把哈希当作公开原始数据。
 
-手动 CI 仅以 1,000 档作为默认基础档，保留发布工具的 `diagnostic-only` 标识；
-100 档已移除，不再提供或推荐为新验收入口，其结果只作为历史证据保留。
-15k 完整模式仍可显式选择，原断言不变。已通过的是上述本地公网运行，
-**不据此声称新的 1,000 档 CI 入口已经在 GitHub 执行通过**。收尾只验证参数接线和文档，
-不重新运行远端负载。命令见 [TESTING](../../TESTING.md#external-release-load)。
+当时的手动 CI 基础档为 1,000，并保留 `diagnostic-only` 标识；该收尾只检查
+参数接线，不能据此声称基础档已在 GitHub 执行通过。旧结果和失败结论原样保留。
+2026-11-19 已退役 Loaded 公网 Actions 路线及其规模、Runner、网络诊断选项；
+当前公网 CI 仅使用 [Performance](../../TESTING.md#deployed-call-performance)。
+本地 Loaded Recovery 和 kit 的本地成品消费检查继续保留。
 
 ## 固定证据快照
 

@@ -1,32 +1,14 @@
 name: SMS Reception Preview
 
 on:
+  workflow_call:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'scenarios/sms-reception-jvm/**'
-      - 'worker_simulator_jvm/**'
-      - 'frontend/**'
-      - 'distribution/server/**'
-      - 'distribution/archive_tools.py'
-      - 'run_local_runtime.py'
-      - 'server_boot_jvm/**'
-      - 'scenarios/message-campaigns-jvm/**'
-      - 'transport/**'
-      - 'server_jvm/**'
-      - 'kernel_jvm/**'
-      - 'kernel_pacer_jvm/**'
-      - 'worker_matching_jvm/**'
-      - 'settings.gradle'
-      - 'build.gradle'
-      - 'gradle/**'
-      - '.github/workflows/sms-reception-preview.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: sms-reception-${{ github.ref }}
+  group: sms-reception-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -89,7 +71,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: sms-reception-preview-proof
+          name: sms-reception-preview-proof-${{ github.run_attempt }}
           path: |
             scenarios/sms-reception-jvm/build/ci-proof/summary.json
             scenarios/sms-reception-jvm/build/ci-proof/summary.md

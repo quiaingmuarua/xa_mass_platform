@@ -55,6 +55,18 @@ class ConsumerProofGateTest(unittest.TestCase):
         self.assertNotEqual(0, self.run_gate(manual=True, CANDIDATE_DISTRIBUTIONS_RESULT="skipped"))
         self.assertNotEqual(0, self.run_gate(manual=True, ANDROID_EMULATOR_RESULT="failure"))
 
+    def test_sms_selection_and_complete_manual_proof_require_success(self):
+        self.assertEqual(0, self.run_gate(SMS_RECEPTION_PREVIEW_SELECTED="true",
+                                        SMS_RECEPTION_PREVIEW_RESULT="success"))
+        for outcome in ("failure", "cancelled", "skipped", ""):
+            with self.subTest(outcome=outcome):
+                self.assertNotEqual(0, self.run_gate(SMS_RECEPTION_PREVIEW_SELECTED="true",
+                                                   SMS_RECEPTION_PREVIEW_RESULT=outcome))
+                self.assertNotEqual(0, self.run_gate(manual=True,
+                                                   SMS_RECEPTION_PREVIEW_RESULT=outcome))
+        self.assertEqual(0, self.run_gate(SMS_RECEPTION_PREVIEW_RESULT="skipped"))
+        self.assertNotEqual(0, self.run_gate(SMS_RECEPTION_PREVIEW_RESULT="success"))
+
 
 class AndroidConsumerCredentialBuildTest(unittest.TestCase):
     def test_build_property_and_provenance_match_each_explicit_mode(self):

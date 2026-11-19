@@ -38,6 +38,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       runtime_distribution: ${{ steps.filter.outputs.runtime_distribution }}
       product_coexistence: ${{ steps.filter.outputs.product_coexistence }}
+      sms_reception_preview: ${{ steps.filter.outputs.sms_reception_preview }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -817,6 +818,14 @@ jobs:
       github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/product-coexistence.yml
 
+  sms-reception-preview:
+    name: SMS Reception Preview
+    needs: changes
+    if: >-
+      needs.changes.outputs.sms_reception_preview == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/sms-reception-preview.yml
+
   proof-gate:
     name: Proof Gate
     if: always()
@@ -835,6 +844,7 @@ jobs:
       - frontend
       - runtime-distribution
       - product-coexistence
+      - sms-reception-preview
       - docs-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 2
@@ -867,6 +877,8 @@ jobs:
       RUNTIME_DISTRIBUTION_RESULT: ${{ needs.runtime-distribution.result }}
       PRODUCT_COEXISTENCE_SELECTED: ${{ needs.changes.outputs.product_coexistence }}
       PRODUCT_COEXISTENCE_RESULT: ${{ needs.product-coexistence.result }}
+      SMS_RECEPTION_PREVIEW_SELECTED: ${{ needs.changes.outputs.sms_reception_preview }}
+      SMS_RECEPTION_PREVIEW_RESULT: ${{ needs.sms-reception-preview.result }}
       DOCS_RESULT: ${{ needs.docs-contract.result }}
     steps:
       - name: Require every selected proof lane
@@ -924,6 +936,8 @@ jobs:
             "Runtime Distribution" "$RUNTIME_DISTRIBUTION_SELECTED" "$RUNTIME_DISTRIBUTION_RESULT"
           check_lane \
             "Product Coexistence" "$PRODUCT_COEXISTENCE_SELECTED" "$PRODUCT_COEXISTENCE_RESULT"
+          check_lane \
+            "SMS Reception Preview" "$SMS_RECEPTION_PREVIEW_SELECTED" "$SMS_RECEPTION_PREVIEW_RESULT"
           check_lane \
             "Docs Contract" "true" "$DOCS_RESULT"
 

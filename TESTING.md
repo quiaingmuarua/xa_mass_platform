@@ -53,7 +53,12 @@ composition, console and source/fresh-ZIP delivery changes; its claims and limit
 are registered under [SMS Preview](doc/testing/proof-registry.md#sms_reception_preview).
 The [SMS Owner](scenarios/sms-reception-jvm/README.md#检查与验收) owns the complete
 workload and observation bounds. Launcher and archive tests belong to Distribution.
+SMS Preview is called by Proof CI for selected changes and by complete manual
+Proof; its required result participates in Proof Gate and Release promotion.
+The standalone SMS workflow remains manually callable without a second PR trigger.
 The larger product workload remains explicit/manual, outside ordinary Proof Gate.
+SMS is a Preview capability; CI regression checks do not imply public deployment
+or real-device readiness.
 
 ```powershell
 python -m pip install -r distribution/server/requirements-preview.txt
@@ -230,7 +235,6 @@ these correctness claims and add no heavy ordinary CI lane.
 | Worker Dynamic Matching | `python integrations/worker-dynamic-matching/run_worker_dynamic_matching.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-connected 14800 --minimum-retained-connected 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
-| External Release load | Published kit `acceptance/run_loaded.py`; explicitly selected manual `external-release` workflow mode | External Linux, Java 21, standard-library Python 3.11+; operator/Worker credentials, no SSH or Redis access |
 | [Worker Call Performance](integrations/worker-call-performance/README.md) | Source Nightly: parallel `rate-500`, `rate-1000`, `rate-2000` and `saturation` jobs with three repetitions, merged, recorded on `perf-lane-data` and compared with the last seven records. Source manual: the same with optional JFR diagnostics, or per-case A/B. Manual `execution_target=external`: the same deployed open runner from a pinned kit, with separate public-path evidence | Source lane: Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21. External: GitHub-hosted SSH to the dedicated Linux consumer, Java 21, Python 3.11+, published Simulator kit |
 | Android Host | Platform Android library/proof-tool contracts; no consumer artifact prerequisite | Robolectric, MockWebServer, JDK HttpServer |
 | Candidate Distribution Archives | One clean-commit Runtime/SDK/Simulator kit set, archive checks and hashes | Java, Android SDK, Node |
@@ -292,8 +296,7 @@ summary; the matrix aggregate remains the one selected Proof Gate result.
 ## Deployed Call Performance
 
 The [deployed Call Performance mode](integrations/worker-call-performance/README.md#deployed-runtime-consumer)
-is a separate use of the existing Performance runner, not the Loaded Recovery
-campaign described below. The schema-3 Simulator kit ships
+is the current public-network CI route, using the existing Performance runner. The schema-3 Simulator kit ships
 `acceptance/performance/run_worker_call_performance.py` and its compiled Harness.
 Use `--deployment-config` with `--lane-modes open --lane-attribution off --diagnostics off`
 and a fresh private output directory outside the kit. It retains the original
@@ -306,9 +309,10 @@ consumption checks verify the delivery contract; an actual public run requires
 its own explicitly requested, versioned evidence.
 
 The same workflow's manual [external Actions execution](integrations/worker-call-performance/README.md#external-actions-execution)
-uses the protected `release-preview-load` Environment and its shared external-load
-concurrency group. It leaves source Nightly unchanged and runs only the pinned published
-Release kit on the dedicated Ali consumer user, without Git/Gradle, root or GCP
+uses the protected `release-preview-load` Environment and its serial external-load
+concurrency group. Loaded Recovery no longer has a public-network Actions route.
+External Performance leaves source Nightly unchanged and runs only the pinned
+published Release kit on the dedicated Ali consumer user, without Git/Gradle, root or GCP
 administrator credentials. Its Vars, Secrets, manifest pins and declared
 host/gateway budget preflight are listed in the Owner.
 `PERFORMANCE_KIT_RELEASE_TAG` / `PERFORMANCE_KIT_RELEASE_COMMIT` pin the consumed
@@ -348,7 +352,10 @@ current-run coverage; their registrations are retained, without changing Groups
 or clearing history to pass a check. The public API and later case/Result oracles
 remain unchanged.
 
-The [2026-11-18 public observations](integrations/worker-call-performance/observations/external/2026-11-18.json)
+The latest [2026-11-19 public observations](integrations/worker-call-performance/observations/external/2026-11-19.json)
+and [capability closeout](doc/guide/capabilities.md#external-public-closeout)
+record the separate 4.4.4 10k run with nine passed cases. The earlier
+[2026-11-18 public observations](integrations/worker-call-performance/observations/external/2026-11-18.json)
 retain four completed runs, independently pinned kit/Server coordinates,
 per-case validity, unknown submissions and original cleanup outcomes. Their
 operator postchecks are separate evidence, never a replacement for failed or
@@ -368,101 +375,22 @@ those remain separate from the dated onsite observations and current host state.
 
 ## External Release load
 
-Read the dated [public acceptance closeout](doc/guide/capabilities.md#external-public-closeout)
-before repeating a connection investigation. The 2026-11-13 campaign is closed
-at its passed 1,000-Worker direct-public baseline; 100-Worker results are historical
-only and the 100 preset has been removed. Larger direct-public
-acceptance remains unpassed, not an outstanding instruction to keep retrying.
+The Loaded Recovery public-network Actions route was retired on 2026-11-19.
+Current public-network CI uses only [Deployed Call Performance](#deployed-call-performance).
+The Loaded workflow retains its original local nightly/manual recovery proof;
+its public scale, runner and network-diagnostic inputs have been removed.
 
-The manual external job defaults to `external_scale=1000`. It invokes the same
-published entry with the exact previously exercised bounded parameters:
+The schema-3 Simulator kit still supplies `acceptance/run_loaded.py` and its
+compiled Harness. Runtime Distribution consumes that command in its local
+Redis/TLS, fresh-ZIP 6-to-4-Worker diagnostic fixture, checking 60 Results.
+This is an archive-delivery witness, not a public capacity lane. The
+[Integration contract](integrations/worker-loaded-recovery/README.md#external-release-capacity)
+retains the command's actual behavior and limits; the manifest and existing
+published Release ZIPs are unchanged.
 
-| `external_scale` | Prepared / retained | Required connected | Result claim |
-| --- | --- | --- | --- |
-| `1000` (default) | 1,000 / 999 | 1,000 / 999 | `diagnostic-only` |
-| `15000` (explicit full target) | 15,000 / 10,000 | 14,800 / 9,900 | Original full capacity claim; not yet passed publicly |
-
-Both retain ten 5,000-Item Tasks per stage, two stages, the original timing
-defaults and exact result/export checks. The baseline preset appends `--diagnostic`
-and four connection-count options; the full preset appends no overrides.
-Invalid presets are rejected. The shipped CLI itself still defaults to the full
-target: this is workflow argument selection, not a changed or republished kit.
-
-Run the bounded manual entry only when an external run is requested:
-
-```text
-gh workflow run worker-loaded-recovery.yml --ref main -f mode=external-release -f external_scale=1000
-```
-
-For a specifically requested network investigation, `network_diagnostics=true`
-adds client TCP and filtered JVM observations around the same Release command:
-
-```text
-gh workflow run worker-loaded-recovery.yml --ref main -f mode=external-release -f external_scale=1000 -f network_diagnostics=true
-```
-
-To compare another free standard runner while consuming the same Release kit:
-
-```text
-gh workflow run worker-loaded-recovery.yml --ref main -f mode=external-release -f external_scale=1000 -f network_diagnostics=true -f external_runner=ubuntu-24.04-arm
-```
-
-`external_runner` defaults to `ubuntu-24.04` and affects only the external job.
-The two allowed choices are standard hosted runners, free for this public
-repository; no paid runner is selected. Runs remain serial for the target
-environment. Runner selection does not change the selected scale or certify an
-outbound connection budget; inspect recorded client resources and network evidence.
-An explicitly reopened full-capacity run must set `external_scale=15000`.
-The original failed full runs remain failed/unconfirmed; a green bounded run
-cannot replace them. The new bounded CI presets have argument-level verification;
-the dated passing public evidence was executed from the external local Host,
-not newly rerun on GitHub during closeout.
-
-Diagnostics are off by default. The safe diagnostic summary reports collection
-and cleanup separately from the load result; raw JFR, credentials and opaque
-payloads are not uploaded. The [Integration Owner](integrations/worker-loaded-recovery/README.md#workflow-selection-and-deployment-boundary)
-defines the observation boundary.
-
-The existing `worker-loaded-recovery.yml` keeps `local-proof` as its default and
-scheduled mode, with the original local Server faults, workload sizes and resource
-assertions. Its `external-release` mode is manual-only on `main` and uses the
-protected `release-preview-load` Environment. It is outside the ordinary PR gate;
-source changes do not require a live GCP connection or this campaign.
-
-The Environment supplies these explicit coordinates:
-
-| Kind | Names |
-| --- | --- |
-| Variables | `RUNTIME_API_URL`, `WORKER_RUNTIME_URL`, `PROJECT_ID`, `WORKER_GROUP_ID`, `ENDPOINT_MANAGER_ID`, `INSTALLED_RELEASE_TAG`, `INSTALLED_RELEASE_COMMIT` |
-| Secrets | `RUNTIME_ACCESS_KEY` (Project-scoped operator), `WORKER_GATEWAY_KEY_ID`, `WORKER_GATEWAY_SECRET` |
-
-The environment operator verifies the actually installed version before setting
-these coordinates. The workflow verifies the published immutable Release, commit,
-asset digests and the supported schema-2 or schema-3 Simulator manifest, then invokes its shipped loaded command. It
-does not receive an administrator key or SSH credential, build source, start a
-Server, stop the remote Runtime or access Redis. The target Group has one active
-consumer owner; independent local inventories do not isolate same-Group identities.
-
-The [Integration contract](integrations/worker-loaded-recovery/README.md#external-release-capacity)
-keeps the full target at 15,000 prepared / 10,000 retained Workers with 14,800 / 9,900
-connection minima. Both 50,000-Item stages are measured and verified separately.
-Changes to scale or timings require `--diagnostic` and
-produce diagnostic-only evidence. The packaged Runtime Distribution fixture uses
-this reduced mode through real local Redis/TLS; it cannot prove public 15k capacity.
-The original `finite_round.py` remains a separate small 1..100-Item command.
-
-The workflow uploads consumption provenance, the public summary, periodic
-consumer process samples and Java summary/timeline/receipt evidence, plus the
-allowlisted network metadata when explicitly requested. It excludes
-private key files, child logs and inventory. Consumer cleanup stops only its own
-Host/Harness and removes temporary credential copies; remote Tasks follow normal
-retention. Failed or unconfirmed writes are not replayed. A separately authorized
-host resource witness is recorded by the environment operator, not by giving the
-consumer SSH. The [4.2 Release contract](distribution/server/RELEASE-4.2.md) owns the
-resource budget and host acceptance steps; no public pass is implied by this entry.
-Normal Harness failures make one bounded close attempt only for confirmed-created,
-nonterminal Tasks. Forced termination can bypass that path; remote cleanup is then
-unconfirmed even if owned local processes stopped, with receipts retained for follow-up.
+The dated [public acceptance closeout](doc/guide/capabilities.md#external-public-closeout)
+retains the earlier accepted 1,000-Worker configuration and unpassed public
+15k/10k target. Retirement neither changes those outcomes nor requests another run.
 
 ## Proof Quality
 
@@ -595,8 +523,8 @@ Loaded Recovery and Call Performance) load
 the explicit `scenario-workers` Project and test Group/Adapter identities without
 activating a business profile or changing lane budgets. The fixture is not packaged
 in the production Server; historical benchmark checkouts retain their version-specific
-configuration inputs. Loaded Recovery's external-release mode consumes the target's
-existing configuration instead. Runners that
+configuration inputs. Deployed Performance consumes the target's existing
+configuration instead. Runners that
 replace Group manifests must also replace the complete Project list under
 [Boot's topology contract](server_boot_jvm/README.md#project-topology), preserving
 the lane's intended Project/Group bindings. Each lane owns its workload, fault,
@@ -689,7 +617,9 @@ manual dispatch. `.github/proof-paths.yml` selects claim-driven lanes. Manual
 dispatch selects every required lane. The final Proof Gate requires each
 selected lane to succeed and each unselected lane to be skipped. It checks
 Candidate Distribution Archives, Android Host, Android APK Assembly and Android Worker Proof independently, and
-uses the aggregate result of both Worker Convergence matrix jobs.
+uses the aggregate result of both Worker Convergence matrix jobs. The selected
+SMS Reception Preview reusable workflow is also required; complete manual Proof
+requires it, and Release promotion checks its successful result at the exact SHA.
 
 CI does not retry failed proofs. Evidence artifacts contain IDs, relation sets,
 counts, state timelines and process logs, never full Worker payloads,

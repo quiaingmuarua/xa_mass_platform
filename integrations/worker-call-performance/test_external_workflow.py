@@ -47,14 +47,17 @@ def run_body(block):
     return textwrap.dedent(block.split("        run: |\n", 1)[1])
 
 
-def expression(value, *, event="workflow_dispatch", ref="refs/heads/main", target="source", baseline="", outcome="success"):
+def expression(value, *, event="workflow_dispatch", ref="refs/heads/main", target="source", baseline="", outcome="success",
+               merge_outcome="success", record=False, cancelled=False):
     # Only the small boolean expression subset used by this workflow; no GitHub/network calls.
     value = value.strip().removeprefix("${{").removesuffix("}}").strip()
     names = {"github.event_name": event, "github.ref": ref, "inputs.execution_target": target,
-             "inputs.baseline_ref": baseline, "steps.external_run.outcome": outcome}
+             "inputs.baseline_ref": baseline, "steps.external_run.outcome": outcome,
+             "steps.merge.outcome": merge_outcome, "inputs.lane_record": record}
     for name in sorted(names, key=len, reverse=True):
         value = value.replace(name, repr(names[name]))
-    value = value.replace("always()", "True").replace("&&", " and ").replace("||", " or ")
+    value = value.replace("!cancelled()", repr(not cancelled)).replace("always()", "True")
+    value = value.replace("&&", " and ").replace("||", " or ")
     return eval(value, {"__builtins__": {}}, {})
 
 
@@ -94,7 +97,7 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
         self.assertNotIn("gradlew", self.external)
         self.assertNotIn("docker", self.external)
 
-    def test_source_defaults_matrix_and_history_are_unchanged(self):
+    def test_source_workload_defaults_and_matrix_are_unchanged(self):
         dispatch = section(self.text, "workflow_dispatch", 2)
         self.assertIn("default: source", section(dispatch, "execution_target", 6))
         self.assertIn("default: 5000", section(dispatch, "external_workers_per_group", 6))
@@ -107,9 +110,23 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
         self.assertIn("configs/lane-saturation.json", self.jobs["lane"])
         self.assertIn(":integrations:worker-call-performance:experimentDist", self.jobs["lane-build"])
         self.assertIn("--merge-jobs rate-500,rate-1000,rate-2000,saturation", self.jobs["lane-summary"])
-        self.assertIn("if: github.event_name == 'schedule' || inputs.lane_record", self.jobs["lane-summary"])
+        merge = step(self.jobs["lane-summary"], "Merge lane jobs and compare with history")
+        self.assertIn("id: merge", merge)
+        self.assertNotIn("continue-on-error", merge)
 
-    def test_concurrency_shares_the_existing_external_environment_without_cancelling(self):
+    def test_selected_history_records_survive_failed_merge_without_cancellation_or_routing_changes(self):
+        publication = step(self.jobs["lane-summary"], "Record this run on the data branch")
+        guard = re.search(r"^        if: (.+)$", publication, re.MULTILINE).group(1)
+        for outcome in ("success", "failure"):
+            with self.subTest(outcome=outcome):
+                self.assertTrue(expression(guard, event="schedule", merge_outcome=outcome))
+                self.assertTrue(expression(guard, record=True, merge_outcome=outcome))
+                self.assertFalse(expression(guard, merge_outcome=outcome))
+                self.assertFalse(expression(guard, record=True, merge_outcome=outcome, cancelled=True))
+        for outcome in ("skipped", "cancelled"):
+            self.assertFalse(expression(guard, record=True, merge_outcome=outcome))
+
+    def test_external_concurrency_is_independent_of_source_loaded_recovery_without_cancelling(self):
         concurrency = section(self.text, "concurrency", 0)
         value = re.search(r"^  group: (.+)$", concurrency, re.MULTILINE).group(1)
         self.assertEqual("worker-call-performance", expression(value, event="schedule"))
@@ -117,7 +134,7 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
         self.assertEqual("release-preview-load", expression(value, target="external"))
         self.assertIn("cancel-in-progress: false", concurrency)
         loaded = (ROOT / ".github/workflows/worker-loaded-recovery.yml").read_text(encoding="utf-8")
-        self.assertIn("'release-preview-load'", section(loaded, "concurrency", 0))
+        self.assertNotIn("release-preview-load", section(loaded, "concurrency", 0))
 
     def validate(self, **changes):
         values = {"DIAGNOSTICS": "off", "BASELINE_REF": "", "LANE_CASE": "", "LANE_RECORD": "false",
