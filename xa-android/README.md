@@ -22,6 +22,8 @@ local interaction checks. Public deployment acceptance is selected only when exp
 Java 21, Python 3.11+, Android SDK 36 and the pinned Gradle wrapper are required.
 Third-party dependencies resolve through Google and Maven Central; only
 `com.xa.mass` is exclusively resolved from the supplied SDK ZIP.
+Plugin resolution queries Google, Maven Central, then Plugin Portal, so Central
+libraries are obtained directly rather than through the Portal redirect.
 
 Obtain the two ZIPs and `candidate.json` from the same successful candidate run.
 A published release instead supplies the version, complete commit and both
