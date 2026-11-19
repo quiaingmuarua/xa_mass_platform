@@ -30,7 +30,7 @@ Preview 默认按普通文本发送；折叠帮助中的 Lab JSON 只适用于�
 | 送达 | 后续送达观察已返回 |
 | 已读 | 后续已读观察已返回 |
 | 已回复 | 已有回复观察，业务视图保留最新回复 |
-| Task 调度结束 | 当前任务不再继续调度；保留窗口内仍可能收到后续业务观察 |
+| Task 调度结束 | 当前任务不再继续调度；冻结前的收尾窗口内仍可能保存后续业务观察 |
 
 发送、送达、已读、回复是累积阶段，不能把它们相加当作总数。
 任务统计与结果内容独立读取；预览最多展示有界结果，不能据此计算整个任务的比例。
@@ -39,6 +39,21 @@ Preview 默认按普通文本发送；折叠帮助中的 Lab JSON 只适用于�
 Preview 的收件交互在独立 Host `/lab` 页面；Android 本地交互见
 [Android 消息示例](../../../distribution/server/src/main/dist/examples/messages/README.md)。
 Mock 的显式推进按钮仅演示 UI 状态，不执行真实发送。
+
+## Runtime 与历史结果
+
+Runtime 详情展示当前累计结果。有限 Task 终止后，Server 按保留策略冻结并发布历史，
+随后释放 Runtime 输入与结果；冻结后的历史不会继续吸收新送达、已读或回复观察。
+需要保留哪些业务观察，应按冻结边界评估，不能把历史保留期当作继续接收回执的窗口。
+
+页面提示已释放时，通过历史链接或 `/messages?view=history` 按原 Task ID 查找。
+历史页按保存的 Task 正文、应用/Group 绑定和结果进行只读观察，并提供分页输入与独立状态。
+它不重建完整回复、导入或操作历史，也不提供再次发送；当前应用映射变化不改写保存的归属。
+业务预览与原始成功 Result JSONL 导出分开，Messages 没有业务 CSV 导出。
+
+已发布历史在 Runtime Task 清理后仍可读到自己的到期时间；读取不续期。
+共同步骤和权限边界见[Runtime 与 Storage](workbench.md#有限任务的-runtime-与-storage)，
+精确冻结与观察规则见 [Messages Owner](../../../scenarios/message-campaigns-jvm/README.md)。
 
 ## 未确认和配置变化
 

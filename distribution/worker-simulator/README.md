@@ -12,7 +12,7 @@ external-capacity workload and its bounded consumer orchestration.
 owns the deployed mode of its existing runner and Java Harness.
 
 ```powershell
-$kitVersion = "4.4.4" # Set the explicit candidate SemVer.
+$kitVersion = Read-Host "Candidate SemVer (major.minor.patch)"
 .\gradlew.bat "-PxaMassVersion=$kitVersion" `
   :distribution:worker-simulator:workerSimulatorDistributionTest
 ```
@@ -39,10 +39,9 @@ The kit lets any machine act as an external user of a published Runtime without 
 or a build. It is a test and acceptance capability, not a production Worker.
 The [current 4.4 contract](../server/RELEASE-4.4.md#published-worker-consumers)
 records the supported Consumer/Server attribution; each immutable kit and target
-Server is pinned independently for deployed Performance. This makes no general
-cross-version compatibility promise. The historical
-[4.3 contract](../server/RELEASE-4.3.md#worker-compatibility) records its changed
-Prepare response and matching-kit upgrade requirement.
+Server is pinned independently for deployed Performance. Use the selected
+Release's compatibility and configuration requirements; this makes no general
+cross-version compatibility promise.
 
 Current public-network CI uses only the existing
 [External Performance entry](../../integrations/worker-call-performance/README.md#external-actions-execution).

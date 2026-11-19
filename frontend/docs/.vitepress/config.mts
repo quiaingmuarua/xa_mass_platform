@@ -127,35 +127,36 @@ export default defineConfig({
   themeConfig: {
     siteTitle: "XA Mass · 项目文档",
     nav: [
-      { text: "开始使用", link: page("quick-start") },
-      { text: "开发指南", link: page("development/index") },
+      { text: "使用", link: "/index.html" },
+      { text: "运维", link: page("operations/deploy") },
+      { text: "开发", link: page("development/index") },
       { text: "架构", link: page("architecture") },
       { text: "能力与验证", link: page("capabilities") }
     ],
     sidebar: [
       {
-        text: "快速开始",
+        text: "使用与运维",
         items: [
           { text: "项目用途与入口", link: "/index.html" },
-          { text: "运行本地环境", link: page("quick-start") },
-          { text: "完成第一个任务", link: page("first-task") }
+          { text: "接管、部署与运行", link: page("operations/deploy") },
+          { text: "配置、生效与数据", link: page("operations/configuration") },
+          { text: "按现象排障", link: page("operations/troubleshooting") }
         ]
       },
       {
-        text: "功能使用",
+        text: "业务使用",
         items: [
           { text: "批量检查", link: page("usage/batch-checks") },
           { text: "Messages", link: page("usage/messages") },
-          { text: "SMS", link: page("usage/sms") },
+          { text: "SMS（Preview）", link: page("usage/sms") },
           { text: "原始任务与定向调试", link: page("usage/workbench") }
         ]
       },
       {
-        text: "部署与排障",
+        text: "本地体验",
         items: [
-          { text: "运行与交付形态", link: page("operations/deploy") },
-          { text: "配置、生效与数据", link: page("operations/configuration") },
-          { text: "按症状定位", link: page("operations/troubleshooting") }
+          { text: "运行本地环境", link: page("quick-start") },
+          { text: "第一个 MD5 任务", link: page("first-task") }
         ]
       },
       {

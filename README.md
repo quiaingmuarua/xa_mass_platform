@@ -21,20 +21,17 @@ Task, and many Workers inside finite Groups.
 
 ## Start Here
 
-- **使用项目：** [中文指南](doc/guide/index.md) → [快速启动](doc/guide/quick-start.md) →
-  [完成第一个真实任务](doc/guide/first-task.md)。
-- **部署与排障：** [部署](doc/guide/operations/deploy.md)、
-  [配置归属](doc/guide/operations/configuration.md)和
-  [按现象排障](doc/guide/operations/troubleshooting.md)。
-- **GCP／Release Preview：** [环境定位与交接](doc/guide/operations/deploy.md#release-preview)。
-  用于明确的部署、现场诊断或公网验收任务；日常开发和项目理解默认不访问主机。
-  按 Release 部署与验收，长期环境不要求接口或数据永久兼容。
-  外部连接测试先读[已验规模与排查收尾](doc/guide/capabilities.md#external-public-closeout)，
-  区分通过的有限范围、未通过的容量目标和已经结束的调查。
+- **使用与运维现有环境：** [中文指南](doc/guide/index.md) →
+  [接管、部署与运行](doc/guide/operations/deploy.md#release-preview) →
+  [配置与数据](doc/guide/operations/configuration.md)、[按现象排障](doc/guide/operations/troubleshooting.md)。
+  先确认环境身份、授权和已安装能力；明确的环境任务才访问主机。
+- **本地体验：** [快速启动](doc/guide/quick-start.md) →
+  [第一个 MD5 任务](doc/guide/first-task.md)，使用 Preview 的演示配置。
 - **开发与 Agent：** [按任务定位 Owner](doc/guide/development/index.md)，
   再使用下面的 Reading Path 和 [AGENTS](AGENTS.md)。
 - **验证与能力：** [证明如何选](doc/guide/verification.md)、
-  [带版本和口径的实测记录](doc/guide/capabilities.md)。
+  [有日期和条件的能力摘要](doc/guide/capabilities.md)。已结束的公网调查保留边界与证据，
+  不作为继续重跑历史负载的待办。
 
 The Console and packaged Runtime/Preview serve this documentation at `/docs/`.
 Guides explain user steps and navigation; the existing Owner Markdown remains

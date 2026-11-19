@@ -633,8 +633,10 @@ database together with any remaining `-wal`/`-shm` files. Never delete a live WA
 Optional offline VACUUM needs sufficient free disk and is an explicit operation, not an
 Agent loop. Task expiry does not retire users, credit ledgers, Workers or logs.
 
-This cutover uses a new scope and database. Old JSONL/manifest archives and the old directory
-configuration are not read or migrated; user data is not automatically deleted. Payload JSON
+Old JSONL/manifest archives and the retired directory configuration are not read or migrated;
+user data is not automatically deleted. Scope and database treatment during an upgrade
+follow the target Release contract; the original Storage cutover is not a fresh-scope
+requirement for every later patch. Payload JSON
 is stored without database-specific JSON query semantics. No PostgreSQL implementation or
 general Storage framework is introduced.
 

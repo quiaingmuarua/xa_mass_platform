@@ -26,11 +26,6 @@ compatibility and configuration requirements. The current
 records deployed Performance's separate kit/Server attribution, not a general
 cross-version promise. The kit includes both compiled Harness installations;
 consumers do not run Gradle or build source.
-The [4.3 upgrade contract](https://github.com/quiaingmuarua/xa_mass_platform/blob/main/distribution/server/RELEASE-4.3.md#worker-compatibility)
-changes Worker Prepare responses for connection cooldown. Stop a 4.2 Host and use the
-matching 4.3 kit after the Runtime upgrade; its retained inventory can be reused.
-4.3.1 fixes the Console cooldown confirmation and keeps the 4.3.0 Worker protocol.
-Use the matching patch's kit when recording Release acceptance.
 
 ## 1. Start a Worker Host
 
@@ -121,9 +116,9 @@ event, Pool/query and Project association; it does not create missing resources.
 
 Before starting, arrange `nofile >= 65536` and at least 45,000 ephemeral ports on
 the consumer. Runtime/gateway capacity is a separate operator responsibility;
-the tool does not change either host. The version-scoped
-[4.2 deployment contract](https://github.com/quiaingmuarua/xa_mass_platform/blob/main/distribution/server/RELEASE-4.2.md)
-lists the initial resource budget and operating record.
+the tool does not change either host. The initial deployment budget is a
+[historical 4.2 record](https://github.com/quiaingmuarua/xa_mass_platform/blob/9c30061d0188036f48b296c1be2cdd3872416b45/distribution/server/RELEASE-4.2.md),
+not the current environment's capacity declaration.
 
 ```sh
 python3 acceptance/run_loaded.py \

@@ -23,14 +23,83 @@ Server／Adapter、设备及测试网关或现有 CI fixture。GCP 地址、凭�
 | 新 Batch Checks 协议或配置 | [场景 Owner](../../../scenarios/app-checks-jvm/README.md#具名执行契约) | 纯契约、配置解析、Task 保存快照、Host 绑定和前端结果 |
 | 修改 Pool/query/Properties | [Matching Owner](../../../worker_matching_jvm/README.md) | qualification/refill、消费、失败规则及实际调用者 |
 | 修改调度、租约、重试或恢复 | [Kernel 索引](../../kernel/README.md)与 [Pacer](../../../kernel_pacer_jvm/README.md) | 受影响主线、机械 Owner、Policy、装配与 Redis proof |
-| 修改 API 或权限 | [Server Owner](../../../server_jvm/README.md#api-reference-and-response-contract) | DTO/准入服务、caller、前端与 OpenAPI snapshot |
-| 修改启动或交付 | [Boot](../../../server_boot_jvm/README.md)、[Distribution](../../../distribution/server/README.md) | 实际 profile、源码/ZIP launcher、archive checks |
+| 修改 API、认证或用户权限 | [Server 响应合同](../../../server_jvm/README.md#api-reference-and-response-contract)与[认证/用户目录路径](#认证与用户目录) | DTO、请求 caller、目录发布、前端与 OpenAPI snapshot |
+| 修改有限 Task 保留或历史查询 | [有限任务历史路径](#有限任务保留与-storage) | 冻结/发布/释放、独立 Storage 准入、场景解释及页面切换 |
+| 修改 RPC 消费或回收 | [RPC 数据路径](#rpc-消费与回收) | 分开确认 take、Result idle TTL 和可选终态 Item 回收 |
+| 修改 Worker 连接冷却 | [连接冷却路径](#worker-连接冷却) | Server 决策、Adapter 身份准入/撤路由、SDK run 生命周期 |
+| 修改启动或交付 | [启动与交付路径](#启动与交付) | 实际 profile、业务依赖、源码/ZIP launcher 与归档消费断言 |
 | 修改页面 | [Frontend Owner](../../../frontend/README.md) | route、source/API、Mock、访问与操作状态 |
 
 “局部”修改如果改变其他 Owner 的输入、状态、调用次序或生命周期，应扩展到对应跨模块
 链路。阅读结束的标准是影响已经闭合，而不是打开过多少文件。
 GCP 环境维护使用上面的专项路线，不要求先通读完整调度主线。普通 PR 不附加
 线上验收、部署或重启，也不以“尚未在 GCP 验证”作为未完成理由。
+
+## 从问题追到实现与断言
+
+下面是入口指针，不替代 Owner 或 [Proof Registry](../../testing/proof-registry.md)。
+按当前问题选一条；确认受影响的写入者、直接消费者和失败断言后即可停止扩展。
+链接到测试表示断言存在，不表示本次改动已执行或通过该测试。
+
+### 认证与用户目录
+
+先读 [access-key front door](../../../server_jvm/README.md#access-key-front-door)和
+[用户目录](../../../server_jvm/README.md#user-directory-and-access-keys)。请求从
+[AccessKeyFilter](../../../server_jvm/src/main/java/com/xa/mass/server/api/AccessKeyFilter.java)
+取得 caller；[UserDirectory](../../../server_jvm/src/main/java/com/xa/mass/server/user/UserDirectory.java)
+负责目录与密钥发布。对照 [Filter 例外表断言](../../../server_jvm/src/test/java/com/xa/mass/server/api/AccessKeyFilterTest.java)
+和[目录持久化、密钥替换、已准入 caller 与外部文件修改断言](../../../server_jvm/src/test/java/com/xa/mass/server/user/UserDirectoryTest.java)。
+只改页面登录反馈时，闭合到 [Frontend 认证边界](../../../frontend/README.md#access-key-login-and-access)即可；
+改变授权语义才继续追具体 Task/Scenario 操作。
+
+### 有限任务保留与 Storage
+
+先读 [finite retention](../../../server_jvm/README.md#finite-task-retention)和
+[独立 history API](../../../server_jvm/README.md#finite-task-history-api)，沿
+[TaskRetentionService](../../../server_jvm/src/main/java/com/xa/mass/server/task/retention/TaskRetentionService.java)
+与 [TaskHistoryService](../../../server_jvm/src/main/java/com/xa/mass/server/task/history/TaskHistoryService.java)
+定位维护和读取。现有[真实 Redis 保留断言](../../../server_jvm/src/test/java/com/xa/mass/server/task/retention/TaskRetentionServiceRedisIntegrationTest.java)
+覆盖发布失败、释放及最终清理；[SQLite Store 断言](../../../server_jvm/src/test/java/com/xa/mass/server/task/history/TaskHistoryStoreTest.java)
+覆盖分页前授权、scope 隔离、到期和完整导出。若改业务预览/CSV，继续到对应 Scenario Storage controller；
+若只改入口或状态提示，到 [Frontend retention views](../../../frontend/README.md#finite-task-retention-views)及
+[历史页面断言](../../../frontend/tests/task-history.test.ts)闭合。
+
+### RPC 消费与回收
+
+分别读 [消费和 idle TTL](../../../server_jvm/README.md#rpc-result-consumption-and-idle-reclamation)、
+[可选终态 Item 保留](../../../server_jvm/README.md#rpc-terminal-item-retention)。消费等待从
+[TaskRpcCallService](../../../server_jvm/src/main/java/com/xa/mass/server/task/call/TaskRpcCallService.java)进入，
+维护从 [RpcTaskItemRetention](../../../server_jvm/src/main/java/com/xa/mass/server/task/retention/RpcTaskItemRetention.java)进入。
+[消费 Redis 断言](../../../server_jvm/src/test/java/com/xa/mass/server/assembly/kernel/RpcResultConsumptionRedisIntegrationTest.java)
+检查竞争 take、写刷新 TTL 及执行资源不变；[回收 Redis 断言](../../../server_jvm/src/test/java/com/xa/mass/server/task/retention/RpcTaskRetentionServiceRedisIntegrationTest.java)
+检查默认关闭、两阶段清理及排除 SMS/有限任务。涉及响应丢失再追
+[消费交接断言](../../../server_jvm/src/test/java/com/xa/mass/server/task/call/TaskRpcConsumptionHandoffTest.java)；
+仅改说明时不扩展成有限历史迁移或 SMS 缓存改造。
+
+### Worker 连接冷却
+
+先读 [Server 冷却决策](../../../server_jvm/README.md#worker-connection-cooldown)，从
+[WorkerConnectionControlService](../../../server_jvm/src/main/java/com/xa/mass/server/worker/connection/WorkerConnectionControlService.java)
+追持久化后撤路由。[Service 断言](../../../server_jvm/src/test/java/com/xa/mass/server/worker/connection/WorkerConnectionControlServiceTest.java)
+区分决策保存、撤路由失败和原请求重试；
+[Adapter 连接断言](../../../transport/netty-adapter/src/test/java/com/xa/mass/workerdelivery/adapter/netty/internal/connection/WorkerConnectionMechanismTest.java)
+检查活动/待验证连接撤销及迟到 allow。只有触及已准入 Handler/Reporter 或重连时，
+才继续读对应 [Worker run](../../../transport/worker-core/README.md#one-worker-run)与
+[Android callback/close](../../../transport/android-worker/README.md#callback-admission-and-close)合同。
+连接冷却不替代 PAUSE 或 Matching 资格。
+
+### 启动与交付
+
+先读 [Boot profile 装配](../../../server_boot_jvm/README.md#platform-and-preview)及
+[Distribution source launch](../../../distribution/server/README.md#source-launch)。代表实现是
+[ServerBootConfiguration](../../../server_boot_jvm/src/main/java/com/xa/mass/serverboot/ServerBootConfiguration.java)、
+[本地运行装配](../../../distribution/server/local_runtime.py)及[统一 archive verifier](../../../distribution/archive_tools.py)。
+[Consumer 业务断言](../../../server_boot_jvm/src/test/java/com/xa/mass/serverboot/ConsumerBusinessIntegrationTest.java)
+检查默认业务的外部配置、执行与重启；[launcher 断言](../../../distribution/server/src/test/python/test_run_preview.py)
+和[archive 断言](../../../distribution/server/src/test/python/test_verify_preview_archive.py)检查源码/ZIP 边界及自有资源清理。
+这些单元/集成入口不能代替提取包的实际启动；涉及交付 claim 时按
+[runtime_distribution](../../testing/proof-registry.md#runtime_distribution)和
+[product_coexistence](../../testing/proof-registry.md#product_coexistence)选现有 proof。
 
 ## 对一次修改回答五个问题
 

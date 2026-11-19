@@ -5,7 +5,7 @@ Status: current repository document index.
 ## Start Here
 
 The [Chinese usage and development guide](guide/index.md) is the shared
-human/Agent entrypoint: first task, business use, deployment, troubleshooting,
+human/Agent entrypoint: existing-environment operations, local experience, business use, troubleshooting,
 development navigation and explicitly dated capability evidence. The Console
 and Runtime/Preview packages publish the same source documents at `/docs/`.
 
@@ -41,13 +41,20 @@ editable contract. Keep repository-relative source links usable on GitHub.
 The site resolves published document links and source/evidence links at build time.
 
 Update user steps when a flow changes and update the affected Owner alongside
-behavior. Do not copy complete DTOs, storage definitions, threshold tables or
+behavior. Replace superseded statements in the same change; remove completed
+todos and obsolete procedures. Distill reusable conclusions into their current
+Owner or guide, with dated evidence where needed, instead of appending investigation
+diaries or maintaining an archive directory. Do not copy complete DTOs, storage definitions, threshold tables or
 proof assertions into guides. API reference generation and runtime evidence keep
 their existing owners. Performance figures always identify their measured commit,
 environment, status, metric definition and immutable record.
 
-Current navigation and search exclude historical records. Historical links below
-remain explicitly version-scoped evidence, not instructions for current behavior.
+Current navigation and search exclude historical records. Necessary historical
+references use a full immutable Git commit or published evidence, labelled with
+their version and purpose; they are not current operating instructions. Raw proof
+records and published artifacts remain unchanged when narrative documents are pruned.
+Keep the active Release contract required by release tooling; older contract
+files can leave the current tree after their live references are resolved.
 No parallel overview HTML, hand-maintained document mirror or old URL compatibility
 layer is maintained.
 
@@ -62,26 +69,3 @@ layer is maintained.
 | Business scenarios | [SMS](../scenarios/sms-reception-jvm/README.md), [Messages](../scenarios/message-campaigns-jvm/README.md), [App Checks](../scenarios/app-checks-jvm/README.md) |
 | UI and delivery | [Frontend](../frontend/README.md), [Runtime distribution](../distribution/server/README.md), [Preview launch](../distribution/server/PREVIEW.md) |
 | Integration evidence | [Proof Registry](testing/proof-registry.md) links every lane to its responsible Integration/Scenario document. |
-
-## Historical Change Records
-
-- [Pre-Matching lease verification, 2026-09-15](https://github.com/quiaingmuarua/xa_mass_platform/blob/86052b2855a8d73c4df9d03cd5c40af31d0bf6f3/kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md#serviceability-and-verification-scope)
-  preserves the named baseline/worktree results and their evidence limits.
-- [Task and Rule decoupling record](https://github.com/quiaingmuarua/xa_mass_platform/blob/6f9d01a098a322be5e559c41c313466be8fd361e/doc/task-rule-decoupling-plan.md) records the
-  earlier Matching-owned binding cutover and its version-scoped local proofs.
-- [Named Rule index cutover](https://github.com/quiaingmuarua/xa_mass_platform/blob/6f9d01a098a322be5e559c41c313466be8fd361e/doc/named-rule-index-plan.md) records the first fixed
-  Handler, direct index dispatch and version-scoped local proofs.
-
-Current Pool supply, Item query and storage semantics belong to the
-[Matching Owner](../worker_matching_jvm/README.md).
-
-## Historical Assets
-
-The following documents retain engineering lessons from the superseded Java
-platform. They are historical evidence, not current mechanism truth:
-
-- [Legacy Trace Assets](archive/trace/legacy-trace-assets.md)
-- [Legacy Testing Assets](archive/testing/legacy-testing-assets.md)
-
-The complete historical source is preserved by
-`legacy-java-platform-final-2026-07-24`.

@@ -85,10 +85,10 @@ operator 默认自己的范围；显式查询其他 userId 返回 403。admin �
 删除、重命名、换类型或换 Group 的破坏性调整使用新 scope、新请求身份，不提供跨这类变更的旧请求回退或迁移。
 不回填历史归属或提供旧请求兼容。JSON 文件只保存配置。
 
-这是受信任开发环境的目录核对契约，客户端仍可选择目录中的现有身份；不构成身份认证或生产客户数据隔离。
-相同检查覆盖共同 Task API、Messages 和业务结果；全局 Runtime Task 预览及 SMS 操作要求 admin。
-业务模块不维护固定账户名单，统一消费 Server 用户目录准入后的调用方；不增加全局 Filter、ThreadLocal、持久用户表或身份注册服务。
-Server 在每次请求入口从用户目录解析 userId/role 和 Project 授权；配置操作使用 `app-checks.configuration` 权限。权限变更影响后续请求，已准入操作保留原快照。前端刷新或重新登录应用新目录；自动化证明使用显式用户 seed，重启证明复用该 seed，不依赖临时用户。
+请求先通过 Server 的 Bearer 访问密钥认证，再使用用户目录产生的不可变 TaskCaller 做操作授权。
+相同授权检查覆盖共同 Task API、Messages 和业务结果；全局 Runtime Task 预览及 SMS 操作要求 admin。
+业务模块统一消费 Server 准入后的调用方，不另建身份目录、认证 Filter 或 ThreadLocal。
+Server 在每次请求入口解析当前 userId/role 和 Project 授权；配置操作使用 `app-checks.configuration` 权限。权限变更影响后续请求，已准入操作保留原快照。前端刷新或重新登录应用新目录；自动化证明使用显式用户 seed，重启证明复用该 seed，不依赖临时用户。
 
 导入仅允许 `server.inputOwner=app-checks` 的待审核 Task。原始 Item 入口不能绕过固定业务配置。每个文件最多 10 MiB、100,000 个去重种子。
 `phonenumber` 保留 TXT、CSV 列选择和粘贴，校验 CN/US/GB 国家前缀，允许省略 `+`，规范化后去重。
@@ -127,8 +127,9 @@ existingCount；当前未确认批次不算拒绝，不自动重传、回滚或�
 
 Project 绑定不预置长期 RPC Task，App Checks 只创建有限任务。Project 声明独占业务输入归属，通用原始创建和 RPC preparation 均被拒绝；详情和写入验证
 Project、场景和有限 Task 类型。总量来自 Item Score 成员数，active 为 tag 1，failed 为
- tag 5，succeeded 为 tags 6..9。Result 预览在 Redis 阶段只读一次 Owner HSCAN，归档后顺序读取文件；逐 Item 校验并展开后最多 100 条业务行；底层截断或展开裁剪均标 truncated，不补扫 Redis，
-不保证文件顺序或最新顺序。失败行没有业务判定；内容或 Item/Group 关联异常保留执行状态并
+ tag 5，succeeded 为 tags 6..9。Runtime Result 预览只读一次 Owner HSCAN；发布历史后的独立 Storage 预览读取 Server SQLite 历史。
+两者都逐 Item 校验并展开后最多返回 100 条业务行；底层截断或展开裁剪均标 truncated，不补扫 Redis，
+不表示最新结果顺序。失败行没有业务判定；内容或 Item/Group 关联异常保留执行状态并
 标记 contentError。统计、Task 状态和 Result 不是共同快照。
 
 CSV 复用 Server 共同顺序结果读取，使用每条结果携带的原 Item 做业务关联校验及筛选，包含种子、

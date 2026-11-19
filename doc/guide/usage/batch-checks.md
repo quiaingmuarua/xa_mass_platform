@@ -46,6 +46,21 @@ Batch Checks 将号码或文本种子转换成有限任务，按任务保存的�
 结束本地草稿不代表取消 Server 上的任务。批准后不可继续导入或重新解释执行绑定；
 任务结束也不提供重新打开的入口。
 
+## 查看历史任务
+
+Task 终止后，Server 按保留策略冻结并发布历史，再释放 Runtime 输入与结果。
+详情提示已释放时，使用历史链接或 `/app-checks?view=history`，按原 Task ID 查找并分页读取。
+不要通过重复 Runtime 导出来等待数据重新出现。
+
+历史页使用 Task 保存的检查契约、参数和输入预览答案并导出 CSV；当前检查配置或 Group
+变更不会改写旧快照。若该版本已无法解释保存的业务契约，页面仍可提供独立原始历史。
+这不等于保存了当时每次导入的文件、回执或操作记录。
+
+已发布且未到期的历史可在 Runtime Task 清理后继续读取；历史到期后不再可用，读取不会续期。
+历史只读，不提供启动或再次导入。共同步骤与数据边界见
+[Runtime 与 Storage](workbench.md#有限任务的-runtime-与-storage)，具体 API 见
+[Batch Checks Owner](../../../scenarios/app-checks-jvm/README.md#api-和-task-数据)。
+
 ## 管理检查配置
 
 管理员在 `/app-checks?view=configuration` 编辑整份 JSON。保存校验配置结构，
