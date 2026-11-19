@@ -257,39 +257,28 @@ Consumer kit 的 Release/commit 与目标 Server 的部署记录分别固定、�
 [Worker Simulator kit](../../../distribution/worker-simulator/README.md)：它包含这个 Host 入口和
 一轮有限任务验收命令，后者输出一行 JSON（passed / failed / unconfirmed）。
 
-任何机器都可以作为长期运行的外部使用者（soak）：它只下载 kit，用自己的 operator 用户、
-Worker 凭据和独立 Group，按自己的节奏低频跑验收轮次，不参与编码；发现问题时提交 GitHub
-issue（Preview finding 表单），附上该轮 JSON。仓库和主机都不为它保存调度器，它的 Group 与
-验收 Group 分开，避免执行验收任务。
+长期普通 Worker 只需 Host、Worker 凭据及独立 inventory，由 systemd 维持进程，
+正常接任务并按 SDK 机制重连。常驻 20 Worker 不持有 operator 密钥，也不负责定时提交
+验收任务或判断健康状态；其 Group 与 Performance 测量 Group 分开。
 
-### 显式外部容量验收
+需要小规模手工检查时，独立消费者可以使用自己的 operator 用户与 Worker 凭据，
+调用 kit 的 `finite_round.py` 并保留该轮 JSON；这是可选的一轮验收，不是常驻服务职责。
+发现问题可提交 GitHub issue（Preview finding 表单），附上脱敏结果。
 
-需要衡量已发布 Runtime 的外部负载时，使用同 Release 的 Simulator kit 中
-`acceptance/run_loaded.py`。它在外部 Linux 主机启动自己的 Java Host 和编译好的
-Harness，不在 GCP 构建源码或运行 Worker Host，也不注入 Server 重启／故障。
-发布工具不带规模覆盖时仍为完整 15,000 Worker、保留 10,000 Worker，
-各运行十个 Task、每 Task 5,000 Item；分别记录两阶段结果。
-当前手动 CI 的 `external_scale` 默认选择已验的 1,000 → 999 基础档，
-显式使用 `--diagnostic` 并保留 `diagnostic-only` 结果口径；100 档已移除。
-原 15k → 10k 模式仅通过 `external_scale=15000` 显式选择；其原门槛没有降低，
-本轮也没有通过它。不要把默认小档的通过报告成完整容量通过。
+### 外网 CI 入口与历史容量验收
 
-这个入口使用明确的管理 API／Worker HTTPS 地址、Project、Group、Endpoint Manager、
-operator 访问密钥文件、Worker 凭据文件和输出目录。它没有 SSH、管理员密钥或 Redis
-清理权限。Group 的 inventory 坐标必须由一个 Host 独占，另一目录不会隔离相同身份。
-原来的 `finite_round.py` 仍只处理每轮 1～100 Item，低频 soak 与本次容量 campaign 分开。
+当前外网按需 CI 只使用前述 Performance 入口，消费固定 Release kit；
+Loaded Recovery 的公网 Actions 路线已于 2026-11-19 退役。本地 Loaded
+Nightly／手动流程继续负责原恢复证明，不访问 GCP。
 
-既有 loaded-recovery workflow 默认及定时运行仍为 `local-proof`，保留原本地故障与断言；
-`external-release` 只能从 `main` 手工触发，使用受保护的 `release-preview-load` Environment。
-其坐标、密钥与制品核验见 [TESTING](../../../TESTING.md#external-release-load)，
-完整命令与结果口径见[外部消费契约](../../../integrations/worker-loaded-recovery/README.md#external-release-capacity)。
+旧 Loaded 公网 campaign 的基础档通过、完整 15k → 10k 未通过和原始失败，
+继续保存在[能力收尾记录](../capabilities.md#external-public-closeout)。这些是历史
+结论，不是继续运行旧负载的指令；新 Performance 结果也不覆盖它们。
 
-初始预算、主机配置及运维记录按 [4.2 Release 说明](../../../distribution/server/RELEASE-4.2.md)
-处理；消费者自身的进程采样不能替代 GCP 的 Server／Redis／Nginx 资源观测。结果速率包含
-公网、Worker 执行和观测延迟，不代表 Server 极限 TPS 或全部在线 Worker 都执行过任务。
-失败和未确认保留原回执，不重提任务、不调小规模掩盖失败。完成后停止本次消费者进程并
-删除临时凭据副本，长期配置、业务数据和正常归档仍按环境约定保留。这里说明执行方法，
-不宣称当前 GCP 已通过该规模验收，也不增加普通开发任务的 GCP 依赖。
+schema-3 kit 仍包含 `acceptance/run_loaded.py`，供现有本地 ZIP／TLS 交付检查
+消费，详见[成品消费契约](../../../integrations/worker-loaded-recovery/README.md#external-release-capacity)。
+它不再提供第二条公网 CI 入口。共享 `release-preview-load` Environment、
+Performance 的 kit／Server pins 和常驻 Worker 的账号、inventory、凭据仍按各自职责维护。
 
 ### Android 公网连接
 

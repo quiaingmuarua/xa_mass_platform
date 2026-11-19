@@ -7,8 +7,8 @@ without a repository checkout or a build:
    Worker entrance and executes the MD5 test event.
 2. `acceptance/finite_round.py` runs one finite-Task round through the public API and
    checks every Result independently.
-3. `acceptance/run_loaded.py` runs an explicitly requested external capacity campaign:
-   15,000 Workers, then 10,000 retained Workers, with 50,000 Items measured at each scale.
+3. `acceptance/run_loaded.py` is the retained capacity command used by local ZIP/TLS
+   delivery checks; its unchanged full defaults are 15,000 then 10,000 retained Workers.
 4. `acceptance/performance/run_worker_call_performance.py` runs the existing call-performance
    open cases against a declared deployment, with its own local Host and compiled Harness.
 
@@ -19,10 +19,13 @@ creates users.
 
 The Host and small finite round require Java 21 and Python 3.9 or later. The loaded
 and deployed Performance entries require Linux, Java 21 and Python 3.11+.
-Use the kit from the **same Release** as the Runtime you test (`manifest.json`
-schema 3 holds its version, commit and four entries); other combinations are not
-supported. The kit includes both compiled Harness installations; consumers do not
-run Gradle or build source.
+`manifest.json` schema 3 holds the kit's version, commit and four entries. Pin the
+immutable kit and target Runtime separately; use the target Release's documented
+compatibility and configuration requirements. The current
+[4.4 contract](https://github.com/quiaingmuarua/xa_mass_platform/blob/main/distribution/server/RELEASE-4.4.md#published-worker-consumers)
+records deployed Performance's separate kit/Server attribution, not a general
+cross-version promise. The kit includes both compiled Harness installations;
+consumers do not run Gradle or build source.
 The [4.3 upgrade contract](https://github.com/quiaingmuarua/xa_mass_platform/blob/main/distribution/server/RELEASE-4.3.md#worker-compatibility)
 changes Worker Prepare responses for connection cooldown. Stop a 4.2 Host and use the
 matching 4.3 kit after the Runtime upgrade; its retained inventory can be reused.
@@ -99,7 +102,12 @@ The kit has no scheduler. If you run rounds from your own scheduler, keep the ra
 example one round every 10 to 15 minutes) and only against a Runtime you are authorized to
 use. Every round leaves one Task that stays until the Runtime's retention removes it.
 
-## 3. Run an external capacity campaign
+## 3. Retained capacity command
+
+Current public-network CI uses Performance from section 4. The former Loaded
+public Actions route was retired on 2026-11-19. This command and its schema-3
+manifest entry remain used by the local Runtime ZIP/TLS delivery diagnostic;
+the following describes its retained behavior, not a second public CI route.
 
 Use this only against an environment explicitly prepared for the campaign. The
 Runtime operator supplies a dedicated Group, its MD5 event, `any` / `worker.any`,
@@ -181,13 +189,10 @@ local process is not evidence that its remote Tasks are closed.
 Remote Tasks remain until the Runtime's normal retention removes them; remote
 Server/Redis/gateway resource evidence must be collected separately by its operator.
 
-The existing loaded-recovery workflow can run this command with manual
-`external-release` mode on `main` through its protected `release-preview-load`
-Environment. That manual job defaults to the `external_scale=1000` baseline;
-only the explicit full target `15000` is also selectable, without rebuilding this kit.
-The shipped command without overrides still uses its full 15k/10k default.
-Its scheduled/default `local-proof` mode remains the existing four-stage local
-recovery proof. Public campaigns are not ordinary PR gates.
+The Loaded workflow now runs only its original local nightly/manual four-stage
+recovery proof. Public Performance remains in its existing manual workflow,
+with independent Consumer/Server pins and reports. Earlier Loaded public
+results remain historical; the shipped command and its full defaults are unchanged.
 
 ## 4. Measure calls against a deployment
 

@@ -27,6 +27,7 @@ EXPECTED_LANES = {
     "frontend",
     "runtime_distribution",
     "product_coexistence",
+    "sms_reception_preview",
 }
 LANE = re.compile(r"^([a-z][a-z0-9_]*):$")
 RULE = re.compile(r"^  - '([^']+)'$")

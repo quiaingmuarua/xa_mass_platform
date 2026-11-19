@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import tempfile
 import unittest
@@ -70,6 +71,30 @@ class ProofSelectionContractTest(unittest.TestCase):
 
     def test_current_repository_contract_is_closed(self) -> None:
         self.assertEqual([], proof_selection.validate())
+
+    def test_sms_has_one_pr_orchestrator_and_preserves_existing_manual_proof(self) -> None:
+        workflow = proof_selection.WORKFLOW_FILE.read_text(encoding="utf-8")
+        sms = (proof_selection.ROOT / ".github/workflows/sms-reception-preview.yml").read_text(encoding="utf-8")
+        triggers = sms.split("permissions:", 1)[0]
+        self.assertIn("  workflow_call:", triggers)
+        self.assertIn("  workflow_dispatch:", triggers)
+        self.assertNotIn("  pull_request:", triggers)
+        self.assertIn("group: sms-reception-${{ github.workflow }}-${{ github.ref }}", sms)
+        call = "uses: ./.github/workflows/sms-reception-preview.yml"
+        self.assertEqual(1, workflow.count(call))
+        job = re.search(r"(?ms)^  sms-reception-preview:\n(.*?)(?=^  [a-z]|\Z)", workflow)
+        self.assertIsNotNone(job)
+        for contract in ("name: SMS Reception Preview", "needs: changes", call,
+                         "needs.changes.outputs.sms_reception_preview == 'true'",
+                         "github.event_name == 'workflow_dispatch'"):
+            self.assertIn(contract, job.group(1))
+        gate = workflow.split("  proof-gate:", 1)[1]
+        self.assertIn("      - sms-reception-preview\n", gate)
+        for command in (":server_boot_jvm:smsCompositionIntegrationTest",
+                        "run_acceptance.py --build --scenario functional",
+                        "run_acceptance.py --scenario lifecycle",
+                        "run_acceptance.py --scenario functional --port 18440 --root"):
+            self.assertIn(command, sms)
 
     def test_repository_files_follow_uncommitted_moves(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

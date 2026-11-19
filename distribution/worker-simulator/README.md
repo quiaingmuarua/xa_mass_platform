@@ -12,12 +12,14 @@ external-capacity workload and its bounded consumer orchestration.
 owns the deployed mode of its existing runner and Java Harness.
 
 ```powershell
-.\gradlew.bat "-PxaMassVersion=4.3.2" `
+$kitVersion = "4.4.4" # Set the explicit candidate SemVer.
+.\gradlew.bat "-PxaMassVersion=$kitVersion" `
   :distribution:worker-simulator:workerSimulatorDistributionTest
 ```
 
-The result is `build/distributions/xa-mass-worker-simulator-4.3.2.zip`, rooted at
-`xa-mass-worker-simulator-4.3.2/`:
+The result is `build/distributions/xa-mass-worker-simulator-<version>.zip`, rooted at
+`xa-mass-worker-simulator-<version>/`. A local build is a candidate, not a published
+Release:
 
 | Path | Source |
 | --- | --- |
@@ -34,24 +36,28 @@ The result is `build/distributions/xa-mass-worker-simulator-4.3.2.zip`, rooted a
 | `manifest.json` | Schema 3: version, commit, Java version and Host, round, loaded and Performance entry paths |
 
 The kit lets any machine act as an external user of a published Runtime without a checkout
-or a build. It is a test and acceptance capability, not a production Worker. It ships from the
-same Release as the Runtime and makes no cross-version promise.
-The [4.3 contract](../server/RELEASE-4.3.md#worker-compatibility) requires the matching
-kit/SDK for the changed Worker Prepare response; a 4.2 Host cannot reconnect to 4.3.
-The 4.3.1 dialog and 4.3.2 Batch Checks caller patches keep the 4.3.0 Worker protocol;
-use the matching 4.3.2 kit for its release acceptance.
+or a build. It is a test and acceptance capability, not a production Worker.
+The [current 4.4 contract](../server/RELEASE-4.4.md#published-worker-consumers)
+records the supported Consumer/Server attribution; each immutable kit and target
+Server is pinned independently for deployed Performance. This makes no general
+cross-version compatibility promise. The historical
+[4.3 contract](../server/RELEASE-4.3.md#worker-compatibility) records its changed
+Prepare response and matching-kit upgrade requirement.
 
-The [dated public closeout](../../doc/guide/capabilities.md#external-public-closeout)
-distinguishes the passed bounded configurations from the unpassed full target.
-Manual workflow scale selection reuses existing CLI arguments; it does not
-modify or republish an installed kit, nor add multi-Host orchestration.
+Current public-network CI uses only the existing
+[External Performance entry](../../integrations/worker-call-performance/README.md#external-actions-execution).
+The Loaded public Actions route was retired on 2026-11-19; the
+[dated public closeout](../../doc/guide/capabilities.md#external-public-closeout)
+retains its earlier results and unpassed full target. The packaged Loaded command
+remains consumed by the local ZIP/TLS delivery fixture, with schema 3 unchanged.
 
 `python -m distribution.archive_tools simulator` validates the archive: its root, manifest,
 entries, non-empty Host and Harness libraries, and the absence of inventory, private or credential files.
 In CI, Candidate Distribution Archives builds the ZIP once. Runtime And Worker SDK
 Distribution extracts that exact ZIP as its external Java Host and runs the shipped round
 command through the packaged gateway, as a non-administrator user, and checks the external
-capacity entry with a small fixture. The explicit manual public campaign is separate.
+capacity entry with a small fixture. These local delivery checks are separate
+from the current manual public Performance observation.
 
 The [kit examples](src/main/dist/examples/README.md) separate a long-lived ordinary
 20-Worker Host from an on-demand Performance Host. They may share a physical client,

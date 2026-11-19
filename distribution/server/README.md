@@ -4,10 +4,10 @@ This module owns Runtime and Scenario Preview ZIP delivery, frontend and
 documentation-site builds, diagnostic dictionaries, Preview process assembly
 and archive verification.
 
-The current [4.3 release contract](RELEASE-4.3.md) describes the 4.3.2 Batch Checks
-caller fix, matched SDK/Runtime upgrades, retained business configuration and deployment
-acceptance. It retains the 4.3.1 cooldown-dialog fix and the earlier browser failures.
-The [4.2](RELEASE-4.2.md), [4.1](RELEASE-4.1.md), [4.0](RELEASE-4.0.md), [3.2](RELEASE-3.2.md) and [3.1](RELEASE-3.1.md)
+The current [4.4 release contract](RELEASE-4.4.md) describes finite Task history,
+published Worker consumers and the versioned Performance transport/ingress patches,
+with their completed deployment and acceptance records.
+The [4.3](RELEASE-4.3.md), [4.2](RELEASE-4.2.md), [4.1](RELEASE-4.1.md), [4.0](RELEASE-4.0.md), [3.2](RELEASE-3.2.md) and [3.1](RELEASE-3.1.md)
 contracts retain earlier versions' facts; each release document applies to its named version.
 A Release publishes three components: the Runtime, the Worker SDK and the Worker Simulator kit.
 Use the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)
@@ -197,7 +197,7 @@ against source and extracted Runtime, identified explicitly as a test capability
 
 For an already running consumer, building this repository does not replace its
 locked installation. A local candidate ZIP is acceptance output, not a published
-Release. Formal delivery separately follows the [current release contract](RELEASE-4.3.md):
+Release. Formal delivery separately follows the [current release contract](RELEASE-4.4.md):
 publish immutable artifacts, update the consumer's exact version/commit/checksums,
 resolve into a separate installation, and switch deliberately. Apply the target
 release's configuration and data instructions; when it requires a fresh Redis scope,

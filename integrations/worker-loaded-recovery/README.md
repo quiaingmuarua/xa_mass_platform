@@ -1,17 +1,15 @@
 # Worker Loaded Capacity + Recovery Stability
 
-`integrations:worker-loaded-recovery` owns the local nightly/manual recovery proof
-and the published kit's external capacity consumer. Both use one Java 21 Worker
-Simulator process, one `JavaWorkerManager`, one WorkerGroup and one WebSocket
-Adapter Endpoint, but their evidence and process authority are separate:
+`integrations:worker-loaded-recovery` owns the local nightly/manual recovery proof:
+one Java 21 Worker Simulator process, one `JavaWorkerManager`, one WorkerGroup
+and one WebSocket Adapter Endpoint. The runner owns the local Server and its
+planned recovery faults.
 
-| Mode | Runtime and lifecycle | Work and claim |
-| --- | --- | --- |
-| `local-proof` | Runner owns Redis, Server and Host, including planned Server faults | Existing four 50,000-Item recovery stages and process stability |
-| `external-release` | Runner owns only its local Host and Harness; connects to an explicitly supplied published Runtime | Manual 1,000-Worker diagnostic baseline or explicit full 15k/10k target; 50,000 Items per stage; no Server recovery claim |
-
-The following local proof remains unchanged. The [external consumer](#external-release-capacity)
-is a distinct manual deployment acceptance, not another ordinary PR requirement.
+Public-network CI is owned by [Worker Call Performance](../worker-call-performance/README.md#external-actions-execution).
+The former Loaded public Actions route was retired on 2026-11-19. This module
+still supplies the [packaged capacity command](#external-release-capacity), which
+Runtime Distribution uses in a reduced local ZIP/TLS delivery fixture. Its
+presence in the kit does not create a current public CI route.
 
 ```text
 15,000 prepared Worker identities
@@ -187,7 +185,14 @@ high-cost proof is intentionally outside the ordinary pull-request gate. It is
 expected to finish in roughly 15-30 minutes and exits as soon as its four
 stages pass; the 60-minute Workflow timeout is only a failure ceiling.
 
-## External Release capacity
+<a id="external-release-capacity"></a>
+## Packaged capacity command
+
+This schema-3 command remains a delivered capability and a local Runtime
+Distribution fixture. Current public-network Actions execution uses only
+[Performance](../worker-call-performance/README.md#external-actions-execution).
+The historical public Loaded campaign is closed; its results are retained in the
+[capability guide](../../doc/guide/capabilities.md#external-public-closeout).
 
 The same Integration supplies the compiled `WorkerExternalCapacityMain` Harness
 and `run_external_loaded.py`, shipped as `acceptance/run_loaded.py` in the
@@ -290,68 +295,24 @@ the consumer cannot infer them from its own process samples.
 
 ### Workflow selection and deployment boundary
 
-The existing `worker-loaded-recovery.yml` defaults to `local-proof`, including
-scheduled runs. `external-release` is available only through a manual dispatch
-on `main`, using the protected `release-preview-load` Environment. It downloads
-and verifies the installed Release's immutable kit; it does not build the kit or
-receive Server administrator credentials. Environment coordinates and private
-inputs are documented in [TESTING](../../TESTING.md#external-release-load).
+`worker-loaded-recovery.yml` runs the local recovery proof on schedule or manual
+dispatch. It has no public deployment mode, Environment or external input set.
+The retired public network observer is no longer shipped as a checkout-side tool.
 
-The manual `external_scale` choice defaults to `1000`, using the previously
-exercised 1,000/999-Worker direct-public baseline. The 100 preset is removed and
-its results remain historical only. The baseline requires every selected active
-Worker connected, appends `--diagnostic`, and retains ten 5,000-Item Tasks in each
-of two stages, the original timing defaults and exact checks. It reports
-`diagnostic-only`, not full capacity acceptance.
-`15000` explicitly selects the unchanged full command with no scale overrides.
-Invalid selections fail before launching the consumer. The published CLI's own
-default remains 15k/10k; no JAR, manifest or immutable Release was changed.
+The unchanged packaged capacity command is verified through Runtime Distribution's
+local Redis/TLS, fresh-ZIP 6-to-4-Worker diagnostic with 60 independently checked
+Results. Its Host/Harness authority and diagnostic-only claim remain as described
+above. Existing manifest fields, Java/Python implementation and archive checks
+continue to own that delivered behavior.
 
-The dated [public acceptance closeout](../../doc/guide/capabilities.md#external-public-closeout)
-records the accepted scope, immutable evidence and limits of the network
-investigation. Full-scale public acceptance remains unpassed. The campaign was
-closed by scope decision, not by weakening a full-run assertion or treating SSH
-isolation as a public result. Multi-Host distribution is not a configuration
-feature of this single-Host Harness; independent smaller runs are not a combined
-simultaneous capacity proof. Closeout validates the new workflow argument paths
-without a new remote load; it does not claim a passing small-scale GitHub run.
-
-The manual `external_runner` choice selects the standard `ubuntu-24.04` (default)
-or `ubuntu-24.04-arm` hosted runner. Both are free for this public repository;
-the same published Java kit, workload, timeouts and assertions run on either.
-This is one serial external run, not a matrix. The protected Environment,
-`main` restriction and environment-wide concurrency group remain the same;
-scheduled/local recovery still uses `ubuntu-24.04`. Resource evidence records the
-actual client architecture. Changing runner architecture is a network/client
-comparison, not a guarantee of a larger outbound NAT allocation or a comparable
-performance result without accounting for the changed client.
-
-The same manual workflow has an optional `network_diagnostics` input, disabled
-by default. Its checkout-side `observe_external_network.py` observes the unchanged
-published consumer command. It records TCP handshake headers, kernel counter
-samples, owned Host SYN-SENT addresses and filtered JFR network/exception metadata.
-It does not change startup rates, timeouts, retries, workload or acceptance gates.
-The observer verifies the Host process identity before attaching JFR. Raw JFR and
-unfiltered exception messages stay in a private temporary directory and are removed;
-only allowlisted metadata is uploaded. Capture and JFR completeness are reported
-separately from the original consumer outcome. Diagnostic failure cannot turn a
-failed load into success, and a successful load with incomplete requested
-diagnostics fails the diagnostic job. Cleanup stops only owned observation
-processes and lets the consumer retain its existing shutdown responsibility.
-The capture reader drains buffered output on normal shutdown. If capture shutdown
-fails or the pipe does not reach EOF within the bounded drain wait, it cancels
-the reader and records incomplete diagnostics instead of blocking summary creation
-and private-file cleanup. This does not claim the capture process stopped successfully.
-This is fault-localization evidence, not an additional capacity or recovery claim.
-
-The version-scoped [4.2 Release contract](../../distribution/server/RELEASE-4.2.md)
-owns the target resource budget, installed-version checks and host operation
-record. Ordinary code changes continue to use local/CI proofs without GCP access.
-An implemented consumer or passing reduced fixture is not evidence that a public
-15k/10k campaign has run; only that campaign's versioned result establishes it.
+The Release download/verification implementation remains shared with External
+Performance; removing the old Loaded Actions job does not remove its immutable
+Release, digest, sidecar or manifest checks. Version-scoped public resource budgets
+and earlier outcomes remain historical evidence, not a current execution request.
 
 ## Project fixture
 
 Local runs use the [shared Worker Project fixture](../../TESTING.md#worker-project-fixture)
 before this lane's overlay/CLI flags; workload, budgets and assertions remain here.
-External-release runs use the remote deployment and do not load this local fixture.
+The packaged command connects to its explicitly supplied Runtime and does not
+load this local fixture; Runtime Distribution supplies its own isolated target.

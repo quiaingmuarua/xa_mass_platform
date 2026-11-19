@@ -18,7 +18,7 @@
     },
     {
       "path": "frontend/docs/site.mjs",
-      "lanes": ["frontend", "runtime_distribution", "product_coexistence"],
+      "lanes": ["frontend", "runtime_distribution", "product_coexistence", "sms_reception_preview"],
       "reason": "The published page mapping feeds frontend, Runtime and Preview documentation delivery."
     },
     {
@@ -72,7 +72,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Default-off Dispatch observation stays in its Owner and preserves all existing path-selected scheduling and delivery claims."
     },
@@ -144,7 +145,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Kernel Worker registration and Binding now own the persistent identity/address boundary consumed by Java and Android Worker proofs."
     },
@@ -159,7 +161,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "The Endpoint directory replaces Server Binding address configuration for Java and Android Prepare."
     },
@@ -174,7 +177,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Prepare orchestrates identity, Kernel registration and actual Endpoint resolution for Java and Android Workers."
     },
@@ -188,7 +192,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Pacer policy reaches convergence, the Android runtime route and packaged runtime."
     },
@@ -197,7 +202,8 @@
       "lanes": [
         "jvm_contracts",
         "redis_owner",
-        "runtime_boundary"
+        "runtime_boundary",
+        "sms_reception_preview"
       ],
       "reason": "Pacer test-only changes stay on deterministic JVM and Owner contract lanes."
     },
@@ -212,7 +218,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Worker Matching production behavior owns Rule and Properties interpretation used by every Server-backed Worker scheduling proof."
     },
@@ -227,7 +234,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Independent phone membership and bounded lookup affect all Server-backed Worker execution paths."
     },
@@ -242,7 +250,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Identity and Phone executors retain the Matching production proof selection without adding a new lane."
     },
@@ -251,7 +260,8 @@
       "lanes": [
         "jvm_contracts",
         "redis_owner",
-        "runtime_boundary"
+        "runtime_boundary",
+        "sms_reception_preview"
       ],
       "reason": "Matching test-only changes stay on deterministic owner, Redis and runtime contract lanes."
     },
@@ -266,7 +276,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Worker Core production behavior reaches deterministic Java and Android proofs plus both Worker system claims."
     },
@@ -276,7 +287,8 @@
         "jvm_contracts",
         "runtime_boundary",
         "android_host",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Core test changes stay on deterministic contract consumers and do not rerun production Worker worlds."
     },
@@ -290,7 +302,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Adapter route production changes reach boundary, Worker correctness, convergence and deployed runtime proofs."
     },
@@ -299,14 +312,16 @@
       "lanes": [
         "android_host",
         "android_emulator",
-        "runtime_distribution"
+        "runtime_distribution",
+        "sms_reception_preview"
       ],
       "reason": "Android production assembly requires deterministic, emulator and packaged SDK proofs."
     },
     {
       "path": "transport/android-worker/src/test/java/com/xa/mass/worker/android/AndroidWorkerTest.java",
       "lanes": [
-        "android_host"
+        "android_host",
+        "sms_reception_preview"
       ],
       "reason": "Android test-only changes stay on the deterministic Android Host lane."
     },
@@ -360,7 +375,7 @@
     {
       "path": ".github/workflows/worker-loaded-recovery.yml",
       "lanes": ["jvm_contracts"],
-      "reason": "Manual external-release routing is checked by runner contracts; ordinary CI never triggers the public environment."
+      "reason": "The local Loaded Recovery nightly/manual workflow keeps its existing recovery workload; focused runner contracts verify routing, and external Actions execution belongs only to Performance."
     },
     {
       "path": "server_jvm/src/main/java/com/xa/mass/server/error/ServerException.java",
@@ -371,7 +386,8 @@
         "worker_convergence_health",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Generic Server error handling reaches Server-wide proofs but does not re-prove the Worker correctness primary claim."
     },
@@ -385,7 +401,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Pacer assembly reaches convergence and runtime boundaries, not the fixed Worker correctness claim."
     },
@@ -400,7 +417,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Worker Prepare is a production boundary consumed by ordinary, batched, Android and convergence Worker worlds."
     },
@@ -415,7 +433,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "The Task Result response contract is strictly consumed by Worker correctness, convergence and the Android emulator proof."
     },
@@ -432,7 +451,8 @@
       "lanes": [
         "frontend",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Frontend production changes remain isolated from runtime mechanism proofs."
     },
@@ -443,7 +463,8 @@
         "frontend",
         "jvm_contracts",
         "product_coexistence",
-        "runtime_boundary"
+        "runtime_boundary",
+        "sms_reception_preview"
       ],
       "reason": "Unified local composition selects source, Android and existing scenario delivery witnesses."
     },
@@ -471,7 +492,8 @@
         "runtime_distribution",
         "worker_dynamic_matching",
         "product_coexistence",
-        "android_consumer"
+        "android_consumer",
+        "sms_reception_preview"
       ],
       "reason": "Workflow changes re-prove the complete required gate."
     },
@@ -489,7 +511,8 @@
         "runtime_distribution",
         "worker_dynamic_matching",
         "product_coexistence",
-        "android_consumer"
+        "android_consumer",
+        "sms_reception_preview"
       ],
       "reason": "Selection-contract changes re-prove the complete required gate."
     },
@@ -504,7 +527,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "The shared distribution build consumes the Boot executable for Runtime and Preview and retains its existing host proof coverage."
     },
@@ -515,7 +539,8 @@
         "worker_convergence_health",
         "worker_correctness",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Lab live Properties enters the running Host through HTTP and must retain downstream process proofs."
     },
@@ -526,7 +551,8 @@
         "worker_convergence_health",
         "worker_correctness",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Host persistence and SDK publication belong to the live Properties integration closure."
     },
@@ -540,7 +566,8 @@
         "worker_convergence_health",
         "worker_correctness",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Current verified Channel admission and Properties cache publication require the live Properties proof."
     },
@@ -554,7 +581,8 @@
         "worker_convergence_health",
         "worker_correctness",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Server admission of dynamic Properties must select Worker Correctness through worker/resource."
     },
@@ -573,7 +601,8 @@
         "worker_correctness",
         "worker_dynamic_matching",
         "worker_convergence_health",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Dynamic matching crosses this production or proof entry."
     },
@@ -585,7 +614,8 @@
         "worker_correctness",
         "worker_dynamic_matching",
         "worker_convergence_health",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Dynamic matching crosses this production or proof entry."
     },
@@ -598,7 +628,8 @@
         "worker_dynamic_matching",
         "worker_convergence_health",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Dynamic matching crosses this production or proof entry."
     },
@@ -613,7 +644,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "The sole executable composes the platform; its production assembly inherits the existing host proof lanes."
     },
@@ -622,7 +654,8 @@
       "lanes": [
         "frontend",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "SMS routes share Console lifecycle and the single Runtime distribution frontend."
     },
@@ -631,7 +664,8 @@
       "lanes": [
         "frontend",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Catalog admission and Demo isolation belong to the unified frontend proof."
     },
@@ -640,7 +674,8 @@
       "lanes": [
         "frontend",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Shared navigation and theme must retain Runtime and SMS lifecycle isolation."
     },
@@ -655,7 +690,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "The executable owns finite Console page forwards in enabled and ordinary instances."
     },
@@ -683,7 +719,8 @@
         "android_emulator",
         "jvm_contracts",
         "product_coexistence",
-        "runtime_distribution"
+        "runtime_distribution",
+        "sms_reception_preview"
       ],
       "reason": "Finite campaign submission and continuous product observation require application contracts, archive composition and real shared Worker proof."
     },
@@ -698,7 +735,8 @@
         "runtime_distribution",
         "worker_convergence_health",
         "worker_correctness",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "sms_reception_preview"
       ],
       "reason": "The preview configuration declares the shared demo Group and two App Groups and enables all scenarios on one platform."
     },
@@ -709,7 +747,8 @@
         "product_coexistence",
         "worker_convergence_health",
         "worker_correctness",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "sms_reception_preview"
       ],
       "reason": "Real send deduplication and recipient actions require Host tests and product process witnesses."
     },
@@ -718,14 +757,16 @@
       "lanes": [
         "frontend",
         "product_coexistence",
-        "runtime_distribution"
+        "runtime_distribution",
+        "sms_reception_preview"
       ],
       "reason": "Business navigation and lifecycle are unified Console contracts and delivered in the shared Preview."
     },
     {
       "path": "distribution/server/run_preview.py",
       "lanes": [
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Two-process source and ZIP assembly belong to the coexistence proof."
     },
@@ -733,7 +774,8 @@
       "path": "server_boot_jvm/src/main/resources/application-preview.yaml",
       "lanes": [
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "The executable owns the fixed preview profile; both archives consume its canonical configuration."
     },
@@ -751,7 +793,8 @@
         "worker_correctness",
         "worker_dynamic_matching",
         "worker_convergence_health",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Complete Simulator configurations replace main-resource defaults without reducing their selected proof set."
     },
@@ -766,7 +809,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "The sole executable composes the platform; its production assembly inherits the existing host proof lanes."
     },
@@ -781,7 +825,8 @@
         "runtime_distribution",
         "worker_convergence_health",
         "worker_correctness",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "sms_reception_preview"
       ],
       "reason": "Executable-owned deployment configuration retains every proof selected before its move out of the Server library."
     },
@@ -810,7 +855,8 @@
         "worker_convergence_health",
         "worker_correctness",
         "worker_dynamic_matching",
-        "android_emulator"
+        "android_emulator",
+        "sms_reception_preview"
       ],
       "reason": "The packaged consumer profile now supplies the real Android archive-consumption proof in addition to Runtime configuration contracts."
     },
@@ -818,21 +864,24 @@
       "path": "distribution/server/requirements-preview.txt",
       "lanes": [
         "product_coexistence",
-        "runtime_distribution"
+        "runtime_distribution",
+        "sms_reception_preview"
       ],
       "reason": "Shared local launcher dependencies are used by Preview and Runtime distribution checks."
     },
     {
       "path": "distribution/server/src/test/python/test_run_preview.py",
       "lanes": [
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Preview-only prerequisites and acceptance retain their scenario proof ownership after distribution consolidation."
     },
     {
       "path": "distribution/server/src/test/python/test_verify_preview_archive.py",
       "lanes": [
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Preview-only prerequisites and acceptance retain their scenario proof ownership after distribution consolidation."
     },
@@ -847,7 +896,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Rule-owned qualification, original Pacer fences and destructive local take require Owner fence/command proofs plus real Worker, dynamic facts and convergence proofs."
     },
@@ -861,7 +911,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Refill acquisition preserves opaque HOT and exact fence authority across Pacer and real Worker proofs."
     },
@@ -876,7 +927,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Task descriptors now own Rule names and targets; preserve the previous configuration-contract proof coverage."
     },
@@ -891,7 +943,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Moved Matching data contract preserves the original Matching production proof selection."
     },
@@ -906,7 +959,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Item query envelope preserves the existing shared contract proof coverage."
     },
@@ -919,7 +973,8 @@
         "runtime_boundary",
         "runtime_distribution",
         "worker_convergence_health",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "sms_reception_preview"
       ],
       "reason": "Candidate handoff changes remain covered by existing bounded Matching, Score and runtime proofs."
     },
@@ -933,7 +988,8 @@
         "runtime_boundary",
         "runtime_distribution",
         "worker_convergence_health",
-        "worker_dynamic_matching"
+        "worker_dynamic_matching",
+        "sms_reception_preview"
       ],
       "reason": "Renaming the routed candidate preserves the existing Dispatch proof selection, including Android and distribution."
     },
@@ -942,7 +998,8 @@
       "lanes": [
         "jvm_contracts",
         "redis_owner",
-        "runtime_boundary"
+        "runtime_boundary",
+        "sms_reception_preview"
       ],
       "reason": "The zero-expectation Rule is a Runtime Boundary fixture only, not a production Rule or profile."
     },
@@ -957,7 +1014,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Pool resource, supply policy and consumer composition retain the existing Matching proof lanes."
     },
@@ -972,7 +1030,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Pool resource, supply policy and consumer composition retain the existing Matching proof lanes."
     },
@@ -987,7 +1046,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Pool resource, supply policy and consumer composition retain the existing Matching proof lanes."
     },
@@ -1002,7 +1062,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Explicit Any supply and Country Facts/bucket admission retain existing Owner, real Worker and scenario proof selection."
     },
@@ -1017,7 +1078,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Explicit Any supply and Country Facts/bucket admission retain existing Owner, real Worker and scenario proof selection."
     },
@@ -1032,7 +1094,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Matching resource ownership retains the existing production proof selection."
     },
@@ -1047,7 +1110,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Matching resource ownership retains the existing production proof selection."
     },
@@ -1062,7 +1126,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Independent network observation persistence inherits the existing Matching path coverage without adding a proof lane."
     },
@@ -1077,7 +1142,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Qualified Direct Phone lookup separates directed Messages from Pool stock while retaining Kernel execution admission."
     },
@@ -1092,7 +1158,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Messaging Pool and Direct Phone share fixed Facts qualification without adding a state Owner."
     },
@@ -1107,7 +1174,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Matching resource ownership retains the existing production proof selection."
     },
@@ -1122,7 +1190,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Matching resource ownership retains the existing production proof selection."
     },
@@ -1137,7 +1206,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Matching resource ownership retains the existing production proof selection."
     },
@@ -1152,7 +1222,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Matching resource ownership retains the existing production proof selection."
     },
@@ -1167,7 +1238,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Matching resource ownership retains the existing production proof selection."
     },
@@ -1176,7 +1248,8 @@
       "lanes": [
         "jvm_contracts",
         "redis_owner",
-        "runtime_boundary"
+        "runtime_boundary",
+        "sms_reception_preview"
       ],
       "reason": "Resource assembly and Redis behavior tests retain the existing contract lanes."
     },
@@ -1185,7 +1258,8 @@
       "lanes": [
         "jvm_contracts",
         "redis_owner",
-        "runtime_boundary"
+        "runtime_boundary",
+        "sms_reception_preview"
       ],
       "reason": "Resource assembly and Redis behavior tests retain the existing contract lanes."
     },
@@ -1200,7 +1274,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Direct strategy admission and batched execution retain all Matching production proof lanes."
     },
@@ -1215,7 +1290,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Properties, query coordination and refill separation retain all existing Matching proof lanes."
     },
@@ -1230,7 +1306,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Properties, query coordination and refill separation retain all existing Matching proof lanes."
     },
@@ -1245,7 +1322,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Properties, query coordination and refill separation retain all existing Matching proof lanes."
     },
@@ -1259,7 +1337,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Allocation observation handoff retains Server proof selection and existing platform and scenario lifecycle lanes."
     },
@@ -1273,7 +1352,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Fixed internal observation functions retain the receiver's existing Server and scenario proof lanes."
     },
@@ -1287,7 +1367,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Moved Properties projection effects keep the former receiver's proof coverage and lifecycle boundaries."
     },
@@ -1300,7 +1381,8 @@
         "worker_dynamic_matching",
         "worker_convergence_health",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "The passive projection contract retains Server selection without adding a new proof lane."
     },
@@ -1313,7 +1395,8 @@
         "worker_dynamic_matching",
         "worker_convergence_health",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Host-owned window arithmetic follows Server projection proof coverage while retaining the existing business witness."
     },
@@ -1328,7 +1411,8 @@
         "android_emulator",
         "runtime_distribution",
         "worker_dynamic_matching",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Shared Pool consumption and declared fixed-window rules retain Matching and scenario proof selection."
     },
@@ -1342,7 +1426,8 @@
         "worker_convergence_health",
         "android_emulator",
         "runtime_distribution",
-        "product_coexistence"
+        "product_coexistence",
+        "sms_reception_preview"
       ],
       "reason": "Assignment ceiling admission and demand-driven supply retain the existing scheduling, Matching and delivery proof selection."
     },
@@ -1392,7 +1477,8 @@
       "path": "distribution/archive_tools.py",
       "lanes": [
         "product_coexistence",
-        "runtime_distribution"
+        "runtime_distribution",
+        "sms_reception_preview"
       ],
       "reason": "Distribution owns one component verifier; candidate and Preview consumers retain their independent checks."
     },
@@ -1421,7 +1507,7 @@
     {
       "path": ".github/scripts/prepare_external_release_load.py",
       "lanes": ["jvm_contracts"],
-      "reason": "The manual consumer release verification and workflow contract are checked in the loaded-runner tests."
+      "reason": "External Performance consumes shared immutable Release input verification; focused downloader contracts remain in the existing test location without an external Loaded Actions entry."
     },
     {
       "path": "integrations/worker_proof_support/test_processes.py",
@@ -1437,7 +1523,8 @@
       "lanes": [
         "android_emulator",
         "product_coexistence",
-        "runtime_distribution"
+        "runtime_distribution",
+        "sms_reception_preview"
       ],
       "reason": "Shared coordinates, lifecycle and quantity configuration serve source and packaged Preview launch."
     },
@@ -1449,6 +1536,34 @@
         "android_host"
       ],
       "reason": "Checked APK preparation and owned ADB lifecycle serve local Android instances."
+    },
+    {
+      "path": ".github/workflows/sms-reception-preview.yml",
+      "lanes": [
+        "sms_reception_preview"
+      ],
+      "reason": "The existing SMS workflow is reusable and manually callable; Proof CI alone selects it for PRs and includes its real outcome in the required Gate."
+    },
+    {
+      "path": "scenarios/sms-reception-jvm/run_acceptance.py",
+      "lanes": [
+        "jvm_contracts",
+        "product_coexistence",
+        "sms_reception_preview"
+      ],
+      "reason": "The SMS acceptance runner retains its source functional/lifecycle and extracted-Preview oracle; SMS is required in selected and complete manual Proof."
+    },
+    {
+      "path": "scenarios/sms-reception-jvm/README.md",
+      "lanes": [],
+      "reason": "SMS Owner prose is checked by the always-running Docs Contract without executing the SMS workload."
+    },
+    {
+      "path": ".github/scripts/test_run_local_runtime.py",
+      "lanes": [
+        "runtime_distribution"
+      ],
+      "reason": "Changes to the local launcher test itself must execute its existing Runtime Distribution owner test rather than receive an empty selection."
     }
   ]
 }

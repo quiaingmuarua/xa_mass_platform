@@ -232,5 +232,10 @@ Server startup budget while retaining the original Worker run and Reporter.
 Production and interactive Preview reconnect defaults are unchanged.
 Fresh ZIP functional must run with `--root <extracted Preview>` and no build or checkout
 fallback. Summaries contain bounded metadata and fingerprints; private logs are
-not public artifacts. `.github/workflows/sms-reception-preview.yml` selects the
-regular functional/lifecycle/ZIP checks; the sustained workload is explicit.
+not public artifacts. Proof CI selects the reusable
+`.github/workflows/sms-reception-preview.yml` for the regular
+functional/lifecycle/ZIP checks and requires its result in Proof Gate. Complete
+manual Proof and subsequent Release promotion require the same successful SMS
+checks; a standalone manual SMS entry remains available without a duplicate PR
+trigger. The sustained workload stays explicit. These are Preview regression
+checks, independent of maturity, real-device readiness or deployment to GCP.

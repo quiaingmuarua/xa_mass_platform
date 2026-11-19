@@ -29,7 +29,19 @@ class ReleasePromotionTest(unittest.TestCase):
     def test_reusable_workflow_job_name_is_accepted(self):
         jobs = copy.deepcopy(self.jobs)
         next(job for job in jobs if job["name"] == "Product Coexistence")["name"] += " / Shared products and recipient outcomes"
+        next(job for job in jobs if job["name"] == "SMS Reception Preview")["name"] += " / product-preview"
         release.validate_run(self.run, jobs, self.commit, self.repository)
+
+    def test_sms_proof_is_required_with_its_real_result(self):
+        missing = [job for job in self.jobs if job["name"] != "SMS Reception Preview"]
+        with self.assertRaisesRegex(ValueError, "missing required jobs"):
+            release.validate_run(self.run, missing, self.commit, self.repository)
+        for outcome in ("failure", "cancelled", "skipped", None):
+            with self.subTest(outcome=outcome):
+                jobs = copy.deepcopy(self.jobs)
+                next(job for job in jobs if job["name"] == "SMS Reception Preview")["conclusion"] = outcome
+                with self.assertRaisesRegex(ValueError, "failed, incomplete or skipped"):
+                    release.validate_run(self.run, jobs, self.commit, self.repository)
 
     def test_wrong_sha_partial_failed_and_foreign_runs_are_rejected(self):
         changes = [dict(head_sha="b" * 40), dict(event="push"), dict(conclusion="failure"),

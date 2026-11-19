@@ -182,8 +182,9 @@ completed run whose evidence contains unknown responses or HTTP 429. Preserve
 those outcomes without resubmitting their request identities. Before starting,
 reconcile any still-active old campaign process or unknown cleanup result;
 unknown workload outcomes and unknown process cleanup are different evidence.
-External load shares the `release-preview-load` concurrency group with other
-external Release load, with cancellation disabled. The remote campaign budget
+External Performance runs serialize in the `release-preview-load` concurrency
+group with cancellation disabled; local Loaded Recovery runs independently.
+The remote campaign budget
 is 45 minutes for one repetition or 100 minutes for three; GitHub allows 120
 minutes, and owned-unit shutdown has a 120-second budget. Cleanup and receipt
 collection remain limited to this run's processes, credential copies and files.
@@ -645,6 +646,11 @@ outcomes.
   also carries `frontend/vercel.json` with `git.deploymentEnabled=false`, maintained
   by every publication, so recording measurements does not deploy an application.
   Existing records and external acceptance evidence are retained.
+  A failed merge still publishes its generated record, including failed/invalid
+  case statuses, when recording is selected; the original merge exit remains a
+  job failure. Missing, malformed or mismatched run records are rejected before
+  publication, and cancellation does not start publication. Retaining a failed
+  record does not change which metrics or configurations are comparable.
 - Nightly trend: compares with the last seven records of the same ref, lane
   config version and resolved job configuration hashes, else reports
   `insufficient-history`. Values are normalized to

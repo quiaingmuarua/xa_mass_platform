@@ -178,14 +178,27 @@ jobs:
             echo "No perf-lane-data branch yet; trend comparison starts empty."
           fi
       - name: Merge lane jobs and compare with history
+        id: merge
         run: |
           python integrations/worker-call-performance/run_worker_call_performance.py \
             --merge-lane build/lane-jobs --merge-jobs rate-500,rate-1000,rate-2000,saturation \
             --lane-history build/lane-data/runs --output-root build/worker-call-performance-proof/lane-merged
       - name: Record this run on the data branch
-        if: github.event_name == 'schedule' || inputs.lane_record
+        if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.lane_record) && (steps.merge.outcome == 'success' || steps.merge.outcome == 'failure') }}
         run: |
           record="$GITHUB_WORKSPACE/build/worker-call-performance-proof/lane-merged/evidence/run-record.json"
+          python - "$record" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          record = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          identity = {"runId": "GITHUB_RUN_ID", "attempt": "GITHUB_RUN_ATTEMPT", "ref": "GITHUB_REF_NAME", "sha": "GITHUB_SHA"}
+          fields = {"laneConfigVersion": int, "configurations": dict, "calibration": dict, "cases": dict}
+          if (not isinstance(record, dict) or record.get("status") not in ("passed", "failed")
+                  or any(record.get(key) != os.environ[name] for key, name in identity.items())
+                  or any(type(record.get(key)) is not kind for key, kind in fields.items())
+                  or record["laneConfigVersion"] < 1):
+              raise SystemExit("Generated performance run record is invalid or belongs to another run")
+          PY
           name="$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
           if [ ! -e build/lane-data/.git ]; then
             git worktree add --detach build/lane-data HEAD
