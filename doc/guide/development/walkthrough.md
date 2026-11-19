@@ -51,6 +51,11 @@ Group 的 Pool/query 启用关系不由 Project 或检查页面生成。
 提供 `md5-prefix-demo-batch-v1`，负责种子输入关联、结果结构和前缀判定；
 它不持有网络、Redis 或调度资源。
 
+[AppCheckScenarioConfiguration](../../../scenarios/app-checks-jvm/src/main/java/com/xa/mass/scenario/appchecks/AppCheckScenarioConfiguration.java)
+通过 `md5PrefixBatchContract()` 注册该 `AppCheckContract` bean，再将全部 Definitions
+组成 `AppCheckContracts`。新增纯契约后必须接入这个静态注册点，配置中的 `checkType`
+才能解析；写好实现类本身不会让它出现在运行中的契约集合。
+
 [Preview 检查配置](../../../scenarios/app-checks-jvm/src/main/resources/app-checks/preview-configuration.json)
 把 `md5-prefix` 绑定到该契约、Demo Group、批量事件与 Any 查询。
 `seedsPerItem=10`、`unitPrice=1` 是这个示例的配置值，不是平台通用法则。

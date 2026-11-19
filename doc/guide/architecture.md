@@ -58,6 +58,24 @@ Item 再通过具名函数消费候选；按 Worker ID 或号码的直接查询�
 Server 和 Transport 不选择替代 Worker，不接管租约、Item claim 或任务最终收尾。
 未来的授权架构迁移可以调整边界，但不能把权责变化藏在普通清理中。
 
+## 身份与数据边界
+
+用户通过 Bearer access key 进入 API；Server 用户目录为每次请求生成角色与 Project
+权限快照。Worker 网关凭据只负责连接入口准入，Worker ID/Group/绑定则标识执行端。
+这三者分别成立：更换用户密钥不更换 Worker 身份，网关放行也不代表某个用户拥有 Task。
+细节见 [API 认证](../../server_jvm/README.md#access-key-front-door)和
+[Worker 准备](../../server_jvm/README.md#workergroup-and-worker-preparation)。
+
+| 数据 | 如何理解和读取 |
+| --- | --- |
+| Runtime | Redis 中当前 Task、Item、Result 和调度资源；页面观察可能来自不同时间，有限 Task 的输入/结果释放后不能再由 Runtime 读取 |
+| 有限 Task 历史 | Server 将终态任务冻结并发布到 SQLite，独立 Storage API 分页读取只读快照；Runtime 清理后仍可在历史有效期内读取，不恢复执行 |
+| RPC 结果 | 消费读取会取走当前 Result；写刷新 HASH idle TTL，可选维护另行清理终态 Item；这些路径不生成有限 Task 历史 |
+
+配置文件也有各自 Owner：用户目录和业务配置不存放 Task 执行数据。
+查看[配置归属](operations/configuration.md)与[Runtime/Storage 使用方式](usage/workbench.md#有限任务的-runtime-与-storage)，
+精确保留和失败规则仍以 [Server 数据合同](../../server_jvm/README.md#finite-task-retention)为准。
+
 ## 三种观察要分别看
 
 连接告诉你 Adapter 当前看到什么；Properties 告诉你已接受哪些事实；
@@ -67,6 +85,10 @@ Server 和 Transport 不选择替代 Worker，不接管租约、Item claim 或�
 Convergence 包括执行结果、释放和超时等内部反馈，也包括连接、属性、Probe 等外部观察。
 它是行为视角，不保证每条反馈可靠交付或所有状态最终自动修复。
 业务使用投影可能有损，不能把窗口观察计数解释为严格预留配额。
+
+管理员设置的 [Worker 连接冷却](../../server_jvm/README.md#worker-connection-cooldown)
+控制物理连接准入，独立于调度 PAUSE 和 Pool 资格；解除冷却不会清除 PAUSE，
+断开连接也不会取消已经准入的 Handler。
 
 ## Direct Call 与任务不同
 

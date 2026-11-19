@@ -2,42 +2,43 @@
 
 Status: current user and developer guide entrypoint.
 
-XA Mass 把一批工作交给持续变化的 Java 或 Android Worker 执行，记录任务进度和结果，
-并根据 Worker 的状态、属性和执行反馈继续分配工作。业务通过现有 API、页面和 Worker
-能力接入；资源选择、执行资格和任务收尾分别由平台中明确的 Owner 负责。
+XA Mass 将一批工作交给 Java 或 Android Worker 执行，记录进度、结果与后续观察，
+并根据 Worker 的状态和能力继续分配工作。Host 安装实际能力，平台负责通用任务与执行流程。
+先选择你要完成的工作，再进入需要的机制。
 
 ## 从这里开始
 
-| 你现在要做什么 | 阅读入口 | 完成后应得到什么 |
+| 你的任务 | 阅读路线 | 完成标志 |
 | --- | --- | --- |
-| 第一次体验项目 | [快速启动](quick-start.md) → [完成第一个任务](first-task.md) | 真实 Worker 执行、费用确认、逐条结果和导出 |
-| 批量查询号码或文本 | [Batch Checks](usage/batch-checks.md) | 选择检查能力，导入种子，审核启动并读取业务答案 |
-| 发送消息并观察后续回执 | [Messages](usage/messages.md) | 分清发送完成与送达、已读、回复 |
-| 申请号码并接收模拟短信 | [SMS](usage/sms.md) | 用原 messageId 持续查询接收窗口 |
-| 调试能力或使用通用任务 | [任务工作台](usage/workbench.md) | 选择有限 Task、RPC 或 Direct Debug |
-| 部署或处理运行问题 | [部署](operations/deploy.md) → [配置归属](operations/configuration.md) → [排障](operations/troubleshooting.md) | 明确环境坐标、资源声明和故障所在层 |
-| 维护 GCP Release Preview | [环境定位与交接](operations/deploy.md#release-preview) → 主机现有记录 → 目标版本说明 | 区分 PR、Release 和现场验收；按任务核对实际环境 |
-| 让 Agent 修改代码 | [开发入口](development/index.md) → [能力接入走读](development/walkthrough.md) | 找到 Owner、调用者、消费者及所需证明 |
-| 理解机制及项目能力 | [架构](architecture.md)、[验证](verification.md)、[实测能力](capabilities.md) | 区分系统机制、测试主张和特定版本的实测结果 |
+| **使用与运维现有环境** | [认识并接管环境](operations/deploy.md#release-preview) → [配置与生效](operations/configuration.md) → [按现象排障](operations/troubleshooting.md) | 知道环境身份、可用业务、状态含义和变更入口 |
+| **在本地体验** | [快速启动](quick-start.md) → [第一个 MD5 任务](first-task.md) | 核对真实 Worker 的执行、费用、三个答案和 CSV |
+| **让 Agent 修改代码** | [按任务定位](development/index.md) → [能力接入走读](development/walkthrough.md) | 找到 Owner、实现、调用者和对应断言 |
 
-## 当前可以做什么
+已有环境不要求安装 Preview 的演示能力；以该环境生效的 Catalog、授权和实际 Host 为准。
+项目理解和普通开发使用仓库证据；只有明确的部署、现场诊断或公网验收任务才访问主机。
 
-平台提供有限批量任务、可复用 RPC Task、按身份直接调用，以及 Worker 注册、连接、
-属性和任务结果观察。Preview 将 Batch Checks、Messages 和 SMS 装配在同一平台上，
-让这些流程通过真实 Java Worker SDK 运行。
+## 可以使用哪些能力
 
-Preview 中的注册查询、消息收件端和短信输入是演示能力。更换为真实业务时，需要
-Host 安装对应 Handler，并配置 Group、Project 和所需资源；勾选页面选项不会安装
-Worker 能力。公开 Mock 演示只模拟页面与业务状态，不能证明后端执行。
+| 能力 | 用途与入口 | 使用前确认 |
+| --- | --- | --- |
+| [Batch Checks](usage/batch-checks.md) | 导入号码或文本，核对费用，批量检查与导出 | 检查配置、用户积分、Group 资源和实际 Handler |
+| [Messages](usage/messages.md) | 有限发送任务及后续送达、已读、回复 | 应用到 Group 的绑定和接收端的真实能力 |
+| [SMS Reception](usage/sms.md) | 取号并用原 messageId 读取最新短信 | Preview 场景；演示短信由 Host 输入 |
+| [任务工作台](usage/workbench.md) | 有限 Task、可复用 RPC、定向 Direct Debug | 选择合适执行方式及结果读取语义 |
+| 历史结果与日常管理 | 任务的 Storage 历史、用户／密钥／积分、Worker 接入控制 | 角色／Project 授权；[数据与配置归属](operations/configuration.md) |
 
-## 按需要理解概念
+`consumer` 默认启用 Batch Checks 和 Messages，需提供外部业务与资源配置；Worker 独立接入。
+`preview` 提供三个场景和 Java Simulator，公开 Mock 只模拟页面。演示中的注册查询、短信、
+收件端不代表真实外部服务；页面声明也不会安装 Worker Handler。
 
-先认识 **Task / Item、Worker / Group、Event / Handler、Result**，就能使用基本流程。
-配置资源选择时再阅读 **Properties、Pool、query**；修改执行资格、重试或恢复时，
-才需要进入 **Score、lease、Pacer**。这些概念的定义和写入权留在
-[架构主线](../kernel/scheduling-overview.md)与各模块 Owner。
+## 按任务逐步认识概念
 
-本指南解释如何使用、定位和验证。详细字段、状态转换、配置默认值和失败窗口，以
-同一源码版本的 Owner 和实现为准。项目仍在快速迭代；当前页面不承诺历史 API、
-配置或数据形状继续兼容。仓库内阅读从 [README](../../README.md) 和
-[文档职责索引](../README.md)继续。
+使用业务先认识 **Task / Item、Worker / Group、Event / Handler、Result**。
+运维再区分 **环境版本、两类凭据、配置生效、Runtime / Storage**；
+开发资源选择时进入 **Properties、Pool、query**，修改调度才深入 **Score、lease、Pacer**。
+[架构图](architecture.md)解释关系，[验证](verification.md)说明证据边界，
+[能力记录](capabilities.md)给出有日期和条件的实测结论。
+
+本指南解释当前构建的操作与导航。精确字段、状态和生命周期由同版本 Owner 维护，
+入口见[仓库阅读路径](../../README.md#reading-path)和[文档职责索引](../README.md)。
+项目持续迭代，不承诺旧 API、配置或数据形状继续兼容；随包文档也不代表最新 main。

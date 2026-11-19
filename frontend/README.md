@@ -679,8 +679,10 @@ controls, concrete ending reasons and local operation records; its whole workflo
 still makes zero service requests. Neither mode falls back to the other.
 
 Persistent import/activity history and explicit backend ending reasons remain
-follow-up work. Historical browsing can be reconsidered with Storage DB; this
-iteration adds no full-query or continuation interfaces.
+follow-up work. Published finite Task snapshots already support explicit
+[Storage browsing](#finite-task-retention-views), including paginated historical
+inputs/states and saved results. These snapshots do not reconstruct import receipts
+or activity history, and Runtime lists remain bounded and unpaginated.
 
 ## API Reference
 

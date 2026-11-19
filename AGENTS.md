@@ -273,7 +273,11 @@ place; do not maintain a parallel HTML overview, copied Owner tree or second
 contract registry. Update affected guide steps, Owner descriptions and navigation
 together. Dated capability numbers retain the measured commit, configuration,
 status and immutable evidence; a site build is not runtime proof. Historical
-material stays outside current site navigation and search.
+material stays outside current site navigation and search. Replace superseded
+prose and remove completed todos in the same change. Distill reusable conclusions
+into the existing Owner or guide; retain necessary dated evidence through fixed
+Git/Release references, without adding a historical narrative archive. Pruning
+prose must preserve raw proof records and the active release-tool contract.
 
 ## Business Scenario Composition
 

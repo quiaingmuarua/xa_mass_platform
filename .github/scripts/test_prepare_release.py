@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import zipfile
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import prepare_release as release
 
@@ -122,45 +122,27 @@ class ReleasePromotionTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     release.validate_draft({**dict(tag_name="v1.0.0", draft=True, assets=[]), **changes}, "v1.0.0", [expected])
 
-    def test_creation_uses_returned_draft_without_relisting_then_uploads_every_component(self):
-        self._assert_draft_creation("1.0.0")
-
-    def test_major_two_uses_its_own_contract_and_exact_asset_versions(self):
-        self._assert_draft_creation("2.0.0")
-
-    def test_major_three_uses_its_own_contract_and_exact_asset_versions(self):
-        self._assert_draft_creation("3.0.0")
-
-    def test_minor_three_one_and_its_patch_use_their_own_contract(self):
-        for version in ("3.1.0", "3.1.1"):
+    def test_minor_contracts_use_exact_versions_and_all_three_components(self):
+        self.assertEqual(("server-runtime", "worker-sdk", "worker-simulator"), release.COMPONENTS)
+        for version in ("1.0.0", "2.0.0", "3.0.0", "3.1.0", "3.1.1", "3.2.0",
+                        "4.0.0", "4.1.0", "4.2.0", "4.3.0", "4.3.1", "4.3.2"):
             with self.subTest(version=version):
                 self._assert_draft_creation(version)
 
-    def test_staging_minor_uses_its_own_contract_and_exact_asset_versions(self):
-        self._assert_draft_creation("3.2.0")
-
-    def test_simulator_kit_minor_uses_its_own_contract_and_three_components(self):
-        self.assertEqual(("server-runtime", "worker-sdk", "worker-simulator"), release.COMPONENTS)
-        self._assert_draft_creation("4.1.0")
-
-    def test_external_capacity_minor_uses_its_own_contract_and_three_components(self):
-        self._assert_draft_creation("4.2.0")
-
-    def test_connection_cooldown_minor_uses_its_own_contract_and_three_components(self):
-        self._assert_draft_creation("4.3.0")
-
-    def test_cooldown_dialog_patch_uses_minor_contract_and_exact_patch_assets(self):
-        self._assert_draft_creation("4.3.1")
-
-    def test_batch_checks_caller_patch_uses_minor_contract_and_exact_patch_assets(self):
-        self._assert_draft_creation("4.3.2")
+    def test_current_four_four_contract_is_read_from_repository(self):
+        contract = release.ROOT / "distribution/server/RELEASE-4.4.md"
+        expected = contract.read_text(encoding="utf-8")
+        self.assertTrue(expected.startswith("# XA Mass 4.4 release"))
+        for version in ("4.4.0", "4.4.5"):
+            with self.subTest(version=version):
+                self.assertEqual(expected, release.release_contract(version))
 
     def test_missing_minor_contract_fails_before_github_without_major_fallback(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             documents = root / "distribution/server"
             documents.mkdir(parents=True)
-            (documents / "RELEASE-3.0.md").write_text("historical contract", encoding="utf-8")
+            (documents / "RELEASE-3.0.md").write_text("synthetic major contract", encoding="utf-8")
             with patch.object(release, "ROOT", root), patch.object(release, "gh") as github:
                 with self.assertRaisesRegex(ValueError, "RELEASE-3.1.md"):
                     release.prepare(self.repository, "v3.1.0", self.commit, root / "output")
@@ -170,6 +152,11 @@ class ReleasePromotionTest(unittest.TestCase):
         tag = "v" + version
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
+            major, minor, _ = version.split(".")
+            documents = root / "distribution/server"
+            documents.mkdir(parents=True)
+            contract = f"# XA Mass {major}.{minor} release\n\nSynthetic minor contract.\n"
+            (documents / f"RELEASE-{major}.{minor}.md").write_text(contract, encoding="utf-8")
             fixtures = {}
             for component in release.COMPONENTS:
                 name = f"xa-mass-{component}-{version}.zip"
@@ -192,8 +179,8 @@ class ReleasePromotionTest(unittest.TestCase):
                     document = json.loads(Path(arguments[-1]).read_text())
                     self.assertTrue(document["draft"])
                     self.assertEqual(tag, document["tag_name"])
-                    major, minor, _ = version.split(".")
-                    self.assertIn(f"# XA Mass {major}.{minor} release", document["body"])
+                    self.assertEqual(contract + f"\nVerified full Proof: {run['html_url']}\n\n"
+                                     f"Commit: `{self.commit}`\n", document["body"])
                     return json.dumps(created)
                 if arguments[:2] == ("release", "upload"):
                     uploaded.append(Path(arguments[3]).name)
@@ -203,7 +190,8 @@ class ReleasePromotionTest(unittest.TestCase):
                 self.assertTrue(endpoint.endswith("/releases/42"))
                 return {**created, "assets": [{"name": name} for name in uploaded]}
             run = dict(id=1, html_url="https://github.com/example/proof")
-            with patch.object(release, "verify_tag"), \
+            with patch.object(release, "ROOT", root), \
+                    patch.object(release, "verify_tag"), \
                     patch.object(release, "find_run",
                                  return_value=(run, [f"xa-mass-{c}-1" for c in release.COMPONENTS])), \
                     patch.object(release, "paged", return_value=[]) as listing, \
@@ -216,6 +204,9 @@ class ReleasePromotionTest(unittest.TestCase):
             listing.assert_called_once()
             simulator.assert_called_once()
             self.assertEqual(2 * len(release.COMPONENTS), len(uploaded))
+            expected_archives = {path.name for path in fixtures.values()}
+            self.assertEqual(expected_archives | {name + ".sha256" for name in expected_archives},
+                             set(uploaded))
 
 
 if __name__ == "__main__":

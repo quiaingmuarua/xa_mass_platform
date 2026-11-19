@@ -395,7 +395,7 @@ and independent GCP reconnection confirmation 59.619 seconds after restoration.
 Observed TCP turnover remains explicit; this is bounded Ubuntu/Java 21 evidence,
 not zero instantaneous disconnects, Android/SOCKS coverage or unlimited retry.
 The 4.4.2 complete manual Proof and publication are recorded in the
-[Release contract](distribution/server/RELEASE-4.4.md#442-consumer-closeout-patch);
+[Release contract](https://github.com/quiaingmuarua/xa_mass_platform/blob/9c30061d0188036f48b296c1be2cdd3872416b45/distribution/server/RELEASE-4.4.md#442-consumer-closeout-patch);
 those remain separate from the dated onsite observations and current host state.
 
 ## External Release load

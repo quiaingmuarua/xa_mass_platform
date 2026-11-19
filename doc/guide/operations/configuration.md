@@ -19,11 +19,45 @@ Status: current configuration ownership guide.
 | 用户、角色、Project 授权与访问密钥 | [Server 用户目录](../../../server_jvm/README.md#user-directory-and-access-keys) | `xa.mass.users.seed` 指向的文件；运行中只由 Server 写入，手工修改需先停止 Server；consumer 必须显式配置 |
 | 用户积分 | [Server 账户](../../../server_jvm/README.md#user-credit-accounts) | Server 自有 Redis 账本；与用户目录分开 |
 | Task 历史数据库路径和保留时间 | [Server retention](../../../server_jvm/README.md#finite-task-retention) | 配置由 Boot 提供；Runtime 与历史分别到期，保存与清理由 Server/Kernel 分工完成 |
+| RPC Result 空闲过期 | [Boot RPC Result 配置](../../../server_boot_jvm/README.md#rpc-result-and-sms-cache-configuration) | 实际 RPC Result 写入刷新整个 HASH 的 TTL；不回收 Item 或 Task |
+| RPC 终态 Item 回收 | [Boot 可选回收配置](../../../server_boot_jvm/README.md#rpc-terminal-item-retention-configuration) | 默认关闭；与父级 retention 一同启用后才维护，不因安装或升级而启用 |
 
 consumer 默认启用 Batch Checks 和 Messages，但不自动提供应用、检查项、Group 或 Pool。
 使用[两业务组合样例](../../../distribution/server/src/main/dist/examples/consumer-business/README.md)准备有效外部配置。
 只用一个业务时关闭另一个；纯平台 consumer 显式将两项 `enabled` 设为 `false`。
 缺配置时启动失败，不会自动套用 Preview 演示数据。SMS 继续仅由 Preview 装配。
+
+## 用户密钥与 Worker 凭据
+
+Console 登录和 API 请求使用用户 access key；角色、Project 授权及 Task 所有者决定具体操作权限。
+consumer 的 `xa.mass.users.seed` 必须显式指定。需要在页面维护用户时使用外部 `file:` 目录；
+classpath seed 只读。本地开发公开密钥只用于本地示例，外部部署按
+[用户目录合同](../../../server_jvm/README.md#user-directory-and-access-keys)在 Server 停止时准备首个管理员。
+
+运行中通过 Server 管理用户、授权及密钥，变更作用于之后准入的请求；已创建 Task 的归属不变。
+签发的新密钥只显示一次，替换或清除后旧密钥不能用于新请求。手工修改目录文件前先停止 Server，
+不要绕过它的文件锁和完整文档发布。
+
+Worker 的网关凭据配置属于 [staging ingress 与 SDK 连接选项](../../../distribution/server/src/main/dist/examples/staging-ingress/README.md)，
+不使用 Console 的用户密钥，也不将网关凭据当作 Worker 身份。管理员在页面设置的
+[连接冷却](../../../server_jvm/README.md#worker-connection-cooldown)是当前 Worker 的动态准入决策，
+不修改 Group/Pool 配置；到期或解除后还需独立观察连接及调度状态。
+
+## 数据保留与文件位置
+
+有限 Task 的 Runtime 数据和 Storage 历史使用不同读取入口；用户操作见
+[Runtime 与 Storage](../usage/workbench.md#有限任务的-runtime-与-storage)。历史库路径由
+[Boot retention 配置](../../../server_boot_jvm/README.md#finite-task-retention-configuration)提供，
+应放在可写、可随 Runtime 重启保留的位置，避免放入不可变安装目录。
+Runtime 与历史到期都从首次终止计时，读取不会延期；页面展示当前任务的实际时间。
+
+历史库使用 SQLite，备份、旧数据边界和 WAL 处理见
+[Server history API](../../../server_jvm/README.md#finite-task-history-api)。旧 JSONL/manifest 目录不会
+自动转成新历史库，改路径或 scope 也不会迁移记录。保留策略不负责删除用户或积分账本。
+
+RPC 的消费、Result idle TTL 和可选终态 Item 回收要分别配置和判断；见
+[RPC 结果读取与回收](../usage/workbench.md#rpc-结果读取与回收)。其中只有终态 Item 回收需要显式启用，
+它不提供 Storage 历史。不要用有限 Task 的历史保留期推算 RPC 可重读或去重的期限。
 
 ## 新增一个 Batch Checks 检查项
 

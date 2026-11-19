@@ -4,11 +4,9 @@ This module owns Runtime and Scenario Preview ZIP delivery, frontend and
 documentation-site builds, diagnostic dictionaries, Preview process assembly
 and archive verification.
 
-The current [4.4 release contract](RELEASE-4.4.md) describes finite Task history,
-published Worker consumers and the versioned Performance transport/ingress patches,
-with their completed deployment and acceptance records.
-The [4.3](RELEASE-4.3.md), [4.2](RELEASE-4.2.md), [4.1](RELEASE-4.1.md), [4.0](RELEASE-4.0.md), [3.2](RELEASE-3.2.md) and [3.1](RELEASE-3.1.md)
-contracts retain earlier versions' facts; each release document applies to its named version.
+The current [4.4 release contract](RELEASE-4.4.md) retains version-specific
+requirements, the 4.4.5 publication and accepted retained-scope upgrade, and fixed
+links to earlier release records. Current mechanisms remain in their Owners.
 A Release publishes three components: the Runtime, the Worker SDK and the Worker Simulator kit.
 Use the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)
 for GCP's role, deployment cadence and environment handoff rather than inferring
@@ -230,14 +228,17 @@ file is not committed and is not a compatibility contract.
 Build an explicit release version:
 
 ```powershell
-.\gradlew.bat :distribution:server:distZip "-PxaMassVersion=3.2.0"
+$runtimeVersion = Read-Host "Candidate SemVer (major.minor.patch)"
+.\gradlew.bat :distribution:server:distZip "-PxaMassVersion=$runtimeVersion"
 ```
 
 The archive is written under `distribution/server/build/distributions`. After
 extracting it on a machine with Java 21, run from the extracted Runtime root:
 
 ```powershell
-java -jar .\lib\xa-mass-server-jvm-3.2.0.jar `
+$manifest = Get-Content -Raw .\manifest.json | ConvertFrom-Json
+$serverJar = Join-Path (Get-Location) $manifest.serverJar
+java -jar $serverJar `
   --spring.profiles.active=default `
   --spring.web.resources.static-locations=file:frontend/dist/ `
   --xa.mass.redis.url=redis://127.0.0.1:6379/15
@@ -321,8 +322,7 @@ HTTP/2-enabled Nginx, OpenSSL, htpasswd and JDK 21 must be installed. The same
 gateway proof checks JDK stream limits, POST receipt across GOAWAY and HTTP/1.1 fallback;
 these mock transport checks establish no Runtime throughput. The normal Windows Runtime proof
 still checks its original boundaries; it does not pretend to prove Linux ingress.
-The [4.1 release contract](RELEASE-4.1.md) records its artifact verification;
-the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)
+The [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)
 owns the distinction between CI evidence, a published Release and actual GCP
 deployment acceptance. The gateway example does not decide when to deploy.
 

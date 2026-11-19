@@ -70,8 +70,8 @@ Proof Gate 要求被选中的 lane 成功、未选中的 lane 正确跳过；不
 外部容量调查的当前收尾见[已验规模与排查结论](capabilities.md#external-public-closeout)。
 结束一项调查可以保留其完整目标未通过的事实；不要把范围收尾写成原目标通过，
 也不要仅因历史失败继续启动已决定停止的实验。
-发布前核对所需 Proof，PR 收尾同时核对 main 自身的最终检查汇总；独立手动 run 通过
-不能消除另一份被取消检查的状态。不要在 main 自动检查未结束时启动会取消它的手动发布 Proof。
+发布准入与等待按 [CI Gate](../../TESTING.md#ci-gate)和[等待规则](../../TESTING.md#long-running-commands-and-ci-waiting)执行。
+文档清理保留原始状态与必要证据，完成的调查只保留结论和边界，不产生重跑义务。
 
 ## 如何读 nightly
 
@@ -83,7 +83,9 @@ Proof Gate 要求被选中的 lane 成功、未选中的 lane 正确跳过；不
 
 Loaded Recovery 则在规定的 Worker 数量、故障和重启次序下验证完成与资源稳定。
 它不寻找系统最大容量，也不提供持续无限时长的 SLA。
-两条 nightly 都不能用一个绿色图标替代具体 workload 和独立断言。
+两条 nightly 都不能用一个绿色图标替代具体 workload 和独立断言。公网 Performance 的
+[限期七日观测](../../integrations/worker-call-performance/README.md#seven-date-external-observation)
+与源码 nightly 分开；日程配置就绪不等于未来日期已有结果，缺席不补记为成功。
 
 ## 记录结论
 

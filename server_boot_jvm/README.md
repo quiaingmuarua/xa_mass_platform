@@ -290,8 +290,9 @@ not expire finite Task results. SMS Preview supplies
 `xa.mass.sms.result-cache.expire-after-write=10m`; the SMS module validates and
 owns this process-local Caffeine cache. Reads and unchanged revisions do not
 renew the cache lifetime. Restart discards consumed SMS cache entries; unread
-Redis Results retain their existing expiration. Use a fresh scope for this
-cutover; no TTL backfill or old-result migration is performed.
+Redis Results retain their existing expiration. No TTL backfill or old-result
+migration is performed. Upgrade scope requirements belong to the target Release
+contract; these configuration defaults do not require a fresh scope for each upgrade.
 
 ## Finite Task retention configuration
 

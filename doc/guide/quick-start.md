@@ -1,9 +1,9 @@
-# 快速启动
+# 本地体验：快速启动
 
 Status: current source and packaged entry guide.
 
 第一次体验使用 Preview：它启动一个 Server/Adapter 进程和独立 Java Worker Host，
-同时启用三个业务场景。先运行真实环境，再做[第一个 MD5 检查任务](first-task.md)。
+同时启用三个业务场景。先在本地启动真实 Server／Worker 链路，再做[第一个 MD5 检查任务](first-task.md)。
 
 ## 准备环境
 
