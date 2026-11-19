@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "windowId": "external-10k-20261120",
+  "startDate": "2026-11-20",
+  "days": 7,
+  "localTime": "05:30",
+  "utcOffset": "+08:00",
+  "workersPerGroup": 5000,
+  "repetitions": 1
+}

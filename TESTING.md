@@ -235,7 +235,7 @@ these correctness claims and add no heavy ordinary CI lane.
 | Worker Dynamic Matching | `python integrations/worker-dynamic-matching/run_worker_dynamic_matching.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Worker Simulator |
 | Worker Loaded Capacity + Recovery Stability | `python integrations/worker-loaded-recovery/run_worker_loaded_recovery.py --prepared-workers 15000 --retained-workers 10000 --minimum-initial-connected 14800 --minimum-retained-connected 9900 --workload-items-per-task 5000 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
-| [Worker Call Performance](integrations/worker-call-performance/README.md) | Source Nightly: parallel `rate-500`, `rate-1000`, `rate-2000` and `saturation` jobs with three repetitions, merged, recorded on `perf-lane-data` and compared with the last seven records. Source manual: the same with optional JFR diagnostics, or per-case A/B. Manual `execution_target=external`: the same deployed open runner from a pinned kit, with separate public-path evidence | Source lane: Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21. External: GitHub-hosted SSH to the dedicated Linux consumer, Java 21, Python 3.11+, published Simulator kit |
+| [Worker Call Performance](integrations/worker-call-performance/README.md) | Source Nightly: parallel `rate-500`, `rate-1000`, `rate-2000` and `saturation` jobs with three repetitions, merged, recorded on `perf-lane-data` and compared with the last seven records. Source manual: the same with optional JFR diagnostics, or per-case A/B. Manual `execution_target=external` and the fixed seven-date observation share the reusable deployed consumer and pinned kit, with separate public-path evidence | Source lane: Ubuntu 24.04, 4 logical CPUs, Docker Redis 7.4.10, Java 21. External: GitHub-hosted SSH to the dedicated Linux consumer, Java 21, Python 3.11+, published Simulator kit |
 | Android Host | Platform Android library/proof-tool contracts; no consumer artifact prerequisite | Robolectric, MockWebServer, JDK HttpServer |
 | Candidate Distribution Archives | One clean-commit Runtime/SDK/Simulator kit set, archive checks and hashes | Java, Android SDK, Node |
 | Android APK Assembly | Independent consumer unit tests and Debug plus three fixed Lab APKs from that SDK ZIP | Android SDK |
@@ -310,7 +310,10 @@ its own explicitly requested, versioned evidence.
 
 The same workflow's manual [external Actions execution](integrations/worker-call-performance/README.md#external-actions-execution)
 uses the protected `release-preview-load` Environment and its serial external-load
-concurrency group. Loaded Recovery no longer has a public-network Actions route.
+Actions concurrency group. Manual and fixed-date scheduled execution share
+`.github/workflows/external-performance-consumer.yml`; the schedule uses remote
+nonblocking admission instead of waiting in that Actions queue. Loaded Recovery
+no longer has a public-network Actions route.
 External Performance leaves source Nightly unchanged and runs only the pinned
 published Release kit on the dedicated Ali consumer user, without Git/Gradle, root or GCP
 administrator credentials. Its Vars, Secrets, manifest pins and declared
@@ -343,6 +346,28 @@ persistent 20-Worker system service is outside
 this lifecycle. Publish only the allowlisted sanitized receipts, without bootstrap
 Worker IDs; exit status `0` still requires inspecting case validity. This change
 adds no proof lane, Release publication, GCP upgrade or claimed 10k acceptance.
+
+The schedule-only `.github/workflows/external-performance-observation.yml`
+uses seven explicit cron entries for **2026-11-20..26 at 05:30 Asia/Shanghai**,
+recorded in `.github/external-performance-observation.json`
+(`windowId=external-10k-20261120`, schema 1). It has no manual dispatch; the command
+above remains the manual entry. Each planned date selects the unchanged 10k,
+one-repetition, three-path `500,1000,2000` open workload through the shared consumer.
+The source 03:00 Nightly keeps its original matrix, three repetitions and history.
+
+The original cron determines the target date. Delay within that same Beijing
+date is allowed; cross-date arrival, rerun, missing/missed event, remote lock
+collision or unconfirmed prior cleanup starts no new workload. Each date needs
+an exclusive remote daily claim; there is no retry, catch-up or eighth date.
+The denominator is the seven configured dates, not seven obtained reports. A
+dropped trigger may leave no Run/artifact and remains an absent observation.
+Scheduled artifacts retain the same four sanitized files for 30 days, compared
+with the manual seven-day default. The existing five-minute prepare timer,
+45-minute run, 120-second stop and case/cleanup judgments are unchanged.
+See the [complete observation contract](integrations/worker-call-performance/README.md#seven-date-external-observation)
+for admission and result interpretation. Configuration delivery neither launches
+an immediate external test nor establishes future window execution or a passing
+10k result; GCP and the persistent 20-Worker service are unchanged.
 
 Source and external execution share the same [bootstrap readiness](integrations/worker-call-performance/README.md#bootstrap-readiness):
 Properties coverage accumulates for a fixed sample of this run's Lab identities,

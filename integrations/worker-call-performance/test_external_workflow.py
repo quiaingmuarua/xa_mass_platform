@@ -1,4 +1,4 @@
-"""Check the actual workflow's composition and safe manual dispatch boundary."""
+"""Check shared external execution, bounded observation routing and unchanged source CI."""
 from __future__ import annotations
 
 import json
@@ -14,6 +14,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/worker-call-performance.yml"
+CONSUMER = ROOT / ".github/workflows/external-performance-consumer.yml"
+OBSERVATION = ROOT / ".github/workflows/external-performance-observation.yml"
 
 
 def section(text, name, indent):
@@ -48,12 +50,13 @@ def run_body(block):
 
 
 def expression(value, *, event="workflow_dispatch", ref="refs/heads/main", target="source", baseline="", outcome="success",
-               merge_outcome="success", record=False, cancelled=False):
+               merge_outcome="success", record=False, cancelled=False, observation_plan="", admitted="false"):
     # Only the small boolean expression subset used by this workflow; no GitHub/network calls.
     value = value.strip().removeprefix("${{").removesuffix("}}").strip()
     names = {"github.event_name": event, "github.ref": ref, "inputs.execution_target": target,
              "inputs.baseline_ref": baseline, "steps.external_run.outcome": outcome,
-             "steps.merge.outcome": merge_outcome, "inputs.lane_record": record}
+             "steps.merge.outcome": merge_outcome, "inputs.lane_record": record,
+             "inputs.observation_plan": observation_plan, "steps.external_run.outputs.observation_admitted": admitted}
     for name in sorted(names, key=len, reverse=True):
         value = value.replace(name, repr(names[name]))
     value = value.replace("!cancelled()", repr(not cancelled)).replace("always()", "True")
@@ -66,7 +69,9 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
     def setUpClass(cls):
         cls.text = WORKFLOW.read_text(encoding="utf-8")
         cls.jobs = job_blocks(cls.text)
-        cls.external = cls.jobs["external-performance"]
+        cls.consumer = CONSUMER.read_text(encoding="utf-8")
+        cls.observation = OBSERVATION.read_text(encoding="utf-8")
+        cls.external = job_blocks(cls.consumer)["external-performance"]
 
     def routing(self, **values):
         chosen = {name: bool(expression(re.search(r"^    if: (.+)$", block, re.MULTILINE).group(1), **values))
@@ -96,6 +101,44 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
         self.assertNotIn("setup-java", self.external)
         self.assertNotIn("gradlew", self.external)
         self.assertNotIn("docker", self.external)
+
+    def test_manual_external_and_schedule_call_one_consumer_with_the_same_environment(self):
+        caller = self.jobs["external-performance"]
+        self.assertIn("uses: ./.github/workflows/external-performance-consumer.yml", caller)
+        self.assertIn("secrets: inherit", caller)
+        self.assertNotIn("steps:", caller)
+        for binding in ("workers_per_group: ${{ inputs.external_workers_per_group }}",
+                        "repetitions: ${{ inputs.external_repetitions }}",
+                        "diagnostics: ${{ inputs.diagnostics }}", "baseline_ref: ${{ inputs.baseline_ref }}",
+                        "lane_case: ${{ inputs.lane_case }}", "lane_record: ${{ inputs.lane_record }}"):
+            self.assertIn(binding, caller)
+        self.assertNotIn("observation_plan:", caller)
+        self.assertNotIn("artifact_retention_days:", caller)
+        triggers = self.consumer.split("permissions:", 1)[0]
+        self.assertIn("  workflow_call:", triggers)
+        self.assertNotIn("  workflow_dispatch:", triggers)
+        self.assertNotIn("  schedule:", triggers)
+        inputs = section(self.consumer, "workflow_call", 2)
+        for field, expected in (("diagnostics", "default: 'off'"), ("baseline_ref", "default: ''"),
+                                ("lane_case", "default: ''"), ("lane_record", "default: false"),
+                                ("observation_plan", "default: ''"), ("artifact_retention_days", "default: 7")):
+            self.assertIn(expected, section(inputs, field, 6))
+
+    def test_observation_has_seven_explicit_dates_and_cannot_queue_behind_manual_work(self):
+        self.assertEqual([f"30 21 {day} 11 *" for day in range(19, 26)],
+                         re.findall(r"^    - cron: '([^']+)'$", self.observation, re.MULTILINE))
+        self.assertNotIn("workflow_dispatch:", self.observation)
+        self.assertNotIn("concurrency:", self.observation)
+        self.assertNotIn("concurrency:", self.consumer)
+        self.assertEqual({"external-performance"}, set(job_blocks(self.observation)))
+        caller = job_blocks(self.observation)["external-performance"]
+        self.assertIn("github.ref == 'refs/heads/main' && github.event_name == 'schedule'", caller)
+        for binding in ("uses: ./.github/workflows/external-performance-consumer.yml", "secrets: inherit",
+                        "workers_per_group: 5000", "repetitions: '1'",
+                        "observation_plan: .github/external-performance-observation.json", "artifact_retention_days: 30"):
+            self.assertIn(binding, caller)
+        self.assertNotIn("run_external_performance.py", self.observation)
+        self.assertNotIn("workflow_dispatch", self.consumer)
 
     def test_source_workload_defaults_and_matrix_are_unchanged(self):
         dispatch = section(self.text, "workflow_dispatch", 2)
@@ -166,6 +209,11 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
             self.assertIn('--repetitions "$REPETITIONS"', body)
             self.assertIn('--repository "$GITHUB_REPOSITORY"', body)
             self.assertIn("--output-dir build/external-performance", body)
+            self.assertIn('if [ -n "$OBSERVATION_PLAN" ]', body)
+            self.assertIn('--observation-plan "$OBSERVATION_PLAN"', body)
+            self.assertIn('"${observation[@]}"', body)
+            self.assertIn("OBSERVATION_PLAN: ${{ inputs.observation_plan }}", selected)
+            self.assertIn("OBSERVATION_SCHEDULE: ${{ github.event.schedule }}", selected)
             for binding in ("vars.CONSUMER_SSH_HOST", "vars.CONSUMER_SSH_USER", "vars.CONSUMER_SSH_KNOWN_HOSTS",
                             "secrets.CONSUMER_SSH_PRIVATE_KEY", "vars.PERFORMANCE_DEPLOYMENT_JSON",
                             "vars.PERFORMANCE_CONNECTION_BUDGET_JSON", "secrets.PERFORMANCE_RUNTIME_ACCESS_KEY",
@@ -177,12 +225,16 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
         guard = re.search(r"^        if: (.+)$", finalize, re.MULTILINE).group(1)
         for outcome in ("success", "failure", "cancelled"):
             self.assertTrue(expression(guard, outcome=outcome))
+            self.assertFalse(expression(guard, outcome=outcome, observation_plan="calendar.json", admitted="false"))
+            self.assertTrue(expression(guard, outcome=outcome, observation_plan="calendar.json", admitted="true"))
         self.assertFalse(expression(guard, outcome="skipped"))
+        self.assertFalse(expression(guard, outcome="skipped", observation_plan="calendar.json", admitted="true"))
 
     def test_external_artifacts_are_an_explicit_safe_allowlist_outside_source_merge(self):
         upload = step(self.external, "Upload safe external evidence")
         self.assertIn("if: always()", upload)
         self.assertIn("name: external-performance-${{ github.run_attempt }}", upload)
+        self.assertIn("retention-days: ${{ inputs.artifact_retention_days }}", upload)
         paths = re.findall(r"^            (build/\S+)$", upload, re.MULTILINE)
         self.assertEqual({"build/external-performance/summary.json", "build/external-performance/summary.md",
                           "build/external-performance/consumption.json", "build/external-performance/orchestration.json"}, set(paths))
@@ -211,15 +263,20 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
             executable.write_text("#!" + sys.executable + "\nimport json,os,sys\nfrom pathlib import Path\n"
                                   "Path(os.environ['ARGV_CAPTURE']).write_text(json.dumps(sys.argv[1:]))\n")
             executable.chmod(0o755)
-            env = {**os.environ, "PATH": str(temporary) + os.pathsep + os.environ["PATH"],
-                   "ARGV_CAPTURE": str(capture), "GITHUB_REPOSITORY": "owner/repo", "WORKERS_PER_GROUP": "5000",
-                   "REPETITIONS": "1"}
-            result = subprocess.run(["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command],
-                                    env=env, text=True, capture_output=True, timeout=10)
-            self.assertEqual(0, result.returncode, result.stderr)
-            self.assertEqual([".github/scripts/run_external_performance.py", "--repository", "owner/repo",
-                              "--workers-per-group", "5000", "--repetitions", "1", "--output-dir", "build/external-performance"],
-                             json.loads(capture.read_text()))
+            for plan in ("", ".github/external-performance-observation.json", "plan $(touch injected).json"):
+                with self.subTest(plan=plan):
+                    env = {**os.environ, "PATH": str(temporary) + os.pathsep + os.environ["PATH"],
+                           "ARGV_CAPTURE": str(capture), "GITHUB_REPOSITORY": "owner/repo", "WORKERS_PER_GROUP": "5000",
+                           "REPETITIONS": "1", "OBSERVATION_PLAN": plan}
+                    result = subprocess.run(["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command],
+                                            cwd=temporary, env=env, text=True, capture_output=True, timeout=10)
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    expected = [".github/scripts/run_external_performance.py", "--repository", "owner/repo",
+                                "--workers-per-group", "5000", "--repetitions", "1", "--output-dir", "build/external-performance"]
+                    if plan:
+                        expected += ["--observation-plan", plan]
+                    self.assertEqual(expected, json.loads(capture.read_text()))
+                    self.assertFalse((temporary / "injected").exists())
 
 
 if __name__ == "__main__":

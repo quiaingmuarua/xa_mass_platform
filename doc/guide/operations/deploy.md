@@ -301,6 +301,23 @@ Project 与密钥签发／清除都在控制台或 API 完成；Server 运行时
 它消费固定版本的已发布 Release kit，并保持长期 20-Worker 系统服务独立。
 Consumer kit 的 Release/commit 与目标 Server 的部署记录分别固定、核验和追溯；
 仅更新 kit 不会升级 GCP，Properties 就绪核验沿用同一 Harness 并保留历史 Group 注册。
+
+同一[可复用外部 consumer](../../../.github/workflows/external-performance-consumer.yml)
+另由[固定日期观测入口](../../../.github/workflows/external-performance-observation.yml)调度：
+窗口 `external-10k-20261120` 选择北京时间 **2026-11-20 至 11-26，每日 05:30**，
+两 Group 各 5,000 Worker、重复一次，沿用原三条路径及 `500/1000/2000` open workload。
+日程入口没有手动 dispatch；源码 03:00 Nightly 与原手动入口保持各自行为。
+完整规则见 [Performance Owner](../../../integrations/worker-call-performance/README.md#seven-date-external-observation)，
+固定日期来自[窗口配置](../../../.github/external-performance-observation.json)。
+
+这七个日期不是“凑齐七次成功”。原 cron 确定目标日，延迟只在该北京时间日期内允许新启动；
+跨日、rerun、漏触发、错过日期、远端锁冲突或旧轮 cleanup 未确认均不启动新负载。
+日程不进入手动 Actions 等待队列，使用远端非阻塞准入和按窗口／日期的独占 claim；
+不删除 claim 补跑、不换请求身份，也没有第八天补齐。漏触发可能没有 Run 和 artifact，
+收尾时按七日清单明确列为缺席。已获准启动的轮次仍按原运行／停止预算收尾。
+日程 artifact 保留 30 天，手动默认 7 天，仍只有四份脱敏回执；绿色 job 不能替代 case
+状态、unknown、429、资源与 cleanup 核对。这项交付表示配置和编排就绪，不是未来七日的
+运行证明，不要求本次立即压测或等待七天，也不升级 GCP／Release 或管理常驻 20 Worker。
 不 checkout 仓库时，使用所选 Release 发布的
 [Worker Simulator kit](../../../distribution/worker-simulator/README.md)：它包含这个 Host 入口和
 一轮有限任务验收命令，后者输出一行 JSON（passed / failed / unconfirmed）。
@@ -315,7 +332,7 @@ Consumer kit 的 Release/commit 与目标 Server 的部署记录分别固定、�
 
 ### 外网 CI 入口与历史容量验收
 
-当前外网按需 CI 只使用前述 Performance 入口，消费固定 Release kit；
+当前外网 CI 的手动入口和有界日期观测共用前述 Performance consumer，消费固定 Release kit；
 Loaded Recovery 的公网 Actions 路线已于 2026-11-19 退役。本地 Loaded
 Nightly／手动流程继续负责原恢复证明，不访问 GCP。
 

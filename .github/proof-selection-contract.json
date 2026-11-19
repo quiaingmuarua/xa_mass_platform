@@ -117,7 +117,22 @@
       "lanes": [
         "jvm_contracts"
       ],
-      "reason": "External Performance orchestration has deterministic consumer and routing contracts; public measurement remains an explicit manual execution of the existing Performance lane."
+      "reason": "External Performance orchestration has deterministic consumer, scheduling and routing contracts; actual public measurement remains outside PR proof."
+    },
+    {
+      "path": ".github/workflows/external-performance-consumer.yml",
+      "lanes": ["jvm_contracts"],
+      "reason": "Manual and scheduled consumers reuse this orchestration; deterministic workflow contracts run in the existing JVM lane."
+    },
+    {
+      "path": ".github/workflows/external-performance-observation.yml",
+      "lanes": ["jvm_contracts"],
+      "reason": "The seven-date observation entry requires routing, window and no-replay checks, not an immediate public load."
+    },
+    {
+      "path": ".github/external-performance-observation.json",
+      "lanes": ["jvm_contracts"],
+      "reason": "The fixed observation calendar and quantity are checked with the shared orchestration contracts."
     },
     {
       "path": "README.md",
