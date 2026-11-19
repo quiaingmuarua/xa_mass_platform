@@ -174,7 +174,32 @@ Server 与 Consumer kit 分开固定版本：`INSTALLED_RELEASE_TAG/COMMIT` 描�
 Ali 常驻 Host 的 `/opt/xa-mass-worker-simulator/current` 另有安装记录；它不跟随 Actions
 自动切换。修改源码或发布 kit 不会自动更新这些坐标，当前值应从对应记录核对。
 
-2026-11-19 收尾后，按需 Performance kit pins 为
+2026-11-19 已发布并部署 Runtime
+`4.4.5/520b7ce314de24ad42ea079f97491919a24852b4`，复用原 active scope、SQLite、
+账号／credits 和入口配置；外置 RPC 终态回收已按 1h／24h、每轮间隔 1h 启用。
+`INSTALLED_RELEASE_*` 和 `PERFORMANCE_DEPLOYMENT_JSON.serverDeployment` 已同步到实际 Server，
+配置指纹为 `sha256:8bf0a7ba13db534c8a1ee5b846c0e011ee35b84644103094dcd447755ae7cb2d`。
+按需 Performance kit 继续为 4.4.4，常驻 Host 继续为 4.4.2，不由 Server 升级联动替换。
+首轮维护 23,813ms 完成：删除 892,741 个输入、250,774 个 Item Score、69 个 Result；
+现存 RPC 家族在新验收调用前分别由 892,741／1,279／892,741 降为 0／1,210／641,967。
+Redis `used_memory` 由 545,717,368 降为 148,777,632 bytes，受保护的当前状态指纹一致。
+旧 scope 保留的 347 个 key 未做清理，已核对保护项的指纹不变。外部有限任务 3 Item 和新 RPC 3 Item 均通过独立 UTF-8 MD5 核对，
+Runtime、认证、对应版本文档与 SQLite 已核对。版本、制品、样本和边界见
+[4.4.5 记录](../../../distribution/server/RELEASE-4.4.md#445-terminal-rpc-data-retention-patch)。
+2026-11-19 09:58:31 UTC 已确认旧 4.4.0 制品、单份临时恢复点和临时 Runtime 下载均已删除；
+GCP 升级与 Ali 独立恢复的操作日志均已关闭，主机标准记录已更新，GitHub Server pins 已回读。
+独立的 4.4.4 Performance kit pins 保持不变。新 session 仍先检查当前主机记录和操作日志。
+
+此次维护后，20 个常驻 Worker 没有自动恢复：Host 进程仍在，Lab 显示 desired RUNNING、
+runtime STOPPED。通过原有本机 Lab 对每个原坐标显式 start 一次后，GCP 确认同 20 个身份
+恢复；Host PID 53788、配置及 inventory 保持不变，没有进程重启或 SDK 重试预算调整。
+以后计划内 Server 维护结束，先观察 Host 的实际 runtime 与 GCP 连接；若处于上述 STOPPED
+状态，经既有授权主机通道调用本机
+`POST /lab/v1/workers/{workerGroupId}/{labWorkerKey}:start`，再独立核对身份和连接。
+这是本轮单次运维恢复，原始停止与恢复证据保留在主机记录。Lab 的可信同机边界与坐标归属见
+[Simulator Owner](../../../worker_simulator_jvm/README.md#persistent-worker-lab)。
+
+同日较早的 4.4.4 收尾后，按需 Performance kit pins 为
 `4.4.4/01f795013ee9ded817304eba26e40805a21ddb89`；常驻 Host 保持 4.4.2，Runtime 保持 4.4.0。
 GCP 的管理员连接另设 `admin_keepalive_requests=100000`，仍为 H2 8192 streams、
 API 3000/s、burst 6000；该连接复用设置不改变请求速率、Worker 数量或性能判据。
@@ -220,9 +245,9 @@ invalid/saturated case 和 560 个 unknown 仍按原回执保留。75 分钟空�
 
 ### RPC 终态数据保留
 
-源码提供默认关闭的 RPC 终态回收。只有安装包含该能力的后续正常 Release 后，
-才可按对应版本说明在外部配置中启用；当前 4.4.0 部署和已发布 kit 不会因源码变更而清理。
-在既有 `xa.mass.task-retention` 下设置：
+发布默认保持 RPC 终态回收关闭。2026-11-19 已在 GCP 的 4.4.5 Runtime 外部配置中明确
+启用并完成首轮验收；机制版本、实际配置和清理结果见前述记录。后续部署仍须按目标版本
+说明选择，不因源码或 kit 更新而自动开启。在既有 `xa.mass.task-retention` 下设置：
 
 ```yaml
 rpc-item-retention-enabled: true
