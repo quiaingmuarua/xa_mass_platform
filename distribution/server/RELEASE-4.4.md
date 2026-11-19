@@ -1,12 +1,13 @@
 # XA Mass 4.4 release and upgrade contract
 
-Status: version-scoped 4.4 contract. 4.4.5 is planned; its publication and GCP
-acceptance are not yet confirmed. 4.4.4 is published and its normal 10k
+Status: version-scoped 4.4 contract. 4.4.5 is published and its retained-scope
+GCP upgrade was accepted on 2026-11-19; temporary upgrade-material cleanup was
+confirmed at 09:58:31 UTC. 4.4.4 is published and its normal 10k
 observation completed with all nine cases passed and automatic cleanup confirmed.
 The earlier 4.4.3 observation retained nine invalid cases and confirmed cleanup;
 its generator investigation was closed by the bounded 4.4.4 observation below.
 4.4.2 is published and the Ali
-consumers have been updated; GCP Runtime remains 4.4.0. The 4.4.2 campaign and automatic
+consumers were updated; GCP Runtime remained 4.4.0 at that acceptance. The 4.4.2 campaign and automatic
 cleanup completed, and the bounded 75-minute idle and single controlled
 fault/reconnect acceptance passed on 2026-11-18.
 Published artifacts remain immutable.
@@ -21,8 +22,23 @@ complete manual Proof now includes SMS Reception Preview. Build and prove the
 exact merged release commit with candidate version 4.4.5, then promote those
 same three Runtime/SDK/Simulator ZIPs and their three SHA256 sidecars. Their
 manifest schemas remain 6/1/3. Do not relabel an older candidate or rebuild on
-GCP. Publication and the following onsite acceptance remain planned until their
-immutable coordinates and actual results are recorded.
+GCP.
+
+4.4.5 was published from merged commit
+`520b7ce314de24ad42ea079f97491919a24852b4` through
+[complete manual Proof 44493074012](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44493074012),
+attempt 1, with all 18 jobs successful, including SMS Reception Preview.
+[Promotion 44495903690](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44495903690)
+promoted those exact Proof ZIPs to
+[Release 4.4.5](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.4.5)
+(Release ID `451116838`). All six GitHub digests and SHA256 sidecars were
+verified; no new Runtime build was made on GCP.
+
+| ZIP | SHA256 |
+| --- | --- |
+| `xa-mass-server-runtime-4.4.5.zip` | `72f08d6e8b7db998854145b30f95c454d813f19a05b918c14d5181e22081ed7f` |
+| `xa-mass-worker-sdk-4.4.5.zip` | `de868f92b230c99f92a20a9c573bd9a7805fa88c01e1acb0d14118f5934d56cf` |
+| `xa-mass-worker-simulator-4.4.5.zip` | `452be280a5b66819bd9298c200adf66cf53eb47fc61a3b23de5364a536c78665` |
 
 ### Existing GCP 4.4.0 upgrade
 
@@ -33,7 +49,7 @@ instructions later in this document do not apply to this patch. Retain the
 existing external configuration, user directory and grants, credit accounts,
 Task/request identities, business configuration and gateway credentials. Keep
 the existing Nginx ingress configuration and budgets. No schema migration,
-scope reset, Redis deletion, old-scope maintenance or Worker Host/SDK upgrade
+scope reset, manual Redis sweep, old-scope maintenance or Worker Host/SDK upgrade
 is part of this change. The independent standing Host remains on its current
 kit and keeps its existing inventory and 20 Worker identities.
 
@@ -82,9 +98,15 @@ deletions and does not restore removed data; the writer guards remain active.
 ### Bounded onsite acceptance and closeout
 
 Confirm the installed Runtime version/full commit/checksum, readiness, retained
-configuration and database path. Allow the independent persistent Host to
-reconnect and verify its same 20 identities; do not restart or upgrade it as
-part of this deployment. Run one ordinary external finite baseline of three
+configuration and database path. Observe the independent persistent Host's
+actual runtime state after the Server becomes ready. A live Host process does
+not prove its Workers have resumed. If retained coordinates have desired
+RUNNING but runtime STOPPED, use the existing trusted local Lab
+`POST /lab/v1/workers/{workerGroupId}/{labWorkerKey}:start` once per stopped
+coordinate and independently confirm the same 20 identities at GCP. Do not
+regenerate inventory, restart/upgrade the Host or extend SDK retry budgets as
+part of this maintenance-resume step. It is an explicit operator action, not
+a health daemon. Run one ordinary external finite baseline of three
 Items using the existing published consumer entry and compare all results.
 This is a small real-use baseline, not another 10k Performance campaign.
 
@@ -98,6 +120,57 @@ Use Owner/API state observations, never decode opaque Scores in operations or
 publish complete Worker/Task/request identities or payloads. Key count, AOF
 file length and RSS are not required to fall to zero. A partial budgeted pass
 is recorded as partial and followed on the same maintenance lifecycle.
+
+The 2026-11-19 upgrade installed Runtime 4.4.5 at the commit/checksum above,
+reusing the same active scope, SQLite file, user/account state and ingress.
+RPC retention is enabled with 1h/24h periods and the 1h interval. The deployed
+configuration fingerprint is
+`sha256:8bf0a7ba13db534c8a1ee5b846c0e011ee35b84644103094dcd447755ae7cb2d`.
+Only the installed-Server pins and corresponding consumer `serverDeployment`
+record changed: the Performance kit remains 4.4.4 and the standing Host
+remains 4.4.2.
+
+The first RPC maintenance cycle completed in **23,813ms**, scanning and
+examining 892,741 eligible observations across two Task candidates, with
+892,741 matches. It deleted **892,741 inputs, 250,774 Item Scores and 69
+Results**, with zero skipped Tasks, no failure and no deadline/scan/Task-budget
+flag. Private point checks covered 21 identities from the 24h purge stage
+and 39 from the input-only stage. The following snapshots precede the fresh
+RPC acceptance calls:
+
+| Existing RPC families | Before | After first GC |
+| --- | ---: | ---: |
+| input fields | 892,741 | 0 |
+| Result fields | 1,279 | 1,210 |
+| Item Score members | 892,741 | 641,967 |
+
+Redis `used_memory` fell from **545,717,368 to 148,777,632 bytes**
+(520.44 to 141.89MiB), a reduction of 396,939,736 bytes (378.55MiB).
+RSS was separately observed at 565,772,288 then 232,013,824 bytes;
+`maxmemory` remained 2,147,483,648 bytes. Remaining Scores and Results retain
+their own eligibility window. Protected current state was unchanged; the
+independent old `profile_long_preview` scope was not cleaned, retained 347 keys,
+and its checked protected-state fingerprints remained unchanged.
+
+Both the external three-Item finite baseline using the 4.4.5 kit and three
+fresh RPC calls passed independent UTF-8 MD5 checks; the fresh RPC Items also
+reached terminal state. Runtime readiness, public API/Worker authentication
+and packaged documentation commit were checked. SQLite remained schema 1 and
+`quick_check` returned `ok`. Console source was unchanged, so no new browser
+interaction acceptance was selected. No capacity or maximum-TPS run was made.
+
+The standing 20 Workers **did not automatically resume** after this maintenance:
+the Host remained live with desired RUNNING and runtime STOPPED. One explicit
+existing Lab start per original coordinate restored all same 20 identities.
+Host PID 53788, configuration and inventory remained unchanged; the process
+was not restarted, and SDK retry budgets were not changed. This is a recorded
+manual maintenance-resume result, not an automatic-recovery proof. Temporary
+acceptance credentials were cleared and owned upgrade/acceptance units exited.
+At 2026-11-19 09:58:31 UTC, the old 4.4.0 binary, single temporary restore point
+and temporary Runtime download were confirmed absent. GCP's upgrade operation
+and Ali's independent resume operation were closed, with canonical records
+updated. GitHub Server pins were read back as 4.4.5 at the commit/configuration
+above; the separate 4.4.4 Performance kit pins remained unchanged.
 
 If a problem appears, first disable future reclamation on 4.4.5 and preserve
 the evidence. A binary downgrade alone cannot recover deleted RPC identities.
