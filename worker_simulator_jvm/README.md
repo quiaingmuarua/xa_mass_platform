@@ -510,6 +510,12 @@ using new files and preserving every retained coordinate and byte. All staged
 Groups undergo the existing full-world validation before publication. Lower
 counts never delete records. Values are 0..15000; this is startup preparation,
 not a runtime resize API. The unified local launcher uses this mode.
+Its CLI accepts only `startupPlan.workerCounts`; coordinate and scheduled-stop
+plans use this standalone Host entry. Without a plan, the launcher resolves each
+Group from `--java-count GROUP=N`, then an explicit Group `count`, and rejects a
+missing quantity. A quantity plan does not require Group initialization counts.
+This stricter launcher input does not change the standalone Host's defaults or
+the internal Preview proof's discovered-inventory startup.
 
 Without quantity selection, the standalone and proof behavior remains:
 

@@ -22,6 +22,10 @@ ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("external_performance_under_test", ROOT / ".github/scripts/run_external_performance.py")
 ORCHESTRATOR = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ORCHESTRATOR)
+REPORT_PATH = ROOT / "integrations/worker-call-performance/reporting.py"
+REPORT_SPEC = importlib.util.spec_from_file_location("performance_reporting_under_test", REPORT_PATH)
+REPORTING = importlib.util.module_from_spec(REPORT_SPEC)
+REPORT_SPEC.loader.exec_module(REPORTING)
 RUN = "12345678"
 TAG = "v4.4.0"
 COMMIT = "a" * 40
@@ -53,6 +57,7 @@ class FakeSSH:
         self.on_status = on_status
         self.actions = []
         self.copies = []
+        self.copied_bytes = {}
 
     def ssh(self, command, data=None, timeout=60):
         if command[1] == "-c":
@@ -84,6 +89,8 @@ class FakeSSH:
 
     def copy(self, source, destination):
         self.copies.append(destination)
+        if source.is_file():
+            self.copied_bytes[Path(destination).name] = source.read_bytes()
 
 
 class ControllerTest(unittest.TestCase):
@@ -94,6 +101,7 @@ class ControllerTest(unittest.TestCase):
         self.args = Namespace(repository="owner/repository", workers_per_group=5000, repetitions=1,
                               output_dir=self.output, action="run")
         self.environment = {"GITHUB_RUN_ID": RUN, "GITHUB_RUN_ATTEMPT": "1", "RELEASE_TAG": TAG,
+                            "GITHUB_SHA": "c" * 40,
                             "RELEASE_COMMIT": COMMIT, "SERVER_RELEASE_TAG": TAG, "SERVER_RELEASE_COMMIT": COMMIT,
                             "DEPLOYMENT_JSON": json.dumps(configuration()),
                             "CONNECTION_BUDGET_JSON": json.dumps({"perCredential": 20000, "total": 30000, "reserved": 20}),
@@ -106,7 +114,7 @@ class ControllerTest(unittest.TestCase):
         self.environment["GITHUB_RUN_ATTEMPT"] = str(attempt)
         consumed = dict(collection()["consumption.json"], release="release-url", releaseId=44,
                         kitSha256="c" * 64, manifest={"schemaVersion": 3})
-        consumed.update(tag=self.environment["RELEASE_TAG"], gitCommit=self.environment["RELEASE_COMMIT"])
+        consumed.update(tag=self.environment.get("RELEASE_TAG"), gitCommit=self.environment.get("RELEASE_COMMIT"))
         self.downloader = SimpleNamespace(prepare=Mock(return_value=consumed))
         loader = SimpleNamespace(exec_module=lambda module: None)
         signals = handlers if handlers is not None else {}
@@ -141,7 +149,10 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(0, self.execute(fake))
         self.assertEqual(["bootstrap:create", "prepare", "start", "status", "collect"], fake.actions)
         self.assertEqual(1, fake.actions.count("start"))
-        self.assertEqual(2, len(fake.copies))
+        self.assertEqual(["reporting.py", "orchestrator.py", "kit.zip"], [Path(path).name for path in fake.copies])
+        for name in ("reporting.py", "orchestrator.py"):
+            self.assertEqual(ORCHESTRATOR.hashlib.sha256(fake.copied_bytes[name]).hexdigest(), fake.envelope["helpers"][name])
+        self.assertEqual(fake.envelope["github"]["controllerCommit"], fake.envelope["helpers"]["controllerCommit"])
         self.assertEqual(5000, fake.envelope["workers"])
         self.assertEqual({"perCredential": 20000, "total": 30000, "reserved": 20}, fake.envelope["budget"])
         self.assertEqual(1, fake.envelope["repetitions"])
@@ -171,11 +182,40 @@ class ControllerTest(unittest.TestCase):
 
     def test_finished_stop_only_collects_original_without_restarting(self):
         self.args.action = "stop"
+        self.environment = {"GITHUB_RUN_ID": RUN, "GITHUB_RUN_ATTEMPT": "2"}
         fake = FakeSSH(state="finished")
         self.assertEqual(0, self.execute(fake, attempt=2))
         self.assertEqual(["bootstrap:query", "stop", "collect"], fake.actions)
         self.assertEqual([], fake.copies)
         self.downloader.prepare.assert_not_called()
+
+    def test_new_run_requires_controller_commit_before_copy_or_private_preparation(self):
+        for value in (None, "main", "a" * 39):
+            with self.subTest(commit=value):
+                self.environment.pop("GITHUB_SHA", None)
+                if value is not None:
+                    self.environment["GITHUB_SHA"] = value
+                fake = FakeSSH(attached=False)
+                with self.assertRaises(ORCHESTRATOR.Failure):
+                    self.execute(fake)
+                self.assertEqual([], fake.copies)
+                self.assertEqual(["bootstrap:create"], fake.actions)
+
+    def test_report_collection_failure_is_nonzero_without_changing_final_receipt(self):
+        fake = FakeSSH()
+        original = fake.ssh
+
+        def unavailable(command, **kwargs):
+            value = original(command, **kwargs)
+            if command[1] != "-c" and command[3] == "collect":
+                value["summary.json"] = {"status": "unknown", "reportCollection": {"status": "unavailable", "failureType": "FileNotFoundError"}}
+            return value
+
+        fake.ssh = unavailable
+        self.assertEqual(1, self.execute(fake, attempt=2))
+        self.assertEqual("passed", json.loads((self.output / "orchestration.json").read_text())["receipt"]["status"])
+        self.assertEqual([], fake.copies)
+        self.assertEqual(["bootstrap:query", "status", "collect"], fake.actions)
 
     def test_bad_release_pins_reject_before_download_prepare_or_start(self):
         config = configuration()
@@ -197,6 +237,7 @@ class RemoteLifecycleTest(unittest.TestCase):
         self.root.mkdir(parents=True)
         self.private.mkdir(parents=True)
         (self.root / "orchestrator.py").write_text("# local helper fixture")
+        (self.root / "reporting.py").write_bytes(REPORT_PATH.read_bytes())
         self.addCleanup(patch.stopall)
         patch.object(ORCHESTRATOR, "paths", return_value=(self.root, self.private)).start()
         patch.object(ORCHESTRATOR, "locked", side_effect=lambda _, **kwargs: nullcontext()).start()
@@ -218,7 +259,10 @@ class RemoteLifecycleTest(unittest.TestCase):
                 "serverCommit": COMMIT, "workers": 5000, "repetitions": 1, "attempt": 1,
                 "budget": {"perCredential": 20000, "total": 30000, "reserved": 20}, "accessKey": ACCESS_KEY,
                 "gateway": {"keyId": "fixture-gateway", "secret": "private-gateway-secret"},
-                "kitSha256": "c" * 64, "consumption": {"tag": TAG}}
+                "kitSha256": "c" * 64, "consumption": {"tag": TAG},
+                "github": {"controllerCommit": "c" * 40},
+                "helpers": {"controllerCommit": "c" * 40, **{name: ORCHESTRATOR.digest(self.root / name)
+                            for name in ("reporting.py", "orchestrator.py")}}}
 
     def prepare_patches(self):
         return (patch.object(ORCHESTRATOR.os, "getuid", return_value=self.root.stat().st_uid, create=True),
@@ -252,6 +296,19 @@ class RemoteLifecycleTest(unittest.TestCase):
         self.assertNotIn("private-gateway-secret", " ".join(command))
         self.assertTrue(ORCHESTRATOR.read_json(self.root / "prepare-lease.json")["armConfirmed"])
         self.assertEqual(ACCESS_KEY, (self.private / "access-key.txt").read_text().strip())
+        self.assertEqual(self.envelope()["helpers"], ORCHESTRATOR.read_json(self.root / "state.json")["helpers"])
+
+    def test_changed_helper_fails_before_timer_or_credentials(self):
+        self.private.rmdir()
+        envelope = self.envelope()
+        (self.root / "reporting.py").write_text("# changed after copy", encoding="utf-8")
+        identity, preflight, extract = self.prepare_patches()
+        with identity, preflight, extract, patch.object(ORCHESTRATOR, "call") as systemd:
+            with self.assertRaisesRegex(ORCHESTRATOR.Failure, "helper digest differs"):
+                ORCHESTRATOR.remote_prepare(RUN, envelope)
+        systemd.assert_not_called()
+        self.assertFalse(self.private.exists())
+        self.assertFalse((self.root / "state.json").exists())
 
     def test_lost_timer_ack_writes_no_keys_and_does_not_retry_arming(self):
         self.private.rmdir()
@@ -586,7 +643,7 @@ class RemoteLifecycleTest(unittest.TestCase):
         self.assertEqual(["systemctl", "--user", "stop", ORCHESTRATOR.unit_name(RUN)], systemd.call_args.args[0])
 
     def test_rejected_preflight_never_extracts_kit_or_writes_private_input(self):
-        envelope = {"deployment": configuration(), "tag": TAG, "commit": COMMIT,
+        envelope = {**self.envelope(), "deployment": configuration(), "tag": TAG, "commit": COMMIT,
                     "serverTag": TAG, "serverCommit": COMMIT, "workers": 5000,
                     "budget": {"perCredential": 9999, "total": 30000, "reserved": 20}}
         with patch.object(ORCHESTRATOR.os, "getuid", return_value=self.root.stat().st_uid, create=True), \
@@ -633,6 +690,42 @@ class RemoteLifecycleTest(unittest.TestCase):
         public = ORCHESTRATOR.remote_collect(RUN)
         self.assertEqual("unknown", public["orchestration.json"]["receipt"]["status"])
         self.assertTrue(public["summary.json"]["summaryParseFailure"])
+
+    def test_missing_or_changed_reporter_cannot_block_stop_or_rewrite_cleanup(self):
+        for damage in ("missing", "digest", "syntax"):
+            with self.subTest(damage=damage):
+                reporter = self.root / "reporting.py"
+                reporter.write_bytes(REPORT_PATH.read_bytes())
+                state = {"helpers": {"reporting.py": ORCHESTRATOR.digest(reporter)}}
+                if damage == "missing":
+                    reporter.unlink()
+                else:
+                    reporter.write_text("broken python!", encoding="utf-8")
+                    if damage == "syntax":
+                        state["helpers"]["reporting.py"] = ORCHESTRATOR.digest(reporter)
+                self.write("state.json", state)
+                self.write("receipt.json", {"status": "passed", "privateInputsRemoved": True, "finalizationFailures": []})
+                with patch.object(ORCHESTRATOR, "unit_status", return_value={}), patch.object(ORCHESTRATOR, "call"):
+                    receipt = ORCHESTRATOR.remote_stop(RUN)["receipt"]
+                    public = ORCHESTRATOR.remote_collect(RUN)
+                self.assertEqual("passed", receipt["status"])
+                self.assertEqual(receipt, public["orchestration.json"]["receipt"])
+                self.assertEqual("unavailable", public["summary.json"]["reportCollection"]["status"])
+                self.assertEqual("unknown", public["summary.json"]["status"])
+                self.assertNotIn("submissionEvidence", public["summary.json"])
+
+    def test_missing_reporter_does_not_block_initial_finalize_or_private_cleanup(self):
+        (self.root / "reporting.py").unlink()
+        (self.private / "access-key.txt").write_text(ACCESS_KEY)
+        self.write("execution.json", {"exitCode": 0})
+        self.write("result/evidence/lane-summary.json", {"status": "passed", "cases": []})
+        receipt = ORCHESTRATOR.remote_finalize(RUN)
+        self.assertEqual("passed", receipt["status"])
+        self.assertTrue(receipt["privateInputsRemoved"])
+        self.assertFalse((self.private / "access-key.txt").exists())
+        public = ORCHESTRATOR.remote_collect(RUN)
+        self.assertEqual(receipt, public["orchestration.json"]["receipt"])
+        self.assertEqual("unavailable", public["summary.json"]["reportCollection"]["status"])
 
     def test_cancelled_unprepared_run_cannot_later_prepare_or_start(self):
         with patch.object(ORCHESTRATOR, "unit_status", return_value={"LoadState": "not-found"}), \
@@ -728,7 +821,7 @@ class InputsAndProjectionTest(unittest.TestCase):
                                       "unresolvedAcceptedIds": [TASK_ID], "secret": "gateway-secret"},
                           "samples": [{"id": WORKER_ID}], "taskIds": [TASK_ID]}]}
         original = deepcopy(raw)
-        public = ORCHESTRATOR.safe_result(raw)
+        public = ORCHESTRATOR.scrub(REPORTING.safe_result(raw))
         self.assertEqual(original, raw)
         row = public["cases"][0]
         self.assertEqual("invalid", public["status"])
@@ -760,7 +853,7 @@ class InputsAndProjectionTest(unittest.TestCase):
                 extra = result / "evidence/harness" / relative
                 extra.parent.mkdir(parents=True, exist_ok=True)
                 extra.write_text(json.dumps(rows[2]) + "\n", encoding="utf-8")
-            evidence = ORCHESTRATOR.sample_counts(result)
+            evidence = REPORTING.sample_counts(result)
         self.assertEqual(5, evidence["totals"]["samples"])
         self.assertEqual(4, evidence["totals"]["sent"])
         self.assertEqual(1, evidence["totals"]["notSent"])
@@ -788,7 +881,7 @@ class InputsAndProjectionTest(unittest.TestCase):
             target = result / "evidence/harness/r1/direct-2000/samples.jsonl"
             target.parent.mkdir(parents=True)
             target.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
-            evidence = ORCHESTRATOR.sample_counts(result)
+            evidence = REPORTING.sample_counts(result)
         totals = evidence["totals"]
         self.assertEqual(4, totals["clientTimeouts"])
         self.assertEqual(4, totals["sentHttp0Unknown"])

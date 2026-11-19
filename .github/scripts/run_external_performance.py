@@ -7,7 +7,6 @@ The published Performance runner remains the sole workload and measurement owner
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 from contextlib import ExitStack, contextmanager
 from datetime import date, datetime, time as daytime, timedelta, timezone
 import hashlib
@@ -492,6 +491,13 @@ def remote_prepare(identifier, envelope):
             entered_control = True
             if any((root / name).exists() for name in ("state.json", "start-request.json", "stop-request.json", "receipt.json", "prepare-lease.json")):
                 return remote_status(identifier)
+            helpers = envelope.get("helpers")
+            require(isinstance(helpers, dict) and isinstance(helpers.get("controllerCommit"), str)
+                    and re.fullmatch(r"[0-9a-f]{40}", helpers["controllerCommit"])
+                    and helpers["controllerCommit"] == envelope.get("github", {}).get("controllerCommit"),
+                    "Controller helper identity differs")
+            for name in ("orchestrator.py", "reporting.py"):
+                require(helpers.get(name) == digest(root / name), "Controller helper digest differs")
             if observation is not None:
                 require(envelope["workers"] == 5000 and envelope["repetitions"] == 1, "Observation scale differs")
                 claim_observation(root, identifier, observation)
@@ -529,6 +535,7 @@ def remote_prepare(identifier, envelope):
                          "commit": envelope["commit"], "workersPerGroup": envelope["workers"], "repetitions": envelope["repetitions"],
                          "kitRoot": str(kit), "manifest": manifest, "consumption": envelope["consumption"],
                          "preflight": budget, "preparedAt": now(), "github": envelope.get("github", {}),
+                         "helpers": helpers,
                          "serverTag": envelope["serverTag"], "serverCommit": envelope["serverCommit"]}
                 if observation is not None:
                     state["observation"] = observation
@@ -746,76 +753,18 @@ def scrub(value):
     return value
 
 
-def sample_counts(result):
-    totals, cases, phases = Counter(), {}, {}
-    base = result / "evidence/harness"
-    samples = [*base.rglob("samples.jsonl"), *base.rglob("warmup-samples.jsonl")]
-    for path in sorted(samples):
-        counts = Counter()
-        with path.open(encoding="utf-8") as source:
-            for line in source:
-                try:
-                    row = json.loads(line)
-                except ValueError:
-                    counts["invalidRows"] += 1
-                    continue
-                if not isinstance(row, dict) or type(row.get("sentOffsetMillis", -1)) not in (int, float):
-                    counts["invalidRows"] += 1
-                    continue
-                sent = row.get("sentOffsetMillis", -1) >= 0
-                counts["samples"] += 1
-                counts["sent" if sent else "notSent"] += 1
-                if sent and row.get("httpStatus") == 0:
-                    counts["sentHttp0Unknown"] += 1
-                if row.get("httpStatus") == 429:
-                    counts["http429"] += 1
-                version = row.get("httpVersion")
-                if isinstance(version, str) and version in {"HTTP_1_1", "HTTP_2"}:
-                    counts["httpVersion:" + version] += 1
-                if row.get("detail") == "client-timeout":
-                    counts["clientTimeouts"] += 1
-                    # Static categories only; raw diagnostics and identifiers stay private.
-                    phase = row.get("timeoutPhase", "unclassified")
-                    if phase not in {"connect-tls", "before-headers", "response-body", "unclassified"}:
-                        phase = "unclassified"
-                    counts["timeoutPhase:" + phase] += 1
-                exception = row.get("exceptionType")
-                if exception is not None:
-                    allowed = {"HttpConnectTimeoutException", "HttpTimeoutException", "TimeoutException",
-                               "ConnectException", "SSLHandshakeException", "SSLException", "UnknownHostException",
-                               "SocketException", "IOException", "InterruptedException", "Exception"}
-                    counts["exceptionType:" + (exception if isinstance(exception, str) and exception in allowed else "other")] += 1
-                outcome = row.get("outcome")
-                if outcome in {"succeeded", "failed", "not_observed", "unknown", "not_sent", "protocol_error", "rejected", "timed_out"}:
-                    counts["outcome:" + outcome] += 1
-                observed = row.get("observedResult")
-                if observed in {"succeeded", "failed", "not_observed"}:
-                    counts["observed:" + observed] += 1
-        relative = path.relative_to(base)
-        phase = "discardedWarmup" if relative.parts[0] == "warmup" else "innerWarmup" if path.name == "warmup-samples.jsonl" else "formal"
-        cases[phase + "/" + relative.as_posix()] = dict(counts)
-        phases.setdefault(phase, Counter()).update(counts)
-        if phase == "formal":
-            totals.update(counts)
-    return {"status": "incomplete" if any(c.get("invalidRows") for c in cases.values()) else "complete",
-            "totals": dict(totals), "phases": {key: dict(value) for key, value in phases.items()}, "cases": cases}
-
-
-def safe_result(raw):
-    top = ("lane", "executionEnvironment", "referenceHost", "status", "timingsMillis", "assignmentBatchLimit",
-           "runtimeUrl", "groups", "workersPerGroup", "artifactManifest", "warmup",
-           "serverDeployment", "cpuCount", "java", "os", "machine", "kernel", "notCollected", "resourcePeaks", "caseCounts", "cleanup", "runnerFailure", "resourceFailure")
-    case_keys = ("repetition", "mode", "rate", "path", "case", "status", "invalidReasons", "failureReason", "fastFail",
-                 "measurementStartedEpochMillis", "measurementEndedEpochMillis", "completedPerSecond", "admittedPerSecond",
-                 "completedCount", "workersBound", "seedMillis", "leaseHeldPeakRatio", "successWithinWait",
-                 "successfulCallLatencyMillis", "generatorLimited", "httpVersions", "acceptedResultsAfterDrain", "workerSamples", "metrics")
-    value = {key: raw[key] for key in top if key in raw}
-    value["cases"] = [{key: row[key] for key in case_keys if key in row} for row in raw.get("cases", [])]
-    # The summary's workerSamples field is a count, never the private sample/identity arrays.
-    for row in value["cases"]:
-        if not isinstance(row.get("workerSamples"), int):
-            row.pop("workerSamples", None)
-    return scrub(value)
+def load_reporter(root, state):
+    """Only collection needs reporting; lifecycle commands remain independently usable."""
+    path = root / "reporting.py"
+    source = path.read_bytes()
+    expected = state.get("helpers", {}).get("reporting.py")
+    if expected is not None:
+        require(hashlib.sha256(source).hexdigest() == expected, "Pinned reporting helper digest differs")
+    spec = importlib.util.spec_from_file_location("performance_report_for_run", path)
+    module = importlib.util.module_from_spec(spec)
+    # Execute exactly the verified source bytes, without a mutable read or cached bytecode.
+    exec(compile(source, str(path), "exec"), module.__dict__)
+    return module
 
 
 def remote_collect(identifier):
@@ -836,27 +785,17 @@ def remote_collect(identifier):
             if receipt is not None else value.get("cleanupConfirmed") is True)
         collection["consumption.json"].update(scrub(state.get("consumption", {})))
         return collection
-    try:
-        raw = read_json(source) if source.exists() else {}
-        parse_failure = None
-    except (ValueError, OSError) as error:
-        raw, parse_failure = {}, type(error).__name__
     status = remote_status(identifier)
-    summary = safe_result(raw)
-    for case in summary.get("cases", []):
-        name = case.get("case", "")
-        repetition = case.get("repetition")
-        if re.fullmatch(r"(?:task-any|task-targeted|direct)-(?:500|1000|2000)", name) and type(repetition) is int:
-            original = result / f"evidence/harness/r{repetition}/{name}/case.json"
-            try:
-                if original.is_file():
-                    case["originalMetrics"] = scrub(read_json(original).get("metrics", {}))
-            except (ValueError, OSError):
-                case["originalMetricsStatus"] = "unavailable"
+    try:
+        summary, content = load_reporter(root, state).collect_measurement(result)
+    except Exception as error:
+        summary = {"status": "unknown", "reportCollection": {"status": "unavailable", "failureType": type(error).__name__}}
+        content = "# External Performance\n\nMeasurement report unavailable; no measurement conclusion is claimed.\n"
     summary["orchestrationReceipt"] = status.get("receipt", {"status": "unknown"})
     summary["run"] = {key: state[key] for key in ("runId", "firstAttempt", "tag", "commit", "workersPerGroup", "repetitions", "preparedAt") if key in state}
     summary["preflight"] = state.get("preflight", {})
     summary["github"] = state.get("github", {})
+    summary["helpers"] = state.get("helpers", {})
     preparation = {}
     for filename, key in (("prepare-lease.json", "lease"), ("prepare-cleanup.json", "cleanup"),
                           ("prepare-cleanup-failure.json", "failure")):
@@ -866,14 +805,6 @@ def remote_collect(identifier):
                                 "timerStopped", "timerStoppedAt", "timerStopFailureType", "privateInputsRemoved", "failureType") if name in value}
     if preparation:
         summary["preparation"] = preparation
-    try:
-        summary["submissionEvidence"] = sample_counts(result)
-    except (OSError, ValueError, TypeError) as error:
-        summary["submissionEvidence"] = {"status": "incomplete", "failureType": type(error).__name__}
-    if parse_failure:
-        summary["summaryParseFailure"] = parse_failure
-    markdown = result / "evidence/summary.md"
-    content = markdown.read_text(encoding="utf-8", errors="replace") if markdown.exists() else "# External Performance\n\nOriginal summary unavailable; outcome unknown.\n"
     content = scrub(content)
     if observation is not None:
         summary["observation"] = observation
@@ -881,6 +812,7 @@ def remote_collect(identifier):
                     + "`; actual delay seconds: `" + str(observation.get("actualDelaySeconds", "unavailable")) + "`.\n")
     return {"summary.json": scrub(summary), "summary.md": content, "consumption.json": scrub(state.get("consumption", {})),
             "orchestration.json": {"runId": identifier, "state": status["state"], "receipt": status.get("receipt"), "unit": status.get("unit"),
+                                   "helpers": state.get("helpers", {}), "reportCollection": summary.get("reportCollection"),
                                    **({"observation": observation} if observation is not None else {})}}
 
 
@@ -1035,8 +967,20 @@ def controller(arguments):
                 server_tag, server_commit = env_required(environment, "SERVER_RELEASE_TAG"), env_required(environment, "SERVER_RELEASE_COMMIT")
                 config = json.loads(env_required(environment, "DEPLOYMENT_JSON"))
                 validate_config(config, server_tag, server_commit, arguments.workers_per_group)
+                controller_commit = env_required(environment, "GITHUB_SHA")
+                require(re.fullmatch(r"[0-9a-f]{40}", controller_commit), "Controller commit must be a full immutable SHA")
                 require(not interrupted, "Controller cancelled before preparation")
-                transport.copy(Path(__file__).resolve(), helper)
+                # Hash the captured bytes that are copied, from this single controller checkout.
+                # Publish orchestrator last: its presence is the immutable same-Run attach fence.
+                helper_sources = {"reporting.py": Path(__file__).resolve().parents[2] / "integrations/worker-call-performance/reporting.py",
+                                  "orchestrator.py": Path(__file__).resolve()}
+                helpers = {"controllerCommit": controller_commit}
+                for name, source_path in helper_sources.items():
+                    snapshot = private / name
+                    snapshot.write_bytes(source_path.read_bytes())
+                    helpers[name] = digest(snapshot)
+                for name in helper_sources:
+                    transport.copy(private / name, root + "/" + name)
                 spec = importlib.util.spec_from_file_location("external_release_input", Path(__file__).with_name("prepare_external_release_load.py"))
                 downloader = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(downloader)
@@ -1047,6 +991,7 @@ def controller(arguments):
                 envelope = {"deployment": config, "tag": tag, "commit": commit, "serverTag": server_tag,
                             "serverCommit": server_commit, "workers": arguments.workers_per_group,
                             "repetitions": arguments.repetitions, "attempt": attempt, "consumption": consumption,
+                            "helpers": helpers,
                             "kitSha256": consumed["kitSha256"], "budget": json.loads(env_required(environment, "CONNECTION_BUDGET_JSON")),
                             "accessKey": env_required(environment, "RUNTIME_ACCESS_KEY"),
                             "gateway": {"keyId": env_required(environment, "WORKER_GATEWAY_KEY_ID"), "secret": env_required(environment, "WORKER_GATEWAY_SECRET")}}
@@ -1112,7 +1057,8 @@ def controller(arguments):
                          if receipt else collection["orchestration.json"].get("cleanupConfirmed") is True)
                 observation_output(not clean)
                 return 0 if clean else 1
-            return 0 if receipt.get("status") == "passed" and not interrupted else 1
+            report = collection["summary.json"].get("reportCollection", {})
+            return 0 if receipt.get("status") == "passed" and report.get("status") != "unavailable" and not interrupted else 1
     except Exception as error:
         output.mkdir(parents=True, exist_ok=True)
         if observation is not None:

@@ -12,16 +12,6 @@ xa:
       # External hosts must name their own users file; the built-in seed's access keys are public.
       seed: ${XA_MASS_USERS_SEED:}
       require-configured-seed: true
-    task-retention:
-      enabled: ${XA_MASS_TASK_RETENTION_ENABLED:${xa.mass.kernel-pacer.enabled}}
-      grace: 1h
-      retention: 7d
-      history-retention: 30d
-      interval: 1h
-      database-path: ${XA_MASS_TASK_HISTORY_DATABASE:./data/task-history.sqlite}
-      rpc-item-retention-enabled: false
-      rpc-input-retention: 1h
-      rpc-terminal-retention: 24h
     project-assembly:
       projects: []
     kernel-pacer:

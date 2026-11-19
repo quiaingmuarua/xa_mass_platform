@@ -58,6 +58,23 @@ class PreviewLifecycleTest(unittest.TestCase):
             self.assertEqual((19400, 19403), (settings["port"], settings["adapter_port"]))
             self.assertIsNone(settings["java_config"])
 
+    def test_preview_android_rejection_precedes_build_redis_and_process_preflight(self):
+        for count in (1, 2, 3):
+            with self.subTest(count=count), patch.object(run_preview, "build") as build, \
+                    patch.object(run_preview.LocalRun, "preflight") as preflight, \
+                    patch.object(run_preview.redis.Redis, "from_url") as redis_client, \
+                    patch.object(run_preview.subprocess, "run") as execute, \
+                    redirect_stderr(io.StringIO()) as stderr, self.assertRaises(SystemExit) as failure:
+                run_preview.main(["--build", "--android-count", str(count)])
+            self.assertEqual(2, failure.exception.code)
+            self.assertIn("run_local_runtime.py", stderr.getvalue())
+            build.assert_not_called()
+            preflight.assert_not_called()
+            redis_client.assert_not_called()
+            execute.assert_not_called()
+            self.assertEqual(count, run_preview.parse_local_arguments(["--android-count", str(count)]).android_count)
+        self.assertEqual(0, run_preview.parse_local_arguments(["--android-count", "0"], preview=True).android_count)
+
     def test_partial_start_failure_stops_owned_process_before_scope_cleanup(self):
         run = Preview()
         events = []
@@ -227,7 +244,8 @@ class PreviewLifecycleTest(unittest.TestCase):
                         else:
                             self.assertNotIn(group_id, config["workerGroups"])
                     record = json.loads((run.output / "run.json").read_text())
-                    self.assertEqual((60, 712), (record["javaCounts"]["demo-sim"], record["seed"]))
+                    self.assertIsNone(record["javaCounts"])
+                    self.assertEqual(712, record["seed"])
                     self.assertNotIn("counts", record)
                     self.assertEqual({"server", "hostClasspath", "frontendSha256"}, run.artifacts.keys())
                     run.close()

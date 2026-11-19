@@ -227,6 +227,34 @@ error bodies or authentication text. Active HTTP reads retain their original
 remaining-budget timeout; executor shutdown does not wait to revise the
 observation decision, and late completions cannot change its status.
 
+### Reporting And Run Attribution
+
+The standard-library-only [reporting module](reporting.py) owns measurement
+projection and Markdown for both the runner and external collection. Its
+`lane_case_record` and `lane_markdown` preserve the existing case metrics;
+`collect_measurement(result_path)` reads the known summary/case/sample format,
+including raw `case.json` `originalMetrics` and formal, discarded-warmup and
+inner-warmup sample counts. Missing or malformed evidence remains explicitly
+incomplete or unavailable; available counts are retained without inventing zeros.
+The schema-3 kit ships this same-directory runner dependency without changing its
+manifest schema. Collection can read the existing pinned kit's output without
+upgrading that kit or selecting a version-specific reporting implementation.
+
+Before preparing a new Run, the controller captures reporter and orchestration
+helper bytes from its own commit, then copies `reporting.py` before
+`orchestrator.py` into the Run directory. State and public summary/orchestration
+`helpers` attribution retain `controllerCommit` and both SHA-256 fingerprints.
+An existing helper fixes the Run's implementation: later invocations only attach,
+stop or collect, without replacing either file, preparing again or starting new
+work. The orchestration helper owns lifecycle, preparation, observation and receipt
+fields plus final scrubbing; it does not redefine measurement statistics.
+
+Only collection loads the Run's reporting module, after verifying its fixed
+fingerprint. A missing, invalid or failed reporter is an explicit
+`reportCollection` unavailable outcome. Stop and finalization do not import it,
+so reporting failure cannot prevent owned-process cleanup or rewrite the
+lifecycle receipt.
+
 Public evidence contains only the allowlisted `summary.json`, `summary.md`,
 `consumption.json` and `orchestration.json`; bootstrap Worker IDs, inventory, raw
 logs and private configuration remain on the consumer. These receipts identify
@@ -328,11 +356,6 @@ for Server, Host and Harness. Redis has a 2GiB container limit and 1.5GiB
 `maxmemory`, with `noeviction`. Saturation FD/thread guards are 16,384/512;
 open-loop guards remain 8,192/512. These are
 explicit experiment settings, not minimum production resource requirements.
-The fleet was raised from 3,000 per Group on 2026-09-30: after the faster Adapter
-batches, Dispatch assigned faster than Result release returned leases, and a
-same-host A/B sampled a Group with no idle Worker for several seconds at about
-7,400 Items/s. A bound fleet invalidates the case, so the configured resource
-was raised rather than the measurement accepted.
 CPU affinity applies to every experiment JVM and the Redis container.
 
 Configurable resources are raised or audited so they do not bind. Open-loop
@@ -745,15 +768,6 @@ marks local diagnostics; `--skip-build` reuses existing artifacts. Each Java
 process uses `-Xms256m -Xmx1g`; evidence records configuration sources, hashes,
 Git versions, OS/kernel, CPU count and the Redis image identity.
 
-## Open Questions
-
-- The task paths at 2,000/s sit at the reference runner's capacity: three of four
-  2026-09-28 runs saturated at 1,380-1,700 admitted/s, one passed.
-- The two first identical-code A/B runs showed higher pooled p99 for B
-  (for example 530ms against 415ms) with identical Server code. It does not affect
-  the p50 decision but may indicate a systematic difference between the two
-  builds' worlds.
-
 ## Platform configuration source
 
 Local runs use the [shared Worker Project fixture](../../TESTING.md#worker-project-fixture)
@@ -761,7 +775,7 @@ before this lane's overlay/CLI flags; workload, budgets and assertions remain he
 
 ## History
 
-The `baselines/` reports record the retired task, direct, direct-diagnosis,
-rpc-diagnosis and nightly suites (100 or 1,000 Workers, one Group, assignment
-ceiling 100 unless stated). They are version-scoped evidence and are not
-comparable with this lane's cases.
+Historical suites and observations remain in the
+[fixed baseline records](https://github.com/quiaingmuarua/xa_mass_platform/tree/fa27697b09c0d47d8b15f200d96b7a905165e5b2/integrations/worker-call-performance/baselines).
+Use their measured versions and configuration when interpreting them; they do
+not define this lane's current workload or open requirements.

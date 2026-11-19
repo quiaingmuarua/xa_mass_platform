@@ -30,6 +30,7 @@ else:
     sys.path.insert(0, str(ROOT))
     from integrations.worker_proof_support.scenario_inventory import materialize_inventory
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from reporting import lane_case_record, lane_markdown
 import lane_trend  # noqa: E402  (sibling module; this directory name is not a package)
 
 REDIS_IMAGE = "redis:7.4.10"
@@ -609,32 +610,6 @@ def lane_window_cost(path, started, ended):
     return result
 
 
-def lane_case_record(entry, case, cost):
-    metrics = case.get("metrics", {})
-    record = {"repetition": entry["repetition"], "mode": entry["mode"], "rate": entry["rate"], "path": entry["path"],
-              "case": entry["case"],
-              "status": case.get("status", "failed"), "invalidReasons": case.get("invalidReasons", []),
-              "failureReason": case.get("failureReason"), "fastFail": case.get("fastFail"),
-              "measurementStartedEpochMillis": case.get("measurementStartedEpochMillis"),
-              "measurementEndedEpochMillis": case.get("measurementEndedEpochMillis"),
-              "completedPerSecond": case.get("completedPerSecond"),
-              "admittedPerSecond": case.get("admittedPerSecond"),
-              "completedCount": case.get("completedCount"),
-              "workersBound": case.get("workersBound"),
-              "seedMillis": case.get("seedMillis"),
-              "leaseHeldPeakRatio": case.get("leaseHeldPeakRatio"),
-              "successWithinWait": metrics.get("successRate"),
-              "successfulCallLatencyMillis": metrics.get("successfulCallLatencyMillis"),
-              "generatorLimited": metrics.get("generatorLimited"),
-              "httpVersions": metrics.get("httpVersions", {}),
-              "acceptedResultsAfterDrain": metrics.get("acceptedResultsAfterDrain"),
-              "workerSamples": len(case.get("workerSamples", []))}
-    if cost:
-        # An eventual drain count is not a count inside the sampled resource interval.
-        record["cost"] = dict(cost, redisCommandsPerCompleted=None, serverCpuMillisPerCompleted=None)
-    return record
-
-
 def lane_path_ratios(records):
     """Task paths relative to Direct on the same host, rate and repetition; passed open-loop cases only."""
     records = [r for r in records if r.get("mode", "open") == "open"]
@@ -981,108 +956,6 @@ def merge_lane(evidence_root, jobs, history=None, meta=None):
     return merged
 
 
-def lane_markdown(result):
-    timings = result.get("timingsMillis", {})
-    lines = ["# Performance Lane", "", f"Status: **{result['status']}**. Cases: {result.get('caseCounts', {})}.", "",
-             f"{len(result.get('groups', LANE_GROUPS))} Groups, one Adapter, assignment ceiling "
-             f"{result.get('assignmentBatchLimit', LANE_ASSIGNMENT_BATCH_LIMIT)}. Offered load splits evenly across the Groups.", "",
-             "| Rep | Case | Status | HTTP success ratio | Completed/s | Success p50 / p99 ms | Checked Items/s | Shortfall | Acquisition rejected | Lease-held peak | Redis cmds / completed |",
-             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
-    for r in result.get("cases", []):
-        latency = r.get("successfulCallLatencyMillis") or {}
-        attribution = r.get("attribution") or {}
-        cost = r.get("cost") or {}
-        status = r["status"] + (f" ({', '.join(r['invalidReasons'])})" if r.get("invalidReasons") else "") \
-            + (f" ({r['failureReason']})" if r.get("failureReason") else "") \
-            + (f" (admitted {r['admittedPerSecond']:.0f}/s)" if r["status"] == "saturated" and r.get("admittedPerSecond") else "")
-        pct = lambda value: f"{value:.2%}" if isinstance(value, (int, float)) else "—"
-        num = lambda value, fmt: format(value, fmt) if isinstance(value, (int, float)) else "—"
-        completed = num(r.get("completedPerSecond"), ".1f")
-        lines.append(f"| {r['repetition']} | {r['case']} | {status} | {pct(r.get('successWithinWait'))} "
-                     f"| {completed} | {num(latency.get('p50'), '.1f')} / {num(latency.get('p99'), '.1f')} "
-                     f"| {num(attribution.get('checkedItemsPerSecond'), '.0f')} | {pct(attribution.get('candidateShortfallRatio'))} "
-                     f"| {pct(attribution.get('workerAcquisitionRejectedRatio'))} | {pct(r.get('leaseHeldPeakRatio'))} "
-                     f"| {num(cost.get('redisCommandsPerCompleted'), '.1f')} |")
-    versions = {r["case"]: r["httpVersions"] for r in result.get("cases", []) if r.get("httpVersions")}
-    if versions:
-        lines += ["", "HTTP versions observed in complete call responses: " + json.dumps(versions, sort_keys=True) + "."]
-    if result.get("jobs"):
-        lines += ["", "| Job | Status | Cases | Case time s | Host CPU ops/s (4 threads) | Redis ping µs | Warmup | Server peak threads / FDs |",
-                  "| --- | --- | --- | --- | --- | --- | --- | --- |"]
-        for job in result["jobs"]:
-            server = job.get("resourcePeaks", {}).get("server", {})
-            elapsed = job.get("casesCompletedMillis")
-            calibration = job.get("calibration") or {}
-            warmup = job.get("warmup") or {}
-            speed = calibration.get("cpuParallelOpsPerSecond")
-            ping = calibration.get("redisPingMicros")
-            lines.append(f"| {job['job']} | {job['status']} | {job.get('caseCounts', {})} "
-                         f"| {f'{elapsed / 1000:.0f}' if elapsed is not None else '—'} "
-                         f"| {f'{speed:,.0f}' if speed else '—'} | {f'{ping:.0f}' if ping else '—'} "
-                         f"| {warmup.get('case', '—')} {warmup.get('status', '')} "
-                         f"| {server.get('peakNativeThreads', '—')} / {server.get('peakFileDescriptors', '—')} |")
-    worlds = result.get("jobs") or [dict(result, job="saturation" if result.get("experiment") else "lane")]
-    lines += ["", "| Job configuration | Workers / Group | CPU | Server / Host / Harness heap MiB | Warmup / measure s | Items / Group | Redis limit / maxmemory MiB |",
-              "| --- | --- | --- | --- | --- | --- | --- |"]
-    for world in worlds:
-        config = world.get("experiment")
-        if config:
-            profile, window, resource = config["profiles"][0], config["screening"], config["resources"]
-            lines.append(f"| {world['job']} ({config['name']}) | {profile['workersPerGroup']} | {profile['cpuCount']} "
-                         f"| {resource['serverHeapMiB']} / {resource['hostHeapMiB']} / {resource['harnessHeapMiB']} "
-                         f"| {window['warmupSeconds']} / {window['measurementSeconds']} | {window['itemsPerGroup']} "
-                         f"| {resource['redisMemoryMiB']} / {resource['redisMaxmemoryMiB']} |")
-        elif world.get("executionEnvironment") == "existing-server":
-            lines.append(f"| {world['job']} (existing deployment) | {world['workersPerGroup']} "
-                         f"| {world.get('cpuCount') or '—'} | not collected / {world.get('hostMaxHeap', '—')} / 1024 "
-                         "| original open-loop windows | per case | not collected |")
-        else:
-            lines.append(f"| {world['job']} (legacy world) | {world.get('workersPerGroup', LANE_WORKERS_PER_GROUP)} "
-                         f"| {world.get('cpuCount') or '—'} | 1024 / 1024 / 1024 | per case | per case | unconstrained |")
-    if result.get("trend"):
-        trend = result["trend"]
-        lines += ["", f"Trend: **{trend['status']}** against {trend['historyRuns']} comparable run(s) "
-                  f"(needs {lane_trend.MIN_HISTORY} from the same ref and lane config version {lane_trend.LANE_CONFIG_VERSION})."]
-        for job, host in trend.get("hosts", {}).items():
-            factor = host.get("speedFactor")
-            lines.append(f"- Host {job}: speed factor {factor:.2f}, {'qualified' if host['qualified'] else 'not judged'}"
-                         if factor else f"- Host {job}: no calibration reference")
-        suspects = [f for f in trend.get("findings", []) if f["verdict"] == "suspect"]
-        lines += [f"- Suspect {f['case']} {f.get('metric', f.get('reason'))}: current {f.get('current')} "
-                  f"vs history {f.get('historyMin', f.get('history'))}..{f.get('historyMax', '')}" for f in suspects]
-        if trend["status"] == "compared" and not suspects:
-            lines.append("- No suspect case.")
-    if result.get("pathRatios"):
-        lines += ["", "Task path relative to Direct on the same host (passed cases only):", "",
-                  "| Rep | Rate | Path | p99 latency ratio | Completion ratio |", "| --- | --- | --- | --- | --- |"]
-        lines += [f"| {x['repetition']} | {x['rate']} | {x['path']} | {x['p99LatencyRatio']:.2f} | {x['completionRatio']:.2f} |"
-                  for x in result["pathRatios"] if x["p99LatencyRatio"] is not None and x["completionRatio"] is not None]
-    if timings:
-        lines += ["", "| Milestone | Elapsed s |", "| --- | --- |"]
-        lines += [f"| {name} | {value / 1000:.1f} |" for name, value in timings.items()]
-    peaks = {role: peak for role, peak in result.get("resourcePeaks", {}).items() if not role.startswith("harness-")}
-    if peaks:
-        lines += ["", "| Role | Peak threads | Peak FDs | Peak RSS MiB |", "| --- | --- | --- | --- |"]
-        lines += [f"| {role} | {peak['peakNativeThreads']} | {peak['peakFileDescriptors']} | {peak['peakRssBytes'] / 2**20:.0f} |"
-                  for role, peak in peaks.items()]
-    if result.get("runnerFailure"):
-        lines += ["", f"Failure: {result['runnerFailure']}"]
-    if result.get("executionEnvironment") == "existing-server":
-        lines += ["", "Existing-deployment open-loop observation; not a same-host reference or saturation measurement.",
-                  "Server/Redis resources, Redis calibration and Server JFR were not collected. "
-                  "Completion rates include eventual Results after drain; they are not Server maximum TPS.",
-                  "", "Server deployment (operator-declared): " + json.dumps(result.get("serverDeployment", {}), sort_keys=True),
-                  "", "Consumer cleanup: " + json.dumps(result.get("cleanup", {}), sort_keys=True)]
-    lines += ["", "Saturation cases count successful Result-store completion events inside the window and reconcile "
-              "full-lifecycle claims, publications and stores with unique validated public exports. Warmup and drain "
-              "are excluded; missing or inconsistent evidence is invalid. Resource cost denominators use the same sampled interval.", ""]
-    lines += ["Saturated means the offered rate exceeds the path capacity: responses outlasted their wait until "
-              "arrivals met the in-flight cap; admitted/s is not a completion ceiling (the saturation mode measures that). "
-              "Invalid means the generator lagged or a Group ran out of idle Workers; its numbers are not comparable. "
-              "Failed means a correctness floor or fast-fail rule was violated. Performance values never fail the lane.", ""]
-    return "\n".join(lines)
-
-
 def jfr_options(private, role, diagnostics):
     if diagnostics == "off":
         return []
@@ -1402,7 +1275,7 @@ def main_deployment(options):
         lock.close()
         signal.signal(signal.SIGTERM, previous_term)
         write_json(evidence / "lane-summary.json", result)
-        (evidence / "summary.md").write_text(lane_markdown(result), encoding="utf-8")
+        (evidence / "summary.md").write_text(lane_markdown(result, defaults={"groups": LANE_GROUPS, "workersPerGroup": LANE_WORKERS_PER_GROUP, "assignmentBatchLimit": LANE_ASSIGNMENT_BATCH_LIMIT}, trend_policy={"minHistory": lane_trend.MIN_HISTORY, "laneConfigVersion": lane_trend.LANE_CONFIG_VERSION}), encoding="utf-8")
     print(json.dumps({"status": result["status"], "cases": result["caseCounts"], "evidence": str(evidence / "lane-summary.json")}))
     return 0 if result["status"] == "passed" else 1
 
@@ -1464,7 +1337,7 @@ def main():
         merged = merge_lane(options.merge_lane, jobs, load_history(options.lane_history), run_meta())
         write_json(output / "evidence/run-record.json", merged["record"])
         write_json(output / "evidence/lane-summary.json", merged)
-        (output / "evidence/summary.md").write_text(lane_markdown(merged), encoding="utf-8")
+        (output / "evidence/summary.md").write_text(lane_markdown(merged, defaults={"groups": LANE_GROUPS, "workersPerGroup": LANE_WORKERS_PER_GROUP, "assignmentBatchLimit": LANE_ASSIGNMENT_BATCH_LIMIT}, trend_policy={"minHistory": lane_trend.MIN_HISTORY, "laneConfigVersion": lane_trend.LANE_CONFIG_VERSION}), encoding="utf-8")
         print(json.dumps({"status": merged["status"], "cases": merged["caseCounts"]}), flush=True)
         return 0 if merged["status"] == "passed" else 1
     if bool(options.baseline_ref) != bool(options.lane_case):
@@ -1517,7 +1390,7 @@ def main_lane(options, output, run_started, reference, os_release, java, image_i
                   harnessCommit=manifest["sourceHead"] if manifest else command(["git", "rev-parse", "HEAD"]),
                   worktreeDirty=manifest["worktreeDirty"] if manifest else bool(command(["git", "status", "--porcelain"])))
     write_json(output / "evidence/lane-summary.json", result)
-    (output / "evidence/summary.md").write_text(lane_markdown(result), encoding="utf-8")
+    (output / "evidence/summary.md").write_text(lane_markdown(result, defaults={"groups": LANE_GROUPS, "workersPerGroup": LANE_WORKERS_PER_GROUP, "assignmentBatchLimit": LANE_ASSIGNMENT_BATCH_LIMIT}, trend_policy={"minHistory": lane_trend.MIN_HISTORY, "laneConfigVersion": lane_trend.LANE_CONFIG_VERSION}), encoding="utf-8")
     print(json.dumps({"status": result["status"], "cases": result.get("caseCounts"),
                       "evidence": str(output / "evidence/lane-summary.json")}), flush=True)
     return 0 if result["status"] == "passed" else 1

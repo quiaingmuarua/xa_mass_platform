@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date, datetime, time, timedelta, timezone
 import os
 from pathlib import Path
 import re
@@ -72,6 +73,7 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
         cls.consumer = CONSUMER.read_text(encoding="utf-8")
         cls.observation = OBSERVATION.read_text(encoding="utf-8")
         cls.external = job_blocks(cls.consumer)["external-performance"]
+        cls.plan = json.loads((ROOT / ".github/external-performance-observation.json").read_text(encoding="utf-8"))
 
     def routing(self, **values):
         chosen = {name: bool(expression(re.search(r"^    if: (.+)$", block, re.MULTILINE).group(1), **values))
@@ -125,8 +127,19 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
             self.assertIn(expected, section(inputs, field, 6))
 
     def test_observation_has_seven_explicit_dates_and_cannot_queue_behind_manual_work(self):
-        self.assertEqual([f"30 21 {day} 11 *" for day in range(19, 26)],
-                         re.findall(r"^    - cron: '([^']+)'$", self.observation, re.MULTILINE))
+        # Cross-file contract: derive cron independently from the real window, not a copied roster.
+        plan = self.plan
+        self.assertEqual((1, 7, "05:30", "+08:00", 5000, 1),
+                         tuple(plan[key] for key in ("schemaVersion", "days", "localTime", "utcOffset", "workersPerGroup", "repetitions")))
+        start = date.fromisoformat(plan["startDate"])
+        self.assertEqual("external-10k-" + start.strftime("%Y%m%d"), plan["windowId"])
+        hour, minute = map(int, plan["localTime"].split(":"))
+        offset = timedelta(hours=int(plan["utcOffset"][1:3]), minutes=int(plan["utcOffset"][4:6]))
+        local = timezone(offset if plan["utcOffset"].startswith("+") else -offset)
+        dates = [datetime.combine(start + timedelta(days=day), time(hour, minute), local).astimezone(timezone.utc)
+                 for day in range(plan["days"])]
+        expected = [f"{stamp.minute} {stamp.hour} {stamp.day} {stamp.month} *" for stamp in dates]
+        self.assertEqual(expected, re.findall(r"^    - cron: '([^']+)'$", self.observation, re.MULTILINE))
         self.assertNotIn("workflow_dispatch:", self.observation)
         self.assertNotIn("concurrency:", self.observation)
         self.assertNotIn("concurrency:", self.consumer)
@@ -134,7 +147,7 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
         caller = job_blocks(self.observation)["external-performance"]
         self.assertIn("github.ref == 'refs/heads/main' && github.event_name == 'schedule'", caller)
         for binding in ("uses: ./.github/workflows/external-performance-consumer.yml", "secrets: inherit",
-                        "workers_per_group: 5000", "repetitions: '1'",
+                        f"workers_per_group: {plan['workersPerGroup']}", f"repetitions: '{plan['repetitions']}'",
                         "observation_plan: .github/external-performance-observation.json", "artifact_retention_days: 30"):
             self.assertIn(binding, caller)
         self.assertNotIn("run_external_performance.py", self.observation)
@@ -215,12 +228,15 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
             self.assertIn("OBSERVATION_PLAN: ${{ inputs.observation_plan }}", selected)
             self.assertIn("OBSERVATION_SCHEDULE: ${{ github.event.schedule }}", selected)
             for binding in ("vars.CONSUMER_SSH_HOST", "vars.CONSUMER_SSH_USER", "vars.CONSUMER_SSH_KNOWN_HOSTS",
-                            "secrets.CONSUMER_SSH_PRIVATE_KEY", "vars.PERFORMANCE_DEPLOYMENT_JSON",
-                            "vars.PERFORMANCE_CONNECTION_BUDGET_JSON", "secrets.PERFORMANCE_RUNTIME_ACCESS_KEY",
-                            "secrets.PERFORMANCE_WORKER_GATEWAY_KEY_ID", "secrets.PERFORMANCE_WORKER_GATEWAY_SECRET",
-                            "vars.INSTALLED_RELEASE_TAG", "vars.INSTALLED_RELEASE_COMMIT",
-                            "vars.PERFORMANCE_KIT_RELEASE_TAG", "vars.PERFORMANCE_KIT_RELEASE_COMMIT"):
+                            "secrets.CONSUMER_SSH_PRIVATE_KEY"):
                 self.assertIn(binding, selected)
+        for binding in ("vars.PERFORMANCE_DEPLOYMENT_JSON", "vars.PERFORMANCE_CONNECTION_BUDGET_JSON",
+                        "secrets.PERFORMANCE_RUNTIME_ACCESS_KEY", "secrets.PERFORMANCE_WORKER_GATEWAY_KEY_ID",
+                        "secrets.PERFORMANCE_WORKER_GATEWAY_SECRET", "vars.INSTALLED_RELEASE_TAG",
+                        "vars.INSTALLED_RELEASE_COMMIT", "vars.PERFORMANCE_KIT_RELEASE_TAG",
+                        "vars.PERFORMANCE_KIT_RELEASE_COMMIT", "github.token"):
+            self.assertIn(binding, run)
+            self.assertNotIn(binding, finalize)
         self.assertIn("--action stop", run_body(finalize))
         guard = re.search(r"^        if: (.+)$", finalize, re.MULTILINE).group(1)
         for outcome in ("success", "failure", "cancelled"):

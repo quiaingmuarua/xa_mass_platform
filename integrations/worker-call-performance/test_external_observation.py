@@ -3,6 +3,7 @@ from argparse import Namespace
 from contextlib import ExitStack, contextmanager, nullcontext
 from datetime import date, datetime, timedelta, timezone
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,14 +18,27 @@ SPEC = importlib.util.spec_from_file_location("external_observation", ROOT / ".g
 M = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(M)
 RUN = "100"
-CURRENT = datetime(2026, 11, 19, 21, 35, tzinfo=timezone.utc)
-PLAN = {"schemaVersion": 1, "windowId": "external-10k-20261120", "startDate": "2026-11-20", "days": 7,
+HELPER_BYTES = {"orchestrator.py": b"original controller fixture",
+                "reporting.py": (ROOT / "integrations/worker-call-performance/reporting.py").read_bytes()}
+HELPERS = {"controllerCommit": "c" * 40,
+           **{name: hashlib.sha256(content).hexdigest() for name, content in HELPER_BYTES.items()}}
+# Synthetic year-boundary window, independent of the repository's live date roster.
+START = date(2030, 12, 29)
+CURRENT = datetime(2030, 12, 28, 21, 35, tzinfo=timezone.utc)
+
+
+def cron(slot):
+    instant = datetime(slot.year, slot.month, slot.day, 5, 30,
+                       tzinfo=timezone(timedelta(hours=8))).astimezone(timezone.utc)
+    return f"{instant.minute} {instant.hour} {instant.day} {instant.month} *"
+
+PLAN = {"schemaVersion": 1, "windowId": "external-10k-" + START.strftime("%Y%m%d"), "startDate": START.isoformat(), "days": 7,
         "localTime": "05:30", "utcOffset": "+08:00", "workersPerGroup": 5000, "repetitions": 1}
 ENV = {"GITHUB_RUN_ID": RUN, "GITHUB_RUN_ATTEMPT": "1", "GITHUB_EVENT_NAME": "schedule",
-       "GITHUB_REF": "refs/heads/main", "OBSERVATION_SCHEDULE": "30 21 19 11 *"}
+       "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": "c" * 40, "OBSERVATION_SCHEDULE": cron(START)}
 
 
-def observation(slot=date(2026, 11, 20)):
+def observation(slot=START):
     before, after = M.observation_bounds(slot)
     return {"windowId": PLAN["windowId"], "slotDate": slot.isoformat(), "notBeforeUTC": before.isoformat(),
             "notAfterUTC": after.isoformat(), "actualDelaySeconds": 300, "status": "eligible", "reason": None}
@@ -37,7 +51,8 @@ def envelope():
             "serverTag": "v4.4.5", "serverCommit": commit, "tag": "v4.4.5", "commit": commit,
             "workers": 5000, "repetitions": 1, "attempt": 1, "budget": {},
             "accessKey": "xak_private_test_key_12345", "gateway": {"keyId": "gate", "secret": "private-gateway-marker"},
-            "kitSha256": "c" * 64, "consumption": {}, "observation": observation()}
+            "kitSha256": "c" * 64, "consumption": {}, "observation": observation(),
+            "github": {"controllerCommit": "c" * 40}, "helpers": dict(HELPERS)}
 
 
 class WindowTest(unittest.TestCase):
@@ -49,28 +64,28 @@ class WindowTest(unittest.TestCase):
 
     def test_each_original_cron_identifies_one_of_seven_local_dates_and_records_delay(self):
         for offset in range(7):
-            before, _ = M.observation_bounds(date(2026, 11, 20) + timedelta(days=offset))
+            before, _ = M.observation_bounds(START + timedelta(days=offset))
             with self.subTest(offset=offset), patch.object(M, "observation_now", return_value=before + timedelta(minutes=17)):
-                value = M.observation_slot(self.plan, dict(ENV, OBSERVATION_SCHEDULE=f"30 21 {19 + offset} 11 *"), 5000, 1)
+                value = M.observation_slot(self.plan, dict(ENV, OBSERVATION_SCHEDULE=cron(START + timedelta(days=offset))), 5000, 1)
                 self.assertEqual("eligible", value["status"])
-                self.assertEqual((date(2026, 11, 20) + timedelta(days=offset)).isoformat(), value["slotDate"])
+                self.assertEqual((START + timedelta(days=offset)).isoformat(), value["slotDate"])
                 self.assertEqual(1020, value["actualDelaySeconds"])
 
     def test_same_day_delays_are_allowed_but_prior_day_eighth_day_and_reruns_are_not_new_admissions(self):
-        before, after = M.observation_bounds(date(2026, 11, 20))
+        before, after = M.observation_bounds(START)
         for instant, expected in ((before - timedelta(seconds=1), "before-observation-slot"),
                                   (after - timedelta(seconds=1), None), (after, "observation-slot-expired")):
             self.assertEqual(expected, M.observation_reason(observation(), instant))
         with patch.object(M, "observation_now", return_value=CURRENT):
-            self.assertEqual("not-an-observation-schedule", M.observation_slot(self.plan, dict(ENV, OBSERVATION_SCHEDULE="30 21 26 11 *"), 5000, 1)["reason"])
+            self.assertEqual("not-an-observation-schedule", M.observation_slot(self.plan, dict(ENV, OBSERVATION_SCHEDULE=cron(START + timedelta(days=7))), 5000, 1)["reason"])
             self.assertEqual("rerun-attach-only", M.observation_slot(self.plan, dict(ENV, GITHUB_RUN_ATTEMPT="2"), 5000, 1)["reason"])
             for change in ({"GITHUB_EVENT_NAME": "workflow_dispatch"}, {"GITHUB_REF": "refs/heads/feature"}):
                 self.assertEqual("not-original-main-schedule", M.observation_slot(self.plan, dict(ENV, **change), 5000, 1)["reason"])
 
     def test_remote_slot_bounds_are_revalidated_not_trusted_as_an_arbitrary_time_range(self):
-        invalid = dict(observation(), notAfterUTC="2027-01-01T00:00:00+00:00")
+        invalid = dict(observation(), notAfterUTC="2031-02-01T00:00:00+00:00")
         self.assertEqual("invalid-observation", M.observation_reason(invalid, CURRENT))
-        self.assertEqual("invalid-observation", M.observation_reason(observation(date(2026, 11, 27)), CURRENT))
+        self.assertEqual("invalid-observation", M.observation_reason(observation(START + timedelta(days=7)), CURRENT))
         with self.assertRaises(M.Failure):
             M.observation_slot(self.plan, ENV, 1000, 1)
 
@@ -83,6 +98,12 @@ class RemoteAdmissionTest(unittest.TestCase):
         self.root = self.base / "runs" / RUN
         self.private = self.base / "private" / RUN
         self.root.mkdir(parents=True)
+        # A controller copies immutable helpers before either new Run can be prepared.
+        for identifier in (RUN, "101"):
+            helper_root = self.base / "runs" / identifier
+            helper_root.mkdir(exist_ok=True)
+            for name, content in HELPER_BYTES.items():
+                (helper_root / name).write_bytes(content)
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.stack.enter_context(patch.object(M, "paths", side_effect=lambda identifier: (self.base / "runs" / identifier, self.base / "private" / identifier)))
@@ -101,7 +122,7 @@ class RemoteAdmissionTest(unittest.TestCase):
     def arm(self, identifier, root):
         M.write_json(root / "prepare-lease.json", {"bootId": "boot", "expiresAtMonotonic": M.time.monotonic() + 300, "armConfirmed": True})
 
-    def prior(self, identifier="90", *, stamp="2026-11-19T20:00:00+00:00", receipt=True, clean=True, passed=False, started=True):
+    def prior(self, identifier="90", *, stamp="2030-12-28T20:00:00+00:00", receipt=True, clean=True, passed=False, started=True):
         root = self.base / "runs" / identifier
         root.mkdir(parents=True, exist_ok=True)
         M.write_json(root / "state.json", {"preparedAt": stamp})
@@ -117,19 +138,19 @@ class RemoteAdmissionTest(unittest.TestCase):
         return root
 
     def test_latest_is_chronological_not_the_largest_synthetic_run_number(self):
-        synthetic = self.prior("999900000000000005", stamp="2026-11-18T11:00:00+00:00", started=False)
+        synthetic = self.prior("999900000000000005", stamp="2030-12-27T11:00:00+00:00", started=False)
         M.write_json(synthetic / "state.json", {"github": {}})
-        actual = self.prior("44368693491", stamp="2026-11-18T18:21:04Z")
+        actual = self.prior("44368693491", stamp="2030-12-27T18:21:04Z")
         self.assertEqual(actual, M.latest_prior_run(self.root))
         self.assertIsNone(M.prior_admission_reason(self.root, scheduled=True))
         self.assertNotEqual(synthetic, M.latest_prior_run(self.root))
         (synthetic / "receipt.json").unlink()
-        timestamp = datetime(2026, 11, 18, 10, 55, tzinfo=timezone.utc).timestamp()
+        timestamp = datetime(2030, 12, 27, 10, 55, tzinfo=timezone.utc).timestamp()
         os.utime(synthetic / "state.json", (timestamp, timestamp))
         self.assertEqual(actual, M.latest_prior_run(self.root))
 
     def test_failed_but_clean_is_allowed_passed_but_unclean_is_missing_and_old_failures_do_not_ban_later_runs(self):
-        self.prior("80", stamp="2026-11-18T11:00:00+00:00", clean=False)
+        self.prior("80", stamp="2030-12-27T11:00:00+00:00", clean=False)
         latest = self.prior("90", passed=False)
         self.assertIsNone(M.prior_admission_reason(self.root, scheduled=True))
         M.write_json(latest / "result/evidence/lane-summary.json", {"status": "passed", "cleanup": {}})
@@ -138,7 +159,7 @@ class RemoteAdmissionTest(unittest.TestCase):
         self.assertFalse(self.private.exists())
         self.call.assert_not_called()
         self.spawn.assert_not_called()
-        self.assertTrue((self.root.parent / "observation-windows" / PLAN["windowId"] / "2026-11-20.json").exists())
+        self.assertTrue((self.root.parent / "observation-windows" / PLAN["windowId"] / f"{START.isoformat()}.json").exists())
 
     def test_pending_reservation_blocks_both_entrypoints_and_clean_never_started_receipt_is_safe(self):
         prior = self.prior(receipt=False, started=False)
@@ -219,7 +240,7 @@ class RemoteAdmissionTest(unittest.TestCase):
                 private = self.base / "private" / identifier
                 if execute:
                     # The first no-load Run is finalized, so the second uses the next slot.
-                    next_value = envelope(); next_value["observation"] = observation(date(2026, 11, 21))
+                    next_value = envelope(); next_value["observation"] = observation(START + timedelta(days=1))
                     with patch.object(M, "observation_now", return_value=CURRENT + timedelta(days=1)):
                         self.assertEqual("prepared", M.remote_prepare(identifier, next_value)["state"])
                     M.write_json(root / "start-request.json", {"requestedAt": "fixture"})

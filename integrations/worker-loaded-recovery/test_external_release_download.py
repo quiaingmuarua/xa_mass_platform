@@ -55,6 +55,50 @@ class ExternalReleaseDownloadTest(unittest.TestCase):
             self.assertTrue((Path(result["kitRoot"]) / self.manifest["performanceEntry"]).is_file())
             self.assertEqual(result, json.loads((output / "consumption.json").read_text()))
 
+    def test_consumption_uses_real_verifier_for_self_contained_and_reporter_based_kits(self):
+        # Fixed, complete schema-3 archive shape; deliberately not copied from SIMULATOR_FILES.
+        entries = ("LICENSE", "THIRD_PARTY_NOTICES.md", "README.md", "bin/xa-mass-worker-simulator",
+                   "bin/xa-mass-worker-simulator.bat", "acceptance/finite_round.py", "acceptance/run_loaded.py",
+                   "acceptance/support/__init__.py", "acceptance/support/processes.py",
+                   "acceptance/support/process_sampling.py", "acceptance/support/scenario_inventory.py",
+                   "acceptance/performance/lane_trend.py", "acceptance/performance/diagnostics.jfc",
+                   "acceptance/performance/lane-attribution.jfc")
+        for needs_reporter, bundled, succeeds in ((False, False, True), (True, False, False), (True, True, True)):
+            def published_download(asset, destination, url):
+                if destination.suffix != ".zip":
+                    destination.write_text(hashlib.sha256(destination.with_suffix("").read_bytes()).hexdigest()
+                                           + "  " + self.name + "\n")
+                    return
+                prefix = "xa-mass-worker-simulator-5.0.0/"
+                files = {name: "fixture" for name in entries}
+                files["manifest.json"] = json.dumps(self.manifest)
+                files["examples/remote-host.json"] = json.dumps({"gatewayCredentialFile": "./private/worker-access.json"})
+                files[self.manifest["performanceEntry"]] = "from reporting import lane_case_record\n" if needs_reporter else "# self-contained published runner\n"
+                if bundled:
+                    files["acceptance/performance/reporting.py"] = "# reporting implementation\n"
+                for directory, jars in (("lib", ("xa-mass-worker-simulator-jvm", "xa-mass-worker-core", "xa-mass-java-worker", "xa-mass-worker-delivery-contract")),
+                                        ("acceptance/loaded/lib", ("xa-mass-worker-loaded-recovery", "xa-mass-worker-delivery-contract")),
+                                        ("acceptance/performance/harness/lib", ("xa-mass-worker-call-performance", "xa-mass-worker-delivery-contract"))):
+                    for jar in jars:
+                        files[f"{directory}/{jar}-5.0.0.jar"] = "fixture"
+                with zipfile.ZipFile(destination, "w") as archive:
+                    for name, content in files.items():
+                        item = zipfile.ZipInfo(prefix + name)
+                        item.create_system = 3
+                        item.external_attr = (0o100755 if name == "bin/xa-mass-worker-simulator" else 0o100644) << 16
+                        archive.writestr(item, content)
+            with self.subTest(needs_reporter=needs_reporter, bundled=bundled), tempfile.TemporaryDirectory() as directory, \
+                 patch.object(DOWNLOAD, "api", side_effect=self.api), patch.object(DOWNLOAD, "download", side_effect=published_download):
+                output = Path(directory) / "installation"
+                if succeeds:
+                    result = DOWNLOAD.prepare(self.repository, self.tag, self.commit, output)
+                    self.assertEqual(self.manifest, result["manifest"])
+                    self.assertEqual(bundled, (Path(result["kitRoot"]) / "acceptance/performance/reporting.py").exists())
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "reporting.py"):
+                        DOWNLOAD.prepare(self.repository, self.tag, self.commit, output)
+                    self.assertFalse((output / "consumption.json").exists())
+
     def test_draft_mutable_and_wrong_tag_are_rejected_before_download(self):
         for change in ({"draft": True}, {"immutable": False}, {"tag_name": "v4.0.0"}):
             with self.subTest(change=change), tempfile.TemporaryDirectory() as directory, \

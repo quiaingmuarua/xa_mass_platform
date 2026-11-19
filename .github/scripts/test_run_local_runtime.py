@@ -78,7 +78,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
                 self.assertIsNone(settings["java_config"])
                 self.assertEqual(0, settings["android_count"])
                 if scenarios is not None:
-                    self.assertIn("--spring.config.additional-location=" + Path(config).as_uri(), command)
+                    self.assertIn("--spring.config.additional-location=" + Path(config).resolve().as_uri(), command)
 
     def test_preview_adapter_callbacks_follow_the_selected_http_port(self):
         settings = self.resolve("--server-port", "19400", "--adapter-port", "19403")
@@ -120,6 +120,63 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         self.assertEqual(4, settings["java_config"]["startupPlan"]["workerCounts"]["custom"])
         self.assertEqual(str((self.directory / "data/scenario-workers").resolve()), settings["java_config"]["sandboxRoot"])
         self.assertEqual("http://127.0.0.1:18182", settings["java_config"]["runtimeApiBaseUrl"])
+
+    def test_java_counts_require_each_group_quantity_and_cli_overrides_file(self):
+        config = self.document("java.json", {"workerGroups": {"missing": {}, "explicit": {"count": 4}}})
+        with self.assertRaisesRegex(ValueError, "Java Group missing requires"):
+            self.resolve("--profile", "consumer", "--java-config", config)
+        settings = self.resolve("--profile", "consumer", "--java-config", config,
+                                "--java-count", "missing=15000", "--java-count", "explicit=0")
+        self.assertEqual({"missing": 15000, "explicit": 0}, settings["java_config"]["startupPlan"]["workerCounts"])
+
+    def test_quantity_plan_keeps_selected_map_without_initialization_counts(self):
+        counts = {"selected": 2, "stopped": 0}
+        config = self.document("quantity.json", {"workerGroups": {"selected": {}, "stopped": {}, "unselected": {}},
+                                                 "startupPlan": {"workerCounts": counts}})
+        settings = self.resolve("--profile", "consumer", "--java-config", config)
+        self.assertEqual(counts, settings["java_config"]["startupPlan"]["workerCounts"])
+        run = local.LocalRun(settings, output=self.directory)
+        run.write_record()
+        self.assertEqual(counts, json.loads((self.directory / "run.json").read_text())["javaCounts"])
+        with self.assertRaisesRegex(ValueError, "startupPlan"):
+            self.resolve("--profile", "consumer", "--java-config", config, "--java-count", "selected=3")
+        for counts in ({"selected": 0}, {}):
+            config = self.document("zero.json", {"workerGroups": {"selected": {}}, "startupPlan": {"workerCounts": counts}})
+            settings = self.resolve("--profile", "consumer", "--java-config", config)
+            self.assertIsNone(settings["java_config"])
+            run = local.LocalRun(settings, output=self.directory)
+            run.write_record()
+            self.assertEqual({}, json.loads((self.directory / "run.json").read_text())["javaCounts"])
+
+    def test_quantity_bounds_and_inventory_preservation_apply_to_both_inputs(self):
+        for planned in (False, True):
+            for count in (-1, 15001, True, 1.5, None):
+                document = {"workerGroups": {"g": {}}}
+                if planned:
+                    document["startupPlan"] = {"workerCounts": {"g": count}}
+                else:
+                    document["workerGroups"]["g"]["count"] = count
+                config = self.document("invalid-quantity.json", document)
+                with self.subTest(planned=planned, count=count), self.assertRaisesRegex(ValueError, "Java Group g count"):
+                    self.resolve("--profile", "consumer", "--java-config", config)
+            document = {"workerGroups": {"g": {"count": 1, "newEnvironment": True}}}
+            if planned:
+                document["startupPlan"] = {"workerCounts": {"g": 1}}
+            config = self.document("rebuild.json", document)
+            with self.subTest(planned=planned), self.assertRaisesRegex(ValueError, "preserves inventory"):
+                self.resolve("--profile", "consumer", "--java-config", config)
+
+    def test_cli_rejects_non_quantity_plans_and_invalid_quantity_maps(self):
+        for plan in (None, [], {}, {"initialWorkers": []}, {"scheduledStops": []},
+                     {"workerCounts": {"g": 1}, "initialWorkers": []},
+                     {"workerCounts": {"g": 1}, "scheduledStops": []}):
+            config = self.document("plan.json", {"workerGroups": {"g": {}}, "startupPlan": plan})
+            with self.subTest(plan=plan), self.assertRaisesRegex(ValueError, "standalone Worker Simulator Host"):
+                self.resolve("--profile", "consumer", "--java-config", config)
+        for counts in (None, [], {"unknown": 1}):
+            config = self.document("plan.json", {"workerGroups": {"g": {}}, "startupPlan": {"workerCounts": counts}})
+            with self.subTest(counts=counts), self.assertRaisesRegex(ValueError, "startupPlan.workerCounts"):
+                self.resolve("--profile", "consumer", "--java-config", config)
 
     def test_invalid_inputs_fail_before_build(self):
         for args in (["--server-port", "0"], ["--server-port", "18503"], ["--java-count", "unknown=2"],

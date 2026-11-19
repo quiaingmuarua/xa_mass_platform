@@ -68,6 +68,8 @@ class DeploymentConfigurationTest {
                         case "preview" -> 18500;
                         default -> 18082;
                     });
+                    assertThat(context.getBean(ServerWorkerDeliveryAdapterProperties.class).remoteBaseUrl().getPort())
+                            .isEqualTo(environment.getProperty("server.port", Integer.class));
                     assertThat(context.getBean(KernelPacerProperties.class).preset().name())
                             .isEqualTo(profile.equals("platform-proof") ? "SCENARIO_LAB" : "DEFAULT");
                     assertThat(context.getBean(KernelPacerProperties.class).enabled()).isTrue();
@@ -86,6 +88,12 @@ class DeploymentConfigurationTest {
                     assertThat(environment.getProperty("scalar.path")).isEqualTo("/scalar");
                     assertThat(context.getBean(TaskRpcProperties.class).maxWaitTimeoutMillis()).isEqualTo(60000);
                     var retention = context.getBean(TaskRetentionProperties.class);
+                    assertThat(retention.enabled()).isTrue();
+                    assertThat(retention.grace()).isEqualTo(Duration.ofHours(1));
+                    assertThat(retention.retention()).isEqualTo(Duration.ofDays(7));
+                    assertThat(retention.historyRetention()).isEqualTo(Duration.ofDays(30));
+                    assertThat(retention.interval()).isEqualTo(Duration.ofHours(1));
+                    assertThat(retention.databasePath()).isEqualTo(Path.of("./data/task-history.sqlite").toAbsolutePath().normalize());
                     assertThat(retention.rpcItemRetentionEnabled()).isFalse();
                     assertThat(retention.rpcInputRetention()).isEqualTo(Duration.ofHours(1));
                     assertThat(retention.rpcTerminalRetention()).isEqualTo(Duration.ofHours(24));
@@ -112,6 +120,49 @@ class DeploymentConfigurationTest {
             assertThat(context).hasFailed();
             assertThat(context.getStartupFailure()).hasRootCauseInstanceOf(IllegalArgumentException.class)
                     .hasStackTraceContaining("Redis scope must match");
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"default", "consumer", "preview"})
+    void inheritedRetentionFollowsPacerAndRetainsEnvironmentOverrides(String profile) {
+        configuration(profile, Map.of("XA_MASS_REDIS_SCOPE", "test_retention_config",
+                "XA_MASS_KERNEL_PACER_ENABLED", "false")).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(TaskRetentionProperties.class).enabled()).isFalse();
+        });
+        var database = temporary.resolve("history.sqlite");
+        configuration(profile, Map.of("XA_MASS_REDIS_SCOPE", "test_retention_config",
+                "XA_MASS_KERNEL_PACER_ENABLED", "false", "XA_MASS_TASK_RETENTION_ENABLED", "true",
+                "XA_MASS_TASK_HISTORY_DATABASE", database.toString())).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(KernelPacerProperties.class).enabled()).isFalse();
+            var retention = context.getBean(TaskRetentionProperties.class);
+            assertThat(retention.enabled()).isTrue();
+            assertThat(retention.databasePath()).isEqualTo(database.toAbsolutePath().normalize());
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"default", "consumer", "preview"})
+    void adapterRemoteUrlFollowsResolvedServerPort(String profile) {
+        var runner = configuration(profile, Map.of("XA_MASS_REDIS_SCOPE", "test_port_config",
+                "SERVER_PORT", "19182", "PREVIEW_SERVER_PORT", "19182"));
+        runner.run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(ServerWorkerDeliveryAdapterProperties.class).remoteBaseUrl().getPort())
+                    .isEqualTo(19182);
+        });
+        runner.withPropertyValues("server.port=19282").run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(ServerWorkerDeliveryAdapterProperties.class).remoteBaseUrl().getPort())
+                    .isEqualTo(19282);
+        });
+        runner.withPropertyValues("server.port=19282",
+                "xa.mass.worker-delivery.adapter.remote-base-url=http://127.0.0.1:19382").run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(ServerWorkerDeliveryAdapterProperties.class).remoteBaseUrl().getPort())
+                    .isEqualTo(19382);
         });
     }
 

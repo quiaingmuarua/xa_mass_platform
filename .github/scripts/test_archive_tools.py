@@ -117,6 +117,8 @@ class ArchiveToolsTest(unittest.TestCase):
 
     def simulator_files(self):
         files = {name: "fixture" for name in tools.SIMULATOR_FILES}
+        files["acceptance/performance/run_worker_call_performance.py"] = "from reporting import lane_case_record\n"
+        files["acceptance/performance/reporting.py"] = "# bundled reporting implementation\n"
         files["manifest.json"] = json.dumps({
             "schemaVersion": 3, "version": self.version, "gitCommit": self.commit, "javaVersion": 21,
             "simulatorEntry": "bin/xa-mass-worker-simulator", "roundEntry": "acceptance/finite_round.py",
@@ -140,6 +142,7 @@ class ArchiveToolsTest(unittest.TestCase):
         broken = []
         for missing in ("acceptance/finite_round.py", "acceptance/run_loaded.py", "acceptance/support/process_sampling.py",
                         "acceptance/support/scenario_inventory.py", "acceptance/performance/run_worker_call_performance.py",
+                        "acceptance/performance/reporting.py",
                         "acceptance/performance/lane_trend.py", "acceptance/performance/diagnostics.jfc",
                         "acceptance/performance/lane-attribution.jfc",
                         f"acceptance/loaded/lib/xa-mass-worker-loaded-recovery-{self.version}.jar",
@@ -165,6 +168,18 @@ class ArchiveToolsTest(unittest.TestCase):
                 tools.verify_simulator(self.simulator_archive(files), self.version)
         with self.assertRaises(RuntimeError):
             tools.verify_simulator(self.simulator_archive(original, executable=False), self.version)
+
+    def test_self_contained_performance_entry_does_not_require_an_unused_reporter(self):
+        files = self.simulator_files()
+        files["acceptance/performance/run_worker_call_performance.py"] = "# self-contained immutable entry\n"
+        del files["acceptance/performance/reporting.py"]
+        tools.verify_simulator(self.simulator_archive(files), self.version)
+        files["acceptance/performance/run_worker_call_performance.py"] = "import reporting\n"
+        with self.assertRaisesRegex(RuntimeError, "reporting.py"):
+            tools.verify_simulator(self.simulator_archive(files), self.version)
+        files["acceptance/performance/reporting.py"] = ""
+        with self.assertRaisesRegex(RuntimeError, "reporting.py"):
+            tools.verify_simulator(self.simulator_archive(files), self.version)
 
     def test_valid_component_archives_and_sdk_build_are_independent(self):
         runtime = self.archive("server-runtime", self.runtime_files())

@@ -28,6 +28,7 @@ Release:
 | `acceptance/run_loaded.py`, `acceptance/support/` | Existing Integration consumer and shared owned-process/resource helpers |
 | `acceptance/loaded/` | Compiled `:integrations:worker-loaded-recovery:installDist`; no source build at consumption |
 | `acceptance/performance/run_worker_call_performance.py` | Existing Performance runner with `--deployment-config` |
+| `acceptance/performance/reporting.py` | Performance-owned pure report interpretation shared with external collection |
 | `acceptance/performance/harness/` | Compiled Performance Harness and its dependencies |
 | `examples/remote-host.json` | A remote Host template with a gateway credential file |
 | `examples/persistent-20-host.json`, `examples/xa-mass-worker-host.service` | Ordinary persistent Host and systemd templates, without a health task or timer |

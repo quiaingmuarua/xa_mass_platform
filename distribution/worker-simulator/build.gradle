@@ -95,7 +95,7 @@ tasks.register('stageWorkerSimulator', Sync) {
     from(loadedInstallDirectory) { into 'acceptance/loaded' }
     from(performanceInstallDirectory) { into 'acceptance/performance/harness' }
     from(rootProject.file('integrations/worker-call-performance')) {
-        include 'run_worker_call_performance.py', 'lane_trend.py', 'diagnostics.jfc', 'lane-attribution.jfc'
+        include 'run_worker_call_performance.py', 'reporting.py', 'lane_trend.py', 'diagnostics.jfc', 'lane-attribution.jfc'
         into 'acceptance/performance'
     }
     from(rootProject.file('integrations/worker_proof_support/processes.py')) { into 'acceptance/support' }
