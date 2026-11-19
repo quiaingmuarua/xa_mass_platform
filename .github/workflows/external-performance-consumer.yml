@@ -1,0 +1,141 @@
+name: External Performance Consumer
+
+on:
+  workflow_call:
+    inputs:
+      workers_per_group:
+        description: Workers in each of the two consumer Groups
+        type: number
+        required: true
+      repetitions:
+        description: Existing workload repetitions, 1 or 3
+        type: string
+        required: true
+      diagnostics:
+        type: string
+        default: 'off'
+      baseline_ref:
+        type: string
+        default: ''
+      lane_case:
+        type: string
+        default: ''
+      lane_record:
+        type: boolean
+        default: false
+      observation_plan:
+        description: Optional bounded observation calendar; empty preserves manual execution
+        type: string
+        default: ''
+      artifact_retention_days:
+        type: number
+        default: 7
+
+permissions:
+  contents: read
+
+# Scheduled callers must not queue behind the manual Actions concurrency group.
+# The shared controller owns nonblocking remote admission and the same Run ID.
+jobs:
+  external-performance:
+    name: External Performance (2 x ${{ inputs.workers_per_group }} Workers)
+    if: github.ref == 'refs/heads/main'
+    environment: release-preview-load
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Validate external-only options
+        env:
+          DIAGNOSTICS: ${{ inputs.diagnostics }}
+          BASELINE_REF: ${{ inputs.baseline_ref }}
+          LANE_CASE: ${{ inputs.lane_case }}
+          LANE_RECORD: ${{ inputs.lane_record }}
+          WORKERS_PER_GROUP: ${{ inputs.workers_per_group }}
+          REPETITIONS: ${{ inputs.repetitions }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          if (os.environ['DIAGNOSTICS'] != 'off' or os.environ['BASELINE_REF']
+                  or os.environ['LANE_CASE'] or os.environ['LANE_RECORD'] != 'false'):
+              raise SystemExit('External execution does not support JFR, A/B or reference history recording')
+          workers = os.environ['WORKERS_PER_GROUP']
+          if not re.fullmatch(r'[0-9]+', workers) or not 1 <= int(workers) <= 15000:
+              raise SystemExit('External Workers per Group must be an integer in 1..15000')
+          if os.environ['REPETITIONS'] not in ('1', '3'):
+              raise SystemExit('External repetitions must be 1 or 3')
+          PY
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Run the published Performance consumer
+        id: external_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SSH_HOST: ${{ vars.CONSUMER_SSH_HOST }}
+          SSH_USER: ${{ vars.CONSUMER_SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.CONSUMER_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ vars.CONSUMER_SSH_KNOWN_HOSTS }}
+          DEPLOYMENT_JSON: ${{ vars.PERFORMANCE_DEPLOYMENT_JSON }}
+          CONNECTION_BUDGET_JSON: ${{ vars.PERFORMANCE_CONNECTION_BUDGET_JSON }}
+          RUNTIME_ACCESS_KEY: ${{ secrets.PERFORMANCE_RUNTIME_ACCESS_KEY }}
+          WORKER_GATEWAY_KEY_ID: ${{ secrets.PERFORMANCE_WORKER_GATEWAY_KEY_ID }}
+          WORKER_GATEWAY_SECRET: ${{ secrets.PERFORMANCE_WORKER_GATEWAY_SECRET }}
+          RELEASE_TAG: ${{ vars.PERFORMANCE_KIT_RELEASE_TAG }}
+          RELEASE_COMMIT: ${{ vars.PERFORMANCE_KIT_RELEASE_COMMIT }}
+          SERVER_RELEASE_TAG: ${{ vars.INSTALLED_RELEASE_TAG }}
+          SERVER_RELEASE_COMMIT: ${{ vars.INSTALLED_RELEASE_COMMIT }}
+          WORKERS_PER_GROUP: ${{ inputs.workers_per_group }}
+          REPETITIONS: ${{ inputs.repetitions }}
+          OBSERVATION_PLAN: ${{ inputs.observation_plan }}
+          OBSERVATION_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          observation=()
+          if [ -n "$OBSERVATION_PLAN" ]; then observation=(--observation-plan "$OBSERVATION_PLAN"); fi
+          python3 .github/scripts/run_external_performance.py \
+            --repository "$GITHUB_REPOSITORY" --workers-per-group "$WORKERS_PER_GROUP" \
+            --repetitions "$REPETITIONS" --output-dir build/external-performance "${observation[@]}"
+      - name: Finalize the same external run
+        if: ${{ always() && (steps.external_run.outcome == 'success' || steps.external_run.outcome == 'failure' || steps.external_run.outcome == 'cancelled') && (inputs.observation_plan == '' || steps.external_run.outputs.observation_admitted == 'true') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SSH_HOST: ${{ vars.CONSUMER_SSH_HOST }}
+          SSH_USER: ${{ vars.CONSUMER_SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.CONSUMER_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ vars.CONSUMER_SSH_KNOWN_HOSTS }}
+          DEPLOYMENT_JSON: ${{ vars.PERFORMANCE_DEPLOYMENT_JSON }}
+          CONNECTION_BUDGET_JSON: ${{ vars.PERFORMANCE_CONNECTION_BUDGET_JSON }}
+          RUNTIME_ACCESS_KEY: ${{ secrets.PERFORMANCE_RUNTIME_ACCESS_KEY }}
+          WORKER_GATEWAY_KEY_ID: ${{ secrets.PERFORMANCE_WORKER_GATEWAY_KEY_ID }}
+          WORKER_GATEWAY_SECRET: ${{ secrets.PERFORMANCE_WORKER_GATEWAY_SECRET }}
+          RELEASE_TAG: ${{ vars.PERFORMANCE_KIT_RELEASE_TAG }}
+          RELEASE_COMMIT: ${{ vars.PERFORMANCE_KIT_RELEASE_COMMIT }}
+          SERVER_RELEASE_TAG: ${{ vars.INSTALLED_RELEASE_TAG }}
+          SERVER_RELEASE_COMMIT: ${{ vars.INSTALLED_RELEASE_COMMIT }}
+          WORKERS_PER_GROUP: ${{ inputs.workers_per_group }}
+          REPETITIONS: ${{ inputs.repetitions }}
+          OBSERVATION_PLAN: ${{ inputs.observation_plan }}
+          OBSERVATION_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          observation=()
+          if [ -n "$OBSERVATION_PLAN" ]; then observation=(--observation-plan "$OBSERVATION_PLAN"); fi
+          python3 .github/scripts/run_external_performance.py --action stop \
+            --repository "$GITHUB_REPOSITORY" --workers-per-group "$WORKERS_PER_GROUP" \
+            --repetitions "$REPETITIONS" --output-dir build/external-performance "${observation[@]}"
+      - name: Publish external summary
+        if: always()
+        run: |
+          summary=build/external-performance/summary.md
+          if [ -f "$summary" ]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Upload safe external evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: external-performance-${{ github.run_attempt }}
+          path: |
+            build/external-performance/summary.json
+            build/external-performance/summary.md
+            build/external-performance/consumption.json
+            build/external-performance/orchestration.json
+          if-no-files-found: warn
+          retention-days: ${{ inputs.artifact_retention_days }}

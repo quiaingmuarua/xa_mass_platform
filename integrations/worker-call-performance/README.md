@@ -110,8 +110,11 @@ source, saturation, diagnostics and A/B contracts below remain separate.
 The existing [Worker Call Performance workflow](../../.github/workflows/worker-call-performance.yml)
 can run this deployed mode from a GitHub-hosted runner through SSH to a dedicated
 consumer user on the Ali Worker host. Select `execution_target=external` manually
-on `main`; the default target and scheduled Nightly remain `source`, with their
-existing build, rates, saturation, diagnostics, repetitions and trend behavior.
+on `main`. That branch and the bounded scheduled observation below call the same
+[reusable external consumer](../../.github/workflows/external-performance-consumer.yml);
+they share kit consumption, orchestration and report collection. The default
+target and source Nightly at 03:00 Asia/Shanghai remain `source`, with their
+existing four jobs, three repetitions, build, saturation and trend behavior.
 The external job consumes the pinned published Simulator kit in its own run directory. It does
 not checkout or build source on the consumer, and needs neither Git nor Gradle
 there. Its kit consumption is independent of the persistent Host's current link;
@@ -182,8 +185,10 @@ completed run whose evidence contains unknown responses or HTTP 429. Preserve
 those outcomes without resubmitting their request identities. Before starting,
 reconcile any still-active old campaign process or unknown cleanup result;
 unknown workload outcomes and unknown process cleanup are different evidence.
-External Performance runs serialize in the `release-preview-load` concurrency
-group with cancellation disabled; local Loaded Recovery runs independently.
+Manual External Performance runs serialize in the `release-preview-load`
+Actions concurrency group with cancellation disabled; local Loaded Recovery
+runs independently. The fixed-date schedule below bypasses that waiting queue
+and uses nonblocking admission on the same remote consumer instead.
 The remote campaign budget
 is 45 minutes for one repetition or 100 minutes for three; GitHub allows 120
 minutes, and owned-unit shutdown has a 120-second budget. Cleanup and receipt
@@ -241,6 +246,51 @@ immediately. Failures remain unavailable samples under the existing case oracle;
 the sampler does not hot-retry an unavailable observation. The four public
 receipt files additionally retain safe `preparation` lease/cleanup diagnostics;
 private boot identity, credential paths and Worker/request identities stay local.
+
+### Seven-Date External Observation
+
+The [observation workflow](../../.github/workflows/external-performance-observation.yml)
+is a schedule-only entrypoint, without `workflow_dispatch`. Its seven explicit
+UTC cron entries correspond to 05:30 Asia/Shanghai on **2026-11-20 through
+2026-11-26**, inclusive (21:30 UTC on November 19 through 25). The source
+Performance Nightly remains independent. The existing workload is unchanged:
+two Groups of 5,000 Workers, one repetition, `open` mode, the three Task Any,
+Task Targeted and Direct paths, and rates `500,1000,2000`.
+
+The reviewed [window configuration](../../.github/external-performance-observation.json)
+has schema 1, `windowId=external-10k-20261120`, `startDate=2026-11-20`, `days=7`,
+`localTime=05:30`, `utcOffset=+08:00`, `workersPerGroup=5000` and `repetitions=1`.
+The cron identifies the original target date; the actual event or job arrival
+date cannot replace it. A delayed event may start new work only while still on
+that target Beijing calendar date. Admission also requires the remote consumer's
+nonblocking load lock, confirmed prior cleanup and an exclusive daily claim for
+this window/date. The schedule does not wait behind a manual campaign to run later.
+An admitted campaign retains its existing 45-minute budget and 120-second stop
+budget; this does not add a midnight restart or extend a deadline.
+
+This is a roster of **seven calendar dates, not seven successful results**.
+A cross-date arrival, rerun, missing event, missed date, lock collision or
+unconfirmed previous cleanup admits no new workload. There is no automatic retry,
+catch-up, replacement date or eighth target date. A missing trigger can have no GitHub Run
+or artifact at all: compare actual evidence against all seven configured dates,
+and retain the absence rather than assembling the next seven available reports.
+Do not delete a daily claim or replace request identities to obtain another try.
+Same-Run receipt collection does not grant another load execution.
+Independent manual measurements remain manual evidence; they do not fill an
+absent scheduled date in this window.
+
+The reusable consumer retains the same five-minute preparation cleanup timer,
+owned-process cleanup, immutable Release pins and four-file public evidence
+allowlist. Scheduled artifacts are retained for **30 days**; manual artifacts keep
+their seven-day default. Read case validity, HTTP 429, unknown responses, resource
+evidence and cleanup alongside the GitHub job outcome. Public-path reports remain
+outside source reference history and do not acquire a new performance threshold.
+
+This change delivers configuration and orchestration; it is not evidence that
+the seven-date window has executed or that another public 10k run passed. It
+does not start an immediate campaign, upgrade GCP or a Release, change the ordinary
+20-Worker service, or add a continuous health/testing loop. Existing run evidence
+and the fixed-date roster determine the later observation record.
 
 ### Bootstrap Readiness
 

@@ -1,0 +1,29 @@
+name: External Performance Observation
+
+on:
+  schedule:
+    # UTC dates map to 2026-11-20..26 at 05:30 Asia/Shanghai.
+    # The shared controller checks the complete year/date plan before admission.
+    - cron: '30 21 19 11 *'
+    - cron: '30 21 20 11 *'
+    - cron: '30 21 21 11 *'
+    - cron: '30 21 22 11 *'
+    - cron: '30 21 23 11 *'
+    - cron: '30 21 24 11 *'
+    - cron: '30 21 25 11 *'
+
+permissions:
+  contents: read
+
+# Deliberately no Actions concurrency queue: collisions become missing observations.
+jobs:
+  external-performance:
+    name: Scheduled External Performance (10k Workers)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'schedule'
+    uses: ./.github/workflows/external-performance-consumer.yml
+    with:
+      workers_per_group: 5000
+      repetitions: '1'
+      observation_plan: .github/external-performance-observation.json
+      artifact_retention_days: 30
+    secrets: inherit

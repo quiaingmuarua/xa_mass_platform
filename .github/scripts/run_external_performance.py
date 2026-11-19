@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from contextlib import ExitStack, contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, time as daytime, timedelta, timezone
 import hashlib
 import importlib.util
 import json
@@ -41,6 +41,14 @@ class Failure(RuntimeError):
     """Only fixed, operator-authored text is safe outside the private host."""
 
 
+class LockBusy(Failure):
+    pass
+
+
+class ObservationSkipped(Failure):
+    pass
+
+
 def require(value, reason):
     if not value:
         raise Failure(reason)
@@ -48,6 +56,85 @@ def require(value, reason):
 
 def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def observation_now():
+    return datetime.now(timezone.utc)
+
+
+def observation_bounds(slot):
+    local = timezone(timedelta(hours=8))
+    return (datetime.combine(slot, daytime(5, 30), local).astimezone(timezone.utc),
+            datetime.combine(slot + timedelta(days=1), daytime(), local).astimezone(timezone.utc))
+
+
+def observation_reason(value, current=None):
+    """The copied remote helper validates the same finite slot without another configuration file."""
+    if value is None:
+        return None
+    try:
+        matched = re.fullmatch(r"external-10k-([0-9]{8})", value["windowId"])
+        if matched is None:
+            return "invalid-observation"
+        start = datetime.strptime(matched[1], "%Y%m%d").date()
+        slot = date.fromisoformat(value["slotDate"])
+        before, after = observation_bounds(slot)
+        if not start <= slot < start + timedelta(days=7) or value["notBeforeUTC"] != before.isoformat() or value["notAfterUTC"] != after.isoformat():
+            return "invalid-observation"
+        current = current or observation_now()
+        if current < before:
+            return "before-observation-slot"
+        if current >= after:
+            return "observation-slot-expired"
+        return None
+    except (KeyError, TypeError, ValueError):
+        return "invalid-observation"
+
+
+def observation_slot(path, environment, workers, repetitions):
+    plan = read_json(path)
+    require(isinstance(plan, dict) and plan.get("schemaVersion") == 1 and plan.get("days") == 7
+            and plan.get("localTime") == "05:30" and plan.get("utcOffset") == "+08:00"
+            and plan.get("workersPerGroup") == workers == 5000 and plan.get("repetitions") == repetitions == 1,
+            "Observation plan must declare the fixed seven-day 10k one-repetition window")
+    start = date.fromisoformat(plan["startDate"])
+    require(plan.get("windowId") == "external-10k-" + start.strftime("%Y%m%d"), "Observation window identity differs")
+    value = {"windowId": plan["windowId"], "status": "missing", "reason": "not-an-observation-schedule"}
+    schedule = environment.get("OBSERVATION_SCHEDULE", "")
+    for offset in range(7):
+        slot = start + timedelta(days=offset)
+        before, after = observation_bounds(slot)
+        if schedule == f"{before.minute} {before.hour} {before.day} {before.month} *":
+            current = observation_now()
+            value.update(slotDate=slot.isoformat(), notBeforeUTC=before.isoformat(), notAfterUTC=after.isoformat(),
+                         observedAtUTC=current.isoformat(), actualDelaySeconds=int((current - before).total_seconds()))
+            reason = observation_reason(value, current)
+            if environment.get("GITHUB_EVENT_NAME") != "schedule" or environment.get("GITHUB_REF") != "refs/heads/main":
+                reason = "not-original-main-schedule"
+            if int(environment.get("GITHUB_RUN_ATTEMPT", "1")) != 1:
+                reason = "rerun-attach-only"
+            value.update(status="eligible" if reason is None else "missing", reason=reason)
+            break
+    return value
+
+
+def observation_output(admitted):
+    path = os.environ.get("GITHUB_OUTPUT")
+    if path:
+        with Path(path).open("a", encoding="utf-8") as target:
+            target.write("observation_admitted=" + ("true" if admitted else "false") + "\n")
+
+
+def missing_observation(identifier, value, reason, receipt=None):
+    value = dict(value, status="missing", reason=reason)
+    return {"summary.json": {"status": "missing", "caseCounts": {}, "observation": value},
+            "summary.md": ("# External Performance observation\n\nStatus: **missing**; no performance pass is claimed.\n\n"
+                           f"Window: `{value.get('windowId')}`. Planned local date: `{value.get('slotDate', 'unmatched')}`. "
+                           f"Reason: `{reason}`. Actual delay seconds: `{value.get('actualDelaySeconds', 'unavailable')}`.\n"),
+            "consumption.json": {"status": "not-run", "observation": value},
+            "orchestration.json": {"runId": identifier, "state": "observation-skipped", "observation": value,
+                                   "receipt": receipt, "cleanupRequired": bool(receipt and (
+                                       receipt.get("privateInputsRemoved") is not True or receipt.get("finalizationFailures") != []))}}
 
 
 def run_id(value):
@@ -197,6 +284,8 @@ def remote_status(identifier):
     receipt = root / "receipt.json"
     if receipt.is_file():
         return {"state": "finished", "receipt": read_json(receipt)}
+    if (root / "observation-skipped.json").is_file():
+        return dict(read_json(root / "observation-skipped.json"), state="observation-skipped")
     if (root / "prepare-lease.json").exists() and read_json(root / "prepare-lease.json").get("bootId") != current_boot_id():
         return {"state": "unknown"}
     if not (root / "state.json").is_file():
@@ -223,9 +312,103 @@ def locked(path, *, wait_seconds=0):
                 fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
-                require(time.monotonic() < deadline, "Another consumer or control operation owns the lock")
+                if time.monotonic() >= deadline:
+                    raise LockBusy("Another consumer or control operation owns the lock")
                 time.sleep(.2)
         yield
+
+
+def latest_prior_run(root):
+    flags = ("state.json", "prepare-lease.json", "start-request.json", "receipt.json")
+    candidates = []
+    for candidate in root.parent.iterdir():
+        if candidate == root or not candidate.is_dir() or candidate.is_symlink() or not re.fullmatch(r"[0-9]{1,20}", candidate.name):
+            continue
+        present = [candidate / name for name in flags if (candidate / name).exists()]
+        if not present:
+            continue
+        stamp = None
+        for filename, field in (("state.json", "preparedAt"), ("prepare-lease.json", "requestedAt"),
+                                ("start-request.json", "requestedAt"), ("receipt.json", "finishedAt")):
+            path = candidate / filename
+            if path.is_file():
+                try:
+                    value = datetime.fromisoformat(read_json(path).get(field, "").replace("Z", "+00:00"))
+                    if value.tzinfo is not None:
+                        stamp = value.timestamp()
+                        break
+                except (OSError, TypeError, ValueError, AttributeError):
+                    pass
+        # Historical acceptance fixtures may use very large synthetic Run IDs.
+        candidates.append((stamp if stamp is not None else max(path.stat().st_mtime for path in present), candidate.name, candidate))
+    return max(candidates)[2] if candidates else None
+
+
+def prior_admission_reason(root, *, scheduled):
+    try:
+        prior = latest_prior_run(root)
+    except (OSError, ValueError, TypeError):
+        return "prior-cleanup-unconfirmed"
+    if prior is None:
+        return None
+    if not (prior / "receipt.json").is_file():
+        return "prior-reservation-pending"
+    try:
+        receipt = read_json(prior / "receipt.json")
+        status = unit_status(prior.name)
+        active = status.get("ActiveState")
+        if active in {"activating", "deactivating"} or (active == "active" and status.get("SubState") != "exited"):
+            return "prior-unit-running"
+        if status.get("LoadState") not in {"loaded", "not-found"} or not (active in {"inactive", "failed"}
+                or (active == "active" and status.get("SubState") == "exited")):
+            return "prior-unit-state-unconfirmed"
+        if not scheduled:
+            return None
+        if receipt.get("privateInputsRemoved") is not True or receipt.get("finalizationFailures") != []:
+            return "prior-cleanup-unconfirmed"
+        if not any((prior / name).exists() for name in ("start-request.json", "execution.json", "result")):
+            return None  # Clean finalization before any start cannot have admitted load.
+        cleanup = read_json(prior / "result/evidence/lane-summary.json").get("cleanup", {})
+        if (cleanup.get("ownedProcessesStopped") is not True or cleanup.get("privateCredentialCopiesRemoved") is not True
+                or cleanup.get("workerConnections", {}).get("status") != "confirmed" or cleanup.get("errors") != []):
+            return "prior-cleanup-unconfirmed"
+        return None
+    except (OSError, ValueError, TypeError, AttributeError, Failure, subprocess.SubprocessError):
+        return "prior-cleanup-unconfirmed"
+
+
+def claim_observation(root, identifier, value):
+    reason = observation_reason(value)
+    if reason:
+        raise ObservationSkipped(reason)
+    directory = root.parent / "observation-windows" / value["windowId"]
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    claim = directory / (value["slotDate"] + ".json")
+    try:
+        claimed = observation_now()
+        write_json(claim, {"runId": identifier, "windowId": value["windowId"], "slotDate": value["slotDate"],
+                           "claimedAtUTC": claimed.isoformat()}, exclusive=True)
+        value.update(claimOutcome="claimed", claimedAtUTC=claimed.isoformat())
+    except FileExistsError:
+        raise ObservationSkipped("observation-slot-already-claimed") from None
+
+
+def skipped_preparation(root, value, reason):
+    record = {"state": "observation-skipped", "reason": reason, "observation": dict(value, status="missing", reason=reason),
+              "cleanupConfirmed": True}
+    path = root / "observation-skipped.json"
+    if not path.exists():
+        write_json(path, record, exclusive=True)
+    return record
+
+
+def reject_late_observation_locked(identifier, root, private, value, reason):
+    if not (root / "stop-request.json").exists():
+        write_json(root / "stop-request.json", {"requestedAt": now(), "reason": reason}, exclusive=True)
+    record = skipped_preparation(root, value, reason)
+    receipt = finalize_locked(identifier, root, private)
+    return dict(record, receipt=receipt, cleanupConfirmed=(receipt.get("privateInputsRemoved") is True
+                                                          and receipt.get("finalizationFailures") == []))
 
 
 def validate_config(config, server_tag, server_commit, workers):
@@ -302,33 +485,59 @@ def remote_prepare(identifier, envelope):
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     require(not root.is_symlink() and root.stat().st_uid == os.getuid(), "Run directory ownership differs")
     os.chmod(root, 0o700)
-    with locked(root / "control.lock"):
-        if any((root / name).exists() for name in ("state.json", "start-request.json", "stop-request.json", "receipt.json", "prepare-lease.json")):
-            return remote_status(identifier)
-        config = validate_config(envelope["deployment"], envelope["serverTag"], envelope["serverCommit"], envelope["workers"])
-        # An active campaign holds this same global lock throughout execution.
-        with locked(root.parent / "performance.lock"):
-            budget = preflight(config, envelope["workers"], envelope["budget"])
-        key, gateway = envelope["accessKey"].strip(), envelope["gateway"]
-        require(re.fullmatch(r"xak_[A-Za-z0-9_-]{8,128}", key), "Invalid private operator input")
-        require(set(gateway) == {"keyId", "secret"} and all(isinstance(v, str) and v for v in gateway.values())
-                and not any(ord(c) < 32 for v in gateway.values() for c in v), "Invalid private gateway input")
-        kit, manifest = extract_kit(root / "kit.zip", root, envelope["tag"], envelope["commit"], envelope["kitSha256"])
-        arm_prepare_cleanup(identifier, root)
-        require(not preparation_expired(root), "Preparation cleanup deadline expired before private input")
-        private.mkdir(parents=True, exist_ok=False, mode=0o700)
-        write_json(private / "gateway.json", gateway, exclusive=True)
-        descriptor = os.open(private / "access-key.txt", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(descriptor, "w") as target:
-            target.write(key + "\n")
-        config = dict(config, workersPerGroup=envelope["workers"], accessKeyFile=str(private / "access-key.txt"), gatewayCredentialFile=str(private / "gateway.json"))
-        write_json(root / "deployment.json", config, exclusive=True)
-        state = {"runId": identifier, "firstAttempt": envelope["attempt"], "tag": envelope["tag"],
-                 "commit": envelope["commit"], "workersPerGroup": envelope["workers"], "repetitions": envelope["repetitions"],
-                 "kitRoot": str(kit), "manifest": manifest, "consumption": envelope["consumption"],
-                 "preflight": budget, "preparedAt": now(), "github": envelope.get("github", {}),
-                 "serverTag": envelope["serverTag"], "serverCommit": envelope["serverCommit"]}
-        write_json(root / "state.json", state, exclusive=True)
+    observation = envelope.get("observation")
+    entered_control = False
+    try:
+        with locked(root / "control.lock"):
+            entered_control = True
+            if any((root / name).exists() for name in ("state.json", "start-request.json", "stop-request.json", "receipt.json", "prepare-lease.json")):
+                return remote_status(identifier)
+            if observation is not None:
+                require(envelope["workers"] == 5000 and envelope["repetitions"] == 1, "Observation scale differs")
+                claim_observation(root, identifier, observation)
+                write_json(root / "observation.json", observation, exclusive=True)
+            config = validate_config(envelope["deployment"], envelope["serverTag"], envelope["serverCommit"], envelope["workers"])
+            # The entire preparation publishes one reservation before releasing this nonblocking lease.
+            with locked(root.parent / "performance.lock"):
+                reason = prior_admission_reason(root, scheduled=observation is not None)
+                if reason:
+                    if observation is not None:
+                        raise ObservationSkipped(reason)
+                    raise Failure("A prior consumer reservation remains unresolved")
+                if observation is not None and observation_reason(observation):
+                    raise ObservationSkipped(observation_reason(observation))
+                budget = preflight(config, envelope["workers"], envelope["budget"])
+                key, gateway = envelope["accessKey"].strip(), envelope["gateway"]
+                require(re.fullmatch(r"xak_[A-Za-z0-9_-]{8,128}", key), "Invalid private operator input")
+                require(set(gateway) == {"keyId", "secret"} and all(isinstance(v, str) and v for v in gateway.values())
+                        and not any(ord(c) < 32 for v in gateway.values() for c in v), "Invalid private gateway input")
+                kit, manifest = extract_kit(root / "kit.zip", root, envelope["tag"], envelope["commit"], envelope["kitSha256"])
+                if observation is not None and observation_reason(observation):
+                    raise ObservationSkipped(observation_reason(observation))
+                arm_prepare_cleanup(identifier, root)
+                require(not preparation_expired(root), "Preparation cleanup deadline expired before private input")
+                if observation is not None and observation_reason(observation):
+                    raise ObservationSkipped(observation_reason(observation))
+                private.mkdir(parents=True, exist_ok=False, mode=0o700)
+                write_json(private / "gateway.json", gateway, exclusive=True)
+                descriptor = os.open(private / "access-key.txt", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(descriptor, "w") as target:
+                    target.write(key + "\n")
+                config = dict(config, workersPerGroup=envelope["workers"], accessKeyFile=str(private / "access-key.txt"), gatewayCredentialFile=str(private / "gateway.json"))
+                write_json(root / "deployment.json", config, exclusive=True)
+                state = {"runId": identifier, "firstAttempt": envelope["attempt"], "tag": envelope["tag"],
+                         "commit": envelope["commit"], "workersPerGroup": envelope["workers"], "repetitions": envelope["repetitions"],
+                         "kitRoot": str(kit), "manifest": manifest, "consumption": envelope["consumption"],
+                         "preflight": budget, "preparedAt": now(), "github": envelope.get("github", {}),
+                         "serverTag": envelope["serverTag"], "serverCommit": envelope["serverCommit"]}
+                if observation is not None:
+                    state["observation"] = observation
+                write_json(root / "state.json", state, exclusive=True)
+    except (ObservationSkipped, LockBusy) as error:
+        if observation is None or not entered_control:
+            raise
+        reason = "consumer-busy" if isinstance(error, LockBusy) else str(error)
+        return skipped_preparation(root, observation, reason)
     return {"state": "prepared", "preflight": budget}
 
 
@@ -355,12 +564,17 @@ def remote_start(identifier):
             value, disarm = remote_status(identifier), True
         else:
             state = read_json(root / "state.json")
-            require(not (root / "result").exists(), "An original result already exists; never restart it")
-            write_json(root / "start-request.json", {"requestedAt": now(), "runId": identifier}, exclusive=True)
-            # No retry after this point, including a lost systemd-run/SSH acknowledgement.
-            call(start_command(identifier, root, state["repetitions"]), env=user_environment())
-            value = remote_status(identifier)
-            disarm = value["state"] in {"running", "finished"}
+            reason = observation_reason(state.get("observation"))
+            if reason:
+                value = reject_late_observation_locked(identifier, root, private, state["observation"], reason)
+                disarm = True
+            else:
+                require(not (root / "result").exists(), "An original result already exists; never restart it")
+                write_json(root / "start-request.json", {"requestedAt": now(), "runId": identifier}, exclusive=True)
+                # No retry after this point, including a lost systemd-run/SSH acknowledgement.
+                call(start_command(identifier, root, state["repetitions"]), env=user_environment())
+                value = remote_status(identifier)
+                disarm = value["state"] in {"running", "finished"}
     if disarm:
         stop_prepare_cleanup(identifier, root)
     return value
@@ -397,6 +611,8 @@ def finalize_locked(identifier, root, private):
                "finalizationFailures": failures}
     if (root / "prepare-expired.json").exists():
         receipt["stopReason"] = "prepare-expired"
+    if (root / "observation.json").exists():
+        receipt["observation"] = read_json(root / "observation.json")
     write_json(root / "receipt.json", receipt, exclusive=True)
     return receipt
 
@@ -456,6 +672,11 @@ def remote_execute(identifier):
             with locked(root / "control.lock", wait_seconds=90):
                 require((root / "start-request.json").exists() and not (root / "receipt.json").exists()
                         and not (root / "stop-request.json").exists() and not (root / "result").exists(), "Original work cannot be restarted")
+                reason = observation_reason(state.get("observation"))
+                if reason:
+                    _, private = paths(identifier)
+                    reject_late_observation_locked(identifier, root, private, state["observation"], reason)
+                    raise ObservationSkipped(reason)
                 command = [sys.executable, "-u", str(Path(state["kitRoot"]) / ENTRY), "--deployment-config", str(root / "deployment.json"),
                            "--lane-rates", "500,1000,2000", "--lane-modes", "open", "--repetitions", str(state["repetitions"]),
                            "--lane-attribution", "off", "--skip-build", "--output-root", str(root / "result")]
@@ -463,7 +684,17 @@ def remote_execute(identifier):
                 signal.signal(signal.SIGTERM, lambda *_: stopping.append(True))
                 signal.signal(signal.SIGINT, lambda *_: stopping.append(True))
                 log = resources.enter_context((root / "runner.log").open("wb"))
+                if state.get("observation") is not None:
+                    started = observation_now()
+                    observation = dict(state["observation"], status="started", startedAtUTC=started.isoformat(),
+                                       actualDelaySeconds=int((started - datetime.fromisoformat(state["observation"]["notBeforeUTC"])).total_seconds()))
+                    write_json(root / "observation.json", observation)
                 # Serialize admission and spawn with expiry's unit snapshot/fence.
+                reason = observation_reason(state.get("observation"))
+                if reason:
+                    _, private = paths(identifier)
+                    reject_late_observation_locked(identifier, root, private, state["observation"], reason)
+                    raise ObservationSkipped(reason)
                 process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
             forwarded = False
             while process.poll() is None:
@@ -472,6 +703,8 @@ def remote_execute(identifier):
                     forwarded = True
                 time.sleep(.25)
             write_json(root / "execution.json", {"exitCode": process.returncode, "finishedAt": now()}, exclusive=True)
+    except ObservationSkipped:
+        pass
     except Exception as error:
         if not (root / "execution.json").exists():
             write_json(root / "execution.json", {"exitCode": 1, "failureType": type(error).__name__, "finishedAt": now()}, exclusive=True)
@@ -590,6 +823,19 @@ def remote_collect(identifier):
     state = read_json(root / "state.json") if (root / "state.json").exists() else {}
     result = root / "result"
     source = result / "evidence/lane-summary.json"
+    observation_path = root / "observation.json"
+    observation = read_json(observation_path) if observation_path.exists() else state.get("observation")
+    skipped = root / "observation-skipped.json"
+    if skipped.exists() and not source.exists():
+        value = read_json(skipped)
+        status = remote_status(identifier)
+        receipt = status.get("receipt")
+        collection = missing_observation(identifier, value["observation"], value["reason"], receipt)
+        collection["orchestration.json"]["cleanupConfirmed"] = (
+            receipt.get("privateInputsRemoved") is True and receipt.get("finalizationFailures") == []
+            if receipt is not None else value.get("cleanupConfirmed") is True)
+        collection["consumption.json"].update(scrub(state.get("consumption", {})))
+        return collection
     try:
         raw = read_json(source) if source.exists() else {}
         parse_failure = None
@@ -629,8 +875,13 @@ def remote_collect(identifier):
     markdown = result / "evidence/summary.md"
     content = markdown.read_text(encoding="utf-8", errors="replace") if markdown.exists() else "# External Performance\n\nOriginal summary unavailable; outcome unknown.\n"
     content = scrub(content)
+    if observation is not None:
+        summary["observation"] = observation
+        content += ("\n\nObservation window: `" + observation["windowId"] + "`; planned local date: `" + observation["slotDate"]
+                    + "`; actual delay seconds: `" + str(observation.get("actualDelaySeconds", "unavailable")) + "`.\n")
     return {"summary.json": scrub(summary), "summary.md": content, "consumption.json": scrub(state.get("consumption", {})),
-            "orchestration.json": {"runId": identifier, "state": status["state"], "receipt": status.get("receipt"), "unit": status.get("unit")}}
+            "orchestration.json": {"runId": identifier, "state": status["state"], "receipt": status.get("receipt"), "unit": status.get("unit"),
+                                   **({"observation": observation} if observation is not None else {})}}
 
 
 def remote_main(arguments):
@@ -710,6 +961,38 @@ def write_collection(directory, collection):
             write_json(directory / filename, value)
 
 
+def publish_missing(directory, identifier, value, reason, receipt=None, *, cleanup_confirmed=True, orchestration_updates=None):
+    collection = missing_observation(identifier, value, reason, receipt)
+    if not cleanup_confirmed:
+        collection["consumption.json"]["status"] = "unconfirmed"
+        collection["orchestration.json"].update(state="unconfirmed", cleanupRequired=True)
+    previous_summary = None
+    try:
+        if (directory / "summary.json").is_file():
+            previous_summary = read_json(directory / "summary.json")
+    except (OSError, ValueError):
+        pass
+    if isinstance(previous_summary, dict) and previous_summary.get("status") != "missing":
+        # A later stop/collect failure must never replace already collected case evidence.
+        path = directory / "orchestration.json"
+        try:
+            record = read_json(path) if path.exists() else {}
+        except (OSError, ValueError):
+            record = {}
+        if not isinstance(record, dict):
+            record = {}
+        record.update(controllerStatus="unconfirmed", controllerFailureReason=reason, cleanupRequired=not cleanup_confirmed)
+        if not cleanup_confirmed:
+            record["state"] = "unconfirmed"
+        record.update(orchestration_updates or {})
+        write_json(path, scrub(record))
+    else:
+        collection["orchestration.json"].update(orchestration_updates or {})
+        write_collection(directory, collection)
+    observation_output(not cleanup_confirmed)
+    return 0 if cleanup_confirmed else 1
+
+
 def controller(arguments):
     environment = os.environ
     identifier = run_id(env_required(environment, "GITHUB_RUN_ID"))
@@ -718,7 +1001,19 @@ def controller(arguments):
     os.umask(0o077)
     interrupted = []
     previous = {sig: signal.signal(sig, lambda *_: interrupted.append(True)) for sig in (signal.SIGTERM, signal.SIGINT)}
+    observation, admission_possible = None, False
     try:
+        observation_path = getattr(arguments, "observation_plan", None)
+        observation = (observation_slot(observation_path, environment, arguments.workers_per_group, arguments.repetitions)
+                       if observation_path is not None else None)
+        if observation is not None:
+            observation_output(False)
+            if arguments.action == "run" and attempt == 1 and observation["status"] != "eligible":
+                return publish_missing(output, identifier, observation, observation["reason"])
+            if attempt != 1 or arguments.action != "run":
+                # A failed query cannot prove that the original Run has no live campaign.
+                admission_possible = True
+                observation_output(True)
         with tempfile.TemporaryDirectory(prefix="xa-performance-controller-") as temporary:
             private = Path(temporary)
             transport = Transport(private, environment)
@@ -729,7 +1024,12 @@ def controller(arguments):
             helper = root + "/orchestrator.py"
             attach = bootstrap["helper"]
             start_acknowledged = True
+            if observation is not None and attach:
+                admission_possible = True
+                observation_output(True)  # Attach/stop must still finalize the original Run, never prepare a second one.
             if not attach:
+                if observation is not None and (arguments.action != "run" or attempt != 1):
+                    return publish_missing(output, identifier, observation, "original-observation-unavailable", cleanup_confirmed=False)
                 require(arguments.action == "run" and attempt == 1, "Original helper is missing; outcome unknown, never restart")
                 tag, commit = env_required(environment, "RELEASE_TAG"), env_required(environment, "RELEASE_COMMIT")
                 server_tag, server_commit = env_required(environment, "SERVER_RELEASE_TAG"), env_required(environment, "SERVER_RELEASE_COMMIT")
@@ -752,14 +1052,28 @@ def controller(arguments):
                             "gateway": {"keyId": env_required(environment, "WORKER_GATEWAY_KEY_ID"), "secret": env_required(environment, "WORKER_GATEWAY_SECRET")}}
                 envelope["github"] = {"repository": arguments.repository, "runUrl": f"https://github.com/{arguments.repository}/actions/runs/{identifier}",
                                       "controllerCommit": environment.get("GITHUB_SHA"), "actor": environment.get("GITHUB_ACTOR")}
+                if observation is not None:
+                    reason = observation_reason(observation)
+                    if reason:
+                        return publish_missing(output, identifier, observation, reason)
+                    envelope["observation"] = observation
                 require(not interrupted, "Controller cancelled before private preparation")
-                remote_call(transport, helper, "prepare", identifier, json.dumps(envelope).encode(), timeout=180)
+                if observation is not None:
+                    admission_possible = True
+                    observation_output(True)  # An unknown SSH reply may follow credential writes; finalization must run.
+                prepared = remote_call(transport, helper, "prepare", identifier, json.dumps(envelope).encode(), timeout=180)
+                if prepared.get("state") == "observation-skipped":
+                    return publish_missing(output, identifier, prepared.get("observation", observation), prepared["reason"],
+                                           prepared.get("receipt"), cleanup_confirmed=prepared.get("cleanupConfirmed") is True)
                 # Exactly one start request. Its remote marker is written before systemd-run.
                 if interrupted:
                     remote_call(transport, helper, "stop", identifier, timeout=240)
-                else:
+                elif prepared.get("state") == "prepared":
                     try:
-                        remote_call(transport, helper, "start", identifier)
+                        started = remote_call(transport, helper, "start", identifier)
+                        if started.get("state") == "observation-skipped":
+                            return publish_missing(output, identifier, started.get("observation", observation), started["reason"],
+                                                   started.get("receipt"), cleanup_confirmed=started.get("cleanupConfirmed") is True)
                     except (Failure, subprocess.SubprocessError, ValueError):
                         start_acknowledged = False  # Reconnect only to status; never resend start.
             if arguments.action == "stop":
@@ -776,18 +1090,38 @@ def controller(arguments):
                         require(time.monotonic() < deadline, "Original unit could not be observed; no restart was sent")
                         time.sleep(10)
                         continue
-                    if status["state"] in {"finished", "unknown", "absent", "prepared"}:
+                    if status["state"] in {"finished", "unknown", "absent", "prepared", "observation-skipped"}:
                         break
                     require(time.monotonic() < deadline, "Controller observation deadline exceeded")
                     time.sleep(15)
             collection = remote_call(transport, helper, "collect", identifier, timeout=180)
             collection["orchestration.json"].update(controllerAttempt=attempt, attached=attach, controllerCancelled=bool(interrupted),
                                                    startAcknowledged=start_acknowledged)
+            if observation is not None:
+                observed = collection["orchestration.json"].get("observation", observation)
+                collection["orchestration.json"]["observation"] = observed
+                collection["summary.json"].setdefault("observation", observed)
+                if "Observation window:" not in collection["summary.md"]:
+                    collection["summary.md"] += ("\nObservation window: `" + observed["windowId"] + "`; planned local date: `"
+                                                 + str(observed.get("slotDate", "unmatched")) + "`; actual delay seconds: `"
+                                                 + str(observed.get("actualDelaySeconds", "unavailable")) + "`.\n")
             write_collection(output, collection)
             receipt = collection["orchestration.json"].get("receipt") or {}
+            if observation is not None and collection["summary.json"].get("status") == "missing":
+                clean = (receipt.get("privateInputsRemoved") is True and receipt.get("finalizationFailures") == []
+                         if receipt else collection["orchestration.json"].get("cleanupConfirmed") is True)
+                observation_output(not clean)
+                return 0 if clean else 1
             return 0 if receipt.get("status") == "passed" and not interrupted else 1
     except Exception as error:
         output.mkdir(parents=True, exist_ok=True)
+        if observation is not None:
+            reason = "controller-outcome-unconfirmed" if admission_possible else "controller-before-admission"
+            publish_missing(output, identifier, observation, reason, cleanup_confirmed=not admission_possible,
+                    orchestration_updates={"controllerAttempt": attempt, "controllerStatus": "unconfirmed",
+                        "controllerFailureType": type(error).__name__, "controllerCancelled": bool(interrupted),
+                        "cleanupRequired": admission_possible})
+            raise
         path = output / "orchestration.json"
         previous_record = read_json(path) if path.exists() else {}
         previous_record.update(runId=identifier, controllerAttempt=attempt, controllerStatus="unconfirmed",
@@ -815,6 +1149,7 @@ def main(argv=None):
     parser.add_argument("--repetitions", type=int, choices=(1, 3), required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--action", choices=("run", "stop", "collect"), default="run")
+    parser.add_argument("--observation-plan", type=Path, help="Optional finite scheduled-observation plan; manual execution is unchanged")
     arguments = parser.parse_args(argv)
     require(1 <= arguments.workers_per_group <= 15000, "Worker quantity is outside the existing Host bound")
     return controller(arguments)
