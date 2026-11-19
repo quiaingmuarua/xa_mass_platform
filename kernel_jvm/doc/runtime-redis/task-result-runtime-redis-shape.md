@@ -46,8 +46,10 @@ supplies their meaning. Ordinary execution uses the Server-supplied success tag
 6 and the Result Policy's observed time. Business observations retain their
 reported millisecond time and tag.
 
-One bounded Lua first checks the Task descriptor dataPhase is OPEN, then validates
-existing values and conditionally writes its Result HASH batch:
+One bounded Lua first checks the Task descriptor dataPhase is OPEN. For PARK RPC
+data, each ID must also have an Item Score in that same commit; missing retired
+identities are ignored. It then validates existing values and conditionally
+writes its Result HASH batch:
 
 - a success may replace a failed Result;
 - a higher tag replaces a lower tag, even with an earlier time;
@@ -55,8 +57,8 @@ existing values and conditionally writes its Result HASH batch:
 - equal or smaller targets do not write;
 - corrupt or legacy success values fail as Owner data errors and are not overwritten.
 
-Terminal failure uses the same atomic Task data fence around bounded `HSETNX` and cannot replace any
-observed Result. Success is canonically encoded before storage. No companion
+Terminal failure uses the same atomic Task data fence and RPC Score-membership
+check around bounded `HSETNX` and cannot replace any observed Result. Success is canonically encoded before storage. No companion
 classification key, version counter, reply history or separate content queue
 exists. `TaskItemResult(code, opaqueResultPayload)` remains the read projection;
 ordering fields are validated by the Owner and are not exposed in Server Result
@@ -139,6 +141,15 @@ Frozen or removed Task data makes late writes normal no-ops, including ordinary
 execution success, so the existing exact Worker release still runs. The fence may
 land between independent Score and Result commits; no reconciliation is implied.
 No ACK, replay, Result-to-Score repair or cross-owner compensation is provided.
+
+The opt-in [RPC terminal-item policy](../../../server_jvm/README.md#rpc-terminal-item-retention)
+is independent of Result take/idle expiration. It can release old input while
+Score and Result remain, and finally reclaim all three under an unchanged terminal
+Score. An unconsumed Result may therefore be removed by that configured policy
+before the whole HASH's idle TTL. Missing input alone does not reject a valid
+Result; missing retired RPC Score does. Ignored late success still reaches the
+original exact Worker lease-release path. The GC cutover may fall between the
+existing independent Score/Result commits; no repair or replay is introduced.
 
 ## Related Owners And Migration
 

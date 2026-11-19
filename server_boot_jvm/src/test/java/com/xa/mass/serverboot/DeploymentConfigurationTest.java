@@ -9,6 +9,8 @@ import com.xa.mass.server.delivery.adapter.ServerWorkerDeliveryAdapterProperties
 import com.xa.mass.server.delivery.directcall.DirectCallProperties;
 import com.xa.mass.server.task.TaskItemOutcomeProperties;
 import com.xa.mass.server.task.call.TaskRpcProperties;
+import com.xa.mass.server.task.retention.TaskRetentionProperties;
+import java.time.Duration;
 import com.xa.mass.server.worker.endpoint.WorkerEndpointDirectory;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,7 +33,7 @@ class DeploymentConfigurationTest {
     @EnableConfigurationProperties({KernelPacerProperties.class, XaMassRedisProperties.class,
             ServerWorkerAssemblyProperties.class, ServerWorkerDeliveryAdapterProperties.class,
             WorkerEndpointDirectory.class, TaskRpcProperties.class, DirectCallProperties.class,
-            TaskItemOutcomeProperties.class, com.xa.mass.server.project.ProjectAssemblyProperties.class})
+            TaskItemOutcomeProperties.class, TaskRetentionProperties.class, com.xa.mass.server.project.ProjectAssemblyProperties.class})
     @org.springframework.context.annotation.Import(com.xa.mass.server.task.call.RefillTargetConfigurationConverter.class)
     static class BoundConfiguration {}
 
@@ -83,6 +85,10 @@ class DeploymentConfigurationTest {
                     assertThat(environment.getProperty("springdoc.paths-to-match")).isEqualTo("/api/v1/**");
                     assertThat(environment.getProperty("scalar.path")).isEqualTo("/scalar");
                     assertThat(context.getBean(TaskRpcProperties.class).maxWaitTimeoutMillis()).isEqualTo(60000);
+                    var retention = context.getBean(TaskRetentionProperties.class);
+                    assertThat(retention.rpcItemRetentionEnabled()).isFalse();
+                    assertThat(retention.rpcInputRetention()).isEqualTo(Duration.ofHours(1));
+                    assertThat(retention.rpcTerminalRetention()).isEqualTo(Duration.ofHours(24));
                     assertThat(context.getBean(DirectCallProperties.class).maxPendingCalls()).isEqualTo(10000);
                     assertThat(context.getBean(WorkerEndpointDirectory.class).endpoints()).containsKey("system-polling");
                     if (profile.equals("default")) assertThat(adapters).isEmpty();
@@ -166,9 +172,27 @@ class DeploymentConfigurationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"xa.mass.kernel-pacer.preset=INVALID",
-            "xa.mass.worker-delivery.adapter.instances.runtime-websocket.report-queue-capacity=0"})
+            "xa.mass.worker-delivery.adapter.instances.runtime-websocket.report-queue-capacity=0",
+            "xa.mass.task-retention.rpc-input-retention=0ms",
+            "xa.mass.task-retention.rpc-input-retention=24h",
+            "xa.mass.task-retention.rpc-terminal-retention=30m"})
     void invalidDeploymentInputStillFailsBinding(String override) {
         configuration("consumer", Map.of()).withPropertyValues(override)
                 .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test void rpcItemRetentionRequiresAnExplicitOptInAndRetainsParentEnablement() {
+        configuration("consumer", Map.of()).withPropertyValues(
+                "xa.mass.task-retention.rpc-item-retention-enabled=true",
+                "xa.mass.task-retention.rpc-input-retention=2h",
+                "xa.mass.task-retention.rpc-terminal-retention=12h",
+                "xa.mass.task-retention.enabled=false").run(context -> {
+            assertThat(context).hasNotFailed();
+            var retention = context.getBean(TaskRetentionProperties.class);
+            assertThat(retention.rpcItemRetentionEnabled()).isTrue();
+            assertThat(retention.enabled()).isFalse();
+            assertThat(retention.rpcInputRetention()).isEqualTo(Duration.ofHours(2));
+            assertThat(retention.rpcTerminalRetention()).isEqualTo(Duration.ofHours(12));
+        });
     }
 }

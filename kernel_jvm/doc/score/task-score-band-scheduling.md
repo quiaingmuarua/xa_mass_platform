@@ -241,6 +241,20 @@ This is not a new terminal queue, scheduling root or public list pagination.
 The caller checks finite disposition and applies retention policy. Task Score is
 kept until all Task resources, application associations and archive files are removed.
 
+## Parked RPC Maintenance Observation
+
+`scanParkedTasks(cursor, limit)` reads the private idle-park coordinate in
+bounded pages of 1..1000 rows. `TaskScoreState.isIdleParked()` interprets that
+coordinate inside this Owner; callers do not reconstruct it. Its opaque
+`(score, taskId)` keyset remains valid after a cursor member is removed and
+across more than one page of equal Scores. Skipped corrupt rows still count in
+`scannedCount`.
+
+The page is an observation, not a reservation or a new scheduling root. Server
+checks raw RPC ownership, OPEN data and current parked status before each
+bounded Item reclamation. This maintenance does not mutate Task Score, close
+the Task or change its existing append/unpark lifecycle.
+
 ## Runtime Preview
 
 `preview_score_states(1..1000)` performs one descending ZSET read. It is a

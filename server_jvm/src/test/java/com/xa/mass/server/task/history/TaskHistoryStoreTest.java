@@ -26,7 +26,7 @@ class TaskHistoryStoreTest {
     private TaskRetentionProperties properties;
     @BeforeEach void open() throws Exception {
         properties = new TaskRetentionProperties(true, Duration.ZERO, Duration.ofDays(7), Duration.ofDays(30),
-                Duration.ofHours(1), directory.resolve("历史 data.sqlite"));
+                Duration.ofHours(1), directory.resolve("历史 data.sqlite"), false, Duration.ofHours(1), Duration.ofHours(24));
         store = new TaskHistoryStore(JsonMapper.builder().build(), properties);
         service = new TaskHistoryService(store, space, JsonMapper.builder().build(), new com.xa.mass.server.operation.OperationGuard(), now::get);
     }
@@ -162,7 +162,7 @@ class TaskHistoryStoreTest {
     }
     @Test void frozenIdentityAndRetentionConfigurationDoNotSilentlyChange() throws Exception {
         assertThat(TaskHistoryStore.historyId(space.base(), "same", 1)).isNotEqualTo(TaskHistoryStore.historyId(space.base(), "same", 2));
-        assertThatThrownBy(() -> new TaskRetentionProperties(true, Duration.ofDays(1), Duration.ofDays(7), Duration.ofDays(6), Duration.ofHours(1), directory.resolve("x")))
+        assertThatThrownBy(() -> new TaskRetentionProperties(true, Duration.ofDays(1), Duration.ofDays(7), Duration.ofDays(6), Duration.ofHours(1), directory.resolve("x"), false, Duration.ofHours(1), Duration.ofHours(24)))
                 .isInstanceOf(IllegalArgumentException.class);
         var first = snapshot("same"); store.begin(first);
         var changed = new TaskHistoryStore.Snapshot(first.historyId(), first.scope(), first.task(), first.scoreBand(), first.terminatedAtMillis(), first.frozenAtMillis(), first.expiresAtMillis() + 1, first.counts());

@@ -105,6 +105,15 @@ public interface TaskScoreBandCore {
         throw new com.xa.mass.kernel.KernelOperationNotImplementedException("TaskScoreBandCore", "scanTerminalTasks");
     }
 
+    /** Owner-qualified idle parks with stable keyset progress; corrupt rows consume the page budget. */
+    default ParkedTaskPage scanParkedTasks(String cursor, int limit) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("TaskScoreBandCore", "scanParkedTasks");
+    }
+
+    record ParkedTaskPage(List<TaskScoreState> tasks, String nextCursor, int scannedCount) {
+        public ParkedTaskPage { tasks = List.copyOf(tasks); }
+    }
+
     record TerminalTaskPage(List<TaskScoreState> tasks, String nextCursor) {
         public TerminalTaskPage { tasks = List.copyOf(tasks); }
     }
@@ -170,6 +179,13 @@ public interface TaskScoreBandCore {
                     && timeMillis == INITIAL_TIME_MILLIS
                     && suffix >= MIN_SUFFIX
                     && suffix <= MAX_SUFFIX;
+        }
+
+        public boolean isIdleParked() {
+            return band == TaskScoreBand.RUNNING_VISIBLE
+                    && timeMillis != null && suffix != null
+                    && timeMillis == MAX_TIME_MILLIS - SLOT_MILLIS
+                    && suffix == MAX_SUFFIX;
         }
 
     }

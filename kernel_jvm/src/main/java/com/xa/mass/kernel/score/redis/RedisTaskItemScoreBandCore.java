@@ -12,6 +12,7 @@ import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -77,7 +78,30 @@ public final class RedisTaskItemScoreBandCore
             """;
     private static final String INITIALIZE_SCRIPT = """
             if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return -1 end
+            if redis.call('HGET', KEYS[2], 'idleDisposition') == 'PARK_WHEN_IDLE' then
+              if redis.call('ZSCORE', KEYS[1], ARGV[2]) then return 0 end
+              if redis.call('HEXISTS', KEYS[3], ARGV[2]) == 0 then return -1 end
+            end
             return redis.call('ZADD', KEYS[1], 'NX', ARGV[1], ARGV[2])
+            """;
+    private static final String TERMINAL_PAGE_SCRIPT = """
+            local lo, hi = 0, redis.call('ZCARD', KEYS[1])
+            local score, member = tonumber(ARGV[1]), ARGV[2]
+            local exclusive = ARGV[5] == '1'
+            while lo < hi do
+              local mid = math.floor((lo + hi) / 2)
+              local row = redis.call('ZRANGE', KEYS[1], mid, mid, 'WITHSCORES')
+              local s = tonumber(row[2])
+              if s < score or (exclusive and s == score and row[1] <= member) then lo = mid + 1 else hi = mid end
+            end
+            local rows = redis.call('ZRANGE', KEYS[1], lo, lo + tonumber(ARGV[4]) - 1, 'WITHSCORES')
+            local result = {}
+            for i = 1, #rows, 2 do
+              if tonumber(rows[i + 1]) > tonumber(ARGV[3]) then break end
+              result[#result + 1] = rows[i]
+              result[#result + 1] = rows[i + 1]
+            end
+            return result
             """;
 
     private final RedisClient redisClient;
@@ -195,7 +219,7 @@ public final class RedisTaskItemScoreBandCore
             pending.forEach((messageId, initialScore) -> futures.add(
                     async.eval(
                             INITIALIZE_SCRIPT, ScriptOutputType.INTEGER,
-                            new String[]{key, TaskRedisKeys.descriptor(keyspace, taskId)},
+                            new String[]{key, TaskRedisKeys.descriptor(keyspace, taskId), TaskRedisKeys.items(keyspace, taskId)},
                             Long.toString(initialScore),
                             messageId
                     )
@@ -501,6 +525,47 @@ public final class RedisTaskItemScoreBandCore
             states.put(uniqueIds.get(index), state);
         }
         return states;
+    }
+
+    @Override
+    public TerminalItemPage scanTerminalItems(String taskId, int tag, long atOrBeforeMillis, String cursor, int limit) {
+        if (isBlank(taskId) || tag < MIN_TERMINAL_TAG || tag > MAX_TERMINAL_TAG
+                || !validTimeMillis(atOrBeforeMillis) || cursor == null || limit < 1 || limit > 1000)
+            throw new IllegalArgumentException("Invalid terminal Item page");
+        long minimum = score(tag, MIN_TIME_SLOT, TERMINAL_SUFFIX);
+        // Include corrupt suffixes in the final slot; only valid terminal evidence is returned.
+        long maximum = score(tag, atOrBeforeMillis / SLOT_MILLIS, (int) (SUFFIX_FACTOR - 1));
+        double afterScore = minimum;
+        String member = "";
+        if (!cursor.equals("0")) {
+            try {
+                String decoded = new String(Base64.getUrlDecoder().decode(cursor), java.nio.charset.StandardCharsets.UTF_8);
+                int split = decoded.indexOf('\n');
+                afterScore = Double.parseDouble(decoded.substring(0, split));
+                member = decoded.substring(split + 1);
+                if (!Double.isFinite(afterScore) || afterScore < minimum || afterScore > maximum)
+                    throw new IllegalArgumentException("Cursor outside terminal Item window");
+            } catch (RuntimeException invalid) { throw new IllegalArgumentException("Invalid terminal Item cursor", invalid); }
+        }
+        List<?> rows = commands().eval(TERMINAL_PAGE_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{scoreKey(taskId)}, Double.toString(afterScore), member, Long.toString(maximum),
+                Integer.toString(limit), cursor.equals("0") ? "0" : "1");
+        var observed = new LinkedHashMap<String, Long>();
+        for (int i = 0; i < rows.size(); i += 2) {
+            String id = String.valueOf(rows.get(i));
+            try {
+                if (isBlank(id)) continue;
+                long raw = scoreToLong(rows.get(i + 1));
+                var state = decodeScore(raw);
+                if (state != null && state.tag() == tag && state.timeSlot() * SLOT_MILLIS <= atOrBeforeMillis)
+                    observed.put(id, raw);
+            } catch (IllegalStateException corrupt) { /* Corrupt rows consume budget without blocking progress. */ }
+        }
+        String next = rows.size() == limit * 2
+                ? Base64.getUrlEncoder().withoutPadding().encodeToString(
+                        (rows.getLast() + "\n" + rows.get(rows.size() - 2)).getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                : "0";
+        return new TerminalItemPage(observed, next, rows.size() / 2);
     }
 
     private static long score(int tag, long timeSlot, int suffix) {

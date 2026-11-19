@@ -68,6 +68,18 @@ public interface TaskRuntime {
             int countHint
     );
 
+    /** Caller-selected RPC terminal data reclamation; deadlines remain outside this Owner. */
+    enum RpcItemRetentionStage { RELEASE_INPUTS, PURGE_TERMINAL }
+
+    record RpcItemRetentionResult(int examinedItems, int matchedItems, int deletedInputs,
+                                  int deletedResults, int deletedScores) { }
+
+    /** Reclaims at most 100 exact terminal Item identities without closing their RPC Task. */
+    default RpcItemRetentionResult reclaimRpcItems(String taskId, Map<String, Long> observedTerminalScores,
+                                                   RpcItemRetentionStage stage) {
+        throw unsupportedRetention("reclaimRpcItems");
+    }
+
     enum TaskDataPhase { OPEN, FROZEN, RELEASED, PURGING }
 
     record TaskDataState(TaskDataPhase phase, @Nullable Long frozenAtMillis) {

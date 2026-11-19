@@ -1,5 +1,7 @@
 package com.xa.mass.kernel.score;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -66,6 +68,15 @@ public interface TaskItemScoreBandCore {
             String taskId,
             List<String> messageIds
     );
+
+    /** One terminal tag's inclusive band-local time window, with raw-row bounded keyset progress. */
+    default TerminalItemPage scanTerminalItems(String taskId, int tag, long atOrBeforeMillis, String cursor, int limit) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("TaskItemScoreBandCore", "scanTerminalItems");
+    }
+
+    record TerminalItemPage(Map<String, Long> observedScores, String nextCursor, int scannedCount) {
+        public TerminalItemPage { observedScores = Collections.unmodifiableMap(new LinkedHashMap<>(observedScores)); }
+    }
 
     /** At most 100 Tasks; counts stored ranges without reading Items or Results. */
     default Map<String, TaskItemScoreCounts> observeItemScoreCounts(List<String> taskIds) {

@@ -66,6 +66,9 @@ class KernelOwnerContractManifestTest {
     private static final Map<String, Class<?>> DTOS = Map.ofEntries(
             Map.entry("TaskDataState", TaskRuntime.TaskDataState.class),
             Map.entry("TerminalTaskPage", TaskScoreBandCore.TerminalTaskPage.class),
+            Map.entry("ParkedTaskPage", TaskScoreBandCore.ParkedTaskPage.class),
+            Map.entry("TerminalItemPage", TaskItemScoreBandCore.TerminalItemPage.class),
+            Map.entry("RpcItemRetentionResult", TaskRuntime.RpcItemRetentionResult.class),
             Map.entry("TaskItemScoreCounts", TaskItemScoreBandCore.TaskItemScoreCounts.class),
                         Map.entry("WorkerCandidate", WorkerMatching.WorkerCandidate.class),
             Map.entry("TaskItemOutcomeObservation", TaskItemResultEvents.TaskItemOutcomeObservation.class),
@@ -145,6 +148,7 @@ class KernelOwnerContractManifestTest {
     private static final Map<String, Class<? extends Enum<?>>> ENUMS =
             Map.ofEntries(
                     Map.entry("TaskDataPhase", TaskRuntime.TaskDataPhase.class),
+                    Map.entry("RpcItemRetentionStage", TaskRuntime.RpcItemRetentionStage.class),
                     Map.entry(
                             "TaskEvidenceType",
                             TaskEvidenceRuntime.TaskEvidenceType.class

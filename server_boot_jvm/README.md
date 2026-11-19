@@ -304,6 +304,17 @@ not Boot; Kernel continues to own Task finality and mutation fences. The local d
 must survive restarts for retained history. The first SQLite deployment has one Runtime writer.
 Preview assigns a private database per generated scope. No old scope is migrated.
 
+### RPC terminal Item retention configuration
+
+The same `xa.mass.task-retention` block adds `rpc-item-retention-enabled=false`,
+`rpc-input-retention=1h` and `rpc-terminal-retention=24h`. Both durations must be
+positive and input retention must be shorter; the parent retention enablement
+must also be true. Source/Release installation does not opt a deployment in.
+The [Server policy](../server_jvm/README.md#rpc-terminal-item-retention) owns raw
+RPC qualification, Score-coordinate age, finite replay/observation retention and
+shared maintenance budgets. Boot only binds explicit configuration; it adds no
+Pacer callback, remote control or cleanup thread.
+
 ### Named WorkerGroup window bindings
 
 Preview declares the assignment-window Pool, query and nested registration-event feedback through

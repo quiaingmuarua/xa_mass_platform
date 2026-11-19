@@ -554,6 +554,49 @@ export and point payload reads return `400/12014` after release; PURGING remains
 Runtime queries never read SQLite. Final Runtime purge retains its ordinary not-found
 behavior instead of transparently searching history.
 
+### RPC terminal Item retention
+
+The existing maintenance executor has an independent opt-in raw RPC branch.
+Under `xa.mass.task-retention`, `rpc-item-retention-enabled=false` by default,
+`rpc-input-retention=1h` and `rpc-terminal-retention=24h`; both periods are positive
+and input retention must be shorter. The existing retention enablement is also
+required. Public `retention:run` remains finite-only; there is no new cleanup API.
+
+Only OPEN/PARK Tasks with valid Server attribution, raw input ownership and a
+parked observation are candidates. Missing/corrupt attribution, SMS and other
+business owners are skipped. Server supplies time cutoffs to the Score Owners;
+Kernel interprets tags and encoding. In terminal tags 2..9, input becomes eligible
+at 1h and Result/Score plus leftover input at 24h, based on the current Score time
+coordinate at 100ms precision. ACTIVE tag 1 is never reclaimed. This is not a
+promise of retention since first completion or the last Redis write: a higher tag
+may carry an earlier time. The 24h stage precedes input-only release, and can find
+Score-only identities without requiring an input field.
+
+A bounded pass shares 120 seconds, 2,000,000 actually visited Item rows and 1,000
+Task candidates across stages/tags/Tasks. Process-local cursors retain pending
+page progress; errors and budget exhaustion are explicit, and restart can rescan
+idempotently. The time budget stops admission of further requests; an already
+submitted synchronous Redis call retains the provider's existing timeout.
+The existing fixed-delay interval (default 1h) is not an exact
+wall-clock deletion deadline. No whole-Task lock, new background service, global
+Redis key scan or persisted GC ledger is introduced. A continuously busy Task
+without parked opportunities has no reclamation SLO under this first policy.
+
+Task/Worker identity and bindings remain reusable. Released input reads as null;
+final reclamation can return not-observed and decreases retained Item totals.
+Neither missing payload nor not-observed fabricates failure. The two-stage policy
+is not a lifetime execution counter or an ACK. Retained Score prevents same-ID
+re-execution; after it is removed that guarantee ends. Old calls must not be
+automatically replayed after the window, and new calls use new message IDs.
+No permanent recognition/rejection of all historical opaque IDs is promised.
+
+Existing RPC Result idle TTL remains a separate backstop, not a minimum Result
+retention guarantee. In-flight take and retention keep their existing response-loss
+uncertainty. Late Result writes cannot recreate a missing RPC Score identity,
+and ignored success still releases its original Worker lease. Disabling the
+feature stops future sweeps but preserves those writer guards; deleted data is
+not restored. The feature adds no archive, refund or old-scope cleanup.
+
 ### Finite Task history API
 
 `/api/v1/storage/tasks` is an independent, read-only current-scope history API. List

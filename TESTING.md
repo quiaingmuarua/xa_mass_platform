@@ -514,6 +514,19 @@ Use controlled clocks for the 1h/7d/30d boundaries. The existing 10k/100k finite
 runner retains its workload, comparing full exports without assuming row order and
 recording SQLite/WAL size separately from Redis memory. No new lane or PostgreSQL matrix.
 
+### RPC terminal Item retention
+
+Select focused Kernel/Server tests, Redis Owner and Runtime Boundary for the
+opt-in raw RPC reclamation path. Score traversal uses per-tag encoded-time ranges;
+real Redis proves equal-Score/deleted-cursor progress, exact conditional batches,
+1h input release, 24h input/Result/Score reclamation, type preflight and late writer
+fences. Server tests cover raw attribution, parked eligibility, default-off
+configuration, shared budgets and resumable progress. RPC take/exports keep their
+existing loss/nullable-input behavior; no new lane or public load is required.
+The [Server contract](server_jvm/README.md#rpc-terminal-item-retention) defines
+Score-coordinate age and bounded replay. Tests use controlled clocks and unique
+`test_*` scopes; current GCP data and immutable kits are not local test fixtures.
+
 ### Worker Project Fixture
 
 The local JVM Worker lanes (Correctness, Dynamic Matching, Convergence Health,

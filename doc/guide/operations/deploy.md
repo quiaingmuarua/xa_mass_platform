@@ -218,6 +218,29 @@ invalid/saturated case 和 560 个 unknown 仍按原回执保留。75 分钟空�
 继续保留；进程仍活跃或 cleanup 未确认时先核对，不能先删除目录或重放请求。
 当前环境角色以仓库本节和主机外置说明为准，运行版本仍以实际安装及记录核对。
 
+### RPC 终态数据保留
+
+源码提供默认关闭的 RPC 终态回收。只有安装包含该能力的后续正常 Release 后，
+才可按对应版本说明在外部配置中启用；当前 4.4.0 部署和已发布 kit 不会因源码变更而清理。
+在既有 `xa.mass.task-retention` 下设置：
+
+```yaml
+rpc-item-retention-enabled: true
+rpc-input-retention: 1h
+rpc-terminal-retention: 24h
+```
+
+既有 retention 总开关也必须开启。规则只面向有明确 raw 归属的 parked RPC Task：
+按终态 Score 内时间坐标，1h 后输入可回收，24h 后 Result、Score 和残留输入可回收。
+ACTIVE Item、有限任务、SMS、Worker 注册与旧 scope 不在该清理范围内。
+执行复用现有维护器，受全轮预算和空闲机会影响，并非到点立即删除。
+
+启用前明确结果核对和去重窗口：旧调用过期后不自动重放，新业务调用用新 messageId；
+未消费 Result 也会在符合 24h 条件后清除。历史输入可读为 null，Item 总数表示保留数量。
+启用后观察聚合扫描／删除／跳过／错误计数与 Redis 内存；不以 key 数量或 RSS 必须归零验收。
+关闭开关只停止后续删除，不能恢复已清数据。完整规则由
+[Server Owner](../../../server_jvm/README.md#rpc-terminal-item-retention)维护。
+
 ### 公网接入
 
 使用 Runtime ZIP 的 [staging ingress 示例](../../../distribution/server/src/main/dist/examples/staging-ingress/README.md)
