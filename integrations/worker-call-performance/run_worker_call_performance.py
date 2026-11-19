@@ -98,6 +98,15 @@ def process_sample(pid):
                       len(list((proc / "fd").iterdir())), os.sysconf("SC_CLK_TCK"))
 
 
+def process_exit_state(pid):
+    """Read only lifecycle evidence, including when FD access is already revoked."""
+    try:
+        fields = (Path("/proc") / str(pid) / "stat").read_text().rsplit(")", 1)[1].split()
+        return fields[0], int(fields[17])  # proc_pid_stat: state (3), num_threads (20).
+    except (OSError, IndexError, ValueError):
+        return None
+
+
 TCP_COUNTERS = ("RetransSegs", "OutSegs", "InErrs")
 TCP_EXT_COUNTERS = ("TCPTimeouts", "TCPLossProbes", "TCPLostRetransmit", "TCPFastRetrans", "TCPSlowStartRetrans",
                     "TCPSpuriousRTOs", "TCPBacklogDrop", "TCPRcvQDrop", "TCPZeroWindowDrop", "ListenOverflows",
@@ -214,6 +223,7 @@ class Sampler:
             self.processes[role] = process
 
     def run(self):
+        failure_context = ""
         try:
             machine = self.machine_path.open("x", encoding="utf-8") if self.machine_path else None
             with self.path.open("x", encoding="utf-8") as output:
@@ -235,6 +245,12 @@ class Sampler:
                             try:
                                 process.wait(timeout=.05)
                             except subprocess.TimeoutExpired:
+                                state = process_exit_state(process.pid)
+                                # A dead group leader can still have live threads. Only the
+                                # last zombie/dead thread confirms exit while parent reaping is unobserved.
+                                if state in (("Z", 1), ("X", 1)):
+                                    continue
+                                failure_context = f" [role={role}, exitState={state}]"
                                 raise sample_error
                             continue
                         previous = self.previous.get(role)
@@ -263,7 +279,7 @@ class Sampler:
             if machine:
                 machine.close()
         except Exception as error:
-            self.failure = type(error).__name__ + ": " + str(error)
+            self.failure = type(error).__name__ + ": " + str(error) + failure_context
 
     def stop(self):
         self.stopped.set()
