@@ -1,6 +1,7 @@
 # XA Mass 4.4 release and upgrade contract
 
-Status: version-scoped 4.4 contract. 4.4.4 is published and its normal 10k
+Status: version-scoped 4.4 contract. 4.4.5 is planned; its publication and GCP
+acceptance are not yet confirmed. 4.4.4 is published and its normal 10k
 observation completed with all nine cases passed and automatic cleanup confirmed.
 The earlier 4.4.3 observation retained nine invalid cases and confirmed cleanup;
 its generator investigation was closed by the bounded 4.4.4 observation below.
@@ -11,6 +12,101 @@ fault/reconnect acceptance passed on 2026-11-18.
 Published artifacts remain immutable.
 Actual installation and acceptance status belongs to host records and
 [dated evidence](../../doc/guide/capabilities.md#external-public-closeout), not a live claim here.
+
+## 4.4.5 Terminal RPC data retention patch
+
+This patch delivers the shared Performance sampler exit fix, the consolidated
+CI gates and the staged terminal RPC Item retention implementation. The ordinary
+complete manual Proof now includes SMS Reception Preview. Build and prove the
+exact merged release commit with candidate version 4.4.5, then promote those
+same three Runtime/SDK/Simulator ZIPs and their three SHA256 sidecars. Their
+manifest schemas remain 6/1/3. Do not relabel an older candidate or rebuild on
+GCP. Publication and the following onsite acceptance remain planned until their
+immutable coordinates and actual results are recorded.
+
+### Existing GCP 4.4.0 upgrade
+
+Upgrade only the Runtime to the published immutable 4.4.5 artifact. This patch
+reuses `profile_long_preview_4_4` and
+`/var/lib/xa-mass/task-history-4.4.sqlite`; the initial 4.4.0 fresh-scope cutover
+instructions later in this document do not apply to this patch. Retain the
+existing external configuration, user directory and grants, credit accounts,
+Task/request identities, business configuration and gateway credentials. Keep
+the existing Nginx ingress configuration and budgets. No schema migration,
+scope reset, Redis deletion, old-scope maintenance or Worker Host/SDK upgrade
+is part of this change. The independent standing Host remains on its current
+kit and keeps its existing inventory and 20 Worker identities.
+
+Use the existing single-operator operations record. Confirm that external
+Performance is not running and capture the pre-change artifact/configuration
+coordinates and aggregate Redis measurements below. Prepare one temporary
+restore point: saved launch/configuration/user/ingress inputs, a confirmed
+successful Redis snapshot with its restoration procedure, and the SQLite
+database plus any WAL/SHM copied only after the Runtime is confirmed stopped.
+Preserve the old immutable Runtime installation until acceptance; never run
+two Pacers in this scope. Redis persistence configuration, including any AOF,
+must be accounted for when restoring the snapshot; an unconfirmed save or an
+unmatched database copy is not a restore point.
+
+The published defaults keep RPC reclamation off. For this explicitly selected
+Preview acceptance, enable it in the existing external configuration before
+starting the new Runtime:
+
+```yaml
+xa:
+  mass:
+    task-retention:
+      enabled: true
+      rpc-item-retention-enabled: true
+      rpc-input-retention: 1h
+      rpc-terminal-retention: 24h
+      interval: 1h
+```
+
+Keep the existing finite-task grace, retention, history retention and database
+path. Maintenance runs on startup and at the existing fixed delay; observe its
+first actual pass rather than waiting for an additional hour or manually
+deleting Redis data. The RPC slice has its existing 120-second/2,000,000-row
+budget and carries process-local progress across passes.
+
+Only attributed raw RPC Tasks observed parked are candidates. The age is the
+existing terminal Score's band-local time, not the last HTTP response or the
+time a report reached this Server. At 1h, matching inputs can be removed while
+Score and Result remain; at 24h, matching input, Result and Score are removed
+together. This may remove unconsumed Results. Old calls outside the retention
+window must not be automatically replayed, and new business calls use new
+message IDs. ACTIVE Items, finite retention, SMS, other scopes, Worker records
+and credit ledgers are outside this cleanup. Disabling the flag stops future
+deletions and does not restore removed data; the writer guards remain active.
+
+### Bounded onsite acceptance and closeout
+
+Confirm the installed Runtime version/full commit/checksum, readiness, retained
+configuration and database path. Allow the independent persistent Host to
+reconnect and verify its same 20 identities; do not restart or upgrade it as
+part of this deployment. Run one ordinary external finite baseline of three
+Items using the existing published consumer entry and compare all results.
+This is a small real-use baseline, not another 10k Performance campaign.
+
+For the known qualifying RPC Tasks, retain private before/after TYPE, HLEN,
+ZCARD, TTL and sampled MEMORY USAGE for their input, Result and Item Score key
+families, plus Redis used memory and maintenance aggregate logs. Reconcile
+scanned/matched/deleted counts, skips, failures and budget/progress state;
+distinguish the 1h input stage from the 24h terminal stage. Verify retained
+Task descriptors/directory entries and protected finite/Worker/credit state.
+Use Owner/API state observations, never decode opaque Scores in operations or
+publish complete Worker/Task/request identities or payloads. Key count, AOF
+file length and RSS are not required to fall to zero. A partial budgeted pass
+is recorded as partial and followed on the same maintenance lifecycle.
+
+If a problem appears, first disable future reclamation on 4.4.5 and preserve
+the evidence. A binary downgrade alone cannot recover deleted RPC identities.
+Any restore must stop the new Runtime and use the matching restore point,
+preserving post-snapshot request/credit receipts for explicit reconciliation;
+do not merge histories or replay uncertain work. After acceptance is recorded,
+remove this upgrade's old installation and temporary restore point, close the
+operations record and retain the immutable Release and sanitized evidence.
+Retained old scopes are not temporary rollback materials and remain untouched.
 
 ## 4.4.4 Administrator connection reuse patch
 
