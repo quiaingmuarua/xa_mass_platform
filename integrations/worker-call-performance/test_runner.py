@@ -168,11 +168,49 @@ class RunnerTest(unittest.TestCase):
                 def revoked(_):
                     sampler.stopped.set()
                     raise PermissionError("/proc fd access revoked")
-                with patch.object(runner, "process_sample", side_effect=revoked):
+                with patch.object(runner, "process_sample", side_effect=revoked), \
+                        patch.object(runner, "process_exit_state", return_value=("S", 4)):
                     sampler.run()
                 self.assertEqual(sampler.failure is None, exited)
                 if not exited:
                     self.assertIn("PermissionError", sampler.failure)
+
+    def test_sampler_uses_terminal_thread_evidence_without_extending_exit_wait(self):
+        states = (("Z", 1), ("X", 1), ("Z", 2), ("X", 2), ("S", 1), ("R", 1), ("Z", 0), None)
+        for state in states:
+            for error_type in (PermissionError, FileNotFoundError):
+                with self.subTest(state=state, error=error_type), tempfile.TemporaryDirectory() as directory:
+                    sampler = runner.Sampler(Path(directory) / "resources.jsonl", None)
+                    process = Mock(pid=10)
+                    process.poll.return_value = None
+                    process.wait.side_effect = subprocess.TimeoutExpired("java", .05)
+                    sampler.register("harness-case", process)
+                    def unavailable(_):
+                        sampler.stopped.set()
+                        raise error_type("/proc FD observation unavailable")
+                    with patch.object(runner, "process_sample", side_effect=unavailable), \
+                            patch.object(runner, "process_exit_state", return_value=state):
+                        sampler.run()
+                    terminal = state in (("Z", 1), ("X", 1))
+                    self.assertEqual(terminal, sampler.failure is None)
+                    self.assertEqual(0, sampler.counts["harness-case"])
+                    self.assertEqual("", sampler.path.read_text())
+                    process.wait.assert_called_once_with(timeout=.05)
+                    if not terminal:
+                        self.assertIn(error_type.__name__, sampler.failure)
+                        self.assertIn("role=harness-case", sampler.failure)
+                        self.assertIn("exitState=", sampler.failure)
+
+    def test_process_exit_state_rejects_missing_or_malformed_evidence(self):
+        fields = ["Z"] + ["0"] * 16 + ["1"]
+        with patch.object(Path, "read_text", return_value="10 (java worker (main)) " + " ".join(fields)):
+            self.assertEqual(("Z", 1), runner.process_exit_state(10))
+        for error in (PermissionError(), FileNotFoundError()):
+            with self.subTest(error=error), patch.object(Path, "read_text", side_effect=error):
+                self.assertIsNone(runner.process_exit_state(10))
+        for text in ("", "10 (java) Z", "10 (java) " + " ".join(fields[:-1] + ["unknown"])):
+            with self.subTest(text=text), patch.object(Path, "read_text", return_value=text):
+                self.assertIsNone(runner.process_exit_state(10))
 
     def test_diagnostics_sampler_records_machine_cpu_separately_and_default_writes_none(self):
         stat = "cpu  10 1 5 100 2 0 1 3 0 0\ncpu0 1 0 1 1 0 0 0 0 0 0\nprocs_running 6\n"

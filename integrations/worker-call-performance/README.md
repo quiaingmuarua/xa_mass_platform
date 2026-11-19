@@ -316,6 +316,15 @@ constant binds, that is a finding.
 | Job warmup | Open jobs discard `task-any` at the highest offered rate. Configured saturation warms each fresh world for 15s under its measured backlog. |
 | Cases | Each case follows a quiesce gate: every Worker connected and idle due HOT on two observations one second apart, within 30s. A timeout makes this and every later case invalid. |
 
+The shared process sampler keeps its one-second interval and resource ceilings.
+When `/proc` disappears or FD access is revoked, the existing 50ms wait can confirm
+process exit. If reaping is still unavailable, only Linux `Z`/`X` state with exactly
+one remaining thread confirms a terminal process. A dead group leader with live
+threads, a nonterminal state or unavailable/malformed lifecycle evidence still
+invalidates resource sampling. No terminal sample is invented, and Harness exit
+codes, case/Result checks and all existing deadlines remain required. Remaining
+read failures include the safe role/state/thread-count context for diagnosis.
+
 Open-loop cases offer one call per planned arrival and split the total rate
 evenly across both Groups; targeted and Direct calls rotate through each Group's
 Workers. Each case warms at 100/s for 30s, then measures 30s with a 1s HTTP wait
