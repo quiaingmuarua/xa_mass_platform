@@ -408,6 +408,16 @@ boundaries even if their happy paths overlap.
 
 ## Shared Infrastructure
 
+CI installs Temurin 21 with `setup-java`; the pinned `setup-gradle` action owns
+Gradle User Home caching. Its enhanced cache restores prior job/commit state
+when build inputs change, so editing a packaging script does not discard all
+downloaded dependencies. The repository wrapper still selects Gradle. Main
+writes cache entries; PRs read them. A new cache namespace can start cold, and
+upstream download errors still fail the job. Cached files accelerate dependency
+resolution; they do not replace tests, candidate identities or proof evidence.
+Root and standalone Android plugin resolution query Maven Central before Plugin
+Portal, avoiding Portal redirects for libraries already available from Central.
+
 Correctness and Convergence share `integrations/worker_proof_support/processes.py`
 for child-process creation, readiness, bounded log tails and owned-process shutdown.
 It owns no phase registry, workload or scheduling behavior. Linux resource samplers

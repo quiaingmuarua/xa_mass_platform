@@ -71,7 +71,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          cache: gradle
+      - uses: gradle/actions/setup-gradle@v6.4.1
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.x'
@@ -245,7 +245,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          cache: gradle
+      - uses: gradle/actions/setup-gradle@v6.4.1
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.x'

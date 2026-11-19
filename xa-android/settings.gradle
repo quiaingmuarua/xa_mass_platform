@@ -1,7 +1,7 @@
 import groovy.json.JsonSlurper
 
 pluginManagement {
-    repositories { google(); gradlePluginPortal(); mavenCentral() }
+    repositories { google(); mavenCentral(); gradlePluginPortal() }
 }
 
 def required = { String name ->
