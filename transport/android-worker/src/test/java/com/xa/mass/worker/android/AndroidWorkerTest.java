@@ -31,6 +31,7 @@ import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
+import org.robolectric.shadows.ShadowSystemClock;
 
 import java.net.URI;
 import java.time.Duration;
@@ -38,6 +39,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -136,6 +140,66 @@ public class AndroidWorkerTest {
         assertTrue(reports.isEmpty()); // No extra ordinary snapshot Result.
         worker.close();
         assertFalse(worker.reportProperties());
+    }
+
+    @Test
+    public void terminalCloseDisconnectsRealWsPeerBeforeAdmittedHandlerReturns() throws Exception {
+        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch completed = new CountDownLatch(1);
+        CountDownLatch peerDisconnected = new CountDownLatch(1);
+        Semaphore release = new Semaphore(0);
+        enqueuePrepare();
+        server.enqueue(webSocketSession(new ClosingWebSocketListener() {
+            @Override
+            public void onMessage(WebSocket socket, String text) {
+                DeliveryReport report = codec.decodeDeliveryReport(text);
+                if (WORKER_CONNECTION_IDENTIFY_EVENT_CODE.equals(report.messageType())) {
+                    socket.send(codec.encodeDeliveryCommand(command("blocked-close")));
+                }
+            }
+
+            @Override
+            public void onClosed(WebSocket socket, int code, String reason) {
+                peerDisconnected.countDown();
+            }
+
+            @Override
+            public void onFailure(WebSocket socket, Throwable error, Response response) {
+                peerDisconnected.countDown();
+            }
+        }));
+        worker = worker(context -> properties.get(), parameters -> {
+            entered.countDown();
+            release.acquireUninterruptibly();
+            completed.countDown();
+            return "null";
+        });
+        ExecutorService closer = Executors.newSingleThreadExecutor();
+        try {
+            worker.start();
+            assertTrue("real Handler was not admitted", entered.await(5, TimeUnit.SECONDS));
+            assertEquals(2, server.getRequestCount());
+
+            closer.submit(worker::close).get(1, TimeUnit.SECONDS);
+
+            assertEquals(WorkerLifecycle.State.STOPPED, worker.snapshot().state());
+            assertEquals("close waited for the admitted Handler", 1, completed.getCount());
+            assertTrue("peer did not observe physical closure", peerDisconnected.await(5, TimeUnit.SECONDS));
+            assertEquals("peer closure required the Handler to return", 1, completed.getCount());
+            assertThrows(IllegalStateException.class, worker::start);
+            release.release();
+            assertTrue("admitted Handler did not finish after release", completed.await(5, TimeUnit.SECONDS));
+            ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+            Thread.sleep(100);
+            assertEquals("new connection during bounded post-close observation", 2, server.getRequestCount());
+        } finally {
+            release.release();
+            if (entered.getCount() == 0) {
+                assertTrue(completed.await(5, TimeUnit.SECONDS));
+            }
+            closer.shutdownNow();
+        }
     }
 
     @Test
