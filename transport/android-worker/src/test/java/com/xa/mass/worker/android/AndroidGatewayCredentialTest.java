@@ -13,6 +13,9 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
@@ -93,6 +96,64 @@ public class AndroidGatewayCredentialTest {
                 }
             } finally {
                 client.close();
+                network.quitSafely();
+                network.join(3000);
+            }
+        }
+    }
+
+    @Test
+    public void terminalCloseDisconnectsRealWssPeerBeforeAdmittedCallbackReturns() throws Exception {
+        try (TlsWorld world = new TlsWorld()) {
+            HandlerThread network = new HandlerThread("gateway-close-test");
+            network.start();
+            CountDownLatch entered = new CountDownLatch(1);
+            CountDownLatch completed = new CountDownLatch(1);
+            CountDownLatch peerDisconnected = new CountDownLatch(1);
+            Semaphore release = new Semaphore(0);
+            world.server.enqueue(new MockResponse.Builder().webSocketUpgrade(new WebSocketListener() {
+                @Override public void onOpen(WebSocket socket, Response response) { socket.send("blocked-close"); }
+                @Override public void onClosing(WebSocket socket, int code, String reason) { socket.close(code, reason); }
+                @Override public void onClosed(WebSocket socket, int code, String reason) { peerDisconnected.countDown(); }
+                @Override public void onFailure(WebSocket socket, Throwable error, Response response) { peerDisconnected.countDown(); }
+            }).build());
+            AndroidOkHttpTextWebSocketClient client = new AndroidOkHttpTextWebSocketClient(world.http, network.getLooper(),
+                    world.endpoint(), TextMessageReconnectPolicy.of(3, Duration.ofMillis(20), Duration.ofSeconds(1)),
+                    world.runtime(), CREDENTIAL);
+            ExecutorService closer = Executors.newSingleThreadExecutor();
+            try {
+                client.start(new TextMessageClient.Listener() {
+                    @Override public void onOpen() { }
+                    @Override public void onMessage(String message) {
+                        entered.countDown();
+                        release.acquireUninterruptibly();
+                        completed.countDown();
+                    }
+                    @Override public void onEndpointTerminated() { }
+                });
+                assertTrue("real WSS callback was not admitted", entered.await(5, TimeUnit.SECONDS));
+                var request = world.server.takeRequest(3, TimeUnit.SECONDS);
+                assertNotNull(request);
+                assertEquals(CREDENTIAL.authorizationHeader(), request.getHeaders().get("Authorization"));
+
+                closer.submit(client::close).get(1, TimeUnit.SECONDS);
+
+                assertFalse(client.send("late"));
+                assertEquals("close waited for the admitted callback", 1, completed.getCount());
+                assertTrue("TLS peer did not observe physical closure", peerDisconnected.await(5, TimeUnit.SECONDS));
+                assertEquals("TLS closure required the callback to return", 1, completed.getCount());
+                release.release();
+                assertTrue("admitted callback did not finish after release", completed.await(5, TimeUnit.SECONDS));
+                ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+                Thread.sleep(100);
+                assertEquals("new connection during bounded post-close observation", 1, world.server.getRequestCount());
+            } finally {
+                release.release();
+                if (entered.getCount() == 0) {
+                    assertTrue(completed.await(5, TimeUnit.SECONDS));
+                }
+                client.close();
+                closer.shutdownNow();
                 network.quitSafely();
                 network.join(3000);
             }

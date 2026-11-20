@@ -197,6 +197,16 @@ additionally requires stop to return within its five-second HTTP budget while
 an admitted thirty-second DELAY remains running; that budget is a proof witness,
 not a production latency SLA.
 
+Real-socket Owner tests additionally require terminal close to disconnect the
+peer while an admitted Handler or callback remains blocked: the WS test closes
+the complete `AndroidWorker`, and the credentialed WSS test closes its concrete
+Client through the existing trusted TLS fixture. They check that releasing the
+old callback does not reconnect within the observed retry window. These are
+Robolectric/MockWebServer tests, not Emulator or public-gateway observations.
+The Emulator's separate Server `disconnected` assertion follows ordinary
+`stop()`; it does not establish terminal `close()` convergence through a public
+gateway or an external consumer's class-loader environment.
+
 ## Verification
 
 ```text
