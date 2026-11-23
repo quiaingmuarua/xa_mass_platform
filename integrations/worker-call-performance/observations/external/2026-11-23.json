@@ -1,0 +1,1745 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-11-23",
+  "purpose": "Dated external open-loop Performance observations, report-ingress budget acceptance and bounded Preview operations closeout; existing Performance and deployment Owners remain authoritative.",
+  "window": {
+    "windowId": "external-10k-20261120",
+    "configuredDatesBJT": [
+      "2026-11-20",
+      "2026-11-21",
+      "2026-11-22",
+      "2026-11-23",
+      "2026-11-24",
+      "2026-11-25",
+      "2026-11-26"
+    ],
+    "observedDatesBJT": [
+      "2026-11-20",
+      "2026-11-21",
+      "2026-11-22",
+      "2026-11-23"
+    ],
+    "remainingDatesBJT": [
+      "2026-11-24",
+      "2026-11-25",
+      "2026-11-26"
+    ],
+    "missingDatesAmongElapsedSlots": [],
+    "reviewedAt": "2026-11-23T04:13:18.645258+00:00",
+    "semantics": "Seven calendar dates, not seven guaranteed runs or results; the observation window is not complete."
+  },
+  "workload": {
+    "mode": "open",
+    "paths": [
+      "task-any",
+      "task-targeted",
+      "direct"
+    ],
+    "ratesPerSecond": [
+      500,
+      1000,
+      2000
+    ],
+    "groups": 2,
+    "workersPerGroup": 5000,
+    "totalWorkers": 10000,
+    "repetitions": 1,
+    "caseMeasurementSeconds": 30,
+    "separateFromSourceReferenceHistory": true
+  },
+  "scheduledObservation": {
+    "runs": [
+      {
+        "targetDateBJT": "2026-11-20",
+        "githubRunId": "44627694481",
+        "url": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44627694481",
+        "event": "schedule",
+        "attempt": 1,
+        "startedAtBJT": "2026-11-20T06:20:48.654801+08:00",
+        "scheduleDelaySeconds": 3048,
+        "durationSeconds": 873,
+        "caseCounts": {
+          "passed": 9
+        },
+        "formal": {
+          "sent": 315000,
+          "http2": 315000,
+          "http429": 0,
+          "sentHttp0Unknown": 0,
+          "clientTimeouts": 0,
+          "notObservedWithinWait": 3896,
+          "observedSucceededAfterDrain": 315000
+        },
+        "allPhasesHttp429": 0,
+        "allPhasesSentHttp0Unknown": 0,
+        "cleanup": {
+          "status": "confirmed",
+          "ownedWorkerCount": 10000,
+          "observedStateCounts": {
+            "unknown": 10000
+          },
+          "observationMillis": 8224,
+          "ownedProcessesStopped": true,
+          "privateInputsRemoved": true,
+          "privateCredentialCopiesRemoved": true,
+          "errorCount": 0,
+          "finalizationFailureCount": 0
+        },
+        "kit": {
+          "tag": "v4.4.4",
+          "gitCommit": "01f795013ee9ded817304eba26e40805a21ddb89",
+          "kitSha256": "75698f07a411aa35390f6ee96f1d28393b402279f2f0c7e22aaf156d7659ddaa",
+          "release": "https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.4.4"
+        },
+        "serverDeployment": {
+          "version": "4.4.5",
+          "gitCommit": "520b7ce314de24ad42ea079f97491919a24852b4",
+          "configurationId": "sha256:62beedba41dea1a95680f55ec58dffbe353438c7c79c0f74f24ec897f5e71ba8"
+        },
+        "hostResourcePeak": {
+          "peakFileDescriptors": 10028,
+          "peakNativeThreads": 54,
+          "peakRssBytes": 1123708928,
+          "samples": 840
+        },
+        "notCollected": [
+          "server-resources",
+          "redis-resources",
+          "redis-calibration",
+          "server-jfr"
+        ],
+        "cases": [
+          {
+            "case": "task-any-500",
+            "status": "passed",
+            "successWithinWait": 0.9892,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 15000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 449.404486,
+              "p95": 524.540267,
+              "p99": 1157.009115,
+              "samples": 14838
+            }
+          },
+          {
+            "case": "task-targeted-500",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 15000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 450.502143,
+              "p95": 518.682541,
+              "p99": 559.630915,
+              "samples": 15000
+            }
+          },
+          {
+            "case": "direct-500",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 15000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 347.320443,
+              "p95": 355.7411,
+              "p99": 465.319152,
+              "samples": 15000
+            }
+          },
+          {
+            "case": "task-any-1000",
+            "status": "passed",
+            "successWithinWait": 0.9481333333333334,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 30000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 476.125869,
+              "p95": 1600.26115,
+              "p99": 2261.680602,
+              "samples": 28444
+            }
+          },
+          {
+            "case": "task-targeted-1000",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 30000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 463.823842,
+              "p95": 546.628739,
+              "p99": 730.239316,
+              "samples": 30000
+            }
+          },
+          {
+            "case": "direct-1000",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 30000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 343.850377,
+              "p95": 366.468395,
+              "p99": 495.597129,
+              "samples": 30000
+            }
+          },
+          {
+            "case": "task-any-2000",
+            "status": "passed",
+            "successWithinWait": 0.9745833333333334,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 60000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 490.824695,
+              "p95": 702.011981,
+              "p99": 942.78309,
+              "samples": 58475
+            }
+          },
+          {
+            "case": "task-targeted-2000",
+            "status": "passed",
+            "successWithinWait": 0.9891166666666666,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 60000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 485.192263,
+              "p95": 668.956558,
+              "p99": 913.87373,
+              "samples": 59347
+            }
+          },
+          {
+            "case": "direct-2000",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 60000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 346.297717,
+              "p95": 383.692567,
+              "p99": 684.232692,
+              "samples": 60000
+            }
+          }
+        ]
+      },
+      {
+        "targetDateBJT": "2026-11-21",
+        "githubRunId": "44827350942",
+        "url": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44827350942",
+        "event": "schedule",
+        "attempt": 1,
+        "startedAtBJT": "2026-11-21T06:15:21.182055+08:00",
+        "scheduleDelaySeconds": 2721,
+        "durationSeconds": 885,
+        "caseCounts": {
+          "passed": 9
+        },
+        "formal": {
+          "sent": 315000,
+          "http2": 315000,
+          "http429": 0,
+          "sentHttp0Unknown": 0,
+          "clientTimeouts": 0,
+          "notObservedWithinWait": 2637,
+          "observedSucceededAfterDrain": 315000
+        },
+        "allPhasesHttp429": 0,
+        "allPhasesSentHttp0Unknown": 0,
+        "cleanup": {
+          "status": "confirmed",
+          "ownedWorkerCount": 10000,
+          "observedStateCounts": {
+            "unknown": 10000
+          },
+          "observationMillis": 8058,
+          "ownedProcessesStopped": true,
+          "privateInputsRemoved": true,
+          "privateCredentialCopiesRemoved": true,
+          "errorCount": 0,
+          "finalizationFailureCount": 0
+        },
+        "kit": {
+          "tag": "v4.4.4",
+          "gitCommit": "01f795013ee9ded817304eba26e40805a21ddb89",
+          "kitSha256": "75698f07a411aa35390f6ee96f1d28393b402279f2f0c7e22aaf156d7659ddaa",
+          "release": "https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.4.4"
+        },
+        "serverDeployment": {
+          "version": "4.4.5",
+          "gitCommit": "520b7ce314de24ad42ea079f97491919a24852b4",
+          "configurationId": "sha256:db87b43d5b85172292368bcf745dab92d4b665d1f8098974f35b7d6c63c4f672"
+        },
+        "hostResourcePeak": {
+          "peakFileDescriptors": 10028,
+          "peakNativeThreads": 54,
+          "peakRssBytes": 1076346880,
+          "samples": 851
+        },
+        "notCollected": [
+          "server-resources",
+          "redis-resources",
+          "redis-calibration",
+          "server-jfr"
+        ],
+        "cases": [
+          {
+            "case": "task-any-500",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 15000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 447.189606,
+              "p95": 526.098636,
+              "p99": 1328.937961,
+              "samples": 15000
+            }
+          },
+          {
+            "case": "task-targeted-500",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 15000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 450.980841,
+              "p95": 517.838626,
+              "p99": 540.835464,
+              "samples": 15000
+            }
+          },
+          {
+            "case": "direct-500",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 15000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 346.310769,
+              "p95": 354.392073,
+              "p99": 367.424345,
+              "samples": 15000
+            }
+          },
+          {
+            "case": "task-any-1000",
+            "status": "passed",
+            "successWithinWait": 0.9656666666666667,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 30000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 469.772484,
+              "p95": 634.249103,
+              "p99": 1079.92695,
+              "samples": 28970
+            }
+          },
+          {
+            "case": "task-targeted-1000",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 30000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 469.806227,
+              "p95": 802.986387,
+              "p99": 922.833116,
+              "samples": 30000
+            }
+          },
+          {
+            "case": "direct-1000",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 30000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 341.878217,
+              "p95": 355.873501,
+              "p99": 499.751692,
+              "samples": 30000
+            }
+          },
+          {
+            "case": "task-any-2000",
+            "status": "passed",
+            "successWithinWait": 0.9878166666666667,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 60000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 492.172222,
+              "p95": 670.990479,
+              "p99": 941.347749,
+              "samples": 59269
+            }
+          },
+          {
+            "case": "task-targeted-2000",
+            "status": "passed",
+            "successWithinWait": 0.9854,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 60000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 486.805716,
+              "p95": 701.259282,
+              "p99": 950.89775,
+              "samples": 59124
+            }
+          },
+          {
+            "case": "direct-2000",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 60000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 344.754253,
+              "p95": 455.816752,
+              "p99": 603.91586,
+              "samples": 60000
+            }
+          }
+        ]
+      },
+      {
+        "targetDateBJT": "2026-11-22",
+        "githubRunId": "44954615747",
+        "url": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44954615747",
+        "event": "schedule",
+        "attempt": 1,
+        "startedAtBJT": "2026-11-22T06:02:42.052821+08:00",
+        "scheduleDelaySeconds": 1962,
+        "durationSeconds": 872,
+        "caseCounts": {
+          "passed": 9
+        },
+        "formal": {
+          "sent": 315000,
+          "http2": 315000,
+          "http429": 0,
+          "sentHttp0Unknown": 0,
+          "clientTimeouts": 0,
+          "notObservedWithinWait": 4226,
+          "observedSucceededAfterDrain": 315000
+        },
+        "allPhasesHttp429": 0,
+        "allPhasesSentHttp0Unknown": 0,
+        "cleanup": {
+          "status": "confirmed",
+          "ownedWorkerCount": 10000,
+          "observedStateCounts": {
+            "unknown": 10000
+          },
+          "observationMillis": 8068,
+          "ownedProcessesStopped": true,
+          "privateInputsRemoved": true,
+          "privateCredentialCopiesRemoved": true,
+          "errorCount": 0,
+          "finalizationFailureCount": 0
+        },
+        "kit": {
+          "tag": "v4.4.4",
+          "gitCommit": "01f795013ee9ded817304eba26e40805a21ddb89",
+          "kitSha256": "75698f07a411aa35390f6ee96f1d28393b402279f2f0c7e22aaf156d7659ddaa",
+          "release": "https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.4.4"
+        },
+        "serverDeployment": {
+          "version": "4.4.5",
+          "gitCommit": "520b7ce314de24ad42ea079f97491919a24852b4",
+          "configurationId": "sha256:db87b43d5b85172292368bcf745dab92d4b665d1f8098974f35b7d6c63c4f672"
+        },
+        "hostResourcePeak": {
+          "peakFileDescriptors": 10028,
+          "peakNativeThreads": 54,
+          "peakRssBytes": 1097932800,
+          "samples": 839
+        },
+        "notCollected": [
+          "server-resources",
+          "redis-resources",
+          "redis-calibration",
+          "server-jfr"
+        ],
+        "cases": [
+          {
+            "case": "task-any-500",
+            "status": "passed",
+            "successWithinWait": 0.9872,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 15000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 449.633495,
+              "p95": 520.025981,
+              "p99": 705.587881,
+              "samples": 14808
+            }
+          },
+          {
+            "case": "task-targeted-500",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 15000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 448.685362,
+              "p95": 517.543285,
+              "p99": 550.897684,
+              "samples": 15000
+            }
+          },
+          {
+            "case": "direct-500",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 15000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 346.664547,
+              "p95": 354.557303,
+              "p99": 400.198412,
+              "samples": 15000
+            }
+          },
+          {
+            "case": "task-any-1000",
+            "status": "passed",
+            "successWithinWait": 0.9682333333333333,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 30000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 466.195339,
+              "p95": 568.287995,
+              "p99": 763.473649,
+              "samples": 29047
+            }
+          },
+          {
+            "case": "task-targeted-1000",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 30000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 461.99048,
+              "p95": 536.690542,
+              "p99": 575.098336,
+              "samples": 30000
+            }
+          },
+          {
+            "case": "direct-1000",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 30000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 343.178903,
+              "p95": 368.626718,
+              "p99": 524.222997,
+              "samples": 30000
+            }
+          },
+          {
+            "case": "task-any-2000",
+            "status": "passed",
+            "successWithinWait": 0.9835166666666667,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 60000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 489.015374,
+              "p95": 663.10047,
+              "p99": 922.604405,
+              "samples": 59011
+            }
+          },
+          {
+            "case": "task-targeted-2000",
+            "status": "passed",
+            "successWithinWait": 0.9651333333333333,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 60000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 495.357981,
+              "p95": 1102.889999,
+              "p99": 1274.278552,
+              "samples": 57908
+            }
+          },
+          {
+            "case": "direct-2000",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 60000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 346.31351,
+              "p95": 757.402531,
+              "p99": 856.222231,
+              "samples": 60000
+            }
+          }
+        ]
+      },
+      {
+        "targetDateBJT": "2026-11-23",
+        "githubRunId": "45076851544",
+        "url": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45076851544",
+        "event": "schedule",
+        "attempt": 1,
+        "startedAtBJT": "2026-11-23T06:17:24.630949+08:00",
+        "scheduleDelaySeconds": 2844,
+        "durationSeconds": 881,
+        "caseCounts": {
+          "passed": 9
+        },
+        "formal": {
+          "sent": 315000,
+          "http2": 315000,
+          "http429": 0,
+          "sentHttp0Unknown": 0,
+          "clientTimeouts": 0,
+          "notObservedWithinWait": 4950,
+          "observedSucceededAfterDrain": 315000
+        },
+        "allPhasesHttp429": 0,
+        "allPhasesSentHttp0Unknown": 0,
+        "cleanup": {
+          "status": "confirmed",
+          "ownedWorkerCount": 10000,
+          "observedStateCounts": {
+            "unknown": 10000
+          },
+          "observationMillis": 8483,
+          "ownedProcessesStopped": true,
+          "privateInputsRemoved": true,
+          "privateCredentialCopiesRemoved": true,
+          "errorCount": 0,
+          "finalizationFailureCount": 0
+        },
+        "kit": {
+          "tag": "v4.4.4",
+          "gitCommit": "01f795013ee9ded817304eba26e40805a21ddb89",
+          "kitSha256": "75698f07a411aa35390f6ee96f1d28393b402279f2f0c7e22aaf156d7659ddaa",
+          "release": "https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.4.4"
+        },
+        "serverDeployment": {
+          "version": "4.4.5",
+          "gitCommit": "520b7ce314de24ad42ea079f97491919a24852b4",
+          "configurationId": "sha256:db87b43d5b85172292368bcf745dab92d4b665d1f8098974f35b7d6c63c4f672"
+        },
+        "hostResourcePeak": {
+          "peakFileDescriptors": 10028,
+          "peakNativeThreads": 54,
+          "peakRssBytes": 1075884032,
+          "samples": 847
+        },
+        "notCollected": [
+          "server-resources",
+          "redis-resources",
+          "redis-calibration",
+          "server-jfr"
+        ],
+        "cases": [
+          {
+            "case": "task-any-500",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 15000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 449.014052,
+              "p95": 524.126425,
+              "p99": 1357.970898,
+              "samples": 15000
+            }
+          },
+          {
+            "case": "task-targeted-500",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 15000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 449.212102,
+              "p95": 514.094937,
+              "p99": 531.781695,
+              "samples": 15000
+            }
+          },
+          {
+            "case": "direct-500",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 15000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 347.308282,
+              "p95": 355.320358,
+              "p99": 417.347851,
+              "samples": 15000
+            }
+          },
+          {
+            "case": "task-any-1000",
+            "status": "passed",
+            "successWithinWait": 0.9389333333333333,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 30000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 465.880699,
+              "p95": 548.759078,
+              "p99": 781.371658,
+              "samples": 28168
+            }
+          },
+          {
+            "case": "task-targeted-1000",
+            "status": "passed",
+            "successWithinWait": 0.9999666666666667,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 30000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 465.329604,
+              "p95": 579.593843,
+              "p99": 1297.666301,
+              "samples": 29999
+            }
+          },
+          {
+            "case": "direct-1000",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 30000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 344.462564,
+              "p95": 354.044136,
+              "p99": 496.399509,
+              "samples": 30000
+            }
+          },
+          {
+            "case": "task-any-2000",
+            "status": "passed",
+            "successWithinWait": 0.9875333333333334,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 60000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 490.131274,
+              "p95": 697.658615,
+              "p99": 1047.536879,
+              "samples": 59252
+            }
+          },
+          {
+            "case": "task-targeted-2000",
+            "status": "passed",
+            "successWithinWait": 0.9605166666666667,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 60000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 489.319714,
+              "p95": 817.08349,
+              "p99": 1336.410401,
+              "samples": 57631
+            }
+          },
+          {
+            "case": "direct-2000",
+            "status": "passed",
+            "successWithinWait": 1.0,
+            "acceptedResultsAfterDrain": {
+              "failed": 0,
+              "not_observed": 0,
+              "succeeded": 60000
+            },
+            "successfulCallLatencyMillis": {
+              "p50": 346.456782,
+              "p95": 366.770214,
+              "p99": 557.852088,
+              "samples": 60000
+            }
+          }
+        ]
+      }
+    ],
+    "caseCounts": {
+      "passed": 36
+    },
+    "formalTotals": {
+      "sent": 1260000,
+      "http2": 1260000,
+      "http429": 0,
+      "sentHttp0Unknown": 0,
+      "clientTimeouts": 0,
+      "notObservedWithinWait": 15709,
+      "observedSucceededAfterDrain": 1260000
+    },
+    "interpretation": [
+      "15,709 known HTTP-accepted submissions lacked a Result in the first observation window; original submissions completed successfully during drain. They were not unknown submissions.",
+      "All four campaigns confirmed owned connection cleanup; cleanup Worker state unknown is distinct from an unknown HTTP submission.",
+      "These are open-loop case results, not saturation, maximum TPS, every-moment availability or a latency SLA."
+    ]
+  },
+  "preChangeFindings": {
+    "observedBeforeMaintenance": "2026-11-23T12:28:12.744662+08:00",
+    "reportIngress": {
+      "destination": "KERNEL",
+      "queueStatus": "FULL",
+      "lastLoggedCumulativeDropLowerBound": 23552,
+      "counterMeaning": "Sampled per-Dispatcher cumulative dropped Reports; not exact total, unique Workers or Task Results.",
+      "temporalAssociation": "10k campaign stop waves; warning lacks event type, so individual dropped report classes are not confirmed.",
+      "queueCapacity": 1000,
+      "reportBackoff": "1s",
+      "kernelPacerPreset": "DEFAULT",
+      "serviceabilityEvidenceListLengthAtRead": 0,
+      "consequence": "Lossy scheduling serviceability evidence can retain stale HOT supply; physical route revocation and Task Result queues are independent. DEFAULT does not probe retained HOT coordinates.",
+      "fleetSample": {
+        "scope": "200 bounded sampled stopped Performance Workers, not a fleet-wide census",
+        "sampleCount": 200,
+        "networkUnknown": 200,
+        "schedulingHotScoreOverdue": 128,
+        "schedulingRecovery": 72
+      }
+    }
+  },
+  "preChangeRuntimeSnapshot": {
+    "observedAt": "2026-11-23T12:28:12.744662+08:00",
+    "runtime": {
+      "version": "4.4.5",
+      "gitCommit": "520b7ce314de24ad42ea079f97491919a24852b4",
+      "pid": 602144
+    },
+    "redis": {
+      "usedMemoryBytes": 104339304,
+      "maxMemoryBytes": 2147483648,
+      "evictedKeys": 0,
+      "persistenceStatus": "RDB/AOF statuses ok at read"
+    },
+    "rpcRetention": {
+      "enabled": true,
+      "inputRetention": "1h",
+      "terminalRetention": "24h",
+      "observedMaintenancePasses": 84,
+      "observedFailureOrBudgetFlagCount": 0,
+      "currentInputFields": 0,
+      "currentResultFields": 0,
+      "currentItemScoreMembers": 291026
+    },
+    "limits": "Point-in-time idle resources and retained maintenance evidence, not server resources collected during the four load runs."
+  },
+  "boundedOperationsCloseout": {
+    "reportIngressBudget": {
+      "status": "configured and observed in an independent published-kit 10k run; original case states retained",
+      "sourceRegression": {
+        "pullRequest": "https://github.com/quiaingmuarua/xa_mass_platform/pull/125",
+        "proofRun": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45114370320",
+        "conclusion": "success",
+        "claimLimit": "Source regression evidence remains separate from the actual public run.",
+        "mergeCommit": "37650aadd89a6ea879c75f1637fb140edbfb314a"
+      },
+      "runtimeVersion": "4.4.5",
+      "runtimeCommit": "520b7ce314de24ad42ea079f97491919a24852b4",
+      "fromCapacity": 1000,
+      "toCapacity": 20000,
+      "reportBackoff": "1s",
+      "fixedAppendLimit": 100,
+      "schedulingAndRetryChanged": false,
+      "beforeConfigurationId": "sha256:db87b43d5b85172292368bcf745dab92d4b665d1f8098974f35b7d6c63c4f672",
+      "configurationId": "sha256:c9bdee9c5282ea089ea667c086fb933ea4f7ce7b38518e9eac248da266cc79fd",
+      "runtimeAfterRecovery": {
+        "pid": 843090,
+        "readiness": "UP",
+        "nRestartsAfterExplicitReset": 0,
+        "resetDoesNotEraseOriginalFiveFailedStarts": true
+      },
+      "maintenanceFailure": {
+        "initialApply": "failed: atomic replacement omitted service group and Runtime could not read configuration",
+        "automaticStartupFailures": 5,
+        "correctedOwnershipAndMode": "root:xa-mass 0640; service readability verified",
+        "startLimitResetExplicitlyRecorded": true,
+        "failureEvidencePreserved": true,
+        "interpretation": "These five failed starts are a known failure in this maintenance operation; they are independent of the earlier lifecycle events with unknown causes."
+      },
+      "finalCloseout": {
+        "status": "accepted",
+        "verifiedAt": "2026-11-23T05:43:10.626965+00:00",
+        "openOperationCount": 0,
+        "factsSha256ReadbackMatches": true,
+        "ownRestorePointAbsent": true,
+        "restorePointCleanup": {
+          "status": "removed-after-acceptance",
+          "scope": "only this operation three configuration/metadata files; no Redis/SQLite/user/Worker data",
+          "removedAt": "2026-11-23T05:41:18.516775+00:00"
+        },
+        "originalFailureEvidencePreserved": true,
+        "runtimePid": 843090,
+        "configurationId": "sha256:c9bdee9c5282ea089ea667c086fb933ea4f7ce7b38518e9eac248da266cc79fd",
+        "runtimeActiveState": "active",
+        "runtimeRestartsAfterExplicitReset": 0,
+        "oldScopeKeyCount": 347,
+        "oldScopeDeleted": false,
+        "sqliteQuickCheck": "ok",
+        "standing20Network": {
+          "connected": 20
+        },
+        "standingNetworkReadAt": "2026-11-23T05:43:10.625474743Z",
+        "maintenanceInterval": {
+          "operationStartedAt": "2026-11-23T04:56:42.837823+00:00",
+          "restoredReadinessConfirmedAt": "2026-11-23T05:01:03.353517+00:00",
+          "approximateStartToConfirmationSeconds": 260.516,
+          "limits": "Operation-start to restored-UP confirmation, approximately four minutes twenty seconds; not every-instant availability probes or an exact outage-duration measurement."
+        }
+      }
+    },
+    "persistentWorkers": {
+      "recoveryKind": "manual existing Lab start after Runtime maintenance and the initial configuration-access failure; not automatic reconnect proof",
+      "hostPidBeforeAndAfter": 138222,
+      "hostRestartsDuringThisRecovery": 0,
+      "requestCount": 20,
+      "eachCoordinateAttemptedOnce": true,
+      "acceptedRequests": 20,
+      "unknownResponses": 0,
+      "workerCount": 20,
+      "runtimeStateCounts": {
+        "RUNNING": 20
+      },
+      "exactOriginalIdentitySet": true,
+      "hostProcessConfigurationInventoryUnchanged": true,
+      "independentNetworkObservation": {
+        "readAt": "2026-11-23T05:05:32.609528364Z",
+        "exactOriginalIdentitySet": true,
+        "networkStates": {
+          "connected": 20
+        }
+      }
+    },
+    "operationalMetadata": {
+      "status": "done",
+      "recordingDate": "2026-11-23",
+      "originalEvidencePreserved": true,
+      "earlierLifecycleEvents": {
+        "nginxStopStartAtUTC": [
+          "2026-11-20T06:08:38Z",
+          "2026-11-20T06:08:48Z"
+        ],
+        "standingHostStopStartAtBJT": "2026-11-21T06:57:26+08:00",
+        "historicalCause": "unknown",
+        "historicalOperator": "unknown"
+      },
+      "meaning": "Current-state prose corrected; retrospective occurrence times are separate from recording time. No historical cause or operator was invented.",
+      "scope": "Metadata-only corrections completed before the report budget maintenance; original logs remain authoritative."
+    },
+    "aliFinalReceipt": {
+      "status": "done",
+      "recordedAt": "2026-11-23T05:41:56.561125+00:00",
+      "githubRunId": "45116963479",
+      "caseCounts": {
+        "passed": 8,
+        "saturated": 1
+      },
+      "runnerCleanup": "confirmed",
+      "activePerformanceServiceCount": 0,
+      "temporaryInputFileCount": 0,
+      "standingHostPid": 138222,
+      "standingHostRestarts": 0,
+      "standingWorkerCount": 20,
+      "standingRuntimeStates": {
+        "RUNNING": 20
+      },
+      "originalIdentityAndInventoryRetained": true,
+      "originalLogPrefixPreserved": true,
+      "processConfigurationCredentialDataMutation": false,
+      "historicalRestartCausesAndOperators": "unknown"
+    }
+  },
+  "postChangePublicAcceptance": {
+    "status": "completed with original workload, report and case states",
+    "notPassedAttempts": [
+      {
+        "githubRunId": "45115633497",
+        "url": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45115633497",
+        "outcome": "failed before any external job; no external workload started"
+      },
+      {
+        "submission": "typed API dispatch",
+        "httpStatus": 422,
+        "githubRunCreated": false,
+        "externalWorkloadStarted": false
+      }
+    ],
+    "manualCallerCorrection": {
+      "pullRequest": "https://github.com/quiaingmuarua/xa_mass_platform/pull/126",
+      "change": "normalize numeric dispatch input before shared consumer invocation",
+      "verificationStatus": "success",
+      "mergeCommit": "7fc9bff850b4f8f9c7dfbb87f74220347e565f01",
+      "proofRun": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45116341995"
+    },
+    "actualExternalGithubRunId": "45116963479",
+    "postStopFullSchedulingCensus": {
+      "status": "confirmed",
+      "observedAt": "2026-11-23T05:36:12.974695+00:00",
+      "ownedWorkerCount": 10000,
+      "expectedPages": 200,
+      "completedPages": 200,
+      "maximumConcurrency": 8,
+      "elapsedSeconds": 0.4689886800479144,
+      "groups": {
+        "performance-a": {
+          "network": {
+            "unknown": 5000
+          },
+          "scheduling": {
+            "recovery": 5000
+          }
+        },
+        "performance-b": {
+          "network": {
+            "unknown": 5000
+          },
+          "scheduling": {
+            "recovery": 5000
+          }
+        }
+      },
+      "errorCount": 0,
+      "standing20Network": {
+        "connected": 20
+      },
+      "runtimePid": 843090,
+      "runtimeState": {
+        "activeState": "active",
+        "nRestartsAfterExplicitReset": 0
+      },
+      "claim": "complete fixed owned identity set in this read window; not every-moment connectivity or all overload/failure cases"
+    },
+    "postChangeKernelDropCounterEvidence": {
+      "observedAt": "2026-11-23T05:36:12.974695+00:00",
+      "newRuntimeReportWarningCount": 0,
+      "meaning": "No new matching Runtime Report WARN in the inspected post-maintenance log; full owned-set scheduling census confirmed recovery in this read window. This is not a durable drop counter or every-moment guarantee."
+    },
+    "url": "https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45116963479",
+    "event": "workflow_dispatch",
+    "attempt": 1,
+    "controllerCommit": "7fc9bff850b4f8f9c7dfbb87f74220347e565f01",
+    "githubConclusion": "success",
+    "runnerStatus": "passed",
+    "runnerExitCode": 0,
+    "caseCounts": {
+      "passed": 8,
+      "saturated": 1
+    },
+    "formal": {
+      "planned": 275000,
+      "sent": 273141,
+      "http429": 0,
+      "unknownSubmissions": 0,
+      "clientTimeouts": 0,
+      "accepted": 273141,
+      "notSent": 1859,
+      "unknownOutcome": 0,
+      "noHttpResponse": 0,
+      "notObservedWithinWait": 6841,
+      "acceptedResultsAfterDrain": {
+        "succeeded": 273141,
+        "failed": 0,
+        "not_observed": 0
+      }
+    },
+    "nominalUnshortenedPlan": 315000,
+    "notAttemptedAfterEarlyCut": 40000,
+    "countsNote": "planned reflects actual case windows. task-any-2000 stops at 10 seconds for in-flight-cap; notSent is generator-side, not HTTP429. All statuses are copied from existing report; no new pass criterion.",
+    "kit": {
+      "tag": "v4.4.4",
+      "gitCommit": "01f795013ee9ded817304eba26e40805a21ddb89",
+      "kitSha256": "75698f07a411aa35390f6ee96f1d28393b402279f2f0c7e22aaf156d7659ddaa",
+      "release": "https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.4.4"
+    },
+    "serverDeployment": {
+      "version": "4.4.5",
+      "gitCommit": "520b7ce314de24ad42ea079f97491919a24852b4",
+      "configurationId": "sha256:c9bdee9c5282ea089ea667c086fb933ea4f7ce7b38518e9eac248da266cc79fd"
+    },
+    "cleanup": {
+      "ownedProcessesStopped": true,
+      "privateCredentialCopiesRemoved": true,
+      "privateInputsRemoved": true,
+      "errorCount": 0,
+      "finalizationFailureCount": 0,
+      "workerConnections": {
+        "status": "confirmed",
+        "ownedWorkerCount": 10000,
+        "states": {
+          "unknown": 10000
+        },
+        "observation": {
+          "complete": true,
+          "completedPages": 100,
+          "deadlineExpired": false,
+          "elapsedMillis": 8193,
+          "errorTypes": {},
+          "observedIdentityCount": 10000,
+          "pageConcurrency": 8,
+          "pageSize": 100,
+          "scanCount": 1,
+          "totalPages": 100
+        }
+      }
+    },
+    "finishedAt": "2026-11-23T05:33:25+00:00",
+    "reportCollectionStatus": "complete",
+    "hostResourcePeak": {
+      "peakFileDescriptors": 10028,
+      "peakNativeThreads": 54,
+      "peakRssBytes": 1143906304,
+      "samples": 833
+    },
+    "cases": [
+      {
+        "case": "task-any-500",
+        "status": "passed",
+        "invalidReasons": [],
+        "failureReason": null,
+        "fastFail": null,
+        "measurementStartedEpochMillis": 1795411374570,
+        "measurementEndedEpochMillis": 1795411405165,
+        "successWithinWait": 0.9619333333333333,
+        "originalMetricsStatus": "complete",
+        "metrics": {
+          "fromSeconds": 0.0,
+          "toSeconds": 30.0,
+          "planned": 15000,
+          "sent": 15000,
+          "outcomes": {
+            "succeeded": 14429,
+            "failed": 0,
+            "not_observed": 571,
+            "unknown": 0,
+            "not_sent": 0,
+            "protocol_error": 0,
+            "rejected": 0,
+            "timed_out": 0
+          },
+          "actualSendRate": 500.0,
+          "generatorLimited": false,
+          "http429": 0,
+          "unknownSubmissions": 0,
+          "clientTimeouts": 0,
+          "accepted": 15000,
+          "acceptedResultsAfterDrain": {
+            "not_observed": 0,
+            "failed": 0,
+            "succeeded": 15000
+          },
+          "httpVersions": {
+            "HTTP_2": 15000
+          },
+          "responseLatencyMillis": {
+            "p50": 453.240371,
+            "samples": 15000,
+            "p99": 1897.970595,
+            "p95": 1182.767291
+          },
+          "successfulCallLatencyMillis": {
+            "p50": 450.917528,
+            "samples": 14429,
+            "p99": 1278.605859,
+            "p95": 534.229592
+          }
+        }
+      },
+      {
+        "case": "task-targeted-500",
+        "status": "passed",
+        "invalidReasons": [],
+        "failureReason": null,
+        "fastFail": null,
+        "measurementStartedEpochMillis": 1795411450327,
+        "measurementEndedEpochMillis": 1795411480738,
+        "successWithinWait": 1.0,
+        "originalMetricsStatus": "complete",
+        "metrics": {
+          "fromSeconds": 0.0,
+          "toSeconds": 30.0,
+          "planned": 15000,
+          "sent": 15000,
+          "outcomes": {
+            "succeeded": 15000,
+            "failed": 0,
+            "not_observed": 0,
+            "unknown": 0,
+            "not_sent": 0,
+            "protocol_error": 0,
+            "rejected": 0,
+            "timed_out": 0
+          },
+          "actualSendRate": 500.0,
+          "generatorLimited": false,
+          "http429": 0,
+          "unknownSubmissions": 0,
+          "clientTimeouts": 0,
+          "accepted": 15000,
+          "acceptedResultsAfterDrain": {
+            "succeeded": 15000,
+            "not_observed": 0,
+            "failed": 0
+          },
+          "httpVersions": {
+            "HTTP_2": 15000
+          },
+          "responseLatencyMillis": {
+            "p95": 514.804509,
+            "p50": 447.717384,
+            "samples": 15000,
+            "p99": 558.364799
+          },
+          "successfulCallLatencyMillis": {
+            "p95": 514.958891,
+            "p50": 447.862265,
+            "samples": 15000,
+            "p99": 558.460408
+          }
+        }
+      },
+      {
+        "case": "direct-500",
+        "status": "passed",
+        "invalidReasons": [],
+        "failureReason": null,
+        "fastFail": null,
+        "measurementStartedEpochMillis": 1795411525614,
+        "measurementEndedEpochMillis": 1795411556281,
+        "successWithinWait": 1.0,
+        "originalMetricsStatus": "complete",
+        "metrics": {
+          "fromSeconds": 0.0,
+          "toSeconds": 30.0,
+          "planned": 15000,
+          "sent": 15000,
+          "outcomes": {
+            "succeeded": 15000,
+            "failed": 0,
+            "not_observed": 0,
+            "unknown": 0,
+            "not_sent": 0,
+            "protocol_error": 0,
+            "rejected": 0,
+            "timed_out": 0
+          },
+          "actualSendRate": 500.0,
+          "generatorLimited": false,
+          "http429": 0,
+          "unknownSubmissions": 0,
+          "clientTimeouts": 0,
+          "accepted": 15000,
+          "acceptedResultsAfterDrain": {
+            "succeeded": 15000,
+            "failed": 0,
+            "not_observed": 0
+          },
+          "httpVersions": {
+            "HTTP_2": 15000
+          },
+          "responseLatencyMillis": {
+            "samples": 15000,
+            "p50": 347.426545,
+            "p95": 356.281168,
+            "p99": 706.840572
+          },
+          "successfulCallLatencyMillis": {
+            "samples": 15000,
+            "p50": 347.531817,
+            "p95": 356.561469,
+            "p99": 706.932521
+          }
+        }
+      },
+      {
+        "case": "task-any-1000",
+        "status": "passed",
+        "invalidReasons": [],
+        "failureReason": null,
+        "fastFail": null,
+        "measurementStartedEpochMillis": 1795411601413,
+        "measurementEndedEpochMillis": 1795411632000,
+        "successWithinWait": 0.9524,
+        "originalMetricsStatus": "complete",
+        "metrics": {
+          "fromSeconds": 0.0,
+          "toSeconds": 30.0,
+          "planned": 30000,
+          "sent": 30000,
+          "outcomes": {
+            "succeeded": 28572,
+            "failed": 0,
+            "not_observed": 1428,
+            "unknown": 0,
+            "not_sent": 0,
+            "protocol_error": 0,
+            "rejected": 0,
+            "timed_out": 0
+          },
+          "actualSendRate": 1000.0,
+          "generatorLimited": false,
+          "http429": 0,
+          "unknownSubmissions": 0,
+          "clientTimeouts": 0,
+          "accepted": 30000,
+          "acceptedResultsAfterDrain": {
+            "succeeded": 30000,
+            "failed": 0,
+            "not_observed": 0
+          },
+          "httpVersions": {
+            "HTTP_2": 30000
+          },
+          "responseLatencyMillis": {
+            "p50": 470.40124,
+            "p95": 1290.997733,
+            "p99": 1904.023501,
+            "samples": 30000
+          },
+          "successfulCallLatencyMillis": {
+            "p50": 467.119598,
+            "p95": 568.630133,
+            "p99": 877.850417,
+            "samples": 28572
+          }
+        }
+      },
+      {
+        "case": "task-targeted-1000",
+        "status": "passed",
+        "invalidReasons": [],
+        "failureReason": null,
+        "fastFail": null,
+        "measurementStartedEpochMillis": 1795411677433,
+        "measurementEndedEpochMillis": 1795411708091,
+        "successWithinWait": 1.0,
+        "originalMetricsStatus": "complete",
+        "metrics": {
+          "fromSeconds": 0.0,
+          "toSeconds": 30.0,
+          "planned": 30000,
+          "sent": 30000,
+          "outcomes": {
+            "succeeded": 30000,
+            "failed": 0,
+            "not_observed": 0,
+            "unknown": 0,
+            "not_sent": 0,
+            "protocol_error": 0,
+            "rejected": 0,
+            "timed_out": 0
+          },
+          "actualSendRate": 1000.0,
+          "generatorLimited": false,
+          "http429": 0,
+          "unknownSubmissions": 0,
+          "clientTimeouts": 0,
+          "accepted": 30000,
+          "acceptedResultsAfterDrain": {
+            "not_observed": 0,
+            "failed": 0,
+            "succeeded": 30000
+          },
+          "httpVersions": {
+            "HTTP_2": 30000
+          },
+          "responseLatencyMillis": {
+            "p95": 539.847682,
+            "p50": 461.299735,
+            "samples": 30000,
+            "p99": 600.447312
+          },
+          "successfulCallLatencyMillis": {
+            "p95": 540.031265,
+            "p50": 461.424519,
+            "samples": 30000,
+            "p99": 600.559986
+          }
+        }
+      },
+      {
+        "case": "direct-1000",
+        "status": "passed",
+        "invalidReasons": [],
+        "failureReason": null,
+        "fastFail": null,
+        "measurementStartedEpochMillis": 1795411753207,
+        "measurementEndedEpochMillis": 1795411783590,
+        "successWithinWait": 1.0,
+        "originalMetricsStatus": "complete",
+        "metrics": {
+          "fromSeconds": 0.0,
+          "toSeconds": 30.0,
+          "planned": 30000,
+          "sent": 30000,
+          "outcomes": {
+            "succeeded": 30000,
+            "failed": 0,
+            "not_observed": 0,
+            "unknown": 0,
+            "not_sent": 0,
+            "protocol_error": 0,
+            "rejected": 0,
+            "timed_out": 0
+          },
+          "actualSendRate": 1000.0,
+          "generatorLimited": false,
+          "http429": 0,
+          "unknownSubmissions": 0,
+          "clientTimeouts": 0,
+          "accepted": 30000,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "succeeded": 30000,
+            "not_observed": 0
+          },
+          "httpVersions": {
+            "HTTP_2": 30000
+          },
+          "responseLatencyMillis": {
+            "p95": 392.623165,
+            "p50": 342.572778,
+            "samples": 30000,
+            "p99": 588.435647
+          },
+          "successfulCallLatencyMillis": {
+            "p95": 392.710618,
+            "p50": 342.669233,
+            "samples": 30000,
+            "p99": 588.541546
+          }
+        }
+      },
+      {
+        "case": "task-any-2000",
+        "status": "saturated",
+        "invalidReasons": [],
+        "failureReason": null,
+        "fastFail": "in-flight-cap",
+        "measurementStartedEpochMillis": 1795411828982,
+        "measurementEndedEpochMillis": 1795411839493,
+        "successWithinWait": 0.7905848630174742,
+        "originalMetricsStatus": "complete",
+        "metrics": {
+          "fromSeconds": 0.0,
+          "toSeconds": 10.0,
+          "planned": 20000,
+          "sent": 18141,
+          "outcomes": {
+            "succeeded": 14342,
+            "failed": 0,
+            "not_observed": 3799,
+            "unknown": 0,
+            "not_sent": 1859,
+            "protocol_error": 0,
+            "rejected": 0,
+            "timed_out": 0
+          },
+          "actualSendRate": 1814.1,
+          "generatorLimited": true,
+          "http429": 0,
+          "unknownSubmissions": 0,
+          "clientTimeouts": 0,
+          "accepted": 18141,
+          "acceptedResultsAfterDrain": {
+            "failed": 0,
+            "not_observed": 0,
+            "succeeded": 18141
+          },
+          "httpVersions": {
+            "HTTP_2": 18141
+          },
+          "responseLatencyMillis": {
+            "p99": 3594.810329,
+            "samples": 18141,
+            "p50": 1194.17564,
+            "p95": 3211.246144
+          },
+          "successfulCallLatencyMillis": {
+            "p99": 2778.708432,
+            "samples": 14342,
+            "p50": 924.803724,
+            "p95": 2329.216935
+          }
+        }
+      },
+      {
+        "case": "task-targeted-2000",
+        "status": "passed",
+        "invalidReasons": [],
+        "failureReason": null,
+        "fastFail": null,
+        "measurementStartedEpochMillis": 1795411886760,
+        "measurementEndedEpochMillis": 1795411917271,
+        "successWithinWait": 0.9826166666666667,
+        "originalMetricsStatus": "complete",
+        "metrics": {
+          "fromSeconds": 0.0,
+          "toSeconds": 30.0,
+          "planned": 60000,
+          "sent": 60000,
+          "outcomes": {
+            "succeeded": 58957,
+            "failed": 0,
+            "not_observed": 1043,
+            "unknown": 0,
+            "not_sent": 0,
+            "protocol_error": 0,
+            "rejected": 0,
+            "timed_out": 0
+          },
+          "actualSendRate": 2000.0,
+          "generatorLimited": false,
+          "http429": 0,
+          "unknownSubmissions": 0,
+          "clientTimeouts": 0,
+          "accepted": 60000,
+          "acceptedResultsAfterDrain": {
+            "succeeded": 60000,
+            "failed": 0,
+            "not_observed": 0
+          },
+          "httpVersions": {
+            "HTTP_2": 60000
+          },
+          "responseLatencyMillis": {
+            "p50": 485.973098,
+            "p95": 729.31287,
+            "p99": 1902.688723,
+            "samples": 60000
+          },
+          "successfulCallLatencyMillis": {
+            "p50": 485.387858,
+            "p95": 676.515289,
+            "p99": 989.023381,
+            "samples": 58957
+          }
+        }
+      },
+      {
+        "case": "direct-2000",
+        "status": "passed",
+        "invalidReasons": [],
+        "failureReason": null,
+        "fastFail": null,
+        "measurementStartedEpochMillis": 1795411963516,
+        "measurementEndedEpochMillis": 1795411993926,
+        "successWithinWait": 1.0,
+        "originalMetricsStatus": "complete",
+        "metrics": {
+          "fromSeconds": 0.0,
+          "toSeconds": 30.0,
+          "planned": 60000,
+          "sent": 60000,
+          "outcomes": {
+            "succeeded": 60000,
+            "failed": 0,
+            "not_observed": 0,
+            "unknown": 0,
+            "not_sent": 0,
+            "protocol_error": 0,
+            "rejected": 0,
+            "timed_out": 0
+          },
+          "actualSendRate": 2000.0,
+          "generatorLimited": false,
+          "http429": 0,
+          "unknownSubmissions": 0,
+          "clientTimeouts": 0,
+          "accepted": 60000,
+          "acceptedResultsAfterDrain": {
+            "not_observed": 0,
+            "failed": 0,
+            "succeeded": 60000
+          },
+          "httpVersions": {
+            "HTTP_2": 60000
+          },
+          "responseLatencyMillis": {
+            "p50": 346.341215,
+            "samples": 60000,
+            "p99": 607.173253,
+            "p95": 379.924847
+          },
+          "successfulCallLatencyMillis": {
+            "p50": 346.437867,
+            "samples": 60000,
+            "p99": 607.28999,
+            "p95": 381.423888
+          }
+        }
+      }
+    ],
+    "activeLoadServerResourceSnapshot": {
+      "observedAt": "2026-11-23T05:24:51.978226+00:00",
+      "source": "independent on-host point read during this run; not the external runner server sampler",
+      "services": {
+        "xa-mass": {
+          "pid": 843090,
+          "memoryCurrentBytes": 1774755840,
+          "memoryPeakBytes": 1794199552,
+          "tasksCurrent": 273,
+          "activeState": "active"
+        },
+        "nginx": {
+          "pid": 659618,
+          "memoryCurrentBytes": 926003200,
+          "memoryPeakBytes": 995729408,
+          "tasksCurrent": 9,
+          "activeState": "active"
+        },
+        "redis-server": {
+          "pid": 211485,
+          "memoryCurrentBytes": 219385856,
+          "memoryPeakBytes": 608620544,
+          "tasksCurrent": 7,
+          "activeState": "active"
+        }
+      },
+      "runtimeFileDescriptors": 10124,
+      "tcpConnectionsByLocalPort": {
+        "443": 10028,
+        "18183": 10020
+      },
+      "redisMemory": {
+        "used_memory": 157443000,
+        "used_memory_rss": 218554368,
+        "maxmemory": 2147483648
+      },
+      "limits": "systemd MemoryCurrent/MemoryPeak are cgroup readings, not process RSS. MemoryPeak is the unit-lifetime high-water mark, not a maximum uniquely attributable to this run. This is not a continuous load-resource trace; shared-page RSS must not be summed as exclusive usage."
+    },
+    "interpretation": [
+      "Runner and GitHub success do not mean all nine cases passed: eight passed and task-any-2000 was saturated by the original in-flight-cap rule.",
+      "The saturated case measured 10 seconds instead of the nominal 30-second window. The 40,000 requests outside that shortened window were not attempted; 1,859 of the actual 275,000 planned requests were not sent.",
+      "All 273,141 sent submissions received known HTTP responses and all accepted Results succeeded after drain; 6,841 Results were not observed in the first wait window.",
+      "No new performance threshold, retry, workload reduction or status reinterpretation was introduced. This is not a 2,000 TPS, maximum-capacity, every-moment connectivity or SLA proof."
+    ]
+  },
+  "nonclaims": [
+    "The seven-date observation window is not complete; only the four elapsed dates are covered.",
+    "The original task-any-2000 saturated outcome and all shortened-window/not-sent counts are preserved; this does not establish sustained 2,000 TPS.",
+    "The original 200-Worker pre-change sample is distinct from the later complete 10,000-owned-Worker census.",
+    "KERNEL best-effort evidence loss is a real scheduling-evidence gap; no Task Result loss is inferred from that warning.",
+    "The full census and inspected warning window do not prove every-moment zero disconnection or immunity to every overload/failure.",
+    "Manual persistent Worker recovery is not automatic reconnection proof.",
+    "The four scheduled campaigns did not collect Server/Redis/JFR load-time samples; the separate acceptance snapshot is one point read.",
+    "The known configuration-access failure during this maintenance does not establish the cause of the earlier Nginx or standing Host lifecycle events.",
+    "Neither PR125 nor this public acceptance establishes that the separate Android close/public projection issue is fixed.",
+    "No private raw logs, credentials or full Worker/request/Task identities are included.",
+    "The maintenance start-to-readiness interval is approximate; it is not a continuously probed outage duration."
+  ]
+}
