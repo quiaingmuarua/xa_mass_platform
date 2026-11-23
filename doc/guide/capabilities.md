@@ -10,14 +10,21 @@ Status: current capability guide with explicitly dated evidence.
 
 | Workload／用途 | 日期与被测版本 | 已完成结果 | 边界与原始证据 |
 | --- | --- | --- | --- |
-| 公网 Performance open-loop | 2026-11-19；kit 4.4.4 `01f795013ee9ded817304eba26e40805a21ddb89`，Runtime 4.4.0 `b28a87ac918a34ffabb4feb8c63a29998a0610db` | 两 Group 各 5,000 Worker；Any／targeted／Direct 三路径 × 500／1,000／2,000 到达/s；一次重复、每 case 30 秒，九项 `passed`；315,000 正式响应与成功 Result 闭合，unknown／429／not-sent／failed Result 为 0；自动 cleanup confirmed | 当轮入口设置 H2 8,192 streams、API 3,000/s、burst 6,000、管理员连接复用 100,000；不是 saturation、最大 TPS 或长期 SLA。[Run 44368693491](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/44368693491)、[完整观测](../../integrations/worker-call-performance/observations/external/2026-11-19.json) |
+| 公网 Performance 七日观测的前四日 | 2026-11-20–23；kit 4.4.4 `01f795013ee9ded817304eba26e40805a21ddb89`，Runtime 4.4.5 `520b7ce314de24ad42ea079f97491919a24852b4` | 每日两个 Group 各 5,000 Worker；Any／targeted／Direct × 500／1,000／2,000 到达/s，一次重复、每 case 30 秒；四轮共 36 项 `passed`，1,260,000 正式响应与成功 Result 闭合；429／未知提交／客户端超时为 0，四轮自动 cleanup confirmed | 七日窗口尚未结束；不是 saturation、最大 TPS 或长期 SLA。停止波存在 KERNEL best-effort 证据丢弃，不能由 case 通过推定调度证据完整。[四轮观测与原 Run](../../integrations/worker-call-performance/observations/external/2026-11-23.json) |
+| 公网 10k 停止波证据预算复验 | 2026-11-23；同一 kit 4.4.4／Runtime 4.4.5，Report 每队列预算 1,000 → 20,000 | 原 workload 得到 8 项 `passed`、1 项 `saturated`；`task-any-2000` 因在途上限缩为 10 秒测量窗；实际计划 275,000、发送 273,141、not-sent 1,859，全部已发送 Result 在 drain 后成功；429／无 HTTP 响应／未知提交／客户端超时为 0；自动 cleanup confirmed | 未缩短时的名义计划为 315,000；提前结束后的 40,000 次没有尝试。完整核对本轮 10,000 身份均为 network `unknown`／调度 `RECOVERY`，原 20 常驻连接仍在；所核对日志未见新增同类 Report WARN。不证明持续 2,000 TPS、每瞬间状态或 Android 问题已修复。[Run 45116963479](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45116963479)、[证据及维护失败记录](../../integrations/worker-call-performance/observations/external/2026-11-23.json) |
 | 持久 Java Host 的空闲与断网恢复 | 2026-11-18；Host 4.4.2 `ccf676801663f953169f2d03058cbe7236a01123`，Runtime 4.4.0 | 原 20 个身份，75 分钟有界空闲观察；一次约 120 秒出站 DROP 后，GCP 在恢复后 59.619 秒确认 20 connected；进程与输入保留 | 有采样间隔和 TCP 换连；不证明零瞬断、所有故障或 Android 恢复。[原始观测](../../integrations/worker-call-performance/observations/external/2026-11-18.json) |
 | 旧公网 Loaded Recovery 基础档 | 2026-11-12 运行，11-13 收尾；Runtime／kit 4.2.0 `aaed8d648c19e2f6332f37b4e831b0b194d5553b` | 1,000 → 999 Worker，两阶段各 10 Task × 5,000 Items，100,000 结果及完整导出，`diagnostic-passed` | 原公网 15k → 10k 目标及直接公网 10k 对照未通过建连；调查按 1,000 档结束。与上面的 Performance 是不同 workload。[收尾结果](https://github.com/quiaingmuarua/xa_mass_platform/blob/69773ada6b5bd6c67d3d5ee2b2adf6c5269c5db2/external-release-load/20261113-v4.2.0-closeout/closeout.json) |
 | Runtime 升级与 RPC 回收现场验收 | 2026-11-19；Runtime 4.4.5 `520b7ce314de24ad42ea079f97491919a24852b4`；复用原 scope／SQLite，RPC 回收显式启用 1h／24h | 三 Item 有限任务与三次新 RPC 的 MD5 核对通过；首轮维护删除 892,741 inputs、250,774 Scores、69 Results；原 20 Worker 经显式 Lab start 恢复，清理已确认 | 这是运维验收；不证明自动重连、容量或未来数据量下的回收时延。制品／配置指纹、计数口径及限制见[固定升级记录](https://github.com/quiaingmuarua/xa_mass_platform/blob/9c30061d0188036f48b296c1be2cdd3872416b45/distribution/server/RELEASE-4.4.md#bounded-onsite-acceptance-and-closeout) |
 
-Performance 的 3,992 个 HTTP 已接收、初读暂未观察到 Result 的请求，在原身份下 drain 完成；
-它们不是未知提交。cleanup 的 Worker `unknown` 是连接投影，也不等于请求结果 unknown。
-资源样本的来源和覆盖范围保留在原始记录中，不能把 Nginx 多进程 RSS 相加值当成独占内存。
+前四日的 15,709 个、预算复验的 6,841 个 HTTP 已接收但初读未见 Result 的请求，
+均在原身份下 drain 成功；它们不是未知提交。cleanup 的 Worker `unknown` 是连接投影，
+不等于请求结果 unknown。Runner 成功也不把原有 `saturated` 改写为 `passed`。
+预算复验的维护中发生五次配置读取权限失败，修正后显式重置启动限制；常驻 20 Worker
+经原 Lab 手工恢复且 Host 进程不变，这不属于自动重连证明。较早停启的原因仍未知。
+维护开始至恢复就绪确认约 4 分 20 秒，不是逐瞬间测得的停机时长；验收后本次恢复点已删除，
+两台主机操作记录均已关闭，旧 scope 与 SQLite 数据保留。
+资源样本的来源和覆盖范围保留在原始记录中：四轮未采集 Server／Redis／JFR 的负载期数据，
+复验另有一次现场资源读取；不能把 Nginx 多进程 RSS 相加值当成独占内存。
 
 早期 4.4.0–4.4.3 的 `invalid`、`saturated`、未知提交和清理不确定性继续保留在两份
 [11-18](../../integrations/worker-call-performance/observations/external/2026-11-18.json)／
