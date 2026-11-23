@@ -43,6 +43,7 @@ jvm_contracts:
   - 'gradlew.bat'
   - '.github/proof-paths.yml'
   - '.github/workflows/proof-ci.yml'
+  - '.github/actions/setup-jvm/**'
   - '.github/scripts/summarize_junit.py'
   - 'integrations/worker_proof_support/**'
   - '!**/*.md'
@@ -66,6 +67,7 @@ redis_owner:
   - 'gradlew.bat'
   - '.github/proof-paths.yml'
   - '.github/workflows/proof-ci.yml'
+  - '.github/actions/setup-jvm/**'
   - '.github/scripts/summarize_junit.py'
   - '!**/*.md'
 runtime_boundary:
@@ -92,6 +94,7 @@ runtime_boundary:
   - 'gradlew.bat'
   - '.github/proof-paths.yml'
   - '.github/workflows/proof-ci.yml'
+  - '.github/actions/setup-jvm/**'
   - '.github/scripts/summarize_junit.py'
   - '!**/*.md'
 worker_correctness:
@@ -154,6 +157,7 @@ worker_correctness:
   - '.github/scripts/cleanup_redis_test_scope.py'
   - '.github/scripts/requirements.txt'
   - '.github/workflows/proof-ci.yml'
+  - '.github/actions/setup-jvm/**'
   - '!**/*.md'
 worker_dynamic_matching:
   - '!integrations/worker_proof_support/processes.py'
@@ -197,6 +201,7 @@ worker_dynamic_matching:
   - '.github/scripts/cleanup_redis_test_scope.py'
   - '.github/scripts/requirements.txt'
   - '.github/workflows/proof-ci.yml'
+  - '.github/actions/setup-jvm/**'
   - '!**/*.md'
 worker_convergence_health:
   - 'server_boot_jvm/src/main/resources/application-consumer.yaml'
@@ -236,6 +241,7 @@ worker_convergence_health:
   - '.github/scripts/cleanup_redis_test_scope.py'
   - '.github/scripts/requirements.txt'
   - '.github/workflows/proof-ci.yml'
+  - '.github/actions/setup-jvm/**'
   - '!**/*.md'
 android_host:
   - 'transport/worker-delivery-contract/**'
@@ -251,6 +257,7 @@ android_host:
   - 'gradlew.bat'
   - '.github/proof-paths.yml'
   - '.github/workflows/proof-ci.yml'
+  - '.github/actions/setup-jvm/**'
   - '.github/scripts/summarize_junit.py'
   - '!**/*.md'
 android_consumer:
@@ -268,6 +275,8 @@ android_consumer:
   - '.github/scripts/prepare_distribution_candidate.py'
   - '.github/proof-paths.yml'
   - '.github/workflows/proof-ci.yml'
+  - '.github/actions/setup-jvm/**'
+  - '.github/actions/setup-node-pnpm/**'
   - '!**/*.md'
 android_emulator:
   - 'distribution/server/local_runtime.py'
@@ -353,12 +362,15 @@ android_emulator:
   - 'xa-android/gradlew.bat'
   - 'xa-android/config/**'
   - '.github/workflows/proof-ci.yml'
+  - '.github/actions/setup-jvm/**'
+  - '.github/actions/setup-node-pnpm/**'
   - '!**/*.md'
 frontend:
   - 'run_local_runtime.py'
   - 'frontend/**'
   - '.github/proof-paths.yml'
   - '.github/workflows/proof-ci.yml'
+  - '.github/actions/setup-node-pnpm/**'
   - '!**/*.md'
 runtime_distribution:
   - 'integrations/worker-loaded-recovery/src/main/**'
@@ -430,6 +442,8 @@ runtime_distribution:
   - '.github/scripts/run_runtime_distribution_proof.py'
   - '.github/scripts/prepare_distribution_candidate.py'
   - '.github/workflows/proof-ci.yml'
+  - '.github/actions/setup-jvm/**'
+  - '.github/actions/setup-node-pnpm/**'
   - '.github/workflows/release-server-runtime.yml'
   - '.github/scripts/prepare_release.py'
   - '.github/scripts/test_prepare_release.py'
@@ -464,6 +478,7 @@ product_coexistence:
   - 'gradlew.bat'
   - '.github/workflows/product-coexistence.yml'
   - '.github/workflows/proof-ci.yml'
+  - '.github/actions/setup-jvm/**'
   - '.github/proof-paths.yml'
   - '!**/*.md'
 sms_reception_preview:
@@ -488,5 +503,6 @@ sms_reception_preview:
   - 'gradlew.bat'
   - '.github/workflows/sms-reception-preview.yml'
   - '.github/workflows/proof-ci.yml'
+  - '.github/actions/setup-jvm/**'
   - '.github/proof-paths.yml'
   - '!**/*.md'
