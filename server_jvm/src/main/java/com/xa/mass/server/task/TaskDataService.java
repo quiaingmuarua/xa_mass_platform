@@ -1,16 +1,14 @@
 package com.xa.mass.server.task;
 
-import com.xa.mass.server.task.access.TaskCaller;
-
-import com.xa.mass.kernel.assignment.WorkerQuery;
-
-import org.springframework.stereotype.Service;
-import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
-import com.xa.mass.server.operation.OperationGuard;
+import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
+import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.task.TaskRuntime.TaskDataPhase;
+import com.xa.mass.kernel.task.TaskRuntime.TaskDataState;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
+import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
@@ -20,18 +18,28 @@ import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskItemStateResponse;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.operation.OperationGuard;
+import com.xa.mass.server.task.access.TaskCaller;
+import com.xa.mass.server.task.result.TaskResultsExportService;
+import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
+import org.springframework.stereotype.Service;
 
 @Service
 public final class TaskDataService {
 
-    private final com.xa.mass.workermatching.WorkerMatchingCatalog matchingCatalog;
+    private final WorkerMatchingCatalog matchingCatalog;
     private final TaskRuntime taskRuntime;
     private final TaskResourceCatalog taskCatalog;
     private final TaskItemMapper taskItems;
@@ -39,19 +47,13 @@ public final class TaskDataService {
     private final TaskItemOutcomeProperties outcomes;
     private final TaskScoreBandCore taskScores;
     private final OperationGuard operations;
-    private final com.xa.mass.server.task.result.TaskResultsExportService results;
+    private final TaskResultsExportService results;
 
     public TaskDataService(
-            TaskRuntime taskRuntime,
-            TaskResourceCatalog taskCatalog,
-            TaskItemMapper taskItems,
-            TaskItemScoreBandCore itemScores,
-            TaskItemOutcomeProperties outcomes,
-            com.xa.mass.workermatching.WorkerMatchingCatalog matchingCatalog,
-            TaskScoreBandCore taskScores,
-            OperationGuard operations,
-            com.xa.mass.server.task.result.TaskResultsExportService results
-    ) {
+            TaskRuntime taskRuntime, TaskResourceCatalog taskCatalog, TaskItemMapper taskItems,
+            TaskItemScoreBandCore itemScores, TaskItemOutcomeProperties outcomes,
+            WorkerMatchingCatalog matchingCatalog, TaskScoreBandCore taskScores,
+            OperationGuard operations, TaskResultsExportService results) {
         this.taskRuntime = taskRuntime;
         this.taskCatalog = taskCatalog;
         this.taskItems = taskItems;
@@ -64,262 +66,192 @@ public final class TaskDataService {
     }
 
     public Map<String, ActionOutcome> appendFiniteTaskItems(
-            TaskCaller caller, String taskId,
-            List<TaskItemRequest> requestedItems
-    ) {
+            TaskCaller caller, String taskId, List<TaskItemRequest> requestedItems) {
         return operations.taskMutation(taskId, () -> appendFiniteTaskItemsObserved(caller, taskId, requestedItems));
     }
 
-    private Map<String, ActionOutcome> appendFiniteTaskItemsObserved(TaskCaller caller, String taskId, List<TaskItemRequest> requestedItems) {
-        if (taskId == null || taskId.isBlank() || requestedItems == null || requestedItems.isEmpty() || requestedItems.size() > 100)
-            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.appendItems", "Expected taskId and 1..100 Items", null);
-        for (TaskItemRequest item : requestedItems) {
-            if (item == null || item.messageId() == null || item.messageId().isBlank() || item.eventCode() == null
-                    || item.eventCode().isBlank() || item.payload() == null || item.priority() < 0 || item.priority() > 10
-                    || item.ttlMillis() != null && item.ttlMillis() <= 0)
-                throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.appendItems", "Invalid TaskItem fields", null);
+    private Map<String, ActionOutcome> appendFiniteTaskItemsObserved(
+            TaskCaller caller, String taskId, List<TaskItemRequest> requestedItems) {
+        String operation = "taskData.appendItems";
+        if (taskId == null || taskId.isBlank()
+                || requestedItems == null || requestedItems.isEmpty() || requestedItems.size() > 100) {
+            throw invalid(operation, "Expected taskId and 1..100 Items");
         }
-        return appendResponse(appendItems(
-                caller, taskId,
-                requestedItems
-        ));
+        if (requestedItems.stream().anyMatch(item -> isInvalidItem(item, true, false))) {
+            throw invalid(operation, "Invalid TaskItem fields");
+        }
+        return appendResponse(appendItems(caller, taskId, requestedItems));
     }
 
     private Map<String, TaskItemAppendResult> appendItems(
-            TaskCaller caller, String taskId,
-            List<TaskItemRequest> requestedItems
-    ) {
-        try {
-            LinkedHashMap<String, TaskItemRequest> latest =
-                    latestItems(requestedItems);
-            TaskDescriptor descriptor = taskCatalog
-                    .loadTaskAllocationDescriptors(List.of(taskId))
-                    .get(taskId);
-            if (descriptor == null) {
-                throw new ServerException(
-                        ServerErrorCode.TASK_NOT_FOUND,
-                        "taskData.appendItems",
-                        null,
-                        null
-                );
-            }
+            TaskCaller caller, String taskId, List<TaskItemRequest> requestedItems) {
+        String operation = "taskData.appendItems";
+        return withTaskData(operation, null, () -> {
+            LinkedHashMap<String, TaskItemRequest> latest = latestItems(requestedItems);
+            TaskDescriptor descriptor = loadDescriptor(taskId, operation);
             caller.requireInput(descriptor, TaskCaller.RAW_INPUT);
             if (!isPublicFiniteTask(descriptor)) {
-                throw new ServerException(
-                        ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
-                        "taskData.appendItems",
-                        "Task does not support ordinary Item append",
-                        null
-                );
+                throw failure(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, operation,
+                        "Task does not support ordinary Item append");
             }
-
             var taskState = taskScores.getScoreStates(List.of(taskId)).get(taskId);
-            if (taskState == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskData.appendItems", null, null);
-            if (taskState.band() == TaskScoreBandCore.TaskScoreBand.TERMINAL)
-                throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "taskData.appendItems", "Task is closed", null);
+            if (taskState == null) {
+                throw failure(ServerErrorCode.TASK_NOT_FOUND, operation, null);
+            }
+            if (taskState.band() == TaskScoreBand.TERMINAL) {
+                throw failure(ServerErrorCode.TASK_STATE_CONFLICT, operation, "Task is closed");
+            }
             var validItems = new ArrayList<TaskItem>();
-            var results = new LinkedHashMap<
-                    String,
-                    TaskItemAppendResult
-                    >();
+            var appended = new LinkedHashMap<String, TaskItemAppendResult>();
             long createdAtMillis = taskItems.nowMillis();
-            for (Map.Entry<String, TaskItemRequest> entry
-                    : latest.entrySet()) {
+            for (var entry : latest.entrySet()) {
                 try {
                     var supplied = entry.getValue().workerSelector();
-                    if (supplied == null) throw new IllegalArgumentException("workerSelector is required");
+                    if (supplied == null) {
+                        throw new IllegalArgumentException("workerSelector is required");
+                    }
                     var normalized = matchingCatalog.normalizeQuery(descriptor.workerGroupId(), supplied);
-                    TaskItem item = taskItems.finiteItem(entry.getValue(), createdAtMillis, normalized);
-                    validItems.add(item);
+                    validItems.add(taskItems.finiteItem(entry.getValue(), createdAtMillis, normalized));
                 } catch (IllegalArgumentException error) {
-                    results.put(
-                            entry.getKey(),
-                            new TaskItemAppendResult(
-                                    TaskItemAppendStatus.INVALID,
-                                    "TaskItem is invalid"
-                            )
-                    );
+                    appended.put(entry.getKey(), new TaskItemAppendResult(TaskItemAppendStatus.INVALID, "TaskItem is invalid"));
                 }
             }
             if (!validItems.isEmpty()) {
-                results.putAll(taskRuntime.appendItems(taskId, validItems));
+                appended.putAll(taskRuntime.appendItems(taskId, validItems));
             }
-            return orderedResults(latest.keySet(), results);
-        } catch (ServerException error) {
-            throw error;
-        } catch (RuntimeException error) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                    "taskData.appendItems",
-                    null,
-                    error
-            );
-        }
+            return orderedResults(latest.keySet(), appended);
+        });
     }
 
     public TaskDescriptor requireFiniteInputTask(TaskCaller caller, String inputOwner, String taskId) {
-        try {
-        var task = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
-        if (task == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskData.inputTask", null, null);
-        caller.requireInput(task, inputOwner);
-        if (!isPublicFiniteTask(task)) throw new ServerException(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, "taskData.inputTask", null, null);
-        var state = taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId);
-        if (state == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskData.inputTask", null, null);
-        if (state.phase() == TaskRuntime.TaskDataPhase.PURGING)
-            throw new ServerException(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, "taskData.inputTask", null, null);
-        return task;
-        } catch (ServerException known) { throw known;
-        } catch (RuntimeException failure) { throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.inputTask", null, failure); }
+        String operation = "taskData.inputTask";
+        return withTaskData(operation, null, () -> {
+            TaskDescriptor task = loadDescriptor(taskId, operation);
+            caller.requireInput(task, inputOwner);
+            if (!isPublicFiniteTask(task)) {
+                throw failure(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, operation, null);
+            }
+            requireActiveDataState(taskId, operation);
+            return task;
+        });
     }
 
     /** Scans a stable PRE_REVIEW input under the shared mutation gate, checking every Item has its Score. */
-    public long visitFiniteTaskInputs(TaskCaller caller, String inputOwner, String taskId, java.util.function.Consumer<TaskItem> visitor) {
-        return operations.taskMutation(taskId, () -> {
-            try {
-                var task = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
-                if (task == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskData.visitInputs", null, null);
-                caller.requireInput(task, inputOwner);
-                var state = taskScores.getScoreStates(List.of(taskId)).get(taskId);
-                if (!isPublicFiniteTask(task) || state == null || state.band() != TaskScoreBandCore.TaskScoreBand.PRE_REVIEW)
-                    throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "taskData.visitInputs", "Only PRE_REVIEW input can be quoted", null);
-                var phase = taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId);
-                if (phase == null || phase.phase() != TaskRuntime.TaskDataPhase.OPEN)
-                    throw new IllegalStateException("Task data is not open");
-                var seen = new java.util.HashSet<String>();
-                String cursor = "0";
-                do {
-                    var page = taskRuntime.scanTaskItems(taskId, cursor, 1000);
-                    var entries = page.items().entrySet().stream().filter(e -> seen.add(e.getKey())).toList();
-                    for (int from = 0; from < entries.size(); from += 100) {
-                        var batch = entries.subList(from, Math.min(from + 100, entries.size()));
-                        var scores = itemScores.getItemScoreStates(taskId, batch.stream().map(Map.Entry::getKey).toList());
-                        for (var entry : batch) {
-                            if (!entry.getKey().equals(entry.getValue().messageId()) || scores.get(entry.getKey()) == null)
-                                throw new IllegalStateException("Input and Item Score differ; reconcile the import before starting");
-                            visitor.accept(entry.getValue());
+    public long visitFiniteTaskInputs(
+            TaskCaller caller, String inputOwner, String taskId, Consumer<TaskItem> visitor) {
+        String operation = "taskData.visitInputs";
+        return operations.taskMutation(taskId, () -> withTaskData(operation, "输入尚未完整确认，请核对或重传导入", () -> {
+            TaskDescriptor task = loadDescriptor(taskId, operation);
+            caller.requireInput(task, inputOwner);
+            var state = taskScores.getScoreStates(List.of(taskId)).get(taskId);
+            if (!isPublicFiniteTask(task) || state == null || state.band() != TaskScoreBand.PRE_REVIEW) {
+                throw failure(ServerErrorCode.TASK_STATE_CONFLICT, operation, "Only PRE_REVIEW input can be quoted");
+            }
+            var phase = taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId);
+            if (phase == null || phase.phase() != TaskDataPhase.OPEN) {
+                throw new IllegalStateException("Task data is not open");
+            }
+            var seen = new HashSet<String>();
+            String cursor = "0";
+            do {
+                var page = taskRuntime.scanTaskItems(taskId, cursor, 1000);
+                var entries = page.items().entrySet().stream().filter(e -> seen.add(e.getKey())).toList();
+                for (int from = 0; from < entries.size(); from += 100) {
+                    var batch = entries.subList(from, Math.min(from + 100, entries.size()));
+                    var scores = itemScores.getItemScoreStates(taskId, batch.stream().map(Map.Entry::getKey).toList());
+                    for (var entry : batch) {
+                        if (!entry.getKey().equals(entry.getValue().messageId()) || scores.get(entry.getKey()) == null) {
+                            throw new IllegalStateException("Input and Item Score differ; reconcile the import before starting");
                         }
+                        visitor.accept(entry.getValue());
                     }
-                    cursor = page.nextCursor();
-                } while (!cursor.equals("0"));
-                var counts = itemScores.observeItemScoreCounts(List.of(taskId)).get(taskId);
-                if (counts == null || counts.total() != seen.size()) throw new IllegalStateException("Input and Item Score counts differ");
-                return (long) seen.size();
-            } catch (ServerException known) { throw known;
-            } catch (RuntimeException failed) { throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.visitInputs", "输入尚未完整确认，请核对或重传导入", failed); }
-        });
+                }
+                cursor = page.nextCursor();
+            } while (!cursor.equals("0"));
+            var counts = itemScores.observeItemScoreCounts(List.of(taskId)).get(taskId);
+            if (counts == null || counts.total() != seen.size()) {
+                throw new IllegalStateException("Input and Item Score counts differ");
+            }
+            return (long) seen.size();
+        }));
     }
 
     /** Consumer access is bound to the application's immutable input ownership. */
     public Map<String, TaskItemResultResponse> takeTaskItemResults(
             TaskCaller caller, String inputOwner, String taskId, List<String> messageIds) {
-        if (taskId == null || taskId.isBlank() || messageIds == null || messageIds.isEmpty()
-                || messageIds.size() > 1000 || messageIds.stream().anyMatch(id -> id == null || id.isBlank()))
-            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                    "taskData.takeResults", "Expected taskId and 1..1000 non-blank messageIds", null);
-        try {
-            var task = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
-            if (task == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskData.takeResults", null, null);
+        String operation = "taskData.takeResults";
+        requireMessageIdBatch(taskId, messageIds, 1000, operation, "Expected taskId and 1..1000 non-blank messageIds");
+        return withTaskData(operation, "Result consumption is unconfirmed", () -> {
+            TaskDescriptor task = loadDescriptor(taskId, operation);
             caller.requireInput(task, inputOwner);
-            if (!isManagedCallTask(task))
-                throw new ServerException(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, "taskData.takeResults", "Only RPC Tasks support Result consumption", null);
+            if (!isManagedCallTask(task)) {
+                throw failure(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, operation,
+                        "Only RPC Tasks support Result consumption");
+            }
             var ids = List.copyOf(new LinkedHashSet<>(messageIds));
             return TaskItemResultResponse.fromObservedResults(ids, taskRuntime.takeTaskItemResults(taskId, ids));
-        } catch (ServerException known) { throw known;
-        } catch (RuntimeException failure) {
-            throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.takeResults", "Result consumption is unconfirmed", failure);
-        }
+        });
     }
 
     public Map<String, TaskItemResultResponse> loadTaskItemResults(
-            TaskCaller caller, String taskId,
-            List<String> messageIds
-    ) {
-        if (taskId == null || taskId.isBlank() || messageIds == null || messageIds.isEmpty()
-                || messageIds.size() > 1000
-                || messageIds.stream().anyMatch(id -> id == null || id.isBlank())) {
-            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                    "taskData.loadResults", "Expected taskId and 1..1000 non-blank messageIds", null);
-        }
-        try {
-            List<String> uniqueIds = new ArrayList<>(
-                    new LinkedHashSet<>(messageIds)
-            );
-            var before = requireQueryableTask(caller, taskId, "taskData.loadResults");
+            TaskCaller caller, String taskId, List<String> messageIds) {
+        String operation = "taskData.loadResults";
+        requireMessageIdBatch(taskId, messageIds, 1000, operation, "Expected taskId and 1..1000 non-blank messageIds");
+        return withTaskData(operation, null, () -> {
+            List<String> uniqueIds = List.copyOf(new LinkedHashSet<>(messageIds));
+            TaskDataState before = requireQueryableTask(caller, taskId, operation);
             requireRedisPayloads(before);
-            var loaded = TaskItemResultResponse.fromObservedResults(
-                    uniqueIds,
-                    taskRuntime.loadTaskItemResults(taskId, uniqueIds)
-            );
+            var loaded = TaskItemResultResponse.fromObservedResults(uniqueIds, taskRuntime.loadTaskItemResults(taskId, uniqueIds));
             requireUnchanged(taskId, before);
             return loaded;
-        } catch (ServerException error) {
-            throw error;
-        } catch (RuntimeException error) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                    "taskData.loadResults",
-                    null,
-                    error
-            );
-        }
+        });
     }
 
     public Map<String, TaskItemStateResponse> loadTaskItemStates(
-            TaskCaller caller, String taskId,
-            List<String> messageIds
-    ) {
-        if (taskId == null || taskId.isBlank() || messageIds == null || messageIds.isEmpty() || messageIds.size() > 100
-                || messageIds.stream().anyMatch(id -> id == null || id.isBlank()))
-            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.loadStates", "Expected taskId and 1..100 IDs", null);
-        try {
-            List<String> uniqueIds = new ArrayList<>(new LinkedHashSet<>(messageIds));
-            var before = requireQueryableTask(caller, taskId, "taskData.loadStates");
+            TaskCaller caller, String taskId, List<String> messageIds) {
+        String operation = "taskData.loadStates";
+        requireMessageIdBatch(taskId, messageIds, 100, operation, "Expected taskId and 1..100 IDs");
+        return withTaskData(operation, null, () -> {
+            List<String> uniqueIds = List.copyOf(new LinkedHashSet<>(messageIds));
+            TaskDataState before = requireQueryableTask(caller, taskId, operation);
             var states = itemScores.getItemScoreStates(taskId, uniqueIds);
             var response = new LinkedHashMap<String, TaskItemStateResponse>();
             for (String messageId : uniqueIds) {
                 var state = states.get(messageId);
                 response.put(messageId, state == null ? null : new TaskItemStateResponse(
-                        state.band().wireValue(),
-                        state.tag(),
-                        state.timeMillis(),
-                        outcomes.outcomeName(state.tag())
-                ));
+                        state.band().wireValue(), state.tag(), state.timeMillis(), outcomes.outcomeName(state.tag())));
             }
             requireUnchanged(taskId, before);
             return Collections.unmodifiableMap(response);
-        } catch (ServerException error) {
-            throw error;
-        } catch (RuntimeException error) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                    "taskData.loadStates",
-                    null,
-                    error
-            );
-        }
+        });
     }
 
     /** Caller owns a whole-file Task mutation; nested batches retain that same admission. */
-    public Map<String, ActionOutcome> importFiniteTaskItems(TaskCaller caller, String inputOwner, String taskId, List<TaskItemRequest> requestedItems) {
+    public Map<String, ActionOutcome> importFiniteTaskItems(
+            TaskCaller caller, String inputOwner, String taskId, List<TaskItemRequest> requestedItems) {
+        String operation = "taskData.importItems";
         return operations.taskMutation(taskId, () -> {
             if (requestedItems == null || requestedItems.isEmpty() || requestedItems.size() > 100
-                    || requestedItems.stream().anyMatch(item -> item == null || item.messageId() == null || item.messageId().isBlank()
-                    || item.eventCode() == null || item.eventCode().isBlank() || item.payload() == null || item.workerSelector() == null
-                    || item.priority() < 0 || item.priority() > 10 || item.ttlMillis() != null))
-                throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.importItems", "Expected 1..100 Items using default TTL", null);
-            try {
-                var descriptor = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
-                if (descriptor == null)
-                    throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskData.importItems", null, null);
+                    || requestedItems.stream().anyMatch(item -> isInvalidItem(item, false, true))) {
+                throw invalid(operation, "Expected 1..100 Items using default TTL");
+            }
+            return withTaskData(operation, null, () -> {
+                TaskDescriptor descriptor = loadDescriptor(taskId, operation);
                 caller.requireInput(descriptor, inputOwner);
-                if (!isPublicFiniteTask(descriptor))
-                    throw new ServerException(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, "taskData.importItems", null, null);
+                if (!isPublicFiniteTask(descriptor)) {
+                    throw failure(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, operation, null);
+                }
                 var taskState = taskScores.getScoreStates(List.of(taskId)).get(taskId);
-                if (taskState == null) throw new IllegalStateException("Task state is unavailable");
-                if (taskState.band() != TaskScoreBandCore.TaskScoreBand.PRE_REVIEW)
-                    throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "taskData.importItems", "Task must await review", null);
+                if (taskState == null) {
+                    throw new IllegalStateException("Task state is unavailable");
+                }
+                if (taskState.band() != TaskScoreBand.PRE_REVIEW) {
+                    throw failure(ServerErrorCode.TASK_STATE_CONFLICT, operation, "Task must await review");
+                }
                 var inputs = latestItems(requestedItems);
-                if (inputs.size() != requestedItems.size()) throw new IllegalArgumentException("Duplicate input identity");
+                if (inputs.size() != requestedItems.size()) {
+                    throw new IllegalArgumentException("Duplicate input identity");
+                }
                 var ids = List.copyOf(inputs.keySet());
                 var existing = taskRuntime.loadTaskItems(taskId, ids);
                 var states = itemScores.getItemScoreStates(taskId, ids);
@@ -331,110 +263,153 @@ public final class TaskDataService {
                     var item = existing.get(input.messageId());
                     var state = states.get(input.messageId());
                     if (item == null) {
-                        if (state != null) throw new IllegalStateException("Item Score has no execution data");
+                        if (state != null) {
+                            throw new IllegalStateException("Item Score has no execution data");
+                        }
                         writes.add(taskItems.finiteItem(input, now, normalized));
                     } else {
-                        if (!item.eventCode().equals(input.eventCode()) || !sameJson(item.payload(), input.payload())
+                        if (!item.eventCode().equals(input.eventCode())
+                                || !sameJson(item.payload(), input.payload())
                                 || item.priority() != input.priority()
                                 || !item.workerSelector().executorName().equals(normalized.executorName())
-                                || !sameJson(item.workerSelector().input(), normalized.input()))
-                            throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "taskData.importItems", "Existing Item content differs", null);
-                        if (state != null) result.put(input.messageId(), ActionOutcome.unchanged());
-                        else writes.add(item); // Explicit re-import reuses the original absolute expiry and creation time.
+                                || !sameJson(item.workerSelector().input(), normalized.input())) {
+                            throw failure(ServerErrorCode.TASK_STATE_CONFLICT, operation, "Existing Item content differs");
+                        }
+                        if (state != null) {
+                            result.put(input.messageId(), ActionOutcome.unchanged());
+                        } else {
+                            // Explicit re-import reuses the original absolute expiry and creation time.
+                            writes.add(item);
+                        }
                     }
                 }
-                if (!writes.isEmpty()) result.putAll(appendResponse(taskRuntime.appendItems(taskId, writes)));
+                if (!writes.isEmpty()) {
+                    result.putAll(appendResponse(taskRuntime.appendItems(taskId, writes)));
+                }
                 return Collections.unmodifiableMap(result);
-            } catch (ServerException known) { throw known;
-            } catch (RuntimeException error) {
-                throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.importItems", null, error);
-            }
+            });
         });
     }
 
-    private static boolean sameJson(Object left, Object right) {
-        // Stored JSON can materialize an integral value as Integer rather than the caller's Long.
-        return com.xa.mass.workerdelivery.json.Jsons.parseObject(com.xa.mass.workerdelivery.json.Jsons.toJson(Collections.singletonMap("value", left)))
-                .equals(com.xa.mass.workerdelivery.json.Jsons.parseObject(com.xa.mass.workerdelivery.json.Jsons.toJson(Collections.singletonMap("value", right))));
-    }
-
     public Map<String, TaskItem> loadTaskItems(TaskCaller caller, String taskId, List<String> messageIds) {
-        if (taskId == null || taskId.isBlank() || messageIds == null || messageIds.isEmpty() || messageIds.size() > 100
-                || messageIds.stream().anyMatch(id -> id == null || id.isBlank()))
-            throw new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskData.loadItems", "Expected 1..100 IDs", null);
-        try {
-            var before = requireQueryableTask(caller, taskId, "taskData.loadItems");
+        String operation = "taskData.loadItems";
+        requireMessageIdBatch(taskId, messageIds, 100, operation, "Expected 1..100 IDs");
+        return withTaskData(operation, null, () -> {
+            TaskDataState before = requireQueryableTask(caller, taskId, operation);
             requireRedisPayloads(before);
             var loaded = taskRuntime.loadTaskItems(taskId, messageIds);
             requireUnchanged(taskId, before);
             return loaded;
-        } catch (ServerException known) { throw known;
-        } catch (RuntimeException error) {
-            throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.loadItems", null, error);
-        }
+        });
     }
 
     public ResultPreview previewTaskResults(TaskCaller caller, String taskId) {
         return results.preview(caller, taskId);
     }
 
-    public record ResultEntry(String messageId, @org.jspecify.annotations.Nullable TaskItem item, TaskItemResultResponse result) {}
+    public record ResultEntry(String messageId, @Nullable TaskItem item, TaskItemResultResponse result) {}
     public record ResultPreview(List<ResultEntry> results, boolean truncated) {}
 
-    private TaskRuntime.TaskDataState requireQueryableTask(TaskCaller caller, String taskId, String operation) {
-        TaskDescriptor descriptor = taskCatalog
-                .loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
+    private TaskDescriptor loadDescriptor(String taskId, String operation) {
+        TaskDescriptor descriptor = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
         if (descriptor == null) {
-            throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, operation, null, null);
+            throw failure(ServerErrorCode.TASK_NOT_FOUND, operation, null);
         }
-        caller.requireTask(descriptor);
-        var dataState = taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId);
-        if (dataState == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, operation, null, null);
-        if (dataState.phase() == TaskRuntime.TaskDataPhase.PURGING)
-            throw new ServerException(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, operation, null, null);
-        if (!isPublicFiniteTask(descriptor) && !isManagedCallTask(descriptor)) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
-                    operation,
-                    "Task does not support Item queries",
-                    null
-            );
+        return descriptor;
+    }
+
+    private TaskDataState requireActiveDataState(String taskId, String operation) {
+        TaskDataState dataState = taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId);
+        if (dataState == null) {
+            throw failure(ServerErrorCode.TASK_NOT_FOUND, operation, null);
+        }
+        if (dataState.phase() == TaskDataPhase.PURGING) {
+            throw failure(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, operation, null);
         }
         return dataState;
     }
 
-    private static void requireRedisPayloads(TaskRuntime.TaskDataState state) {
-        if (state.phase() == TaskRuntime.TaskDataPhase.RELEASED)
-            throw new ServerException(ServerErrorCode.TASK_RESULTS_ARCHIVED, "taskData.pointRead",
-                    "Archived results support preview and sequential export, not point queries", null);
+    private TaskDataState requireQueryableTask(TaskCaller caller, String taskId, String operation) {
+        TaskDescriptor descriptor = loadDescriptor(taskId, operation);
+        caller.requireTask(descriptor);
+        TaskDataState dataState = requireActiveDataState(taskId, operation);
+        if (!isPublicFiniteTask(descriptor) && !isManagedCallTask(descriptor)) {
+            throw failure(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, operation, "Task does not support Item queries");
+        }
+        return dataState;
     }
-    private void requireUnchanged(String taskId, TaskRuntime.TaskDataState before) {
-        if (!before.equals(taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId)))
-            throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "taskData.read", "Task storage changed; refresh the view", null);
+
+    private void requireUnchanged(String taskId, TaskDataState before) {
+        if (!before.equals(taskRuntime.loadTaskDataStates(List.of(taskId)).get(taskId))) {
+            throw failure(ServerErrorCode.TASK_STATE_CONFLICT, "taskData.read", "Task storage changed; refresh the view");
+        }
+    }
+
+    private static void requireRedisPayloads(TaskDataState state) {
+        if (state.phase() == TaskDataPhase.RELEASED) {
+            throw failure(ServerErrorCode.TASK_RESULTS_ARCHIVED, "taskData.pointRead",
+                    "Archived results support preview and sequential export, not point queries");
+        }
+    }
+
+    private static void requireMessageIdBatch(
+            String taskId, List<String> messageIds, int maxSize, String operation, String message) {
+        if (taskId == null || taskId.isBlank()
+                || messageIds == null || messageIds.isEmpty() || messageIds.size() > maxSize
+                || messageIds.stream().anyMatch(id -> id == null || id.isBlank())) {
+            throw invalid(operation, message);
+        }
+    }
+
+    private static boolean isInvalidItem(TaskItemRequest item, boolean allowCustomTtl, boolean requireSelector) {
+        if (item == null || item.messageId() == null || item.messageId().isBlank()
+                || item.eventCode() == null || item.eventCode().isBlank()
+                || item.payload() == null || item.priority() < 0 || item.priority() > 10) {
+            return true;
+        }
+        if (requireSelector && item.workerSelector() == null) {
+            return true;
+        }
+        return allowCustomTtl ? item.ttlMillis() != null && item.ttlMillis() <= 0 : item.ttlMillis() != null;
+    }
+
+    private static <T> T withTaskData(String operation, @Nullable String unavailableMessage, Supplier<T> action) {
+        try {
+            return action.get();
+        } catch (ServerException known) {
+            throw known;
+        } catch (RuntimeException error) {
+            throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, operation, unavailableMessage, error);
+        }
+    }
+
+    private static ServerException invalid(String operation, String message) {
+        return failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, operation, message);
+    }
+
+    private static ServerException failure(ServerErrorCode code, String operation, @Nullable String message) {
+        return new ServerException(code, operation, message, null);
+    }
+
+    private static boolean sameJson(Object left, Object right) {
+        // Stored JSON can materialize an integral value as Integer rather than the caller's Long.
+        return Jsons.parseObject(Jsons.toJson(Collections.singletonMap("value", left)))
+                .equals(Jsons.parseObject(Jsons.toJson(Collections.singletonMap("value", right))));
     }
 
     private static boolean isPublicFiniteTask(TaskDescriptor descriptor) {
-        return descriptor.idleDisposition()
-                == TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE;
+        return descriptor.idleDisposition() == TaskIdleDisposition.CLOSE_WHEN_IDLE;
     }
 
     private static boolean isManagedCallTask(TaskDescriptor descriptor) {
-        return descriptor.idleDisposition()
-                == TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE;
+        return descriptor.idleDisposition() == TaskIdleDisposition.PARK_WHEN_IDLE;
     }
 
-    private static LinkedHashMap<String, TaskItemRequest> latestItems(
-            List<TaskItemRequest> items
-    ) {
+    private static LinkedHashMap<String, TaskItemRequest> latestItems(List<TaskItemRequest> items) {
         var latest = new LinkedHashMap<String, TaskItemRequest>();
         for (TaskItemRequest item : items) {
             if (item == null) {
-                throw new ServerException(
-                        ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                        "taskData.appendItems",
-                        "TaskItem must be present",
-                        null
-                );
+                throw invalid("taskData.appendItems", "TaskItem must be present");
             }
             latest.put(item.messageId(), item);
         }
@@ -442,45 +417,26 @@ public final class TaskDataService {
     }
 
     private static Map<String, TaskItemAppendResult> orderedResults(
-            Set<String> messageIds,
-            Map<String, TaskItemAppendResult> results
-    ) {
-        var ordered = new LinkedHashMap<
-                String,
-                TaskItemAppendResult
-                >();
-        messageIds.forEach(messageId ->
-                ordered.put(messageId, results.get(messageId)));
+            Set<String> messageIds, Map<String, TaskItemAppendResult> results) {
+        var ordered = new LinkedHashMap<String, TaskItemAppendResult>();
+        messageIds.forEach(messageId -> ordered.put(messageId, results.get(messageId)));
         return ordered;
     }
 
-    private static Map<String, ActionOutcome> appendResponse(
-            Map<String, TaskItemAppendResult> appended
-    ) {
-        var results = new LinkedHashMap<String, ActionOutcome>();
+    private static Map<String, ActionOutcome> appendResponse(Map<String, TaskItemAppendResult> appended) {
+        var mapped = new LinkedHashMap<String, ActionOutcome>();
         appended.forEach((messageId, result) -> {
             if (result == null) {
-                throw new ServerException(
-                        ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                        "taskData.appendItems",
-                        null,
-                        null
-                );
+                throw failure(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskData.appendItems", null);
             }
             ActionOutcome outcome = switch (result.status()) {
                 case APPENDED -> ActionOutcome.applied();
-                case INVALID -> ActionOutcome.rejected(
-                        ServerErrorCode.INVALID_TASK_DATA_REQUEST
-                );
-                case NOT_FOUND -> ActionOutcome.rejected(
-                        ServerErrorCode.TASK_NOT_FOUND
-                );
-                case RETRYABLE -> ActionOutcome.rejected(
-                        ServerErrorCode.TASK_DATA_UNAVAILABLE
-                );
+                case INVALID -> ActionOutcome.rejected(ServerErrorCode.INVALID_TASK_DATA_REQUEST);
+                case NOT_FOUND -> ActionOutcome.rejected(ServerErrorCode.TASK_NOT_FOUND);
+                case RETRYABLE -> ActionOutcome.rejected(ServerErrorCode.TASK_DATA_UNAVAILABLE);
             };
-            results.put(messageId, outcome);
+            mapped.put(messageId, outcome);
         });
-        return Collections.unmodifiableMap(results);
+        return Collections.unmodifiableMap(mapped);
     }
 }
