@@ -195,6 +195,13 @@ SDK 凭据只发送给认可的 HTTPS/WSS authority；公网连接不依赖 SSH 
 七个日期不保证七次成功；跨日、漏触发和冲突不补跑，配置就绪不代表已运行。
 日常部署不附加这项测量；源码 Nightly、常驻 Host 各自保持独立。
 
+扩大连接规模时，还需按 [Boot Report 预算](../../../server_boot_jvm/README.md#report-ingress-budget)
+核对集中启动／退出的证据入口。consumer 默认的 1,000 条每 lane 预算不能据此视为
+10k 同时退出的预算。配置生效后除核对物理连接撤销，还应独立确认该轮已知身份的
+调度证据收敛，并记录队列拒绝／提交错误；仅 case 通过或清理时网络投影为空不替代这项核对。
+受控维护保留常驻 Host 的 inventory 与身份；若 SDK 已耗尽原有重连预算，使用既有
+Lab 显式恢复，并分别记录自动重连和人工恢复。
+
 旧公网 Loaded 调查已结束，结果见[能力摘要](../capabilities.md#external-public-closeout)。
 本地 Loaded Nightly 和包内交付检查保留原职责，不从旧记录重新启动公网调查。
 

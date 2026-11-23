@@ -1,5 +1,6 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_CONNECTION_CHANGED;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -12,6 +13,7 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterExcep
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryRemoteApi;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
+import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -27,6 +29,7 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class DeliveryReportDispatcherTest {
 
@@ -94,6 +97,93 @@ class DeliveryReportDispatcherTest {
         stop(dispatcher);
 
         assertThat(sizes).containsExactly(100, 100, 5);
+    }
+
+    @ParameterizedTest(name = "10,020 disconnect observations with lane capacity {0}")
+    @ValueSource(ints = {20_000, 1_000})
+    void disconnectBurstPreservesAdmittedEvidenceAndOtherLaneFairnessWithinBudget(int capacity)
+            throws Exception {
+        int originalCount = 10_020;
+        int firstBatchSize = 100;
+        int expectedKernelCount = firstBatchSize + Math.min(capacity, originalCount - firstBatchSize);
+        List<DeliveryReport> originals = IntStream.range(0, originalCount)
+                .mapToObj(index -> DeliveryReport.create(
+                        DeliveryEndpoint.ADAPTER, "adapter-1", DeliveryEndpoint.KERNEL,
+                        ADAPTER_WORKER_CONNECTION_CHANGED, "", Jsons.toJson(Map.of(
+                                "workerId", "worker-" + index,
+                                "state", "DISCONNECTED",
+                                "observedAtMillis", 1_700_000_000_000L + index)),
+                        "worker-serviceability-evidence:v1"))
+                .toList();
+        List<List<DeliveryReport>> batches = new CopyOnWriteArrayList<>();
+        CountDownLatch firstAppendEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirstAppend = new CountDownLatch(1);
+        CountDownLatch submitted = new CountDownLatch(expectedKernelCount + 2);
+        WorkerDeliveryRemoteApi remoteApi = mock(WorkerDeliveryRemoteApi.class);
+        doAnswer(invocation -> {
+            List<DeliveryReport> batch = List.copyOf(invocation.getArgument(1));
+            batches.add(batch);
+            if (batches.size() == 1) {
+                firstAppendEntered.countDown();
+                releaseFirstAppend.await();
+            }
+            batch.forEach(ignored -> submitted.countDown());
+            return null;
+        }).when(remoteApi).appendReports(anyString(), anyList());
+        DeliveryReportDispatcher dispatcher = dispatcher(capacity, remoteApi);
+        DeliveryReport task = report(DeliveryEndpoint.TASK, "task-after-disconnect-burst");
+        DeliveryReport server = report(DeliveryEndpoint.SERVER, "server-after-disconnect-burst");
+        try {
+            for (DeliveryReport report : originals.subList(0, firstBatchSize)) {
+                assertThat(dispatcher.tryDispatch(report))
+                        .isEqualTo(DeliveryReportDispatcher.DispatchStatus.ACCEPTED);
+            }
+            dispatcher.start();
+            assertThat(firstAppendEntered.await(2, TimeUnit.SECONDS)).isTrue();
+
+            int accepted = firstBatchSize;
+            int rejected = 0;
+            for (DeliveryReport report : originals.subList(firstBatchSize, originalCount)) {
+                DeliveryReportDispatcher.DispatchStatus status = dispatcher.tryDispatch(report);
+                if (status == DeliveryReportDispatcher.DispatchStatus.ACCEPTED) {
+                    accepted++;
+                } else {
+                    assertThat(status).isEqualTo(DeliveryReportDispatcher.DispatchStatus.FULL);
+                    rejected++;
+                }
+            }
+            assertThat(accepted).isEqualTo(expectedKernelCount);
+            assertThat(rejected).isEqualTo(capacity == 20_000 ? 0 : 8_920);
+            assertThat(dispatcher.tryDispatch(task)).isEqualTo(DeliveryReportDispatcher.DispatchStatus.ACCEPTED);
+            assertThat(dispatcher.tryDispatch(server)).isEqualTo(DeliveryReportDispatcher.DispatchStatus.ACCEPTED);
+            assertThat(batches).hasSize(1);
+            assertThat(batches.get(0)).containsExactlyElementsOf(originals.subList(0, firstBatchSize));
+
+            releaseFirstAppend.countDown();
+            assertThat(submitted.await(5, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            releaseFirstAppend.countDown();
+            stop(dispatcher);
+        }
+
+        assertThat(dispatcher.isAlive()).isFalse();
+        assertThat(batches).allSatisfy(batch -> {
+            assertThat(batch).hasSizeBetween(1, firstBatchSize);
+            assertThat(batch).extracting(DeliveryReport::dst).containsOnly(batch.get(0).dst());
+        });
+        assertThat(batches.subList(0, 4)).extracting(batch -> batch.get(0).dst())
+                .containsExactly(DeliveryEndpoint.KERNEL, DeliveryEndpoint.TASK,
+                        DeliveryEndpoint.SERVER, DeliveryEndpoint.KERNEL);
+        assertThat(batches.get(1)).containsExactly(task);
+        assertThat(batches.get(2)).containsExactly(server);
+        List<DeliveryReport> deliveredKernel = batches.stream()
+                .flatMap(List::stream)
+                .filter(report -> report.dst() == DeliveryEndpoint.KERNEL)
+                .toList();
+        // Exact envelopes retain each original identity, timestamp and FIFO position.
+        assertThat(deliveredKernel).containsExactlyElementsOf(originals.subList(0, expectedKernelCount));
+        assertThat(dispatcher.tryDispatch(originals.get(0)))
+                .isEqualTo(DeliveryReportDispatcher.DispatchStatus.CLOSED);
     }
 
     @Test
