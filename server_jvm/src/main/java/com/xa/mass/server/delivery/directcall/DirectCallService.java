@@ -1,7 +1,5 @@
 package com.xa.mass.server.delivery.directcall;
 
-import com.xa.mass.server.delivery.DeliveryStageEvent;
-
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
@@ -11,10 +9,13 @@ import com.xa.mass.server.api.v1.contract.delivery.directcall.DirectCallHttpCont
 import com.xa.mass.server.api.v1.contract.delivery.directcall.DirectCallHttpContract.DirectCallStatus;
 import com.xa.mass.server.api.v1.contract.delivery.directcall.DirectCallHttpContract.DirectTargetCallResponse;
 import com.xa.mass.server.api.v1.contract.delivery.directcall.DirectCallHttpContract.DirectTargetReason;
+import com.xa.mass.server.delivery.DeliveryStageEvent;
 import com.xa.mass.server.delivery.directcall.DirectCallRegistry.BatchOutcome;
 import com.xa.mass.server.delivery.directcall.DirectCallRegistry.DirectTarget;
+import com.xa.mass.server.delivery.directcall.DirectCallRegistry.DirectTargetType;
 import com.xa.mass.server.delivery.directcall.DirectCallRegistry.TargetOutcome;
 import com.xa.mass.server.delivery.directcall.DirectCallRegistry.TargetOutcomeReason;
+import com.xa.mass.server.delivery.directcall.DirectCallRegistry.TargetOutcomeStatus;
 import com.xa.mass.server.delivery.directcall.DirectCallRegistry.TargetPlan;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
@@ -38,9 +39,7 @@ public final class DirectCallService {
 
     private static final int MAX_BATCH_SIZE = 100;
     private static final int MAX_CONSUME_LIMIT = 1000;
-    private static final System.Logger LOGGER = System.getLogger(
-            DirectCallService.class.getName()
-    );
+    private static final System.Logger LOGGER = System.getLogger(DirectCallService.class.getName());
 
     private final WorkerResourceCatalog workerCatalog;
     private final WorkerCommandRuntime workerCommands;
@@ -50,32 +49,18 @@ public final class DirectCallService {
     private final long maxWaitTimeoutMillis;
 
     public DirectCallService(
-            WorkerResourceCatalog workerCatalog,
-            WorkerCommandRuntime workerCommands,
-            WorkerEndpointDirectory endpoints,
-            DirectCallRegistry registry,
-            DirectCallProperties properties
-    ) {
-        this.workerCatalog = Objects.requireNonNull(
-                workerCatalog,
-                "workerCatalog"
-        );
-        this.workerCommands = Objects.requireNonNull(
-                workerCommands,
-                "workerCommands"
-        );
+            WorkerResourceCatalog workerCatalog, WorkerCommandRuntime workerCommands,
+            WorkerEndpointDirectory endpoints, DirectCallRegistry registry, DirectCallProperties properties) {
+        this.workerCatalog = Objects.requireNonNull(workerCatalog, "workerCatalog");
+        this.workerCommands = Objects.requireNonNull(workerCommands, "workerCommands");
         this.endpoints = Objects.requireNonNull(endpoints, "endpoints");
         this.registry = Objects.requireNonNull(registry, "registry");
         Objects.requireNonNull(properties, "properties");
-        this.defaultWaitTimeoutMillis =
-                properties.defaultWaitTimeoutMillis();
+        this.defaultWaitTimeoutMillis = properties.defaultWaitTimeoutMillis();
         this.maxWaitTimeoutMillis = properties.maxWaitTimeoutMillis();
     }
 
-    public DeferredResult<ResponseEntity<DirectCallResponse>> call(
-            String adapterId,
-            DirectCallRequest request
-    ) {
+    public DeferredResult<ResponseEntity<DirectCallResponse>> call(String adapterId, DirectCallRequest request) {
         requireDirectRequest(request);
         requireDirectAdapter(adapterId);
         long timeoutMillis = resolveTimeout(request.waitTimeoutMillis());
@@ -84,57 +69,34 @@ public final class DirectCallService {
         boolean hasWorkerGroup = request.workerGroupId() != null;
         boolean hasWorkerPayloads = request.workerPayloads() != null;
         if (hasWorkerGroup != hasWorkerPayloads) {
-            throw invalid(
-                    "workerGroupId and workerPayloads must be provided together"
-            );
+            throw invalid("workerGroupId and workerPayloads must be provided together");
         }
         if (!hasWorkerPayloads) {
             if (request.opaquePayload() == null) {
-                throw invalid(
-                        "opaquePayload must be present for an Adapter call"
-                );
+                throw invalid("opaquePayload must be present for an Adapter call");
             }
-            return registerBatch(
-                    timeoutMillis,
-                    List.of(commandPlan(
-                            adapterId,
-                            adapterId,
-                            DirectTarget.adapter(adapterId),
-                            DeliveryEndpoint.ADAPTER,
-                            request.messageType(),
-                            request.opaquePayload(),
-                            deadline
-                    ))
-            );
+            return registerBatch(timeoutMillis, List.of(commandPlan(
+                    adapterId, adapterId, DirectTarget.adapter(adapterId),
+                    DeliveryEndpoint.ADAPTER, request.messageType(), request.opaquePayload(), deadline)));
         }
         if (request.opaquePayload() != null) {
-            throw invalid(
-                    "opaquePayload must be omitted for a Worker batch"
-            );
+            throw invalid("opaquePayload must be omitted for a Worker batch");
         }
 
         String workerGroupId = request.workerGroupId();
         requireNonBlank(workerGroupId, "workerGroupId");
-        Map<String, String> workerPayloads = validatedWorkerPayloads(
-                request.workerPayloads()
-        );
+        Map<String, String> workerPayloads = validatedWorkerPayloads(request.workerPayloads());
         List<String> workerIds = List.copyOf(workerPayloads.keySet());
 
         Map<String, WorkerDescriptor> workers;
         var bindingEvent = DeliveryStageEvent.start(DeliveryStageEvent.Stage.DIRECT_BINDING, workerIds.size());
         try {
-            workers = Objects.requireNonNull(
-                    workerCatalog.getWorkerDescriptors(
-                            workerIds
-                    ),
-                    "Worker descriptor batch"
-            );
-            if (bindingEvent != null) bindingEvent.failed = false;
+            workers = Objects.requireNonNull(workerCatalog.getWorkerDescriptors(workerIds), "Worker descriptor batch");
+            if (bindingEvent != null) {
+                bindingEvent.failed = false;
+            }
         } catch (RuntimeException error) {
-            throw unavailable(
-                    "Could not load Worker Direct Call admission",
-                    error
-            );
+            throw unavailable("Could not load Worker Direct Call admission", error);
         } finally {
             DeliveryStageEvent.finish(bindingEvent);
         }
@@ -142,35 +104,17 @@ public final class DirectCallService {
         List<TargetPlan> plans = new ArrayList<>(workerIds.size());
         for (String workerId : workerIds) {
             WorkerDescriptor worker = workers.get(workerId);
-            if (worker == null
-                    || !workerGroupId.equals(worker.workerGroupId())) {
-                plans.add(TargetPlan.rejected(
-                        workerId,
-                        TargetOutcomeReason.NOT_FOUND
-                ));
-                continue;
+            if (worker == null || !workerGroupId.equals(worker.workerGroupId())) {
+                plans.add(TargetPlan.rejected(workerId, TargetOutcomeReason.NOT_FOUND));
+            } else if (!adapterId.equals(worker.endpointManagerId())) {
+                plans.add(TargetPlan.rejected(workerId, TargetOutcomeReason.ENDPOINT_MISMATCH));
+            } else {
+                plans.add(commandPlan(workerId, adapterId, DirectTarget.worker(workerId),
+                        DeliveryEndpoint.WORKER, request.messageType(), workerPayloads.get(workerId), deadline));
             }
-            String endpointId = worker.endpointManagerId();
-            if (!adapterId.equals(endpointId)) {
-                plans.add(TargetPlan.rejected(
-                        workerId,
-                        TargetOutcomeReason.ENDPOINT_MISMATCH
-                ));
-                continue;
-            }
-            plans.add(commandPlan(
-                    workerId,
-                    adapterId,
-                    DirectTarget.worker(workerId),
-                    DeliveryEndpoint.WORKER,
-                    request.messageType(),
-                    workerPayloads.get(workerId),
-                    deadline
-            ));
         }
 
-        DeferredResult<ResponseEntity<DirectCallResponse>> response =
-                registerBatch(timeoutMillis, plans);
+        DeferredResult<ResponseEntity<DirectCallResponse>> response = registerBatch(timeoutMillis, plans);
         offerWorkerCommands(adapterId, plans);
         return response;
     }
@@ -181,11 +125,7 @@ public final class DirectCallService {
      * timeout and cancellation must be returned to this owner explicitly.
      */
     public AdapterCallHandle beginAdapterCall(
-            String adapterId,
-            String messageType,
-            String opaquePayload,
-            Long requestedWaitTimeoutMillis
-    ) {
+            String adapterId, String messageType, String opaquePayload, Long requestedWaitTimeoutMillis) {
         requireNonBlank(messageType, "messageType");
         if (opaquePayload == null) {
             throw invalid("opaquePayload must be present for an Adapter call");
@@ -193,30 +133,13 @@ public final class DirectCallService {
         requireDirectAdapter(adapterId);
         long timeoutMillis = resolveTimeout(requestedWaitTimeoutMillis);
         long deadline = System.currentTimeMillis() + timeoutMillis;
-        TargetPlan plan = commandPlan(
-                adapterId,
-                adapterId,
-                DirectTarget.adapter(adapterId),
-                DeliveryEndpoint.ADAPTER,
-                messageType,
-                opaquePayload,
-                deadline
-        );
+        TargetPlan plan = commandPlan(adapterId, adapterId, DirectTarget.adapter(adapterId),
+                DeliveryEndpoint.ADAPTER, messageType, opaquePayload, deadline);
         String directCallId = UUID.randomUUID().toString();
-        DirectCallRegistry.BatchHandle batch = registry.registerBatch(
-                directCallId,
-                List.of(plan)
-        );
+        DirectCallRegistry.BatchHandle batch = registry.registerBatch(directCallId, List.of(plan));
         CompletionStage<AdapterCallOutcome> completion = batch.completion()
-                .thenApply(outcome -> toAdapterCallOutcome(
-                        adapterId,
-                        outcome
-                ));
-        return new AdapterCallHandle(
-                directCallId,
-                timeoutMillis,
-                completion
-        );
+                .thenApply(outcome -> toAdapterCallOutcome(adapterId, outcome));
+        return new AdapterCallHandle(directCallId, timeoutMillis, completion);
     }
 
     public void timeout(AdapterCallHandle handle) {
@@ -229,22 +152,12 @@ public final class DirectCallService {
         registry.cancel(handle.directCallId());
     }
 
-    public List<DeliveryCommand> consumeAdapterCommands(
-            String adapterId,
-            int limit
-    ) {
+    public List<DeliveryCommand> consumeAdapterCommands(String adapterId, int limit) {
         requireDirectConsume(adapterId, limit);
-        return registry.consumeAdapterCommands(
-                adapterId,
-                limit,
-                System.currentTimeMillis()
-        );
+        return registry.consumeAdapterCommands(adapterId, limit, System.currentTimeMillis());
     }
 
-    public ResultAppendCounts completeReports(
-            String adapterId,
-            List<DeliveryReport> reports
-    ) {
+    public ResultAppendCounts completeReports(String adapterId, List<DeliveryReport> reports) {
         requireDirectAdapter(adapterId);
         if (reports == null) {
             throw invalid("Direct Result batch must be present");
@@ -252,32 +165,18 @@ public final class DirectCallService {
         if (reports.isEmpty()) {
             return new ResultAppendCounts(0, 0);
         }
-        DirectCallRegistry.CompletionCounts counts =
-                registry.completeReports(adapterId, reports);
-        return new ResultAppendCounts(
-                counts.acceptedCount(),
-                counts.rejectedCount()
-        );
+        DirectCallRegistry.CompletionCounts counts = registry.completeReports(adapterId, reports);
+        return new ResultAppendCounts(counts.acceptedCount(), counts.rejectedCount());
     }
 
-    private void offerWorkerCommands(
-            String adapterId,
-            List<TargetPlan> plans
-    ) {
-        Map<String, DeliveryCommand> commandsByWorkerId =
-                new LinkedHashMap<>();
+    private void offerWorkerCommands(String adapterId, List<TargetPlan> plans) {
+        Map<String, DeliveryCommand> commandsByWorkerId = new LinkedHashMap<>();
         Map<String, String> correlationsByWorkerId = new LinkedHashMap<>();
         for (TargetPlan plan : plans) {
-            if (plan.target() == null
-                    || plan.target().type()
-                    != DirectCallRegistry.DirectTargetType.WORKER) {
-                continue;
+            if (plan.target() != null && plan.target().type() == DirectTargetType.WORKER) {
+                commandsByWorkerId.put(plan.target().targetId(), plan.command());
+                correlationsByWorkerId.put(plan.target().targetId(), plan.correlationId());
             }
-            commandsByWorkerId.put(plan.target().targetId(), plan.command());
-            correlationsByWorkerId.put(
-                    plan.target().targetId(),
-                    plan.correlationId()
-            );
         }
         if (commandsByWorkerId.isEmpty()) {
             return;
@@ -286,55 +185,36 @@ public final class DirectCallService {
         Map<String, TargetOutcome> immediate = new LinkedHashMap<>();
         var offerEvent = DeliveryStageEvent.start(DeliveryStageEvent.Stage.DIRECT_OFFER, commandsByWorkerId.size());
         try {
-            Map<String, WorkerCommandOfferStatus> statuses =
-                    workerCommands.offerWorkerCommands(
-                            adapterId,
-                            commandsByWorkerId
-                    );
-            if (statuses == null
-                    || !statuses.keySet().equals(
-                            commandsByWorkerId.keySet()
-                    )) {
-                completeSubmissionUnknown(
-                        correlationsByWorkerId,
-                        immediate
-                );
+            Map<String, WorkerCommandOfferStatus> statuses = workerCommands.offerWorkerCommands(
+                    adapterId, commandsByWorkerId);
+            if (statuses == null || !statuses.keySet().equals(commandsByWorkerId.keySet())) {
+                completeSubmissionUnknown(correlationsByWorkerId, immediate);
             } else {
-                statuses.forEach((workerId, status) -> {
-                    if (status == WorkerCommandOfferStatus.OCCUPIED) {
-                        immediate.put(
-                                correlationsByWorkerId.get(workerId),
-                                TargetOutcome.rejected(
-                                        TargetOutcomeReason
-                                                .COMMAND_SLOT_OCCUPIED
-                                )
-                        );
-                    } else if (status
-                            != WorkerCommandOfferStatus.OFFERED) {
-                        immediate.put(
-                                correlationsByWorkerId.get(workerId),
-                                TargetOutcome.unobserved(
-                                        TargetOutcomeReason.SUBMISSION_UNKNOWN
-                                )
-                        );
+                int offered = 0;
+                int occupied = 0;
+                for (var entry : statuses.entrySet()) {
+                    WorkerCommandOfferStatus status = entry.getValue();
+                    if (status == WorkerCommandOfferStatus.OFFERED) {
+                        offered++;
+                    } else if (status == WorkerCommandOfferStatus.OCCUPIED) {
+                        occupied++;
+                        immediate.put(correlationsByWorkerId.get(entry.getKey()),
+                                TargetOutcome.rejected(TargetOutcomeReason.COMMAND_SLOT_OCCUPIED));
+                    } else {
+                        immediate.put(correlationsByWorkerId.get(entry.getKey()),
+                                TargetOutcome.unobserved(TargetOutcomeReason.SUBMISSION_UNKNOWN));
                     }
-                });
+                }
                 if (offerEvent != null) {
-                    offerEvent.offered = (int) statuses.values().stream().filter(s -> s == WorkerCommandOfferStatus.OFFERED).count();
-                    offerEvent.occupied = (int) statuses.values().stream().filter(s -> s == WorkerCommandOfferStatus.OCCUPIED).count();
-                    offerEvent.failed = offerEvent.offered + offerEvent.occupied != statuses.size();
+                    offerEvent.offered = offered;
+                    offerEvent.occupied = occupied;
+                    offerEvent.failed = offered + occupied != statuses.size();
                 }
             }
         } catch (RuntimeException error) {
-            LOGGER.log(
-                    System.Logger.Level.WARNING,
-                    "operation={0} adapterId={1} targetCount={2} "
-                            + "failureType={3}",
-                    "directCall.offerWorkerCommands",
-                    adapterId,
-                    commandsByWorkerId.size(),
-                    error.getClass().getName()
-            );
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "operation={0} adapterId={1} targetCount={2} failureType={3}",
+                    "directCall.offerWorkerCommands", adapterId, commandsByWorkerId.size(), error.getClass().getName());
             completeSubmissionUnknown(correlationsByWorkerId, immediate);
         } finally {
             DeliveryStageEvent.finish(offerEvent);
@@ -345,31 +225,16 @@ public final class DirectCallService {
     }
 
     private static void completeSubmissionUnknown(
-            Map<String, String> correlationsByWorkerId,
-            Map<String, TargetOutcome> outcomes
-    ) {
-        correlationsByWorkerId.values().forEach(correlationId -> outcomes.put(
-                correlationId,
-                TargetOutcome.unobserved(
-                        TargetOutcomeReason.SUBMISSION_UNKNOWN
-                )
-        ));
+            Map<String, String> correlationsByWorkerId, Map<String, TargetOutcome> outcomes) {
+        correlationsByWorkerId.values().forEach(correlationId ->
+                outcomes.put(correlationId, TargetOutcome.unobserved(TargetOutcomeReason.SUBMISSION_UNKNOWN)));
     }
 
-    private DeferredResult<ResponseEntity<DirectCallResponse>> registerBatch(
-            long timeoutMillis,
-            List<TargetPlan> plans
-    ) {
+    private DeferredResult<ResponseEntity<DirectCallResponse>> registerBatch(long timeoutMillis, List<TargetPlan> plans) {
         String directCallId = UUID.randomUUID().toString();
-        DeferredResult<ResponseEntity<DirectCallResponse>> deferred =
-                new DeferredResult<>(timeoutMillis);
-        DirectCallRegistry.BatchHandle handle = registry.registerBatch(
-                directCallId,
-                plans
-        );
-        handle.completion().thenAccept(outcome -> deferred.setResult(
-                ResponseEntity.ok(toResponse(outcome))
-        ));
+        var deferred = new DeferredResult<ResponseEntity<DirectCallResponse>>(timeoutMillis);
+        DirectCallRegistry.BatchHandle handle = registry.registerBatch(directCallId, plans);
+        handle.completion().thenAccept(outcome -> deferred.setResult(ResponseEntity.ok(toResponse(outcome))));
         deferred.onTimeout(() -> registry.timeout(directCallId));
         deferred.onError(ignored -> registry.cancel(directCallId));
         deferred.onCompletion(() -> registry.cancel(directCallId));
@@ -377,106 +242,56 @@ public final class DirectCallService {
     }
 
     private static TargetPlan commandPlan(
-            String resultKey,
-            String adapterId,
-            DirectTarget target,
-            DeliveryEndpoint destination,
-            String messageType,
-            String payload,
-            long deadline
-    ) {
+            String resultKey, String adapterId, DirectTarget target,
+            DeliveryEndpoint destination, String messageType, String payload, long deadline) {
         String correlationId = UUID.randomUUID().toString();
         DeliveryCommand command = DeliveryCommand.create(
-                DeliveryEndpoint.SERVER,
-                destination,
-                messageType,
-                deadline,
-                payload,
-                DirectCallRegistry.FORWARD_PREFIX + correlationId
-        );
-        return TargetPlan.command(
-                resultKey,
-                correlationId,
-                adapterId,
-                target,
-                command
-        );
+                DeliveryEndpoint.SERVER, destination, messageType, deadline, payload,
+                DirectCallRegistry.FORWARD_PREFIX + correlationId);
+        return TargetPlan.command(resultKey, correlationId, adapterId, target, command);
     }
 
     private static DirectCallResponse toResponse(BatchOutcome outcome) {
         Map<String, DirectTargetCallResponse> results = new LinkedHashMap<>();
         boolean allObserved = true;
-        for (Map.Entry<String, TargetOutcome> entry
-                : outcome.results().entrySet()) {
+        for (var entry : outcome.results().entrySet()) {
             TargetOutcome target = entry.getValue();
-            DirectTargetCallResponse response;
-            switch (target.status()) {
-                case OBSERVED -> response =
-                        DirectTargetCallResponse.observed(
-                                target.messageType(),
-                                target.diagnosticCode(),
-                                target.payload()
-                        );
+            DirectTargetCallResponse response = switch (target.status()) {
+                case OBSERVED -> DirectTargetCallResponse.observed(
+                        target.messageType(), target.diagnosticCode(), target.payload());
                 case UNOBSERVED -> {
                     allObserved = false;
-                    response = DirectTargetCallResponse.unobserved(
-                            toHttpReason(target.reason())
-                    );
+                    yield DirectTargetCallResponse.unobserved(toHttpReason(target.reason()));
                 }
                 case REJECTED -> {
                     allObserved = false;
-                    response = DirectTargetCallResponse.rejected(
-                            toHttpReason(target.reason())
-                    );
+                    yield DirectTargetCallResponse.rejected(toHttpReason(target.reason()));
                 }
-                default -> throw new IllegalStateException(
-                        "Unknown Direct target outcome"
-                );
-            }
+            };
             results.put(entry.getKey(), response);
         }
         return new DirectCallResponse(
-                outcome.directCallId(),
-                allObserved
-                        ? DirectCallStatus.OBSERVED
-                        : DirectCallStatus.PARTIAL,
-                results
-        );
+                outcome.directCallId(), allObserved ? DirectCallStatus.OBSERVED : DirectCallStatus.PARTIAL, results);
     }
 
-    private static AdapterCallOutcome toAdapterCallOutcome(
-            String adapterId,
-            BatchOutcome outcome
-    ) {
+    private static AdapterCallOutcome toAdapterCallOutcome(String adapterId, BatchOutcome outcome) {
         TargetOutcome target = outcome.results().get(adapterId);
         if (target == null) {
-            throw new IllegalStateException(
-                    "Adapter Direct Call result is missing"
-            );
+            throw new IllegalStateException("Adapter Direct Call result is missing");
         }
-        return new AdapterCallOutcome(
-                target.status()
-                        == DirectCallRegistry.TargetOutcomeStatus.OBSERVED,
-                target.messageType(),
-                target.diagnosticCode(),
-                target.payload()
-        );
+        return new AdapterCallOutcome(target.status() == TargetOutcomeStatus.OBSERVED,
+                target.messageType(), target.diagnosticCode(), target.payload());
     }
 
-    private static DirectTargetReason toHttpReason(
-            TargetOutcomeReason reason
-    ) {
+    private static DirectTargetReason toHttpReason(TargetOutcomeReason reason) {
         return switch (reason) {
             case TIMEOUT -> DirectTargetReason.TIMEOUT;
             case SHUTDOWN -> DirectTargetReason.SHUTDOWN;
             case NOT_FOUND -> DirectTargetReason.NOT_FOUND;
             case NOT_BOUND -> DirectTargetReason.NOT_BOUND;
-            case ENDPOINT_MISMATCH ->
-                    DirectTargetReason.ENDPOINT_MISMATCH;
-            case COMMAND_SLOT_OCCUPIED ->
-                    DirectTargetReason.COMMAND_SLOT_OCCUPIED;
-            case SUBMISSION_UNKNOWN ->
-                    DirectTargetReason.SUBMISSION_UNKNOWN;
+            case ENDPOINT_MISMATCH -> DirectTargetReason.ENDPOINT_MISMATCH;
+            case COMMAND_SLOT_OCCUPIED -> DirectTargetReason.COMMAND_SLOT_OCCUPIED;
+            case SUBMISSION_UNKNOWN -> DirectTargetReason.SUBMISSION_UNKNOWN;
         };
     }
 
@@ -499,35 +314,24 @@ public final class DirectCallService {
     }
 
     private long resolveTimeout(Long requested) {
-        long timeout = requested == null
-                ? defaultWaitTimeoutMillis
-                : requested;
+        long timeout = requested == null ? defaultWaitTimeoutMillis : requested;
         if (timeout <= 0 || timeout > maxWaitTimeoutMillis) {
-            throw invalid(
-                    "waitTimeoutMillis is outside the configured bound"
-            );
+            throw invalid("waitTimeoutMillis is outside the configured bound");
         }
         return timeout;
     }
 
-    private static Map<String, String> validatedWorkerPayloads(
-            Map<String, String> workerPayloads
-    ) {
-        if (workerPayloads == null
-                || workerPayloads.isEmpty()
-                || workerPayloads.size() > MAX_BATCH_SIZE) {
-            throw invalid(
-                    "workerPayloads must contain between 1 and 100 entries"
-            );
+    private static Map<String, String> validatedWorkerPayloads(Map<String, String> workerPayloads) {
+        if (workerPayloads == null || workerPayloads.isEmpty() || workerPayloads.size() > MAX_BATCH_SIZE) {
+            throw invalid("workerPayloads must contain between 1 and 100 entries");
         }
         Map<String, String> validated = new LinkedHashMap<>();
-        for (Map.Entry<String, String> entry : workerPayloads.entrySet()) {
-            String workerId = entry.getKey();
-            requireNonBlank(workerId, "workerId");
+        for (var entry : workerPayloads.entrySet()) {
+            requireNonBlank(entry.getKey(), "workerId");
             if (entry.getValue() == null) {
                 throw invalid("Worker opaquePayload must be present");
             }
-            validated.put(workerId, entry.getValue());
+            validated.put(entry.getKey(), entry.getValue());
         }
         return validated;
     }
@@ -546,62 +350,30 @@ public final class DirectCallService {
     }
 
     private static ServerException invalid(String message) {
-        return new ServerException(
-                ServerErrorCode.INVALID_DIRECT_CALL_REQUEST,
-                "directCall.validate",
-                message,
-                null
-        );
+        return new ServerException(ServerErrorCode.INVALID_DIRECT_CALL_REQUEST, "directCall.validate", message, null);
     }
 
     private static ServerException targetNotFound(String message) {
-        return new ServerException(
-                ServerErrorCode.DIRECT_CALL_TARGET_NOT_FOUND,
-                "directCall.requireTarget",
-                message,
-                null
-        );
+        return new ServerException(ServerErrorCode.DIRECT_CALL_TARGET_NOT_FOUND, "directCall.requireTarget", message, null);
     }
 
-    private static ServerException unavailable(
-            String message,
-            Throwable cause
-    ) {
-        return new ServerException(
-                ServerErrorCode.DIRECT_CALL_UNAVAILABLE,
-                "directCall.loadTargets",
-                message,
-                cause
-        );
+    private static ServerException unavailable(String message, Throwable cause) {
+        return new ServerException(ServerErrorCode.DIRECT_CALL_UNAVAILABLE, "directCall.loadTargets", message, cause);
     }
 
-    public record ResultAppendCounts(
-            int acceptedCount,
-            int rejectedCount
-    ) {
-    }
+    public record ResultAppendCounts(int acceptedCount, int rejectedCount) {}
 
     public record AdapterCallHandle(
-            String directCallId,
-            long timeoutMillis,
-            CompletionStage<AdapterCallOutcome> completion
-    ) {
+            String directCallId, long timeoutMillis, CompletionStage<AdapterCallOutcome> completion) {
         public AdapterCallHandle {
             requireNonBlank(directCallId, "directCallId");
             if (timeoutMillis <= 0) {
-                throw new IllegalArgumentException(
-                        "timeoutMillis must be positive"
-                );
+                throw new IllegalArgumentException("timeoutMillis must be positive");
             }
             Objects.requireNonNull(completion, "completion");
         }
     }
 
     public record AdapterCallOutcome(
-            boolean observed,
-            String messageType,
-            String diagnosticCode,
-            String opaqueResultPayload
-    ) {
-    }
+            boolean observed, String messageType, String diagnosticCode, String opaqueResultPayload) {}
 }

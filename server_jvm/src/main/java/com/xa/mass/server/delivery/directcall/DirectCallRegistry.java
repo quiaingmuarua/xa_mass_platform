@@ -1,9 +1,9 @@
 package com.xa.mass.server.delivery.directcall;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_SUCCEEDED;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_FAILED;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_COMMAND_SUCCEEDED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_COMMAND_FAILED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_COMMAND_SUCCEEDED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_FAILED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_COMMAND_SUCCEEDED;
 
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import org.jspecify.annotations.Nullable;
 
 public final class DirectCallRegistry implements AutoCloseable {
 
@@ -28,26 +29,19 @@ public final class DirectCallRegistry implements AutoCloseable {
 
     private final int maxAdapterCommandsPerAdapter;
     private final int maxPendingCalls;
-    private final Map<String, ArrayDeque<CommandEntry>>
-            adapterCommandsByAdapter = new LinkedHashMap<>();
-    private final Map<String, TargetState> pendingTargetsByCorrelationId =
-            new LinkedHashMap<>();
-    private final Map<String, BatchState> batchesByDirectCallId =
-            new LinkedHashMap<>();
+    private final Map<String, ArrayDeque<CommandEntry>> adapterCommandsByAdapter = new LinkedHashMap<>();
+    private final Map<String, TargetState> pendingTargetsByCorrelationId = new LinkedHashMap<>();
+    private final Map<String, BatchState> batchesByDirectCallId = new LinkedHashMap<>();
     private int pendingTargetCount;
     private boolean closed;
 
     public DirectCallRegistry(DirectCallProperties properties) {
         Objects.requireNonNull(properties, "properties");
-        this.maxAdapterCommandsPerAdapter =
-                properties.maxAdapterCommandsPerAdapter();
+        this.maxAdapterCommandsPerAdapter = properties.maxAdapterCommandsPerAdapter();
         this.maxPendingCalls = properties.maxPendingCalls();
     }
 
-    public BatchHandle registerBatch(
-            String directCallId,
-            List<TargetPlan> targetPlans
-    ) {
+    public BatchHandle registerBatch(String directCallId, List<TargetPlan> targetPlans) {
         requireNonBlank(directCallId, "directCallId");
         requirePlans(targetPlans);
         Map<BatchState, BatchOutcome> completions = new LinkedHashMap<>();
@@ -55,9 +49,7 @@ public final class DirectCallRegistry implements AutoCloseable {
         synchronized (this) {
             requireOpen();
             if (batchesByDirectCallId.containsKey(directCallId)) {
-                throw new IllegalArgumentException(
-                        "directCallId must be unique"
-                );
+                throw new IllegalArgumentException("directCallId must be unique");
             }
             requireCapacity(targetPlans);
             batch = new BatchState(directCallId);
@@ -69,23 +61,13 @@ public final class DirectCallRegistry implements AutoCloseable {
                 if (plan.initialOutcome() != null) {
                     continue;
                 }
-                if (pendingTargetsByCorrelationId.put(
-                        plan.correlationId(),
-                        target
-                ) != null) {
-                    throw new IllegalArgumentException(
-                            "correlationId must be unique"
-                    );
+                if (pendingTargetsByCorrelationId.put(plan.correlationId(), target) != null) {
+                    throw new IllegalArgumentException("correlationId must be unique");
                 }
                 pendingTargetCount++;
                 if (plan.target().type() == DirectTargetType.ADAPTER) {
-                    adapterCommandsByAdapter.computeIfAbsent(
-                            plan.adapterId(),
-                            ignored -> new ArrayDeque<>()
-                    ).addLast(new CommandEntry(
-                            plan.correlationId(),
-                            plan.command()
-                    ));
+                    adapterCommandsByAdapter.computeIfAbsent(plan.adapterId(), ignored -> new ArrayDeque<>())
+                            .addLast(new CommandEntry(plan.correlationId(), plan.command()));
                 }
             }
             queueCompletionIfTerminalLocked(batch, completions);
@@ -94,35 +76,22 @@ public final class DirectCallRegistry implements AutoCloseable {
         return new BatchHandle(directCallId, batch.completion);
     }
 
-    public List<DeliveryCommand> consumeAdapterCommands(
-            String adapterId,
-            int limit,
-            long nowMillis
-    ) {
+    public List<DeliveryCommand> consumeAdapterCommands(String adapterId, int limit, long nowMillis) {
         Map<BatchState, BatchOutcome> completions = new LinkedHashMap<>();
         List<DeliveryCommand> consumed = new ArrayList<>();
         synchronized (this) {
             requireOpen();
             requirePositiveLimit(limit);
-            ArrayDeque<CommandEntry> mailbox =
-                    adapterCommandsByAdapter.get(adapterId);
+            ArrayDeque<CommandEntry> mailbox = adapterCommandsByAdapter.get(adapterId);
             if (mailbox != null) {
                 while (!mailbox.isEmpty() && consumed.size() < limit) {
                     CommandEntry entry = mailbox.removeFirst();
-                    TargetState target = pendingTargetsByCorrelationId.get(
-                            entry.correlationId()
-                    );
+                    TargetState target = pendingTargetsByCorrelationId.get(entry.correlationId());
                     if (target == null || target.outcome != null) {
                         continue;
                     }
                     if (entry.command().executeBeforeMillis() <= nowMillis) {
-                        completeTargetLocked(
-                                target,
-                                TargetOutcome.unobserved(
-                                        TargetOutcomeReason.TIMEOUT
-                                ),
-                                completions
-                        );
+                        completeTargetLocked(target, TargetOutcome.unobserved(TargetOutcomeReason.TIMEOUT), completions);
                         continue;
                     }
                     target.resultEligible = true;
@@ -137,29 +106,17 @@ public final class DirectCallRegistry implements AutoCloseable {
         return List.copyOf(consumed);
     }
 
-    public int completeTargets(
-            Map<String, TargetOutcome> outcomesByCorrelationId
-    ) {
-        Objects.requireNonNull(
-                outcomesByCorrelationId,
-                "outcomesByCorrelationId"
-        );
+    public int completeTargets(Map<String, TargetOutcome> outcomesByCorrelationId) {
+        Objects.requireNonNull(outcomesByCorrelationId, "outcomesByCorrelationId");
         Map<BatchState, BatchOutcome> completions = new LinkedHashMap<>();
         int completed = 0;
         synchronized (this) {
-            for (Map.Entry<String, TargetOutcome> entry
-                    : outcomesByCorrelationId.entrySet()) {
-                TargetState target = pendingTargetsByCorrelationId.get(
-                        entry.getKey()
-                );
+            for (var entry : outcomesByCorrelationId.entrySet()) {
+                TargetState target = pendingTargetsByCorrelationId.get(entry.getKey());
                 if (target == null || target.outcome != null) {
                     continue;
                 }
-                completeTargetLocked(
-                        target,
-                        Objects.requireNonNull(entry.getValue(), "outcome"),
-                        completions
-                );
+                completeTargetLocked(target, Objects.requireNonNull(entry.getValue(), "outcome"), completions);
                 completed++;
             }
         }
@@ -167,10 +124,7 @@ public final class DirectCallRegistry implements AutoCloseable {
         return completed;
     }
 
-    public CompletionCounts completeReports(
-            String adapterId,
-            List<DeliveryReport> reports
-    ) {
+    public CompletionCounts completeReports(String adapterId, List<DeliveryReport> reports) {
         Objects.requireNonNull(reports, "reports");
         Map<BatchState, BatchOutcome> completions = new LinkedHashMap<>();
         int accepted = 0;
@@ -182,15 +136,9 @@ public final class DirectCallRegistry implements AutoCloseable {
                     rejected++;
                     continue;
                 }
-                completeTargetLocked(
-                        target,
-                        TargetOutcome.observed(
-                                report.messageType(),
-                                report.diagnosticCode(),
-                                report.payload()
-                        ),
-                        completions
-                );
+                completeTargetLocked(target,
+                        TargetOutcome.observed(report.messageType(), report.diagnosticCode(), report.payload()),
+                        completions);
                 accepted++;
             }
         }
@@ -210,12 +158,7 @@ public final class DirectCallRegistry implements AutoCloseable {
                 return;
             }
             cancelled.finished = true;
-            for (TargetState target : cancelled.targets.values()) {
-                if (target.outcome == null) {
-                    removePendingTargetLocked(target);
-                    removeAdapterMailboxEntryLocked(target);
-                }
-            }
+            detachUnfinishedTargetsLocked(cancelled, null);
         }
         cancelled.completion.cancel(false);
     }
@@ -234,31 +177,21 @@ public final class DirectCallRegistry implements AutoCloseable {
                 }
                 for (TargetState target : batch.targets.values()) {
                     if (target.outcome == null) {
-                        target.outcome = TargetOutcome.unobserved(
-                                TargetOutcomeReason.SHUTDOWN
-                        );
+                        target.outcome = TargetOutcome.unobserved(TargetOutcomeReason.SHUTDOWN);
                     }
                 }
                 batch.finished = true;
-                completions.add(new BatchCompletion(
-                        batch,
-                        batch.outcome()
-                ));
+                completions.add(new BatchCompletion(batch, batch.outcome()));
             }
             batchesByDirectCallId.clear();
             pendingTargetsByCorrelationId.clear();
             adapterCommandsByAdapter.clear();
             pendingTargetCount = 0;
         }
-        completions.forEach(completion -> completion.batch.completion.complete(
-                completion.outcome
-        ));
+        completions.forEach(completion -> completion.batch.completion.complete(completion.outcome));
     }
 
-    private void completeRemaining(
-            String directCallId,
-            TargetOutcomeReason reason
-    ) {
+    private void completeRemaining(String directCallId, TargetOutcomeReason reason) {
         BatchCompletion completion;
         synchronized (this) {
             BatchState batch = batchesByDirectCallId.remove(directCallId);
@@ -266,37 +199,32 @@ public final class DirectCallRegistry implements AutoCloseable {
                 return;
             }
             batch.finished = true;
-            for (TargetState target : batch.targets.values()) {
-                if (target.outcome == null) {
-                    removePendingTargetLocked(target);
-                    removeAdapterMailboxEntryLocked(target);
-                    target.outcome = TargetOutcome.unobserved(reason);
-                }
-            }
+            detachUnfinishedTargetsLocked(batch, reason);
             completion = new BatchCompletion(batch, batch.outcome());
         }
         completion.batch.completion.complete(completion.outcome);
     }
 
-    private TargetState matchingTarget(
-            String adapterId,
-            DeliveryReport report
-    ) {
-        if (closed
-                || report == null
-                || report.dst() != DeliveryEndpoint.SERVER
-                || report.forward() == null
-                || !report.forward().startsWith(FORWARD_PREFIX)) {
+    private void detachUnfinishedTargetsLocked(BatchState batch, @Nullable TargetOutcomeReason reason) {
+        for (TargetState target : batch.targets.values()) {
+            if (target.outcome == null) {
+                removePendingTargetLocked(target);
+                removeAdapterMailboxEntryLocked(target);
+                if (reason != null) {
+                    target.outcome = TargetOutcome.unobserved(reason);
+                }
+            }
+        }
+    }
+
+    private TargetState matchingTarget(String adapterId, DeliveryReport report) {
+        if (closed || report == null || report.dst() != DeliveryEndpoint.SERVER
+                || report.forward() == null || !report.forward().startsWith(FORWARD_PREFIX)) {
             return null;
         }
-        String correlationId = report.forward().substring(
-                FORWARD_PREFIX.length()
-        );
+        String correlationId = report.forward().substring(FORWARD_PREFIX.length());
         TargetState target = pendingTargetsByCorrelationId.get(correlationId);
-        if (target == null
-                || target.outcome != null
-                || !target.resultEligible
-                || !target.adapterId.equals(adapterId)) {
+        if (target == null || target.outcome != null || !target.resultEligible || !target.adapterId.equals(adapterId)) {
             return null;
         }
         if (target.target.type() == DirectTargetType.WORKER) {
@@ -304,15 +232,13 @@ public final class DirectCallRegistry implements AutoCloseable {
                     && target.target.targetId().equals(report.sourceId())
                     && (WORKER_COMMAND_SUCCEEDED.equals(report.messageType())
                     || WORKER_COMMAND_FAILED.equals(report.messageType()))
-                    ? target
-                    : null;
+                    ? target : null;
         }
         return report.src() == DeliveryEndpoint.ADAPTER
                 && target.adapterId.equals(report.sourceId())
                 && (ADAPTER_COMMAND_SUCCEEDED.equals(report.messageType())
                 || ADAPTER_COMMAND_FAILED.equals(report.messageType()))
-                ? target
-                : null;
+                ? target : null;
     }
 
     private void requireCapacity(List<TargetPlan> plans) {
@@ -324,37 +250,23 @@ public final class DirectCallRegistry implements AutoCloseable {
             }
             pendingAdditions++;
             if (plan.target().type() == DirectTargetType.ADAPTER) {
-                adapterAdditions.merge(
-                        plan.adapterId(),
-                        1,
-                        Integer::sum
-                );
+                adapterAdditions.merge(plan.adapterId(), 1, Integer::sum);
             }
         }
         if (pendingTargetCount + pendingAdditions > maxPendingCalls) {
-            throw capacityExceeded(
-                    "Direct Call waiter capacity is exhausted"
-            );
+            throw capacityExceeded("Direct Call waiter capacity is exhausted");
         }
-        for (Map.Entry<String, Integer> addition
-                : adapterAdditions.entrySet()) {
-            ArrayDeque<CommandEntry> mailbox =
-                    adapterCommandsByAdapter.get(addition.getKey());
+        for (var addition : adapterAdditions.entrySet()) {
+            ArrayDeque<CommandEntry> mailbox = adapterCommandsByAdapter.get(addition.getKey());
             int currentSize = mailbox == null ? 0 : mailbox.size();
-            if (currentSize + addition.getValue()
-                    > maxAdapterCommandsPerAdapter) {
-                throw capacityExceeded(
-                        "Adapter Direct Command capacity is exhausted"
-                );
+            if (currentSize + addition.getValue() > maxAdapterCommandsPerAdapter) {
+                throw capacityExceeded("Adapter Direct Command capacity is exhausted");
             }
         }
     }
 
     private void completeTargetLocked(
-            TargetState target,
-            TargetOutcome outcome,
-            Map<BatchState, BatchOutcome> completions
-    ) {
+            TargetState target, TargetOutcome outcome, Map<BatchState, BatchOutcome> completions) {
         removePendingTargetLocked(target);
         removeAdapterMailboxEntryLocked(target);
         target.outcome = outcome;
@@ -362,37 +274,26 @@ public final class DirectCallRegistry implements AutoCloseable {
     }
 
     private void removePendingTargetLocked(TargetState target) {
-        if (target.correlationId != null
-                && pendingTargetsByCorrelationId.remove(
-                        target.correlationId,
-                        target
-                )) {
+        if (target.correlationId != null && pendingTargetsByCorrelationId.remove(target.correlationId, target)) {
             pendingTargetCount--;
         }
     }
 
     private void removeAdapterMailboxEntryLocked(TargetState target) {
-        if (target.target == null
-                || target.target.type() != DirectTargetType.ADAPTER) {
+        if (target.target == null || target.target.type() != DirectTargetType.ADAPTER) {
             return;
         }
-        ArrayDeque<CommandEntry> mailbox =
-                adapterCommandsByAdapter.get(target.adapterId);
+        ArrayDeque<CommandEntry> mailbox = adapterCommandsByAdapter.get(target.adapterId);
         if (mailbox == null) {
             return;
         }
-        mailbox.removeIf(entry -> entry.correlationId().equals(
-                target.correlationId
-        ));
+        mailbox.removeIf(entry -> entry.correlationId().equals(target.correlationId));
         if (mailbox.isEmpty()) {
             adapterCommandsByAdapter.remove(target.adapterId);
         }
     }
 
-    private void queueCompletionIfTerminalLocked(
-            BatchState batch,
-            Map<BatchState, BatchOutcome> completions
-    ) {
+    private void queueCompletionIfTerminalLocked(BatchState batch, Map<BatchState, BatchOutcome> completions) {
         if (batch.finished || !batch.isTerminal()) {
             return;
         }
@@ -401,29 +302,21 @@ public final class DirectCallRegistry implements AutoCloseable {
         completions.put(batch, batch.outcome());
     }
 
-    private static void completeOutsideLock(
-            Map<BatchState, BatchOutcome> completions
-    ) {
-        completions.forEach((batch, outcome) ->
-                batch.completion.complete(outcome));
+    private static void completeOutsideLock(Map<BatchState, BatchOutcome> completions) {
+        completions.forEach((batch, outcome) -> batch.completion.complete(outcome));
     }
 
     private void requireOpen() {
         if (closed) {
             throw new ServerException(
-                    ServerErrorCode.DIRECT_CALL_UNAVAILABLE,
-                    "directCall.register",
-                    "Direct Call registry is stopping",
-                    null
-            );
+                    ServerErrorCode.DIRECT_CALL_UNAVAILABLE, "directCall.register",
+                    "Direct Call registry is stopping", null);
         }
     }
 
     private static void requirePlans(List<TargetPlan> plans) {
         if (plans == null || plans.isEmpty() || plans.size() > 100) {
-            throw new IllegalArgumentException(
-                    "targetPlans must contain between 1 and 100 entries"
-            );
+            throw new IllegalArgumentException("targetPlans must contain between 1 and 100 entries");
         }
         Set<String> resultKeys = new LinkedHashSet<>();
         Set<String> correlations = new LinkedHashSet<>();
@@ -431,25 +324,15 @@ public final class DirectCallRegistry implements AutoCloseable {
         for (TargetPlan plan : plans) {
             Objects.requireNonNull(plan, "targetPlan");
             if (!resultKeys.add(plan.resultKey())) {
-                throw new IllegalArgumentException(
-                        "target result keys must be unique"
-                );
+                throw new IllegalArgumentException("target result keys must be unique");
             }
             if (plan.initialOutcome() == null) {
                 if (!correlations.add(plan.correlationId())) {
-                    throw new IllegalArgumentException(
-                            "target correlation ids must be unique"
-                    );
+                    throw new IllegalArgumentException("target correlation ids must be unique");
                 }
-                String address = plan.adapterId()
-                        + "\u0000"
-                        + plan.target().type()
-                        + "\u0000"
-                        + plan.target().targetId();
+                String address = plan.adapterId() + "\u0000" + plan.target().type() + "\u0000" + plan.target().targetId();
                 if (!targetAddresses.add(address)) {
-                    throw new IllegalArgumentException(
-                            "target addresses must be unique"
-                    );
+                    throw new IllegalArgumentException("target addresses must be unique");
                 }
             }
         }
@@ -469,38 +352,18 @@ public final class DirectCallRegistry implements AutoCloseable {
 
     private static ServerException capacityExceeded(String message) {
         return new ServerException(
-                ServerErrorCode.DIRECT_CALL_CAPACITY_EXCEEDED,
-                "directCall.registerBatch",
-                message,
-                null
-        );
+                ServerErrorCode.DIRECT_CALL_CAPACITY_EXCEEDED, "directCall.registerBatch", message, null);
     }
 
-    public enum DirectTargetType {
-        WORKER,
-        ADAPTER
-    }
+    public enum DirectTargetType { WORKER, ADAPTER }
 
-    public enum TargetOutcomeStatus {
-        OBSERVED,
-        UNOBSERVED,
-        REJECTED
-    }
+    public enum TargetOutcomeStatus { OBSERVED, UNOBSERVED, REJECTED }
 
     public enum TargetOutcomeReason {
-        TIMEOUT,
-        SHUTDOWN,
-        NOT_FOUND,
-        NOT_BOUND,
-        ENDPOINT_MISMATCH,
-        COMMAND_SLOT_OCCUPIED,
-        SUBMISSION_UNKNOWN
+        TIMEOUT, SHUTDOWN, NOT_FOUND, NOT_BOUND, ENDPOINT_MISMATCH, COMMAND_SLOT_OCCUPIED, SUBMISSION_UNKNOWN
     }
 
-    public record DirectTarget(
-            DirectTargetType type,
-            String targetId
-    ) {
+    public record DirectTarget(DirectTargetType type, String targetId) {
         public DirectTarget {
             Objects.requireNonNull(type, "type");
             requireNonBlank(targetId, "targetId");
@@ -516,149 +379,66 @@ public final class DirectCallRegistry implements AutoCloseable {
     }
 
     public record TargetOutcome(
-            TargetOutcomeStatus status,
-            String messageType,
-            String diagnosticCode,
-            String payload,
-            TargetOutcomeReason reason
-    ) {
-        public static TargetOutcome observed(
-                String messageType,
-                String diagnosticCode,
-                String payload
-        ) {
-            return new TargetOutcome(
-                    TargetOutcomeStatus.OBSERVED,
-                    messageType,
-                    diagnosticCode,
-                    payload,
-                    null
-            );
+            TargetOutcomeStatus status, String messageType, String diagnosticCode,
+            String payload, TargetOutcomeReason reason) {
+        public static TargetOutcome observed(String messageType, String diagnosticCode, String payload) {
+            return new TargetOutcome(TargetOutcomeStatus.OBSERVED, messageType, diagnosticCode, payload, null);
         }
 
         public static TargetOutcome unobserved(TargetOutcomeReason reason) {
-            return new TargetOutcome(
-                    TargetOutcomeStatus.UNOBSERVED,
-                    null,
-                    null,
-                    null,
-                    reason
-            );
+            return new TargetOutcome(TargetOutcomeStatus.UNOBSERVED, null, null, null, reason);
         }
 
         public static TargetOutcome rejected(TargetOutcomeReason reason) {
-            return new TargetOutcome(
-                    TargetOutcomeStatus.REJECTED,
-                    null,
-                    null,
-                    null,
-                    reason
-            );
+            return new TargetOutcome(TargetOutcomeStatus.REJECTED, null, null, null, reason);
         }
     }
 
     public record TargetPlan(
-            String resultKey,
-            String correlationId,
-            String adapterId,
-            DirectTarget target,
-            DeliveryCommand command,
-            TargetOutcome initialOutcome
-    ) {
+            String resultKey, String correlationId, String adapterId,
+            DirectTarget target, DeliveryCommand command, TargetOutcome initialOutcome) {
         public TargetPlan {
             requireNonBlank(resultKey, "resultKey");
-            boolean commandPlan = initialOutcome == null;
-            if (commandPlan) {
+            if (initialOutcome == null) {
                 requireNonBlank(correlationId, "correlationId");
                 requireNonBlank(adapterId, "adapterId");
                 Objects.requireNonNull(target, "target");
                 Objects.requireNonNull(command, "command");
-            } else if (correlationId != null
-                    || adapterId != null
-                    || target != null
-                    || command != null
-                    || initialOutcome.status()
-                    != TargetOutcomeStatus.REJECTED) {
-                throw new IllegalArgumentException(
-                        "Rejected TargetPlan must contain only its outcome"
-                );
+            } else if (correlationId != null || adapterId != null || target != null || command != null
+                    || initialOutcome.status() != TargetOutcomeStatus.REJECTED) {
+                throw new IllegalArgumentException("Rejected TargetPlan must contain only its outcome");
             }
         }
 
         public static TargetPlan command(
-                String resultKey,
-                String correlationId,
-                String adapterId,
-                DirectTarget target,
-                DeliveryCommand command
-        ) {
-            return new TargetPlan(
-                    resultKey,
-                    correlationId,
-                    adapterId,
-                    target,
-                    command,
-                    null
-            );
+                String resultKey, String correlationId, String adapterId,
+                DirectTarget target, DeliveryCommand command) {
+            return new TargetPlan(resultKey, correlationId, adapterId, target, command, null);
         }
 
-        public static TargetPlan rejected(
-                String resultKey,
-                TargetOutcomeReason reason
-        ) {
-            return new TargetPlan(
-                    resultKey,
-                    null,
-                    null,
-                    null,
-                    null,
-                    TargetOutcome.rejected(reason)
-            );
+        public static TargetPlan rejected(String resultKey, TargetOutcomeReason reason) {
+            return new TargetPlan(resultKey, null, null, null, null, TargetOutcome.rejected(reason));
         }
     }
 
-    public record BatchHandle(
-            String directCallId,
-            CompletionStage<BatchOutcome> completion
-    ) {
-    }
+    public record BatchHandle(String directCallId, CompletionStage<BatchOutcome> completion) {}
 
-    public record BatchOutcome(
-            String directCallId,
-            Map<String, TargetOutcome> results
-    ) {
+    public record BatchOutcome(String directCallId, Map<String, TargetOutcome> results) {
         public BatchOutcome {
-            results = Collections.unmodifiableMap(
-                    new LinkedHashMap<>(results)
-            );
+            results = Collections.unmodifiableMap(new LinkedHashMap<>(results));
         }
     }
 
-    public record CompletionCounts(
-            int acceptedCount,
-            int rejectedCount
-    ) {
-    }
+    public record CompletionCounts(int acceptedCount, int rejectedCount) {}
 
-    private record CommandEntry(
-            String correlationId,
-            DeliveryCommand command
-    ) {
-    }
+    private record CommandEntry(String correlationId, DeliveryCommand command) {}
 
-    private record BatchCompletion(
-            BatchState batch,
-            BatchOutcome outcome
-    ) {
-    }
+    private record BatchCompletion(BatchState batch, BatchOutcome outcome) {}
 
     private static final class BatchState {
-
         private final String directCallId;
-        private final LinkedHashMap<String, TargetState> targets =
-                new LinkedHashMap<>();
-        private final CompletableFuture<BatchOutcome> completion =
-                new CompletableFuture<>();
+        private final LinkedHashMap<String, TargetState> targets = new LinkedHashMap<>();
+        private final CompletableFuture<BatchOutcome> completion = new CompletableFuture<>();
         private boolean finished;
 
         private BatchState(String directCallId) {
@@ -666,23 +446,17 @@ public final class DirectCallRegistry implements AutoCloseable {
         }
 
         private boolean isTerminal() {
-            return targets.values().stream().allMatch(
-                    target -> target.outcome != null
-            );
+            return targets.values().stream().allMatch(target -> target.outcome != null);
         }
 
         private BatchOutcome outcome() {
             Map<String, TargetOutcome> results = new LinkedHashMap<>();
-            targets.forEach((key, target) -> results.put(
-                    key,
-                    Objects.requireNonNull(target.outcome, "target outcome")
-            ));
+            targets.forEach((key, target) -> results.put(key, Objects.requireNonNull(target.outcome, "target outcome")));
             return new BatchOutcome(directCallId, results);
         }
     }
 
     private static final class TargetState {
-
         private final BatchState batch;
         private final String correlationId;
         private final String adapterId;
@@ -695,8 +469,7 @@ public final class DirectCallRegistry implements AutoCloseable {
             this.correlationId = plan.correlationId();
             this.adapterId = plan.adapterId();
             this.target = plan.target();
-            this.resultEligible = plan.target() != null
-                    && plan.target().type() == DirectTargetType.WORKER;
+            this.resultEligible = plan.target() != null && plan.target().type() == DirectTargetType.WORKER;
             this.outcome = plan.initialOutcome();
         }
     }
