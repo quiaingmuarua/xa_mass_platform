@@ -1,11 +1,9 @@
 package com.xa.mass.server.task.call;
 
-import com.xa.mass.server.task.access.TaskCaller;
-
-import org.springframework.stereotype.Service;
+import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.task.TaskCallItemSubmission;
-import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionStatus;
 import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionResult;
+import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionStatus;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
@@ -13,17 +11,19 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
-import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.task.TaskItemMapper;
+import com.xa.mass.server.task.access.TaskCaller;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
+import org.springframework.stereotype.Service;
 
 /**
  * Shared bounded admission for HTTP Call and in-process product callers.
@@ -34,6 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Service
 public final class TaskCallSubmissionService {
+
     /** Bound of the immutable Task descriptor cache; reaching it resets the cache. */
     static final int DESCRIPTOR_CACHE_CAPACITY = 1024;
 
@@ -46,9 +47,9 @@ public final class TaskCallSubmissionService {
     private final ConcurrentHashMap<String, TaskDescriptor> descriptors = new ConcurrentHashMap<>();
     private final TaskCallSubmissionBatcher batcher = new TaskCallSubmissionBatcher(this::submitBatch);
 
-    public TaskCallSubmissionService(TaskCallItemSubmission taskCallSubmission,
-            TaskResourceCatalog taskCatalog, TaskItemMapper taskItems,
-            WorkerMatchingCatalog matching, TaskRuntime taskRuntime) {
+    public TaskCallSubmissionService(
+            TaskCallItemSubmission taskCallSubmission, TaskResourceCatalog taskCatalog,
+            TaskItemMapper taskItems, WorkerMatchingCatalog matching, TaskRuntime taskRuntime) {
         this.taskCallSubmission = taskCallSubmission;
         this.taskCatalog = taskCatalog;
         this.taskItems = taskItems;
@@ -57,8 +58,7 @@ public final class TaskCallSubmissionService {
     }
 
     /** One submitted call: its message IDs, Results already observed and their read start. */
-    record SubmittedCall(List<String> messageIds, Map<String, TaskItemResult> observed, long observationStarted) {
-    }
+    record SubmittedCall(List<String> messageIds, Map<String, TaskItemResult> observed, long observationStarted) {}
 
     public List<String> submit(TaskCaller caller, String inputOwner, String taskId, List<TaskItemRequest> items) {
         return submit(caller, inputOwner, taskId, items, false).messageIds();
@@ -69,7 +69,8 @@ public final class TaskCallSubmissionService {
         return submit(caller, inputOwner, taskId, items, true);
     }
 
-    private SubmittedCall submit(TaskCaller caller, String inputOwner, String taskId, List<TaskItemRequest> items, boolean observe) {
+    private SubmittedCall submit(
+            TaskCaller caller, String inputOwner, String taskId, List<TaskItemRequest> items, boolean observe) {
         if (taskId == null || taskId.isBlank()) {
             throw invalid("taskId must be non-blank");
         }
@@ -87,7 +88,7 @@ public final class TaskCallSubmissionService {
         } catch (IllegalArgumentException error) {
             throw invalid(error.getMessage());
         } catch (RuntimeException error) {
-            throw new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, "taskRpc.prepareQuery", null, error);
+            throw unavailable("taskRpc.prepareQuery", null, error);
         }
         // No mutation until every original input has passed Matching admission.
         List<String> messageIds = List.copyOf(latest.keySet());
@@ -95,21 +96,11 @@ public final class TaskCallSubmissionService {
         try {
             outcome = batcher.submit(taskId, List.copyOf(latest.values()), observe);
         } catch (RuntimeException error) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                    "taskRpc.submitItems",
-                    null,
-                    error
-            );
+            throw unavailable("taskRpc.submitItems", null, error);
         }
         TaskCallSubmissionResult submission = outcome.submission();
         if (submission == null) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                    "taskRpc.submitItems",
-                    null,
-                    null
-            );
+            throw unavailable("taskRpc.submitItems", null, null);
         }
         requireAcceptedSubmission(submission, messageIds);
 
@@ -124,7 +115,8 @@ public final class TaskCallSubmissionService {
     }
 
     /** One Kernel submission and, when requested, one Result read for a whole batch. */
-    private TaskCallSubmissionBatcher.BatchOutcome submitBatch(String taskId, List<TaskItem> items, List<String> resultMessageIds) {
+    private TaskCallSubmissionBatcher.BatchOutcome submitBatch(
+            String taskId, List<TaskItem> items, List<String> resultMessageIds) {
         List<String> messageIds = items.stream().map(TaskItem::messageId).toList();
         TaskCallSubmissionResult submission = null;
         long submissionStarted = TaskRpcStageEvent.start();
@@ -133,7 +125,8 @@ public final class TaskCallSubmissionService {
             submission = taskCallSubmission.submit(taskId, items);
             submitted = submission != null && submission.status() == TaskCallSubmissionStatus.SUBMITTED;
         } finally {
-            TaskRpcStageEvent.items(submissionStarted, "SUBMISSION", taskId, messageIds, submitted ? messageIds.size() : 0, !submitted);
+            TaskRpcStageEvent.items(submissionStarted, "SUBMISSION", taskId, messageIds,
+                    submitted ? messageIds.size() : 0, !submitted);
         }
         long observationStarted = TaskRpcStageEvent.start();
         if (resultMessageIds.isEmpty() || !submitted) {
@@ -155,14 +148,9 @@ public final class TaskCallSubmissionService {
             descriptor = loadDescriptor(taskId);
         }
         caller.requireInput(descriptor, inputOwner);
-        if (descriptor.idleDisposition()
-                != TaskIdleDisposition.PARK_WHEN_IDLE) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
-                    "taskRpc.validateTask",
-                    "Task does not support synchronous Item Call",
-                    null
-            );
+        if (descriptor.idleDisposition() != TaskIdleDisposition.PARK_WHEN_IDLE) {
+            throw failure(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, "taskRpc.validateTask",
+                    "Task does not support synchronous Item Call");
         }
         return descriptor;
     }
@@ -170,24 +158,12 @@ public final class TaskCallSubmissionService {
     private TaskDescriptor loadDescriptor(String taskId) {
         TaskDescriptor descriptor;
         try {
-            descriptor = taskCatalog.loadTaskAllocationDescriptors(
-                    List.of(taskId)
-            ).get(taskId);
+            descriptor = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
         } catch (RuntimeException error) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                    "taskRpc.loadDescriptor",
-                    null,
-                    error
-            );
+            throw unavailable("taskRpc.loadDescriptor", null, error);
         }
         if (descriptor == null) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_NOT_FOUND,
-                    "taskRpc.loadDescriptor",
-                    null,
-                    null
-            );
+            throw failure(ServerErrorCode.TASK_NOT_FOUND, "taskRpc.loadDescriptor", null);
         }
         if (descriptors.size() >= DESCRIPTOR_CACHE_CAPACITY) {
             descriptors.clear();
@@ -196,26 +172,14 @@ public final class TaskCallSubmissionService {
         return descriptor;
     }
 
-    private static List<WorkerQuery> captureSelectors(
-            List<TaskItemRequest> items
-    ) {
+    private static List<WorkerQuery> captureSelectors(List<TaskItemRequest> items) {
         if (items == null || items.isEmpty() || items.size() > 100) {
-            throw new ServerException(
-                    ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                    "taskRpc.mapItems",
-                    "items must contain 1..100 entries",
-                    null
-            );
+            throw invalid("items must contain 1..100 entries");
         }
         var selectors = new ArrayList<WorkerQuery>(items.size());
         for (TaskItemRequest item : items) {
             if (item == null) {
-                throw new ServerException(
-                        ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                        "taskRpc.mapItems",
-                        "TaskItem must be present",
-                        null
-                );
+                throw invalid("TaskItem must be present");
             }
             if (item.messageId() == null || item.messageId().isBlank()
                     || item.eventCode() == null || item.eventCode().isBlank()
@@ -223,89 +187,49 @@ public final class TaskCallSubmissionService {
                     || (item.ttlMillis() != null && item.ttlMillis() <= 0)) {
                 throw invalid("Invalid TaskItem fields");
             }
-            try {
-                if (item.workerSelector() == null) throw new IllegalArgumentException("WorkerGroup Task Call requires workerSelector");
-                selectors.add(item.workerSelector());
-            } catch (IllegalArgumentException error) {
-                throw invalid(error.getMessage());
+            if (item.workerSelector() == null) {
+                throw invalid("WorkerGroup Task Call requires workerSelector");
             }
+            selectors.add(item.workerSelector());
         }
         return List.copyOf(selectors);
     }
 
-    private static ServerException invalid(String message) {
-        return new ServerException(ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                "taskRpc.mapItems", message, null);
-    }
-
-    private static void requireAcceptedSubmission(
-            TaskCallSubmissionResult submission,
-            List<String> messageIds
-    ) {
+    private static void requireAcceptedSubmission(TaskCallSubmissionResult submission, List<String> messageIds) {
         switch (submission.status()) {
             case SUBMITTED -> {
                 // Item-level results remain the canonical append outcomes.
             }
-            case NOT_FOUND -> throw new ServerException(
-                    ServerErrorCode.TASK_NOT_FOUND,
-                    "taskRpc.submitItems",
-                    submission.reason(),
-                    null
-            );
-            case CLOSED, STALE -> throw new ServerException(
-                    ServerErrorCode.TASK_STATE_CONFLICT,
-                    "taskRpc.submitItems",
-                    null,
-                    null
-            );
-            case INVALID -> throw new ServerException(
-                    ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                    "taskRpc.submitItems",
-                    null,
-                    null
-            );
-            case RETRYABLE -> throw new ServerException(
-                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                    "taskRpc.submitItems",
-                    null,
-                    null
-            );
+            case NOT_FOUND -> throw failure(ServerErrorCode.TASK_NOT_FOUND, "taskRpc.submitItems", submission.reason());
+            case CLOSED, STALE -> throw failure(ServerErrorCode.TASK_STATE_CONFLICT, "taskRpc.submitItems", null);
+            case INVALID -> throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskRpc.submitItems", null);
+            case RETRYABLE -> throw unavailable("taskRpc.submitItems", null, null);
         }
         for (String messageId : messageIds) {
-            TaskItemAppendResult appended = submission.itemResults().get(
-                    messageId
-            );
+            TaskItemAppendResult appended = submission.itemResults().get(messageId);
             if (appended == null) {
-                throw new ServerException(
-                        ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                        "taskRpc.submitItems",
-                        "Kernel omitted a TaskItem submission result",
-                        null
-                );
+                throw unavailable("taskRpc.submitItems", "Kernel omitted a TaskItem submission result", null);
             }
             switch (appended.status()) {
                 case APPENDED -> {
                     // Continue validating the bounded submission.
                 }
-                case NOT_FOUND -> throw new ServerException(
-                        ServerErrorCode.TASK_NOT_FOUND,
-                        "taskRpc.appendItems",
-                        null,
-                        null
-                );
-                case INVALID -> throw new ServerException(
-                        ServerErrorCode.INVALID_TASK_DATA_REQUEST,
-                        "taskRpc.appendItems",
-                        null,
-                        null
-                );
-                case RETRYABLE -> throw new ServerException(
-                        ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                        "taskRpc.appendItems",
-                        null,
-                        null
-                );
+                case NOT_FOUND -> throw failure(ServerErrorCode.TASK_NOT_FOUND, "taskRpc.appendItems", null);
+                case INVALID -> throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskRpc.appendItems", null);
+                case RETRYABLE -> throw unavailable("taskRpc.appendItems", null, null);
             }
         }
+    }
+
+    private static ServerException invalid(String message) {
+        return failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskRpc.mapItems", message);
+    }
+
+    private static ServerException failure(ServerErrorCode code, String operation, @Nullable String message) {
+        return new ServerException(code, operation, message, null);
+    }
+
+    private static ServerException unavailable(String operation, @Nullable String message, @Nullable Throwable cause) {
+        return new ServerException(ServerErrorCode.TASK_DATA_UNAVAILABLE, operation, message, cause);
     }
 }
