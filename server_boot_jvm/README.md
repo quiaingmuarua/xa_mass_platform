@@ -165,6 +165,30 @@ Consumer and Preview inherit shared retention settings and the Adapter remote
 base URL from `application.yaml`. The remote URL follows the resolved `server.port`,
 including an explicit external override.
 
+## Report ingress budget
+
+The `consumer` profile keeps its 1,000-Report per-lane default. A deployment
+that admits a larger simultaneous Worker disconnect wave must explicitly size
+`xa.mass.worker-delivery.adapter.instances.<adapterId>.report-queue-capacity`
+for that wave. For example, the bounded 10k connection closeout uses:
+
+```yaml
+xa:
+  mass:
+    worker-delivery:
+      adapter:
+        instances:
+          runtime-websocket:
+            report-queue-capacity: 20000
+```
+
+This changes the four finite ingress budgets, not the 100-Report HTTP append
+limit, Server/Kernel handoff capacity, retry semantics or scheduling preset.
+The [Adapter Owner](../transport/netty-adapter/README.md#result-ingress-loop)
+defines admission and loss boundaries. A larger configured Worker fleet needs
+its own budget and complete downstream validation; 20,000 is not a platform
+capacity claim. Standard external configuration applies at Runtime startup.
+
 ## Run
 
 Start the Java Runtime API from the repository root. Server selects the

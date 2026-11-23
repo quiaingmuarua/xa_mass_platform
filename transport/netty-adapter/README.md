@@ -579,6 +579,18 @@ SERVER, SYSTEM and KERNEL admission drops use owner-local cumulative sampling ra
 than one warning per Report, so a 10k disconnect wave cannot create a matching
 warning storm.
 
+Size this per-lane budget for the expected simultaneous evidence burst, not
+only steady Task throughput. The `consumer` profile's default 1,000 queued
+Reports does not absorb 10,000 independent disconnect observations. The focused
+Dispatcher witness blocks the first 100-Report append and then offers a total
+of 10,020 observations: a 20,000 budget admits and drains every original Report,
+while a 1,000 budget rejects the excess. It also preserves FIFO, original
+timestamps, the fixed append limit, other-lane service and bounded shutdown.
+This is a finite admission budget, not an automatic scale adjustment or a
+durable evidence guarantee. The downstream Kernel handoff and evidence-age
+limits remain independent; the Runtime Boundary separately checks 10,000
+observations through actual HTTP, Redis and Score convergence.
+
 One aggregate availability signal blocks the Report thread while all lanes are
 empty. Ingress to any lane wakes it. A rotating cursor selects one non-empty
 lane, `poll()` obtains its first item, and `drainTo(...)` takes at most 99 more

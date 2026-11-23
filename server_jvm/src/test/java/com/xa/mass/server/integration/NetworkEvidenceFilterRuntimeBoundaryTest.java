@@ -3,8 +3,19 @@ package com.xa.mass.server.integration;
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import com.xa.mass.server.testsupport.ServerTestConfiguration;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessManager;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.BatchDispatcher;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.BatchProcessResult;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandItem;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportDispatcher;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryRemoteApi;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workermatching.index.NetworkEvidenceTimestamps;
 import com.xa.mass.workermatching.WorkerProperties;
 import io.lettuce.core.RedisClient;
@@ -14,9 +25,12 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BooleanSupplier;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -30,6 +44,107 @@ class NetworkEvidenceFilterRuntimeBoundaryTest {
     private static final String GROUP = "network-history";
     private static final String BARRIER_GROUP = "network-barrier";
     private static final JsonMapper JSON = JsonMapper.builder().build();
+
+    @Test
+    void tenThousandConnectionAndDisconnectReportsConvergeWithoutTaskRoots() throws Exception {
+        var scope = RedisTestScope.create("network_burst");
+        var redis = RedisClient.create(REDIS_URL);
+        try (var witness = redis.connect(); var http = HttpClient.newHttpClient(); var context = start(scope)) {
+            var api = new Boundary(context, http, witness.sync(), scope);
+            api.register(GROUP);
+            var catalog = context.getBean(WorkerResourceCatalog.class);
+            var scores = context.getBean(WorkerScoreCore.class);
+            var workers = IntStream.range(0, 10_000).mapToObj(index -> "burst-worker-" + index).toList();
+            for (int offset = 0; offset < workers.size(); offset += WorkerResourceCatalog.MAX_WORKER_BATCH_SIZE) {
+                var page = workers.subList(offset,
+                        Math.min(offset + WorkerResourceCatalog.MAX_WORKER_BATCH_SIZE, workers.size()));
+                var registered = catalog.registerWorkers(GROUP, page, ADAPTER);
+                assertThat(registered).hasSize(page.size());
+                assertThat(registered.values()).allSatisfy(result -> {
+                    assertThat(result.status()).isEqualTo(WorkerResourceCatalog.RegistrationStatus.OK);
+                    assertThat(result.endpointManagerId()).isEqualTo(ADAPTER);
+                });
+            }
+            assertThat(schedulingStateCounts(scores, workers))
+                    .containsExactly(Map.entry(WorkerScoreCore.SchedulingState.COLD, 10_000L));
+
+            String base = "http://127.0.0.1:" + context.getEnvironment().getProperty("local.server.port");
+            var reports = new DeliveryReportDispatcher(ADAPTER, 20_000, Duration.ofSeconds(1),
+                    new WorkerDeliveryRemoteApi(URI.create(base), Duration.ofSeconds(5), new WorkerDeliveryCodec()));
+            // The public lifecycle owner starts/stops both resident dispatchers. This inert
+            // Command source never polls Server or creates Task roots that could repair lost evidence.
+            var commands = BatchDispatcher.<DeliveryCommandItem>pulling(ADAPTER, "delivery-command", 1, 1,
+                    Duration.ofSeconds(1), Duration.ZERO, Duration.ofSeconds(1), List::of,
+                    ignored -> BatchProcessResult.completed());
+            var processes = new AdapterProcessManager(commands, reports, Duration.ofSeconds(5));
+            try {
+                long connectedStarted = System.nanoTime();
+                long connectedAt = System.currentTimeMillis();
+                admitConnectionBurst(reports, workers, "CONNECTED", connectedAt);
+                processes.start();
+                awaitAllSchedulingStates(scores, workers,
+                        Set.of(WorkerScoreCore.SchedulingState.HOT_SCORE_OVERDUE,
+                                WorkerScoreCore.SchedulingState.HELD_HOT), connectedAt, connectedStarted);
+
+                long disconnectedStarted = System.nanoTime();
+                long disconnectedAt = System.currentTimeMillis();
+                admitConnectionBurst(reports, workers, "DISCONNECTED", disconnectedAt);
+                awaitAllSchedulingStates(scores, workers, Set.of(WorkerScoreCore.SchedulingState.RECOVERY),
+                        disconnectedAt, disconnectedStarted);
+                // This is an HTTP/evidence/Score burst witness, not 10,000 physical WebSockets.
+                // The existing fixture retains DEFAULT, the 10k Redis LIST, batch=10 and age=30s.
+            } finally {
+                processes.stopCommand();
+                processes.stopReport();
+                processes.awaitStopped();
+            }
+        } finally {
+            try (var connection = redis.connect()) { scope.cleanup(connection.sync()); }
+            finally { redis.shutdown(); }
+        }
+    }
+
+    private static void admitConnectionBurst(DeliveryReportDispatcher dispatcher, List<String> workers,
+            String state, long observedAt) {
+        for (String worker : workers) {
+            var evidence = DeliveryReport.create(DeliveryEndpoint.ADAPTER, ADAPTER, DeliveryEndpoint.KERNEL,
+                    "platform.adapter.worker-connection.changed", "", JSON.writeValueAsString(
+                            Map.of("workerId", worker, "state", state, "observedAtMillis", observedAt)),
+                    "worker-serviceability-evidence:v1");
+            assertThat(dispatcher.tryDispatch(evidence)).as("%s burst admission", state)
+                    .isEqualTo(DeliveryReportDispatcher.DispatchStatus.ACCEPTED);
+        }
+    }
+
+    private static Map<WorkerScoreCore.SchedulingState, Long> schedulingStateCounts(
+            WorkerScoreCore scores, List<String> workers) {
+        var counts = new EnumMap<WorkerScoreCore.SchedulingState, Long>(WorkerScoreCore.SchedulingState.class);
+        for (int offset = 0; offset < workers.size(); offset += WorkerScoreCore.MAX_SCORE_BATCH_SIZE) {
+            var page = workers.subList(offset, Math.min(offset + WorkerScoreCore.MAX_SCORE_BATCH_SIZE, workers.size()));
+            var states = scores.observeSchedulingStates(GROUP, page).statesByWorkerId();
+            assertThat(states).hasSize(page.size()).containsOnlyKeys(page);
+            states.values().forEach(state -> counts.merge(state, 1L, Long::sum));
+        }
+        return counts;
+    }
+
+    private static void awaitAllSchedulingStates(WorkerScoreCore scores, List<String> workers,
+            Set<WorkerScoreCore.SchedulingState> expected, long observedAt, long startedAt) throws InterruptedException {
+        long deadline = startedAt + Duration.ofSeconds(30).toNanos();
+        Map<WorkerScoreCore.SchedulingState, Long> counts;
+        do {
+            counts = schedulingStateCounts(scores, workers);
+            if (expected.containsAll(counts.keySet())) break;
+            if (System.nanoTime() >= deadline) break;
+            Thread.sleep(10);
+        } while (true);
+        assertThat(counts.values().stream().mapToLong(Long::longValue).sum()).isEqualTo(workers.size());
+        assertThat(counts.keySet()).as("complete owned Worker scheduling states").isSubsetOf(expected);
+        assertFresh(observedAt);
+        assertThat(System.nanoTime() - startedAt).isLessThanOrEqualTo(Duration.ofSeconds(30).toNanos());
+        System.out.println("Network evidence burst workers=" + workers.size() + " states=" + counts
+                + " elapsedMillis=" + Duration.ofNanos(System.nanoTime() - startedAt).toMillis());
+    }
 
     @Test
     void validOlderEvidenceIsFilteredAcrossBatchesAndServerRestartWithoutFacts() throws Exception {
