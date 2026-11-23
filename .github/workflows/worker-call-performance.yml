@@ -289,7 +289,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.execution_target == 'external' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/external-performance-consumer.yml
     with:
-      workers_per_group: ${{ inputs.external_workers_per_group }}
+      workers_per_group: ${{ fromJSON(inputs.external_workers_per_group) }}
       repetitions: ${{ inputs.external_repetitions }}
       diagnostics: ${{ inputs.diagnostics }}
       baseline_ref: ${{ inputs.baseline_ref }}
