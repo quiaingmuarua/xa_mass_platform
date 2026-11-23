@@ -115,6 +115,9 @@ on `main`. That branch and the bounded scheduled observation below call the same
 they share kit consumption, orchestration and report collection. The default
 target and source Nightly at 03:00 Asia/Shanghai remain `source`, with their
 existing four jobs, three repetitions, build, saturation and trend behavior.
+The manual quantity is normalized with `fromJSON` at the reusable-workflow
+boundary: dispatch/API strings become the required numeric input; the schedule
+already supplies a numeric literal. Both enter the same consumer validation.
 The external job consumes the pinned published Simulator kit in its own run directory. It does
 not checkout or build source on the consumer, and needs neither Git nor Gradle
 there. Its kit consumption is independent of the persistent Host's current link;

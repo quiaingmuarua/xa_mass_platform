@@ -109,13 +109,15 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
         self.assertIn("uses: ./.github/workflows/external-performance-consumer.yml", caller)
         self.assertIn("secrets: inherit", caller)
         self.assertNotIn("steps:", caller)
-        for binding in ("workers_per_group: ${{ inputs.external_workers_per_group }}",
+        # Dispatch/API quantities are strings; the reusable contract requires a number.
+        for binding in ("workers_per_group: ${{ fromJSON(inputs.external_workers_per_group) }}",
                         "repetitions: ${{ inputs.external_repetitions }}",
                         "diagnostics: ${{ inputs.diagnostics }}", "baseline_ref: ${{ inputs.baseline_ref }}",
                         "lane_case: ${{ inputs.lane_case }}", "lane_record: ${{ inputs.lane_record }}"):
             self.assertIn(binding, caller)
         self.assertNotIn("observation_plan:", caller)
         self.assertNotIn("artifact_retention_days:", caller)
+        self.assertIn("type: number", section(section(self.consumer, "workflow_call", 2), "workers_per_group", 6))
         triggers = self.consumer.split("permissions:", 1)[0]
         self.assertIn("  workflow_call:", triggers)
         self.assertNotIn("  workflow_dispatch:", triggers)
