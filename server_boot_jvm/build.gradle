@@ -12,6 +12,7 @@ dependencies {
     implementation platform(SpringBootPlugin.BOM_COORDINATES)
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation project(':server_jvm')
     implementation project(':scenarios:sms-reception-jvm')
     implementation project(':scenarios:message-campaigns-jvm')

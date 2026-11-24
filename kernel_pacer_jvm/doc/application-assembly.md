@@ -103,6 +103,15 @@ thread, queue, retry or Kernel operation. The Server wakes in-process
 only from a stored-Result read, so remote instances or lost notices keep the probe
 interval.
 
+`KernelPacerRuntime.setMetricsSink(...)` accepts an optional pure-JDK
+`KernelPacerRuntime.MetricsSink` (defaulting to `MetricsSink.NOOP`). It emits
+only coarse batch summaries at Dispatch Producer round completion and Result Lane
+batch or consume-failure boundaries, using fixed Producer/Lane names and numeric
+counts/durations without Task, Item or Worker identities. Sink exceptions are
+ignored and never affect scheduling, claiming or Result handling. It introduces
+no telemetry library dependency, thread, queue or Redis operation into
+`kernel_pacer_jvm`; Server attaches it during startup in `assembly.metrics`.
+
 The finite Java caller closure is:
 
 ```text

@@ -1513,6 +1513,30 @@ above. The readiness/deployment contract remains unresolved; disabling Pacer
 must not be documented as making such a replica readiness-UP. This documentation
 correction does not change the indicator or its tests.
 
+### Runtime Metrics
+
+Runtime metrics use Micrometer core meters bound centrally in `com.xa.mass.server.assembly.metrics`
+(`RuntimeMetricsConfiguration`, `RuntimeMetricsRecorder`, `RuntimeMetricsBinder`). No Kernel,
+Pacer, Matching, Controller or business Service package imports `io.micrometer` or injects
+`MeterRegistry`; `ServerArchitectureBoundaryTest` enforces this isolation.
+
+- **Automatic JVM and HTTP meters**: Spring Boot Actuator provides `jvm.*`, `process.*`,
+  `tomcat.threads.*` and low-cardinality `http.server.requests` keyed by Spring URI templates.
+- **Server and Pacer meters (`xa.mass.*`)**: passive pure-JDK callbacks and lock-free volatile
+  read-only views report `xa.mass.api.errors` (from `ApiExceptionHandler` and `AccessKeyFilter`),
+  Pacer round/batch timers and counters (`xa.mass.pacer.*`), managed Task RPC wait duration and
+  watermarks (`xa.mass.rpc.*`), Direct Call batch/target outcomes and watermarks
+  (`xa.mass.direct_call.*`), and bounded observation/projection queues
+  (`xa.mass.worker_observation.*`, `xa.mass.lease_projection.*`).
+- **Cardinality and safety**: metric tags are restricted to bounded enums, fixed outcome names
+  and Spring route templates—never `taskId`, `messageId`, `workerId`, `workerGroupId`, `userId`,
+  `adapterId` or payload content. Sink exceptions are ignored, and metrics add no Redis I/O,
+  background threads or `/api/v1` routes.
+- **Export boundary**: `server_jvm` remains vendor-neutral (no Prometheus registry dependency);
+  [Server Boot](../server_boot_jvm/README.md#pages-and-configuration) adds
+  `micrometer-registry-prometheus` and exposes `/actuator/prometheus` on the configured loopback
+  management surface.
+
 ### Diagnostics
 
 Optional call diagnosis uses `xa.mass.diagnostics.enabled=true` plus explicit

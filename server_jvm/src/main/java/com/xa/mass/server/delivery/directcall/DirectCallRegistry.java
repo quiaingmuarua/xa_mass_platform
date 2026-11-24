@@ -27,18 +27,44 @@ public final class DirectCallRegistry implements AutoCloseable {
 
     public static final String FORWARD_PREFIX = "direct-call:v1:";
 
+    /** Passive, low-cardinality Direct Call telemetry sink; exceptions are ignored. */
+    public interface MetricsSink {
+        MetricsSink NOOP = new MetricsSink() {};
+
+        default void onBatchCompleted(String outcome, long durationNanos) {}
+
+        default void onTargetOutcome(TargetOutcomeStatus status, int count) {}
+
+        default void onCapacityExceeded() {}
+    }
+
     private final int maxAdapterCommandsPerAdapter;
     private final int maxPendingCalls;
+    private volatile MetricsSink metricsSink = MetricsSink.NOOP;
     private final Map<String, ArrayDeque<CommandEntry>> adapterCommandsByAdapter = new LinkedHashMap<>();
     private final Map<String, TargetState> pendingTargetsByCorrelationId = new LinkedHashMap<>();
     private final Map<String, BatchState> batchesByDirectCallId = new LinkedHashMap<>();
     private int pendingTargetCount;
+    private volatile int pendingTargets;
+    private volatile int activeBatches;
     private boolean closed;
 
     public DirectCallRegistry(DirectCallProperties properties) {
         Objects.requireNonNull(properties, "properties");
         this.maxAdapterCommandsPerAdapter = properties.maxAdapterCommandsPerAdapter();
         this.maxPendingCalls = properties.maxPendingCalls();
+    }
+
+    public void setMetricsSink(MetricsSink metricsSink) {
+        this.metricsSink = Objects.requireNonNull(metricsSink, "metricsSink");
+    }
+
+    public int pendingTargetCount() {
+        return pendingTargets;
+    }
+
+    public int activeBatchCount() {
+        return activeBatches;
     }
 
     public BatchHandle registerBatch(String directCallId, List<TargetPlan> targetPlans) {
@@ -54,6 +80,7 @@ public final class DirectCallRegistry implements AutoCloseable {
             requireCapacity(targetPlans);
             batch = new BatchState(directCallId);
             batchesByDirectCallId.put(directCallId, batch);
+            activeBatches = batchesByDirectCallId.size();
 
             for (TargetPlan plan : targetPlans) {
                 TargetState target = new TargetState(batch, plan);
@@ -65,6 +92,7 @@ public final class DirectCallRegistry implements AutoCloseable {
                     throw new IllegalArgumentException("correlationId must be unique");
                 }
                 pendingTargetCount++;
+                pendingTargets = pendingTargetCount;
                 if (plan.target().type() == DirectTargetType.ADAPTER) {
                     adapterCommandsByAdapter.computeIfAbsent(plan.adapterId(), ignored -> new ArrayDeque<>())
                             .addLast(new CommandEntry(plan.correlationId(), plan.command()));
@@ -157,10 +185,12 @@ public final class DirectCallRegistry implements AutoCloseable {
             if (cancelled == null || cancelled.finished) {
                 return;
             }
+            activeBatches = batchesByDirectCallId.size();
             cancelled.finished = true;
             detachUnfinishedTargetsLocked(cancelled, null);
         }
         cancelled.completion.cancel(false);
+        recordBatchOutcome("cancelled", null, System.nanoTime() - cancelled.createdAtNanos);
     }
 
     @Override
@@ -187,8 +217,13 @@ public final class DirectCallRegistry implements AutoCloseable {
             pendingTargetsByCorrelationId.clear();
             adapterCommandsByAdapter.clear();
             pendingTargetCount = 0;
+            pendingTargets = 0;
+            activeBatches = 0;
         }
-        completions.forEach(completion -> completion.batch.completion.complete(completion.outcome));
+        completions.forEach(completion -> {
+            completion.batch.completion.complete(completion.outcome);
+            recordBatchOutcome("shutdown", completion.outcome, System.nanoTime() - completion.batch.createdAtNanos);
+        });
     }
 
     private void completeRemaining(String directCallId, TargetOutcomeReason reason) {
@@ -198,11 +233,17 @@ public final class DirectCallRegistry implements AutoCloseable {
             if (batch == null || batch.finished) {
                 return;
             }
+            activeBatches = batchesByDirectCallId.size();
             batch.finished = true;
             detachUnfinishedTargetsLocked(batch, reason);
             completion = new BatchCompletion(batch, batch.outcome());
         }
         completion.batch.completion.complete(completion.outcome);
+        recordBatchOutcome(
+                reason == TargetOutcomeReason.TIMEOUT ? "timeout" : "shutdown",
+                completion.outcome,
+                System.nanoTime() - completion.batch.createdAtNanos
+        );
     }
 
     private void detachUnfinishedTargetsLocked(BatchState batch, @Nullable TargetOutcomeReason reason) {
@@ -276,6 +317,7 @@ public final class DirectCallRegistry implements AutoCloseable {
     private void removePendingTargetLocked(TargetState target) {
         if (target.correlationId != null && pendingTargetsByCorrelationId.remove(target.correlationId, target)) {
             pendingTargetCount--;
+            pendingTargets = pendingTargetCount;
         }
     }
 
@@ -299,11 +341,39 @@ public final class DirectCallRegistry implements AutoCloseable {
         }
         batch.finished = true;
         batchesByDirectCallId.remove(batch.directCallId, batch);
+        activeBatches = batchesByDirectCallId.size();
         completions.put(batch, batch.outcome());
     }
 
-    private static void completeOutsideLock(Map<BatchState, BatchOutcome> completions) {
-        completions.forEach((batch, outcome) -> batch.completion.complete(outcome));
+    private void completeOutsideLock(Map<BatchState, BatchOutcome> completions) {
+        completions.forEach((batch, outcome) -> {
+            batch.completion.complete(outcome);
+            recordBatchOutcome("completed", outcome, System.nanoTime() - batch.createdAtNanos);
+        });
+    }
+
+    private void recordBatchOutcome(String outcomeName, @Nullable BatchOutcome outcome, long durationNanos) {
+        int observed = 0;
+        int unobserved = 0;
+        int rejected = 0;
+        if (outcome != null) {
+            for (TargetOutcome target : outcome.results().values()) {
+                switch (target.status()) {
+                    case OBSERVED -> observed++;
+                    case UNOBSERVED -> unobserved++;
+                    case REJECTED -> rejected++;
+                }
+            }
+        }
+        MetricsSink sink = metricsSink;
+        try {
+            sink.onBatchCompleted(outcomeName, Math.max(0L, durationNanos));
+            if (observed > 0) sink.onTargetOutcome(TargetOutcomeStatus.OBSERVED, observed);
+            if (unobserved > 0) sink.onTargetOutcome(TargetOutcomeStatus.UNOBSERVED, unobserved);
+            if (rejected > 0) sink.onTargetOutcome(TargetOutcomeStatus.REJECTED, rejected);
+        } catch (RuntimeException ignored) {
+            // Best-effort telemetry must never interfere with Direct Call completion.
+        }
     }
 
     private void requireOpen() {
@@ -350,7 +420,12 @@ public final class DirectCallRegistry implements AutoCloseable {
         }
     }
 
-    private static ServerException capacityExceeded(String message) {
+    private ServerException capacityExceeded(String message) {
+        try {
+            metricsSink.onCapacityExceeded();
+        } catch (RuntimeException ignored) {
+            // Best-effort telemetry must never replace the capacity rejection.
+        }
         return new ServerException(
                 ServerErrorCode.DIRECT_CALL_CAPACITY_EXCEEDED, "directCall.registerBatch", message, null);
     }
@@ -437,6 +512,7 @@ public final class DirectCallRegistry implements AutoCloseable {
 
     private static final class BatchState {
         private final String directCallId;
+        private final long createdAtNanos = System.nanoTime();
         private final LinkedHashMap<String, TargetState> targets = new LinkedHashMap<>();
         private final CompletableFuture<BatchOutcome> completion = new CompletableFuture<>();
         private boolean finished;

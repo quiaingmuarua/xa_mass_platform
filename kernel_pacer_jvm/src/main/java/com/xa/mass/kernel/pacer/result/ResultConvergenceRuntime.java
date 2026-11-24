@@ -3,6 +3,7 @@ package com.xa.mass.kernel.pacer.result;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.TaskEvidenceRuntime;
 import com.xa.mass.kernel.delivery.TaskEvidenceRuntime.TaskEvidenceType;
+import com.xa.mass.kernel.pacer.KernelPacerRuntime.MetricsSink;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.ResultObservation;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
@@ -137,6 +138,10 @@ public final class ResultConvergenceRuntime {
                         ResultConvergenceConfig.GLOBAL_MAX_CONCURRENCY
                 )
         );
+    }
+
+    public void setMetricsSink(MetricsSink metricsSink) {
+        application.setMetricsSink(metricsSink);
     }
 
     public void start() {

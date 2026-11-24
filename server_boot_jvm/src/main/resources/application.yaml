@@ -75,7 +75,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,prometheus}
   endpoint:
     health:
       probes:
@@ -83,6 +83,22 @@ management:
       group:
         readiness:
           include: readinessState,kernel,kernelRedis
+  metrics:
+    tags:
+      application: xa-mass-server
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        xa.mass.rpc.wait: true
+        xa.mass.direct_call.batch: true
+        xa.mass.pacer.dispatch.rounds: true
+        xa.mass.pacer.result.batches: true
+      slo:
+        http.server.requests: 5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s,2500ms,5s,10s,30s
+        xa.mass.rpc.wait: 10ms,25ms,50ms,100ms,250ms,500ms,1s,2500ms,5s,10s,30s,60s
+        xa.mass.direct_call.batch: 10ms,25ms,50ms,100ms,250ms,500ms,1s,2500ms,5s,10s
+        xa.mass.pacer.dispatch.rounds: 1ms,5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s
+        xa.mass.pacer.result.batches: 1ms,5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s
 
 springdoc:
   paths-to-match: /api/v1/**

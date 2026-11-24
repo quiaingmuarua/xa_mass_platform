@@ -5,6 +5,7 @@ import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import java.util.Objects;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -16,12 +17,20 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public final class ApiExceptionHandler {
 
+    private volatile ApiErrorObserver errorObserver = ApiErrorObserver.NOOP;
+
+    public void setErrorObserver(ApiErrorObserver errorObserver) {
+        this.errorObserver = Objects.requireNonNull(errorObserver, "errorObserver");
+    }
+
     @ExceptionHandler(ServerException.class)
     public ResponseEntity<ApiErrorResponse> serverFailure(
             ServerException error,
             HttpServletRequest request
     ) {
-        var response = ResponseEntity.status(statusFor(error.errorCode()));
+        HttpStatus status = statusFor(error.errorCode());
+        recordError(error.errorCode(), status.value());
+        var response = ResponseEntity.status(status);
         if (error.errorCode() == ServerErrorCode.UNAUTHENTICATED) response.header("WWW-Authenticate", "Bearer");
         return response.body(
                 new ApiErrorResponse(
@@ -43,6 +52,7 @@ public final class ApiExceptionHandler {
             Exception error,
             HttpServletRequest request
     ) {
+        recordError(ServerErrorCode.MALFORMED_REQUEST, HttpStatus.BAD_REQUEST.value());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 new ApiErrorResponse(
                         ServerErrorCode.MALFORMED_REQUEST.code(),
@@ -50,6 +60,14 @@ public final class ApiExceptionHandler {
                         requestId(request), null
                 )
         );
+    }
+
+    private void recordError(ServerErrorCode errorCode, int httpStatus) {
+        try {
+            errorObserver.onError(errorCode, httpStatus);
+        } catch (RuntimeException ignored) {
+            // Best-effort telemetry must never alter error responses.
+        }
     }
 
     private static HttpStatus statusFor(ServerErrorCode errorCode) {

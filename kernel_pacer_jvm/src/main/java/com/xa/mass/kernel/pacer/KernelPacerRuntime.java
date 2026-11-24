@@ -65,6 +65,31 @@ public final class KernelPacerRuntime {
         }
     }
 
+    /**
+     * Passive, best-effort batch telemetry sink for Pacer rounds and Result lanes.
+     * Callbacks must be non-blocking; ordinary sink exceptions are ignored and never
+     * affect scheduling, claiming, or Result handling.
+     */
+    public interface MetricsSink {
+        MetricsSink NOOP = new MetricsSink() {};
+
+        default void onDispatchRound(
+                String producer,
+                int outputCount,
+                long durationNanos,
+                boolean failed
+        ) {}
+
+        default void onResultBatch(
+                String lane,
+                int batchSize,
+                long durationNanos,
+                boolean failed
+        ) {}
+
+        default void onResultConsumeFailure(String lane) {}
+    }
+
     public enum PolicyPreset {
         DEFAULT,
         SERVICEABILITY_DEFAULT,
@@ -193,6 +218,12 @@ public final class KernelPacerRuntime {
                 resultConvergence,
                 dispatchConvergence
         );
+    }
+
+    public void setMetricsSink(MetricsSink metricsSink) {
+        MetricsSink nonNull = Objects.requireNonNull(metricsSink, "metricsSink");
+        resultConvergence.setMetricsSink(nonNull);
+        dispatchConvergence.setMetricsSink(nonNull);
     }
 
     public synchronized void start() {

@@ -84,6 +84,7 @@ class DeploymentConfigurationTest {
                             .isEqualTo(profile.equals("consumer"));
                     assertThat(environment.getProperty("xa.mass.users.seed", "")).isEmpty();
                     assertThat(environment.getProperty("spring.jackson.deserialization.fail-on-unknown-properties", Boolean.class)).isTrue();
+                    assertThat(environment.getProperty("management.endpoints.web.exposure.include")).isEqualTo("health,prometheus");
                     assertThat(environment.getProperty("springdoc.paths-to-match")).isEqualTo("/api/v1/**");
                     assertThat(environment.getProperty("scalar.path")).isEqualTo("/scalar");
                     assertThat(context.getBean(TaskRpcProperties.class).maxWaitTimeoutMillis()).isEqualTo(60000);
@@ -230,6 +231,15 @@ class DeploymentConfigurationTest {
     void invalidDeploymentInputStillFailsBinding(String override) {
         configuration("consumer", Map.of()).withPropertyValues(override)
                 .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test void managementEndpointExposureCanBeOverriddenByEnvironment() {
+        configuration("consumer", Map.of("MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE", "health"))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getEnvironment().getProperty("management.endpoints.web.exposure.include"))
+                            .isEqualTo("health");
+                });
     }
 
     @Test void rpcItemRetentionRequiresAnExplicitOptInAndRetainsParentEnablement() {

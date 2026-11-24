@@ -125,6 +125,12 @@ public final class TaskLeaseProjectionService implements TaskLeaseProjectionAcce
             recorded.add(write.deadlines().size());
         } catch (RuntimeException failure) { failures.increment(); }
     }
+    public long acceptedCount() { return accepted.sum(); }
+    public long droppedCount() { return dropped.sum(); }
+    public long failureCount() { return failures.sum(); }
+    public long recordedCount() { return recorded.sum(); }
+    public int queueBatchCount() { return queue.size(); }
+
     @Override public Map<String, Object> metrics() {
         return Map.of("accepted", accepted.sum(), "dropped", dropped.sum(), "failures", failures.sum(),
                 "recorded", recorded.sum(), "queueBatches", queue.size(),

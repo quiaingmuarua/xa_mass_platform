@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.pacer.result;
 
+import com.xa.mass.kernel.pacer.KernelPacerRuntime.MetricsSink;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
         .DeliveryReport;
 import java.time.Duration;
@@ -26,6 +27,7 @@ final class ResultConvergenceApplication {
     private final Object lifecycleLock = new Object();
     private final List<ResultLane> lanes;
     private final int globalMaxConcurrency;
+    private volatile MetricsSink metricsSink = MetricsSink.NOOP;
     private Thread dispatcher;
     private ExecutorService batchExecutor;
     private CountDownLatch stopSignal;
@@ -65,6 +67,10 @@ final class ResultConvergenceApplication {
                 ))
                 .toList();
         this.globalMaxConcurrency = globalMaxConcurrency;
+    }
+
+    void setMetricsSink(MetricsSink metricsSink) {
+        this.metricsSink = Objects.requireNonNull(metricsSink, "metricsSink");
     }
 
     void start() {
@@ -265,6 +271,7 @@ final class ResultConvergenceApplication {
             } catch (RuntimeException failure) {
                 if (lane.id() != ResultLaneId.NETWORK_EVIDENCE)
                     ResultStageEvent.batch(consumedAt, "TASK_RESULT_CONSUME", lane.batchLimit(), 0, true);
+                recordConsumeFailure(lane.id());
                 deferAfterFailure(runtime);
                 logFailure(lane, "consume", 0, failure);
                 continue;
@@ -335,11 +342,12 @@ final class ResultConvergenceApplication {
         return candidate.id().priority() < selected.id().priority();
     }
 
-    private static void executeBatch(
+    private void executeBatch(
             ResultLane lane,
             List<DeliveryReport> batch,
             BlockingQueue<LaneCompletion> completions
     ) {
+        long startedNanos = System.nanoTime();
         Throwable failure = null;
         try {
             lane.policy().handle(batch);
@@ -349,11 +357,43 @@ final class ResultConvergenceApplication {
             failure = fatalFailure;
             throw fatalFailure;
         } finally {
+            recordResultBatch(
+                    lane.id(),
+                    batch.size(),
+                    Math.max(0L, System.nanoTime() - startedNanos),
+                    failure != null
+            );
             completions.offer(new LaneCompletion(
                     lane.id(),
                     batch.size(),
                     failure
             ));
+        }
+    }
+
+    private void recordResultBatch(
+            ResultLaneId laneId,
+            int batchSize,
+            long durationNanos,
+            boolean failed
+    ) {
+        try {
+            metricsSink.onResultBatch(
+                    laneId.name(),
+                    batchSize,
+                    durationNanos,
+                    failed
+            );
+        } catch (RuntimeException ignored) {
+            // Best-effort telemetry must never affect Result handling.
+        }
+    }
+
+    private void recordConsumeFailure(ResultLaneId laneId) {
+        try {
+            metricsSink.onResultConsumeFailure(laneId.name());
+        } catch (RuntimeException ignored) {
+            // Best-effort telemetry must never affect Result handling.
         }
     }
 
