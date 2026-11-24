@@ -1,0 +1,19 @@
+{
+  "attempt": "1",
+  "calibration": {},
+  "cases": {},
+  "configurations": {
+    "rate-1000": null,
+    "rate-2000": null,
+    "rate-500": null,
+    "saturation": null
+  },
+  "createdAt": "2026-11-24T19:54:50Z",
+  "event": "schedule",
+  "laneConfigVersion": 3,
+  "ref": "main",
+  "referenceHost": true,
+  "runId": "45474909531",
+  "sha": "1f50422adf054b8153f3cadc2a4e8c3add9c6a73",
+  "status": "failed"
+}
