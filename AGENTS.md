@@ -2,103 +2,40 @@
 
 Status: current repository change contract.
 
-This file governs repository changes; it is not the mechanism narrative.
-Use the root [reading path](README.md#reading-path) to select the reading scope
-for an overall handoff, cross-owner change or local edit.
+Use the root [reading path](README.md#reading-path) to select the scope for an
+overall handoff, cross-owner change or local edit. This file governs changes;
+mechanism flow, storage shape, configuration and scenario limits stay in Owners.
 
 ## Applying This Contract
 
-Check the current Git HEAD, worktree and requested scope; preserve unrelated edits.
-
-Reuse context already established in the session and refresh what the current
-change affects. A small local edit does not require another whole-repository scan.
-Behavioral domains do not relocate mutation authority or define new modules;
-keep the full narrative in the linked mainline.
-
-- Follow the user's requested outcome and scope. An authorized implementation
-  plan covers its necessary slices; a slice boundary, status label or missing
-  template field does not require another approval. Review-only requests remain
-  read-only. Ask only when a material unresolved choice affects the next action;
-  continue independent authorized work.
-- The ownership and composition rules below govern changes within the current
-  architecture. An explicitly requested migration may revise the affected
-  contract together with its callers, Owner document and proof. Words such as
-  "fixed" or "frozen" do not prohibit that authorized migration, and permission
-  to harden an implementation does not authorize unrelated boundary changes.
-- The complete applicable contract means the relevant Owner sections and their
-  mandatory linked clauses, not every chapter of each linked document. Follow
-  those clauses for the affected input, state effect and consumer. Keep mechanism
-  flow, storage shape, configuration values and scenario thresholds in Owners;
-  retain repository-wide change constraints here.
-- Skills and historical memory provide working guidance, not current project
-  truth or permission to expand the task. Retrieve historical versions only
-  when the requested investigation needs them; do not restore retired designs
-  or historical defects as default constraints.
-
-## Execution Discipline
-
-Use the [long-command and CI waiting guidance](TESTING.md#long-running-commands-and-ci-waiting)
-for compilation, tests, packaging and remote checks. These are best-effort rules
-within the available tools, not a promise of callback support or zero model wakeups.
-
-- Start a long task once, retain its process/session or Run ID, and assign one
-  waiter. Prefer background execution, completion notifications or watch mode.
-- Treat `running` as an intermediate state: continue waiting on the same task,
-  rather than starting another query, command or diagnosis without new evidence.
-- Do not repeatedly read unchanged logs or generate the same analysis and progress
-  text. Report meaningful changes and answer user status requests directly.
-- Do not create a sub-agent solely to wait or duplicate an existing watcher.
-  Independent work may run in parallel; give delegates only the needed context.
-- Reuse established evidence. Expand or repeat checks when code, inputs, failures
-  or unresolved verification needs change, while preserving required proof gates.
-- Bound searches and tool output to relevant fields, sections and diffs; avoid
-  repeatedly returning whole documents, tool catalogs or unchanged state trees.
+- Check the current Git HEAD, worktree and requested outcome; preserve unrelated
+  edits. Reuse established session evidence and refresh what the change affects.
+  A local edit does not require another whole-repository scan.
+- Follow the authorized scope through its necessary slices. Slice boundaries,
+  status labels and missing template fields do not require another approval.
+  Review-only requests remain read-only and do not imply tests or a PR. Ask only
+  when a material unresolved choice affects the next action; continue independent
+  authorized work.
+- Read the affected Owner sections, their mandatory linked clauses and actual
+  callers/consumers. Follow each affected input, state effect and failure boundary;
+  the applicable contract is not every chapter of every linked document.
+- Current ownership governs ordinary changes. An explicitly requested migration
+  may revise the affected contract with its callers, Owner document and proof;
+  "fixed" or "frozen" does not prohibit it. Hardening does not authorize unrelated
+  boundary changes.
+- Skills and memory are working guidance, not current project truth or permission
+  to expand scope. Retrieve history only when the requested investigation needs it.
 
 ## Evolution Principles
 
-- Long-term discussions explain possible directions. They do not establish
-  current ownership, required work or a need to reserve interfaces. Distinguish
-  implemented behavior, authorized plans, discussion and version-scoped history.
-- Let concrete problems drive ordinary evolution through small, verifiable
-  changes. Real scenario workloads can reveal which boundary needs to evolve.
-- Foundational mechanism problems or clear high-return changes may justify
-  earlier structural work. Establish the concrete risk or cost, expected benefit
-  and how to verify it; a production incident need not happen first.
-- Current Owner boundaries guide current work while authorized, evidence-based
-  migrations can revise them with their callers and proof. These principles add
-  no scoring system, proposal template or approval step, and do not interrupt an
-  already-authorized implementation.
-
-## Mainline
-
-- `kernel_jvm/` owns stable Java mechanical contracts, Redis providers and
-  score/resource mechanisms.
-- `kernel_pacer_jvm/` is the fixed Java production policy and Pacer lifecycle
-  over `kernel_jvm` owners.
-- `worker_matching_jvm/` owns Worker/Platform Properties, fixed query functions and Pool maintenance,
-  bounded Facts qualification, the independent Phone Index and query interpretation.
-- `server_jvm/` is the Runtime API and application assembly, not a scheduler.
-- `server_boot_jvm/` owns the sole production main, Boot JAR and explicit
-  platform/preview configuration. It owns no business or resource logic.
-- `distribution/server/` owns Runtime and Scenario Preview delivery, frontend
-  builds, diagnostic dictionaries and the Preview process launcher; it consumes
-  the executable artifact.
-- `transport/` delivers already-decided Commands and executes endpoint-local
-  handlers.
-- Scenario, Android, integration and frontend modules are finite assembly,
-  capability, acceptance or observation surfaces.
-
-The stable authority rule is:
-
-```text
-Kernel    decides and converges scheduling
-Matching  interprets Worker facts and rules into bounded identity evidence
-Server    exposes, validates, routes and correlates
-Transport delivers and executes local events
-```
-
-Do not move candidate selection, Worker lease, TaskItem claim, retry, recovery
-or Task finality into Server or Transport.
+- Distinguish implemented behavior, authorized plans, possible directions and
+  version-scoped history. Discussion creates no required work or reserved interface.
+- Let concrete problems drive small, verifiable changes. Foundational risks or
+  clear high-return improvements may justify earlier structural work: establish
+  the cost or risk, expected benefit and verification without requiring an incident.
+- Evidence-based, authorized migrations may revise Owner boundaries with their
+  callers and proof. These principles add no scoring system, proposal template or
+  approval step and do not interrupt authorized implementation.
 
 ## Trust Order
 
@@ -106,341 +43,113 @@ or Task finality into Server or Transport.
 2. Focused JVM tests and verified Redis behavior.
 3. Current Owner documents.
 4. Runtime Boundary and end-to-end proofs.
-5. Historical material, when relevant, only as version-scoped evidence.
+5. Relevant historical material, only as version-scoped evidence.
 
-Use code and tests to establish current behavior, and the requested outcome
-and applicable contracts to establish intended behavior. A planned migration
-will differ from its starting implementation. For documentation drift, correct
-the description within scope; do not change production behavior just to make
-it match prose. Report a confirmed code defect with its evidence and repair it
-only when the task covers that behavior.
+Code and tests establish current behavior; the requested outcome and applicable
+contracts establish intended behavior. Correct documentation drift within scope;
+do not change production behavior merely to match prose. Report confirmed code
+defects with evidence and repair them only when the task covers that behavior.
 
-## Repository-Wide Rules
+## Authority And Change Rules
 
-- Core authority or scheduling-flow changes must be explicitly called out in the
-  implementation plan, report and Owner document; never hide them as cleanup.
-  Implement only the core mechanism changes explicitly discussed and authorized.
-- Preserve explicit owners for truth, evidence, address, correlation,
+| Owner | Authority |
+| --- | --- |
+| Kernel | Mechanical scheduling state, Scores, resources and exact execution claims |
+| Pacer | Kernel scheduling policy, bounded rounds, retry/recovery and lifecycle |
+| Matching | Properties, qualification, fixed queries, indexes and bounded candidate evidence |
+| Server | API admission, identity, application use cases, routing, correlation and assembly |
+| Transport | Delivery of decided Commands and endpoint-local Handler execution |
+
+Behavioral domains do not create modules or relocate mutation authority. Do not
+move candidate selection, Worker lease, TaskItem claim, retry, recovery or Task
+finality into Server or Transport. Boot, Distribution, Scenario, Android, frontend
+and proof surfaces retain their [existing Owners](README.md#authority-and-dispatch).
+
+- Call out core authority or scheduling-flow changes in the implementation plan,
+  report and Owner document; implement only explicitly discussed and authorized
+  mechanism changes. Preserve owners for truth, evidence, address, correlation,
   projection and hints.
-- Treat every new Kernel operation as a long-lived cost commitment. Prefer
-  caller-bounded identities, same-key aggregation and owner-local operations.
-- Keep cross-key fan-out, global discovery, owner-spanning aggregation and
-  background coordination in the caller or policy unless a named invariant
-  proves otherwise.
-- Keep scores opaque outside score-owner operations. Opaque is a usage
-  constraint, not a requirement to wrap every score in another class: a Pacer
-  may retain, associate, exact-compare and return a raw score to its Owner, but
-  must not decode, construct or calculate score coordinates.
-- Build Redis keys from the fixed `xa_mass:<scope>` `RedisKeyspace` base;
-  each owner appends only its own domain suffix. Proofs use unique `test_*`
-  scopes and may clean only that exact scope with `SCAN` plus `UNLINK`; never
-  use `KEYS`, `FLUSHDB`, or `FLUSHALL`.
-- Best-effort hints must not become correctness prerequisites.
-- A bounded evidence handoff may remain lossy across process failure, but local
-  queue capacity must be surfaced as retryable backpressure when the upstream
-  already owns a bounded retry path; do not misclassify it as semantic input
-  rejection.
-- Do not add bridge layers, compatibility aliases, mirrored DTOs, fallback
-  owners or speculative modules. The bounded Pacer lifecycle bridges in the
+- Treat new Kernel operations as long-lived costs. Prefer caller-bounded identities,
+  same-key aggregation and owner-local operations. Keep cross-key fan-out, global
+  discovery, owner-spanning aggregation and background coordination in the caller
+  or policy unless a named invariant proves otherwise.
+- Keep Scores opaque outside their Owner. Pacer may retain, associate, exact-compare
+  and return raw scores; it must not decode, construct or calculate coordinates.
+  Opacity does not require another wrapper class.
+- Build Redis keys from `RedisKeyspace`'s fixed `xa_mass:<scope>` base; each Owner
+  appends only its domain suffix. Proofs use unique `test_*` scopes and clean only
+  their exact scope with `SCAN` plus `UNLINK`, never `KEYS`, `FLUSHDB` or `FLUSHALL`.
+- Best-effort hints must not become correctness prerequisites. A bounded evidence
+  handoff may be lossy across process failure; local capacity is retryable
+  backpressure when upstream already owns bounded retry, not semantic rejection.
+- Do not add bridge layers, compatibility aliases, mirrored DTOs, fallback Owners
+  or speculative modules. The bounded Pacer lifecycle bridges in its
   [public boundary](kernel_pacer_jvm/README.md#public-boundary) are the explicit
   internal assembly exception.
-- Keep module-coded exceptions local: `errorCode + owner.method operation +
-  message + cause`. Context belongs in safe logs and traces.
-- JVM-only modules use `System.Logger`. Android-consumed Java 11 modules use
-  `java.util.logging`.
-- Never log opaque Worker payload or result content.
+- Keep module-coded exceptions local: `errorCode + owner.method operation + message
+  + cause`. Put context in safe logs/traces; never log opaque Worker payload or
+  result content. JVM-only modules use `System.Logger`; Android-consumed Java 11
+  modules use `java.util.logging`.
 - Update the owning mechanism document in the same change as behavior.
-- Use focused owner tests first and real Redis proof for Redis concurrency or
-  atomicity claims.
 
-## Java Kernel
+## Applicable Owner Contracts
 
-[Kernel documents](doc/kernel/README.md) index mechanical and Policy contracts.
-For cross-owner flow, read the affected parts of the
-[scheduling mainline](doc/kernel/scheduling-overview.md), including
-[scale and liveness](doc/kernel/scheduling-overview.md#scale-and-liveness) when applicable.
-Score/content changes also require the relevant mechanical Owner and
-[Result commit contract](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md).
+Use these entrypoints for the affected path, not as a serial reading checklist.
+The root module map and [development guide](doc/guide/development/index.md) locate
+business, capability and observation Owners.
 
-## Kernel JVM
+| Change | Required contract entrypoints |
+| --- | --- |
+| Kernel operations, dependencies or Scores | [Production caller closure](kernel_jvm/README.md#production-call-closure), [boundaries](kernel_jvm/README.md#boundaries), affected mechanical Owner and [Result commit contract](kernel_jvm/doc/runtime-redis/task-result-runtime-redis-shape.md) for Score/content changes |
+| Cross-owner scheduling or Pacer policy | Affected [scheduling mainline](doc/kernel/scheduling-overview.md), including scale/liveness when applicable; [Pacer assembly guardrails](kernel_pacer_jvm/doc/application-assembly.md#guardrails) and affected Dispatch/Result Policy |
+| Matching queries, refill, resources or lifecycle | [Matching Owner](worker_matching_jvm/README.md#owner-boundary), affected query/refill/failure clauses and [fixed composition](worker_matching_jvm/README.md#fixed-resource-composition) for resource/lifecycle changes |
+| Server API, access, accounts, Task data or Scenario composition | Affected [Server operation](server_jvm/README.md#projects-tasks-and-results), [response rules](server_jvm/README.md#api-reference-and-response-contract) and [assembly boundaries](server_jvm/README.md#assembly-boundaries); affected Scenario Owner and [Boot](server_boot_jvm/README.md) for composition |
+| Events, wire shape or delivery | [Delivery Contract](transport/worker-delivery-contract/README.md) and [Event Catalog](transport/EVENTS.md); affected [Adapter loops/lifecycle](transport/netty-adapter/README.md#delivery-processes) |
+| Worker lifecycle or capabilities | [Core run](transport/worker-core/README.md#one-worker-run), affected Java/Android Owner, including [Android callback admission and close](transport/android-worker/README.md#callback-admission-and-close); [Simulator](worker_simulator_jvm/README.md) or [Android Host](xa-android/README.md) for capability/Host changes |
+| Proof, frontend or delivery | Affected [Proof Registry entry](doc/testing/proof-registry.md) and linked Integration workload/fault/evidence/assertion clauses; [Frontend](frontend/README.md), [Distribution](distribution/server/README.md) or [Preview](distribution/server/PREVIEW.md) for those surfaces |
 
-[Mechanical Owners](kernel_jvm/README.md) own Task/Item data, semantic events,
-Scores and Redis state. Before changing operations or dependencies, read the
-[production caller closure](kernel_jvm/README.md#production-call-closure),
-[boundaries](kernel_jvm/README.md#boundaries) and affected Score/resource contract.
+## Verification And Execution
 
-## Worker Matching JVM
+Select checks by the changed claim through [TESTING](TESTING.md#selection-decision)
+and the [Proof Registry](doc/testing/proof-registry.md). Behavior changes require
+the focused Owner lane first; Redis concurrency/atomicity and runtime claims need
+their named real-infrastructure proof. Documentation-only changes use Docs Contract
+and link/content review without runtime proofs, even when describing a runtime mechanism.
 
-[Matching Owner](worker_matching_jvm/README.md) owns supply/query admission,
-Properties, Pool resources, indexes and candidate evidence. Changes require the
-relevant query/refill and failure clauses; resource or lifecycle changes also
-require [fixed composition](worker_matching_jvm/README.md#fixed-resource-composition).
-Use the [fixed-window Pool](worker_matching_jvm/README.md#fixed-window-pools)
-and [network timestamp](worker_matching_jvm/README.md#network-evidence-timestamps)
-contracts for those paths.
+For compilation, tests, packaging and CI, follow the existing
+[long-command and waiting guidance](TESTING.md#long-running-commands-and-ci-waiting).
+Do not create a sub-agent solely to wait. Keep searches and output scoped, reuse
+established evidence and report meaningful changes instead of unchanged logs or
+repeated analysis.
 
-Window eligibility belongs to refill of its independent Pool. Consumption uses
-admitted snapshot evidence without another Facts read; do not restore the retired
-Any-stock post-filter or promote observed counts to reserved quotas. Scenario Pool
-declarations are immutable startup values; resource ownership and lifecycle stay
-in Matching, without external strategy callbacks or runtime registration.
-Messages uses a [qualified-country declaration](worker_matching_jvm/README.md#qualified-country-declarations)
-over Worker Properties. Its Pool refill and independent Phone query share the
-declared qualification; keep index/resource ownership in Matching and preserve
-the distinct stock-consumption and directed-identity paths.
+Before completion, run `git diff --check`; scan affected references after removals
+or renames; confirm historical material is not linked as current truth. Report
+checks actually run and required proof that could not run. Distinguish source
+inspection, executed proof, submitted changes and externally applied results.
+Finish independent authorized work and state remaining dependencies; do not claim
+completion while a required external step remains pending.
 
-## Kernel Pacer JVM
+## Documentation And Environment Boundaries
 
-[Pacer assembly](kernel_pacer_jvm/doc/application-assembly.md) owns production
-policy, roots, Producers, budgets and lifecycle. Read the affected Policy and
-[assembly guardrails](kernel_pacer_jvm/doc/application-assembly.md#guardrails):
-[assignment](kernel_pacer_jvm/doc/dispatch/assignment-dispatch-scheduling.md) for
-candidate-to-Command flow, and [Result event boundaries](kernel_pacer_jvm/doc/result/result-routing-scheduling.md#application-and-guardrails)
-for returning evidence.
+Follow [publishing and maintenance](doc/README.md#publishing-and-maintenance): update
+affected guide steps and navigation with Owners, replace superseded prose and remove
+completed todos. Keep current Markdown in place; add no parallel overview, copied
+Owner tree or second contract registry. Distill reusable conclusions into existing
+Owners/guides; retain necessary dated evidence through fixed Git/Release references.
+Pruning prose must preserve raw proof records and the active release-tool contract.
+A site build is not runtime proof.
 
-## Server JVM
+Ordinary development and review use repository evidence and selected local/CI
+checks. Access GCP, host records or credentials, deploy Releases or perform public
+acceptance only when explicitly included in the task. An undeployed change is not
+unfinished ordinary development. For authorized environment work, follow the
+[Release Preview guide](doc/guide/operations/deploy.md#release-preview), target
+Release contract and actual operation records; external capacity work starts from
+the dated [public acceptance closeout](doc/guide/capabilities.md#external-public-closeout).
+Closed investigations do not require repeating historical failed loads.
 
-[Server Owner](server_jvm/README.md) owns API admission, application use cases
-and resource assembly; [Server Boot](server_boot_jvm/README.md) owns main,
-packaging and production configuration. Read the affected operation contract,
-its [response rules](server_jvm/README.md#api-reference-and-response-contract), and
-[assembly boundaries](server_jvm/README.md#assembly-boundaries) for dependency or
-lifecycle changes.
-
-## Worker Delivery Contract
-
-Server owns administrator connection-cooldown decisions and their current Redis
-records. Adapter owns enforcement on each physical identity admission and local
-route revocation. Cooldown is independent of scheduling PAUSE and Pool qualification;
-it does not cancel admitted Handlers or transfer Reporters to a later run. Android
-Host recovery is process-local low-frequency checking, not keepalive or a new SDK
-retry policy. See [Server connection cooldown](server_jvm/README.md#worker-connection-cooldown).
-
-[Delivery Contract](transport/worker-delivery-contract/README.md) owns the Java 11
-transport-neutral DTOs and encoding; [Event Catalog](transport/EVENTS.md) owns event
-meaning and producer/target admission. Read both relevant contracts before changing
-an event or wire shape.
-
-## Netty Adapter
-
-[Adapter Owner](transport/netty-adapter/README.md) owns composition, remote API,
-connection/routes, Properties projection, physical networking and shutdown.
-Delivery changes require the [Command loop](transport/netty-adapter/README.md#command-consumption-loop)
-and [Report admission/retry](transport/netty-adapter/README.md#result-ingress-loop)
-clauses they affect; resource/lifecycle changes require the
-[lifecycle contract](transport/netty-adapter/README.md#lifecycle).
-
-## Worker Core And Platform Workers
-
-[Worker Core](transport/worker-core/README.md), [Java Worker](transport/java-worker/README.md)
-and [Android Worker](transport/android-worker/README.md) own their separate local
-mechanisms. Use the [run](transport/worker-core/README.md#one-worker-run),
-[Properties](transport/worker-core/README.md#properties-reporting) and
-[Reporter](transport/worker-core/README.md#later-task-outcome-observations) contracts
-for the affected path.
-
-For lifecycle changes, preserve the stop target: revoke the run before closing
-Client outside the state gate and return without waiting for an admitted
-Handler/callback. Read the Android [callback admission and close](transport/android-worker/README.md#callback-admission-and-close)
-contract; an admitted callback may finish independently after run revocation.
-
-## Scenario And Android Capabilities
-
-[Worker Simulator](worker_simulator_jvm/README.md) owns the finite Host,
-installed capabilities and device state. Read the affected
-[configuration](worker_simulator_jvm/README.md#one-configuration-one-entry),
-[inventory](worker_simulator_jvm/README.md#persistent-worker-lab),
-[lifecycle](worker_simulator_jvm/README.md#runtime-lifecycle) or
-[device-input](worker_simulator_jvm/README.md#device-inputs) contract.
-[Android](xa-android/README.md) provides the capability and Application/Activity
-ownership entrypoints.
-
-## Integration And Frontend
-
-[Proof Registry](doc/testing/proof-registry.md) owns lane claims and nonclaims;
-[TESTING](TESTING.md#shared-infrastructure) owns shared proof boundaries and
-execution rules. Before changing a proof, read its Registry entry and the linked
-Integration Owner's affected workload, fault, evidence and assertion clauses.
-[Frontend](frontend/README.md) owns public-API observation, Mock and UI boundaries;
-the [human architecture guide](doc/guide/architecture.md) is an architecture projection.
-[Distribution](distribution/server/README.md) and [Preview delivery](distribution/server/PREVIEW.md)
-own executable/SDK packaging and source/ZIP launch contracts.
-
-The [shared guide](doc/guide/index.md) owns user procedures and task-oriented
-navigation. Keep exact mechanism contracts in their existing Owners and proof
-claims/commands in the Registry and TESTING. VitePress renders source Markdown in
-place; do not maintain a parallel HTML overview, copied Owner tree or second
-contract registry. Update affected guide steps, Owner descriptions and navigation
-together. Dated capability numbers retain the measured commit, configuration,
-status and immutable evidence; a site build is not runtime proof. Historical
-material stays outside current site navigation and search. Replace superseded
-prose and remove completed todos in the same change. Distill reusable conclusions
-into the existing Owner or guide; retain necessary dated evidence through fixed
-Git/Release references, without adding a historical narrative archive. Pruning
-prose must preserve raw proof records and the active release-tool contract.
-
-## Business Scenario Composition
-
-[SMS Reception](scenarios/sms-reception-jvm/README.md),
-[Message Campaigns](scenarios/message-campaigns-jvm/README.md) and
-[App Checks](scenarios/app-checks-jvm/README.md) own business API, state,
-idempotency and observation; [Worker Simulator](worker_simulator_jvm/README.md#messages-and-shared-products)
-owns their device side. Read the affected business contract,
-[Server Scenario boundary](server_jvm/README.md#worker-and-scenario-assembly) for
-application/dependency/lifecycle changes, and [Boot](server_boot_jvm/README.md)
-for profile composition. [Coexistence](integrations/scenario-coexistence/README.md)
-is the business proof entrypoint.
-
-Messages contributes immutable multi-Group Project and resource-requirement declarations.
-Boot enables Messages by default in consumer deployments; external applications and
-resource configuration remain required, and explicit disablement is supported. Its Android local
-message demo owns bounded process-local acceptance and original-run Reporter
-associations; it does not consume the JVM Simulator or provide real SMS delivery.
-Its applications are startup bindings; only new Task creation resolves an application
-to a Group. Stored Tasks retain their original Group. Template content is opaque to
-the business API; the receiving event owns its format interpretation.
-Server validates dependencies after host Group initialization and before Adapter startup.
-Explicit default Project scope uses current registered Groups; other Project bindings stay declared. Group discovery uses caller-driven read-only Worker catalog pages, without Project interpretation in Kernel. Project bindings do not provision Tasks. RPC preparation is an explicit Server use case;
-SMS prepares a shared Task at Scenario startup, while the workbench owns its caller-based
-Task ID convention. Server owns Project/User metadata interpretation and its single per-Project Task directory; Kernel stores opaque metadata without Project fields or index operations. Server owns one explicit TaskCaller policy across Task and Scenario entrypoints. External creators come from the authenticated caller; immutable server.inputOwner separates raw input from scenario conversion. Internal startup/projection callers are Project-scoped assembly values and cannot be declared over HTTP. Caller metadata supports application access checks, not a Kernel user domain or scheduling input. Shared Group definitions remain host-owned; scenario requirements
-may read through the startup validator but must not register, amend or enable
-resources. Configuration and module Project identities cannot shadow each other.
-
-App Checks owns its JSON configuration file, process-exclusive file lock, atomic
-publication and configuration API inside its scenario module. Only configuration
-is persisted there; Task/Item/Result and runtime identities remain with Redis Owners.
-Boot enables Batch Checks by default in consumer independently of Preview; consumers supply their own host and check configuration and may explicitly disable it. SMS retains its Preview-only assembly. Protocol adaptation stays in pure Scenario contracts.
-Server consumes immutable startup declarations and must not read the scenario file. Saved
-configuration becomes effective on restart, without runtime registration or resource
-mutation. App Checks execution contracts are statically registered pure scenario code;
-Tasks retain their first execution binding and normalized parameters. Per-Group resource requirements remain immutable startup declarations. Host-owned named window Pool/feedback bindings
-produce Matching definitions and Server projections from one resolved Group snapshot. Each host window Pool binds its paired
-allocation feedback; Project membership independently controls Task admission and never enables resources. The Group sets may differ,
-without introducing Project stock, quotas or interpretation in Matching.
-App Checks does not define these resources or import Matching types; it references their enabled names.
-Resource reads expose bindings without Facts or stock access.
-
-## User Directory And Access Keys
-
-Server owns API authentication: one front-door filter admits every non-exempt `/api/**`
-request by exactly one per-user Bearer access key, resolved against the Server user
-directory into an immutable role/Project TaskCaller snapshot shared by Task and Scenario
-access checks. Only the exact Worker Prepare/polling and internal Adapter routes are exempt.
-Existing per-operation authorization is unchanged; caller-less operations admit any
-authenticated user. Server is the sole writer of the file-backed user directory;
-classpath seeds are read-only. Public development keys belong to local runs, and
-consumer requires an explicit seed. Persistence and key handling follow the
-[User Directory contract](server_jvm/README.md#user-directory-and-access-keys).
-Updates affect new request admission without rewriting Task ownership or admitted work.
-There are no passwords, sessions, registration, key scopes or expiry, and no Kernel user
-domain or scheduling authority. Worker connections keep their gateway credential; Worker
-identity is not tied to user keys. See [Server access keys](server_jvm/README.md#access-key-front-door).
-
-## Verification
-
-Use [TESTING.md](TESTING.md) for claim-based proof selection and commands.
-Behavior changes require the focused Owner lane; Redis and runtime claims
-require their named real-infrastructure proof. Documentation-only changes use
-Docs Contract and link/content review without selecting runtime proofs. A
-document that describes a runtime mechanism is still a documentation change.
-
-Before completion:
-
-- run `git diff --check`;
-- scan affected references when removing or renaming names, routes or files;
-- confirm archive material is not linked as current truth;
-- report which checks actually ran and any required proof that could not run;
-- distinguish source inspection from executed proof, and submitted changes from
-  externally applied results. Do not claim completion while a required external
-  step remains pending; finish the independent authorized work and state the
-  remaining dependency.
-
-## Finite Task Data Maintenance
-
-Server owns finite Task retention timing, immutable SQLite history and its creation
-associations; this does not grant execution scheduling authority. Kernel owns the
-persistent data fence and exact terminal/resource operations. Task Score records
-first termination time and remains the cleanup entry until final removal. Runtime reads remain Redis-only and unpaginated. Independent Storage APIs read current-scope
-history with saved attribution and explicit pagination. Scenario interpretation/export and Mock
-follow the same freeze, Runtime release and history expiry semantics. Use new scopes;
-no historical -1 decoding, identity migration or permanent tombstones are added.
-
-## User Credit Accounts
-
-Server owns credit balances, transactions and adjustment/business debit receipts.
-UserDirectory and TaskCaller supply identity/access, not balances; account identity
-is stable userId, independent of Project grants. Atomicity and storage follow the
-[Server accounts contract](server_jvm/README.md#user-credit-accounts); unknown responses
-retain the original request identity for explicit reconciliation. App Checks alone
-supplies fixed per-seed pricing and actual persisted input quantity to a startup-bound
-finite approval admission. Server records its Task start intent before debiting, then calls
-the unchanged approval Owner only after confirmed payment. Retained intents fence imports;
-response loss is reconciled or explicitly continued without a new debit. This introduces
-no refund policy, credit scheduler, Kernel user domain or scheduling authority.
-Frontend and Mock share the same access and confirmation semantics.
-
-## RPC Result Consumption
-
-Kernel owns atomic RPC Result take and write-refreshed HASH idle expiration;
-Server owns caller admission and the shared consuming wait path. Consumption
-does not close Items, change Scores or block later legal outcomes. SMS owns its
-bounded process-local Caffeine snapshot cache and revision merge. Its Server
-projection capability may offer already obtained Results without receiving a
-Matching writer or consumer lifecycle handle. The existing bounded projection
-queue retains best-effort semantics. No acknowledgment, replay, persistence or
-cross-instance cache guarantee is introduced. These rules do not replace finite
-Task archival or grant Server execution scheduling authority.
-
-## Release Preview Deployment
-
-Ordinary development follows affected Owner code, focused/local infrastructure
-tests, selected CI and PR delivery. Code review and project orientation default
-to repository evidence and do not imply running tests or creating a PR.
-Android Worker, access-key and gateway changes follow this same path. Do not add
-GCP access, host-record reads, credentials or public acceptance to these tasks merely
-because the feature can run remotely. An undeployed change is not unfinished ordinary
-development. Enter the environment workflow only when the requested scope explicitly
-includes Release deployment, on-host diagnosis or public acceptance; then complete
-that task's scoped checks. Existing proof-selection and Release gates remain unchanged.
-
-GCP is a long-lived Release Preview environment. CI builds and proves artifacts;
-each Release receives a deliberate GCP deployment and small real-use acceptance.
-Ordinary PRs do not imply deployment. Long-lived infrastructure does not require
-permanent API, configuration or data compatibility: a breaking release may
-explicitly use fresh configuration and scope without an implicit migration layer.
-GCP consumes published immutable artifacts; builds, full CI and Worker Hosts stay
-outside it. GitHub Releases are the artifact archive: the host keeps only the
-running Release, and an upgrade's single restore point is deleted with the previous
-Release after acceptance. Ordinary fixes are proven locally and in CI and reach GCP
-with the next Release. Version-specific upgrade steps belong in the reviewed Release
-notes; host changes run one operator at a time through the host operations log. Agents manage authorized deployment, diagnosis and acceptance;
-system services own process recovery and certificate renewal, not an Agent watchdog.
-Use the [Release Preview guide](doc/guide/operations/deploy.md#release-preview)
-to find actual version/configuration records and distinguish pending acceptance
-from completed proof before acting.
-
-For external connection/capacity work, start with the dated
-[public acceptance closeout](doc/guide/capabilities.md#external-public-closeout).
-Keep accepted bounded runs, unpassed full-scale targets and isolated diagnostic
-controls distinct. A closed investigation is not an outstanding requirement to
-repeat failed loads; use its evidence before choosing a new experiment.
-
-Distribution's optional staging ingress owns TLS, the shared Worker Basic gate,
-route allowlists and connection limits. Its administrator host has no gateway credential:
-it forwards only a well-formed Bearer access key and the Runtime authenticates it. Worker
-gateway credentials do not authenticate individual Worker identities. Java/Android SDK connection options carry credentials
-only to the approved HTTPS/WSS authority, including batch Prepare and reconnects.
-Simulator owns private credential-file input; secrets never enter Properties,
-inventory, logs or shipped artifacts. This adds no Kernel identity or scheduling
-authority. See the [staging deployment](distribution/server/src/main/dist/examples/staging-ingress/README.md).
-
-## Local Development Composition
-
-Distribution's local launcher owns one Server/Adapter process and optional Java
-and Android Worker processes. Profiles and external resource files retain their
-owners; Worker selection never provisions Pool/Project resources. Process
-coordinates are resolved once without inherited business environment overrides.
-Simulator alone prepares quantity-selected inventory and preserves retained
-coordinates; Android uses existing independent Lab APKs on a selected device.
-Cleanup is limited to owned processes, touched ADB mappings and explicitly owned
-temporary test scopes. It adds no runtime scheduling or resource authority.
+[Distribution local launch](distribution/server/README.md#source-launch) and
+[staging ingress](distribution/server/src/main/dist/examples/staging-ingress/README.md)
+own process/configuration and gateway procedures. Cleanup is limited to owned
+processes, touched ADB mappings and explicitly owned temporary scopes; do not take
+over unrelated processes or expand cleanup to other data.

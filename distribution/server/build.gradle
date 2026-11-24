@@ -97,7 +97,7 @@ tasks.register('buildFrontend', Exec) {
         include '**/*.md', 'doc/guide/assets/**'
         exclude '.git/**', '**/node_modules/**', '**/build/**', '**/.gradle/**',
                 '**/target/**', 'frontend/dist/**', 'products/**/dist/**', '**/dist-demo/**', '**/coverage/**', '**/.*/**',
-                '**/archive/**', 'doc/skills/**', '**/baselines/**', '**/RELEASE*.md',
+                '**/archive/**', '**/baselines/**', '**/RELEASE*.md',
                 '**/THIRD_PARTY_NOTICES.md', 'archive_readonly/**',
                 'frontend/.vitepress-dist/**', 'frontend/.vitepress-cache/**', 'frontend/.vitepress-temp/**'
     })
