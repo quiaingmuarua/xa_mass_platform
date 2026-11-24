@@ -230,12 +230,16 @@ original outcome; different content or actor conflicts. Insufficient balance and
 rejections also have receipts, but no transaction or sequence increment. Later credits cannot
 make a rejected old request succeed. Parameters and authorization failures create no receipt.
 
-The single-key Lua operation validates metadata, the head transaction/receipt, the requested
-records, arithmetic and the next slot before one final HSET publishes all fields. It does not
-depend on Lua rollback or scan the full history. Corrupt touched records fail explicitly with
-503, never zero-fill or repair. Bounded sequence reads avoid HASH/global scans and do not
-repeat or omit older rows when new entries are added between pages; account and page reads
-are independent observations. Receipts and history have no TTL, deletion or editing API.
+Write operations (`adjust` and `debit`) run in one single-key Lua script that preflights
+metadata, head transaction/receipt/business-link invariants, arithmetic and the next slot
+before one final HSET publishes all fields; Java prepares the invariant JSON fragments and
+validates existing replay or conflict records without mutating storage. Read-only queries
+(`account`, `transactions`, `adjustment` receipt) read the immutable records through bounded
+HMGET commands and perform full schema, receipt, business-link and balance-chain validation
+in Java without Lua execution. Corrupt touched records fail explicitly with 503, never
+zero-fill or repair. Bounded sequence reads avoid HASH/global scans and do not repeat or
+omit older rows when new entries are added between pages; account and page reads are
+independent observations. Receipts and history have no TTL, deletion or editing API.
 Same-scope Server restart preserves them; directory reload does not remove orphan accounts.
 Redis durability and eviction configuration remain deployment responsibilities.
 
