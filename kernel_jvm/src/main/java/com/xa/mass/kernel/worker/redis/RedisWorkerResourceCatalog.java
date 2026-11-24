@@ -25,34 +25,16 @@ public final class RedisWorkerResourceCatalog
         implements WorkerResourceCatalog, AutoCloseable {
 
     private static final String REGISTER_BINDINGS_SCRIPT = """
+            if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 0 then return {} end
             local result = {}
-            local group_exists = redis.call('HEXISTS', KEYS[1], ARGV[1]) == 1
-            for i = 4, #ARGV do
-              local status, endpoint = 'NOT_FOUND', ''
-              if group_exists then
-                local stored = redis.call('HGET', KEYS[2], ARGV[i])
-                if not stored then
-                  redis.call('HSET', KEYS[2], ARGV[i], ARGV[3])
-                  status, endpoint = 'OK', ARGV[2]
-                else
-                  local valid, binding = pcall(cjson.decode, stored)
-                  local fields = 0
-                  if valid and type(binding) == 'table' then
-                    for _ in pairs(binding) do fields = fields + 1 end
-                  end
-                  if not valid or type(binding) ~= 'table' or fields ~= 2
-                    or type(binding.workerGroupId) ~= 'string' or binding.workerGroupId == ''
-                    or type(binding.endpointManagerId) ~= 'string' or binding.endpointManagerId == '' then
-                    status = 'INVALID'
-                  elseif binding.workerGroupId ~= ARGV[1] then
-                    status = 'CONFLICT'
-                  else
-                    status, endpoint = 'NOOP', binding.endpointManagerId
-                  end
-                end
+            for i = 3, #ARGV do
+              local stored = redis.call('HGET', KEYS[2], ARGV[i])
+              if stored then
+                result[#result + 1] = '=' .. stored
+              else
+                redis.call('HSET', KEYS[2], ARGV[i], ARGV[2])
+                result[#result + 1] = '+'
               end
-              result[#result + 1] = status
-              result[#result + 1] = endpoint
             end
             return result
             """;
@@ -133,9 +115,8 @@ public final class RedisWorkerResourceCatalog
                 || new HashSet<>(workerIds).size() != workerIds.size()) {
             throw new IllegalArgumentException("workerIds must contain 1..100 unique IDs");
         }
-        List<String> arguments = new ArrayList<>();
+        List<String> arguments = new ArrayList<>(workerIds.size() + 2);
         arguments.add(workerGroupId);
-        arguments.add(defaultEndpointManagerId);
         arguments.add(WorkerRedisSupport.encodeBinding(workerGroupId, defaultEndpointManagerId));
         arguments.addAll(workerIds);
         List<String> rows = commands().eval(
@@ -143,11 +124,42 @@ public final class RedisWorkerResourceCatalog
                 new String[]{groupsKey(), WorkerRedisSupport.bindingsKey(keyspace)},
                 arguments.toArray(String[]::new)
         );
+        if (rows.isEmpty()) {
+            Map<String, WorkerRegistrationResult> missing = new LinkedHashMap<>();
+            for (String workerId : workerIds) {
+                missing.put(workerId, new WorkerRegistrationResult(
+                        RegistrationStatus.NOT_FOUND, null, "worker group not found"));
+            }
+            return missing;
+        }
+        if (rows.size() != workerIds.size()) {
+            throw new IllegalStateException("Redis Worker registration returned an invalid response");
+        }
+        List<RegistrationStatus> statuses = new ArrayList<>(workerIds.size());
+        List<String> endpoints = new ArrayList<>(workerIds.size());
         List<String> accepted = new ArrayList<>();
-        // Binding Lua returns an actual Endpoint only for accepted registrations.
         for (int i = 0; i < workerIds.size(); i++) {
-            if (!rows.get(i * 2 + 1).isEmpty()) {
-                accepted.add(workerIds.get(i));
+            String workerId = workerIds.get(i);
+            String row = rows.get(i);
+            if ("+".equals(row)) {
+                statuses.add(RegistrationStatus.OK);
+                endpoints.add(defaultEndpointManagerId);
+                accepted.add(workerId);
+            } else if (row != null && row.startsWith("=")) {
+                WorkerDescriptor existing = WorkerRedisSupport.decodeBinding(workerId, row.substring(1));
+                if (existing == null) {
+                    statuses.add(RegistrationStatus.INVALID);
+                    endpoints.add(null);
+                } else if (!workerGroupId.equals(existing.workerGroupId())) {
+                    statuses.add(RegistrationStatus.CONFLICT);
+                    endpoints.add(null);
+                } else {
+                    statuses.add(RegistrationStatus.NOOP);
+                    endpoints.add(existing.endpointManagerId());
+                    accepted.add(workerId);
+                }
+            } else {
+                throw new IllegalStateException("Redis Worker registration returned an invalid response");
             }
         }
         // Separate commit: failure leaves Binding intact for a registration retry.
@@ -156,18 +168,13 @@ public final class RedisWorkerResourceCatalog
         Map<String, WorkerRegistrationResult> results = new LinkedHashMap<>();
         for (int i = 0; i < workerIds.size(); i++) {
             String workerId = workerIds.get(i);
-            RegistrationStatus status = created.contains(workerId) ? RegistrationStatus.OK
-                    : RegistrationStatus.valueOf(rows.get(i * 2));
-            String endpoint = rows.get(i * 2 + 1);
+            RegistrationStatus status = created.contains(workerId) ? RegistrationStatus.OK : statuses.get(i);
             String reason = switch (status) {
-                case NOT_FOUND -> "worker group not found";
                 case INVALID -> "stored worker binding is invalid";
                 case CONFLICT -> "workerId is already bound to another workerGroupId";
                 default -> null;
             };
-            results.put(workerId, new WorkerRegistrationResult(
-                    status, endpoint.isEmpty() ? null : endpoint, reason
-            ));
+            results.put(workerId, new WorkerRegistrationResult(status, endpoints.get(i), reason));
         }
         return results;
     }

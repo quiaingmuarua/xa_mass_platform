@@ -146,8 +146,41 @@ class RedisTaskScoreBandCoreTest {
                             )
                     ))
             );
+            var invalidInitial = scoreCore.promoteObservedInitialTasks(
+                    Map.of("task-normal", normal)
+            );
+            org.junit.jupiter.api.Assertions.assertEquals(
+                    com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionStatus.INVALID,
+                    invalidInitial.get("task-normal").status()
+            );
+            org.junit.jupiter.api.Assertions.assertNull(
+                    invalidInitial.get("task-normal").score()
+            );
         } finally {
             redisClient.shutdown();
         }
+    }
+
+    @Test
+    void convergedKernelScriptsStayTimeFreeAndCatalogIsJsonFree() throws Exception {
+        var scoreDir = java.nio.file.Path.of("src/main/java/com/xa/mass/kernel/score/redis");
+        for (String name : java.util.List.of(
+                "ScoreRedisScripts.java",
+                "RedisTaskScoreBandCore.java",
+                "RedisTaskItemScoreBandCore.java",
+                "RedisWorkerScoreCore.java"
+        )) {
+            String source = java.nio.file.Files.readString(scoreDir.resolve(name));
+            org.junit.jupiter.api.Assertions.assertFalse(
+                    source.contains("'TIME'") || source.contains("\"TIME\""),
+                    name + " must not read Redis TIME"
+            );
+        }
+        String catalog = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/java/com/xa/mass/kernel/worker/redis/RedisWorkerResourceCatalog.java"));
+        org.junit.jupiter.api.Assertions.assertFalse(
+                catalog.contains("cjson"),
+                "RedisWorkerResourceCatalog Lua must not decode JSON"
+        );
     }
 }

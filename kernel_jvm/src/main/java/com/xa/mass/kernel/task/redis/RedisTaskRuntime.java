@@ -72,7 +72,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             return 1
             """;
     private static final String RESULT_CODEC_SCRIPT = """
-            local function decode_result(stored)
+            local function decode_result(stored, min_tag, max_tag, max_time)
               local ok, current = pcall(cjson.decode, stored)
               if not ok or type(current) ~= 'table' or type(current.code) ~= 'string' or current.code == ''
                   or type(current.opaqueResultPayload) ~= 'string' or current.opaqueResultPayload == '' then
@@ -86,9 +86,9 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 fields = fields + 1
               end
               if current.code == '200' then
-                if fields ~= 4 or type(current.tag) ~= 'number' or current.tag < 2 or current.tag > 9
+                if fields ~= 4 or type(current.tag) ~= 'number' or current.tag < min_tag or current.tag > max_tag
                     or current.tag ~= math.floor(current.tag) or type(current.observedAtMillis) ~= 'number'
-                    or current.observedAtMillis < 0 or current.observedAtMillis > 9999999999900
+                    or current.observedAtMillis < 0 or current.observedAtMillis > max_time
                     or current.observedAtMillis ~= math.floor(current.observedAtMillis) then
                   error('TaskItem Result is corrupt')
                 end
@@ -101,14 +101,15 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 or redis.call('HGET', KEYS[2], 'idleDisposition') ~= 'PARK_WHEN_IDLE' then
               return redis.error_reply('Task does not support Result consumption')
             end
-            local rows = redis.call('HMGET', KEYS[1], unpack(ARGV))
+            local min_tag, max_tag, max_time = tonumber(ARGV[1]), tonumber(ARGV[2]), tonumber(ARGV[3])
+            local rows = redis.call('HMGET', KEYS[1], unpack(ARGV, 4))
             for index, value in ipairs(rows) do
               if value then
-                local current = decode_result(value)
+                local current = decode_result(value, min_tag, max_tag, max_time)
                 rows[index] = {current.code, current.opaqueResultPayload}
               end
             end
-            redis.call('HDEL', KEYS[1], unpack(ARGV))
+            redis.call('HDEL', KEYS[1], unpack(ARGV, 4))
             return rows
             """;
     private static final String STORE_SUCCESS_RESULTS_SCRIPT = RESULT_CODEC_SCRIPT + """
@@ -118,30 +119,30 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
               local kind = redis.call('TYPE', KEYS[3]).ok
               if kind ~= 'none' and kind ~= 'zset' then return redis.error_reply('Task Item Score key must be a zset') end
             end
+            local min_tag, max_tag, max_time = tonumber(ARGV[2]), tonumber(ARGV[3]), tonumber(ARGV[4])
             local updates = {}
-            for i = 2, #ARGV, 2 do
-              if not rpc or redis.call('ZSCORE', KEYS[3], ARGV[i]) then
-                local target = cjson.decode(ARGV[i + 1])
-                local stored = redis.call("HGET", KEYS[1], ARGV[i])
+            for i = 5, #ARGV, 4 do
+              local id = ARGV[i]
+              if not rpc or redis.call('ZSCORE', KEYS[3], id) then
+                local stored = redis.call('HGET', KEYS[1], id)
                 local replace = true
                 if stored then
-                  local current = decode_result(stored)
-                  if current.code == "200" then
-                    replace = target.tag > current.tag or
-                        (target.tag == current.tag and target.observedAtMillis > current.observedAtMillis)
+                  local current = decode_result(stored, min_tag, max_tag, max_time)
+                  if current.code == '200' then
+                    local target_tag, target_time = tonumber(ARGV[i + 1]), tonumber(ARGV[i + 2])
+                    replace = target_tag > current.tag or
+                        (target_tag == current.tag and target_time > current.observedAtMillis)
                   end
                 end
                 if replace then
-                  updates[#updates + 1] = ARGV[i]
-                  updates[#updates + 1] = ARGV[i + 1]
+                  updates[#updates + 1] = id
+                  updates[#updates + 1] = ARGV[i + 3]
                 end
               end
             end
             if #updates > 0 then
-              redis.call("HSET", KEYS[1], unpack(updates))
-              if redis.call('HGET', KEYS[2], 'idleDisposition') == 'PARK_WHEN_IDLE' then
-                redis.call('PEXPIRE', KEYS[1], ARGV[1])
-              end
+              redis.call('HSET', KEYS[1], unpack(updates))
+              if rpc then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
             end
             return #updates / 2
             """;
@@ -169,7 +170,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 )
               end
             end
-            if stored > 0 and redis.call('HGET', KEYS[2], 'idleDisposition') == 'PARK_WHEN_IDLE' then
+            if stored > 0 and rpc then
               redis.call('PEXPIRE', results_key, ARGV[1])
             end
             return stored
@@ -675,14 +676,19 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         if (results.isEmpty()) {
             return;
         }
-        List<String> arguments = new ArrayList<>(results.size() * 2 + 1);
+        List<String> arguments = new ArrayList<>(results.size() * 4 + 4);
         arguments.add(Long.toString(rpcResultIdleTtlMillis));
+        arguments.add(Integer.toString(TaskItemScoreBandCore.MIN_TERMINAL_TAG));
+        arguments.add(Integer.toString(TaskItemScoreBandCore.MAX_TERMINAL_TAG));
+        arguments.add(Long.toString(TaskItemScoreBandCore.MAX_TIME_MILLIS));
         results.forEach((messageId, result) -> {
             requireNonBlank(messageId, "messageId");
             if (result == null) {
                 throw new IllegalArgumentException("result must be present");
             }
             arguments.add(messageId);
+            arguments.add(Integer.toString(result.tag()));
+            arguments.add(Long.toString(result.observedAtMillis()));
             arguments.add(mapper.writeValueAsString(new TreeMap<>(Map.of(
                     "code", "200", "opaqueResultPayload", result.opaqueResultPayload(),
                     "tag", result.tag(), "observedAtMillis", result.observedAtMillis()))));
@@ -733,8 +739,13 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 || messageIds.stream().anyMatch(RedisTaskRuntime::isBlank))
             throw new IllegalArgumentException("Expected 1..1000 non-blank messageIds");
         var ids = new ArrayList<>(new LinkedHashSet<>(messageIds));
+        List<String> arguments = new ArrayList<>(ids.size() + 3);
+        arguments.add(Integer.toString(TaskItemScoreBandCore.MIN_TERMINAL_TAG));
+        arguments.add(Integer.toString(TaskItemScoreBandCore.MAX_TERMINAL_TAG));
+        arguments.add(Long.toString(TaskItemScoreBandCore.MAX_TIME_MILLIS));
+        arguments.addAll(ids);
         List<List<String>> values = commands().eval(TAKE_RESULTS_SCRIPT, ScriptOutputType.MULTI,
-                new String[]{resultsKey(taskId), taskDescriptorKey(taskId)}, ids.toArray(String[]::new));
+                new String[]{resultsKey(taskId), taskDescriptorKey(taskId)}, arguments.toArray(String[]::new));
         var results = new LinkedHashMap<String, TaskItemResult>();
         for (int index = 0; index < ids.size(); index++) {
             List<String> value = values.get(index);

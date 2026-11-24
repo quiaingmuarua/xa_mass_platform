@@ -1805,6 +1805,61 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         }
     }
 
+    @Test
+    void hundredItemInitializeAndClaimUseSingleEvalAndTaskIntervalRewritesPreserveSemantics() {
+        storeTask("batched");
+        var ids = IntStream.range(0, 100).mapToObj(i -> "b-" + i).toList();
+        inputRecordsBeforeScoreInitialization("batched", ids);
+        var calls = new CopyOnWriteArrayList<String>();
+        var listener = new CommandListener() {
+            @Override public void commandStarted(CommandStartedEvent event) {
+                calls.add(event.getCommand().getType().toString());
+            }
+        };
+        redisClient.addListener(listener);
+        try {
+            itemScoreCore.close();
+            itemScoreCore.getItemScoreStates("batched", List.of("b-0"));
+            calls.clear();
+            var due = new LinkedHashMap<String, Long>();
+            ids.forEach(id -> due.put(id, 0L));
+            var init = itemScoreCore.initializeItemScores("batched", due, 2);
+            assertThat(calls).containsExactly("EVAL");
+            assertThat(init.values()).allMatch(r -> r.status() == TRANSITIONED);
+
+            var observed = new LinkedHashMap<String, Long>();
+            init.forEach((id, res) -> observed.put(id, res.score()));
+            calls.clear();
+            var claimed = itemScoreCore.rewriteObservedItemScores("batched", observed, 5_000L, -1);
+            assertThat(calls).containsExactly("EVAL");
+            assertThat(claimed.values()).allMatch(r -> r.status() == TRANSITIONED && r.score() != null);
+            assertThat(itemScoreCore.getItemScoreStates("batched", List.of("b-0")).get("b-0").remainingBudget())
+                    .isEqualTo(2);
+        } finally {
+            redisClient.removeListener(listener);
+        }
+
+        // PRE_REVIEW same-band time rewrite preserves non-zero suffix; fractional stored score is INVALID.
+        var preReview = scoreCore.initializeScore("pre-suffix", 37, 3_000);
+        assertThat(preReview.status()).isEqualTo(TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED);
+        long laterTarget = (preReview.score() % TaskScoreBandCore.DEFAULT_TAG_FACTOR / TaskScoreBandCore.SUFFIX_FACTOR + 5)
+                * TaskScoreBandCore.SLOT_MILLIS;
+        var rewritten = scoreCore.rewriteSameBandTimeMillis(
+                "pre-suffix", TaskScoreBandCore.TaskScoreBand.PRE_REVIEW, laterTarget);
+        assertThat(rewritten.status()).isEqualTo(TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED);
+        assertThat(scoreCore.getScoreStates(List.of("pre-suffix")).get("pre-suffix").suffix()).isEqualTo(37);
+
+        String scoreKey = keyspace.base() + ":task:score";
+        redis.zadd(scoreKey, taskScore(TaskScoreBandCore.RUNNING_VISIBLE_TAG, TaskScoreBandCore.PAUSE_TIME_SLOT, 0), "paused");
+        assertThat(scoreCore.tryReleaseIdlePark("paused").status())
+                .isEqualTo(TaskScoreBandCore.TaskScoreTransitionStatus.INVALID);
+        redis.zadd(scoreKey, taskScore(TaskScoreBandCore.RUNNING_VISIBLE_TAG, 200, 0) + 0.5D, "corrupt-frac");
+        assertThat(scoreCore.closeScore("corrupt-frac").status())
+                .isEqualTo(TaskScoreBandCore.TaskScoreTransitionStatus.INVALID);
+        assertThat(redis.zscore(scoreKey, "corrupt-frac"))
+                .isEqualTo(taskScore(TaskScoreBandCore.RUNNING_VISIBLE_TAG, 200, 0) + 0.5D);
+    }
+
     private TaskDescriptor descriptor(String taskId, int priority) {
         return new TaskDescriptor(taskId, "phone-tools", TaskIdleDisposition.PARK_WHEN_IDLE, config(priority), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of());
     }

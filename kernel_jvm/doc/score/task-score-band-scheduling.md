@@ -185,12 +185,20 @@ TaskInitializationPolicy.initialize(initial taskId -> opaque score)
 ```
 
 The batch promotion chooses one NORMAL coordinate from the Owner clock before its
-single batch Lua. That Lua only compares exact observations against the fixed
-INITIAL range and writes the supplied target score; it does not construct or
-decode Score fields. Each Task still has an independent exact-score result.
+single batch Lua. Java validates that every observed score lies in the fixed
+INITIAL range before calling the encoding-blind exact CAS batch script, returning
+`INVALID` immediately for out-of-range observations without Redis access. Each
+Task still has an independent exact-score result.
 There is no Task admission SPI, System admission policy, capacity reservation,
 or priority recheck. A Task without a due Item is rediscovered on a later
 joint scheduling scan.
+
+`RedisTaskScoreBandCore` prepares every coordinate, range bound and target in
+Java and calls two fixed encoding-blind write scripts (exact CAS batch for
+observed transitions; interval rewrite for `closeScore`, `tryReleaseIdlePark`
+and same-band `rewriteSameBandTimeMillis`, where Java supplies `SUFFIX_FACTOR`
+when preserving a stored suffix) plus the package-shared keyset page script for
+terminal and parked maintenance reads. No script decodes bands or reads Redis `TIME`.
 
 ## Dispatch And Idle Lifecycle
 

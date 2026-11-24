@@ -30,78 +30,68 @@ public final class RedisTaskItemScoreBandCore
             end
             return counts
             """;
-    private static final String CAS_UPDATE_SCRIPT = """
-            if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return {'not_found'} end
-            local key = KEYS[1]
-            local message_id = ARGV[1]
-            local observed_score = tonumber(ARGV[2])
-            local next_score = tonumber(ARGV[3])
-
-            local stored = redis.call("ZSCORE", key, message_id)
-            if not stored then
-              return {"not_found"}
+    private static final String CAS_UPDATE_BATCH_SCRIPT = """
+            if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return {} end
+            local results = {}
+            for i = 1, #ARGV, 3 do
+              local id = ARGV[i]
+              local stored = redis.call('ZSCORE', KEYS[1], id)
+              if not stored then
+                results[#results + 1] = 'not_found'
+              elseif tonumber(stored) ~= tonumber(ARGV[i + 1]) then
+                results[#results + 1] = 'stale'
+              else
+                redis.call('ZADD', KEYS[1], ARGV[i + 2], id)
+                results[#results + 1] = 'transitioned'
+              end
             end
-            if tonumber(stored) ~= observed_score then
-              return {"stale"}
-            end
-            redis.call("ZADD", key, next_score, message_id)
-            return {"transitioned", next_score}
+            return results
             """;
     private static final String PROMOTE_OUTCOMES_SCRIPT = """
-            local writable = redis.call('HGET', KEYS[2], 'dataPhase') == 'OPEN'
-            local key = KEYS[1]
-            local tag_factor = tonumber(ARGV[1])
-            local suffix_factor = tonumber(ARGV[2])
+            if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return {} end
+            local min_valid, max_valid = tonumber(ARGV[1]), tonumber(ARGV[2])
+            local terminal_min, suffix_factor = tonumber(ARGV[3]), tonumber(ARGV[4])
             local results = {}
-            for i = 3, #ARGV, 2 do
+            for i = 5, #ARGV, 2 do
               local target_score = tonumber(ARGV[i + 1])
-              local stored = redis.call("ZSCORE", key, ARGV[i])
-              if not writable or not stored then
-                results[#results + 1] = {"not_found"}
+              local stored = redis.call('ZSCORE', KEYS[1], ARGV[i])
+              if not stored then
+                results[#results + 1] = {'not_found'}
               else
                 local current = tonumber(stored)
-                if not current or current < tag_factor
-                    or current >= 10 * tag_factor
+                if not current or current < min_valid or current > max_valid
                     or current ~= math.floor(current)
-                    or (current >= 2 * tag_factor
-                        and current % suffix_factor ~= 0) then
-                  results[#results + 1] = {"corrupt"}
+                    or (current >= terminal_min and current % suffix_factor ~= 0) then
+                  results[#results + 1] = {'corrupt'}
                 elseif target_score > current then
-                  redis.call("ZADD", key, target_score, ARGV[i])
-                  results[#results + 1] = {"transitioned", target_score}
+                  redis.call('ZADD', KEYS[1], target_score, ARGV[i])
+                  results[#results + 1] = {'transitioned', target_score}
                 else
-                  results[#results + 1] = {"noop", current}
+                  results[#results + 1] = {'noop', current}
                 end
               end
             end
             return results
             """;
-    private static final String INITIALIZE_SCRIPT = """
-            if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return -1 end
-            if redis.call('HGET', KEYS[2], 'idleDisposition') == 'PARK_WHEN_IDLE' then
-              if redis.call('ZSCORE', KEYS[1], ARGV[2]) then return 0 end
-              if redis.call('HEXISTS', KEYS[3], ARGV[2]) == 0 then return -1 end
+    private static final String INITIALIZE_BATCH_SCRIPT = """
+            if redis.call('HGET', KEYS[2], 'dataPhase') ~= 'OPEN' then return {} end
+            local rpc = redis.call('HGET', KEYS[2], 'idleDisposition') == 'PARK_WHEN_IDLE'
+            local results = {}
+            for i = 1, #ARGV, 2 do
+              local score, id = ARGV[i], ARGV[i + 1]
+              if rpc then
+                if redis.call('ZSCORE', KEYS[1], id) then
+                  results[#results + 1] = 0
+                elseif redis.call('HEXISTS', KEYS[3], id) == 0 then
+                  results[#results + 1] = -1
+                else
+                  results[#results + 1] = redis.call('ZADD', KEYS[1], 'NX', score, id)
+                end
+              else
+                results[#results + 1] = redis.call('ZADD', KEYS[1], 'NX', score, id)
+              end
             end
-            return redis.call('ZADD', KEYS[1], 'NX', ARGV[1], ARGV[2])
-            """;
-    private static final String TERMINAL_PAGE_SCRIPT = """
-            local lo, hi = 0, redis.call('ZCARD', KEYS[1])
-            local score, member = tonumber(ARGV[1]), ARGV[2]
-            local exclusive = ARGV[5] == '1'
-            while lo < hi do
-              local mid = math.floor((lo + hi) / 2)
-              local row = redis.call('ZRANGE', KEYS[1], mid, mid, 'WITHSCORES')
-              local s = tonumber(row[2])
-              if s < score or (exclusive and s == score and row[1] <= member) then lo = mid + 1 else hi = mid end
-            end
-            local rows = redis.call('ZRANGE', KEYS[1], lo, lo + tonumber(ARGV[4]) - 1, 'WITHSCORES')
-            local result = {}
-            for i = 1, #rows, 2 do
-              if tonumber(rows[i + 1]) > tonumber(ARGV[3]) then break end
-              result[#result + 1] = rows[i]
-              result[#result + 1] = rows[i + 1]
-            end
-            return result
+            return results
             """;
 
     private final RedisClient redisClient;
@@ -213,35 +203,41 @@ public final class RedisTaskItemScoreBandCore
         LinkedHashMap<String, TaskItemScoreTransitionResult> persisted =
                 new LinkedHashMap<>();
         if (!pending.isEmpty()) {
-            RedisAsyncCommands<String, String> async = connection().async();
-            List<RedisFuture<Long>> futures = new ArrayList<>(pending.size());
-            String key = scoreKey(taskId);
-            pending.forEach((messageId, initialScore) -> futures.add(
-                    async.eval(
-                            INITIALIZE_SCRIPT, ScriptOutputType.INTEGER,
-                            new String[]{key, TaskRedisKeys.descriptor(keyspace, taskId), TaskRedisKeys.items(keyspace, taskId)},
-                            Long.toString(initialScore),
-                            messageId
-                    )
-            ));
-            int index = 0;
-            for (Map.Entry<String, Long> entry : pending.entrySet()) {
-                Long added = futures.get(index)
-                        .toCompletableFuture()
-                        .join();
-                persisted.put(
-                        entry.getKey(),
-                        added != null && added == 1L
-                                ? new TaskItemScoreTransitionResult(
-                                        TaskItemScoreTransitionStatus
-                                                .TRANSITIONED,
-                                        entry.getValue()
-                                )
-                                : transition(
-                                        added != null && added == -1L ? TaskItemScoreTransitionStatus.NOT_FOUND : TaskItemScoreTransitionStatus.NOOP
-                                )
-                );
-                index++;
+            List<String> arguments = new ArrayList<>(pending.size() * 2);
+            pending.forEach((messageId, initialScore) -> {
+                arguments.add(Long.toString(initialScore));
+                arguments.add(messageId);
+            });
+            List<?> replies = commands().eval(
+                    INITIALIZE_BATCH_SCRIPT,
+                    ScriptOutputType.MULTI,
+                    new String[]{
+                            scoreKey(taskId),
+                            TaskRedisKeys.descriptor(keyspace, taskId),
+                            TaskRedisKeys.items(keyspace, taskId)
+                    },
+                    arguments.toArray(String[]::new)
+            );
+            if (replies == null || (!replies.isEmpty() && replies.size() != pending.size())) {
+                throw new IllegalStateException("TaskItem initialization batch result is invalid");
+            }
+            if (replies.isEmpty()) {
+                pending.keySet().forEach(id -> persisted.put(id, transition(TaskItemScoreTransitionStatus.NOT_FOUND)));
+            } else {
+                int index = 0;
+                for (Map.Entry<String, Long> entry : pending.entrySet()) {
+                    long added = ((Number) replies.get(index++)).longValue();
+                    persisted.put(
+                            entry.getKey(),
+                            added == 1L
+                                    ? new TaskItemScoreTransitionResult(
+                                            TaskItemScoreTransitionStatus.TRANSITIONED,
+                                            entry.getValue())
+                                    : transition(added == -1L
+                                            ? TaskItemScoreTransitionStatus.NOT_FOUND
+                                            : TaskItemScoreTransitionStatus.NOOP)
+                    );
+                }
             }
         }
         return mergeResults(
@@ -270,8 +266,10 @@ public final class RedisTaskItemScoreBandCore
         }
         List<String> orderedMessageIds = new ArrayList<>();
         Map<String, TaskItemScoreTransitionResult> immediate = new LinkedHashMap<>();
-        List<String> arguments = new ArrayList<>(targets.size() * 2 + 2);
-        arguments.add(Long.toString(TAG_FACTOR));
+        List<String> arguments = new ArrayList<>(targets.size() * 2 + 4);
+        arguments.add(Long.toString(score(ACTIVE_TAG, MIN_TIME_SLOT, MIN_REMAINING_BUDGET)));
+        arguments.add(Long.toString(score(MAX_TERMINAL_TAG, MAX_TIME_SLOT, (int) (SUFFIX_FACTOR - 1))));
+        arguments.add(Long.toString(score(MIN_TERMINAL_TAG, MIN_TIME_SLOT, TERMINAL_SUFFIX)));
         arguments.add(Long.toString(SUFFIX_FACTOR));
         targets.forEach((messageId, target) -> {
             if (isBlank(messageId) || target == null
@@ -294,19 +292,18 @@ public final class RedisTaskItemScoreBandCore
                 new String[]{scoreKey(taskId), TaskRedisKeys.descriptor(keyspace, taskId)},
                 arguments.toArray(String[]::new)
         );
-        if (replies == null || replies.size() != orderedMessageIds.size()) {
+        if (replies == null || (!replies.isEmpty() && replies.size() != orderedMessageIds.size())) {
             throw new IllegalStateException("TaskItem outcome batch result is invalid");
         }
 
         LinkedHashMap<String, TaskItemScoreTransitionResult> results =
                 new LinkedHashMap<>();
-        for (int index = 0; index < orderedMessageIds.size(); index++) {
-            results.put(
-                    orderedMessageIds.get(index),
-                    scriptResult(
-                            replies.get(index)
-                    )
-            );
+        if (replies.isEmpty()) {
+            orderedMessageIds.forEach(id -> results.put(id, transition(TaskItemScoreTransitionStatus.NOT_FOUND)));
+        } else {
+            for (int index = 0; index < orderedMessageIds.size(); index++) {
+                results.put(orderedMessageIds.get(index), scriptResult(replies.get(index)));
+            }
         }
         return mergeResults(targets.keySet(), immediate, results);
     }
@@ -463,24 +460,35 @@ public final class RedisTaskItemScoreBandCore
         LinkedHashMap<String, TaskItemScoreTransitionResult> persisted =
                 new LinkedHashMap<>();
         if (!pending.isEmpty()) {
-            RedisAsyncCommands<String, String> async = connection().async();
-            List<RedisFuture<Object>> futures = new ArrayList<>(pending.size());
-            String key = scoreKey(taskId);
-            pending.forEach((messageId, update) -> futures.add(async.eval(
-                    CAS_UPDATE_SCRIPT,
+            List<String> arguments = new ArrayList<>(pending.size() * 3);
+            pending.forEach((messageId, update) -> {
+                arguments.add(messageId);
+                arguments.add(Long.toString(update.observed()));
+                arguments.add(Long.toString(update.next()));
+            });
+            List<?> replies = commands().eval(
+                    CAS_UPDATE_BATCH_SCRIPT,
                     ScriptOutputType.MULTI,
-                    new String[]{key, TaskRedisKeys.descriptor(keyspace, taskId)},
-                    messageId,
-                    Long.toString(update.observed()),
-                    Long.toString(update.next())
-            )));
-            int index = 0;
-            for (String messageId : pending.keySet()) {
-                persisted.put(
-                        messageId,
-                        scriptResult(futures.get(index++)
-                                .toCompletableFuture().join())
-                );
+                    new String[]{scoreKey(taskId), TaskRedisKeys.descriptor(keyspace, taskId)},
+                    arguments.toArray(String[]::new)
+            );
+            if (replies == null || (!replies.isEmpty() && replies.size() != pending.size())) {
+                throw new IllegalStateException("TaskItem score CAS batch result is invalid");
+            }
+            if (replies.isEmpty()) {
+                pending.keySet().forEach(id -> persisted.put(id, transition(TaskItemScoreTransitionStatus.NOT_FOUND)));
+            } else {
+                int index = 0;
+                for (Map.Entry<String, ScoreUpdate> entry : pending.entrySet()) {
+                    String status = String.valueOf(replies.get(index++));
+                    persisted.put(entry.getKey(), switch (status) {
+                        case "transitioned" -> new TaskItemScoreTransitionResult(
+                                TaskItemScoreTransitionStatus.TRANSITIONED, entry.getValue().next());
+                        case "stale" -> transition(TaskItemScoreTransitionStatus.STALE);
+                        case "not_found" -> transition(TaskItemScoreTransitionStatus.NOT_FOUND);
+                        default -> throw new IllegalStateException("TaskItem score script status is invalid");
+                    });
+                }
             }
         }
         return mergeResults(observedScores.keySet(), immediate, persisted);
@@ -547,9 +555,9 @@ public final class RedisTaskItemScoreBandCore
                     throw new IllegalArgumentException("Cursor outside terminal Item window");
             } catch (RuntimeException invalid) { throw new IllegalArgumentException("Invalid terminal Item cursor", invalid); }
         }
-        List<?> rows = commands().eval(TERMINAL_PAGE_SCRIPT, ScriptOutputType.MULTI,
+        List<?> rows = commands().eval(ScoreRedisScripts.KEYSET_PAGE_SCRIPT, ScriptOutputType.MULTI,
                 new String[]{scoreKey(taskId)}, Double.toString(afterScore), member, Long.toString(maximum),
-                Integer.toString(limit), cursor.equals("0") ? "0" : "1");
+                Integer.toString(limit), cursor.equals("0") ? "0" : "1", "0");
         var observed = new LinkedHashMap<String, Long>();
         for (int i = 0; i < rows.size(); i += 2) {
             String id = String.valueOf(rows.get(i));

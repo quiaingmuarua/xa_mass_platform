@@ -575,9 +575,11 @@ details as public kernel contracts.
 ## Java Owner Status
 
 [`RedisTaskItemScoreBandCore`](../../src/main/java/com/xa/mass/kernel/score/redis/RedisTaskItemScoreBandCore.java)
-implements the complete surface. Initialization retains pipelined `ZADD NX`;
-acquisition remains a bounded ACTIVE range read; claims keep their exact CAS.
-Terminal promotion uses one Lua for the caller-bounded input collection.
+implements the complete surface. Initialization, exact ACTIVE claim/retry CAS,
+and terminal outcome promotion each execute in one batched Lua per call under
+the Task `dataPhase` retention fence (with Java supplying all encoded scores
+and range bounds); acquisition remains a bounded ACTIVE range read, and terminal
+maintenance pagination shares the package-local keyset page script.
 
 `getItemScoreStates(taskId, messageIds)` accepts at most 100 IDs and returns an
 ordered deduplicated map from one `ZMSCORE`. Missing members map to null.
