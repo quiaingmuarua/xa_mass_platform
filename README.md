@@ -42,6 +42,10 @@ version, not an API stability promise or a compatibility layer for older deploym
 
 Check HEAD, the worktree and requested scope first. Choose the route below;
 reuse established session evidence and refresh only what changed.
+Each new session should be able to reconstruct the current system through these
+sources without a previous chat. Use documents to locate behavior, its Owner and
+the reasons for its boundaries; check mutable details against current code and
+the [evidence for the relevant claim](AGENTS.md#trust-order).
 Ordinary development and orientation use repository evidence and the selected
 local/CI proofs. GCP records are needed only when the task includes that deployed environment.
 

@@ -4,7 +4,8 @@
 business Definitions for Android Workers. It depends on Worker Core but not on
 the Android Worker assembly, Server, Kernel, Adapter, Redis, or a Host UI.
 
-The current concrete `AndroidDemoCapabilities` collection provides:
+The current [AndroidDemoCapabilities](src/main/java/com/xa/mass/android/capabilities/AndroidDemoCapabilities.java)
+collection provides:
 
 - `extension.worker.android.state.read`: package/device information plus the
   persistent demo counter;
@@ -29,6 +30,8 @@ their own concrete composition entry when a real Host requires them.
 
 ## Verification
 
+See the [capability assertions](src/test/java/com/xa/mass/android/capabilities/AndroidDemoCapabilitiesTest.java)
+and [architecture assertions](src/test/java/com/xa/mass/android/capabilities/AndroidCapabilitiesArchitectureTest.java).
 Run from the independent consumer build with the explicit verified SDK properties described in the [consumer entry](../README.md#pinned-inputs-and-preparation).
 
 ```text
