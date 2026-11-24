@@ -3,6 +3,7 @@ package com.xa.mass.kernel.pacer.dispatch;
 import com.xa.mass.kernel.assignment.WorkerMatching;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.pacer.KernelPacerRuntime.MetricsSink;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.ResultObservation;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.WorkerObservation;
@@ -135,6 +136,10 @@ public final class DispatchConvergenceRuntime {
                 serviceabilityConfig
         );
         return new DispatchConvergenceRuntime(scheduler);
+    }
+
+    public void setMetricsSink(MetricsSink metricsSink) {
+        mainScheduler.setMetricsSink(metricsSink);
     }
 
     public synchronized void start() {

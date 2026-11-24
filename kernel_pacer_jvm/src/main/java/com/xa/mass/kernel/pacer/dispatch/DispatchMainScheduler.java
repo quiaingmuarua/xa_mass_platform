@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
+import com.xa.mass.kernel.pacer.KernelPacerRuntime.MetricsSink;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
@@ -20,6 +21,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 
 final class DispatchMainScheduler {
@@ -37,6 +39,7 @@ final class DispatchMainScheduler {
     private final WorkerServiceabilityDispatchPolicy serviceability;
     private final AssignmentDispatchConfig assignmentConfig;
     private final WorkerServiceabilityDispatchConfig serviceabilityConfig;
+    private volatile MetricsSink metricsSink = MetricsSink.NOOP;
 
     DispatchMainScheduler(
             TaskScoreBandCore taskScores,
@@ -75,6 +78,10 @@ final class DispatchMainScheduler {
             );
         }
         this.serviceabilityConfig = serviceabilityConfig;
+    }
+
+    void setMetricsSink(MetricsSink metricsSink) {
+        this.metricsSink = Objects.requireNonNull(metricsSink, "metricsSink");
     }
 
     void run() {
@@ -316,16 +323,19 @@ final class DispatchMainScheduler {
             startProducer(
                     DispatchProducerId.WORKER_SERVICEABILITY,
                     workerGroupIds.size(),
-                    () -> Objects.requireNonNull(
-                            serviceability,
-                            "serviceability"
-                    ).dispatchProbes(
-                            workerGroupIds,
-                            Objects.requireNonNull(
-                                    serviceabilityConfig,
-                                    "serviceabilityConfig"
-                            )
-                    )
+                    () -> {
+                        Objects.requireNonNull(
+                                serviceability,
+                                "serviceability"
+                        ).dispatchProbes(
+                                workerGroupIds,
+                                Objects.requireNonNull(
+                                        serviceabilityConfig,
+                                        "serviceabilityConfig"
+                                )
+                        );
+                        return 0;
+                    }
             );
         }
 
@@ -343,7 +353,10 @@ final class DispatchMainScheduler {
             startProducer(
                     DispatchProducerId.TASK_INITIALIZATION,
                     immutableScores.size(),
-                    () -> initialization.initialize(immutableScores)
+                    () -> {
+                        initialization.initialize(immutableScores);
+                        return 0;
+                    }
             );
         }
 
@@ -371,6 +384,7 @@ final class DispatchMainScheduler {
                 try {
                     added=refill.refill(workerGroupIds, supplyTasks, recycleHints);
                     failed=false;
+                    return added;
                 } finally {
                     DispatchStageEvent.batch(started,"REFILL_ROUND",supplyTasks.size(),added,failed);
                     recycleHints.observe();
@@ -393,6 +407,7 @@ final class DispatchMainScheduler {
                             try {
                                 published = dispatch.dispatchTasks(normalTasks);
                                 failed = false;
+                                return published;
                             } finally {
                                 DispatchStageEvent.batch(started, "DISPATCH_ROUND", normalTasks.size(), published, failed);
                             }
@@ -404,7 +419,7 @@ final class DispatchMainScheduler {
         private void startProducer(
                 DispatchProducerId producerId,
                 int batchSize,
-                Runnable producer
+                IntSupplier producer
         ) {
             ProducerRuntime runtime = Objects.requireNonNull(
                     runtimes.get(producerId),
@@ -427,15 +442,19 @@ final class DispatchMainScheduler {
             runtime.inflight = true;
             try {
                 executor.submit(() -> {
+                    long startedNanos = nanoTime.getAsLong();
+                    int outputCount = 0;
                     Throwable failure = null;
                     try {
-                        producer.run();
+                        outputCount = producer.getAsInt();
                     } catch (RuntimeException runtimeFailure) {
                         failure = runtimeFailure;
                     } catch (Error fatalFailure) {
                         failure = fatalFailure;
                         throw fatalFailure;
                     } finally {
+                        long durationNanos = Math.max(0L, nanoTime.getAsLong() - startedNanos);
+                        recordDispatchRound(runtime.id, outputCount, durationNanos, failure != null);
                         completions.offer(new ProducerCompletion(
                                 runtime.id,
                                 batchSize,
@@ -582,6 +601,24 @@ final class DispatchMainScheduler {
             );
         }
         return result;
+    }
+
+    private void recordDispatchRound(
+            DispatchProducerId producer,
+            int outputCount,
+            long durationNanos,
+            boolean failed
+    ) {
+        try {
+            metricsSink.onDispatchRound(
+                    producer.name(),
+                    outputCount,
+                    durationNanos,
+                    failed
+            );
+        } catch (RuntimeException ignored) {
+            // Best-effort telemetry must never affect scheduling.
+        }
     }
 
     private static void logFailure(

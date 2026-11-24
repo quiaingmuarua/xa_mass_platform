@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.regex.Pattern;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -41,10 +42,15 @@ public final class AccessKeyFilter extends OncePerRequestFilter {
 
     private final UserDirectory directory;
     private final ObjectMapper mapper;
+    private volatile ApiErrorObserver errorObserver = ApiErrorObserver.NOOP;
 
     public AccessKeyFilter(UserDirectory directory, ObjectMapper mapper) {
         this.directory = directory;
         this.mapper = mapper;
+    }
+
+    public void setErrorObserver(ApiErrorObserver errorObserver) {
+        this.errorObserver = Objects.requireNonNull(errorObserver, "errorObserver");
     }
 
     /** Exact method and route-template comparison, used by OpenAPI documentation. */
@@ -89,6 +95,11 @@ public final class AccessKeyFilter extends OncePerRequestFilter {
     }
 
     private void reject(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        try {
+            errorObserver.onError(ServerErrorCode.UNAUTHENTICATED, HttpServletResponse.SC_UNAUTHORIZED);
+        } catch (RuntimeException ignored) {
+            // Best-effort telemetry must never alter authentication responses.
+        }
         Object requestId = request.getAttribute(RequestIdFilter.ATTRIBUTE_NAME);
         var body = new ApiErrorResponse(ServerErrorCode.UNAUTHENTICATED.code(), ServerErrorCode.UNAUTHENTICATED.defaultMessage(),
                 requestId instanceof String value ? value : null, null);

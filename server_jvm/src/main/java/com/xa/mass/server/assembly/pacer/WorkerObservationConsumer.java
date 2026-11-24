@@ -21,7 +21,7 @@ import org.springframework.beans.factory.DisposableBean;
 import org.springframework.context.SmartLifecycle;
 
 /** Fixed routing and lossy serial delivery; handlers own their effects, never scheduling. */
-final class WorkerObservationConsumer implements SmartLifecycle, DisposableBean {
+final class WorkerObservationConsumer implements WorkerObservationMetrics, SmartLifecycle, DisposableBean {
     static final int QUEUE_BATCHES = 256;
     static final int PROCESS_BATCHES = 16;
     private static final Duration SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
@@ -31,7 +31,7 @@ final class WorkerObservationConsumer implements SmartLifecycle, DisposableBean 
     private final AtomicLong dropped = new AtomicLong();
     private final AtomicLong failed;
     private final AtomicBoolean running;
-    private ArrayBlockingQueue<WorkerObservation> queue;
+    private volatile ArrayBlockingQueue<WorkerObservation> queue;
     private Thread consumer;
     private long stopDeadline;
 
@@ -157,6 +157,14 @@ final class WorkerObservationConsumer implements SmartLifecycle, DisposableBean 
         synchronized (this) {
             if (consumer == thread) { consumer = null; queue = null; }
         }
+    }
+
+    @Override public long enqueuedBatches() { return enqueued.get(); }
+    @Override public long droppedBatches() { return dropped.get(); }
+    @Override public long failedBatches() { return failed.get(); }
+    @Override public int queueSize() {
+        var current = queue;
+        return current == null ? 0 : current.size();
     }
 
     @Override public boolean isRunning() { return running.get(); }

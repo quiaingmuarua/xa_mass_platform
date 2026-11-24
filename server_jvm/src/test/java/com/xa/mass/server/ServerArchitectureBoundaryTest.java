@@ -729,6 +729,20 @@ class ServerArchitectureBoundaryTest {
                 .contains("new PlatformPropertiesHandler", "new WorkerObservationConsumer");
     }
 
+    @Test
+    void metricsStayIsolatedFromDomainOwnersAndBusinessServices() throws IOException {
+        Path metricsAssembly = SERVER_SOURCE.resolve("com/xa/mass/server/assembly/metrics");
+        Path matchingSource = Path.of("../worker_matching_jvm/src/main/java");
+        assertThat(metricsAssembly).isDirectory();
+        assertThat(Files.readString(Path.of("build.gradle")))
+                .doesNotContain("micrometer-registry-prometheus");
+        assertThat(readSources(KERNEL_SOURCE)).doesNotContain("io.micrometer");
+        assertThat(readSources(PACER_SOURCE)).doesNotContain("io.micrometer");
+        assertThat(readSources(matchingSource)).doesNotContain("io.micrometer");
+        assertThat(readSourcesExcluding(SERVER_SOURCE, metricsAssembly))
+                .doesNotContain("io.micrometer");
+    }
+
     private static String readSources(Path root) throws IOException {
         if (!Files.exists(root)) {
             return "";

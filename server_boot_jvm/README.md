@@ -165,6 +165,13 @@ Consumer and Preview inherit shared retention settings and the Adapter remote
 base URL from `application.yaml`. The remote URL follows the resolved `server.port`,
 including an explicit external override.
 
+Boot includes `micrometer-registry-prometheus` and exposes `GET /actuator/prometheus`
+alongside `health` on the configured loopback Server surface by default
+(`MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE` overrides the list, and public staging
+ingress still allowlists only `GET /actuator/health/readiness`). Key request, RPC wait,
+Direct Call and Pacer timers enable compact Prometheus histogram SLO buckets; no external
+collector or dashboard component is deployed by Boot.
+
 ## Report ingress budget
 
 The `consumer` profile keeps its 1,000-Report per-lane default. A deployment

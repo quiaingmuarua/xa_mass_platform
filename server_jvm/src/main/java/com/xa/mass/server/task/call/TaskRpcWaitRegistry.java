@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.Delayed;
@@ -20,17 +21,28 @@ import org.springframework.web.context.request.async.DeferredResult;
 @Component
 public final class TaskRpcWaitRegistry {
 
+    /** Passive, low-cardinality wait completion observer; exceptions are ignored. */
+    @FunctionalInterface
+    public interface WaitMetricsSink {
+        WaitMetricsSink NOOP = (outcome, durationNanos) -> {};
+
+        void onWaitCompleted(String outcome, long durationNanos);
+    }
+
     private final int maxWaiters;
     private final int maxPendingObservations;
     private final long initialProbeIntervalMillis;
     private final long normalProbeIntervalMillis;
     private final long longProbeIntervalMillis;
+    private volatile WaitMetricsSink metricsSink = WaitMetricsSink.NOOP;
     private final DelayQueue<DueItem> dueItems = new DelayQueue<>();
     private final Map<ItemKey, ItemWaitGroup> groups = new LinkedHashMap<>();
     private int waiterCount;
     /** Lock-free mirror of waiterCount so a Result notice with no waiters costs no lock. */
     private volatile int activeWaiters;
     private int pendingObservationCount;
+    /** Lock-free mirror of pendingObservationCount for non-blocking gauge reads. */
+    private volatile int pendingObservations;
     private long nextGeneration;
     private long nextWaiterId;
     private boolean closed;
@@ -45,6 +57,10 @@ public final class TaskRpcWaitRegistry {
                 properties.normalProbeIntervalMillis();
         this.longProbeIntervalMillis =
                 properties.longProbeIntervalMillis();
+    }
+
+    public void setMetricsSink(WaitMetricsSink metricsSink) {
+        this.metricsSink = Objects.requireNonNull(metricsSink, "metricsSink");
     }
 
     public boolean tryRegister(
@@ -79,51 +95,59 @@ public final class TaskRpcWaitRegistry {
                     orderedIds,
                     observed
             )));
+            recordWait("immediate", 0L);
             return true;
         }
 
-        BatchWaiter<T> waiter;
-        int admittedPending;
+        BatchWaiter<T> waiter = null;
+        int admittedPending = 0;
+        String rejectedOutcome = null;
         synchronized (this) {
             if (closed) {
                 TaskRpcStageEvent.batch(admittedAt, "WAIT_CLOSED", orderedIds.size(), 0, false);
-                return false;
-            }
-            if (waiterCount >= maxWaiters
+                rejectedOutcome = "closed";
+            } else if (waiterCount >= maxWaiters
                     || pending.size() > maxPendingObservations
                             - pendingObservationCount) {
                 TaskRpcStageEvent.batch(admittedAt, "WAIT_REJECTED", orderedIds.size(), 0, false);
-                return false;
-            }
-            waiter = new BatchWaiter<>(
-                    this,
-                    orderedIds,
-                    observed,
-                    pending,
-                    deferred,
-                    mapping,
-                    System.nanoTime(),
-                    ++nextWaiterId
-            );
-            for (ItemKey key : pending) {
-                ItemWaitGroup group = groups.computeIfAbsent(
-                        key,
-                        ItemWaitGroup::new
+                rejectedOutcome = "rejected";
+            } else {
+                waiter = new BatchWaiter<>(
+                        this,
+                        orderedIds,
+                        observed,
+                        pending,
+                        deferred,
+                        mapping,
+                        System.nanoTime(),
+                        ++nextWaiterId
                 );
-                group.waiters.add(waiter);
-                if (!group.scheduled && !group.inFlight) {
-                    schedule(group, 0);
+                for (ItemKey key : pending) {
+                    ItemWaitGroup group = groups.computeIfAbsent(
+                            key,
+                            ItemWaitGroup::new
+                    );
+                    group.waiters.add(waiter);
+                    if (!group.scheduled && !group.inFlight) {
+                        schedule(group, 0);
+                    }
                 }
+                waiterCount++;
+                activeWaiters = waiterCount;
+                pendingObservationCount += pending.size();
+                pendingObservations = pendingObservationCount;
+                admittedPending = pending.size();
             }
-            waiterCount++;
-            activeWaiters = waiterCount;
-            pendingObservationCount += pending.size();
-            admittedPending = pending.size();
         }
+        if (rejectedOutcome != null) {
+            recordWait(rejectedOutcome, 0L);
+            return false;
+        }
+        BatchWaiter<T> admittedWaiter = waiter;
         TaskRpcStageEvent.items(admittedAt, "WAIT_ADMITTED", taskId, orderedIds, admittedPending, false);
-        deferred.onTimeout(() -> waiter.completeNotObserved("WAIT_TIMEOUT"));
-        deferred.onError(ignored -> waiter.cancel());
-        deferred.onCompletion(waiter::cancel);
+        deferred.onTimeout(() -> admittedWaiter.completeNotObserved("WAIT_TIMEOUT"));
+        deferred.onError(ignored -> admittedWaiter.cancel());
+        deferred.onCompletion(admittedWaiter::cancel);
         return true;
     }
 
@@ -281,12 +305,28 @@ public final class TaskRpcWaitRegistry {
         return longProbeIntervalMillis;
     }
 
+    public int activeWaiterCount() {
+        return activeWaiters;
+    }
+
+    public int pendingObservationCountSnapshot() {
+        return pendingObservations;
+    }
+
     synchronized int waiterCount() {
         return waiterCount;
     }
 
     synchronized int pendingObservationCount() {
         return pendingObservationCount;
+    }
+
+    private void recordWait(String outcome, long durationNanos) {
+        try {
+            metricsSink.onWaitCompleted(outcome, Math.max(0L, durationNanos));
+        } catch (RuntimeException ignored) {
+            // Best-effort telemetry must never interfere with wait completion.
+        }
     }
 
     private synchronized List<ProbeRequest> activateDueItems(
@@ -335,6 +375,7 @@ public final class TaskRpcWaitRegistry {
             }
         }
         pendingObservationCount -= removedAssociations;
+        pendingObservations = pendingObservationCount;
         if (releaseWaiter) {
             waiterCount--;
             activeWaiters = waiterCount;
@@ -422,7 +463,9 @@ public final class TaskRpcWaitRegistry {
                 if (!finished) {
                     return true;
                 }
-                return publish();
+                boolean published = publish();
+                registry.recordWait("observed", System.nanoTime() - registeredAtNanos);
+                return published;
             } finally {
                 completionGate.unlock();
             }
@@ -441,7 +484,10 @@ public final class TaskRpcWaitRegistry {
                     TaskRpcStageEvent.items(observation, reason, key.taskId, List.of(key.messageId), 0, false);
                 pending.clear();
                 registry.remove(this, remaining, true);
-                return publish();
+                boolean published = publish();
+                String outcome = "WAIT_TIMEOUT".equals(reason) ? "timeout" : "shutdown";
+                registry.recordWait(outcome, System.nanoTime() - registeredAtNanos);
+                return published;
             } finally {
                 completionGate.unlock();
             }
@@ -460,6 +506,7 @@ public final class TaskRpcWaitRegistry {
                     TaskRpcStageEvent.items(observation, "WAIT_CANCELLED", key.taskId, List.of(key.messageId), 0, false);
                 pending.clear();
                 registry.remove(this, remaining, true);
+                registry.recordWait("cancelled", System.nanoTime() - registeredAtNanos);
             } finally {
                 completionGate.unlock();
             }
