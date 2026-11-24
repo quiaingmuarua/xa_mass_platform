@@ -1,0 +1,18 @@
+name: Setup JVM and Gradle
+description: Configure Temurin Java 21 and optionally Gradle caching.
+
+inputs:
+  gradle:
+    description: Whether to run gradle/actions/setup-gradle
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@v5.7.0
+      with:
+        distribution: temurin
+        java-version: '21'
+    - if: inputs.gradle == 'true'
+      uses: gradle/actions/setup-gradle@v6.4.1

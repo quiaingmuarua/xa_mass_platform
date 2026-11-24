@@ -2,6 +2,34 @@
   "schemaVersion": 1,
   "cases": [
     {
+      "path": ".github/actions/setup-jvm/action.yml",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "worker_correctness",
+        "worker_dynamic_matching",
+        "worker_convergence_health",
+        "android_host",
+        "android_consumer",
+        "android_emulator",
+        "runtime_distribution",
+        "product_coexistence",
+        "sms_reception_preview"
+      ],
+      "reason": "The shared JVM and Gradle composite action powers every JVM, Android, distribution and scenario Proof lane."
+    },
+    {
+      "path": ".github/actions/setup-node-pnpm/action.yml",
+      "lanes": [
+        "frontend",
+        "android_consumer",
+        "android_emulator",
+        "runtime_distribution"
+      ],
+      "reason": "The shared Node and pnpm composite action powers Frontend, Candidate Distribution Archives and Docs Contract."
+    },
+    {
       "path": ".github/scripts/check_credentials.py",
       "lanes": ["jvm_contracts"],
       "reason": "The lightweight current-tree credential guard is tested before lane selection; its changes retain the existing JVM contract lane."

@@ -74,15 +74,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: pnpm/action-setup@v6.0.10
-        with:
-          version: 11.9.0
-          run_install: false
-      - uses: actions/setup-node@v7.0.0
-        with:
-          node-version: 22.19.0
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+      - uses: ./.github/actions/setup-node-pnpm
       - name: Verify current documentation contract
         run: |
           python3 .github/scripts/test_check_docs.py
@@ -104,11 +96,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-java@v5.7.0
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6.4.1
+      - uses: ./.github/actions/setup-jvm
       - name: Verify JVM contracts and owner boundaries
         run: >-
           ./gradlew --no-daemon --continue
@@ -190,11 +178,7 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-java@v5.7.0
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6.4.1
+      - uses: ./.github/actions/setup-jvm
       - name: Verify Redis owner contracts
         run: >-
           ./gradlew --no-daemon
@@ -238,11 +222,7 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-java@v5.7.0
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6.4.1
+      - uses: ./.github/actions/setup-jvm
       - name: Verify Java-owned Runtime boundary
         run: >-
           ./gradlew --no-daemon
@@ -286,11 +266,7 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-java@v5.7.0
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6.4.1
+      - uses: ./.github/actions/setup-jvm
       - name: Prove Worker correctness
         run: >-
           python3 integrations/worker-correctness/run_worker_correctness.py
@@ -341,11 +317,7 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-java@v5.7.0
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6.4.1
+      - uses: ./.github/actions/setup-jvm
       - name: Prove Worker dynamic matching
         run: >-
           python3 integrations/worker-dynamic-matching/run_worker_dynamic_matching.py
@@ -389,11 +361,7 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-java@v5.7.0
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6.4.1
+      - uses: ./.github/actions/setup-jvm
       - name: Prove Worker convergence health
         run: >-
           python3 integrations/worker-convergence-health/run_worker_convergence_health.py
@@ -430,11 +398,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-java@v5.7.0
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6.4.1
+      - uses: ./.github/actions/setup-jvm
       - name: Verify Android Worker and demo host
         run: >-
           ./gradlew --no-daemon --continue
@@ -487,20 +451,8 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-java@v5.7.0
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6.4.1
-      - uses: pnpm/action-setup@v6.0.10
-        with:
-          version: 11.9.0
-          run_install: false
-      - uses: actions/setup-node@v7.0.0
-        with:
-          node-version: 22.19.0
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+      - uses: ./.github/actions/setup-jvm
+      - uses: ./.github/actions/setup-node-pnpm
       - name: Build the single candidate ZIP set
         run: >-
           ./gradlew --no-daemon :distribution:server:distZip
@@ -557,11 +509,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-java@v5.7.0
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6.4.1
+      - uses: ./.github/actions/setup-jvm
       - name: Download candidate Runtime ZIP
         uses: actions/download-artifact@v8.0.0
         with:
@@ -631,11 +579,7 @@ jobs:
       XA_MASS_REDIS_SCOPE: test_android_emulator_${{ github.run_id }}_${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-java@v5.7.0
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6.4.1
+      - uses: ./.github/actions/setup-jvm
       - name: Download Android Worker Demo APK
         uses: actions/download-artifact@v8.0.0
         with:
@@ -721,15 +665,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: pnpm/action-setup@v6.0.10
-        with:
-          version: 11.9.0
-          run_install: false
-      - uses: actions/setup-node@v7.0.0
-        with:
-          node-version: 22.19.0
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+      - uses: ./.github/actions/setup-node-pnpm
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
       - name: Lint
@@ -766,10 +702,9 @@ jobs:
           --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-java@v5.7.0
+      - uses: ./.github/actions/setup-jvm
         with:
-          distribution: temurin
-          java-version: "21"
+          gradle: 'false'
       - name: Download candidate Runtime ZIP
         uses: actions/download-artifact@v8.0.0
         with:
