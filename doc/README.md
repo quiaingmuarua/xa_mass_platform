@@ -49,6 +49,18 @@ proof assertions into guides. API reference generation and runtime evidence keep
 their existing owners. Performance figures always identify their measured commit,
 environment, status, metric definition and immutable record.
 
+Keep the repository sufficient for an independent fresh session to locate current
+code, Owners and proof without earlier chats. Retain guidance for its non-obvious,
+project-specific value: design rationale, failure boundaries and evidence limits.
+Revisit affected instructions when their premises, tool capabilities or working
+practices change; correct or remove guidance whose purpose no longer holds.
+Before turning a single failure into a lasting rule, check its cause, scope and
+the project-specific value of the proposed instruction.
+
+A small, natural fresh-session task can check a concrete handoff gap in a changed
+reading route. Use that evidence to improve the affected entrypoint; validation
+does not require periodic whole-repository scans or a sub-agent for every edit.
+
 Current navigation and search exclude historical records. Necessary historical
 references use a full immutable Git commit or published evidence, labelled with
 their version and purpose; they are not current operating instructions. Raw proof

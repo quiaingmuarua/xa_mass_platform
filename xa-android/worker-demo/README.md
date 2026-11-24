@@ -44,7 +44,8 @@ any configured target; public acceptance is not an App/SDK PR completion gate.
 
 ## Runtime behavior
 
-With valid static connection inputs, the Application creates and starts
+With valid static connection inputs, the
+[Application](src/main/java/com/xa/mass/android/workerdemo/AndroidWorkerDemoApplication.java) creates and starts
 one `AndroidWorker` for `android-demo-workers`. Android Worker owns the long-lived `clientWorkerKey`
 and WorkerGroup coordinate and performs one Prepare per explicit start. Its
 [Android Client](../../transport/android-worker/README.md#platform-resources)

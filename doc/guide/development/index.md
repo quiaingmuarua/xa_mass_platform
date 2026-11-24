@@ -19,7 +19,7 @@ Server／Adapter、设备及测试网关或现有 CI fixture。GCP 地址、凭�
 | 第一次整体交接 | [仓库摘要](../../../README.md) → [完整行为主线](../../kernel/scheduling-overview.md) | 状态 Owner、主调用链、失败边界、代码与 proof 入口明确后停止扩展 |
 | GCP／Release Preview 维护 | [环境定位与交接](../operations/deploy.md#release-preview) → 只读核对环境记录 | 确认实际版本、配置坐标及已完成／待补验收；需要升级才读目标版本说明，需要修代码才进入对应 Owner |
 | 局部修复 | 对应 Owner 的受影响章节与修改点 | 直接调用者、消费者、最近的断言和相应验证 |
-| 新 Worker 能力 | [接入走读](walkthrough.md) → [Worker Core](../../../transport/worker-core/README.md#message-path) | Host 安装、Group 声明、场景适配及实际执行证明 |
+| 新 Worker 能力 | [接入走读](walkthrough.md) → [Worker Core](../../../transport/worker-core/README.md#message-path)；Android 从[能力集合](../../../xa-android/capabilities/README.md)与 [Host 装配](../../../xa-android/worker-demo/README.md#runtime-behavior)进入 | Host 安装、Group 声明、场景适配及实际执行证明 |
 | 新 Batch Checks 协议或配置 | [场景 Owner](../../../scenarios/app-checks-jvm/README.md#具名执行契约) | 纯契约、配置解析、Task 保存快照、Host 绑定和前端结果 |
 | 修改 Pool/query/Properties | [Matching Owner](../../../worker_matching_jvm/README.md) | qualification/refill、消费、失败规则及实际调用者 |
 | 修改调度、租约、重试或恢复 | [Kernel 索引](../../kernel/README.md)与 [Pacer](../../../kernel_pacer_jvm/README.md) | 受影响主线、机械 Owner、Policy、装配与 Redis proof |
@@ -39,6 +39,7 @@ GCP 环境维护使用上面的专项路线，不要求先通读完整调度主�
 
 下面是入口指针，不替代 Owner 或 [Proof Registry](../../testing/proof-registry.md)。
 按当前问题选一条；确认受影响的写入者、直接消费者和失败断言后即可停止扩展。
+调度问题另见[主线的代码与断言指针](../../kernel/scheduling-overview.md#production-and-proof-pointers)。
 链接到测试表示断言存在，不表示本次改动已执行或通过该测试。
 
 ### 认证与用户目录
@@ -101,34 +102,10 @@ GCP 环境维护使用上面的专项路线，不要求先通读完整调度主�
 [runtime_distribution](../../testing/proof-registry.md#runtime_distribution)和
 [product_coexistence](../../testing/proof-registry.md#product_coexistence)选现有 proof。
 
-## 对一次修改回答五个问题
+## 变更、验证与文档维护
 
-1. 输入来自哪里，由谁校验？
-2. 哪个 Owner 可以写入目标状态，真实源码入口是什么？
-3. 谁消费新状态，调用次序与失败窗口是什么？
-4. 需要同步修改哪些调用者、配置、用户说明和 Owner 章节？
-5. 哪个现有 proof 拥有变化的 claim，哪些结论仍需运行才能确认？
-
-使用 [主线的代码与断言指针](../../kernel/scheduling-overview.md#production-and-proof-pointers)
-定位后继续追真实 caller，不能把类名列表当作证明。
-不需要为每次修改创建新 roadmap、Owner registry 或额外接口层。
-
-## 验证与交付说明
-
-先做受影响 Owner 的 focused tests；Redis 原子性使用真实 Redis Owner lane，
-协议与进程边界使用对应 Boundary/Integration lane。
-通过[验证入口](../verification.md)和 [TESTING](../../../TESTING.md#selection-decision)选路。
-
-提交前检查 diff、受影响引用、文档链接，以及旧名称是否仍被当成现行入口。
-完成说明至少写清行为变化、实际运行的检查、未运行的必需证明及证据限制。
-源码阅读、测试存在、CI 被选中、某个 commit 的 CI 通过是不同事实。
-
-## 维护文档
-
-Human 指南解释任务步骤、概念和排障路径；Owner 维护精确字段、状态、存储和生命周期；
-Proof Registry 维护 claim/nonclaim；TESTING 维护命令与选路。
-文档站只是这些源文件的发布视图。
-
-行为变化在同一改动中更新 Owner；当用户步骤或入口改变时同步改指南。
-只改说明不应为了匹配 prose 改生产行为。历史记录保留固定版本身份，
-不能被当前导航、搜索或 Agent 当作现行约束。
+变更范围、Owner 与调用者闭合、交付时的证据说明遵循 [AGENTS](../../../AGENTS.md)。
+通过[验证入口](../verification.md)和 [TESTING 选路](../../../TESTING.md#selection-decision)
+选择本次变化所需的检查。
+文档角色、当前指导的更新与历史证据保留见[文档索引](../../README.md)及其
+[发布与维护规则](../../README.md#publishing-and-maintenance)。

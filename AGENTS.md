@@ -39,16 +39,20 @@ mechanism flow, storage shape, configuration and scenario limits stay in Owners.
 
 ## Trust Order
 
-1. Java production Owner and Pacer code.
-2. Focused JVM tests and verified Redis behavior.
-3. Current Owner documents.
-4. Runtime Boundary and end-to-end proofs.
-5. Relevant historical material, only as version-scoped evidence.
+Choose evidence by the question, affected Owner and claim, not by a fixed ranking
+of document types or test layers.
 
-Code and tests establish current behavior; the requested outcome and applicable
-contracts establish intended behavior. Correct documentation drift within scope;
-do not change production behavior merely to match prose. Report confirmed code
-defects with evidence and repair them only when the task covers that behavior.
+| Question | Evidence and limits |
+| --- | --- |
+| What is implemented now? | Current production code and its actual callers/assembly; test source shows intended assertions, not an executed result. |
+| What has been verified? | Executed proof for that claim, with its tested commit/worktree, configuration, environment and result. CI success covers only the selected assertions; a source link or site build is not runtime proof. |
+| What behavior is required? | The requested outcome and applicable Owner contracts, including an authorized migration. Current code or a passing test can still fail that requirement. |
+| What happened previously? | Immutable, version-scoped records. Their result does not automatically apply to changed code or conditions. |
+
+Current prose must agree with implementation and applicable proof evidence;
+it does not overrule a demonstrated result. Resolve disagreements within those
+scopes: correct stale documentation, report confirmed code defects, and repair
+behavior only when the task covers it. Do not change production merely to match prose.
 
 ## Authority And Change Rules
 
@@ -131,13 +135,10 @@ completion while a required external step remains pending.
 
 ## Documentation And Environment Boundaries
 
-Follow [publishing and maintenance](doc/README.md#publishing-and-maintenance): update
-affected guide steps and navigation with Owners, replace superseded prose and remove
-completed todos. Keep current Markdown in place; add no parallel overview, copied
-Owner tree or second contract registry. Distill reusable conclusions into existing
-Owners/guides; retain necessary dated evidence through fixed Git/Release references.
-Pruning prose must preserve raw proof records and the active release-tool contract.
-A site build is not runtime proof.
+Keep one current source for each contract and follow
+[publishing and maintenance](doc/README.md#publishing-and-maintenance) for guide,
+Owner and skill updates. Pruning must preserve raw proof records and the active
+release-tool contract.
 
 Ordinary development and review use repository evidence and selected local/CI
 checks. Access GCP, host records or credentials, deploy Releases or perform public
