@@ -396,6 +396,9 @@ jobs:
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      ROBOLECTRIC_DEPENDENCY_REPO_URL: https://maven-central.storage-download.googleapis.com/maven2/
+      ROBOLECTRIC_DEPENDENCY_REPO_ID: google-maven-central
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/setup-jvm
@@ -403,9 +406,9 @@ jobs:
         uses: actions/cache@v6.1.0
         with:
           path: ~/.m2/repository/org/robolectric
-          key: robolectric-m2-${{ runner.os }}-${{ hashFiles('transport/android-worker/build.gradle', 'xa-android/**/build.gradle') }}
+          key: robolectric-m2-host-${{ runner.os }}-${{ hashFiles('transport/android-worker/build.gradle', 'xa-android/capability-http/build.gradle') }}
           restore-keys: |
-            robolectric-m2-${{ runner.os }}-
+            robolectric-m2-host-${{ runner.os }}-
       - name: Verify Android Worker and demo host
         run: >-
           ./gradlew --no-daemon --continue
@@ -515,6 +518,9 @@ jobs:
       github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      ROBOLECTRIC_DEPENDENCY_REPO_URL: https://maven-central.storage-download.googleapis.com/maven2/
+      ROBOLECTRIC_DEPENDENCY_REPO_ID: google-maven-central
     outputs:
       artifact_attempt: ${{ github.run_attempt }}
     steps:
@@ -524,9 +530,9 @@ jobs:
         uses: actions/cache@v6.1.0
         with:
           path: ~/.m2/repository/org/robolectric
-          key: robolectric-m2-${{ runner.os }}-${{ hashFiles('transport/android-worker/build.gradle', 'xa-android/**/build.gradle') }}
+          key: robolectric-m2-consumer-${{ runner.os }}-${{ hashFiles('xa-android/**/build.gradle') }}
           restore-keys: |
-            robolectric-m2-${{ runner.os }}-
+            robolectric-m2-consumer-${{ runner.os }}-
       - name: Download candidate Runtime ZIP
         uses: actions/download-artifact@v8.0.0
         with:
