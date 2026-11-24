@@ -189,6 +189,55 @@ class CreditAccountRedisIntegrationTest {
         assertCode(() -> adjust(1), ServerErrorCode.CREDIT_UNAVAILABLE);
         assertThat(commands.hgetall(key)).isEqualTo(before);
     }
+
+    @Test void readOperationsUseZeroLuaAndRejectCorruptEmptyMetaAndBrokenChains() {
+        var calls = new CopyOnWriteArrayList<String>();
+        var listener = new io.lettuce.core.event.command.CommandListener() {
+            @Override public void commandStarted(io.lettuce.core.event.command.CommandStartedEvent event) {
+                calls.add(event.getCommand().getType().toString());
+            }
+        };
+        redis.addListener(listener);
+        try {
+            var first = input(10);
+            store.adjust("1001", "1000", first);
+            adjust(20);
+            store.debit("1001", "1000", new Debit(UUID.randomUUID().toString(),
+                    new BusinessCharge("app-checks", "task-read", "check", 5, 2)));
+
+            calls.clear();
+            assertThat(store.account("1001").balance()).isEqualTo(20);
+            assertThat(store.transactions("1001", null, 50).response().entries()).hasSize(3);
+            assertThat(store.adjustment("1001", first.requestId()).response().status()).isEqualTo("applied");
+            assertThat(store.account("1009").exists()).isFalse();
+            assertThat(calls).noneMatch(cmd -> cmd.startsWith("EVAL"));
+        } finally {
+            redis.removeListener(listener);
+        }
+
+        // Corrupt HASH missing metadata fields is rejected as corrupt, not treated as absent.
+        String orphanKey = store.key("1008");
+        connection.sync().hset(orphanKey, "unexpected", "1");
+        assertCode(() -> store.account("1008"), ServerErrorCode.CREDIT_UNAVAILABLE);
+        assertCode(() -> store.transactions("1008", null, 10), ServerErrorCode.CREDIT_UNAVAILABLE);
+        assertCode(() -> store.adjustment("1008", UUID.randomUUID().toString()), ServerErrorCode.CREDIT_UNAVAILABLE);
+
+        // Corrupt balance chain on historical page fails closed on Java read.
+        String key = store.key("1001");
+        String tx2 = connection.sync().hget(key, "transaction:2");
+        connection.sync().hset(key, "transaction:2", tx2.replace("\"balanceBefore\":10", "\"balanceBefore\":9").replace("\"delta\":20", "\"delta\":21"));
+        assertCode(() -> store.transactions("1001", null, 50), ServerErrorCode.CREDIT_UNAVAILABLE);
+        connection.sync().hset(key, "transaction:2", tx2);
+
+        // Corrupt business back-pointer fails closed both on page read and on competing business debit.
+        String bizField = "business:app-checks:task-read";
+        String originalLink = connection.sync().hget(key, bizField);
+        connection.sync().hset(key, bizField, "not-a-uuid");
+        assertCode(() -> store.transactions("1001", null, 50), ServerErrorCode.CREDIT_UNAVAILABLE);
+        assertCode(() -> store.debit("1001", "1000", new Debit(UUID.randomUUID().toString(),
+                new BusinessCharge("app-checks", "task-read", "check", 5, 2))), ServerErrorCode.CREDIT_UNAVAILABLE);
+        connection.sync().hset(key, bizField, originalLink);
+    }
     static void assertCode(org.assertj.core.api.ThrowableAssert.ThrowingCallable call, ServerErrorCode code) {
         assertThatThrownBy(call).isInstanceOfSatisfying(ServerException.class, error -> assertThat(error.errorCode()).isEqualTo(code));
     }
