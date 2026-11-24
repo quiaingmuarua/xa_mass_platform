@@ -72,6 +72,17 @@ class ReleasePromotionTest(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 release.validate_artifacts(invalid, attempt)
 
+    def test_candidate_attempt_supports_failed_job_rerun(self):
+        jobs = copy.deepcopy(self.jobs)
+        next(job for job in jobs if job["name"] == "Candidate Distribution Archives")["run_attempt"] = 1
+        self.assertEqual(1, release.candidate_artifact_attempt(jobs, 2))
+        self.assertEqual(2, release.candidate_artifact_attempt(self.jobs, 2))
+        for bad_attempt in (0, 3, True, "1"):
+            bad_jobs = copy.deepcopy(self.jobs)
+            next(job for job in bad_jobs if job["name"] == "Candidate Distribution Archives")["run_attempt"] = bad_attempt
+            with self.subTest(bad_attempt=bad_attempt), self.assertRaises(ValueError):
+                release.candidate_artifact_attempt(bad_jobs, 2)
+
     def test_archive_version_sha_and_schema_are_verified(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "runtime.zip"

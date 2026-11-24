@@ -9,4 +9,12 @@ allprojects {
     version = providers.gradleProperty('xaMassVersion')
             .orElse('4.3.2-SNAPSHOT')
             .get()
+    tasks.withType(Test).configureEach {
+        def robolectricRepoUrl = System.getenv('ROBOLECTRIC_DEPENDENCY_REPO_URL')
+        if (robolectricRepoUrl) {
+            systemProperty 'robolectric.dependency.repo.url', robolectricRepoUrl
+            systemProperty 'robolectric.dependency.repo.id',
+                    System.getenv('ROBOLECTRIC_DEPENDENCY_REPO_ID') ?: 'custom-mirror'
+        }
+    }
 }

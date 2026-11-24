@@ -13,7 +13,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import jdk.jfr.Recording;
+import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingFile;
+import java.util.Comparator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -44,8 +46,11 @@ class WorkerObservationDispatchTest {
             finally { consumer.stop(); }
             recording.stop(); var path = temporary.resolve("fanout.jfr"); recording.dump(path);
             var events = RecordingFile.readAllEvents(path).stream()
-                    .filter(event -> event.getEventType().getName().equals("xa.mass.WorkerObservation")).toList();
+                    .filter(event -> event.getEventType().getName().equals("xa.mass.WorkerObservation"))
+                    .sorted(Comparator.comparing(RecordedEvent::getStartTime))
+                    .toList();
             assertThat(events).isNotEmpty();
+            assertThat(events).allSatisfy(event -> assertThat(event.getLong("enqueuedBatches")).isEqualTo(1));
             var summary = events.getLast();
             assertThat(summary.getLong("enqueuedBatches")).isEqualTo(1);
             assertThat(summary.getLong("droppedBatches")).isZero();

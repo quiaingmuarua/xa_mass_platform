@@ -65,6 +65,8 @@ jobs:
     if: (github.event_name == 'schedule' || inputs.execution_target != 'external') && (github.event_name == 'schedule' || inputs.baseline_ref == '')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      artifact_attempt: ${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/setup-jvm
@@ -124,7 +126,7 @@ jobs:
         run: python -m pip install -r .github/scripts/requirements.txt
       - uses: actions/download-artifact@v8.0.0
         with:
-          name: performance-lane-build-${{ github.run_attempt }}
+          name: performance-lane-build-${{ needs.lane-build.outputs.artifact_attempt }}
       - name: Run lane cases
         env:
           REPETITIONS: ${{ inputs.repetitions || '3' }}
