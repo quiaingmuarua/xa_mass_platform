@@ -56,6 +56,16 @@ def validate_run(run: dict, jobs: list[dict], commit: str, repository: str) -> N
             "Proof contains failed, incomplete or skipped jobs")
 
 
+def candidate_artifact_attempt(jobs: list[dict], run_attempt: int) -> int:
+    job = next((item for item in jobs if item.get("name") == "Candidate Distribution Archives"), None)
+    attempt = run_attempt if job is None or job.get("run_attempt") is None else job["run_attempt"]
+    require(
+        isinstance(attempt, int) and not isinstance(attempt, bool) and 1 <= attempt <= run_attempt,
+        "Candidate Distribution Archives attempt is out of range",
+    )
+    return attempt
+
+
 def validate_artifacts(artifacts: list[dict], attempt: int) -> list[str]:
     expected = [f"xa-mass-{component}-{attempt}" for component in COMPONENTS]
     for name in expected:
@@ -132,7 +142,8 @@ def find_run(repository: str, commit: str) -> tuple[dict, list[str]]:
     jobs = paged(f"repos/{repository}/actions/runs/{run['id']}/jobs?filter=latest", "jobs")
     validate_run(run, jobs, commit, repository)
     artifacts = paged(f"repos/{repository}/actions/runs/{run['id']}/artifacts", "artifacts")
-    return run, validate_artifacts(artifacts, run["run_attempt"])
+    attempt = candidate_artifact_attempt(jobs, run["run_attempt"])
+    return run, validate_artifacts(artifacts, attempt)
 
 
 def verify_tag(repository: str, tag: str, commit: str) -> None:

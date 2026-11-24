@@ -70,8 +70,12 @@ final class WorkerObservationConsumer implements WorkerObservationMetrics, Smart
     // No I/O or user callback under this short lifecycle/admission gate.
     synchronized void accept(WorkerObservation observation) {
         if (handlersFor(observation).isEmpty()) return;
-        if (!running.get() || !queue.offer(observation)) dropped.incrementAndGet();
-        else enqueued.incrementAndGet();
+        if (!running.get() || queue.remainingCapacity() == 0) {
+            dropped.incrementAndGet();
+            return;
+        }
+        enqueued.incrementAndGet();
+        queue.offer(observation);
     }
 
     @Override public synchronized void start() {
