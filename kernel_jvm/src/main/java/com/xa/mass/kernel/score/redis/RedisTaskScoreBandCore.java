@@ -19,202 +19,68 @@ import java.util.function.LongSupplier;
 public final class RedisTaskScoreBandCore
         implements TaskScoreBandCore, AutoCloseable {
 
-    // Binary-search the (score, member) insertion position. Unlike rank/offset
-    // cursors this still progresses after the preceding page is purged.
-    private static final String TERMINAL_PAGE_SCRIPT = """
-            local lo, hi = 0, redis.call('ZCARD', KEYS[1])
-            local score, member = tonumber(ARGV[1]), ARGV[2]
-            while lo < hi do
-              local mid = math.floor((lo + hi) / 2)
-              local row = redis.call('ZRANGE', KEYS[1], mid, mid, 'WITHSCORES')
-              local s = tonumber(row[2])
-              if s < score or (s == score and row[1] <= member) then lo = mid + 1 else hi = mid end
-            end
-            local rows = redis.call('ZRANGE', KEYS[1], lo, lo + tonumber(ARGV[3]) - 1, 'WITHSCORES')
-            local result = {}
-            for i = 1, #rows, 2 do
-              if tonumber(rows[i + 1]) >= 0 then break end
-              result[#result + 1] = rows[i]
-              result[#result + 1] = rows[i + 1]
-            end
-            return result
-            """;
-    private static final String PARKED_PAGE_SCRIPT = """
-            local lo, hi = 0, redis.call('ZCARD', KEYS[1])
-            local score, member = tonumber(ARGV[1]), ARGV[2]
-            local exclusive = ARGV[5] == '1'
-            while lo < hi do
-              local mid = math.floor((lo + hi) / 2)
-              local row = redis.call('ZRANGE', KEYS[1], mid, mid, 'WITHSCORES')
-              local s = tonumber(row[2])
-              if s < score or (exclusive and s == score and row[1] <= member) then lo = mid + 1 else hi = mid end
-            end
-            local rows = redis.call('ZRANGE', KEYS[1], lo, lo + tonumber(ARGV[4]) - 1, 'WITHSCORES')
-            local result = {}
-            for i = 1, #rows, 2 do
-              if tonumber(rows[i + 1]) > tonumber(ARGV[3]) then break end
-              result[#result + 1] = rows[i]
-              result[#result + 1] = rows[i + 1]
-            end
-            return result
-            """;
-
-    private static final String CAS_UPDATE_SCRIPT = """
-            local key = KEYS[1]
-            local task_id = ARGV[1]
-            local observed_score = tonumber(ARGV[2])
-            local next_score = tonumber(ARGV[3])
-
-            local stored = redis.call("ZSCORE", key, task_id)
-            if not stored then
-              return {"stale"}
-            end
-
-            local stored_score = tonumber(stored)
-            if stored_score ~= observed_score then
-              return {"stale", stored_score}
-            end
-
-            redis.call("ZADD", key, next_score, task_id)
-            return {"transitioned", next_score}
-            """;
-
-    private static final String CLOSE_POSITIVE_SCRIPT = """
-            local key = KEYS[1]
-            local task_id = ARGV[1]
-            local terminal_score = tonumber(ARGV[2])
-
-            local stored = redis.call("ZSCORE", key, task_id)
-            if not stored then
-              return {"stale"}
-            end
-
-            local stored_score = tonumber(stored)
-            if stored_score < 0 then
-              return {"noop", stored_score}
-            end
-
-            redis.call("ZADD", key, terminal_score, task_id)
-            return {"transitioned", terminal_score}
-            """;
-
-    private static final String MINT_FROM_RANGE_SCRIPT = """
-            local key = KEYS[1]
-            local task_id = ARGV[1]
-            local min_expected_score = tonumber(ARGV[2])
-            local max_expected_score = tonumber(ARGV[3])
-            local target_score_base = tonumber(ARGV[4])
-            local target_suffix = tonumber(ARGV[5])
-            local suffix_factor = tonumber(ARGV[6])
-
-            local stored = redis.call("ZSCORE", key, task_id)
-            if not stored then
-              return {"stale"}
-            end
-
-            local stored_score = tonumber(stored)
-            if stored_score < min_expected_score
-                or stored_score > max_expected_score then
-              return {"stale", stored_score}
-            end
-
-            local stored_suffix = stored_score % suffix_factor
-            if target_suffix < 0 then
-              target_suffix = stored_suffix
-            end
-
-            local next_score = target_score_base + target_suffix
-            redis.call("ZADD", key, next_score, task_id)
-            return {"transitioned", next_score}
-            """;
-
-    private static final String START_PRE_REVIEW_SCRIPT = """
-            local key = KEYS[1]
-            local task_id = ARGV[1]
-            local observed_score = tonumber(ARGV[2])
-            local pre_review_min = tonumber(ARGV[3])
-            local pre_review_max = tonumber(ARGV[4])
-            local initial_score = tonumber(ARGV[5])
-
-            local stored = redis.call("ZSCORE", key, task_id)
-            if not stored then
-              return {"stale"}
-            end
-
-            local stored_score = tonumber(stored)
-            if stored_score ~= observed_score then
-              return {"stale", stored_score}
-            end
-            if stored_score < pre_review_min
-                or stored_score > pre_review_max then
-              return {"invalid", stored_score}
-            end
-
-            redis.call("ZADD", key, initial_score, task_id)
-            return {"transitioned", initial_score}
-            """;
-
-    private static final String PROMOTE_INITIAL_TASKS_SCRIPT = """
-            local key = KEYS[1]
-            local next_score = tonumber(ARGV[1])
-            local initial_min_score = tonumber(ARGV[2])
-            local initial_max_score = tonumber(ARGV[3])
-            local result = {}
-            for index = 4, #ARGV, 2 do
-              local task_id = ARGV[index]
-              local observed_score = tonumber(ARGV[index + 1])
-              local status = "stale"
-              local result_score = ""
-              local stored = redis.call("ZSCORE", key, task_id)
+    /** Tuples (id, expected, target): exact match writes the Java target. */
+    private static final String EXACT_CAS_BATCH_SCRIPT = """
+            local results = {}
+            for i = 1, #ARGV, 3 do
+              local id, status, echo = ARGV[i], 'stale', ''
+              local stored = redis.call('ZSCORE', KEYS[1], id)
               if stored then
-                local stored_score = tonumber(stored)
-                result_score = stored
-                if stored_score == observed_score then
-                  if observed_score < initial_min_score
-                      or observed_score > initial_max_score then
-                    status = "invalid"
-                  else
-                    redis.call("ZADD", key, next_score, task_id)
-                    status = "transitioned"
-                    result_score = next_score
-                  end
+                local current = tonumber(stored)
+                echo = stored
+                if current == tonumber(ARGV[i + 1]) then
+                  redis.call('ZADD', KEYS[1], ARGV[i + 2], id)
+                  status, echo = 'transitioned', ARGV[i + 2]
                 end
               end
-              result[#result + 1] = task_id
-              result[#result + 1] = status
-              result[#result + 1] = result_score
+              results[#results + 1] = id
+              results[#results + 1] = status
+              results[#results + 1] = echo
             end
-            return result
+            return results
             """;
 
-    private static final String TRY_RELEASE_IDLE_PARK_SCRIPT = """
-            local key = KEYS[1]
-            local task_id = ARGV[1]
-            local idle_park_score = tonumber(ARGV[2])
-            local running_pause_max_score = tonumber(ARGV[3])
-            local next_score = tonumber(ARGV[4])
-
-            local stored = redis.call("ZSCORE", key, task_id)
+    /**
+     * ARGV: id, defaultStatus, then 5-tuples (min|'', max|'', action, value, mod).
+     * First inclusive integer interval containing the stored score decides:
+     * w writes value, m writes value + (current % mod), n is noop, t is stale, i is invalid.
+     */
+    private static final String INTERVAL_REWRITE_SCRIPT = """
+            local stored = redis.call('ZSCORE', KEYS[1], ARGV[1])
             if not stored then
-              return {"stale"}
+              return {'stale'}
             end
-
-            local stored_score = tonumber(stored)
-            if stored_score == idle_park_score then
-              if not next_score then
-                return {"invalid", stored_score}
+            local current = tonumber(stored)
+            if not current or current ~= math.floor(current) then
+              return {'invalid'}
+            end
+            for i = 3, #ARGV, 5 do
+              local lo, hi = ARGV[i], ARGV[i + 1]
+              if (lo == '' or current >= tonumber(lo)) and (hi == '' or current <= tonumber(hi)) then
+                local action = ARGV[i + 2]
+                if action == 'w' then
+                  redis.call('ZADD', KEYS[1], ARGV[i + 3], ARGV[1])
+                  return {'transitioned', ARGV[i + 3]}
+                elseif action == 'm' then
+                  local next_score = tonumber(ARGV[i + 3]) + (current % tonumber(ARGV[i + 4]))
+                  redis.call('ZADD', KEYS[1], next_score, ARGV[1])
+                  return {'transitioned', string.format('%.0f', next_score)}
+                elseif action == 'n' then
+                  return {'noop', stored}
+                elseif action == 't' then
+                  return {'stale', stored}
+                else
+                  return {'invalid', stored}
+                end
               end
-
-              redis.call("ZADD", key, next_score, task_id)
-              return {"transitioned", next_score}
             end
-
-            if (stored_score > 0 and stored_score < idle_park_score)
-                or stored_score > running_pause_max_score then
-              return {"noop", stored_score}
-            end
-            return {"invalid", stored_score}
+            return {ARGV[2], stored}
             """;
+
+    private static final String WRITE = "w";
+    private static final String WRITE_MOD = "m";
+    private static final String NOOP = "n";
+    private static final String INVALID = "i";
 
     private static final long IDLE_PARK_TIME_SLOT = MAX_TIME_SLOT - 1;
 
@@ -434,97 +300,43 @@ public final class RedisTaskScoreBandCore
     }
 
     @Override
-    public Map<String, TaskScoreTransitionResult>
-            promoteObservedInitialTasks(
-                    Map<String, Long> observedInitialScores
-            ) {
+    public Map<String, TaskScoreTransitionResult> promoteObservedInitialTasks(
+            Map<String, Long> observedInitialScores
+    ) {
         if (observedInitialScores == null) {
-            throw new IllegalArgumentException(
-                    "observedInitialScores must be present"
-            );
+            throw new IllegalArgumentException("observedInitialScores must be present");
         }
         if (observedInitialScores.isEmpty()) {
             return Map.of();
         }
         if (observedInitialScores.size() > MAX_TASK_SCHEDULING_BATCH_SIZE) {
             throw new IllegalArgumentException(
-                    "observedInitialScores must contain at most "
-                            + MAX_TASK_SCHEDULING_BATCH_SIZE + " tasks"
-            );
+                    "observedInitialScores must contain at most " + MAX_TASK_SCHEDULING_BATCH_SIZE + " tasks");
         }
-        long nextTimeSlot = Math.max(
-                currentTimeMillis.getAsLong() / SLOT_MILLIS,
-                NORMAL_TIME_SLOT_MIN
-        );
-        long nextScore = score(
-                RUNNING_VISIBLE_TAG,
-                nextTimeSlot,
-                MIN_SUFFIX
-        );
+        long nextTimeSlot = Math.max(currentTimeMillis.getAsLong() / SLOT_MILLIS, NORMAL_TIME_SLOT_MIN);
+        long nextScore = score(RUNNING_VISIBLE_TAG, nextTimeSlot, MIN_SUFFIX);
         if (nextScore >= idleParkScore()) {
-            return uniformResults(
-                    observedInitialScores.keySet(),
-                    TaskScoreTransitionStatus.INVALID
-            );
+            return uniformResults(observedInitialScores.keySet(), TaskScoreTransitionStatus.INVALID);
         }
-        List<String> arguments = new ArrayList<>();
-        arguments.add(Long.toString(nextScore));
-        arguments.add(Long.toString(score(
-                RUNNING_VISIBLE_TAG,
-                INITIAL_TIME_SLOT,
-                MIN_SUFFIX
-        )));
-        arguments.add(Long.toString(score(
-                RUNNING_VISIBLE_TAG,
-                INITIAL_TIME_SLOT,
-                MAX_SUFFIX
-        )));
+        long initialMin = score(RUNNING_VISIBLE_TAG, INITIAL_TIME_SLOT, MIN_SUFFIX);
+        long initialMax = score(RUNNING_VISIBLE_TAG, INITIAL_TIME_SLOT, MAX_SUFFIX);
+        LinkedHashMap<String, TaskScoreTransitionResult> immediate = new LinkedHashMap<>();
+        LinkedHashMap<String, long[]> pending = new LinkedHashMap<>();
         observedInitialScores.forEach((taskId, observedScore) -> {
             requireNonBlank(taskId, "taskId");
             if (observedScore == null) {
-                throw new IllegalArgumentException(
-                        "observedInitialScores must not contain null scores"
-                );
+                throw new IllegalArgumentException("observedInitialScores must not contain null scores");
             }
-            arguments.add(taskId);
-            arguments.add(Long.toString(observedScore));
+            if (observedScore < initialMin || observedScore > initialMax) {
+                immediate.put(taskId, transition(TaskScoreTransitionStatus.INVALID));
+            } else {
+                pending.put(taskId, new long[]{observedScore, nextScore});
+            }
         });
-        Object raw = commands().eval(
-                PROMOTE_INITIAL_TASKS_SCRIPT,
-                ScriptOutputType.MULTI,
-                new String[]{scoreKey()},
-                arguments.toArray(String[]::new)
-        );
-        if (!(raw instanceof List<?> values)
-                || values.size() != observedInitialScores.size() * 3) {
-            throw new IllegalStateException(
-                    "Task initialization batch result is invalid"
-            );
-        }
-        LinkedHashMap<String, TaskScoreTransitionResult> results =
-                new LinkedHashMap<>();
-        for (int index = 0; index < values.size(); index += 3) {
-            String taskId = String.valueOf(values.get(index));
-            TaskScoreTransitionStatus status = transitionStatus(
-                    values.get(index + 1)
-            );
-            Object rawScore = values.get(index + 2);
-            Long score = rawScore == null || String.valueOf(rawScore).isEmpty()
-                    ? null
-                    : scoreToLong(rawScore);
-            if (results.put(taskId, transition(status, score)) != null) {
-                throw new IllegalStateException(
-                        "Task initialization batch contains duplicate ids"
-                );
-            }
-        }
-        if (!List.copyOf(results.keySet()).equals(
-                List.copyOf(observedInitialScores.keySet())
-        )) {
-            throw new IllegalStateException(
-                    "Task initialization batch identities are invalid"
-            );
-        }
+        Map<String, TaskScoreTransitionResult> persisted = pending.isEmpty() ? Map.of() : exactCasBatch(pending);
+        LinkedHashMap<String, TaskScoreTransitionResult> results = new LinkedHashMap<>();
+        observedInitialScores.keySet().forEach(taskId ->
+                results.put(taskId, immediate.containsKey(taskId) ? immediate.get(taskId) : persisted.get(taskId)));
         return Collections.unmodifiableMap(results);
     }
 
@@ -593,34 +405,11 @@ public final class RedisTaskScoreBandCore
     ) {
         requireNonBlank(taskId, "taskId");
         DecodedPositive observed = decodePositive(observedPreReviewScore);
-        if (observed == null
-                || observed.tag() != PRE_REVIEW_TAG
-                || !validSuffix(priority)) {
+        if (observed == null || observed.tag() != PRE_REVIEW_TAG || !validSuffix(priority)) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
-        int initialSuffix = MAX_SUFFIX - priority;
-        return scriptResult(commands().eval(
-                START_PRE_REVIEW_SCRIPT,
-                ScriptOutputType.MULTI,
-                new String[]{scoreKey()},
-                taskId,
-                Long.toString(observedPreReviewScore),
-                Long.toString(score(
-                        PRE_REVIEW_TAG,
-                        MIN_TIME_SLOT,
-                        MIN_SUFFIX
-                )),
-                Long.toString(score(
-                        PRE_REVIEW_TAG,
-                        MAX_TIME_SLOT,
-                        MAX_SUFFIX
-                )),
-                Long.toString(score(
-                        RUNNING_VISIBLE_TAG,
-                        INITIAL_TIME_SLOT,
-                        initialSuffix
-                ))
-        ));
+        long initialScore = score(RUNNING_VISIBLE_TAG, INITIAL_TIME_SLOT, MAX_SUFFIX - priority);
+        return exactCasSingle(taskId, observedPreReviewScore, initialScore);
     }
 
     @Override
@@ -639,84 +428,49 @@ public final class RedisTaskScoreBandCore
         if (targetTimeSlot <= MIN_TIME_SLOT) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
-        long minimumExpectedTimeSlot = expectedBand
-                == TaskScoreBand.RUNNING_VISIBLE
+        long minimumExpectedTimeSlot = expectedBand == TaskScoreBand.RUNNING_VISIBLE
                 ? NORMAL_TIME_MIN_MILLIS / SLOT_MILLIS
                 : MIN_TIME_SLOT;
         if (targetTimeSlot < minimumExpectedTimeSlot) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
         int expectedTag = tag(expectedBand);
-        return scriptResult(commands().eval(
-                MINT_FROM_RANGE_SCRIPT,
-                ScriptOutputType.MULTI,
-                new String[]{scoreKey()},
-                taskId,
-                Long.toString(score(
-                        expectedTag,
-                        minimumExpectedTimeSlot,
-                        MIN_SUFFIX
-                )),
-                Long.toString(score(
-                        expectedTag,
-                        targetTimeSlot - 1,
-                        MAX_SUFFIX
-                )),
-                Long.toString(score(
-                        expectedTag,
-                        targetTimeSlot,
-                        MIN_SUFFIX
-                )),
-                "-1",
-                Long.toString(SUFFIX_FACTOR)
-        ));
+        return rewriteInterval(taskId, "stale", new IntervalRules().add(
+                Long.toString(score(expectedTag, minimumExpectedTimeSlot, MIN_SUFFIX)),
+                Long.toString(score(expectedTag, targetTimeSlot - 1, MAX_SUFFIX)),
+                WRITE_MOD,
+                Long.toString(score(expectedTag, targetTimeSlot, MIN_SUFFIX)),
+                Long.toString(SUFFIX_FACTOR)));
     }
 
     @Override
-    public TaskScoreTransitionResult parkObservedIdleTask(
-            String taskId,
-            long observedScore
-    ) {
+    public TaskScoreTransitionResult parkObservedIdleTask(String taskId, long observedScore) {
         requireNonBlank(taskId, "taskId");
         DecodedPositive observed = decodePositive(observedScore);
         if (observed == null
                 || observed.tag() != RUNNING_VISIBLE_TAG
                 || observed.suffix() != MIN_SUFFIX
-                || observed.timeSlot()
-                < NORMAL_TIME_MIN_MILLIS / SLOT_MILLIS
+                || observed.timeSlot() < NORMAL_TIME_MIN_MILLIS / SLOT_MILLIS
                 || observed.timeSlot() >= IDLE_PARK_TIME_SLOT) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
-        return scriptResult(commands().eval(
-                CAS_UPDATE_SCRIPT,
-                ScriptOutputType.MULTI,
-                new String[]{scoreKey()},
-                taskId,
-                Long.toString(observedScore),
-                Long.toString(idleParkScore())
-        ));
+        return exactCasSingle(taskId, observedScore, idleParkScore());
     }
 
     @Override
     public TaskScoreTransitionResult tryReleaseIdlePark(String taskId) {
         requireNonBlank(taskId, "taskId");
         long runningMin = score(RUNNING_VISIBLE_TAG, MIN_TIME_SLOT, MIN_SUFFIX);
-        long nextScore = runningMin
-                + currentTimeMillis.getAsLong() / SLOT_MILLIS * SUFFIX_FACTOR;
-        boolean validNext = nextScore > runningMin && nextScore < idleParkScore();
-        return scriptResult(commands().eval(
-                TRY_RELEASE_IDLE_PARK_SCRIPT,
-                ScriptOutputType.MULTI,
-                new String[]{scoreKey()},
-                taskId,
-                Long.toString(idleParkScore()),
-                Long.toString(score(
-                        RUNNING_VISIBLE_TAG,
-                        PAUSE_TIME_SLOT,
-                        MAX_SUFFIX
-                )),
-                validNext ? Long.toString(nextScore) : ""
-        ));
+        long nextScore = runningMin + currentTimeMillis.getAsLong() / SLOT_MILLIS * SUFFIX_FACTOR;
+        long park = idleParkScore();
+        boolean validNext = nextScore > runningMin && nextScore < park;
+        long pauseMax = score(RUNNING_VISIBLE_TAG, PAUSE_TIME_SLOT, MAX_SUFFIX);
+        var rules = new IntervalRules()
+                .add(Long.toString(park), Long.toString(park),
+                        validNext ? WRITE : INVALID, validNext ? Long.toString(nextScore) : "", "")
+                .add("1", Long.toString(park - 1), NOOP, "", "")
+                .add(Long.toString(pauseMax + 1), "", NOOP, "", "");
+        return rewriteInterval(taskId, "invalid", rules);
     }
 
     @Override
@@ -726,43 +480,24 @@ public final class RedisTaskScoreBandCore
         if (endedAt <= 1 || endedAt > MAX_TIME_MILLIS) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
-        long terminalScore = -endedAt;
-        return scriptResult(commands().eval(
-                CLOSE_POSITIVE_SCRIPT,
-                ScriptOutputType.MULTI,
-                new String[]{scoreKey()},
-                taskId,
-                Long.toString(terminalScore)
-        ));
+        var rules = new IntervalRules()
+                .add("", "-1", NOOP, "", "")
+                .add("0", "", WRITE, Long.toString(-endedAt), "");
+        return rewriteInterval(taskId, "invalid", rules);
     }
 
     @Override
-    public TaskScoreTransitionResult closeObservedScore(
-            String taskId,
-            long observedScore
-    ) {
+    public TaskScoreTransitionResult closeObservedScore(String taskId, long observedScore) {
         requireNonBlank(taskId, "taskId");
         long endedAt = currentTimeMillis.getAsLong();
-        if (endedAt <= 1 || endedAt > MAX_TIME_MILLIS
-                || decodePositive(observedScore) == null) {
+        if (endedAt <= 1 || endedAt > MAX_TIME_MILLIS || decodePositive(observedScore) == null) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
-        long terminalScore = -endedAt;
-        return scriptResult(commands().eval(
-                CAS_UPDATE_SCRIPT,
-                ScriptOutputType.MULTI,
-                new String[]{scoreKey()},
-                taskId,
-                Long.toString(observedScore),
-                Long.toString(terminalScore)
-        ));
+        return exactCasSingle(taskId, observedScore, -endedAt);
     }
 
     @Override
-    public TaskScoreTransitionResult releaseObservedScoreHold(
-            String taskId,
-            long observedHoldScore
-    ) {
+    public TaskScoreTransitionResult releaseObservedScoreHold(String taskId, long observedHoldScore) {
         requireNonBlank(taskId, "taskId");
         if (observedHoldScore == idleParkScore()) {
             return transition(TaskScoreTransitionStatus.INVALID);
@@ -771,24 +506,12 @@ public final class RedisTaskScoreBandCore
         if (observed == null) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
-
         long releaseTimeSlot = currentTimeMillis.getAsLong() / SLOT_MILLIS;
         if (releaseTimeSlot > observed.timeSlot()) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
-        long releaseScore = score(
-                observed.tag(),
-                releaseTimeSlot,
-                observed.suffix()
-        );
-        return scriptResult(commands().eval(
-                CAS_UPDATE_SCRIPT,
-                ScriptOutputType.MULTI,
-                new String[]{scoreKey()},
-                taskId,
-                Long.toString(observedHoldScore),
-                Long.toString(releaseScore)
-        ));
+        long releaseScore = score(observed.tag(), releaseTimeSlot, observed.suffix());
+        return exactCasSingle(taskId, observedHoldScore, releaseScore);
     }
 
     private TaskScoreState decodeState(String taskId, double rawScore) {
@@ -838,8 +561,9 @@ public final class RedisTaskScoreBandCore
                     throw new IllegalArgumentException("Cursor outside terminal window");
             } catch (RuntimeException invalid) { throw new IllegalArgumentException("Invalid terminal cursor", invalid); }
         }
-        List<?> rows = commands().eval(TERMINAL_PAGE_SCRIPT, ScriptOutputType.MULTI,
-                new String[]{scoreKey()}, Double.toString(afterScore), afterMember, Integer.toString(limit));
+        List<?> rows = commands().eval(ScoreRedisScripts.KEYSET_PAGE_SCRIPT, ScriptOutputType.MULTI,
+                new String[]{scoreKey()}, Double.toString(afterScore), afterMember, "0",
+                Integer.toString(limit), "1", "1");
         var tasks = new ArrayList<TaskScoreState>();
         for (int i = 0; i < rows.size(); i += 2) {
             try { tasks.add(decodeState(String.valueOf(rows.get(i)), scoreToLong(rows.get(i + 1)))); }
@@ -867,9 +591,9 @@ public final class RedisTaskScoreBandCore
                 member = decoded.substring(split + 1);
             } catch (RuntimeException invalid) { throw new IllegalArgumentException("Invalid parked Task cursor", invalid); }
         }
-        List<?> rows = commands().eval(PARKED_PAGE_SCRIPT, ScriptOutputType.MULTI,
+        List<?> rows = commands().eval(ScoreRedisScripts.KEYSET_PAGE_SCRIPT, ScriptOutputType.MULTI,
                 new String[]{scoreKey()}, Long.toString(idleParkScore()), member, Long.toString(idleParkScore()),
-                Integer.toString(limit), cursor.equals("0") ? "0" : "1");
+                Integer.toString(limit), cursor.equals("0") ? "0" : "1", "0");
         var tasks = new ArrayList<TaskScoreState>();
         for (int i = 0; i < rows.size(); i += 2) {
             String taskId = String.valueOf(rows.get(i));
@@ -952,6 +676,57 @@ public final class RedisTaskScoreBandCore
                 && timeMillis / SLOT_MILLIS != IDLE_PARK_TIME_SLOT;
     }
 
+    private TaskScoreTransitionResult exactCasSingle(String taskId, long observedScore, long nextScore) {
+        var targets = new LinkedHashMap<String, long[]>();
+        targets.put(taskId, new long[]{observedScore, nextScore});
+        return exactCasBatch(targets).get(taskId);
+    }
+
+    private Map<String, TaskScoreTransitionResult> exactCasBatch(Map<String, long[]> targets) {
+        List<String> arguments = new ArrayList<>(targets.size() * 3);
+        targets.forEach((taskId, pair) -> {
+            arguments.add(taskId);
+            arguments.add(Long.toString(pair[0]));
+            arguments.add(Long.toString(pair[1]));
+        });
+        Object raw = commands().eval(
+                EXACT_CAS_BATCH_SCRIPT,
+                ScriptOutputType.MULTI,
+                new String[]{scoreKey()},
+                arguments.toArray(String[]::new)
+        );
+        if (!(raw instanceof List<?> values) || values.size() != targets.size() * 3) {
+            throw new IllegalStateException("Task score exact CAS batch result is invalid");
+        }
+        LinkedHashMap<String, TaskScoreTransitionResult> results = new LinkedHashMap<>();
+        for (int index = 0; index < values.size(); index += 3) {
+            String taskId = String.valueOf(values.get(index));
+            TaskScoreTransitionStatus status = transitionStatus(values.get(index + 1));
+            Object rawScore = values.get(index + 2);
+            Long score = rawScore == null || String.valueOf(rawScore).isEmpty() ? null : scoreToLong(rawScore);
+            if (results.put(taskId, transition(status, score)) != null) {
+                throw new IllegalStateException("Task score exact CAS batch contains duplicate ids");
+            }
+        }
+        if (!List.copyOf(results.keySet()).equals(List.copyOf(targets.keySet()))) {
+            throw new IllegalStateException("Task score exact CAS batch identities are invalid");
+        }
+        return results;
+    }
+
+    private TaskScoreTransitionResult rewriteInterval(String taskId, String defaultStatus, IntervalRules rules) {
+        List<String> arguments = new ArrayList<>(2 + rules.values.size());
+        arguments.add(taskId);
+        arguments.add(defaultStatus);
+        arguments.addAll(rules.values);
+        return scriptResult(commands().eval(
+                INTERVAL_REWRITE_SCRIPT,
+                ScriptOutputType.MULTI,
+                new String[]{scoreKey()},
+                arguments.toArray(String[]::new)
+        ));
+    }
+
     private static TaskScoreTransitionResult scriptResult(Object raw) {
         if (!(raw instanceof List<?> values) || values.isEmpty()) {
             throw new IllegalStateException(
@@ -959,7 +734,9 @@ public final class RedisTaskScoreBandCore
             );
         }
         TaskScoreTransitionStatus status = transitionStatus(values.get(0));
-        Long resultScore = values.size() > 1 && values.get(1) != null
+        Long resultScore = values.size() > 1
+                && values.get(1) != null
+                && !String.valueOf(values.get(1)).isEmpty()
                 ? scoreToLong(values.get(1))
                 : null;
         return transition(status, resultScore);
@@ -1060,4 +837,16 @@ public final class RedisTaskScoreBandCore
     private record DecodedPositive(int tag, long timeSlot, int suffix) {
     }
 
+    private static final class IntervalRules {
+        private final List<String> values = new ArrayList<>();
+
+        IntervalRules add(String min, String max, String action, String value, String mod) {
+            values.add(min);
+            values.add(max);
+            values.add(action);
+            values.add(value);
+            values.add(mod);
+            return this;
+        }
+    }
 }
