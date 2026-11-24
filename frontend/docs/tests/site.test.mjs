@@ -28,7 +28,7 @@ test("current Owner pages keep repository paths; historical material stays out",
   }
   for (const name of [
     "doc/archive/trace/legacy.md",
-    "doc/skills/test/SKILL.md",
+    ".agents/skills/test/SKILL.md",
     "integrations/x/baselines/a.md",
     "distribution/server/RELEASE-3.1.md",
     "frontend/node_modules/a/README.md",
@@ -88,6 +88,7 @@ test("root Markdown changes build the site; missing deployment baseline never sk
   assert.equal(isDocsBuildInput("doc/guide/first-task.md"), true);
   assert.equal(isDocsBuildInput("frontend/docs/.vitepress/config.mts"), true);
   assert.equal(isDocsBuildInput("doc/archive/old.md"), false);
+  assert.equal(isDocsBuildInput(".agents/skills/test/SKILL.md"), false);
   assert.equal(isDocsBuildInput("kernel_jvm/src/main/java/Example.java"), false);
   assert.equal(shouldSkipBuild(undefined), false);
   assert.equal(shouldSkipBuild("not-a-commit"), false);

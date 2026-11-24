@@ -1108,7 +1108,7 @@ produces SYSTEM observation, never KERNEL Properties evidence.
 | --- | --- | --- | --- | --- |
 | Adapter Direct Call | One configured Adapter; top-level opaquePayload | Use the instance-local FIFO and correlate the selected target | Bounded capacity can return `429` | [DirectCallService](src/main/java/com/xa/mass/server/delivery/directcall/DirectCallService.java) |
 | Worker Direct Call | One Adapter and Group; 1..100 workerId-to-payload entries currently bound to it | Offer caller-targeted Commands and correlate replies | `command-slot-occupied` rejects; timeout/cancellation/shutdown ends waiting without retraction | [Mailbox sequence below](#direct-calls-and-network-observation) |
-| Network observe | One Adapter; bounded Worker IDs | Use Direct Call to project connected/disconnected/unknown | Timeout, rejection or malformed payload is unavailable, never synthetic unknown | [RuntimeViewService](src/main/java/com/xa/mass/server/runtimeview/RuntimeViewService.java) |
+| Network observe | One Adapter; bounded Worker IDs | Use Direct Call to project connected/disconnected/unknown | Timeout, rejection or malformed payload is unavailable, never synthetic unknown | [WorkerNetworkObservationService](src/main/java/com/xa/mass/server/runtimeview/WorkerNetworkObservationService.java) |
 
 The two Direct Call request modes are exclusive; Server never partitions one call
 across Adapters, creates Task/Result Routing truth, or selects substitute targets.
