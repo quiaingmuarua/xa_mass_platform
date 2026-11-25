@@ -250,7 +250,10 @@ function manageLink() {
         <p v-else class="raw-muted">
           任务归属未提供或 Project 不在当前目录中，无法切换至 Project 管理视图。
         </p>
-        <TaskRetentionNotice :retention="detail.retention" />
+        <TaskRetentionNotice
+          :retention="detail.retention"
+          :project-id="detail.task?.projectId"
+        />
         <TaskResultExport :key="detail.taskId" :task="detail" :fresh="fresh" />
         <JsonBlock :value="detail" />
       </template>

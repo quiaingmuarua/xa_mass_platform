@@ -115,8 +115,8 @@ on this executable or the scenarios.
 Boot forwards `/sms`, `/sms/metrics`, `/messages`,
 `/messages/tasks/{taskId}`, `/app-checks` and `/app-checks/tasks/{taskId}`
 to the shared Console, including trailing slashes, in platform and preview
-instances. Server's generic page controller also forwards `/runtime/tasks` and its trailing
-slash to the same Console. This route enables no Project or API capabilities.
+instances. Server's generic page controller also forwards `/runtime/tasks` and `/storage/tasks`,
+including their trailing slashes, to the same Console. These routes enable no Project or API capabilities.
 The root `/` serves development login and `/?view=users` serves admin user management.
 The documentation site at `/docs/` is a static frontend artifact packaged by
 [Distribution](../distribution/server/README.md), with source content in the

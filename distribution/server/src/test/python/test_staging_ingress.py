@@ -22,6 +22,16 @@ def configuration(**changes):
 
 
 class StagingIngressTest(unittest.TestCase):
+    def test_storage_page_is_an_explicit_admin_page_without_widening_routes(self):
+        def admitted(method, path):
+            return any(re.fullmatch(pattern, method + ":" + path) for pattern in ADMIN_PAGE_PATTERNS)
+        for path in ("/storage/tasks", "/storage/tasks/"):
+            self.assertTrue(admitted("GET", path))
+            self.assertTrue(admitted("HEAD", path))
+            self.assertFalse(admitted("POST", path))
+        for path in ("/storage", "/storage/users", "/storage/tasks/unknown", "/storage/tasks-extra"):
+            self.assertFalse(admitted("GET", path))
+
     CAPACITY_DEFAULTS = {
         "worker_processes": 1,
         "worker_connections": 2048,

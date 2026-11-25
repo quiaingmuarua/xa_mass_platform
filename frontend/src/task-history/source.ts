@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { taskViewSchema, jsonValueSchema } from "@/runtime-viewer/schemas";
-import { taskStatsSchema, rawResultPreviewSchema } from "@/task-management/projects";
+import {
+  taskStatsSchema,
+  rawResultPreviewSchema,
+  createProjectSource,
+  type ProjectTask
+} from "@/task-management/projects";
 import {
   callerHeaders,
   requireTaskCaller,
@@ -41,15 +46,20 @@ const itemSchema = z.strictObject({
 });
 export type HistoryItem = z.infer<typeof itemSchema>;
 export type HistoryPreview = { results: Record<string, unknown>[]; truncated: boolean };
+export type HistoryFilters = { projectId?: string; userId?: string; taskId?: string };
 export interface TaskHistorySource {
   readonly mode: "api" | "mock";
   list(
     caller: TaskCaller,
-    project: string,
-    taskId: string,
+    filters: HistoryFilters,
     cursor?: string
   ): Promise<HistoryPage<HistoryEntry>>;
   get(caller: TaskCaller, id: string): Promise<HistoryEntry>;
+  runtimeTask(
+    caller: TaskCaller,
+    projectId: string,
+    taskId: string
+  ): Promise<ProjectTask>;
   items(
     caller: TaskCaller,
     id: string,
@@ -79,9 +89,10 @@ export class ApiTaskHistorySource implements TaskHistorySource {
       );
     return response;
   }
-  async list(caller: TaskCaller, project: string, taskId: string, cursor?: string) {
-    const query = new URLSearchParams({ projectId: project, limit: "20" });
-    if (taskId) query.set("taskId", taskId);
+  async list(caller: TaskCaller, filters: HistoryFilters, cursor?: string) {
+    const query = new URLSearchParams({ limit: "20" });
+    for (const [name, value] of Object.entries(filters))
+      if (value) query.set(name, value);
     if (cursor) query.set("cursor", cursor);
     return z
       .strictObject({
@@ -96,6 +107,9 @@ export class ApiTaskHistorySource implements TaskHistorySource {
     );
     if (value.historyId !== id) throw new Error("历史身份不符");
     return value;
+  }
+  runtimeTask(caller: TaskCaller, projectId: string, taskId: string) {
+    return createProjectSource(this.base, "api", caller).task(projectId, taskId);
   }
   async items(caller: TaskCaller, id: string, cursor?: string) {
     const query = new URLSearchParams({ limit: "20" });
@@ -236,7 +250,8 @@ export class MockTaskHistorySource implements TaskHistorySource {
         metadata: {
           "server.projectId": project,
           "server.createdAtMillis": String(task.createdAtMillis ?? 0),
-          "server.inputOwner": project,
+          "server.inputOwner":
+            project === "app-checks" || project === "messages" ? project : "raw",
           userId: task.userId ?? "1000",
           mock: "历史展示样例"
         }
@@ -261,7 +276,7 @@ export class MockTaskHistorySource implements TaskHistorySource {
     });
   }
   seedExamples() {
-    for (const project of ["default", "app-checks", "messages"]) {
+    for (const project of ["default", "app-checks", "messages", "retired-project"]) {
       const ended = this.now() - 8 * 86400000;
       this.capture(
         project,
@@ -309,32 +324,58 @@ export class MockTaskHistorySource implements TaskHistorySource {
     requireTaskCaller(caller, { userId: value.entry.task.metadata.userId });
     return value;
   }
-  async list(caller: TaskCaller, project: string, taskId: string, cursor?: string) {
+  async list(caller: TaskCaller, filters: HistoryFilters, cursor?: string) {
     this.expire();
-    caller = this.directory.resolveCaller(caller, project);
-    const user = selectTaskUser(caller, undefined);
+    caller = this.directory.resolveCaller(caller, filters.projectId);
+    if (!filters.projectId && caller.role !== "admin")
+      throw new TaskApiError(403, "跨 Project 历史仅管理员可读");
+    const user = selectTaskUser(caller, filters.userId);
     const rows = [...this.snapshots.values()]
       .map((value) => value.entry)
       .filter(
         (row) =>
-          row.task.projectId === project &&
+          (!filters.projectId || row.task.projectId === filters.projectId) &&
           (!user || row.task.metadata.userId === user) &&
-          (!taskId || row.taskId === taskId)
+          (!filters.taskId || row.taskId === filters.taskId)
       )
       .sort(
         (a, b) =>
           b.terminatedAtMillis - a.terminatedAtMillis ||
           b.historyId.localeCompare(a.historyId)
       );
-    const start = cursor ? rows.findIndex((row) => row.historyId === cursor) + 1 : 0;
-    const entries = rows.slice(start, start + 20);
+    let remaining = rows;
+    if (cursor) {
+      let after: [number, string];
+      try {
+        after = z.tuple([count, z.string().min(1)]).parse(JSON.parse(cursor));
+      } catch {
+        throw new TaskApiError(400, "历史游标无效");
+      }
+      remaining = rows.filter(
+        (row) =>
+          row.terminatedAtMillis < after[0] ||
+          (row.terminatedAtMillis === after[0] &&
+            row.historyId.localeCompare(after[1]) < 0)
+      );
+    }
+    const entries = remaining.slice(0, 20),
+      last = entries.at(-1);
     return {
       entries: structuredClone(entries),
-      nextCursor: rows.length > start + 20 ? entries.at(-1)!.historyId : null
+      nextCursor:
+        remaining.length > 20 && last
+          ? JSON.stringify([last.terminatedAtMillis, last.historyId])
+          : null
     };
   }
   async get(caller: TaskCaller, id: string) {
     return structuredClone(this.require(caller, id).entry);
+  }
+  runtimeTask(caller: TaskCaller, projectId: string, taskId: string) {
+    return createProjectSource("/api", "mock", caller, this.directory).task(
+      projectId,
+      taskId
+    );
   }
   async items(caller: TaskCaller, id: string, cursor?: string) {
     const rows = this.require(caller, id).items;

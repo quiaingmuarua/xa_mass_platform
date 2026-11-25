@@ -2,7 +2,12 @@
 import { retentionLabel, type TaskRetention } from "@/task-management/retention";
 import { computed } from "vue";
 import { useRoute } from "vue-router";
-const props = defineProps<{ retention?: TaskRetention | null }>();
+import { consoleIdentity } from "@/console-identity";
+import { historyLocation } from "@/task-history/navigation";
+const props = defineProps<{
+  retention?: TaskRetention | null;
+  projectId?: string | null;
+}>();
 const route = useRoute();
 const history = computed(() => {
   const path = route.path.startsWith("/app-checks")
@@ -10,16 +15,20 @@ const history = computed(() => {
     : route.path.startsWith("/messages")
       ? "/messages"
       : "/runtime/tasks";
-  return {
-    path,
-    query: {
-      ...(path === "/runtime/tasks"
-        ? { project: route.query.project ?? "default", tab: "finite" }
-        : {}),
-      view: "history",
-      historyId: props.retention?.historyId ?? undefined
-    }
-  };
+  const project =
+    props.projectId ??
+    (path === "/app-checks"
+      ? "app-checks"
+      : path === "/messages"
+        ? "messages"
+        : typeof route.query.project === "string"
+          ? route.query.project
+          : undefined);
+  return historyLocation(
+    consoleIdentity.current.value,
+    project,
+    props.retention?.historyId
+  );
 });
 </script>
 <template>

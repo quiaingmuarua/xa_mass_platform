@@ -5,7 +5,6 @@ import { useTaskSession } from "@/task-workbench/session";
 import RpcTaskPage from "@/task-workbench/RpcTaskPage.vue";
 import FiniteTaskPage from "@/task-workbench/FiniteTaskPage.vue";
 import GlobalRuntimeTasksPanel from "@/task-workbench/GlobalRuntimeTasksPanel.vue";
-import TaskHistoryWorkspace from "@/task-history/TaskHistoryWorkspace.vue";
 import "@/task-workbench/workbench.css";
 
 const route = useRoute();
@@ -135,8 +134,8 @@ function selectTab(value: string | number) {
         <el-tab-pane label="全局调度" name="global" />
       </el-tabs>
       <router-link
-        v-if="tab === 'finite' && project && route.query.view !== 'history'"
-        :to="{ query: { project: projectId, tab: 'finite', view: 'history' } }"
+        v-if="tab === 'finite'"
+        :to="{ path: '/storage/tasks', query: { project: projectId || undefined } }"
         class="history-entry tw-history-link"
       >
         历史任务
@@ -156,13 +155,6 @@ function selectTab(value: string | number) {
     </el-alert>
 
     <GlobalRuntimeTasksPanel v-if="tab === 'global'" />
-    <TaskHistoryWorkspace
-      v-else-if="tab === 'finite' && route.query.view === 'history' && project"
-      :key="projectId"
-      :project-id="projectId"
-      kind="raw"
-      runtime-path="/runtime/tasks"
-    />
     <p v-else-if="!session.directory.value" class="raw-muted">
       {{
         session.directory.loading ? "正在读取 Project 目录…" : "Project 目录不可用。"

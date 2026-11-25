@@ -27,10 +27,11 @@ Read this Owner by use case:
 [assembly and lifecycle](#assembly-boundaries),
 [configuration and health](#configuration), and [proof](#verification).
 
-The generic frontend controller forwards `/runtime/workers` and `/runtime/tasks`
+The generic frontend controller forwards `/runtime/workers`, `/runtime/tasks` and `/storage/tasks`
 (including trailing slashes) to the Console entry. `/runtime/tasks` lets
 administrators observe global scheduling and operate any declared Project using the existing
-Task APIs. Project selection is frontend context; Server independently checks the authenticated caller and stored ownership;
+Task APIs. `/storage/tasks` is the independent administrator history surface; its
+reads use existing Storage APIs and require no current Project directory. Project selection is frontend context; Server independently checks the authenticated caller and stored ownership;
 Task preparation remains explicit and Project declarations never provision Tasks. Unknown API and asset
 paths are not forwarded.
 
