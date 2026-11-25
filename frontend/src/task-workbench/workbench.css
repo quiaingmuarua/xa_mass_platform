@@ -163,6 +163,12 @@
   flex-wrap: wrap;
   gap: 10px 16px;
 }
+.tw-action-bar__right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 .tw-filters-inline {
   display: flex;
   align-items: center;

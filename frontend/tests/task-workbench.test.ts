@@ -870,3 +870,52 @@ it("shows RPC debug batch summary and correlates request event/selector with res
     "成功"
   );
 });
+
+it("links finite drawer to tab=global and disables generic approval for credit-confirmed app-checks tasks", async () => {
+  const f = await mount("/runtime/tasks?project=default&tab=finite&taskId=ac-1");
+  const appCheckRow: ProjectTask = {
+    ...row("ac-1", "g1", false, "default"),
+    scoreBand: "pre_review",
+    task: {
+      ...row("ac-1", "g1", false, "default").task!,
+      metadata: { "server.inputOwner": "app-checks" }
+    }
+  };
+  vi.mocked(f.source.task).mockResolvedValueOnce(appCheckRow);
+  await f.session.finite.loadDetail("default", "ac-1");
+  await nextTick();
+  const links = [...document.querySelectorAll<HTMLAnchorElement>("a")].map((a) => ({
+    href: a.getAttribute("href") ?? "",
+    text: a.textContent?.trim() ?? ""
+  }));
+  expect(
+    links.some(
+      (link) =>
+        link.text.includes("在全局调度中查看") &&
+        link.href.includes("/runtime/tasks") &&
+        link.href.includes("tab=global") &&
+        link.href.includes("taskId=ac-1")
+    )
+  ).toBe(true);
+  expect(
+    links.some(
+      (link) =>
+        link.text.includes("前往批量检查页确认费用并启动") &&
+        link.href.includes("/app-checks/tasks/ac-1")
+    )
+  ).toBe(true);
+  const drawerMenu = [
+    ...document.querySelectorAll<HTMLButtonElement>(
+      ".el-drawer button:not([disabled])[aria-haspopup]"
+    )
+  ][0];
+  expect(drawerMenu).toBeDefined();
+  drawerMenu!.click();
+  await vi.waitFor(() => {
+    const approveItem = [
+      ...document.querySelectorAll<HTMLElement>(".el-dropdown-menu__item")
+    ].find((li) => li.textContent?.includes("批量检查页确认费用"));
+    expect(approveItem?.getAttribute("aria-disabled")).toBe("true");
+  });
+  expect(f.client.approveTask).not.toHaveBeenCalled();
+});

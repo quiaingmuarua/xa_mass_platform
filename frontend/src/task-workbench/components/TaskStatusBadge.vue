@@ -15,7 +15,7 @@ const status = computed(() =>
 </script>
 <template>
   <span class="tw-status" :title="'底层 Score band: ' + status.rawBand">
-    <el-tag :type="status.tone" effect="light" size="small">
+    <el-tag :type="status.tone" effect="plain" size="small">
       {{ status.label }}
     </el-tag>
     <span v-if="status.archived" class="tw-status__archived">已归档</span>

@@ -85,12 +85,15 @@ window:
 
 ### Accepted deployment and closeout (2026-11-25)
 
-The 2026-11-25 GCP Release Preview upgrade (`upgrade-4.5.0-20261125T053403Z`)
-installed immutable Runtime 4.5.0 (`PID 973667`) at the commit and SHA256 above,
-retaining `profile_long_preview_4_4`, `/var/lib/xa-mass/task-history-4.4.sqlite`
-(schema 1, `PRAGMA quick_check=ok`), `configurationId`
-`sha256:c9bdee9c5282ea089ea667c086fb933ea4f7ce7b38518e9eac248da266cc79fd`,
-standing Host `4.4.2`, and Performance kit `4.4.4`.
+The 2026-11-25 GCP Release Preview upgrade (`upgrade-4.5.0-20261125T053403Z`,
+reconciled under `reconcile-4.5.0-records`) installed immutable Runtime 4.5.0
+(`PID 973667`) at the commit and SHA256 above, retaining
+`profile_long_preview_4_4`, `/var/lib/xa-mass/task-history-4.4.sqlite`
+(schema 1, `PRAGMA quick_check=ok`), standing Host `4.4.2`, and Performance kit
+`4.4.4`. Recomputed `configurationId` after the `nginx.conf` and `start-runtime`
+updates is
+`sha256:e4b29267527fdfee5d75b3aec2a24b10421490acc29d7c1c617702efe68c09c6`
+(previous: `sha256:c9bdee9c5282ea089ea667c086fb933ea4f7ce7b38518e9eac248da266cc79fd`).
 
 - External `/var/lib/xa-mass/users.json` removed retired `"workbench.use"` from
   `admin.permissions` while preserving `0600 xa-mass:xa-mass`; `/api/v1/me`
@@ -111,13 +114,22 @@ standing Host `4.4.2`, and Performance kit `4.4.4`.
   `6e3c9fbf459d4362962cea9a8bb8a3d1fa32f3bc742f3f9cac5cff330732de42`) and fresh
   3-Item RPC Task (`accept-450-rpc-a0f4e13e`, 3/3 terminal succeeded) passed
   independent UTF-8 MD5 verification; temporary `accept4` key was cleared.
-- Interactive browser spot-check of `/runtime/tasks` with the private admin key
-  remains explicitly recorded as pending operator browser verification.
+- Read-only authenticated browser inspection of `/runtime/tasks` (`RPC 任务`,
+  `有限任务`, `全局调度` tabs and drawers, sidebar navigation without `WORKBENCH`)
+  passed with 0 console errors and 0 Runtime API errors.
+- External 10k Performance observation
+  ([Run 45558600390](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45558600390),
+  kit `4.4.4` against Runtime `4.5.0`) completed `passed` with 7 `passed` / 2
+  `saturated` (`task-any-2000`, `task-targeted-2000`), cleanup confirmed
+  (10,000 `unknown`), 0 Server journal WARNs/ERRORs, exact Pacer
+  publish/result conservation (`254,945` / `254,945` items via loopback
+  `/actuator/prometheus`), and all 20 standing Workers still `connected`.
 - Old 4.4.5 binary, temporary stage directory and temporary restore point were
   confirmed removed at `2026-11-25 05:41:22 UTC`; GCP `release.json`,
-  `deployment.json`, `operations.log` and GitHub `release-preview-load` Server
-  pins (`INSTALLED_RELEASE_TAG=v4.5.0`, `INSTALLED_RELEASE_COMMIT`,
-  `PERFORMANCE_DEPLOYMENT_JSON.serverDeployment`) were updated and read back.
+  `deployment.json`, `OPERATIONS.txt`, `operations.log` and GitHub
+  `release-preview-load` Server pins (`INSTALLED_RELEASE_TAG=v4.5.0`,
+  `INSTALLED_RELEASE_COMMIT`, `PERFORMANCE_DEPLOYMENT_JSON.serverDeployment`
+  including the recomputed `configurationId`) were updated and read back.
 
 ## Finite Task history and RPC retention
 

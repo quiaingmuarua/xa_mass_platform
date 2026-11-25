@@ -22,8 +22,14 @@ defineEmits<{ action: [action: string] }>();
         <el-dropdown-item
           v-if="row.scoreBand === 'pre_review'"
           command="approve"
-          :disabled="!writable"
-          >核对并批准</el-dropdown-item
+          :disabled="
+            !writable || row.task?.metadata['server.inputOwner'] === 'app-checks'
+          "
+          >{{
+            row.task?.metadata["server.inputOwner"] === "app-checks"
+              ? "需在批量检查页确认费用并批准"
+              : "核对并批准"
+          }}</el-dropdown-item
         >
         <el-dropdown-item
           v-if="row.scoreBand && row.scoreBand !== 'terminal'"
