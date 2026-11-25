@@ -46,7 +46,8 @@ Runtime 详情展示当前累计结果。有限 Task 终止后，Server 按保�
 随后释放 Runtime 输入与结果；冻结后的历史不会继续吸收新送达、已读或回复观察。
 需要保留哪些业务观察，应按冻结边界评估，不能把历史保留期当作继续接收回执的窗口。
 
-页面提示已释放时，通过历史链接或 `/messages?view=history` 按原 Task ID 查找。
+页面提示已释放时，管理员通过历史链接进入 `/storage/tasks?project=messages`；
+operator 继续通过 `/messages?view=history` 按原 Task ID 查找自己的历史。
 历史页按保存的 Task 正文、应用/Group 绑定和结果进行只读观察，并提供分页输入与独立状态。
 它不重建完整回复、导入或操作历史，也不提供再次发送；当前应用映射变化不改写保存的归属。
 业务预览与原始成功 Result JSONL 导出分开，Messages 没有业务 CSV 导出。

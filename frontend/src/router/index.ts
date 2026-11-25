@@ -25,6 +25,12 @@ export const consoleRoutes: RouteRecordRaw[] = [
     component: ConsoleSessionProvider,
     children: [
       {
+        path: "storage/tasks",
+        name: "storage-tasks",
+        component: () => import("@/task-history/TaskHistoryWorkspace.vue"),
+        meta: { section: "Storage", title: "任务历史", permission: "runtime.view" }
+      },
+      {
         path: "runtime",
         meta: { section: "Runtime", permission: "runtime.view" },
         children: [
@@ -95,7 +101,8 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: consoleRoutes,
   scrollBehavior: (to, from) => {
-    if (to.path === "/runtime/tasks" && to.path === from.path) return false;
+    if (["/runtime/tasks", "/storage/tasks"].includes(to.path) && to.path === from.path)
+      return false;
     // Messages previews remain over the mounted list or creation draft.
     if (
       (to.path === "/messages" || to.path.startsWith("/messages/tasks/")) &&

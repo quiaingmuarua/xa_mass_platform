@@ -5,6 +5,7 @@ import "./style.css";
 import { consoleIdentity } from "@/console-identity";
 import { useRoute } from "vue-router";
 import TaskHistoryWorkspace from "@/task-history/TaskHistoryWorkspace.vue";
+import { historyLocation } from "@/task-history/navigation";
 const route = useRoute();
 const identity = consoleIdentity.requireCurrent();
 const context = useAppChecks();
@@ -14,10 +15,12 @@ const state = context.state;
   <TaskHistoryWorkspace
     v-if="route.query.view === 'history'"
     project-id="app-checks"
-    kind="app-checks"
     runtime-path="/app-checks"
   />
-  <router-link v-else to="/app-checks?view=history" class="history-entry"
+  <router-link
+    v-else
+    :to="historyLocation(identity, 'app-checks')"
+    class="history-entry"
     >历史任务</router-link
   >
   <AppCheckWorkspace

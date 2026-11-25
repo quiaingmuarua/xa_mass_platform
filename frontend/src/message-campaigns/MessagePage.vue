@@ -3,6 +3,8 @@ import { useMessageAvailability } from "./availability";
 import MessageTaskWorkspace from "./MessageTaskWorkspace.vue";
 import { useRoute } from "vue-router";
 import TaskHistoryWorkspace from "@/task-history/TaskHistoryWorkspace.vue";
+import { consoleIdentity } from "@/console-identity";
+import { historyLocation } from "@/task-history/navigation";
 const route = useRoute();
 const availability = useMessageAvailability();
 const state = availability.state;
@@ -12,10 +14,12 @@ const state = availability.state;
   <TaskHistoryWorkspace
     v-if="route.query.view === 'history'"
     project-id="messages"
-    kind="messages"
     runtime-path="/messages"
   />
-  <router-link v-else to="/messages?view=history" class="history-entry"
+  <router-link
+    v-else
+    :to="historyLocation(consoleIdentity.current.value, 'messages')"
+    class="history-entry"
     >历史任务</router-link
   >
   <MessageTaskWorkspace

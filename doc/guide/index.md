@@ -25,7 +25,8 @@ XA Mass 将一批工作交给 Java 或 Android Worker 执行，记录进度、�
 | [Messages](usage/messages.md) | 有限发送任务及后续送达、已读、回复 | 应用到 Group 的绑定和接收端的真实能力 |
 | [SMS Reception](usage/sms.md) | 取号并用原 messageId 读取最新短信 | Preview 场景；演示短信由 Host 输入 |
 | [任务工作台](usage/workbench.md) | 有限 Task、可复用 RPC、定向 Direct Debug | 选择合适执行方式及结果读取语义 |
-| 历史结果与日常管理 | 任务的 Storage 历史、用户／密钥／积分、Worker 接入控制 | 角色／Project 授权；[数据与配置归属](operations/configuration.md) |
+| [Storage 任务历史](usage/workbench.md#有限任务的-runtime-与-storage) | 管理员独立历史入口，查询冻结输入／结果和导出；operator 保留场景历史入口 | 仅已发布的有限任务历史，当前 scope 与既有归属权限 |
+| 日常管理 | 用户／密钥／积分、Worker 接入控制 | 角色／Project 授权；[数据与配置归属](operations/configuration.md) |
 
 `consumer` 默认启用 Batch Checks 和 Messages，需提供外部业务与资源配置；Worker 独立接入。
 `preview` 提供三个场景和 Java Simulator，公开 Mock 只模拟页面。演示中的注册查询、短信、

@@ -49,7 +49,8 @@ Batch Checks 将号码或文本种子转换成有限任务，按任务保存的�
 ## 查看历史任务
 
 Task 终止后，Server 按保留策略冻结并发布历史，再释放 Runtime 输入与结果。
-详情提示已释放时，使用历史链接或 `/app-checks?view=history`，按原 Task ID 查找并分页读取。
+详情提示已释放时，管理员通过历史链接进入 `/storage/tasks?project=app-checks`；
+operator 继续使用 `/app-checks?view=history` 查看自己任务的历史。按原 Task ID 查找并分页读取。
 不要通过重复 Runtime 导出来等待数据重新出现。
 
 历史页使用 Task 保存的检查契约、参数和输入预览答案并导出 CSV；当前检查配置或 Group

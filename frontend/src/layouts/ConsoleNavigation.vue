@@ -45,6 +45,12 @@ const messagesEnabled = computed(() =>
         <el-icon><Tickets /></el-icon>
         <span>Tasks</span>
       </router-link>
+      <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
+        >STORAGE</span
+      >
+      <router-link class="runtime-navigation__link" to="/storage/tasks">
+        <el-icon><Document /></el-icon><span>任务历史</span>
+      </router-link>
     </template>
     <template
       v-if="

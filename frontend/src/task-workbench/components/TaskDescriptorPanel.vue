@@ -140,7 +140,11 @@ function copyId(value: string) {
           </div>
         </template>
       </dl>
-      <TaskRetentionNotice v-if="mode === 'finite'" :retention="task.retention" />
+      <TaskRetentionNotice
+        v-if="mode === 'finite'"
+        :retention="task.retention"
+        :project-id="task.task?.projectId"
+      />
     </section>
 
     <section class="tw-card">

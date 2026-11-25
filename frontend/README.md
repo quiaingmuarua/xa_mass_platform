@@ -203,6 +203,7 @@ Routes:
 /runtime/tasks?tab=rpc
 /runtime/tasks?tab=finite
 /runtime/tasks?tab=global
+/storage/tasks
 /api-reference
 /reference/error-codes
 /sms
@@ -948,13 +949,26 @@ Runtime and Storage are separate data sources. Existing Project windows remain b
 and unpaginated. After payload release, detail retains counts and a historyId link;
 it does not request Runtime Results or silently read historical payloads.
 
-Finite workbench, Batch Checks and Messages use an explicit `view=history` entry.
+Storage is a first-level administrator surface at `/storage/tasks`, using the existing
+`runtime.view` permission. It lists all permitted published finite histories in the
+current scope, with optional Project ID, creator ID and exact Task ID filters; it needs
+no live Project directory or Worker capability read. Filters, cursor and selected
+historyId are URL state. RPC and unpublished/expired histories are not a Task backup catalog.
+Runtime and administrator Scenario links target this page; operators retain their
+Project-bound `view=history` Scenario entrypoints and reuse the same workspace.
 The common historical workspace reads `/api/v1/storage/tasks` for current-scope lists,
 saved descriptors and paginated inputs/states; Scenario Storage controllers supply
 business preview/CSV using saved contracts. History is read-only, does not consult the
 current Group catalog and never provides Task lifecycle actions. Its list is 20 rows
 per page and result preview remains bounded to 100; full exports are independent.
 Raw input/result reads remain available when a saved business contract is unavailable.
+The read-only drawer separates summary, results, inputs and technical data. Its business
+view is selected from saved input ownership, not the current Catalog. Execution totals,
+saved inputs and observed Results remain independent quantities.
+Only an explicit administrator “查看 Runtime 记录” action reads the current Task
+through the existing Project client. Task/Project/creation time and any saved
+creation association must match before navigation. Missing identity, mismatches and
+read failures keep the historical view; a failure is never treated as proof of deletion.
 
 Retention shows first termination, freeze/publication time, Runtime expiry (default 7d)
 and history expiry (default 30d), after the default 1h grace window. Missing Results

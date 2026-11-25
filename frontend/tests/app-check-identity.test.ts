@@ -356,6 +356,7 @@ describe("console login and shared task access", () => {
       for (const path of [
         "/?view=users",
         "/runtime/tasks",
+        "/storage/tasks",
         "/sms",
         "/api-reference",
         "/app-checks?view=configuration"
@@ -364,7 +365,7 @@ describe("console login and shared task access", () => {
         await settle();
         expect(router.currentRoute.value.fullPath).toBe("/app-checks");
       }
-      for (const path of ["/?view=users", "/runtime/tasks", "/sms"])
+      for (const path of ["/?view=users", "/runtime/tasks", "/storage/tasks", "/sms"])
         expect(document.querySelector(`a[href="${path}"]`)).toBeNull();
       expect(document.querySelector('[aria-label="切换开发身份"]')).toBeNull();
       expect(configuration).not.toHaveBeenCalled();
@@ -400,6 +401,7 @@ describe("console login and shared task access", () => {
     expect(document.getElementById("check-task-" + b)).toBeNull();
     await login("1004");
     expect(router.currentRoute.value.path).toBe("/runtime/workers");
+    expect(document.querySelector('a[href="/storage/tasks"]')).not.toBeNull();
     expect(document.querySelector('a[href="/messages"]')).not.toBeNull();
     await router.push("/app-checks");
     await settle();

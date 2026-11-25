@@ -7,11 +7,12 @@ import type {
 } from "./source";
 export const historySourceKey: InjectionKey<TaskHistorySource> =
   Symbol("task-history-source");
-type Session = {
+export type HistorySession = {
   rows: HistoryEntry[];
   listReadAt: number;
   listError: string;
   listBusy: boolean;
+  listVersion: number;
   nextCursor: string | null;
   details: Record<
     string,
@@ -21,13 +22,16 @@ type Session = {
       items?: HistoryItem[];
       nextItem: string | null;
       readAt: number;
+      previewReadAt: number;
       error: string;
       previewError: string;
       busy: boolean;
+      version: number;
+      tab: string;
     }
   >;
   scroll: number;
 };
-export const historySessionsKey: InjectionKey<Map<string, Session>> = Symbol(
+export const historySessionsKey: InjectionKey<Map<string, HistorySession>> = Symbol(
   "task-history-sessions"
 );
