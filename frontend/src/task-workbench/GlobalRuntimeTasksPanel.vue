@@ -231,14 +231,16 @@ function manageLink() {
         type="error"
         :closable="false"
       />
-      <el-button
-        :loading="detailState.loading"
-        :icon="Refresh"
-        @click="workspace.loadDetail(project, taskId)"
-      >
-        刷新任务
-      </el-button>
-      <span class="raw-muted"> {{ time(detailState.readAt) }}</span>
+      <div class="tw-button-row">
+        <el-button
+          :loading="detailState.loading"
+          :icon="Refresh"
+          @click="workspace.loadDetail(project, taskId)"
+        >
+          刷新任务
+        </el-button>
+        <span class="raw-muted">{{ time(detailState.readAt) }}</span>
+      </div>
       <template v-if="detail">
         <p>
           <code>{{ detail.taskId }}</code>
@@ -247,12 +249,11 @@ function manageLink() {
           {{ detail.task?.projectId }} / {{ detail.task?.workerGroupId }} ·
           {{ detail.scoreBand ?? "状态不可用" }}
         </p>
-        <router-link
-          v-if="directory.value?.some((p) => p.projectId === detail?.task?.projectId)"
-          :to="manageLink()"
-        >
-          在 Project 视图中管理
-        </router-link>
+        <p v-if="directory.value?.some((p) => p.projectId === detail?.task?.projectId)">
+          <router-link class="tw-link" :to="manageLink()">
+            在 Project 视图中管理
+          </router-link>
+        </p>
         <p v-else class="raw-muted">
           任务归属未提供或 Project 不在当前目录中，无法切换至 Project 管理视图。
         </p>

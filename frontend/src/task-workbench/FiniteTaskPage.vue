@@ -273,7 +273,9 @@ async function changeTask(action: "approve" | "close", id = taskId.value) {
     generation !== navigation ||
     !current ||
     current.taskId !== id ||
-    !canManageRawTask(current, projectId, fresh.value)
+    !canManageRawTask(current, projectId, fresh.value) ||
+    (action === "approve" &&
+      current.task?.metadata["server.inputOwner"] === "app-checks")
   )
     return;
   try {
@@ -688,13 +690,27 @@ function returnSubmission() {
                     :fresh="fresh"
                   />
                   <router-link
+                    v-if="
+                      detail.scoreBand === 'pre_review' &&
+                      detail.task?.metadata['server.inputOwner'] === 'app-checks'
+                    "
+                    class="tw-link"
+                    :to="`/app-checks/tasks/${encodeURIComponent(detail.taskId)}`"
+                  >
+                    前往批量检查页确认费用并启动
+                  </router-link>
+                  <router-link
                     class="tw-link"
                     :to="{
                       path: '/runtime/tasks',
-                      query: { project: projectId, taskId: detail.taskId }
+                      query: {
+                        tab: 'global',
+                        project: projectId,
+                        taskId: detail.taskId
+                      }
                     }"
                   >
-                    查看 Runtime 原始观察
+                    在全局调度中查看
                   </router-link>
                 </div>
                 <TaskDescriptorPanel :task="detail" mode="finite" />
