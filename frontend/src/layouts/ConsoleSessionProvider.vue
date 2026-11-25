@@ -40,9 +40,7 @@ const route = useRoute();
 const caller = captureTaskCaller();
 const mock = inject(consoleMockKey, undefined);
 const pinia = getActivePinia()!;
-const needsRuntime = computed(() =>
-  ["Runtime", "Workbench"].includes(String(route.meta.section))
-);
+const needsRuntime = computed(() => String(route.meta.section) === "Runtime");
 if (configResult.ok) {
   provide(
     historySourceKey,

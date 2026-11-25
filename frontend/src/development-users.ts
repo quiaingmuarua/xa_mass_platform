@@ -22,7 +22,6 @@ export const developmentRoles: readonly RoleDefinition[] = [
       "credits.manage",
       "tasks.retention.manage",
       "runtime.view",
-      "workbench.use",
       "messages.use",
       "sms.use",
       "app-checks.tasks",

@@ -115,7 +115,7 @@ on this executable or the scenarios.
 Boot forwards `/sms`, `/sms/metrics`, `/messages`,
 `/messages/tasks/{taskId}`, `/app-checks` and `/app-checks/tasks/{taskId}`
 to the shared Console, including trailing slashes, in platform and preview
-instances. Server's generic page controller also forwards `/task-workbench` and its trailing
+instances. Server's generic page controller also forwards `/runtime/tasks` and its trailing
 slash to the same Console. This route enables no Project or API capabilities.
 The root `/` serves development login and `/?view=users` serves admin user management.
 The documentation site at `/docs/` is a static frontend artifact packaged by
@@ -287,7 +287,7 @@ contribute their own Projects from their configuration; raw-only consumers expli
 disable both businesses and provide their own Groups and Projects before preparing RPC Tasks. An external
 Group registration or Project declaration alone creates no Task. Projects have no mutation API.
 The Console workbench consumes this directory and works without a Project named
-`default`: use `/task-workbench?project=agentforge&tab=rpc` for a deployment that
+`default`: use `/runtime/tasks?project=agentforge&tab=rpc` for a deployment that
 declares `agentforge`. The profile name does not select or create a Project.
 A null Group descriptor means registration is still required in the current scope;
 it does not mean the Project binding was omitted. Register through the existing

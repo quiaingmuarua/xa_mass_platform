@@ -43,16 +43,6 @@ export const consoleRoutes: RouteRecordRaw[] = [
         ]
       },
       {
-        path: "task-workbench",
-        name: "task-workbench",
-        component: () => import("@/task-workbench/TaskWorkbench.vue"),
-        meta: {
-          section: "Workbench",
-          title: "任务工作台",
-          permission: "workbench.use"
-        }
-      },
-      {
         path: "reference/error-codes",
         name: "reference-error-codes",
         component: () => import("@/views/ErrorCodeReferenceView.vue"),
@@ -105,11 +95,7 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: consoleRoutes,
   scrollBehavior: (to, from) => {
-    if (
-      ["/runtime/tasks", "/task-workbench"].includes(to.path) &&
-      to.path === from.path
-    )
-      return false;
+    if (to.path === "/runtime/tasks" && to.path === from.path) return false;
     // Messages previews remain over the mounted list or creation draft.
     if (
       (to.path === "/messages" || to.path.startsWith("/messages/tasks/")) &&

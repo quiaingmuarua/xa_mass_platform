@@ -2,7 +2,7 @@
 
 Status: current generic Task and direct-call user guide.
 
-管理员通过 `/task-workbench` 使用平台通用能力。已经有专门业务入口时，先使用
+管理员通过 `/runtime/tasks`（含 `RPC 任务`、`有限任务` 与 `全局调度` 视图）使用平台通用能力。已经有专门业务入口时，先使用
 [Batch Checks](batch-checks.md)、[Messages](messages.md)或 [SMS](sms.md)，
 让对应场景承担输入转换和结果解释。
 

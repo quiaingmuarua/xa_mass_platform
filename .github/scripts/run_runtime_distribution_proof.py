@@ -458,12 +458,12 @@ def _prove_agentforge_bindings(base_url: str) -> None:
     status, _, _ = _request("POST", f"{base_url}/api/v1/tasks/{task_id}/close", headers=TASK_CALLER_HEADERS)
     if status != 200:
         raise RuntimeError("Non-default finite close failed")
-    for path in ("/task-workbench?project=agentforge&tab=rpc",
-                 "/task-workbench/?project=agentforge&tab=finite&view=create",
-                 "/runtime/tasks?project=agentforge"):
+    for path in ("/runtime/tasks?project=agentforge&tab=rpc",
+                 "/runtime/tasks/?project=agentforge&tab=finite&view=create",
+                 "/runtime/tasks?tab=global"):
         status, payload, content_type = _request("GET", base_url + path)
         if status != 200 or content_type != "text/html" or b'id="app"' not in payload:
-            raise RuntimeError("AgentForge workbench direct route unavailable")
+            raise RuntimeError("AgentForge runtime tasks direct route unavailable")
 
 
 def _prove_access_keys_before_restart(base_url: str, users_file: Path) -> str:

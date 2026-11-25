@@ -46,14 +46,6 @@ const messagesEnabled = computed(() =>
         <span>Tasks</span>
       </router-link>
     </template>
-    <template v-if="allowed('workbench.use')">
-      <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section"
-        >WORKBENCH</span
-      >
-      <router-link class="runtime-navigation__link" to="/task-workbench">
-        <el-icon><Tickets /></el-icon><span>任务工作台</span>
-      </router-link>
-    </template>
     <template
       v-if="
         (allowed('sms.use') && smsEnabled) ||

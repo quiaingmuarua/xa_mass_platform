@@ -94,7 +94,7 @@ it("late drawer and submission continuations cannot replace the current context"
     history: createMemoryHistory(),
     routes: [
       {
-        path: "/task-workbench",
+        path: "/runtime/tasks",
         component: FiniteTaskPage,
         props: {
           project: {
@@ -106,7 +106,7 @@ it("late drawer and submission continuations cannot replace the current context"
       }
     ]
   });
-  await router.push("/task-workbench?tab=finite&view=create");
+  await router.push("/runtime/tasks?tab=finite&view=create");
   const app = createApp({ template: "<router-view />" });
   app.use(createPinia());
   app.use(router);
@@ -158,7 +158,7 @@ it("late drawer and submission continuations cannot replace the current context"
   try {
     app.mount(host);
     await vi.waitFor(() => expect(document.body.textContent).toContain("创建有限任务"));
-    await router.push("/task-workbench?tab=finite&taskId=known");
+    await router.push("/runtime/tasks?tab=finite&taskId=known");
     await nextTick();
     // Element Plus emits update:modelValue again after its leaving transition.
     await new Promise((resolve) => setTimeout(resolve, 450));
@@ -168,7 +168,7 @@ it("late drawer and submission continuations cannot replace the current context"
       d.textContent?.includes("原始任务信息")
     );
     (activeDrawer?.querySelector(".el-drawer__close-btn") as HTMLButtonElement).click();
-    await router.push("/task-workbench?tab=finite&view=create");
+    await router.push("/runtime/tasks?tab=finite&view=create");
     await new Promise((resolve) => setTimeout(resolve, 450));
     expect(router.currentRoute.value.query.view).toBe("create");
     operations.project("default").submission = {
@@ -199,7 +199,7 @@ it("late drawer and submission continuations cannot replace the current context"
       notSubmitted: 0,
       complete: true
     };
-    await router.push("/task-workbench?tab=rpc");
+    await router.push("/runtime/tasks?tab=rpc");
     releaseRefresh!(
       new Response(
         JSON.stringify({ projectId: "default", truncated: false, tasks: [row] })

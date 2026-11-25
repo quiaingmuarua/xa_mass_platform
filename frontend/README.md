@@ -4,8 +4,7 @@ The Scenario product name is Batch Checks／批量检查. Its `app-checks` route
 API identifiers and source directory remain technical names; current Group bindings
 are deployment-owned configuration and do not replace saved Task execution values.
 
-Vue 3 console for Worker and Task runtime observation, a Project-scoped task
-workbench (RPC calls and finite Tasks), Scenario pages and public Demo. It is derived from Pure Admin Thin 6.2.0.
+Vue 3 console for Worker and unified Runtime Task observation/management (RPC calls, finite Tasks and cross-Project global scheduling), Scenario pages and public Demo. It is derived from Pure Admin Thin 6.2.0.
 Login uses one per-user access key issued by an administrator, without passwords or
 sessions. Server authenticates every API request from that key against its user directory
 and checks Project grants and Task ownership across task entrypoints.
@@ -31,7 +30,7 @@ can create and manage its own Messages and App Checks Tasks in assigned Projects
 including their existing import, approval, closure and result operations. Both
 built-in operators have `messages` and `app-checks`. Admin has all Projects; user
 management choices come from the common Project directory. Project assignment
-does not grant a role's missing operations: SMS, Runtime, Task workbench, Reference,
+does not grant a role's missing operations: SMS, Runtime (Workers and Tasks), Reference,
 configuration, user management and Mock demonstration controls remain admin-only.
 Route metadata, navigation and
 operation controls consume the same permission policy; Catalog availability is a
@@ -201,9 +200,9 @@ Routes:
 ```text
 /?view=users
 /runtime/workers
-/runtime/tasks
-/task-workbench?tab=rpc
-/task-workbench?tab=finite
+/runtime/tasks?tab=rpc
+/runtime/tasks?tab=finite
+/runtime/tasks?tab=global
 /api-reference
 /reference/error-codes
 /sms
@@ -792,47 +791,31 @@ Mock uses the same application-lifetime directory and models conditional saves,
 expiry, release and lost responses without network requests. Its management
 state never edits Mock Network/Score observations or simulates scheduling.
 
-## Task page
+## Runtime Tasks
 
-`/runtime/tasks` is a raw viewer. Project tabs use the immutable directory from
-`GET /api/v1/projects` and read a current batch of at most 100 Tasks.
-The Server selects by attribution score/Task ID and only then sorts that batch by
-saved creation time; there is no latest-N guarantee or scan to fill missing rows. Global observation keeps
-its independent Score window (1..1000 coordinates in Owner order). Search, Group
-and finite/managed filters operate only on the loaded collection; scrolling
-never fetches more data. Missing descriptors and Score bands remain unavailable.
-Refresh failures retain the last snapshot and successful read time.
+`/runtime/tasks` is the single admin-only (`runtime.view`) surface combining Project-scoped Task management (`tab=rpc`, `tab=finite`, defaulting to `tab=rpc`) and cross-Project global Runtime scheduling observation (`tab=global`; legacy `view=global` normalizes to `tab=global`). It reads every Project in the immutable startup directory (`GET /api/v1/projects`), including Scenario Projects, with manual-refresh reads bounded to the current 100-Task Redis batch (no pagination or polling). A single Project renders as a read-only label; multiple Projects use a selector. The `project` query selects context; without it, the console restores the last valid session choice, prefers `default`, or falls back to the first directory entry. An explicit unknown Project stays unavailable until the user chooses another or switches to `tab=global`. When no Project is configured, Project management stays unavailable while `tab=global` remains usable.
 
-The configured `default` Project remains an ordinary observed Project, preferred
-on first entry. `project`, `taskId` and the global `view` route query preserve the
-viewer context. TaskView decoding includes backend `name` and `metadata`. The
-drawer exposes original configuration and a workbench link carrying the saved Project
-and actual Task ID. Every known Project also has a workbench entry above its list,
-including an empty list. Unknown/missing attribution cannot be used for navigation.
-It contains no create, append, approve, close or Task Call control. The former
-`view=create` parameter no longer opens a creation flow.
+Explicit host Group bindings appear through the existing Group capability response, independently of Project membership. The finite form displays the selected query's actual Pool and uses that relation for supply suggestions; enabling supply alone does not change an Item query. Mock includes `pool-validation` and its Android `device-window` binding. Project capabilities and Runtime binding details share the same resolved example; Mock still disables raw writes and does not simulate window scheduling.
 
-Terminal finite Tasks in every Project retain raw successful-Result JSONL export.
-It reads the whole-task source independently of the preview/filter state, does
-not apply Scenario business validation, and requires a fresh terminal snapshot.
-Export state is independent of finite-task mutations; Mock never exports.
+`tab=global` keeps its independent cross-Project Score window (`POST /api/v1/runtime-view/tasks:preview`, 1..1000 coordinates in Owner order, not creation time). Search, Group and finite/managed filters operate only on the loaded collection; scrolling never fetches more data. Missing descriptors and Score bands remain unavailable, and refresh failures retain the last snapshot and successful read time. Its read-only drawer exposes original configuration, retention notice, whole-task JSONL export for terminal finite Tasks, and an in-route link to open the Task in its Project's `tab=rpc` or `tab=finite` view.
 
-## Task workbench
+Raw Item append is enabled only for `server.inputOwner=raw`; business Tasks keep their Scenario import conversion. Approval and closure use the shared Task client, including for Scenario Tasks. Terminal finite Tasks in every Project retain raw successful-Result JSONL export, reading the whole-task source independently of preview/filter state and requiring a fresh terminal snapshot (Mock never exports).
 
-Explicit host Group bindings appear through the existing Group capability response, independently of Project membership. The finite form displays the selected
-query's actual Pool and uses that relation for supply suggestions; enabling supply alone does not change an Item query.
-Mock includes `pool-validation` and its Android `device-window` binding. Project capabilities and Runtime binding details share
-the same resolved example; Mock still disables raw writes and does not simulate window scheduling.
-
-`/task-workbench` is admin-only and has RPC and finite-task tabs, defaulting to
-`tab=rpc`. It reads every Project in the immutable startup directory, including Scenario
-Projects. A single Project is a read-only label; multiple Projects use a selector.
-The `project` query selects the context. Without it, the console restores the last
-valid session choice or uses the first directory entry; no Project means no writes.
-An explicit unknown Project stays unavailable until the user chooses another.
-Raw Item append is enabled only for `server.inputOwner=raw`; business Tasks keep
-their Scenario import conversion.
-Approval and closure use the shared Task client, including for Scenario Tasks.
+For finite Tasks (`tab=finite`), active running Tasks (`running-initial`
+and `running_visible`) appear in a top progress board showing completion ratio and
+non-zero outcome counts, while pending-review and terminal Tasks appear below in a
+flat single-purpose table with separate columns for task identity, concise status
+(`待审核`/`已完成`/`部分失败`/`已失败`/`已终止`, deriving objective terminal states
+from `scoreBand` and `/tasks:stats` without fabricating ending reasons, with raw
+`scoreBand` in tooltips and drawer details), Task Size, non-zero outcomes, Group,
+created time, terminated time (`retention.terminatedAtMillis`) and total elapsed span.
+Finite details organize configuration, result previews (with local status/ID filtering
+and extracted `eventCode`/`workerSelector` context), append inputs (`view=append` opens
+directly on the append tab) and raw JSON into drawer tabs. RPC tasks use a matching flat
+table, structured configuration drawers with Group capability mappings, and batch debug
+results with per-batch status counts and request-to-result `eventCode`/`executorName`
+correlation. Mock fixtures populate representative running, pending-review and terminal
+`stats`/`retention` snapshots while keeping all raw writes disabled.
 
 RPC uses a Task list at `project=...&tab=rpc`, content-area creation at
 `view=create`, a read-only configuration drawer at `taskId=...`, and one JSON
