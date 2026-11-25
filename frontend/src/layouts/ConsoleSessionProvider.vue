@@ -40,7 +40,9 @@ const route = useRoute();
 const caller = captureTaskCaller();
 const mock = inject(consoleMockKey, undefined);
 const pinia = getActivePinia()!;
-const needsRuntime = computed(() => String(route.meta.section) === "Runtime");
+const needsDataSource = computed(() =>
+  ["Runtime", "Storage"].includes(String(route.meta.section))
+);
 if (configResult.ok) {
   provide(
     historySourceKey,
@@ -123,7 +125,9 @@ if (configResult.ok) {
 </script>
 <template>
   <ConsoleLayout
-    :runtime-error="!configResult.ok && needsRuntime ? configResult.error : undefined"
+    :runtime-error="
+      !configResult.ok && needsDataSource ? configResult.error : undefined
+    "
     ><slot><router-view /></slot
   ></ConsoleLayout>
 </template>

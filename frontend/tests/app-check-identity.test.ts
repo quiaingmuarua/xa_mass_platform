@@ -372,15 +372,18 @@ describe("console login and shared task access", () => {
       expect(loginDestination(router, "//outside.example")).toBe("/app-checks");
     }
   );
-  it("keeps logout available when Runtime configuration is invalid", async () => {
-    vi.stubEnv("VITE_RUNTIME_API_BASE_URL", "https://invalid.example/api");
-    const router = await mount("1000", "/runtime/tasks");
-    expect(document.querySelector('[data-testid="config-error"]')).not.toBeNull();
-    await login("1001");
-    expect(router.currentRoute.value.fullPath).toBe("/app-checks");
-    expect(document.querySelector('[data-testid="config-error"]')).toBeNull();
-    expect(document.querySelector("h1")?.textContent).toBe("我的任务 · 当前批次");
-  });
+  it.each(["/runtime/tasks", "/storage/tasks"])(
+    "keeps logout available when data-source configuration is invalid at %s",
+    async (path) => {
+      vi.stubEnv("VITE_RUNTIME_API_BASE_URL", "https://invalid.example/api");
+      const router = await mount("1000", path);
+      expect(document.querySelector('[data-testid="config-error"]')).not.toBeNull();
+      await login("1001");
+      expect(router.currentRoute.value.fullPath).toBe("/app-checks");
+      expect(document.querySelector('[data-testid="config-error"]')).toBeNull();
+      expect(document.querySelector("h1")?.textContent).toBe("我的任务 · 当前批次");
+    }
+  );
   it("creates for A and B, preserves Mock tasks across logout, and lets any admin filter both", async () => {
     const create = vi.spyOn(MockAppCheckTaskSource.prototype, "createTask");
     const router = await mount();
