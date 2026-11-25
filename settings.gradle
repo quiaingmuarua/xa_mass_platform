@@ -1,6 +1,10 @@
 pluginManagement {
     repositories {
         google()
+        def mirrorUrl = System.getenv('MAVEN_CENTRAL_MIRROR_URL')?.trim()
+        if (mirrorUrl) {
+            maven { url = uri(mirrorUrl) }
+        }
         mavenCentral()
         gradlePluginPortal()
     }
@@ -10,6 +14,10 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
+        def mirrorUrl = System.getenv('MAVEN_CENTRAL_MIRROR_URL')?.trim()
+        if (mirrorUrl) {
+            maven { url = uri(mirrorUrl) }
+        }
         mavenCentral()
     }
 }

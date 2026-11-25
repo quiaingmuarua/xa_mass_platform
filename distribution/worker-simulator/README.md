@@ -38,7 +38,7 @@ Release:
 
 The kit lets any machine act as an external user of a published Runtime without a checkout
 or a build. It is a test and acceptance capability, not a production Worker.
-The [current 4.4 contract](../server/RELEASE-4.4.md#published-worker-consumers)
+The [current 4.5 contract](../server/RELEASE-4.5.md#published-worker-consumers)
 records the supported Consumer/Server attribution; each immutable kit and target
 Server is pinned independently for deployed Performance. Use the selected
 Release's compatibility and configuration requirements; this makes no general

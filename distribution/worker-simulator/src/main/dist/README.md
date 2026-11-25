@@ -22,7 +22,7 @@ and deployed Performance entries require Linux, Java 21 and Python 3.11+.
 `manifest.json` schema 3 holds the kit's version, commit and four entries. Pin the
 immutable kit and target Runtime separately; use the target Release's documented
 compatibility and configuration requirements. The current
-[4.4 contract](https://github.com/quiaingmuarua/xa_mass_platform/blob/main/distribution/server/RELEASE-4.4.md#published-worker-consumers)
+[4.5 contract](https://github.com/quiaingmuarua/xa_mass_platform/blob/main/distribution/server/RELEASE-4.5.md#published-worker-consumers)
 records deployed Performance's separate kit/Server attribution, not a general
 cross-version promise. The kit includes both compiled Harness installations;
 consumers do not run Gradle or build source.
