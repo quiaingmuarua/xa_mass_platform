@@ -1,5 +1,4 @@
-import type { TaskRow } from "@/components/RawTaskTable.vue";
-import { countFrom, type TaskStats } from "@/task-management/projects";
+import { countFrom, type TaskRow, type TaskStats } from "@/task-management/projects";
 import type { RefillTarget } from "@/runtime-viewer/types";
 
 export type StatusTone = "info" | "primary" | "success" | "warning" | "danger";
@@ -265,6 +264,26 @@ export function formatOutcomeItems(stats?: TaskStats | null): {
   if (summary.other > 0)
     items.push({ text: `${summary.other.toLocaleString()} 其他`, tone: "muted" });
   return items;
+}
+
+export function formatRpcWindowOutcomes(stats?: TaskStats | null): {
+  text: string;
+  tone: "normal" | "danger" | "muted";
+}[] {
+  const summary = summarizeTaskStats(stats);
+  if (!summary) return [];
+  const items: { text: string; tone: "normal" | "danger" | "muted" }[] = [];
+  if (summary.succeeded > 0)
+    items.push({ text: `${summary.succeeded.toLocaleString()} 成功`, tone: "normal" });
+  if (summary.failed > 0)
+    items.push({ text: `${summary.failed.toLocaleString()} 失败`, tone: "danger" });
+  if (summary.other > 0)
+    items.push({ text: `${summary.other.toLocaleString()} 其他`, tone: "muted" });
+  return items;
+}
+
+export function rpcCallEndpointPath(taskId: string): string {
+  return `/api/v1/tasks/${encodeURIComponent(taskId)}/items:call`;
 }
 
 export function formatDateTime(value?: string | number | null, empty = "—"): string {

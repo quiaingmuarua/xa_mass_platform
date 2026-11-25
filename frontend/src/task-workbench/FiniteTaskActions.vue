@@ -3,7 +3,7 @@ import { ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
 import "element-plus/es/components/dropdown/style/css";
 import "element-plus/es/components/dropdown-menu/style/css";
 import "element-plus/es/components/dropdown-item/style/css";
-import type { TaskRow } from "@/components/RawTaskTable.vue";
+import type { TaskRow } from "@/task-management/projects";
 defineProps<{ row: TaskRow; writable: boolean; busy: boolean }>();
 defineEmits<{ action: [action: string] }>();
 </script>

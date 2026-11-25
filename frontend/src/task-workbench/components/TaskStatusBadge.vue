@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { TaskRow } from "@/components/RawTaskTable.vue";
+import type { TaskRow } from "@/task-management/projects";
 import { presentFiniteStatus, presentRpcStatus } from "../presentation";
 
 const props = defineProps<{

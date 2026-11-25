@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Plus, Refresh } from "@element-plus/icons-vue";
@@ -7,13 +7,13 @@ import "element-plus/es/components/message-box/style/css";
 import JsonBlock from "@/components/JsonBlock.vue";
 import RawTaskInput from "@/components/RawTaskInput.vue";
 import RawTaskResults from "@/components/RawTaskResults.vue";
-import type { TaskRow } from "@/components/RawTaskTable.vue";
 import TaskResultExport from "@/components/TaskResultExport.vue";
 import FiniteTaskActions from "./FiniteTaskActions.vue";
 import WorkbenchTaskTable from "./components/WorkbenchTaskTable.vue";
 import TaskStatusBadge from "./components/TaskStatusBadge.vue";
 import TaskStatsCell from "./components/TaskStatsCell.vue";
 import TaskDescriptorPanel from "./components/TaskDescriptorPanel.vue";
+import { useViewGuard } from "./helpers";
 import {
   formatCompactTime,
   formatDateTime,
@@ -23,7 +23,7 @@ import {
 } from "./presentation";
 import { useRuntimeViewerConfig, useTaskManagementStore } from "@/runtime-context";
 import { canManageRawTask } from "@/stores/task-management";
-import type { Project } from "@/task-management/projects";
+import type { Project, TaskRow } from "@/task-management/projects";
 import { useTaskSession } from "./session";
 
 const props = defineProps<{ project: Project }>();
@@ -169,19 +169,12 @@ const detailDuration = computed(() =>
 
 const table = ref<InstanceType<typeof WorkbenchTaskTable>>();
 const createHeading = ref<HTMLElement>();
+const guard = useViewGuard();
 let creatingPreviously = false;
-let disposed = false;
-let navigation = 0;
 let restoringScroll = true;
-let focusReturn: HTMLElement | undefined;
-
-function rememberFocus() {
-  focusReturn =
-    document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
-}
 
 async function sync() {
-  const generation = ++navigation;
+  const ticket = guard.next();
   const savedScroll = filter.scroll;
   restoringScroll = true;
   if (!list.value) void workspace.loadTasks(projectId);
@@ -191,17 +184,17 @@ async function sync() {
       void workspace.loadDetail(projectId, taskId.value);
   } else workspace.clearDetail();
   await nextTick();
-  if (!disposed && generation === navigation) {
+  if (guard.isCurrent(ticket)) {
     if (creating.value && !creatingPreviously) createHeading.value?.focus();
     creatingPreviously = creating.value;
   }
-  if (savedScroll !== 0 && !disposed && generation === navigation)
+  if (savedScroll !== 0 && guard.isCurrent(ticket))
     await table.value?.restoreScrollTop(savedScroll);
-  if (!disposed && generation === navigation) restoringScroll = false;
+  if (guard.isCurrent(ticket)) restoringScroll = false;
 }
 
 function rememberScroll(event: { scrollTop: number }) {
-  if (!restoringScroll && !disposed) filter.scroll = event.scrollTop;
+  if (!restoringScroll && !guard.isDisposed()) filter.scroll = event.scrollTop;
 }
 
 watch(
@@ -216,10 +209,6 @@ watch(
   }
 );
 onMounted(sync);
-onBeforeUnmount(() => {
-  disposed = true;
-  navigation++;
-});
 
 async function refresh() {
   await Promise.allSettled([
@@ -230,47 +219,39 @@ async function refresh() {
 }
 
 function open(row: TaskRow) {
-  rememberFocus();
+  guard.rememberFocus();
   return router.push({
     query: { project: projectId, tab: "finite", taskId: row.taskId }
   });
 }
 
 function openCreate() {
-  rememberFocus();
+  guard.rememberFocus();
   return router.push({ query: { project: projectId, tab: "finite", view: "create" } });
 }
 
 async function close(done: () => void) {
   done();
   if (
-    disposed ||
+    guard.isDisposed() ||
     route.path !== "/runtime/tasks" ||
     route.query.tab !== "finite" ||
     (route.query.project && route.query.project !== projectId)
   )
     return;
   await router.push({ query: { project: projectId, tab: "finite" } });
-  const generation = navigation;
+  const ticket = guard.current();
   await nextTick();
-  if (
-    !disposed &&
-    generation === navigation &&
-    !taskId.value &&
-    !creating.value &&
-    focusReturn?.isConnected
-  )
-    focusReturn.focus();
+  if (guard.isCurrent(ticket) && !taskId.value && !creating.value) guard.restoreFocus();
 }
 
 async function changeTask(action: "approve" | "close", id = taskId.value) {
   if (operations.busy || !canWrite.value) return;
-  const generation = navigation;
+  const ticket = guard.current();
   await workspace.loadDetail(projectId, id);
   const current = detail.value;
   if (
-    disposed ||
-    generation !== navigation ||
+    !guard.isCurrent(ticket) ||
     !current ||
     current.taskId !== id ||
     !canManageRawTask(current, projectId, fresh.value) ||
@@ -285,8 +266,7 @@ async function changeTask(action: "approve" | "close", id = taskId.value) {
       { confirmButtonText: "确认", cancelButtonText: "取消", type: "warning" }
     );
     if (
-      disposed ||
-      generation !== navigation ||
+      !guard.isCurrent(ticket) ||
       !canWrite.value ||
       !fresh.value ||
       detail.value !== current
@@ -294,10 +274,9 @@ async function changeTask(action: "approve" | "close", id = taskId.value) {
       return;
     await operations.mutate(projectId, current, action, fresh.value);
     await workspace.loadTasks(projectId);
-    if (!disposed && generation === navigation)
-      await workspace.loadDetail(projectId, id);
+    if (guard.isCurrent(ticket)) await workspace.loadDetail(projectId, id);
   } catch (cause) {
-    if (cause instanceof Error && !disposed) ElMessage.error(cause.message);
+    if (cause instanceof Error && !guard.isDisposed()) ElMessage.error(cause.message);
   }
 }
 
@@ -305,17 +284,17 @@ async function action(row: TaskRow, value: string) {
   if (value === "approve" || value === "close") {
     // Approval and close act only on the open, fresh Task: open the row first.
     if (taskId.value !== row.taskId) {
-      rememberFocus();
+      guard.rememberFocus();
       await router.push({
         query: { project: projectId, tab: "finite", taskId: row.taskId }
       });
       await nextTick();
-      if (disposed || taskId.value !== row.taskId) return;
+      if (guard.isDisposed() || taskId.value !== row.taskId) return;
     }
     await changeTask(value, row.taskId);
     return;
   }
-  rememberFocus();
+  guard.rememberFocus();
   await router.push({
     query: {
       project: projectId,
@@ -328,21 +307,17 @@ async function action(row: TaskRow, value: string) {
 }
 
 async function afterSubmit(id: string) {
-  if (disposed) return;
+  if (guard.isDisposed()) return;
   const receipt = operationState.submission;
-  const generation = navigation;
+  const ticket = guard.current();
   const wasOpen = creating.value || taskId.value === id;
   await workspace.loadTasks(projectId);
-  if (
-    disposed ||
-    !wasOpen ||
-    generation !== navigation ||
-    receipt !== operationState.submission
-  )
+  if (!guard.isCurrent(ticket) || !wasOpen || receipt !== operationState.submission)
     return;
   if (receipt?.complete && receipt.taskId === id) {
     await router.push({ query: { project: projectId, tab: "finite", taskId: id } });
-    if (!disposed && taskId.value === id) await workspace.loadDetail(projectId, id);
+    if (!guard.isDisposed() && taskId.value === id)
+      await workspace.loadDetail(projectId, id);
   }
 }
 

@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
-import type { TaskRow } from "@/components/RawTaskTable.vue";
+import type { TaskRow } from "@/task-management/projects";
 import {
   formatCompactTime,
   formatDateTime,
   formatDuration,
   formatOutcomeItems,
   formatRefillList,
+  formatRpcWindowOutcomes,
   isRunningBand,
   presentFiniteStatus,
   presentResultStatus,
   presentRpcStatus,
   presentTaskSource,
+  rpcCallEndpointPath,
   splitTaskMetadata,
   summarizeTaskStats
 } from "@/task-workbench/presentation";
@@ -69,6 +71,16 @@ describe("task-workbench presentation", () => {
     expect(formatOutcomeItems({ total: 0, countsByTag: {} })).toEqual([
       { text: "无执行项", tone: "muted" }
     ]);
+
+    expect(formatRpcWindowOutcomes(undefined)).toEqual([]);
+    expect(formatRpcWindowOutcomes({ total: 5, countsByTag: { "1": 5 } })).toEqual([]);
+    expect(
+      formatRpcWindowOutcomes({ total: 20, countsByTag: { "1": 4, "5": 2, "6": 14 } })
+    ).toEqual([
+      { text: "14 成功", tone: "normal" },
+      { text: "2 失败", tone: "danger" }
+    ]);
+    expect(rpcCallEndpointPath("rpc/a b")).toBe("/api/v1/tasks/rpc%2Fa%20b/items:call");
   });
 
   it("classifies finite task statuses concisely while retaining raw scoreBand and archived flag", () => {
