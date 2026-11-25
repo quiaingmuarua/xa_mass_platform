@@ -1,7 +1,9 @@
 # XA Mass 4.5 release and upgrade contract
 
-Status: current 4.5 release input. Actual host installation state belongs to the
-host records reached through the
+Status: current 4.5 release input. 4.5.0 is published and its retained-scope GCP
+upgrade completed on 2026-11-25; temporary upgrade-material cleanup was confirmed
+at 05:41:22 UTC. Published artifacts remain immutable. Actual host installation
+state belongs to the host records reached through the
 [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview).
 
 ## Release preparation
@@ -32,7 +34,22 @@ deployment are separate recorded facts.
 - **Proof CI & Release reliability**: rerun artifact attempt propagation for
   `prepare_release.py` and Proof CI, split Robolectric caches, JFR observation
   ordering fix (`#136`), and CI-default Google Maven Central mirror fallback for
-  Gradle builds.
+  Gradle builds (`#138`).
+
+4.5.0 was published from merged commit
+`a0db0cf30e466d305d37e9a880525d80b2316a44` through
+[complete manual Proof 45552422098](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45552422098),
+attempt 1, with all 18 jobs successful, including SMS Reception Preview.
+[Promotion 45554251315](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45554251315)
+promoted those exact Proof ZIPs to
+[Release 4.5.0](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.5.0)
+(Release ID `457693291`).
+
+| ZIP | SHA256 |
+| --- | --- |
+| `xa-mass-server-runtime-4.5.0.zip` | `5bcc9a10d10a5f2615269115c736a95a7f8fe57a028d37c0ce47073a7fe327f5` |
+| `xa-mass-worker-sdk-4.5.0.zip` | `67ec3c040ce2b656e86b490b3a20b8c4e4950931a772407dac56e3bb78e9b8a6` |
+| `xa-mass-worker-simulator-4.5.0.zip` | `6c08d1e0033bfa8bdd938ec94e2ae0199a2d5b9af09b9e791afd05f8c932c92a` |
 
 ### Retained-scope upgrade constraints from 4.4.5
 
@@ -65,6 +82,42 @@ window:
    loopback `/actuator/prometheus` (`xa_mass_*` series), authenticated
    `/runtime/tasks` (RPC, finite and global views), `/task-workbench` returning
    `404`, external finite + RPC MD5 checks, and SQLite `PRAGMA quick_check`.
+
+### Accepted deployment and closeout (2026-11-25)
+
+The 2026-11-25 GCP Release Preview upgrade (`upgrade-4.5.0-20261125T053403Z`)
+installed immutable Runtime 4.5.0 (`PID 973667`) at the commit and SHA256 above,
+retaining `profile_long_preview_4_4`, `/var/lib/xa-mass/task-history-4.4.sqlite`
+(schema 1, `PRAGMA quick_check=ok`), `configurationId`
+`sha256:c9bdee9c5282ea089ea667c086fb933ea4f7ce7b38518e9eac248da266cc79fd`,
+standing Host `4.4.2`, and Performance kit `4.4.4`.
+
+- External `/var/lib/xa-mass/users.json` removed retired `"workbench.use"` from
+  `admin.permissions` while preserving `0600 xa-mass:xa-mass`; `/api/v1/me`
+  confirmed `userId=1000` with `runtime.view=true` and `workbench.use=false`.
+- Nginx staging ingress was re-rendered from the 4.5.0 ZIP (single-line removal
+  of `task-workbench` from admin page allowlist) and validated with
+  `nginx -t -g 'user www-data;'`.
+- Health, ingress and observability checks passed: loopback readiness `UP`,
+  loopback `/actuator/prometheus` exported 94 `xa_mass_*` lines (with live
+  Pacer dispatch counters incrementing during acceptance), public
+  `/actuator/prometheus` returned `404`, public `/runtime/tasks` returned `200`,
+  public `/task-workbench` returned `404`, unauthenticated `/api/v1/me` and
+  Worker prepare returned `401`, and `/docs/` served commit `a0db0cf30`.
+- All 20 standing Workers (`persistent-workers`) automatically reconnected
+  without Host restart (`connected=20`).
+- External 3-Item finite Task (`task-f12292b2537d4c809ffd9e0132f1e679`, JSONL
+  export SHA256
+  `6e3c9fbf459d4362962cea9a8bb8a3d1fa32f3bc742f3f9cac5cff330732de42`) and fresh
+  3-Item RPC Task (`accept-450-rpc-a0f4e13e`, 3/3 terminal succeeded) passed
+  independent UTF-8 MD5 verification; temporary `accept4` key was cleared.
+- Interactive browser spot-check of `/runtime/tasks` with the private admin key
+  remains explicitly recorded as pending operator browser verification.
+- Old 4.4.5 binary, temporary stage directory and temporary restore point were
+  confirmed removed at `2026-11-25 05:41:22 UTC`; GCP `release.json`,
+  `deployment.json`, `operations.log` and GitHub `release-preview-load` Server
+  pins (`INSTALLED_RELEASE_TAG=v4.5.0`, `INSTALLED_RELEASE_COMMIT`,
+  `PERFORMANCE_DEPLOYMENT_JSON.serverDeployment`) were updated and read back.
 
 ## Finite Task history and RPC retention
 
