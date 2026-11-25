@@ -10,6 +10,12 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Configure default Maven Central mirror for CI
+      shell: bash
+      run: |
+        if [ -z "${MAVEN_CENTRAL_MIRROR_URL:-}" ]; then
+          echo "MAVEN_CENTRAL_MIRROR_URL=https://maven-central.storage-download.googleapis.com/maven2" >> "$GITHUB_ENV"
+        fi
     - uses: actions/setup-java@v5.7.0
       with:
         distribution: temurin

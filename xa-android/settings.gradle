@@ -1,7 +1,15 @@
 import groovy.json.JsonSlurper
 
 pluginManagement {
-    repositories { google(); mavenCentral(); gradlePluginPortal() }
+    repositories {
+        google()
+        def mirrorUrl = System.getenv('MAVEN_CENTRAL_MIRROR_URL')?.trim()
+        if (mirrorUrl) {
+            maven { url = uri(mirrorUrl) }
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
 }
 
 def required = { String name ->
@@ -31,6 +39,10 @@ dependencyResolutionManagement {
             filter { includeGroup 'com.xa.mass' }
         }
         google()
+        def mirrorUrl = System.getenv('MAVEN_CENTRAL_MIRROR_URL')?.trim()
+        if (mirrorUrl) {
+            maven { url = uri(mirrorUrl) }
+        }
         mavenCentral()
     }
 }

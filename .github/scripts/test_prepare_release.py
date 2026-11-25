@@ -148,6 +148,14 @@ class ReleasePromotionTest(unittest.TestCase):
             with self.subTest(version=version):
                 self.assertEqual(expected, release.release_contract(version))
 
+    def test_current_four_five_contract_is_read_from_repository(self):
+        contract = release.ROOT / "distribution/server/RELEASE-4.5.md"
+        expected = contract.read_text(encoding="utf-8")
+        self.assertTrue(expected.startswith("# XA Mass 4.5 release"))
+        for version in ("4.5.0",):
+            with self.subTest(version=version):
+                self.assertEqual(expected, release.release_contract(version))
+
     def test_missing_minor_contract_fails_before_github_without_major_fallback(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
