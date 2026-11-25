@@ -410,45 +410,37 @@ const stateLabels = {
 
           <div
             v-if="results.length"
-            class="tw-summary-strip tw-summary-strip--compact"
+            class="tw-segment"
             role="group"
             aria-label="本批结果汇总"
           >
             <button
               type="button"
-              class="tw-summary-chip"
               :class="{ 'is-active': resultFilter === 'all' }"
               @click="resultFilter = 'all'"
             >
-              <span>全部</span>
-              <strong>{{ resultCounts.all }}</strong>
+              全部 <span>{{ resultCounts.all }}</span>
             </button>
             <button
               type="button"
-              class="tw-summary-chip tw-summary-chip--success"
               :class="{ 'is-active': resultFilter === 'succeeded' }"
               @click="resultFilter = 'succeeded'"
             >
-              <span>成功</span>
-              <strong>{{ resultCounts.succeeded }}</strong>
+              成功 <span>{{ resultCounts.succeeded }}</span>
             </button>
             <button
               type="button"
-              class="tw-summary-chip tw-summary-chip--danger"
               :class="{ 'is-active': resultFilter === 'failed' }"
               @click="resultFilter = 'failed'"
             >
-              <span>失败</span>
-              <strong>{{ resultCounts.failed }}</strong>
+              失败 <span>{{ resultCounts.failed }}</span>
             </button>
             <button
               type="button"
-              class="tw-summary-chip"
               :class="{ 'is-active': resultFilter === 'not_observed' }"
               @click="resultFilter = 'not_observed'"
             >
-              <span>未观测</span>
-              <strong>{{ resultCounts.not_observed }}</strong>
+              未观测 <span>{{ resultCounts.not_observed }}</span>
             </button>
           </div>
 

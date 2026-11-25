@@ -919,3 +919,60 @@ it("links finite drawer to tab=global and disables generic approval for credit-c
   });
   expect(f.client.approveTask).not.toHaveBeenCalled();
 });
+
+it("displays active RPC channels in a top board with window stats and separates pending/deprecated RPC tasks", async () => {
+  const f = await mount("/runtime/tasks?project=default&tab=rpc");
+  vi.mocked(f.source.tasks).mockResolvedValueOnce({
+    projectId: "default",
+    truncated: false,
+    tasks: [
+      {
+        ...row("rpc-live", "g1", true, "default"),
+        scoreBand: "running_visible",
+        stats: { total: 425, countsByTag: { "1": 5, "5": 2, "6": 418 } }
+      },
+      {
+        ...row("rpc-pending", "g1", true, "default"),
+        scoreBand: "pre_review",
+        stats: { total: 0, countsByTag: {} }
+      },
+      {
+        ...row("rpc-old", "g2", true, "default"),
+        scoreBand: "terminal",
+        stats: { total: 100, countsByTag: { "5": 4, "6": 96 } }
+      }
+    ]
+  });
+  await f.session.rpc.loadTasks("default");
+  await nextTick();
+
+  const board = f.host.querySelector('[data-testid="rpc-active-board"]');
+  expect(board?.textContent).toContain("rpc-live");
+  expect(board?.textContent).toContain("服务中");
+  expect(board?.textContent).toContain("在途");
+  expect(board?.textContent).toContain("418");
+  expect(board?.textContent).toContain("复制 ID");
+  expect(board?.textContent).not.toContain("rpc-pending");
+  expect(board?.textContent).not.toContain("rpc-old");
+
+  const tableText = f.host.querySelector(".el-table")?.textContent ?? "";
+  expect(tableText).toContain("rpc-pending");
+  expect(tableText).toContain("rpc-old");
+  expect(tableText).toContain("待启用");
+  expect(tableText).toContain("已停用");
+  expect(tableText).toContain("96 成功");
+  expect(tableText).toContain("4 失败");
+
+  vi.mocked(f.source.task).mockResolvedValueOnce({
+    ...row("rpc-live", "g1", true, "default"),
+    scoreBand: "running_visible",
+    stats: { total: 425, countsByTag: { "1": 5, "5": 2, "6": 418 } }
+  });
+  await f.router.push("/runtime/tasks?project=default&tab=rpc&taskId=rpc-live");
+  await vi.waitFor(() =>
+    expect(f.session.rpc.detail.value.value?.taskId).toBe("rpc-live")
+  );
+  await nextTick();
+  expect(document.body.textContent).toContain("/api/v1/tasks/rpc-live/items:call");
+  expect(document.body.textContent).toContain("当前 Redis 保留窗口统计");
+});

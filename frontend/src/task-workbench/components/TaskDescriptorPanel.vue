@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { ElMessage } from "element-plus";
 import type { ProjectTask } from "@/task-management/projects";
 import TaskRetentionNotice from "@/components/TaskRetentionNotice.vue";
+import { copyText } from "../helpers";
 import {
   formatDateTime,
   formatDuration,
@@ -25,13 +25,8 @@ const configEntries = computed(() =>
   Object.entries(props.task.task?.config ?? {}).sort(([a], [b]) => a.localeCompare(b))
 );
 
-async function copyId(value: string) {
-  try {
-    await navigator.clipboard.writeText(value);
-    ElMessage.success("已复制 Task ID");
-  } catch {
-    ElMessage.error("复制失败，请手动复制。");
-  }
+function copyId(value: string) {
+  return copyText(value, "已复制 Task ID");
 }
 </script>
 <template>

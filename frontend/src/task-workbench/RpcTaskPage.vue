@@ -1,28 +1,32 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
+import { ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
 import "element-plus/es/components/dropdown/style/css";
 import "element-plus/es/components/dropdown-menu/style/css";
 import "element-plus/es/components/dropdown-item/style/css";
 import { useRuntimeViewerConfig } from "@/runtime-context";
 import { consoleIdentity } from "@/console-identity";
 import JsonBlock from "@/components/JsonBlock.vue";
-import type { TaskRow } from "@/components/RawTaskTable.vue";
 import TaskSupplyEditor from "@/components/TaskSupplyEditor.vue";
 import RpcTaskDebug from "./RpcTaskDebug.vue";
 import WorkbenchTaskTable from "./components/WorkbenchTaskTable.vue";
 import TaskStatusBadge from "./components/TaskStatusBadge.vue";
 import TaskDescriptorPanel from "./components/TaskDescriptorPanel.vue";
 import GroupCapabilitiesCard from "./components/GroupCapabilitiesCard.vue";
+import RpcWindowStats from "./components/RpcWindowStats.vue";
+import { copyText, useViewGuard } from "./helpers";
 import {
   formatCompactTime,
   formatDateTime,
+  formatRefillList,
+  isRunningBand,
   presentRpcStatus,
-  type RpcStatusCategory
+  presentTaskSource,
+  rpcCallEndpointPath
 } from "./presentation";
 import { readSupply } from "@/task-management/supply";
-import type { Project } from "@/task-management/projects";
+import type { Project, TaskRow } from "@/task-management/projects";
 import { rpcTaskId, type RpcTaskPrepareRequest } from "./rpc-task";
 import { useTaskSession } from "./session";
 
@@ -131,7 +135,8 @@ const rows = computed(() =>
     )
 );
 
-const statusFilter = ref<"" | RpcStatusCategory>("");
+type InactiveSegment = "all" | "pre_review" | "terminal";
+const inactiveSegment = ref<InactiveSegment>("all");
 const drawerTab = ref<"config" | "raw">("config");
 
 const baseFiltered = computed(() =>
@@ -147,35 +152,39 @@ const baseFiltered = computed(() =>
   })
 );
 
-const batchSummary = computed(() => {
+const activeRows = computed(() =>
+  baseFiltered.value.filter((row) => isRunningBand(row.scoreBand))
+);
+
+const inactiveRows = computed(() =>
+  baseFiltered.value.filter((row) => !isRunningBand(row.scoreBand))
+);
+
+const inactiveCounts = computed(() => {
   const counts = {
-    all: baseFiltered.value.length,
-    running: 0,
+    all: inactiveRows.value.length,
     pre_review: 0,
     terminal: 0
   };
-  for (const row of baseFiltered.value) {
+  for (const row of inactiveRows.value) {
     const category = presentRpcStatus(row).category;
-    if (category === "running") counts.running++;
-    else if (category === "pre_review") counts.pre_review++;
+    if (category === "pre_review") counts.pre_review++;
     else if (category === "terminal") counts.terminal++;
   }
   return counts;
 });
 
-const filtered = computed(() =>
-  statusFilter.value
-    ? baseFiltered.value.filter(
-        (row) => presentRpcStatus(row).category === statusFilter.value
+const tableRows = computed(() =>
+  inactiveSegment.value === "all"
+    ? inactiveRows.value
+    : inactiveRows.value.filter(
+        (row) => presentRpcStatus(row).category === inactiveSegment.value
       )
-    : baseFiltered.value
 );
 
 const table = ref<InstanceType<typeof WorkbenchTaskTable>>();
 const heading = ref<HTMLElement>();
-let focusReturn: HTMLElement | undefined;
-let generation = 0;
-let disposed = false;
+const guard = useViewGuard();
 let previousView = "";
 let restoring = false;
 const error = ref("");
@@ -190,13 +199,8 @@ const createFrozen = computed(
   () => !!attempt.value || !!detail.value || state.value.loading
 );
 
-function rememberFocus() {
-  focusReturn =
-    document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
-}
-
 function go(value: "list" | "create" | "debug", id = "") {
-  if (view.value === "list" && !routeTask.value) rememberFocus();
+  if (view.value === "list" && !routeTask.value) guard.rememberFocus();
   return router.push({
     path: "/runtime/tasks",
     query: {
@@ -223,17 +227,11 @@ function eligible(row: TaskRow) {
   );
 }
 
-async function copy(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    ElMessage.success("已复制");
-  } catch {
-    ElMessage.error("复制失败，请手动复制 Task ID。");
-  }
-}
+const copy = (text: string) =>
+  copyText(text, "已复制", "复制失败，请手动复制 Task ID。");
 
 async function sync() {
-  const ticket = ++generation;
+  const ticket = guard.next();
   const changedView = previousView !== view.value;
   previousView = view.value;
   error.value = "";
@@ -250,17 +248,12 @@ async function sync() {
   const scroll = saved.rpcFilter.scroll;
   restoring = true;
   await nextTick();
-  if (disposed || ticket !== generation) return;
+  if (!guard.isCurrent(ticket)) return;
   if (view.value !== "list" && changedView) heading.value?.focus();
-  else if (
-    view.value === "list" &&
-    changedView &&
-    !routeTask.value &&
-    focusReturn?.isConnected
-  )
-    focusReturn.focus();
+  else if (view.value === "list" && changedView && !routeTask.value)
+    guard.restoreFocus();
   if (view.value === "list" && scroll) await table.value?.restoreScrollTop(scroll);
-  if (!disposed && ticket === generation) restoring = false;
+  if (guard.isCurrent(ticket)) restoring = false;
 }
 
 watch(
@@ -276,10 +269,6 @@ watch(
   }
 );
 onMounted(sync);
-onBeforeUnmount(() => {
-  disposed = true;
-  generation++;
-});
 
 watch(
   () => draft.groupId,
@@ -305,7 +294,7 @@ async function refresh() {
 async function prepare() {
   if (!canPrepare.value) return;
   const id = taskId.value;
-  const ticket = generation;
+  const ticket = guard.current();
   error.value = "";
   try {
     const existing = detail.value?.task;
@@ -332,11 +321,10 @@ async function prepare() {
     if (result === "ready") {
       saved.rpcCreatedId = id;
       await workspace.loadTasks(projectId);
-      if (!disposed && ticket === generation) await go("list");
-    } else if (!disposed && ticket === generation)
-      await workspace.loadDetail(projectId, id);
+      if (guard.isCurrent(ticket)) await go("list");
+    } else if (guard.isCurrent(ticket)) await workspace.loadDetail(projectId, id);
   } catch (cause) {
-    if (!disposed && ticket === generation)
+    if (guard.isCurrent(ticket))
       error.value = cause instanceof Error ? cause.message : "准备失败";
   }
 }
@@ -345,7 +333,7 @@ async function close(done: () => void) {
   const id = routeTask.value;
   done();
   if (
-    disposed ||
+    guard.isDisposed() ||
     view.value !== "list" ||
     !id ||
     taskId.value !== id ||
@@ -353,15 +341,9 @@ async function close(done: () => void) {
   )
     return;
   await router.push({ query: { project: projectId, tab: "rpc" } });
-  const ticket = generation;
+  const ticket = guard.current();
   await nextTick();
-  if (
-    !disposed &&
-    ticket === generation &&
-    !routeTask.value &&
-    focusReturn?.isConnected
-  )
-    focusReturn.focus();
+  if (guard.isCurrent(ticket) && !routeTask.value) guard.restoreFocus();
 }
 
 function forgetRejected() {
@@ -431,45 +413,103 @@ function scroll(event: { scrollTop: number }) {
         />
       </div>
 
-      <section class="tw-panel">
+      <section
+        class="tw-board"
+        data-testid="rpc-active-board"
+        aria-label="服务中 RPC 通道看板"
+      >
+        <header class="tw-board__header">
+          <div class="tw-board__title">
+            <h2>服务中</h2>
+            <span class="tw-board__count">{{ activeRows.length }}</span>
+          </div>
+          <span class="raw-muted">保留窗口统计 · 手动刷新</span>
+        </header>
+
+        <div v-if="activeRows.length" class="tw-board__grid">
+          <article v-for="row in activeRows" :key="row.taskId" class="tw-run-card">
+            <div class="tw-run-card__head">
+              <div class="tw-run-card__identity">
+                <el-button link type="primary" @click="open(row)">
+                  {{ row.task?.name || row.task?.workerGroupId || row.taskId }}
+                </el-button>
+                <span v-if="!presentTaskSource(row).raw" class="tw-cell-source">
+                  {{ presentTaskSource(row).label }} · 只读
+                </span>
+              </div>
+              <TaskStatusBadge :row="row" mode="rpc" />
+            </div>
+
+            <div class="tw-rpc-key-row">
+              <code class="tw-rpc-key-row__id" :title="row.taskId">
+                {{ row.taskId }}
+              </code>
+              <el-button size="small" link @click="copy(row.taskId)">复制 ID</el-button>
+            </div>
+
+            <RpcWindowStats :stats="row.stats" />
+
+            <footer class="tw-run-card__foot">
+              <div class="tw-run-card__meta">
+                <code :title="row.task?.workerGroupId">
+                  {{ row.task?.workerGroupId ?? "—" }}
+                </code>
+                <span
+                  v-if="row.task"
+                  :title="formatRefillList(row.task.refill).join('、') || '无供给'"
+                >
+                  {{ formatRefillList(row.task.refill).join("、") || "无供给" }}
+                </span>
+              </div>
+              <div class="tw-rpc-row-actions">
+                <el-button
+                  link
+                  type="primary"
+                  :disabled="!eligible(row)"
+                  @click="debug(row.taskId)"
+                >
+                  调试
+                </el-button>
+                <el-button link @click="open(row)">配置</el-button>
+              </div>
+            </footer>
+          </article>
+        </div>
+        <p v-else class="tw-board__empty raw-muted">当前批次没有服务中的 RPC 通道。</p>
+      </section>
+
+      <section class="tw-panel" aria-label="待启用与已停用 RPC 任务">
         <header class="tw-list-bar">
           <div class="tw-segment" role="group" aria-label="RPC 状态筛选">
             <button
               type="button"
-              :class="{ 'is-active': statusFilter === '' }"
-              @click="statusFilter = ''"
+              :class="{ 'is-active': inactiveSegment === 'all' }"
+              @click="inactiveSegment = 'all'"
             >
-              全部 <span>{{ batchSummary.all }}</span>
+              全部 <span>{{ inactiveCounts.all }}</span>
             </button>
             <button
               type="button"
-              :class="{ 'is-active': statusFilter === 'running' }"
-              @click="statusFilter = 'running'"
+              :class="{ 'is-active': inactiveSegment === 'pre_review' }"
+              @click="inactiveSegment = 'pre_review'"
             >
-              服务中 <span>{{ batchSummary.running }}</span>
+              待启用 <span>{{ inactiveCounts.pre_review }}</span>
             </button>
             <button
               type="button"
-              :class="{ 'is-active': statusFilter === 'pre_review' }"
-              @click="statusFilter = 'pre_review'"
+              :class="{ 'is-active': inactiveSegment === 'terminal' }"
+              @click="inactiveSegment = 'terminal'"
             >
-              待启用 <span>{{ batchSummary.pre_review }}</span>
-            </button>
-            <button
-              type="button"
-              :class="{ 'is-active': statusFilter === 'terminal' }"
-              @click="statusFilter = 'terminal'"
-            >
-              已停用 <span>{{ batchSummary.terminal }}</span>
+              已停用 <span>{{ inactiveCounts.terminal }}</span>
             </button>
           </div>
-          <span class="raw-muted">共 {{ filtered.length }} 条</span>
+          <span class="raw-muted">待启用与已停用 · 共 {{ tableRows.length }} 条</span>
         </header>
 
         <WorkbenchTaskTable
           ref="table"
           mode="rpc"
-          :rows="filtered"
+          :rows="tableRows"
           :loading="list?.loading"
           :error="list?.error"
           @open="open"
@@ -741,12 +781,16 @@ function scroll(event: { scrollTop: number }) {
               </el-button>
             </div>
           </div>
+          <RpcWindowStats :stats="detail?.stats" detailed />
+          <div class="tw-rpc-endpoint">
+            <span class="tw-rpc-endpoint__method">POST</span>
+            <code class="tw-code-inline">{{ rpcCallEndpointPath(routeTask) }}</code>
+            <el-button size="small" link @click="copy(rpcCallEndpointPath(routeTask))">
+              复制路径
+            </el-button>
+          </div>
           <div class="tw-drawer-summary__times">
-            <span>
-              当前驻留项：{{
-                detail?.stats ? detail.stats.total.toLocaleString() : "—"
-              }}
-            </span>
+            <span>创建 {{ formatDateTime(detail?.createdAtMillis, "未提供") }}</span>
             <span class="tw-read-at">
               最近读取 {{ formatDateTime(state.readAt, "尚未成功读取")
               }}{{ state.stale ? " · 快照已过期" : "" }}

@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import TaskRetentionNotice from "@/components/TaskRetentionNotice.vue";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElInputNumber, ElMessage } from "element-plus";
 import { Refresh } from "@element-plus/icons-vue";
 import "element-plus/es/components/input-number/style/css";
 import JsonBlock from "@/components/JsonBlock.vue";
-import RawTaskTable, { type TaskRow } from "@/components/RawTaskTable.vue";
 import TaskResultExport from "@/components/TaskResultExport.vue";
+import WorkbenchTaskTable from "./components/WorkbenchTaskTable.vue";
+import type { TaskRow } from "@/task-management/projects";
+import { formatDateTime } from "./presentation";
+import { useViewGuard } from "./helpers";
 import { useRuntimeViewerStore } from "@/runtime-context";
 import { useTaskSession } from "./session";
 
@@ -66,18 +69,12 @@ const error = computed(() => globalStore.taskPreviewState.error?.message);
 const stale = computed(() => globalStore.taskPreviewState.stale);
 const readAt = computed(() => globalStore.taskPreviewState.preview?.generatedAt);
 
-const table = ref<InstanceType<typeof RawTaskTable>>();
-let disposed = false;
-let generation = 0;
+const table = ref<InstanceType<typeof WorkbenchTaskTable>>();
+const guard = useViewGuard();
 let restoringScroll = true;
-let focusReturn: HTMLElement | undefined;
-
-function time(value?: string | number | null) {
-  return value == null ? "未提供" : new Date(value).toLocaleString();
-}
 
 async function syncRoute() {
-  const current = ++generation;
+  const current = guard.next();
   const savedScroll = filter.value.scroll;
   restoringScroll = true;
   if (
@@ -90,13 +87,12 @@ async function syncRoute() {
       void workspace.loadDetail(project.value, taskId.value);
   } else workspace.clearDetail();
   await nextTick();
-  if (!disposed && current === generation)
-    await table.value?.restoreScrollTop(savedScroll);
-  if (!disposed && current === generation) restoringScroll = false;
+  if (guard.isCurrent(current)) await table.value?.restoreScrollTop(savedScroll);
+  if (guard.isCurrent(current)) restoringScroll = false;
 }
 
 function rememberScroll(event: { scrollTop: number }) {
-  if (!restoringScroll && !disposed) filter.value.scroll = event.scrollTop;
+  if (!restoringScroll && !guard.isDisposed()) filter.value.scroll = event.scrollTop;
 }
 
 watch(
@@ -112,10 +108,6 @@ watch(
 onMounted(() => {
   void syncRoute();
 });
-onBeforeUnmount(() => {
-  disposed = true;
-  generation++;
-});
 
 async function refresh() {
   await globalStore.refreshTasks();
@@ -126,8 +118,7 @@ function open(row: TaskRow) {
     ElMessage.warning("描述符或 Project 绑定不可用，保留当前原始证据。");
     return;
   }
-  focusReturn =
-    document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+  guard.rememberFocus();
   return router.push({
     query: { tab: "global", project: row.task.projectId, taskId: row.taskId }
   });
@@ -138,10 +129,9 @@ async function close(done: () => void) {
   done();
   if (route.path !== "/runtime/tasks" || !id) return;
   await router.push({ query: { tab: "global" } });
-  const current = generation;
+  const current = guard.current();
   await nextTick();
-  if (!disposed && current === generation && !taskId.value && focusReturn?.isConnected)
-    focusReturn.focus();
+  if (guard.isCurrent(current) && !taskId.value) guard.restoreFocus();
 }
 
 function manageLink() {
@@ -191,7 +181,7 @@ function manageLink() {
         />
       </div>
       <div class="tw-action-bar__right">
-        <span class="raw-muted">最近读取：{{ time(readAt) }}</span>
+        <span class="raw-muted">最近读取：{{ formatDateTime(readAt, "未提供") }}</span>
         <el-button :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
       </div>
     </div>
@@ -209,8 +199,9 @@ function manageLink() {
       :closable="false"
     />
 
-    <RawTaskTable
+    <WorkbenchTaskTable
       ref="table"
+      mode="global"
       :rows="filtered"
       :loading="loading"
       :error="error"
@@ -239,7 +230,9 @@ function manageLink() {
         >
           刷新任务
         </el-button>
-        <span class="raw-muted">{{ time(detailState.readAt) }}</span>
+        <span class="raw-muted">{{
+          formatDateTime(detailState.readAt, "未提供")
+        }}</span>
       </div>
       <template v-if="detail">
         <p>

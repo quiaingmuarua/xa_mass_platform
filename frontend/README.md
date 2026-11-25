@@ -811,11 +811,19 @@ from `scoreBand` and `/tasks:stats` without fabricating ending reasons, with raw
 created time, terminated time (`retention.terminatedAtMillis`) and total elapsed span.
 Finite details organize configuration, result previews (with local status/ID filtering
 and extracted `eventCode`/`workerSelector` context), append inputs (`view=append` opens
-directly on the append tab) and raw JSON into drawer tabs. RPC tasks use a matching flat
-table, structured configuration drawers with Group capability mappings, and batch debug
-results with per-batch status counts and request-to-result `eventCode`/`executorName`
-correlation. Mock fixtures populate representative running, pending-review and terminal
-`stats`/`retention` snapshots while keeping all raw writes disabled.
+directly on the append tab) and raw JSON into drawer tabs. RPC tasks (`tab=rpc`) use a
+symmetric layout: active serving channels (`running_visible` and `running-initial`)
+appear in a top channel board with one-click Task ID copy, retention-window usage stats
+(in-flight `tag 1`, window succeeded `tag 6..9` and window failed `tag 5`, explicitly
+scoped to the current Redis retention window rather than permanent cumulative totals)
+and direct debug/config actions, while pending-review and terminal RPC tasks appear
+below in a flat table with separate in-flight and window-outcome columns. RPC
+configuration drawers pair the window stats summary and `POST /api/v1/tasks/{id}/items:call`
+endpoint preview with structured supply/Group capability mappings, and batch debug
+results display per-batch status counts and request-to-result `eventCode`/`executorName`
+correlation. Mock fixtures populate representative active, pending-review and terminal
+`stats`/`retention` snapshots for both finite and RPC tasks while keeping all raw writes
+disabled.
 
 RPC uses a Task list at `project=...&tab=rpc`, content-area creation at
 `view=create`, a read-only configuration drawer at `taskId=...`, and one JSON
