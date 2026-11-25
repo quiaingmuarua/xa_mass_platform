@@ -22,8 +22,6 @@ class FrontendControllerTest {
                 "/runtime/workers/",
                 "/runtime/tasks",
                 "/runtime/tasks/",
-                "/task-workbench",
-                "/task-workbench/",
                 "/api-reference",
                 "/api-reference/",
                 "/reference/error-codes",
@@ -36,11 +34,11 @@ class FrontendControllerTest {
     }
 
     @Test
-    void forwardsWorkbenchQueriesWithoutCatchingUnknownApiOrAssetPaths() throws Exception {
+    void forwardsRuntimeTaskQueriesWithoutCatchingUnknownApiOrAssetPaths() throws Exception {
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new FrontendController()).build();
-        mockMvc.perform(get("/task-workbench?tab=finite&view=create"))
+        mockMvc.perform(get("/runtime/tasks?tab=finite&view=create"))
                 .andExpect(status().isOk()).andExpect(forwardedUrl("/index.html"));
-        for (String path : new String[]{"/api/v1/unknown", "/static/unknown.js", "/task-workbench/unknown"}) {
+        for (String path : new String[]{"/api/v1/unknown", "/static/unknown.js", "/task-workbench", "/runtime/tasks/unknown"}) {
             mockMvc.perform(get(path)).andExpect(status().isNotFound());
         }
     }

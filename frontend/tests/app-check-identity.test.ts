@@ -356,7 +356,6 @@ describe("console login and shared task access", () => {
       for (const path of [
         "/?view=users",
         "/runtime/tasks",
-        "/task-workbench",
         "/sms",
         "/api-reference",
         "/app-checks?view=configuration"
@@ -365,7 +364,7 @@ describe("console login and shared task access", () => {
         await settle();
         expect(router.currentRoute.value.fullPath).toBe("/app-checks");
       }
-      for (const path of ["/?view=users", "/runtime/tasks", "/task-workbench", "/sms"])
+      for (const path of ["/?view=users", "/runtime/tasks", "/sms"])
         expect(document.querySelector(`a[href="${path}"]`)).toBeNull();
       expect(document.querySelector('[aria-label="切换开发身份"]')).toBeNull();
       expect(configuration).not.toHaveBeenCalled();

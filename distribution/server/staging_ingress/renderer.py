@@ -68,7 +68,7 @@ ADMIN_OPERATIONS = (
 _SEGMENT = "[A-Za-z0-9_.:-]+"
 ADMIN_PAGE_PATTERNS = (
     r"^(GET|HEAD):/(?:index\.html)?$",
-    r"^(GET|HEAD):/(?:runtime/(?:workers|tasks)|task-workbench|api-reference|reference/error-codes)/?$",
+    r"^(GET|HEAD):/(?:runtime/(?:workers|tasks)|api-reference|reference/error-codes)/?$",
     rf"^(GET|HEAD):/(?:sms(?:/metrics)?|messages(?:/tasks/{_SEGMENT})?|app-checks(?:/tasks/{_SEGMENT})?)/?$",
     # Vite emits static/js, static/css and static/<extension>; VitePress owns docs/assets.
     r"^(GET|HEAD):/(?:static|assets|docs|reference)/[A-Za-z0-9_./-]*$",

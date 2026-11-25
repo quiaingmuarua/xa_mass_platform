@@ -203,7 +203,7 @@ Project, including an environment whose only Project is `agentforge`.
 Deployment proceeds in order: declare the Project at startup, register its Group
 descriptors through Runtime `group-config-json` or `/api/v1/worker-groups/{id}:register`, connect Workers
 with the required installed Handlers, then prepare/call RPC Tasks or create/import/
-approve finite Tasks in `/task-workbench?project=agentforge`. Registration alone
+approve finite Tasks in `/runtime/tasks?project=agentforge`. Registration alone
 creates no Task. The capabilities page distinguishes an unregistered Group from
 an empty Pool configuration; `workerId` accepts a JSON string and needs no Pool.
 An old registration report is not evidence for a different Redis scope or process.

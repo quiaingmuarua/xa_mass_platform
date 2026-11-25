@@ -9,11 +9,11 @@ const history = computed(() => {
     ? "/app-checks"
     : route.path.startsWith("/messages")
       ? "/messages"
-      : "/task-workbench";
+      : "/runtime/tasks";
   return {
     path,
     query: {
-      ...(path === "/task-workbench"
+      ...(path === "/runtime/tasks"
         ? { project: route.query.project ?? "default", tab: "finite" }
         : {}),
       view: "history",

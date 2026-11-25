@@ -7,7 +7,6 @@ export type Permission =
   | "credits.manage"
   | "tasks.retention.manage"
   | "runtime.view"
-  | "workbench.use"
   | "messages.use"
   | "sms.use"
   | "app-checks.tasks"

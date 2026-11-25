@@ -234,7 +234,7 @@ and explicitly binds `device-window` to `android-demo-workers`, independently of
 That one reference enables `worker.device.available` and the paired digest feedback; no second feedback binding is needed.
 The window is 60 seconds with threshold 10; feedback writes `deviceAssignedAt` and `deviceAssignmentCount`.
 
-Open `/task-workbench?project=default&tab=finite&view=create`, select `android-demo-workers`,
+Open `/runtime/tasks?project=default&tab=finite&view=create`, select `android-demo-workers`,
 `extension.worker.android.string.digest`, and `worker.device.available({})`; apply its `device-window` supply suggestion.
 Use payload JSONL such as `{"algorithm":"MD5","value":"a"}`. Create/import, explicitly approve, then inspect raw Results
 and export successful JSONL. Runtime Workers shows the resolved binding and observed Platform Properties.
