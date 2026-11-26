@@ -747,7 +747,6 @@ class ServerArchitectureBoundaryTest {
     void controlPlaneSqliteStaysIsolatedFromHotSchedulingPaths() throws IOException {
         Path controlPlane = SERVER_SOURCE.resolve("com/xa/mass/server/assembly/controlplane");
         Path userPackage = SERVER_PACKAGE.resolve("user");
-        Path projectPackage = SERVER_PACKAGE.resolve("project");
         Path taskHistory = TASK.resolve("history");
         Path matchingSource = Path.of("../worker_matching_jvm/src/main/java");
         assertThat(controlPlane).isDirectory();
@@ -758,7 +757,7 @@ class ServerArchitectureBoundaryTest {
                         "com.xa.mass.matching", "TaskRuntime", "ScoreCore", "KernelPacerRuntime",
                         "WorkerDelivery", "MatchingComposition");
         // Only registered control-plane owners may reference ControlPlaneDatabase / ControlPlaneProperties.
-        assertThat(readSourcesExcluding(SERVER_SOURCE, controlPlane, userPackage, projectPackage))
+        assertThat(readSourcesExcluding(SERVER_SOURCE, controlPlane, userPackage))
                 .doesNotContain("ControlPlaneDatabase")
                 .doesNotContain("ControlPlaneProperties");
         // Only dedicated SQLite adapters and task/history may touch JDBC or jdbc:sqlite:.
@@ -766,8 +765,7 @@ class ServerArchitectureBoundaryTest {
                 SERVER_SOURCE,
                 controlPlane,
                 taskHistory,
-                userPackage.resolve("SqliteUserDirectoryStore.java"),
-                projectPackage.resolve("SqliteProjectDirectoryStore.java")
+                userPackage.resolve("SqliteUserDirectoryStore.java")
         ))
                 .doesNotContain("jdbc:sqlite:")
                 .doesNotContain("java.sql.");

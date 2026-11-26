@@ -270,11 +270,8 @@ xa:
           worker-group-ids: [demo-sim]
 ```
 
-List overlays replace configuration-owned Projects only. When `xa.mass.control-plane.database-path`
-is set, host-declared Projects bootstrap once from `xa.mass.project-assembly.projects` into
-`control-plane.sqlite` (`cp_projects`, `cp_project_worker_groups`) when the table is empty, and
-subsequent restarts load host Projects from SQLite into the immutable startup directory. Module `ProjectDefinition`
-Beans always contribute their Projects live at startup through the same immutable directory; duplicate
+List overlays replace configuration-owned Projects only. Module `ProjectDefinition`
+Beans contribute additional Projects through the same immutable directory; duplicate
 IDs across either source fail even when their Group lists match. Preview therefore
 keeps default and SMS in the list and declares Messages and App Checks through their modules. Existing
 external configurations must remove the `messages` and `app-checks` list entries and explicitly set
