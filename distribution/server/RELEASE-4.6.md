@@ -1,9 +1,10 @@
 # XA Mass 4.6 release and upgrade contract
 
-Status: current 4.6 release input. Publication and GCP retained-scope upgrade
-records are appended after verified completion. Published artifacts remain
-immutable. Actual host installation state belongs to the host records reached
-through the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview).
+Status: current 4.6 release input. 4.6.0 is published and its retained-scope GCP
+upgrade completed on 2026-11-26; temporary upgrade-material cleanup was confirmed
+at 09:08:39 UTC. Published artifacts remain immutable. Actual host installation
+state belongs to the host records reached through the
+[Release Preview guide](../../doc/guide/operations/deploy.md#release-preview).
 
 ## Release preparation
 
@@ -39,6 +40,21 @@ deployment are separate recorded facts.
   retention-window statistics, App Checks approval guard, and global tab polish
   (`#140`, `#141`).
 
+4.6.0 was published from merged commit
+`d4ff703aed33b4906da36002ac3d79b1bb6c4e0e` through
+[complete manual Proof 45784713284](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45784713284),
+attempt 1, with all 18 jobs successful, including SMS Reception Preview.
+[Promotion 45787735767](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45787735767)
+promoted those exact Proof ZIPs to
+[Release 4.6.0](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.6.0)
+(Release ID `459161268`).
+
+| ZIP | SHA256 |
+| --- | --- |
+| `xa-mass-server-runtime-4.6.0.zip` | `8b1a4ec67ea5e31f525a88a687f47ac8b5b6decbc4c0ba803243eed6778d8c6d` |
+| `xa-mass-worker-sdk-4.6.0.zip` | `541e979a0c034c7c2c2bc5852c5a0946f398bfa0634bf472cc005e99c20b5a38` |
+| `xa-mass-worker-simulator-4.6.0.zip` | `4c8f0d41782c8c31098c5426fa34073b17e86b17314949f4d1499cf55d70aeb2` |
+
 ### Retained-scope upgrade constraints from 4.5.0
 
 Upgrading an existing 4.5.0 Release Preview Runtime to 4.6.0 reuses the existing
@@ -73,6 +89,50 @@ window:
    ingress, authenticated `/runtime/workers` (`Worker 观察` / `Group 管理` /
    `资源绑定`) and `/storage/tasks`, external finite + RPC MD5 checks, and
    SQLite `PRAGMA quick_check`.
+
+### Accepted deployment and closeout (2026-11-26)
+
+The 2026-11-26 GCP Release Preview upgrade (`upgrade-4.6.0-20261126T090259Z`)
+installed immutable Runtime 4.6.0 (`PID 1048450`) at the commit and SHA256
+above, retaining `profile_long_preview_4_4`,
+`/var/lib/xa-mass/task-history-4.4.sqlite` (schema 1, `PRAGMA quick_check=ok`),
+external `users.json`, standing Host `4.4.2`, and Performance kit `4.4.4`.
+Recomputed `configurationId` after the `nginx.conf` and `start-runtime` updates
+is `sha256:821d6284a7768280b2b34388080520affa3b0e3c36a775c12098eff57ce14563`
+(previous:
+`sha256:e4b29267527fdfee5d75b3aec2a24b10421490acc29d7c1c617702efe68c09c6`).
+
+- Nginx staging ingress was re-rendered from the 4.6.0 ZIP (adding allowlist
+  rules for `GET/PUT/DELETE /api/v1/worker-groups*`,
+  `DELETE /api/v1/worker-groups/{id}/workers/{workerId}` and `/storage/tasks`),
+  validated with `nginx -t -g 'user www-data;'` and reloaded without dropping
+  the master process (`PID 659618`).
+- Health, ingress and observability checks passed: loopback readiness `UP`,
+  loopback `/actuator/prometheus` exported 175 `xa_mass_*` lines, public
+  `/actuator/prometheus` returned `404`, public `/runtime/workers`,
+  `/storage/tasks` and `/runtime/tasks` returned `200`, public `/task-workbench`
+  returned `404`, unauthenticated `/api/v1/worker-groups` and Worker prepare
+  returned `401`, `/docs/` served commit `d4ff703ae`, and `xa-mass.service`
+  logged 0 warnings/errors.
+- Public authenticated WorkerGroup management checks passed:
+  `GET /api/v1/worker-groups` returned 10 registered groups (`unreadable=0`),
+  `GET /api/v1/runtime-view/worker-groups/bindings` returned the 4 declared
+  Projects (`app-checks`, `default`, `messages`, `performance-consumer`), and a
+  dynamic `accept-460-smoke` Group completed register -> update -> startup-seeded
+  `PUT` 400 rejection -> delete cleanly.
+- Standing `persistent-workers` observed `10/20` connected (`activeHot=10`,
+  `recovery=10`, Ali Host untouched) and served both a fresh 3-Item RPC Task
+  (`accept-460-rpc-bb1feadf`, 3/3 terminal succeeded) and a fresh 3-Item finite
+  Task (`task-82d62860d9794064b6dea521802c206c`, JSONL export SHA256
+  `5a14bd2303cb66e735846f732d3ca132fe7df59deba1a5bf2ba4e21da4981ac2`) with
+  independent UTF-8 MD5 verification passing. Interactive browser check remains
+  pending operator review.
+- Old 4.5.0 binary, temporary stage directory and temporary restore point were
+  confirmed removed at `2026-11-26 09:08:39 UTC`; GCP `release.json`,
+  `deployment.json`, `OPERATIONS.txt`, `operations.log` and GitHub
+  `release-preview-load` Server pins (`INSTALLED_RELEASE_TAG=v4.6.0`,
+  `INSTALLED_RELEASE_COMMIT`, `PERFORMANCE_DEPLOYMENT_JSON.serverDeployment`)
+  were updated and read back.
 
 ## Finite Task history and RPC retention
 
