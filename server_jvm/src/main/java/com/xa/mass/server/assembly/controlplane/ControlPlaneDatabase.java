@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public final class ControlPlaneDatabase implements AutoCloseable {
-    public static final int SCHEMA_VERSION = 2;
+    public static final int SCHEMA_VERSION = 1;
 
     private final @Nullable Path databasePath;
     private final @Nullable Connection writer;
@@ -129,7 +129,7 @@ public final class ControlPlaneDatabase implements AutoCloseable {
                 rows.next();
                 version = rows.getInt(1);
             }
-            if (version < 0 || version > SCHEMA_VERSION) {
+            if (version != 0 && version != SCHEMA_VERSION) {
                 throw new SQLException("Unsupported control-plane schema version: " + version);
             }
             if (version == 0) {
@@ -143,16 +143,6 @@ public final class ControlPlaneDatabase implements AutoCloseable {
                             }
                         }
                         createUserDirectoryTables(schema);
-                        createProjectDirectoryTables(schema);
-                        schema.execute("PRAGMA user_version=" + SCHEMA_VERSION);
-                    }
-                    return null;
-                });
-            } else if (version == 1) {
-                verifyUserDirectoryColumns(statement);
-                inTransaction(connection -> {
-                    try (var schema = connection.createStatement()) {
-                        createProjectDirectoryTables(schema);
                         schema.execute("PRAGMA user_version=" + SCHEMA_VERSION);
                     }
                     return null;
@@ -160,7 +150,6 @@ public final class ControlPlaneDatabase implements AutoCloseable {
             }
             // Fail fast at startup if an existing schema is missing required columns.
             verifyUserDirectoryColumns(statement);
-            verifyProjectDirectoryColumns(statement);
             try (var mode = statement.executeQuery("PRAGMA journal_mode=WAL")) {
                 if (!mode.next() || !"wal".equalsIgnoreCase(mode.getString(1))) {
                     throw new SQLException("Control-plane database requires WAL mode");
@@ -201,25 +190,6 @@ public final class ControlPlaneDatabase implements AutoCloseable {
                 """);
     }
 
-    private static void createProjectDirectoryTables(java.sql.Statement schema) throws SQLException {
-        schema.execute("""
-                CREATE TABLE cp_projects (
-                  project_id TEXT PRIMARY KEY,
-                  ordinal INTEGER NOT NULL UNIQUE,
-                  exclusive_input_owner TEXT
-                )
-                """);
-        schema.execute("""
-                CREATE TABLE cp_project_worker_groups (
-                  project_id TEXT NOT NULL REFERENCES cp_projects(project_id) ON DELETE CASCADE,
-                  ordinal INTEGER NOT NULL,
-                  worker_group_id TEXT NOT NULL,
-                  PRIMARY KEY (project_id, worker_group_id),
-                  UNIQUE (project_id, ordinal)
-                )
-                """);
-    }
-
     private static void verifyUserDirectoryColumns(java.sql.Statement statement) throws SQLException {
         statement.executeQuery(
                 "SELECT role_id, ordinal, label, permissions_json, task_scope, project_scope, home FROM cp_roles LIMIT 0"
@@ -229,15 +199,6 @@ public final class ControlPlaneDatabase implements AutoCloseable {
         ).close();
         statement.executeQuery(
                 "SELECT user_id, ordinal, project_id FROM cp_user_projects LIMIT 0"
-        ).close();
-    }
-
-    private static void verifyProjectDirectoryColumns(java.sql.Statement statement) throws SQLException {
-        statement.executeQuery(
-                "SELECT project_id, ordinal, exclusive_input_owner FROM cp_projects LIMIT 0"
-        ).close();
-        statement.executeQuery(
-                "SELECT project_id, ordinal, worker_group_id FROM cp_project_worker_groups LIMIT 0"
         ).close();
     }
 

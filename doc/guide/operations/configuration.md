@@ -10,7 +10,7 @@ Status: current configuration ownership guide.
 | 要改变什么 | 维护入口 | 生效与保留 |
 | --- | --- | --- |
 | HTTP/Adapter 端口、Redis、profile、进程工作目录 | [本地启动器](../../../distribution/server/README.md#source-launch)及 [Boot](../../../server_boot_jvm/README.md#pages-and-configuration) | 启动时解析；所有子进程使用同一份最终坐标 |
-| Project 与 Group 关系、Matching Pool/query、窗口与反馈绑定 | [Boot 宿主配置](../../../server_boot_jvm/README.md#project-topology)及 [Matching Owner](../../../worker_matching_jvm/README.md#fixed-resource-composition) | 启动声明；启用 `xa.mass.control-plane.database-path` 时宿主 Project 首次从 YAML 导入控制面 SQLite（只读内存查询，模块 Project 仍由代码实时贡献）；Project 授权不会启用资源 |
+| Project 与 Group 关系、Matching Pool/query、窗口与反馈绑定 | [Boot 宿主配置](../../../server_boot_jvm/README.md#project-topology)及 [Matching Owner](../../../worker_matching_jvm/README.md#fixed-resource-composition) | 启动声明；Project 授权不会启用资源 |
 | Group catalog 中的事件声明 | [Server Group 准备](../../../server_jvm/README.md#workergroup-and-worker-preparation) | catalog 是声明；不能替代已安装 Handler |
 | Java Worker 的数量、事件、属性、inventory | [Simulator JSON](../../../worker_simulator_jvm/README.md#one-configuration-one-entry) | Host 启动装配；数量调整保留已有身份坐标 |
 | Android Worker 能力与应用生命周期 | [Android Host](../../../xa-android/README.md) | 由独立应用及 SDK 装配 |

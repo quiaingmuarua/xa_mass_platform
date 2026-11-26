@@ -27,8 +27,7 @@ class ScenarioArchitectureTest {
                     boolean allowedSqliteOwner = module.equals("server_jvm")
                             && (normalizedPath.contains("/task/history/")
                                     || normalizedPath.contains("/assembly/controlplane/")
-                                    || normalizedPath.endsWith("/user/SqliteUserDirectoryStore.java")
-                                    || normalizedPath.endsWith("/project/SqliteProjectDirectoryStore.java"));
+                                    || normalizedPath.endsWith("/user/SqliteUserDirectoryStore.java"));
                     if (!allowedSqliteOwner)
                         assertThat(source).as(path.toString()).doesNotContain("java.sql.");
                 }
