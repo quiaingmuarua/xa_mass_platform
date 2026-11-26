@@ -738,11 +738,32 @@ scheduling, creates no TaskItem or Worker lease, and never proves that a Worker
 is schedulable or executing. Mock mode disables this mutating action and does
 not fabricate a response.
 
+### WorkerGroup management and offline Worker cleanup
+
+Runtime Workers exposes a 3-tab administrator workspace under `/runtime/workers`:
+**Worker 观察** (`view=workers`), **Group 管理** (`view=groups`), and **资源绑定**
+(`view=bindings`).
+
+The **Group 管理** tab traverses the complete registered Group directory via
+paginated `GET /api/v1/worker-groups`, showing each Group's configuration source
+(`startup_seeded`, `startup_bound`, or `dynamic`), declared Projects, and O(log N)
+Kernel Worker state counts. Administrators can register dynamic Groups, edit
+`attributes` and `eventCodes` metadata on non-seeded Groups (explicitly scoped to
+Catalog metadata without altering live Worker Handlers), and safely remove dynamic
+Groups only after confirming zero active Workers and zero non-terminal/parked Tasks
+(typing the exact `workerGroupId` to confirm; SQLite Task history is untouched).
+
+In **Worker 观察**, the Worker detail drawer Overview tab provides an administrator-only
+**移除离线节点** action enabled for offline Workers (`cold` / offline `paused`),
+which delegates atomic inactive verification and Runtime cleanup to
+`DELETE /api/v1/worker-groups/{workerGroupId}/workers/{workerId}` while retaining
+Identity mappings.
+
 ### WorkerGroup effective resource bindings
 
-Runtime Workers separates Worker observations from the read-only resource relation view at
+Runtime Workers separates Worker observations from Group management and the read-only resource relation view at
 `/runtime/workers?view=bindings&group=...`. The default remains Worker observation. The binding directory endpoint lists startup
-Matching/window Groups plus declared Project members without Redis access; it is not a complete registration directory. Known-ID
+Matching/window Groups, a read-only **Project 资源拓扑** summary (`projectId`, `Scenario 托管` vs `平台配置`, and clickable Group links), plus declared Project members without Redis access; it is not a complete registration directory. Known-ID
 lookup remains available, including identities outside this list. Binding direct entry never starts random Worker sampling.
 The detail shows independent Project scope, declared events, Pool/query relations and windows with embedded paired feedback.
 Read and write property fields are explicit; feedback is event-selected allocation observation, not Pool consumption accounting.

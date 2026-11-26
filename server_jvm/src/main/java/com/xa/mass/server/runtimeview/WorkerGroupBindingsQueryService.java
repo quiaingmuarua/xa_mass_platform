@@ -31,7 +31,15 @@ public final class WorkerGroupBindingsQueryService {
     }
 
     public WorkerGroupBindingsDirectoryResponse directory() {
-        return new WorkerGroupBindingsDirectoryResponse(startupGroups, Instant.now());
+        var projectViews = projects.projects().values().stream()
+                .sorted(java.util.Comparator.comparing(ProjectDirectory.ProjectView::projectId))
+                .map(p -> new WorkerGroupBindingsDirectoryResponse.ProjectTopology(
+                        p.projectId(),
+                        p.workerGroupSource(),
+                        p.workerGroupIds(),
+                        projects.exclusiveInputOwner(p.projectId())))
+                .toList();
+        return new WorkerGroupBindingsDirectoryResponse(startupGroups, projectViews, Instant.now());
     }
 
     public WorkerGroupBindingsResponse load(String groupId, String requestId) {

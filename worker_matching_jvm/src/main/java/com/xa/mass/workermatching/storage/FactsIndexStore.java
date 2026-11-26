@@ -137,6 +137,33 @@ public final class FactsIndexStore implements WorkerProperties, AutoCloseable {
         return keyspace.base() + ":matching:worker:platform-properties:" + group;
     }
 
+    public void deleteGroup(String group) {
+        requireNonBlank(group, "workerGroupId");
+        var keys = new ArrayList<String>();
+        keys.add(workerFactsKey(group));
+        keys.add(workerPlatformFactsKey(group));
+        for (String property : indexedPropertiesByGroup.getOrDefault(group, Set.of())) {
+            keys.add(RedisHashPropertyIndex.key(keyspace, group, property));
+        }
+        commands().unlink(keys.toArray(String[]::new));
+    }
+
+    public void deleteWorker(String group, String workerId) {
+        requireNonBlank(group, "workerGroupId");
+        requireNonBlank(workerId, "workerId");
+        var keys = new ArrayList<String>();
+        keys.add(workerFactsKey(group));
+        keys.add(workerPlatformFactsKey(group));
+        var args = new ArrayList<String>();
+        for (String property : indexedPropertiesByGroup.getOrDefault(group, Set.of())) {
+            keys.add(RedisHashPropertyIndex.key(keyspace, group, property));
+            args.add(property);
+        }
+        args.add(workerId);
+        commands().eval(DELETE_WORKER_FACTS, ScriptOutputType.INTEGER,
+                keys.toArray(String[]::new), args.toArray(String[]::new));
+    }
+
     @Override public synchronized void close() {
         if (closed) return;
         closed = true;
@@ -372,5 +399,25 @@ public final class FactsIndexStore implements WorkerProperties, AutoCloseable {
             if platform==next then return 0 end
             redis.call('HSET',KEYS[2],ARGV[1],next)
             return 1
+            """;
+
+    private static final String DELETE_WORKER_FACTS = """
+            local count = #KEYS - 2
+            local workerId = ARGV[count + 1]
+            local old = redis.call('HGET', KEYS[1], workerId)
+            if old and count > 0 then
+              local ok, parsed = pcall(cjson.decode, old)
+              if ok and type(parsed) == 'table' then
+                for j = 1, count do
+                  local v = parsed[ARGV[j]]
+                  if type(v) == 'string' and v ~= '' and redis.call('HGET', KEYS[j + 2], v) == workerId then
+                    redis.call('HDEL', KEYS[j + 2], v)
+                  end
+                end
+              end
+            end
+            local removed = redis.call('HDEL', KEYS[1], workerId)
+            redis.call('HDEL', KEYS[2], workerId)
+            return removed
             """;
 }

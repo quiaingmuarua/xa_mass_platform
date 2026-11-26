@@ -803,7 +803,11 @@ business state or Redis bypass.
 
 | Operation | Admission | State effect | Failure boundary | Reference |
 | --- | --- | --- | --- | --- |
-| WorkerGroup register | Create-only attributes and Event Names | Create a declaration only; equivalent input returns `already_registered` | Different declaration returns `400/15006`, without update or Task creation | [WorkerGroupRegistrationService](src/main/java/com/xa/mass/server/worker/group/WorkerGroupRegistrationService.java) |
+| WorkerGroup directory | Admin caller; numeric cursor and `limit=1..100` | Traverse Group HASH pages and attach startup protection, declared Projects and O(log N) Kernel state counts | Corrupt descriptors stay counted in `unreadableCount`; Owner failure returns `503` | [WorkerGroupManagementService](src/main/java/com/xa/mass/server/worker/group/WorkerGroupManagementService.java) |
+| WorkerGroup register | Admin caller; create-only attributes and Event Names | Create a declaration only; equivalent input returns `already_registered` | Different declaration returns `400/15006`, without update or Task creation | [WorkerGroupRegistrationService](src/main/java/com/xa/mass/server/worker/group/WorkerGroupRegistrationService.java) |
+| WorkerGroup metadata update | Admin caller; not seeded by startup `group-config-json` | Replace `attributes` and `eventCodes` metadata in Catalog only (never installs/removes Worker Handlers) | Startup-seeded Group returns `400/15006`; missing Group returns `400/15001` | [WorkerGroupManagementService](src/main/java/com/xa/mass/server/worker/group/WorkerGroupManagementService.java) |
+| WorkerGroup safe delete | Admin caller; dynamic Group with zero non-terminal/parked Tasks and zero active Workers (`activeHot + pausedActive + recovery == 0`) | Fence Catalog (`HDEL`), batch-drain offline Bindings before Scores, unlink Identity & connection controls, purge Matching state; SQLite history untouched | Protected config, non-terminal Task or active Worker returns `400/15009`; partial cleanup retries idempotently via `DELETE` | [WorkerGroupManagementService](src/main/java/com/xa/mass/server/worker/group/WorkerGroupManagementService.java) |
+| Offline Worker delete | Admin caller; Worker belongs to Group and is inactive (`COLD` or offline `PAUSED`) | Atomically remove Score first, then remove same-Group Binding, connection control and Matching facts/indexes; retains Identity mapping for deterministic UUID on reconnect | Active Worker returns `400/15009` with zero side effects; missing Worker returns `400/15008` | [WorkerGroupManagementService](src/main/java/com/xa/mass/server/worker/group/WorkerGroupManagementService.java) |
 | Prepare / Prepare batch | Existing Group; valid identity coordinates; one kind and transport per batch | Resolve Identity, then Kernel Binding and absent cold membership | Only a complete ordered response is `200`; completed stages survive failure | [WorkerPreparationService](src/main/java/com/xa/mass/server/worker/preparation/WorkerPreparationService.java) |
 
 Group attributes/Event Names are directory metadata, not Matching facts, Dispatch
@@ -1322,7 +1326,7 @@ Feedback matches Group/message event, including executions selected through work
 from the paired Pool, execution success or reserved quota. A ten-seed Item still produces one allocation observation. The lossy
 observation queue and failure behavior below are unchanged. Changing window length requires a new Redis scope.
 
-`GET /api/v1/runtime-view/worker-groups/bindings` returns sorted `workerGroupIds` and `readAt` from the startup Matching/window
+`GET /api/v1/runtime-view/worker-groups/bindings` returns sorted `workerGroupIds`, read-only `projects` topology (`projectId`, `workerGroupSource`, `workerGroupIds`, `exclusiveInputOwner`) and `readAt` from the startup Matching/window
 Group set plus declared Project members. It performs no Redis read or scan and is not the complete registered directory.
 `GET /api/v1/runtime-view/worker-groups/{workerGroupId}/bindings` supports any known ID, point-reads its descriptor and returns
 `workerGroupId`, `workerGroup` (or null), `matching`, `fixedWindowPools`, `projects`, and `readAt`. Each window row embeds

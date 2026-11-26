@@ -421,6 +421,26 @@
         },
         "type" : "object"
       },
+      "ProjectResourceTopology" : {
+        "properties" : {
+          "exclusiveInputOwner" : {
+            "type" : [ "string", "null" ]
+          },
+          "projectId" : {
+            "type" : "string"
+          },
+          "workerGroupIds" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "workerGroupSource" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ProjectTasks" : {
         "properties" : {
           "projectId" : {
@@ -1168,6 +1188,20 @@
         },
         "type" : "object"
       },
+      "WorkerDeleteResponse" : {
+        "properties" : {
+          "status" : {
+            "type" : "string"
+          },
+          "workerGroupId" : {
+            "type" : "string"
+          },
+          "workerId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "WorkerGroupBatchGetResponse" : {
         "properties" : {
           "missingWorkerGroupIds" : {
@@ -1187,6 +1221,12 @@
       },
       "WorkerGroupBindingsDirectoryResponse" : {
         "properties" : {
+          "projects" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ProjectResourceTopology"
+            },
+            "type" : "array"
+          },
           "readAt" : {
             "format" : "date-time",
             "type" : "string"
@@ -1223,6 +1263,85 @@
           },
           "workerGroup" : {
             "$ref" : "#/components/schemas/WorkerGroupView"
+          },
+          "workerGroupId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerGroupDeleteResponse" : {
+        "properties" : {
+          "removedWorkers" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "workerGroupId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerGroupDirectoryPageResponse" : {
+        "properties" : {
+          "groups" : {
+            "items" : {
+              "$ref" : "#/components/schemas/WorkerGroupManagedView"
+            },
+            "type" : "array"
+          },
+          "nextCursor" : {
+            "type" : "string"
+          },
+          "readAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "unreadableCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerGroupManagedView" : {
+        "properties" : {
+          "attributes" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "declaredProjects" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "deletableByConfig" : {
+            "type" : "boolean"
+          },
+          "editable" : {
+            "type" : "boolean"
+          },
+          "eventCodes" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "protectionReasons" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "source" : {
+            "type" : "string"
+          },
+          "workerCounts" : {
+            "$ref" : "#/components/schemas/WorkerGroupWorkerCounts"
           },
           "workerGroupId" : {
             "type" : "string"
@@ -1301,6 +1420,39 @@
           },
           "workerGroupId" : {
             "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "WorkerGroupWorkerCounts" : {
+        "properties" : {
+          "activeHot" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "activeTotal" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "cold" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "pausedActive" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "pausedOffline" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "recovery" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "total" : {
+            "format" : "int64",
+            "type" : "integer"
           }
         },
         "type" : "object"
@@ -5096,6 +5248,339 @@
         "tags" : [ "Worker Delivery" ]
       }
     },
+    "/api/v1/worker-groups" : {
+      "get" : {
+        "operationId" : "listWorkerGroups",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "caller",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/TaskCaller"
+          }
+        }, {
+          "in" : "query",
+          "name" : "cursor",
+          "required" : false,
+          "schema" : {
+            "default" : "0",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "default" : 100,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerGroupDirectoryPageResponse"
+                }
+              }
+            },
+            "description" : "Paginated WorkerGroup directory returned"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid pagination parameters"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "WorkerGroup Owner is unavailable"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "List registered WorkerGroups with startup protection and Kernel worker state counts",
+        "tags" : [ "Worker Resources" ]
+      }
+    },
+    "/api/v1/worker-groups/{workerGroupId}" : {
+      "delete" : {
+        "operationId" : "deleteWorkerGroup",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "caller",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/TaskCaller"
+          }
+        }, {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerGroupDeleteResponse"
+                }
+              }
+            },
+            "description" : "WorkerGroup and its offline Runtime keys were removed"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid workerGroupId, missing group, or protected by startup config, non-terminal Tasks or active Workers"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "WorkerGroup Runtime cleanup could not complete; retry DELETE safely"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Remove a dynamic WorkerGroup when no startup config, non-terminal Tasks or active Workers use it",
+        "tags" : [ "Worker Resources" ]
+      },
+      "put" : {
+        "operationId" : "updateWorkerGroup",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "caller",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/TaskCaller"
+          }
+        }, {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/WorkerGroupRegisterRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerGroupRegisterResponse"
+                }
+              }
+            },
+            "description" : "WorkerGroup metadata updated or unchanged"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid WorkerGroup metadata request, missing group, or locked by startup seed config"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "WorkerGroup Owner is unavailable"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Update metadata (attributes and eventCodes) for an editable WorkerGroup",
+        "tags" : [ "Worker Resources" ]
+      }
+    },
+    "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}" : {
+      "delete" : {
+        "operationId" : "deleteOfflineWorker",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "caller",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/TaskCaller"
+          }
+        }, {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "workerId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerDeleteResponse"
+                }
+              }
+            },
+            "description" : "Offline Worker Runtime state was removed"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid request, Worker not found in WorkerGroup, or Worker is still active"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker Runtime Owner is unavailable"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Remove a single offline Worker's Runtime state from its WorkerGroup",
+        "tags" : [ "Worker Resources" ]
+      }
+    },
     "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}/connection-control" : {
       "get" : {
         "description" : "A time-derived policy view, not proof of physical connection closure or scheduling availability.",
@@ -5616,6 +6101,13 @@
       "post" : {
         "operationId" : "registerWorkerGroup",
         "parameters" : [ {
+          "in" : "query",
+          "name" : "caller",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/TaskCaller"
+          }
+        }, {
           "in" : "path",
           "name" : "workerGroupId",
           "required" : true,
@@ -5663,6 +6155,16 @@
               }
             },
             "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
           },
           "503" : {
             "content" : {

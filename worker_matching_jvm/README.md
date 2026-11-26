@@ -19,8 +19,11 @@ four caller paths:
 | Query consumption | Server admits queries through `WorkerMatchingCatalog`; Pacer calls `WorkerMatching.take`. `DefaultWorkerMatchingCatalog` validates, groups and correlates fixed function calls to Pool or Index resources. |
 | Network observation filtering | Pacer validates source, age and Binding, then calls the composition-supplied `NetworkEvidenceTimestamps.filterAndAdvance` function before Kernel serviceability events. |
 
-`WorkerMatchingCatalog` extends the three-operation Pacer port with query and supply
-normalization only. Properties types and mutation results belong to `WorkerProperties`;
+`WorkerMatchingCatalog` extends the three-operation Pacer port with query/supply
+normalization and explicit Group/Worker Runtime purge (`purgeWorkerGroup`, `purgeWorker`)
+for admin-driven resource removal (cleaning Facts, Platform Properties, property indexes,
+evidence timestamps, lease state and in-memory Pool entries while releasing `CandidateBudget`).
+Properties types and mutation results belong to `WorkerProperties`;
 Catalog has no Facts JSON, Redis connection or resource-close responsibility.
 
 The four internal responsibilities are Properties/index persistence, Query interpretation

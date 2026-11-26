@@ -20,6 +20,21 @@ public interface WorkerResourceCatalog {
     /** Create-only Group registration: OK, NOOP, CONFLICT or INVALID. */
     RegistrationResult registerWorkerGroup(WorkerGroupDescriptor descriptor);
 
+    /** Updates an already-registered Group descriptor: OK, NOOP, NOT_FOUND or INVALID. */
+    default RegistrationResult updateWorkerGroup(WorkerGroupDescriptor descriptor) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("WorkerResourceCatalog", "updateWorkerGroup");
+    }
+
+    /** Removes the Group descriptor from the directory; returns true if it existed. */
+    default boolean deleteWorkerGroup(String workerGroupId) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("WorkerResourceCatalog", "deleteWorkerGroup");
+    }
+
+    /** Conditionally removes 1..100 unique Worker bindings matching workerGroupId. */
+    default int removeWorkerBindings(String workerGroupId, List<String> workerIds) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("WorkerResourceCatalog", "removeWorkerBindings");
+    }
+
     /**
      * Registers 1..100 unique Workers. Existing same-Group bindings win over
      * the default Endpoint. Binding and cold Score initialization commit

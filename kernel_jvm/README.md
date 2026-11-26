@@ -79,10 +79,10 @@ The Java providers implement the operations currently called by the Runtime
 API and the fixed production Pacers, including:
 
 - Task create/lifecycle/Call submission, Item record access and read-only Item HASH pages, Result storage and bounded atomic RPC Result consumption;
-- read-only parked Task and per-tag terminal Item keyset pages, and caller-bounded RPC input release/final Item reclamation for Server maintenance;
-- Task, TaskItem and Worker score range reads, exact CAS transitions, leases,
+- read-only parked Task, non-terminal Task and per-tag terminal Item keyset pages, and caller-bounded RPC input release/final Item reclamation for Server maintenance;
+- Task, TaskItem and Worker score range reads, O(log N) per-Group Worker state summaries (`summarizeGroupStates`), bounded inactive-only peek/removal (`peekInactiveWorkerIds`/`removeInactiveWorkers`), exact CAS transitions, leases,
   idle park/close, final promotion and completed-HOT release;
-- Worker registration and minimal identity/Group/Endpoint descriptors, including caller-driven read-only Group HASH pages;
+- Worker registration, metadata update (`updateWorkerGroup`), Group removal (`deleteWorkerGroup`), conditional same-Group Binding cleanup (`removeWorkerBindings`), and minimal identity/Group/Endpoint descriptors, including caller-driven read-only Group HASH pages;
 - authoritative and non-overwriting Worker Command writes plus bounded
   consume;
 - explicit EXECUTION_SUCCESS/EXECUTION_FAILURE/OUTCOME_OBSERVATION Task evidence append/consume without diagnostic-code policy;

@@ -156,6 +156,11 @@ class StagingIngressTest(unittest.TestCase):
         self.assertFalse(allowed("POST", "/api/v1/tasks/a/items/extra"))
         self.assertFalse(allowed("POST", "/api/v1/worker-groups/a/workers:prepare"))
         self.assertFalse(allowed("POST", "/api/v1/worker-delivery/endpoint-managers/a/results:append"))
+        self.assertTrue(allowed("GET", "/api/v1/worker-groups"))
+        self.assertTrue(allowed("PUT", "/api/v1/worker-groups/g1"))
+        self.assertTrue(allowed("DELETE", "/api/v1/worker-groups/g1"))
+        self.assertTrue(allowed("DELETE", "/api/v1/worker-groups/g1/workers/w1"))
+        self.assertFalse(allowed("POST", "/api/v1/worker-groups/g1"))
 
     def test_config_refuses_ambiguous_or_injected_values(self):
         bad = (

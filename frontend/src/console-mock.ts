@@ -5,6 +5,7 @@ import { MockAppCheckTaskSource } from "@/app-checks/mock-task-source";
 import { MockMessageTaskSource } from "@/message-campaigns/mock-task-source";
 import type { MockUserDirectorySource } from "@/user-directory-source";
 import { MockWorkerConnectionControlSource } from "@/runtime-viewer/connection-control";
+import { MockWorkerGroupManagementSource } from "@/runtime-viewer/worker-group-management";
 
 // Business data lives for the application; login-specific views live in the console.
 export function createConsoleMock(directory: MockUserDirectorySource) {
@@ -16,6 +17,7 @@ export function createConsoleMock(directory: MockUserDirectorySource) {
     credits,
     history,
     workerConnectionControl: new MockWorkerConnectionControlSource(directory),
+    workerGroupManagement: new MockWorkerGroupManagementSource(),
     appChecks: new MockAppCheckTaskSource(directory, credits, Date.now, history),
     messages: new MockMessageTaskSource(directory, undefined, Date.now, history)
   };
