@@ -743,6 +743,26 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("io.micrometer");
     }
 
+    @Test
+    void controlPlaneSqliteStaysIsolatedFromHotSchedulingPaths() throws IOException {
+        Path controlPlane = SERVER_SOURCE.resolve("com/xa/mass/server/assembly/controlplane");
+        Path matchingSource = Path.of("../worker_matching_jvm/src/main/java");
+        assertThat(controlPlane).isDirectory();
+        assertThat(readSources(controlPlane))
+                .contains("jdbc:sqlite:")
+                .contains("PRAGMA journal_mode=WAL")
+                .doesNotContain("io.lettuce", "org.springframework.data.redis", "com.xa.mass.kernel",
+                        "com.xa.mass.matching", "TaskRuntime", "ScoreCore", "KernelPacerRuntime",
+                        "WorkerDelivery", "MatchingComposition");
+        for (Path hotRoot : java.util.List.of(KERNEL_SOURCE, PACER_SOURCE, matchingSource,
+                DELIVERY, WORKER_SCHEDULING, RUNTIME_VIEW)) {
+            assertThat(readSources(hotRoot))
+                    .doesNotContain("ControlPlaneDatabase")
+                    .doesNotContain("ControlPlaneProperties")
+                    .doesNotContain("jdbc:sqlite:");
+        }
+    }
+
     private static String readSources(Path root) throws IOException {
         if (!Files.exists(root)) {
             return "";

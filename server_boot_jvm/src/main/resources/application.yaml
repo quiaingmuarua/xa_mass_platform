@@ -19,6 +19,8 @@ spring:
 
 xa:
   mass:
+    control-plane:
+      database-path: ${XA_MASS_CONTROL_PLANE_DATABASE:}
     task-retention:
       enabled: ${XA_MASS_TASK_RETENTION_ENABLED:${xa.mass.kernel-pacer.enabled}}
       grace: 1h

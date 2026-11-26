@@ -94,6 +94,12 @@ and proof surfaces retain their [existing Owners](README.md#authority-and-dispat
   + cause`. Put context in safe logs/traces; never log opaque Worker payload or
   result content. JVM-only modules use `System.Logger`; Android-consumed Java 11
   modules use `java.util.logging`.
+- Keep Redis and SQLite strictly separated by hot/cold role: Redis owns hot
+  scheduling, Matching, active Task/Item/Result, delivery, cooldown and credit
+  state; `task-history.sqlite` owns the finite Task history archive; optional
+  `control-plane.sqlite` owns low-frequency Server control-plane metadata backed
+  by an immutable in-memory read snapshot. Kernel, Pacer and Matching hot paths
+  must never read or write SQLite.
 - Update the owning mechanism document in the same change as behavior.
 
 ## Applicable Owner Contracts

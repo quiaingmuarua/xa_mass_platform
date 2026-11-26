@@ -1,6 +1,7 @@
 package com.xa.mass.server.user;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.xa.mass.server.assembly.controlplane.ControlPlaneDatabase;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.project.ProjectDirectory;
@@ -44,9 +45,11 @@ import jakarta.validation.constraints.Size;
 /**
  * One Server-process directory of roles, users, Project grants and access-key hashes.
  *
- * <p>A {@code file:} seed is owned by this process: it holds an exclusive sidecar lock for its lifetime and is
- * the only writer while it runs. Every write compares the file with the loaded snapshot, publishes the complete
- * next document atomically and only then replaces the in-memory snapshot. Classpath seeds are read-only.
+ * <p>When {@code xa.mass.control-plane.database-path} is configured, the directory is persisted in the
+ * control-plane SQLite database (bootstrapping once from {@code xa.mass.users.seed} when empty) and
+ * serves all reads and authentication from an immutable in-memory snapshot with zero SQLite I/O on the
+ * request hot path. Otherwise, a {@code file:} seed is owned by this process via an exclusive sidecar
+ * lock and atomic full-document publication, and classpath seeds remain read-only.
  */
 @Service
 public final class UserDirectory implements AutoCloseable {
@@ -64,6 +67,7 @@ public final class UserDirectory implements AutoCloseable {
     private final @Nullable Path file;
     private final @Nullable FileChannel lockChannel;
     private final FilePublication publication;
+    private final @Nullable SqliteUserDirectoryStore sqliteStore;
     private Snapshot snapshot;
     private boolean closed;
 
@@ -71,8 +75,48 @@ public final class UserDirectory implements AutoCloseable {
     public UserDirectory(ObjectMapper mapper, ResourceLoader resources,
             @Value("${xa.mass.users.seed:}") String seed,
             @Value("${xa.mass.users.require-configured-seed:false}") boolean requireConfiguredSeed,
+            ProjectDirectory projects,
+            @Autowired(required = false) @Nullable ControlPlaneDatabase controlPlane) throws IOException {
+        this.mapper = Objects.requireNonNull(mapper);
+        this.projects = Objects.requireNonNull(projects);
+        this.publication = new FilePublication();
+        if (controlPlane != null && controlPlane.isEnabled()) {
+            this.file = null;
+            this.lockChannel = null;
+            this.sqliteStore = new SqliteUserDirectoryStore(controlPlane, mapper);
+            this.snapshot = initializeSqlite(this.sqliteStore,
+                    () -> readSeedBytes(resources, seed, requireConfiguredSeed));
+            return;
+        }
+        this.sqliteStore = null;
+        var initialized = initializeFileOrClasspath(location(resources, seed, requireConfiguredSeed));
+        this.file = initialized.file();
+        this.lockChannel = initialized.lockChannel();
+        this.snapshot = initialized.snapshot();
+    }
+
+    public UserDirectory(ObjectMapper mapper, ResourceLoader resources, String seed,
+            boolean requireConfiguredSeed, ProjectDirectory projects) throws IOException {
+        this(mapper, resources, seed, requireConfiguredSeed, projects, null);
+    }
+
+    /** Control-plane SQLite persisted directory, bootstrapping once from {@code bootstrapSeed} when empty. */
+    public UserDirectory(ObjectMapper mapper, ControlPlaneDatabase controlPlane,
+            @Nullable Resource bootstrapSeed, boolean requireConfiguredSeed,
             ProjectDirectory projects) throws IOException {
-        this(mapper, projects, location(resources, seed, requireConfiguredSeed), new FilePublication());
+        this(mapper, requireEnabledStore(controlPlane, mapper), bootstrapSeed, requireConfiguredSeed, projects);
+    }
+
+    UserDirectory(ObjectMapper mapper, SqliteUserDirectoryStore sqliteStore,
+            @Nullable Resource bootstrapSeed, boolean requireConfiguredSeed,
+            ProjectDirectory projects) throws IOException {
+        this.mapper = Objects.requireNonNull(mapper);
+        this.projects = Objects.requireNonNull(projects);
+        this.publication = new FilePublication();
+        this.file = null;
+        this.lockChannel = null;
+        this.sqliteStore = Objects.requireNonNull(sqliteStore);
+        this.snapshot = initializeSqlite(sqliteStore, () -> readResourceSeed(bootstrapSeed, requireConfiguredSeed));
     }
 
     /** Read-only directory, used for built-in and test seeds. */
@@ -94,13 +138,41 @@ public final class UserDirectory implements AutoCloseable {
         this.mapper = Objects.requireNonNull(mapper);
         this.projects = Objects.requireNonNull(projects);
         this.publication = Objects.requireNonNull(publication);
+        this.sqliteStore = null;
+        var initialized = initializeFileOrClasspath(location);
+        this.file = initialized.file();
+        this.lockChannel = initialized.lockChannel();
+        this.snapshot = initialized.snapshot();
+    }
+
+    private static SqliteUserDirectoryStore requireEnabledStore(ControlPlaneDatabase controlPlane, ObjectMapper mapper) {
+        Objects.requireNonNull(controlPlane, "controlPlane");
+        if (!controlPlane.isEnabled()) {
+            throw new IllegalArgumentException("Control-plane database must be enabled for SQLite UserDirectory");
+        }
+        return new SqliteUserDirectoryStore(controlPlane, mapper);
+    }
+
+    private Snapshot initializeSqlite(SqliteUserDirectoryStore store, SeedBytesSupplier bootstrapSupplier)
+            throws IOException {
+        if (!store.isEmpty()) {
+            Snapshot loaded = validateSeed(store.loadAll(), "");
+            LOG.log(System.Logger.Level.INFO, "Loaded user directory from control-plane SQLite ({0} users)",
+                    loaded.users().size());
+            return loaded;
+        }
+        Snapshot seeded = parse(bootstrapSupplier.read());
+        store.bootstrap(toSeed(seeded.roles().values(), seeded.users().values()));
+        LOG.log(System.Logger.Level.INFO, "Bootstrapped control-plane SQLite user directory from seed ({0} users)",
+                seeded.users().size());
+        return new Snapshot("", seeded.roles(), seeded.users(), seeded.userByKeyHash());
+    }
+
+    private InitializedFile initializeFileOrClasspath(Location location) throws IOException {
         if (location.file() == null) {
-            this.file = null;
-            this.lockChannel = null;
             try (var stream = Objects.requireNonNull(location.resource()).getInputStream()) {
-                this.snapshot = parse(stream.readAllBytes());
+                return new InitializedFile(null, null, parse(stream.readAllBytes()));
             }
-            return;
         }
         Path reserved = null;
         FileChannel opened = null;
@@ -115,13 +187,39 @@ public final class UserDirectory implements AutoCloseable {
                     StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             FileLock lock = opened.tryLock();
             if (lock == null) throw new IOException("User directory file is already owned by another process");
-            this.snapshot = parse(Files.readAllBytes(canonical));
-            this.file = canonical;
-            this.lockChannel = opened;
+            return new InitializedFile(canonical, opened, parse(Files.readAllBytes(canonical)));
         } catch (IOException | RuntimeException | Error failure) {
             if (opened != null) try { opened.close(); } catch (IOException close) { failure.addSuppressed(close); }
             if (reserved != null) OWNED_FILES.remove(reserved);
             throw failure;
+        }
+    }
+
+    private static byte[] readSeedBytes(ResourceLoader resources, String seed, boolean requireConfiguredSeed)
+            throws IOException {
+        var resolved = location(resources, seed, requireConfiguredSeed);
+        if (resolved.file() != null) {
+            return Files.readAllBytes(resolved.file().toAbsolutePath().normalize());
+        }
+        try (var stream = Objects.requireNonNull(resolved.resource()).getInputStream()) {
+            return stream.readAllBytes();
+        }
+    }
+
+    private static byte[] readResourceSeed(@Nullable Resource bootstrapSeed, boolean requireConfiguredSeed)
+            throws IOException {
+        if (bootstrapSeed == null) {
+            if (requireConfiguredSeed) {
+                throw new IllegalStateException("xa.mass.users.seed must be configured explicitly for this profile");
+            }
+            LOG.log(System.Logger.Level.WARNING, "Built-in development users with public access keys are active; use only for local runs");
+            var defaultResource = new org.springframework.core.io.ClassPathResource("users/development-directory.json");
+            try (var stream = defaultResource.getInputStream()) {
+                return stream.readAllBytes();
+            }
+        }
+        try (var stream = bootstrapSeed.getInputStream()) {
+            return stream.readAllBytes();
         }
     }
 
@@ -171,7 +269,8 @@ public final class UserDirectory implements AutoCloseable {
         user.projectIds().forEach(projects::require);
         var next = new LinkedHashMap<>(snapshot.users());
         next.put(user.userId(), new Entry(user, null));
-        return persist("create", next).users().get(user.userId()).view();
+        return persist("create", next, () -> Objects.requireNonNull(sqliteStore).createUser(user, null))
+                .users().get(user.userId()).view();
     }
 
     public synchronized UserView update(TaskCaller caller, String userId, UpdateUser input) {
@@ -180,7 +279,8 @@ public final class UserDirectory implements AutoCloseable {
         user.projectIds().forEach(projects::require);
         var next = new LinkedHashMap<>(snapshot.users());
         next.put(userId, new Entry(user, existing.accessKeySha256()));
-        return persist("update", next).users().get(userId).view();
+        return persist("update", next, () -> Objects.requireNonNull(sqliteStore).updateUser(user))
+                .users().get(userId).view();
     }
 
     /** Replaces the user's key; the returned plaintext is the only copy and is never logged or stored. */
@@ -188,9 +288,10 @@ public final class UserDirectory implements AutoCloseable {
         var existing = target(caller, userId);
         String accessKey;
         do { accessKey = newAccessKey(); } while (snapshot.userByKeyHash().containsKey(hash(accessKey)));
+        String keyHash = hash(accessKey);
         var next = new LinkedHashMap<>(snapshot.users());
-        next.put(userId, new Entry(existing.user(), hash(accessKey)));
-        persist("issueAccessKey", next);
+        next.put(userId, new Entry(existing.user(), keyHash));
+        persist("issueAccessKey", next, () -> Objects.requireNonNull(sqliteStore).updateAccessKeyHash(userId, keyHash));
         return new IssuedAccessKey(userId, accessKey);
     }
 
@@ -198,7 +299,8 @@ public final class UserDirectory implements AutoCloseable {
         var existing = target(caller, userId);
         var next = new LinkedHashMap<>(snapshot.users());
         next.put(userId, new Entry(existing.user(), null));
-        return persist("clearAccessKey", next).users().get(userId).view();
+        return persist("clearAccessKey", next, () -> Objects.requireNonNull(sqliteStore).updateAccessKeyHash(userId, null))
+                .users().get(userId).view();
     }
 
     @Override public synchronized void close() throws IOException {
@@ -215,7 +317,26 @@ public final class UserDirectory implements AutoCloseable {
         return existing;
     }
 
-    private Snapshot persist(String operation, Map<String, Entry> users) {
+    private Snapshot persist(String operation, Map<String, Entry> users, SqliteWrite sqliteWrite) {
+        if (sqliteStore != null) {
+            if (closed) {
+                throw new ServerException(ServerErrorCode.USER_DIRECTORY_CONFLICT, "userDirectory." + operation,
+                        "User directory is closed", null);
+            }
+            final Snapshot next;
+            try {
+                next = validateSeed(toSeed(snapshot.roles().values(), users.values()), "");
+            } catch (IllegalArgumentException invalid) {
+                throw new ServerException(ServerErrorCode.INVALID_USER_REQUEST, "userDirectory." + operation, null, invalid);
+            }
+            try {
+                sqliteWrite.execute();
+            } catch (IOException failure) {
+                throw new ServerException(ServerErrorCode.USER_DIRECTORY_UNAVAILABLE, "userDirectory." + operation, null, failure);
+            }
+            snapshot = next;
+            return next;
+        }
         if (file == null || closed)
             throw new ServerException(ServerErrorCode.USER_DIRECTORY_CONFLICT, "userDirectory." + operation, "User directory seed is read-only", null);
         final byte[] document;
@@ -251,6 +372,11 @@ public final class UserDirectory implements AutoCloseable {
         } catch (RuntimeException invalid) {
             throw new IllegalArgumentException("Invalid user directory document", invalid);
         }
+        return validateSeed(seed, fingerprint(document));
+    }
+
+    private static Snapshot validateSeed(Seed seed, String fingerprint) {
+        Objects.requireNonNull(seed, "seed");
         var roles = new LinkedHashMap<String, Role>();
         for (var role : Objects.requireNonNull(seed.roles(), "roles")) {
             if (!Set.of("admin", "operator").contains(role.id()) || roles.putIfAbsent(role.id(), role) != null)
@@ -271,17 +397,21 @@ public final class UserDirectory implements AutoCloseable {
         }
         if (users.values().stream().noneMatch(entry -> entry.user().role().equals("admin")))
             throw new IllegalArgumentException("An admin is required");
-        return new Snapshot(fingerprint(document), java.util.Collections.unmodifiableMap(roles),
+        return new Snapshot(fingerprint, java.util.Collections.unmodifiableMap(roles),
                 java.util.Collections.unmodifiableMap(users), Map.copyOf(keyIndex));
     }
 
-    private byte[] render(java.util.Collection<Role> roles, java.util.Collection<Entry> users) {
+    private static Seed toSeed(java.util.Collection<Role> roles, java.util.Collection<Entry> users) {
         var entries = new ArrayList<SeedUser>();
         for (var entry : users) {
             var user = entry.user();
             entries.add(new SeedUser(user.userId(), user.displayName(), user.role(), user.projectIds(), entry.accessKeySha256()));
         }
-        return (mapper.writerWithDefaultPrettyPrinter().writeValueAsString(new Seed(List.copyOf(roles), entries)) + "\n")
+        return new Seed(List.copyOf(roles), entries);
+    }
+
+    private byte[] render(java.util.Collection<Role> roles, java.util.Collection<Entry> users) {
+        return (mapper.writerWithDefaultPrettyPrinter().writeValueAsString(toSeed(roles, users)) + "\n")
                 .getBytes(StandardCharsets.UTF_8);
     }
 
@@ -344,6 +474,9 @@ public final class UserDirectory implements AutoCloseable {
         }
     }
 
+    @FunctionalInterface private interface SeedBytesSupplier { byte[] read() throws IOException; }
+    @FunctionalInterface private interface SqliteWrite { void execute() throws IOException; }
+    private record InitializedFile(@Nullable Path file, @Nullable FileChannel lockChannel, Snapshot snapshot) {}
     private record Location(@Nullable Path file, @Nullable Resource resource) {}
     private record Snapshot(String fingerprint, Map<String, Role> roles, Map<String, Entry> users, Map<String, String> userByKeyHash) {}
     private record Entry(User user, @Nullable String accessKeySha256) {
