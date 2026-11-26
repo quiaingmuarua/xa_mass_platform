@@ -92,6 +92,69 @@ class ControlPlaneDatabaseTest {
     }
 
     @Test
+    void migratesSchemaVersionOneToVersionTwoPreservingExistingUsers() throws Exception {
+        Path v1Path = temp.resolve("v1-upgrade.sqlite");
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + v1Path);
+             var stmt = connection.createStatement()) {
+            stmt.execute("""
+                    CREATE TABLE cp_roles (
+                      role_id TEXT PRIMARY KEY,
+                      ordinal INTEGER NOT NULL UNIQUE,
+                      label TEXT NOT NULL,
+                      permissions_json TEXT NOT NULL,
+                      task_scope TEXT NOT NULL,
+                      project_scope TEXT NOT NULL,
+                      home TEXT NOT NULL
+                    )
+                    """);
+            stmt.execute("""
+                    CREATE TABLE cp_users (
+                      user_id TEXT PRIMARY KEY,
+                      ordinal INTEGER NOT NULL UNIQUE,
+                      display_name TEXT NOT NULL,
+                      role_id TEXT NOT NULL REFERENCES cp_roles(role_id),
+                      access_key_sha256 TEXT UNIQUE
+                    )
+                    """);
+            stmt.execute("""
+                    CREATE TABLE cp_user_projects (
+                      user_id TEXT NOT NULL REFERENCES cp_users(user_id) ON DELETE CASCADE,
+                      ordinal INTEGER NOT NULL,
+                      project_id TEXT NOT NULL,
+                      PRIMARY KEY (user_id, project_id),
+                      UNIQUE (user_id, ordinal)
+                    )
+                    """);
+            stmt.execute("""
+                    INSERT INTO cp_roles(role_id, ordinal, label, permissions_json, task_scope, project_scope, home)
+                    VALUES ('admin', 0, 'Administrator', '["users.manage"]', 'all', 'all', '/runtime/workers')
+                    """);
+            stmt.execute("""
+                    INSERT INTO cp_users(user_id, ordinal, display_name, role_id, access_key_sha256)
+                    VALUES ('1000', 0, 'Admin', 'admin', NULL)
+                    """);
+            stmt.execute("PRAGMA user_version=1");
+        }
+
+        try (var upgraded = ControlPlaneDatabase.open(v1Path)) {
+            upgraded.inTransaction(connection -> {
+                try (var stmt = connection.createStatement()) {
+                    try (var version = stmt.executeQuery("PRAGMA user_version")) {
+                        assertThat(version.next()).isTrue();
+                        assertThat(version.getInt(1)).isEqualTo(ControlPlaneDatabase.SCHEMA_VERSION);
+                    }
+                    try (var users = stmt.executeQuery("SELECT user_id FROM cp_users")) {
+                        assertThat(users.next()).isTrue();
+                        assertThat(users.getString(1)).isEqualTo("1000");
+                    }
+                    stmt.execute("INSERT INTO cp_projects(project_id, ordinal, exclusive_input_owner) VALUES ('default', 0, NULL)");
+                }
+                return null;
+            });
+        }
+    }
+
+    @Test
     void rejectsForeignVersionlessAndUnsupportedSchemaDatabases() throws Exception {
         Path foreign = temp.resolve("foreign.sqlite");
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + foreign);
@@ -111,13 +174,22 @@ class ControlPlaneDatabaseTest {
                 .isInstanceOf(SQLException.class)
                 .hasMessageContaining("Unsupported");
 
-        Path incomplete = temp.resolve("incomplete.sqlite");
-        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + incomplete);
+        Path incompleteV1 = temp.resolve("incomplete-v1.sqlite");
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + incompleteV1);
              var stmt = connection.createStatement()) {
             stmt.execute("CREATE TABLE cp_roles (role_id TEXT PRIMARY KEY)");
             stmt.execute("PRAGMA user_version=1");
         }
-        assertThatThrownBy(() -> ControlPlaneDatabase.open(incomplete))
+        assertThatThrownBy(() -> ControlPlaneDatabase.open(incompleteV1))
+                .isInstanceOf(SQLException.class);
+
+        Path incompleteV2 = temp.resolve("incomplete-v2.sqlite");
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + incompleteV2);
+             var stmt = connection.createStatement()) {
+            stmt.execute("CREATE TABLE cp_roles (role_id TEXT PRIMARY KEY)");
+            stmt.execute("PRAGMA user_version=2");
+        }
+        assertThatThrownBy(() -> ControlPlaneDatabase.open(incompleteV2))
                 .isInstanceOf(SQLException.class);
     }
 }

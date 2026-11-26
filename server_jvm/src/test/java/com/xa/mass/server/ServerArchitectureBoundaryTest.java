@@ -746,6 +746,9 @@ class ServerArchitectureBoundaryTest {
     @Test
     void controlPlaneSqliteStaysIsolatedFromHotSchedulingPaths() throws IOException {
         Path controlPlane = SERVER_SOURCE.resolve("com/xa/mass/server/assembly/controlplane");
+        Path userPackage = SERVER_PACKAGE.resolve("user");
+        Path projectPackage = SERVER_PACKAGE.resolve("project");
+        Path taskHistory = TASK.resolve("history");
         Path matchingSource = Path.of("../worker_matching_jvm/src/main/java");
         assertThat(controlPlane).isDirectory();
         assertThat(readSources(controlPlane))
@@ -754,12 +757,26 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("io.lettuce", "org.springframework.data.redis", "com.xa.mass.kernel",
                         "com.xa.mass.matching", "TaskRuntime", "ScoreCore", "KernelPacerRuntime",
                         "WorkerDelivery", "MatchingComposition");
-        for (Path hotRoot : java.util.List.of(KERNEL_SOURCE, PACER_SOURCE, matchingSource,
-                DELIVERY, WORKER_SCHEDULING, RUNTIME_VIEW)) {
+        // Only registered control-plane owners may reference ControlPlaneDatabase / ControlPlaneProperties.
+        assertThat(readSourcesExcluding(SERVER_SOURCE, controlPlane, userPackage, projectPackage))
+                .doesNotContain("ControlPlaneDatabase")
+                .doesNotContain("ControlPlaneProperties");
+        // Only dedicated SQLite adapters and task/history may touch JDBC or jdbc:sqlite:.
+        assertThat(readSourcesExcluding(
+                SERVER_SOURCE,
+                controlPlane,
+                taskHistory,
+                userPackage.resolve("SqliteUserDirectoryStore.java"),
+                projectPackage.resolve("SqliteProjectDirectoryStore.java")
+        ))
+                .doesNotContain("jdbc:sqlite:")
+                .doesNotContain("java.sql.");
+        for (Path hotRoot : java.util.List.of(KERNEL_SOURCE, PACER_SOURCE, matchingSource)) {
             assertThat(readSources(hotRoot))
                     .doesNotContain("ControlPlaneDatabase")
                     .doesNotContain("ControlPlaneProperties")
-                    .doesNotContain("jdbc:sqlite:");
+                    .doesNotContain("jdbc:sqlite:")
+                    .doesNotContain("java.sql.");
         }
     }
 

@@ -49,6 +49,24 @@ immutable Endpoint directory and instance-local Direct Call FIFO/waiters. Redis
 operations remain in their Owner providers; missing JVM operations fail explicitly,
 without an HTTP fallback or Server scheduler.
 
+### Storage Split (Hot vs Cold)
+
+Every piece of platform state belongs to exactly one storage tier. Use this table as
+the single decision source whenever classifying existing or newly requested state:
+
+| Storage tier | Owns | Decision rule for new state | Read / write pattern |
+| --- | --- | --- | --- |
+| **Redis** (`xa_mass:<scope>:*`) | Kernel Scores, Worker/Group descriptors & bindings, Matching facts/pools/indexes, active Task/Item/Result, delivery queues, Worker identity/cooldown, user credit ledger | Put here if scheduling, Matching, Worker lifecycle, active Task execution, per-request rate/cooldown or ledger atomicity reads or writes it | Owner-local Redis/Lua operations; authoritative runtime truth |
+| **`control-plane.sqlite`** (optional WAL, `user_version=2`) | Low-frequency Server control-plane directories: `UserDirectory` (`cp_roles`, `cp_users`, `cp_user_projects`) and host-declared `ProjectDirectory` (`cp_projects`, `cp_project_worker_groups`) | Put here **only** if it is low-frequency Server control-plane metadata that survives restarts independently of active execution and fits in an immutable in-memory snapshot | Loaded/bootstrapped at startup; request hot paths read **only** the immutable in-memory snapshot (zero SQLite I/O); rare admin writes commit SQLite first, then swap snapshot |
+| **`task-history.sqlite`** (WAL, `user_version=1`) | Immutable archived finite Task snapshots, Items and Results (`TaskHistoryStore`) | Put here **only** for post-terminal finite Task retention/archive reads | Written by retention archival; read only by explicit `/storage/tasks` history APIs |
+| **YAML / Env / Scenario files** | Process coordinates (ports, Redis URL/scope, Adapters, Endpoints, Pacer presets), Redis-scope-bound Matching/window/refill structure, startup seeds and Scenario-owned configuration | Keep here if changing it alters process wiring, Redis-scope physical structure or a business Scenario's own domain config | Parsed at startup; Scenarios own their own storage boundaries |
+
+Hard boundaries enforced by `ServerArchitectureBoundaryTest` and `ScenarioArchitectureTest`:
+- **Never touch SQLite on hot paths**: Kernel, Pacer, Matching, Delivery, Worker scheduling, Runtime View and per-request HTTP admission/authentication must never perform SQLite I/O.
+- **Never dual-write or mirror Redis into SQLite**: Worker, WorkerGroup, active Task, cooldown and credit truth stay exclusively in Redis; do not cache or mirror them into `control-plane.sqlite`.
+- **Keep Scenarios out of `control-plane.sqlite`**: business Scenarios consume only approved Server application services and own their own configuration/storage.
+- **Explicit allowlist for new control-plane stores**: only `assembly/controlplane`, `user` and `project` may reference `ControlPlaneDatabase`, and only their dedicated `Sqlite*Store` adapters plus `task/history` may import `java.sql.*`. Adding a new control-plane table requires updating this table, `ControlPlaneDatabase` schema migration and both architecture boundary tests in the same change.
+
 ### API Reference and Response Contract
 
 Routes, request/response fields, required values and schema bounds are maintained
@@ -186,8 +204,8 @@ restart; hand edits belong to a stopped Server. A classpath seed is read-only an
 returns `409/18009`. A failed publication returns `503/18010` and leaves the snapshot unchanged.
 
 When `xa.mass.control-plane.database-path` (`XA_MASS_CONTROL_PLANE_DATABASE`) is set,
-`ControlPlaneDatabase` opens a dedicated Server-owned WAL SQLite database (`PRAGMA user_version=1`,
-physically separate from `task-history.sqlite`) and `UserDirectory` persists roles, users,
+`ControlPlaneDatabase` opens a dedicated Server-owned WAL SQLite database (`PRAGMA user_version=2`,
+with atomic `v1 -> v2` migration, physically separate from `task-history.sqlite`) and `UserDirectory` persists roles, users,
 Project assignments and access-key hashes in SQLite tables (`cp_roles`, `cp_users`, `cp_user_projects`)
 instead of locking or rewriting `users.json`. On first startup against an empty database,
 `UserDirectory` reads `xa.mass.users.seed` once (still enforcing `require-configured-seed` on
@@ -344,8 +362,14 @@ creates or reuses and approves a `PARK_WHEN_IDLE` Task. Project membership is op
 
 `ProjectDefinition(projectId, workerGroupIds)` is the immutable topology value
 shared by the `xa.mass.project-assembly.projects` configuration list and module
-Beans. ProjectDirectory combines the configuration list with name-sorted module
-declarations into one immutable directory. IDs must be unique across all sources,
+Beans. ProjectDirectory combines the host declarations with name-sorted module
+declarations into one immutable directory. When `xa.mass.control-plane.database-path`
+is set, host-declared Projects persist in `control-plane.sqlite` (`cp_projects`,
+`cp_project_worker_groups`): an empty Project table bootstraps once from
+`xa.mass.project-assembly.projects` (after validating no conflict with module Beans),
+and subsequent restarts load host Projects directly from SQLite while still merging
+module-contributed Beans live at startup. All runtime queries read only the immutable
+in-memory directory with zero SQLite I/O. IDs must be unique across all sources,
 even for identical declarations; Group lists remain unique and nonempty except for explicit `default`, which must declare an empty list. YAML
 list overlays replace only the configuration contribution, not enabled modules.
 There is no override precedence, merge-by-ID, Project registration/update/deletion API or implicit default Project. Boot owns environment

@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public final class ControlPlaneDatabase implements AutoCloseable {
-    public static final int SCHEMA_VERSION = 1;
+    public static final int SCHEMA_VERSION = 2;
 
     private final @Nullable Path databasePath;
     private final @Nullable Connection writer;
@@ -129,7 +129,7 @@ public final class ControlPlaneDatabase implements AutoCloseable {
                 rows.next();
                 version = rows.getInt(1);
             }
-            if (version != 0 && version != SCHEMA_VERSION) {
+            if (version < 0 || version > SCHEMA_VERSION) {
                 throw new SQLException("Unsupported control-plane schema version: " + version);
             }
             if (version == 0) {
@@ -142,56 +142,103 @@ public final class ControlPlaneDatabase implements AutoCloseable {
                                 throw new SQLException("Control-plane database is not empty and has no schema version");
                             }
                         }
-                        schema.execute("""
-                                CREATE TABLE cp_roles (
-                                  role_id TEXT PRIMARY KEY,
-                                  ordinal INTEGER NOT NULL UNIQUE,
-                                  label TEXT NOT NULL,
-                                  permissions_json TEXT NOT NULL,
-                                  task_scope TEXT NOT NULL,
-                                  project_scope TEXT NOT NULL,
-                                  home TEXT NOT NULL
-                                )
-                                """);
-                        schema.execute("""
-                                CREATE TABLE cp_users (
-                                  user_id TEXT PRIMARY KEY,
-                                  ordinal INTEGER NOT NULL UNIQUE,
-                                  display_name TEXT NOT NULL,
-                                  role_id TEXT NOT NULL REFERENCES cp_roles(role_id),
-                                  access_key_sha256 TEXT UNIQUE
-                                )
-                                """);
-                        schema.execute("""
-                                CREATE TABLE cp_user_projects (
-                                  user_id TEXT NOT NULL REFERENCES cp_users(user_id) ON DELETE CASCADE,
-                                  ordinal INTEGER NOT NULL,
-                                  project_id TEXT NOT NULL,
-                                  PRIMARY KEY (user_id, project_id),
-                                  UNIQUE (user_id, ordinal)
-                                )
-                                """);
+                        createUserDirectoryTables(schema);
+                        createProjectDirectoryTables(schema);
+                        schema.execute("PRAGMA user_version=" + SCHEMA_VERSION);
+                    }
+                    return null;
+                });
+            } else if (version == 1) {
+                verifyUserDirectoryColumns(statement);
+                inTransaction(connection -> {
+                    try (var schema = connection.createStatement()) {
+                        createProjectDirectoryTables(schema);
                         schema.execute("PRAGMA user_version=" + SCHEMA_VERSION);
                     }
                     return null;
                 });
             }
             // Fail fast at startup if an existing schema is missing required columns.
-            statement.executeQuery(
-                    "SELECT role_id, ordinal, label, permissions_json, task_scope, project_scope, home FROM cp_roles LIMIT 0"
-            ).close();
-            statement.executeQuery(
-                    "SELECT user_id, ordinal, display_name, role_id, access_key_sha256 FROM cp_users LIMIT 0"
-            ).close();
-            statement.executeQuery(
-                    "SELECT user_id, ordinal, project_id FROM cp_user_projects LIMIT 0"
-            ).close();
+            verifyUserDirectoryColumns(statement);
+            verifyProjectDirectoryColumns(statement);
             try (var mode = statement.executeQuery("PRAGMA journal_mode=WAL")) {
                 if (!mode.next() || !"wal".equalsIgnoreCase(mode.getString(1))) {
                     throw new SQLException("Control-plane database requires WAL mode");
                 }
             }
         }
+    }
+
+    private static void createUserDirectoryTables(java.sql.Statement schema) throws SQLException {
+        schema.execute("""
+                CREATE TABLE cp_roles (
+                  role_id TEXT PRIMARY KEY,
+                  ordinal INTEGER NOT NULL UNIQUE,
+                  label TEXT NOT NULL,
+                  permissions_json TEXT NOT NULL,
+                  task_scope TEXT NOT NULL,
+                  project_scope TEXT NOT NULL,
+                  home TEXT NOT NULL
+                )
+                """);
+        schema.execute("""
+                CREATE TABLE cp_users (
+                  user_id TEXT PRIMARY KEY,
+                  ordinal INTEGER NOT NULL UNIQUE,
+                  display_name TEXT NOT NULL,
+                  role_id TEXT NOT NULL REFERENCES cp_roles(role_id),
+                  access_key_sha256 TEXT UNIQUE
+                )
+                """);
+        schema.execute("""
+                CREATE TABLE cp_user_projects (
+                  user_id TEXT NOT NULL REFERENCES cp_users(user_id) ON DELETE CASCADE,
+                  ordinal INTEGER NOT NULL,
+                  project_id TEXT NOT NULL,
+                  PRIMARY KEY (user_id, project_id),
+                  UNIQUE (user_id, ordinal)
+                )
+                """);
+    }
+
+    private static void createProjectDirectoryTables(java.sql.Statement schema) throws SQLException {
+        schema.execute("""
+                CREATE TABLE cp_projects (
+                  project_id TEXT PRIMARY KEY,
+                  ordinal INTEGER NOT NULL UNIQUE,
+                  exclusive_input_owner TEXT
+                )
+                """);
+        schema.execute("""
+                CREATE TABLE cp_project_worker_groups (
+                  project_id TEXT NOT NULL REFERENCES cp_projects(project_id) ON DELETE CASCADE,
+                  ordinal INTEGER NOT NULL,
+                  worker_group_id TEXT NOT NULL,
+                  PRIMARY KEY (project_id, worker_group_id),
+                  UNIQUE (project_id, ordinal)
+                )
+                """);
+    }
+
+    private static void verifyUserDirectoryColumns(java.sql.Statement statement) throws SQLException {
+        statement.executeQuery(
+                "SELECT role_id, ordinal, label, permissions_json, task_scope, project_scope, home FROM cp_roles LIMIT 0"
+        ).close();
+        statement.executeQuery(
+                "SELECT user_id, ordinal, display_name, role_id, access_key_sha256 FROM cp_users LIMIT 0"
+        ).close();
+        statement.executeQuery(
+                "SELECT user_id, ordinal, project_id FROM cp_user_projects LIMIT 0"
+        ).close();
+    }
+
+    private static void verifyProjectDirectoryColumns(java.sql.Statement statement) throws SQLException {
+        statement.executeQuery(
+                "SELECT project_id, ordinal, exclusive_input_owner FROM cp_projects LIMIT 0"
+        ).close();
+        statement.executeQuery(
+                "SELECT project_id, ordinal, worker_group_id FROM cp_project_worker_groups LIMIT 0"
+        ).close();
     }
 
     @FunctionalInterface
