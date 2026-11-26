@@ -1,9 +1,9 @@
 # XA Mass 4.7 release and upgrade contract
 
-Status: current 4.7 release input. 4.7.0 publication and GCP Release Preview
-upgrade are pending complete manual Proof, Release promotion and deployment
-closeout. Published artifacts remain immutable. Actual host installation state
-belongs to the host records reached through the
+Status: current 4.7 release input. 4.7.0 is published and its retained-scope GCP
+upgrade completed on 2026-11-26; temporary upgrade-material cleanup was confirmed
+at 16:05:53 UTC. Published artifacts remain immutable. Actual host installation
+state belongs to the host records reached through the
 [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview).
 
 ## Release preparation
@@ -46,6 +46,21 @@ deployment are separate recorded facts.
   [server_jvm/README.md](../../server_jvm/README.md) in place while preserving
   all cross-repository anchors and load-bearing invariants (`#149`).
 
+4.7.0 was published from merged commit
+`adcb7761dd4968395054ce28a87e082ff54eefc2` through
+[complete manual Proof 45851462980](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45851462980),
+attempt 1, with all 18 jobs successful, including SMS Reception Preview.
+[Promotion 45854337696](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45854337696)
+promoted those exact Proof ZIPs to
+[Release 4.7.0](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.7.0)
+(Release ID `459627729`).
+
+| ZIP | SHA256 |
+| --- | --- |
+| `xa-mass-server-runtime-4.7.0.zip` | `b7841c247644cd64f2ffdfbb99a70a3ab12e670d6f49709c8f0c831a67c000e9` |
+| `xa-mass-worker-sdk-4.7.0.zip` | `c6ededd0df8f0c8f74e8ebe99f875928fefeb037413571d39b8705e2bba9850f` |
+| `xa-mass-worker-simulator-4.7.0.zip` | `b2e7d6392acf835a9dbb0dea2fa94043631a5e19b73329e0cee795af2f3a82fb` |
+
 ### Retained-scope upgrade constraints from 4.6.0
 
 Upgrading an existing 4.6.0 Release Preview Runtime to 4.7.0 reuses the existing
@@ -85,6 +100,51 @@ window:
    for all groups), a temporary dynamic Group register/update/delete round-trip
    through public ingress, external finite + RPC MD5 checks, and 0
    `xa-mass.service` warnings/errors.
+
+### Accepted deployment and closeout (2026-11-26)
+
+The 2026-11-26 GCP Release Preview upgrade (`upgrade-4.7.0-20261126T160154Z`)
+installed immutable Runtime 4.7.0 (`PID 1067612`) at the commit and SHA256
+above, retaining `profile_long_preview_4_4`,
+`/var/lib/xa-mass/task-history-4.4.sqlite` (schema 1, `PRAGMA quick_check=ok`),
+Nginx staging ingress from 4.6.0, standing Host `4.4.2`, and Performance kit
+`4.4.4`. Recomputed `configurationId` after adding
+`xa.mass.control-plane.database-path: /var/lib/xa-mass/control-plane.sqlite` to
+`/etc/xa-mass/runtime.yaml` and updating `start-runtime` is
+`sha256:3d50c77086cd4c78d34d3ee43d0a1b8ed20c453b37943b28dd6ed67fe8240b5a`
+(previous:
+`sha256:821d6284a7768280b2b34388080520affa3b0e3c36a775c12098eff57ce14563`).
+
+- Control-plane SQLite bootstrap succeeded on first startup:
+  `UserDirectory` logged `Bootstrapped control-plane SQLite user directory from
+  seed (7 users)` into `/var/lib/xa-mass/control-plane.sqlite` (`user_version=1`,
+  `journal_mode=wal`, `PRAGMA quick_check=ok`, `cp_roles=2`, `cp_users=7`,
+  `cp_user_projects=5`), without creating `/var/lib/xa-mass/users.json.lock`
+  or modifying the retained `/var/lib/xa-mass/users.json` backup.
+- Health, ingress and observability checks passed: loopback readiness `UP` (11s),
+  loopback `/actuator/prometheus` exported 94 `xa_mass_*` lines, public
+  `/actuator/prometheus` returned `404`, public `/runtime/workers`,
+  `/storage/tasks`, `/runtime/tasks` and `/docs/` returned `200`, public
+  `/task-workbench` returned `404`, unauthenticated `/api/v1/worker-groups`
+  returned `401`, and `/docs/` served commit `adcb7761d`.
+- Public authenticated API checks passed: `GET /api/v1/me` (`1000`, `admin`),
+  `GET /api/v1/users` (7 users), `GET /api/v1/worker-groups` (10 registered
+  groups, `unreadableCount=0`, all 10 reporting `editable=true` and
+  `deletableByConfig=true`), `GET /api/v1/runtime-view/worker-groups/bindings`
+  (4 Projects: `app-checks`, `default`, `messages`, `performance-consumer`), and
+  dynamic `accept-470-smoke` Group completed `register -> update -> delete`.
+- Standing `persistent-workers` observed `10/20` `activeHot` + `10/20`
+  `recovery` (Ali Host untouched) and served both a fresh 3-Item RPC MD5 Task
+  (`accept-470-rpc-71324d12`, 3/3 succeeded) and a fresh 3-Item finite MD5 Task
+  (`task-00086ab02a8a4cbd964afbb72f3599a5`, 3/3 succeeded, JSONL export SHA256
+  `4714e955fb46989b003592eeb6d6a5d14c04e24c57137faa7cdbf0f184aca421`) with
+  independent UTF-8 MD5 verification passing.
+- Old 4.6.0 binary, temporary stage directory and temporary restore point were
+  confirmed removed at `2026-11-26 16:05:53 UTC`; GCP `release.json`,
+  `deployment.json`, `OPERATIONS.txt`, `operations.log` and GitHub
+  `release-preview-load` Server pins (`INSTALLED_RELEASE_TAG=v4.7.0`,
+  `INSTALLED_RELEASE_COMMIT`, `PERFORMANCE_DEPLOYMENT_JSON.serverDeployment`)
+  were updated and verified.
 
 ## Finite Task history and RPC retention
 
