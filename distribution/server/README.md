@@ -4,9 +4,9 @@ This module owns Runtime and Scenario Preview ZIP delivery, frontend and
 documentation-site builds, diagnostic dictionaries, Preview process assembly
 and archive verification.
 
-The current [4.5 release contract](RELEASE-4.5.md) retains version-specific
-requirements, upgrade constraints and fixed links to earlier [4.4](RELEASE-4.4.md)
-and older release records. Current mechanisms remain in their Owners.
+The current [4.6 release contract](RELEASE-4.6.md) retains version-specific
+requirements, upgrade constraints and fixed links to earlier [4.5](RELEASE-4.5.md),
+[4.4](RELEASE-4.4.md) and older release records. Current mechanisms remain in their Owners.
 A Release publishes three components: the Runtime, the Worker SDK and the Worker Simulator kit.
 Use the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview)
 for GCP's role, deployment cadence and environment handoff rather than inferring
@@ -218,7 +218,7 @@ against source and extracted Runtime, identified explicitly as a test capability
 
 For an already running consumer, building this repository does not replace its
 locked installation. A local candidate ZIP is acceptance output, not a published
-Release. Formal delivery separately follows the [current release contract](RELEASE-4.5.md):
+Release. Formal delivery separately follows the [current release contract](RELEASE-4.6.md):
 publish immutable artifacts, update the consumer's exact version/commit/checksums,
 resolve into a separate installation, and switch deliberately. Apply the target
 release's configuration and data instructions; when it requires a fresh Redis scope,
