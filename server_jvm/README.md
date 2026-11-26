@@ -49,6 +49,24 @@ immutable Endpoint directory and instance-local Direct Call FIFO/waiters. Redis
 operations remain in their Owner providers; missing JVM operations fail explicitly,
 without an HTTP fallback or Server scheduler.
 
+### Storage Split (Hot vs Cold)
+
+Every piece of platform state belongs to exactly one storage tier. Use this table as
+the single decision source whenever classifying existing or newly requested state:
+
+| Storage tier | Owns | Decision rule for new state | Read / write pattern |
+| --- | --- | --- | --- |
+| **Redis** (`xa_mass:<scope>:*`) | Kernel Scores, Worker/Group descriptors & bindings, Matching facts/pools/indexes, active Task/Item/Result, delivery queues, Worker identity/cooldown, user credit ledger | Put here if scheduling, Matching, Worker lifecycle, active Task execution, per-request rate/cooldown or ledger atomicity reads or writes it | Owner-local Redis/Lua operations; authoritative runtime truth |
+| **`control-plane.sqlite`** (optional WAL, `user_version=2`) | Low-frequency Server control-plane directories: `UserDirectory` (`cp_roles`, `cp_users`, `cp_user_projects`) and host-declared `ProjectDirectory` (`cp_projects`, `cp_project_worker_groups`) | Put here **only** if it is low-frequency Server control-plane metadata that survives restarts independently of active execution and fits in an immutable in-memory snapshot | Loaded/bootstrapped at startup; request hot paths read **only** the immutable in-memory snapshot (zero SQLite I/O); rare admin writes commit SQLite first, then swap snapshot |
+| **`task-history.sqlite`** (WAL, `user_version=1`) | Immutable archived finite Task snapshots, Items and Results (`TaskHistoryStore`) | Put here **only** for post-terminal finite Task retention/archive reads | Written by retention archival; read only by explicit `/storage/tasks` history APIs |
+| **YAML / Env / Scenario files** | Process coordinates (ports, Redis URL/scope, Adapters, Endpoints, Pacer presets), Redis-scope-bound Matching/window/refill structure, startup seeds and Scenario-owned configuration | Keep here if changing it alters process wiring, Redis-scope physical structure or a business Scenario's own domain config | Parsed at startup; Scenarios own their own storage boundaries |
+
+Hard boundaries enforced by `ServerArchitectureBoundaryTest` and `ScenarioArchitectureTest`:
+- **Never touch SQLite on hot paths**: Kernel, Pacer, Matching, Delivery, Worker scheduling, Runtime View and per-request HTTP admission/authentication must never perform SQLite I/O.
+- **Never dual-write or mirror Redis into SQLite**: Worker, WorkerGroup, active Task, cooldown and credit truth stay exclusively in Redis; do not cache or mirror them into `control-plane.sqlite`.
+- **Keep Scenarios out of `control-plane.sqlite`**: business Scenarios consume only approved Server application services and own their own configuration/storage.
+- **Explicit allowlist for new control-plane stores**: only `assembly/controlplane`, `user` and `project` may reference `ControlPlaneDatabase`, and only their dedicated `Sqlite*Store` adapters plus `task/history` may import `java.sql.*`. Adding a new control-plane table requires updating this table, `ControlPlaneDatabase` schema migration and both architecture boundary tests in the same change.
+
 ### API Reference and Response Contract
 
 Routes, request/response fields, required values and schema bounds are maintained
