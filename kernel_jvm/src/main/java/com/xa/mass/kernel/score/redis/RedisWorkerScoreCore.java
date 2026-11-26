@@ -124,6 +124,86 @@ public final class RedisWorkerScoreCore
             return created
             """;
 
+    /**
+     * ARGV: markBase, pauseSlot, coldSlot.
+     * Returns {total, activeHot, pausedActive, recovery, cold, pausedOffline}.
+     */
+    private static final String SUMMARIZE_GROUP_STATES_SCRIPT = """
+            local markBase = tonumber(ARGV[1])
+            local pauseSlot = tonumber(ARGV[2])
+            local coldSlot = tonumber(ARGV[3])
+            local total = redis.call('ZCARD', KEYS[1])
+            if total == 0 then return {0, 0, 0, 0, 0, 0} end
+            local activeHot = redis.call('ZCOUNT', KEYS[1], 1, pauseSlot - 1)
+                + redis.call('ZCOUNT', KEYS[1], markBase, markBase + pauseSlot - 1)
+            local pausedActive = redis.call('ZCOUNT', KEYS[1], pauseSlot, pauseSlot)
+                + redis.call('ZCOUNT', KEYS[1], markBase + pauseSlot, markBase + pauseSlot)
+            local recovery = redis.call('ZCOUNT', KEYS[1], -(pauseSlot - 1), -(coldSlot + 1))
+                + redis.call('ZCOUNT', KEYS[1], -(markBase + pauseSlot - 1), -(markBase + coldSlot + 1))
+            local cold = redis.call('ZCOUNT', KEYS[1], -coldSlot, -1)
+                + redis.call('ZCOUNT', KEYS[1], -(markBase + coldSlot), -markBase)
+            local pausedOffline = redis.call('ZCOUNT', KEYS[1], -pauseSlot, -pauseSlot)
+                + redis.call('ZCOUNT', KEYS[1], -(markBase + pauseSlot), -(markBase + pauseSlot))
+            return {total, activeHot, pausedActive, recovery, cold, pausedOffline}
+            """;
+
+    /**
+     * ARGV: markBase, pauseSlot, coldSlot, limit.
+     * Returns {'conflict'} if any active member exists, otherwise {'ok', id1, id2, ...}.
+     */
+    private static final String PEEK_INACTIVE_WORKERS_SCRIPT = """
+            local markBase = tonumber(ARGV[1])
+            local pauseSlot = tonumber(ARGV[2])
+            local coldSlot = tonumber(ARGV[3])
+            local limit = tonumber(ARGV[4])
+            local active = redis.call('ZCOUNT', KEYS[1], 1, '+inf')
+                + redis.call('ZCOUNT', KEYS[1], -(pauseSlot - 1), -(coldSlot + 1))
+                + redis.call('ZCOUNT', KEYS[1], -(markBase + pauseSlot - 1), -(markBase + coldSlot + 1))
+            if active > 0 then return {'conflict'} end
+            local members = redis.call('ZRANGE', KEYS[1], 0, limit - 1)
+            local result = {'ok'}
+            for i = 1, #members do result[#result + 1] = members[i] end
+            return result
+            """;
+
+    /**
+     * ARGV: markBase, pauseSlot, coldSlot, workerId1, workerId2, ...
+     * Atomically verifies every present member is inactive (COLD or offline PAUSED) before ZREM.
+     * Returns {'conflict', 0, 0} or {'ok', removedCount, missingCount}.
+     */
+    private static final String REMOVE_INACTIVE_WORKERS_SCRIPT = """
+            local markBase = tonumber(ARGV[1])
+            local pauseSlot = tonumber(ARGV[2])
+            local coldSlot = tonumber(ARGV[3])
+            local function is_inactive(score)
+              if score >= 0 then return false end
+              local abs = -score
+              local slot = abs % markBase
+              local mark = math.floor(abs / markBase)
+              if mark > 1 then return false end
+              return slot <= coldSlot or slot == pauseSlot
+            end
+            local toRemove = {}
+            local missing = 0
+            for i = 4, #ARGV do
+              local stored = redis.call('ZSCORE', KEYS[1], ARGV[i])
+              if not stored then
+                missing = missing + 1
+              else
+                local current = tonumber(stored)
+                if not current or current ~= math.floor(current) or not is_inactive(current) then
+                  return {'conflict', 0, 0}
+                end
+                toRemove[#toRemove + 1] = ARGV[i]
+              end
+            end
+            local removed = 0
+            if #toRemove > 0 then
+              removed = redis.call('ZREM', KEYS[1], unpack(toRemove))
+            end
+            return {'ok', removed, missing}
+            """;
+
     private static final String WRITE = "w";
     private static final String SIGN = "s";
     private static final String NOOP = "n";
@@ -313,6 +393,75 @@ public final class RedisWorkerScoreCore
                     + MAX_REGISTERED_WORKER_SAMPLE_LIMIT);
         }
         return sampleMembers(homeBucketId, limit);
+    }
+
+    @Override
+    public GroupStateSummary summarizeGroupStates(String homeBucketId) {
+        requireNonBlank(homeBucketId, "homeBucketId");
+        List<?> raw = readGroupStateSummary(homeBucketId);
+        if (raw == null || raw.size() != 6) {
+            throw new IllegalStateException("Group state summary script returned an invalid response");
+        }
+        return new GroupStateSummary(
+                ((Number) raw.get(0)).longValue(),
+                ((Number) raw.get(1)).longValue(),
+                ((Number) raw.get(2)).longValue(),
+                ((Number) raw.get(3)).longValue(),
+                ((Number) raw.get(4)).longValue(),
+                ((Number) raw.get(5)).longValue()
+        );
+    }
+
+    @Override
+    public InactiveWorkerBatch peekInactiveWorkerIds(String homeBucketId, int limit) {
+        requireNonBlank(homeBucketId, "homeBucketId");
+        if (limit < 1 || limit > MAX_SCORE_BATCH_SIZE) {
+            throw new IllegalArgumentException("limit must be between 1 and " + MAX_SCORE_BATCH_SIZE);
+        }
+        List<?> raw = readInactiveWorkerBatch(homeBucketId, limit);
+        if (raw == null || raw.isEmpty()) {
+            throw new IllegalStateException("Inactive worker peek returned an invalid response");
+        }
+        String status = String.valueOf(raw.get(0));
+        if ("conflict".equals(status)) {
+            return new InactiveWorkerBatch(List.of(), true);
+        }
+        if (!"ok".equals(status)) {
+            throw new IllegalStateException("Inactive worker peek returned unexpected status: " + status);
+        }
+        var ids = new ArrayList<String>(raw.size() - 1);
+        for (int i = 1; i < raw.size(); i++) {
+            ids.add(String.valueOf(raw.get(i)));
+        }
+        return new InactiveWorkerBatch(ids, false);
+    }
+
+    @Override
+    public WorkerRemovalResult removeInactiveWorkers(String homeBucketId, List<String> workerIds) {
+        requireNonBlank(homeBucketId, "homeBucketId");
+        if (workerIds == null || workerIds.isEmpty() || workerIds.size() > MAX_SCORE_BATCH_SIZE
+                || new LinkedHashSet<>(workerIds).size() != workerIds.size()) {
+            throw new IllegalArgumentException("workerIds must contain 1..100 unique IDs");
+        }
+        workerIds.forEach(id -> requireNonBlank(id, "workerId"));
+        List<?> raw = deleteInactiveWorkers(homeBucketId, workerIds);
+        if (raw == null || raw.size() != 3) {
+            throw new IllegalStateException("Worker removal script returned an invalid response");
+        }
+        String status = String.valueOf(raw.get(0));
+        if ("conflict".equals(status)) {
+            return new WorkerRemovalResult(WorkerRemovalStatus.ACTIVE_CONFLICT, 0, 0);
+        }
+        if (!"ok".equals(status)) {
+            throw new IllegalStateException("Worker removal script returned unexpected status: " + status);
+        }
+        int removed = ((Number) raw.get(1)).intValue();
+        int missing = ((Number) raw.get(2)).intValue();
+        return new WorkerRemovalResult(
+                removed > 0 ? WorkerRemovalStatus.REMOVED : WorkerRemovalStatus.MISSING,
+                removed,
+                missing
+        );
     }
 
     @Override
@@ -690,6 +839,43 @@ public final class RedisWorkerScoreCore
 
     private List<String> sampleMembers(String group, int limit) {
         return commands().zrandmember(scoreKey(group), limit);
+    }
+
+    private List<?> readGroupStateSummary(String group) {
+        return commands().evalReadOnly(
+                SUMMARIZE_GROUP_STATES_SCRIPT,
+                ScriptOutputType.MULTI,
+                new String[]{scoreKey(group)},
+                Long.toString(MARK_BASE),
+                Long.toString(PAUSE_TIME_SLOT),
+                Long.toString(COLD_PARK_TIME_SLOT)
+        );
+    }
+
+    private List<?> readInactiveWorkerBatch(String group, int limit) {
+        return commands().evalReadOnly(
+                PEEK_INACTIVE_WORKERS_SCRIPT,
+                ScriptOutputType.MULTI,
+                new String[]{scoreKey(group)},
+                Long.toString(MARK_BASE),
+                Long.toString(PAUSE_TIME_SLOT),
+                Long.toString(COLD_PARK_TIME_SLOT),
+                Integer.toString(limit)
+        );
+    }
+
+    private List<?> deleteInactiveWorkers(String group, List<String> workerIds) {
+        var arguments = new ArrayList<String>(workerIds.size() + 3);
+        arguments.add(Long.toString(MARK_BASE));
+        arguments.add(Long.toString(PAUSE_TIME_SLOT));
+        arguments.add(Long.toString(COLD_PARK_TIME_SLOT));
+        arguments.addAll(workerIds);
+        return commands().eval(
+                REMOVE_INACTIVE_WORKERS_SCRIPT,
+                ScriptOutputType.MULTI,
+                new String[]{scoreKey(group)},
+                arguments.toArray(String[]::new)
+        );
     }
 
     /** Each value holds the exact observation and the complete Java target; 100 members per Lua. */

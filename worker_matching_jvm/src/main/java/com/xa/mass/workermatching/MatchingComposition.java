@@ -110,7 +110,8 @@ public final class MatchingComposition implements AutoCloseable {
                 resources.retainAll(leased.keySet());
                 leaseResources.put(group, resources);
             });
-            this.platformLeases = new RedisPlatformLeaseState(storage::commands, storage.keyspace(), leaseResources);
+            var leaseStore = new RedisPlatformLeaseState(storage::commands, storage.keyspace(), leaseResources);
+            this.platformLeases = leaseStore;
             var pools = new LinkedHashMap<String, WorkerCandidatePool>();
             var policies = new LinkedHashMap<String, PoolRefillPolicy>();
             var functions = new LinkedHashMap<String, QueryFunction>();
@@ -182,7 +183,18 @@ public final class MatchingComposition implements AutoCloseable {
             if (!groups.keySet().containsAll(storage.indexedGroups()))
                 throw new IllegalArgumentException("Index Group unavailable");
             this.catalog = new DefaultWorkerMatchingCatalog(budget, this.pools, clock, this.policies,
-                    this.functions, this.groups, poolOrder, globalFunctions, dependencies);
+                    this.functions, this.groups, poolOrder, globalFunctions, dependencies,
+                    group -> {
+                        this.pools.values().forEach(pool -> pool.clearGroup(group));
+                        storage.deleteGroup(group);
+                        this.networkEvidenceTimestamps.deleteGroup(group);
+                        leaseStore.deleteGroup(group);
+                    },
+                    (group, workerId) -> {
+                        this.pools.values().forEach(pool -> pool.removeWorker(group, workerId));
+                        storage.deleteWorker(group, workerId);
+                        this.networkEvidenceTimestamps.deleteWorker(group, workerId);
+                    });
         } catch (RuntimeException | Error failure) {
             try { storage.close(); }
             catch (RuntimeException closeFailure) { failure.addSuppressed(closeFailure); }

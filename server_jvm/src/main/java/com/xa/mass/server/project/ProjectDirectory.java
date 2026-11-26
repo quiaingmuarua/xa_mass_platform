@@ -33,6 +33,10 @@ public final class ProjectDirectory {
 
     public Map<String, ProjectView> projects() { return projects; }
 
+    public @org.jspecify.annotations.Nullable String exclusiveInputOwner(String projectId) {
+        return inputOwners.get(projectId);
+    }
+
     public void requireInputOwner(String projectId, String inputOwner) {
         require(projectId);
         if (inputOwners.containsKey(projectId) && !inputOwners.get(projectId).equals(inputOwner))

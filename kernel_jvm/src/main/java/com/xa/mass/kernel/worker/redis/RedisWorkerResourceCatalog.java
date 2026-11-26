@@ -39,6 +39,28 @@ public final class RedisWorkerResourceCatalog
             return result
             """;
 
+    private static final String UPDATE_GROUP_SCRIPT = """
+            local current = redis.call('HGET', KEYS[1], ARGV[1])
+            if not current then return 'not_found' end
+            if current == ARGV[2] then return 'noop' end
+            redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+            return 'ok'
+            """;
+
+    private static final String REMOVE_BINDINGS_SCRIPT = """
+            local suffix = ARGV[1]
+            local suffixLen = #suffix
+            local removed = 0
+            for i = 2, #ARGV do
+              local stored = redis.call('HGET', KEYS[1], ARGV[i])
+              if stored and #stored >= suffixLen
+                  and string.sub(stored, #stored - suffixLen + 1) == suffix then
+                removed = removed + redis.call('HDEL', KEYS[1], ARGV[i])
+              end
+            end
+            return removed
+            """;
+
     private final RedisClient redisClient;
     private final WorkerScoreCore scoreCore;
     private final RedisKeyspace keyspace;
@@ -100,6 +122,57 @@ public final class RedisWorkerResourceCatalog
                         RegistrationStatus.CONFLICT,
                         "worker group is already registered with a different descriptor"
                 );
+    }
+
+    @Override
+    public RegistrationResult updateWorkerGroup(WorkerGroupDescriptor descriptor) {
+        if (descriptor == null) {
+            return result(RegistrationStatus.INVALID, "invalid workerGroup descriptor");
+        }
+        String encoded = WorkerRedisSupport.encodeWorkerGroup(descriptor);
+        if (encoded == null) {
+            return result(RegistrationStatus.INVALID, "invalid descriptor json");
+        }
+        String outcome = commands().eval(
+                UPDATE_GROUP_SCRIPT,
+                ScriptOutputType.VALUE,
+                new String[]{groupsKey()},
+                descriptor.workerGroupId(),
+                encoded
+        );
+        return switch (String.valueOf(outcome)) {
+            case "ok" -> new RegistrationResult(RegistrationStatus.OK);
+            case "noop" -> new RegistrationResult(RegistrationStatus.NOOP);
+            case "not_found" -> result(RegistrationStatus.NOT_FOUND, "worker group not found");
+            default -> throw new IllegalStateException("Unexpected WorkerGroup update response: " + outcome);
+        };
+    }
+
+    @Override
+    public boolean deleteWorkerGroup(String workerGroupId) {
+        requireNonBlank(workerGroupId, "workerGroupId");
+        Long removed = commands().hdel(groupsKey(), workerGroupId);
+        return removed != null && removed > 0L;
+    }
+
+    @Override
+    public int removeWorkerBindings(String workerGroupId, List<String> workerIds) {
+        requireNonBlank(workerGroupId, "workerGroupId");
+        requireIds(workerIds, "workerIds");
+        if (workerIds.isEmpty() || workerIds.size() > MAX_WORKER_BATCH_SIZE
+                || new HashSet<>(workerIds).size() != workerIds.size()) {
+            throw new IllegalArgumentException("workerIds must contain 1..100 unique IDs");
+        }
+        List<String> arguments = new ArrayList<>(workerIds.size() + 1);
+        arguments.add(WorkerRedisSupport.bindingGroupSuffix(workerGroupId));
+        arguments.addAll(workerIds);
+        Long removed = commands().eval(
+                REMOVE_BINDINGS_SCRIPT,
+                ScriptOutputType.INTEGER,
+                new String[]{WorkerRedisSupport.bindingsKey(keyspace)},
+                arguments.toArray(String[]::new)
+        );
+        return removed == null ? 0 : removed.intValue();
     }
 
     @Override

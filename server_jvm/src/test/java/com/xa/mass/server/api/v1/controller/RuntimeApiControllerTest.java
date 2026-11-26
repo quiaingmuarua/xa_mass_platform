@@ -345,6 +345,9 @@ class RuntimeApiControllerTest {
         , org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), com.xa.mass.server.testsupport.TaskRetentionFixtures.creations());
         var connectionControls = mock(com.xa.mass.server.worker.connection.WorkerConnectionControlStore.class);
         when(connectionControls.readAllAsync(anyString(), anyList())).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(Map.of()));
+        var groupManagement = mock(com.xa.mass.server.worker.group.WorkerGroupManagementService.class);
+        when(groupManagement.update(any(), eq("phone-tools"), any(), any()))
+                .thenReturn(new WorkerGroupRegistrationService.Registration("phone-tools", "updated"));
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
                                 new WorkerResourceCommandService(workerProperties, mock(WorkerSchedulingService.class))
@@ -352,7 +355,8 @@ class RuntimeApiControllerTest {
                         new WorkerGroupRegistrationController(
                                 new WorkerGroupRegistrationService(
                                         workerCatalog
-                                )
+                                ),
+                                groupManagement
                         ),
                         new WorkerPreparationController(
                                 new WorkerPreparationService(workerIdentity, workerEndpoints, workerCatalog, connectionControls)
@@ -482,7 +486,9 @@ class RuntimeApiControllerTest {
         mockMvc.perform(put("/api/v1/worker-groups/phone-tools")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"eventCodes\":[]}"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workerGroupId").value("phone-tools"))
+                .andExpect(jsonPath("$.status").value("updated"));
 
         mockMvc.perform(post(
                                 "/api/v1/worker-groups/phone-tools/"

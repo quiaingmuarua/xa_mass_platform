@@ -50,6 +50,11 @@ final class RedisWorkerIdentityRegistry
                 new String[]{workerIdsKey(workerGroupId)}, arguments.toArray(String[]::new));
     }
 
+    @Override
+    public void deleteGroup(String workerGroupId) {
+        commands().unlink(workerIdsKey(workerGroupId));
+    }
+
     private String workerIdsKey(String workerGroupId) {
         return keyspace.base() + ":worker:identity:" + workerGroupId;
     }

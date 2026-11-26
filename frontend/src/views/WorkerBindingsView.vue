@@ -22,6 +22,7 @@ watch(
   }
 );
 const group = computed(() => props.requestedGroup || rememberedGroup.value);
+const projects = computed(() => directory.value?.projects ?? []);
 let request: AbortController | undefined;
 async function refresh() {
   request?.abort();
@@ -61,6 +62,65 @@ function inspect() {
       最近成功读取：{{ new Date(directory.readAt).toLocaleString() }} ·
       {{ config.mode === "mock" ? "Mock 演示" : "当前进程启动配置" }}
     </p>
+
+    <section
+      v-if="projects.length > 0"
+      class="project-topology"
+      aria-label="Project 资源拓扑"
+      data-testid="project-topology"
+    >
+      <div class="project-topology__header">
+        <h2>Project 资源拓扑（只读）</h2>
+        <p>
+          展示当前进程已声明的 Project 与其 WorkerGroup 绑定来源；后续动态 Project
+          管理将复用同一资源视图。
+        </p>
+      </div>
+      <div class="project-topology__grid">
+        <article
+          v-for="project in projects"
+          :key="project.projectId"
+          class="project-card"
+        >
+          <div class="project-card__title">
+            <strong>{{ project.projectId }}</strong>
+            <el-tag
+              size="small"
+              effect="plain"
+              :type="project.exclusiveInputOwner ? 'warning' : 'info'"
+            >
+              {{
+                project.exclusiveInputOwner
+                  ? `Scenario 托管 (${project.exclusiveInputOwner})`
+                  : "平台配置"
+              }}
+            </el-tag>
+          </div>
+          <div class="project-card__groups">
+            <span
+              v-if="project.workerGroupSource === 'registered'"
+              class="project-card__muted"
+            >
+              允许使用全部已注册 WorkerGroup
+            </span>
+            <template v-else-if="project.workerGroupIds.length > 0">
+              <button
+                v-for="groupId in project.workerGroupIds"
+                :key="groupId"
+                type="button"
+                class="project-group-chip"
+                :class="{ 'is-active': group === groupId }"
+                @click="emit('selectGroup', groupId)"
+              >
+                {{ groupId }}
+              </button>
+            </template>
+            <span v-else class="project-card__muted">未声明明确 WorkerGroup</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <div class="binding-navigation">
       <el-select
         :model-value="group"
@@ -103,6 +163,65 @@ function inspect() {
   </section>
 </template>
 <style scoped>
+.project-topology {
+  margin: 16px 0 20px;
+  padding: 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  background: var(--el-fill-color-blank);
+}
+.project-topology__header h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.project-topology__header p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+.project-topology__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.project-card {
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-extra-light);
+}
+.project-card__title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.project-card__groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.project-card__muted {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.project-group-chip {
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+  color: var(--el-text-color-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+.project-group-chip:hover,
+.project-group-chip.is-active {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+}
 .binding-navigation {
   display: flex;
   gap: 12px;

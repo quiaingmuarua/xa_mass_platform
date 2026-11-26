@@ -89,6 +89,15 @@ public final class NetworkEvidenceTimestamps {
         return Collections.unmodifiableSet(accepted);
     }
 
+    public void deleteGroup(String workerGroupId) {
+        commands.get().unlink(key(keyspace, workerGroupId));
+    }
+
+    public void deleteWorker(String workerGroupId, String workerId) {
+        requireName(workerId, "workerId");
+        commands.get().hdel(key(keyspace, workerGroupId), workerId);
+    }
+
     private static void requireName(String value, String name) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException(name + " must be nonblank");
     }

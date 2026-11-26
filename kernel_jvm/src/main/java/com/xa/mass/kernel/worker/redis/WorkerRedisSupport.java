@@ -45,6 +45,10 @@ final class WorkerRedisSupport {
         ));
     }
 
+    static String bindingGroupSuffix(String workerGroupId) {
+        return ",\"workerGroupId\":" + escapeNonAscii(Jsons.toJson(workerGroupId)) + "}";
+    }
+
     static WorkerGroupDescriptor decodeWorkerGroup(String raw) {
         if (raw == null) {
             return null;

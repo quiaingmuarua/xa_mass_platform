@@ -1,5 +1,6 @@
 package com.xa.mass.server.assembly.runtime;
 
+import com.xa.mass.kernel.worker.WorkerResourceCatalog.WorkerGroupDescriptor;
 import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
 import com.xa.mass.server.delivery.adapter.WorkerRouteVerificationBatcher;
 import com.xa.mass.workerdelivery.adapter.application
@@ -20,6 +21,16 @@ public class ServerWorkerAssemblyConfiguration {
         return ServerWorkerAssemblyManifest.fromJson(
                 properties.groupConfigJson()
         );
+    }
+
+    @Bean
+    StartupSeededWorkerGroups startupSeededWorkerGroups(
+            ServerWorkerAssemblyManifest manifest
+    ) {
+        var ids = manifest.workerGroups().stream()
+                .map(WorkerGroupDescriptor::workerGroupId)
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+        return new StartupSeededWorkerGroups(ids);
     }
 
     @Bean

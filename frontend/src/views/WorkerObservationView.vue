@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { ElDialog } from "element-plus";
+import "element-plus/es/components/dialog/style/css";
 import {
   Collection,
   Connection,
@@ -16,7 +18,10 @@ import JsonBlock from "@/components/JsonBlock.vue";
 import MetricCard from "@/components/MetricCard.vue";
 import WorkerDirectDebug from "@/components/WorkerDirectDebug.vue";
 import WorkerConnectionControl from "@/components/WorkerConnectionControl.vue";
+import { consoleIdentity } from "@/console-identity";
+import { consoleMockKey } from "@/console-mock";
 import { createWorkerGroupBindingsLoader } from "@/runtime-viewer/worker-group-bindings";
+import { createWorkerGroupManagementSource } from "@/runtime-viewer/worker-group-management";
 import {
   useRuntimeViewerConfig,
   useRuntimeViewerStore,
@@ -45,11 +50,19 @@ let selectionVersion = 0;
 const store = useRuntimeViewerStore();
 const workerStatus = useWorkerStatusStore();
 const runtimeConfig = useRuntimeViewerConfig();
+const consoleMock = inject(consoleMockKey, undefined);
+const groupManagementSource = computed(() =>
+  createWorkerGroupManagementSource(runtimeConfig, consoleMock?.workerGroupManagement)
+);
+const isAdmin = computed(() => consoleIdentity.current.value?.role === "admin");
 const networkIsMock = runtimeConfig.mode === "mock";
 const schedulingIsMock = runtimeConfig.mode === "mock";
 const searchText = ref("");
 const selectedWorker = ref<WorkerView>();
 const detailsOpen = ref(false);
+const removeWorkerConfirmOpen = ref(false);
+const removeWorkerSubmitting = ref(false);
+const removeWorkerError = ref("");
 type WorkerDetailTab = "overview" | "debug" | "connection-control";
 const detailTab = ref<WorkerDetailTab>("overview");
 
@@ -197,12 +210,61 @@ function observeCurrentSampleIfPresent(): void {
 function openDetails(worker: WorkerView, tab: WorkerDetailTab = "overview"): void {
   selectedWorker.value = worker;
   detailTab.value = tab;
+  removeWorkerConfirmOpen.value = false;
+  removeWorkerError.value = "";
   detailsOpen.value = true;
 }
 
 function closeDetails(): void {
   detailsOpen.value = false;
+  removeWorkerConfirmOpen.value = false;
+  removeWorkerError.value = "";
   selectedWorker.value = undefined;
+}
+
+const selectedWorkerSchedulingState = computed(() =>
+  selectedWorker.value
+    ? statusEntry(selectedWorker.value).scheduling.observation?.state
+    : undefined
+);
+
+const canRemoveSelectedWorker = computed(() => {
+  if (!isAdmin.value || !selectedWorker.value) return false;
+  const state = selectedWorkerSchedulingState.value;
+  return state === "cold" || state === "paused";
+});
+
+const removeWorkerDisabledHint = computed(() => {
+  if (!isAdmin.value) return "仅管理员可执行离线节点移除操作。";
+  const state = selectedWorkerSchedulingState.value;
+  if (!state) return "尚未观测到该 Worker 的 Kernel 调度状态，请先刷新状态。";
+  if (state === "hot-score-overdue" || state === "held-hot" || state === "recovery") {
+    return "当前节点仍处于活跃或恢复状态，请先由 Worker 控制方断开连接或迁移后再移除。";
+  }
+  if (state === "missing") return "该 Worker 已不存在于 Kernel Score 中。";
+  return "";
+});
+
+async function confirmRemoveOfflineWorker(): Promise<void> {
+  const target = selectedWorker.value;
+  if (!target || !canRemoveSelectedWorker.value || removeWorkerSubmitting.value) return;
+  removeWorkerError.value = "";
+  removeWorkerSubmitting.value = true;
+  try {
+    const caller = consoleIdentity.requireCaller();
+    await groupManagementSource.value.deleteOfflineWorker(
+      caller,
+      target.workerGroupId,
+      target.workerId
+    );
+    removeWorkerConfirmOpen.value = false;
+    await refreshSample();
+  } catch (cause) {
+    removeWorkerError.value =
+      cause instanceof Error ? cause.message : "移除离线 Worker 失败";
+  } finally {
+    removeWorkerSubmitting.value = false;
+  }
 }
 
 function groupDisplayName(workerGroupId: string): string {
@@ -963,6 +1025,36 @@ function metricValue(value: number, observed: number): string {
                 <h2>Platform properties</h2>
                 <JsonBlock :value="selectedWorker.platformProperties" />
               </section>
+              <section
+                class="worker-offline-removal"
+                data-testid="worker-offline-removal"
+              >
+                <h2>离线节点清理</h2>
+                <p class="worker-offline-removal__desc">
+                  仅当节点处于离线（COLD / 离线暂停）状态时可移除其 Runtime
+                  记录（Score、Binding、接入控制与 Matching 索引）；保留 Identity
+                  映射以支持设备未来以原 ID 重连。
+                </p>
+                <el-button
+                  type="danger"
+                  plain
+                  :disabled="!canRemoveSelectedWorker"
+                  data-testid="open-remove-offline-worker"
+                  @click="
+                    removeWorkerError = '';
+                    removeWorkerConfirmOpen = true;
+                  "
+                >
+                  移除离线节点
+                </el-button>
+                <p
+                  v-if="!canRemoveSelectedWorker && removeWorkerDisabledHint"
+                  class="worker-offline-removal__hint"
+                >
+                  {{ removeWorkerDisabledHint }}
+                </p>
+              </section>
+
               <el-alert type="info" :closable="false" show-icon>
                 <template #title>
                   Connected 不证明 Binding、Schedulable 或 Executing；HOT Held
@@ -990,6 +1082,71 @@ function metricValue(value: number, observed: number): string {
           </el-tab-pane>
         </el-tabs>
       </el-drawer>
+
+      <el-dialog
+        v-model="removeWorkerConfirmOpen"
+        title="确认移除离线 Worker"
+        width="480px"
+        destroy-on-close
+      >
+        <div v-if="selectedWorker" class="worker-remove-dialog">
+          <p>
+            即将从 <code>{{ selectedWorker.workerGroupId }}</code> 移除离线节点
+            <code>{{ selectedWorker.workerId }}</code> 的 Runtime 状态。
+          </p>
+          <p>
+            提交时服务端将原子校验该节点非活跃状态；若节点期间重新上线将被安全拦截。
+          </p>
+          <p v-if="removeWorkerError" class="worker-remove-dialog__error" role="alert">
+            {{ removeWorkerError }}
+          </p>
+        </div>
+        <template #footer>
+          <el-button
+            :disabled="removeWorkerSubmitting"
+            @click="removeWorkerConfirmOpen = false"
+          >
+            取消
+          </el-button>
+          <el-button
+            type="danger"
+            :loading="removeWorkerSubmitting"
+            data-testid="confirm-remove-offline-worker"
+            @click="confirmRemoveOfflineWorker"
+          >
+            确认移除节点
+          </el-button>
+        </template>
+      </el-dialog>
     </template>
   </section>
 </template>
+
+<style scoped>
+.worker-offline-removal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-extra-light);
+}
+.worker-offline-removal h2 {
+  margin: 0;
+}
+.worker-offline-removal__desc,
+.worker-offline-removal__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+.worker-remove-dialog p {
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+.worker-remove-dialog__error {
+  color: var(--el-color-danger);
+}
+</style>

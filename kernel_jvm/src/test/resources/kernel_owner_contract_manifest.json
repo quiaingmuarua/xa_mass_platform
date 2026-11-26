@@ -126,6 +126,7 @@
       "promote_observed_initial_tasks",
       "release_observed_score_hold",
       "rewrite_same_band_time_millis",
+      "scan_non_terminal_tasks",
       "scan_parked_tasks",
       "scan_terminal_tasks",
       "start_observed_pre_review_task",
@@ -138,14 +139,17 @@
       "offer_worker_commands"
     ],
     "WorkerResourceCatalog": [
+      "delete_worker_group",
       "get_worker_descriptors",
       "get_worker_descriptors_async",
       "get_worker_group_descriptors",
       "register_worker_group",
       "register_workers",
+      "remove_worker_bindings",
       "sample_worker_descriptors",
       "sample_worker_group_descriptors",
-      "scan_worker_group_descriptors"
+      "scan_worker_group_descriptors",
+      "update_worker_group"
     ],
     "WorkerScoreCore": [
       "acquire_current_hot_score_leases",
@@ -161,12 +165,15 @@
       "observe_scheduling_states",
       "park_observed_recovery_score",
       "pause_scheduling",
+      "peek_inactive_worker_ids",
       "recycle_observed_hot_candidates",
       "release_observed_hot_score_holds",
       "release_score_holds",
+      "remove_inactive_workers",
       "resume_scheduling",
       "rewrite_current_polarity_within_time_fence",
       "sample_registered_worker_ids",
+      "summarize_group_states",
       "toggle_current_polarity"
     ]
   },
@@ -314,6 +321,28 @@
       "next_cursor",
       "scanned_count"
     ],
+    "NonTerminalTaskPage": [
+      "tasks",
+      "next_cursor",
+      "scanned_count"
+    ],
+    "GroupStateSummary": [
+      "total",
+      "active_hot",
+      "paused_active",
+      "recovery",
+      "cold",
+      "paused_offline"
+    ],
+    "InactiveWorkerBatch": [
+      "worker_ids",
+      "active_conflict"
+    ],
+    "WorkerRemovalResult": [
+      "status",
+      "removed_count",
+      "missing_count"
+    ],
     "TerminalItemPage": [
       "observed_scores",
       "next_cursor",
@@ -423,6 +452,11 @@
       "UNCHANGED",
       "MISSING",
       "CONFLICT"
+    ],
+    "WorkerRemovalStatus": [
+      "REMOVED",
+      "MISSING",
+      "ACTIVE_CONFLICT"
     ],
     "TaskDataPhase": [
       "OPEN",

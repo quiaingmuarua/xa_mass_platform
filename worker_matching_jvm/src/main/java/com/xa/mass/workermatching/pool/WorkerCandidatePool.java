@@ -226,6 +226,39 @@ public final class WorkerCandidatePool {
         for (String group : List.copyOf(groups.keySet())) discardExpired(group);
     }
 
+    /** Clears all resident candidates for one Group and returns their budget. */
+    public synchronized void clearGroup(String group) {
+        identity(group);
+        Stock stock = groups.get(group);
+        if (stock == null) return;
+        var entries = Collections.newSetFromMap(new IdentityHashMap<Entry, Boolean>());
+        stock.buckets.values().forEach(bucket -> entries.addAll(bucket.values()));
+        for (Entry entry : entries) {
+            remove(stock, entry, false);
+        }
+        groups.remove(group);
+    }
+
+    /** Removes resident candidates belonging to one Worker in a Group and returns their budget. */
+    public synchronized void removeWorker(String group, String workerId) {
+        identity(group);
+        identity(workerId);
+        Stock stock = groups.get(group);
+        if (stock == null) return;
+        var matching = Collections.newSetFromMap(new IdentityHashMap<Entry, Boolean>());
+        for (var bucket : stock.buckets.values()) {
+            for (Entry entry : bucket.values()) {
+                if (workerId.equals(entry.candidate.workerId())) {
+                    matching.add(entry);
+                }
+            }
+        }
+        for (Entry entry : matching) {
+            remove(stock, entry, false);
+        }
+        if (stock.buckets.isEmpty()) groups.remove(group);
+    }
+
     private void discardExpired(String group) {
         long now = clock.getAsLong();
         Stock stock = groups.get(group);

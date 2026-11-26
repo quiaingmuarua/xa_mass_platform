@@ -110,6 +110,15 @@ public interface TaskScoreBandCore {
         throw new com.xa.mass.kernel.KernelOperationNotImplementedException("TaskScoreBandCore", "scanParkedTasks");
     }
 
+    /** Stable keyset traversal of all non-terminal Tasks (PRE_REVIEW, RUNNING_VISIBLE, PARKED, PAUSED). */
+    default NonTerminalTaskPage scanNonTerminalTasks(String cursor, int limit) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("TaskScoreBandCore", "scanNonTerminalTasks");
+    }
+
+    record NonTerminalTaskPage(List<TaskScoreState> tasks, String nextCursor, int scannedCount) {
+        public NonTerminalTaskPage { tasks = List.copyOf(tasks); }
+    }
+
     record ParkedTaskPage(List<TaskScoreState> tasks, String nextCursor, int scannedCount) {
         public ParkedTaskPage { tasks = List.copyOf(tasks); }
     }

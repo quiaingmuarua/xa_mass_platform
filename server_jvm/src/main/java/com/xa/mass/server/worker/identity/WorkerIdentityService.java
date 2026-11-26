@@ -39,6 +39,16 @@ public final class WorkerIdentityService {
         }
     }
 
+    public void deleteGroup(String workerGroupId) {
+        String operation = "workerIdentity.deleteGroup";
+        requireNonBlank(workerGroupId, "workerGroupId", operation);
+        try {
+            registry.deleteGroup(workerGroupId);
+        } catch (RuntimeException error) {
+            throw failure(ServerErrorCode.WORKER_IDENTITY_UNAVAILABLE, operation, null, error);
+        }
+    }
+
     public String registrationKey(
             WorkerRegistrationKind workerKind,
             Map<String, Object> workerProperties

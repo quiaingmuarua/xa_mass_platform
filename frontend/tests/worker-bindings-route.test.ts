@@ -1,7 +1,15 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createApp, h, nextTick, type App } from "vue";
 import { createMemoryHistory, createRouter, RouterView } from "vue-router";
-import { ElButton, ElInput, ElOption, ElSelect, ElTabPane, ElTabs } from "element-plus";
+import {
+  ElButton,
+  ElInput,
+  ElOption,
+  ElSelect,
+  ElTabPane,
+  ElTabs,
+  ElTag
+} from "element-plus";
 import axios, { type AxiosInstance } from "axios";
 import WorkerRuntimeView from "@/views/WorkerRuntimeView.vue";
 import { runtimeViewerConfigKey } from "@/runtime-context";
@@ -35,8 +43,8 @@ async function mount(url: string) {
   app = createApp({ render: () => h(RouterView) })
     .use(router)
     .provide(runtimeViewerConfigKey, { mode: "api", apiBaseUrl: "/api" });
-  [ElButton, ElInput, ElOption, ElSelect, ElTabPane, ElTabs].forEach((component) =>
-    app!.use(component)
+  [ElButton, ElInput, ElOption, ElSelect, ElTabPane, ElTabs, ElTag].forEach(
+    (component) => app!.use(component)
   );
   app.mount(host);
   await nextTick();

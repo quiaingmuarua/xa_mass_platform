@@ -135,4 +135,24 @@ class WorkerCandidatePoolTest {
         }
         assertEquals(CandidateBudget.PROCESS, budget.available());
     }
+
+    @Test void clearGroupAndRemoveWorkerReleaseExactBudgetAndIsolateOtherGroups() {
+        pool.offerBatch("g1", "CN", List.of(row("w1", 10), row("w2", 11), row("w1", 12)));
+        pool.offerBatch("g1", "US", List.of(row("w1", 13), row("w3", 14)));
+        pool.offerBatch("g2", "CN", List.of(row("w1", 20)));
+        assertEquals(CandidateBudget.PROCESS - 6, budget.available());
+
+        pool.removeWorker("g1", "w1");
+        assertEquals(Map.of("CN", 1, "US", 1), pool.countByKey("g1"));
+        assertEquals(Map.of("CN", 1), pool.countByKey("g2"));
+        assertEquals(CandidateBudget.PROCESS - 3, budget.available());
+
+        pool.clearGroup("g1");
+        assertTrue(pool.countByKey("g1").isEmpty());
+        assertEquals(Map.of("CN", 1), pool.countByKey("g2"));
+        assertEquals(CandidateBudget.PROCESS - 1, budget.available());
+        pool.clearGroup("g1");
+        assertEquals(List.of(row("w1", 20)), pool.pollBatch("g2", Set.of("CN"), 5));
+        assertEquals(CandidateBudget.PROCESS, budget.available());
+    }
 }

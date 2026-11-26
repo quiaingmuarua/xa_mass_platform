@@ -37,10 +37,18 @@ export const workerGroupBindingsSchema = z.strictObject({
   ),
   readAt: z.string().datetime({ offset: true })
 });
+export const projectTopologySchema = z.strictObject({
+  projectId: name,
+  workerGroupSource: z.enum(["registered", "declared"]),
+  workerGroupIds: z.array(name),
+  exclusiveInputOwner: name.nullable()
+});
 export const workerGroupBindingsDirectorySchema = z.strictObject({
   workerGroupIds: z.array(name),
+  projects: z.array(projectTopologySchema).optional(),
   readAt: z.string().datetime({ offset: true })
 });
+export type ProjectTopology = z.infer<typeof projectTopologySchema>;
 export type WorkerGroupBindings = z.infer<typeof workerGroupBindingsSchema>;
 export type WorkerGroupBindingsDirectory = z.infer<
   typeof workerGroupBindingsDirectorySchema
@@ -116,6 +124,17 @@ export function createWorkerGroupBindingsDirectoryLoader(config: RuntimeViewerCo
           ...MOCK_PROJECTS.flatMap((p) => p.workerGroupIds)
         ])
       ].sort(),
+      projects: MOCK_PROJECTS.map((p) => ({
+        projectId: p.projectId,
+        workerGroupSource: p.workerGroupSource,
+        workerGroupIds: [...p.workerGroupIds],
+        exclusiveInputOwner:
+          p.projectId === "messages"
+            ? "message-campaigns"
+            : p.projectId === "app-checks"
+              ? "app-checks"
+              : null
+      })),
       readAt: new Date().toISOString()
     });
   const client = axios.create({ baseURL: config.apiBaseUrl, timeout: 5000 });

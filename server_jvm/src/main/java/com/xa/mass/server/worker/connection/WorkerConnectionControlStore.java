@@ -69,6 +69,15 @@ public final class WorkerConnectionControlStore implements AutoCloseable {
         return next;
     }
 
+    public void deleteGroup(String groupId) {
+        connection().sync().unlink(key(groupId));
+    }
+
+    public void deleteWorker(String groupId, String workerId) {
+        if (workerId == null || workerId.isBlank()) throw new IllegalArgumentException("Worker is required");
+        connection().sync().hdel(key(groupId), workerId);
+    }
+
     private String key(String groupId) {
         if (groupId == null || groupId.isBlank()) throw new IllegalArgumentException("Group is required");
         return keyspace.base() + ":server:worker-connection-control:" + groupId;

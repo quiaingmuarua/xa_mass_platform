@@ -62,6 +62,21 @@ public interface WorkerScoreCore {
             int limit
     );
 
+    /** O(log N) range counts of Worker scheduling states in one Group bucket. */
+    default GroupStateSummary summarizeGroupStates(String homeBucketId) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("WorkerScoreCore", "summarizeGroupStates");
+    }
+
+    /** Peeks up to 1..100 registered Worker IDs only when the Group has zero active members. */
+    default InactiveWorkerBatch peekInactiveWorkerIds(String homeBucketId, int limit) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("WorkerScoreCore", "peekInactiveWorkerIds");
+    }
+
+    /** Atomically removes 1..100 unique inactive (COLD or offline PAUSED) Workers; rejects if any is active. */
+    default WorkerRemovalResult removeInactiveWorkers(String homeBucketId, List<String> workerIds) {
+        throw new com.xa.mass.kernel.KernelOperationNotImplementedException("WorkerScoreCore", "removeInactiveWorkers");
+    }
+
     /** Exact-acquires strictly due HOT with either mark into a mark=0 execution hold. */
     Map<String, WorkerScoreTransitionResult> acquireObservedHotScoreLeases(
             String homeBucketId,
@@ -183,6 +198,46 @@ public interface WorkerScoreCore {
 
     enum WorkerSchedulingChangeStatus {
         APPLIED, UNCHANGED, MISSING, CONFLICT
+    }
+
+    enum WorkerRemovalStatus {
+        REMOVED, MISSING, ACTIVE_CONFLICT
+    }
+
+    record GroupStateSummary(
+            long total,
+            long activeHot,
+            long pausedActive,
+            long recovery,
+            long cold,
+            long pausedOffline
+    ) {
+        public long activeTotal() {
+            return activeHot + pausedActive + recovery;
+        }
+
+        public long inactiveTotal() {
+            return cold + pausedOffline;
+        }
+    }
+
+    record InactiveWorkerBatch(
+            List<String> workerIds,
+            boolean activeConflict
+    ) {
+        public InactiveWorkerBatch {
+            workerIds = List.copyOf(Objects.requireNonNull(workerIds, "workerIds"));
+        }
+    }
+
+    record WorkerRemovalResult(
+            WorkerRemovalStatus status,
+            int removedCount,
+            int missingCount
+    ) {
+        public WorkerRemovalResult {
+            Objects.requireNonNull(status, "status");
+        }
     }
 
     record WorkerSchedulingObservation(

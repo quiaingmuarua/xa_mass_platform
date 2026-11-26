@@ -65,4 +65,11 @@ public final class RedisPlatformLeaseState implements PlatformLeaseState {
         @SuppressWarnings("unchecked") ScoredValue<String>[] batch = values.toArray(ScoredValue[]::new);
         commands.get().zadd(key, ZAddArgs.Builder.gt(), batch);
     }
+
+    public void deleteGroup(String group) {
+        var pools = resourcesByGroup.getOrDefault(group, Set.of());
+        if (pools.isEmpty()) return;
+        String[] keys = pools.stream().map(pool -> key(keyspace, group, pool)).toArray(String[]::new);
+        commands.get().unlink(keys);
+    }
 }

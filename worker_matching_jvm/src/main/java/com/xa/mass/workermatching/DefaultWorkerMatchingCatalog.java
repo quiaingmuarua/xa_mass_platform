@@ -5,6 +5,8 @@ import com.xa.mass.workermatching.pool.WorkerCandidatePool;
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import java.util.*;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 /** Pure query admission/correlation with caller-driven Pool supply coordination. */
@@ -16,15 +18,29 @@ public final class DefaultWorkerMatchingCatalog implements WorkerMatchingCatalog
     private final Set<String> globalFunctions;
     private final Map<String, String> poolByFunction;
     private final PoolRefillCoordinator refillCoordinator;
+    private final Consumer<String> groupPurger;
+    private final BiConsumer<String, String> workerPurger;
 
     public DefaultWorkerMatchingCatalog(CandidateBudget budget, Map<String, WorkerCandidatePool> pools,
             LongSupplier clock, Map<String, PoolRefillPolicy> poolPolicies,
             Map<String, QueryFunction> queryFunctions, Map<String, MatchingGroup> groups,
             List<String> poolOrder, Set<String> globalFunctions, Map<String, String> poolByFunction) {
+        this(budget, pools, clock, poolPolicies, queryFunctions, groups, poolOrder, globalFunctions, poolByFunction,
+                group -> pools.values().forEach(pool -> pool.clearGroup(group)),
+                (group, workerId) -> pools.values().forEach(pool -> pool.removeWorker(group, workerId)));
+    }
+
+    public DefaultWorkerMatchingCatalog(CandidateBudget budget, Map<String, WorkerCandidatePool> pools,
+            LongSupplier clock, Map<String, PoolRefillPolicy> poolPolicies,
+            Map<String, QueryFunction> queryFunctions, Map<String, MatchingGroup> groups,
+            List<String> poolOrder, Set<String> globalFunctions, Map<String, String> poolByFunction,
+            Consumer<String> groupPurger, BiConsumer<String, String> workerPurger) {
         this.queryFunctions = Map.copyOf(queryFunctions);
         this.groups = Map.copyOf(groups);
         this.globalFunctions = Set.copyOf(globalFunctions);
         this.poolByFunction = Map.copyOf(poolByFunction);
+        this.groupPurger = Objects.requireNonNull(groupPurger, "groupPurger");
+        this.workerPurger = Objects.requireNonNull(workerPurger, "workerPurger");
         if (!queryFunctions.keySet().containsAll(this.globalFunctions))
             throw new IllegalArgumentException("unknown global function");
         queryFunctions.keySet().forEach(id -> requireNonBlank(id, "executorName"));
@@ -104,6 +120,17 @@ public final class DefaultWorkerMatchingCatalog implements WorkerMatchingCatalog
 
     @Override public List<RefillTarget> normalizeRefill(String group, List<RefillTarget> declarations) {
         return refillCoordinator.normalizeRefill(group, declarations);
+    }
+
+    @Override public void purgeWorkerGroup(String workerGroupId) {
+        requireNonBlank(workerGroupId, "workerGroupId");
+        groupPurger.accept(workerGroupId);
+    }
+
+    @Override public void purgeWorker(String workerGroupId, String workerId) {
+        requireNonBlank(workerGroupId, "workerGroupId");
+        requireNonBlank(workerId, "workerId");
+        workerPurger.accept(workerGroupId, workerId);
     }
 
     private static void requireNonBlank(String value, String name) {

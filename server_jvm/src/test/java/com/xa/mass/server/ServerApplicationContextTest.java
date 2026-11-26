@@ -301,8 +301,8 @@ class ServerApplicationContextTest {
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
         );
 
-        assertThat(groupResponse.statusCode()).isEqualTo(404);
-        assertThat(indexedGroupResponse.statusCode()).isEqualTo(404);
+        assertThat(groupResponse.statusCode()).isEqualTo(400);
+        assertThat(indexedGroupResponse.statusCode()).isEqualTo(400);
         assertThat(workerResponse.statusCode()).isEqualTo(404);
         assertThat(bindingResponse.statusCode()).isEqualTo(404);
         assertThat(reusableTaskResponse.statusCode()).isEqualTo(400);
@@ -569,6 +569,12 @@ class ServerApplicationContextTest {
     }
 
     private static Set<String> operationResponseCodes(String tag, String path, String method) {
+        if (path.equals("/api/v1/worker-groups")
+                || path.equals("/api/v1/worker-groups/{workerGroupId}:register")
+                || path.equals("/api/v1/worker-groups/{workerGroupId}")
+                || path.equals("/api/v1/worker-groups/{workerGroupId}/workers/{workerId}")) {
+            return Set.of("200", "400", "403", "503");
+        }
         if (path.endsWith("/connection-control")) return "put".equals(method)
                 ? Set.of("200", "400", "403", "409", "503") : Set.of("200", "400", "403", "503");
         if (path.equals("/api/v1/runtime-view/worker-groups/bindings")) return Set.of("200");

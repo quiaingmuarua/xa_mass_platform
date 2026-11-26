@@ -66,6 +66,7 @@ class KernelOwnerContractManifestTest {
     private static final Map<String, Class<?>> DTOS = Map.ofEntries(
             Map.entry("TaskDataState", TaskRuntime.TaskDataState.class),
             Map.entry("TerminalTaskPage", TaskScoreBandCore.TerminalTaskPage.class),
+            Map.entry("NonTerminalTaskPage", TaskScoreBandCore.NonTerminalTaskPage.class),
             Map.entry("ParkedTaskPage", TaskScoreBandCore.ParkedTaskPage.class),
             Map.entry("TerminalItemPage", TaskItemScoreBandCore.TerminalItemPage.class),
             Map.entry("RpcItemRetentionResult", TaskRuntime.RpcItemRetentionResult.class),
@@ -139,6 +140,9 @@ class KernelOwnerContractManifestTest {
                     "WorkerSchedulingObservation",
                     WorkerScoreCore.WorkerSchedulingObservation.class
             ),
+            Map.entry("GroupStateSummary", WorkerScoreCore.GroupStateSummary.class),
+            Map.entry("InactiveWorkerBatch", WorkerScoreCore.InactiveWorkerBatch.class),
+            Map.entry("WorkerRemovalResult", WorkerScoreCore.WorkerRemovalResult.class),
             Map.entry(
                     "WorkerScoreTransitionResult",
                     WorkerScoreCore.WorkerScoreTransitionResult.class
@@ -207,6 +211,7 @@ class KernelOwnerContractManifestTest {
                             WorkerResourceCatalog.RegistrationStatus.class
                     ),
                     Map.entry("SchedulingState", WorkerScoreCore.SchedulingState.class),
+                    Map.entry("WorkerRemovalStatus", WorkerScoreCore.WorkerRemovalStatus.class),
                     Map.entry("WorkerSchedulingChangeStatus", WorkerScoreCore.WorkerSchedulingChangeStatus.class),
                     Map.entry(
                             "WorkerScorePolarity",

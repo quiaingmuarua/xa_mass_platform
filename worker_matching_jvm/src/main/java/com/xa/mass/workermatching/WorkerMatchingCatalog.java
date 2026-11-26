@@ -25,4 +25,10 @@ public interface WorkerMatchingCatalog extends WorkerMatching {
 
     /** Normalizes explicit immutable supply, including an empty list, without defaults, Redis or stock access. */
     List<RefillTarget> normalizeRefill(String workerGroupId, List<RefillTarget> declarations);
+
+    /** Purges Matching runtime state (Facts, indexes, timestamps, leases and resident pools) for one Group. */
+    default void purgeWorkerGroup(String workerGroupId) {}
+
+    /** Purges Matching runtime state (Facts, indexes, timestamps and resident pools) for one offline Worker. */
+    default void purgeWorker(String workerGroupId, String workerId) {}
 }

@@ -610,6 +610,61 @@ public final class RedisTaskScoreBandCore
         return new ParkedTaskPage(tasks, next, rows.size() / 2);
     }
 
+    @Override
+    public NonTerminalTaskPage scanNonTerminalTasks(String cursor, int limit) {
+        if (cursor == null || limit < 1 || limit > 1000) {
+            throw new IllegalArgumentException("Invalid non-terminal Task page");
+        }
+        long maxNonTerminalScore = (PRE_REVIEW_TAG + 1L) * DEFAULT_TAG_FACTOR - 1L;
+        double afterScore = MUTABLE_SCORE_MIN;
+        String afterMember = "";
+        boolean exclusiveMin = false;
+        if (!cursor.equals("0")) {
+            try {
+                String decoded = new String(java.util.Base64.getUrlDecoder().decode(cursor), java.nio.charset.StandardCharsets.UTF_8);
+                int split = decoded.indexOf('\n');
+                afterScore = Double.parseDouble(decoded.substring(0, split));
+                afterMember = decoded.substring(split + 1);
+                if (!Double.isFinite(afterScore) || afterScore < MUTABLE_SCORE_MIN
+                        || afterScore > maxNonTerminalScore || afterMember.isBlank()) {
+                    throw new IllegalArgumentException("Cursor outside non-terminal Task window");
+                }
+                exclusiveMin = true;
+            } catch (RuntimeException invalid) {
+                throw new IllegalArgumentException("Invalid non-terminal Task cursor", invalid);
+            }
+        }
+        List<?> rows = commands().eval(
+                ScoreRedisScripts.KEYSET_PAGE_SCRIPT,
+                ScriptOutputType.MULTI,
+                new String[]{scoreKey()},
+                Double.toString(afterScore),
+                afterMember,
+                Long.toString(maxNonTerminalScore),
+                Integer.toString(limit),
+                exclusiveMin ? "1" : "0",
+                "0"
+        );
+        var tasks = new ArrayList<TaskScoreState>();
+        for (int i = 0; i < rows.size(); i += 2) {
+            String taskId = String.valueOf(rows.get(i));
+            try {
+                if (taskId.isBlank()) continue;
+                var state = decodeState(taskId, scoreToLong(rows.get(i + 1)));
+                if (state.band() != TaskScoreBand.TERMINAL) {
+                    tasks.add(state);
+                }
+            } catch (IllegalStateException corrupt) {
+                /* Corrupt rows consume budget without blocking progress. */
+            }
+        }
+        String next = rows.size() == limit * 2
+                ? java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                        (rows.getLast() + "\n" + rows.get(rows.size() - 2)).getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                : "0";
+        return new NonTerminalTaskPage(tasks, next, rows.size() / 2);
+    }
+
     private static DecodedPositive decodePositive(long storedScore) {
         if (storedScore <= 0) {
             return null;
