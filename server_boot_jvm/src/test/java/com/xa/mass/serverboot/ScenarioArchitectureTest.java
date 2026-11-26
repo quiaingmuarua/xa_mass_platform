@@ -23,7 +23,12 @@ class ScenarioArchitectureTest {
                 for (Path path : paths.filter(p -> p.toString().endsWith(".java")).toList()) {
                     String source = Files.readString(path);
                     assertThat(source).as(path.toString()).doesNotContain("org.h2.", "AppCheckConfigurationStore");
-                    if (!module.equals("server_jvm") || !path.toString().replace('\\', '/').contains("/task/history/"))
+                    String normalizedPath = path.toString().replace('\\', '/');
+                    boolean allowedSqliteOwner = module.equals("server_jvm")
+                            && (normalizedPath.contains("/task/history/")
+                                    || normalizedPath.contains("/assembly/controlplane/")
+                                    || normalizedPath.endsWith("/user/SqliteUserDirectoryStore.java"));
+                    if (!allowedSqliteOwner)
                         assertThat(source).as(path.toString()).doesNotContain("java.sql.");
                 }
             }

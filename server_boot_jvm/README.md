@@ -122,10 +122,14 @@ The documentation site at `/docs/` is a static frontend artifact packaged by
 [Distribution](../distribution/server/README.md), with source content in the
 [repository documentation](../doc/README.md). It does not require a Scenario
 profile or add application Controllers; Frontend owns its rendering and navigation.
-`xa.mass.users.seed` selects the Server user directory. The built-in classpath
-directory is read-only; a `file:` directory persists successful edits across
-restarts. Server owns its locking and atomic publication; see the
-[user-directory contract](../server_jvm/README.md#user-directory-and-access-keys).
+`xa.mass.users.seed` selects the Server user directory seed, and optional
+`xa.mass.control-plane.database-path` (`XA_MASS_CONTROL_PLANE_DATABASE`, blank by default)
+enables the Server-owned WAL control-plane SQLite database (`control-plane.sqlite`). When
+enabled, an empty database bootstraps once from `xa.mass.users.seed` and subsequent restarts
+load users directly from SQLite while serving all reads from the in-memory snapshot. Without
+the control-plane database configured, the built-in classpath directory remains read-only and
+a `file:` directory persists successful edits across restarts with process-exclusive locking;
+see the [user-directory contract](../server_jvm/README.md#user-directory-and-access-keys).
 Catalog observation controls feature
 availability; static assets never enable business. Unknown API and asset paths
 remain errors. The [Frontend Owner](../frontend/README.md) owns page data and

@@ -185,6 +185,19 @@ A file edited by hand while the Server runs returns `409/18009` and is loaded at
 restart; hand edits belong to a stopped Server. A classpath seed is read-only and every write
 returns `409/18009`. A failed publication returns `503/18010` and leaves the snapshot unchanged.
 
+When `xa.mass.control-plane.database-path` (`XA_MASS_CONTROL_PLANE_DATABASE`) is set,
+`ControlPlaneDatabase` opens a dedicated Server-owned WAL SQLite database (`PRAGMA user_version=1`,
+physically separate from `task-history.sqlite`) and `UserDirectory` persists roles, users,
+Project assignments and access-key hashes in SQLite tables (`cp_roles`, `cp_users`, `cp_user_projects`)
+instead of locking or rewriting `users.json`. On first startup against an empty database,
+`UserDirectory` reads `xa.mass.users.seed` once (still enforcing `require-configured-seed` on
+`consumer`) and commits the validated seed atomically without locking or modifying the seed file.
+Subsequent restarts load directly from SQLite even if the original seed file is no longer supplied.
+All request authentication (`AccessKeyFilter`) and directory reads continue to run against the
+immutable in-memory snapshot with zero SQLite I/O on the request hot path; writes commit a SQLite
+transaction first and map storage errors to `503/18010` without mutating the snapshot. Kernel,
+Pacer and Matching never access control-plane SQLite.
+
 | Operation | Admission | State effect |
 | --- | --- | --- |
 | `POST /users` | `users.manage`; new id; declared Projects | Persist a user without a key |

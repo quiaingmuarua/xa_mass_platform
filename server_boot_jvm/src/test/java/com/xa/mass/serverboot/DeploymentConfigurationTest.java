@@ -2,6 +2,7 @@ package com.xa.mass.serverboot;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.xa.mass.server.assembly.controlplane.ControlPlaneProperties;
 import com.xa.mass.server.assembly.pacer.KernelPacerProperties;
 import com.xa.mass.server.assembly.redis.XaMassRedisProperties;
 import com.xa.mass.server.assembly.runtime.ServerWorkerAssemblyProperties;
@@ -30,7 +31,7 @@ class DeploymentConfigurationTest {
     @TempDir Path temporary;
 
     @Configuration(proxyBeanMethods = false)
-    @EnableConfigurationProperties({KernelPacerProperties.class, XaMassRedisProperties.class,
+    @EnableConfigurationProperties({ControlPlaneProperties.class, KernelPacerProperties.class, XaMassRedisProperties.class,
             ServerWorkerAssemblyProperties.class, ServerWorkerDeliveryAdapterProperties.class,
             WorkerEndpointDirectory.class, TaskRpcProperties.class, DirectCallProperties.class,
             TaskItemOutcomeProperties.class, TaskRetentionProperties.class, com.xa.mass.server.project.ProjectAssemblyProperties.class})
@@ -83,6 +84,8 @@ class DeploymentConfigurationTest {
                     assertThat(environment.getProperty("xa.mass.users.require-configured-seed", Boolean.class, false))
                             .isEqualTo(profile.equals("consumer"));
                     assertThat(environment.getProperty("xa.mass.users.seed", "")).isEmpty();
+                    assertThat(context.getBean(ControlPlaneProperties.class).enabled()).isFalse();
+                    assertThat(context.getBean(ControlPlaneProperties.class).resolvedDatabasePath()).isNull();
                     assertThat(environment.getProperty("spring.jackson.deserialization.fail-on-unknown-properties", Boolean.class)).isTrue();
                     assertThat(environment.getProperty("management.endpoints.web.exposure.include")).isEqualTo("health,prometheus");
                     assertThat(environment.getProperty("springdoc.paths-to-match")).isEqualTo("/api/v1/**");
@@ -239,6 +242,24 @@ class DeploymentConfigurationTest {
                     assertThat(context).hasNotFailed();
                     assertThat(context.getEnvironment().getProperty("management.endpoints.web.exposure.include"))
                             .isEqualTo("health");
+                });
+    }
+
+    @Test void controlPlaneDatabasePathBindsFromEnvironmentAndYaml() {
+        var database = temporary.resolve("control-plane.sqlite");
+        configuration("consumer", Map.of("XA_MASS_CONTROL_PLANE_DATABASE", database.toString()))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    var controlPlane = context.getBean(ControlPlaneProperties.class);
+                    assertThat(controlPlane.enabled()).isTrue();
+                    assertThat(controlPlane.resolvedDatabasePath()).isEqualTo(database.toAbsolutePath().normalize());
+                });
+        configuration("default", Map.of())
+                .withPropertyValues("xa.mass.control-plane.database-path=" + database)
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(ControlPlaneProperties.class).resolvedDatabasePath())
+                            .isEqualTo(database.toAbsolutePath().normalize());
                 });
     }
 
