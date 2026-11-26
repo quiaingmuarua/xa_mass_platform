@@ -150,7 +150,7 @@ class WorkerGroupManagementServiceTest {
         var bound = page.groups().get(0);
         assertThat(bound.source()).isEqualTo("startup_bound");
         assertThat(bound.editable()).isTrue();
-        assertThat(bound.deletableByConfig()).isFalse();
+        assertThat(bound.deletableByConfig()).isTrue();
         assertThat(bound.protectionReasons()).containsExactly("project:proj-declared", "matching");
         assertThat(bound.declaredProjects()).containsExactly("proj-declared");
         assertThat(bound.workerCounts().activeTotal()).isEqualTo(1);
@@ -167,17 +167,17 @@ class WorkerGroupManagementServiceTest {
 
         var seeded = page.groups().get(2);
         assertThat(seeded.source()).isEqualTo("startup_seeded");
-        assertThat(seeded.editable()).isFalse();
-        assertThat(seeded.deletableByConfig()).isFalse();
+        assertThat(seeded.editable()).isTrue();
+        assertThat(seeded.deletableByConfig()).isTrue();
         assertThat(seeded.protectionReasons()).containsExactly("host_seed", "project:proj-declared");
     }
 
     @Test
-    void updateBlocksStartupSeededAndAllowsDynamicOrStartupBound() {
-        assertThatThrownBy(() -> service.update(ADMIN, "seeded-group", Map.of("a", 1), List.of("ev.a")))
-                .isInstanceOf(ServerException.class)
-                .extracting("errorCode").isEqualTo(ServerErrorCode.WORKER_GROUP_REGISTRATION_CONFLICT);
-        verify(workerCatalog, never()).updateWorkerGroup(any());
+    void updateAllowsAnyRegisteredGroupIncludingStartupSeeded() {
+        when(workerCatalog.updateWorkerGroup(new WorkerGroupDescriptor("seeded-group", Map.of("a", 1), Set.of("ev.a"))))
+                .thenReturn(new RegistrationResult(RegistrationStatus.OK));
+        assertThat(service.update(ADMIN, "seeded-group", Map.of("a", 1), List.of("ev.a")).status())
+                .isEqualTo("updated");
 
         when(workerCatalog.updateWorkerGroup(new WorkerGroupDescriptor("dynamic-group", Map.of("k", "v"), Set.of("ev.x"))))
                 .thenReturn(new RegistrationResult(RegistrationStatus.OK));
@@ -196,11 +196,7 @@ class WorkerGroupManagementServiceTest {
     }
 
     @Test
-    void deleteGroupBlocksProtectedGroupNonTerminalTaskAndActiveWorkers() {
-        assertThatThrownBy(() -> service.deleteGroup(ADMIN, "seeded-group"))
-                .isInstanceOf(ServerException.class)
-                .extracting("errorCode").isEqualTo(ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT);
-
+    void deleteGroupBlocksNonTerminalTaskAndActiveWorkersAndAllowsInactiveSeededGroup() {
         when(taskScoreCore.scanNonTerminalTasks("0", 200)).thenReturn(new NonTerminalTaskPage(
                 List.of(new TaskScoreState("task-1", 100L, TaskScoreBand.RUNNING_VISIBLE, 10_000L, 1)),
                 "0",
@@ -229,6 +225,14 @@ class WorkerGroupManagementServiceTest {
                 .isInstanceOf(ServerException.class)
                 .extracting("errorCode").isEqualTo(ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT);
         verify(workerCatalog, never()).deleteWorkerGroup(anyString());
+
+        when(workerScoreCore.summarizeGroupStates("seeded-group"))
+                .thenReturn(new GroupStateSummary(0, 0, 0, 0, 0, 0));
+        when(workerCatalog.getWorkerGroupDescriptors(List.of("seeded-group")))
+                .thenReturn(Map.of("seeded-group", new WorkerGroupDescriptor("seeded-group", Map.of(), Set.of())));
+        when(workerScoreCore.peekInactiveWorkerIds("seeded-group", 100))
+                .thenReturn(new InactiveWorkerBatch(List.of(), false));
+        assertThat(service.deleteGroup(ADMIN, "seeded-group").status()).isEqualTo("deleted");
     }
 
     @Test

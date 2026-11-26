@@ -159,14 +159,6 @@ public final class WorkerGroupManagementService {
     ) {
         caller.requireAdmin();
         validateDescriptorInputs(workerGroupId, attributes, eventCodes, "workerGroup.update");
-        if (seededGroups.contains(workerGroupId)) {
-            throw new ServerException(
-                    ServerErrorCode.WORKER_GROUP_REGISTRATION_CONFLICT,
-                    "workerGroup.update",
-                    "WorkerGroup is managed by startup group-config-json and cannot be edited at runtime",
-                    null
-            );
-        }
         try {
             return operations.execute("worker-group-manage", workerGroupId, () -> {
                 RegistrationResult result = workerCatalog.updateWorkerGroup(
@@ -235,16 +227,6 @@ public final class WorkerGroupManagementService {
         }
         try {
             return operations.execute("worker-group-manage", workerGroupId, () -> {
-                ProtectionInfo protection = inspectProtection(workerGroupId);
-                if (!protection.deletableByConfig()) {
-                    throw new ServerException(
-                            ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT,
-                            "workerGroup.delete",
-                            "WorkerGroup is referenced by startup configuration: "
-                                    + String.join(", ", protection.reasons()),
-                            null
-                    );
-                }
                 List<String> activeTaskIds = findNonTerminalTasksForGroup(workerGroupId);
                 if (!activeTaskIds.isEmpty()) {
                     String sample = String.join(", ", activeTaskIds.subList(0, Math.min(5, activeTaskIds.size())));
@@ -423,7 +405,7 @@ public final class WorkerGroupManagementService {
             reasons.add("fixed_window");
         }
         String source = seeded ? "startup_seeded" : (!reasons.isEmpty() ? "startup_bound" : "dynamic");
-        return new ProtectionInfo(source, !seeded, reasons.isEmpty(), List.copyOf(reasons), List.copyOf(declaredProjects));
+        return new ProtectionInfo(source, true, true, List.copyOf(reasons), List.copyOf(declaredProjects));
     }
 
     private List<String> findNonTerminalTasksForGroup(String workerGroupId) {

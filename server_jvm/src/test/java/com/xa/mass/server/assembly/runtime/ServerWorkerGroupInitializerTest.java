@@ -108,4 +108,32 @@ class ServerWorkerGroupInitializerTest {
                 List.of()
         );
     }
+
+    @Test
+    void keepsRuntimeTruthWhenSeedConflictsWithAlreadyModifiedGroup() {
+        WorkerGroupRegistrationService registrations = mock(
+                WorkerGroupRegistrationService.class
+        );
+        when(registrations.register("seeded", Map.of(), List.of("ev.old")))
+                .thenThrow(new com.xa.mass.server.error.ServerException(
+                        com.xa.mass.server.error.ServerErrorCode.WORKER_GROUP_REGISTRATION_CONFLICT,
+                        "workerGroup.register",
+                        "already registered with a different descriptor",
+                        null
+                ));
+        ServerWorkerGroupInitializer initializer = new ServerWorkerGroupInitializer(
+                ServerWorkerAssemblyManifest.fromJson("""
+                        {
+                          "seeded": {"eventCodes": ["ev.old"]},
+                          "fresh": {"eventCodes": ["ev.new"]}
+                        }
+                        """),
+                registrations
+        );
+
+        initializer.initialize();
+
+        verify(registrations).register("seeded", Map.of(), List.of("ev.old"));
+        verify(registrations).register("fresh", Map.of(), List.of("ev.new"));
+    }
 }

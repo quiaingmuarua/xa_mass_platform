@@ -244,8 +244,8 @@ export class MockWorkerGroupManagementSource implements WorkerGroupManagementSou
         attributes: structuredClone(seed.attributes),
         eventCodes: [...seed.eventCodes].sort(),
         source: isSeeded ? "startup_seeded" : "startup_bound",
-        editable: !isSeeded,
-        deletableByConfig: false,
+        editable: true,
+        deletableByConfig: true,
         protectionReasons: reasons,
         declaredProjects,
         workerCounts: {
@@ -356,13 +356,7 @@ export class MockWorkerGroupManagementSource implements WorkerGroupManagementSou
   ): Promise<WorkerGroupRegisterResponse> {
     this.assertAdmin(caller);
     const existing = this.groups.get(workerGroupId);
-    if (!existing) throw new TaskApiError(404, "WorkerGroup 不存在");
-    if (!existing.editable) {
-      throw new TaskApiError(
-        409,
-        "WorkerGroup 由启动 group-config-json 托管，不允许运行时编辑"
-      );
-    }
+    if (!existing) throw new TaskApiError(400, "WorkerGroup 不存在");
     const sortedEvents = [...new Set(eventCodes)].sort();
     const same =
       JSON.stringify(existing.attributes) === JSON.stringify(attributes) &&
@@ -379,16 +373,10 @@ export class MockWorkerGroupManagementSource implements WorkerGroupManagementSou
   ): Promise<WorkerGroupDeleteResponse> {
     this.assertAdmin(caller);
     const existing = this.groups.get(workerGroupId);
-    if (!existing) throw new TaskApiError(404, "WorkerGroup 不存在");
-    if (!existing.deletableByConfig) {
-      throw new TaskApiError(
-        409,
-        `WorkerGroup 受启动配置保护（${existing.protectionReasons.join(", ")}）`
-      );
-    }
+    if (!existing) throw new TaskApiError(400, "WorkerGroup 不存在");
     if (existing.workerCounts.activeTotal > 0) {
       throw new TaskApiError(
-        409,
+        400,
         `WorkerGroup 仍有 ${existing.workerCounts.activeTotal} 个活跃 Worker，请先断开或迁移`
       );
     }

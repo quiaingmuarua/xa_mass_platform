@@ -745,13 +745,14 @@ Runtime Workers exposes a 3-tab administrator workspace under `/runtime/workers`
 (`view=bindings`).
 
 The **Group 管理** tab traverses the complete registered Group directory via
-paginated `GET /api/v1/worker-groups`, showing each Group's configuration source
-(`startup_seeded`, `startup_bound`, or `dynamic`), declared Projects, and O(log N)
-Kernel Worker state counts. Administrators can register dynamic Groups, edit
-`attributes` and `eventCodes` metadata on non-seeded Groups (explicitly scoped to
-Catalog metadata without altering live Worker Handlers), and safely remove dynamic
-Groups only after confirming zero active Workers and zero non-terminal/parked Tasks
-(typing the exact `workerGroupId` to confirm; SQLite Task history is untouched).
+paginated `GET /api/v1/worker-groups`, showing each Group's startup configuration
+reference (`startup_seeded`, `startup_bound`, or `dynamic`), declared Projects,
+and O(log N) Kernel Worker state counts. Administrators can register Groups, edit
+`attributes` and `eventCodes` metadata on any registered Group (explicitly scoped
+to Catalog metadata without altering live Worker Handlers), and safely remove any
+Group with zero active Workers and zero non-terminal/parked Tasks (typing the
+exact `workerGroupId` to confirm; startup config references are shown as
+informational warnings rather than hard locks; SQLite Task history is untouched).
 
 In **Worker 观察**, the Worker detail drawer Overview tab provides an administrator-only
 **移除离线节点** action enabled for offline Workers (`cold` / offline `paused`),

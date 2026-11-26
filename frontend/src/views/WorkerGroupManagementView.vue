@@ -54,8 +54,8 @@ const filteredGroups = computed(() => {
 });
 
 function sourceLabel(sourceKind: WorkerGroupManagedView["source"]): string {
-  if (sourceKind === "startup_seeded") return "启动托管";
-  if (sourceKind === "startup_bound") return "启动绑定";
+  if (sourceKind === "startup_seeded") return "启动种子";
+  if (sourceKind === "startup_bound") return "配置关联";
   return "动态注册";
 }
 
@@ -143,7 +143,6 @@ function openRegisterDialog() {
 }
 
 function openEditDialog(row: WorkerGroupManagedView) {
-  if (!row.editable) return;
   editorMode.value = "edit";
   editorGroupId.value = row.workerGroupId;
   editorEventCodesText.value = row.eventCodes.join("\n");
@@ -237,17 +236,18 @@ const deleteBlockedReasons = computed(() => {
   const row = deleteTarget.value;
   if (!row) return [];
   const blockers: string[] = [];
-  if (!row.deletableByConfig) {
-    blockers.push(
-      `受启动配置保护：${row.protectionReasons.map(formatProtectionReason).join("、")}`
-    );
-  }
   if (row.workerCounts.activeTotal > 0) {
     blockers.push(
       `仍有 ${row.workerCounts.activeTotal} 个活跃 Worker（HOT ${row.workerCounts.activeHot} / 恢复中 ${row.workerCounts.recovery} / 暂停活跃 ${row.workerCounts.pausedActive}），请先由 Worker 控制方断开或迁移`
     );
   }
   return blockers;
+});
+
+const deleteConfigWarnings = computed(() => {
+  const row = deleteTarget.value;
+  if (!row || row.protectionReasons.length === 0) return [];
+  return row.protectionReasons.map(formatProtectionReason);
 });
 
 const canConfirmDelete = computed(
@@ -340,8 +340,8 @@ async function submitDelete() {
         />
         <el-select v-model="sourceFilter" class="wgm-filter" aria-label="按来源筛选">
           <el-option label="全部来源" value="all" />
-          <el-option label="启动托管 (startup_seeded)" value="startup_seeded" />
-          <el-option label="启动绑定 (startup_bound)" value="startup_bound" />
+          <el-option label="启动种子 (startup_seeded)" value="startup_seeded" />
+          <el-option label="配置关联 (startup_bound)" value="startup_bound" />
           <el-option label="动态注册 (dynamic)" value="dynamic" />
         </el-select>
         <span v-if="lastReadAt" class="wgm-meta">
@@ -449,6 +449,7 @@ async function submitDelete() {
                 v-for="code in row.eventCodes.slice(0, 2)"
                 :key="code"
                 class="wgm-event-pill"
+                :title="code"
               >
                 {{ code }}
               </code>
@@ -465,12 +466,7 @@ async function submitDelete() {
             <div class="wgm-row-actions">
               <el-button
                 size="small"
-                :disabled="!row.editable"
-                :title="
-                  row.editable
-                    ? '编辑 attributes 与 eventCodes'
-                    : '启动种子托管的 Group 不允许运行时编辑'
-                "
+                title="编辑 attributes 与 eventCodes 元数据"
                 @click="openEditDialog(row)"
               >
                 编辑
@@ -485,12 +481,7 @@ async function submitDelete() {
                 size="small"
                 type="danger"
                 plain
-                :disabled="!row.deletableByConfig"
-                :title="
-                  row.deletableByConfig
-                    ? '检查活跃状态并安全移除该 WorkerGroup'
-                    : `受启动配置保护：${row.protectionReasons.join(', ')}`
-                "
+                title="检查活跃状态并安全移除该 WorkerGroup"
                 @click="openDeleteDialog(row)"
               >
                 移除
@@ -599,14 +590,29 @@ async function submitDelete() {
           title="将清除该 Group 的全部 Runtime Key（Catalog、Bindings、Score、Identity、接入控制、Matching 索引），并级联清理历史离线 Worker。SQLite Task 历史记录保持不变。"
         />
 
+        <el-alert
+          v-if="deleteConfigWarnings.length > 0"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="提示：当前启动配置中仍引用该 Group（不阻断 Runtime 移除）"
+        >
+          <p class="wgm-warning-note">
+            引用项：{{
+              deleteConfigWarnings.join("、")
+            }}。若未同步从主机启动配置中删除，下次重启可能被 seed 重新注册或影响对应
+            Scenario 的启动依赖校验。
+          </p>
+        </el-alert>
+
         <dl class="wgm-precheck">
           <div>
-            <dt>配置保护</dt>
+            <dt>启动配置引用</dt>
             <dd>
               {{
-                deleteTarget.deletableByConfig
-                  ? "通过（动态注册，无启动配置引用）"
-                  : "拦截"
+                deleteConfigWarnings.length > 0
+                  ? deleteConfigWarnings.join("、")
+                  : "无（纯动态注册）"
               }}
             </dd>
           </div>
@@ -690,7 +696,7 @@ async function submitDelete() {
   flex-wrap: wrap;
 }
 .wgm-search {
-  width: 340px;
+  width: 390px;
 }
 .wgm-filter {
   width: 220px;
@@ -717,10 +723,19 @@ async function submitDelete() {
   align-items: center;
 }
 .wgm-event-pill {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 1px 6px;
   border-radius: 4px;
   background: var(--el-fill-color-light);
   font-size: 12px;
+}
+.wgm-warning-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .wgm-pagination {
   display: flex;
