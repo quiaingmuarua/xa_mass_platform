@@ -137,7 +137,7 @@ public class WorkerGroupRegistrationController {
     }
 
     @Operation(
-            summary = "Update metadata (attributes and eventCodes) for an editable WorkerGroup"
+            summary = "Update metadata (attributes and eventCodes) for a registered WorkerGroup"
     )
     @ApiResponses({
             @ApiResponse(
@@ -149,7 +149,7 @@ public class WorkerGroupRegistrationController {
             ),
             @ApiResponse(
                     responseCode = "400",
-                    description = "Invalid WorkerGroup metadata request, missing group, or locked by startup seed config",
+                    description = "Invalid WorkerGroup metadata request, missing group, or concurrent operation conflict",
                     content = @Content(schema = @Schema(
                             implementation = ApiErrorResponse.class
                     ))
@@ -185,7 +185,7 @@ public class WorkerGroupRegistrationController {
     }
 
     @Operation(
-            summary = "Remove a dynamic WorkerGroup when no startup config, non-terminal Tasks or active Workers use it"
+            summary = "Remove a WorkerGroup when no non-terminal Tasks or active Workers use it"
     )
     @ApiResponses({
             @ApiResponse(
@@ -197,7 +197,7 @@ public class WorkerGroupRegistrationController {
             ),
             @ApiResponse(
                     responseCode = "400",
-                    description = "Invalid workerGroupId, missing group, or protected by startup config, non-terminal Tasks or active Workers",
+                    description = "Invalid workerGroupId, missing group, or blocked by non-terminal Tasks or active Workers",
                     content = @Content(schema = @Schema(
                             implementation = ApiErrorResponse.class
                     ))

@@ -102,7 +102,7 @@ it("renders 3-tab Worker workspace, displays Project topology on bindings tab, a
   expect(host.textContent).toContain("当前会话没有管理员权限");
 });
 
-it("lists groups, protects startup_seeded from editing and startup-bound from deletion, and supports register/edit/safe-delete in mock mode", async () => {
+it("lists groups, keeps startup config references informational, blocks active-worker deletion, and supports register/edit/safe-delete in mock mode", async () => {
   await consoleIdentity.login(developmentAccessKey("1000"));
 
   const { host, mockBundle } = await mountWorkspace(
@@ -112,18 +112,22 @@ it("lists groups, protects startup_seeded from editing and startup-bound from de
   expect(host.textContent).toContain("android-demo-workers");
   expect(host.textContent).toContain("scenario-phone-number-workers");
   expect(host.textContent).toContain("ops-sandbox-workers");
-  expect(host.textContent).toContain("启动托管");
-  expect(host.textContent).toContain("启动绑定");
+  expect(host.textContent).toContain("启动种子");
+  expect(host.textContent).toContain("配置关联");
   expect(host.textContent).toContain("动态注册");
 
   const caller = consoleIdentity.requireCaller();
-  // Startup seeded group cannot be edited or deleted.
-  await expect(
-    mockBundle.workerGroupManagement.update(caller, "android-demo-workers", {}, [])
-  ).rejects.toThrow("不允许运行时编辑");
+  // Startup-seeded group can be edited in Runtime, while deletion is still blocked by active workers.
+  const seededEdit = await mockBundle.workerGroupManagement.update(
+    caller,
+    "android-demo-workers",
+    { capability: "android-demo-state", note: "runtime-edited" },
+    ["extension.worker.android.state.read"]
+  );
+  expect(seededEdit.status).toBe("updated");
   await expect(
     mockBundle.workerGroupManagement.deleteGroup(caller, "android-demo-workers")
-  ).rejects.toThrow("受启动配置保护");
+  ).rejects.toThrow("活跃 Worker");
 
   // Register a dynamic group and edit its metadata.
   const registered = await mockBundle.workerGroupManagement.register(
