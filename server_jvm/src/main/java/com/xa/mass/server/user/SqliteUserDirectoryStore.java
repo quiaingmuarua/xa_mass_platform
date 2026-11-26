@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
@@ -18,15 +19,55 @@ import tools.jackson.databind.ObjectMapper;
  * <p>Used only during startup load/bootstrap and infrequent admin user mutations. Request authentication
  * and directory reads are served from {@link UserDirectory}'s immutable in-memory snapshot without SQLite I/O.
  */
-class SqliteUserDirectoryStore {
+class SqliteUserDirectoryStore implements UserDirectoryStore {
+    private static final System.Logger LOG = System.getLogger(SqliteUserDirectoryStore.class.getName());
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {};
 
     private final ControlPlaneDatabase database;
     private final ObjectMapper mapper;
+    private final @Nullable SeedSource bootstrapSeed;
 
     SqliteUserDirectoryStore(ControlPlaneDatabase database, ObjectMapper mapper) {
+        this(database, mapper, null);
+    }
+
+    SqliteUserDirectoryStore(ControlPlaneDatabase database, ObjectMapper mapper, @Nullable SeedSource bootstrapSeed) {
         this.database = Objects.requireNonNull(database, "database");
         this.mapper = Objects.requireNonNull(mapper, "mapper");
+        this.bootstrapSeed = bootstrapSeed;
+    }
+
+    @Override
+    public UserDirectory.Seed load(UnaryOperator<UserDirectory.Seed> validateSeed) throws IOException {
+        if (!isEmpty()) {
+            UserDirectory.Seed loaded = validateSeed.apply(loadAll());
+            LOG.log(System.Logger.Level.INFO, "Loaded user directory from control-plane SQLite ({0} users)",
+                    loaded.users().size());
+            return loaded;
+        }
+        SeedSource source = Objects.requireNonNull(bootstrapSeed, "bootstrapSeed");
+        UserDirectory.Seed validated = validateSeed.apply(UserDirectoryStore.parseSeed(mapper, source.read()));
+        bootstrap(validated);
+        LOG.log(System.Logger.Level.INFO, "Bootstrapped control-plane SQLite user directory from seed ({0} users)",
+                validated.users().size());
+        return validated;
+    }
+
+    @Override
+    public void createUser(UserDirectory.User user, @Nullable String accessKeySha256, UserDirectory.Seed nextSeed)
+            throws IOException {
+        createUser(user, accessKeySha256);
+    }
+
+    @Override
+    public void updateUser(UserDirectory.User user, UserDirectory.Seed nextSeed) throws IOException {
+        updateUser(user);
+    }
+
+    @Override
+    public void updateAccessKeyHash(String userId, @Nullable String accessKeySha256, UserDirectory.Seed nextSeed)
+            throws IOException {
+        updateAccessKeyHash(userId, accessKeySha256);
     }
 
     boolean isEmpty() throws IOException {
