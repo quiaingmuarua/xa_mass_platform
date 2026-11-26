@@ -186,8 +186,8 @@ restart; hand edits belong to a stopped Server. A classpath seed is read-only an
 returns `409/18009`. A failed publication returns `503/18010` and leaves the snapshot unchanged.
 
 When `xa.mass.control-plane.database-path` (`XA_MASS_CONTROL_PLANE_DATABASE`) is set,
-`ControlPlaneDatabase` opens a dedicated Server-owned WAL SQLite database (`PRAGMA user_version=1`,
-physically separate from `task-history.sqlite`) and `UserDirectory` persists roles, users,
+`ControlPlaneDatabase` opens a dedicated Server-owned WAL SQLite database (`PRAGMA user_version=2`,
+with atomic `v1 -> v2` migration, physically separate from `task-history.sqlite`) and `UserDirectory` persists roles, users,
 Project assignments and access-key hashes in SQLite tables (`cp_roles`, `cp_users`, `cp_user_projects`)
 instead of locking or rewriting `users.json`. On first startup against an empty database,
 `UserDirectory` reads `xa.mass.users.seed` once (still enforcing `require-configured-seed` on
@@ -344,8 +344,14 @@ creates or reuses and approves a `PARK_WHEN_IDLE` Task. Project membership is op
 
 `ProjectDefinition(projectId, workerGroupIds)` is the immutable topology value
 shared by the `xa.mass.project-assembly.projects` configuration list and module
-Beans. ProjectDirectory combines the configuration list with name-sorted module
-declarations into one immutable directory. IDs must be unique across all sources,
+Beans. ProjectDirectory combines the host declarations with name-sorted module
+declarations into one immutable directory. When `xa.mass.control-plane.database-path`
+is set, host-declared Projects persist in `control-plane.sqlite` (`cp_projects`,
+`cp_project_worker_groups`): an empty Project table bootstraps once from
+`xa.mass.project-assembly.projects` (after validating no conflict with module Beans),
+and subsequent restarts load host Projects directly from SQLite while still merging
+module-contributed Beans live at startup. All runtime queries read only the immutable
+in-memory directory with zero SQLite I/O. IDs must be unique across all sources,
 even for identical declarations; Group lists remain unique and nonempty except for explicit `default`, which must declare an empty list. YAML
 list overlays replace only the configuration contribution, not enabled modules.
 There is no override precedence, merge-by-ID, Project registration/update/deletion API or implicit default Project. Boot owns environment
