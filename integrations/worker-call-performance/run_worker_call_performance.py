@@ -1184,7 +1184,7 @@ def main_deployment(options):
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, interrupted)
     try:
-        private_config = {key: value for key, value in config.items() if key != "rpcTaskIds"}
+        private_config = dict(config)
         for field, filename in (("accessKeyFile", "access-key.txt"), ("gatewayCredentialFile", "worker-gateway.json")):
             destination = private / filename
             shutil.copyfile(config[field], destination)
