@@ -1,8 +1,10 @@
 # XA Mass 4.8 release and upgrade contract
 
-Status: current 4.8 release input. 4.8.0 is pending publication and retained-scope
-GCP upgrade. Actual host installation state belongs to the host records reached
-through the [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview).
+Status: current 4.8 release input. 4.8.0 is published and its retained-scope GCP
+upgrade completed on 2026-11-27; temporary upgrade-material cleanup was confirmed
+at 08:26:12 UTC. Published artifacts remain immutable. Actual host installation
+state belongs to the host records reached through the
+[Release Preview guide](../../doc/guide/operations/deploy.md#release-preview).
 
 ## Release preparation
 
@@ -49,6 +51,21 @@ deployment are separate recorded facts.
   bounded 120s `reconnectPolicy` in `persistent-20-host.json` (`#153`, `#154`,
   `#155`, `#156`).
 
+4.8.0 was published from merged commit
+`8ee3c5f4632d8169937a3c2eaa0589211eca2880` through
+[complete manual Proof 45962006497](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45962006497),
+attempt 1, with all 18 jobs successful, including SMS Reception Preview.
+[Promotion 45964142778](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/45964142778)
+promoted those exact Proof ZIPs to
+[Release 4.8.0](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.8.0)
+(Release ID `460319306`).
+
+| ZIP | SHA256 |
+| --- | --- |
+| `xa-mass-server-runtime-4.8.0.zip` | `ad14ba14d90c83970bcb315eb7fcde25dfeea9d125910e0fcfeaee888b609966` |
+| `xa-mass-worker-sdk-4.8.0.zip` | `bf7feefe12b4f75e3b8ef4ac63c55e8bb59b1ab7e848b687638f99c9401c4775` |
+| `xa-mass-worker-simulator-4.8.0.zip` | `46732a4b9df452defeca8fa7ecb56a58dcf1b5b2d0fc3235ec4d3024e0923221` |
+
 ### Retained-scope upgrade constraints from 4.7.0
 
 Upgrading an existing 4.7.0 Release Preview Runtime to 4.8.0 reuses the existing
@@ -88,6 +105,55 @@ window:
    a fresh 3-Item finite MD5 Task with JSONL export, interactive authenticated
    Console verification on `https://staging.xamass.net`, and 0
    `xa-mass.service` warnings/errors.
+
+### Accepted deployment and closeout (2026-11-27)
+
+The 2026-11-27 GCP Release Preview upgrade (`upgrade-4.8.0-20261127T081658Z`)
+installed immutable Runtime 4.8.0 (`PID 1112415`) at the commit and SHA256
+above, retaining `profile_long_preview_4_4`,
+`/var/lib/xa-mass/task-history-4.4.sqlite` (schema 1, `PRAGMA quick_check=ok`),
+`/var/lib/xa-mass/control-plane.sqlite` (schema 1, WAL, `PRAGMA quick_check=ok`,
+`cp_roles=2`, `cp_users=7`, `cp_user_projects=5`), `configurationId`
+`sha256:3d50c77086cd4c78d34d3ee43d0a1b8ed20c453b37943b28dd6ed67fe8240b5a`,
+standing Host `4.4.2`, and Performance kit `4.4.4`. Nginx staging ingress was
+re-rendered from the 4.8.0 Runtime archive
+(`/etc/nginx/nginx.conf` SHA256
+`1759bdddfd04fa470122311efa5ed7d3b8202b6b7d6fa690c67d6d53e365780f`), admitting
+`POST /api/v1/tasks/rpc` and retiring `POST /api/v1/tasks/{taskId}/rpc:prepare`.
+
+- Health, ingress and observability checks passed: loopback readiness `UP`
+  (14s), loopback `/actuator/prometheus` exported 259 `xa_mass_*` lines, public
+  `/actuator/prometheus` and `/task-workbench` returned `404`, retired
+  `POST /api/v1/tasks/{id}/rpc:prepare` returned `404`, unauthenticated
+  `/api/v1/worker-groups` returned `401`, `/docs/` served commit `8ee3c5f46`,
+  `/reference/openapi.json` exposed `/api/v1/tasks/rpc` without `/rpc:prepare`,
+  and `xa-mass.service` logged `0` warnings/errors.
+- Standing `persistent-workers` automatically reconnected to `20/20 activeHot`
+  (`0 recovery`) without manual Host intervention.
+- Public API RPC lifecycle and MD5 checks passed: admin
+  `POST /api/v1/tasks/rpc` minted `rpc-7a1af3eacd924acda2963869cc0560b7`
+  (idempotent reuse verified), `POST /api/v1/tasks/{id}/close` -> `200 applied`,
+  post-close `items:call` -> `400`, immediate re-mint produced distinct
+  `rpc-2073a50796c24dfdbc8f5558ba3a467b`; a 3-Item UTF-8 MD5 RPC round-trip on
+  `rpc-e890b37cc52248c4a3d2dd0d21666440` passed `3/3`; `retention:run` purged
+  all closed acceptance RPC Tasks (`PURGED`) with `0` rows added to
+  `task-history-4.4.sqlite` (`task_history=36`, `task_history_rows=1064`).
+- Public finite 3-Item UTF-8 MD5 Task (`task-5125dcf87d3540658468ecc4e6043851`)
+  reached `terminal` and exported JSONL (`3/3` independent UTF-8 MD5 verified,
+  SHA256 `273687cf04adadbc010278c5d99dd05ea550e179f1afebf507981c1b1461bf7d`).
+- Live authenticated Console UI acceptance on `https://staging.xamass.net`
+  passed end-to-end: `accept-480-ui-1` (`rpc-54345bb96e2a46aab1ae8554b099080e`)
+  minted via `POST /api/v1/tasks/rpc` with automatic post-create redirect to the
+  RPC list, closed via `"关闭通道"`, immediately re-created in the same SPA
+  session without page reload as `accept-480-ui-2`
+  (`rpc-fbd835533da442cfac47847634c10d7b`), closed, and purged via
+  `retention:run`.
+- Old 4.7.0 binary, temporary stage directory and temporary restore point were
+  confirmed removed at `2026-11-27 08:26:12 UTC`; GCP `release.json`,
+  `deployment.json`, `OPERATIONS.txt`, `operations.log` and GitHub
+  `release-preview-load` Server pins (`INSTALLED_RELEASE_TAG=v4.8.0`,
+  `INSTALLED_RELEASE_COMMIT`, `PERFORMANCE_DEPLOYMENT_JSON.serverDeployment`)
+  were updated and verified.
 
 ## Finite Task history and RPC retention
 
