@@ -2226,7 +2226,7 @@ class RuntimeBoundaryIntegrationTest {
                             """.formatted(workerId, TEST_EVENT_CODE, workerId)
             );
             assertThat(closedCall.statusCode()).isEqualTo(400);
-            assertThat(closedCall.body()).contains("\"code\":12009");
+            assertThat(closedCall.body()).contains("\"code\":12001");
             assertThat(managedTaskId(workerGroupId)).isNotEqualTo(taskId);
             if (transportProfile == TransportProfile.POLLING) {
                 assertThat(workerProperties.loadWorkerFacts(workerGroupId, List.of(workerId)))
