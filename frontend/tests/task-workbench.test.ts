@@ -989,3 +989,98 @@ it("allows admin to confirm and close an active raw RPC channel from the detail 
   );
   expect(confirm).toHaveBeenCalledTimes(2);
 });
+
+it("redirects to list after creating an active RPC channel, refreshes tasks on create view, and allows same-session re-creation after close", async () => {
+  const confirm = vi
+    .spyOn(ElMessageBox, "confirm")
+    .mockResolvedValue("confirm" as never);
+  const makeRawRpc = (
+    taskId: string,
+    name: string,
+    scoreBand: ProjectTask["scoreBand"]
+  ): ProjectTask => ({
+    ...row(taskId, "g1", true, "default"),
+    scoreBand,
+    task: {
+      ...row(taskId, "g1", true, "default").task!,
+      name,
+      metadata: { "server.inputOwner": "raw", userId: "1000" }
+    }
+  });
+  let currentTasks: ProjectTask[] = [];
+  const f = await mount("/runtime/tasks?project=default&tab=rpc&view=create", {
+    missing: true
+  });
+  vi.mocked(f.source.tasks).mockImplementation(async (projectId) => ({
+    projectId,
+    truncated: false,
+    tasks: currentTasks
+  }));
+  vi.mocked(f.source.task).mockImplementation(async (_projectId, taskId) => {
+    const found = currentTasks.find((item) => item.taskId === taskId);
+    if (!found) throw new Error("Task not found");
+    return found;
+  });
+  await f.session.rpc.loadTasks("default");
+  await selectCreateGroup(f);
+
+  f.session.project("default").rpcCreate.name = "first-channel";
+  f.preparationClient.prepareTask.mockImplementationOnce(async () => {
+    currentTasks = [makeRawRpc("rpc-minted-first", "first-channel", "running-initial")];
+    return "rpc-minted-first";
+  });
+  button("创建并启用").click();
+  await vi.waitFor(() =>
+    expect(f.router.currentRoute.value.query.view).toBeUndefined()
+  );
+  expect(f.session.project("default").rpcCreatedId).toBe("rpc-minted-first");
+
+  await f.router.push("/runtime/tasks?project=default&tab=rpc&view=create");
+  await vi.waitFor(() => expect(button("创建并启用").disabled).toBe(true));
+  const taskLoadsBeforeRefresh = vi.mocked(f.source.tasks).mock.calls.length;
+  button("刷新核对").click();
+  await vi.waitFor(() =>
+    expect(vi.mocked(f.source.tasks).mock.calls.length).toBeGreaterThan(
+      taskLoadsBeforeRefresh
+    )
+  );
+
+  await f.router.push("/runtime/tasks?project=default&tab=rpc&taskId=rpc-minted-first");
+  await vi.waitFor(() => expect(button("关闭通道")?.disabled).toBe(false));
+  f.client.closeTask.mockImplementationOnce(async () => {
+    currentTasks = [makeRawRpc("rpc-minted-first", "first-channel", "terminal")];
+    return { status: "applied" };
+  });
+  button("关闭通道").click();
+  await vi.waitFor(() =>
+    expect(f.client.closeTask).toHaveBeenCalledExactlyOnceWith(
+      CALLER,
+      "rpc-minted-first"
+    )
+  );
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(f.session.project("default").rpcCreatedId).toBe("");
+
+  await f.router.push("/runtime/tasks?project=default&tab=rpc&view=create");
+  await vi.waitFor(() => expect(button("创建并启用").disabled).toBe(false));
+  f.session.project("default").rpcCreate.name = "second-channel";
+  f.preparationClient.prepareTask.mockImplementationOnce(async () => {
+    currentTasks = [
+      makeRawRpc("rpc-minted-first", "first-channel", "terminal"),
+      makeRawRpc("rpc-minted-second", "second-channel", "running-initial")
+    ];
+    return "rpc-minted-second";
+  });
+  button("创建并启用").click();
+  await vi.waitFor(() =>
+    expect(f.router.currentRoute.value.query.view).toBeUndefined()
+  );
+  expect(f.preparationClient.prepareTask).toHaveBeenNthCalledWith(2, CALLER, {
+    projectId: "default",
+    workerGroupId: "g1",
+    name: "second-channel",
+    metadata: {},
+    refill: []
+  });
+  expect(f.session.project("default").rpcCreatedId).toBe("rpc-minted-second");
+});
