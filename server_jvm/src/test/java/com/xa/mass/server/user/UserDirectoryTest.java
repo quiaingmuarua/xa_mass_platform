@@ -242,10 +242,10 @@ class UserDirectoryTest {
         Path file = temp.resolve("users.json");
         TaskCallers.writableDevelopmentDirectory(temp, projects()).close();
         String original = Files.readString(file, StandardCharsets.UTF_8);
-        var failing = new UserDirectory.FilePublication() {
+        var failing = new FileUserDirectoryStore.FilePublication() {
             @Override void replace(Path pending, Path target) throws IOException { throw new IOException("injected replace failure"); }
         };
-        try (var state = new UserDirectory(MAPPER, file, projects(), failing)) {
+        try (var state = new UserDirectory(projects(), new FileUserDirectoryStore(MAPPER, file, failing))) {
             assertThatThrownBy(() -> state.clearAccessKey(state.authenticate(devKey("1000")), "1001"))
                     .satisfies(error -> assertThat(code(error)).isEqualTo(ServerErrorCode.USER_DIRECTORY_UNAVAILABLE));
             assertThat(state.authenticate(devKey("1001")).userId()).isEqualTo("1001");

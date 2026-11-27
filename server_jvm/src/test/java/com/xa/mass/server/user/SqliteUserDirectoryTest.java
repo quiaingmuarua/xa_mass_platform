@@ -209,14 +209,14 @@ class SqliteUserDirectoryTest {
     void injectedSqliteFailureLeavesDatabaseAndInMemorySnapshotUnchanged() throws Exception {
         Path dbPath = temp.resolve("fault.sqlite");
         try (var db = ControlPlaneDatabase.open(dbPath)) {
-            var failingStore = new SqliteUserDirectoryStore(db, MAPPER) {
+            var failingStore = new SqliteUserDirectoryStore(db, MAPPER,
+                    () -> UserDirectory.readResourceSeed(new ClassPathResource("users/development-directory.json"), false)) {
                 @Override
                 void updateUser(UserDirectory.User user) throws IOException {
                     throw new IOException("injected sqlite write failure");
                 }
             };
-            try (var directory = new UserDirectory(MAPPER, failingStore,
-                    new ClassPathResource("users/development-directory.json"), false, projects())) {
+            try (var directory = new UserDirectory(projects(), failingStore)) {
                 var admin = directory.authenticate(devKey("1000"));
                 assertThatThrownBy(() -> directory.update(admin, "1001",
                         new UserDirectory.UpdateUser("Changed", "operator", List.of("messages"))))
