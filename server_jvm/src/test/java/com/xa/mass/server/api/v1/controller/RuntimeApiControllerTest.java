@@ -115,29 +115,43 @@ class RuntimeApiControllerTest {
     private MockMvc mockMvc;
 
     @Test
-    void rpcPreparationUsesCallerIdentityAndRejectsUnknownOrNonStringMetadata() throws Exception {
-        when(taskCatalog.loadTaskAllocationDescriptors(List.of("caller-rpc"))).thenReturn(Map.of());
-        when(taskLifecycle.approveTask("caller-rpc"))
+    void rpcChannelCreationRequiresAdminMintsServerIdAndRejectsUnknownFields() throws Exception {
+        when(taskLifecycle.approveTask(org.mockito.ArgumentMatchers.argThat(id -> id != null && id.startsWith("rpc-"))))
                 .thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED, null));
-        mockMvc.perform(post("/api/v1/tasks/caller-rpc/rpc:prepare")
+        String firstBody = mockMvc.perform(post("/api/v1/tasks/rpc")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"projectId":"test-project","workerGroupId":"phone-tools"}
                         """))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.taskId").value("caller-rpc"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.taskId").value(org.hamcrest.Matchers.matchesPattern("rpc-[0-9a-f]{32}")))
+                .andReturn().getResponse().getContentAsString();
+        String mintedId = tools.jackson.databind.json.JsonMapper.builder().build().readTree(firstBody).path("taskId").asString();
         var captured = org.mockito.ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime).createTask(captured.capture());
+        assertThat(captured.getValue().taskId()).isEqualTo(mintedId);
         assertThat(captured.getValue().metadata()).containsEntry("userId", "proof");
         assertThat(captured.getValue().idleDisposition()).isEqualTo(TaskIdleDisposition.PARK_WHEN_IDLE);
+
+        // Non-admin operator is denied creating RPC channels.
+        mockMvc.perform(post("/api/v1/tasks/rpc")
+                .header("Authorization", "Bearer " + com.xa.mass.server.testing.TaskCallers.devKey("oper1"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"projectId":"test-project","workerGroupId":"phone-tools"}
+                        """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(12013));
+
         for (String extra : List.of("\"userId\":\"ignored\"", "\"metadata\":{\"userId\":123}", "\"idleDisposition\":\"CLOSE_WHEN_IDLE\"")) {
-            mockMvc.perform(post("/api/v1/tasks/caller-rpc/rpc:prepare")
+            mockMvc.perform(post("/api/v1/tasks/rpc")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\"," + extra + "}"))
                     .andExpect(status().isBadRequest());
         }
-        when(taskLifecycle.approveTask("caller-rpc"))
+        when(taskLifecycle.approveTask(mintedId))
                 .thenReturn(new TaskApprovalResult(TaskApprovalStatus.RETRYABLE, "limit"));
-        mockMvc.perform(post("/api/v1/tasks/caller-rpc/rpc:prepare")
+        mockMvc.perform(post("/api/v1/tasks/rpc")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\"}"))
                 .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value(12007));
@@ -155,21 +169,21 @@ class RuntimeApiControllerTest {
     }
 
     @Test void rpcRefillUsesExplicitArraysAndRejectsNullAndMalformedSupply() throws Exception {
-        when(taskCatalog.loadTaskAllocationDescriptors(List.of("caller-rpc"))).thenReturn(Map.of());
-        when(taskLifecycle.approveTask("caller-rpc")).thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED,null));
-        mockMvc.perform(post("/api/v1/tasks/caller-rpc/rpc:prepare").contentType(MediaType.APPLICATION_JSON)
+        when(taskLifecycle.approveTask(org.mockito.ArgumentMatchers.argThat(id -> id != null && id.startsWith("rpc-"))))
+                .thenReturn(new TaskApprovalResult(TaskApprovalStatus.APPROVED, null));
+        mockMvc.perform(post("/api/v1/tasks/rpc").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":[]}"))
                 .andExpect(status().isOk());
         var captured = org.mockito.ArgumentCaptor.forClass(TaskDescriptor.class);
         verify(taskRuntime).createTask(captured.capture());
         assertThat(captured.getValue().refill()).isEmpty();
-        org.mockito.Mockito.clearInvocations(taskRuntime,taskLifecycle);
-        for (String invalid : List.of("null","{}","[null]","[{\"poolName\":\"any\",\"target\":{},\"count\":0}]")) {
-            mockMvc.perform(post("/api/v1/tasks/caller-rpc/rpc:prepare").contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":"+invalid+"}"))
+        org.mockito.Mockito.clearInvocations(taskRuntime, taskLifecycle);
+        for (String invalid : List.of("null", "{}", "[null]", "[{\"poolName\":\"any\",\"target\":{},\"count\":0}]")) {
+            mockMvc.perform(post("/api/v1/tasks/rpc").contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"projectId\":\"test-project\",\"workerGroupId\":\"phone-tools\",\"refill\":" + invalid + "}"))
                     .andExpect(status().isBadRequest());
         }
-        org.mockito.Mockito.verifyNoInteractions(taskRuntime,taskLifecycle);
+        org.mockito.Mockito.verifyNoInteractions(taskRuntime, taskLifecycle);
     }
 
     @BeforeEach
@@ -257,7 +271,7 @@ class RuntimeApiControllerTest {
                     List<String> ids = invocation.getArgument(0);
                     var descriptors =
                             new LinkedHashMap<String, TaskDescriptor>();
-                    ids.stream().filter(id -> !id.matches("task-[0-9a-f]{32}")).forEach(id -> descriptors.put(
+                    ids.stream().filter(id -> !id.matches("(?:task|rpc)-[0-9a-f]{32}")).forEach(id -> descriptors.put(
                             id,
                             descriptor(id)
                     ));
@@ -368,7 +382,13 @@ class RuntimeApiControllerTest {
                                         taskCatalog, new com.xa.mass.server.operation.OperationGuard()
                                 , itemScores, taskScores, taskRuntime, java.util.List.of()),
                                 new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matchingCatalog,
-                                        rpcProperties, projects, new com.xa.mass.server.operation.OperationGuard(), org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class))
+                                        rpcProperties, projects, new com.xa.mass.server.operation.OperationGuard(),
+                                        org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class),
+                                        org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class),
+                                        com.xa.mass.server.testsupport.TaskRetentionFixtures.rpcChannels(),
+                                        com.xa.mass.server.testing.TaskCallers.directory(
+                                                new com.xa.mass.server.user.UserDirectory.User("proof", "Proof", "admin", java.util.List.of()),
+                                                new com.xa.mass.server.user.UserDirectory.User("oper1", "Operator", "operator", java.util.List.of("test-project"))))
                         , org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class)),
                         new TaskDataController(
                                 taskData,
@@ -381,7 +401,9 @@ class RuntimeApiControllerTest {
                 .defaultRequest(post("/").header("Authorization", "Bearer " + com.xa.mass.server.testing.TaskCallers.devKey("proof")))
                 .setValidator(validator)
                 .addFilters(new RequestIdFilter(), new com.xa.mass.server.api.AccessKeyFilter(
-                        com.xa.mass.server.testing.TaskCallers.directory(new com.xa.mass.server.user.UserDirectory.User("proof", "Proof", "admin", java.util.List.of())),
+                        com.xa.mass.server.testing.TaskCallers.directory(
+                                new com.xa.mass.server.user.UserDirectory.User("proof", "Proof", "admin", java.util.List.of()),
+                                new com.xa.mass.server.user.UserDirectory.User("oper1", "Operator", "operator", java.util.List.of("test-project"))),
                         tools.jackson.databind.json.JsonMapper.builder().build()))
                 .build();
     }

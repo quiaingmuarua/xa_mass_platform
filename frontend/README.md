@@ -863,7 +863,7 @@ initially `[]`. The finite-task supply editor is shared. Target `{}` and count
 100 are editable initial values, not guaranteed eligibility, concurrency or
 exclusive Worker quotas. Priority 0 and maxRetryTimes 3 remain read-only.
 
-Only explicit creation or resumption calls `rpc:prepare`; route changes, reads
+Only explicit administrator creation or resumption calls `POST /api/v1/tasks/rpc`; route changes, reads
 and calls never prepare Tasks. The workbench always sends `refill`, including
 empty supply, and freezes its caller, ID and full request on first preparation.
 Same-ID configuration conflicts cannot update a Task. Unconfirmed preparation

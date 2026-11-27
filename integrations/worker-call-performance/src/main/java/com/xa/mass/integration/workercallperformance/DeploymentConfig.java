@@ -16,7 +16,7 @@ import java.util.Set;
 /** Explicit consumer coordinates for the existing open-loop lane; no Server lifecycle authority. */
 final class DeploymentConfig {
     private static final Set<String> FIELDS = Set.of("runtimeUrl", "workerRuntimeUrl", "project", "endpointManager",
-            "groups", "workersPerGroup", "consumerId", "accessKeyFile", "gatewayCredentialFile", "hostMaxHeap",
+            "groups", "rpcTaskIds", "workersPerGroup", "consumerId", "accessKeyFile", "gatewayCredentialFile", "hostMaxHeap",
             "hostFdLimit", "assignmentBatchLimit", "serverDeployment");
     private final Map<String, Object> values;
 
@@ -34,6 +34,18 @@ final class DeploymentConfig {
         }).toList();
         if (Set.copyOf(groups).size() != 2) throw new IllegalArgumentException("Deployment Groups must be distinct");
         resolved.put("groups", groups);
+        var rawRpcTasks = CallApi.object(input.get("rpcTaskIds"));
+        if (!rawRpcTasks.keySet().equals(Set.copyOf(groups)))
+            throw new IllegalArgumentException("Deployment rpcTaskIds must match the two configured Groups");
+        var rpcTaskIds = new LinkedHashMap<String, String>();
+        for (String group : groups) {
+            String taskId = text(rawRpcTasks, group);
+            if (!validIdentity(taskId)) throw new IllegalArgumentException("Invalid deployment rpcTaskId for " + group);
+            rpcTaskIds.put(group, taskId);
+        }
+        if (Set.copyOf(rpcTaskIds.values()).size() != 2)
+            throw new IllegalArgumentException("Deployment rpcTaskIds must be distinct");
+        resolved.put("rpcTaskIds", Map.copyOf(rpcTaskIds));
         resolved.put("workersPerGroup", ExperimentConfig.integer(input, "workersPerGroup", 1, 15_000));
         resolved.put("assignmentBatchLimit", ExperimentConfig.integer(input, "assignmentBatchLimit", 1, 1_000));
         resolved.put("hostFdLimit", integerOrDefault(input, "hostFdLimit", 32_768, 1_024, 1_048_576));
@@ -77,29 +89,21 @@ final class DeploymentConfig {
     }
 
     Map<String, Object> resolved() {
-        var result = new LinkedHashMap<>(values);
-        var tasks = new LinkedHashMap<String, String>();
-        groups().forEach(group -> tasks.put(group, rpcTaskId(group)));
-        result.put("rpcTaskIds", tasks);
-        return result;
+        return new LinkedHashMap<>(values);
     }
 
     String runtimeUrl() { return (String) values.get("runtimeUrl"); }
     String project() { return (String) values.get("project"); }
     String endpointManager() { return (String) values.get("endpointManager"); }
     @SuppressWarnings("unchecked") List<String> groups() { return (List<String>) values.get("groups"); }
+    @SuppressWarnings("unchecked") Map<String, String> rpcTaskIds() { return (Map<String, String>) values.get("rpcTaskIds"); }
     int workersPerGroup() { return (Integer) values.get("workersPerGroup"); }
     int assignmentBatchLimit() { return (Integer) values.get("assignmentBatchLimit"); }
 
     String rpcTaskId(String group) {
-        if (!groups().contains(group)) throw new IllegalArgumentException("Unknown deployment Group");
-        try {
-            String coordinate = values.get("consumerId") + "\0" + project() + "\0" + group;
-            return "perf-rpc-" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(coordinate.getBytes(StandardCharsets.UTF_8)));
-        } catch (java.security.NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 unavailable", impossible);
-        }
+        String id = rpcTaskIds().get(group);
+        if (id == null) throw new IllegalArgumentException("Unknown deployment Group");
+        return id;
     }
 
     Map<String, String> callerHeaders() throws Exception {

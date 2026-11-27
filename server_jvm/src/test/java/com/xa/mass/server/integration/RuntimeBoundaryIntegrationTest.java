@@ -1896,10 +1896,13 @@ class RuntimeBoundaryIntegrationTest {
 
     @Test
     void explicitRpcSupplyExecutesHundredItemBatchAndEmptySupplySupportsIdentityCalls() throws Exception {
-        String group = "rpc-explicit-pool", taskId = "rpc-batch-" + UUID.randomUUID();
+        String group = "rpc-explicit-pool";
         var refill = List.of(Map.of("poolName", "any", "target", Map.of(), "count", 100));
         String preparation = Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", refill));
-        assertThat(send("POST", "/api/v1/tasks/"+taskId+"/rpc:prepare", preparation).statusCode()).isEqualTo(200);
+        var created = send("POST", "/api/v1/tasks/rpc", preparation);
+        assertThat(created.statusCode()).isEqualTo(200);
+        String taskId = JSON.readTree(created.body()).path("taskId").asText();
+        assertThat(taskId).matches("rpc-[0-9a-f]{32}");
         var original = taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
         assertThat(original.refill()).hasSize(1);
         var prepared = prepareWorker(group, "batch-worker", TransportProfile.WEBSOCKET, Map.of());
@@ -1940,29 +1943,37 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(results.path("batch-"+n).path("status").asText()).as("message %s", "batch-"+n).isEqualTo("succeeded");
                 assertThat(results.path("batch-"+n).path("opaqueResultPayload").asText()).isEqualTo(Jsons.toJson(Map.of("observed","value-"+n)));
             }
-            assertThat(send("POST","/api/v1/tasks/"+taskId+"/rpc:prepare",preparation).statusCode()).isEqualTo(200);
+            var repeated = send("POST", "/api/v1/tasks/rpc", preparation);
+            assertThat(repeated.statusCode()).isEqualTo(200);
+            assertThat(JSON.readTree(repeated.body()).path("taskId").asText()).isEqualTo(taskId);
             assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId)).isEqualTo(original);
-            assertThat(send("POST","/api/v1/tasks/"+taskId+"/rpc:prepare",Jsons.toJson(Map.of("projectId","boundary","workerGroupId",group,"refill",List.of()))).statusCode()).isEqualTo(400);
-            String directed=taskId+"-direct";
-            assertThat(send("POST","/api/v1/tasks/"+directed+"/rpc:prepare",Jsons.toJson(Map.of("projectId","boundary","workerGroupId",group,"refill",List.of()))).statusCode()).isEqualTo(200);
+            assertThat(send("POST", "/api/v1/tasks/rpc", Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "refill", List.of()))).statusCode()).isEqualTo(400);
+            var directedRes = send("POST", "/api/v1/tasks/rpc", Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "ownerUserId", "alice", "refill", List.of())));
+            assertThat(directedRes.statusCode()).isEqualTo(200);
+            String directed = JSON.readTree(directedRes.body()).path("taskId").asText();
+            assertThat(directed).isNotEqualTo(taskId);
             assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(directed)).get(directed).refill()).isEmpty();
-            assertTaskCallSucceeded(directed,prepared.workerId(),"direct-item");
+            assertTaskCallSucceeded(directed, prepared.workerId(), "direct-item");
         } finally { for (var worker : running) worker.close(); }
     }
 
     @Test
     void explicitCallerRpcTasksExecuteTheSameMessageIdIndependentlyAndReuseWithoutReset() throws Exception {
         String group = "user-rpc-" + TransportProfile.WEBSOCKET.name();
-        String suffix = UUID.randomUUID().toString();
         var ids = new LinkedHashMap<String, String>();
         for (String user : List.of("alice", "bobby")) {
-            String id = "caller-" + user + "-" + suffix;
-            var response = send(com.xa.mass.server.testing.TaskCallers.caller(user, "operator", "boundary"), "POST", "/api/v1/tasks/" + id + "/rpc:prepare",
-                    Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group)));
+            // Operator cannot create RPC channels directly.
+            assertThat(send(com.xa.mass.server.testing.TaskCallers.caller(user, "operator", "boundary"), "POST", "/api/v1/tasks/rpc",
+                    Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group))).statusCode()).isEqualTo(403);
+            // Admin provisions an isolated channel owned by the operator.
+            var response = send("POST", "/api/v1/tasks/rpc",
+                    Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "ownerUserId", user)));
             assertThat(response.statusCode()).isEqualTo(200);
-            assertThat(JSON.readTree(response.body()).path("taskId").asText()).isEqualTo(id);
+            String id = JSON.readTree(response.body()).path("taskId").asText();
+            assertThat(id).matches("rpc-[0-9a-f]{32}");
             ids.put(user, id);
         }
+        assertThat(ids.get("alice")).isNotEqualTo(ids.get("bobby"));
         var prepared = prepareWorker(group, "caller-worker", TransportProfile.WEBSOCKET, Map.of("runtime", "caller-proof"));
         try (var worker = startWorker(group, "caller-worker", prepared.workerId(), prepared.endpointUri(),
                 Map.of("runtime", "caller-proof"), TransportProfile.WEBSOCKET)) {
@@ -1979,9 +1990,10 @@ class RuntimeBoundaryIntegrationTest {
                 assertThat(JSON.readTree(response.body()).path("same-id").path("opaqueResultPayload").asText())
                         .isEqualTo(Jsons.toJson(Map.of("observed", user)));
                 awaitTrackedState(id, "same-id", 6);
-                var repeated = send(com.xa.mass.server.testing.TaskCallers.caller(user, "operator", "boundary"), "POST", "/api/v1/tasks/" + id + "/rpc:prepare",
-                        Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group)));
+                var repeated = send("POST", "/api/v1/tasks/rpc",
+                        Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group, "ownerUserId", user)));
                 assertThat(repeated.statusCode()).isEqualTo(200);
+                assertThat(JSON.readTree(repeated.body()).path("taskId").asText()).isEqualTo(id);
                 assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(taskCatalog.loadTaskAllocationDescriptors(List.of(id)).get(id).metadata())).isEqualTo(original);
                 assertThat(taskCatalog.loadTaskAllocationDescriptors(List.of(id)).get(id).metadata()).containsEntry("userId", user);
             }
@@ -2070,12 +2082,11 @@ class RuntimeBoundaryIntegrationTest {
     }
 
     private String managedTaskId(String group) throws Exception {
-        String id = "boundary-rpc-" + java.util.Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(group.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        var response = send("POST", "/api/v1/tasks/" + id + "/rpc:prepare",
+        var response = send("POST", "/api/v1/tasks/rpc",
                 Jsons.toJson(Map.of("projectId", "boundary", "workerGroupId", group)));
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(JSON.readTree(response.body()).path("taskId").asText()).isEqualTo(id);
+        String id = JSON.readTree(response.body()).path("taskId").asText();
+        assertThat(id).matches("rpc-[0-9a-f]{32}");
         return id;
     }
 

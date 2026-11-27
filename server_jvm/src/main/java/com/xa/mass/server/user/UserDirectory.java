@@ -125,6 +125,15 @@ public final class UserDirectory implements AutoCloseable {
         return snapshot.users().containsKey(userId);
     }
 
+    /** Resolves an existing directory user as an immutable TaskCaller from the in-memory snapshot. */
+    public synchronized @Nullable TaskCaller findCaller(String userId) {
+        var entry = snapshot.users().get(userId);
+        if (entry == null) {
+            return null;
+        }
+        return TaskCaller.fromDirectory(entry.user(), snapshot.roles().get(entry.user().role()));
+    }
+
     /** One request's immutable identity and grants, resolved from its access key under the same gate as writes. */
     public synchronized TaskCaller authenticate(@Nullable String accessKey) {
         if (accessKey == null || !ACCESS_KEY.matcher(accessKey).matches()) {

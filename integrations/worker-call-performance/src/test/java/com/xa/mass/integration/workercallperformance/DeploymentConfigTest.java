@@ -39,13 +39,9 @@ class DeploymentConfigTest {
         try (var api = LaneWorld.coordinates(Map.of()).api(Map.of())) {
             assertThat(api.observationPageConcurrency()).isEqualTo(1);
         }
-        assertThat(config.rpcTaskId("wan-a")).matches("perf-rpc-[0-9a-f]{64}")
+        assertThat(config.rpcTaskId("wan-a")).isEqualTo("rpc-0000000000000000000000000000000a")
                 .isEqualTo(DeploymentConfig.read(source.toString()).rpcTaskId("wan-a"))
                 .isNotEqualTo(config.rpcTaskId("wan-b"));
-        var changed = new LinkedHashMap<>(Jsons.parseObject(Files.readString(source)));
-        changed.put("consumerId", "another-consumer");
-        Files.writeString(source, Jsons.toJson(changed));
-        assertThat(DeploymentConfig.read(source.toString()).rpcTaskId("wan-a")).isNotEqualTo(config.rpcTaskId("wan-a"));
     }
 
     @Test
@@ -91,9 +87,9 @@ class DeploymentConfigTest {
     }
 
     @Test
-    void deploymentBootstrapChecksBothBindingsBeforePreparingAndNeverRegistersGroups(@TempDir Path folder) throws Exception {
+    void deploymentBootstrapChecksBothBindingsAndPreProvisionedRpcTasksWithoutMutatingServer(@TempDir Path folder) throws Exception {
         var coordinates = LaneWorld.coordinates(Map.of("--deployment-config", configuration(folder, Map.of()).toString()));
-        var posts = new ArrayList<String>();
+        var taskReads = new ArrayList<String>();
         var bindingsRead = new AtomicInteger();
         var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
@@ -105,12 +101,13 @@ class DeploymentConfigTest {
                 bindingsRead.incrementAndGet();
                 String group = path.contains("wan-a") ? "wan-a" : "wan-b";
                 response = bindings(group, "project-wan");
-            } else if (path.endsWith("/rpc:prepare")) {
-                posts.add(path);
-                if (bindingsRead.get() != 2) throw new AssertionError("Preparation preceded binding checks");
-                var body = Jsons.parseObject(request);
-                if (!"project-wan".equals(body.get("projectId"))) throw new AssertionError("Wrong Project");
-                response = Map.of("taskId", coordinates.rpcTaskId((String) body.get("workerGroupId")));
+            } else if (method.equals("GET") && path.startsWith("/api/v1/projects/project-wan/tasks/")) {
+                taskReads.add(path);
+                if (bindingsRead.get() != 2) throw new AssertionError("Task read preceded binding checks");
+                String id = path.substring(path.lastIndexOf('/') + 1);
+                String group = id.equals(coordinates.rpcTaskId("wan-a")) ? "wan-a" : "wan-b";
+                response = Map.of("taskId", id, "scoreBand", "running_visible",
+                        "task", Map.of("taskId", id, "workerGroupId", group, "idleDisposition", "PARK_WHEN_IDLE"));
             } else if (path.equals("/lab/v1/workers")) {
                 var workers = new ArrayList<Map<String, Object>>();
                 coordinates.groups().forEach(group -> IntStream.range(0, 2).forEach(i -> workers.add(Map.of(
@@ -139,7 +136,10 @@ class DeploymentConfigTest {
         try (var api = new CallApi(base, base, coordinates.deployment().callerHeaders(), coordinates.endpoint())) {
             var bootstrap = LaneWorld.bootstrap(api, coordinates);
             assertThat(bootstrap).containsEntry("workersPerGroup", 2).containsEntry("endpoint", "wan-endpoint");
-            assertThat(posts).hasSize(2).allSatisfy(path -> assertThat(path).endsWith("/rpc:prepare"));
+            assertThat(taskReads).containsExactly(
+                    "/api/v1/projects/project-wan/tasks/" + coordinates.rpcTaskId("wan-a"),
+                    "/api/v1/projects/project-wan/tasks/" + coordinates.rpcTaskId("wan-b")
+            );
         } finally { server.stop(0); }
     }
 
@@ -189,7 +189,9 @@ class DeploymentConfigTest {
         input.put("runtimeUrl", "https://admin.example/");
         input.put("workerRuntimeUrl", "https://workers.example/");
         input.put("project", "project-wan"); input.put("endpointManager", "wan-endpoint");
-        input.put("groups", List.of("wan-a", "wan-b")); input.put("workersPerGroup", 2);
+        input.put("groups", List.of("wan-a", "wan-b"));
+        input.put("rpcTaskIds", Map.of("wan-a", "rpc-0000000000000000000000000000000a", "wan-b", "rpc-0000000000000000000000000000000b"));
+        input.put("workersPerGroup", 2);
         input.put("consumerId", "consumer-one"); input.put("accessKeyFile", "operator.key");
         input.put("gatewayCredentialFile", "gateway.json"); input.put("assignmentBatchLimit", 100);
         input.put("serverDeployment", Map.of("version", "4.3.2", "gitCommit", "a".repeat(40), "configurationId", "deployment-one"));

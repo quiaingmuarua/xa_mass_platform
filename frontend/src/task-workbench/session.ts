@@ -27,7 +27,12 @@ export function createTaskSession(
         finiteFilter: { search: string; group: string; status: string; scroll: number };
         rpcQuery: Record<string, string>;
         rpcFilter: { search: string; group: string; scroll: number };
-        rpcCreate: { groupId: string; name: string; supply: SupplyDraft };
+        rpcCreate: {
+          groupId: string;
+          ownerUserId: string;
+          name: string;
+          supply: SupplyDraft;
+        };
         rpcCreatedId: string;
       }
     >
@@ -37,7 +42,7 @@ export function createTaskSession(
       finiteFilter: { search: "", group: "", status: "", scroll: 0 },
       rpcQuery: {},
       rpcFilter: { search: "", group: "", scroll: 0 },
-      rpcCreate: { groupId: "", name: "", supply: newSupplyDraft() },
+      rpcCreate: { groupId: "", ownerUserId: "", name: "", supply: newSupplyDraft() },
       rpcCreatedId: ""
     };
     return projects[projectId]!;
@@ -53,29 +58,30 @@ export function createTaskSession(
         caller: TaskCaller;
         request: RpcTaskPrepareRequest;
         busy: boolean;
+        taskId?: string;
         outcome?: "ready" | "unconfirmed" | "rejected";
         error?: string;
       }
     >
   >(Object.create(null));
-  async function prepareRpc(taskId: string, request: RpcTaskPrepareRequest) {
+  async function prepareRpc(slotKey: string, request: RpcTaskPrepareRequest) {
     if (mode !== "api") return;
-    rpcPreparations[taskId] ??= {
+    rpcPreparations[slotKey] ??= {
       caller: captureTaskCaller(),
       request: JSON.parse(JSON.stringify(request)) as RpcTaskPrepareRequest,
       busy: false
     };
-    const attempt = rpcPreparations[taskId]!;
+    const attempt = rpcPreparations[slotKey]!;
     if (attempt.busy) return;
     attempt.busy = true;
     attempt.error = undefined;
     attempt.outcome = undefined;
     try {
-      await preparations.prepareTask(
+      const taskId = await preparations.prepareTask(
         attempt.caller,
-        taskId,
         JSON.parse(JSON.stringify(attempt.request)) as RpcTaskPrepareRequest
       );
+      attempt.taskId = taskId;
       attempt.outcome = "ready";
     } catch (error) {
       attempt.outcome =
@@ -87,7 +93,7 @@ export function createTaskSession(
     } finally {
       attempt.busy = false;
     }
-    return attempt.outcome;
+    return { outcome: attempt.outcome, taskId: attempt.taskId };
   }
   let initialDirectory: Promise<void> | undefined;
   function ensureDirectory() {

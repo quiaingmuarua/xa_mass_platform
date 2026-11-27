@@ -50,7 +50,7 @@ def main():
     stop = threading.Event()
     monitor = None
     samples, take_latencies, call_latencies = [], [], []
-    task = "rpc-result-proof-" + uuid.uuid4().hex
+    task = ""
 
     def http(path, body=None, base=None):
         return preview.http(base or run.url, path, body, headers=CALLER, timeout=90)
@@ -67,7 +67,7 @@ def main():
             workers = preview.all_pages(run.host, "/lab/v1/messages/inventory")
             require(len(workers) == args.workers, "Unexpected proof Worker inventory")
             group = workers[0]["workerGroupId"]
-            http(f"/api/v1/tasks/{task}/rpc:prepare", {"projectId": "default", "workerGroupId": group, "refill": []})
+            task = http("/api/v1/tasks/rpc", {"projectId": "default", "workerGroupId": group, "refill": []})["taskId"]
             result_key = "xa_mass:" + run.scope + ":task:" + task + ":results"
 
             def monitor_results():

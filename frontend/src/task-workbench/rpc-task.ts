@@ -5,27 +5,19 @@ import type { RefillTarget } from "@/runtime-viewer/types";
 export interface RpcTaskPrepareRequest {
   projectId: string;
   workerGroupId: string;
+  ownerUserId?: string;
   name?: string | null;
   metadata: Record<string, string>;
   refill?: RefillTarget[];
 }
 
 export interface RpcTaskPreparationClient {
-  prepareTask(
-    caller: TaskCaller,
-    taskId: string,
-    request: RpcTaskPrepareRequest
-  ): Promise<void>;
+  prepareTask(caller: TaskCaller, request: RpcTaskPrepareRequest): Promise<string>;
 }
 
-/** A workbench naming convention; the Server does not decode or enforce it. */
-export function rpcTaskId(project: string, user: string, group: string): string {
-  const normalized = normalizeTaskUserId(user);
+/** UI-local session slot key for tracking an in-flight RPC channel preparation. Never sent as a Task ID. */
+export function rpcChannelSlotKey(project: string, ownerUserId: string, group: string): string {
+  const normalized = normalizeTaskUserId(ownerUserId);
   if (!project || !group) throw new Error("请选择 Project 和 Group。");
-  const encode = (value: string) =>
-    btoa(String.fromCharCode(...new TextEncoder().encode(value)))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-  return "rpc-workbench-v1." + [project, normalized, group].map(encode).join(".");
+  return `${project}/${normalized}/${group}`;
 }

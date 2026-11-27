@@ -151,7 +151,7 @@ class LaneReadinessTest {
                     world.forEach((group, ids) -> ids.forEach(id -> workers.add(Map.of("workerGroupId", group,
                             "workerId", id, "runtimeState", runtimeStates.getOrDefault(id, "RUNNING")))));
                     response = Map.of("workers", workers);
-                } else if (path.endsWith("/rpc:prepare")) {
+                } else if (path.equals("/api/v1/tasks/rpc")) {
                     String group = (String) Jsons.parseObject(input).get("workerGroupId");
                     response = Map.of("taskId", coordinates.rpcTaskId(group));
                 } else if (path.endsWith(":register")) {

@@ -922,11 +922,17 @@
             "additionalProperties" : {
               "type" : "string"
             },
-            "description" : "String metadata; userId and server.* keys are reserved. Server stamps the admitted creator.",
+            "description" : "String metadata; userId and server.* keys are reserved. Server stamps the admitted owner.",
             "type" : "object"
           },
           "name" : {
             "maxLength" : 128,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "ownerUserId" : {
+            "description" : "Optional directory userId that owns and calls this RPC channel. Defaults to the authenticated administrator.",
+            "maxLength" : 32,
             "minLength" : 0,
             "type" : "string"
           },
@@ -3257,6 +3263,79 @@
         "tags" : [ "Tasks" ]
       }
     },
+    "/api/v1/tasks/rpc" : {
+      "post" : {
+        "description" : "Administrator-only. Server mints and owns the taskId per active (projectId, ownerUserId, workerGroupId) slot. Identical configuration returns the existing taskId without resetting work; conflicting configuration is rejected.",
+        "operationId" : "ensureRpcChannel",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/TaskRpcPrepareRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TaskCreateResponse"
+                }
+              }
+            },
+            "description" : "RPC channel approval confirmed"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Invalid request or conflicting active RPC channel"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Access key is missing or invalid"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Task caller cannot access this resource or operation"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Preparation or approval not confirmed"
+          }
+        },
+        "security" : [ {
+          "accessKey" : [ ]
+        } ],
+        "summary" : "Create or reuse an active Server-minted RPC channel",
+        "tags" : [ "Tasks" ]
+      }
+    },
     "/api/v1/tasks/{taskId}/approve" : {
       "post" : {
         "operationId" : "approveTask",
@@ -4139,88 +4218,6 @@
           "accessKey" : [ ]
         } ],
         "summary" : "Advance eligible finite Task retention",
-        "tags" : [ "Tasks" ]
-      }
-    },
-    "/api/v1/tasks/{taskId}/rpc:prepare" : {
-      "post" : {
-        "description" : "Caller supplies a stable Task ID. Exact existing configuration is reused without resetting work. Creation and approval are separate commits; on 503 retain this identity and explicitly reconcile.",
-        "operationId" : "prepareRpcTask",
-        "parameters" : [ {
-          "in" : "path",
-          "name" : "taskId",
-          "required" : true,
-          "schema" : {
-            "minLength" : 1,
-            "type" : "string"
-          }
-        } ],
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/TaskRpcPrepareRequest"
-              }
-            }
-          },
-          "required" : true
-        },
-        "responses" : {
-          "200" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/TaskCreateResponse"
-                }
-              }
-            },
-            "description" : "RPC Task approval confirmed"
-          },
-          "400" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description" : "Invalid request or conflicting Task"
-          },
-          "401" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description" : "Access key is missing or invalid"
-          },
-          "403" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description" : "Task caller cannot access this resource or operation"
-          },
-          "503" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description" : "Preparation or approval not confirmed"
-          }
-        },
-        "security" : [ {
-          "accessKey" : [ ]
-        } ],
-        "summary" : "Create or reuse and enable an RPC Task",
         "tags" : [ "Tasks" ]
       }
     },

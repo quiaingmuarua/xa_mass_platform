@@ -369,6 +369,8 @@ final class WorkerStateConvergence {
                     state.propertyWitnessMessageId(),
                     expectedSlotCWorkerId
             );
+            runtime.prepareRpcTask(PHONE_GROUP);
+            runtime.prepareRpcTask(STRING_GROUP);
             awaitWaveWitnesses(
                     workload,
                     workload.submitWave("wave-7", Map.of(), null),

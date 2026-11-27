@@ -257,10 +257,12 @@ existing Proof. It grants no internal API privilege. Every Task request below su
 consumer launcher selects the built-in directory unless its Runtime configuration names
 a users file. Consumer Project/User declarations obey normal admission.
 
-1. After Runtime readiness and Group registration, send one
-   `POST /api/v1/tasks/xa-android-rpc-v1.android-demo-workers/rpc:prepare` with
-   `{"projectId":"default","workerGroupId":"android-demo-workers"}`.
-2. Send one `POST /api/v1/tasks/xa-android-rpc-v1.android-demo-workers/items:call`:
+1. After Runtime readiness and Group registration, an administrator sends one
+   `POST /api/v1/tasks/rpc` with
+   `{"projectId":"default","workerGroupId":"android-demo-workers"}` (and optional
+   `ownerUserId` if provisioning a channel for an `operator`) and receives the
+   Server-minted `{"taskId":"<taskId>"}`.
+2. Send one `POST /api/v1/tasks/<taskId>/items:call`:
 
 ```json
 {
@@ -278,7 +280,7 @@ a users file. Consumer Project/User declarations obey normal admission.
    `opaqueResultPayload` JSON string with `algorithm=MD5`, `input=hello`, and
    `digest=5d41402abc4b2a76b9719d911017c592`. The receiving capability owns this format.
 4. For `not_observed`, passively consume
-   `POST /api/v1/tasks/xa-android-rpc-v1.android-demo-workers/results:take` with
+   `POST /api/v1/tasks/<taskId>/results:take` with
    `["<same message ID>"]` until the bounded observation deadline. Retain a success
    already obtained by `items:call` or `results:take`; consumed content need not
    remain available to a subsequent read.

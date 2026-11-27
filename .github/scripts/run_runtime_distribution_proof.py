@@ -159,14 +159,15 @@ def _preview_worker_groups(base_url: str) -> dict[str, Any]:
 
 
 def _prepare_rpc_task(base_url: str, project_id: str, worker_group_id: str) -> str:
-    task_id = f"distribution-rpc-{worker_group_id}"
     status, payload, _ = _request(
         "POST",
-        f"{base_url}/api/v1/tasks/{task_id}/rpc:prepare",
+        f"{base_url}/api/v1/tasks/rpc",
         {"projectId": project_id, "workerGroupId": worker_group_id},
         headers=TASK_CALLER_HEADERS,
     )
-    if status != 200 or json.loads(payload) != {"taskId": task_id}:
+    body = json.loads(payload) if status == 200 else {}
+    task_id = body.get("taskId") if isinstance(body, dict) else None
+    if status != 200 or not isinstance(task_id, str) or not task_id:
         raise RuntimeError(f"RPC preparation for {worker_group_id} was not confirmed")
     status, payload, _ = _request(
         "GET", f"{base_url}/api/v1/projects/{project_id}/tasks/{task_id}",

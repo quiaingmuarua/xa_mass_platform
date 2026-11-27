@@ -216,15 +216,21 @@ final class RuntimeApiClient {
         return Collections.unmodifiableMap(results);
     }
 
+    private final java.util.concurrent.ConcurrentHashMap<String, String> rpcTaskIds = new java.util.concurrent.ConcurrentHashMap<>();
+
     void prepareRpcTask(String group) {
-        String id = rpcTaskId(group);
-        var response = post("/api/v1/tasks/" + id + "/rpc:prepare",
+        var response = post("/api/v1/tasks/rpc",
                 Map.of("projectId", "scenario-workers", "workerGroupId", group), "rpc.prepare");
-        if (!id.equals(requiredString(response, "taskId")))
-            throw new IllegalStateException("RPC Task preparation changed identity");
+        rpcTaskIds.put(group, requiredString(response, "taskId"));
     }
 
-    private static String rpcTaskId(String group) { return "correctness-rpc-" + group; }
+    private String rpcTaskId(String group) {
+        String id = rpcTaskIds.get(group);
+        if (id == null) {
+            throw new IllegalStateException("RPC Task has not been prepared for group: " + group);
+        }
+        return id;
+    }
 
     private DirectCallOutcome decodeDirectCall(Map<String, Object> response) {
         Object rawStatus = response.get("status");

@@ -27,7 +27,7 @@ import {
 } from "./presentation";
 import { readSupply } from "@/task-management/supply";
 import type { Project, TaskRow } from "@/task-management/projects";
-import { rpcTaskId, type RpcTaskPrepareRequest } from "./rpc-task";
+import { rpcChannelSlotKey, type RpcTaskPrepareRequest } from "./rpc-task";
 import { useTaskSession } from "./session";
 
 const props = defineProps<{ project: Project }>();
@@ -51,23 +51,58 @@ const routeTask = computed(() =>
   typeof route.query.taskId === "string" ? route.query.taskId : ""
 );
 const user = computed(() => consoleIdentity.requireCurrent());
-const createId = computed(() =>
-  draft.groupId ? rpcTaskId(projectId, user.value.userId, draft.groupId) : ""
-);
-const taskId = computed(() =>
-  view.value === "create" ? createId.value : routeTask.value
-);
+const isAdmin = computed(() => user.value.role === "admin");
+const slotOwner = computed(() => draft.ownerUserId.trim() || user.value.userId);
+const slotKey = computed(() => {
+  if (!draft.groupId) return "";
+  try {
+    return rpcChannelSlotKey(projectId, slotOwner.value, draft.groupId);
+  } catch {
+    return "";
+  }
+});
 const state = computed(() => workspace.detail.value);
 const detail = computed(() => state.value.value);
 const groups = computed(() => workspace.groups[projectId]);
 const list = computed(() => workspace.windows[projectId]);
+const rows = computed(() =>
+  (list.value?.value?.tasks ?? [])
+    .filter((row) => !row.task || row.task.idleDisposition === "PARK_WHEN_IDLE")
+    .sort(
+      (a, b) =>
+        (b.createdAtMillis ?? -1) - (a.createdAtMillis ?? -1) ||
+        a.taskId.localeCompare(b.taskId)
+    )
+);
+const activeSlotRow = computed(() => {
+  if (view.value !== "create" || !draft.groupId || !slotKey.value) return undefined;
+  const owner = slotOwner.value.toLowerCase();
+  return rows.value.find(
+    (row) =>
+      row.task?.idleDisposition === "PARK_WHEN_IDLE" &&
+      row.task.metadata["server.inputOwner"] === "raw" &&
+      row.task.workerGroupId === draft.groupId &&
+      (row.task.metadata.userId ?? "").toLowerCase() === owner &&
+      row.scoreBand !== "terminal"
+  );
+});
+const attemptKey = computed(() =>
+  view.value === "create" ? slotKey.value : routeTask.value
+);
+const attempt = computed(() =>
+  attemptKey.value ? session.rpcPreparations[attemptKey.value] : undefined
+);
+const taskId = computed(() =>
+  view.value === "create"
+    ? (activeSlotRow.value?.taskId ?? attempt.value?.taskId ?? "")
+    : routeTask.value
+);
 const groupId = computed(() =>
   view.value === "create" ? draft.groupId : (detail.value?.task?.workerGroupId ?? "")
 );
 const group = computed(() =>
   groups.value?.value?.find((item) => item.workerGroupId === groupId.value)
 );
-const attempt = computed(() => session.rpcPreparations[taskId.value]);
 const createName = computed({
   get: () =>
     detail.value?.task?.name ??
@@ -111,28 +146,16 @@ const api = computed(() => config.mode === "api");
 const canPrepare = computed(
   () =>
     api.value &&
+    isAdmin.value &&
     resourceFresh.value &&
     !attempt.value?.busy &&
     !state.value.loading &&
-    (!state.value.stale || state.value.missing) &&
     attempt.value?.outcome !== "rejected" &&
-    (state.value.missing ||
-      (rawRpc.value &&
-        detail.value?.scoreBand !== null &&
-        detail.value?.scoreBand !== "terminal")) &&
-    ((!!attempt.value && attempt.value.outcome === "unconfirmed") ||
-      (view.value === "create" && state.value.missing) ||
+    ((view.value === "create" &&
+      !!slotKey.value &&
+      !activeSlotRow.value &&
+      (!detail.value || detail.value.scoreBand !== "terminal")) ||
       (rawRpc.value && detail.value?.scoreBand === "pre_review"))
-);
-
-const rows = computed(() =>
-  (list.value?.value?.tasks ?? [])
-    .filter((row) => !row.task || row.task.idleDisposition === "PARK_WHEN_IDLE")
-    .sort(
-      (a, b) =>
-        (b.createdAtMillis ?? -1) - (a.createdAtMillis ?? -1) ||
-        a.taskId.localeCompare(b.taskId)
-    )
 );
 
 type InactiveSegment = "all" | "pre_review" | "terminal";
@@ -240,7 +263,8 @@ async function sync() {
     ...(routeTask.value ? { taskId: routeTask.value } : {})
   };
   if (!groups.value) void workspace.loadGroups(projectId);
-  if (view.value === "list" && !list.value) void workspace.loadTasks(projectId);
+  if ((view.value === "list" || view.value === "create") && !list.value)
+    void workspace.loadTasks(projectId);
   if (taskId.value) {
     if (workspace.detailKey.value !== projectId + "/" + taskId.value)
       void workspace.loadDetail(projectId, taskId.value);
@@ -257,7 +281,7 @@ async function sync() {
 }
 
 watch(
-  () => [route.fullPath, createId.value],
+  () => [route.fullPath, slotKey.value, activeSlotRow.value?.taskId ?? ""],
   () => {
     if (
       route.path === "/runtime/tasks" &&
@@ -293,7 +317,8 @@ async function refresh() {
 
 async function prepare() {
   if (!canPrepare.value) return;
-  const id = taskId.value;
+  const key = attemptKey.value;
+  if (!key) return;
   const ticket = guard.current();
   error.value = "";
   try {
@@ -301,13 +326,15 @@ async function prepare() {
     const metadata = existing
       ? Object.fromEntries(
           Object.entries(existing.metadata).filter(
-            ([key]) => key !== "userId" && !key.startsWith("server.")
+            ([k]) => k !== "userId" && !k.startsWith("server.")
           )
         )
       : {};
+    const owner = existing?.metadata.userId ?? draft.ownerUserId.trim();
     const request: RpcTaskPrepareRequest = attempt.value?.request ?? {
       projectId,
       workerGroupId: groupId.value,
+      ...(owner ? { ownerUserId: owner } : {}),
       ...(existing?.name
         ? { name: existing.name }
         : draft.name.trim()
@@ -317,12 +344,14 @@ async function prepare() {
       refill:
         existing?.refill ?? readSupply(draft.supply, group.value?.matching.pools ?? [])
     };
-    const result = await session.prepareRpc(id, request);
-    if (result === "ready") {
-      saved.rpcCreatedId = id;
+    const result = await session.prepareRpc(key, request);
+    if (result?.outcome === "ready" && result.taskId) {
+      saved.rpcCreatedId = result.taskId;
       await workspace.loadTasks(projectId);
       if (guard.isCurrent(ticket)) await go("list");
-    } else if (guard.isCurrent(ticket)) await workspace.loadDetail(projectId, id);
+    } else if (guard.isCurrent(ticket) && taskId.value) {
+      await workspace.loadDetail(projectId, taskId.value);
+    }
   } catch (cause) {
     if (guard.isCurrent(ticket))
       error.value = cause instanceof Error ? cause.message : "准备失败";
@@ -347,8 +376,8 @@ async function close(done: () => void) {
 }
 
 function forgetRejected() {
-  if (attempt.value?.outcome === "rejected")
-    delete session.rpcPreparations[taskId.value];
+  if (attempt.value?.outcome === "rejected" && attemptKey.value)
+    delete session.rpcPreparations[attemptKey.value];
 }
 
 function scroll(event: { scrollTop: number }) {
@@ -387,7 +416,9 @@ function scroll(event: { scrollTop: number }) {
             }}
             · {{ formatCompactTime(list?.readAt, "尚未读取") }}
           </span>
-          <el-button type="primary" @click="go('create')">创建 RPC Task</el-button>
+          <el-button v-if="isAdmin" type="primary" @click="go('create')">
+            创建 RPC Task
+          </el-button>
           <el-button @click="go('debug')">按 Task ID 调试</el-button>
           <el-button :loading="list?.loading" @click="refresh">刷新</el-button>
         </div>
@@ -569,13 +600,19 @@ function scroll(event: { scrollTop: number }) {
       </header>
 
       <template v-if="view === 'create'">
+        <el-alert
+          v-if="!isAdmin"
+          title="仅管理员可创建或分配 RPC 通道；请联系管理员获取已有 Task ID。"
+          type="info"
+          :closable="false"
+        />
         <div class="rpc-create-fields">
           <label>
             WorkerGroup
             <el-select
               v-model="draft.groupId"
               filterable
-              :disabled="attempt?.busy"
+              :disabled="attempt?.busy || !isAdmin"
               aria-label="RPC WorkerGroup"
               placeholder="选择已注册 Group"
             >
@@ -589,22 +626,32 @@ function scroll(event: { scrollTop: number }) {
             </el-select>
           </label>
           <label>
+            归属用户 ID（可选，默认当前管理员）
+            <el-input
+              v-model="draft.ownerUserId"
+              :disabled="createFrozen || !isAdmin"
+              :maxlength="32"
+              :placeholder="user.userId"
+              aria-label="RPC 归属用户 ID"
+            />
+          </label>
+          <label>
             任务名称（可选）
             <el-input
               v-model="createName"
-              :disabled="createFrozen"
+              :disabled="createFrozen || !isAdmin"
               :maxlength="128"
               aria-label="RPC 任务名称"
             />
           </label>
         </div>
 
-        <p v-if="createId" class="rpc-page__identity">
-          Task ID：<code class="tw-code-inline">{{ createId }}</code>
+        <p v-if="taskId" class="rpc-page__identity">
+          Task ID：<code class="tw-code-inline">{{ taskId }}</code>
         </p>
         <p class="raw-muted">
-          同一 Project、用户和 Group 复用一个长期任务。优先级 0，最大重试
-          3；创建时一并批准。
+          Task ID 由服务端内部生成，同一 Project、归属用户和 Group 复用唯一活跃通道。优先级
+          0，最大重试 3；创建时一并批准。
         </p>
 
         <GroupCapabilitiesCard

@@ -28,7 +28,7 @@ class SmsResultCacheTest {
     private SmsReceptionService service;
 
     private SmsReceptionService start(long capacity) {
-        when(preparation.prepare(eq(SERVICE), eq("sms"), anyString(), any())).thenReturn(new TaskCreateResponse("task"));
+        when(preparation.prepareServiceChannel(eq(SERVICE), eq("sms"), anyString(), any())).thenReturn(new TaskCreateResponse("task"));
         Clock clock = mock(Clock.class);
         when(clock.millis()).thenAnswer(ignored -> time.get());
         var instance = new SmsReceptionService(preparation, calls, data, projection, "g", clock, SERVICE,

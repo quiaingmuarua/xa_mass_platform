@@ -43,7 +43,7 @@ class SmsProfileTest {
         var submissions = mock(TaskRpcCallService.class);
         var results = mock(TaskDataService.class);
         var events = List.of("extension.worker.sms.number.lease");
-        when(registrations.prepare(org.mockito.ArgumentMatchers.eq(SERVICE), org.mockito.ArgumentMatchers.eq("sms"), eq(SmsReceptionService.rpcTaskId("demo-sim")), any()))
+        when(registrations.prepareServiceChannel(org.mockito.ArgumentMatchers.eq(SERVICE), org.mockito.ArgumentMatchers.eq("sms"), eq(SmsReceptionService.rpcTaskId("demo-sim")), any()))
                 .thenReturn(new com.xa.mass.server.api.v1.contract.task.TaskCreateResponse("managed"));
         SmsReceptionService service;
         try (var context = new AnnotationConfigApplicationContext()) {
@@ -58,7 +58,7 @@ class SmsProfileTest {
             service = context.getBean(SmsReceptionService.class);
             assertThat(service.isRunning()).isTrue();
             assertThat(context.getBeansOfType(SmsController.class)).hasSize(1);
-            verify(registrations).prepare(SERVICE, "sms", SmsReceptionService.rpcTaskId("demo-sim"),
+            verify(registrations).prepareServiceChannel(SERVICE, "sms", SmsReceptionService.rpcTaskId("demo-sim"),
                     new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("sms", "demo-sim", null, Map.of(), null));
         }
         assertThat(service.isRunning()).isFalse();

@@ -4,6 +4,10 @@
   "project": "performance-consumer",
   "endpointManager": "runtime-websocket",
   "groups": ["performance-a", "performance-b"],
+  "rpcTaskIds": {
+    "performance-a": "replace-with-admin-provisioned-rpc-task-id-a",
+    "performance-b": "replace-with-admin-provisioned-rpc-task-id-b"
+  },
   "workersPerGroup": 1000,
   "consumerId": "consumer-01",
   "accessKeyFile": "./private/operator-access-key.txt",

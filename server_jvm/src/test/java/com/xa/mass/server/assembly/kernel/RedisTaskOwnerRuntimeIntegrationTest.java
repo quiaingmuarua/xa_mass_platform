@@ -77,6 +77,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     private TaskLifecycleCommands lifecycle;
     private TaskCallItemSubmission callSubmission;
     private com.xa.mass.server.task.directory.TaskDirectory applicationDirectory;
+    private com.xa.mass.server.task.directory.TaskRpcChannelRegistry rpcChannelRegistry;
 
     @BeforeEach
     void setUp() {
@@ -119,6 +120,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
             itemScoreCore.close();
         }
         if (applicationDirectory != null) applicationDirectory.close();
+        if (rpcChannelRegistry != null) rpcChannelRegistry.close();
         if (catalog != null) {
             catalog.close();
         }
@@ -139,50 +141,62 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         var projects = new com.xa.mass.server.project.ProjectDirectory(new com.xa.mass.server.project.ProjectAssemblyProperties(
                 List.of(new com.xa.mass.server.project.ProjectDefinition("test-project", List.of("phone-tools"), null))), List.of());
         if (applicationDirectory != null) applicationDirectory.close();
+        if (rpcChannelRegistry != null) rpcChannelRegistry.close();
         applicationDirectory = new com.xa.mass.server.task.directory.TaskDirectory(redisClient, keyspace, projects, catalog, scoreCore, workers,
                 new com.xa.mass.server.operation.OperationGuard(), runtime);
+        rpcChannelRegistry = new com.xa.mass.server.task.directory.TaskRpcChannelRegistry(redisClient, keyspace);
+        var users = com.xa.mass.server.testing.TaskCallers.directory(
+                new com.xa.mass.server.user.UserDirectory.User("alice", "Alice", "admin", List.of()),
+                new com.xa.mass.server.user.UserDirectory.User("bobby", "Bobby", "operator", List.of("test-project")),
+                new com.xa.mass.server.user.UserDirectory.User("next", "Next", "admin", List.of())
+        );
         return new com.xa.mass.server.task.call.TaskRpcPreparationService(workers, catalog, runtime, lifecycle, matching,
                 new com.xa.mass.server.task.call.TaskRpcProperties(java.time.Duration.ofDays(7), 1000, 1000, 10, 10, 10, 50, 100, 250, Map.of()),
-                projects, new com.xa.mass.server.operation.OperationGuard(), applicationDirectory, scoreCore);
+                projects, new com.xa.mass.server.operation.OperationGuard(), applicationDirectory, scoreCore, rpcChannelRegistry, users);
     }
 
     private static com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest rpcRequest() {
         return new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("test-project", "phone-tools", null, Map.of(), null);
     }
 
+    private static com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest rpcRequestFor(String ownerUserId) {
+        return new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("test-project", "phone-tools", ownerUserId, null, Map.of(), null);
+    }
+
     @Test void explicitRpcReuseAfterProviderReopenPreservesIdentityWorkAndResults() {
         var service = rpcPreparation();
-        service.prepare(com.xa.mass.server.testing.TaskCallers.caller("alice", "admin"), "raw", "rpc-alice",rpcRequest());
+        String taskId = service.ensureRawChannel(com.xa.mass.server.testing.TaskCallers.caller("alice", "admin"), rpcRequest()).taskId();
         var item = new TaskItem("shared-id", "test.event", ownerClockMillis(), Map.of("value", "Alice"), 5,
                 ownerClockMillis() + 60_000, new WorkerQuery("workerId", "w"));
-        runtime.appendItems("rpc-alice", List.of(item));
-        runtime.storeTaskItemSuccessResults("rpc-alice", Map.of("shared-id", new TaskItemSuccessResult(6, ownerClockMillis(), "Alice")));
-        var order = com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("rpc-alice")).get("rpc-alice").metadata());
-        var score = scoreCore.getScoreStates(List.of("rpc-alice")).get("rpc-alice");
+        runtime.appendItems(taskId, List.of(item));
+        runtime.storeTaskItemSuccessResults(taskId, Map.of("shared-id", new TaskItemSuccessResult(6, ownerClockMillis(), "Alice")));
+        var order = com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId).metadata());
+        var score = scoreCore.getScoreStates(List.of(taskId)).get(taskId);
         runtime.close(); catalog.close();
         runtime = new RedisTaskRuntime(redisClient, scoreCore, itemScoreCore, keyspace, java.time.Duration.ofDays(7).toMillis());
         catalog = new RedisTaskResourceCatalog(redisClient, keyspace);
         lifecycle = new DefaultTaskLifecycleCommands(scoreCore, catalog);
-        rpcPreparation().prepare(com.xa.mass.server.testing.TaskCallers.caller("alice", "admin"), "raw", "rpc-alice",rpcRequest());
-        assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("rpc-alice")).get("rpc-alice").metadata())).isEqualTo(order);
-        assertThat(scoreCore.getScoreStates(List.of("rpc-alice")).get("rpc-alice")).isEqualTo(score);
-        assertThat(runtime.loadTaskItems("rpc-alice", List.of("shared-id")).get("shared-id")).isEqualTo(item);
-        assertThat(runtime.loadTaskItemResults("rpc-alice", List.of("shared-id")).get("shared-id").opaqueResultPayload()).isEqualTo("Alice");
-        assertThatThrownBy(() -> rpcPreparation().prepare(com.xa.mass.server.testing.TaskCallers.caller("bobby", "operator", "test-project"), "raw", "rpc-alice",rpcRequest()))
+        assertThat(rpcPreparation().ensureRawChannel(com.xa.mass.server.testing.TaskCallers.caller("alice", "admin"), rpcRequest()).taskId()).isEqualTo(taskId);
+        assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId).metadata())).isEqualTo(order);
+        assertThat(scoreCore.getScoreStates(List.of(taskId)).get(taskId)).isEqualTo(score);
+        assertThat(runtime.loadTaskItems(taskId, List.of("shared-id")).get("shared-id")).isEqualTo(item);
+        assertThat(runtime.loadTaskItemResults(taskId, List.of("shared-id")).get("shared-id").opaqueResultPayload()).isEqualTo("Alice");
+        assertThatThrownBy(() -> rpcPreparation().ensureRawChannel(com.xa.mass.server.testing.TaskCallers.caller("bobby", "operator", "test-project"), rpcRequest()))
                 .isInstanceOf(com.xa.mass.server.error.ServerException.class);
-        rpcPreparation().prepare(com.xa.mass.server.testing.TaskCallers.caller("bobby", "admin"), "raw", "rpc-alice", rpcRequest());
-        assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("rpc-alice")).get("rpc-alice").metadata())).isEqualTo(order);
-        lifecycle.closeTask("rpc-alice");
-        assertThatThrownBy(() -> rpcPreparation().prepare(com.xa.mass.server.testing.TaskCallers.caller("alice", "admin"), "raw", "rpc-alice",rpcRequest()))
+        assertThat(rpcPreparation().ensureRawChannel(com.xa.mass.server.testing.TaskCallers.caller("bobby", "admin"), rpcRequestFor("alice")).taskId()).isEqualTo(taskId);
+        assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId).metadata())).isEqualTo(order);
+        lifecycle.closeTask(taskId);
+        assertThatThrownBy(() -> rpcPreparation().ensureRawChannel(com.xa.mass.server.testing.TaskCallers.caller("alice", "admin"), rpcRequest()))
                 .isInstanceOf(com.xa.mass.server.error.ServerException.class);
-        assertThat(scoreCore.getScoreStates(List.of("rpc-alice")).get("rpc-alice").band()).isEqualTo(TaskScoreBandCore.TaskScoreBand.TERMINAL);
+        assertThat(scoreCore.getScoreStates(List.of(taskId)).get(taskId).band()).isEqualTo(TaskScoreBandCore.TaskScoreBand.TERMINAL);
     }
 
     @Test void parkedRpcTasksKeepTheExistingApprovalLimitAndRetryKeepsPendingCreation() {
         var service = rpcPreparation();
+        String firstId = null;
         for (int i = 0; i < 100; i++) {
-            String id = "rpc-" + i;
-            service.prepare(com.xa.mass.server.testing.TaskCallers.caller("user" + i, "admin"), "raw", id,rpcRequest());
+            String id = service.ensureRawChannel(com.xa.mass.server.testing.TaskCallers.caller("user" + i, "admin"), rpcRequest()).taskId();
+            if (i == 0) firstId = id;
             var initial = scoreCore.getScoreStates(List.of(id)).get(id);
             assertThat(scoreCore.promoteObservedInitialTasks(Map.of(id, initial.score())).get(id).status())
                     .isEqualTo(TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED);
@@ -191,17 +205,14 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                     .isEqualTo(TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED);
         }
         assertThat(scoreCore.countRunningTasks()).isEqualTo(100);
-        assertThatThrownBy(() -> service.prepare(com.xa.mass.server.testing.TaskCallers.caller("next", "admin"), "raw", "pending",rpcRequest()))
+        assertThatThrownBy(() -> service.ensureRawChannel(com.xa.mass.server.testing.TaskCallers.caller("next", "admin"), rpcRequest()))
                 .isInstanceOfSatisfying(com.xa.mass.server.error.ServerException.class,
                         error -> assertThat(error.errorCode()).isEqualTo(com.xa.mass.server.error.ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE));
-        var order = com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("pending")).get("pending").metadata());
-        assertThat(order).isNotNull();
-        assertThat(scoreCore.getScoreStates(List.of("pending")).get("pending").band()).isEqualTo(TaskScoreBandCore.TaskScoreBand.PRE_REVIEW);
-        service.prepare(com.xa.mass.server.testing.TaskCallers.caller("user0", "admin"), "raw", "rpc-0",rpcRequest());
+        assertThat(service.ensureRawChannel(com.xa.mass.server.testing.TaskCallers.caller("user0", "admin"), rpcRequest()).taskId()).isEqualTo(firstId);
         assertThat(scoreCore.countRunningTasks()).isEqualTo(100);
-        lifecycle.closeTask("rpc-0");
-        service.prepare(com.xa.mass.server.testing.TaskCallers.caller("next", "admin"), "raw", "pending",rpcRequest());
-        assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of("pending")).get("pending").metadata())).isEqualTo(order);
+        lifecycle.closeTask(firstId);
+        String pendingId = service.ensureRawChannel(com.xa.mass.server.testing.TaskCallers.caller("next", "admin"), rpcRequest()).taskId();
+        assertThat(com.xa.mass.server.task.directory.TaskAttribution.require(catalog.loadTaskAllocationDescriptors(List.of(pendingId)).get(pendingId).metadata()).userId()).isEqualTo("next");
         assertThat(scoreCore.countRunningTasks()).isEqualTo(100);
     }
 

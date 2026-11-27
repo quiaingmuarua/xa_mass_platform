@@ -171,7 +171,7 @@ final class AndroidRuntimeApiClientTest {
                 StandardCharsets.UTF_8
         );
         Map<String, Object> response;
-        if (path.endsWith("/rpc:prepare")) {
+        if (path.equals("/api/v1/tasks/rpc")) {
             assertEquals(Map.of("projectId", "default", "workerGroupId", AndroidWorkerProofConstants.WORKER_GROUP_ID), Jsons.parseObject(encodedRequest));
             response = Map.of("taskId", "xa-android-rpc-v1.android-demo-workers");
         } else if (path.endsWith("workers:network-observe")) {

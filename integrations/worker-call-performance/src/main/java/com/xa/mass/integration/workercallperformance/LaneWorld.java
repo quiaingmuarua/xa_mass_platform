@@ -85,13 +85,26 @@ final class LaneWorld {
     static Map<String, Object> bootstrap(CallApi api, Coordinates coordinates) throws Exception {
         if (coordinates.deployment() != null) preflight(api, coordinates);
         var prepared = new LinkedHashMap<String, String>();
-        for (String group : coordinates.groups()) {
-            String id = coordinates.rpcTaskId(group);
-            var response = api.post("/api/v1/tasks/" + id + "/rpc:prepare",
-                    Map.of("projectId", coordinates.project(), "workerGroupId", group));
-            if (!id.equals(CallApi.string(response, "taskId")))
-                throw new CallLoad.ProtocolFailure("RPC Task preparation changed identity");
-            prepared.put(group, id);
+        if (coordinates.deployment() != null) {
+            for (String group : coordinates.groups()) {
+                String id = coordinates.rpcTaskId(group);
+                var detail = api.get("/api/v1/projects/" + coordinates.project() + "/tasks/" + id);
+                var task = CallApi.object(detail.get("task"));
+                String band = CallApi.string(detail, "scoreBand");
+                if (!id.equals(CallApi.string(detail, "taskId"))
+                        || !group.equals(task.get("workerGroupId"))
+                        || !"PARK_WHEN_IDLE".equals(task.get("idleDisposition"))
+                        || !Set.of("running-initial", "running_visible").contains(band)) {
+                    throw new CallLoad.ProtocolFailure("Pre-provisioned RPC channel is unavailable for " + group);
+                }
+                prepared.put(group, id);
+            }
+        } else {
+            for (String group : coordinates.groups()) {
+                var response = api.post("/api/v1/tasks/rpc",
+                        Map.of("projectId", coordinates.project(), "workerGroupId", group));
+                prepared.put(group, CallApi.string(response, "taskId"));
+            }
         }
         var ids = readyGroups(api, coordinates);
         var groups = new LinkedHashMap<String, Object>();

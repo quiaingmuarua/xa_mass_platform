@@ -177,29 +177,45 @@ class TaskDirectoryRedisIntegrationTest {
         var lifecycle = new com.xa.mass.kernel.task.DefaultTaskLifecycleCommands(scores, catalog);
         var rpc = new com.xa.mass.server.task.call.TaskRpcProperties(java.time.Duration.ofDays(7), 1000, 1000, 10, 10, 10, 50, 100, 250, Map.of());
         var interruptedRuntime = mock(com.xa.mass.kernel.task.TaskRuntime.class);
+        var minted = new java.util.concurrent.atomic.AtomicReference<String>();
         when(interruptedRuntime.createTask(any())).thenAnswer(call -> {
-            var outcome = runtime.createTask(call.getArgument(0));
+            com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor created = call.getArgument(0);
+            minted.set(created.taskId());
+            var outcome = runtime.createTask(created);
             connection.sync().set(key("p"), "wrong-type");
             return outcome;
         });
-        var interruptedPreparation = new com.xa.mass.server.task.call.TaskRpcPreparationService(groups, catalog, interruptedRuntime,
-                lifecycle, matching, rpc, projects, guard, directory, scores);
-        assertThatThrownBy(() -> interruptedPreparation.prepare(CALLER, "raw", "rpc", request)).isInstanceOf(ServerException.class);
-        var saved = catalog.loadTaskAllocationDescriptors(List.of("rpc")).get("rpc");
-        assertThat(saved).isNotNull();
-        assertThat(scores.getScoreStates(List.of("rpc")).get("rpc").band()).isEqualTo(com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand.PRE_REVIEW);
-        connection.sync().unlink(key("p"));
-        var preparation = new com.xa.mass.server.task.call.TaskRpcPreparationService(groups, catalog, runtime,
-                lifecycle, matching, rpc, projects, guard, directory, scores);
-        preparation.prepare(CALLER, "raw", "rpc", request);
-        assertThat(catalog.loadTaskAllocationDescriptors(List.of("rpc")).get("rpc")).isEqualTo(saved);
-        assertThat(scores.getScoreStates(List.of("rpc")).get("rpc").isInitial()).isTrue();
+        var users = com.xa.mass.server.testing.TaskCallers.directory(
+                new com.xa.mass.server.user.UserDirectory.User("1001", "Admin", "admin", List.of()));
+        try (var rpcChannels = new TaskRpcChannelRegistry(client, scope.keyspace())) {
+            var interruptedPreparation = new com.xa.mass.server.task.call.TaskRpcPreparationService(groups, catalog, interruptedRuntime,
+                    lifecycle, matching, rpc, projects, guard, directory, scores, rpcChannels, users);
+            assertThatThrownBy(() -> interruptedPreparation.ensureRawChannel(CALLER, request)).isInstanceOf(ServerException.class);
+            String rpcId = minted.get();
+            assertThat(rpcId).matches("rpc-[0-9a-f]{32}");
+            var saved = catalog.loadTaskAllocationDescriptors(List.of(rpcId)).get(rpcId);
+            assertThat(saved).isNotNull();
+            assertThat(scores.getScoreStates(List.of(rpcId)).get(rpcId).band()).isEqualTo(com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand.PRE_REVIEW);
+            connection.sync().unlink(key("p"));
+            var preparation = new com.xa.mass.server.task.call.TaskRpcPreparationService(groups, catalog, runtime,
+                    lifecycle, matching, rpc, projects, guard, directory, scores, rpcChannels, users);
+            assertThat(preparation.ensureRawChannel(CALLER, request).taskId()).isEqualTo(rpcId);
+            assertThat(catalog.loadTaskAllocationDescriptors(List.of(rpcId)).get(rpcId)).isEqualTo(saved);
+            assertThat(scores.getScoreStates(List.of(rpcId)).get(rpcId).isInitial()).isTrue();
 
-        create("partial", "p", "1001", 123);
-        connection.sync().unlink(scope.keyspace().base() + ":task:partial:descriptor", key("p"));
-        var service = preparation;
-        assertThatThrownBy(() -> service.prepare(CALLER, "raw", "partial", request)).isInstanceOf(ServerException.class);
-        assertThat(catalog.loadTaskAllocationDescriptors(List.of("partial")).get("partial")).isNull();
-        assertThat(connection.sync().exists(key("p"))).isZero();
+            create("partial", "p", "1001", 123);
+            connection.sync().unlink(scope.keyspace().base() + ":task:partial:descriptor", key("p"));
+            var serviceCaller = com.xa.mass.server.task.access.TaskCaller.forProjectService(
+                    new com.xa.mass.server.project.ProjectDefinition("p", List.of("g"), "p"));
+            var serviceProjects = new com.xa.mass.server.project.ProjectDirectory(
+                    new com.xa.mass.server.project.ProjectAssemblyProperties(List.of()),
+                    List.of(new com.xa.mass.server.project.ProjectDefinition("p", List.of("g"), "p")));
+            var servicePreparation = new com.xa.mass.server.task.call.TaskRpcPreparationService(groups, catalog, runtime,
+                    lifecycle, matching, rpc, serviceProjects, guard, directory, scores, rpcChannels, users);
+            assertThatThrownBy(() -> servicePreparation.prepareServiceChannel(serviceCaller, "p", "partial", request))
+                    .isInstanceOf(ServerException.class);
+            assertThat(catalog.loadTaskAllocationDescriptors(List.of("partial")).get("partial")).isNull();
+            assertThat(connection.sync().exists(key("p"))).isZero();
+        }
     }
 }

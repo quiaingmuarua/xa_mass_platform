@@ -3,8 +3,11 @@ import { MOCK_TASK_PREVIEW, MOCK_WORKER_GROUPS } from "@/runtime-viewer/mock-dat
 import { mockWorkerGroupBindings } from "@/runtime-viewer/worker-group-bindings";
 import type { RefillTarget } from "@/runtime-viewer/types";
 import type { MockUserDirectorySource } from "@/user-directory-source";
-import { rpcTaskId } from "@/task-workbench/rpc-task";
 import { compareTaskIds, taskUserScore } from "@/task-user-id";
+
+function mockRpcTaskId(project: string, user: string, group: string): string {
+  return `rpc-mock-${project}-${user}-${group}`;
+}
 import { type TaskCaller, requireTaskCaller, selectTaskUser } from "@/task-caller";
 import {
   ProjectRequestError,
@@ -222,7 +225,7 @@ export function createMockProjectSource(
     }
   };
   for (const group of groups) {
-    const taskId = rpcTaskId("default", "demo", group.workerGroupId);
+    const taskId = mockRpcTaskId("default", "demo", group.workerGroupId);
     const preset = rpcPresets[group.workerGroupId];
     if (!tasks.some((row) => row.taskId === taskId))
       tasks.push(
@@ -266,7 +269,7 @@ export function createMockProjectSource(
     tasks.push(
       buildTask({
         taskId: managed
-          ? rpcTaskId("agentforge", "demo", groupId)
+          ? mockRpcTaskId("agentforge", "demo", groupId)
           : "mock-agentforge-finite",
         projectId: "agentforge",
         workerGroupId: groupId,
