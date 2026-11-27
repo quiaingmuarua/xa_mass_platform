@@ -62,7 +62,7 @@ GitHub CI 负责构建与 proof，主机消费已发布制品，不构建源码�
 | 入口 renderer | `deployment.json` 最近一次入口变更的 Release／commit／SHA、生成配置指纹 | 单独更新 renderer 不应把 Runtime 重标为其版本 |
 
 按实际已生效记录选择 renderer；不要从旧安装目录或历史排查段落推定当前版本。
-具体兼容与数据处理采用[目标 Release 契约](../../../distribution/server/RELEASE-4.7.md)。
+具体兼容与数据处理采用[目标 Release 契约](../../../distribution/server/RELEASE-4.8.md)。
 已结束升级和测量的摘要见[带日期的证据](../capabilities.md#external-public-closeout)，不是实时状态表。
 
 ### 访问与凭据
