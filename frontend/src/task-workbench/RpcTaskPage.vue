@@ -650,8 +650,8 @@ function scroll(event: { scrollTop: number }) {
           Task ID：<code class="tw-code-inline">{{ taskId }}</code>
         </p>
         <p class="raw-muted">
-          Task ID 由服务端内部生成，同一 Project、归属用户和 Group 复用唯一活跃通道。优先级
-          0，最大重试 3；创建时一并批准。
+          Task ID 由服务端内部生成，同一 Project、归属用户和 Group
+          复用唯一活跃通道。优先级 0，最大重试 3；创建时一并批准。
         </p>
 
         <GroupCapabilitiesCard

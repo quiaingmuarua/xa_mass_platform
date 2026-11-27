@@ -21,7 +21,10 @@ it("builds canonical UI slot keys without minting external Task IDs", () => {
 it("provisions RPC channels via POST /v1/tasks/rpc and returns the Server-minted taskId", async () => {
   const post = vi
     .fn()
-    .mockResolvedValueOnce({ status: 200, data: { taskId: "rpc-0123456789abcdef0123456789abcdef" } })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: { taskId: "rpc-0123456789abcdef0123456789abcdef" }
+    })
     .mockResolvedValueOnce({ status: 200, data: { taskId: "   " } });
   const client = new HttpTaskCallDebugClient("/api", {
     post

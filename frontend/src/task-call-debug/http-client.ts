@@ -51,8 +51,7 @@ export class HttpTaskCallDebugClient
       });
       if (response.status !== 200) throw schemaError(requestId);
       const parsed = taskCreateResponseSchema.safeParse(response.data);
-      if (!parsed.success || !parsed.data.taskId.trim())
-        throw schemaError(requestId);
+      if (!parsed.success || !parsed.data.taskId.trim()) throw schemaError(requestId);
       return parsed.data.taskId;
     } catch (error) {
       throw mapHttpError(error, requestId);

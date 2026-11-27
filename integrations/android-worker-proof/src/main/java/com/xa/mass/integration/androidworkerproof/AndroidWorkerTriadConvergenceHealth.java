@@ -75,6 +75,7 @@ final class AndroidWorkerTriadConvergenceHealth {
     }
 
     private void runOutage() {
+        triad.runtime().prepareRpcTask();
         TriadProofEvidence.Baseline baseline = baseline();
         evidence.workers(baseline.workersByApplicationId());
         AndroidWorkerTriadTopology.WorkerAddress target =
@@ -146,6 +147,7 @@ final class AndroidWorkerTriadConvergenceHealth {
     }
 
     private void runRecovery() {
+        triad.runtime().prepareRpcTask();
         TriadProofEvidence.Baseline baseline = baseline();
         Map<String, String> restored = triad.awaitAvailableWorld(
                 baseline.workersByApplicationId()

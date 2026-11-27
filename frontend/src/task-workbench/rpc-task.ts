@@ -16,7 +16,11 @@ export interface RpcTaskPreparationClient {
 }
 
 /** UI-local session slot key for tracking an in-flight RPC channel preparation. Never sent as a Task ID. */
-export function rpcChannelSlotKey(project: string, ownerUserId: string, group: string): string {
+export function rpcChannelSlotKey(
+  project: string,
+  ownerUserId: string,
+  group: string
+): string {
   const normalized = normalizeTaskUserId(ownerUserId);
   if (!project || !group) throw new Error("请选择 Project 和 Group。");
   return `${project}/${normalized}/${group}`;

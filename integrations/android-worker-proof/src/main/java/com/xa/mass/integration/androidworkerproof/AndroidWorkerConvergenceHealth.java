@@ -182,6 +182,7 @@ final class AndroidWorkerConvergenceHealth {
     }
 
     private void runProcessLoss() {
+        runtime.prepareRpcTask();
         ProofEvidence.Baseline baseline = activeBaseline();
         String workerId = baseline.workerId();
         Duration maximumWait = options.maximumWait();
@@ -251,6 +252,7 @@ final class AndroidWorkerConvergenceHealth {
     }
 
     private void runProcessLossRecovery() {
+        runtime.prepareRpcTask();
         ProofEvidence.Baseline baseline = ProofEvidence.readBaseline(
                 options.baselineFile(true),
                 options,
@@ -323,6 +325,7 @@ final class AndroidWorkerConvergenceHealth {
     }
 
     private void runServerRestart() {
+        runtime.prepareRpcTask();
         ProofEvidence.Baseline baseline = activeBaseline();
         String workerId = baseline.workerId();
         evidence.workerId(workerId);

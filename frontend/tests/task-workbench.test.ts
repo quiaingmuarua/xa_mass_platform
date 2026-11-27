@@ -137,7 +137,9 @@ async function mount(
     })
   };
   const preparationClient = {
-    prepareTask: vi.fn().mockResolvedValue("rpc-minted-00000000000000000000000000000001")
+    prepareTask: vi
+      .fn()
+      .mockResolvedValue("rpc-minted-00000000000000000000000000000001")
   };
   const session = createTaskSession(source, preparationClient, options.mode ?? "api");
   const pinia = createPinia();

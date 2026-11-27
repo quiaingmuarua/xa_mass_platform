@@ -237,6 +237,8 @@ final class WorkerTaskFaultConvergence {
                     .orElseThrow(() -> new IllegalStateException(
                             "Checkpoint witness batch is missing"
                     ));
+            runtime.prepareRpcTask(PHONE_GROUP);
+            runtime.prepareRpcTask(STRING_GROUP);
             workload.awaitWitness(checkpointBatch, options.maximumWait());
             awaitWaveWitnesses(
                     workload,
@@ -303,6 +305,7 @@ final class WorkerTaskFaultConvergence {
                     state.recoveredWorkerId(),
                     "disconnected"
             );
+            runtime.prepareRpcTask(STRING_GROUP);
             require(
                     runtime.takeResultStatuses(
                             runtime.rpcTaskId(STRING_GROUP),
