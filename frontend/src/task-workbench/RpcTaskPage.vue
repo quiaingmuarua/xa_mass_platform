@@ -96,9 +96,21 @@ const activeSlotRow = computed(() => {
 const attemptKey = computed(() =>
   view.value === "create" ? slotKey.value : routeTask.value
 );
-const attempt = computed(() =>
-  attemptKey.value ? session.rpcPreparations[attemptKey.value] : undefined
-);
+const attempt = computed(() => {
+  const entry = attemptKey.value
+    ? session.rpcPreparations[attemptKey.value]
+    : undefined;
+  if (
+    view.value === "create" &&
+    entry?.outcome === "ready" &&
+    entry.taskId &&
+    rows.value.some(
+      (row) => row.taskId === entry.taskId && row.scoreBand === "terminal"
+    )
+  )
+    return undefined;
+  return entry;
+});
 const taskId = computed(() =>
   view.value === "create"
     ? (activeSlotRow.value?.taskId ?? attempt.value?.taskId ?? "")
@@ -296,16 +308,29 @@ async function sync() {
   if (guard.isCurrent(ticket)) restoring = false;
 }
 
+function isRpcRoute() {
+  return (
+    route.path === "/runtime/tasks" &&
+    route.query.tab !== "finite" &&
+    route.query.tab !== "global" &&
+    (!route.query.project || route.query.project === projectId)
+  );
+}
+
 watch(
-  () => [route.fullPath, slotKey.value, activeSlotRow.value?.taskId ?? ""],
+  () => route.fullPath,
   () => {
-    if (
-      route.path === "/runtime/tasks" &&
-      route.query.tab !== "finite" &&
-      route.query.tab !== "global" &&
-      (!route.query.project || route.query.project === projectId)
-    )
-      void sync();
+    if (isRpcRoute()) void sync();
+  }
+);
+watch(
+  () => [view.value, slotKey.value, taskId.value] as const,
+  ([currentView, , id]) => {
+    if (!isRpcRoute() || currentView !== "create") return;
+    if (id) {
+      if (workspace.detailKey.value !== projectId + "/" + id)
+        void workspace.loadDetail(projectId, id);
+    } else workspace.clearDetail();
   }
 );
 onMounted(sync);
@@ -325,7 +350,9 @@ async function refresh() {
   const id = taskId.value;
   await Promise.allSettled([
     workspace.loadGroups(projectId),
-    ...(view.value === "list" ? [workspace.loadTasks(projectId)] : []),
+    ...(view.value === "list" || view.value === "create"
+      ? [workspace.loadTasks(projectId)]
+      : []),
     ...(id ? [workspace.loadDetail(projectId, id)] : []),
     ...(session.directory.stale ? [session.loadDirectory()] : [])
   ]);
@@ -338,6 +365,8 @@ async function prepare() {
   const ticket = guard.current();
   error.value = "";
   try {
+    if (session.rpcPreparations[key] && !attempt.value)
+      delete session.rpcPreparations[key];
     const existing = detail.value?.task;
     const metadata = existing
       ? Object.fromEntries(
@@ -402,6 +431,8 @@ async function closeRpcChannel() {
       if (failure && !guard.isDisposed()) error.value = failure;
       return;
     }
+    session.clearRpcPreparation(id);
+    if (saved.rpcCreatedId === id) saved.rpcCreatedId = "";
     await workspace.loadTasks(projectId);
     if (guard.isCurrent(ticket)) await workspace.loadDetail(projectId, id);
   } catch (cause) {

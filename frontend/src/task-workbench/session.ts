@@ -95,6 +95,11 @@ export function createTaskSession(
     }
     return { outcome: attempt.outcome, taskId: attempt.taskId };
   }
+  function clearRpcPreparation(taskId: string) {
+    for (const [key, entry] of Object.entries(rpcPreparations)) {
+      if (entry.taskId === taskId) delete rpcPreparations[key];
+    }
+  }
   let initialDirectory: Promise<void> | undefined;
   function ensureDirectory() {
     if (runtime.directory.value) return Promise.resolve();
@@ -114,6 +119,7 @@ export function createTaskSession(
     navigation,
     rpcPreparations,
     prepareRpc,
+    clearRpcPreparation,
     dispose() {
       runtime.dispose();
       finite.dispose();
