@@ -93,7 +93,9 @@ class TaskAccessTest {
     }
     @Test void approvalChecksTheCurrentCountAndRetainsIdempotentApprovedBehavior() {
         var commands = mock(TaskLifecycleCommands.class);
-        var lifecycle = new TaskLifecycleService(commands, catalog, guard, items, scores, runtime, java.util.List.of());
+        var lifecycle = new TaskLifecycleService(commands, catalog, guard, items, scores, runtime, java.util.List.of(),
+                com.xa.mass.server.testsupport.TaskRetentionFixtures.rpcChannels(),
+                mock(com.xa.mass.server.task.call.TaskCallSubmissionService.class));
         when(catalog.loadTaskAllocationDescriptors(anyList())).thenReturn(Map.of("t", task("t", "1001", "raw")));
         when(scores.getScoreStates(List.of("t"))).thenReturn(Map.of("t", new TaskScoreBandCore.TaskScoreState("t", 1,
                 TaskScoreBandCore.TaskScoreBand.PRE_REVIEW, 0L, 0)));
@@ -118,5 +120,44 @@ class TaskAccessTest {
         assertThatThrownBy(() -> lifecycle.approve(caller, "t", 3, null)).isInstanceOfSatisfying(ServerException.class,
                 error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_STATE_CONFLICT));
         verifyNoInteractions(items);
+    }
+
+    @Test void closeAllowsAdminForRawRpcOnlyAndReleasesChannelSlotAndDescriptorCache() {
+        var commands = mock(TaskLifecycleCommands.class);
+        var rpcChannels = mock(com.xa.mass.server.task.directory.TaskRpcChannelRegistry.class);
+        var submission = mock(com.xa.mass.server.task.call.TaskCallSubmissionService.class);
+        var lifecycle = new TaskLifecycleService(commands, catalog, guard, items, scores, runtime, java.util.List.of(), rpcChannels, submission);
+        var admin = com.xa.mass.server.testing.TaskCallers.caller("1000", "admin");
+        String slotKey = "a".repeat(64);
+        var rawMeta = new java.util.LinkedHashMap<>(new TaskAttribution("p", 1L, "1001").stamp(Map.of(
+                TaskCaller.INPUT_OWNER, TaskCaller.RAW_INPUT,
+                com.xa.mass.server.task.directory.TaskRpcChannelRegistry.METADATA_KEY, slotKey)));
+        var rawRpc = new TaskRuntime.TaskDescriptor("rpc-1", "g", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE,
+                Map.of("priority", "0", "maxRetryTimes", "3"), List.of(), null, rawMeta);
+        var smsMeta = new java.util.LinkedHashMap<>(new TaskAttribution("p", 1L, "1001").stamp(Map.of(TaskCaller.INPUT_OWNER, "sms")));
+        var smsRpc = new TaskRuntime.TaskDescriptor("sms-1", "g", TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE,
+                Map.of("priority", "0", "maxRetryTimes", "3"), List.of(), null, smsMeta);
+        when(catalog.loadTaskAllocationDescriptors(List.of("rpc-1"))).thenReturn(Map.of("rpc-1", rawRpc));
+        when(catalog.loadTaskAllocationDescriptors(List.of("sms-1"))).thenReturn(Map.of("sms-1", smsRpc));
+        when(runtime.loadTaskDataStates(List.of("rpc-1"))).thenReturn(Map.of("rpc-1", new TaskRuntime.TaskDataState(TaskRuntime.TaskDataPhase.OPEN, null)));
+        when(runtime.loadTaskDataStates(List.of("sms-1"))).thenReturn(Map.of("sms-1", new TaskRuntime.TaskDataState(TaskRuntime.TaskDataPhase.OPEN, null)));
+
+        // Non-admin operator cannot close even their own raw RPC Task.
+        assertThatThrownBy(() -> lifecycle.close(caller, "rpc-1")).isInstanceOfSatisfying(ServerException.class,
+                error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_ACCESS_DENIED));
+        // Scenario-owned RPC Tasks cannot be closed via HTTP even by admin.
+        assertThatThrownBy(() -> lifecycle.close(admin, "sms-1")).isInstanceOfSatisfying(ServerException.class,
+                error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED));
+        // Approve stays strictly finite-only.
+        assertThatThrownBy(() -> lifecycle.approve(admin, "rpc-1", 1, null)).isInstanceOfSatisfying(ServerException.class,
+                error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED));
+        verifyNoInteractions(commands, rpcChannels, submission);
+
+        // Admin closes raw RPC channel -> Kernel close + slot release + descriptor cache eviction.
+        when(commands.closeTask("rpc-1")).thenReturn(new TaskLifecycleCommands.TaskCloseResult(TaskLifecycleCommands.TaskCloseStatus.CLOSED));
+        assertThat(lifecycle.close(admin, "rpc-1").status().wireValue()).isEqualTo("applied");
+        verify(commands).closeTask("rpc-1");
+        verify(rpcChannels).remove(slotKey, "rpc-1");
+        verify(submission).evictDescriptor("rpc-1");
     }
 }

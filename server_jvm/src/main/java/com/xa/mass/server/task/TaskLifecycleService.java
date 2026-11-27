@@ -16,7 +16,9 @@ import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.operation.OperationGuard;
 import com.xa.mass.server.task.access.TaskCaller;
+import com.xa.mass.server.task.call.TaskCallSubmissionService;
 import com.xa.mass.server.task.credit.TaskCreditConfirmation;
+import com.xa.mass.server.task.directory.TaskRpcChannelRegistry;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -34,11 +36,14 @@ public final class TaskLifecycleService {
     private final TaskItemScoreBandCore itemScores;
     private final TaskScoreBandCore taskScores;
     private final TaskRuntime runtime;
+    private final TaskRpcChannelRegistry rpcChannels;
+    private final TaskCallSubmissionService callSubmission;
 
     public TaskLifecycleService(
             TaskLifecycleCommands lifecycle, TaskResourceCatalog catalog, OperationGuard operations,
             TaskItemScoreBandCore itemScores, TaskScoreBandCore taskScores, TaskRuntime runtime,
-            List<FiniteTaskApprovalAdmission> admissions) {
+            List<FiniteTaskApprovalAdmission> admissions,
+            TaskRpcChannelRegistry rpcChannels, TaskCallSubmissionService callSubmission) {
         this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
         this.admissions = admissions.stream().collect(
                 Collectors.toUnmodifiableMap(FiniteTaskApprovalAdmission::inputOwner, a -> a));
@@ -47,6 +52,8 @@ public final class TaskLifecycleService {
         this.itemScores = Objects.requireNonNull(itemScores, "itemScores");
         this.taskScores = Objects.requireNonNull(taskScores, "taskScores");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
+        this.rpcChannels = Objects.requireNonNull(rpcChannels, "rpcChannels");
+        this.callSubmission = Objects.requireNonNull(callSubmission, "callSubmission");
     }
 
     public ActionOutcome approve(
@@ -101,25 +108,61 @@ public final class TaskLifecycleService {
 
     private ActionOutcome closeObserved(TaskCaller caller, String taskId) {
         String operation = "taskLifecycle.close";
-        TaskDescriptor task = requireFiniteTask(caller, taskId, operation);
-        var admission = admissions.get(task.metadata().getOrDefault(TaskCaller.INPUT_OWNER, ""));
-        if (admission != null) {
-            admission.beforeClose(caller, task);
+        TaskDescriptor task = requireMutableTask(caller, taskId, operation);
+        boolean rawRpc = false;
+        if (task.idleDisposition() == TaskIdleDisposition.CLOSE_WHEN_IDLE) {
+            var admission = admissions.get(task.metadata().getOrDefault(TaskCaller.INPUT_OWNER, ""));
+            if (admission != null) {
+                admission.beforeClose(caller, task);
+            }
+        } else if (task.idleDisposition() == TaskIdleDisposition.PARK_WHEN_IDLE) {
+            caller.requireAdmin();
+            if (!TaskCaller.RAW_INPUT.equals(task.metadata().get(TaskCaller.INPUT_OWNER))) {
+                throw failure(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, operation);
+            }
+            rawRpc = true;
+        } else {
+            throw failure(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, operation);
         }
         TaskCloseResult result = withTaskData(operation, () -> lifecycle.closeTask(taskId));
         if (result == null) {
             throw unavailable(operation, null);
         }
         return switch (result.status()) {
-            case CLOSED -> ActionOutcome.applied();
-            case ALREADY_CLOSED -> ActionOutcome.unchanged();
+            case CLOSED -> {
+                if (rawRpc) releaseRpcChannel(task, operation);
+                yield ActionOutcome.applied();
+            }
+            case ALREADY_CLOSED -> {
+                if (rawRpc) releaseRpcChannel(task, operation);
+                yield ActionOutcome.unchanged();
+            }
             case NOT_FOUND -> throw failure(ServerErrorCode.TASK_NOT_FOUND, operation);
             case INVALID -> throw failure(ServerErrorCode.TASK_STATE_CONFLICT, operation);
             case RETRYABLE -> throw failure(ServerErrorCode.TASK_DATA_UNAVAILABLE, operation);
         };
     }
 
+    private void releaseRpcChannel(TaskDescriptor task, String operation) {
+        String channelKey = task.metadata().get(TaskRpcChannelRegistry.METADATA_KEY);
+        if (channelKey != null) {
+            withTaskData(operation, () -> {
+                rpcChannels.remove(channelKey, task.taskId());
+                return null;
+            });
+        }
+        callSubmission.evictDescriptor(task.taskId());
+    }
+
     private TaskDescriptor requireFiniteTask(TaskCaller caller, String taskId, String operation) {
+        TaskDescriptor descriptor = requireMutableTask(caller, taskId, operation);
+        if (descriptor.idleDisposition() != TaskIdleDisposition.CLOSE_WHEN_IDLE) {
+            throw failure(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, operation);
+        }
+        return descriptor;
+    }
+
+    private TaskDescriptor requireMutableTask(TaskCaller caller, String taskId, String operation) {
         TaskDescriptor descriptor = withTaskData(
                 operation, () -> catalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId));
         if (descriptor == null) {
@@ -132,9 +175,6 @@ public final class TaskLifecycleService {
         }
         if (data.phase() == TaskDataPhase.PURGING) {
             throw failure(ServerErrorCode.TASK_CLEANUP_IN_PROGRESS, operation);
-        }
-        if (descriptor.idleDisposition() != TaskIdleDisposition.CLOSE_WHEN_IDLE) {
-            throw failure(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, operation);
         }
         return descriptor;
     }

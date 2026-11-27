@@ -69,6 +69,13 @@ public final class TaskCallSubmissionService {
         return submit(caller, inputOwner, taskId, items, true);
     }
 
+    /** Evicts a cached immutable descriptor when a raw RPC channel is closed or retired. */
+    public void evictDescriptor(String taskId) {
+        if (taskId != null) {
+            descriptors.remove(taskId);
+        }
+    }
+
     private SubmittedCall submit(
             TaskCaller caller, String inputOwner, String taskId, List<TaskItemRequest> items, boolean observe) {
         if (taskId == null || taskId.isBlank()) {

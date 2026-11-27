@@ -172,7 +172,12 @@ class TaskInputWorkflowTest {
     @Test void importAdmissionBlocksEveryOtherMutationButAllowsItsOwnBatches() throws Exception {
         pending("t");
         var commands = mock(TaskLifecycleCommands.class);
-        var lifecycle = new TaskLifecycleService(commands, catalog, guard, org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class), org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class), runtime, java.util.List.of());
+        var lifecycle = new TaskLifecycleService(commands, catalog, guard,
+                org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskItemScoreBandCore.class),
+                org.mockito.Mockito.mock(com.xa.mass.kernel.score.TaskScoreBandCore.class),
+                runtime, java.util.List.of(),
+                com.xa.mass.server.testsupport.TaskRetentionFixtures.rpcChannels(),
+                mock(com.xa.mass.server.task.call.TaskCallSubmissionService.class));
         var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var operation = executor.submit(() -> guard.taskMutation("t", () -> {

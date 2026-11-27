@@ -235,6 +235,35 @@ export function createTaskManagementStore(
         busy.value = false;
       }
     }
+    async function closeRpcTask(
+      projectId: string,
+      task: ProjectTask,
+      fresh: boolean
+    ): Promise<boolean> {
+      admit();
+      if (
+        !fresh ||
+        !projectId ||
+        task.task?.projectId !== projectId ||
+        task.task.idleDisposition !== "PARK_WHEN_IDLE" ||
+        task.task.metadata["server.inputOwner"] !== "raw" ||
+        task.scoreBand === null ||
+        task.scoreBand === "terminal"
+      )
+        throw new Error("当前快照不允许关闭此 RPC 通道，请重新读取。");
+      const state = project(projectId);
+      state.error = undefined;
+      busy.value = true;
+      try {
+        await client.closeTask(captureTaskCaller(), task.taskId);
+        return true;
+      } catch (failure) {
+        state.error = presentFiniteTaskError(failure);
+        return false;
+      } finally {
+        busy.value = false;
+      }
+    }
     return {
       busy,
       project,
@@ -242,6 +271,7 @@ export function createTaskManagementStore(
       submit,
       ensureDirectory,
       mutate,
+      closeRpcTask,
       finishSubmission,
       dispose() {
         disposed = true;

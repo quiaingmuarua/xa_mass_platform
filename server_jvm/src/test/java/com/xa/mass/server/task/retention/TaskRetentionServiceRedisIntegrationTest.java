@@ -47,7 +47,11 @@ class TaskRetentionServiceRedisIntegrationTest {
     private RedisTaskResourceCatalog catalog;
     private TaskDirectory directory;
     private TaskCreationRegistry creations;
+    private TaskRpcChannelRegistry rpcChannels;
     private com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts;
+    private ProjectDirectory projects;
+    private WorkerResourceCatalog groups;
+    private WorkerMatchingCatalog matching;
     private TaskCreationService creator;
     private TaskHistoryPublisher archive;
     private TaskHistoryStore historyStore;
@@ -65,11 +69,12 @@ class TaskRetentionServiceRedisIntegrationTest {
         runtime = new RedisTaskRuntime(client, scores, items, scope.keyspace(), java.time.Duration.ofDays(7).toMillis(), clock::get);
         catalog = new RedisTaskResourceCatalog(client, scope.keyspace());
         creations = new TaskCreationRegistry(client, scope.keyspace());
+        rpcChannels = new TaskRpcChannelRegistry(client, scope.keyspace());
         creditStarts = new com.xa.mass.server.task.credit.TaskCreditStartStore(client, scope.keyspace());
-        var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("p", List.of("g"), null))), List.of());
-        var groups = mock(WorkerResourceCatalog.class);
+        projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of(new ProjectDefinition("p", List.of("g"), null))), List.of());
+        groups = mock(WorkerResourceCatalog.class);
         when(groups.getWorkerGroupDescriptors(anyList())).thenReturn(Map.of("g", new WorkerResourceCatalog.WorkerGroupDescriptor("g", Map.of(), Set.of("event"))));
-        var matching = mock(WorkerMatchingCatalog.class);
+        matching = mock(WorkerMatchingCatalog.class);
         when(matching.normalizeRefill(anyString(), anyList())).thenAnswer(call -> call.getArgument(1));
         directory = new TaskDirectory(client, scope.keyspace(), projects, catalog, scores, groups, guard, runtime);
         creator = new TaskCreationService(groups, matching, runtime, projects, catalog, scores, guard, directory, creations);
@@ -85,6 +90,7 @@ class TaskRetentionServiceRedisIntegrationTest {
         if (connection != null) scope.cleanup(connection.sync());
         if (directory != null) directory.close();
         if (creations != null) creations.close();
+        if (rpcChannels != null) rpcChannels.close();
         if (creditStarts != null) creditStarts.close();
         if (runtime != null) runtime.close();
         if (catalog != null) catalog.close();
@@ -94,7 +100,7 @@ class TaskRetentionServiceRedisIntegrationTest {
         if (client != null) client.shutdown();
     }
     private TaskRetentionService maintenance(TaskHistoryPublisher archive, TaskCreationRegistry registry) {
-        return new TaskRetentionService(runtime, catalog, scores, items, directory, registry, archive, historyStore, scope.keyspace(), guard, properties, creditStarts, clock::get);
+        return new TaskRetentionService(runtime, catalog, scores, items, directory, registry, rpcChannels, archive, historyStore, scope.keyspace(), guard, properties, creditStarts, clock::get);
     }
     private String historyId(String id) {
         return TaskHistoryStore.historyId(scope.keyspace().base(), id, runtime.loadTaskDataStates(List.of(id)).get(id).frozenAtMillis());
@@ -211,7 +217,7 @@ class TaskRetentionServiceRedisIntegrationTest {
         var interruptedDirectory = spy(directory);
         var interruptedHistory = spy(archive);
         var interrupted = new TaskRetentionService(interruptedRuntime, catalog, scores, items, interruptedDirectory,
-                creations, interruptedHistory, historyStore, scope.keyspace(), guard, properties, creditStarts, clock::get);
+                creations, rpcChannels, interruptedHistory, historyStore, scope.keyspace(), guard, properties, creditStarts, clock::get);
         boolean publishing = step.equals("release") || step.equals("publish");
         clock.addAndGet(publishing ? Duration.ofHours(1).toMillis() : Duration.ofDays(8).toMillis());
         if (step.equals("publish")) {
@@ -298,7 +304,7 @@ class TaskRetentionServiceRedisIntegrationTest {
         }).when(observedScores).scanTerminalTasks(anyLong(), anyString(), anyInt());
         var files = spy(archive);
         var service = new TaskRetentionService(runtime, catalog, observedScores, items, directory, creations,
-                files, historyStore, scope.keyspace(), guard, properties, creditStarts, clock::get);
+                rpcChannels, files, historyStore, scope.keyspace(), guard, properties, creditStarts, clock::get);
         service.runOnce();
         verify(files, never()).publish(any(), any(), any(), anyLong());
         assertThat(scores.getScoreStates(List.of(id)).get(id)).isNull();
@@ -315,5 +321,54 @@ class TaskRetentionServiceRedisIntegrationTest {
         }
         assertThat(directory.contains("p", id)).isFalse();
         assertThat(runtime.loadTaskDataStates(List.of(id)).get(id).phase()).isEqualTo(TaskDataPhase.PURGING);
+    }
+
+    @Test void closedRpcChannelFreesSlotImmediatelyAndPurgesWithoutWritingSqliteHistory() throws Exception {
+        var lifecycleCommands = new com.xa.mass.kernel.task.DefaultTaskLifecycleCommands(scores, catalog);
+        var users = TaskCallers.directory(new com.xa.mass.server.user.UserDirectory.User("1000", "Admin", "admin", List.of()));
+        var rpcProps = new com.xa.mass.server.task.call.TaskRpcProperties(Duration.ofDays(7), 1000, 1000, 10, 10, 10, 50, 100, 250, Map.of());
+        var rpcPrep = new com.xa.mass.server.task.call.TaskRpcPreparationService(
+                groups, catalog, runtime, lifecycleCommands, matching, rpcProps, projects, guard, directory, scores, rpcChannels, users);
+        var callSubmission = mock(com.xa.mass.server.task.call.TaskCallSubmissionService.class);
+        var taskLifecycle = new TaskLifecycleService(lifecycleCommands, catalog, guard, items, scores, runtime, List.of(), rpcChannels, callSubmission);
+        var req = new com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest("p", "g", null, Map.of(), List.of());
+
+        String firstId = rpcPrep.ensureRawChannel(CALLER, req).taskId();
+        runtime.appendItems(firstId, List.of(new TaskItem("rpc-item", "event", clock.get(), Map.of("k", "v"), 1,
+                clock.get() + 60_000, new WorkerQuery("workerId", "w"))));
+        runtime.storeTaskItemSuccessResults(firstId, Map.of("rpc-item", new TaskItemSuccessResult(6, clock.get(), "ok")));
+
+        // Close frees the active channel slot immediately and evicts descriptor cache.
+        assertThat(taskLifecycle.close(CALLER, firstId).status().wireValue()).isEqualTo("applied");
+        verify(callSubmission).evictDescriptor(firstId);
+        String secondId = rpcPrep.ensureRawChannel(CALLER, req).taskId();
+        assertThat(secondId).isNotEqualTo(firstId);
+
+        // Before grace, retention keeps the closed RPC Task's Redis data intact.
+        var service = maintenance(archive, creations);
+        clock.addAndGet(Duration.ofMinutes(59).toMillis());
+        assertThat(service.maintain(firstId, clock.get()).retention().phase()).isEqualTo("OPEN");
+        assertThat(runtime.loadTaskItemResults(firstId, List.of("rpc-item")).get("rpc-item")).isNotNull();
+
+        // At grace, retention runs purge-only Redis cleanup with ZERO SQLite rows and leaves secondId intact.
+        clock.addAndGet(Duration.ofMinutes(1).toMillis());
+        service.runOnce();
+        assertThat(directory.contains("p", firstId)).isFalse();
+        assertThat(catalog.loadTaskAllocationDescriptors(List.of(firstId)).get(firstId)).isNull();
+        assertThat(scores.getScoreStates(List.of(firstId)).get(firstId)).isNull();
+        assertThat(connection.sync().exists(
+                TaskRedisKeys.items(scope.keyspace(), firstId),
+                TaskRedisKeys.results(scope.keyspace(), firstId),
+                TaskRedisKeys.itemScores(scope.keyspace(), firstId))).isZero();
+        assertThat(historyStore.list(scope.keyspace().base(), null, null, null, null, 10, clock.get()).entries()).isEmpty();
+        assertThat(rpcPrep.ensureRawChannel(CALLER, req).taskId()).isEqualTo(secondId);
+
+        // Admin retention:run immediately purges a closed RPC channel before grace with zero SQLite rows.
+        assertThat(taskLifecycle.close(CALLER, secondId).status().wireValue()).isEqualTo("applied");
+        var manual = service.run(CALLER, secondId);
+        assertThat(manual.outcome().status().wireValue()).isEqualTo("applied");
+        assertThat(manual.retention().phase()).isEqualTo("PURGED");
+        assertThat(scores.getScoreStates(List.of(secondId)).get(secondId)).isNull();
+        assertThat(historyStore.list(scope.keyspace().base(), null, null, null, null, 10, clock.get()).entries()).isEmpty();
     }
 }

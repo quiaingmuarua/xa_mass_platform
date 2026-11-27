@@ -124,17 +124,30 @@ class FiniteTaskRetentionRedisIntegrationTest {
         assertThat(scores.getScoreStates(List.of("task")).get("task")).isNull();
     }
 
-    @Test void onlyFiniteTerminalExactIdentityCanBeReclaimedAndOtherTasksSurvive() {
+    @Test void onlyFiniteTasksCanFreezeOrReleaseWhileTerminalRpcTasksSupportPurgeOnlyCleanup() {
         create("finite", TaskIdleDisposition.CLOSE_WHEN_IDLE);
         create("rpc", TaskIdleDisposition.PARK_WHEN_IDLE);
         assertThatThrownBy(() -> runtime.freezeTaskData("finite", -clock.get())).hasMessageContaining("fence");
         long terminal = close("finite");
         assertThatThrownBy(() -> runtime.freezeTaskData("finite", terminal - 1)).hasMessageContaining("fence");
+        // Active (non-terminal) RPC Task cannot be purged.
+        assertThatThrownBy(() -> runtime.beginTaskPurge("rpc", -clock.get())).hasMessageContaining("fence");
         long rpcTerminal = close("rpc");
-        assertThatThrownBy(() -> runtime.beginTaskPurge("rpc", rpcTerminal)).hasMessageContaining("finite");
+        // Closed RPC Task still rejects finite-only archival (freeze/release) but succeeds on purge-only cleanup.
+        assertThatThrownBy(() -> runtime.freezeTaskData("rpc", rpcTerminal)).hasMessageContaining("finite");
+        assertThatThrownBy(() -> runtime.releaseTaskPayloads("rpc", rpcTerminal)).hasMessageContaining("finite");
         runtime.beginTaskPurge("finite", terminal);
         runtime.purgeTaskData("finite", terminal);
         runtime.finishTaskPurge("finite", terminal);
         assertThat(scores.getScoreStates(List.of("rpc")).get("rpc")).isNotNull();
+        runtime.appendItems("rpc", List.of(input("rpc-item")));
+        assertThat(runtime.beginTaskPurge("rpc", rpcTerminal)).isTrue();
+        assertThat(runtime.purgeTaskData("rpc", rpcTerminal)).isTrue();
+        assertThat(runtime.finishTaskPurge("rpc", rpcTerminal)).isTrue();
+        assertThat(scores.getScoreStates(List.of("rpc")).get("rpc")).isNull();
+        assertThat(connection.sync().exists(
+                TaskRedisKeys.items(scope.keyspace(), "rpc"),
+                TaskRedisKeys.results(scope.keyspace(), "rpc"),
+                TaskRedisKeys.itemScores(scope.keyspace(), "rpc"))).isZero();
     }
 }

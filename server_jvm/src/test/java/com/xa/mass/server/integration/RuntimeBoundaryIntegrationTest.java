@@ -2196,13 +2196,40 @@ class RuntimeBoundaryIntegrationTest {
                     .contains("\"status\":\"already_registered\"");
             assertThat(JSON.readTree(repeatedRegistration.body()).has("taskId")).isFalse();
             assertThat(managedTaskId(workerGroupId)).isEqualTo(taskId);
+            HttpResponse<String> managedApprove = send(
+                    "POST",
+                    "/api/v1/tasks/" + taskId + "/approve",
+                    "{\"expectedItemCount\":1}"
+            );
+            assertThat(managedApprove.statusCode()).isEqualTo(400);
+            assertThat(managedApprove.body()).contains("\"code\":12008");
             HttpResponse<String> managedClose = send(
                     "POST",
                     "/api/v1/tasks/" + taskId + "/close",
                     null
             );
-            assertThat(managedClose.statusCode()).isEqualTo(400);
-            assertThat(managedClose.body()).contains("\"code\":12008");
+            assertThat(managedClose.statusCode()).isEqualTo(200);
+            assertThat(managedClose.body()).contains("\"status\":\"applied\"");
+            if (transportProfile == TransportProfile.POLLING) {
+                HttpResponse<String> closedCall = send(
+                        "POST",
+                        "/api/v1/tasks/" + taskId + "/items:call",
+                        """
+                                {
+                                  "items": [{
+                                    "messageId": "after-close-%s",
+                                    "eventCode": "%s",
+                                    "payload": {"value": "input"},
+                                    "workerSelector": {"executorName":"workerId","input":"%s"}
+                                  }],
+                                  "waitTimeoutMillis": 1000
+                                }
+                                """.formatted(workerId, TEST_EVENT_CODE, workerId)
+                );
+                assertThat(closedCall.statusCode()).isEqualTo(400);
+                assertThat(closedCall.body()).contains("\"code\":12001");
+            }
+            assertThat(managedTaskId(workerGroupId)).isNotEqualTo(taskId);
             if (transportProfile == TransportProfile.POLLING) {
                 assertThat(workerProperties.loadWorkerFacts(workerGroupId, List.of(workerId)))
                         .containsEntry(workerId, null);

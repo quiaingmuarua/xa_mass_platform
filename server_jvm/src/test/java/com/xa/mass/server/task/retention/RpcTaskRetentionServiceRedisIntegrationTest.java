@@ -78,6 +78,7 @@ class RpcTaskRetentionServiceRedisIntegrationTest {
     }
     private TaskRetentionService maintenance(boolean enabled) {
         return new TaskRetentionService(runtime, catalog, scores, items, mock(TaskDirectory.class), mock(TaskCreationRegistry.class),
+                com.xa.mass.server.testsupport.TaskRetentionFixtures.rpcChannels(),
                 history, historyStore, scope.keyspace(), new OperationGuard(), properties(enabled), mock(TaskCreditStartStore.class), clock::get);
     }
     private void create(String id, TaskIdleDisposition disposition, Map<String, String> metadata) {
@@ -207,10 +208,17 @@ class RpcTaskRetentionServiceRedisIntegrationTest {
         assertThat(items.getItemScoreStates("rpc", List.of("old")).get("old")).isNull();
     }
 
-    @Test void enablingRpcMaintenanceDoesNotExpandTheFiniteOnlyManualOperation() {
+    @Test void manualRetentionRejectsActiveRpcTaskAndPurgesClosedRpcTaskWithoutSqliteHistory() throws Exception {
         create("rpc", TaskIdleDisposition.PARK_WHEN_IDLE, raw()); park("rpc");
         assertThatThrownBy(() -> maintenance(true).run(TaskCallers.caller("1000", "admin"), "rpc"))
-                .hasMessageContaining("Only finite Tasks support retention");
+                .isInstanceOfSatisfying(com.xa.mass.server.error.ServerException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(com.xa.mass.server.error.ServerErrorCode.TASK_STATE_CONFLICT));
+        scores.closeScore("rpc");
+        var result = maintenance(true).run(TaskCallers.caller("1000", "admin"), "rpc");
+        assertThat(result.outcome().status().wireValue()).isEqualTo("applied");
+        assertThat(result.retention().phase()).isEqualTo("PURGED");
+        assertThat(scores.getScoreStates(List.of("rpc")).get("rpc")).isNull();
+        assertThat(historyStore.list(scope.keyspace().base(), null, null, null, null, 10, clock.get()).entries()).isEmpty();
     }
 
     @Test void corruptionAfterScanCannotPinTheCachedPageOrBlockALaterTaskForever() {

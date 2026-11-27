@@ -147,7 +147,9 @@ public class TaskControlController {
         return taskLifecycle.approve(caller, taskId, request.expectedItemCount(), request.credits());
     }
 
-    @Operation(summary = "Close a finite Task")
+    @Operation(summary = "Close a finite Task or an administrator-managed raw RPC channel",
+            description = "Closing a raw PARK_WHEN_IDLE RPC channel requires administrator permission, releases its active channel slot immediately, "
+                    + "stops further items:call admissions, and schedules purge-only Redis cleanup after the configured grace period.")
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
@@ -159,6 +161,13 @@ public class TaskControlController {
             @ApiResponse(
                     responseCode = "400",
                     description = "Task business request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "403",
+                    description = "Task access or administrator permission was denied",
                     content = @Content(schema = @Schema(
                             implementation = ApiErrorResponse.class
                     ))
