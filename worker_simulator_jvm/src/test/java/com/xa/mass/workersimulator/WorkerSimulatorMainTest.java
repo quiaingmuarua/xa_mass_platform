@@ -72,6 +72,11 @@ class WorkerSimulatorMainTest {
         Path configuration = directory.resolve("persistent-20-host.json");
         Files.writeString(configuration, Jsons.toJson(input));
         WorkerSimulatorConfig config = WorkerSimulatorConfig.load(configuration);
+        assertThat(config.workerGroups()).singleElement().satisfies(group -> {
+            assertThat(group.reconnectPolicy().maxUnstableAttempts()).isEqualTo(60);
+            assertThat(group.reconnectPolicy().reconnectInterval()).isEqualTo(java.time.Duration.ofSeconds(2));
+            assertThat(group.reconnectPolicy().stableConnectionDuration()).isEqualTo(java.time.Duration.ofSeconds(10));
+        });
         var noConnections = WorkerSimulatorStartupPlan.parse(Map.of("initialWorkers", List.of(), "scheduledStops", List.of()));
         try (WorkerSimulator simulator = WorkerSimulator.create(config)) {
             simulator.start(noConnections);
