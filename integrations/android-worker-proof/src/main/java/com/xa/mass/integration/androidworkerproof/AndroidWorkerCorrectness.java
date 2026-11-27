@@ -214,6 +214,7 @@ final class AndroidWorkerCorrectness {
     }
 
     private void runProcessRestart() {
+        runtime.prepareRpcTask();
         ProofEvidence.Baseline baseline = ProofEvidence.readBaseline(
                 options.baselineFile(true),
                 options,

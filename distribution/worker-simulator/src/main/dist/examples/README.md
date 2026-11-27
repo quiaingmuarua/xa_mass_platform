@@ -51,11 +51,13 @@ Server version, full commit and configuration identity. Relative file paths reso
 against this configuration's directory, independently of the shell directory.
 
 Use two distinct Group IDs with existing Any supply/query and MD5 declarations,
-and an access key granted to the named Project. The recorded assignment ceiling
+an access key granted to the named Project, and `rpcTaskIds` referencing the two
+administrator-provisioned RPC channels (`POST /api/v1/tasks/rpc` with `ownerUserId`
+set to that operator user). The deployed runner only validates those pre-provisioned
+channels via read-only `GET`; it never creates RPC Tasks. The recorded assignment ceiling
 uses the production default `100` in the template; replace it if the recorded
 Server configuration differs. The runner does not change it. Keep `consumerId` stable
-for the same Project/Group bindings: the setup reuses its explicit RPC Task IDs,
-and a conflicting saved descriptor fails setup.
+for the same Project/Group bindings.
 
 From the extracted kit:
 

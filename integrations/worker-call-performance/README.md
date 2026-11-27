@@ -1,7 +1,7 @@
 # Worker Call Performance
 
 RPC Tasks are explicitly prepared with stable fixture IDs via
-`POST /api/v1/tasks/{taskId}/rpc:prepare` during setup, before readiness/load
+`POST /api/v1/tasks/rpc` during local setup (or read-only `GET /api/v1/projects/{projectId}/tasks/{taskId}` for deployed external configs), before readiness/load
 measurement. Project directory reads only expose bound Groups. Preparation does
 not alter the lane's supply configuration, workload, deadlines or assertions.
 

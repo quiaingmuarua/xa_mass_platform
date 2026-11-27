@@ -5,6 +5,7 @@ import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.server.operation.OperationGuard;
 import com.xa.mass.server.task.directory.TaskCreationRegistry;
+import com.xa.mass.server.task.directory.TaskRpcChannelRegistry;
 import com.xa.mass.server.task.result.TaskResultsExportService;
 import com.xa.mass.server.task.retention.*;
 import java.nio.file.Path;
@@ -44,6 +45,43 @@ public final class TaskRetentionFixtures {
             return claims.computeIfAbsent(key, ignored -> new TaskCreationRegistry.Claim(UUID.randomUUID().toString().replace("-", "").repeat(2), "task-" + UUID.randomUUID().toString().replace("-", "")));
         });
         when(registry.isCurrent(any())).thenAnswer(call -> claims.containsValue(call.getArgument(0)));
+        return registry;
+    }
+
+    public static TaskRpcChannelRegistry rpcChannels() {
+        var registry = mock(TaskRpcChannelRegistry.class);
+        var claims = new HashMap<List<String>, TaskRpcChannelRegistry.Claim>();
+        var fingerprints = new HashMap<List<String>, String>();
+        when(registry.reserve(anyString(), anyString(), anyString(), anyString(), anyString())).thenAnswer(call -> {
+            var key = List.of((String) call.getArgument(0), (String) call.getArgument(1), (String) call.getArgument(2));
+            String fingerprint = call.getArgument(3) + ":" + call.getArgument(4);
+            if (fingerprints.containsKey(key) && !fingerprints.get(key).equals(fingerprint)) {
+                throw new com.xa.mass.server.error.ServerException(
+                        com.xa.mass.server.error.ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT,
+                        "taskRpc.prepare",
+                        "RPC channel already exists with different configuration",
+                        null
+                );
+            }
+            fingerprints.put(key, fingerprint);
+            return claims.computeIfAbsent(key, ignored -> new TaskRpcChannelRegistry.Claim(
+                    UUID.randomUUID().toString().replace("-", "").repeat(2),
+                    "rpc-" + UUID.randomUUID().toString().replace("-", "")
+            ));
+        });
+        when(registry.isCurrent(any())).thenAnswer(call -> claims.containsValue(call.getArgument(0)));
+        doAnswer(call -> {
+            String slotKey = call.getArgument(0);
+            String taskId = call.getArgument(1);
+            claims.entrySet().removeIf(entry -> {
+                boolean match = entry.getValue().key().equals(slotKey) && entry.getValue().taskId().equals(taskId);
+                if (match) {
+                    fingerprints.remove(entry.getKey());
+                }
+                return match;
+            });
+            return null;
+        }).when(registry).remove(anyString(), anyString());
         return registry;
     }
 }

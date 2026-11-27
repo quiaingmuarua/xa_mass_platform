@@ -23,7 +23,7 @@ class SmsReceptionServiceTest {
     final TaskDataService results = mock(TaskDataService.class);
     final TaskLeaseProjectionService projections = mock(TaskLeaseProjectionService.class);
     final SmsReceptionService service = new SmsReceptionService(projects, calls, results, projections, "g", Clock.fixed(Instant.ofEpochMilli(1000), ZoneOffset.UTC), SERVICE, new SmsResultCacheProperties(10000, Duration.ofMinutes(10)));
-    void start() { when(projects.prepare(SERVICE, "sms", SmsReceptionService.rpcTaskId("g"), new TaskRpcPrepareRequest("sms", "g", null, Map.of(), null))).thenReturn(new TaskCreateResponse("task")); service.start(); }
+    void start() { when(projects.prepareServiceChannel(SERVICE, "sms", SmsReceptionService.rpcTaskId("g"), new TaskRpcPrepareRequest("sms", "g", null, Map.of(), null))).thenReturn(new TaskCreateResponse("task")); service.start(); }
     Map<String, Object> snapshot(String id, boolean sms) {
         var value = new LinkedHashMap<String, Object>(Map.of("messageId", id, "applicationId", "A", "country", "CN",
                 "phoneNumber", "123", "workerId", "w", "leaseUntil", 2000, "revision", sms ? 1 : 0, "status", sms ? "RECEIVED" : "WAITING"));

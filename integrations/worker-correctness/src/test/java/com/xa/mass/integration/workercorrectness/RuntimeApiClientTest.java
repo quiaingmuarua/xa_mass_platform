@@ -51,7 +51,7 @@ class RuntimeApiClientTest {
                 0
         );
         server.createContext("/api/v1/tasks", exchange -> {
-            if (exchange.getRequestURI().getPath().endsWith("/rpc:prepare")) {
+            if (exchange.getRequestURI().getPath().equals("/api/v1/tasks/rpc")) {
                 assertEquals(Map.of("projectId", "scenario-workers", "workerGroupId", "group-1"), readBody(exchange));
                 respond(exchange, Map.of("taskId", "correctness-rpc-group-1"));
                 return;

@@ -65,21 +65,23 @@ public class TaskControlController {
         return directory.ensure(caller, taskId);
     }
 
-    @Operation(summary = "Create or reuse and enable an RPC Task",
-            description = "Caller supplies a stable Task ID. Exact existing configuration is reused without resetting work. "
-                    + "Creation and approval are separate commits; on 503 retain this identity and explicitly reconcile.")
+    @Operation(summary = "Create or reuse an active Server-minted RPC channel",
+            description = "Administrator-only. Server mints and owns the taskId per active (projectId, ownerUserId, workerGroupId) slot. "
+                    + "Identical configuration returns the existing taskId without resetting work; conflicting configuration is rejected.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "RPC Task approval confirmed",
+            @ApiResponse(responseCode = "200", description = "RPC channel approval confirmed",
                     content = @Content(schema = @Schema(implementation = TaskCreateResponse.class))),
-            @ApiResponse(responseCode = "400", description = "Invalid request or conflicting Task",
+            @ApiResponse(responseCode = "400", description = "Invalid request or conflicting active RPC channel",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Administrator permission is required",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @ApiResponse(responseCode = "503", description = "Preparation or approval not confirmed",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
-    @PostMapping("/{taskId}/rpc:prepare")
-    public TaskCreateResponse prepareRpcTask(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller, @PathVariable @NotBlank String taskId,
+    @PostMapping("/rpc")
+    public TaskCreateResponse ensureRpcChannel(@io.swagger.v3.oas.annotations.Parameter(hidden = true) TaskCaller caller,
             @Valid @RequestBody TaskRpcPrepareRequest request) {
-        return rpcPreparation.prepare(caller, TaskCaller.RAW_INPUT, taskId, request);
+        return rpcPreparation.ensureRawChannel(caller, request);
     }
 
     @Operation(summary = "Create a finite Task")

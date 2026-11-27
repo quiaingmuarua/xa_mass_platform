@@ -388,16 +388,23 @@ final class RuntimeApiClient {
         return new RuleWitness(taskId, messageId);
     }
 
+    private final java.util.concurrent.ConcurrentHashMap<String, String> rpcTaskIds = new java.util.concurrent.ConcurrentHashMap<>();
+
     void prepareRpcTask(String group) {
-        String id = rpcTaskId(group);
-        var response = http.send("POST", "/api/v1/tasks/" + segment(id) + "/rpc:prepare",
+        var response = http.send("POST", "/api/v1/tasks/rpc",
                 Map.of("projectId", "scenario-workers", "workerGroupId", group));
         requireStatus(response, 200, "prepare RPC Task");
-        if (!id.equals(JsonValues.requiredString(response.body(), "taskId")))
-            throw JsonValues.invalid("RPC Task preparation changed identity");
+        String minted = JsonValues.requiredString(response.body(), "taskId");
+        rpcTaskIds.put(group, minted);
     }
 
-    String rpcTaskId(String group) { return "task-" + group; }
+    String rpcTaskId(String group) {
+        String id = rpcTaskIds.get(group);
+        if (id == null) {
+            throw new IllegalStateException("RPC Task has not been prepared for group: " + group);
+        }
+        return id;
+    }
 
     private Map<String, String> observeStates(
             String path,

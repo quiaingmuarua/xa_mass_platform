@@ -41,23 +41,18 @@ export class HttpTaskCallDebugClient
 
   async prepareTask(
     caller: TaskCaller,
-    taskId: string,
     request: RpcTaskPrepareRequest
-  ): Promise<void> {
+  ): Promise<string> {
     const requestId = createRequestId("rpc-prepare");
     try {
-      const response = await this.client.post(
-        `/v1/tasks/${encodeURIComponent(taskId)}/rpc:prepare`,
-        request,
-        {
-          headers: { "X-Request-Id": requestId, ...callerHeaders(caller) },
-          timeout: 5_000
-        }
-      );
+      const response = await this.client.post("/v1/tasks/rpc", request, {
+        headers: { "X-Request-Id": requestId, ...callerHeaders(caller) },
+        timeout: 5_000
+      });
       if (response.status !== 200) throw schemaError(requestId);
       const parsed = taskCreateResponseSchema.safeParse(response.data);
-      if (!parsed.success || parsed.data.taskId !== taskId)
-        throw schemaError(requestId);
+      if (!parsed.success || !parsed.data.taskId.trim()) throw schemaError(requestId);
+      return parsed.data.taskId;
     } catch (error) {
       throw mapHttpError(error, requestId);
     }

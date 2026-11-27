@@ -30,9 +30,9 @@ class ConvergenceWorkloadTest {
         );
         server.createContext("/api/v1/tasks", exchange -> {
             Map<String, Object> body = requestBody(exchange);
-            if (exchange.getRequestURI().getPath().endsWith("/rpc:prepare")) {
+            if (exchange.getRequestURI().getPath().equals("/api/v1/tasks/rpc")) {
                 assertThat(body).containsEntry("projectId", "scenario-workers");
-                respondJson(exchange, Map.of("taskId", "task-" + body.get("workerGroupId")));
+                respondJson(exchange, Map.of("taskId", "rpc-" + body.get("workerGroupId")));
                 return;
             }
             requests.add(new Request(exchange.getRequestURI().getPath(), body));

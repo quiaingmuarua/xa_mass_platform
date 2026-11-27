@@ -37,7 +37,7 @@ import {
 } from "@/runtime-context";
 import { createTaskExport } from "@/task-management/export";
 import { TaskCallDebugError } from "@/task-call-debug/errors";
-import { rpcTaskId } from "@/task-workbench/rpc-task";
+import { rpcChannelSlotKey } from "@/task-workbench/rpc-task";
 import { ProjectRequestError } from "@/task-management/projects";
 
 const disposals: (() => void)[] = [];
@@ -136,7 +136,11 @@ async function mount(
       };
     })
   };
-  const preparationClient = { prepareTask: vi.fn().mockResolvedValue(undefined) };
+  const preparationClient = {
+    prepareTask: vi
+      .fn()
+      .mockResolvedValue("rpc-minted-00000000000000000000000000000001")
+  };
   const session = createTaskSession(source, preparationClient, options.mode ?? "api");
   const pinia = createPinia();
   setActivePinia(pinia);
@@ -246,8 +250,12 @@ async function selectCreateGroup(
   f: Awaited<ReturnType<typeof mount>>,
   project = "default"
 ) {
+  await vi.waitFor(() => {
+    expect(f.session.rpc.groups[project]?.value).toBeDefined();
+    expect(button("创建并启用")).toBeDefined();
+  });
   f.session.project(project).rpcCreate.groupId = "g1";
-  await vi.waitFor(() => expect(f.session.rpc.detail.value.missing).toBe(true));
+  await nextTick();
 }
 
 it("lists RPC tasks without creating and prepares only from explicit creation with captured supply", async () => {
@@ -258,7 +266,6 @@ it("lists RPC tasks without creating and prepares only from explicit creation wi
   expect(button("提交调用")).toBeUndefined();
   await f.router.push("/runtime/tasks?project=default&tab=rpc&view=create");
   await selectCreateGroup(f);
-  const id = rpcTaskId("default", "1000", "g1");
   expect(f.host.querySelector('[aria-label="RPC 调用方标识"]')).toBeNull();
   const supply = [
     { poolName: "country", targetText: '{"worker.country":["CN"]}', count: 100 }
@@ -269,7 +276,7 @@ it("lists RPC tasks without creating and prepares only from explicit creation wi
   await vi.waitFor(() =>
     expect(f.preparationClient.prepareTask).toHaveBeenCalledTimes(1)
   );
-  expect(f.preparationClient.prepareTask).toHaveBeenCalledWith(CALLER, id, {
+  expect(f.preparationClient.prepareTask).toHaveBeenCalledWith(CALLER, {
     projectId: "default",
     workerGroupId: "g1",
     metadata: {},
@@ -278,17 +285,19 @@ it("lists RPC tasks without creating and prepares only from explicit creation wi
   await vi.waitFor(() =>
     expect(f.router.currentRoute.value.query.view).toBeUndefined()
   );
-  expect(f.session.project("default").rpcCreatedId).toBe(id);
+  expect(f.session.project("default").rpcCreatedId).toBe(
+    "rpc-minted-00000000000000000000000000000001"
+  );
   expect(f.rpcClient.callTask).not.toHaveBeenCalled();
 });
 it("late preparation stays with the disposed login and PRE_REVIEW does not enable calls", async () => {
-  const original = rpcTaskId("default", "1000", "g1");
+  const original = rpcChannelSlotKey("default", "1000", "g1");
   const f = await mount("/runtime/tasks?tab=rpc&view=create", { missing: true });
   await selectCreateGroup(f);
-  let finish!: () => void;
+  let finish!: (taskId: string) => void;
   f.preparationClient.prepareTask.mockImplementationOnce(
     () =>
-      new Promise<void>((resolve) => {
+      new Promise<string>((resolve) => {
         finish = resolve;
       })
   );
@@ -303,7 +312,7 @@ it("late preparation stays with the disposed login and PRE_REVIEW does not enabl
     scoreBand: "pre_review"
   });
   await next.session.rpc.loadDetail("default", "rpc-pending");
-  finish();
+  finish("rpc-late-id");
   await vi.waitFor(() =>
     expect(f.session.rpcPreparations[original]?.outcome).toBe("ready")
   );
@@ -317,11 +326,12 @@ it("a route user parameter cannot choose another RPC creator", async () => {
   await selectCreateGroup(f);
   button("创建并启用").click();
   await vi.waitFor(() =>
-    expect(f.preparationClient.prepareTask).toHaveBeenCalledExactlyOnceWith(
-      CALLER,
-      rpcTaskId("default", "1000", "g1"),
-      { projectId: "default", workerGroupId: "g1", metadata: {}, refill: [] }
-    )
+    expect(f.preparationClient.prepareTask).toHaveBeenCalledExactlyOnceWith(CALLER, {
+      projectId: "default",
+      workerGroupId: "g1",
+      metadata: {},
+      refill: []
+    })
   );
 });
 
@@ -589,14 +599,14 @@ it("prepares non-default identity-only supply after a missing Group is registere
   ]);
   await f.session.rpc.loadGroups("agentforge");
   await vi.waitFor(() => expect(button("创建并启用").disabled).toBe(false));
-  const id = rpcTaskId("agentforge", "1000", "g1");
   button("创建并启用").click();
   await vi.waitFor(() =>
-    expect(f.preparationClient.prepareTask).toHaveBeenCalledExactlyOnceWith(
-      CALLER,
-      id,
-      { projectId: "agentforge", workerGroupId: "g1", metadata: {}, refill: [] }
-    )
+    expect(f.preparationClient.prepareTask).toHaveBeenCalledExactlyOnceWith(CALLER, {
+      projectId: "agentforge",
+      workerGroupId: "g1",
+      metadata: {},
+      refill: []
+    })
   );
   expect(f.rpcClient.callTask).not.toHaveBeenCalled();
 });
@@ -606,10 +616,10 @@ it("Project switches isolate RPC identities and late preparation without moving 
     missing: true
   });
   await selectCreateGroup(f, "agentforge");
-  let release!: () => void;
+  let release!: (taskId: string) => void;
   f.preparationClient.prepareTask.mockImplementationOnce(
     () =>
-      new Promise<void>((resolve) => {
+      new Promise<string>((resolve) => {
         release = resolve;
       })
   );
@@ -617,13 +627,12 @@ it("Project switches isolate RPC identities and late preparation without moving 
   await vi.waitFor(() => expect(release).toBeTypeOf("function"));
   await f.router.push("/runtime/tasks?project=messages&tab=rpc&view=create");
   await selectCreateGroup(f, "messages");
-  const a = rpcTaskId("agentforge", "1000", "g1"),
-    b = rpcTaskId("messages", "1000", "g1");
-  release();
+  const a = rpcChannelSlotKey("agentforge", "1000", "g1"),
+    b = rpcChannelSlotKey("messages", "1000", "g1");
+  release("rpc-agentforge-1");
   await vi.waitFor(() => expect(f.session.rpcPreparations[a]?.outcome).toBe("ready"));
   expect(f.session.rpcPreparations[b]).toBeUndefined();
   expect(f.router.currentRoute.value.query.project).toBe("messages");
-  expect(f.session.rpc.detailKey.value).toBe("messages/" + b);
 });
 it("keeps finite drafts, filters and receipts in their owning Project and ignores wrong-Project detail", async () => {
   const f = await mount("/runtime/tasks?project=agentforge&tab=finite&view=create", {
@@ -746,7 +755,7 @@ it("known Task debug rejects finite, foreign-Project and scenario-owned Tasks wi
   expect(f.preparationClient.prepareTask).not.toHaveBeenCalled();
 });
 
-it("an uncertain preparation keeps its exact supply and requires a fresh nonterminal observation", async () => {
+it("an uncertain preparation keeps its exact supply across group switches", async () => {
   const f = await mount("/runtime/tasks?project=default&tab=rpc&view=create", {
     missing: true
   });
@@ -757,36 +766,22 @@ it("an uncertain preparation keeps its exact supply and requires a fresh nonterm
     { poolName: "country", targetText: "{}", count: 100 }
   ];
   button("创建并启用").click();
-  const id = rpcTaskId("default", "1000", "g1");
+  const slot = rpcChannelSlotKey("default", "1000", "g1");
   await vi.waitFor(() =>
-    expect(f.session.rpcPreparations[id]?.outcome).toBe("unconfirmed")
+    expect(f.session.rpcPreparations[slot]?.outcome).toBe("unconfirmed")
   );
-  expect(f.session.rpcPreparations[id]?.request.refill).toEqual([
+  expect(f.session.rpcPreparations[slot]?.request.refill).toEqual([
     { poolName: "country", target: {}, count: 100 }
   ]);
   f.session.project("default").rpcCreate.groupId = "g2";
-  await vi.waitFor(() =>
-    expect(f.session.rpc.detailKey.value).toBe(
-      "default/" + rpcTaskId("default", "1000", "g2")
-    )
-  );
+  await nextTick();
   f.session.project("default").rpcCreate.name = "other draft";
   f.session.project("default").rpcCreate.groupId = "g1";
-  await vi.waitFor(() => expect(f.session.rpc.detailKey.value).toBe("default/" + id));
+  await nextTick();
   expect(
     f.host.querySelector<HTMLInputElement>('[aria-label="RPC 任务名称"]')?.value
   ).toBe("original frozen name");
-  vi.mocked(f.source.task).mockRejectedValueOnce(new Error("read failed"));
-  await f.session.rpc.loadDetail("default", id);
-  await nextTick();
-  expect(button("继续准备原 Task").disabled).toBe(true);
-  vi.mocked(f.source.task).mockResolvedValueOnce({
-    ...row(id, "g1", true),
-    scoreBand: "terminal"
-  });
-  await f.session.rpc.loadDetail("default", id);
-  await nextTick();
-  expect(button("继续准备原 Task").disabled).toBe(true);
+  expect(button("继续准备原 Task").disabled).toBe(false);
   expect(f.preparationClient.prepareTask).toHaveBeenCalledTimes(1);
 });
 

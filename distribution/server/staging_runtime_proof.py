@@ -325,10 +325,17 @@ def _performance(gate: Gateway, processes, *, simulator_home: Path, proof_root: 
     credentials.chmod(0o600)
     # The earlier revocation witness remains intact; this consumer owns a different credential.
     gate.write_passwords(gate.worker_password_file, (OTHER_WORKER, PERFORMANCE_WORKER))
+    rpc_task_ids = {
+        group: _json(gate, "POST", "/api/v1/tasks/rpc", {
+            "projectId": "default", "workerGroupId": group, "ownerUserId": EXTERNAL_USER,
+        })["taskId"]
+        for group in PERFORMANCE_GROUPS
+    }
     configuration = proof_root / "performance-deployment.json"
     configuration.write_text(json.dumps({
         "runtimeUrl": gate.admin_url, "workerRuntimeUrl": gate.worker_url,
         "project": "default", "endpointManager": "runtime-websocket", "groups": list(PERFORMANCE_GROUPS),
+        "rpcTaskIds": rpc_task_ids,
         "workersPerGroup": 100, "consumerId": "runtime-distribution-performance",
         "accessKeyFile": str(proof_root / "external-access-key.txt"), "gatewayCredentialFile": str(credentials),
         "hostMaxHeap": "512m", "hostFdLimit": 8192, "assignmentBatchLimit": 100,

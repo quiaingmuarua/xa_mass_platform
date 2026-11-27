@@ -52,6 +52,10 @@ class PackagedIngressOracleTest(unittest.TestCase):
                 change(summary)
             (output / "lane-summary.json").write_text(json.dumps(summary), encoding="utf-8")
             gate = Mock(admin_url="https://localhost:8443", worker_url="https://127.0.0.1:8443", ca_file=root / "ca.pem")
+            gate.request.side_effect = [
+                (200, json.dumps({"taskId": f"rpc-{group}"}).encode(), {})
+                for group in proof.PERFORMANCE_GROUPS
+            ]
             process, child = Mock(), Mock()
             process.poll.return_value = None
             child.wait.return_value = returncode
@@ -70,6 +74,7 @@ class PackagedIngressOracleTest(unittest.TestCase):
             self.assertEqual(start.call_args.args[2]["SSL_CERT_FILE"], str(root / "ca.pem"))
             configuration = json.loads((root / "performance-deployment.json").read_text(encoding="utf-8"))
             self.assertEqual(configuration["groups"], list(proof.PERFORMANCE_GROUPS))
+            self.assertEqual(configuration["rpcTaskIds"], {group: f"rpc-{group}" for group in proof.PERFORMANCE_GROUPS})
             self.assertEqual((configuration["workersPerGroup"], configuration["assignmentBatchLimit"]), (100, 100))
             self.assertEqual(Path(configuration["accessKeyFile"]), root / "external-access-key.txt")
             self.assertFalse((root / "performance-worker-credential.json").exists())

@@ -421,15 +421,22 @@ final class AndroidRuntimeApiClient {
         );
     }
 
+    private volatile String preparedRpcTaskId;
+
     void prepareRpcTask() {
-        var response = http.send("POST", "/api/v1/tasks/" + rpcTaskId() + "/rpc:prepare",
+        var response = http.send("POST", "/api/v1/tasks/rpc",
                 Map.of("projectId", "default", "workerGroupId", AndroidWorkerProofConstants.WORKER_GROUP_ID), "rpc.prepare");
         requireStatus(response, 200, "prepare RPC Task");
-        if (!rpcTaskId().equals(JsonValues.requiredString(response.body(), "taskId")))
-            throw new ProofFailure("rpc.prepare.identity", "RPC Task preparation changed identity");
+        preparedRpcTaskId = JsonValues.requiredString(response.body(), "taskId");
     }
 
-    private static String rpcTaskId() { return "xa-android-rpc-v1.android-demo-workers"; }
+    private String rpcTaskId() {
+        String id = preparedRpcTaskId;
+        if (id == null) {
+            throw new IllegalStateException("RPC Task has not been prepared");
+        }
+        return id;
+    }
 
     private static String segment(String value) {
         if (value == null || value.isBlank()) {

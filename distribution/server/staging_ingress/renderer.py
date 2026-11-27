@@ -25,8 +25,9 @@ ADMIN_OPERATIONS = (
     ("GET", "/api/v1/users/{userId}/credits/adjustments/{requestId}"),
     ("POST", "/api/v1/users/{userId}/credits/adjustments"),
     ("POST", "/api/v1/tasks"),
+    ("POST", "/api/v1/tasks/rpc"),
     *(("POST", "/api/v1/tasks/{taskId}/" + operation) for operation in (
-        "approve", "close", "directory:ensure", "rpc:prepare", "items", "items:call",
+        "approve", "close", "directory:ensure", "items", "items:call",
         "items:states", "results:load", "results:take", "results:export", "retention:run")),
     ("GET", "/api/v1/tasks/{taskId}/results:preview"),
     ("GET", "/api/v1/storage/tasks"),
