@@ -864,7 +864,9 @@ initially `[]`. The finite-task supply editor is shared. Target `{}` and count
 exclusive Worker quotas. Priority 0 and maxRetryTimes 3 remain read-only.
 
 Only explicit administrator creation or resumption calls `POST /api/v1/tasks/rpc`; route changes, reads
-and calls never prepare Tasks. The workbench always sends `refill`, including
+and calls never prepare Tasks. In the RPC detail drawer, administrators can explicitly close an active
+raw `PARK_WHEN_IDLE` channel via `POST /api/v1/tasks/{taskId}/close` (after confirmation), releasing its
+active channel slot immediately while scheduling purge-only Redis cleanup. The workbench always sends `refill`, including
 empty supply, and freezes its caller, ID and full request on first preparation.
 Same-ID configuration conflicts cannot update a Task. Unconfirmed preparation
 retains that request for manual reconciliation; PRE_REVIEW can be explicitly

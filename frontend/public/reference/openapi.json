@@ -3419,6 +3419,7 @@
     },
     "/api/v1/tasks/{taskId}/close" : {
       "post" : {
+        "description" : "Closing a raw PARK_WHEN_IDLE RPC channel requires administrator permission, releases its active channel slot immediately, stops further items:call admissions, and schedules purge-only Redis cleanup after the configured grace period.",
         "operationId" : "closeTask",
         "parameters" : [ {
           "in" : "path",
@@ -3484,7 +3485,7 @@
         "security" : [ {
           "accessKey" : [ ]
         } ],
-        "summary" : "Close a finite Task",
+        "summary" : "Close a finite Task or an administrator-managed raw RPC channel",
         "tags" : [ "Tasks" ]
       }
     },
@@ -4151,7 +4152,7 @@
     },
     "/api/v1/tasks/{taskId}/retention:run" : {
       "post" : {
-        "description" : "Administrator maintenance permission required. Uses the configured grace and retention periods; cannot force early deletion.",
+        "description" : "Administrator maintenance permission required. Finite Tasks follow configured grace and retention periods; closed TERMINAL PARK_WHEN_IDLE Tasks perform immediate purge-only Redis cleanup without SQLite archival.",
         "operationId" : "run",
         "parameters" : [ {
           "in" : "path",
@@ -4217,7 +4218,7 @@
         "security" : [ {
           "accessKey" : [ ]
         } ],
-        "summary" : "Advance eligible finite Task retention",
+        "summary" : "Advance eligible finite Task archival/purge or immediately purge a closed RPC Task",
         "tags" : [ "Tasks" ]
       }
     },

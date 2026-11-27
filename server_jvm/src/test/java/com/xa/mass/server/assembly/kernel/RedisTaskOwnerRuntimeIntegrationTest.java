@@ -1475,7 +1475,9 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     void publicFiniteTaskControlUsesJavaOwnersWithoutPythonHttp() {
         TaskControlController controller = new TaskControlController(
                 mock(TaskCreationService.class),
-                new TaskLifecycleService(lifecycle, catalog, new com.xa.mass.server.operation.OperationGuard(), itemScoreCore, scoreCore, runtime, java.util.List.of()),
+                new TaskLifecycleService(lifecycle, catalog, new com.xa.mass.server.operation.OperationGuard(), itemScoreCore, scoreCore, runtime, java.util.List.of(),
+                        com.xa.mass.server.testsupport.TaskRetentionFixtures.rpcChannels(),
+                        mock(com.xa.mass.server.task.call.TaskCallSubmissionService.class)),
                 mock(com.xa.mass.server.task.call.TaskRpcPreparationService.class)
         , org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class));
         var created = runtime.createTask(new TaskDescriptor("public-task", "phone-tools", TaskIdleDisposition.CLOSE_WHEN_IDLE, Map.of("priority", "2", "maxRetryTimes", "3"), java.util.List.of(new com.xa.mass.kernel.assignment.RefillTarget("any", new com.xa.mass.kernel.assignment.EligibilityQuery(java.util.Map.of()), 100)), null, java.util.Map.of()));

@@ -14,6 +14,7 @@ import com.xa.mass.server.task.directory.TaskCreationRegistry;
 import com.xa.mass.server.task.access.TaskCaller;
 import com.xa.mass.server.task.directory.TaskAttribution;
 import com.xa.mass.server.task.directory.TaskDirectory;
+import com.xa.mass.server.task.directory.TaskRpcChannelRegistry;
 import com.xa.mass.server.task.history.TaskHistoryPublisher;
 import com.xa.mass.server.task.history.TaskHistoryStore;
 import com.xa.mass.kernel.redis.RedisKeyspace;
@@ -35,6 +36,7 @@ public final class TaskRetentionService implements SmartLifecycle {
     private final TaskScoreBandCore scores;
     private final TaskDirectory directory;
     private final TaskCreationRegistry creations;
+    private final TaskRpcChannelRegistry rpcChannels;
     private final com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts;
     private final TaskHistoryPublisher history;
     private final TaskHistoryStore historyStore;
@@ -47,15 +49,15 @@ public final class TaskRetentionService implements SmartLifecycle {
 
     @Autowired
     public TaskRetentionService(TaskRuntime runtime, TaskResourceCatalog catalog, TaskScoreBandCore scores, TaskItemScoreBandCore itemScores,
-            TaskDirectory directory, TaskCreationRegistry creations, TaskHistoryPublisher history, TaskHistoryStore historyStore, RedisKeyspace keyspace,
+            TaskDirectory directory, TaskCreationRegistry creations, TaskRpcChannelRegistry rpcChannels, TaskHistoryPublisher history, TaskHistoryStore historyStore, RedisKeyspace keyspace,
             OperationGuard operations, TaskRetentionProperties properties, com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts) {
-        this(runtime, catalog, scores, itemScores, directory, creations, history, historyStore, keyspace, operations, properties, creditStarts, System::currentTimeMillis);
+        this(runtime, catalog, scores, itemScores, directory, creations, rpcChannels, history, historyStore, keyspace, operations, properties, creditStarts, System::currentTimeMillis);
     }
     public TaskRetentionService(TaskRuntime runtime, TaskResourceCatalog catalog, TaskScoreBandCore scores, TaskItemScoreBandCore itemScores,
-            TaskDirectory directory, TaskCreationRegistry creations, TaskHistoryPublisher history, TaskHistoryStore historyStore, RedisKeyspace keyspace,
+            TaskDirectory directory, TaskCreationRegistry creations, TaskRpcChannelRegistry rpcChannels, TaskHistoryPublisher history, TaskHistoryStore historyStore, RedisKeyspace keyspace,
             OperationGuard operations, TaskRetentionProperties properties, com.xa.mass.server.task.credit.TaskCreditStartStore creditStarts, LongSupplier clock) {
         this.runtime = runtime; this.catalog = catalog; this.scores = scores; this.directory = directory;
-        this.creations = creations; this.history = history; this.historyStore = historyStore; this.scope = keyspace.base();
+        this.creations = creations; this.rpcChannels = rpcChannels; this.history = history; this.historyStore = historyStore; this.scope = keyspace.base();
         this.operations = operations; this.properties = properties; this.creditStarts = creditStarts; this.clock = clock;
         this.rpcItems = new RpcTaskItemRetention(runtime, catalog, scores, itemScores, operations, properties);
     }
@@ -86,21 +88,37 @@ public final class TaskRetentionService implements SmartLifecycle {
             var task = catalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
             if (task == null) throw new ServerException(ServerErrorCode.TASK_NOT_FOUND, "taskRetention.run", null, null);
             caller.requireTask(task);
-            if (task.idleDisposition() != TaskIdleDisposition.CLOSE_WHEN_IDLE)
-                throw new ServerException(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, "taskRetention.run", "Only finite Tasks support retention", null);
-            return maintain(taskId, clock.getAsLong());
+            if (task.idleDisposition() == TaskIdleDisposition.CLOSE_WHEN_IDLE) {
+                return maintain(taskId, clock.getAsLong(), false);
+            }
+            if (task.idleDisposition() == TaskIdleDisposition.PARK_WHEN_IDLE) {
+                var score = scores.getScoreStates(List.of(taskId)).get(taskId);
+                if (score == null || score.terminatedAtMillis() == null) {
+                    throw new ServerException(ServerErrorCode.TASK_STATE_CONFLICT, "taskRetention.run",
+                            "Active RPC Task must be closed before retention purge", null);
+                }
+                return maintain(taskId, clock.getAsLong(), true);
+            }
+            throw new ServerException(ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED, "taskRetention.run", "Only finite or closed RPC Tasks support retention", null);
             } catch (ServerException known) { throw known;
             } catch (RuntimeException unavailable) { throw unavailable("run", unavailable); }
         });
     }
 
     public Result maintain(String taskId, long now) {
+        return maintain(taskId, now, false);
+    }
+
+    private Result maintain(String taskId, long now, boolean immediateRpcPurge) {
         return operations.taskMutation(taskId, () -> {
             try {
                 var task = catalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
                 var score = scores.getScoreStates(List.of(taskId)).get(taskId);
                 if (task == null && score == null) return new Result(ActionOutcome.unchanged(), new Info("PURGED", null, null, null, null, null));
                 if (task == null || score == null) throw new IllegalStateException("Task resources are incomplete");
+                if (task.idleDisposition() == TaskIdleDisposition.PARK_WHEN_IDLE) {
+                    return maintainClosedRpcTask(task, score, now, immediateRpcPurge);
+                }
                 if (task.idleDisposition() != TaskIdleDisposition.CLOSE_WHEN_IDLE) return new Result(ActionOutcome.unchanged(), null);
                 var data = runtime.loadTaskDataStates(List.of(taskId)).get(taskId);
                 var info = info(task, score, data);
@@ -136,6 +154,27 @@ public final class TaskRetentionService implements SmartLifecycle {
             } catch (ServerException known) { throw known;
             } catch (Exception failure) { throw unavailable("maintain", failure); }
         });
+    }
+
+    /** Closed PARK_WHEN_IDLE Tasks undergo purge-only Redis cleanup without writing SQLite history. */
+    private Result maintainClosedRpcTask(TaskDescriptor task, TaskScoreState score, long now, boolean immediate) {
+        Long ended = score.terminatedAtMillis();
+        if (ended == null) return new Result(ActionOutcome.unchanged(), null);
+        var data = runtime.loadTaskDataStates(List.of(task.taskId())).get(task.taskId());
+        if (data == null) throw new IllegalStateException("Task data state is missing");
+        long purgeAt = Math.addExact(ended, properties.grace().toMillis());
+        if (!immediate && data.phase() != TaskDataPhase.PURGING && now < purgeAt) {
+            return new Result(ActionOutcome.unchanged(), new Info(data.phase().name(), ended, null, purgeAt, null, null));
+        }
+        String taskId = task.taskId();
+        runtime.beginTaskPurge(taskId, score.score());
+        runtime.purgeTaskData(taskId, score.score());
+        var attribution = TaskAttribution.read(task.metadata());
+        if (attribution != null) directory.remove(attribution.projectId(), taskId);
+        String channelKey = task.metadata().get(TaskRpcChannelRegistry.METADATA_KEY);
+        if (channelKey != null) rpcChannels.remove(channelKey, taskId);
+        runtime.finishTaskPurge(taskId, score.score());
+        return new Result(ActionOutcome.applied(), new Info("PURGED", ended, null, purgeAt, null, null));
     }
 
     public void runOnce() {

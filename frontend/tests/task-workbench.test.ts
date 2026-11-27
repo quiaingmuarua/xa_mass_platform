@@ -971,3 +971,21 @@ it("displays active RPC channels in a top board with window stats and separates 
   expect(document.body.textContent).toContain("/api/v1/tasks/rpc-live/items:call");
   expect(document.body.textContent).toContain("当前 Redis 保留窗口统计");
 });
+
+it("allows admin to confirm and close an active raw RPC channel from the detail drawer", async () => {
+  const confirm = vi
+    .spyOn(ElMessageBox, "confirm")
+    .mockRejectedValueOnce("cancel")
+    .mockResolvedValueOnce("confirm" as never);
+  const f = await mount("/runtime/tasks?project=default&tab=rpc&taskId=rpc-1");
+  await vi.waitFor(() => expect(button("关闭通道")).toBeDefined());
+  expect(button("关闭通道").disabled).toBe(false);
+  button("关闭通道").click();
+  await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+  expect(f.client.closeTask).not.toHaveBeenCalled();
+  button("关闭通道").click();
+  await vi.waitFor(() =>
+    expect(f.client.closeTask).toHaveBeenCalledExactlyOnceWith(CALLER, "rpc-1")
+  );
+  expect(confirm).toHaveBeenCalledTimes(2);
+});

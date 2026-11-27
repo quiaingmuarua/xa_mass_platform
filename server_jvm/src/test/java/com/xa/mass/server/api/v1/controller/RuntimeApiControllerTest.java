@@ -379,8 +379,10 @@ class RuntimeApiControllerTest {
                                 taskCreation,
                                 new TaskLifecycleService(
                                         taskLifecycle,
-                                        taskCatalog, new com.xa.mass.server.operation.OperationGuard()
-                                , itemScores, taskScores, taskRuntime, java.util.List.of()),
+                                        taskCatalog, new com.xa.mass.server.operation.OperationGuard(),
+                                        itemScores, taskScores, taskRuntime, java.util.List.of(),
+                                        com.xa.mass.server.testsupport.TaskRetentionFixtures.rpcChannels(),
+                                        mock(com.xa.mass.server.task.call.TaskCallSubmissionService.class)),
                                 new TaskRpcPreparationService(workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matchingCatalog,
                                         rpcProperties, projects, new com.xa.mass.server.operation.OperationGuard(),
                                         org.mockito.Mockito.mock(com.xa.mass.server.task.directory.TaskDirectory.class),
@@ -1049,16 +1051,24 @@ class RuntimeApiControllerTest {
     }
 
     @Test
-    void managedTaskRejectsLifecycleAndAppendButAllowsResultLoad()
+    void managedTaskRejectsApproveAndAppendAllowsAdminCloseAndResultLoad()
             throws Exception {
         String taskId = "project-rpc-dGVzdC1wcm9qZWN0.cGhvbmUtdG9vbHM";
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}/approve", taskId).contentType(MediaType.APPLICATION_JSON).content("{\"expectedItemCount\":1}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(12008));
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/close", taskId)
+                        .header("Authorization", "Bearer " + com.xa.mass.server.testing.TaskCallers.devKey("oper1")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(12013));
+        verify(taskLifecycle, org.mockito.Mockito.never()).closeTask(taskId);
+        when(taskLifecycle.closeTask(taskId))
+                .thenReturn(new TaskCloseResult(TaskCloseStatus.CLOSED));
         mockMvc.perform(post("/api/v1/tasks/{taskId}/close", taskId))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(12008));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("applied"));
+        verify(taskLifecycle).closeTask(taskId);
         mockMvc.perform(post("/api/v1/tasks/{taskId}/items", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -1080,8 +1090,6 @@ class RuntimeApiControllerTest {
 
         verify(taskRuntime, org.mockito.Mockito.never())
                 .appendItems(eq(taskId), anyList());
-        verify(taskLifecycle, org.mockito.Mockito.never())
-                .closeTask(taskId);
     }
 
     @Test

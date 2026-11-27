@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
+import {
+  ElDropdown,
+  ElDropdownMenu,
+  ElDropdownItem,
+  ElMessage,
+  ElMessageBox
+} from "element-plus";
 import "element-plus/es/components/dropdown/style/css";
 import "element-plus/es/components/dropdown-menu/style/css";
 import "element-plus/es/components/dropdown-item/style/css";
-import { useRuntimeViewerConfig } from "@/runtime-context";
+import { useRuntimeViewerConfig, useTaskManagementStore } from "@/runtime-context";
 import { consoleIdentity } from "@/console-identity";
 import JsonBlock from "@/components/JsonBlock.vue";
 import TaskSupplyEditor from "@/components/TaskSupplyEditor.vue";
@@ -37,6 +43,7 @@ const workspace = session.rpc;
 const saved = session.project(projectId);
 const draft = saved.rpcCreate;
 const config = useRuntimeViewerConfig();
+const operations = useTaskManagementStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -143,6 +150,15 @@ const callable = computed(
     ["running-initial", "running_visible"].includes(detail.value?.scoreBand ?? "")
 );
 const api = computed(() => config.mode === "api");
+const canCloseRpc = computed(
+  () =>
+    api.value &&
+    isAdmin.value &&
+    rawRpc.value &&
+    detail.value?.scoreBand !== null &&
+    detail.value?.scoreBand !== "terminal" &&
+    !operations.busy
+);
 const canPrepare = computed(
   () =>
     api.value &&
@@ -355,6 +371,41 @@ async function prepare() {
   } catch (cause) {
     if (guard.isCurrent(ticket))
       error.value = cause instanceof Error ? cause.message : "准备失败";
+  }
+}
+
+async function closeRpcChannel() {
+  const id = routeTask.value;
+  if (!id || !canCloseRpc.value) return;
+  const ticket = guard.current();
+  error.value = "";
+  await workspace.loadDetail(projectId, id);
+  const current = detail.value;
+  if (
+    !guard.isCurrent(ticket) ||
+    !current ||
+    current.taskId !== id ||
+    !canCloseRpc.value
+  )
+    return;
+  try {
+    await ElMessageBox.confirm(
+      `Project: ${projectId}\nTask: ${id}\nGroup: ${current.task?.workerGroupId}\n关闭后此 Task ID 将停止接收新的 items:call 请求，并立即释放当前通道槽位；Redis 数据将在保留宽限期后自动清理（不写入历史归档）。`,
+      "关闭 RPC 通道",
+      { confirmButtonText: "确认关闭", cancelButtonText: "取消", type: "warning" }
+    );
+    if (!guard.isCurrent(ticket) || !canCloseRpc.value || detail.value !== current)
+      return;
+    const closed = await operations.closeRpcTask(projectId, current, fresh.value);
+    if (!closed) {
+      const failure = operations.project(projectId).error?.message;
+      if (failure && !guard.isDisposed()) error.value = failure;
+      return;
+    }
+    await workspace.loadTasks(projectId);
+    if (guard.isCurrent(ticket)) await workspace.loadDetail(projectId, id);
+  } catch (cause) {
+    if (cause instanceof Error && !guard.isDisposed()) ElMessage.error(cause.message);
   }
 }
 
@@ -825,6 +876,17 @@ function scroll(event: { scrollTop: number }) {
                 @click="debug(routeTask)"
               >
                 网页调试
+              </el-button>
+              <el-button
+                v-if="isAdmin && rawRpc && detail?.scoreBand !== 'terminal'"
+                size="small"
+                type="danger"
+                plain
+                :disabled="!canCloseRpc"
+                :loading="operations.busy"
+                @click="closeRpcChannel"
+              >
+                关闭通道
               </el-button>
             </div>
           </div>

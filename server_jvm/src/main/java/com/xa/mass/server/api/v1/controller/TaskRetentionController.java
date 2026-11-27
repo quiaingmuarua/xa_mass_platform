@@ -23,7 +23,8 @@ public class TaskRetentionController {
     private final TaskRetentionService retention;
     public TaskRetentionController(TaskRetentionService retention) { this.retention = retention; }
     @PostMapping("/{taskId}/retention:run")
-    @Operation(summary = "Advance eligible finite Task retention", description = "Administrator maintenance permission required. Uses the configured grace and retention periods; cannot force early deletion.")
+    @Operation(summary = "Advance eligible finite Task archival/purge or immediately purge a closed RPC Task",
+            description = "Administrator maintenance permission required. Finite Tasks follow configured grace and retention periods; closed TERMINAL PARK_WHEN_IDLE Tasks perform immediate purge-only Redis cleanup without SQLite archival.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Task retention advanced or unchanged"),
             @ApiResponse(responseCode = "400", description = "Task is missing, in conflict, or does not support retention", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),

@@ -135,7 +135,10 @@ Task scheduling lifecycle and Item outcome observation lifecycle are independent
 While the Task data phase is OPEN, valid monotonic observations can continue after
 execution or Task closure. Finite Task retention freezes this window after the
 Server-configured grace period; closure itself does not immediately freeze it. No Task reopen or new execution lease is needed.
-Data retention remains separate, and observations cannot recreate a missing
+`freezeTaskData` and `releaseTaskPayloads` remain strictly `CLOSE_WHEN_IDLE`-only;
+`beginTaskPurge`, `purgeTaskData` and `finishTaskPurge` reclaim both `CLOSE_WHEN_IDLE`
+and closed `TERMINAL` `PARK_WHEN_IDLE` Tasks under the same exact negative terminal
+Score fence. Data retention remains separate, and observations cannot recreate a missing
 Item. State-only observations do not invent a successful Result payload.
 Frozen or removed Task data makes late writes normal no-ops, including ordinary
 execution success, so the existing exact Worker release still runs. The fence may

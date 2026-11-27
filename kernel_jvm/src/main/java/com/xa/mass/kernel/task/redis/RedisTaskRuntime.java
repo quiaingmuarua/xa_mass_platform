@@ -210,8 +210,9 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             return {matched, inputs, results, scores}
             """;
 
-    // Finite Task transaction: seal against writers and retain the
-    // descriptor until the final discoverable Score can be removed atomically.
+    // Terminal Task retention transaction: archival (freeze/release) stays finite-only,
+    // while purge (begin/purge/finish) reclaims both finite and closed PARK_WHEN_IDLE Tasks
+    // under the exact terminal Score fence until the final discoverable Score is removed.
     private static final String RETENTION_SCRIPT = """
             local score = redis.call('ZSCORE', KEYS[2], ARGV[1])
             local phase = redis.call('HGET', KEYS[1], 'dataPhase')
@@ -219,11 +220,15 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             if not score or tonumber(score) ~= tonumber(ARGV[2]) then
               return redis.error_reply('Task retention Score fence differs')
             end
-            if redis.call('HGET', KEYS[1], 'idleDisposition') ~= 'CLOSE_WHEN_IDLE' then
+            local disposition = redis.call('HGET', KEYS[1], 'idleDisposition')
+            local op = ARGV[3]
+            if (op == 'freeze' or op == 'release') and disposition ~= 'CLOSE_WHEN_IDLE' then
               return redis.error_reply('Task retention requires a finite Task')
             end
+            if disposition ~= 'CLOSE_WHEN_IDLE' and disposition ~= 'PARK_WHEN_IDLE' then
+              return redis.error_reply('Task retention requires a finite or RPC Task')
+            end
             if not phase then return redis.error_reply('Task data phase is missing') end
-            local op = ARGV[3]
             if op == 'freeze' then
               if phase == 'OPEN' then
                 redis.call('HSET', KEYS[1], 'dataPhase', 'FROZEN', 'frozenAtMillis', ARGV[4])
