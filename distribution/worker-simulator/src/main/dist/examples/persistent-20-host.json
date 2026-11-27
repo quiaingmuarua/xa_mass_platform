@@ -7,7 +7,12 @@
     "persistent-java-workers": {
       "count": 20,
       "events": ["extension.worker.string.md5"],
-      "propertiesTemplate": {}
+      "propertiesTemplate": {},
+      "reconnectPolicy": {
+        "maxUnstableAttempts": 60,
+        "reconnectIntervalMillis": 2000,
+        "stableConnectionDurationMillis": 10000
+      }
     }
   }
 }

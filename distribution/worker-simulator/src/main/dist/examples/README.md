@@ -31,6 +31,10 @@ validation. A parent such as `/var/lib/xa-mass-worker/persistent-20` is not a va
 `sandboxRoot`, even when its permissions allow writes.
 Credential changes take effect after an explicit Host restart. Keep the inventory,
 credential and logs outside the immutable kit.
+The template also configures an explicit bounded `reconnectPolicy` (`60` attempts
+at `2000ms` interval, `10000ms` stability window — roughly 120 seconds) so ordinary
+Server restarts do not exhaust the default 10-second SDK retry budget; this remains
+bounded rather than an unlimited reconnection guarantee.
 
 This service needs no operator access key. It schedules no Tasks, judges no health
 and installs no timer. A running process or local `RUNNING` snapshot does not prove
