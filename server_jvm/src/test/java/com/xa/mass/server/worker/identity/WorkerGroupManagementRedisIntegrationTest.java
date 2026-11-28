@@ -3,6 +3,8 @@ package com.xa.mass.server.worker.identity;
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
 import com.xa.mass.kernel.assignment.WorkerQuery;
 import com.xa.mass.kernel.redis.RedisKeyspace;
@@ -34,6 +36,8 @@ import com.xa.mass.server.worker.group.WorkerGroupManagementService;
 import com.xa.mass.server.worker.observation.WorkerGroupBindings;
 import com.xa.mass.workermatching.MatchingComposition;
 import com.xa.mass.workermatching.MatchingGroup;
+import com.xa.mass.workermatching.WorkerMatchingCatalog;
+import com.xa.mass.workermatching.index.RedisHashPropertyIndex;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -42,11 +46,14 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 @Tag("redis-owner")
@@ -108,20 +115,25 @@ class WorkerGroupManagementRedisIntegrationTest {
                 keyspace,
                 JsonMapper.builder().build()
         );
+        managementService = managementWith(matchingComposition.catalog(), identityService, connectionControls);
+    }
+
+    private WorkerGroupManagementService managementWith(
+            WorkerMatchingCatalog matching, WorkerIdentityService identities, WorkerConnectionControlStore controls) {
         var projects = new ProjectDirectory(new ProjectAssemblyProperties(List.of()), List.of());
         var bindings = new WorkerGroupBindings(
                 Map.of("kept-group", new MatchingGroup(Set.of(), Set.of("worker.phone"))),
                 new FixedWindowBindingsProperties(Map.of(), Map.of()),
                 List.of()
         );
-        managementService = new WorkerGroupManagementService(
+        return new WorkerGroupManagementService(
                 workerCatalog,
                 workerScoreCore,
                 taskScoreCore,
                 taskCatalog,
-                matchingComposition.catalog(),
-                identityService,
-                connectionControls,
+                matching,
+                identities,
+                controls,
                 projects,
                 bindings,
                 StartupSeededWorkerGroups.empty(),
@@ -352,5 +364,155 @@ class WorkerGroupManagementRedisIntegrationTest {
         assertThat(connectionControls.read("kept-group", keptId)).isNotNull();
         assertThat(matchingComposition.catalog().take("kept-group", Map.of("q", new WorkerQuery("worker.phone", "+20001"))))
                 .containsKey("q");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"identity", "cooldown", "matching"})
+    void groupCleanupResumesAfterACommittedTailStageLosesItsResponse(String failingStage) {
+        String target = seedOfflineWorker("kept-group", "target", "+10001");
+        String other = seedOfflineWorker("other-group", "other", "+20001");
+        var otherIdentity = redis.hgetall(keyspace.base() + ":worker:identity:other-group");
+        var identities = spy(identityService);
+        var controls = spy(connectionControls);
+        var matching = spy(matchingComposition.catalog());
+        var failOnce = new AtomicBoolean(true);
+        org.mockito.stubbing.Answer<Object> loseResponse = call -> {
+            call.callRealMethod();
+            if (failOnce.getAndSet(false)) throw new IllegalStateException("cleanup response lost after commit");
+            return null;
+        };
+        switch (failingStage) {
+            case "identity" -> doAnswer(loseResponse).when(identities).deleteGroup("kept-group");
+            case "cooldown" -> doAnswer(loseResponse).when(controls).deleteGroup("kept-group");
+            case "matching" -> doAnswer(loseResponse).when(matching).purgeWorkerGroup("kept-group");
+            default -> throw new AssertionError(failingStage);
+        }
+        var service = managementWith(matching, identities, controls);
+
+        assertUnavailable(() -> service.deleteGroup(ADMIN, "kept-group"));
+        assertThat(workerCatalog.getWorkerGroupDescriptors(List.of("kept-group")).get("kept-group")).isNull();
+        assertThat(workerCatalog.getWorkerDescriptors(List.of(target)).get(target)).isNull();
+        assertThat(workerScoreCore.summarizeGroupStates("kept-group").total()).isZero();
+
+        var retried = service.deleteGroup(ADMIN, "kept-group");
+        assertThat(retried.status()).isEqualTo("deleted");
+        assertThat(retried.removedWorkers()).isZero();
+        assertThat(redis.exists(
+                keyspace.base() + ":worker:identity:kept-group",
+                keyspace.base() + ":server:worker-connection-control:kept-group",
+                keyspace.base() + ":matching:worker:facts:kept-group",
+                keyspace.base() + ":matching:worker:platform-properties:kept-group",
+                com.xa.mass.workermatching.index.NetworkEvidenceTimestamps.key(keyspace, "kept-group"),
+                RedisHashPropertyIndex.key(keyspace, "kept-group", "phone"))).isZero();
+        assertThat(redis.hgetall(keyspace.base() + ":worker:identity:other-group")).isEqualTo(otherIdentity);
+        assertThat(workerCatalog.getWorkerDescriptors(List.of(other)).get(other)).isNotNull();
+        assertThat(connectionControls.read("other-group", other)).isNotNull();
+        assertThat(matchingComposition.properties().loadWorkerFacts("other-group", List.of(other)).get(other).workerProperties())
+                .containsEntry("phone", "+20001");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"cooldown", "matching"})
+    void workerCleanupResumesAfterACommittedTailStageLosesItsResponseAndPreservesIdentity(String failingStage) {
+        String target = seedOfflineWorker("kept-group", "target", "+10001");
+        String companion = seedOfflineWorker("kept-group", "companion", "+10002");
+        String other = seedOfflineWorker("other-group", "other", "+20001");
+        var identitiesBefore = redis.hgetall(keyspace.base() + ":worker:identity:kept-group");
+        var controls = spy(connectionControls);
+        var matching = spy(matchingComposition.catalog());
+        var failOnce = new AtomicBoolean(true);
+        org.mockito.stubbing.Answer<Object> loseResponse = call -> {
+            call.callRealMethod();
+            if (failOnce.getAndSet(false)) throw new IllegalStateException("cleanup response lost after commit");
+            return null;
+        };
+        if (failingStage.equals("cooldown")) {
+            doAnswer(loseResponse).when(controls).deleteWorker("kept-group", target);
+        } else {
+            doAnswer(loseResponse).when(matching).purgeWorker("kept-group", target);
+        }
+        var service = managementWith(matching, identityService, controls);
+
+        assertUnavailable(() -> service.deleteOfflineWorker(ADMIN, "kept-group", target));
+        assertThat(workerCatalog.getWorkerDescriptors(List.of(target)).get(target)).isNull();
+        assertThat(workerScoreCore.observeSchedulingStates("kept-group", List.of(target)).statesByWorkerId().get(target))
+                .isEqualTo(SchedulingState.MISSING);
+
+        assertThat(service.deleteOfflineWorker(ADMIN, "kept-group", target).status()).isEqualTo("deleted");
+        assertThat(connectionControls.read("kept-group", target)).isNull();
+        assertThat(matchingComposition.properties().loadWorkerFacts("kept-group", List.of(target)).get(target)).isNull();
+        assertThat(redis.hget(RedisHashPropertyIndex.key(keyspace, "kept-group", "phone"), "+10001")).isNull();
+        assertThat(redis.hgetall(keyspace.base() + ":worker:identity:kept-group")).isEqualTo(identitiesBefore);
+        assertThat(identityService.registerAll("kept-group", List.of("target"))).containsExactly(target);
+        var retained = workerCatalog.getWorkerDescriptors(List.of(companion, other));
+        assertThat(retained.get(companion)).isNotNull();
+        assertThat(retained.get(other)).isNotNull();
+        assertThat(connectionControls.read("kept-group", companion)).isNotNull();
+        assertThat(connectionControls.read("other-group", other)).isNotNull();
+        assertThat(matchingComposition.catalog().take("kept-group", Map.of("q", new WorkerQuery("worker.phone", "+10002"))))
+                .containsKey("q");
+        assertThat(matchingComposition.properties().loadWorkerFacts("other-group", List.of(other)).get(other).workerProperties())
+                .containsEntry("phone", "+20001");
+    }
+
+    @Test
+    void initiallyAbsentGroupAndWorkerCleanupAreRepeatableAndCreateNoRuntimeState() {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            var group = managementService.deleteGroup(ADMIN, "absent-group");
+            assertThat(group.status()).isEqualTo("deleted");
+            assertThat(group.removedWorkers()).isZero();
+            assertThat(managementService.deleteOfflineWorker(ADMIN, "absent-group", "absent-worker").status())
+                    .isEqualTo("deleted");
+        }
+        assertThat(redis.exists(
+                keyspace.base() + ":worker:groups", keyspace.base() + ":worker:bindings",
+                keyspace.base() + ":worker:score:absent-group", keyspace.base() + ":worker:identity:absent-group",
+                keyspace.base() + ":server:worker-connection-control:absent-group",
+                keyspace.base() + ":matching:worker:facts:absent-group",
+                keyspace.base() + ":matching:worker:platform-properties:absent-group",
+                com.xa.mass.workermatching.index.NetworkEvidenceTimestamps.key(keyspace, "absent-group"))).isZero();
+    }
+
+    @Test
+    void missingBodiesDoNotBypassActiveScoreOrWrongGroupProtection() {
+        String target = seedOfflineWorker("kept-group", "target", "+10001");
+        assertThatThrownBy(() -> managementService.deleteOfflineWorker(ADMIN, "other-group", target))
+                .isInstanceOfSatisfying(ServerException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.WORKER_RESOURCE_NOT_FOUND));
+        workerCatalog.removeWorkerBindings("kept-group", List.of(target));
+        workerCatalog.deleteWorkerGroup("kept-group");
+        long now = clockMillis.get();
+        workerScoreCore.rewriteCurrentPolarityWithinTimeFence(
+                "kept-group", Map.of(target, now), WorkerScorePolarity.HOT_ACQUIRE, now - 60_000L);
+
+        assertThatThrownBy(() -> managementService.deleteOfflineWorker(ADMIN, "kept-group", target))
+                .isInstanceOfSatisfying(ServerException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT));
+        assertThatThrownBy(() -> managementService.deleteGroup(ADMIN, "kept-group"))
+                .isInstanceOfSatisfying(ServerException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT));
+        assertThat(workerScoreCore.summarizeGroupStates("kept-group").activeTotal()).isEqualTo(1);
+        assertThat(connectionControls.read("kept-group", target)).isNotNull();
+        assertThat(matchingComposition.properties().loadWorkerFacts("kept-group", List.of(target)).get(target).workerProperties())
+                .containsEntry("phone", "+10001");
+        assertThat(identityService.registerAll("kept-group", List.of("target"))).containsExactly(target);
+    }
+
+    private String seedOfflineWorker(String group, String registrationKey, String phone) {
+        workerCatalog.registerWorkerGroup(new WorkerGroupDescriptor(group, Map.of(), Set.of("ev.a")));
+        String id = identityService.registerAll(group, List.of(registrationKey)).getFirst();
+        workerCatalog.registerWorkers(group, List.of(id), "ep-1");
+        matchingComposition.properties().upsertWorkerFactsBatch(group, Map.of(id, Map.of("phone", phone)));
+        matchingComposition.properties().patchWorkerPlatformProperties(group, id, Map.of("region", "proof"));
+        matchingComposition.networkEvidenceTimestamps().filterAndAdvance(group, Map.of(id, clockMillis.get()));
+        connectionControls.update(group, id,
+                new WorkerConnectionControlStore.Change("req-" + registrationKey, null, clockMillis.get() + 60_000L, "maintenance"),
+                "admin-proof", clockMillis.get());
+        return id;
+    }
+
+    private static void assertUnavailable(Runnable action) {
+        assertThatThrownBy(action::run).isInstanceOfSatisfying(ServerException.class,
+                error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE));
     }
 }

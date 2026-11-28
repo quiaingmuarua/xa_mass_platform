@@ -13,6 +13,8 @@ import static org.mockito.Mockito.when;
 import com.xa.mass.kernel.assignment.EligibilityQuery;
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
+import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreState;
 import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalResult;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalStatus;
@@ -60,8 +62,11 @@ class TaskRpcPreparationServiceTest {
     private TaskRuntime taskRuntime;
     private TaskLifecycleCommands taskLifecycle;
     private TaskRpcChannelRegistry channels;
+    private TaskDirectory taskDirectory;
+    private TaskScoreBandCore taskScores;
     private UserDirectory users;
     private Map<String, TaskDescriptor> stored;
+    private Map<String, TaskScoreState> scoreStates;
     private TaskRpcPreparationService service;
 
     @BeforeEach
@@ -72,12 +77,22 @@ class TaskRpcPreparationServiceTest {
         taskLifecycle = mock(TaskLifecycleCommands.class);
         matching = mock(WorkerMatchingCatalog.class);
         channels = TaskRetentionFixtures.rpcChannels();
+        taskDirectory = mock(TaskDirectory.class);
+        taskScores = mock(TaskScoreBandCore.class);
         users = TaskCallers.directory(
                 new UserDirectory.User("proof", "Proof", "admin", List.of()),
                 new UserDirectory.User("alice", "Alice", "operator", List.of("test-project")),
                 new UserDirectory.User("bobby", "Bobby", "operator", List.of("other-project"))
         );
         stored = new LinkedHashMap<>();
+        scoreStates = new LinkedHashMap<>();
+        when(taskScores.getScoreStates(anyList())).thenAnswer(call -> {
+            var result = new LinkedHashMap<String, TaskScoreState>();
+            for (String id : call.<List<String>>getArgument(0)) {
+                if (scoreStates.containsKey(id)) result.put(id, scoreStates.get(id));
+            }
+            return result;
+        });
         when(matching.normalizeRefill(anyString(), anyList())).thenAnswer(call -> call.getArgument(1));
         when(taskCatalog.loadTaskAllocationDescriptors(anyList())).thenAnswer(call -> {
             var result = new LinkedHashMap<String, TaskDescriptor>();
@@ -104,7 +119,7 @@ class TaskRpcPreparationServiceTest {
         return new TaskRpcPreparationService(
                 workerCatalog, taskCatalog, taskRuntime, taskLifecycle, matching,
                 rpcProperties, projectDirectory, new OperationGuard(),
-                mock(TaskDirectory.class), mock(TaskScoreBandCore.class), channels, users
+                taskDirectory, taskScores, channels, users
         );
     }
 
@@ -196,6 +211,71 @@ class TaskRpcPreparationServiceTest {
     }
 
     @Test
+    void partialRawCreationRetriesTheSameSlotThroughKernel() {
+        org.mockito.Mockito.doAnswer(call -> {
+            TaskDescriptor descriptor = call.getArgument(0);
+            if (!scoreStates.containsKey(descriptor.taskId())) {
+                scoreStates.put(descriptor.taskId(), observedBand(TaskScoreBand.PRE_REVIEW));
+                return new TaskCreationResult(TaskCreationStatus.RETRYABLE);
+            }
+            stored.put(descriptor.taskId(), descriptor);
+            return new TaskCreationResult(TaskCreationStatus.CREATED);
+        }).when(taskRuntime).createTask(any());
+        assertError(() -> service.ensureRawChannel(ADMIN, request()),
+                ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE, "taskRpc.prepare");
+        String retainedId = scoreStates.keySet().iterator().next();
+        assertThat(stored).isEmpty();
+        service = newService(defaultProperties(Map.of()), projects());
+        assertThat(service.ensureRawChannel(ADMIN, request()).taskId()).isEqualTo(retainedId);
+        ArgumentCaptor<TaskDescriptor> descriptors = ArgumentCaptor.forClass(TaskDescriptor.class);
+        verify(taskRuntime, org.mockito.Mockito.times(2)).createTask(descriptors.capture());
+        assertThat(descriptors.getAllValues()).extracting(TaskDescriptor::taskId)
+                .containsExactly(retainedId, retainedId);
+        verify(taskLifecycle).approveTask(retainedId);
+    }
+
+    @Test
+    void missingDescriptorWithNonReviewScoreIsNotRecreated() {
+        for (TaskScoreBand band : List.of(TaskScoreBand.RUNNING_VISIBLE, TaskScoreBand.TERMINAL)) {
+            org.mockito.Mockito.doAnswer(call ->
+                    Map.of(call.<List<String>>getArgument(0).getFirst(), observedBand(band)))
+                    .when(taskScores).getScoreStates(anyList());
+            assertError(() -> service.ensureRawChannel(ADMIN, request()),
+                    ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE, "taskRpc.prepare");
+        }
+        org.mockito.Mockito.verifyNoInteractions(taskRuntime, taskLifecycle);
+    }
+
+    @Test
+    void scoreOnlyRecoveryStillRequiresAnAbsentReadableDirectoryAndReadableScore() {
+        org.mockito.Mockito.doAnswer(call ->
+                Map.of(call.<List<String>>getArgument(0).getFirst(), observedBand(TaskScoreBand.PRE_REVIEW)))
+                .when(taskScores).getScoreStates(anyList());
+        when(taskDirectory.contains(anyString(), anyString())).thenReturn(true);
+        assertError(() -> service.ensureRawChannel(ADMIN, request()),
+                ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE, "taskRpc.prepare");
+        when(taskDirectory.contains(anyString(), anyString())).thenThrow(new IllegalStateException("directory unavailable"));
+        assertError(() -> service.ensureRawChannel(ADMIN, request()),
+                ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE, "taskRpc.prepare");
+        org.mockito.Mockito.doThrow(new IllegalStateException("score unavailable"))
+                .when(taskScores).getScoreStates(anyList());
+        assertError(() -> service.ensureRawChannel(ADMIN, request()),
+                ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE, "taskRpc.prepare");
+        org.mockito.Mockito.verifyNoInteractions(taskRuntime, taskLifecycle);
+    }
+
+    @Test
+    void serviceChannelDoesNotRepairAnUnclaimedScoreOnlyIdentity() {
+        scoreStates.put("project-rpc-sms", observedBand(TaskScoreBand.PRE_REVIEW));
+        var smsService = newService(defaultProperties(Map.of()), new ProjectDirectory(new ProjectAssemblyProperties(List.of()),
+                List.of(new ProjectDefinition("sms", List.of("phone-tools"), "sms"))));
+        assertError(() -> smsService.prepareServiceChannel(SERVICE, "sms", "project-rpc-sms",
+                        new TaskRpcPrepareRequest("sms", "phone-tools", null, Map.of(), null)),
+                ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE, "taskRpc.prepare");
+        org.mockito.Mockito.verifyNoInteractions(taskRuntime, taskLifecycle);
+    }
+
+    @Test
     void twoProjectsSharingGroupProvisionIndependentSlots() {
         var directory = new ProjectDirectory(new ProjectAssemblyProperties(List.of(
                 new ProjectDefinition("one", List.of("phone-tools"), null),
@@ -237,6 +317,31 @@ class TaskRpcPreparationServiceTest {
         assertError(() -> service.ensureRawChannel(ADMIN, new TaskRpcPrepareRequest("test-project", "absent", null, Map.of(), null)),
                 ServerErrorCode.INVALID_TASK_DATA_REQUEST, "project.requireWorkerGroup");
         org.mockito.Mockito.verifyNoInteractions(taskRuntime, taskLifecycle);
+        verify(channels, never()).reserve(any(), anyString(), anyString());
+        assertThat(service.ensureRawChannel(ADMIN, request()).taskId()).matches("rpc-[0-9a-f]{32}");
+    }
+
+    @Test
+    void fullStampedMetadataIsValidatedBeforeReservingAndAcceptsItsExactBounds() {
+        var tooMany = new LinkedHashMap<String, String>();
+        for (int i = 0; i < 28; i++) tooMany.put("label-" + i, "value");
+        for (Map<String, String> invalid : List.of(tooMany, Map.of(" ", "value"),
+                Map.of("k".repeat(129), "value"), Map.of("label", "v".repeat(4097)))) {
+            assertError(() -> service.ensureRawChannel(ADMIN,
+                            new TaskRpcPrepareRequest("test-project", "phone-tools", null, invalid, null)),
+                    ServerErrorCode.INVALID_TASK_DATA_REQUEST, "taskRpc.prepare");
+        }
+        verify(channels, never()).reserve(any(), anyString(), anyString());
+        org.mockito.Mockito.verifyNoInteractions(taskRuntime, taskLifecycle);
+
+        var boundary = new LinkedHashMap<String, String>();
+        for (int i = 0; i < 26; i++) boundary.put("label-" + i, "value");
+        boundary.put("k".repeat(128), "v".repeat(4096));
+        String id = service.ensureRawChannel(ADMIN,
+                new TaskRpcPrepareRequest("test-project", "phone-tools", "n".repeat(128), boundary, null)).taskId();
+        assertThat(stored.get(id).metadata()).hasSize(32);
+        assertThat(service.ensureRawChannel(ADMIN,
+                new TaskRpcPrepareRequest("test-project", "phone-tools", "n".repeat(128), boundary, null)).taskId()).isEqualTo(id);
     }
 
     @Test
@@ -263,6 +368,12 @@ class TaskRpcPreparationServiceTest {
 
     private static TaskRpcPrepareRequest request() {
         return new TaskRpcPrepareRequest("test-project", "phone-tools", null, Map.of(), null);
+    }
+
+    private static TaskScoreState observedBand(TaskScoreBand band) {
+        TaskScoreState state = mock(TaskScoreState.class);
+        when(state.band()).thenReturn(band);
+        return state;
     }
 
     private static TaskRpcProperties defaultProperties(Map<String, List<RefillTarget>> defaults) {

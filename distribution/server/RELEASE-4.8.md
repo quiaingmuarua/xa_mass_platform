@@ -73,7 +73,8 @@ Redis scope (`profile_long_preview_4_4`), SQLite finite Task history database
 (`/var/lib/xa-mass/task-history-4.4.sqlite`, schema 1), SQLite control-plane user
 directory (`/var/lib/xa-mass/control-plane.sqlite`, schema 1, WAL), credit
 accounts, Task/request identities, business configuration, gateway credentials
-and standing Worker Host (`4.4.2`) / Performance kit (`4.4.4`). It requires no
+and standing Worker Host (`4.4.2`). The previously retained Performance kit
+`4.4.4` requires the separate consumer update below. It requires no
 Redis scope reset, SQLite schema migration or Worker Host/SDK replacement.
 
 Apply these 4.8.0-specific host updates during the stopped-Runtime maintenance
@@ -176,7 +177,20 @@ compiled libraries under `acceptance/performance/harness/`.
 Each immutable kit and target Runtime is pinned independently by exact version,
 commit and checksum for deployed Performance. The two commits need not match;
 neither coordinate uses `latest` or a fallback. This is not a general
-cross-version compatibility promise. Existing APKs are not replaced
+cross-version compatibility promise. In particular, Runtime 4.8.0 and later
+removed `rpc:prepare`: Performance kit 4.4.4 cannot bootstrap against this Runtime.
+Use an immutable kit from 4.8.0 or later and configure its two pre-provisioned
+`rpcTaskIds`; existing valid Performance Tasks may be referenced without
+recreation. This requires updating `PERFORMANCE_KIT_RELEASE_TAG/COMMIT` and
+`PERFORMANCE_DEPLOYMENT_JSON` together, not an administrator key on the consumer,
+a persistent Host upgrade or a Redis reset.
+
+Compatibility correction (2026-11-28): the dated upgrade record above retains
+the actual reported kit 4.4.4; it is not evidence that this consumer worked with
+Runtime 4.8.0. This repository correction does not claim the Environment pins
+have been updated or a public campaign has been executed.
+
+Existing APKs are not replaced
 automatically, and prior-version witnesses retain their versions.
 
 The [Worker Call Performance Owner](../../integrations/worker-call-performance/README.md#deployed-runtime-consumer)

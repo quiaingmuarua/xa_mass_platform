@@ -5335,6 +5335,7 @@
     },
     "/api/v1/worker-groups/{workerGroupId}" : {
       "delete" : {
+        "description" : "Stop affected Worker controllers and quiesce Task creation, approval and registration before maintenance. Missing state is already removed; concurrent re-registration is not supported.",
         "operationId" : "deleteWorkerGroup",
         "parameters" : [ {
           "in" : "query",
@@ -5360,7 +5361,7 @@
                 }
               }
             },
-            "description" : "WorkerGroup and its offline Runtime keys were removed"
+            "description" : "WorkerGroup cleanup completed, including already absent state"
           },
           "400" : {
             "content" : {
@@ -5370,7 +5371,7 @@
                 }
               }
             },
-            "description" : "Invalid workerGroupId, missing group, or blocked by non-terminal Tasks or active Workers"
+            "description" : "Invalid workerGroupId or blocked by non-terminal Tasks or active Workers"
           },
           "401" : {
             "content" : {
@@ -5400,13 +5401,13 @@
                 }
               }
             },
-            "description" : "WorkerGroup Runtime cleanup could not complete; retry DELETE safely"
+            "description" : "WorkerGroup Runtime cleanup is unconfirmed; retry DELETE with the same workerGroupId"
           }
         },
         "security" : [ {
           "accessKey" : [ ]
         } ],
-        "summary" : "Remove a WorkerGroup when no non-terminal Tasks or active Workers use it",
+        "summary" : "Idempotently remove an idle WorkerGroup's Runtime state",
         "tags" : [ "Worker Resources" ]
       },
       "put" : {
@@ -5497,6 +5498,7 @@
     },
     "/api/v1/worker-groups/{workerGroupId}/workers/{workerId}" : {
       "delete" : {
+        "description" : "Stop the Worker controller and quiesce preparation/reconnection before removal. Missing state is already removed; a Binding to another Group is rejected.",
         "operationId" : "deleteOfflineWorker",
         "parameters" : [ {
           "in" : "query",
@@ -5529,7 +5531,7 @@
                 }
               }
             },
-            "description" : "Offline Worker Runtime state was removed"
+            "description" : "Offline Worker cleanup completed, including already absent state"
           },
           "400" : {
             "content" : {
@@ -5539,7 +5541,7 @@
                 }
               }
             },
-            "description" : "Invalid request, Worker not found in WorkerGroup, or Worker is still active"
+            "description" : "Invalid request, Worker is bound to another WorkerGroup, or Worker is still active"
           },
           "401" : {
             "content" : {
@@ -5569,13 +5571,13 @@
                 }
               }
             },
-            "description" : "Worker Runtime Owner is unavailable"
+            "description" : "Worker Runtime cleanup is unconfirmed; retry DELETE with the same WorkerGroup and Worker IDs"
           }
         },
         "security" : [ {
           "accessKey" : [ ]
         } ],
-        "summary" : "Remove a single offline Worker's Runtime state from its WorkerGroup",
+        "summary" : "Idempotently remove a single offline Worker's Runtime state",
         "tags" : [ "Worker Resources" ]
       }
     },

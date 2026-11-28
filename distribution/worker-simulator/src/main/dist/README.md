@@ -192,11 +192,14 @@ results remain historical; the shipped command and its full defaults are unchang
 ## 4. Measure calls against a deployment
 
 Copy `examples/performance-deployment.json` outside the kit. Replace its template
-origins, Project, Adapter, two Group IDs and Server deployment declaration, then
+origins, Project, Adapter, two Group IDs, their administrator-provided `rpcTaskIds`
+and Server deployment declaration, then
 provide the referenced private operator and Worker credential files. Relative file
 paths resolve against that configuration, not the shell directory. The Runtime
 operator must already have supplied the MD5 event, Any Pool/query, Group/Project
-bindings and access; the runner does not provision them.
+bindings and access; an administrator must provision the two RPC channels first.
+The runner only reads and validates the supplied Tasks, never provisions or closes
+them. No administrator key is required on the consumer.
 
 ```sh
 python3 acceptance/performance/run_worker_call_performance.py \
@@ -206,8 +209,13 @@ python3 acceptance/performance/run_worker_call_performance.py \
 ```
 
 Use a new private output directory outside the immutable kit. Keep `consumerId`
-stable for these bindings so the setup reuses its explicit per-Group RPC Tasks;
-those Tasks are not removed when local processes stop. The configuration declares
+stable for local ownership and exclusion; it does not generate Task IDs. Reuse the
+configured `rpcTaskIds` across runs; those Tasks are not removed when local
+processes stop. Explicit channel closure/recreation requires updating this mapping.
+Performance kits before 4.8.0 call the removed `rpc:prepare` API and cannot run
+against Runtime 4.8.0 or later. Server and kit pins remain independent; choose a
+compatible kit instead of rebuilding Task identities or resetting Redis.
+The configuration declares
 two distinct Groups, `workersPerGroup` in `1..15000`, Host heap/FD ceilings and the
 actual Server assignment ceiling. Its `serverDeployment` values identify the
 operator's recorded version, full commit and configuration; they are not automatic

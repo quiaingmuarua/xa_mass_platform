@@ -1,9 +1,11 @@
 package com.xa.mass.server.task.directory;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
+import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.redis.RedisTaskItemScoreBandCore;
 import com.xa.mass.kernel.score.redis.RedisTaskScoreBandCore;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
+import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
@@ -11,12 +13,17 @@ import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.api.v1.contract.ActionOutcome;
 import com.xa.mass.server.api.v1.contract.task.TaskCreateRequest;
+import com.xa.mass.server.api.v1.contract.task.TaskRpcPrepareRequest;
+import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.operation.OperationGuard;
 import com.xa.mass.server.project.*;
 import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskCreationUnconfirmedException;
+import com.xa.mass.server.task.call.TaskRpcPreparationService;
+import com.xa.mass.server.task.call.TaskRpcProperties;
 import com.xa.mass.server.testsupport.RedisTestScope;
+import com.xa.mass.server.user.UserDirectory;
 import com.xa.mass.workermatching.WorkerMatchingCatalog;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScanArgs;
@@ -67,6 +74,12 @@ class TaskDirectoryRedisIntegrationTest {
     }
     TaskDirectory newDirectory() { return new TaskDirectory(client, scope.keyspace(), projects, catalog, scores, groups, guard, runtime); }
     TaskCreationService creator() { return new TaskCreationService(groups, matching, runtime, projects, catalog, scores, guard, directory, creations); }
+    TaskRpcPreparationService rpcPreparation(TaskRuntime taskRuntime, TaskRpcChannelRegistry rpcChannels, UserDirectory users) {
+        var rpc = new TaskRpcProperties(java.time.Duration.ofDays(7), 1000, 1000, 10, 10, 10, 50, 100, 250, Map.of());
+        return new TaskRpcPreparationService(groups, catalog, taskRuntime,
+                new com.xa.mass.kernel.task.DefaultTaskLifecycleCommands(scores, catalog), matching, rpc, projects,
+                guard, directory, scores, rpcChannels, users);
+    }
     String key(String project) {
         return scope.keyspace().base() + ":server:task-directory:" + Base64.getUrlEncoder().withoutPadding().encodeToString(project.getBytes(StandardCharsets.UTF_8));
     }
@@ -216,6 +229,75 @@ class TaskDirectoryRedisIntegrationTest {
                     .isInstanceOf(ServerException.class);
             assertThat(catalog.loadTaskAllocationDescriptors(List.of("partial")).get("partial")).isNull();
             assertThat(connection.sync().exists(key("p"))).isZero();
+        }
+    }
+
+    @Test void invalidRpcDescriptorLeavesNoSlotAndCorrectedRequestCanUseTheSameTuple() throws Exception {
+        var metadata = new LinkedHashMap<String, String>();
+        for (int i = 0; i < 28; i++) metadata.put("label-" + i, "value");
+        String slotKey = scope.keyspace().base() + ":server:rpc-channel:"
+                + TaskRpcChannelRegistry.identity("p", "1001", "g");
+        try (var users = com.xa.mass.server.testing.TaskCallers.directory(
+                new UserDirectory.User("1001", "Admin", "admin", List.of()));
+             var rpcChannels = new TaskRpcChannelRegistry(client, scope.keyspace())) {
+            var preparation = rpcPreparation(runtime, rpcChannels, users);
+            for (var request : List.of(new TaskRpcPrepareRequest("p", "g", " ", Map.of(), null),
+                    new TaskRpcPrepareRequest("p", "g", null, metadata, null))) {
+                assertThatThrownBy(() -> preparation.ensureRawChannel(CALLER, request))
+                        .isInstanceOfSatisfying(ServerException.class,
+                                error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.INVALID_TASK_DATA_REQUEST));
+                assertThat(connection.sync().exists(slotKey, key("p"), scope.keyspace().base() + ":task:score")).isZero();
+            }
+
+            metadata.remove("label-27");
+            var corrected = new TaskRpcPrepareRequest("p", "g", "RPC", metadata, null);
+            String taskId = preparation.ensureRawChannel(CALLER, corrected).taskId();
+            assertThat(connection.sync().hget(slotKey, "taskId")).isEqualTo(taskId);
+            assertThat(catalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId).metadata()).hasSize(32);
+            assertThat(preparation.ensureRawChannel(CALLER, corrected).taskId()).isEqualTo(taskId);
+        }
+    }
+
+    @Test void retainedRawRpcSlotRecoversKernelPreReviewScoreWithoutDescriptorAfterRestart() throws Exception {
+        var request = new TaskRpcPrepareRequest("p", "g", "RPC", Map.of("label", "retained"), null);
+        var retainedId = new java.util.concurrent.atomic.AtomicReference<String>();
+        var interruptedRuntime = mock(TaskRuntime.class);
+        when(interruptedRuntime.createTask(any())).thenAnswer(call -> {
+            TaskDescriptor descriptor = call.getArgument(0);
+            retainedId.set(descriptor.taskId());
+            // Reproduce Kernel creation's committed Score followed by an unconfirmed descriptor write.
+            var initialized = scores.initializeScore(descriptor.taskId(), 1, 1_000);
+            assertThat(initialized.status()).isEqualTo(TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED);
+            assertThat(scores.releaseObservedScoreHold(descriptor.taskId(), initialized.score()).status())
+                    .isEqualTo(TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED);
+            return new TaskRuntime.TaskCreationResult(TaskCreationStatus.RETRYABLE);
+        });
+        try (var users = com.xa.mass.server.testing.TaskCallers.directory(
+                new UserDirectory.User("1001", "Admin", "admin", List.of()))) {
+            try (var rpcChannels = new TaskRpcChannelRegistry(client, scope.keyspace())) {
+                var interrupted = rpcPreparation(interruptedRuntime, rpcChannels, users);
+                assertThatThrownBy(() -> interrupted.ensureRawChannel(CALLER, request))
+                        .isInstanceOfSatisfying(ServerException.class,
+                                error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.TASK_CALL_REGISTRATION_UNAVAILABLE));
+            }
+            String taskId = retainedId.get();
+            assertThat(taskId).matches("rpc-[0-9a-f]{32}");
+            assertThat(catalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId)).isNull();
+            assertThat(scores.getScoreStates(List.of(taskId)).get(taskId).band())
+                    .isEqualTo(TaskScoreBandCore.TaskScoreBand.PRE_REVIEW);
+            assertThat(connection.sync().exists(key("p"))).isZero();
+
+            try (var rpcChannels = new TaskRpcChannelRegistry(client, scope.keyspace())) {
+                var restarted = rpcPreparation(runtime, rpcChannels, users);
+                assertThat(restarted.ensureRawChannel(CALLER, request).taskId()).isEqualTo(taskId);
+                TaskDescriptor saved = catalog.loadTaskAllocationDescriptors(List.of(taskId)).get(taskId);
+                assertThat(saved.idleDisposition()).isEqualTo(TaskIdleDisposition.PARK_WHEN_IDLE);
+                assertThat(saved.metadata()).containsEntry("label", "retained").containsEntry("userId", "1001")
+                        .containsEntry(TaskRpcChannelRegistry.METADATA_KEY, TaskRpcChannelRegistry.identity("p", "1001", "g"));
+                assertThat(connection.sync().zscore(key("p"), taskId)).isNotNull();
+                assertThat(scores.getScoreStates(List.of(taskId)).get(taskId).isInitial()).isTrue();
+                assertThat(restarted.ensureRawChannel(CALLER, request).taskId()).isEqualTo(taskId);
+            }
         }
     }
 }

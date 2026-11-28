@@ -248,18 +248,8 @@ public final class WorkerGroupManagementService {
                             null
                     );
                 }
-                boolean descriptorPresent = workerCatalog.getWorkerGroupDescriptors(List.of(workerGroupId))
-                        .get(workerGroupId) != null;
-                if (!descriptorPresent && summary.total() == 0) {
-                    throw new ServerException(
-                            ServerErrorCode.WORKER_GROUP_NOT_FOUND,
-                            "workerGroup.delete",
-                            "WorkerGroup was not found",
-                            null
-                    );
-                }
-
-                // Fence new registrations and Task creations before draining offline runtime state.
+                // Missing Catalog/Score state may be a retry after those stages committed.
+                // Callers must quiesce controllers and in-flight admission before maintenance.
                 workerCatalog.deleteWorkerGroup(workerGroupId);
 
                 int removedWorkers = 0;
@@ -341,7 +331,7 @@ public final class WorkerGroupManagementService {
         try {
             return operations.execute("worker-manage", workerId, () -> {
                 WorkerDescriptor descriptor = workerCatalog.getWorkerDescriptors(List.of(workerId)).get(workerId);
-                if (descriptor == null || !workerGroupId.equals(descriptor.workerGroupId())) {
+                if (descriptor != null && !workerGroupId.equals(descriptor.workerGroupId())) {
                     throw new ServerException(
                             ServerErrorCode.WORKER_RESOURCE_NOT_FOUND,
                             "worker.delete",
@@ -349,7 +339,7 @@ public final class WorkerGroupManagementService {
                             null
                     );
                 }
-                // Check and remove Score atomically first so an active Worker is never half-mutated.
+                // A missing Binding may be a retry; still reject an active Score in the requested Group.
                 WorkerRemovalResult removal = workerScoreCore.removeInactiveWorkers(
                         workerGroupId, List.of(workerId));
                 if (removal.status() == WorkerRemovalStatus.ACTIVE_CONFLICT) {

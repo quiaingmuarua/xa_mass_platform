@@ -199,6 +199,14 @@ SDK 凭据只发送给认可的 HTTPS/WSS authority；公网连接不依赖 SSH 
 七个日期不保证七次成功；跨日、漏触发和冲突不补跑，配置就绪不代表已运行。
 日常部署不附加这项测量；源码 Nightly、常驻 Host 各自保持独立。
 
+升级 Runtime 时同时检查保留的消费者版本：4.8 起移除了旧 RPC prepare 接口，
+旧 Performance kit 4.4.4 不能继续启动。按
+[消费兼容约定](../../../integrations/worker-call-performance/README.md#external-actions-execution)
+选择兼容 kit，分别固定其 Release／commit，并在私有部署配置中填写两个已预配的
+`rpcTaskIds`；已有有效 Task 可继续使用，无需清 Redis 或升级常驻 Host。
+首次 Actions 本地预检只检查已声明的兼容性；原 Run 的接回、停止和失败收集仍沿用
+其原始记录，不因当前 pins 改变重新提交。仓库修复或发布新 kit 不代表这些运维步骤已执行。
+
 扩大连接规模时，还需按 [Boot Report 预算](../../../server_boot_jvm/README.md#report-ingress-budget)
 核对集中启动／退出的证据入口。consumer 默认的 1,000 条每 lane 预算不能据此视为
 10k 同时退出的预算。配置生效后除核对物理连接撤销，还应独立确认该轮已知身份的

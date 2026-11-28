@@ -51,10 +51,10 @@ def run_body(block):
 
 
 def expression(value, *, event="workflow_dispatch", ref="refs/heads/main", target="source", baseline="", outcome="success",
-               merge_outcome="success", record=False, cancelled=False, observation_plan="", admitted="false"):
+               merge_outcome="success", record=False, cancelled=False, observation_plan="", admitted="false", attempt=1):
     # Only the small boolean expression subset used by this workflow; no GitHub/network calls.
     value = value.strip().removeprefix("${{").removesuffix("}}").strip()
-    names = {"github.event_name": event, "github.ref": ref, "inputs.execution_target": target,
+    names = {"github.event_name": event, "github.ref": ref, "github.run_attempt": attempt, "inputs.execution_target": target,
              "inputs.baseline_ref": baseline, "steps.external_run.outcome": outcome,
              "steps.merge.outcome": merge_outcome, "inputs.lane_record": record,
              "inputs.observation_plan": observation_plan, "steps.external_run.outputs.observation_admitted": admitted}
@@ -247,6 +247,29 @@ class ExternalPerformanceWorkflowTest(unittest.TestCase):
             self.assertTrue(expression(guard, outcome=outcome, observation_plan="calendar.json", admitted="true"))
         self.assertFalse(expression(guard, outcome="skipped"))
         self.assertFalse(expression(guard, outcome="skipped", observation_plan="calendar.json", admitted="true"))
+
+    def test_first_attempt_contract_preflight_precedes_run_without_secret_or_ssh_inputs(self):
+        preflight = step(self.external, "Validate consumer RPC contract")
+        run = step(self.external, "Run the published Performance consumer")
+        self.assertLess(self.external.index(preflight), self.external.index(run))
+        guard = re.search(r"^        if: (.+)$", preflight, re.MULTILINE).group(1)
+        self.assertTrue(expression(guard, attempt=1))
+        self.assertFalse(expression(guard, attempt=2))
+        self.assertIn("--action preflight", run_body(preflight))
+        self.assertIn('--observation-plan "$OBSERVATION_PLAN"', run_body(preflight))
+        self.assertIn('"${observation[@]}"', run_body(preflight))
+        self.assertIn("OBSERVATION_SCHEDULE: ${{ github.event.schedule }}", preflight)
+        for binding in ("vars.PERFORMANCE_DEPLOYMENT_JSON", "vars.PERFORMANCE_KIT_RELEASE_TAG",
+                        "vars.PERFORMANCE_KIT_RELEASE_COMMIT", "vars.INSTALLED_RELEASE_TAG", "vars.INSTALLED_RELEASE_COMMIT"):
+            self.assertIn(binding, preflight)
+        self.assertNotIn("secrets.", preflight)
+        self.assertNotIn("SSH_", preflight)
+        self.assertNotIn("GH_TOKEN", preflight)
+        # Default success admission skips Run after a failed preflight. The existing
+        # finalizer then observes a skipped Run, so it never opens SSH either.
+        self.assertNotIn("        if:", run)
+        finalize_guard = re.search(r"^        if: (.+)$", step(self.external, "Finalize the same external run"), re.MULTILINE).group(1)
+        self.assertFalse(expression(finalize_guard, outcome="skipped"))
 
     def test_external_artifacts_are_an_explicit_safe_allowlist_outside_source_merge(self):
         upload = step(self.external, "Upload safe external evidence")

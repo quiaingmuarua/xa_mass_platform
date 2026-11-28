@@ -855,9 +855,11 @@ PARK_WHEN_IDLE Tasks; missing descriptors remain unavailable and no refill read
 is made to fill the list. This is not a complete or latest RPC history. Known IDs
 can be point-read outside that batch. Runtime links open configuration first.
 
-Creation uses the logged-in user; a `user` query parameter cannot select another
-creator. `rpc-workbench-v1.<project>.<user>.<group>` retains independently encoded
-UTF-8 Base64URL segments without padding. One triple reuses one immutable Task.
+Creation is administrator-only; an explicit `ownerUserId` selects a Project-granted
+owner, otherwise the authenticated administrator owns the channel. A `user` query
+parameter does not grant authority to select an owner. Server generates
+`rpc-<32-hex>` and ensures one active raw channel per Project/owner/Group; the
+browser's session key only retains the creation request, never defines Task IDs.
 The form selects a registered Group, optional name and explicit Pool supply,
 initially `[]`. The finite-task supply editor is shared. Target `{}` and count
 100 are editable initial values, not guaranteed eligibility, concurrency or
@@ -867,8 +869,8 @@ Only explicit administrator creation or resumption calls `POST /api/v1/tasks/rpc
 and calls never prepare Tasks. In the RPC detail drawer, administrators can explicitly close an active
 raw `PARK_WHEN_IDLE` channel via `POST /api/v1/tasks/{taskId}/close` (after confirmation), releasing its
 active channel slot immediately while scheduling purge-only Redis cleanup. The workbench always sends `refill`, including
-empty supply, and freezes its caller, ID and full request on first preparation.
-Same-ID configuration conflicts cannot update a Task. Unconfirmed preparation
+empty supply, and freezes its caller, owner and full request on first preparation.
+Active-slot configuration conflicts cannot update a Task. Unconfirmed preparation
 retains that request for manual reconciliation; PRE_REVIEW can be explicitly
 prepared, terminal Tasks cannot reopen. Existing raw Tasks can also be opened
 by their actual ID. Scenario-owned RPC Tasks remain read-only in this workbench.

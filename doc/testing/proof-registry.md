@@ -53,7 +53,8 @@ cost; it does not combine independent commits.
 | Proven boundary | Conditions that distinguish the claim |
 | --- | --- |
 | Group directory discovery | Existing Group HASH traversal is read-only, preserves corrupt entries as unavailable, and covers more than the sample bound. Server default scope and point-checked creation do not depend on random previews; other Project bindings remain explicit. |
-| Registration and Task descriptors | Cold NX registration, concurrent default-Endpoint selection and retry after partial Prepare stages preserve identity. Kernel descriptors remain create-only and opaque to Project/User. Server independently ensures its single per-Project attribution ZSET; Base36 precision, user-range batches, first-time preservation, concurrent ensure, missing-index recovery and corruption rejection are proved by TaskDirectoryRedisIntegrationTest. Directory registration is not atomic with Kernel creation. |
+| Registration and Task descriptors | Cold NX registration, concurrent default-Endpoint selection and retry after partial Prepare stages preserve identity. Kernel descriptors remain create-only and opaque to Project/User. Server independently ensures its single per-Project attribution ZSET; Base36 precision, user-range batches, first-time preservation, concurrent ensure, missing-index recovery and corruption rejection are proved by TaskDirectoryRedisIntegrationTest. Raw RPC creation validates the complete Descriptor before reserving a slot and resumes a matching raw claim's PRE_REVIEW Score-only creation; service-channel collisions remain rejected. Directory registration is not atomic with Kernel creation. |
+| Quiescent Group/Worker deletion | WorkerGroupManagementRedisIntegrationTest proves exact-coordinate cleanup, same-coordinate retry after tail failure and idempotent absence, while preserving active Workers, other Groups and single-Worker Identity mappings. Controllers and in-flight registration/Task management must already be stopped; no online cross-owner deletion transaction or global orphan discovery is claimed. |
 | Server credit accounts | CreditAccountRedisIntegrationTest proves single-account atomic balance/transaction/receipt publication, duplicate and concurrent debits, safe-integer precision, stable sequence pagination, bounded corruption preflight, post-commit response loss and same-scope reconnection/directory reload. CreditHttpTest covers permission/parameter refusal before storage. TaskCreditRedisIntegrationTest additionally proves persistent precharge intent, input fencing, owner attribution and explicit same-request recovery. AppChecksIntegrationTest proves seed-based precharge, debit/approval response loss, same-scope Server restart and ledger retention after Task purge. No automatic refund, Redis restart durability, reconciliation across scopes or payment guarantee is claimed. |
 | Worker generation and execution | Exact candidateization does not renew time; bounded aged heads progress without admitting the current slot. Properties invalidation advances past HOT and clears its mark, while cold registration, RECOVERY marks and an execution-first future hold remain protected. Pool/Direct races have one acquisition winner; stale stock can neither acquire nor release that hold. Both strict and current acquisition reject current/future HOT, RECOVERY, missing and corrupt entries. |
 | Network transitions and recovery | Evidence applied to a stored current/future Score preserves its time/mark; polarity change alone grants no execution. Accepted past polarity changes advance generation and clear the mark, including same-slot evidence, while ordinary same-polarity Polling is unchanged. Below-floor activation needs post-floor evidence. Pause and relative targets retain representable bounds; Recovery has no age/attempt cutoff and uses the Owner clock. |
@@ -81,7 +82,8 @@ rollback or loss repair.
 
 FiniteTaskRetentionRedisIntegrationTest proves immutable first terminal time,
 keyset progress after previous-page deletion and corrupt rows, atomic write seals,
-retained Item counts, exact purge fences and RPC exclusion. TaskRetentionServiceRedisIntegrationTest
+retained Item counts, exact purge fences, RPC exclusion from finite freeze/release,
+and terminal RPC purge-only admission. TaskRetentionServiceRedisIntegrationTest
 proves SQLite publication/reuse, complete input retention, explicit Runtime read refusal,
 expiry with and without still-retained history, resumed cleanup and fresh execution identity
 after conditional creation-association removal. TaskHistoryStoreTest uses real SQLite files
@@ -102,7 +104,11 @@ retains its workload and reports Redis memory, SQLite/WAL size, publication late
 process memory separately; RSS/file-size reduction is not required. Export equality preserves
 all rows and multiplicities without assuming traversal order. Controlled clocks own 30d expiry;
 the real workload proves independent history survives the Runtime purge.
-No RPC reclamation, historical file migration, database replication or credit refund is claimed.
+Closed raw RPC channel coverage additionally proves immediate conditional slot
+release, a fresh channel identity, purge-only Redis cleanup without SQLite rows,
+and old-channel purge preserving the replacement slot. This does not establish
+active RPC Item reclamation (covered below), historical file migration, database
+replication or credit refund.
 
 ### RPC terminal Item retention proof
 

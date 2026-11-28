@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -50,6 +51,8 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
 
@@ -288,6 +291,140 @@ class WorkerGroupManagementServiceTest {
 
         var response = service.deleteGroup(ADMIN, "dynamic-group");
         assertThat(response.removedWorkers()).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"identity", "cooldown", "matching"})
+    void deleteGroupRetriesTailFailureAfterCatalogAndScoresWereRemoved(String failingStage) {
+        when(taskScoreCore.scanNonTerminalTasks("0", 200))
+                .thenReturn(new NonTerminalTaskPage(List.of(), "0", 0));
+        when(workerScoreCore.summarizeGroupStates("dynamic-group"))
+                .thenReturn(new GroupStateSummary(1, 0, 0, 0, 1, 0),
+                        new GroupStateSummary(0, 0, 0, 0, 0, 0));
+        when(workerScoreCore.peekInactiveWorkerIds("dynamic-group", 100))
+                .thenReturn(new InactiveWorkerBatch(List.of("w-1"), false),
+                        new InactiveWorkerBatch(List.of(), false));
+        when(workerScoreCore.removeInactiveWorkers("dynamic-group", List.of("w-1")))
+                .thenReturn(new WorkerRemovalResult(WorkerRemovalStatus.REMOVED, 1, 0));
+        var failure = new IllegalStateException("cleanup response lost");
+        switch (failingStage) {
+            case "identity" -> doThrow(failure).doNothing().when(identityService).deleteGroup("dynamic-group");
+            case "cooldown" -> doThrow(failure).doNothing().when(connectionControls).deleteGroup("dynamic-group");
+            case "matching" -> doThrow(failure).doNothing().when(matchingCatalog).purgeWorkerGroup("dynamic-group");
+            default -> throw new AssertionError(failingStage);
+        }
+
+        assertThatThrownBy(() -> service.deleteGroup(ADMIN, "dynamic-group"))
+                .isInstanceOfSatisfying(ServerException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE));
+        Mockito.clearInvocations(identityService, connectionControls, matchingCatalog);
+
+        var retried = service.deleteGroup(ADMIN, "dynamic-group");
+        assertThat(retried.status()).isEqualTo("deleted");
+        assertThat(retried.removedWorkers()).isZero();
+        verify(identityService).deleteGroup("dynamic-group");
+        verify(connectionControls).deleteGroup("dynamic-group");
+        verify(matchingCatalog).purgeWorkerGroup("dynamic-group");
+    }
+
+    @Test
+    void deleteGroupTreatsInitiallyAbsentStateAndRepeatedCleanupAsDeleted() {
+        when(taskScoreCore.scanNonTerminalTasks("0", 200))
+                .thenReturn(new NonTerminalTaskPage(List.of(), "0", 0));
+        when(workerScoreCore.summarizeGroupStates("absent-group"))
+                .thenReturn(new GroupStateSummary(0, 0, 0, 0, 0, 0));
+        when(workerScoreCore.peekInactiveWorkerIds("absent-group", 100))
+                .thenReturn(new InactiveWorkerBatch(List.of(), false));
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            var deleted = service.deleteGroup(ADMIN, "absent-group");
+            assertThat(deleted.status()).isEqualTo("deleted");
+            assertThat(deleted.removedWorkers()).isZero();
+        }
+        verify(identityService, Mockito.times(2)).deleteGroup("absent-group");
+        verify(connectionControls, Mockito.times(2)).deleteGroup("absent-group");
+        verify(matchingCatalog, Mockito.times(2)).purgeWorkerGroup("absent-group");
+    }
+
+    @Test
+    void deleteGroupStillRejectsActiveScoresWhenItsCatalogEntryIsMissing() {
+        when(taskScoreCore.scanNonTerminalTasks("0", 200))
+                .thenReturn(new NonTerminalTaskPage(List.of(), "0", 0));
+        when(workerScoreCore.summarizeGroupStates("missing-group"))
+                .thenReturn(new GroupStateSummary(1, 1, 0, 0, 0, 0));
+
+        assertThatThrownBy(() -> service.deleteGroup(ADMIN, "missing-group"))
+                .isInstanceOfSatisfying(ServerException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT));
+        verify(workerCatalog, never()).deleteWorkerGroup(anyString());
+        Mockito.verifyNoInteractions(identityService, connectionControls, matchingCatalog);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"cooldown", "matching"})
+    void deleteOfflineWorkerRetriesTailFailureAfterBindingAndScoreWereRemoved(String failingStage) {
+        when(workerCatalog.getWorkerDescriptors(List.of("w-cold")))
+                .thenReturn(Map.of("w-cold", new WorkerDescriptor("w-cold", "dynamic-group", "ep-1")), Map.of());
+        when(workerScoreCore.removeInactiveWorkers("dynamic-group", List.of("w-cold")))
+                .thenReturn(new WorkerRemovalResult(WorkerRemovalStatus.REMOVED, 1, 0),
+                        new WorkerRemovalResult(WorkerRemovalStatus.REMOVED, 0, 1));
+        var failure = new IllegalStateException("cleanup response lost");
+        if (failingStage.equals("cooldown")) {
+            doThrow(failure).doNothing().when(connectionControls).deleteWorker("dynamic-group", "w-cold");
+        } else {
+            doThrow(failure).doNothing().when(matchingCatalog).purgeWorker("dynamic-group", "w-cold");
+        }
+
+        assertThatThrownBy(() -> service.deleteOfflineWorker(ADMIN, "dynamic-group", "w-cold"))
+                .isInstanceOfSatisfying(ServerException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.WORKER_RESOURCE_UNAVAILABLE));
+        Mockito.clearInvocations(workerCatalog, connectionControls, matchingCatalog);
+
+        assertThat(service.deleteOfflineWorker(ADMIN, "dynamic-group", "w-cold").status()).isEqualTo("deleted");
+        verify(workerCatalog).removeWorkerBindings("dynamic-group", List.of("w-cold"));
+        verify(connectionControls).deleteWorker("dynamic-group", "w-cold");
+        verify(matchingCatalog).purgeWorker("dynamic-group", "w-cold");
+        Mockito.verifyNoInteractions(identityService);
+    }
+
+    @Test
+    void deleteOfflineWorkerTreatsInitiallyAbsentStateAndRepeatedCleanupAsDeleted() {
+        when(workerCatalog.getWorkerDescriptors(List.of("absent-worker"))).thenReturn(Map.of());
+        when(workerScoreCore.removeInactiveWorkers("dynamic-group", List.of("absent-worker")))
+                .thenReturn(new WorkerRemovalResult(WorkerRemovalStatus.REMOVED, 0, 1));
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            assertThat(service.deleteOfflineWorker(ADMIN, "dynamic-group", "absent-worker").status())
+                    .isEqualTo("deleted");
+        }
+        verify(connectionControls, Mockito.times(2)).deleteWorker("dynamic-group", "absent-worker");
+        verify(matchingCatalog, Mockito.times(2)).purgeWorker("dynamic-group", "absent-worker");
+        Mockito.verifyNoInteractions(identityService);
+    }
+
+    @Test
+    void deleteOfflineWorkerRejectsAnotherGroupsBindingBeforeAnyCleanup() {
+        when(workerCatalog.getWorkerDescriptors(List.of("w-other")))
+                .thenReturn(Map.of("w-other", new WorkerDescriptor("w-other", "other-group", "ep-1")));
+
+        assertThatThrownBy(() -> service.deleteOfflineWorker(ADMIN, "dynamic-group", "w-other"))
+                .isInstanceOfSatisfying(ServerException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.WORKER_RESOURCE_NOT_FOUND));
+        verify(workerCatalog, never()).removeWorkerBindings(anyString(), anyList());
+        Mockito.verifyNoInteractions(workerScoreCore, identityService, connectionControls, matchingCatalog);
+    }
+
+    @Test
+    void deleteOfflineWorkerStillRejectsActiveScoreWhenItsBindingIsMissing() {
+        when(workerCatalog.getWorkerDescriptors(List.of("w-active"))).thenReturn(Map.of());
+        when(workerScoreCore.removeInactiveWorkers("dynamic-group", List.of("w-active")))
+                .thenReturn(new WorkerRemovalResult(WorkerRemovalStatus.ACTIVE_CONFLICT, 0, 0));
+
+        assertThatThrownBy(() -> service.deleteOfflineWorker(ADMIN, "dynamic-group", "w-active"))
+                .isInstanceOfSatisfying(ServerException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT));
+        verify(workerCatalog, never()).removeWorkerBindings(anyString(), anyList());
+        Mockito.verifyNoInteractions(identityService, connectionControls, matchingCatalog);
     }
 
     @Test

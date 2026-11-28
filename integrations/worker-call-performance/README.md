@@ -54,8 +54,9 @@ file references, never access keys or Worker secrets:
 | `workerRuntimeUrl` | Approved HTTPS Worker origin for Prepare and WSS gateway admission |
 | `project`, `endpointManager` | Existing Project and Adapter identities |
 | `groups` | Exactly two distinct, already configured Group IDs, in stable order |
+| `rpcTaskIds` | Administrator-provisioned Task ID for each Group; exactly the two Group keys with distinct values, including existing legacy IDs |
 | `workersPerGroup` | Host inventory per Group, `1..15000` |
-| `consumerId` | Stable identity used to name this consumer's RPC Tasks; reuse it for the same declared bindings |
+| `consumerId` | Stable local consumer/run ownership and exclusion identity; does not generate or select RPC Task IDs |
 | `accessKeyFile`, `gatewayCredentialFile` | Private operator access-key and Worker gateway files |
 | `hostMaxHeap`, `hostFdLimit` | Explicit owned Host budgets; the template uses `3g` and `32768` |
 | `assignmentBatchLimit` | Recorded Server assignment ceiling, `1..1000`; the consumer does not change the Server |
@@ -79,10 +80,11 @@ python3 acceptance/performance/run_worker_call_performance.py \
 
 This mode retains the existing open cases, rates `500,1000,2000`, path order,
 warmup and measurement windows; `--lane-rates` may select only those existing
-rates. It introduces no low-rate profile. Setup explicitly prepares one stable RPC
-Task per Group and reuses those Tasks on later invocations with the same consumer
-identity and bindings. A conflicting saved descriptor fails setup; the runner does
-not invent a replacement identity. Received RPC Results remain retained locally
+rates. It introduces no low-rate profile. An administrator provisions the two RPC
+Tasks and supplies their IDs before consumption. Deployment setup only reads and
+validates those Tasks' identities, Groups and running/PARK disposition; it never
+creates or closes a channel. Reuse the supplied IDs on later invocations. After
+explicit closure/recreation, update the private mapping to the new IDs. Received RPC Results remain retained locally
 when later consuming reads are empty, as in the source lane.
 
 Deployment Worker observations read at most eight pages concurrently within one
@@ -148,6 +150,21 @@ arguments, logs and published artifacts.
 | `PERFORMANCE_CONNECTION_BUDGET_JSON` | Exactly three integer gateway-budget fields: `perCredential`, `total`, `reserved`; requested Workers must fit both `perCredential` and `total - reserved` |
 | `PERFORMANCE_KIT_RELEASE_TAG`, `PERFORMANCE_KIT_RELEASE_COMMIT` | Exact immutable published Consumer kit Release and full source commit; mapped to the controller's `RELEASE_TAG` / `RELEASE_COMMIT` |
 | `INSTALLED_RELEASE_TAG`, `INSTALLED_RELEASE_COMMIT` | Release tag and full source commit deployed to the target GCP Runtime; mapped to `SERVER_RELEASE_TAG` / `SERVER_RELEASE_COMMIT` and matched against `serverDeployment` |
+
+Server and kit pins are independent, but not arbitrarily compatible: Runtime
+4.8.0 and later removed caller-named `rpc:prepare`, so Performance kits before
+4.8.0 cannot bootstrap against them. Kits from 4.8.0 consume `rpcTaskIds`; they do
+not require an administrator key on the consumer. The first-attempt Actions
+preflight rejects this known incompatible combination and malformed Task mappings
+locally, before SSH or credential preparation. It does not inspect live Server
+state or replace the Harness's complete deployment validation or immutable Release
+verification. Reruns and stop/collection reconnect to the original Run even if
+current Environment pins have changed.
+
+For a Runtime upgrade crossing this boundary, select a compatible immutable kit
+and configure the two existing valid Task IDs in `PERFORMANCE_DEPLOYMENT_JSON`.
+No Task recreation, Redis reset or persistent Host upgrade is required. A future
+kit/config change is an explicit operation; publication does not change pins.
 
 | Environment Secrets | Use |
 | --- | --- |
