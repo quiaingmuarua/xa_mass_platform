@@ -2,6 +2,7 @@ package com.xa.mass.server.task.call;
 
 import com.xa.mass.kernel.assignment.RefillTarget;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
 import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalResult;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
@@ -103,12 +104,15 @@ public final class TaskRpcPreparationService {
             throw failure(ServerErrorCode.INVALID_TASK_DATA_REQUEST, REGISTER_OPERATION, invalid.getMessage(), invalid);
         }
         List<RefillTarget> normalizedRefill = normalizeRefill(request);
-        String fingerprint = channelFingerprint(request.workerGroupId(), request.name(), inputMetadata, normalizedRefill);
-        TaskRpcChannelRegistry.Claim claim = channels.reserve(
-                request.projectId(), owner.userId(), request.workerGroupId(), TaskCaller.RAW_INPUT, fingerprint);
-
         var admitted = new TaskRpcPrepareRequest(request.projectId(), request.workerGroupId(), owner.userId(),
                 request.name(), inputMetadata, normalizedRefill);
+        TaskRpcChannelRegistry.Claim candidate = channels.candidate(
+                request.projectId(), owner.userId(), request.workerGroupId());
+        // Validate the complete stored shape, including Server attribution, before reserving durable intent.
+        descriptor(owner, TaskCaller.RAW_INPUT, candidate.taskId(), candidate.key(), admitted, normalizedRefill, null);
+        String fingerprint = channelFingerprint(request.workerGroupId(), request.name(), inputMetadata, normalizedRefill);
+        TaskRpcChannelRegistry.Claim claim = channels.reserve(candidate, TaskCaller.RAW_INPUT, fingerprint);
+
         return operations.taskMutation(claim.taskId(), () -> {
             final boolean current;
             try {
@@ -196,8 +200,10 @@ public final class TaskRpcPreparationService {
         TaskDescriptor expected = descriptor(owner, inputOwner, taskId, channelKey, request, normalizedRefill, existing);
         if (existing == null) {
             try {
-                if (scores.getScoreStates(List.of(taskId)).get(taskId) != null
-                        || directory.contains(request.projectId(), taskId)) {
+                var state = scores.getScoreStates(List.of(taskId)).get(taskId);
+                boolean indexed = directory.contains(request.projectId(), taskId);
+                // Only a retained raw channel claim can re-enter Kernel's PRE_REVIEW creation recovery.
+                if (indexed || (state != null && (channelKey == null || state.band() != TaskScoreBand.PRE_REVIEW))) {
                     throw new IllegalStateException("RPC identity has incomplete Task resources");
                 }
             } catch (RuntimeException failure) {

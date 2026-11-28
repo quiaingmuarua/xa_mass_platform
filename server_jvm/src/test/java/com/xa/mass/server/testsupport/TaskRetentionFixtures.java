@@ -50,11 +50,13 @@ public final class TaskRetentionFixtures {
 
     public static TaskRpcChannelRegistry rpcChannels() {
         var registry = mock(TaskRpcChannelRegistry.class);
-        var claims = new HashMap<List<String>, TaskRpcChannelRegistry.Claim>();
-        var fingerprints = new HashMap<List<String>, String>();
-        when(registry.reserve(anyString(), anyString(), anyString(), anyString(), anyString())).thenAnswer(call -> {
-            var key = List.of((String) call.getArgument(0), (String) call.getArgument(1), (String) call.getArgument(2));
-            String fingerprint = call.getArgument(3) + ":" + call.getArgument(4);
+        var claims = new HashMap<String, TaskRpcChannelRegistry.Claim>();
+        var fingerprints = new HashMap<String, String>();
+        when(registry.candidate(anyString(), anyString(), anyString())).thenCallRealMethod();
+        when(registry.reserve(any(), anyString(), anyString())).thenAnswer(call -> {
+            TaskRpcChannelRegistry.Claim candidate = call.getArgument(0);
+            String key = candidate.key();
+            String fingerprint = call.getArgument(1) + ":" + call.getArgument(2);
             if (fingerprints.containsKey(key) && !fingerprints.get(key).equals(fingerprint)) {
                 throw new com.xa.mass.server.error.ServerException(
                         com.xa.mass.server.error.ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT,
@@ -64,10 +66,7 @@ public final class TaskRetentionFixtures {
                 );
             }
             fingerprints.put(key, fingerprint);
-            return claims.computeIfAbsent(key, ignored -> new TaskRpcChannelRegistry.Claim(
-                    UUID.randomUUID().toString().replace("-", "").repeat(2),
-                    "rpc-" + UUID.randomUUID().toString().replace("-", "")
-            ));
+            return claims.computeIfAbsent(key, ignored -> candidate);
         });
         when(registry.isCurrent(any())).thenAnswer(call -> claims.containsValue(call.getArgument(0)));
         doAnswer(call -> {

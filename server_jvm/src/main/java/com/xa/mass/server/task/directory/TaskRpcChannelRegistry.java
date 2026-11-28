@@ -18,8 +18,8 @@ import org.springframework.stereotype.Service;
  * Active Server-owned RPC channel slot mapping {@code (projectId, ownerUserId, workerGroupId)} to one
  * Server-minted {@code rpc-<32-hex>} Task ID.
  *
- * <p>Prevents unbounded external Task ID creation while preserving idempotent channel provisioning when
- * configuration matches and rejecting conflicting configuration explicitly.
+ * <p>Deduplicates active raw channel provisioning when configuration matches and rejects conflicting
+ * configuration explicitly.
  */
 @Service
 public class TaskRpcChannelRegistry implements AutoCloseable {
@@ -52,14 +52,19 @@ public class TaskRpcChannelRegistry implements AutoCloseable {
 
     public record Claim(String key, String taskId) {}
 
-    public Claim reserve(String projectId, String ownerUserId, String workerGroupId, String inputOwner, String fingerprint) {
-        String slot = identity(projectId, ownerUserId, workerGroupId);
+    /** Creates the real candidate identity without reserving any durable channel state. */
+    public Claim candidate(String projectId, String ownerUserId, String workerGroupId) {
+        return new Claim(identity(projectId, ownerUserId, workerGroupId),
+                "rpc-" + UUID.randomUUID().toString().replace("-", ""));
+    }
+
+    public Claim reserve(Claim candidate, String inputOwner, String fingerprint) {
         try {
             List<?> row = connection().sync().eval(
                     RESERVE,
                     ScriptOutputType.MULTI,
-                    new String[]{key(slot)},
-                    "rpc-" + UUID.randomUUID().toString().replace("-", ""),
+                    new String[]{key(candidate.key())},
+                    candidate.taskId(),
                     fingerprint,
                     inputOwner
             );
@@ -71,7 +76,7 @@ public class TaskRpcChannelRegistry implements AutoCloseable {
                         null
                 );
             }
-            return new Claim(slot, String.valueOf(row.getFirst()));
+            return new Claim(candidate.key(), String.valueOf(row.getFirst()));
         } catch (ServerException known) {
             throw known;
         } catch (RuntimeException failure) {

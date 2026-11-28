@@ -68,6 +68,24 @@ jobs:
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.13'
+      - name: Validate consumer RPC contract
+        if: github.run_attempt == 1
+        env:
+          DEPLOYMENT_JSON: ${{ vars.PERFORMANCE_DEPLOYMENT_JSON }}
+          RELEASE_TAG: ${{ vars.PERFORMANCE_KIT_RELEASE_TAG }}
+          RELEASE_COMMIT: ${{ vars.PERFORMANCE_KIT_RELEASE_COMMIT }}
+          SERVER_RELEASE_TAG: ${{ vars.INSTALLED_RELEASE_TAG }}
+          SERVER_RELEASE_COMMIT: ${{ vars.INSTALLED_RELEASE_COMMIT }}
+          WORKERS_PER_GROUP: ${{ inputs.workers_per_group }}
+          REPETITIONS: ${{ inputs.repetitions }}
+          OBSERVATION_PLAN: ${{ inputs.observation_plan }}
+          OBSERVATION_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          observation=()
+          if [ -n "$OBSERVATION_PLAN" ]; then observation=(--observation-plan "$OBSERVATION_PLAN"); fi
+          python3 .github/scripts/run_external_performance.py --action preflight \
+            --repository "$GITHUB_REPOSITORY" --workers-per-group "$WORKERS_PER_GROUP" \
+            --repetitions "$REPETITIONS" --output-dir build/external-performance "${observation[@]}"
       - name: Run the published Performance consumer
         id: external_run
         env:

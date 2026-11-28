@@ -520,7 +520,14 @@ Android clients explicitly provision their Server-minted RPC Task IDs through
 bindings only; Group registration never creates Tasks. Dynamic Matching and
 Loaded Recovery create finite Tasks without preparing RPC Tasks.
 The separate [Worker Call Performance](integrations/worker-call-performance/README.md)
-lane owns its preparation and measurement windows.
+lane owns its preparation and measurement windows. Its deployed mode only reads
+administrator-provided `rpcTaskIds`; source setup provisions its own channels.
+RPC creation/recovery changes select focused Server tests and
+TaskDirectoryRedisIntegrationTest; retained raw claims can resume PRE_REVIEW-only
+creation, while service-channel collision refusal stays covered. Quiescent
+Group/Worker deletion changes select WorkerGroupManagementServiceTest and
+WorkerGroupManagementRedisIntegrationTest for same-coordinate tail retries and
+cross-Group preservation; these tests do not claim concurrent registration safety.
 
 ## Shared Eligibility refill and dispatch
 

@@ -241,3 +241,43 @@ it("calls real REST management endpoints and supports pagination merge in api mo
   expect(host.textContent).toContain("z-dynamic-group");
   expect(get).toHaveBeenCalledTimes(2);
 });
+
+it("treats initially absent and repeatedly removed mock state as deleted without changing unrelated groups", async () => {
+  await consoleIdentity.login(developmentAccessKey("1000"));
+  const caller = consoleIdentity.requireCaller();
+  const source = new MockWorkerGroupManagementSource();
+  const before = (await source.list(caller)).groups;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await expect(source.deleteGroup(caller, "absent-group")).resolves.toEqual({
+      workerGroupId: "absent-group",
+      status: "deleted",
+      removedWorkers: 0
+    });
+    await expect(
+      source.deleteOfflineWorker(caller, "absent-group", "absent-worker")
+    ).resolves.toEqual({
+      workerGroupId: "absent-group",
+      workerId: "absent-worker",
+      status: "deleted"
+    });
+  }
+  expect((await source.list(caller)).groups).toEqual(before);
+
+  await expect(
+    source.deleteOfflineWorker(caller, "ops-sandbox-workers", "offline-worker")
+  ).resolves.toMatchObject({ status: "deleted" });
+  await expect(
+    source.deleteOfflineWorker(caller, "ops-sandbox-workers", "offline-worker")
+  ).resolves.toMatchObject({ status: "deleted" });
+  await source.deleteGroup(caller, "ops-sandbox-workers");
+  await expect(source.deleteGroup(caller, "ops-sandbox-workers")).resolves.toEqual({
+    workerGroupId: "ops-sandbox-workers",
+    status: "deleted",
+    removedWorkers: 0
+  });
+  await expect(source.deleteGroup(caller, " ")).rejects.toThrow("不能为空");
+  await expect(source.deleteOfflineWorker(caller, "absent-group", " ")).rejects.toThrow(
+    "不能为空"
+  );
+});

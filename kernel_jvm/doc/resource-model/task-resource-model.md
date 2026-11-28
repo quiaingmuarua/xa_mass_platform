@@ -101,7 +101,9 @@ TaskRuntime owns `OPEN -> FROZEN -> RELEASED -> PURGING` in the existing descrip
 HASH. It exposes bounded phase reads and exact-terminal-observation operations:
 freezeTaskData, releaseTaskPayloads, beginTaskPurge, purgeTaskData, finishTaskPurge.
 Score interpretation stays with TaskScoreBandCore; each resource script then
-exact-compares the admitted observation. Finite disposition is checked atomically.
+exact-compares the admitted observation. Freeze and payload release require finite
+(`CLOSE_WHEN_IDLE`) disposition atomically. Begin/purge/finish also admit closed
+terminal `PARK_WHEN_IDLE` Tasks for purge-only reclamation, without finite archival.
 The named cross-key fence is necessary to prevent delayed writes recreating data.
 
 Every Item HASH write, Item Score initialization/CAS/promotion and Result commit
@@ -113,8 +115,10 @@ The final operation requires those resources absent, deletes descriptor metadata
 then removes only this Task's member from the global Score ZSET atomically.
 
 Kernel owns no archive path, retention duration, scan loop, Project index, or
-creation-request association. Server orchestrates those effects. RPC Tasks are
-excluded from these finite retention operations. Missing Task data rejects late mutations
+creation-request association. Server orchestrates those effects. RPC Tasks cannot
+enter finite freeze/release; their terminal purge shares the exact-Score and
+PURGING fences above. Active RPC Item retention is separate below.
+Missing Task data rejects late mutations
 rather than creating a replacement resource. No Worker, Pool or shared queue is deleted.
 
 ## RPC Terminal Item Retention

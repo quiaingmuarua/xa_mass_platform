@@ -372,15 +372,15 @@ export class MockWorkerGroupManagementSource implements WorkerGroupManagementSou
     workerGroupId: string
   ): Promise<WorkerGroupDeleteResponse> {
     this.assertAdmin(caller);
+    if (!workerGroupId.trim()) throw new TaskApiError(400, "workerGroupId 不能为空");
     const existing = this.groups.get(workerGroupId);
-    if (!existing) throw new TaskApiError(400, "WorkerGroup 不存在");
-    if (existing.workerCounts.activeTotal > 0) {
+    if (existing && existing.workerCounts.activeTotal > 0) {
       throw new TaskApiError(
         400,
         `WorkerGroup 仍有 ${existing.workerCounts.activeTotal} 个活跃 Worker，请先断开或迁移`
       );
     }
-    const removedWorkers = existing.workerCounts.total;
+    const removedWorkers = existing?.workerCounts.total ?? 0;
     this.groups.delete(workerGroupId);
     return { workerGroupId, status: "deleted", removedWorkers };
   }
@@ -391,9 +391,12 @@ export class MockWorkerGroupManagementSource implements WorkerGroupManagementSou
     workerId: string
   ): Promise<WorkerDeleteResponse> {
     this.assertAdmin(caller);
+    if (!workerGroupId.trim() || !workerId.trim()) {
+      throw new TaskApiError(400, "workerGroupId 和 workerId 不能为空");
+    }
     const key = `${workerGroupId}::${workerId}`;
     if (this.removedWorkers.has(key)) {
-      throw new TaskApiError(404, "Worker 已不在该 WorkerGroup 中");
+      return { workerGroupId, workerId, status: "deleted" };
     }
     this.removedWorkers.add(key);
     const group = this.groups.get(workerGroupId);

@@ -185,19 +185,21 @@ public class WorkerGroupRegistrationController {
     }
 
     @Operation(
-            summary = "Remove a WorkerGroup when no non-terminal Tasks or active Workers use it"
+            summary = "Idempotently remove an idle WorkerGroup's Runtime state",
+            description = "Stop affected Worker controllers and quiesce Task creation, approval and registration before maintenance. "
+                    + "Missing state is already removed; concurrent re-registration is not supported."
     )
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "WorkerGroup and its offline Runtime keys were removed",
+                    description = "WorkerGroup cleanup completed, including already absent state",
                     content = @Content(schema = @Schema(
                             implementation = WorkerGroupDeleteResponse.class
                     ))
             ),
             @ApiResponse(
                     responseCode = "400",
-                    description = "Invalid workerGroupId, missing group, or blocked by non-terminal Tasks or active Workers",
+                    description = "Invalid workerGroupId or blocked by non-terminal Tasks or active Workers",
                     content = @Content(schema = @Schema(
                             implementation = ApiErrorResponse.class
                     ))
@@ -211,7 +213,7 @@ public class WorkerGroupRegistrationController {
             ),
             @ApiResponse(
                     responseCode = "503",
-                    description = "WorkerGroup Runtime cleanup could not complete; retry DELETE safely",
+                    description = "WorkerGroup Runtime cleanup is unconfirmed; retry DELETE with the same workerGroupId",
                     content = @Content(schema = @Schema(
                             implementation = ApiErrorResponse.class
                     ))
@@ -226,19 +228,21 @@ public class WorkerGroupRegistrationController {
     }
 
     @Operation(
-            summary = "Remove a single offline Worker's Runtime state from its WorkerGroup"
+            summary = "Idempotently remove a single offline Worker's Runtime state",
+            description = "Stop the Worker controller and quiesce preparation/reconnection before removal. "
+                    + "Missing state is already removed; a Binding to another Group is rejected."
     )
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Offline Worker Runtime state was removed",
+                    description = "Offline Worker cleanup completed, including already absent state",
                     content = @Content(schema = @Schema(
                             implementation = WorkerDeleteResponse.class
                     ))
             ),
             @ApiResponse(
                     responseCode = "400",
-                    description = "Invalid request, Worker not found in WorkerGroup, or Worker is still active",
+                    description = "Invalid request, Worker is bound to another WorkerGroup, or Worker is still active",
                     content = @Content(schema = @Schema(
                             implementation = ApiErrorResponse.class
                     ))
@@ -252,7 +256,7 @@ public class WorkerGroupRegistrationController {
             ),
             @ApiResponse(
                     responseCode = "503",
-                    description = "Worker Runtime Owner is unavailable",
+                    description = "Worker Runtime cleanup is unconfirmed; retry DELETE with the same WorkerGroup and Worker IDs",
                     content = @Content(schema = @Schema(
                             implementation = ApiErrorResponse.class
                     ))

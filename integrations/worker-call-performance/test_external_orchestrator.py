@@ -10,6 +10,8 @@ import os
 from pathlib import Path
 import signal
 import stat
+import subprocess
+import sys
 import tempfile
 import threading
 from types import SimpleNamespace
@@ -226,6 +228,126 @@ class ControllerTest(unittest.TestCase):
             self.execute(fake)
         self.downloader.prepare.assert_not_called()
         self.assertEqual(["bootstrap:create"], fake.actions)
+
+    def test_incompatible_new_admission_rejects_before_copy_or_credentials(self):
+        config = configuration()
+        config["serverDeployment"]["version"] = "4.8.0"
+        self.environment.update(SERVER_RELEASE_TAG="v4.8.0", DEPLOYMENT_JSON=json.dumps(config))
+        for field in ("RUNTIME_ACCESS_KEY", "WORKER_GATEWAY_KEY_ID", "WORKER_GATEWAY_SECRET"):
+            self.environment.pop(field)
+        fake = FakeSSH(attached=False)
+        with self.assertRaisesRegex(ORCHESTRATOR.Failure, "older RPC preparation API was removed"):
+            self.execute(fake)
+        self.assertEqual(["bootstrap:create"], fake.actions)
+        self.assertEqual([], fake.copies)
+        self.downloader.prepare.assert_not_called()
+
+    def test_attach_and_cleanup_ignore_current_consumer_pins(self):
+        for action, attempt in (("run", 1), ("run", 2), ("stop", 2), ("collect", 2)):
+            with self.subTest(action=action, attempt=attempt):
+                self.args.action = action
+                self.environment = {"GITHUB_RUN_ID": RUN}
+                fake = FakeSSH(attached=True)
+                with patch.object(ORCHESTRATOR, "consumer_preflight", side_effect=AssertionError("Revalidated original Run")):
+                    self.assertEqual(0, self.execute(fake, attempt=attempt))
+                self.assertEqual([], fake.copies)
+                self.assertNotIn("prepare", fake.actions)
+                self.assertNotIn("start", fake.actions)
+                self.downloader.prepare.assert_not_called()
+
+
+class ConsumerPreflightTest(unittest.TestCase):
+    def config(self, **changes):
+        value = configuration()
+        value.update(rpcTaskIds={"perf-a": TASK_ID, "perf-b": "legacy-channel-b"}, **changes)
+        return value
+
+    def test_only_known_one_way_break_is_rejected(self):
+        for kit, server in (("v4.4.4", "v4.7.0"), ("v4.8.0", "v4.8.0"),
+                            ("v4.8.1", "v4.8.0"), ("v4.8.0", "v4.4.4")):
+            with self.subTest(kit=kit, server=server):
+                ORCHESTRATOR.validate_consumer_contract(self.config(), kit, server)
+        for kit, server in (("v4.4.4", "v4.8.0"), ("v4.7.9", "v4.8.1")):
+            with self.subTest(kit=kit, server=server):
+                with self.assertRaisesRegex(ORCHESTRATOR.Failure, "older RPC preparation API was removed"):
+                    ORCHESTRATOR.validate_consumer_contract(self.config(), kit, server)
+
+    def test_new_kit_requires_exact_distinct_nonempty_task_mapping_without_leaking_values(self):
+        for tasks in (None, {}, {"perf-a": TASK_ID}, {"perf-a": TASK_ID, "other": "private-id"},
+                      {"perf-a": TASK_ID, "perf-b": TASK_ID}, {"perf-a": TASK_ID, "perf-b": "  "},
+                      {"perf-a": TASK_ID, "perf-b": 17}):
+            with self.subTest(tasks=tasks):
+                config = self.config()
+                if tasks is None:
+                    config.pop("rpcTaskIds")
+                else:
+                    config["rpcTaskIds"] = tasks
+                with self.assertRaises(ORCHESTRATOR.Failure) as rejected:
+                    ORCHESTRATOR.validate_consumer_contract(config, "v4.8.0", "v4.7.0")
+                self.assertNotIn(TASK_ID, str(rejected.exception))
+                self.assertNotIn("private-id", str(rejected.exception))
+        ORCHESTRATOR.validate_consumer_contract(configuration(), "v4.4.4", "v4.7.0")
+
+    def test_preflight_action_is_local_without_credentials_or_output_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "unused"
+            config = self.config()
+            environment = {"RELEASE_TAG": "v4.8.0", "RELEASE_COMMIT": COMMIT,
+                           "SERVER_RELEASE_TAG": TAG, "SERVER_RELEASE_COMMIT": COMMIT,
+                           "DEPLOYMENT_JSON": json.dumps(config)}
+            argv = ["--action", "preflight", "--repository", "owner/repository", "--workers-per-group", "5000",
+                    "--repetitions", "1", "--output-dir", str(output)]
+            with patch.dict(os.environ, environment, clear=True), \
+                    patch.object(ORCHESTRATOR, "Transport") as transport, \
+                    patch.object(ORCHESTRATOR, "controller") as controller:
+                self.assertEqual(0, ORCHESTRATOR.main(argv))
+                config["serverDeployment"]["version"] = "4.8.0"
+                os.environ.update(RELEASE_TAG="v4.4.4", SERVER_RELEASE_TAG="v4.8.0", DEPLOYMENT_JSON=json.dumps(config))
+                with self.assertRaisesRegex(ORCHESTRATOR.Failure, "older RPC preparation API was removed"):
+                    ORCHESTRATOR.main(argv)
+                os.environ.clear()
+                os.environ["GITHUB_RUN_ATTEMPT"] = "2"
+                self.assertEqual(0, ORCHESTRATOR.main(argv))
+                transport.assert_not_called()
+                controller.assert_not_called()
+            self.assertFalse(output.exists())
+
+    def test_ineligible_observation_remains_controller_missing_not_contract_rejection(self):
+        with patch.dict(os.environ, {}, clear=True), \
+                patch.object(ORCHESTRATOR, "observation_slot", return_value={"status": "missing"}), \
+                patch.object(ORCHESTRATOR, "consumer_preflight") as preflight, \
+                patch.object(ORCHESTRATOR, "Transport") as transport:
+            self.assertEqual(0, ORCHESTRATOR.main([
+                "--action", "preflight", "--repository", "owner/repository", "--workers-per-group", "5000",
+                "--repetitions", "1", "--output-dir", "unused", "--observation-plan", "existing-plan.json"]))
+            preflight.assert_not_called()
+            transport.assert_not_called()
+
+    def test_cli_rejects_bad_json_nonobject_and_kit_commit_with_fixed_safe_output(self):
+        config = self.config()
+        environment = {**os.environ, "RELEASE_TAG": "v4.8.0", "RELEASE_COMMIT": COMMIT,
+                       "SERVER_RELEASE_TAG": TAG, "SERVER_RELEASE_COMMIT": COMMIT,
+                       "DEPLOYMENT_JSON": json.dumps(config), "GITHUB_RUN_ATTEMPT": "1"}
+        for field in ("SSH_HOST", "SSH_USER", "SSH_PRIVATE_KEY", "SSH_KNOWN_HOSTS", "RUNTIME_ACCESS_KEY",
+                      "WORKER_GATEWAY_KEY_ID", "WORKER_GATEWAY_SECRET"):
+            environment.pop(field, None)
+        private_value = "private-config-fragment-" + TASK_ID
+        for change, reason in (({"DEPLOYMENT_JSON": '{"' + private_value}, "Deployment configuration must be a JSON object"),
+                               ({"DEPLOYMENT_JSON": json.dumps([private_value])}, "Deployment configuration must be a JSON object"),
+                               ({"DEPLOYMENT_JSON": "null"}, "Deployment configuration must be a JSON object"),
+                               ({"RELEASE_COMMIT": private_value}, "Invalid Performance kit Release identity")):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / "unused"
+                completed = subprocess.run([sys.executable, str(ROOT / ".github/scripts/run_external_performance.py"),
+                                            "--action", "preflight", "--repository", "owner/repository",
+                                            "--workers-per-group", "5000", "--repetitions", "1", "--output-dir", str(output)],
+                                           env={**environment, **change}, capture_output=True, text=True, timeout=10)
+                self.assertEqual(1, completed.returncode)
+                self.assertEqual("", completed.stdout)
+                self.assertEqual({"status": "failed", "failureType": "Failure", "reason": reason}, json.loads(completed.stderr))
+                self.assertNotIn(private_value, completed.stderr)
+                self.assertNotIn(TASK_ID, completed.stderr)
+                self.assertFalse(output.exists())
 
 
 class RemoteLifecycleTest(unittest.TestCase):

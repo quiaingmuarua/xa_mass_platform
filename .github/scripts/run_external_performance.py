@@ -411,6 +411,7 @@ def reject_late_observation_locked(identifier, root, private, value, reason):
 
 
 def validate_config(config, server_tag, server_commit, workers):
+    require(isinstance(config, dict), "Deployment configuration must be a JSON object")
     require(re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", server_tag) and re.fullmatch(r"[0-9a-f]{40}", server_commit), "Invalid Server Release identity")
     require(config.get("consumerId") == "public43-performance", "Stable consumerId differs")
     deployment = config.get("serverDeployment", {})
@@ -420,6 +421,40 @@ def validate_config(config, server_tag, server_commit, workers):
     require(type(workers) is int and 1 <= workers <= 15000, "Worker quantity is outside the existing Host bound")
     require(isinstance(config.get("project"), str) and config["project"], "Existing Project is required")
     return config
+
+
+def validate_consumer_contract(config, kit_tag, server_tag):
+    """Reject the known RPC provisioning break; this is not a compatibility matrix."""
+    versions = []
+    for tag in (kit_tag, server_tag):
+        require(isinstance(tag, str) and re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag),
+                "Consumer contract requires numeric Release identities")
+        versions.append(tuple(int(part) for part in tag[1:].split(".")))
+    kit, server = versions
+    rpc_change = (4, 8, 0)
+    require(server < rpc_change or kit >= rpc_change,
+            "Runtime 4.8 or newer requires a Performance kit 4.8 or newer; the older RPC preparation API was removed")
+    if kit >= rpc_change:
+        tasks = config.get("rpcTaskIds")
+        require(isinstance(tasks, dict) and set(tasks) == set(config["groups"]),
+                "Performance kit 4.8 or newer requires rpcTaskIds for exactly the two configured Groups")
+        require(all(isinstance(value, str) and value.strip() for value in tasks.values())
+                and len(set(tasks.values())) == 2,
+                "Configured RPC Task identities must be nonempty and distinct")
+
+
+def consumer_preflight(environment, workers):
+    """Read only non-secret coordinates, before any new remote preparation."""
+    tag, commit = env_required(environment, "RELEASE_TAG"), env_required(environment, "RELEASE_COMMIT")
+    server_tag, server_commit = env_required(environment, "SERVER_RELEASE_TAG"), env_required(environment, "SERVER_RELEASE_COMMIT")
+    require(re.fullmatch(r"[0-9a-f]{40}", commit), "Invalid Performance kit Release identity")
+    try:
+        config = json.loads(env_required(environment, "DEPLOYMENT_JSON"))
+    except json.JSONDecodeError:
+        raise Failure("Deployment configuration must be a JSON object") from None
+    validate_config(config, server_tag, server_commit, workers)
+    validate_consumer_contract(config, tag, server_tag)
+    return tag, commit, server_tag, server_commit, config
 
 
 def heap_bytes(value):
@@ -963,10 +998,7 @@ def controller(arguments):
                 if observation is not None and (arguments.action != "run" or attempt != 1):
                     return publish_missing(output, identifier, observation, "original-observation-unavailable", cleanup_confirmed=False)
                 require(arguments.action == "run" and attempt == 1, "Original helper is missing; outcome unknown, never restart")
-                tag, commit = env_required(environment, "RELEASE_TAG"), env_required(environment, "RELEASE_COMMIT")
-                server_tag, server_commit = env_required(environment, "SERVER_RELEASE_TAG"), env_required(environment, "SERVER_RELEASE_COMMIT")
-                config = json.loads(env_required(environment, "DEPLOYMENT_JSON"))
-                validate_config(config, server_tag, server_commit, arguments.workers_per_group)
+                tag, commit, server_tag, server_commit, config = consumer_preflight(environment, arguments.workers_per_group)
                 controller_commit = env_required(environment, "GITHUB_SHA")
                 require(re.fullmatch(r"[0-9a-f]{40}", controller_commit), "Controller commit must be a full immutable SHA")
                 require(not interrupted, "Controller cancelled before preparation")
@@ -1094,10 +1126,18 @@ def main(argv=None):
     parser.add_argument("--workers-per-group", type=int, required=True)
     parser.add_argument("--repetitions", type=int, choices=(1, 3), required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--action", choices=("run", "stop", "collect"), default="run")
+    parser.add_argument("--action", choices=("run", "stop", "collect", "preflight"), default="run")
     parser.add_argument("--observation-plan", type=Path, help="Optional finite scheduled-observation plan; manual execution is unchanged")
     arguments = parser.parse_args(argv)
     require(1 <= arguments.workers_per_group <= 15000, "Worker quantity is outside the existing Host bound")
+    if arguments.action == "preflight":
+        if int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")) == 1:
+            if arguments.observation_plan is not None:
+                observation = observation_slot(arguments.observation_plan, os.environ, arguments.workers_per_group, arguments.repetitions)
+                if observation["status"] != "eligible":
+                    return 0  # The controller records the original missing slot without remote admission.
+            consumer_preflight(os.environ, arguments.workers_per_group)
+        return 0
     return controller(arguments)
 
 
