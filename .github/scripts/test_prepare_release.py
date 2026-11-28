@@ -176,7 +176,7 @@ class ReleasePromotionTest(unittest.TestCase):
         contract = release.ROOT / "distribution/server/RELEASE-4.8.md"
         expected = contract.read_text(encoding="utf-8")
         self.assertTrue(expected.startswith("# XA Mass 4.8 release"))
-        for version in ("4.8.0",):
+        for version in ("4.8.0", "4.8.1"):
             with self.subTest(version=version):
                 self.assertEqual(expected, release.release_contract(version))
 
