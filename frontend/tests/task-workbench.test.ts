@@ -149,6 +149,22 @@ async function mount(
     appendItems: vi.fn(),
     approveTask: vi.fn(),
     closeTask: vi.fn(),
+    runTaskRetention: vi.fn(
+      async (): Promise<{
+        outcome: { status: "applied" | "unchanged" };
+        retention: ProjectTask["retention"];
+      }> => ({
+        outcome: { status: "applied" },
+        retention: {
+          phase: "PURGED",
+          terminatedAtMillis: 1_700_000_000_000,
+          frozenAtMillis: null,
+          expiresAtMillis: 1_700_003_600_000,
+          historyId: null,
+          historyExpiresAtMillis: null
+        }
+      })
+    ),
     ensureDirectory: vi.fn(async () => {}),
     exportResults: vi.fn()
   };
@@ -1083,4 +1099,83 @@ it("redirects to list after creating an active RPC channel, refreshes tasks on c
     refill: []
   });
   expect(f.session.project("default").rpcCreatedId).toBe("rpc-minted-second");
+});
+
+it("shows RPC terminal retention timeline and lets admin immediately purge a closed raw RPC channel", async () => {
+  const confirm = vi
+    .spyOn(ElMessageBox, "confirm")
+    .mockRejectedValueOnce("cancel")
+    .mockResolvedValueOnce("confirm" as never);
+  const closedRpc: ProjectTask = {
+    ...row("rpc-closed-1", "g1", true, "default"),
+    scoreBand: "terminal",
+    retention: {
+      phase: "OPEN",
+      terminatedAtMillis: 1_700_000_000_000,
+      frozenAtMillis: null,
+      expiresAtMillis: 1_700_003_600_000,
+      historyId: null,
+      historyExpiresAtMillis: null
+    }
+  };
+  let tasks: ProjectTask[] = [closedRpc];
+  const f = await mount("/runtime/tasks?project=default&tab=rpc&taskId=rpc-closed-1");
+  vi.mocked(f.source.tasks).mockImplementation(async (projectId) => ({
+    projectId,
+    truncated: false,
+    tasks
+  }));
+  vi.mocked(f.source.task).mockResolvedValue(closedRpc);
+  await f.session.rpc.loadDetail("default", "rpc-closed-1");
+  await nextTick();
+
+  await vi.waitFor(() => {
+    expect(document.body.textContent).toContain("时间线与数据保留");
+    expect(document.body.textContent).toContain("Redis 预计清理时间");
+    expect(document.body.textContent).toContain("已停用 RPC 通道不会写入历史归档");
+    expect(button("立即清理 Redis")?.disabled).toBe(false);
+  });
+  expect(button("关闭通道")).toBeUndefined();
+
+  button("立即清理 Redis").click();
+  await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+  expect(f.client.runTaskRetention).not.toHaveBeenCalled();
+
+  f.client.runTaskRetention.mockImplementationOnce(async () => {
+    tasks = [];
+    return {
+      outcome: { status: "applied" as const },
+      retention: { ...closedRpc.retention!, phase: "PURGED" as const }
+    };
+  });
+  button("立即清理 Redis").click();
+  await vi.waitFor(() =>
+    expect(f.client.runTaskRetention).toHaveBeenCalledExactlyOnceWith(
+      CALLER,
+      "rpc-closed-1"
+    )
+  );
+  await vi.waitFor(() =>
+    expect(f.router.currentRoute.value.query.taskId).toBeUndefined()
+  );
+
+  // Internal Scenario-owned terminal RPC channel must NOT expose immediate purge.
+  const smsTerminal: ProjectTask = {
+    ...closedRpc,
+    taskId: "project-rpc-sms-1",
+    task: {
+      ...closedRpc.task!,
+      taskId: "project-rpc-sms-1",
+      metadata: { "server.inputOwner": "sms" }
+    }
+  };
+  vi.mocked(f.source.task).mockResolvedValue(smsTerminal);
+  await f.router.push(
+    "/runtime/tasks?project=default&tab=rpc&taskId=project-rpc-sms-1"
+  );
+  await vi.waitFor(() =>
+    expect(f.session.rpc.detail.value.value?.taskId).toBe("project-rpc-sms-1")
+  );
+  await nextTick();
+  expect(button("立即清理 Redis")).toBeUndefined();
 });

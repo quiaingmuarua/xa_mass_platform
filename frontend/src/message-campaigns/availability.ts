@@ -47,6 +47,10 @@ export function createMessageAvailability(demo: boolean) {
   return {
     state,
     load,
+    markDisabled() {
+      if (!disposed && !demo && !pending && state.value.status === "loading")
+        state.value = { status: "disabled" };
+    },
     dispose() {
       disposed = true;
       active?.abort();

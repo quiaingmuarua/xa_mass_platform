@@ -18,6 +18,11 @@ const props = defineProps<{
 const source = computed(() => presentTaskSource(props.task));
 const metadata = computed(() => splitTaskMetadata(props.task.task?.metadata));
 const terminatedAt = computed(() => props.task.retention?.terminatedAtMillis ?? null);
+const showRpcRetention = computed(
+  () =>
+    props.mode === "rpc" &&
+    (props.task.scoreBand === "terminal" || props.task.retention != null)
+);
 const duration = computed(() =>
   formatDuration(props.task.createdAtMillis, terminatedAt.value)
 );
@@ -94,7 +99,7 @@ function copyId(value: string) {
 
     <section class="tw-card">
       <header class="tw-card__header">
-        <h3>时间线{{ mode === "finite" ? "与数据保留" : "" }}</h3>
+        <h3>时间线{{ mode === "finite" || showRpcRetention ? "与数据保留" : "" }}</h3>
       </header>
       <dl class="tw-kv-grid">
         <div>
@@ -139,11 +144,36 @@ function copyId(value: string) {
             <dd>{{ formatDateTime(task.retention.historyExpiresAtMillis) }}</dd>
           </div>
         </template>
+        <template v-else-if="showRpcRetention">
+          <div>
+            <dt>关闭时间</dt>
+            <dd>
+              {{
+                terminatedAt != null
+                  ? formatDateTime(terminatedAt)
+                  : task.scoreBand === "terminal"
+                    ? "未记录"
+                    : "尚未关闭"
+              }}
+            </dd>
+          </div>
+          <div>
+            <dt>保留阶段</dt>
+            <dd>
+              <code>{{ task.retention?.phase ?? "未提供" }}</code>
+            </dd>
+          </div>
+          <div v-if="task.retention?.expiresAtMillis">
+            <dt>Redis 预计清理时间</dt>
+            <dd>{{ formatDateTime(task.retention.expiresAtMillis) }}</dd>
+          </div>
+        </template>
       </dl>
       <TaskRetentionNotice
-        v-if="mode === 'finite'"
+        v-if="mode === 'finite' || showRpcRetention"
         :retention="task.retention"
         :project-id="task.task?.projectId"
+        :mode="mode"
       />
     </section>
 

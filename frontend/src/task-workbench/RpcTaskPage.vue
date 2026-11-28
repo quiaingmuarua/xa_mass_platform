@@ -171,6 +171,15 @@ const canCloseRpc = computed(
     detail.value?.scoreBand !== "terminal" &&
     !operations.busy
 );
+const canPurgeRpc = computed(
+  () =>
+    api.value &&
+    isAdmin.value &&
+    rawRpc.value &&
+    detail.value?.scoreBand === "terminal" &&
+    detail.value.retention?.phase !== "PURGED" &&
+    !operations.busy
+);
 const canPrepare = computed(
   () =>
     api.value &&
@@ -435,6 +444,45 @@ async function closeRpcChannel() {
     if (saved.rpcCreatedId === id) saved.rpcCreatedId = "";
     await workspace.loadTasks(projectId);
     if (guard.isCurrent(ticket)) await workspace.loadDetail(projectId, id);
+  } catch (cause) {
+    if (cause instanceof Error && !guard.isDisposed()) ElMessage.error(cause.message);
+  }
+}
+
+async function purgeRpcChannel() {
+  const id = routeTask.value;
+  if (!id || !canPurgeRpc.value) return;
+  const ticket = guard.current();
+  error.value = "";
+  await workspace.loadDetail(projectId, id);
+  const current = detail.value;
+  if (
+    !guard.isCurrent(ticket) ||
+    !current ||
+    current.taskId !== id ||
+    !canPurgeRpc.value
+  )
+    return;
+  try {
+    await ElMessageBox.confirm(
+      `Project: ${projectId}\nTask: ${id}\nGroup: ${current.task?.workerGroupId}\n立即清理将直接删除该已停用 RPC 通道在 Redis 中的运行数据与保留记录（不写入历史归档，不可恢复）。`,
+      "立即清理 Redis",
+      { confirmButtonText: "确认清理", cancelButtonText: "取消", type: "warning" }
+    );
+    if (!guard.isCurrent(ticket) || !canPurgeRpc.value || detail.value !== current)
+      return;
+    const purged = await operations.purgeRpcTask(projectId, current, fresh.value);
+    if (!purged) {
+      const failure = operations.project(projectId).error?.message;
+      if (failure && !guard.isDisposed()) error.value = failure;
+      return;
+    }
+    session.clearRpcPreparation(id);
+    if (saved.rpcCreatedId === id) saved.rpcCreatedId = "";
+    ElMessage.success("已立即清理该 RPC 通道的 Redis 数据");
+    await workspace.loadTasks(projectId);
+    workspace.clearDetail();
+    if (guard.isCurrent(ticket)) await go("list");
   } catch (cause) {
     if (cause instanceof Error && !guard.isDisposed()) ElMessage.error(cause.message);
   }
@@ -918,6 +966,22 @@ function scroll(event: { scrollTop: number }) {
                 @click="closeRpcChannel"
               >
                 关闭通道
+              </el-button>
+              <el-button
+                v-if="
+                  isAdmin &&
+                  rawRpc &&
+                  detail?.scoreBand === 'terminal' &&
+                  detail?.retention?.phase !== 'PURGED'
+                "
+                size="small"
+                type="danger"
+                plain
+                :disabled="!canPurgeRpc"
+                :loading="operations.busy"
+                @click="purgeRpcChannel"
+              >
+                立即清理 Redis
               </el-button>
             </div>
           </div>

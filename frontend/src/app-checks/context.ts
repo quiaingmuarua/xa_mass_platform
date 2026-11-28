@@ -76,6 +76,10 @@ export function createAppCheckContext(source: AppCheckTaskSource) {
     state,
     configurationRead,
     load,
+    markDisabled() {
+      if (!disposed && !pending && state.value.status === "loading")
+        state.value = { status: "disabled" };
+    },
     dispose() {
       disposed = true;
       active?.abort();

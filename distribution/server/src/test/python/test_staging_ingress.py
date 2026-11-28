@@ -117,6 +117,17 @@ class StagingIngressTest(unittest.TestCase):
         self.assertEqual(1, configuration(worker_connection_limit=1,
                                          worker_total_connection_limit=1).worker_connection_limit)
 
+    def test_worker_rlimit_nofile_is_optional_validated_and_rendered_in_main_context(self):
+        default_text = render(configuration())
+        self.assertNotIn("worker_rlimit_nofile", default_text)
+        explicit = render(configuration(worker_connections=32768, worker_rlimit_nofile=65536))
+        self.assertIn("worker_processes 1;\nworker_rlimit_nofile 65536;\npid ", explicit)
+        for bad in (0, -1, True, False, 1.0, "65536"):
+            with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, "worker_rlimit_nofile"):
+                configuration(worker_rlimit_nofile=bad)
+        with self.assertRaisesRegex(ValueError, "worker_rlimit_nofile.*worker_connections"):
+            configuration(worker_connections=4096, worker_rlimit_nofile=2048)
+
     def test_vite_output_and_current_public_files_are_readable_but_not_writable(self):
         vite = (ROOT / "frontend/vite.config.ts").read_text(encoding="utf-8")
         outputs = re.findall(r'(?:chunkFileNames|entryFileNames|assetFileNames): "([^\"]+)"', vite)

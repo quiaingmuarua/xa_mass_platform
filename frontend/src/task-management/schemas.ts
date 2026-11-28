@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import type { TaskCreateApiResponse, TaskItemsAppendApiResponse } from "./types";
+import { taskRetentionSchema } from "./retention";
+import type {
+  TaskCreateApiResponse,
+  TaskItemsAppendApiResponse,
+  TaskRetentionRunResult
+} from "./types";
 
 export const taskCreateResponseSchema: z.ZodType<TaskCreateApiResponse> = z
   .object({
@@ -27,6 +32,13 @@ export const taskActionOutcomeSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("applied") }).strict(),
   z.object({ status: z.literal("unchanged") }).strict()
 ]);
+
+export const taskRetentionRunResponseSchema: z.ZodType<TaskRetentionRunResult> = z
+  .object({
+    outcome: taskActionOutcomeSchema,
+    retention: taskRetentionSchema.nullable()
+  })
+  .strict();
 
 export const taskApiErrorResponseSchema = z
   .object({

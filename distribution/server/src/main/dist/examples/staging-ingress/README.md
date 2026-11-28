@@ -106,6 +106,7 @@ boolean, string, fraction or null).
 | --- | ---: | --- |
 | `worker_processes` | 1 | Nginx worker processes, not XA Mass Worker instances |
 | `worker_connections` | 2048 | Connections per Nginx process, including both client and upstream sockets |
+| `worker_rlimit_nofile` | omitted | Optional per-worker open-file limit (`>= worker_connections`); avoids `nginx -t` / non-systemd RLIMIT_NOFILE warnings when `worker_connections` exceeds the shell default |
 | `worker_connection_limit` | 100 | WSS connections per verified Worker Basic username |
 | `worker_total_connection_limit` | 200 | WSS connections across the Worker hostname |
 | `worker_requests_per_second` | 10 | Prepare/handshake requests per source IP per second |

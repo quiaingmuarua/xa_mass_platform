@@ -97,3 +97,27 @@ it("keeps App Checks statistics and CSV after archive and removes the creation a
   expect((await source.createTask(A, input)).taskId).not.toBe(first.taskId);
   expect((await source.history.get(A, historyId)).taskId).toBe(first.taskId);
 });
+
+it("parses PURGED retention phase and formats RPC purge-only retention labels", () => {
+  const pendingRpc = taskRetentionSchema.parse({
+    phase: "OPEN",
+    terminatedAtMillis: 1_700_000_000_000,
+    frozenAtMillis: null,
+    expiresAtMillis: 1_700_003_600_000,
+    historyId: null,
+    historyExpiresAtMillis: null
+  });
+  expect(retentionLabel(pendingRpc, "rpc")).toBe("待清理");
+  expect(retentionLabel(pendingRpc, "finite")).toBe("收尾中");
+
+  const purgedRpc = taskRetentionSchema.parse({
+    phase: "PURGED",
+    terminatedAtMillis: 1_700_000_000_000,
+    frozenAtMillis: null,
+    expiresAtMillis: 1_700_003_600_000,
+    historyId: null,
+    historyExpiresAtMillis: null
+  });
+  expect(retentionLabel(purgedRpc, "rpc")).toBe("已清理");
+  expect(retentionLabel(purgedRpc, "finite")).toBe("已清理");
+});

@@ -1,6 +1,7 @@
 import type { TaskCaller } from "@/task-caller";
 import type { WorkerQuery } from "@/task-call-debug/types";
 import type { JsonValue, RefillTarget } from "@/runtime-viewer/types";
+import type { TaskRetention } from "./retention";
 
 export interface FiniteTaskConfig {
   priority: number;
@@ -38,6 +39,10 @@ export type TaskItemsAppendApiResponse = Record<
 export type TaskExportResult =
   | { ready: true; fileName: string; blob: Blob }
   | { ready: false };
+export interface TaskRetentionRunResult {
+  outcome: { status: "applied" | "unchanged" };
+  retention: TaskRetention | null;
+}
 export interface FiniteTaskClient {
   createTask(
     caller: TaskCaller,
@@ -54,6 +59,10 @@ export interface FiniteTaskClient {
     expectedItemCount: number
   ): Promise<void>;
   closeTask(caller: TaskCaller, taskId: string): Promise<void>;
+  runTaskRetention?(
+    caller: TaskCaller,
+    taskId: string
+  ): Promise<TaskRetentionRunResult>;
   ensureDirectory(caller: TaskCaller, taskId: string): Promise<void>;
   exportResults(caller: TaskCaller, taskId: string): Promise<TaskExportResult>;
 }

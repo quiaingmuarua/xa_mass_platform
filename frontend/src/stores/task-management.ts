@@ -264,6 +264,37 @@ export function createTaskManagementStore(
         busy.value = false;
       }
     }
+    async function purgeRpcTask(
+      projectId: string,
+      task: ProjectTask,
+      fresh: boolean
+    ): Promise<boolean> {
+      admit();
+      if (
+        !fresh ||
+        !projectId ||
+        task.task?.projectId !== projectId ||
+        task.task.idleDisposition !== "PARK_WHEN_IDLE" ||
+        task.task.metadata["server.inputOwner"] !== "raw" ||
+        task.scoreBand !== "terminal" ||
+        task.retention?.phase === "PURGED"
+      )
+        throw new Error("当前快照不允许立即清理此 RPC 通道，请重新读取。");
+      if (!client.runTaskRetention)
+        throw new Error("当前客户端未启用任务保留清理能力。");
+      const state = project(projectId);
+      state.error = undefined;
+      busy.value = true;
+      try {
+        await client.runTaskRetention(captureTaskCaller(), task.taskId);
+        return true;
+      } catch (failure) {
+        state.error = presentFiniteTaskError(failure);
+        return false;
+      } finally {
+        busy.value = false;
+      }
+    }
     return {
       busy,
       project,
@@ -272,6 +303,7 @@ export function createTaskManagementStore(
       ensureDirectory,
       mutate,
       closeRpcTask,
+      purgeRpcTask,
       finishSubmission,
       dispose() {
         disposed = true;

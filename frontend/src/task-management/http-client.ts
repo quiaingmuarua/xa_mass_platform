@@ -7,7 +7,8 @@ import {
   taskApiErrorResponseSchema,
   taskActionOutcomeSchema,
   taskCreateResponseSchema,
-  taskItemsAppendResponseSchema
+  taskItemsAppendResponseSchema,
+  taskRetentionRunResponseSchema
 } from "./schemas";
 import type {
   FiniteTaskClient,
@@ -15,7 +16,8 @@ import type {
   TaskCreateApiResponse,
   TaskExportResult,
   TaskItemApiRequest,
-  TaskItemsAppendApiResponse
+  TaskItemsAppendApiResponse,
+  TaskRetentionRunResult
 } from "./types";
 
 const SAFE_ERROR_MESSAGES: Record<number, string> = {
@@ -140,6 +142,24 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
       );
       if (response.status !== 200) throw schemaError(requestId);
       parseResponse(taskActionOutcomeSchema, response.data, requestId);
+    } catch (error) {
+      throw mapHttpError(error, requestId);
+    }
+  }
+
+  async runTaskRetention(
+    caller: TaskCaller,
+    taskId: string
+  ): Promise<TaskRetentionRunResult> {
+    const requestId = createRequestId();
+    try {
+      const response = await this.client.post(
+        `/v1/tasks/${encodeURIComponent(taskId)}/retention:run`,
+        undefined,
+        { headers: requestHeaders(caller, requestId) }
+      );
+      if (response.status !== 200) throw schemaError(requestId);
+      return parseResponse(taskRetentionRunResponseSchema, response.data, requestId);
     } catch (error) {
       throw mapHttpError(error, requestId);
     }
