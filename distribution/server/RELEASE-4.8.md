@@ -1,8 +1,8 @@
 # XA Mass 4.8 release and upgrade contract
 
-Status: current 4.8 release input. 4.8.0 is published and its retained-scope GCP
-upgrade completed on 2026-11-27; temporary upgrade-material cleanup was confirmed
-at 08:26:12 UTC. Published artifacts remain immutable. Actual host installation
+Status: current 4.8 release input. 4.8.1 is published and its retained-scope GCP
+upgrade completed on 2026-11-28; temporary upgrade-material cleanup was confirmed
+at 09:11 UTC. Published artifacts remain immutable. Actual host installation
 state belongs to the host records reached through the
 [Release Preview guide](../../doc/guide/operations/deploy.md#release-preview).
 
@@ -158,7 +158,7 @@ re-rendered from the 4.8.0 Runtime archive
 
 ## 4.8.1 RPC recovery, Console purge UX and Nginx FD limit
 
-4.8.1 is pending publication and retained-scope GCP upgrade. It delivers:
+4.8.1 delivers:
 
 - **Server RPC recovery & WorkerGroup retry idempotency (`#160`)**:
   - `TaskRpcPreparationService` validates the complete stored descriptor shape
@@ -186,6 +186,21 @@ re-rendered from the 4.8.0 Runtime archive
     `worker_rlimit_nofile` in the main Nginx context and avoid `nginx -t`
     `RLIMIT_NOFILE` warnings.
 
+4.8.1 was published from merged commit
+`026a9c1e5ba20041ef783b16b13eb2d561dbc7dd` through
+[complete manual Proof 46126034208](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/46126034208),
+attempt 1, with all 18 jobs successful, including SMS Reception Preview.
+[Promotion 46127188443](https://github.com/quiaingmuarua/xa_mass_platform/actions/runs/46127188443)
+promoted those exact Proof ZIPs to
+[Release 4.8.1](https://github.com/quiaingmuarua/xa_mass_platform/releases/tag/v4.8.1)
+(Release ID `461419218`).
+
+| ZIP | SHA256 |
+| --- | --- |
+| `xa-mass-server-runtime-4.8.1.zip` | `0bb1f8fc0018df49561d20a4cc218d81ea22ea778ccaaabfe4dd4f36f22113e2` |
+| `xa-mass-worker-sdk-4.8.1.zip` | `6003d62b6b8127e37face29bb592b7d58449c2e7ebb83e40724cf06479663f80` |
+| `xa-mass-worker-simulator-4.8.1.zip` | `88af7eb06f577fbab3f76e471e618f331b83ca7e583aaa0d6c84b352b9db56be` |
+
 ### Retained-scope upgrade constraints from 4.8.0
 
 Upgrading an existing 4.8.0 Release Preview Runtime to 4.8.1 reuses the existing
@@ -206,6 +221,45 @@ RPC channels. Apply during the stopped-Runtime maintenance window:
    `https://staging.xamass.net` (0 `/api/v1/sms/catalog` 404s; RPC close ->
    retention timeline -> `"立即清理 Redis"` -> drawer closed & purged with 0
    SQLite history rows added).
+
+### Accepted 4.8.1 deployment and closeout (2026-11-28)
+
+The 2026-11-28 GCP Release Preview upgrade (`upgrade-4.8.1-20261128T084531Z`)
+installed immutable Runtime 4.8.1 (`PID 1178788`) at the commit and SHA256
+above, retaining `profile_long_preview_4_4`,
+`/var/lib/xa-mass/task-history-4.4.sqlite` (schema 1, `PRAGMA quick_check=ok`),
+`/var/lib/xa-mass/control-plane.sqlite` (schema 1, WAL, `PRAGMA quick_check=ok`,
+`cp_roles=2`, `cp_users=7`, `cp_user_projects=5`), `configurationId`
+`sha256:3d50c77086cd4c78d34d3ee43d0a1b8ed20c453b37943b28dd6ed67fe8240b5a`, and
+standing Host `4.4.2`. `/etc/xa-mass/ingress/deployment.json` was updated with
+`"worker_rlimit_nofile": 65536` and `/etc/nginx/nginx.conf` re-rendered from the
+4.8.1 Runtime archive (SHA256
+`cd439fd2e4ff1d87ae536a801a08a9958ed7ccc3c829c49cf02833ca947cf30b`), passing
+`nginx -t` with `0` warnings.
+
+- Health, ingress and observability checks passed: loopback readiness `UP`
+  (14s), loopback `/actuator/prometheus` exported 176 `xa_mass_*` lines, public
+  `/actuator/prometheus` and `/task-workbench` returned `404`, retired
+  `POST /api/v1/tasks/{id}/rpc:prepare` returned `404`, unauthenticated
+  `/api/v1/worker-groups` returned `401`, `/docs/` served commit `026a9c1e5`,
+  and `xa-mass.service` logged `0` warnings/errors.
+- Standing `persistent-workers` automatically reconnected to `20/20 activeHot`
+  (`0 recovery`) without manual Host intervention.
+- Public API MD5 and purge checks passed: 3-Item UTF-8 MD5 RPC round-trip on
+  `rpc-969aa6b31b92499aad2c9493bb9d91f4` passed `3/3`, closed and `PURGED` via
+  `retention:run` with `0` rows added to `task-history-4.4.sqlite`; 3-Item
+  finite UTF-8 MD5 Task (`task-264e62fe8ea349f082ffffcb154ec8f6`) reached
+  `terminal` and exported JSONL (`3/3` verified, SHA256
+  `8a11cda87d18c7160d2822a1b13325e6153e8e4b44d8e3caf890d34de9e5fac2`).
+- Live authenticated Console UI acceptance on `https://staging.xamass.net`
+  passed: fresh `v4.8.1` bundle emitted `0` `/api/v1/sms/catalog` requests
+  (`0` 404s); `accept-481-ui-1` (`rpc-7ab51968d0624b60ad80721a03d740cf`)
+  completed create -> auto-redirect -> close -> UI `"立即清理 Redis"`
+  (`POST /retention:run -> 200 PURGED`) -> drawer close & row removal.
+- Old 4.8.0 binary, temporary stage directory and temporary restore point were
+  removed; GCP `release.json`, `deployment.json`, `OPERATIONS.txt`,
+  `operations.log` and GitHub `release-preview-load` pins (`v4.8.1` Runtime &
+  Simulator kit) were updated and verified.
 
 ## Finite Task history and RPC retention
 
