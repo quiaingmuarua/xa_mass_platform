@@ -124,4 +124,19 @@ describe("SMS availability", () => {
     await availability.load(true);
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
+
+  it("marks disabled without fetching when the Project directory omits sms, while allowing explicit retry", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(smsCatalog)));
+    vi.stubGlobal("fetch", fetcher);
+    const availability = createSmsAvailability(false);
+    availability.markDisabled();
+    expect(availability.state.value.status).toBe("disabled");
+    expect(fetcher).not.toHaveBeenCalled();
+    await availability.load();
+    expect(fetcher).not.toHaveBeenCalled();
+    await availability.load(true);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(availability.state.value.status).toBe("enabled");
+    availability.dispose();
+  });
 });

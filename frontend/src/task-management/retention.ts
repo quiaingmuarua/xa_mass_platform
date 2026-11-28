@@ -3,7 +3,7 @@ import { TaskApiError } from "@/task-caller";
 
 export const taskRetentionSchema = z
   .object({
-    phase: z.enum(["OPEN", "FROZEN", "RELEASED", "PURGING"]),
+    phase: z.enum(["OPEN", "FROZEN", "RELEASED", "PURGING", "PURGED"]),
     terminatedAtMillis: z.number().int().positive().nullable(),
     frozenAtMillis: z.number().int().positive().nullable(),
     expiresAtMillis: z.number().int().positive().nullable(),
@@ -13,11 +13,16 @@ export const taskRetentionSchema = z
   .strict();
 export type TaskRetention = z.infer<typeof taskRetentionSchema>;
 
-export function retentionLabel(info?: TaskRetention | null): string {
+export function retentionLabel(
+  info?: TaskRetention | null,
+  mode: "finite" | "rpc" = "finite"
+): string {
   if (!info) return "";
+  if (info.phase === "PURGED") return "已清理";
+  if (info.phase === "PURGING") return "正在清理";
+  if (mode === "rpc") return info.terminatedAtMillis === null ? "" : "待清理";
   if (info.phase === "RELEASED") return "结果已归档";
   if (info.phase === "FROZEN") return "结果已冻结";
-  if (info.phase === "PURGING") return "正在清理";
   return info.terminatedAtMillis === null ? "" : "收尾中";
 }
 

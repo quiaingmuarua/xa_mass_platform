@@ -49,6 +49,10 @@ export function createSmsAvailability(demo: boolean) {
   return {
     state,
     load,
+    markDisabled() {
+      if (!disposed && !demo && !pending && state.value.status === "loading")
+        state.value = { status: "disabled" };
+    },
     acceptCatalog(catalog: Catalog) {
       if (!disposed && !demo) state.value = { status: "enabled", catalog };
     },

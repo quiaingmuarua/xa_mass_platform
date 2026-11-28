@@ -20,6 +20,7 @@ import { ApiMessageTaskSource } from "@/message-campaigns/api-task-source";
 import { createMessageSession, messageSessionKey } from "@/message-campaigns/workbench";
 import { appCheckContextKey, createAppCheckContext } from "@/app-checks/context";
 import { ApiAppCheckTaskSource } from "@/app-checks/task-source";
+import { taskSessionKey } from "@/task-workbench/session";
 
 defineProps<{ runtimeError?: RuntimeViewerConfigError }>();
 const demo = import.meta.env.VITE_RUNTIME_DATA_SOURCE === "mock";
@@ -45,10 +46,39 @@ provide(
 );
 provide(messageSessionKey, createMessageSession());
 const mobileNavigation = ref(false);
+const taskSession = inject(taskSessionKey, undefined);
 onMounted(() => {
-  if (canUseConsole(identity, "sms.use")) void sms.load();
-  if (canUseConsole(identity, "messages.use")) void messages.load();
-  if (canUseConsole(identity, "app-checks.tasks")) void appChecks.load();
+  const probeAll = () => {
+    if (canUseConsole(identity, "sms.use")) void sms.load();
+    if (canUseConsole(identity, "messages.use")) void messages.load();
+    if (canUseConsole(identity, "app-checks.tasks")) void appChecks.load();
+  };
+  if (demo || !taskSession) {
+    probeAll();
+    return;
+  }
+  void taskSession.ensureDirectory().then(() => {
+    const projects = taskSession.directory.value;
+    if (!projects) {
+      probeAll();
+      return;
+    }
+    const declared = new Set(projects.map((item) => item.projectId));
+    if (canUseConsole(identity, "sms.use")) {
+      if (declared.has("sms") || route.path.startsWith("/sms")) void sms.load();
+      else sms.markDisabled();
+    }
+    if (canUseConsole(identity, "messages.use")) {
+      if (declared.has("messages") || route.path.startsWith("/messages"))
+        void messages.load();
+      else messages.markDisabled();
+    }
+    if (canUseConsole(identity, "app-checks.tasks")) {
+      if (declared.has("app-checks") || route.path.startsWith("/app-checks"))
+        void appChecks.load();
+      else appChecks.markDisabled();
+    }
+  });
 });
 onBeforeUnmount(() => {
   sms.dispose();
