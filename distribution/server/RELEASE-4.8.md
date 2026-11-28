@@ -156,6 +156,57 @@ re-rendered from the 4.8.0 Runtime archive
   `INSTALLED_RELEASE_COMMIT`, `PERFORMANCE_DEPLOYMENT_JSON.serverDeployment`)
   were updated and verified.
 
+## 4.8.1 RPC recovery, Console purge UX and Nginx FD limit
+
+4.8.1 is pending publication and retained-scope GCP upgrade. It delivers:
+
+- **Server RPC recovery & WorkerGroup retry idempotency (`#160`)**:
+  - `TaskRpcPreparationService` validates the complete stored descriptor shape
+    (including Server attribution) before reserving a durable
+    `TaskRpcChannelRegistry` slot, and allows a retained raw channel claim to
+    re-enter Kernel `PRE_REVIEW` creation recovery cleanly after partial commit.
+  - `WorkerGroupManagementService` and `WorkerGroupRegistrationController` make
+    Group deletion and offline Worker removal idempotent across partial-failure
+    retries when catalog/binding state was already removed.
+  - Hardened `run_external_performance.py`, `external-performance-consumer.yml`
+    and OpenAPI/docs for the 4.8 `rpcTaskIds` consumer upgrade contract.
+- **Console RPC purge UX & zero-404 Scenario discovery (`#161`)**:
+  - Extended `taskRetentionSchema` with `PURGED`, surfaced closed RPC retention
+    timeline (`关闭时间`, `保留阶段`, `Redis 预计清理时间`) in
+    `TaskDescriptorPanel.vue` / `TaskRetentionNotice.vue`, and added admin-only
+    `"立即清理 Redis"` (`POST /api/v1/tasks/{taskId}/retention:run`) in
+    `RpcTaskPage.vue`.
+  - Gated Console Scenario catalog probes in `ConsoleLayout.vue` against the
+    declared `GET /api/v1/projects` directory, eliminating background
+    `GET /api/v1/sms/catalog -> 404` requests when SMS is not assembled while
+    preserving direct-route fallback.
+- **`staging-ingress` `worker_rlimit_nofile` contract (`#161`)**:
+  - Added optional `worker_rlimit_nofile` (`>= worker_connections`) to
+    `staging_ingress/renderer.py` so high-concurrency ingress configs emit
+    `worker_rlimit_nofile` in the main Nginx context and avoid `nginx -t`
+    `RLIMIT_NOFILE` warnings.
+
+### Retained-scope upgrade constraints from 4.8.0
+
+Upgrading an existing 4.8.0 Release Preview Runtime to 4.8.1 reuses the existing
+Redis scope (`profile_long_preview_4_4`), `/var/lib/xa-mass/task-history-4.4.sqlite`,
+`/var/lib/xa-mass/control-plane.sqlite`, `runtime.yaml` (`configurationId`),
+standing Worker Host (`4.4.2`), and existing pre-provisioned `performance-consumer`
+RPC channels. Apply during the stopped-Runtime maintenance window:
+
+1. **Set `worker_rlimit_nofile: 65536` and re-render Nginx**: add
+   `"worker_rlimit_nofile": 65536` to `/etc/xa-mass/ingress/deployment.json`,
+   render `/etc/nginx/nginx.conf` from the immutable 4.8.1 Runtime ZIP's
+   `staging_ingress`, verify `nginx -t` completes with zero warnings, and reload
+   Nginx.
+2. **Runtime, SQLite, Workers & Console acceptance**: verify readiness `UP`,
+   loopback `/actuator/prometheus`, both SQLite `PRAGMA quick_check=ok`,
+   `persistent-workers` `20/20 activeHot`, 3/3 UTF-8 MD5 (RPC + finite export),
+   0 `xa-mass.service` warnings, and live authenticated Console verification on
+   `https://staging.xamass.net` (0 `/api/v1/sms/catalog` 404s; RPC close ->
+   retention timeline -> `"立即清理 Redis"` -> drawer closed & purged with 0
+   SQLite history rows added).
+
 ## Finite Task history and RPC retention
 
 4.8 preserves immutable SQLite finite Task history (schema 1) and opt-in
